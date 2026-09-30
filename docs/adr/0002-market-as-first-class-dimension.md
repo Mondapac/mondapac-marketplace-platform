@@ -3,6 +3,7 @@
 **Status:** Proposed (needs owner/CTO sign-off before Phase 0 work starts)
 **Full reasoning:** `docs/architecture/internationalization-architecture.md`
 **Depends on:** ADR-0001 (extension-point registry)
+**Amended by:** ADR-0005 — `Market.timezone` is only a fallback default; time zones come from sellers, locations and addresses.
 
 ## Context
 MondaPac plans to expand from Australia into New Zealand, Malaysia, EU countries, and the

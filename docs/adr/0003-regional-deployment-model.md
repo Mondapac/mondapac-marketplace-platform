@@ -30,7 +30,8 @@ Market (AU) is live at launch.
 5. **Market configuration as code.** `config/markets/<code>` is versioned in the repo,
    validated at boot and seeded to the database; secrets are per Region Stack.
 6. **Region-portable data.** IDs are globally unique (UUIDv7); timestamps stored in UTC;
-   market timezone/locale applied only at the edges.
+   market timezone/locale applied only at the edges. *(Amended by ADR-0005: time zones
+   come from each seller, location and address, not from the Market.)*
 7. **Events.** The event envelope carries `market_id`; topic/event names never contain a
    market; events never cross Region Stacks.
 8. **One pipeline, region matrix.** CI/CD and IaC are parameterised by region from day one

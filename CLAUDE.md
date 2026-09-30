@@ -48,6 +48,11 @@ strategy implementation, not in core logic.
 - Domain and integration tests run against at least two market fixtures (AU plus a synthetic
   market with a different currency, tax rate and locale). A test that only passes for AU is
   a bug.
+- Time zones (ADR-0005): store instants in UTC, zones as IANA IDs. A Market's timezone is
+  only a fallback - each seller, fulfilment location and address has its own zone, and
+  cut-offs, expiries, reports and notifications are evaluated in the owning party's zone.
+  No raw Date arithmetic in domain code; use the injected Clock. Rollout within a Market
+  is city by city via ServiceArea config (launch: Brisbane).
 - Tax is computed via a per-market TaxStrategy, not hardcoded. Australia's strategy: GST 10%,
   handled explicitly in pricing/invoices (ABN captured at vendor onboarding).
 - Certification is fully generalized (see docs/features/08-certifications.md, CERT-*): a
