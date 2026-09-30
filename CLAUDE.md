@@ -1,0 +1,85 @@
+# Project: MondaPac Marketplace Platform
+
+Multi-vendor halal marketplace for Australia. Long-term goal: general e-commerce ecosystem
+(Amazon-like) across Oceania. Launch differentiator: verified halal certification, supply-chain
+transparency, and empowering small local sellers.
+
+## Long-term vision (read before designing anything cross-cutting)
+MondaPac plans to expand beyond halal retail (new business lines: food/restaurant, trade/tools)
+AND beyond Australia (New Zealand, Malaysia, EU, US). The core must never hardcode a specific
+vertical, country, currency, or language - see:
+- docs/architecture/horizontal-extensibility-architecture.md (Vertical dimension, ADR-0001)
+- docs/architecture/internationalization-architecture.md (Market dimension: i18n, multi-currency,
+  tax/payment/compliance per market, ADR-0002)
+- docs/architecture/country-branch-launch-playbook.md (regional deployment model, ADR-0003)
+The three ADRs themselves are already drafted at docs/adr/0001-*.md, 0002-*.md, 0003-*.md
+(status: Proposed) - review and approve/amend them in Phase 0 rather than re-deriving from scratch.
+- docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
+for the full reasoning and the extension-point interfaces (ProductTypeHandler,
+FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
+PaymentProviderAdapter).
+If you find yourself writing `if (vertical == 'x')` or `if (country == 'AU')` in a core module,
+stop and flag it to the cto subagent - it belongs in a Market/Vertical configuration or a
+strategy implementation, not in core logic.
+
+## Architecture (source of truth: docs/spec/technical-spec.md)
+- Start as a MODULAR MONOLITH with strict bounded contexts; extract services later (Strangler Fig).
+- DDD layering per module: presentation -> application -> domain -> infrastructure.
+- Each module owns its own DB schema. NO cross-module table joins or direct repository imports.
+  Modules talk via public interfaces or domain events only.
+- Domain events + Outbox pattern from day one (Kafka/RabbitMQ adapter behind an interface).
+- Checkout = Saga (Order -> Payment -> Inventory -> Shipping). CQRS only for Catalog/Search reads.
+
+## Stack (DEFAULTS - owner may change; ask before deviating)
+- Backend: TypeScript, NestJS, PostgreSQL, Redis, Prisma or TypeORM (ORM choice: decide in ADR-0004, to be authored in Phase 0)
+- Frontend: Next.js + TypeScript
+- Local dev: Docker Compose. CI: GitHub Actions.
+- Payments: Stripe Connect (marketplace payouts) - verify AU support/fees before implementing.
+
+## Market rules (Australia is the first Market, not the only one - see internationalization doc)
+- Every Seller, Product Offer, and Order carries a market_id from day one (single value "AU"
+  today). Money is always {amount: integer minor units, currency: ISO 4217} - never assume AUD.
+- Tax is computed via a per-market TaxStrategy, not hardcoded. Australia's strategy: GST 10%,
+  handled explicitly in pricing/invoices (ABN captured at vendor onboarding).
+- Certification is fully generalized (see docs/features/08-certifications.md, CERT-*): a
+  product cannot carry any certification tag (halal, kosher, vegan, or future types) unless
+  its seller holds a valid, unexpired, approved certification of that exact type. This rule
+  is enforced in the domain layer for every certification type, not just halal.
+
+## Commands
+- `pnpm install` / `pnpm dev` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
+- `docker compose up -d` starts Postgres, Redis, mail catcher.
+(Update this section when scripts change.)
+
+## Working rules for Claude
+1. Always start non-trivial tasks in plan mode; present the plan, wait for approval.
+2. Work in small vertical slices (one use case end-to-end: API + domain + persistence + tests).
+3. Every change must pass: typecheck, lint, tests. Run them before saying "done".
+4. Write tests first for domain logic (pricing, inventory reservation, order state machine).
+5. Never commit secrets. Use .env.example and document every variable.
+6. Record significant decisions as ADRs in docs/adr/ (short: context, decision, consequences).
+7. Code, comments, commit messages, and API docs in English. Talk to the owner in Persian if they write Persian.
+8. If a requirement is ambiguous or conflicts with the spec, ask - do not guess.
+9. Commit per slice using Conventional Commits (feat:, fix:, chore:, docs:, test:).
+
+## Team (subagents in .claude/agents/)
+This project uses specialized subagents instead of one generalist for everything: cto,
+product-owner, software-architect, product-designer, ui-ux-designer, backend-developer,
+frontend-developer, qa-engineer, security-tester, qc-release-manager, devops-engineer.
+See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
+- Route non-trivial design/architecture decisions through product-owner ->
+  software-architect (and product-designer/ui-ux-designer for user-facing work) before
+  backend-developer/frontend-developer implement.
+- security-tester review is MANDATORY (not optional under time pressure) before merging
+  anything in auth, payments, or the certification (CERT-*) enforcement path.
+- qa-engineer and security-tester are read-only reviewers by design - bugs/findings go back
+  to the implementer, not fixed by the reviewer.
+- qc-release-manager is the final gate; don't merge or close a PLAYBOOK phase without it for
+  non-trivial slices.
+- If two roles disagree or a module boundary is unclear, escalate to cto rather than guessing.
+
+## Definition of Done (every slice)
+- Tests (unit + at least one integration) pass; migrations included and reversible
+- OpenAPI updated; structured logging + correlation id on new endpoints
+- Authorization checked (RBAC + resource ownership); input validated
+- Short note added to docs/ if behavior or architecture changed

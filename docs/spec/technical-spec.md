@@ -1,0 +1,376 @@
+# سند مشخصات فنی (Technical Specification Document)
+# MondaPac Marketplace Platform
+
+**نسخه:** 2.0 (به‌روزرسانی‌شده با معماری سه‌بعدی توسعه‌پذیری افقی)
+**تهیه‌کننده:** معماری ارشد نرم‌افزار
+**نوع سند:** High-Level & Detailed Technical Specification
+
+**اسناد تکمیلی که این نسخه بر پایهٔ آن‌هاست** (این سند خلاصهٔ یکپارچهٔ آن‌هاست؛ برای جزئیات به خودشان مراجعه کنید):
+- `docs/architecture/horizontal-extensibility-architecture.md` — بعد Vertical، الگوی Extension Point، ADR-0001
+- `docs/architecture/internationalization-architecture.md` — بعد Market، چندزبانگی/چندارزی، ADR-0002
+- `docs/architecture/country-branch-launch-playbook.md` — مدل استقرار منطقه‌ای، ADR-0003
+- `docs/features/00-INDEX.md` تا `09-internationalization.md` — سند قابلیت‌ها با کدهای یکتا (`SEL-*`, `CERT-*`, `INTL-*`, ...)
+
+### تغییرات نسخهٔ ۲.۰ نسبت به ۱.۰
+- الگوی معماری از «میکروسرویس به‌عنوان هدف اصلی» به **مونولیت ماژولار به‌عنوان تصمیم قطعی MVP** اصلاح شد (میکروسرویس فقط مسیر مهاجرت آینده است، نه معماری روز اول)
+- بخش جدید **۱.۲ سه بعد توسعه‌پذیری افقی** اضافه شد (Vertical × Market × Tenant)
+- ماژول **گواهینامه و مجوز (Certification & Compliance)** به فهرست ماژول‌های هسته اضافه شد
+- **تصمیم قطعی:** خرید بین‌مارکتی در نقشهٔ راه نیست — هر Market (کشور) مستقل می‌ماند (کاتالوگ، فروشندگان و مشتریان جدا)؛ این تصمیم چندارزی را به‌شدت ساده می‌کند (بدون نیاز به تبدیل نرخ ارز لحظه‌ای)
+
+---
+
+## بخش ۱ – معماری کلان سیستم (High-Level Architecture)
+
+### ۱.۱ الگوی معماری پیشنهادی
+
+الگوی پیشنهادی **میکروسرویس مبتنی بر رویداد (Event-Driven Microservices)** به همراه **Domain-Driven Design (DDD)** برای تعیین مرزهای سرویس (Bounded Context) است. دلایل انتخاب:
+
+- مقیاس‌پذیری مستقل هر دامنه کسب‌وکار (سفارش، پرداخت، موجودی و...)
+- امکان استقرار (Deployment) و تیم‌بندی مستقل (Team Topology بر اساس Conway's Law)
+- تحمل خطا (Fault Isolation) در سیستم با ترافیک بالا
+- پشتیبانی طبیعی از Peak Load (مثل Black Friday) با Auto-scaling سرویس‌محور
+
+**تصمیم قطعی MVP (نه صرفاً پیشنهاد):** پلتفرم با **Modular Monolith** و مرزهای دامنهٔ صریح (هر ماژول: schema اختصاصی، ارتباط فقط از طریق Interface یا Domain Event) ساخته می‌شود و در صورت نیاز واقعی (نه پیش‌فرض)، با الگوی Strangler Fig به میکروسرویس مهاجرت می‌کند. دلیل این تصمیم: برای یک تیم کوچک، هزینهٔ عملیاتی ۱۴ سرویس/Kubernetes/Kafka از روز اول بر ارزش آن (مقیاس‌پذیری‌ای که هنوز لازم نیست) پیشی می‌گیرد. جدول‌های بالا (سرویس‌ها، Message Broker، Service Mesh) **معماری هدف بلندمدت** را نشان می‌دهند، نه معماری روز اول.
+
+### ۱.۲ سه بعد توسعه‌پذیری افقی (Vertical × Market × Tenant)
+
+پلتفرم از روز اول برای رشد در سه بعد مستقل طراحی می‌شود، نه فقط برای بازار حلال استرالیا:
+
+| بعد | تعریف | وضعیت فعلی | سند مرجع |
+|---|---|---|---|
+| **Vertical** (چه می‌فروشیم) | خط کسب‌وکار — حلال retail، غذا/رستوران، Trade/ابزارآلات، هر Vertical آینده | فعال: فقط حلال retail؛ Seam آماده برای بقیه | `horizontal-extensibility-architecture.md` |
+| **Market** (کجا می‌فروشیم) | کشور/بازار جغرافیایی — استرالیا، نیوزیلند، مالزی، اروپا، آمریکا | فعال: فقط `AU`؛ Seam آماده برای بقیه | `internationalization-architecture.md` |
+| **Tenant** (برای چه کسی) | مستأجر سازمانی، در صورت SaaS احتمالی آینده | غیرفعال؛ فقط ستون آماده، بدون Isolation کامل | `horizontal-extensibility-architecture.md` بخش ۲ |
+
+**قانون طلایی معماری (روی هر سه بعد اعمال می‌شود):** هستهٔ سیستم هرگز نام یک نمونهٔ مشخص از هیچ بعدی را نمی‌شناسد — نه «حلال»، نه «Australia»، نه یک Tenant خاص. هرکدام فقط یک ردیف پیکربندی/رجیستری‌اند. هفت Extension Point این را ممکن می‌کنند:
+
+`ProductTypeHandler` · `FulfillmentStrategy` · `PricingStrategy` · `OrderWorkflowExtension` · `AttributeSchema` (چهار مورد اول برای بعد Vertical) · `TaxStrategy` · `PaymentProviderAdapter` (دو مورد آخر برای بعد Market)
+
+**تصمیم قطعی دربارهٔ خرید بین‌مارکتی:** هر Market مستقل است — مشتری فقط فروشندگان/کاتالوگ Market خودش را می‌بیند. یک سفارش همیشه در یک ارز واحد است (ارز Market)؛ نیازی به تبدیل نرخ ارز لحظه‌ای یا Snapshot نرخ ارز در MVP یا نسخه‌های بعدی (تا اطلاع ثانوی) نیست. این تصمیم پیچیدگی مالی/محاسباتی پلتفرم را به‌طور قابل‌توجهی کاهش می‌دهد.
+
+### ۱.۳ دیاگرام لایه‌ها (Layered Architecture)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Presentation Layer                                       │
+│  Web App (Next.js/React) | Mobile App | Admin Panel       │
+│  API Gateway (Kong/AWS API Gateway) | BFF Layer            │
+├─────────────────────────────────────────────────────────┤
+│  Application Layer                                         │
+│  Use Cases / Orchestrators / Command & Query Handlers      │
+│  (CQRS Mediators, Application Services, DTO Mapping)       │
+├─────────────────────────────────────────────────────────┤
+│  Domain Layer                                               │
+│  Aggregates, Entities, Value Objects, Domain Events        │
+│  Business Rules (Order, Pricing, Inventory, Loyalty)        │
+├─────────────────────────────────────────────────────────┤
+│  Infrastructure Layer                                       │
+│  Databases | Message Broker | Cache | External APIs        │
+│  (Payment Gateway, Shipping Providers, SMS/Email)           │
+└─────────────────────────────────────────────────────────┘
+```
+
+### ۱.۴ لیست ماژول‌های مستقل (در MVP: ماژول‌های مونولیت ماژولار؛ در بلندمدت: کاندید میکروسرویس)
+
+| # | نام ماژول | مسئولیت اصلی |
+|---|-----------|----------------|
+| 1 | User Service | مدیریت حساب کاربری، پروفایل، احراز هویت پایه |
+| 2 | Auth & Identity Service | صدور توکن JWT/OAuth2، SSO، مدیریت نقش‌ها |
+| 3 | Product Catalog Service | مدیریت محصولات، دسته‌بندی، ویژگی‌ها، SEO metadata؛ نوع محصول از طریق `ProductTypeHandler` توسعه‌پذیر |
+| 4 | Inventory Service | مدیریت موجودی، رزرو انبار، هماهنگی چند انبار |
+| 5 | Pricing & Promotion Service | قیمت‌گذاری پویا، تخفیف‌ها، کدهای تخفیف؛ از طریق `PricingStrategy` توسعه‌پذیر به‌ازای Vertical/Market |
+| 6 | Cart Service | مدیریت سبد خرید (Session-based / Persistent)، همیشه محدود به یک Market |
+| 7 | Order Service | ثبت، مدیریت چرخه حیات و وضعیت سفارش؛ زیروضعیت‌های اختصاصی از طریق `OrderWorkflowExtension` |
+| 8 | Payment Service | ارتباط با درگاه‌های پرداخت، تسویه، Refund؛ Provider به‌ازای Market از طریق `PaymentProviderAdapter` |
+| 9 | Shipping & Logistics Service | محاسبه هزینه ارسال، انتخاب Carrier، ردیابی مرسوله؛ از طریق `FulfillmentStrategy` توسعه‌پذیر |
+| 10 | Search & Recommendation Service | جستجوی محصول (Elasticsearch)، پیشنهاد هوشمند |
+| 11 | **Certification & Compliance Service** *(جدید در نسخهٔ ۲.۰)* | چارچوب عمومی گواهی/مجوز (حلال، کوشر، وگان، و آینده) — `CERT-*`، تعریف نوع گواهی، رجیستری صادرکننده، اجرای قانون سخت «بدون گواهی معتبر، بدون برچسب» |
+| 12 | Tax Service | محاسبهٔ مالیات به‌ازای Market از طریق `TaxStrategy`؛ برای بازارهای پیچیده (اروپا/آمریکا) Adapter به سرویس شخص‌ثالث |
+| 13 | Review & Rating Service | نظرات و امتیازدهی کاربران |
+| 14 | Notification Service | ارسال ایمیل، SMS، Push Notification؛ قالب‌ها چندزبانه (`INTL-11`) |
+| 15 | Seller/Vendor Management Service | مدیریت فروشندگان شخص ثالث (Marketplace)، ویژگی‌های پویا (`SEL-20`) |
+| 16 | Analytics & Reporting Service | گزارش‌گیری، داشبورد BI |
+
+**نکتهٔ مهم:** `Market` و `Tenant` در این فهرست **سرویس مجزا نیستند** — هر دو داده‌های پیکربندی‌ای‌اند که همهٔ ماژول‌های بالا (به‌ویژه Catalog، Order، Payment، Tax) از طریق `market_id`/`tenant_id` به آن‌ها ارجاع می‌دهند؛ ساختن یک «Market Service» جدا در این مقیاس توجیه ندارد.
+
+### ۱.۵ ارتباطات بین سرویس‌ها
+
+**ارتباط همزمان (Synchronous):**
+- REST API برای ارتباطات خارجی (Client ↔ API Gateway ↔ Services)
+- gRPC برای ارتباطات داخلی با نیاز به تأخیر پایین (مثلاً Inventory ↔ Order در لحظه Checkout)
+
+**ارتباط ناهمزمان (Asynchronous):**
+- Message Broker (Kafka یا RabbitMQ) برای رویدادهای دامنه مانند:
+  - `OrderCreated`, `PaymentCompleted`, `InventoryReserved`, `ShipmentDispatched`
+- استفاده از الگوی **Publish/Subscribe** برای Decoupling کامل سرویس‌ها
+- **Outbox Pattern** برای تضمین Consistency بین دیتابیس و انتشار پیام
+- **قاعدهٔ نام‌گذاری رویداد:** نام رویداد هرگز نام یک Vertical یا Market را در خود ندارد (`OrderPlaced`، نه `HalalOrderPlacedAU`)؛ این اطلاعات در Payload/Metadata می‌آید، وگرنه مصرف‌کنندگان رویداد (Notification و...) باید هر نمونه را جدا بشناسند
+
+### ۱.۶ مدیریت داده‌ها
+
+- **در MVP (مونولیت ماژولار):** هر ماژول Schema اختصاصی خودش را دارد (نه لزوماً پایگاه‌دادهٔ فیزیکی جدا)؛ ممنوعیت Join مستقیم بین Schema ماژول‌ها، ارتباط فقط از طریق Interface یا Event. در مهاجرت بعدی به میکروسرویس، این مرز به «Database per Service» فیزیکی تبدیل می‌شود.
+- **ابعاد افقی روی Schema:** جدول‌های `Seller`، `Product`، `Order` از روز اول ستون‌های `market_id` و `tenant_id` دارند (حتی با تک‌مقدار امروز) تا مهاجرت به چند Market/Tenant واقعی، بازنویسی Schema نخواهد.
+- **پول:** هر مبلغ `{amount: عدد صحیح واحد خرد ارز, currency: ISO 4217}`؛ چون خرید بین‌مارکتی در نقشهٔ راه نیست (تصمیم قطعی)، هیچ نرخ ارزی هرگز نیازی به تبدیل یا Snapshot ندارد — فقط نرخ کمیسیون (`COM-04`) به همین شکل در لحظهٔ سفارش منجمد می‌شود.
+- **Saga Pattern (Choreography-based)** برای تراکنش‌های توزیع‌شده مانند فرآیند Checkout (Order → Payment → Inventory → Shipping)
+- **CQRS** برای ماژول‌های با حجم خواندن بالا مانند Catalog و Search (جداسازی مدل Write از Read)
+- **Event Sourcing** پیشنهادی برای Order Service جهت حفظ تاریخچه کامل تغییرات وضعیت سفارش
+- **Eventual Consistency** به عنوان استراتژی پیش‌فرض بین Bounded Context ها
+
+### ۱.۷ زیرساخت ابری پیشنهادی
+
+| مؤلفه | تکنولوژی پیشنهادی |
+|-------|---------------------|
+| Containerization | Docker |
+| Orchestration | Kubernetes (EKS/GKE/AKS) |
+| Service Mesh | Istio یا Linkerd |
+| API Gateway | Kong / AWS API Gateway |
+| Cache | Redis (Cluster Mode) |
+| CDN | Cloudflare / AWS CloudFront |
+| Message Broker | Apache Kafka |
+| Object Storage | AWS S3 / MinIO |
+| Primary Database | PostgreSQL (Transactional) |
+| NoSQL Database | MongoDB (Catalog) + Elasticsearch (Search) |
+| Secrets Management | HashiCorp Vault |
+
+**استقرار منطقه‌ای (Regional Deployment):** یک کدبیس، ولی استقرار در منطقهٔ ابری متفاوت به‌ازای Market، بسته به الزام اقامت داده/Latency/حجم — نیوزیلند در همان منطقهٔ استرالیا، مالزی در منطقهٔ جنوب‌شرق آسیا، اتحادیهٔ اروپا و آمریکا هرکدام منطقهٔ اختصاصی (اروپا به‌دلیل GDPR الزامی، نه اختیاری). جزئیات کامل در `country-branch-launch-playbook.md`. Kubernetes/Service Mesh در فهرست بالا **معماری هدف پس از اثبات MVP** است؛ راه‌اندازی اولیهٔ استرالیا با Docker Compose/یک سرویس Container ساده (بخش Stack در `CLAUDE.md`) کافی است.
+
+---
+
+## بخش ۲ – لیست کامل ماژول‌های عملکردی (Functional Modules)
+
+### ۲.۱ ماژول‌های هسته (Core – MVP اجباری)
+
+**۱. ماژول مدیریت کاربران (User Management)**
+- زیرماژول‌ها: ثبت‌نام/ورود، مدیریت پروفایل، آدرس‌های کاربر، مدیریت نقش‌ها
+- وابستگی: Auth Service
+- ورودی/خروجی: ورودی اطلاعات ثبت‌نام، خروجی توکن و پروفایل کاربر
+- ذخیره‌سازی: PostgreSQL (جدول Users, Addresses)
+
+**۲. ماژول احراز هویت و مجوز (Auth & Authorization)**
+- زیرماژول‌ها: JWT Issuance، OAuth2/Social Login، RBAC، Session Management
+- وابستگی: User Service
+- ورودی/خروجی: ورودی Credentials، خروجی Access/Refresh Token
+- ذخیره‌سازی: Redis (Session/Token blacklist)
+
+**۳. ماژول کاتالوگ محصول (Product Catalog)**
+- زیرماژول‌ها: مدیریت محصول، دسته‌بندی، ویژگی‌های Variant (رنگ/سایز)، تصاویر محصول
+- وابستگی: Inventory, Pricing
+- ورودی/خروجی: ورودی داده محصول از Admin/Seller، خروجی JSON محصول برای Frontend
+- ذخیره‌سازی: MongoDB (Schema-flexible)
+
+**۴. ماژول مدیریت موجودی (Inventory Management)**
+- زیرماژول‌ها: موجودی چندانباره، رزرو موجودی، هشدار کمبود کالا
+- وابستگی: Order, Product Catalog
+- ورودی/خروجی: ورودی رویداد سفارش، خروجی وضعیت موجودی به‌روز
+- ذخیره‌سازی: PostgreSQL با Optimistic Locking
+
+**۵. ماژول سبد خرید (Shopping Cart)**
+- زیرماژول‌ها: افزودن/حذف آیتم، محاسبه قیمت لحظه‌ای، ادغام سبد مهمان با کاربر ثبت‌نام‌شده
+- وابستگی: Product Catalog, Pricing
+- ورودی/خروجی: ورودی SKU و تعداد، خروجی سبد به‌روزشده
+- ذخیره‌سازی: Redis (TTL-based)
+
+**۶. ماژول ثبت و مدیریت سفارش (Order Management)**
+- زیرماژول‌ها: Checkout، تاریخچه سفارش، مدیریت وضعیت (Pending/Confirmed/Shipped)
+- وابستگی: Cart, Payment, Inventory, Shipping
+- ورودی/خروجی: ورودی سبد نهایی، خروجی شناسه سفارش و رسید
+- ذخیره‌سازی: PostgreSQL + Event Store
+
+**۷. ماژول پرداخت (Payment Processing)**
+- زیرماژول‌ها: اتصال به درگاه، مدیریت تراکنش، بازپرداخت (Refund)
+- وابستگی: Order Service
+- ورودی/خروجی: ورودی اطلاعات پرداخت، خروجی وضعیت تراکنش
+- ذخیره‌سازی: PostgreSQL (رمزنگاری‌شده، PCI-DSS Compliant)
+
+**۸. ماژول ارسال و لجستیک (Shipping & Fulfillment)**
+- زیرماژول‌ها: محاسبه هزینه ارسال، انتخاب Carrier، ردیابی مرسوله
+- وابستگی: Order, Inventory
+- ورودی/خروجی: ورودی آدرس و وزن بسته، خروجی کد رهگیری
+- ذخیره‌سازی: PostgreSQL
+
+**۹. ماژول جستجو (Search)**
+- زیرماژول‌ها: ایندکس‌گذاری محصول، فیلتر پیشرفته، Autocomplete
+- وابستگی: Product Catalog
+- ورودی/خروجی: ورودی Query متنی، خروجی نتایج رتبه‌بندی‌شده
+- ذخیره‌سازی: Elasticsearch
+
+**۱۰. ماژول اعلان‌ها (Notifications)**
+- زیرماژول‌ها: ایمیل تراکنشی، SMS، Push Notification؛ قالب‌ها چندزبانه با Fallback (`INTL-11..13`)
+- وابستگی: تمامی سرویس‌های Event-Producer
+- ورودی/خروجی: ورودی رویداد سیستم، خروجی پیام ارسال‌شده
+- ذخیره‌سازی: MongoDB (Log پیام‌ها)
+
+**۱۱. ماژول گواهینامه و مجوز (Certification & Compliance)** *(جدید در نسخهٔ ۲.۰)*
+- زیرماژول‌ها: تعریف نوع گواهی (`CertificationType`)، رجیستری صادرکننده به‌ازای Market، گواهی فروشنده با ماشین وضعیت (Draft→Pending→Approved/Rejected→Expired/Revoked)، برچسب‌گذاری محصول
+- وابستگی: Seller، Product Catalog
+- ورودی/خروجی: ورودی مدرک/ادعای فروشنده، خروجی برچسب گواهی معتبر روی محصول
+- ذخیره‌سازی: PostgreSQL
+- **قانون سخت دامنه:** بدون گواهی معتبر/تأییدشده/منقضی‌نشده از همان نوع، هیچ محصولی برچسب نمی‌گیرد؛ این قانون برای حلال، کوشر، وگان و هر نوع آیندهٔ دیگر یکسان اعمال می‌شود (سند قابلیت‌ها فایل ۰۸)
+
+### ۲.۲ ماژول‌های کمکی (Supporting – افزایش کارایی)
+
+**۱۲. ماژول نظرات و امتیازدهی (Review & Rating)**
+- زیرماژول‌ها: ثبت نظر، تعدیل محتوا (Moderation)، امتیاز میانگین
+- وابستگی: Product Catalog, User
+- ذخیره‌سازی: MongoDB
+
+**۱۳. ماژول تخفیف و کوپن (Promotion Engine)**
+- زیرماژول‌ها: کد تخفیف، تخفیف حجمی، کمپین‌های زمان‌دار
+- وابستگی: Cart, Pricing
+- ذخیره‌سازی: PostgreSQL + Redis Cache
+
+**۱۴. ماژول مدیریت فروشندگان (Vendor/Marketplace)**
+- زیرماژول‌ها: ثبت‌نام فروشنده، پنل مدیریت فروشگاه، تسویه‌حساب فروشنده
+- وابستگی: Product Catalog, Order, Payment
+- ذخیره‌سازی: PostgreSQL
+
+**۱۵. ماژول پشتیبانی مشتری (Customer Support/Ticketing)**
+- زیرماژول‌ها: تیکتینگ، چت آنلاین، مرجوعی کالا (Return/RMA)
+- وابستگی: Order Service
+- ذخیره‌سازی: MongoDB
+
+**۱۶. ماژول مدیریت محتوا (CMS)**
+- زیرماژول‌ها: بنر صفحه اصلی، صفحات استاتیک، بلاگ؛ محتوای حقوقی (شرایط استفاده، بازگشت کالا) به‌ازای زبان با ترجمهٔ انسانی (`INTL-12`)
+- وابستگی: مستقل
+- ذخیره‌سازی: MongoDB/Headless CMS
+
+### ۲.۳ ماژول‌های پیشرفته (Advanced – مقیاس‌پذیری و شخصی‌سازی)
+
+**۱۷. ماژول توصیه‌گر هوشمند (Recommendation Engine)**
+- زیرماژول‌ها: Collaborative Filtering، Content-based، Real-time Personalization
+- وابستگی: Search, User Behavior Analytics
+- ذخیره‌سازی: Data Lake + Feature Store
+
+**۱۸. ماژول تحلیل رفتار کاربر (Behavioral Analytics)**
+- زیرماژول‌ها: Clickstream Tracking، Funnel Analysis، A/B Testing
+- وابستگی: تمامی سرویس‌های Frontend-facing
+- ذخیره‌سازی: ClickHouse/BigQuery
+
+**۱۹. ماژول برنامه وفاداری (Loyalty & Rewards)**
+- زیرماژول‌ها: امتیاز خرید، سطح‌بندی مشتری (Tier)، کش‌بک
+- وابستگی: Order, User
+- ذخیره‌سازی: PostgreSQL
+
+**۲۰. ماژول مدیریت قیمت پویا (Dynamic Pricing)**
+- زیرماژول‌ها: قیمت‌گذاری بر اساس تقاضا، رقابت، موجودی
+- وابستگی: Pricing, Analytics
+- ذخیره‌سازی: PostgreSQL + Real-time Stream Processing
+
+**۲۱. ماژول تشخیص تقلب (Fraud Detection)**
+- زیرماژول‌ها: تحلیل الگوی تراکنش، Risk Scoring، Blacklist Management
+- وابستگی: Payment, Order
+- ذخیره‌سازی: Data Lake + ML Model Serving
+
+---
+
+## بخش ۳ – امکانات و خصوصیات غیرعملکردی (Non-Functional Requirements)
+
+### ۳.۱ الزامات امنیتی
+1. احراز هویت چندعاملی (MFA) برای پنل ادمین و کاربران با سطح دسترسی بالا
+2. استفاده از OAuth2/OpenID Connect برای Federation و Social Login
+3. رمزنگاری داده در حالت سکون (AES-256) و در حال انتقال (TLS 1.3)
+4. پیاده‌سازی کامل کنترل‌های OWASP Top 10 (SQLi, XSS, CSRF, SSRF, Broken Auth)
+5. Rate Limiting و Bot Protection در API Gateway (WAF)
+6. توکنایز کردن اطلاعات کارت بانکی (PCI-DSS Level 1 Compliance)
+7. مدیریت Secrets با Vault، بدون Hardcode در کد
+
+### ۳.۲ الزامات کارایی
+8. زمان پاسخ API زیر ۲۰۰ میلی‌ثانیه برای ۹۵٪ درخواست‌ها (P95 Latency)
+9. پشتیبانی از حداقل ۵۰,۰۰۰ درخواست همزمان در پیک ترافیک
+10. استراتژی کش چندلایه: CDN (Static Assets)، Redis (Session/Cart)، Application-level Cache (Catalog)
+11. Lazy Loading و Pagination برای لیست محصولات با حجم بالا
+
+### ۳.۳ الزامات دسترس‌پذیری
+12. SLA هدف: ۹۹.۹۵٪ (حداکثر ~۴.۴ ساعت Downtime در سال)
+13. RTO (Recovery Time Objective): کمتر از ۱۵ دقیقه
+14. RPO (Recovery Point Objective): کمتر از ۵ دقیقه (با Replication همزمان)
+15. معماری **Active-Active Multi-Region** برای سرویس‌های حیاتی (Order, Payment)
+
+### ۳.۴ الزامات مقیاس‌پذیری
+16. Auto-scaling افقی بر اساس CPU Utilization، Queue Length و Request Rate
+17. مقیاس‌پذیری مستقل هر Microservice متناسب با بار کاری خاص خود
+18. استفاده از Read Replica برای دیتابیس‌های با بار خواندن بالا (Catalog, Search)
+
+### ۳.۵ الزامات یکپارچه‌سازی
+19. API Gateway مرکزی برای مدیریت نسخه‌بندی، Throttling و Authentication
+20. پشتیبانی از Webhook برای اطلاع‌رسانی به فروشندگان/سرویس‌های شخص ثالث
+21. Event Bus مرکزی (Kafka) برای یکپارچگی رویدادمحور بین دامنه‌ها
+
+### ۳.۶ الزامات نظارت و لاگ‌گیری
+22. متمرکزسازی لاگ با پشته ELK (Elasticsearch, Logstash, Kibana)
+23. مانیتورینگ متریک با Prometheus + Grafana Dashboard
+24. Distributed Tracing با Jaeger/OpenTelemetry برای ردیابی درخواست بین سرویس‌ها
+25. Alerting خودکار (PagerDuty/Opsgenie) بر اساس SLO Breach
+
+---
+
+## بخش ۴ – ماتریس اولویت‌بندی پیاده‌سازی (Implementation Priority Matrix)
+
+| اولویت | ماژول/ویژگی | زمان تخمینی (هفته) | وابستگی فنی |
+|--------|--------------|----------------------|----------------|
+| P0 | User Management + Auth | 3 | - |
+| P0 | Product Catalog | 4 | User Management |
+| P0 | Cart Service | 2 | Product Catalog |
+| P0 | Order Service | 4 | Cart, Inventory |
+| P0 | Payment Service | 4 | Order Service |
+| P0 | Inventory Service | 3 | Product Catalog |
+| P0 | Extension Point Scaffolding (Vertical/Market Seam) | 1 | - (بخشی از فاز ۰، نه یک ماژول کاربری جدا) |
+| P0 | Certification & Compliance | 3 | Seller, Product Catalog |
+| P1 | Shipping & Logistics | 3 | Order Service |
+| P1 | Search Service | 3 | Product Catalog |
+| P1 | Notification Service | 2 | Event Bus |
+| P1 | API Gateway & Security Hardening | 2 | تمام سرویس‌های P0 |
+| P2 | Review & Rating | 2 | Product, User |
+| P2 | Promotion Engine | 3 | Cart, Pricing |
+| P2 | Vendor Management | 4 | Catalog, Order, Payment |
+| P2 | Customer Support/RMA | 3 | Order Service |
+| P3 | Recommendation Engine | 5 | Search, Analytics |
+| P3 | Behavioral Analytics | 4 | تمام سرویس‌های Frontend |
+| P3 | Loyalty & Rewards | 3 | Order, User |
+| P3 | Dynamic Pricing | 5 | Pricing, Analytics |
+| P3 | Fraud Detection | 5 | Payment, Order |
+
+### توضیح اولویت‌بندی P0
+
+ماژول‌های P0 (User Management، Catalog، Cart، Order، Payment، Inventory، Certification) هسته اصلی چرخه درآمدزایی (Revenue Loop) و تمایز برند پلتفرم را تشکیل می‌دهند؛ بدون این‌ها امکان انجام یک تراکنش خرید کامل **و قابل‌اعتماد** (با گواهی معتبر) وجود ندارد. «Extension Point Scaffolding» یک ردیف جدا نیست چون کار مستقلی برای کاربر نهایی نمی‌سازد، بلکه طراحی هفت Interface بخش ۱.۲ است که باید **همان فاز ۰** (قبل از Migration های اولیهٔ دیتابیس) قطعی شود — تعویق آن یعنی بازنویسی Schema بعداً. این ماژول‌ها:
+
+- **بالاترین ریسک کسب‌وکار** را در صورت عدم پیاده‌سازی دارند (توقف کامل درآمد)
+- **وابستگی معکوس** بالایی دارند؛ اکثر ماژول‌های P1 تا P3 به آن‌ها متکی هستند
+- پایه‌ی صحت داده‌ای (Data Integrity) کل سیستم را تشکیل می‌دهند (به‌ویژه Order و Payment که نیازمند Consistency بالا هستند)
+
+ماژول‌های P1 تجربه کاربری و عملیات پس از خرید را تکمیل می‌کنند، P2 ارزش افزوده کسب‌وکاری (Marketplace, Retention) ایجاد می‌کنند و P3 لایه هوشمندسازی و بهینه‌سازی سود را روی هسته پایدار اضافه می‌کنند.
+
+---
+
+## جدول خلاصه تکنولوژی‌های پیشنهادی به تفکیک لایه
+
+| لایه | تکنولوژی پیشنهادی |
+|------|----------------------|
+| Presentation (Web) | Next.js / React, TypeScript |
+| Presentation (Mobile) | React Native / Flutter |
+| API Gateway | Kong / AWS API Gateway |
+| Application/Backend | Node.js (NestJS) — پیش‌فرض تصمیم‌گرفته‌شده در `CLAUDE.md`، قابل تغییر در ADR-0004 (stack ORM/message-broker decision, to be authored in Phase 0) |
+| Communication (Sync) | REST, gRPC |
+| Communication (Async) | Apache Kafka |
+| Domain/Business Logic | DDD + Hexagonal Architecture |
+| Relational Database | PostgreSQL |
+| NoSQL Database | MongoDB |
+| Search Engine | Elasticsearch |
+| Cache | Redis Cluster |
+| Object Storage | AWS S3 / MinIO |
+| CDN | Cloudflare / AWS CloudFront |
+| Containerization | Docker |
+| Orchestration | Kubernetes |
+| Service Mesh | Istio |
+| CI/CD | GitHub Actions / GitLab CI + ArgoCD |
+| Monitoring | Prometheus + Grafana |
+| Logging | ELK Stack |
+| Tracing | Jaeger / OpenTelemetry |
+| Secrets Management | HashiCorp Vault |
+| Analytics/BI | ClickHouse / BigQuery |
+| Tax/Compliance (EU/US) | سرویس شخص‌ثالث (مثل Avalara/TaxJar) به‌جای منطق داخلی — تصمیم `INTL-32/33` |
+| Payment (Marketplace Payout) | Stripe Connect، به‌ازای Market از طریق `PaymentProviderAdapter` |
+
+---
+
+**پایان سند**
