@@ -8,3 +8,5 @@ packages:
 ignoredBuiltDependencies:
   - '@parcel/watcher'
   - unrs-resolver
+  # Install-time analytics of swagger-ui-dist; not wanted.
+  - '@scarf/scarf'
