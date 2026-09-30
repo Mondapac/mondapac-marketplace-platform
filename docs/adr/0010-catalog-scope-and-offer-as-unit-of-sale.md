@@ -1,7 +1,7 @@
 # ADR-0010: Catalog Scope, and the Offer as the Unit of Sale and of Certification Claims
 
 **Status:** Accepted — 2026-09-30. Owner request; reviewed by product-owner, software-architect
-and cto roles. Open owner questions are listed at the end.
+and cto roles. **Decision 3 amended by ADR-0012** (manufacturer-certified claims).
 **Relates to:** ADR-0002/0003 (market scoping), ADR-0004 (persistence, audit), ADR-0007
 (tax category, order snapshots), ADR-0008 (modules), CAT-*, OFR-*, SEL-12/25/26,
 CERT-15/20-24, IMP-03
@@ -78,9 +78,9 @@ what CERT-21 forbids.
 - Catalog import keys on the platform product code for Offers (OFR-12); seller SKUs are
   per seller.
 - Priorities (MVP = Brisbane launch): scope model, Offer-level tags, admin-created platform
-  products = P0; promotion, manual match, retire = P1; similarity suggestions, bulk import
-  of platform products, exclusive flag, correction suggestions, seller categories and
-  their promotion/merge = P2 (the owner may raise them).
+  products = P0; promotion, exclusive flag, manual match, retire, seller categories with
+  their promotion/merge and the SEL-26 permission = P1 (owner decision 2026-09-30);
+  similarity suggestions, bulk import of platform products, correction suggestions = P2.
 
 ## Alternatives considered
 - Keep tags on the product: rejected — lets one seller's certificate cover another's sale.
@@ -89,8 +89,8 @@ what CERT-21 forbids.
 - Reversible promotion or match after publish: rejected — races with other sellers'
   Offers and breaks references from orders, carts and reviews.
 
-## Open owner questions
-1. Should promotion require the seller's explicit consent, or is the licence clause plus
-   the "exclusive" hard block enough?
-2. Do platform products need a manufacturer-level certification in addition to each
-   seller's own certificate?
+## Owner decisions (2026-09-30)
+1. Promotion consent: the Seller Terms content-licence clause plus the "own brand /
+   exclusive" flag as a hard block; no per-promotion consent.
+2. Manufacturer-level certification: yes, as an alternative basis for sealed goods where
+   the category policy allows — see ADR-0012.

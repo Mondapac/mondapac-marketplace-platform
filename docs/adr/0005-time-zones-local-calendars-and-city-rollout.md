@@ -31,7 +31,7 @@ every seller or customer outside the Market's default zone.
    | Order cut-off, handling time, dispatch SLA, opening hours | fulfilment location |
    | Delivery windows / ETA shown to customer | delivery address |
    | Seller reports, payout schedule, tax invoice date | seller |
-   | Certificate expiry (CERT-14/15) | seller; conservative: invalid from 00:00 local on the expiry date, never later |
+   | Certificate expiry (CERT-14/15) | seller; valid through the end of the expiry date, invalid from 00:00 local on the following day (owner decision) |
    | Subscription expiry and reminders (SUB-06) | seller |
    | Notification quiet hours, times inside emails/SMS | recipient |
    | Promotions / campaign start and end | must declare its zone explicitly; no implicit default |
@@ -47,7 +47,8 @@ every seller or customer outside the Market's default zone.
    frequently in UTC and process each party when *its* local boundary passes, instead of
    one global midnight run.
 7. **City-by-city rollout = ServiceArea configuration.** A Market contains
-   `ServiceArea`s (launch: Brisbane), defined by postcode sets and activated by config.
+   `ServiceArea`s (launch: Greater Brisbane — Brisbane, Logan, Ipswich, Moreton Bay and
+   Redland; exact postcode set in config), defined by postcode sets and activated by config.
    Each ServiceArea has independent flags `seller_onboarding_enabled` and
    `delivery_enabled`, so the business can decide separately where sellers may operate
    and where customers may receive orders. Adding Gold Coast, Sydney or Perth is a

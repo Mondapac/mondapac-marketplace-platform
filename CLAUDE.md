@@ -12,7 +12,8 @@ vertical, country, currency, or language - see:
 - docs/architecture/internationalization-architecture.md (Market dimension: i18n, multi-currency,
   tax/payment/compliance per market, ADR-0002)
 - docs/architecture/country-branch-launch-playbook.md (regional deployment model, ADR-0003)
-Phase 0 decisions are Accepted in docs/adr/0001..0008 and 0010 (catalog scope/Offer) (extensibility, market, multi-market
+Phase 0 decisions are Accepted in docs/adr/0001..0010 and 0012 (0011 is reserved for the
+CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
 structure). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
@@ -53,15 +54,18 @@ strategy implementation, not in core logic.
   only a fallback - each seller, fulfilment location and address has its own zone, and
   cut-offs, expiries, reports and notifications are evaluated in the owning party's zone.
   No raw Date arithmetic in domain code; use the injected Clock. Rollout within a Market
-  is city by city via ServiceArea config (launch: Brisbane).
+  is city by city via ServiceArea config (launch: Greater Brisbane).
 - Tax is computed via a per-market TaxStrategy, not hardcoded. Australia's strategy: GST 10%,
   handled explicitly in pricing/invoices (ABN captured at vendor onboarding).
 - Certification is fully generalized (see docs/features/08-certifications.md, CERT-*): an
   Offer cannot carry any certification tag (halal, kosher, vegan, or future types) unless
-  the offering seller holds a valid, unexpired, approved certification of that exact type
-  (ADR-0010: tags live on Offers, because several sellers can sell one PLATFORM product;
-  platform product content never asserts a certification). This rule is enforced in the
-  domain layer for every certification type and every Offer entry point, not just halal.
+  the offering seller holds a valid, unexpired, approved certification of that exact type,
+  OR (ADR-0012) the category's ClaimBasisPolicy allows a manufacturer basis, an approved
+  unexpired ProductCertification of that type covers the product, and the Offer is
+  SEALED_ORIGINAL with a per-Offer seller attestation. Missing policy = seller certificate
+  required (fail-closed). Tags live on Offers (ADR-0010); product content never asserts a
+  certification. Enforced in the domain layer through certification's single
+  evaluateClaim entry point, for every certification type and every Offer entry point.
 - Catalog scope (ADR-0010): products and categories are PLATFORM or SELLER scoped within a
   Market; all selling goes through Offers; PLATFORM content is admin-only.
 
