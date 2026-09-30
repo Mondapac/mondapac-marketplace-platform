@@ -112,6 +112,9 @@ devops-engineer, scrum-master.
 | Kazem | DevOps Engineer | `devops-engineer` |
 | Javad | Scrum Master | `scrum-master` |
 
+The owner is addressed as «صاحب پروژه» ("project owner") until they choose a name; do
+not give the owner any team member's name.
+
 When the owner (or a prompt) refers to a team member by name — e.g. "ask Hadi to draft the
 catalog brief" — route it to that agent id. Agent ids stay unchanged in file names and
 tooling; names are for communication and reports.
