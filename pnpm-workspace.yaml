@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependency build scripts are denied by default (supply-chain hygiene). These two work
+# without their optional native builds; list a package under onlyBuiltDependencies only
+# after reviewing why it needs an install script.
+ignoredBuiltDependencies:
+  - '@parcel/watcher'
+  - unrs-resolver
+  # Install-time analytics of swagger-ui-dist; not wanted.
+  - '@scarf/scarf'
+
+# Reviewed exceptions: Prisma downloads its schema engine (used by migrations) at install.
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - prisma

@@ -1,6 +1,6 @@
 # راهنمای تیم Subagent — MondaPac Marketplace Platform
 
-این فایل توضیح می‌دهد چطور ۱۲ نقش تخصصی که در `agents/` ساختیم را در Claude Code هماهنگ کنید.
+این فایل توضیح می‌دهد چطور ۱۳ نقش تخصصی که در `agents/` ساختیم را در Claude Code هماهنگ کنید.
 
 ---
 
@@ -18,33 +18,77 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 ## ۲. نصب
 
 عامل‌ها از قبل در `.claude/agents/` و `CLAUDE.md` در ریشهٔ همین ریپو قرار دارند؛ نصب جداگانه لازم نیست.
-با اجرای `/agents` در Claude Code می‌توانید فهرست ۱۲ نقش را ببینید و در صورت نیاز ویرایش کنید.
+با اجرای `/agents` در Claude Code می‌توانید فهرست ۱۳ نقش را ببینید و در صورت نیاز ویرایش کنید.
 
 ---
 
 ## ۳. نقش‌ها و کِی فراخوانی شوند
 
+هر عضو تیم یک نام دارد (تعیین‌شده توسط مالک). می‌توانید با نام صدا بزنید، مثلاً «از هادی بخواه برگهٔ ماژول catalog را پیش‌نویس کند» یا «از علی بخواه این تعارض را تصمیم‌گیری کند». شناسهٔ فنی عامل‌ها (نام فایل‌ها) تغییر نمی‌کند.
+
 | نقش | فایل | وقتی لازم است |
 |---|---|---|
-| CTO | `cto.md` | تعارض بین ماژول‌ها، تغییر Stack/معماری، تصمیم‌های پرریسک P0 |
-| Product Owner | `product-owner.md` | تبدیل کدهای سند قابلیت (`SEL-*`, `CERT-*`,...) به Story و معیار پذیرش |
-| Software Architect | `software-architect.md` | طراحی مدل دامنه، State Machine، مرز ماژول قبل از کدنویسی |
-| Database Designer | `database-designer.md` | طراحی فیزیکی بانک اطلاعاتی (جدول، نوع ستون، کلید، Constraint، ایندکس)، برنامهٔ Migration امن، کوئری‌نویسی حرفه‌ای، Performance/Tuning — بازبینی **اجباری** هر تغییر Schema/Migration |
-| Product Designer | `product-designer.md` | طراحی جریان کاربری چندمرحله‌ای/چندنقشی قبل از طراحی بصری |
-| UI/UX Designer | `ui-ux-designer.md` | تبدیل جریان تأییدشده به مشخصات بصری دقیق |
-| Backend Developer | `backend-developer.md` | پیاده‌سازی برش عمودی بک‌اند |
-| Frontend Developer | `frontend-developer.md` | پیاده‌سازی صفحه طبق مشخصات طراحی و API |
-| QA Engineer | `qa-engineer.md` | تست مستقل بعد از «تمام شد» گفتن توسعه‌دهنده |
-| Security Tester | `security-tester.md` | بازبینی امنیتی — **اجباری** برای احراز هویت/پرداخت/گواهی |
-| QC / Release Manager | `qc-release-manager.md` | دروازهٔ نهایی قبل از merge یا بستن یک فاز |
-| DevOps Engineer | `devops-engineer.md` | CI/CD، Docker، متغیرهای محیطی، مهاجرت پایگاه‌داده |
+| CTO — **Ali** | `cto.md` | تعارض بین ماژول‌ها، تغییر Stack/معماری، تصمیم‌های پرریسک P0 |
+| Product Owner — **Hadi** | `product-owner.md` | تبدیل کدهای سند قابلیت (`SEL-*`, `CERT-*`,...) به Story و معیار پذیرش |
+| Software Architect — **Mohammad** | `software-architect.md` | طراحی مدل دامنه، State Machine، مرز ماژول قبل از کدنویسی |
+| Database Designer — **Mojtaba** | `database-designer.md` | طراحی فیزیکی بانک اطلاعاتی (جدول، نوع ستون، کلید، Constraint، ایندکس)، برنامهٔ Migration امن، کوئری‌نویسی حرفه‌ای، Performance/Tuning — بازبینی **اجباری** هر تغییر Schema/Migration |
+| Product Designer — **Jafar** | `product-designer.md` | طراحی جریان کاربری چندمرحله‌ای/چندنقشی قبل از طراحی بصری |
+| UI/UX Designer — **Reza** | `ui-ux-designer.md` | تبدیل جریان تأییدشده به مشخصات بصری دقیق |
+| Backend Developer — **Hossein** | `backend-developer.md` | پیاده‌سازی برش عمودی بک‌اند |
+| Frontend Developer — **Mahdi** | `frontend-developer.md` | پیاده‌سازی صفحه طبق مشخصات طراحی و API |
+| QA Engineer — **Sajad** | `qa-engineer.md` | تست مستقل بعد از «تمام شد» گفتن توسعه‌دهنده |
+| Security Tester — **Hassan** | `security-tester.md` | بازبینی امنیتی — **اجباری** برای احراز هویت/پرداخت/گواهی |
+| QC / Release Manager — **Bagher** | `qc-release-manager.md` | دروازهٔ نهایی قبل از merge یا بستن یک فاز |
+| DevOps Engineer — **Kazem** | `devops-engineer.md` | CI/CD، Docker، متغیرهای محیطی، مهاجرت پایگاه‌داده |
+| Scrum Master / کنترل پروژه — **Javad** | `scrum-master.md` | ارزیابی فرآیند تولید با استانداردهای Scrum/Kanban و کنترل پروژه؛ اندازه‌گیری جریان کار از ریپو (throughput، lead time، WIP، اندازهٔ برش)؛ پیش‌بینی بازه‌ای؛ فهرست موانع و ریسک‌ها؛ Retro؛ پیشنهاد برای تسریع و ارتقای کیفیت — **مشاور است، تصمیم‌گیر نیست** |
+
+---
+
+## ۳الف. کنترل پروژه و ریتم کار (scrum-master)
+
+- **قبل از شروع و در پایان هر فاز PLAYBOOK:** ارزیابی سلامت فرآیند (`docs/project/process-health/`).
+- **در هر دروازهٔ ماژول (G1/G2):** بررسی آمادگی (DoR)، وابستگی‌ها و اینکه برگهٔ ماژول بعدی موازی آماده می‌شود.
+- **هر اسپرینت (۱ تا ۲ هفته):** برنامهٔ اسپرینت با هدف مشخص، و Retro با حداکثر ۳ اقدام.
+- **هر زمان:** اگر کار کند، مسدود یا بی‌کیفیت شد، از scrum-master ارزیابی بخواهید.
+- scrum-master اولویت‌ها (PO) و تصمیم‌های فنی (cto) را تغییر نمی‌دهد و هیچ دروازهٔ کیفیتی را برای سرعت حذف نمی‌کند؛ پیشنهاد می‌دهد و مالک تصمیم می‌گیرد.
+
+نمونه پرامپت:
+```
+از عامل scrum-master بخواه قبل از شروع فاز ۱، فرآیند فعلی تیم (CLAUDE.md، PLAYBOOK،
+TEAM-PLAYBOOK، ADR-0013، تاریخچهٔ git) را ارزیابی کند و حداکثر ۵ پیشنهاد برای تسریع
+و ارتقای کیفیت، با روش اندازه‌گیری هرکدام، در docs/project/process-health/ ثبت کند.
+```
+
+---
+
+## ۳ب. دروازه‌های آمادگی ماژول (ADR-0013) — قبل از هر Story
+
+قبل از اینکه اولین Story یک ماژول کلیدی ساخته شود، ماژول باید از دروازه‌ها عبور کند (جزئیات، سطح‌بندی و جدول وضعیت در `docs/modules/README.md`):
+
+```
+۰الف. product-owner   → برگهٔ ماژول را از قالب docs/modules/_template/brief.md پیش‌نویس می‌کند
+۰ب. G1 (دامنه و امکانات) → مرور با مالک + cto (+ product-designer)؛ سؤال‌های مالک یکی‌یکی
+۰ج. software-architect + database-designer (+ ui-ux-designer) → طراحی ماژول
+۰د. G2 (طراحی) → cto (+ security-tester برای سطح A)؛ خلاصه و تصمیم‌های لازم برای مالک
+```
+
+- سطح A: هر دو دروازه + بازبینی امنیتی. سطح B: یک دروازهٔ ترکیبی. سطح C: فقط تأیید PO.
+- بدون تأیید ثبت‌شده در برگه، backend-developer و frontend-developer شروع نمی‌کنند؛ qc-release-manager هم برش یا فازی را که ماژولش تأیید ندارد رد می‌کند.
+- برگهٔ ماژول بعدی در حین کدنویسی ماژول فعلی آماده می‌شود تا تیم منتظر نماند.
+
+نمونه پرامپت:
+```
+از عامل product-owner بخواه برگهٔ ماژول catalog را از قالب docs/modules/_template/brief.md
+با کدهای CAT-*، OFR-* و CERT-20..24/40..48 پیش‌نویس کند و در docs/modules/catalog/brief.md
+ذخیره کند؛ سؤال‌هایی که تصمیم مالک لازم دارند را در بخش ۷ فهرست کند.
+```
 
 ---
 
 ## ۴. جریان کار استاندارد برای یک Story
 
 ```
-۱. product-owner   → از سند قابلیت، Story + معیار پذیرش می‌سازد
+۱. product-owner   → از سند قابلیت و برگهٔ ماژول تأییدشده (G1/G2)، Story + معیار پذیرش می‌سازد
 ۲. software-architect → (اگر غیرتریویال) مدل دامنه/State Machine/مرز ماژول را طراحی می‌کند
 ۲ب. database-designer → (اگر جدول/ستون/ایندکس جدید دارد) طراحی فیزیکی دیتابیس و برنامهٔ Migration
 ۳الف. product-designer → (اگر UI چندمرحله‌ای/چندنقشی دارد) جریان کاربری را طراحی می‌کند

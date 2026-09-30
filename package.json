@@ -1,0 +1,38 @@
+{
+  "name": "mondapac-marketplace-platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MondaPac multi-vendor marketplace platform (modular monolith).",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=24.9"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "pnpm --filter @mondapac/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "pnpm -r test",
+    "test:db": "pnpm --filter @mondapac/api test:db",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:check-reversible": "node scripts/check-migrations-reversible.mjs",
+    "verify": "pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm test:db && pnpm db:check-reversible",
+    "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^24.19.0",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.0.0",
+    "prettier": "^3.9.9",
+    "prisma": "^7.10.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.0"
+  }
+}

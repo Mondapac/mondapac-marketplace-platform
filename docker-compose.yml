@@ -1,0 +1,59 @@
+# Local development dependencies only (ADR-0004): PostgreSQL, Redis, S3-compatible object
+# storage and a mail catcher. Credentials here are local-only defaults, never secrets, and
+# every port is published on 127.0.0.1 only so other machines on the network cannot reach them.
+name: mondapac
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mondapac
+      POSTGRES_PASSWORD: mondapac
+      POSTGRES_DB: mondapac
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mondapac -d mondapac']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: mondapac
+      MINIO_ROOT_PASSWORD: mondapac-local
+    ports:
+      - '127.0.0.1:${MINIO_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Catches all outgoing mail; web UI on http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - '127.0.0.1:${SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
+
+volumes:
+  postgres-data:
+  minio-data:

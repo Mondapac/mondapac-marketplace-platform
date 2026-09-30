@@ -12,10 +12,12 @@ vertical, country, currency, or language - see:
 - docs/architecture/internationalization-architecture.md (Market dimension: i18n, multi-currency,
   tax/payment/compliance per market, ADR-0002)
 - docs/architecture/country-branch-launch-playbook.md (regional deployment model, ADR-0003)
-Phase 0 decisions are Accepted in docs/adr/0001..0010 and 0012 (0011 is reserved for the
-CMS product choice) (extensibility, market, multi-market
+Phase 0 decisions are Accepted in docs/adr/0001..0010, 0012 and 0013 (0011 is reserved for
+the CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
-structure). Follow them; change one only through a new superseding ADR.
+structure). Phase 1 added ADR-0014 (runtime and toolchain baseline) and ADR-0015 (Phase 1
+scope; deferred platform foundations and the trigger that forces each one - check it
+before starting a slice). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
@@ -70,8 +72,17 @@ strategy implementation, not in core logic.
   Market; all selling goes through Offers; PLATFORM content is admin-only.
 
 ## Commands
-- `pnpm install` / `pnpm dev` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
-- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher.
+- Requires Node.js 24.9+ and pnpm 10 (ADR-0014).
+- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher. Copy `.env.example`
+  to `.env` first.
+- `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`
+- `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
+  and drops its own throwaway database)
+- `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).
+- `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev` creates one (then add its
+  `down.sql`); `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
+- `pnpm verify` runs typecheck, lint, boundaries, test, test:db and db:check-reversible.
+  It is what CI runs; run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)
 
 ## Working rules for Claude
@@ -84,12 +95,49 @@ strategy implementation, not in core logic.
 7. Code, comments, commit messages, and API docs in English. Talk to the owner in Persian if they write Persian.
 8. If a requirement is ambiguous or conflicts with the spec, ask - do not guess.
 9. Commit per slice using Conventional Commits (feat:, fix:, chore:, docs:, test:).
+10. Module readiness gates (ADR-0013): never start design of a module without an approved
+    G1 brief in docs/modules/<module>/brief.md, and never write code for it without an
+    approved G2 (tier B: one combined gate; tier C: product-owner approval). Tiers and the
+    status register live in docs/modules/README.md. If a slice changes the approved scope
+    or a hard rule, stop and run a mini-review; record it in the brief's change log.
+11. Skills (owner decision 2026-10-01): before producing any output, check
+    docs/process/skills-map.md and load the mapped account skill(s) for that task and role
+    (e.g. engineering:architecture for ADRs, product-management:write-spec for module
+    briefs, engineering:testing-strategy for test plans, design:ux-copy for badge wording).
+    Project rules, ADRs and gates take precedence over skill defaults; report conflicts to
+    cto. When no skill fits a recurring procedure, propose a new skill to the owner.
+    Project skills (in .claude/skills/): mondapac-repo-doc-change (any repo doc change),
+    mondapac-module-gate (ADR-0013 gates), mondapac-role-review (team review of a proposal).
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
 product-owner, software-architect, database-designer, product-designer, ui-ux-designer,
 backend-developer, frontend-developer, qa-engineer, security-tester, qc-release-manager,
-devops-engineer.
+devops-engineer, scrum-master.
+### Roster (names given by the owner)
+| Name | Role | Agent id |
+|---|---|---|
+| Ali | CTO | `cto` |
+| Hadi | Product Owner | `product-owner` |
+| Mohammad | Software Architect | `software-architect` |
+| Mojtaba | Database Designer | `database-designer` |
+| Jafar | Product Designer | `product-designer` |
+| Reza | UI/UX Designer | `ui-ux-designer` |
+| Hossein | Backend Developer | `backend-developer` |
+| Mahdi | Frontend Developer | `frontend-developer` |
+| Sajad | QA Engineer | `qa-engineer` |
+| Hassan | Security Tester | `security-tester` |
+| Bagher | QC / Release Manager | `qc-release-manager` |
+| Kazem | DevOps Engineer | `devops-engineer` |
+| Javad | Scrum Master | `scrum-master` |
+
+The owner is addressed as «صاحب پروژه» ("project owner") until they choose a name; do
+not give the owner any team member's name.
+
+When the owner (or a prompt) refers to a team member by name — e.g. "ask Hadi to draft the
+catalog brief" — route it to that agent id. Agent ids stay unchanged in file names and
+tooling; names are for communication and reports.
+
 See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - Route non-trivial design/architecture decisions through product-owner ->
   software-architect (and product-designer/ui-ux-designer for user-facing work) before
@@ -105,6 +153,17 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - qc-release-manager is the final gate; don't merge or close a PLAYBOOK phase without it for
   non-trivial slices.
 - If two roles disagree or a module boundary is unclear, escalate to cto rather than guessing.
+- scrum-master assesses the delivery process (before/after each PLAYBOOK phase, at module
+  gates, each sprint) and proposes improvements with evidence; it is advisory and never
+  overrides product-owner priorities, cto decisions or any quality gate. It writes only
+  under docs/project/.
+
+## Definition of Ready (every module, ADR-0013)
+- Module brief exists (template: docs/modules/_template/brief.md) with scope by feature ID,
+  hard rules, data ownership, owner decisions answered, risks and acceptance criteria
+- G1 approved by the owner (+ product-owner, cto); G2 design approved (software-architect,
+  cto, database-designer, + ui-ux-designer / security-tester where relevant)
+- Approvals recorded with date in the brief and in docs/modules/README.md
 
 ## Definition of Done (every slice)
 - Tests (unit + at least one integration) pass; migrations included and reversible

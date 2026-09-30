@@ -1,0 +1,9 @@
+{
+  "code": "AU",
+  "status": "planned",
+  "defaultLocale": "en-AU",
+  "supportedLocales": ["en-AU"],
+  "defaultCurrency": "AUD",
+  "settlementCurrency": "AUD",
+  "timezone": "Australia/Brisbane"
+}
