@@ -95,6 +95,27 @@ This project uses specialized subagents instead of one generalist for everything
 product-owner, software-architect, database-designer, product-designer, ui-ux-designer,
 backend-developer, frontend-developer, qa-engineer, security-tester, qc-release-manager,
 devops-engineer, scrum-master.
+### Roster (names given by the owner)
+| Name | Role | Agent id |
+|---|---|---|
+| Ali | CTO | `cto` |
+| Hadi | Product Owner | `product-owner` |
+| Mohammad | Software Architect | `software-architect` |
+| Mojtaba | Database Designer | `database-designer` |
+| Jafar | Product Designer | `product-designer` |
+| Reza | UI/UX Designer | `ui-ux-designer` |
+| Hossein | Backend Developer | `backend-developer` |
+| Mahdi | Frontend Developer | `frontend-developer` |
+| Sajad | QA Engineer | `qa-engineer` |
+| Hassan | Security Tester | `security-tester` |
+| Bagher | QC / Release Manager | `qc-release-manager` |
+| Kazem | DevOps Engineer | `devops-engineer` |
+| Javad | Scrum Master | `scrum-master` |
+
+When the owner (or a prompt) refers to a team member by name — e.g. "ask Hadi to draft the
+catalog brief" — route it to that agent id. Agent ids stay unchanged in file names and
+tooling; names are for communication and reports.
+
 See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - Route non-trivial design/architecture decisions through product-owner ->
   software-architect (and product-designer/ui-ux-designer for user-facing work) before

@@ -24,21 +24,23 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 
 ## ۳. نقش‌ها و کِی فراخوانی شوند
 
+هر عضو تیم یک نام دارد (تعیین‌شده توسط مالک). می‌توانید با نام صدا بزنید، مثلاً «از هادی بخواه برگهٔ ماژول catalog را پیش‌نویس کند» یا «از علی بخواه این تعارض را تصمیم‌گیری کند». شناسهٔ فنی عامل‌ها (نام فایل‌ها) تغییر نمی‌کند.
+
 | نقش | فایل | وقتی لازم است |
 |---|---|---|
-| CTO | `cto.md` | تعارض بین ماژول‌ها، تغییر Stack/معماری، تصمیم‌های پرریسک P0 |
-| Product Owner | `product-owner.md` | تبدیل کدهای سند قابلیت (`SEL-*`, `CERT-*`,...) به Story و معیار پذیرش |
-| Software Architect | `software-architect.md` | طراحی مدل دامنه، State Machine، مرز ماژول قبل از کدنویسی |
-| Database Designer | `database-designer.md` | طراحی فیزیکی بانک اطلاعاتی (جدول، نوع ستون، کلید، Constraint، ایندکس)، برنامهٔ Migration امن، کوئری‌نویسی حرفه‌ای، Performance/Tuning — بازبینی **اجباری** هر تغییر Schema/Migration |
-| Product Designer | `product-designer.md` | طراحی جریان کاربری چندمرحله‌ای/چندنقشی قبل از طراحی بصری |
-| UI/UX Designer | `ui-ux-designer.md` | تبدیل جریان تأییدشده به مشخصات بصری دقیق |
-| Backend Developer | `backend-developer.md` | پیاده‌سازی برش عمودی بک‌اند |
-| Frontend Developer | `frontend-developer.md` | پیاده‌سازی صفحه طبق مشخصات طراحی و API |
-| QA Engineer | `qa-engineer.md` | تست مستقل بعد از «تمام شد» گفتن توسعه‌دهنده |
-| Security Tester | `security-tester.md` | بازبینی امنیتی — **اجباری** برای احراز هویت/پرداخت/گواهی |
-| QC / Release Manager | `qc-release-manager.md` | دروازهٔ نهایی قبل از merge یا بستن یک فاز |
-| DevOps Engineer | `devops-engineer.md` | CI/CD، Docker، متغیرهای محیطی، مهاجرت پایگاه‌داده |
-| Scrum Master / کنترل پروژه | `scrum-master.md` | ارزیابی فرآیند تولید با استانداردهای Scrum/Kanban و کنترل پروژه؛ اندازه‌گیری جریان کار از ریپو (throughput، lead time، WIP، اندازهٔ برش)؛ پیش‌بینی بازه‌ای؛ فهرست موانع و ریسک‌ها؛ Retro؛ پیشنهاد برای تسریع و ارتقای کیفیت — **مشاور است، تصمیم‌گیر نیست** |
+| CTO — **Ali** | `cto.md` | تعارض بین ماژول‌ها، تغییر Stack/معماری، تصمیم‌های پرریسک P0 |
+| Product Owner — **Hadi** | `product-owner.md` | تبدیل کدهای سند قابلیت (`SEL-*`, `CERT-*`,...) به Story و معیار پذیرش |
+| Software Architect — **Mohammad** | `software-architect.md` | طراحی مدل دامنه، State Machine، مرز ماژول قبل از کدنویسی |
+| Database Designer — **Mojtaba** | `database-designer.md` | طراحی فیزیکی بانک اطلاعاتی (جدول، نوع ستون، کلید، Constraint، ایندکس)، برنامهٔ Migration امن، کوئری‌نویسی حرفه‌ای، Performance/Tuning — بازبینی **اجباری** هر تغییر Schema/Migration |
+| Product Designer — **Jafar** | `product-designer.md` | طراحی جریان کاربری چندمرحله‌ای/چندنقشی قبل از طراحی بصری |
+| UI/UX Designer — **Reza** | `ui-ux-designer.md` | تبدیل جریان تأییدشده به مشخصات بصری دقیق |
+| Backend Developer — **Hossein** | `backend-developer.md` | پیاده‌سازی برش عمودی بک‌اند |
+| Frontend Developer — **Mahdi** | `frontend-developer.md` | پیاده‌سازی صفحه طبق مشخصات طراحی و API |
+| QA Engineer — **Sajad** | `qa-engineer.md` | تست مستقل بعد از «تمام شد» گفتن توسعه‌دهنده |
+| Security Tester — **Hassan** | `security-tester.md` | بازبینی امنیتی — **اجباری** برای احراز هویت/پرداخت/گواهی |
+| QC / Release Manager — **Bagher** | `qc-release-manager.md` | دروازهٔ نهایی قبل از merge یا بستن یک فاز |
+| DevOps Engineer — **Kazem** | `devops-engineer.md` | CI/CD، Docker، متغیرهای محیطی، مهاجرت پایگاه‌داده |
+| Scrum Master / کنترل پروژه — **Javad** | `scrum-master.md` | ارزیابی فرآیند تولید با استانداردهای Scrum/Kanban و کنترل پروژه؛ اندازه‌گیری جریان کار از ریپو (throughput، lead time، WIP، اندازهٔ برش)؛ پیش‌بینی بازه‌ای؛ فهرست موانع و ریسک‌ها؛ Retro؛ پیشنهاد برای تسریع و ارتقای کیفیت — **مشاور است، تصمیم‌گیر نیست** |
 
 ---
 
