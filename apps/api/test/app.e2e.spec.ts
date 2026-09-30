@@ -104,6 +104,16 @@ describe('API skeleton (integration)', () => {
     expect(JSON.stringify(logLines)).not.toContain('secret-token-value');
   });
 
+  it('does not log the query string', async () => {
+    await request(app.getHttpServer()).get('/health?token=secret-query-value').expect(200);
+
+    expect(logLines.find((line) => line.msg === 'request completed')?.req).toEqual({
+      method: 'GET',
+      url: '/health',
+    });
+    expect(JSON.stringify(logLines)).not.toContain('secret-query-value');
+  });
+
   it('answers unknown routes with 404 and still sets a correlation id', async () => {
     const response = await request(app.getHttpServer()).get('/no-such-route').expect(404);
 

@@ -1,6 +1,7 @@
 // Proves every migration is reversible (ADR-0004 decision 6): on a fresh, throwaway
 // database apply all migrations (up), run every down.sql newest-first (down), check that
-// nothing is left behind, then apply all migrations again (up).
+// nothing is left behind, apply all migrations again (up), and finally check that the
+// migrated database matches prisma/schema (no drift).
 //
 // Usage: DATABASE_URL=postgresql://... node scripts/check-migrations-reversible.mjs
 import { execFileSync } from 'node:child_process';
@@ -96,7 +97,34 @@ try {
 
   console.log(`up:   ${migrations.length} migration(s) again`);
   migrateDeploy();
-  console.log('Migrations are reversible.');
+  // The migrated database must match prisma/schema exactly (no drift).
+  try {
+    execFileSync(
+      'pnpm',
+      [
+        'exec',
+        'prisma',
+        'migrate',
+        'diff',
+        '--from-config-datasource',
+        '--to-schema',
+        'prisma/schema',
+        '--exit-code',
+      ],
+      {
+        env: { ...process.env, DATABASE_URL: scratchUrl.toString() },
+        stdio: ['ignore', 'ignore', 'inherit'],
+        shell: process.platform === 'win32',
+      },
+    );
+  } catch {
+    throw new Error(
+      'The migrated database differs from prisma/schema: a schema change has no migration, ' +
+        'or a migration was edited by hand in a way the schema does not describe.',
+    );
+  }
+
+  console.log('Migrations are reversible and match the schema.');
 } catch (error) {
   failed = true;
   console.error(error instanceof Error ? error.message : error);

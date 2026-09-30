@@ -15,7 +15,9 @@ vertical, country, currency, or language - see:
 Phase 0 decisions are Accepted in docs/adr/0001..0010, 0012 and 0013 (0011 is reserved for
 the CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
-structure). Follow them; change one only through a new superseding ADR.
+structure). Phase 1 added ADR-0014 (runtime and toolchain baseline) and ADR-0015 (Phase 1
+scope; deferred platform foundations and the trigger that forces each one - check it
+before starting a slice). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
@@ -70,7 +72,7 @@ strategy implementation, not in core logic.
   Market; all selling goes through Offers; PLATFORM content is admin-only.
 
 ## Commands
-- Requires Node.js 24.9+ and pnpm 10 (ADR-0014, Proposed).
+- Requires Node.js 24.9+ and pnpm 10 (ADR-0014).
 - `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher. Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`

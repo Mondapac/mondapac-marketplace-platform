@@ -1,6 +1,6 @@
 # ADR-0014: Runtime and Toolchain Baseline
 
-**Status:** Proposed — 2026-10-01 (awaiting CTO approval at the Phase 1 review)
+**Status:** Accepted — 2026-10-01 (CTO, Phase 1 review, with amendments)
 **Relates to:** ADR-0008 (repository structure), CLAUDE.md (stack defaults)
 
 ## Context
@@ -25,12 +25,20 @@ The Phase 1 skeleton has to pin concrete versions. Three facts constrain the cho
    exceptions are listed explicitly in `pnpm-workspace.yaml`.
 6. **Prisma stays on major 7** (ADR-0004); it is installed with an explicit `^7` range,
    never from the `latest` tag.
-7. **`pnpm verify`** (typecheck, lint, test) is the single local gate; CI runs the same
-   command.
+7. **`pnpm verify`** is the single local gate and CI runs the same command: typecheck,
+   lint, architecture boundaries, tests, database tests and the migration reversibility
+   check.
+8. **`--experimental-vm-modules` is test-only.** It must never appear in `start` or any
+   production script.
+9. **Revisit triggers.** Move to TypeScript 7 when `ts-jest` and `typescript-eslint`
+   support it. Reopen the native-ESM + Vitest alternative if the VM modules flag breaks on
+   a Node 24 minor release.
 
 ## Consequences
 - Every developer machine and the CI image need Node 24.9+. Node 22 cannot run the tests.
 - Tests print Node's "VM Modules is an experimental feature" warning. It is expected.
+- Verified on Linux only so far; Windows and the GitHub Actions runner are unverified
+  until their first run.
 - Moving to TypeScript 7 or Prisma 8 is a deliberate upgrade with its own check, not a
   side effect of `pnpm update`.
 

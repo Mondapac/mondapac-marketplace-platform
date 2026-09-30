@@ -61,6 +61,17 @@ module.exports = {
       to: { path: ['^src/generated/', 'node_modules/@prisma/'] },
     },
     {
+      name: 'prisma-service-only-in-infrastructure',
+      comment:
+        'PrismaService is the Prisma client: only modules/<m>/infrastructure/ and ' +
+        'platform/persistence/ may import it. Other code uses a repository or DatabaseProbe.',
+      severity: 'error',
+      from: {
+        pathNot: ['^src/modules/[^/]+/infrastructure/', '^src/platform/persistence/'],
+      },
+      to: { path: '^src/platform/persistence/prisma\\.service\\.ts$' },
+    },
+    {
       name: 'no-circular',
       comment: 'Circular dependencies hide coupling between files and modules.',
       severity: 'error',

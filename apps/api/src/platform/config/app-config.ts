@@ -23,6 +23,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   HOSTED_MARKETS: hostedMarkets,
+  API_DOCS_ENABLED: z.enum(['true', 'false']).default('false'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   DATABASE_URL: z
     .string({ error: 'DATABASE_URL is required' })
@@ -35,6 +36,8 @@ export interface AppConfig {
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   /** Markets this Region Stack serves (ADR-0003). Never empty, never defaulted. */
   readonly hostedMarkets: readonly string[];
+  /** Serve Swagger UI at /docs. Off unless explicitly enabled (fails closed). */
+  readonly apiDocsEnabled: boolean;
   /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
   readonly marketConfigDirs: readonly string[];
   /** PostgreSQL connection URL. Contains credentials: never log it. */
@@ -64,6 +67,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     port: parsed.data.PORT,
     logLevel: parsed.data.LOG_LEVEL,
     hostedMarkets: Object.freeze([...parsed.data.HOSTED_MARKETS]),
+    apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     databaseUrl: parsed.data.DATABASE_URL,
   });

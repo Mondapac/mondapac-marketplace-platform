@@ -16,9 +16,22 @@ describe('loadAppConfig', () => {
       port: 3000,
       logLevel: 'info',
       hostedMarkets: ['AU', 'ZZ'],
+      apiDocsEnabled: false,
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       databaseUrl: DATABASE_URL,
     });
+  });
+
+  it('serves API docs only when explicitly enabled', () => {
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU', API_DOCS_ENABLED: 'true' }).apiDocsEnabled).toBe(
+      true,
+    );
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' }).apiDocsEnabled).toBe(
+      false,
+    );
+    expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', API_DOCS_ENABLED: 'yes' })).toThrow(
+      /API_DOCS_ENABLED/,
+    );
   });
 
   it('takes the market configuration directory from MARKET_CONFIG_DIR', () => {

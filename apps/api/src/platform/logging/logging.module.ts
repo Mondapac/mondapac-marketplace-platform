@@ -34,9 +34,10 @@ export class LoggingModule {
               customProps: (req: IncomingMessage) => ({ correlationId: req.id }),
               // Headers can carry credentials; log only what is needed to trace a request.
               serializers: {
+                // Path only: query strings can carry tokens (password reset, verification).
                 req: (req: { method: string; url: string }) => ({
                   method: req.method,
-                  url: req.url,
+                  url: req.url.split('?', 1)[0],
                 }),
                 res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
               },

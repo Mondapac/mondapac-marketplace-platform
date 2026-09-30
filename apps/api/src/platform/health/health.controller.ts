@@ -7,7 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { PinoLogger } from 'nestjs-pino';
-import { PrismaService } from '../persistence/prisma.service';
+import { DatabaseProbe } from '../persistence/database-probe';
 
 export class HealthResponse {
   @ApiProperty({ enum: ['ok'], example: 'ok' })
@@ -18,7 +18,7 @@ export class HealthResponse {
 @Controller('health')
 export class HealthController {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly database: DatabaseProbe,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(HealthController.name);
@@ -39,7 +39,7 @@ export class HealthController {
   @ApiServiceUnavailableResponse({ description: 'A dependency is unavailable' })
   async ready(): Promise<HealthResponse> {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.database.ping();
     } catch (error) {
       // The cause goes to the log only; the response must not leak connection details.
       this.logger.error({ err: error }, 'readiness check failed: database unreachable');

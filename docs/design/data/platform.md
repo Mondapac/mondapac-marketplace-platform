@@ -1,7 +1,8 @@
 # Physical data model — `platform` schema (Phase 1 baseline)
 
 **Author:** Mojtaba (database-designer) — 2026-10-01
-**Status:** Proposed; needs CTO approval (Phase 1 gate) before the migration is generated.
+**Status:** Approved by the CTO at the Phase 1 review, 2026-10-01 (ADR-0015). The migration
+was generated before that approval; design approval comes first from now on.
 **Ground truth:** ADR-0004 (decisions 4, 6, 7), ADR-0003, ADR-0005, ADR-0006, ADR-0009
 (pattern V4, decisions 6 and 8); IMP-10, IMP-06, CERT-32, SEL-08, VER-08.
 **Prisma model:** `prisma/schema/platform.prisma` (`AuditLog`).
