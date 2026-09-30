@@ -106,6 +106,8 @@ strategy implementation, not in core logic.
     briefs, engineering:testing-strategy for test plans, design:ux-copy for badge wording).
     Project rules, ADRs and gates take precedence over skill defaults; report conflicts to
     cto. When no skill fits a recurring procedure, propose a new skill to the owner.
+    Project skills (in .claude/skills/): mondapac-repo-doc-change (any repo doc change),
+    mondapac-module-gate (ADR-0013 gates), mondapac-role-review (team review of a proposal).
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
