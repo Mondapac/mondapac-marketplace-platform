@@ -12,8 +12,10 @@ vertical, country, currency, or language - see:
 - docs/architecture/internationalization-architecture.md (Market dimension: i18n, multi-currency,
   tax/payment/compliance per market, ADR-0002)
 - docs/architecture/country-branch-launch-playbook.md (regional deployment model, ADR-0003)
-The three ADRs themselves are already drafted at docs/adr/0001-*.md, 0002-*.md, 0003-*.md
-(status: Proposed) - review and approve/amend them in Phase 0 rather than re-deriving from scratch.
+Phase 0 decisions are Accepted in docs/adr/0001..0010 and 0012 (0011 is reserved for the
+CMS product choice) (extensibility, market, multi-market
+regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
+structure). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
@@ -31,24 +33,45 @@ strategy implementation, not in core logic.
 - Checkout = Saga (Order -> Payment -> Inventory -> Shipping). CQRS only for Catalog/Search reads.
 
 ## Stack (DEFAULTS - owner may change; ask before deviating)
-- Backend: TypeScript, NestJS, PostgreSQL, Redis, Prisma or TypeORM (ORM choice: decide in ADR-0004, to be authored in Phase 0)
+- Backend: TypeScript, NestJS, PostgreSQL, Redis, Prisma v7 (ADR-0004), object storage S3/MinIO; no MongoDB/Elasticsearch/broker in the MVP (ADR-0004, ADR-0006)
 - Frontend: Next.js + TypeScript
 - Local dev: Docker Compose. CI: GitHub Actions.
 - Payments: Stripe Connect (marketplace payouts) - verify AU support/fees before implementing.
 
 ## Market rules (Australia is the first Market, not the only one - see internationalization doc)
-- Every Seller, Product Offer, and Order carries a market_id from day one (single value "AU"
-  today). Money is always {amount: integer minor units, currency: ISO 4217} - never assume AUD.
+- Multi-market by construction from Phase 0 (ADR-0003, Accepted). Every market-scoped
+  aggregate (Seller, Product Offer, Order, Customer account, Cart, Payment, Payout,
+  certification issuers, tax records) carries market_id (single value "AU" today) plus
+  tenant_id (single default value; seam only, no isolation - ADR-0001).
+  Money is always {amount: integer minor units, currency: ISO 4217} - never assume AUD.
+- Market context is mandatory: every request, job and consumed event resolves to exactly one
+  market_id. Core code never falls back to a default market. Repositories take a
+  MarketContext; a Region Stack rejects markets not listed in HOSTED_MARKETS.
+- Domain and integration tests run against at least two market fixtures (AU plus a synthetic
+  market with a different currency, tax rate and locale). A test that only passes for AU is
+  a bug.
+- Time zones (ADR-0005): store instants in UTC, zones as IANA IDs. A Market's timezone is
+  only a fallback - each seller, fulfilment location and address has its own zone, and
+  cut-offs, expiries, reports and notifications are evaluated in the owning party's zone.
+  No raw Date arithmetic in domain code; use the injected Clock. Rollout within a Market
+  is city by city via ServiceArea config (launch: Greater Brisbane).
 - Tax is computed via a per-market TaxStrategy, not hardcoded. Australia's strategy: GST 10%,
   handled explicitly in pricing/invoices (ABN captured at vendor onboarding).
-- Certification is fully generalized (see docs/features/08-certifications.md, CERT-*): a
-  product cannot carry any certification tag (halal, kosher, vegan, or future types) unless
-  its seller holds a valid, unexpired, approved certification of that exact type. This rule
-  is enforced in the domain layer for every certification type, not just halal.
+- Certification is fully generalized (see docs/features/08-certifications.md, CERT-*): an
+  Offer cannot carry any certification tag (halal, kosher, vegan, or future types) unless
+  the offering seller holds a valid, unexpired, approved certification of that exact type,
+  OR (ADR-0012) the category's ClaimBasisPolicy allows a manufacturer basis, an approved
+  unexpired ProductCertification of that type covers the product, and the Offer is
+  SEALED_ORIGINAL with a per-Offer seller attestation. Missing policy = seller certificate
+  required (fail-closed). Tags live on Offers (ADR-0010); product content never asserts a
+  certification. Enforced in the domain layer through certification's single
+  evaluateClaim entry point, for every certification type and every Offer entry point.
+- Catalog scope (ADR-0010): products and categories are PLATFORM or SELLER scoped within a
+  Market; all selling goes through Offers; PLATFORM content is admin-only.
 
 ## Commands
 - `pnpm install` / `pnpm dev` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
-- `docker compose up -d` starts Postgres, Redis, mail catcher.
+- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher.
 (Update this section when scripts change.)
 
 ## Working rules for Claude
@@ -64,12 +87,17 @@ strategy implementation, not in core logic.
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
-product-owner, software-architect, product-designer, ui-ux-designer, backend-developer,
-frontend-developer, qa-engineer, security-tester, qc-release-manager, devops-engineer.
+product-owner, software-architect, database-designer, product-designer, ui-ux-designer,
+backend-developer, frontend-developer, qa-engineer, security-tester, qc-release-manager,
+devops-engineer.
 See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - Route non-trivial design/architecture decisions through product-owner ->
   software-architect (and product-designer/ui-ux-designer for user-facing work) before
   backend-developer/frontend-developer implement.
+- database-designer turns software-architect's domain model into the physical schema
+  (tables, constraints, indexes, migration plan) before backend-developer writes a migration,
+  and must sign off on EVERY Prisma schema change or migration before merge. Slow queries,
+  locking problems and data-growth issues also go to database-designer.
 - security-tester review is MANDATORY (not optional under time pressure) before merging
   anything in auth, payments, or the certification (CERT-*) enforcement path.
 - qa-engineer and security-tester are read-only reviewers by design - bugs/findings go back

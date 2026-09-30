@@ -2,3 +2,6 @@
 .env
 .DS_Store
 Thumbs.db
+
+# Claude desktop app output mirror
+Claude outputs/

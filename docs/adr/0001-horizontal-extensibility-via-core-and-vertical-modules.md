@@ -1,6 +1,6 @@
 # ADR-0001: Horizontal Extensibility via Core + Vertical Extension Points
 
-**Status:** Proposed (needs owner/CTO sign-off before Phase 0 work starts)
+**Status:** Accepted — 2026-09-30 (owner sign-off, Phase 0; amended per CTO review)
 **Full reasoning:** `docs/architecture/horizontal-extensibility-architecture.md`
 
 ## Context
@@ -13,7 +13,7 @@ platform. The core must not encode knowledge of any specific vertical.
    ProductTypeHandler, FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension
    (sub-states only — the top-level order state machine stays fixed), and the existing
    dynamic AttributeSchema mechanism (already used for SEL-20/CERT-01).
-2. Every table in the core schema (Seller, Product, Order) carries a `tenant_id` column
+2. Every market-scoped table (ADR-0003 decision 3) carries a `tenant_id` column
    from day one, defaulting to a single value today, to avoid a schema rewrite if true
    multi-tenant SaaS becomes a business requirement later.
 3. Full data isolation (schema-per-tenant/DB-per-tenant) is explicitly OUT of scope until
@@ -22,7 +22,7 @@ platform. The core must not encode knowledge of any specific vertical.
 4. Each vertical ships as a separate headless storefront (Next.js app) consuming the same
    Core API through a vertical-specific BFF; the Core API itself remains vertical-agnostic.
 5. No vertical name may appear in core module code, event topic names, or core schema.
-   A CI/review check (enforced via the qc-release-manager and security-tester subagents)
+   A check enforced in CI (ADR-0008 decision 6), plus qc-release-manager/security-tester review,
    flags any conditional branching on a vertical identifier inside core modules.
 
 ## Consequences

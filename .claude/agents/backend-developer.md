@@ -33,8 +33,9 @@ time pressure.
   current settings.
 - **Every new endpoint**: input validation, authorization (role + resource ownership, not just
   role), structured logging with correlation id, OpenAPI updated.
-- **Migrations** are reversible and reviewed for the "no cross-module join" rule before you
-  write them.
+- **Migrations** follow database-designer's physical design for the slice, are reversible,
+  and are reviewed for the "no cross-module join" rule. Get database-designer's sign-off on
+  every schema change or migration before asking for merge; send slow queries to it too.
 
 ## Definition of Done (from CLAUDE.md — do not skip)
 Tests (unit + at least one integration) pass; migrations included and reversible; OpenAPI

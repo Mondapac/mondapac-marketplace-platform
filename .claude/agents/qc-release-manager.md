@@ -19,11 +19,14 @@ nothing required was skipped.
 3. **Security sign-off exists for anything that needed it** — payments, auth, certification
    enforcement, PII handling. If the slice touches one of these and there's no
    security-tester report, it does not pass QC — send it back.
-4. **ADR consistency** — nothing merged should quietly contradict `docs/adr/*.md`; if it does,
+4. **Database sign-off exists for any schema change or migration** — a database-designer
+   review covering constraints, indexes, lock impact and a tested `down.sql`. No review, no
+   pass.
+5. **ADR consistency** — nothing merged should quietly contradict `docs/adr/*.md`; if it does,
    either the code or the ADR needs to change explicitly, not silently diverge.
-5. **Scope match** — does what was built match the story from product-owner, or did scope
+6. **Scope match** — does what was built match the story from product-owner, or did scope
    creep/shrink happen without anyone deciding that consciously?
-6. **For a phase-close check** (per the PLAYBOOK): confirm every feature ID assigned to the
+7. **For a phase-close check** (per the PLAYBOOK): confirm every feature ID assigned to the
    phase in `docs/features/00-INDEX.md` is either done-with-evidence or explicitly deferred
    with a reason — no silent gaps.
 

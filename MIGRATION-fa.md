@@ -12,8 +12,8 @@
 claude-code-kit/
 ├── CLAUDE.md                          ← قوانین ثابت پروژه؛ Claude Code هر جلسه می‌خواند
 ├── PLAYBOOK-fa.md                     ← نقشهٔ راه فازبندی‌شدهٔ کامل ساخت
-├── TEAM-PLAYBOOK-fa.md                ← نحوهٔ هماهنگی ۱۱ عامل تخصصی
-├── .claude/agents/                    ← ۱۱ Subagent (cto, product-owner, architect, ...)
+├── TEAM-PLAYBOOK-fa.md                ← نحوهٔ هماهنگی ۱۲ عامل تخصصی
+├── .claude/agents/                    ← ۱۲ Subagent (cto, product-owner, architect, ...)
 ├── docs/spec/technical-spec.md        ← سند فنی اصلی نسخهٔ ۲.۰
 ├── docs/features/00..09.md            ← سند قابلیت‌ها (SEL, CAT, CERT, INTL, ...)
 ├── docs/architecture/*.md             ← سه سند معماری (Vertical, Market, راه‌اندازی Branch)
@@ -45,7 +45,7 @@ claude
 ```
 
 **تأیید نصب صحیح** (داخل جلسهٔ Claude Code، قبل از هر کار دیگر):
-1. دستور `/agents` را بزنید — باید ۱۱ نقش (cto، product-owner، software-architect، ...) را فهرست کند.
+1. دستور `/agents` را بزنید — باید ۱۲ نقش (cto، product-owner، software-architect، ...) را فهرست کند.
 2. یک پیام ساده بفرستید: «طبق CLAUDE.md، این پروژه چیست و کدام ADR ها منتظر تأیید هستند؟» — اگر Claude Code درست پاسخ داد (نام MondaPac، سه ADR با وضعیت Proposed)، یعنی همه‌چیز درست خوانده شده.
 
 ---

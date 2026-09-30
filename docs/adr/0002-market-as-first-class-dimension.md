@@ -1,8 +1,9 @@
 # ADR-0002: Market as a First-Class Dimension (i18n, Multi-Currency, Multi-Region Compliance)
 
-**Status:** Proposed (needs owner/CTO sign-off before Phase 0 work starts)
+**Status:** Accepted — 2026-09-30 (owner sign-off, Phase 0; amended per CTO review)
 **Full reasoning:** `docs/architecture/internationalization-architecture.md`
 **Depends on:** ADR-0001 (extension-point registry)
+**Amended by:** ADR-0005 — `Market.timezone` is only a fallback default; time zones come from sellers, locations and addresses.
 
 ## Context
 MondaPac plans to expand from Australia into New Zealand, Malaysia, EU countries, and the
@@ -12,10 +13,11 @@ sellers stay independent of every other Market.
 
 ## Decision
 1. Introduce a `Market` entity (country code, locales, currency, tax strategy, legal
-   entity, timezone, certification issuer set, payment providers, carriers, data
+   entity, `default_timezone` (fallback only, ADR-0005), certification issuer set, payment providers, carriers, data
    residency requirement) as a first-class dimension alongside the existing `Vertical`
    dimension (ADR-0001).
-2. Every Seller, Product Offer, and Order carries a `market_id`. Because cross-market
+2. Every Seller, Product Offer, and Order carries a `market_id` (scope extended to every
+   market-scoped aggregate by ADR-0003 decision 3). Because cross-market
    shopping is out of scope, every order is always in a single currency (the Market's
    currency) — no FX conversion or FX-rate snapshot is needed anywhere in the system.
 3. Add two new extension points to the registry established in ADR-0001: `TaxStrategy`
@@ -24,7 +26,8 @@ sellers stay independent of every other Market.
 5. For EU and US tax calculation, integrate a third-party tax compliance service rather
    than building VAT-OSS/US economic-nexus logic in-house.
 6. Infrastructure moves from a single cloud region to a region-per-market topology where
-   a Market's `data_residency_requirement` demands it (notably the EU, for GDPR).
+   a Market's `data_residency_requirement` demands it (notably the EU, for GDPR)
+   (refined by ADR-0003 decision 1: a Region Stack may host several Markets).
 
 ## Consequences
 - Adds a market-configuration layer to Seller/Product/Order from day one; low cost now
