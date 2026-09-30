@@ -1,6 +1,6 @@
 # راهنمای تیم Subagent — MondaPac Marketplace Platform
 
-این فایل توضیح می‌دهد چطور ۱۰ نقش تخصصی که در `agents/` ساختیم را در Claude Code هماهنگ کنید.
+این فایل توضیح می‌دهد چطور ۱۱ نقش تخصصی که در `agents/` ساختیم را در Claude Code هماهنگ کنید.
 
 ---
 
@@ -17,11 +17,8 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 
 ## ۲. نصب
 
-```bash
-cp -r claude-code-kit/agents  <ریشهٔ ریپو>/.claude/agents
-cp claude-code-kit/CLAUDE.md  <ریشهٔ ریپو>/CLAUDE.md
-```
-با اجرای `/agents` در Claude Code می‌توانید فهرست ۱۰ نقش را ببینید و در صورت نیاز ویرایش کنید.
+عامل‌ها از قبل در `.claude/agents/` و `CLAUDE.md` در ریشهٔ همین ریپو قرار دارند؛ نصب جداگانه لازم نیست.
+با اجرای `/agents` در Claude Code می‌توانید فهرست ۱۱ نقش را ببینید و در صورت نیاز ویرایش کنید.
 
 ---
 

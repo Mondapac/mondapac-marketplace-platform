@@ -106,7 +106,7 @@ product-owner (Story از docs/features/*.md)
 
 ## ۷. چک‌لیست شروع سریع (خلاصه)
 
-- [ ] کپی `claude-code-kit/` در ریشهٔ ریپو + اولین commit
+- [x] کپی `claude-code-kit/` در ریشهٔ ریپو + اولین commit (انجام شد: محتوا اکنون در ریشهٔ ریپوست)
 - [ ] `claude` را اجرا و با `/agents` صحت تیم را تأیید کنید
 - [ ] از `cto` بخواهید سه ADR موجود را بازبینی/تأیید کند
 - [ ] از `software-architect` بخواهید پیش‌نویس ADR-0004 (Stack) را بسازد؛ `cto` تأیید کند
