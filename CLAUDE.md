@@ -12,8 +12,9 @@ vertical, country, currency, or language - see:
 - docs/architecture/internationalization-architecture.md (Market dimension: i18n, multi-currency,
   tax/payment/compliance per market, ADR-0002)
 - docs/architecture/country-branch-launch-playbook.md (regional deployment model, ADR-0003)
-The three ADRs themselves are already drafted at docs/adr/0001-*.md, 0002-*.md, 0003-*.md
-(status: Proposed) - review and approve/amend them in Phase 0 rather than re-deriving from scratch.
+Phase 0 decisions are Accepted in docs/adr/0001..0008 (extensibility, market, multi-market
+regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
+structure). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
@@ -31,7 +32,7 @@ strategy implementation, not in core logic.
 - Checkout = Saga (Order -> Payment -> Inventory -> Shipping). CQRS only for Catalog/Search reads.
 
 ## Stack (DEFAULTS - owner may change; ask before deviating)
-- Backend: TypeScript, NestJS, PostgreSQL, Redis, Prisma or TypeORM (ORM choice: decide in ADR-0004, to be authored in Phase 0)
+- Backend: TypeScript, NestJS, PostgreSQL, Redis, Prisma v7 (ADR-0004), object storage S3/MinIO; no MongoDB/Elasticsearch/broker in the MVP (ADR-0004, ADR-0006)
 - Frontend: Next.js + TypeScript
 - Local dev: Docker Compose. CI: GitHub Actions.
 - Payments: Stripe Connect (marketplace payouts) - verify AU support/fees before implementing.
@@ -62,7 +63,7 @@ strategy implementation, not in core logic.
 
 ## Commands
 - `pnpm install` / `pnpm dev` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
-- `docker compose up -d` starts Postgres, Redis, mail catcher.
+- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher.
 (Update this section when scripts change.)
 
 ## Working rules for Claude
