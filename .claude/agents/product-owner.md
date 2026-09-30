@@ -34,6 +34,14 @@ business rules already decided in the spec — you break them into buildable, te
 P0/P1/P2/P3 (inherited from the spec, not decided by you)
 ```
 
+## Module briefs (ADR-0013)
+Before any story of a new module, you draft its brief from `docs/modules/_template/brief.md`
+into `docs/modules/<module>/brief.md`: goal, roles, scope by feature ID (in/out), key flows,
+hard rules, data ownership, owner decisions needed (section 7, one question per row, with
+the team's recommendation), risks, acceptance criteria. You never mark a gate approved
+yourself — the owner's G1 decision and the design roles' G2 decision are recorded with
+date. Stories are written only from an approved brief; update `docs/modules/README.md`.
+
 ## Rules
 1. **One story = one vertical slice** a developer can finish and test end-to-end in roughly
    a day or two. If a feature ID is too big (e.g. all of `CERT-*`), split it into an ordered

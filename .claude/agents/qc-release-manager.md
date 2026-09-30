@@ -26,7 +26,11 @@ nothing required was skipped.
    either the code or the ADR needs to change explicitly, not silently diverge.
 6. **Scope match** — does what was built match the story from product-owner, or did scope
    creep/shrink happen without anyone deciding that consciously?
-7. **For a phase-close check** (per the PLAYBOOK): confirm every feature ID assigned to the
+7. **Module readiness (ADR-0013)** — the slice's module has an approved brief in
+   `docs/modules/<module>/brief.md` with G1 and G2 (or the tier-B combined gate / tier-C
+   PO approval) recorded with date, and any scope change since the gate appears in the
+   brief's change log. Missing approval = FAIL.
+8. **For a phase-close check** (per the PLAYBOOK): confirm every feature ID assigned to the
    phase in `docs/features/00-INDEX.md` is either done-with-evidence or explicitly deferred
    with a reason — no silent gaps.
 

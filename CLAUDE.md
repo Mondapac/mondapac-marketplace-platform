@@ -12,8 +12,8 @@ vertical, country, currency, or language - see:
 - docs/architecture/internationalization-architecture.md (Market dimension: i18n, multi-currency,
   tax/payment/compliance per market, ADR-0002)
 - docs/architecture/country-branch-launch-playbook.md (regional deployment model, ADR-0003)
-Phase 0 decisions are Accepted in docs/adr/0001..0010 and 0012 (0011 is reserved for the
-CMS product choice) (extensibility, market, multi-market
+Phase 0 decisions are Accepted in docs/adr/0001..0010, 0012 and 0013 (0011 is reserved for
+the CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
 structure). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
@@ -84,6 +84,11 @@ strategy implementation, not in core logic.
 7. Code, comments, commit messages, and API docs in English. Talk to the owner in Persian if they write Persian.
 8. If a requirement is ambiguous or conflicts with the spec, ask - do not guess.
 9. Commit per slice using Conventional Commits (feat:, fix:, chore:, docs:, test:).
+10. Module readiness gates (ADR-0013): never start design of a module without an approved
+    G1 brief in docs/modules/<module>/brief.md, and never write code for it without an
+    approved G2 (tier B: one combined gate; tier C: product-owner approval). Tiers and the
+    status register live in docs/modules/README.md. If a slice changes the approved scope
+    or a hard rule, stop and run a mini-review; record it in the brief's change log.
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
@@ -105,6 +110,13 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - qc-release-manager is the final gate; don't merge or close a PLAYBOOK phase without it for
   non-trivial slices.
 - If two roles disagree or a module boundary is unclear, escalate to cto rather than guessing.
+
+## Definition of Ready (every module, ADR-0013)
+- Module brief exists (template: docs/modules/_template/brief.md) with scope by feature ID,
+  hard rules, data ownership, owner decisions answered, risks and acceptance criteria
+- G1 approved by the owner (+ product-owner, cto); G2 design approved (software-architect,
+  cto, database-designer, + ui-ux-designer / security-tester where relevant)
+- Approvals recorded with date in the brief and in docs/modules/README.md
 
 ## Definition of Done (every slice)
 - Tests (unit + at least one integration) pass; migrations included and reversible
