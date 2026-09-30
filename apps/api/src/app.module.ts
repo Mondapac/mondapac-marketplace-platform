@@ -5,6 +5,7 @@ import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
 import { HealthModule } from './platform/health/health.module';
 import { LoggingModule } from './platform/logging/logging.module';
+import { MarketConfigModule } from './platform/market-config/market-config.module';
 import { PersistenceModule } from './platform/persistence/persistence.module';
 
 export interface AppModuleOptions {
@@ -26,6 +27,7 @@ export class AppModule {
       imports: [
         ConfigModule.forRoot(options.config),
         LoggingModule.forRoot(options.logDestination),
+        MarketConfigModule,
         PersistenceModule,
         HealthModule,
         ...CORE_MODULES,

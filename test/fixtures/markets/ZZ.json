@@ -1,0 +1,9 @@
+{
+  "code": "ZZ",
+  "status": "active",
+  "defaultLocale": "ja-JP",
+  "supportedLocales": ["ja-JP", "en-US"],
+  "defaultCurrency": "JPY",
+  "settlementCurrency": "JPY",
+  "timezone": "Asia/Tokyo"
+}

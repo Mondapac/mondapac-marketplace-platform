@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (region ${{ matrix.region.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # One pipeline, region matrix (ADR-0003 decision 8). A Region Stack is added here
+        # together with its config/markets/<CODE>.json; the matrix has one entry today.
+        region:
+          - name: au
+            hosted_markets: AU
+
+    services:
+      # Same major version as docker-compose.yml.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: mondapac
+          POSTGRES_PASSWORD: mondapac
+          POSTGRES_DB: mondapac
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mondapac -d mondapac"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://mondapac:mondapac@localhost:5432/mondapac
+      HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      # Typecheck, lint, architecture boundaries, tests, database tests and the
+      # up -> down -> up migration check: the same command developers run locally.
+      - name: Verify
+        run: pnpm verify
+
+      - name: Build
+        run: pnpm build
+
+      - name: Boot the API for this region and probe readiness
+        run: |
+          pnpm db:migrate
+          PORT=3000 node apps/api/dist/main &
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://localhost:3000/health/ready; then exit 0; fi
+            sleep 1
+          done
+          echo "API did not become ready" >&2
+          exit 1

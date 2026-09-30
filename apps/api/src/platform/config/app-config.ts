@@ -1,4 +1,8 @@
+import path from 'node:path';
 import { z } from 'zod';
+
+// apps/api/{src|dist}/platform/config -> repository root
+const DEFAULT_MARKET_CONFIG_DIR = path.resolve(__dirname, '../../../../../config/markets');
 
 /** A Market code as used in `market_id` columns (ADR-0004): 2-8 upper-case characters. */
 const marketCode = z.string().regex(/^[A-Z][A-Z0-9_]{1,7}$/, 'must be a market code such as "NZ"');
@@ -19,6 +23,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   HOSTED_MARKETS: hostedMarkets,
+  MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   DATABASE_URL: z
     .string({ error: 'DATABASE_URL is required' })
     .regex(/^postgres(ql)?:\/\/\S+$/, 'must be a postgresql:// connection URL'),
@@ -30,6 +35,8 @@ export interface AppConfig {
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   /** Markets this Region Stack serves (ADR-0003). Never empty, never defaulted. */
   readonly hostedMarkets: readonly string[];
+  /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
+  readonly marketConfigDirs: readonly string[];
   /** PostgreSQL connection URL. Contains credentials: never log it. */
   readonly databaseUrl: string;
 }
@@ -57,6 +64,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     port: parsed.data.PORT,
     logLevel: parsed.data.LOG_LEVEL,
     hostedMarkets: Object.freeze([...parsed.data.HOSTED_MARKETS]),
+    marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     databaseUrl: parsed.data.DATABASE_URL,
   });
 }

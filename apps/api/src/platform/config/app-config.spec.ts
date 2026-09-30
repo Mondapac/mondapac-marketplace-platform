@@ -16,8 +16,15 @@ describe('loadAppConfig', () => {
       port: 3000,
       logLevel: 'info',
       hostedMarkets: ['AU', 'ZZ'],
+      marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       databaseUrl: DATABASE_URL,
     });
+  });
+
+  it('takes the market configuration directory from MARKET_CONFIG_DIR', () => {
+    const config = loadAppConfig({ HOSTED_MARKETS: 'ZZ', MARKET_CONFIG_DIR: '/etc/markets' });
+
+    expect(config.marketConfigDirs).toEqual(['/etc/markets']);
   });
 
   it('accepts a single hosted market, whichever market it is', () => {

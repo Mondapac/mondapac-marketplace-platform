@@ -71,11 +71,16 @@ strategy implementation, not in core logic.
 
 ## Commands
 - Requires Node.js 24.9+ and pnpm 10 (ADR-0014, Proposed).
-- `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
-- `pnpm verify` runs typecheck + lint + test; run it before saying "done" (rule 3).
-- `pnpm format` applies Prettier.
-- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher. (Not in the repo yet;
-  arrives with the Phase 1 database slice.)
+- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher. Copy `.env.example`
+  to `.env` first.
+- `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`
+- `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
+  and drops its own throwaway database)
+- `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).
+- `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev` creates one (then add its
+  `down.sql`); `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
+- `pnpm verify` runs typecheck, lint, boundaries, test, test:db and db:check-reversible.
+  It is what CI runs; run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)
 
 ## Working rules for Claude

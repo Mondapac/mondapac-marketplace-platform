@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { devNull } from 'node:os';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
@@ -6,12 +7,10 @@ import pino from 'pino';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
-import { loadAppConfig } from '../../src/platform/config/app-config';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
+import { testAppConfig, TEST_MARKETS } from '../support/test-config';
 import { testDatabaseUrl } from './test-database';
 
-// Two market fixtures (CLAUDE.md): the launch market and a synthetic second one.
-const MARKETS = ['AU', 'ZZ'] as const;
 const RESTRICT_VIOLATION = '23001';
 const CHECK_VIOLATION = '23514';
 
@@ -40,12 +39,8 @@ describe('platform persistence (database integration)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         AppModule.register({
-          config: loadAppConfig({
-            NODE_ENV: 'test',
-            HOSTED_MARKETS: MARKETS.join(','),
-            DATABASE_URL: testDatabaseUrl(),
-          }),
-          logDestination: pino.destination('/dev/null'),
+          config: testAppConfig({ DATABASE_URL: testDatabaseUrl() }),
+          logDestination: pino.destination(devNull),
         }),
       ],
     }).compile();
@@ -69,7 +64,7 @@ describe('platform persistence (database integration)', () => {
   });
 
   describe('platform.audit_log', () => {
-    it.each(MARKETS)('accepts an audit row for market %s', async (marketId) => {
+    it.each(TEST_MARKETS)('accepts an audit row for market %s', async (marketId) => {
       const row = auditRow(marketId, { after: { status: 'checked' } });
 
       await prisma.auditLog.create({ data: row });

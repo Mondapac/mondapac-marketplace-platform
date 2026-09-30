@@ -6,7 +6,11 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { buildOpenApiDocument } from '../src/openapi';
-import { loadAppConfig } from '../src/platform/config/app-config';
+import {
+  MarketNotHostedError,
+  MarketRegistry,
+} from '../src/platform/market-config/market-registry';
+import { testAppConfig, TEST_MARKETS } from './support/test-config';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -35,12 +39,7 @@ describe('API skeleton (integration)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         AppModule.register({
-          config: loadAppConfig({
-            NODE_ENV: 'test',
-            HOSTED_MARKETS: 'AU,ZZ',
-            // Never connected to: this suite runs without a database.
-            DATABASE_URL: 'postgresql://unused:unused@127.0.0.1:1/unused',
-          }),
+          config: testAppConfig(),
           logDestination,
         }),
       ],
@@ -116,6 +115,13 @@ describe('API skeleton (integration)', () => {
 
     expect(response.body).toMatchObject({ statusCode: 503, message: 'database unavailable' });
     expect(JSON.stringify(response.body)).not.toContain('unused');
+  });
+
+  it('hosts exactly the configured markets and rejects any other', () => {
+    const registry = app.get(MarketRegistry);
+
+    expect(registry.hostedMarketIds()).toEqual([...TEST_MARKETS]);
+    expect(() => registry.get('NZ')).toThrow(MarketNotHostedError);
   });
 
   it('documents the health endpoints in OpenAPI', () => {
