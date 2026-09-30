@@ -4,6 +4,35 @@ import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// Market and vertical identifiers that must never appear as literals in core code: they
+// belong in Market/Vertical configuration or a strategy implementation (ADR-0001 decision 5,
+// ADR-0003 decision 2, ADR-0008 decision 6). Extend the list when a market or vertical is added.
+const MARKET_OR_VERTICAL_LITERAL = '\\b(AU|AUD|en-AU|[Hh]alal|HALAL)\\b';
+const noMarketOrVerticalLiterals = [
+  {
+    selector: `Literal[value=/${MARKET_OR_VERTICAL_LITERAL}/]`,
+    message:
+      'Market or vertical identifier hardcoded in core code. Move it to Market/Vertical configuration or a strategy implementation.',
+  },
+  {
+    selector: `TemplateElement[value.raw=/${MARKET_OR_VERTICAL_LITERAL}/]`,
+    message:
+      'Market or vertical identifier hardcoded in core code. Move it to Market/Vertical configuration or a strategy implementation.',
+  },
+];
+const noWallClockInDomain = [
+  {
+    selector: "NewExpression[callee.name='Date']",
+    message:
+      'No raw Date in domain code: take the current time from the injected Clock (ADR-0005).',
+  },
+  {
+    selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+    message:
+      'No Date.now() in domain code: take the current time from the injected Clock (ADR-0005).',
+  },
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -12,6 +41,8 @@ export default tseslint.config(
       '**/node_modules/**',
       'Claude outputs/**',
       '**/generated/**',
+      // Deliberate violations used by apps/api/test/boundaries.spec.ts.
+      '**/test/boundary-fixtures/**',
     ],
   },
   eslint.configs.recommended,
@@ -28,6 +59,40 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
+    },
+  },
+  {
+    // Core code: modules, platform runtime and the shared kernel.
+    files: [
+      '**/src/modules/**/*.ts',
+      '**/src/platform/**/*.ts',
+      'packages/shared-kernel/src/**/*.ts',
+    ],
+    ignores: ['**/*.spec.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...noMarketOrVerticalLiterals] },
+  },
+  {
+    files: ['**/src/modules/*/domain/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...noMarketOrVerticalLiterals, ...noWallClockInDomain],
+    },
+  },
+  {
+    // The shared kernel is framework-free and used by both api and web (ADR-0008).
+    files: ['packages/shared-kernel/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@nestjs/*', '@prisma/*', 'pg', 'express', 'next', 'next/*', 'node:*'],
+              message: 'The shared kernel must stay framework-free and free of I/O.',
+            },
+          ],
+        },
+      ],
     },
   },
   {

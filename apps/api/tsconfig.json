@@ -10,5 +10,6 @@
       "@mondapac/shared-kernel": ["../../packages/shared-kernel/src/index.ts"]
     }
   },
-  "include": ["src", "test"]
+  "include": ["src", "test"],
+  "exclude": ["test/boundary-fixtures"]
 }

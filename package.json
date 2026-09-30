@@ -21,7 +21,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:check-reversible": "node scripts/check-migrations-reversible.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:db && pnpm db:check-reversible"
+    "verify": "pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm test:db && pnpm db:check-reversible",
+    "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

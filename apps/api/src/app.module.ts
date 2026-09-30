@@ -1,5 +1,6 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import type { DestinationStream } from 'pino';
+import { CORE_MODULES } from './modules';
 import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
 import { HealthModule } from './platform/health/health.module';
@@ -14,8 +15,8 @@ export interface AppModuleOptions {
 }
 
 /**
- * Composition root of the modular monolith (ADR-0008). Platform runtime is registered
- * here; bounded-context modules are added as the skeleton grows.
+ * Composition root of the modular monolith (ADR-0008). Registers the platform
+ * runtime and every bounded-context module.
  */
 @Module({})
 export class AppModule {
@@ -27,6 +28,7 @@ export class AppModule {
         LoggingModule.forRoot(options.logDestination),
         PersistenceModule,
         HealthModule,
+        ...CORE_MODULES,
       ],
     };
   }
