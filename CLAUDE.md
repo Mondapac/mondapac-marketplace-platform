@@ -94,7 +94,7 @@ strategy implementation, not in core logic.
 This project uses specialized subagents instead of one generalist for everything: cto,
 product-owner, software-architect, database-designer, product-designer, ui-ux-designer,
 backend-developer, frontend-developer, qa-engineer, security-tester, qc-release-manager,
-devops-engineer.
+devops-engineer, scrum-master.
 See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - Route non-trivial design/architecture decisions through product-owner ->
   software-architect (and product-designer/ui-ux-designer for user-facing work) before
@@ -110,6 +110,10 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - qc-release-manager is the final gate; don't merge or close a PLAYBOOK phase without it for
   non-trivial slices.
 - If two roles disagree or a module boundary is unclear, escalate to cto rather than guessing.
+- scrum-master assesses the delivery process (before/after each PLAYBOOK phase, at module
+  gates, each sprint) and proposes improvements with evidence; it is advisory and never
+  overrides product-owner priorities, cto decisions or any quality gate. It writes only
+  under docs/project/.
 
 ## Definition of Ready (every module, ADR-0013)
 - Module brief exists (template: docs/modules/_template/brief.md) with scope by feature ID,
