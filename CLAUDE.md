@@ -100,6 +100,12 @@ strategy implementation, not in core logic.
     approved G2 (tier B: one combined gate; tier C: product-owner approval). Tiers and the
     status register live in docs/modules/README.md. If a slice changes the approved scope
     or a hard rule, stop and run a mini-review; record it in the brief's change log.
+11. Skills (owner decision 2026-10-01): before producing any output, check
+    docs/process/skills-map.md and load the mapped account skill(s) for that task and role
+    (e.g. engineering:architecture for ADRs, product-management:write-spec for module
+    briefs, engineering:testing-strategy for test plans, design:ux-copy for badge wording).
+    Project rules, ADRs and gates take precedence over skill defaults; report conflicts to
+    cto. When no skill fits a recurring procedure, propose a new skill to the owner.
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,

@@ -45,7 +45,7 @@ claude
 ```
 
 **تأیید نصب صحیح** (داخل جلسهٔ Claude Code، قبل از هر کار دیگر):
-1. دستور `/agents` را بزنید — باید ۱۲ نقش (cto، product-owner، software-architect، ...) را فهرست کند.
+1. دستور `/agents` را بزنید — باید ۱۳ نقش (cto، product-owner، software-architect، ...) را فهرست کند.
 2. یک پیام ساده بفرستید: «طبق CLAUDE.md، این پروژه چیست و کدام ADR ها منتظر تأیید هستند؟» — اگر Claude Code درست پاسخ داد (نام MondaPac، سه ADR با وضعیت Proposed)، یعنی همه‌چیز درست خوانده شده.
 
 ---
