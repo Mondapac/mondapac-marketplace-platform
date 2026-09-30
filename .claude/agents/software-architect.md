@@ -29,7 +29,8 @@ not implement. Your output is what backend-developer and frontend-developer buil
    directly, what domain events it publishes/subscribes to.
 4. **Data ownership** — which module's schema owns which tables; flag anything that smells
    like it wants a join across module boundaries (that's a signal for an event or a read
-   model instead).
+   model instead). The physical design (columns, types, constraints, indexes, migration
+   plan) is database-designer's job — hand it over rather than specifying it yourself.
 5. **Enforcement point for hard domain rules** — for rules like `CERT-21` or `COM-04`, say
    explicitly WHERE in the architecture the rule is enforced (a domain service method, an
    aggregate invariant) so it can never be bypassed by skipping a UI check.

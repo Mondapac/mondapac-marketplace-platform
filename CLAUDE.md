@@ -87,12 +87,17 @@ strategy implementation, not in core logic.
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
-product-owner, software-architect, product-designer, ui-ux-designer, backend-developer,
-frontend-developer, qa-engineer, security-tester, qc-release-manager, devops-engineer.
+product-owner, software-architect, database-designer, product-designer, ui-ux-designer,
+backend-developer, frontend-developer, qa-engineer, security-tester, qc-release-manager,
+devops-engineer.
 See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - Route non-trivial design/architecture decisions through product-owner ->
   software-architect (and product-designer/ui-ux-designer for user-facing work) before
   backend-developer/frontend-developer implement.
+- database-designer turns software-architect's domain model into the physical schema
+  (tables, constraints, indexes, migration plan) before backend-developer writes a migration,
+  and must sign off on EVERY Prisma schema change or migration before merge. Slow queries,
+  locking problems and data-growth issues also go to database-designer.
 - security-tester review is MANDATORY (not optional under time pressure) before merging
   anything in auth, payments, or the certification (CERT-*) enforcement path.
 - qa-engineer and security-tester are read-only reviewers by design - bugs/findings go back

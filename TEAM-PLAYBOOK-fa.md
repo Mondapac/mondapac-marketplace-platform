@@ -1,6 +1,6 @@
 # راهنمای تیم Subagent — MondaPac Marketplace Platform
 
-این فایل توضیح می‌دهد چطور ۱۱ نقش تخصصی که در `agents/` ساختیم را در Claude Code هماهنگ کنید.
+این فایل توضیح می‌دهد چطور ۱۲ نقش تخصصی که در `agents/` ساختیم را در Claude Code هماهنگ کنید.
 
 ---
 
@@ -18,7 +18,7 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 ## ۲. نصب
 
 عامل‌ها از قبل در `.claude/agents/` و `CLAUDE.md` در ریشهٔ همین ریپو قرار دارند؛ نصب جداگانه لازم نیست.
-با اجرای `/agents` در Claude Code می‌توانید فهرست ۱۱ نقش را ببینید و در صورت نیاز ویرایش کنید.
+با اجرای `/agents` در Claude Code می‌توانید فهرست ۱۲ نقش را ببینید و در صورت نیاز ویرایش کنید.
 
 ---
 
@@ -29,6 +29,7 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 | CTO | `cto.md` | تعارض بین ماژول‌ها، تغییر Stack/معماری، تصمیم‌های پرریسک P0 |
 | Product Owner | `product-owner.md` | تبدیل کدهای سند قابلیت (`SEL-*`, `CERT-*`,...) به Story و معیار پذیرش |
 | Software Architect | `software-architect.md` | طراحی مدل دامنه، State Machine، مرز ماژول قبل از کدنویسی |
+| Database Designer | `database-designer.md` | طراحی فیزیکی بانک اطلاعاتی (جدول، نوع ستون، کلید، Constraint، ایندکس)، برنامهٔ Migration امن، کوئری‌نویسی حرفه‌ای، Performance/Tuning — بازبینی **اجباری** هر تغییر Schema/Migration |
 | Product Designer | `product-designer.md` | طراحی جریان کاربری چندمرحله‌ای/چندنقشی قبل از طراحی بصری |
 | UI/UX Designer | `ui-ux-designer.md` | تبدیل جریان تأییدشده به مشخصات بصری دقیق |
 | Backend Developer | `backend-developer.md` | پیاده‌سازی برش عمودی بک‌اند |
@@ -45,11 +46,13 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 ```
 ۱. product-owner   → از سند قابلیت، Story + معیار پذیرش می‌سازد
 ۲. software-architect → (اگر غیرتریویال) مدل دامنه/State Machine/مرز ماژول را طراحی می‌کند
+۲ب. database-designer → (اگر جدول/ستون/ایندکس جدید دارد) طراحی فیزیکی دیتابیس و برنامهٔ Migration
 ۳الف. product-designer → (اگر UI چندمرحله‌ای/چندنقشی دارد) جریان کاربری را طراحی می‌کند
 ۳ب. backend-developer  → همزمان یا بلافاصله بعد، برش بک‌اند را می‌سازد
 ۴. ui-ux-designer  → از جریان تأییدشده، مشخصات بصری می‌سازد
 ۵. frontend-developer → صفحه را طبق مشخصات و API بک‌اند می‌سازد
 ۶. qa-engineer     → مستقل تست می‌کند، گزارش باگ یا تأیید می‌دهد
+۶ب. database-designer → بازبینی Migration و کوئری‌های سنگین (اجباری برای هر تغییر Schema)
 ۷. security-tester → فقط برای حوزه‌های حساس (هویت، پرداخت، گواهی، RMA/Refund)
 ۸. qc-release-manager → دروازهٔ نهایی؛ PASS/FAIL با دلیل مشخص
 ```
@@ -71,6 +74,17 @@ Subagent های Claude Code «تیمی که هم‌زمان دور یک میز �
 قبل از پیاده‌سازی، از عامل software-architect بخواه مدل دامنهٔ SellerCertification
 و State Machine آن (فایل ۰۸، بخش ۲) را طراحی کند، به‌همراه اینکه قانون CERT-21
 دقیقاً در کجای معماری enforce می‌شود.
+```
+
+```
+از عامل database-designer بخواه با خواندن docs/design/domain/certification.md و
+ADR-0004، طراحی فیزیکی schema ماژول certification را (جدول‌ها، Constraintها، ایندکس‌ها
+و برنامهٔ Migration برگشت‌پذیر) در docs/design/data/certification.md بنویسد.
+```
+
+```
+از عامل database-designer بخواه این کوئری کند را با EXPLAIN (ANALYZE, BUFFERS)
+بررسی کند، علت را پیدا کند و راه‌حل را با اندازه‌گیری قبل/بعد پیشنهاد دهد.
 ```
 
 ```
