@@ -1,0 +1,22 @@
+{
+  "name": "@mondapac/shared-kernel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-free shared kernel (ADR-0008): types used by both api and web.",
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.14"
+  }
+}

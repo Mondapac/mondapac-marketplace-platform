@@ -70,8 +70,12 @@ strategy implementation, not in core logic.
   Market; all selling goes through Offers; PLATFORM content is admin-only.
 
 ## Commands
-- `pnpm install` / `pnpm dev` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
-- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher.
+- Requires Node.js 24.9+ and pnpm 10 (ADR-0014, Proposed).
+- `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm lint` / `pnpm typecheck`
+- `pnpm verify` runs typecheck + lint + test; run it before saying "done" (rule 3).
+- `pnpm format` applies Prettier.
+- `docker compose up -d` starts Postgres, Redis, MinIO, mail catcher. (Not in the repo yet;
+  arrives with the Phase 1 database slice.)
 (Update this section when scripts change.)
 
 ## Working rules for Claude

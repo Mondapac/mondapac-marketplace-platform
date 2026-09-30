@@ -8,7 +8,16 @@ Multi-vendor marketplace platform (halal-certified launch market: Australia), bu
    ```bash
    git clone https://github.com/Mondapac/mondapac-marketplace-platform.git
    ```
-2. Setup and run instructions will be added as the project takes shape.
+2. Install Node.js 24.9 or later and pnpm 10, then install dependencies:
+   ```bash
+   pnpm install
+   ```
+3. Check everything (typecheck, lint, tests) and start the API in watch mode:
+   ```bash
+   pnpm verify
+   pnpm dev
+   ```
+   Copy `.env.example` to `.env` to change local settings.
 
 ## Repository layout
 

@@ -5,3 +5,12 @@ Thumbs.db
 
 # Claude desktop app output mirror
 Claude outputs/
+
+# Build and test output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local environment (see .env.example)
+.env.*
+!.env.example
