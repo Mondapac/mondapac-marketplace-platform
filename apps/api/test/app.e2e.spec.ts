@@ -35,7 +35,12 @@ describe('API skeleton (integration)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         AppModule.register({
-          config: loadAppConfig({ NODE_ENV: 'test', HOSTED_MARKETS: 'AU,ZZ' }),
+          config: loadAppConfig({
+            NODE_ENV: 'test',
+            HOSTED_MARKETS: 'AU,ZZ',
+            // Never connected to: this suite runs without a database.
+            DATABASE_URL: 'postgresql://unused:unused@127.0.0.1:1/unused',
+          }),
           logDestination,
         }),
       ],
@@ -106,9 +111,18 @@ describe('API skeleton (integration)', () => {
     expect(response.headers['x-correlation-id']).toMatch(UUID);
   });
 
-  it('documents the health endpoint in OpenAPI', () => {
+  it('GET /health/ready answers 503 without leaking details when the database is down', async () => {
+    const response = await request(app.getHttpServer()).get('/health/ready').expect(503);
+
+    expect(response.body).toMatchObject({ statusCode: 503, message: 'database unavailable' });
+    expect(JSON.stringify(response.body)).not.toContain('unused');
+  });
+
+  it('documents the health endpoints in OpenAPI', () => {
     const document = buildOpenApiDocument(app);
 
     expect(document.paths['/health']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/health/ready']?.get?.responses).toHaveProperty('200');
+    expect(document.paths['/health/ready']?.get?.responses).toHaveProperty('503');
   });
 });

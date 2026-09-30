@@ -4,6 +4,7 @@ import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
 import { HealthModule } from './platform/health/health.module';
 import { LoggingModule } from './platform/logging/logging.module';
+import { PersistenceModule } from './platform/persistence/persistence.module';
 
 export interface AppModuleOptions {
   /** Overrides the configuration read from `process.env` (tests). */
@@ -24,6 +25,7 @@ export class AppModule {
       imports: [
         ConfigModule.forRoot(options.config),
         LoggingModule.forRoot(options.logDestination),
+        PersistenceModule,
         HealthModule,
       ],
     };

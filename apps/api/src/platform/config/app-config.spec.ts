@@ -1,4 +1,11 @@
-import { InvalidConfigError, loadAppConfig } from './app-config';
+import { InvalidConfigError, loadAppConfig as load } from './app-config';
+
+const DATABASE_URL = 'postgresql://user:secret@localhost:5432/db';
+
+/** Loads config with a valid DATABASE_URL unless the test overrides it. */
+function loadAppConfig(env: Record<string, string | undefined>) {
+  return load({ DATABASE_URL, ...env });
+}
 
 describe('loadAppConfig', () => {
   it('applies defaults and parses the hosted markets list', () => {
@@ -9,6 +16,7 @@ describe('loadAppConfig', () => {
       port: 3000,
       logLevel: 'info',
       hostedMarkets: ['AU', 'ZZ'],
+      databaseUrl: DATABASE_URL,
     });
   });
 
@@ -33,6 +41,24 @@ describe('loadAppConfig', () => {
   it('rejects an unknown NODE_ENV and LOG_LEVEL', () => {
     expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
     expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', LOG_LEVEL: 'loud' })).toThrow(/LOG_LEVEL/);
+  });
+
+  it.each([undefined, '', 'mysql://localhost/db', 'localhost:5432'])(
+    'rejects DATABASE_URL=%p',
+    (url) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', DATABASE_URL: url })).toThrow(
+        /DATABASE_URL/,
+      );
+    },
+  );
+
+  it('never includes the database password in a validation error', () => {
+    expect.assertions(1);
+    try {
+      loadAppConfig({ DATABASE_URL, PORT: 'abc' });
+    } catch (error) {
+      expect((error as Error).message).not.toContain('secret');
+    }
   });
 
   it('reports every problem at once', () => {

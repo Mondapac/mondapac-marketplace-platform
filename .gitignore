@@ -14,3 +14,6 @@ coverage/
 # Local environment (see .env.example)
 .env.*
 !.env.example
+
+# Generated Prisma client (pnpm db:generate)
+apps/api/src/generated/

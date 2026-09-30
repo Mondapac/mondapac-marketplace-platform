@@ -19,6 +19,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   HOSTED_MARKETS: hostedMarkets,
+  DATABASE_URL: z
+    .string({ error: 'DATABASE_URL is required' })
+    .regex(/^postgres(ql)?:\/\/\S+$/, 'must be a postgresql:// connection URL'),
 });
 
 export interface AppConfig {
@@ -27,6 +30,8 @@ export interface AppConfig {
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   /** Markets this Region Stack serves (ADR-0003). Never empty, never defaulted. */
   readonly hostedMarkets: readonly string[];
+  /** PostgreSQL connection URL. Contains credentials: never log it. */
+  readonly databaseUrl: string;
 }
 
 export class InvalidConfigError extends Error {
@@ -52,5 +57,6 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     port: parsed.data.PORT,
     logLevel: parsed.data.LOG_LEVEL,
     hostedMarkets: Object.freeze([...parsed.data.HOSTED_MARKETS]),
+    databaseUrl: parsed.data.DATABASE_URL,
   });
 }

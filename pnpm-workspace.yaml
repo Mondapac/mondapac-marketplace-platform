@@ -10,3 +10,8 @@ ignoredBuiltDependencies:
   - unrs-resolver
   # Install-time analytics of swagger-ui-dist; not wanted.
   - '@scarf/scarf'
+
+# Reviewed exceptions: Prisma downloads its schema engine (used by migrations) at install.
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - prisma
