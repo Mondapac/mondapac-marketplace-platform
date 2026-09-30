@@ -1,41 +1,59 @@
-# ADR-0003: Regional Deployment Model for Country Branches
+# ADR-0003: Multi-Market Architecture and Regional Deployment Model
 
-**Status:** Proposed (relevant starting with the second Market launch, not required for Phase 0)
+**Status:** Accepted — owner decision 2026-09-30: multi-market applies from Phase 0,
+not from the second Market launch.
 **Full reasoning:** `docs/architecture/country-branch-launch-playbook.md`
 **Depends on:** ADR-0002 (Market entity)
 
 ## Context
-MondaPac will expand into New Zealand, Malaysia, the EU, and the US. Each new country
-needs a technical launch path that doesn't fork the codebase and correctly handles data
-residency (especially GDPR for the EU).
+MondaPac will expand into NZ, Malaysia, the EU and the US. Retrofitting market scoping,
+region-aware configuration and data-residency guards after the AU launch would touch
+every module and require migrating live data. The owner therefore requires the platform
+to be multi-market by construction from the first line of code, even though only one
+Market (AU) is live at launch.
 
 ## Decision
-1. One shared codebase (the existing modular monolith, Market-aware per ADR-0002) is
-   deployed to region-specific infrastructure per Market, using the same CI/CD pipeline
-   with per-region configuration/secrets.
-2. Deployment region per Market is decided by: legal data-residency requirement,
-   geographic latency, and expected first-year volume (see the decision table in the
-   companion playbook). NZ shares infrastructure with AU; Malaysia gets a dedicated
-   Southeast Asia region; the EU and US each get a dedicated region, the EU as a legal
-   requirement rather than an optimization.
-3. Each new Market launch follows the fixed checklist in the companion playbook (legal ->
-   Market configuration -> content/localization -> infrastructure -> operations), in that
-   order, with legal review gating everything after it.
-4. Rollout order is NZ -> Malaysia -> EU -> US, based on legal/linguistic/currency
-   complexity and strategic fit with the halal-certification differentiator (Malaysia),
-   not purely market size.
+1. **Region Stack deployment unit.** One codebase is deployed as Region Stacks: a full,
+   independent deployment (app + PostgreSQL + Redis + object storage) in one cloud region,
+   hosting one or more Markets. Launch = one stack in ap-southeast-2 hosting AU (NZ joins
+   it later); MY, EU and US get dedicated stacks per the playbook decision table.
+2. **Mandatory market context.** Every inbound request, background job and consumed event
+   resolves to exactly one `market_id` (host/domain mapping; explicit header for API
+   clients). Core code has no implicit default market. A stack rejects any Market not in
+   its `HOSTED_MARKETS` configuration (residency guard).
+3. **Market-scoped data.** Every market-scoped aggregate carries `market_id` — not only
+   Seller/Offer/Order but also Customer account, Cart, Payment, Payout, certification
+   issuer registry and tax records. Repositories take a `MarketContext`; unscoped queries
+   fail in tests. Indexes lead with `market_id`.
+4. **Market-scoped identity.** A customer/seller account belongs to one Market and lives
+   in that Market's Region Stack; there is no global cross-region user table.
+5. **Market configuration as code.** `config/markets/<code>` is versioned in the repo,
+   validated at boot and seeded to the database; secrets are per Region Stack.
+6. **Region-portable data.** IDs are globally unique (UUIDv7); timestamps stored in UTC;
+   market timezone/locale applied only at the edges.
+7. **Events.** The event envelope carries `market_id`; topic/event names never contain a
+   market; events never cross Region Stacks.
+8. **One pipeline, region matrix.** CI/CD and IaC are parameterised by region from day one
+   (the matrix has a single entry today).
+9. **Proof by tests.** Domain and integration tests run against at least two market
+   fixtures — AU and a synthetic second market with a different currency, tax rate and
+   locale — so any AU hardcoding fails CI.
+10. **Launch process.** Each new Market follows the playbook checklist (legal → Market
+    configuration → content/localisation → infrastructure → operations); legal review
+    gates everything after it. Rollout order NZ → MY → EU → US is a recommendation.
 
 ## Consequences
-- No franchise-style code forks; every bug fix and feature ships to all regions through
-  the same pipeline.
-- EU launch carries a mandatory dedicated-region cost from day one (not optional,
-  GDPR-driven), which should be budgeted for explicitly rather than discovered late.
-- Rollout order is a recommendation, not a constraint — the owner can reorder based on
-  business opportunity, but each market still goes through the full checklist regardless
-  of order.
+- Small ongoing cost: market context propagation (request-scoped context), more explicit
+  repositories, a second test fixture. Large later cost avoided: no schema rewrite, no
+  data migration when NZ/MY launch.
+- No cross-region features (global admin view, cross-market reporting) without a new ADR;
+  platform-wide reporting later means aggregated exports, not shared tables.
+- The same person may hold separate accounts in two Markets — deliberate, residency-driven.
+- The EU stack is a mandatory cost from EU launch day (GDPR) and must be budgeted.
 
 ## Alternatives considered
-- Single global deployment for all markets: rejected due to GDPR data-residency risk and
-  latency for geographically distant markets.
-- Independent codebase per country: rejected — multiplies maintenance cost and
-  contradicts the horizontal-extensibility principle already adopted (ADR-0001).
+- Defer multi-market until the second launch (previous draft): rejected by the owner.
+- Single global deployment with only `market_id`: rejected — GDPR residency, latency.
+- Global identity shared across regions: rejected for now — conflicts with residency;
+  revisit only if cross-market shopping is ever approved (would supersede ADR-0002).
+- Codebase per country: rejected — contradicts ADR-0001.

@@ -37,8 +37,17 @@ strategy implementation, not in core logic.
 - Payments: Stripe Connect (marketplace payouts) - verify AU support/fees before implementing.
 
 ## Market rules (Australia is the first Market, not the only one - see internationalization doc)
-- Every Seller, Product Offer, and Order carries a market_id from day one (single value "AU"
-  today). Money is always {amount: integer minor units, currency: ISO 4217} - never assume AUD.
+- Multi-market by construction from Phase 0 (ADR-0003, Accepted). Every market-scoped
+  aggregate (Seller, Product Offer, Order, Customer account, Cart, Payment, Payout,
+  certification issuers, tax records) carries market_id (single value "AU" today) plus
+  tenant_id (single default value; seam only, no isolation - ADR-0001).
+  Money is always {amount: integer minor units, currency: ISO 4217} - never assume AUD.
+- Market context is mandatory: every request, job and consumed event resolves to exactly one
+  market_id. Core code never falls back to a default market. Repositories take a
+  MarketContext; a Region Stack rejects markets not listed in HOSTED_MARKETS.
+- Domain and integration tests run against at least two market fixtures (AU plus a synthetic
+  market with a different currency, tax rate and locale). A test that only passes for AU is
+  a bug.
 - Tax is computed via a per-market TaxStrategy, not hardcoded. Australia's strategy: GST 10%,
   handled explicitly in pricing/invoices (ABN captured at vendor onboarding).
 - Certification is fully generalized (see docs/features/08-certifications.md, CERT-*): a
