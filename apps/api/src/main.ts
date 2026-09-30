@@ -1,27 +1,23 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
-import { buildOpenApiDocument } from './openapi';
+import { configureApp } from './configure-app';
+import { loadEnvFile } from './load-env-file';
 import type { AppConfig } from './platform/config/app-config';
 import { APP_CONFIG } from './platform/config/config.module';
 
 async function bootstrap(): Promise<void> {
+  loadEnvFile();
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule.register(), {
     bufferLogs: true,
   });
-  app.disable('x-powered-by');
   app.useLogger(app.get(Logger));
-  app.enableShutdownHooks();
+  configureApp(app);
 
-  const config = app.get<AppConfig>(APP_CONFIG);
-  if (config.apiDocsEnabled) {
-    SwaggerModule.setup('docs', app, buildOpenApiDocument(app));
-  }
-
-  await app.listen(config.port);
+  await app.listen(app.get<AppConfig>(APP_CONFIG).port);
 }
 
 bootstrap().catch((error: unknown) => {

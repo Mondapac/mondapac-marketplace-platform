@@ -272,3 +272,14 @@ is sufficient to approve the SQL. The first green CI run on 17 (condition 1) clo
 
 The `importFileExtension = ""` change in `base.prisma` affects only the generated client;
 no schema effect (drift check empty).
+
+### Status of the sign-off conditions (2026-10-01, recorded by the orchestrating session)
+
+- Condition 2 (tests for `audit_log_acting_as_check`, `audit_log_target_type_check`,
+  `audit_log_after_check`): done in `apps/api/test/db/platform.db-spec.ts` (16 database
+  tests); QC confirmed by removing the constraints that the tests then fail.
+- Condition 1 (CI runs `pnpm test:db` and `pnpm db:check-reversible` against `postgres:17`):
+  `.github/workflows/ci.yml` now exists and runs `pnpm verify`, which includes both. It has
+  not run on GitHub yet, so this condition stays open until the first green run.
+- The statements above in this section that no workflow exists and that there are 13 tests
+  describe the state at sign-off time.

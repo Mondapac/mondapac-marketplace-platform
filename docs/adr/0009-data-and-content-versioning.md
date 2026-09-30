@@ -91,6 +91,8 @@ was considered.
    types in the shared kernel; the platform provides the hash-chained `AuditLog` and a
    `SubjectKeyService` port. Each module owns its own revision policy. Phase 1 ships the
    value types and the audit hash chain; the rest arrives in the first slice that needs it.
+   *(Amended by ADR-0015: the value types and the hash chain also arrive with the first
+   slice that needs them, before any audit row is written.)*
 9. **Out of scope:** dataset versioning for analytics/ML (decided with the P3 analytics
    ADR), full bitemporal modelling, Event Sourcing (ADR-0004).
 

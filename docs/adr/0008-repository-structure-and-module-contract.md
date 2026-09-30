@@ -57,6 +57,8 @@ core/vertical split and the market/time rules visible and machine-checked.
      events rather than calling synchronously in a loop.
 6. **Enforced in CI (dependency-cruiser + ESLint)** — created in Phase 1 together with the
    region-matrix CI workflow (ADR-0003 decision 8)
+   *(Amended by ADR-0015: the per-model access rule and the items without a consumer yet
+   are deferred, each with a trigger.)*
    - `modules/X` may import `modules/Y` only through `modules/Y/index.ts`.
    - `domain/` may not import `application/`, `infrastructure/`, `presentation/`,
      `@nestjs/*` or `@prisma/*`; no `new Date()` in `domain/` (use Clock).

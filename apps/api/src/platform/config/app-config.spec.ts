@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { InvalidConfigError, loadAppConfig as load } from './app-config';
 
 const DATABASE_URL = 'postgresql://user:secret@localhost:5432/db';
@@ -37,7 +38,7 @@ describe('loadAppConfig', () => {
   it('takes the market configuration directory from MARKET_CONFIG_DIR', () => {
     const config = loadAppConfig({ HOSTED_MARKETS: 'ZZ', MARKET_CONFIG_DIR: '/etc/markets' });
 
-    expect(config.marketConfigDirs).toEqual(['/etc/markets']);
+    expect(config.marketConfigDirs).toEqual([path.resolve('/etc/markets')]);
   });
 
   it('accepts a single hosted market, whichever market it is', () => {

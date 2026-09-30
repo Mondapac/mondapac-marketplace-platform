@@ -1,10 +1,10 @@
 import { Writable } from 'node:stream';
-import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import request from 'supertest';
-import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/configure-app';
 import { buildOpenApiDocument } from '../src/openapi';
 import {
   MarketNotHostedError,
@@ -22,7 +22,7 @@ interface LogLine {
 }
 
 describe('API skeleton (integration)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let logLines: LogLine[];
 
   beforeAll(async () => {
@@ -44,8 +44,9 @@ describe('API skeleton (integration)', () => {
         }),
       ],
     }).compile();
-    app = moduleRef.createNestApplication({ bufferLogs: true });
+    app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true });
     app.useLogger(app.get(Logger));
+    configureApp(app);
     await app.init();
   });
 
@@ -127,6 +128,17 @@ describe('API skeleton (integration)', () => {
     expect(JSON.stringify(response.body)).not.toContain('unused');
   });
 
+  it('does not advertise the framework', async () => {
+    const response = await request(app.getHttpServer()).get('/health').expect(200);
+
+    expect(response.headers).not.toHaveProperty('x-powered-by');
+  });
+
+  it('does not serve API docs unless they are enabled', async () => {
+    await request(app.getHttpServer()).get('/docs').expect(404);
+    await request(app.getHttpServer()).get('/docs-json').expect(404);
+  });
+
   it('hosts exactly the configured markets and rejects any other', () => {
     const registry = app.get(MarketRegistry);
 
@@ -140,5 +152,25 @@ describe('API skeleton (integration)', () => {
     expect(document.paths['/health']?.get?.responses).toHaveProperty('200');
     expect(document.paths['/health/ready']?.get?.responses).toHaveProperty('200');
     expect(document.paths['/health/ready']?.get?.responses).toHaveProperty('503');
+  });
+});
+
+describe('API docs (integration)', () => {
+  it('serves Swagger UI when API_DOCS_ENABLED is true', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        AppModule.register({
+          config: testAppConfig({ API_DOCS_ENABLED: 'true', LOG_LEVEL: 'silent' }),
+        }),
+      ],
+    }).compile();
+    const app = moduleRef.createNestApplication<NestExpressApplication>();
+    configureApp(app);
+    await app.init();
+
+    const response = await request(app.getHttpServer()).get('/docs-json').expect(200);
+    expect(response.body).toHaveProperty(['paths', '/health/ready']);
+
+    await app.close();
   });
 });

@@ -61,15 +61,32 @@ module.exports = {
       to: { path: ['^src/generated/', 'node_modules/@prisma/'] },
     },
     {
-      name: 'prisma-service-only-in-infrastructure',
+      name: 'persistence-internals-are-private',
       comment:
-        'PrismaService is the Prisma client: only modules/<m>/infrastructure/ and ' +
-        'platform/persistence/ may import it. Other code uses a repository or DatabaseProbe.',
+        'PrismaService is the Prisma client. Outside modules/<m>/infrastructure/ and ' +
+        'platform/persistence/, code may import only PersistenceModule and DatabaseProbe ' +
+        'from platform/persistence/ (so a re-export cannot leak the client).',
       severity: 'error',
       from: {
         pathNot: ['^src/modules/[^/]+/infrastructure/', '^src/platform/persistence/'],
       },
-      to: { path: '^src/platform/persistence/prisma\\.service\\.ts$' },
+      to: {
+        path: '^src/platform/persistence/',
+        pathNot: '^src/platform/persistence/(persistence\\.module|database-probe)\\.ts$',
+      },
+    },
+    {
+      name: 'database-driver-only-in-infrastructure',
+      comment: 'The PostgreSQL driver is used only by infrastructure/ and platform/persistence/.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/[^/]+/infrastructure/',
+          '^src/platform/persistence/',
+          '^src/generated/',
+        ],
+      },
+      to: { path: 'node_modules/(pg|pg-[^/]+|@types/pg)/' },
     },
     {
       name: 'no-circular',

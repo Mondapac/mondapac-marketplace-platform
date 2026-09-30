@@ -53,8 +53,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'domain-is-pure: src/modules/alpha/domain/imports-application.ts',
         'module-internals-are-private: src/platform/reaches-into-module.ts',
         'module-public-api-only: src/modules/alpha/application/reaches-into-module.ts',
+        'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-service.ts',
+        'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-via-barrel.ts',
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
-        'prisma-service-only-in-infrastructure: src/modules/alpha/application/uses-prisma-service.ts',
       ]);
     });
   });

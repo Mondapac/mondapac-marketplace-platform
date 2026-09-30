@@ -38,6 +38,10 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | `market_id` Prisma query guard | In the same change as the first repository on a market-scoped model (`audit_log` counts) |
    | Per-model "model to owning module" lint rule | In the same change as the first module-owned Prisma model |
    | Market configuration seeded to the database | When something needs to read Markets from the database; configuration as code stays the source of truth |
+   | `config/service-areas/` and `config/holidays/` (ADR-0005) | With the first slice that evaluates a ServiceArea or a business-day rule |
+   | Extension-point registry and `verticals/<vertical>/` content (ADR-0001) | With the first extension point a module defines |
+   | Auth guards | With the identity module (Phase 2), after its gates |
+   | Baseline HTTP hardening beyond removing `X-Powered-By` (security headers, explicit body limits, logging before body parsing, CORS, trust proxy, rate limiting) | Before the first authenticated endpoint; adding `helmet` is a new dependency and needs the owner's approval |
    | `infra/` infrastructure as code | Phase 7 |
    | Redis and MinIO clients | When code first uses them; no environment variables before that |
 
@@ -45,8 +49,9 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    shared kernel. This is how "no I/O" in ADR-0008 decision 2 is enforced. Libraries reach
    the domain through the shared kernel; any exception is a named CTO decision, not a
    relaxed rule.
-5. **PrismaService counts as the Prisma client.** Only `modules/<m>/infrastructure/` and
-   `platform/persistence/` may import it; other code uses a repository or `DatabaseProbe`.
+5. **PrismaService counts as the Prisma client.** Outside `modules/<m>/infrastructure/` and
+   `platform/persistence/`, code may import only `PersistenceModule` and `DatabaseProbe` from
+   `platform/persistence/`; the PostgreSQL driver is restricted the same way.
 6. **Phase gate register.** CTO approval of a phase is recorded in the "Phase gates" table
    of `docs/modules/README.md`.
 
