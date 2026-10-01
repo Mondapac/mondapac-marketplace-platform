@@ -1,5 +1,5 @@
-# Local development dependencies only (ADR-0004): PostgreSQL, Redis, S3-compatible object
-# storage and a mail catcher. Credentials here are local-only defaults, never secrets, and
+# Local development dependencies only (ADR-0004): PostgreSQL, Redis and a mail catcher.
+# A local S3-compatible server is added with the first slice that stores files (ADR-0016). Credentials here are local-only defaults, never secrets, and
 # every port is published on 127.0.0.1 only so other machines on the network cannot reach them.
 name: mondapac
 
@@ -30,23 +30,6 @@ services:
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ':9001'
-    environment:
-      MINIO_ROOT_USER: mondapac
-      MINIO_ROOT_PASSWORD: mondapac-local
-    ports:
-      - '127.0.0.1:${MINIO_PORT:-9000}:9000'
-      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   # Catches all outgoing mail; web UI on http://localhost:8025
   mailpit:
     image: axllent/mailpit:v1.27
@@ -56,4 +39,3 @@ services:
 
 volumes:
   postgres-data:
-  minio-data:

@@ -11,9 +11,12 @@ Multi-vendor marketplace platform (halal-certified launch market: Australia), bu
 2. Install Node.js 24.9 or later, pnpm 10 and Docker, then:
    ```bash
    cp .env.example .env        # local settings; never commit .env
-   docker compose up -d        # Postgres, Redis, MinIO, mail catcher
+   docker compose up -d        # Postgres, Redis, mail catcher
    pnpm install
    pnpm db:migrate             # apply database migrations
+   ```
+   On Windows run these in PowerShell or Git Bash (in cmd.exe use `copy` instead of `cp`).
+   ```bash
    ```
 3. Check everything and start the API in watch mode:
    ```bash
