@@ -104,7 +104,7 @@ Revision 4 (فروشنده ویرایش کرد)
 
 | فاز | کار | تخمین |
 |---|---|---|
-| ۱ اسکلت | Value typeهای `Revision<T>`، `ContentHash`، `EffectivePeriod` در shared-kernel؛ پورت `SubjectKeyService`؛ Audit Log با زنجیرهٔ hash؛ نسخه‌بندی و Object Lock در MinIO | ۲ تا ۳ روز |
+| ۱ اسکلت | Value typeهای `Revision<T>`، `ContentHash`، `EffectivePeriod` در shared-kernel؛ پورت `SubjectKeyService`؛ Audit Log با زنجیرهٔ hash؛ نسخه‌بندی و Object Lock در MinIO *(اصلاح‌شده با ADR-0015 و ADR-0016: این موارد همراه اولین برشی که مصرف‌کننده دارد ساخته می‌شوند، نه در فاز ۱؛ ذخیره‌ساز محلی هم دیگر MinIO نیست)* | ۲ تا ۳ روز |
 | ۲ هویت | رمزنگاری دادهٔ شخصی با کلید به‌ازای هر شخص (envelope encryption) | ۳ تا ۵ روز |
 | ۳ فروشنده و کاتالوگ | Revisionهای محصول + ProductRevisionPolicy + صف بازبینی با diff؛ جهش قیمت Offer؛ مدرک گواهی در bucket قفل‌شده | حدود ۱ هفته روی کار کاتالوگ |
 | ۵ سفارش و پرداخت | Snapshot اقلام (از قبل برنامه‌ریزی شده)؛ اتصال حساب تسویهٔ زمان‌دار + تأیید دوباره + دورهٔ انتظار | حدود ۱ هفته |

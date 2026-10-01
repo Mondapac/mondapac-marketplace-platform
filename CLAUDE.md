@@ -79,8 +79,8 @@ strategy implementation, not in core logic.
 - `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
   and drops its own throwaway database)
 - `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).
-- `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev` creates one and regenerates
-  the Prisma client (then add its `down.sql`); `pnpm db:generate` regenerates the client; `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
+- `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev --name <name>` creates one
+  and regenerates the Prisma client (always pass `--name`; then add its `down.sql`); `pnpm db:generate` regenerates the client; `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
 - `pnpm verify` regenerates the Prisma client, then runs typecheck, lint, boundaries, test, test:db and db:check-reversible.
   It is what CI runs; run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)

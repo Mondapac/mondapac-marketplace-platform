@@ -11,7 +11,7 @@ the build environment (Linux, Node 24.21, PostgreSQL 16).
 | Mojtaba (database-designer) | Approved with conditions | Baseline migration; conditions tracked in `docs/design/data/platform.md` section 9 |
 | Ali (cto) | Approved with conditions | ADR-0014 accepted with amendments, ADR-0015 written; phase gate row in `docs/modules/README.md` |
 | Hassan (security-tester) | No critical or high finding | One medium (database roles), seven low |
-| Bagher (qc-release-manager) | Pass with open items | Two medium defects found and fixed after the gate; the gate has to be re-run on the final commit |
+| Bagher (qc-release-manager) | Pass with open items; re-run on 2026-10-01: pass, Phase 1 may be closed | First run found two medium defects, fixed afterwards. See "Closing gate" |
 
 ## Closing conditions (status on 2026-10-01)
 
@@ -26,8 +26,40 @@ cannot see GitHub or the owner's Docker and did not see the output itself.
 | Owner decision on ADR-0015 | Confirmed (owner decision 2026-10-01) |
 | Owner decision on ADR-0016 | Confirmed (owner decision 2026-10-01) |
 | Owner decision on `helmet` | Approved; to be added before the first authenticated endpoint (ADR-0015) |
-| QC re-run on the final commit | See "Closing gate" below |
-| Scrum-master's end-of-phase assessment | See `docs/project/process-health/` |
+| QC re-run on the final commit | Pass, see "Closing gate" below |
+| Scrum-master's end-of-phase assessment | Done: `docs/project/process-health/2026-10-01-end-of-phase-1.md` (verdict amber) |
+
+## Closing gate (QC re-run, 2026-10-01)
+
+Bagher re-ran the gate on the closing branch (`main` after PR #5 plus the closing records).
+Verdict: pass, with follow-ups; no code defect blocks closing.
+
+- Run by QC on Linux, Node 24.21, PostgreSQL 16: `pnpm verify` (64 unit and HTTP tests, 16
+  database tests, boundaries, reversible migrations, no drift), `pnpm build`, the built API
+  and `pnpm dev` using only `.env`. The earlier defects D1 to D4 and D7 were confirmed
+  fixed by mutation in a scratch clone.
+- Not verifiable by QC or by any session: the GitHub Actions run, `docker compose up -d`
+  and the Windows run. QC accepts the owner's report as evidence for a skeleton phase with
+  no business logic, no deployment and no user data, and states that it would not accept it
+  for a phase touching auth, payments or certification. `pnpm audit` was not re-run by QC
+  (no network); the clean result comes from the readiness check.
+- Found in the re-run and fixed in the closing change: `pnpm db:migrate:dev --name x` did not
+  pass the name to Prisma and hung without a terminal (now `scripts/migrate-dev.mjs`); an
+  empty code block in the README; stale statements in the readiness note, ADR-0014 and the
+  versioning architecture doc.
+- Earlier QC items not listed in the table below: D5 (stale sign-off text) is answered by
+  the status note in `docs/design/data/platform.md` section 9; D6 (review outcomes not
+  recorded) is answered by this file; D9 was informational.
+
+Carried into Phase 2:
+
+- A re-export of `PrismaService` added inside `persistence.module.ts` itself would pass the
+  boundary check; review is the control until a test on that module's exports exists.
+- Removing the `configureApp(app)` call from `main.ts` fails no test (only lint); add a
+  header assertion to the CI boot probe.
+- CI checks only the syntax of `docker-compose.yml`, which is how the missing MinIO image
+  went unnoticed. The scrum-master proposes `docker compose up -d --wait` in CI.
+- Record the GitHub Actions run number of the first green run here.
 
 ## Findings and what happened to them
 

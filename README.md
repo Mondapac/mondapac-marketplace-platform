@@ -16,8 +16,6 @@ Multi-vendor marketplace platform (halal-certified launch market: Australia), bu
    pnpm db:migrate             # apply database migrations
    ```
    On Windows run these in PowerShell or Git Bash (in cmd.exe use `copy` instead of `cp`).
-   ```bash
-   ```
 3. Check everything and start the API in watch mode:
    ```bash
    pnpm verify                 # typecheck, lint, boundaries, tests, migration check
