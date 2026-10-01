@@ -1,0 +1,155 @@
+/* MondaPac admin and seller panels — design tokens.
+ * Generated from docs/design/tokens/tokens.json (canvas page 'Final', 2026-10-01).
+ * Use these variables instead of raw values. Prefix: --mp-. */
+:root {
+
+  /* color */
+  --mp-color-bg-page: #F5F6F8;  /* Page background behind cards */
+  --mp-color-bg-surface: #FFFFFF;  /* Cards, sidebar, top bar */
+  --mp-color-bg-subtle: #F9FAFB;  /* Table header, card footers */
+  --mp-color-bg-muted: #EEF0F3;  /* Document viewer, neutral badge */
+  --mp-color-bg-selected: #EDF2FF;  /* Active nav item, selected period, applied filter chip */
+  --mp-color-bg-row-selected: #F7F9FF;  /* Selected table row */
+  --mp-color-bg-row-attention: #FFFCF7;  /* Rows that need action */
+  --mp-color-bg-info-banner: #EEF3FD;  /* Info banner */
+  --mp-color-border-default: #E3E6EB;  /* Card and section borders */
+  --mp-color-border-row: #EEF0F3;  /* Row dividers inside cards */
+  --mp-color-border-control: #D0D5DD;  /* Secondary buttons, segmented controls */
+  --mp-color-border-input: #98A1B0;  /* Inputs, checkboxes, dashed add-filter (3:1 on white) */
+  --mp-color-border-info: #C9D7F5;  /* Info banner border */
+  --mp-color-text-primary: #111827;  /* Headings, values */
+  --mp-color-text-secondary: #3F4756;  /* Body text, labels */
+  --mp-color-text-muted: #5B6475;  /* Meta text, axis labels (5.5:1 on page) */
+  --mp-color-text-link: #1B45BD;  /* Links, selected tab */
+  --mp-color-text-link-hover: #173FB0;  /* Link hover */
+  --mp-color-text-on-accent: #FFFFFF;  /* Text on primary button */
+  --mp-color-action-primary: #1D4FD7;  /* Primary button, focus, chart series */
+  --mp-color-action-primary-hover: #1A45BF;  /* Primary button hover (proposed) */
+  --mp-color-action-primary-disabled: #C7D4F5;  /* Disabled primary button */
+  --mp-color-status-success-bg: #E7F6EC;  /* Success badge background */
+  --mp-color-status-success-fg: #12663A;  /* Success text and icon */
+  --mp-color-status-success-track: #DDF2E5;  /* Success ring track */
+  --mp-color-status-info-bg: #EAF1FB;  /* Info badge background */
+  --mp-color-status-info-fg: #1F4E8C;  /* Info text and icon */
+  --mp-color-status-attention-bg: #FFF1E0;  /* Attention badge background */
+  --mp-color-status-attention-fg: #8F4A00;  /* Attention text and icon */
+  --mp-color-status-attention-solid: #C46A00;  /* Attention meter fill, pips */
+  --mp-color-status-attention-track: #FBE3C4;  /* Attention meter track */
+  --mp-color-status-attention-border: #F2C894;  /* Attention card border */
+  --mp-color-status-attention-surface: #FFF8EF;  /* Attention panel background */
+  --mp-color-status-critical-bg: #FDEBEA;  /* Critical badge background */
+  --mp-color-status-critical-fg: #A8231A;  /* Critical text and icon */
+  --mp-color-status-critical-solid: #D92D20;  /* Urgent card border, red ring */
+  --mp-color-status-critical-meter: #B42318;  /* Overdue meter fill */
+  --mp-color-status-critical-track: #F6C9C5;  /* Overdue meter track */
+  --mp-color-status-critical-border: #F3C4C0;  /* Destructive secondary button border */
+  --mp-color-status-neutral-bg: #EEF0F3;  /* Neutral badge background */
+  --mp-color-status-neutral-fg: #3F4756;  /* Neutral text */
+  --mp-color-cert-seller-fg: #0B6B5C;  /* Seller-level certificate (verified) */
+  --mp-color-cert-seller-bg: #F2FAF8;  /* Seller certificate chip */
+  --mp-color-cert-seller-border: #B7DDD5;  /* Seller certificate chip border */
+  --mp-color-cert-seller-tile: #E6F4F1;  /* Seller logo / tile background */
+  --mp-color-cert-manufacturer-fg: #3F4756;  /* Manufacturer certificate */
+  --mp-color-cert-manufacturer-bg: #FFFFFF;  /* Manufacturer chip */
+  --mp-color-cert-manufacturer-border: #D0D5DD;  /* Manufacturer chip border */
+  --mp-color-cert-vegan-fg: #3F6212;  /* Vegan certificate */
+  --mp-color-cert-vegan-bg: #F5FAEF;  /* Vegan chip */
+  --mp-color-cert-vegan-border: #C8DDB0;  /* Vegan chip border */
+  --mp-color-cert-vegan-self-declared-border: #9DBB7A;  /* Self-declared chip (dashed) */
+  --mp-color-chart-series-1: #1D4FD7;  /* Main series (today, current period) */
+  --mp-color-chart-series-1-soft: #B9C9F2;  /* Past periods in bar charts */
+  --mp-color-chart-split-2: #9DB4F0;  /* Second part of a split bar */
+  --mp-color-chart-compare: #7C8698;  /* Comparison series, dashed 5 5 (3.7:1 on white) */
+  --mp-color-chart-grid: #EEF0F3;  /* Gridlines */
+  --mp-color-chart-axis: #D0D5DD;  /* Baseline */
+  --mp-color-chart-meter-track: #DCE6FB;  /* Meter track, accent tone */
+  --mp-color-chart-donut-track: #DCEFEA;  /* Certificate donut track */
+  --mp-color-chart-tooltip-bg: #111827;  /* Chart tooltip background */
+  --mp-color-map-land: #F3F5F8;  /* Map land */
+  --mp-color-map-water: #DDE7F3;  /* Map water */
+  --mp-color-map-seller-pin: #1D4FD7;  /* Seller with open orders */
+  --mp-color-map-courier: #0B6B5C;  /* Courier position */
+  --mp-color-tile-purple-bg: #F1ECFF;  /* Identity tile, seller applications */
+  --mp-color-tile-purple-fg: #5B3CC4;  /* Identity tile text */
+  --mp-color-thumb-meat-bg: #FDE7E3;  /* Product thumbnail: meat */
+  --mp-color-thumb-meat-fg: #B23F2E;
+  --mp-color-thumb-poultry-bg: #FFF0D6;  /* Product thumbnail: poultry */
+  --mp-color-thumb-poultry-fg: #9A5A08;
+  --mp-color-thumb-bakery-bg: #F6EADB;  /* Product thumbnail: bakery */
+  --mp-color-thumb-bakery-fg: #865628;
+  --mp-color-thumb-pantry-bg: #EAF2DF;  /* Product thumbnail: pantry */
+  --mp-color-thumb-pantry-fg: #4C6A1C;
+  --mp-color-thumb-other-bg: #EBEEF2;  /* Product thumbnail: other */
+  --mp-color-thumb-other-fg: #4A525E;
+  --mp-color-board-action-bg: #FFF8EF;  /* Needs action column */
+  --mp-color-board-action-border: #F3D7B0;  /* Needs action column border */
+  --mp-color-board-prep-bg: #F3F6FC;  /* Preparing column */
+  --mp-color-board-prep-border: #D6E0F2;  /* Preparing column border */
+  --mp-color-board-ready-bg: #F1F8F3;  /* Ready column */
+  --mp-color-board-ready-border: #CFE6D7;  /* Ready column border */
+
+  /* font */
+  --mp-font-family-sans: 'IBM Plex Sans', system-ui, sans-serif;  /* All UI text */
+  --mp-font-family-mono: 'IBM Plex Mono', ui-monospace, monospace;  /* Order numbers, certificate numbers, keyboard hints */
+  --mp-font-size-overline: 11px;  /* Group labels in sidebar, uppercase */
+  --mp-font-size-caption: 12px;  /* Meta lines, badges */
+  --mp-font-size-small: 12.5px;  /* Secondary lines, table headers */
+  --mp-font-size-body: 13.5px;  /* Default body and table text */
+  --mp-font-size-body-touch: 14px;  /* Tablet body */
+  --mp-font-size-emphasis-touch: 15px;  /* Tablet buttons, card ids */
+  --mp-font-size-title-sm: 16px;  /* Card titles (h2) */
+  --mp-font-size-stat: 22px;  /* Stat tile values */
+  --mp-font-size-title-lg: 24px;  /* Page title (h1) */
+  --mp-font-size-amount: 26px;  /* Payout amounts */
+  --mp-font-size-hero: 30px;  /* One hero figure per page */
+  --mp-font-weight-regular: 400;
+  --mp-font-weight-medium: 500;
+  --mp-font-weight-semibold: 600;  /* Titles, values, buttons */
+  --mp-font-weight-bold: 700;  /* Avatar initials, board column titles */
+
+  /* space */
+  --mp-space-0-5: 2px;
+  --mp-space-1: 4px;
+  --mp-space-1-5: 6px;
+  --mp-space-2: 8px;
+  --mp-space-2-5: 10px;
+  --mp-space-3: 12px;
+  --mp-space-3-5: 14px;
+  --mp-space-4: 16px;  /* Gap between cards */
+  --mp-space-4-5: 18px;  /* Card padding */
+  --mp-space-5: 20px;  /* Gap between index sections */
+  --mp-space-6: 24px;  /* Gap between page sections */
+  --mp-space-7: 28px;  /* Page padding top */
+  --mp-space-8: 32px;  /* Page padding sides */
+  --mp-space-10: 40px;  /* Page padding bottom */
+
+  /* radius */
+  --mp-radius-chip: 6px;  /* Certificate chips */
+  --mp-radius-control: 8px;  /* Buttons, inputs, tiles */
+  --mp-radius-control-touch: 10px;  /* Tablet buttons */
+  --mp-radius-card: 12px;  /* Cards */
+  --mp-radius-column: 14px;  /* Board columns */
+  --mp-radius-pill: 999px;  /* Badges, filter chips, avatars */
+
+  /* size */
+  --mp-size-sidebar: 248px;
+  --mp-size-sidebar-collapsed: 72px;  /* Tablet */
+  --mp-size-topbar: 64px;
+  --mp-size-control: 36px;  /* Desktop buttons and inputs */
+  --mp-size-control-sm: 32px;  /* Row buttons */
+  --mp-size-control-touch: 48px;  /* Tablet primary actions */
+  --mp-size-toolbar-touch: 44px;  /* Tablet header controls */
+  --mp-size-badge: 22px;
+  --mp-size-thumb: 28px;  /* Product thumbnail in rows */
+
+  /* shadow */
+  --mp-shadow-floating: 0 12px 28px -8px rgba(17,24,39,0.22), 0 4px 8px -4px rgba(17,24,39,0.10);  /* Floating bulk action bar */
+  --mp-shadow-urgent: 0 0 0 3px #FDEBEA;  /* Ring around urgent order card */
+  --mp-shadow-focus: 0 0 0 2px #FFFFFF, 0 0 0 4px #1D4FD7;  /* Keyboard focus ring (proposed, not yet on canvas) */
+
+  /* motion */
+  --mp-motion-fast: 120ms;  /* Hover, press */
+  --mp-motion-base: 160ms;  /* Bulk bar in/out, tab change */
+  --mp-motion-slow: 240ms;  /* Card moving between board columns */
+  --mp-motion-easing: cubic-bezier(0.2, 0, 0, 1);  /* Standard easing */
+}
