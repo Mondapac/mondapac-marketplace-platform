@@ -18,7 +18,8 @@ Other sessions may be working in the same repo folder at the same time.
    - Check `docs/adr/` for the next free ADR number. 0011 is reserved for the CMS product choice.
 
 ## Editing rules
-- **Line endings:** files use CRLF on the owner's Windows machine.
+- **Line endings:** `.gitattributes` stores every text file with LF; older Markdown files
+  can still be CRLF in the owner's Windows working tree.
   - Edit with a Python read-modify-write that detects and preserves `\r\n`.
   - Assert each old string matches exactly once.
   - Never re-type a file from tool output.

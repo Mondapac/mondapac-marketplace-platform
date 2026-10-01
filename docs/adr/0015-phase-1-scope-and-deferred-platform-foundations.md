@@ -43,7 +43,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | Auth guards | With the identity module (Phase 2), after its gates |
    | Baseline HTTP hardening beyond removing `X-Powered-By` (security headers, explicit body limits, logging before body parsing, CORS, trust proxy, rate limiting) | Before the first authenticated endpoint; adding `helmet` is a new dependency and needs the owner's approval |
    | `infra/` infrastructure as code | Phase 7 |
-   | Redis and MinIO clients | When code first uses them; no environment variables before that |
+   | Redis and object-storage clients | When code first uses them; no environment variables before that. The local object-storage server is chosen then (ADR-0016) |
 
 4. **`domain-is-pure` is a whitelist.** `domain/` may import only its own `domain/` and the
    shared kernel. This is how "no I/O" in ADR-0008 decision 2 is enforced. Libraries reach

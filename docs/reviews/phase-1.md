@@ -17,8 +17,10 @@ the build environment (Linux, Node 24.21, PostgreSQL 16).
 
 1. First green GitHub Actions run of `.github/workflows/ci.yml` (never run; tests ran on
    PostgreSQL 16 locally, CI and compose use 17).
-2. `docker compose up -d` with all four services healthy. Never run anywhere: only
-   `docker compose config` was checked. The MinIO image tag and its healthcheck are unverified.
+2. `docker compose up -d` with all three services healthy. Never run anywhere: only
+   `docker compose config` was checked. (The MinIO service was removed on 2026-10-01: its
+   image no longer exists on Docker Hub, see ADR-0016. The remaining three image tags were
+   confirmed to exist on Docker Hub.)
 3. `pnpm install`, `pnpm verify` and `pnpm dev` on the owner's Windows machine. Nothing has
    run on Windows.
 4. Owner confirms or rejects ADR-0015 (it changes the timing in ADR-0009 decision 8).
@@ -64,3 +66,11 @@ the build environment (Linux, Node 24.21, PostgreSQL 16).
   configuration exists.
 - Commit scopes `p1-sN` proposed by the scrum-master were not adopted; the owner has not
   decided on the process proposals yet.
+
+## Phase 2 readiness check (2026-10-01)
+
+See `docs/reviews/phase-2-readiness-fa.md` for the full result. Defects found and fixed on
+branch `fix/phase-2-readiness`: the `minio/minio` image does not exist any more, so
+`docker compose up -d` could not start (ADR-0016); `pnpm db:migrate:dev` left the Prisma
+client stale, so the next typecheck failed; `pnpm audit` reported two high and one moderate
+advisory in transitive dependencies of the Prisma CLI (overridden in `pnpm-workspace.yaml`).

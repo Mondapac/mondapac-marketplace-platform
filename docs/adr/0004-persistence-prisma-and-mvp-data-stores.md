@@ -14,6 +14,8 @@ would each need operating in every Region Stack (ADR-0003).
 
 ## Decision
 1. **Stores for the MVP: PostgreSQL + Redis + S3-compatible object storage (MinIO locally).**
+   *(Amended by ADR-0016: MinIO's community images were withdrawn; the local stand-in is
+   chosen with the first slice that stores files.)*
    - PostgreSQL: all transactional data. Flexible attributes (AttributeSchema, SEL-20,
      CERT-01) use `jsonb` validated by the owning module. Search starts with PostgreSQL
      full-text search; Elasticsearch is reconsidered by a new ADR in P1 (Search).

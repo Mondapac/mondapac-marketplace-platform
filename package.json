@@ -11,7 +11,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "pnpm --filter @mondapac/api dev",
-    "build": "pnpm -r build",
+    "build": "pnpm db:generate && pnpm -r build",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
@@ -19,9 +19,9 @@
     "test:db": "pnpm --filter @mondapac/api test:db",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:dev": "prisma migrate dev && prisma generate",
     "db:check-reversible": "node scripts/check-migrations-reversible.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm test:db && pnpm db:check-reversible",
+    "verify": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm test:db && pnpm db:check-reversible",
     "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs"
   },
   "devDependencies": {

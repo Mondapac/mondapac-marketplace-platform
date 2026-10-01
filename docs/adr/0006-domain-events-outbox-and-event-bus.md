@@ -43,6 +43,7 @@ modules.
 
 ## Consequences
 - No broker to run in the MVP; Docker Compose stays Postgres + Redis + MinIO + mail catcher.
+  *(Amended by ADR-0016: the object-storage service is added with its first consumer.)*
 - Consumers must be idempotent from day one — the same rule a real broker would need.
 - Event latency is the relay's poll interval (target under 1 s); acceptable because
   cross-module reactions are asynchronous by design.
