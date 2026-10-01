@@ -15,8 +15,7 @@ vertical, country, currency, or language - see:
 Phase 0 decisions are Accepted in docs/adr/0001..0010, 0012 and 0013 (0011 is reserved for
 the CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
-structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage,
-Proposed) and ADR-0015 (Phase 1
+structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage) and ADR-0015 (Phase 1
 scope; deferred platform foundations and the trigger that forces each one - check it
 before starting a slice). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)

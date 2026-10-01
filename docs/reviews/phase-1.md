@@ -13,19 +13,21 @@ the build environment (Linux, Node 24.21, PostgreSQL 16).
 | Hassan (security-tester) | No critical or high finding | One medium (database roles), seven low |
 | Bagher (qc-release-manager) | Pass with open items | Two medium defects found and fixed after the gate; the gate has to be re-run on the final commit |
 
-## Open before Phase 1 can be closed
+## Closing conditions (status on 2026-10-01)
 
-1. First green GitHub Actions run of `.github/workflows/ci.yml` (never run; tests ran on
-   PostgreSQL 16 locally, CI and compose use 17).
-2. `docker compose up -d` with all three services healthy. Never run anywhere: only
-   `docker compose config` was checked. (The MinIO service was removed on 2026-10-01: its
-   image no longer exists on Docker Hub, see ADR-0016. The remaining three image tags were
-   confirmed to exist on Docker Hub.)
-3. `pnpm install`, `pnpm verify` and `pnpm dev` on the owner's Windows machine. Nothing has
-   run on Windows.
-4. Owner confirms or rejects ADR-0015 (it changes the timing in ADR-0009 decision 8).
-5. Owner decides whether to add `helmet` (a new dependency) for security headers.
-6. Scrum-master's end-of-phase assessment, and a QC re-run on the final commit.
+"Reported by the owner" means the owner ran it and told the session the result; the session
+cannot see GitHub or the owner's Docker and did not see the output itself.
+
+| Condition | Status |
+|---|---|
+| First green GitHub Actions run of `.github/workflows/ci.yml` (PostgreSQL 17) | Reported green by the owner, on `main` after PR #5 |
+| `docker compose up -d` with the three services running | Reported by the owner on their Windows machine. A first attempt failed with Prisma error P1001 because PostgreSQL was not running yet |
+| `pnpm install`, `pnpm db:migrate`, `pnpm verify` and `pnpm dev` on Windows | Reported by the owner: all commands ran correctly; `/health`, `/health/ready`, `/docs` and the mail catcher UI open |
+| Owner decision on ADR-0015 | Confirmed (owner decision 2026-10-01) |
+| Owner decision on ADR-0016 | Confirmed (owner decision 2026-10-01) |
+| Owner decision on `helmet` | Approved; to be added before the first authenticated endpoint (ADR-0015) |
+| QC re-run on the final commit | See "Closing gate" below |
+| Scrum-master's end-of-phase assessment | See `docs/project/process-health/` |
 
 ## Findings and what happened to them
 
@@ -33,9 +35,9 @@ the build environment (Linux, Node 24.21, PostgreSQL 16).
 |---|---|---|
 | Any layer could import `PrismaService` and query any model | CTO M1, QC D3 | Fixed: `persistence-internals-are-private` and `database-driver-only-in-infrastructure` rules with fixtures; health uses `DatabaseProbe` |
 | Application database role is a superuser and table owner, so it can disable the append-only triggers on `platform.audit_log` | Security M1 | Open by decision: ADR-0015 decision 2 makes the role split a gate before the first audit row and before any shared environment |
-| Audit hash chain not in Phase 1 although ADR-0009 decision 8 says so | Database-designer, CTO | ADR-0015 decision 1; needs the owner's confirmation |
+| Audit hash chain not in Phase 1 although ADR-0009 decision 8 says so | Database-designer, CTO | ADR-0015 decision 1, confirmed by the owner |
 | `/docs` was served whenever `NODE_ENV` was not `production` | Security L2 | Fixed: `API_DOCS_ENABLED`, off by default |
-| `X-Powered-By: Express` header | Security L1, CTO | Fixed and tested. Other security headers are deferred (ADR-0015); `helmet` awaits the owner |
+| `X-Powered-By: Express` header | Security L1, CTO | Fixed and tested. Other security headers are deferred (ADR-0015); `helmet` approved by the owner |
 | Compose published every port on all interfaces | Security L3 | Fixed: `127.0.0.1` only |
 | Query string was logged | Security L5 | Fixed and tested: path only |
 | API did not read `.env`, so the README quickstart failed | QC D1 | Fixed: `load-env-file.ts`; checked with `node dist/main` and `pnpm dev` |
