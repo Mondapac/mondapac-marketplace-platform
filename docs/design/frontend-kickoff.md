@@ -5,8 +5,8 @@
 | تاریخ | ۱ اکتبر ۲۰۲۶ |
 | مخاطب اصلی | مهدی (Frontend) |
 | هم‌خوان‌ها | هادی (Product Owner)، رضا (UI/UX)، جعفر (Product Designer)، سجاد (QA) |
-| منبع طراحی | بوم «MondaPac Panel Shell»، صفحهٔ **Final — A + C components** (نسخهٔ ۹) |
-| توکن‌ها | `docs/design/tokens/tokens.json` (قالب DTCG) و `docs/design/tokens/tokens.css` (متغیرهای `--mp-*`) |
+| منبع طراحی | فایل Figma **«MondaPac Design System»** (منبع حقیقت، ADR-0017). بوم «MondaPac Panel Shell»، صفحهٔ **Final — A + C components** فقط پیش‌نمایش مرجع است. |
+| توکن‌ها | `docs/design/tokens/`: شش فایل DTCG (`primitives`، `color.light`، `color.dark`، `dimension.desktop`، `dimension.touch`، `typography`) و `tokens.css` (متغیرهای `--mp-*`). خروجی دستور Export tokens افزونهٔ Figma است. |
 | وضعیت | **پیش‌نمایش.** ظاهر A تأیید شده است. کامپوننت‌های هر ماژول بعداً مرحله‌به‌مرحله با صاحب پروژه طراحی و تکمیل می‌شوند. صفحه‌های هر ماژول فقط پس از G1 همان ماژول ساخته می‌شوند (ADR-0013). |
 
 ---
@@ -51,7 +51,7 @@
   - حاشیهٔ ۱px `color-border-default`
   - گوشه `radius-card`
   - padding `space-4-5`
-  - عنوان کارت `font-size-title-sm` با وزن ۶۰۰
+  - عنوان کارت `text-heading-h2` (۱۶/۲۲، وزن ۶۰۰)
 - **شبکه‌های رایج:**
   - ردیف شاخص و صف: `repeat(4, minmax(0,1fr))`
   - ستون محتوا و ستون کناری: `minmax(0,1fr) 340–380px`
@@ -62,7 +62,7 @@
 
 ## ۳. توکن‌های اصلی
 
-فهرست کامل: `docs/design/tokens/tokens.css` (۱۳۶ توکن). در کد **فقط توکن** به کار برود، نه مقدار خام.
+فهرست کامل: `docs/design/tokens/tokens.css` (۱۵۵ متغیر). تم تاریک با `[data-theme="dark"]` و تراکم لمسی با `[data-density="touch"]` فعال می‌شود. در کد **فقط توکن** به کار برود، نه مقدار خام.
 
 | توکن | مقدار | کاربرد |
 |---|---|---|
@@ -73,7 +73,7 @@
 | `--mp-color-border-default` | #E3E6EB | حاشیهٔ کارت |
 | `--mp-color-border-row` | #EEF0F3 | خط بین ردیف‌ها |
 | `--mp-color-border-control` | #D0D5DD | دکمهٔ ثانویه |
-| `--mp-color-border-input` | #98A1B0 | فیلد ورودی و checkbox (نسبت 3:1، برای WCAG 1.4.11) |
+| `--mp-color-border-input` | #8A93A3 | فیلد ورودی و checkbox (۳.۱:۱ روی سفید، برای WCAG 1.4.11) |
 | `--mp-color-text-primary` | #111827 | عنوان و مقدار |
 | `--mp-color-text-secondary` | #3F4756 | متن عادی |
 | `--mp-color-text-muted` | #5B6475 | متن کمکی (6.0:1 روی سفید) |
@@ -84,12 +84,12 @@
 | `--mp-color-chart-compare` | #7C8698 | سری مقایسه، خط‌چین `5 5` |
 | `--mp-font-family-sans` | IBM Plex Sans | همهٔ متن‌ها |
 | `--mp-font-family-mono` | IBM Plex Mono | شمارهٔ سفارش، شمارهٔ گواهی، `Ctrl K` |
-| `--mp-font-size-body` | 13.5px | متن پیش‌فرض و جدول |
-| `--mp-font-size-title-lg` | 24px / 600 | عنوان صفحه |
-| `--mp-font-size-hero` | 30px / 600 | فقط یک عدد قهرمان در هر صفحه |
+| `--mp-text-body-default` | 400 13.5px/20px | متن پیش‌فرض و جدول |
+| `--mp-text-heading-h1` | 600 24px/32px | عنوان صفحه |
+| `--mp-text-display-hero` | 600 30px/38px | فقط یک عدد قهرمان در هر صفحه |
 | `--mp-radius-card` / `--mp-radius-control` / `--mp-radius-pill` | 12 / 8 / 999px | کارت / کنترل / badge |
-| `--mp-size-control` / `--mp-size-control-touch` | 36 / 48px | ارتفاع دکمه روی دسکتاپ / تبلت |
-| `--mp-shadow-floating` | — | فقط نوار اقدام گروهی شناور |
+| `--mp-size-control` | 36px (لمسی 48px) | ارتفاع دکمه؛ زیر `[data-density="touch"]` خودکار ۴۸ می‌شود |
+| `--mp-shadow-elevation-floating` / `--mp-shadow-focus-ring` | — | نوار اقدام گروهی شناور / حلقهٔ فوکوس (در تم تاریک خودکار عوض می‌شود) |
 
 قواعد عددها:
 
@@ -187,7 +187,7 @@
 |---|---|---|
 | Button primary | hover / active / disabled / loading | `action-primary-hover` / تیره‌تر / `action-primary-disabled` با متن سفید / spinner و غیرفعال، بدون تغییر عرض |
 | Button secondary | hover | زمینه `bg-subtle` |
-| همهٔ کنترل‌ها | focus (صفحه‌کلید) | `shadow-focus` (حلقهٔ آبی با فاصلهٔ سفید). **هنوز روی بوم رسم نشده؛ اجباری است.** |
+| همهٔ کنترل‌ها | focus (صفحه‌کلید) | `--mp-shadow-focus-ring` (حلقهٔ آبی با فاصلهٔ هم‌رنگ زمینه). در Figma هر کامپوننت تعاملی حالت Focus دارد. **اجباری است.** |
 | ردیف جدول | hover / selected | `bg-subtle` / `bg-row-selected` و checkbox تیک‌خورده |
 | Checkbox سرستون | بخشی انتخاب‌شده | حالت indeterminate |
 | `BulkActionBar` | ظاهرشدن | با اولین انتخاب از پایین می‌لغزد. با Clear یا Esc بسته می‌شود. |
@@ -289,7 +289,7 @@
   - متن‌ها ≥ 4.5:1
   - مرز فیلدها و checkbox 3.1:1
   - سری مقایسهٔ نمودار 3.7:1
-- رنگ `#98A1B0` فقط برای مرز است، نه متن.
+- رنگ `#8A93A3` (`border-input`) فقط برای مرز است، نه متن.
 
 **صفحه‌کلید:**
 
@@ -365,12 +365,12 @@ type LiveDeliveries = { inTransit: number; avgMinutes: number; lateNow: number;
 |---|---|---|
 | D1 | پایهٔ UI | shadcn/ui روی Radix یا Base UI، Tailwind v4، TanStack Table. نیازمند spike و ADR. |
 | D2 | توپولوژی اپ | `packages/ui` مشترک، پیکربندی منو، و دو اپ نازک. نیازمند ADR. |
-| D5 | حالت تاریک | خارج از دامنهٔ فعلی. |
+| D5 | حالت تاریک | توکن‌ها و پیش‌نمایش تاریک در Figma آماده است (`color.dark.json`، `[data-theme="dark"]`). زمان فعال‌کردن در محصول تصمیم محصول است. |
 | D13 | ارائه‌دهندهٔ نقشه | بین MapLibre، Mapbox و Google: هزینه، حریم خصوصی، کاشی‌های استرالیا. |
 | D14 | کتابخانهٔ نمودار | SVG سفارشی سبک یا کتابخانه‌ای مثل visx یا Recharts. شرط: یک محور، tooltip و نمای جدولی. |
 | D15 | آستانه‌های مهلت و شمارش معکوس | جدول بخش ۷. تأیید هادی. |
 | D16 | منوی موبایل (< ۷۶۰px) و Board عمودی | طراحی نشده. |
-| — | حالت focus | توکن تعریف شده (`shadow-focus`) اما روی بوم رسم نشده. در کد اجباری است. |
+| — | حالت focus | حل شد: در کتابخانهٔ Figma رسم شده و توکنش `--mp-shadow-focus-ring` است. |
 | — | Item unavailable | قاعدهٔ کسب‌وکار در G1 سفارش. |
 | — | Command palette (`Ctrl K`) | فقط نقطهٔ ورود طراحی شده. |
 

@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 12px/1.45 Inter, system-ui, sans-serif; color: var(--figma-color-text, #1e1e1e); background: var(--figma-color-bg, #fff); }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid var(--figma-color-border, #e6e6e6); }
+  h1 { font-size: 13px; margin: 0 0 2px; font-weight: 600; }
+  .muted { color: var(--figma-color-text-secondary, #6b6b6b); }
+  section { padding: 12px 16px; border-bottom: 1px solid var(--figma-color-border, #e6e6e6); }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; color: var(--figma-color-text-secondary, #6b6b6b); font-weight: 600; }
+  button { font: inherit; font-weight: 500; height: 30px; padding: 0 12px; border-radius: 6px; cursor: pointer; border: 1px solid var(--figma-color-border-strong, #cfcfcf); background: var(--figma-color-bg, #fff); color: inherit; }
+  button.primary { background: var(--figma-color-bg-brand, #0d99ff); border-color: transparent; color: var(--figma-color-text-onbrand, #fff); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  label.check { display: flex; gap: 6px; align-items: flex-start; margin: 8px 0 0; }
+  input[type=text] { font: inherit; height: 28px; width: 90px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--figma-color-border-strong, #cfcfcf); background: transparent; color: inherit; }
+  .bar { height: 6px; border-radius: 3px; background: var(--figma-color-bg-secondary, #f0f0f0); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--figma-color-bg-brand, #0d99ff); transition: width .2s; }
+  #log { white-space: pre-wrap; font: 11px/1.5 ui-monospace, Menlo, monospace; max-height: 340px; overflow: auto; margin: 0; }
+  .err { color: var(--figma-color-text-danger, #d32f2f); }
+  #files a { display: inline-block; margin: 4px 8px 0 0; color: var(--figma-color-text-brand, #0d99ff); }
+  textarea { width: 100%; height: 90px; margin-top: 8px; font: 10px/1.4 ui-monospace, monospace; background: transparent; color: inherit; border: 1px solid var(--figma-color-border, #e6e6e6); border-radius: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MondaPac Design System</h1>
+  <div class="muted">Generates and maintains the Admin + Seller panel library. Spec <span id="spec">1.0.0</span>.</div>
+</header>
+
+<section>
+  <h2>Build library</h2>
+  <div class="muted">Run in a new, empty design file. Creates variables, styles, icons, components, docs and templates.</div>
+  <label class="check"><input type="checkbox" id="force"> <span>Rebuild: delete the pages, variables and styles this plugin made, then build again.</span></label>
+  <div class="row" style="margin-top:10px"><button class="primary" id="build">Build library</button><span id="status" class="muted"></span></div>
+  <div class="bar"><i id="bar"></i></div>
+</section>
+
+<section>
+  <h2>Selection</h2>
+  <div class="row"><button data-theme="dark">Dark theme</button><button data-theme="light">Light theme</button><button data-density="touch">Touch density</button><button data-density="desktop">Desktop density</button></div>
+</section>
+
+<section>
+  <h2>Tokens for code</h2>
+  <div class="row">Version <input type="text" id="version" value="1.0.0"><button id="export">Export tokens</button></div>
+  <div class="muted" style="margin-top:6px">Save the files into <code>docs/design/tokens/</code> in the repo and commit them.</div>
+  <div id="files"></div>
+  <textarea id="out" readonly placeholder="Exported files appear here"></textarea>
+</section>
+
+<section>
+  <h2>Maintenance</h2>
+  <div class="row"><button id="audit">Audit file</button><button id="upgrade">Upgrade to modes</button></div>
+  <div class="muted" style="margin-top:6px">Audit lists unbound colours, text without styles, overflowing layers and missing docs. Upgrade to modes: after moving to a paid plan, merges "Color · Dark" and "Dimension · Touch" into modes and splits sections into pages.</div>
+</section>
+
+<section>
+  <h2>Log</h2>
+  <pre id="log" class="muted">Ready.</pre>
+</section>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const send = (m) => parent.postMessage({ pluginMessage: m }, '*');
+  const busy = (on) => document.querySelectorAll('button').forEach((b) => { b.disabled = on; });
+  const logLines = (lines, cls) => { const el = $('log'); el.className = cls || 'muted'; el.textContent = lines.join('\n'); };
+  let urls = [];
+
+  $('build').onclick = () => { busy(true); $('bar').style.width = '2%'; logLines(['Building… this takes a minute or two. Keep this file open.']); send({ type: 'build', force: $('force').checked }); };
+  document.querySelectorAll('[data-theme]').forEach((b) => { b.onclick = () => send({ type: 'theme', theme: b.dataset.theme }); });
+  document.querySelectorAll('[data-density]').forEach((b) => { b.onclick = () => send({ type: 'density', density: b.dataset.density }); });
+  $('export').onclick = () => { busy(true); send({ type: 'export', version: $('version').value.trim() || '1.0.0' }); };
+  $('upgrade').onclick = () => { busy(true); send({ type: 'upgrade' }); };
+  $('audit').onclick = () => { busy(true); logLines(['Auditing…']); send({ type: 'audit' }); };
+
+  onmessage = (e) => {
+    const m = e.data.pluginMessage; if (!m) return;
+    if (m.type === 'init') { $('version').value = m.version; $('spec').textContent = m.specVersion; }
+    if (m.type === 'status') $('status').textContent = m.label;
+    if (m.type === 'progress') { $('bar').style.width = Math.round(100 * m.step / m.total) + '%'; $('status').textContent = m.label + ' ✓'; }
+    if (m.type === 'done') { busy(false); $('bar').style.width = '100%'; $('status').textContent = 'Done'; logLines(m.report || ['Done.']); }
+    if (m.type === 'error') { busy(false); $('status').textContent = 'Stopped'; logLines(['✕ ' + m.message].concat(m.stack ? [m.stack] : []).concat(m.report || []), 'err'); }
+    if (m.type === 'export') {
+      busy(false);
+      urls.forEach((u) => URL.revokeObjectURL(u)); urls = [];
+      const box = $('files'); box.innerHTML = '';
+      Object.keys(m.files).forEach((name) => {
+        const url = URL.createObjectURL(new Blob([m.files[name]], { type: name.endsWith('.css') ? 'text/css' : 'application/json' }));
+        urls.push(url);
+        const a = document.createElement('a'); a.href = url; a.download = name; a.textContent = name; box.appendChild(a);
+      });
+      $('out').value = Object.keys(m.files).map((n) => '/* ==== ' + n + ' ==== */\n' + m.files[n]).join('\n\n');
+      logLines(['✓ Exported ' + Object.keys(m.files).length + ' files (v' + m.version + ').']);
+    }
+  };
+</script>
+</body>
+</html>
