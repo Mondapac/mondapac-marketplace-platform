@@ -64,7 +64,9 @@ was considered.
      On a CMS publish webhook it pulls the rendered document through the CMS read API (an
      adapter in `legal/infrastructure`), hashes it and stores it. The CMS never writes to
      api schemas and never depends on api modules. `identity` records acceptance through
-     the `legal` facade.
+     the `legal` facade. *(Amended by ADR-0020: how `identity` reaches `legal` is decided
+     at the `legal` gate; until then `identity` imports no business module, R7 of the
+     identity brief.)*
 5. **Files.** Object storage uses bucket versioning and content-addressed keys (sha256).
    Evidence under legal retention (certification documents, legal-document renders) goes
    to a bucket with Object Lock (retention mode).

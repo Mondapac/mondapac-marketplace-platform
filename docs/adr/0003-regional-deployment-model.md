@@ -20,7 +20,9 @@ Market (AU) is live at launch.
 2. **Mandatory market context.** Every inbound request, background job and consumed event
    resolves to exactly one `market_id` (host/domain mapping; explicit header for API
    clients). Core code has no implicit default market. A stack rejects any Market not in
-   its `HOSTED_MARKETS` configuration (residency guard).
+   its `HOSTED_MARKETS` configuration (residency guard). *(Amended by ADR-0020: the API
+   takes the Market only from the explicit `x-market-id` header; host/domain mapping is
+   done by the tier in front of the API, which overwrites any client-supplied header.)*
 3. **Market-scoped data.** Every market-scoped aggregate carries `market_id` — not only
    Seller/Offer/Order but also Customer account, Cart, Payment, Payout, certification
    issuer registry and tax records. Repositories take a `MarketContext`; unscoped queries

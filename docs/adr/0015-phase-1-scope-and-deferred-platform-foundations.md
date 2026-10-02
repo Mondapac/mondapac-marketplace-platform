@@ -30,7 +30,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
 
    | Deferred | Must land |
    |---|---|
-   | Shared-kernel types (Id, Clock, MarketContext, Result, DomainEvent) and the ADR-0009 value types *(Amended by ADR-0018: plus `ActorContext`.)* | As a "platform foundations" design by the software-architect, approved by the CTO, before the first identity domain code |
+   | Shared-kernel types (Id, Clock, MarketContext, Result, DomainEvent) and the ADR-0009 value types *(Amended by ADR-0018: plus `ActorContext`.)* *(Amended by ADR-0020: plus `CorrelationId` and `CallContext`; the ADR-0009 value types are designed in the approved design of each type's first consumer instead; the fields of `ActorContext` are completed in identity's G2 design.)* | As a "platform foundations" design by the software-architect, approved by the CTO, before the first identity domain code |
    | Money | Before the first slice that handles a price |
    | Temporal polyfill | With Clock (already approved as a dependency by ADR-0008 decision 4) |
    | Request-level market context | Before the first non-platform endpoint; health and docs are explicitly exempt; never a default market |
@@ -47,6 +47,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | `SubjectKeyService` (ADR-0009 decision 8) *(Amended by ADR-0018: row added.)* | In the same change as the first migration whose data design declares a personal-data column |
    | Permission registry in `platform/` *(Amended by ADR-0018: row added.)* | In the same change as the first use case that declares a permission key |
    | CI check that every use case declares its access rule *(Amended by ADR-0018: row added.)* | At the slice named in identity's approved G2 design, no later than the first use case that declares a permission key |
+   | Runtime meaning of the Market `status` values *(Amended by ADR-0020: row added.)* | Before the first deployed environment the public can reach; until then "hosted" (`HOSTED_MARKETS`) is the only gate and `status` has no runtime effect |
 
 4. **`domain-is-pure` is a whitelist.** `domain/` may import only its own `domain/` and the
    shared kernel. This is how "no I/O" in ADR-0008 decision 2 is enforced. Libraries reach

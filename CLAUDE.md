@@ -18,7 +18,8 @@ regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, 
 structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage) and ADR-0015 (Phase 1
 scope; deferred platform foundations and the trigger that forces each one - check it
 before starting a slice). Phase 2 adds ADR-0018 (identity: in-house build, server-side
-sessions, Market-scoped accounts, authorization model). Follow them; change one only through a new superseding ADR.
+sessions, Market-scoped accounts, authorization model) and ADR-0020 (amendments from the
+platform-foundations design). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
