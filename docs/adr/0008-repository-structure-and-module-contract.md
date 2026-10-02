@@ -26,6 +26,7 @@ core/vertical split and the market/time rules visible and machine-checked.
    infra/                    IaC region module (added in Phase 1/7)
    ```
 2. **Module layout** (`apps/api/src/modules/<module>/`)
+   *(Amended by ADR-0018: `contracts/` also holds the module's permission declarations.)*
    ```
    domain/          aggregates, value objects, domain events, domain services
                     (no NestJS, no Prisma, no I/O)
@@ -48,6 +49,9 @@ core/vertical split and the market/time rules visible and machine-checked.
 4. **Time library.** The Temporal API (via polyfill until native in the Node LTS in use)
    backs `Clock` and the local date/time types in `shared-kernel` (ADR-0005 decision 5).
 5. **Communication contract**
+   *(Amended by ADR-0018: facade calls also carry the caller's `ActorContext`; events
+   carry no actor and their handlers run as the system actor; no module keeps a read
+   model of `identity`'s role, assignment or membership data.)*
    - Queries across modules: call the other module's public facade (in-process interface
      from its `contracts/`). No cross-module joins, no reading another module's tables.
    - Reactions/commands across modules: domain events via the outbox (ADR-0006).
