@@ -11,6 +11,8 @@ core/vertical split and the market/time rules visible and machine-checked.
 
 ## Decision
 1. **pnpm workspace monorepo**
+   *(Amended by ADR-0020: `packages/shared-kernel/` also holds `ActorContext` (ADR-0018
+   decision 6), `CorrelationId` and `CallContext`.)*
    ```
    apps/api/                 NestJS modular monolith (roles: api | worker)
    apps/web/                 first vertical storefront + its BFF (Next.js route handlers,
