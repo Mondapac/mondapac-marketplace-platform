@@ -17,7 +17,8 @@ the CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
 structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage) and ADR-0015 (Phase 1
 scope; deferred platform foundations and the trigger that forces each one - check it
-before starting a slice). Follow them; change one only through a new superseding ADR.
+before starting a slice). Phase 2 adds ADR-0018 (identity: in-house build, server-side
+sessions, Market-scoped accounts, authorization model). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,
@@ -31,6 +32,9 @@ strategy implementation, not in core logic.
 - DDD layering per module: presentation -> application -> domain -> infrastructure.
 - Each module owns its own DB schema. NO cross-module table joins or direct repository imports.
   Modules talk via public interfaces or domain events only.
+- Authorization is checked in the application layer (ADR-0018): every use case takes an
+  ActorContext and a MarketContext, declares its access rule (permission keys or a named
+  non-permission rule) and checks resource ownership; controller guards only authenticate.
 - Domain events + Outbox pattern from day one (Kafka/RabbitMQ adapter behind an interface).
 - Checkout = Saga (Order -> Payment -> Inventory -> Shipping). CQRS only for Catalog/Search reads.
 

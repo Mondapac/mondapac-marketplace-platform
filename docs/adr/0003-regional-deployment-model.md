@@ -26,7 +26,9 @@ Market (AU) is live at launch.
    issuer registry and tax records. Repositories take a `MarketContext`; unscoped queries
    fail in tests. Indexes lead with `market_id`.
 4. **Market-scoped identity.** A customer/seller account belongs to one Market and lives
-   in that Market's Region Stack; there is no global cross-region user table.
+   in that Market's Region Stack; there is no global cross-region user table. *(Amended
+   by ADR-0018: admin accounts too; every account, of any type, belongs to exactly one
+   Market.)*
 5. **Market configuration as code.** `config/markets/<code>` is versioned in the repo,
    validated at boot and seeded to the database; secrets are per Region Stack.
 6. **Region-portable data.** IDs are globally unique (UUIDv7); timestamps stored in UTC;
