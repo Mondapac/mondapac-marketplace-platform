@@ -5,17 +5,24 @@ description: Use when changing any file in the MondaPac Marketplace Platform rep
 
 # MondaPac repo doc change
 
-Other sessions may be working in the same repo folder at the same time.
+Work runs in parallel tracks, each with its own clone folder
+(`docs/process/parallel-tracks.md`, CLAUDE.md rule 13). Other sessions work at the same
+time, and a session can still be connected to a folder that is not its own track's.
 
 ## Before editing
-1. Run `git status -sb` and `git log --oneline -5 --all --decorate`.
-   - Note the current branch and any branch another session is using. The Project docs `claude/phase-*-status.md` record this.
-2. Never switch the shared working tree away from a branch another session uses. Prefer a worktree outside the shared folder:
-   `git worktree add -b <type>/<topic> "$HOME/wt-<topic>" <base-branch>`
-   - Stack the new branch on the latest unmerged work; ask the owner if unclear.
-   - Remove the worktree when done.
-3. Read the files you will change in full.
-   - Check `docs/adr/` for the next free ADR number. 0011 is reserved for the CMS product choice.
+1. Read the board, the Project doc `claude/tracks.md`: which track holds which branch,
+   which shared files are held, and which ADR numbers are reserved.
+2. Run `git status -sb` and `git log --oneline -5 --all --decorate`.
+   - From a Cowork device shell add `--no-optional-locks` (`git --no-optional-locks status -sb`); a plain `git status` there can leave a lock file the session cannot delete.
+   - Note the current branch and any branch another session is using. The board and the Project docs `claude/*-status.md` record this.
+3. Check out a branch only in your own track's folder. In any other folder never switch
+   the working tree and do not add a worktree (it writes into that folder's `.git`);
+   commit in your own workspace instead and hand the branch over with a git bundle (see
+   Committing).
+   - Cut the branch from the latest `origin/main`. Stack it on unmerged work only when it depends on that work; ask the owner if unclear.
+4. Read the files you will change in full.
+   - Reserve the next free ADR number on the board before writing an ADR. 0011 is reserved for the CMS product choice.
+   - Before changing a shared file (list in `docs/process/parallel-tracks.md`), record it on the board as held by your track and keep that change in a small PR of its own.
 
 ## Editing rules
 - **Line endings:** `.gitattributes` stores every text file with LF; older Markdown files
@@ -36,8 +43,9 @@ Other sessions may be working in the same repo folder at the same time.
   - End with the session's attribution lines.
 - **Outputs folder:** never commit the `Claude outputs/` folder; it is gitignored. Check `git status --short` first.
 - **Stale lock:** if a stale `.git/index.lock` cannot be deleted, ask for delete permission on the folder, naming only that lock file.
+- **Bundles:** when the commits were made outside the owner's folder, hand them over as a git bundle with a new file name each time (a bundle re-sent under the same name can arrive stale). `*.bundle` is gitignored. Give the owner `git bundle verify "<bundle>"`, then `git fetch "<bundle>" <branch>:<branch>` (or `git pull --ff-only "<bundle>" <branch>` if that branch is checked out), then `git push -u origin <branch>`.
 - **Pushing:** do not push. The owner pushes and merges. Report the branch, the commit hashes and the merge order of stacked branches.
 
 ## After committing
-- Update the Project status doc `claude/phase-<n>-status.md`. It has no patch operation: read it, merge your change in, write it back in full.
+- Update your row on the board `claude/tracks.md` and the Project status doc of your track (`claude/phase-<n>-status.md`, `claude/design-status.md`, …). They have no patch operation: read the doc again right before writing, merge your change in, write it back in full.
 - Reply to the owner in Persian and call them «صاحب پروژه». Say what changed, the branch and commit, what is not yet pushed, and the open items.

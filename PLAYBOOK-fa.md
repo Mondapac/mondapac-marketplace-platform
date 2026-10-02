@@ -136,7 +136,7 @@ Order (state machine: Pending→Paid→Fulfilling→Shipped→Delivered/Cancelle
 - **Subagents** (`.claude/agents/`): مثلاً `security-reviewer` (فقط خواندن) برای مرور امنیتی و `test-writer`.
 - **Hooks:** اجرای خودکار lint و تست بعد از هر ویرایش؛ برخلاف CLAUDE.md که فقط پیشنهاد است، Hook اجباری اعمال می‌شود.
 - **MCP:** اتصال به GitHub (issue/PR) یا دیتابیس توسعه.
-- **Git worktrees:** اجرای موازی چند جلسه روی شاخه‌های جدا (مثلاً Notification در کنار Search).
+- **مسیرهای کاری موازی:** اجرای موازی چند جلسه، هر کدام با شاخه و پوشهٔ clone خودش (مثلاً Notification در کنار Search)؛ قواعد در `docs/process/parallel-tracks.md`.
 - **`/memory`:** مرور و ویرایش حافظهٔ خودکار Claude Code.
 
 نمونهٔ subagent بازبین امنیتی (`.claude/agents/security-reviewer.md`):
