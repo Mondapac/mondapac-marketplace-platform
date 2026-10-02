@@ -34,7 +34,7 @@
 
 | ماژول | سطح | فاز PLAYBOOK | برگه | G1 | G2 |
 |---|---|---|---|---|---|
-| identity | A | ۲ | — | — | — |
+| identity | A | ۲ | [`identity/brief.md`](identity/brief.md) | تأیید (2026-10-02) | — |
 | sellers | A | ۳ | — | — | — |
 | certification | A | ۳ | — | — | — |
 | catalog | A | ۳ | — | — | — |
