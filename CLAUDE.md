@@ -109,6 +109,14 @@ strategy implementation, not in core logic.
     cto. When no skill fits a recurring procedure, propose a new skill to the owner.
     Project skills (in .claude/skills/): mondapac-repo-doc-change (any repo doc change),
     mondapac-module-gate (ADR-0013 gates), mondapac-role-review (team review of a proposal).
+    Account skill mondapac-design-system-update: any new or changed UI (ADR-0017).
+12. Design system first (ADR-0017, owner decision 2026-10-02): the Figma file "MondaPac
+    Design System" is the source of truth for panel UI. Whenever a module, page, feature or
+    slice adds or changes UI, extend the design system in Figma first (components, variants,
+    states, tokens, icons, templates), export the tokens to docs/design/tokens/ and update
+    docs/design/figma/README.md, following docs/design/figma/update-procedure.md (account
+    skill mondapac-design-system-update). Frontend code uses
+    only exported tokens and library components; record the impact in brief section 12.
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
@@ -171,3 +179,5 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - OpenAPI updated; structured logging + correlation id on new endpoints
 - Authorization checked (RBAC + resource ownership); input validated
 - Short note added to docs/ if behavior or architecture changed
+- UI slices: built only from library components and exported tokens; any new UI was added
+  to the Figma design system first, tokens exported, plugin Audit file clean (ADR-0017)

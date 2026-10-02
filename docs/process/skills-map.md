@@ -46,6 +46,7 @@
 | جمع‌بندی نتایج مصاحبه و بازخورد | `design:research-synthesis`، `product-management:synthesize-research` | جعفر، هادی |
 | نقد طرح‌ها | `design:design-critique` | رضا (ui-ux-designer)، جعفر |
 | سیستم طراحی و توکن‌ها | `design:design-system` | رضا |
+| به‌روزرسانی سیستم طراحی Figma با هر صفحه، امکان یا کامپوننت تازه (ADR-0017) | `design:design-system` + skill اکانت `mondapac-design-system-update` (روال: `docs/design/figma/update-procedure.md`) | رضا، جعفر → مهدی |
 | تحویل طرح به توسعه | `design:design-handoff` | رضا → مهدی |
 | دسترس‌پذیری (WCAG 2.1 AA) | `design:accessibility-review` | رضا، ساجد |
 | متن رابط، پیام خطا، **متن نشان‌های حلال و افشا (ADR-0012)** | `design:ux-copy` | رضا، جعفر (تأیید نهایی حقوقی) |

@@ -2,7 +2,8 @@
 
 **Status:** Accepted — 2026-10-02 (owner decision: every future UI/UX change happens in Figma)
 **Relates to:** ADR-0013 (module readiness gates), `docs/design/frontend-kickoff.md`,
-`docs/design/figma/README.md`, `docs/design/tokens/`
+`docs/design/figma/README.md`, `docs/design/tokens/`,
+`docs/design/figma/update-procedure.md`
 
 ## Context
 The owner approved panel direction A with the components of direction C and asked for a
@@ -40,6 +41,12 @@ plan:
 5. **Change flow.** Changes go Sandbox → review → publish → Export tokens → PR. The review
    checklist covers tokens only, all states, both themes, touch density, contrast, and a
    clean Audit. Versions follow SemVer, with a changelog page in the file.
+6. **Upkeep in production.** Whenever a module, page, feature or slice adds or changes UI,
+   the design system is extended in Figma first, and the tokens are exported before the
+   frontend builds it. The procedure is `docs/design/figma/update-procedure.md`, which the
+   account skill `mondapac-design-system-update` loads.
+   Section 12 of each module brief records the design-system impact at G2, and the slice
+   Definition of Done checks it.
 
 ## Consequences
 - Designers and developers share one vocabulary: Figma variable names equal CSS custom
