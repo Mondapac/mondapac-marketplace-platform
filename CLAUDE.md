@@ -15,8 +15,7 @@ vertical, country, currency, or language - see:
 Phase 0 decisions are Accepted in docs/adr/0001..0010, 0012 and 0013 (0011 is reserved for
 the CMS product choice) (extensibility, market, multi-market
 regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, repo
-structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage,
-Proposed) and ADR-0015 (Phase 1
+structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage) and ADR-0015 (Phase 1
 scope; deferred platform foundations and the trigger that forces each one - check it
 before starting a slice). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
@@ -80,8 +79,8 @@ strategy implementation, not in core logic.
 - `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
   and drops its own throwaway database)
 - `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).
-- `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev` creates one and regenerates
-  the Prisma client (then add its `down.sql`); `pnpm db:generate` regenerates the client; `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
+- `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev --name <name>` creates one
+  and regenerates the Prisma client (always pass `--name`; then add its `down.sql`); `pnpm db:generate` regenerates the client; `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
 - `pnpm verify` regenerates the Prisma client, then runs typecheck, lint, boundaries, test, test:db and db:check-reversible.
   It is what CI runs; run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)

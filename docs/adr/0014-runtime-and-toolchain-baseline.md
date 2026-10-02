@@ -37,8 +37,8 @@ The Phase 1 skeleton has to pin concrete versions. Three facts constrain the cho
 ## Consequences
 - Every developer machine and the CI image need Node 24.9+. Node 22 cannot run the tests.
 - Tests print Node's "VM Modules is an experimental feature" warning. It is expected.
-- Verified on Linux only so far; Windows and the GitHub Actions runner are unverified
-  until their first run.
+- Verified by the build session on Linux. The owner reported a green GitHub Actions run
+  and a working setup on Windows on 2026-10-01.
 - Moving to TypeScript 7 or Prisma 8 is a deliberate upgrade with its own check, not a
   side effect of `pnpm update`.
 

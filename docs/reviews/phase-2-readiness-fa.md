@@ -16,7 +16,7 @@ PostgreSQL 16. روی Windows و GitHub چیزی اجرا نشده است.
 | `pnpm test:db` | ۱۶ تست موفق |
 | `pnpm db:check-reversible` | موفق |
 | `pnpm verify` | موفق |
-| `pnpm build`، `pnpm dev`، `pnpm start` | موفق؛ `/health/ready` پاسخ 200 |
+| `pnpm build`، `pnpm dev`، و `pnpm start` داخل `apps/api` | موفق؛ `/health/ready` پاسخ 200 |
 | `pnpm db:migrate:dev` | موفق، ولی اشکال ۲ را داشت |
 | `docker compose up -d` | **اجرا نشد** (این محیط به Docker Hub دسترسی ندارد)؛ اشکال ۱ با بررسی رجیستری پیدا شد |
 
@@ -29,7 +29,7 @@ PostgreSQL 16. روی Windows و GitHub چیزی اجرا نشده است.
 1. **`docker compose up -d` بالا نمی‌آمد.** image `minio/minio` دیگر در Docker Hub وجود
    ندارد. سرویس MinIO از `docker-compose.yml` حذف شد، چون هنوز هیچ کدی از ذخیره‌سازی فایل
    استفاده نمی‌کند. انتخاب جایگزین به اولین برشی که فایل ذخیره می‌کند (فاز ۳) موکول شد:
-   ADR-0016 (وضعیت: Proposed، منتظر تأیید مالک پروژه).
+   ADR-0016 (تأییدشده با تصمیم مالک پروژه در 2026-10-01).
 2. **بعد از `pnpm db:migrate:dev` کلاینت Prisma قدیمی می‌ماند** و typecheck بعدی خطا
    می‌داد. حالا این دستور کلاینت را هم بازتولید می‌کند و `pnpm verify` و `pnpm build` هم
    اول کلاینت را بازتولید می‌کنند.

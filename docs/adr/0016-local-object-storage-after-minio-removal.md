@@ -1,7 +1,6 @@
 # ADR-0016: Local Object Storage After the Removal of MinIO Images
 
-**Status:** Proposed — 2026-10-01. Decision 1 is applied because the old setup cannot
-start; decisions 2 and 3 need the owner's confirmation (they change a stack default).
+**Status:** Accepted — 2026-10-01 (owner decision).
 **Amends:** ADR-0004 decision 1 ("MinIO locally"), ADR-0006 consequences (the list of
 Docker Compose services), CLAUDE.md stack line
 **Relates to:** ADR-0015 (object-storage client deferred until first use), CERT-10

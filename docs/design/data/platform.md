@@ -279,7 +279,8 @@ no schema effect (drift check empty).
   `audit_log_after_check`): done in `apps/api/test/db/platform.db-spec.ts` (16 database
   tests); QC confirmed by removing the constraints that the tests then fail.
 - Condition 1 (CI runs `pnpm test:db` and `pnpm db:check-reversible` against `postgres:17`):
-  `.github/workflows/ci.yml` now exists and runs `pnpm verify`, which includes both. It has
-  not run on GitHub yet, so this condition stays open until the first green run.
+  `.github/workflows/ci.yml` runs `pnpm verify`, which includes both. The owner reported the
+  first green run on `main` on 2026-10-01, which closes this condition and the PostgreSQL
+  16 versus 17 gap. (The session cannot see GitHub; this rests on the owner's report.)
 - The statements above in this section that no workflow exists and that there are 13 tests
   describe the state at sign-off time.

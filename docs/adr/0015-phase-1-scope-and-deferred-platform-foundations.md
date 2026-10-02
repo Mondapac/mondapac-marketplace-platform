@@ -1,7 +1,7 @@
 # ADR-0015: Phase 1 Scope and Deferred Platform Foundations
 
-**Status:** Accepted by the CTO — 2026-10-01 (Phase 1 review). Owner confirmation pending,
-because decision 1 changes the timing set in the owner-accepted ADR-0009.
+**Status:** Accepted — 2026-10-01 (CTO at the Phase 1 review; owner decision 2026-10-01
+confirming the change to the timing set in ADR-0009).
 **Amends:** ADR-0009 decision 8 (last sentence), ADR-0008 decision 6 (the "created in
 Phase 1" wording, for the per-model rule only)
 **Relates to:** ADR-0003, ADR-0004, ADR-0006, ADR-0013, ADR-0014,
@@ -41,7 +41,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | `config/service-areas/` and `config/holidays/` (ADR-0005) | With the first slice that evaluates a ServiceArea or a business-day rule |
    | Extension-point registry and `verticals/<vertical>/` content (ADR-0001) | With the first extension point a module defines |
    | Auth guards | With the identity module (Phase 2), after its gates |
-   | Baseline HTTP hardening beyond removing `X-Powered-By` (security headers, explicit body limits, logging before body parsing, CORS, trust proxy, rate limiting) | Before the first authenticated endpoint; adding `helmet` is a new dependency and needs the owner's approval |
+   | Baseline HTTP hardening beyond removing `X-Powered-By` (security headers, explicit body limits, logging before body parsing, CORS, trust proxy, rate limiting) | Before the first authenticated endpoint. The owner approved adding `helmet` for the security headers (owner decision 2026-10-01) |
    | `infra/` infrastructure as code | Phase 7 |
    | Redis and object-storage clients | When code first uses them; no environment variables before that. The local object-storage server is chosen then (ADR-0016) |
 

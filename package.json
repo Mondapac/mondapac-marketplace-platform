@@ -19,7 +19,7 @@
     "test:db": "pnpm --filter @mondapac/api test:db",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "db:migrate:dev": "prisma migrate dev && prisma generate",
+    "db:migrate:dev": "node scripts/migrate-dev.mjs",
     "db:check-reversible": "node scripts/check-migrations-reversible.mjs",
     "verify": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm test:db && pnpm db:check-reversible",
     "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs"
