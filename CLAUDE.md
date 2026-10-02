@@ -107,7 +107,8 @@ strategy implementation, not in core logic.
     Project rules, ADRs and gates take precedence over skill defaults; report conflicts to
     cto. When no skill fits a recurring procedure, propose a new skill to the owner.
     Project skills (in .claude/skills/): mondapac-repo-doc-change (any repo doc change),
-    mondapac-module-gate (ADR-0013 gates), mondapac-role-review (team review of a proposal).
+    mondapac-module-gate (ADR-0013 gates), mondapac-role-review (team review of a proposal),
+    mondapac-track-session (start and end of every working session, rule 13).
     Account skill mondapac-design-system-update: any new or changed UI (ADR-0017).
 12. Design system first (ADR-0017, owner decision 2026-10-02): the Figma file "MondaPac
     Design System" is the source of truth for panel UI. Whenever a module, page, feature or
@@ -116,6 +117,15 @@ strategy implementation, not in core logic.
     docs/design/figma/README.md, following docs/design/figma/update-procedure.md (account
     skill mondapac-design-system-update). Frontend code uses
     only exported tokens and library components; record the impact in brief section 12.
+13. Parallel work tracks (owner decision 2026-10-02): the platform is built in parallel
+    tracks - backend, frontend, design, product - each in its own session, on its own
+    branch, in its own clone folder (docs/process/parallel-tracks.md). At the start of a
+    session read the Project doc claude/tracks.md (the board) and work only inside your
+    track's paths. Change a shared file (this file, docs/modules/README.md, ADR numbers,
+    root tooling and the lockfile, CI, compose, .claude/; full list in that doc) only in
+    a small PR of its own that is announced on the board first. One slice = one branch =
+    one PR. Never check out a branch or write in another track's folder. At the end
+    update the board and your track's status doc (project skill mondapac-track-session).
 
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,

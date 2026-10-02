@@ -6,6 +6,9 @@ Thumbs.db
 # Claude desktop app output mirror
 Claude outputs/
 
+# Git bundles that sessions use to hand branches to the owner
+*.bundle
+
 # Build and test output
 dist/
 coverage/
