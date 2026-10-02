@@ -513,3 +513,4 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 ## تاریخچهٔ تغییرات بعد از دروازه
 | تاریخ | تغییر | مرور توسط | تصمیم |
 |---|---|---|---|
+| ۳ اکتبر ۲۰۲۶ | طراحی «platform foundations» (`docs/design/domain/platform-foundations.md`) و ADR-0020 تأیید شد. اثر بر بخش ۱۱ این برگه: نوع‌های ADR-0009 (`Revision<T>`، `ContentHash`، `EffectivePeriod`) دیگر در طراحی platform foundations طراحی نمی‌شوند و هر کدام با اولین مصرف‌کننده‌اش طراحی می‌شود؛ `DomainEvent`، `ActorContext` و `CallContext` در برش ۱ ساخته می‌شوند، نه برش ۰؛ قاعدهٔ مرزی R7 (‏`identity` هیچ ماژول کسب‌وکاری را import نمی‌کند) از برش ۰ در CI اجرا می‌شود؛ rate limiting بعد از فهرست وابستگی‌های G2 و قبل از ادغام endpoint برش ۱ می‌آید؛ API شناسهٔ correlation را همیشه خودش می‌سازد (ADR-0020 تصمیم ۸). دامنه و قوانین سخت این برگه تغییری نکرد | Ali، Hassan، Mojtaba، Hossein | تأیید Ali (cto)؛ برای اطلاع صاحب پروژه در گزارش وضعیت فاز ۲ |
