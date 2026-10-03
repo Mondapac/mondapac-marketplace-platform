@@ -1,6 +1,6 @@
 # برگهٔ ماژول: identity
 
-**سطح:** A  **فاز PLAYBOOK:** ۲  **وضعیت:** G1 تأیید (۲ اکتبر ۲۰۲۶)؛ G2 شروع نشده
+**سطح:** A  **فاز PLAYBOOK:** ۲  **وضعیت:** G1 تأیید (۲ اکتبر ۲۰۲۶)؛ G2 تأیید (۳ اکتبر ۲۰۲۶)
 **مالک برگه:** Hadi (product-owner)  **ADRهای مرتبط:** ADR-0001، ADR-0003 (تصمیم ۲ و ۴)، ADR-0004 (تصمیم ۱ و ۷)، ADR-0005، ADR-0006، ADR-0008، ADR-0009 (تصمیم ۴ و ۶)، ADR-0013، ADR-0015، ADR-0017
 
 > این برگه سند **تصمیم** است، نه طراحی. جدول داده، API و انتخاب کتابخانه در آن نیست و در G2 می‌آید.
@@ -470,16 +470,41 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 
 ## ۱۲. اثر بر سیستم طراحی (ADR-0017)
 
-جدول در G2 توسط Reza و Jafar پر و تأیید می‌شود (روال: `docs/design/figma/update-procedure.md`).
+جدول در G2 پر شد: Reza آن را نوشت و Jafar تأیید کرد (۳ اکتبر ۲۰۲۶؛ روال: `docs/design/figma/update-procedure.md`). متن کامل، صفحه‌ها و حالت‌ها در `docs/modules/identity/ux.md` بخش ۴ است؛ این جدول رونوشت همان است.
 
 | عنصر صفحه | کامپوننت موجود در Figma | تغییر لازم | نوع نسخه |
 |---|---|---|---|
-| (در G2 پر می‌شود) | | | |
+| Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark | MINOR 1.1.0 |
+| Brand mark | Drawn inside `Sidebar`; not a component | New component `BrandMark`; `Sidebar` uses the instance | MINOR 1.1.0 |
+| Account-type tag, statuses, role type | `Badge` (Tone, Leading, Label, Icon swap) | None. `StatusBadge` holds order statuses and is not used | — |
+| Label, helper and error text of a field | `Input` has no label, helper or error message | New component `Field` (Label, Optional mark, Helper, Error with icon, Counter) wrapping Input, Textarea, Select | MINOR 1.1.0 |
+| Email and name inputs | `Input`, 6 states; its search icon can be hidden | None | — |
+| Password field | None | `Input`: new variant `Type=Password` with a show/hide `IconButton` | MINOR 1.1.0 |
+| One-time code and backup code | None | `Input`: new variant `Type=Code` (mono text style). One field, not six boxes | MINOR 1.1.0 |
+| Buttons | `Button`: Primary, Secondary, Destructive, Ghost × Sm, Md, Touch × Default, Hover, Focus, Disabled | New `State=Loading`; new `Variant=Link` for text actions such as "Forgot password?" | MINOR 1.1.0 |
+| Error summary, banners, status banner | `InfoBanner` (Info, Attention, Critical, Success; title, body, action) | None | — |
+| QR code plate | None | Composed in the template; new colour token `bg/qr` (white in both themes) | MINOR 1.1.0 |
+| Auth card width | `size/*` has no card width | New dimension token `size/auth-card` | MINOR 1.1.0 |
+| Step label, backup-code list, checkbox with label | Text styles, `Checkbox` | Composed in the template; no component | — |
+| Icons | 58, including `eye`, `store`, `shield-check`, `users`, `clock`, `ban`, `check`, `alert-circle`, `download`, `printer`, `send`, `x` | Add 9: `eye-off`, `lock`, `mail`, `key`, `user`, `log-out`, `copy`, `smartphone`, `trash` | MINOR 1.1.0 |
+| Reason shown to the seller | None | New component `ReasonQuote` (label, quoted text, date); used in A10, S1 and D4 | MINOR 1.1.0 |
+| Steps on S1 | `ChecklistItem` (Done; To do with two fixed buttons) | New variants `State=Waiting` and `State=Needs attention` (Jafar 7); BOOLEAN `Show actions`; TEXT for one action label | MINOR 1.1.0 |
+| Limited shell on S1 | `Sidebar`, `Topbar`, `NavItem` | `Topbar`: BOOLEAN `Show search` and `Show notifications` | MINOR 1.1.0 |
+| Account menu and row action menus | `Topbar` user block has no menu; `TableCell Type=Actions` holds only an `IconButton` | New components `Menu` and `MenuItem` (Default, Hover, Focus, Disabled, Destructive; an optional description line, so the reason for a disabled item can be read on touch, Jafar 9) | MINOR 1.1.0: sign out (slice 2) and S1's account menu need it |
+| Role picker | None | New component `Select` (trigger states as `Input`; list built from `MenuItem`, plus Selected) | MINOR 1.2.0 |
+| Reason field | None | New component `Textarea` (states as `Input`) | MINOR 1.2.0 |
+| Dialogs D1 to D6 | None | New component `Dialog` (Size Sm, Md; Tone Default, Destructive; Layout Centred, or Sheet below 480 px, Jafar 9); tokens `bg/scrim`, `size/dialog-sm`, `size/dialog-md`; effect `Elevation/Floating` | MINOR 1.2.0 |
+| Confirmation after an action | None | New component `Toast` (Success, Critical) | MINOR 1.2.0 |
+| Tables on P1, B1, B2 | `Tab`, `TableCell`, `Pagination`, `IdentityTile`, `CardHeader` | `TableCell`: new `State=Loading` (skeleton) | MINOR 1.2.0 |
+| Empty lists | None (README section 14 lists Empty and Loading as open) | New component `EmptyState` (icon, title, body, optional action) | MINOR 1.2.0 |
+| Permission list on B3; later the multi-select of `sellers` | `CardHeader`, `Checkbox`, `Badge` | New component `CheckboxRow` (label, description, trailing `Badge`; Default, Hover, Focus, Disabled, Read-only), the first draft's `PermissionRow` made general (Jafar 9) | MINOR 1.2.0 |
+| Reason beside a disabled control | `Tooltip` is the chart tooltip (label and value) | Inline helper text; in menus the `MenuItem` description line. The `Tooltip` change is deferred (Jafar 9) | — |
+| Emails; customer screens | Outside the panel design system | None now | — |
 
 **صفحه‌هایی که این ماژول لازم دارد (برای برنامه‌ریزی طراحان):**
 
 قالب‌های فعلی Figma فقط Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board) هستند؛ هیچ صفحهٔ بدون پوسته (بیرون از `AppShell`) برای ورود وجود ندارد. طبق تصمیم صاحب پروژه، صفحه‌های هم‌نام دو پنل یک ساختار دارند.
-طبق README سیستم طراحی، کتابخانه هنوز Dialog، Select، Textarea، فیلد رمز، ورودی کد و Toast ندارد؛ این صفحه‌ها به آن‌ها نیاز دارند. خودِ فایل Figma برای این برگه بررسی نشده است.
+کمبودهای کتابخانه برای این صفحه‌ها در جدول بالا آمده است (فهرست کامل در `docs/modules/identity/ux.md` بخش ۴).
 
 - **بدون پوسته (قبل از ورود): یک قالب مشترک «Auth» برای هر دو پنل، اول برای عرض گوشی.** هر صفحه نوع حساب را نام می‌برد (تصمیم ۵).
   - Sign in (Admin و Seller؛ با حالت‌های خطا، پیام‌های وضعیت SEL-04، «موقتاً محدود شده‌اید» با زمان انتظار، و «نشست تمام شده»)
@@ -499,8 +524,8 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 - **ایمیل‌ها (بیرون از Figma پنل؛ قالب متنی لازم است؛ هر ایمیل نوع حساب را نام می‌برد):** خوش‌آمد، اطلاع به ادمین، نتیجهٔ تأیید، رد با دلیل، تعلیق با دلیل و رفع تعلیق، تأیید ایمیل، بازیابی رمز، دعوت (فروشنده، Staff، ادمین).
 - **صفحه‌های مشتری (ویترین):** بیرون از دامنهٔ سیستم طراحی فعلی؛ بخش ۸.
 
-- قالب‌های تازه در Figma: (در G2)
-- نسخهٔ سیستم طراحی بعد از این ماژول: (در G2)
+- قالب‌های تازه در Figma (۷): `Auth` و `Seller · Your seller account` (نسخهٔ 1.1.0)؛ `Shared · Members`، `Shared · Roles`، `Shared · Role editor`، `Shared · Account security` و `Shared · No access` (نسخهٔ 1.2.0). P1 قاب فاز ۲ از قالب موجود `Admin · Sellers` است، نه قالب تازه.
+- نسخهٔ سیستم طراحی بعد از این ماژول: 1.2.0 (دو نسخهٔ MINOR: 1.1.0 «Auth» و 1.2.0 «Panel»). هیچ برش frontend قبل از انتشار این دو نسخه در Figma شروع نمی‌شود.
 
 ---
 
@@ -508,9 +533,12 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 | دروازه | شرکت‌کننده‌ها | نتیجه | تاریخ |
 |---|---|---|---|
 | G1 دامنه و امکانات | صاحب پروژه، product-owner، cto، product-designer | **تأیید صاحب پروژه.** Hadi نویسندهٔ برگه است. Ali در مرور دوم «آماده بعد از اصلاح» داد و Hassan (security-tester) «پذیرش با اصلاح»؛ اصلاح‌های هر دو اعمال شد. سه جمله‌بندی که Hadi هنگام اعمال دقیق‌تر کرد (R9: «در حوزهٔ فروشنده»؛ R10: حذف کامل ردیف G2 مربوط؛ R12: شرط «فروشندهٔ تأییدشده» فقط برای دعوت Staff) بعد از آن مرور نوشته شده و Ali و Hassan در G2 تأییدش می‌کنند. Jafar (product-designer) نسخهٔ اول را «پذیرش با اصلاح» داد و نسخهٔ نهایی را ندیده است. | 2026-10-02 |
-| G2 طراحی | software-architect، cto، database-designer، ui-ux-designer، security-tester | | |
+| G2 طراحی | software-architect، cto، database-designer، ui-ux-designer، security-tester، product-designer؛ صاحب پروژه برای دو سؤال | **تأیید Ali.** Hassan و Jafar بررسی نهایی را تأیید کردند. سندها: `docs/design/domain/identity.md`، `docs/design/domain/platform-persistence-and-events.md`، `docs/design/data/identity.md`، `docs/modules/identity/ux.md`. ترتیب برش‌ها: طراحی دامنه ۱۲.۱ (۱a تا ۱d، ۸a و ۸b). ADR-0022 و ADR-0023 پذیرفته شد. سؤال‌های صاحب پروژه (طراحی دامنه ۱۴.۴): نقش‌های آمادهٔ ۶+۶ به‌عنوان شروع تأیید شد؛ یک ایمیل پشتیبانی برای هر Market با بررسی هویت مکتوب قبل از بازنشانی عامل دوم صاحب فروشگاه تأیید شد (تصمیم صاحب پروژه، ۳ اکتبر ۲۰۲۶). فهرست وابستگی‌ها بعد از spikeهای ۱، ۳ و ۴ به صاحب پروژه می‌آید و باید قبل از ادغام برش ۱d تأیید شود | 2026-10-03 |
 
 ## تاریخچهٔ تغییرات بعد از دروازه
 | تاریخ | تغییر | مرور توسط | تصمیم |
 |---|---|---|---|
 | ۳ اکتبر ۲۰۲۶ | طراحی «platform foundations» (`docs/design/domain/platform-foundations.md`) و ADR-0020 تأیید شد. اثر بر بخش ۱۱ این برگه: نوع‌های ADR-0009 (`Revision<T>`، `ContentHash`، `EffectivePeriod`) دیگر در طراحی platform foundations طراحی نمی‌شوند و هر کدام با اولین مصرف‌کننده‌اش طراحی می‌شود؛ `DomainEvent`، `ActorContext` و `CallContext` در برش ۱ ساخته می‌شوند، نه برش ۰؛ قاعدهٔ مرزی R7 (‏`identity` هیچ ماژول کسب‌وکاری را import نمی‌کند) از برش ۰ در CI اجرا می‌شود؛ rate limiting بعد از فهرست وابستگی‌های G2 و قبل از ادغام endpoint برش ۱ می‌آید؛ API شناسهٔ correlation را همیشه خودش می‌سازد (ADR-0020 تصمیم ۸). دامنه و قوانین سخت این برگه تغییری نکرد | Ali، Hassan، Mojtaba، Hossein | تأیید Ali (cto)؛ برای اطلاع صاحب پروژه در گزارش وضعیت فاز ۲ |
+| ۳ اکتبر ۲۰۲۶ | افزوده‌های داخل دامنهٔ G1: فعال‌سازی دوبارهٔ حساب؛ ایمیل‌های E12 تا E16 و صفحهٔ A11؛ تأیید ایمیل مشتری قبل از اولین ورود؛ مصرف رویدادهای خودِ `identity` برای ایمیل (بخش ۶: «هیچ» یعنی رویداد ماژول‌های دیگر) | Ali، Hassan | تأیید؛ برای اطلاع صاحب پروژه |
+| ۳ اکتبر ۲۰۲۶ | «تکرار رمز» SEL-01 حذف شد؛ یک فیلد با نمایش/پنهان | Jafar، Ali | تأیید |
+| ۳ اکتبر ۲۰۲۶ | مالکیت وضعیت دسترسی (بخش ۳ و ۶) قطعی شد: `identity`؛ قرارداد «اجازهٔ فروش» در `sellers` (ADR-0022) | Ali، Mohammad، Hassan | تأیید |

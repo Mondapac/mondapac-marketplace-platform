@@ -5,6 +5,7 @@
 Hassan (security-tester), Mojtaba (database-designer) and Hossein (backend-developer). Slice 0
 (section 7) may be coded from this document. Section 6 is a proposal to identity G2 and binds
 only once G2 approves it; the fields of `ActorContext` are written back after G2.
+Section 6 and 3.4 written back from identity's approved G2 design, 2026-10-03.
 **Ground truth:** ADR-0001, ADR-0003 to ADR-0006, ADR-0008, ADR-0009, ADR-0014, ADR-0015 and
 ADR-0018 (decision numbers are cited where used); ADR-0020 ("Platform foundations amendments",
 accepted with this design; cited where a decision of section 12 needs it);
@@ -124,7 +125,15 @@ Prisma default, in no key or index; new tables mirror both patterns as CHECK con
 ```ts
 type ActorContext = AnonymousActor | SystemActor | AuthenticatedActor;
 // AnonymousActor: { kind: 'anonymous'; marketId }   SystemActor: { kind: 'system'; marketId }
-// AuthenticatedActor: fields at identity G2; always has `marketId` and an account id
+type Population = 'customer' | 'seller' | 'admin'; // 'seller' = Seller Owner and Staff
+interface AuthenticatedActor {
+  readonly kind: 'authenticated';
+  readonly marketId: MarketId; // the Market of the account and of the session
+  readonly population: Population;
+  readonly accountId: Id<'Account'>;
+  readonly sessionId: Id<'Session'>; // an id, never the token
+  readonly sellerId: Id<'Seller'> | null; // set if and only if population is 'seller'
+}
 ```
 Who is acting, as identifiers (ADR-0018 decision 4). Whatever fields G2 gives it:
 
@@ -135,7 +144,7 @@ Who is acting, as identifiers (ADR-0018 decision 4). Whatever fields G2 gives it
 | 3 | Identifiers and enumerations only. Roles and permissions are read by `identity` on every request (ADR-0018 decision 2, R4); they do not travel in the context |
 | 4 | Minted (3.7). Anonymous and system actors are built by `platform/` entry adapters; authenticated actors only by `identity`'s implementation of the port in 6.3, in one file |
 | 5 | The system kind has no account id (`platform.audit_log`: `SYSTEM` rows have no `actor_id`). For acting-as, the real admin stays the actor and the impersonated account is an extra identifier (`docs/design/data/platform.md` 3.2); nothing more is decided here |
-| Open | For G2 (I1): the population discriminator, the account id, any session reference, acting-as, and the seller id of a seller-side account (ADR-0018 decision 4 takes ownership "from `ActorContext`, never from input", so it must be there). The complete type is approved at G2 and written back into this section (ADR-0018 decision 6 puts `ActorContext` in this design) |
+| 6 | Decided at identity G2 (I1): `kind: 'authenticated'`, `marketId`, `population` (`customer`, `seller` or `admin`), `accountId`, `sessionId` (an id, never the token) and `sellerId` (set if and only if the population is `seller`, from the active membership). Roles, permissions, seller state and second-factor status never travel in it; `actingAs` is reserved for SEL-08. Its rules: identity design section 4. |
 
 ### 3.5 `Result`
 `type Result<T, E> = { ok: true; value: T } | { ok: false; error: E }` (fields read-only), with
@@ -240,7 +249,7 @@ interface SubjectKeyService {
 | 9 | **No cache of unwrapped keys across requests** in Phase 2: a key destroyed by one process must not stay usable in another (the reasoning of ADR-0018 decision 2). Cost: one unwrap per operation |
 | 10 | **`KeyWrapper`** (`wrap`, `unwrap`) takes a binding context (market, subject, key version), so a wrapped key moved to another row does not unwrap. The local and CI stand-in refuses to start in production |
 | 11 | **Not the port's job:** deciding whether erasure is allowed (legal retention follows the Market's retention configuration first; CUS-03 is P2), and erasing backups (ADR-0009 decision 6) |
-| 12 | **Algorithms** (Hassan; final at G2 with test vectors on Node 24.9.0): AES-256-GCM with a random 96-bit nonce and `authTagLength: 16` on both sides; HKDF-SHA-256 subkeys with separate encryption and hash labels; length-prefixed associated data; HMAC-SHA-256, untruncated; a versioned envelope |
+| 12 | **Algorithms** (Hassan; final at G2 with test vectors on the minimum Node version): AES-256-GCM with a random 96-bit nonce and `authTagLength: 16` on both sides; HKDF-SHA-256 subkeys with separate encryption and hash labels; length-prefixed associated data; HMAC-SHA-256, untruncated; a versioned envelope |
 | 13 | **Placement:** the port, the service and `KeyWrapper` in `platform/subject-keys/`; the Prisma store of the key table in `platform/persistence/`, behind an interface declared in `platform/subject-keys/`, so the existing persistence rules stay unchanged |
 
 | Not decided here | By whom |
@@ -321,7 +330,7 @@ type CallContext = { market: MarketContext; actor: ActorContext; correlationId: 
 
 ## 6. Authorisation seams in `platform/` (proposal to identity G2)
 
-**Status: proposed to identity G2; binding once G2 approves.** The signatures are provisional.
+**Status: approved at identity G2, 2026-10-03, with the changes of `docs/design/domain/identity.md` 5.1 (6.2 row 1, 6.3).** The mechanism is identity design 5.2.
 Everything lives in `platform/authz/`. `platform/` imports no module (ADR-0018 decision 4);
 nothing enforces that today, and rule 1 of 8.2 does from slice 0.
 
@@ -360,7 +369,7 @@ the closed set: a CTO decision that amends ADR-0018 decision 4.
 
 | # | Semantics |
 |---|---|
-| 1 | The system actor satisfies only `system`; the anonymous actor satisfies only `anonymous`. `permissions` needs an authenticated actor that holds every listed key |
+| 1 | The system actor satisfies only `system`. `anonymous` means "no authentication required": it admits the anonymous actor and an authenticated one, never the system actor, and `platform/authz` passes the Market's anonymous actor to the use case, so nothing branches on, or is audited as, a signed-in visitor (identity G2). `permissions` needs an authenticated actor that holds every listed key |
 | 2 | `own-resources` covers what the acting account itself owns; in Phase 2 that is its credentials, sessions and second factor. Resources of a seller or of the platform always need `permissions`: otherwise the limits of a Staff or admin role are bypassed. A customer account's later resources join this kind at that module's gate (C6) |
 | 3 | `platform/authz` decides `anonymous`, `system` and the Market comparison itself. The `AuthorisationCheck` port is called only for authenticated actors |
 | 4 | No kind replaces the ownership check inside the use case (R6) |
@@ -372,7 +381,7 @@ type Rejected = { readonly code: 'credential.rejected' };
 interface Authenticator {
   authenticate(
     market: MarketContext,
-    credential: string | undefined,
+    credential: { token: string; transport: 'cookie' | 'bearer' } | undefined,
   ): Promise<Result<AnonymousActor | AuthenticatedActor, Rejected>>;
 }
 interface AuthorisationCheck {
@@ -385,7 +394,7 @@ interface AuthorisationCheck {
 | 2 | The actor guard is generic platform code: it runs after `MarketContextGuard`, calls `Authenticator` and attaches the `ActorContext`. It never authorises (ADR-0018 decision 4), and it refuses an actor whose Market is not the request's |
 | 3 | **Fail closed.** No credential gives the anonymous actor. A credential that is unknown, expired, revoked or from another Market gives one `credential.rejected` result, identical for all four causes, never the anonymous actor. An infrastructure failure throws and yields no actor. The return type excludes the system actor |
 | 4 | Both implementations read committed state on every call and cache nothing (ADR-0018 decisions 2 and 3) |
-| 5 | `AccessDecision` is "allowed", or "denied" with a reason code. The reason codes, and what `credential` is, are G2 (I3) |
+| 5 | `AccessDecision` is "allowed", or "denied" with a reason code. The reason codes are those of identity design 5.2. `credential` names its transport, the session cookie (`cookie`) or `Authorization: Bearer` (`bearer`); a session issued for one transport is refused on the other, and Phase 2 refuses every `Authorization` header (identity design 6.2) |
 
 ### 6.4 Constraints on the G2 enforcement mechanism and its CI check (I2)
 | # | Not designed here. This foundation requires that: |
@@ -411,7 +420,7 @@ are merged and Hassan has reviewed items 5 to 7.
 
 | # | Item | Size | Owner | Decisions recorded |
 |---|---|---|---|---|
-| 1 | Dependency PR: `temporal-polyfill` 1.0.5, pinned exactly, in `packages/shared-kernel`, with `--experimental-vm-modules` in the kernel's `test` script; `helmet` in `apps/api` | S | Hossein | A2. The PR shows kernel tests, api tests through the kernel, `pnpm build` and `node dist/main` passing on Node 24.9.0, and lists the transitive dependencies (`temporal-spec`, `temporal-utils`). If a check fails, fall back to `@js-temporal/polyfill` without a new approval (it needs no script change) |
+| 1 | Dependency PR: `temporal-polyfill` 1.0.5, pinned exactly, in `packages/shared-kernel`, with `--experimental-vm-modules` in the kernel's `test` script; `helmet` in `apps/api` | S | Hossein | A2. The PR shows kernel tests, api tests through the kernel, `pnpm build` and `node dist/main` passing on the minimum Node version, and lists the transitive dependencies (`temporal-spec`, `temporal-utils`). If a check fails, fall back to `@js-temporal/polyfill` without a new approval (it needs no script change) |
 | 2 | Kernel: `Result`, `Id`, `Clock`, `MarketContext` with minting, `CorrelationId`; the fakes and context builders on the `/testing` subpath; unit tests (9). Not `DomainEvent` | M | Hossein; Hassan reviews the minting code | A3, A6; C2 |
 | 3 | `platform/clock/`, `platform/ids/`, `platform/market-context/` (factory, tenant constant and token, guard, decorators), the guard array in `app.module.ts`, the header in OpenAPI, the generated correlation id (C3), `rootDir: "../.."` in `apps/api/tsconfig.json`, the root `dev` script, the market tests of 9 | L | Hossein; Hassan reviews the guard PR | A4, A5, A8; C3. Without the `rootDir` change the first kernel import fails `pnpm typecheck` (TS6059); `nest build` and `pnpm dev` need the kernel's `dist/`, so `dev` builds the kernel first |
 | 4 | Boundary rules 1 to 8 of 8.2 with fixtures, and the carried items of `docs/reviews/phase-1.md`: a test on `PersistenceModule` exports, a positive fixture for `domain/` importing the kernel (it needs a `paths` entry in `boundary-fixtures/tsconfig.json`), a `no-circular` fixture | M | Hossein | A7, A9 |
@@ -483,8 +492,12 @@ predictable and rising. One test asserts that the composition root binds the rea
 
 ## 10. Dependencies and evidence
 
-My checks ran on Node 24.9.0 (the ADR-0014 minimum) and 24.21.0, in a scratch folder outside
+My checks ran on Node 24.9.0 (then the ADR-0014 minimum) and 24.21.0, in a scratch folder outside
 the repository; nothing was installed in the repository.
+
+Note, 2026-10-03: ADR-0021 raises the minimum Node version to 24.15. The runs at 24.9.0 in this
+document had `engine-strict` off, because `pnpm install` fails there under it; what depends on the
+version is re-run on 24.15 (identity design 12.3).
 
 | Need | Covered by | Evidence |
 |---|---|---|
