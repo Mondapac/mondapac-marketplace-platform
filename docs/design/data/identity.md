@@ -429,13 +429,17 @@ constraint; `assigned_by_account_id` (C4, NULL for a founding assignment); `assi
 **`identity.second_factors`**: `id` PK, new for every enrolment (M3); `account_id` FK to
 `accounts`, cascade, unique `(market_id, account_id)`; `state` CHECK `pending`, `active` (`none`
 is no row); `secret_ciphertext text NOT NULL`, encrypted with the account's subject key (label
-`identity.second-factor.secret`, D 7.5); `last_accepted_step integer` nullable, CHECK `>= 0`
+`identity.second-factor.secret`, D 7.5); `pending_secret_ciphertext text` nullable, a
+replacement device's secret under the same key and label, kept until its first valid code swaps
+it in while the old secret stays active (M13); `last_accepted_step integer` nullable, CHECK `>= 0`
 (30-second steps fit 32 bits far beyond any horizon); `activated_at` with CHECK `(state =
 'active') = (activated_at IS NOT NULL)`; `locked_at timestamptz(6)` nullable, the instant of the
 last HF2 lock, written through the root so that its event sends the alert (the lock itself is the
 `second-factor.account` counter, 3.5); `created_at`; `version`.
-- An admin's factor is created `pending` in the unit that accepts its invitation (D 3.4, HF6);
-  any other enrolment starts from an `enrol-second-factor` link (3.7).
+- An admin's factor is created `active` in the unit that accepts its invitation, once a valid
+  code arrives; nothing is stored before that (D 3.4, HF6). Any other enrolment starts from an
+  `enrol-second-factor` link (3.7), except where D 3.6 decides otherwise for a seller's first
+  enrolment (open for Hassan, D 14.5).
 - **A time step is accepted once** (D 7.1): `updateMany` where `id`, `market_id`, `state =
   'active'` and `last_accepted_step IS NULL OR last_accepted_step < $step`, setting the step and
   raising `version` (C5). One row or none, so a code works once under concurrency, and a save of
@@ -806,8 +810,8 @@ rule and the backup codes (3.10); session lifetimes and rotation (3.4).
 
 | # | Point | Who |
 |---|---|---|
-| M12 | D 3.4's issue guard admits two pending `seller-owner` invitations to two addresses for one new seller; both could be accepted. Added here: one pending owner invitation per seller (3.10), answered `invitation.already-pending`. D 3.4 should name it | Mohammad, at the final check |
-| M13 | Device replacement (D 3.6, `active` → `active`: a code, then a new enrolment) must keep the new secret until its first code while the old factor stays active; the table holds one factor per account and one secret. Recommendation: a nullable `pending_secret_ciphertext` on `second_factors`, added with the table in slice 7; the alternative is to disable and enrol again from a link | Mohammad, at the final check |
+| M12 | One pending `seller-owner` invitation per seller (3.10), answered `invitation.already-pending`. Decided by Mohammad 2026-10-03: D 3.4 names the rule | Closed |
+| M13 | Device replacement keeps the new secret until its first valid code. Decided by Mohammad 2026-10-03: a nullable `pending_secret_ciphertext` on `second_factors` (3.10), added with the table in slice 7 | Closed |
 | K1 | Format and maximum size of a wrapped key and of the wrapping-key identifier (3.2); where the throttle secret lives (H4); `statement_timeout`, `lock_timeout` and `idle_in_transaction_session_timeout` as role settings of the bootstrap file (PK1 of P): proposed 30 s, 5 s and 60 s | Kazem; values confirmed in spike 6 |
 | S6 | Spike 6: the `upsert` sent as one `INSERT … ON CONFLICT`, and the guard on compound keys (3.5); the `40001` rate (5.1); plans of the sign-in and per-request reads | Hossein, with me |
 | D1 | D 14.5 items 1 and 2 change no table if decided as recommended: the `enrol-second-factor` purpose exists (3.7), and a secret bound to the invitation by a tag is not stored. Storing it instead would add a column to `invitations` | Hassan and Reza |
@@ -824,5 +828,5 @@ This document changes no other file. After G2:
 | `docs/design/data/platform.md` | Section 1 sentence on outbox, inbox and `event_delivery`; `ANONYMOUS` in sections 2, 3.2 and 6, and Q6; a pointer to 3.2 and 3.8 here. 10.2 and 10.5 are already amended (A1, ebe3ec6) | After G2, once `docs/db-role-grant-note` has merged; Mojtaba |
 | `prisma/schema/base.prisma`, `identity.prisma`, `platform.prisma`; the migrations of 8.1 with `down.sql` | As specified; each needs my sign-off | Per slice; Hossein |
 | The privilege map and the catalog tests of `pnpm test:db` | Section 7, column lists included (the column-level test of platform.md 10.4 reads them); the partial-index list of 8.4; "every outbox has the same columns" (P 13) | With each migration; Hossein |
-| `docs/design/domain/identity.md` | M12 in 3.4; M13 in 3.6 | At the final check; Mohammad |
+| `docs/design/domain/identity.md` | M12 in 3.4; M13 in 3.6 | Done (Mohammad, 2026-10-03) |
 | `docs/design/domain/platform-persistence-and-events.md` | PM1: the unique key leads with `market_id` (3.1); PM8: no clash, confirmed (10) | With the G2 approval; Mohammad |
