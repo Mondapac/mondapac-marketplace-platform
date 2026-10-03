@@ -84,9 +84,10 @@ whole aggregate. The database only checks that each value is a JSON object.
 - Row trigger rejects `UPDATE` and `DELETE`; statement trigger rejects `TRUNCATE`
   (including `TRUNCATE … CASCADE`). Triggers also bind the table owner and superusers,
   which privileges do not — and today the app connects as the owner.
-- `REVOKE UPDATE, DELETE, TRUNCATE` is the second layer, added when devops-engineer
-  introduces separate migration and application roles (Q3). Not in this migration: there
-  is no role to revoke from.
+- Privileges are the second layer, and they are grant only: the application role is granted
+  `SELECT` and `INSERT` on this table and nothing else, so there is nothing to revoke. The
+  roles, the grants and their tests are in section 10 (which closes Q3). Not in this
+  migration: the grants arrive with slice 0 item 7.
 - Limits, stated honestly: an owner can still `DROP TABLE`, `ALTER TABLE … DISABLE
   TRIGGER` or set `session_replication_role = replica`. Detecting that is the job of the
   hash chain (VER-08), not of the trigger.
@@ -216,8 +217,9 @@ version-specific.
   confirm the separate-seal-table direction (3.5).
 - **Q2 — Stack-level audit events.** Are there audited actions with no market (creating a
   Market, Region Stack configuration)? Current design says no (`market_id` NOT NULL).
-- **Q3 — Database roles.** When do separate migration/owner and application roles arrive
-  (devops-engineer)? The `REVOKE UPDATE, DELETE, TRUNCATE` layer depends on it.
+- **Q3 — Database roles.** Closed by section 10: separate migration and application roles
+  arrive in slice 0 item 7 (ADR-0015 decision 2), and the privilege layer is grant only, not
+  `REVOKE`. Section 10 carries its own status line.
 - **Q4 — Writer contract.** `platform/audit` must take allow-listed fields for
   before/after and no personal data from day one (3.3). Needs software-architect to fix
   the port and security-tester to review it, since it sits on the CERT-32 path.
@@ -284,3 +286,224 @@ no schema effect (drift check empty).
   16 versus 17 gap. (The session cannot see GitHub; this rests on the owner's report.)
 - The statements above in this section that no workflow exists and that there are 13 tests
   describe the state at sign-off time.
+
+## 10. Database roles and grants — closes Q3
+
+**Author:** Mojtaba (database-designer): the grant half of the "role and grant note".
+**Status:** Draft 2026-10-03 — awaiting CTO approval and security review.
+**Ground truth:** ADR-0015 decision 2; ADR-0004 decisions 6 and 7; slice 0 item 7 of
+`docs/design/domain/platform-foundations.md` (section 7; the reviewers' decisions there bind);
+Security M1 in `docs/reviews/phase-1.md`. No Accepted ADR changes. Scope: the `platform` schema;
+10.2 is the convention every later schema's data design follows. "Measured" refers to 10.6.
+
+### 10.1 Role model
+
+| Role | Kind | Attributes | Purpose |
+|---|---|---|---|
+| `mondapac_app` | Group; the same name in every environment | `NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`; member of no role; owns nothing | The only role a migration names in a `GRANT` |
+| Application login role(s) | Login; per environment; named by Kazem (10.7) | `LOGIN INHERIT` and the same five `NO…` attributes; member of `mondapac_app` only | The connection of the running application |
+| Migration role | Login; one per environment; named by Kazem | `NOSUPERUSER NOCREATEROLE NOBYPASSRLS`; owns the database. Development and CI only: `CREATEDB` and membership of `pg_signal_backend` | `prisma migrate`, `scripts/*.mjs`, test setup and teardown, the tests' owner connection |
+
+| Decision | Reason |
+|---|---|
+| A fixed-name group, created by cluster bootstrap and never by a migration | Migration text is identical in every environment, and `pnpm test:db`, `pnpm db:check-reversible` and Prisma's shadow database replay it in throwaway databases of one cluster. Roles are cluster-wide: `CREATE ROLE` in a migration fails there (`42710`), `DROP ROLE` in its down fails while another database holds grants (`2BP01`), and the migration role may not create roles at all (`42501`). Login names and passwords never appear in a migration |
+| `api` and `worker` share `mondapac_app` | One build, the same use cases and repositories; `APP_ROLE` selects entry adapters, not data access. Separate login roles per process are allowed (attribution in `pg_stat_activity`, independent rotation): Kazem's choice. A second group is a new decision; revisit it in the audit-seal design (slice 6), where only the sealer writes the seal table |
+| The migration role owns every schema, table, index, function and sequence | It creates them: no `ALTER … OWNER` and no `SET ROLE` in a migration, and one database is always migrated by the same role. `mondapac_app` and its members own nothing, have no `CREATE` on any schema or on the database, and are not members of the migration role (nor the reverse) |
+| Migration role in development and CI: `CREATEDB`, `pg_signal_backend`, not a superuser | `CREATEDB`: both scripts and `prisma migrate dev` (shadow database) create and drop throwaway databases. `pg_signal_backend`: both scripts drop with `WITH (FORCE)`, which fails with `42501` while an application-role session is still connected and works with that membership (measured). Not a superuser, CI included: a migration that needs superuser then fails in CI instead of in production, and a non-superuser owner cannot set `session_replication_role` (measured), one of the owner bypasses listed in 3.4. Production: neither `CREATEDB` nor `pg_signal_backend` |
+
+### 10.2 Grant convention for every migration
+
+Grants are hand-written in the `migration.sql` that creates the object, in a block that starts
+with the comment `-- Grants (database-designer): <design document and section>`.
+
+| Object | Rule |
+|---|---|
+| Schema | `GRANT USAGE ON SCHEMA "<schema>" TO "mondapac_app";` once, in the migration that creates the schema (for `platform`, whose baseline is already merged: the first grants migration, 10.3). Never `CREATE` |
+| Table | One statement per table, `GRANT <list> ON TABLE "<schema>"."<table>" TO "mondapac_app";`, with the list from the "Privileges" line that every table's data design carries from now on. Ordinary table: `SELECT, INSERT, UPDATE, DELETE`. Append-only table (`audit_log`; later the seal table and status histories): `SELECT, INSERT`. Tombstone table (the subject-key table, platform-foundations section 4): `SELECT, INSERT, UPDATE`, no `DELETE`. A table the application never touches: no grant, and its design says so |
+| Sequence | None exists (ids are UUIDv7 from the application). If a design adds one: an explicit `GRANT USAGE ON SEQUENCE`; without it `nextval` fails with `42501` (measured) |
+| Function | A trigger function gets no grant: a trigger fires without `EXECUTE` for the user of the statement, and a direct call fails with `0A000` (both measured). Any other function is `SECURITY INVOKER`, and its migration contains `REVOKE ALL ON FUNCTION … FROM PUBLIC;` and then, if the application calls it, `GRANT EXECUTE ON FUNCTION … TO "mondapac_app";`. PostgreSQL grants `EXECUTE` to `PUBLIC` at creation (measured: the application role could call a new function with no grant), so this is the only `REVOKE` an up migration may contain. `SECURITY DEFINER` needs a CTO decision and security review |
+| Never | `ALL`; `TRUNCATE`, `REFERENCES`, `TRIGGER` (it allows creating triggers on the table) or `MAINTAIN` (PostgreSQL 17); `WITH GRANT OPTION`; `ON ALL TABLES IN SCHEMA`; `ALTER DEFAULT PRIVILEGES`; column-level grants; a grant to `PUBLIC`, to a login role or to any role but `mondapac_app`; anything on `public` (`_prisma_migrations` stays unreadable for the application); `CREATE ROLE`, `ALTER ROLE`, `SET ROLE` or a database name |
+
+**`down.sql`** mirrors the grants: every `GRANT` of `migration.sql` has its `REVOKE … FROM
+"mondapac_app"` in `down.sql`, in reverse order and before any `DROP`, also where the `DROP
+TABLE` would remove the privileges anyway, so that the two files compare line by line.
+
+Exact grants for `platform.audit_log` (ADR-0015 decision 2: `INSERT` and `SELECT` only):
+
+```sql
+-- migration.sql
+-- Grants (database-designer): docs/design/data/platform.md section 10.
+GRANT USAGE ON SCHEMA "platform" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "platform"."audit_log" TO "mondapac_app";
+
+-- down.sql
+REVOKE SELECT, INSERT ON TABLE "platform"."audit_log" FROM "mondapac_app";
+REVOKE USAGE ON SCHEMA "platform" FROM "mondapac_app";
+```
+
+**Review** (part of my sign-off on every migration): (1) each `CREATE SCHEMA` and `CREATE
+TABLE` has its grant in the same file, or the design says the application has no access; (2) the
+list equals the design's "Privileges" line; (3) nothing from the "Never" row; (4) `down.sql`
+mirrors; (5) the expected map of the privilege test (10.5) changed in the same PR, equal to (2).
+
+### 10.3 The first grants migration
+
+| Topic | Decision |
+|---|---|
+| Content | `<timestamp>_app_role_grants`, the second migration; the baseline is merged and is never edited. Exactly the block of 10.2 and no Prisma schema change: `prisma migrate dev --create-only` produces the empty file to fill (measured), and `down.sql` is added by hand |
+| Reversible | It passes `scripts/check-migrations-reversible.mjs` as a non-superuser migration role (measured). That check proves nothing about the grants themselves: 10.5 |
+| Group role missing | **Fail loudly.** No `IF EXISTS` and no `DO` block: a database migrated without the role would end with no grants, and running the application on the migration URL would be the tempting fix. Measured: `prisma migrate deploy` stops with P3018 and SQLSTATE `42704` (`role … does not exist`); nothing is granted (the first statement already fails), but Prisma records the migration as failed, a second `deploy` answers P3009, and it succeeds only after `prisma migrate resolve --rolled-back <name>`. So bootstrap runs before the first `migrate deploy` everywhere, existing developer volumes included (10.7) |
+| Order | This is item 7's migration, and while its PR is open no other migration PR is (`docs/process/parallel-tracks.md` rule 6). Kazem's bootstrap change to Compose and CI merges before it or with it, never after: otherwise `pnpm verify` fails on `main` with `42704`. Item 7 merges before the first slice 1 migration, which is the first to carry table grants under 10.2; from then on a new table without a decided privilege list fails the privilege test (10.5) |
+
+### 10.4 Test harness and scripts (specification for Hossein)
+
+The throwaway database gets two connections: **application** (a login role of 10.1) and
+**owner** (the migration role). `AppConfig` knows the application URL only.
+
+| Piece | Change |
+|---|---|
+| `prisma.config.ts`, `scripts/check-migrations-reversible.mjs`, `scripts/migrate-dev.mjs`, `apps/api/test/db/global-setup.ts` and `global-teardown.ts` | Use the migration URL to create the database, run `prisma migrate deploy` and drop it. Setup exports two URLs of the throwaway database: application and owner. No grant is needed to connect: a new database gives `CONNECT` to `PUBLIC` |
+| `AppModule`, `PrismaService` and the default `pg` client of `platform.db-spec.ts` | Application URL. The readiness test, the two Market inserts and the twelve CHECK cases stay as they are: 15 of the 16 current tests pass unchanged as the application role (measured) |
+| Existing test "is append-only: UPDATE, DELETE and TRUNCATE are rejected" | Moves to the owner connection; the expected SQLSTATE stays `23001`. As the application role it fails with `42501` instead (measured), because the privilege check precedes the trigger |
+| New: the application role on `platform.audit_log` | `INSERT` and `SELECT` succeed. Each of these fails with `42501` (all measured): `UPDATE`; `DELETE`; `TRUNCATE` and `TRUNCATE … CASCADE`; `ALTER TABLE … DISABLE TRIGGER` (one trigger, and `ALL`); `DROP TRIGGER`; `CREATE TRIGGER`; `SET session_replication_role = replica` (also `SET LOCAL` and `set_config`); `SET ROLE` and `SET SESSION AUTHORIZATION` to the owner; `CREATE TABLE` in `platform` and in `public`; `CREATE SCHEMA`; `DROP TABLE`; `LOCK TABLE … IN ACCESS EXCLUSIVE MODE`; `SELECT … FOR UPDATE`; `SELECT` on `public._prisma_migrations`. The row count is unchanged afterwards. The owner's name is read from `pg_tables.tableowner`, never hard-coded. `GRANT UPDATE … TO CURRENT_USER` is not an error (warning `01007`): assert with `has_table_privilege` that nothing was gained |
+| New: the connected role itself | For `current_user`: `rolsuper`, `rolcreatedb`, `rolcreaterole`, `rolreplication` and `rolbypassrls` are all false; `pg_has_role(current_user, <owner>, 'MEMBER')` is false; no `CREATE` on the database or on any schema |
+| Catalog test "every table with `market_id` has `tenant_id`, both NOT NULL with no default" (platform-foundations section 9; lands with item 3) | Application connection, and `pg_catalog`, not `information_schema`: `information_schema.columns` hides every table the connected role has no privilege on (measured), so an ungranted table would escape the test. The query below must return no row; the test also asserts that `platform.audit_log` is among the tables that have `market_id`, so it cannot pass vacuously |
+
+```sql
+SELECT n.nspname || '.' || c.relname AS offending_table
+  FROM pg_catalog.pg_class c
+  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+ WHERE c.relkind IN ('r', 'p')
+   AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\_%'
+   AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                WHERE a.attrelid = c.oid AND a.attname = 'market_id' AND NOT a.attisdropped)
+   AND 2 <> (SELECT count(*) FROM pg_catalog.pg_attribute a
+              WHERE a.attrelid = c.oid AND a.attname IN ('market_id', 'tenant_id')
+                AND NOT a.attisdropped AND a.attnotnull AND NOT a.atthasdef
+                AND a.attidentity = '' AND a.attgenerated = '');
+```
+
+### 10.5 Drift and blind spots
+
+Neither existing check sees privileges (measured): `pnpm db:check-reversible` passes when the
+grants migration's `down.sql` lacks `REVOKE USAGE`, and even when it is empty; Prisma's drift
+check (`migrate diff`) is empty with the grants applied. What guards them instead:
+
+| # | Guard, or gap |
+|---|---|
+| 1 | **Privilege test in `pnpm test:db`.** It reads the catalogs with `aclexplode` (readable by every role, unlike `information_schema`): `pg_namespace.nspacl`, `pg_class.relacl` (tables, views, sequences), `pg_attribute.attacl`, `pg_proc.proacl` and `pg_default_acl`, for every schema that is not PostgreSQL's own, and compares them with a checked-in expected map; today schema `platform`: `USAGE`, and table `platform.audit_log`: `INSERT`, `SELECT`. It fails on a table without a map entry, on any difference, on a grantee other than `mondapac_app` (the owner aside; `PUBLIC` included, except its built-in `USAGE` on `public`), on a grant option, on a column-level grant, on any row in `pg_default_acl`, and on a non-trigger function that `PUBLIC` may execute |
+| 2 | **One more branch in the leftover query** of `scripts/check-migrations-reversible.mjs` (below): after all downs no schema may still carry a grant. Measured: it reports `platform` when the `REVOKE USAGE` is missing. Table grants vanish with their tables, so a wrong `REVOKE` on a table that survives its own down is caught only by review rule 4 of 10.2 |
+| 3 | **Layering.** If a later migration wrongly grants `UPDATE`, the trigger still answers `23001` to the application role (measured), and guard 1 fails the PR |
+| 4 | **Gap: deployed environments.** The tests run in development and CI only. Proposal for Ali and Hassan (application code, so not decided here): at start-up the application refuses to run when `current_user` is a superuser or has the privileges of the owner of `platform.audit_log` |
+| 5 | **Gap: database-level privileges are outside migrations.** A new database gives `CONNECT` and `TEMPORARY` to `PUBLIC`, so the application role can create temporary tables (measured). Whether bootstrap revokes them on deployed databases is Kazem's input (10.7) and a question for Hassan |
+
+```sql
+UNION ALL
+SELECT n.nspname || ' (schema privilege ' || a.privilege_type || ' held by '
+       || CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END || ')'
+  FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
+ WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public')
+   AND a.grantee <> n.nspowner
+```
+
+### 10.6 Evidence
+
+Measured on 2026-10-03 on PostgreSQL 16.15 with Prisma 7.10.0, in a scratch copy of the
+repository and in throwaway databases and roles (all dropped): a non-superuser migration role
+with `CREATEDB`, a `NOLOGIN` group and one login member. Both migrations were applied as that
+migration role with `prisma migrate deploy` and `prisma migrate dev` (pre-created shadow
+database). Every SQLSTATE and Prisma code quoted in this section was observed, as were the 15 of
+16 tests, both blind spots of 10.5 and the catalog query of 10.4 (it reported two deliberately
+wrong tables and not `audit_log`). Not measured: PostgreSQL 17, which Compose and CI run and
+where `MAINTAIN` exists; the first green CI run of item 7 closes that gap, as in section 9.
+
+### 10.7 Cluster bootstrap, connections and secrets (Kazem's half)
+
+**Author:** Kazem (devops-engineer). Design only: nothing here exists yet; item 7's PR is built
+from it. **Measured** = my experiment of 2026-10-03 on PostgreSQL 16.15 with a draft of the
+bootstrap file, in throwaway databases and roles (all dropped). **Not run** = Docker, the
+`postgres:17-alpine` image, Compose on Windows, GitHub Actions, Prisma, password logins (the
+session's cluster uses `trust`) and PostgreSQL 17: those statements are reasoned from the
+repository files and the image's documented init behaviour. The first run of item 7 on the
+owner's machine and in CI closes that gap.
+
+| Roles and the bootstrap file | Decision |
+|---|---|
+| Names | Group `mondapac_app` (10.1). Migration role `mondapac_migrator`. Application login `mondapac_api`: one login for the `apps/api` build, used by both `APP_ROLE`s in development and CI (one `.env`, one `DATABASE_URL`). The names are the same in every environment. Production may add logins (Phase 7); that needs no migration, because migrations name only the group |
+| `POSTGRES_USER` | Becomes `postgres` (today `mondapac`), with a local-only password. It is the bootstrap superuser and nothing else: no URL names it, and it is used only over the socket inside the container. Reason for the rename: a stale `.env` or a tool that still says `mondapac:mondapac` fails to log in instead of running as a superuser |
+| One file | `scripts/db/bootstrap-dev.sql`, development and CI only, run with `psql` as the cluster superuser while connected to the application database. It names no database (`current_database()`). In one transaction: `CREATE ROLE` for each of the three roles that is missing; `ALTER ROLE` setting every attribute of 10.1 (plus `NOREPLICATION` on the migration role) and the two local passwords; `GRANT mondapac_app TO mondapac_api`; `CREATEDB` and `GRANT pg_signal_backend` for `mondapac_migrator`; `ALTER DATABASE … OWNER TO mondapac_migrator`; the two database-level statements below. A session without Docker runs the same file against its native PostgreSQL: `psql -d mondapac -f scripts/db/bootstrap-dev.sql` as the cluster superuser |
+| Idempotent | It converges instead of creating, so running it again is safe. Measured: three runs (stdin and `-f`), exit 0, the same attributes, memberships and database ACL each time, also with tables of the migration role already present |
+| Guard | Its last statement raises when a schema or relation of the database is owned by another role than `mondapac_migrator` (10.1: the migration role owns everything), with a hint that names the fix. Measured on a database holding a superuser-owned `platform.audit_log` and `_prisma_migrations`: exit 3, everything rolls back, no role exists afterwards |
+
+| Where it runs | Mechanism |
+|---|---|
+| Compose, fresh volume | The file is bind-mounted read-only at `/docker-entrypoint-initdb.d/10-bootstrap-dev.sql` (long syntax with `create_host_path: false`: a checkout without the file fails instead of mounting an empty directory). The image runs `*.sql` there once, on an empty data directory, with `psql -v ON_ERROR_STOP=1` as `POSTGRES_USER` in `POSTGRES_DB`, before the server accepts TCP connections. SQL and not a shell script: no dependence on an execute bit or on line endings in a Windows bind mount. The developer steps do not change. Not run |
+| Compose, existing volume, whenever the role model changes later (a new role, an attribute) | `pnpm db:bootstrap`, a new root script: `docker compose exec -T postgres psql -U postgres -d mondapac -f /docker-entrypoint-initdb.d/10-bootstrap-dev.sql`. The same mounted file, over the container's socket, with no password and no shell redirection (it works in PowerShell). The data stays. Not run through Docker; the repeated run is measured |
+| Compose, a volume created before item 7 (the owner's machine) | Recreate it, once: `docker compose down -v`, then the four setup steps, copying `.env.example` again because both URLs change. On that volume the superuser is `mondapac` and owns the database and every object, which the guard refuses. The data is disposable (the baseline only; no audit row exists, ADR-0015), so no ownership-transfer code is kept for a one-time event on one machine |
+| How the owner is told | Item 7's PR puts those five commands in the owner's action queue on the board, and `README.md` gets an "after pulling" note with a troubleshooting line. Forgetting is loud and harmless: the three roles are created in one transaction, so without the bootstrap `pnpm db:migrate` cannot log in as `mondapac_migrator` and stops before Prisma records anything (measured with `psql`: `role … does not exist`; Prisma should answer P1000, not run). The P3018 then P3009 trap of 10.3 needs a working migration login without the group, which this file cannot produce. On an old volume `pnpm db:bootstrap` answers `role "postgres" does not exist`: the sign to recreate it |
+| Healthcheck, Compose and CI | `pg_isready -h 127.0.0.1 -U postgres -d mondapac`. During the first initialisation the image runs a temporary server on the socket only, so a socket check can report healthy before the real server is up. Not run |
+| CI | A service container cannot mount a repository file, so the bootstrap is an explicit step after checkout and before `pnpm verify`: the outline under this table. Not run |
+| CI, proposed (Ali decides) | A Compose smoke step: `POSTGRES_PORT=5433 docker compose up -d --wait postgres`, assert the three roles, `pnpm db:bootstrap`, `docker compose down -v`. Only this exercises the init-directory path and the script in CI, which today checks just the syntax of the Compose file (`docs/reviews/phase-1.md`). It is the PostgreSQL part of the `docker compose up -d --wait` proposal that slice 0 leaves undecided |
+
+```yaml
+# Outline of .github/workflows/ci.yml, not the final file. Not run.
+services: { postgres: { env: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: mondapac } } }
+env: # job level: what the application may see
+  DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
+steps:
+  - uses: actions/checkout@v4
+  - name: Create database roles (cluster bootstrap) # the second run is the existing-volume path
+    run: for run in 1 2; do docker exec -i "${{ job.services.postgres.id }}" psql -U postgres -d mondapac < scripts/db/bootstrap-dev.sql; done
+  # pnpm, Node, install, "docker compose config": unchanged
+  - { name: Verify, run: pnpm verify, env: { MIGRATION_DATABASE_URL: 'postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac' } }
+  - { name: Apply migrations, run: pnpm db:migrate, env: { MIGRATION_DATABASE_URL: '(the same)' } } # after Build, which is unchanged
+  - name: Boot the API and probe readiness # job environment only: this process has no migration URL
+```
+
+| Connections | Decision |
+|---|---|
+| `DATABASE_URL` (the name stays, as Mojtaba recommends) | `postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac`. Read by the application (`AppConfig`, `PrismaService`) and by nothing else at run time. Test setup takes the application login from it and replaces the database name with the throwaway one |
+| `MIGRATION_DATABASE_URL` (new) | `postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac`. Read by `prisma.config.ts`, so by every `prisma` CLI command (`pnpm db:migrate`, `scripts/migrate-dev.mjs` and its shadow database; `prisma generate` keeps a placeholder and needs no database); by `scripts/check-migrations-reversible.mjs`; by `apps/api/test/db/global-setup.ts` and `global-teardown.ts` (create, migrate, drop, and the tests' owner connection). The scripts hand the throwaway database to the `prisma` child under this name, no longer as `DATABASE_URL` |
+| `.env.example` | Documents both: which role each one is, that `DATABASE_URL` is the only one the application reads, that `MIGRATION_DATABASE_URL` serves only `pnpm db:*`, `pnpm test:db` and `pnpm verify`, and that both contain credentials. The URLs the harness derives for the throwaway database stay inside the harness and are not listed there |
+| The application never receives the migration URL | Deployed: api and worker get the application secret only, and migrations run as a separate job that gets the migration secret only. CI: the variable is set on the two steps that need it, never at job level, so `node apps/api/dist/main` boots without it. Local: one `.env` holds both, because the developer steps must not change; hence the next row |
+| `AppConfig` | No new field, and the `DATABASE_URL` rule is unchanged. One new rule, proposed (application code: Hossein builds it, Ali approves it with this note): a `MIGRATION_DATABASE_URL` in the environment given to `loadAppConfig` is an `InvalidConfigError` in every `NODE_ENV`, with a message that does not print the value, and `load-env-file.ts` does not copy that key from `.env` into `process.env`. "Never receives" then is a unit test, and the CI boot probe fails if someone moves the variable to job level |
+
+| Database-level privileges (10.5 gap 5) | Decision |
+|---|---|
+| On every application database | `REVOKE ALL ON DATABASE … FROM PUBLIC;` then `GRANT CONNECT ON DATABASE … TO mondapac_app;`. `PUBLIC` loses `CONNECT` and `TEMPORARY`; the owner keeps everything. Measured: the application login connects; its `CREATE TEMP TABLE`, `CREATE TABLE` in `public`, `CREATE SCHEMA` and `CREATE DATABASE` fail with `42501`; a login outside the group cannot connect; the migration role creates `_prisma_migrations` in `public` (owned by `pg_database_owner`), schemas, tables and temporary tables, and can neither `SET session_replication_role` nor `CREATE ROLE` |
+| In every environment, not only deployed ones | A privilege that differs between the test database and production is one the tests cannot see. A new database gets the default ACL, not its template's (measured), so test setup runs the same two statements on the throwaway database as its owner (measured: allowed, same effect). **This changes 10.4 row 1** ("no grant is needed to connect") and adds two assertions to the role test: `TEMPORARY` is false, and `PUBLIC` holds nothing on the database. If Ali and Hassan accept it, Mojtaba folds it into 10.4 and 10.5; if not, the bootstrap leaves the database ACL alone and 10.4 stands |
+| Migration role, development and CI | `CREATEDB` and `pg_signal_backend`, as 10.1. Measured again: with the membership `DROP DATABASE … WITH (FORCE)` succeeds while an application session is connected, without it `42501`. The membership can terminate any non-superuser session of the cluster, acceptable only where the cluster is disposable |
+| Production | No superuser in any URL, no `CREATEDB`, no `pg_signal_backend`. Measured: without `CREATEDB` the role still changes its own database, and `CREATE DATABASE` fails with `42501` |
+
+| Secrets | Where the passwords live | Rotation |
+|---|---|---|
+| Local | Committed local-only defaults, never secrets: the superuser password in `docker-compose.yml`, the two role passwords in `scripts/db/bootstrap-dev.sql` and in the URLs of `.env.example`. `.env` stays ignored by git. They open only a database published on `127.0.0.1` | None. To change one, edit those places together and run `pnpm db:bootstrap` |
+| CI | The same fixed values, in the workflow file. The service container lives for one job and cannot be reached from outside the runner. Item 7 adds no GitHub secret, so the trigger of Security L7 (pin actions by commit before the workflow gains a secret) is not reached | None |
+| Production | The secret store of each Region Stack (ADR-0003 decision 5), three separate secrets per stack: administrator (bootstrap and break-glass; no running process holds it), migration URL (the migration job only), application URL (api and worker only). Generated, never typed; never in the repository, an image, a log or a pull-request workflow | Application login: without downtime through a second login in `mondapac_app` (create it, switch the secret, roll the processes, drop the old login). Migration password: between deploys. Always after a suspected exposure and when a person with access leaves. Schedule and automation: Phase 7 |
+
+| Production bootstrap (`infra/` is Phase 7, ADR-0015) | Decision |
+|---|---|
+| What differs | Managed PostgreSQL, one cluster per Region Stack, and no superuser for us: the provider's administrator role runs the bootstrap. The deploy operator (Kazem) runs it as an infrastructure step of the pipeline, once per Region Stack and again when the role model changes, before the first `migrate deploy`; never the application or the migration job. The same three role names and attributes without `CREATEDB` and `pg_signal_backend`; the database is created with the migration role as its owner; the same two database-level statements; both URLs require TLS with certificate verification |
+| Left to Phase 7 | The `infra/` code of this bootstrap and the provider's limits on its administrator role; login names per process and the second login for rotation; `CONNECTION LIMIT`, pooling and timeouts per login; the secret-store product, the rotation schedule and its automation; network isolation of the cluster; `CONNECT` on the maintenance databases; a scheduled check of role attributes and database ACL from outside the application |
+
+**Start-up self-check (10.5 gap 4), operational view.** In favour: one catalogue query at start
+(superuser, privileges of the owner of `platform.audit_log`, `CREATE` on the database) turns a
+mis-wired secret into a deploy that stops at its first instance, and nothing else checks a
+deployed environment. It must run once at start-up in both `APP_ROLE`s, never inside
+`/health/ready`, and log a specific reason without the URL. The decision is Ali's and Hassan's.
+
+| Files of item 7 on my side | Change | Shared (`docs/process/parallel-tracks.md`) |
+|---|---|---|
+| `scripts/db/bootstrap-dev.sql` | New | No (`scripts/`, backend track) |
+| `docker-compose.yml` | `POSTGRES_USER: postgres` and its password; the read-only mount; the TCP healthcheck; the header comment | Yes |
+| `.env.example` | The two URLs and their text | Yes |
+| `.github/workflows/ci.yml` | Service environment and health command; the bootstrap step; `MIGRATION_DATABASE_URL` on two steps; migrations split from the boot probe; the smoke step if approved | Yes |
+| `package.json` | The `db:bootstrap` script | Yes |
+| `README.md`, `CLAUDE.md` (Commands) | The "after pulling" note and the troubleshooting line; `pnpm db:bootstrap` and the two URLs | Yes |
+
+Hossein's side stays as 10.4 and section 13 of `platform-foundations.md` list it
+(`prisma.config.ts`, shared; `scripts/*.mjs`; `apps/api/test/db/*`; `app-config.ts`), plus
+`load-env-file.ts` if the `AppConfig` rule is approved. Recommendation: all of it in item 7's one
+PR, with the shared files recorded on the board before the branch starts. 10.3 allows my change
+"before or with" the grants migration; "before" would need `DATABASE_URL` to name the migration
+role for one merge and makes the owner replace `.env` twice.
