@@ -58,6 +58,18 @@ describe('uuidV7', () => {
   it.each([0, 9, 11, 16])('throws RangeError on %p random bytes', (length) => {
     expect(() => uuidV7(RFC_UNIX_MS, new Uint8Array(length))).toThrow(RangeError);
   });
+
+  // Ten elements that are not ten bytes: each would pass a length check alone.
+  it.each([
+    ['a number array', new Array<number>(10).fill(0)],
+    ['a number array of values above a byte', new Array<number>(10).fill(256)],
+    ['a Uint16Array', new Uint16Array(10)],
+    ['an Int8Array', new Int8Array(10)],
+    ['a string of ten characters', '0123456789'],
+    ['null', null],
+  ])('throws RangeError on %s in place of the random bytes', (_name, random) => {
+    expect(() => uuidV7(RFC_UNIX_MS, random as unknown as Uint8Array)).toThrow(RangeError);
+  });
 });
 
 describe('parseId', () => {
@@ -78,7 +90,10 @@ describe('parseId', () => {
     ['version 8', '017f22e2-79b0-8cc3-98c4-dc0c0c07398f'],
     ['the nil UUID', '00000000-0000-0000-0000-000000000000'],
     ['the max UUID', 'ffffffff-ffff-ffff-ffff-ffffffffffff'],
-    ['a non-RFC variant', '017f22e2-79b0-7cc3-c8c4-dc0c0c07398f'],
+    ['variant 0 (NCS)', '017f22e2-79b0-7cc3-08c4-dc0c0c07398f'],
+    ['variant 7 (NCS)', '017f22e2-79b0-7cc3-78c4-dc0c0c07398f'],
+    ['variant c (Microsoft)', '017f22e2-79b0-7cc3-c8c4-dc0c0c07398f'],
+    ['variant f (reserved)', '017f22e2-79b0-7cc3-f8c4-dc0c0c07398f'],
     ['no hyphens', '017f22e279b07cc398c4dc0c0c07398f'],
     ['braces', '{017f22e2-79b0-7cc3-98c4-dc0c0c07398f}'],
     ['a urn prefix', 'urn:uuid:017f22e2-79b0-7cc3-98c4-dc0c0c07398f'],
@@ -96,6 +111,7 @@ describe('parseId', () => {
 
   it('rejects a value that is not a string at run time', () => {
     expect(parseId([RFC_UUID] as unknown as string).ok).toBe(false);
+    expect(parseId(new String(RFC_UUID) as unknown as string).ok).toBe(false);
     expect(parseId(undefined as unknown as string).ok).toBe(false);
   });
 

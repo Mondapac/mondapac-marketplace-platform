@@ -30,6 +30,7 @@ describe('parseCorrelationId', () => {
 
   it('rejects a value that is not a string at run time', () => {
     expect(parseCorrelationId(['abcdefgh'] as unknown as string).ok).toBe(false);
+    expect(parseCorrelationId(new String('abcdefgh') as unknown as string).ok).toBe(false);
     expect(parseCorrelationId(undefined as unknown as string).ok).toBe(false);
   });
 });

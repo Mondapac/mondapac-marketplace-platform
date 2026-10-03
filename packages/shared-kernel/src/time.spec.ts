@@ -1,5 +1,5 @@
-import { Temporal } from './time';
-import type { Clock } from './time';
+// Through the main entry, so these tests also check the re-export.
+import { Temporal } from './index';
 
 // ADR-0005 decision 8: Brisbane (no DST), Sydney (DST), Adelaide (half hour + DST), Perth.
 const BRISBANE = 'Australia/Brisbane';
@@ -109,13 +109,5 @@ describe('Temporal through the kernel', () => {
       true,
     );
     expect(JSON.stringify({ at: instant })).toBe('{"at":"2026-10-03T16:00:00.123Z"}');
-  });
-});
-
-describe('Clock', () => {
-  it('is satisfied by any object whose now() returns an instant', () => {
-    const clock: Clock = { now: () => Temporal.Instant.fromEpochMilliseconds(1_800_000_000_000) };
-
-    expect(clock.now().epochMilliseconds).toBe(1_800_000_000_000);
   });
 });

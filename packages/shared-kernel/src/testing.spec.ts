@@ -47,9 +47,10 @@ describe('FixedClock', () => {
 });
 
 describe('SequenceIdGenerator', () => {
+  const counter = (n: number): Uint8Array => Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 0, n);
+
   it('builds ids from the clock time and a counter with uuidV7', () => {
     const generator: IdGenerator = new SequenceIdGenerator(new FixedClock(START));
-    const counter = (n: number): Uint8Array => Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 0, n);
 
     expect(generator.next()).toBe(uuidV7(START.epochMilliseconds, counter(1)));
     expect(generator.next()).toBe(uuidV7(START.epochMilliseconds, counter(2)));
@@ -86,13 +87,31 @@ describe('SequenceIdGenerator', () => {
     expect([...ids].sort()).toEqual(ids);
   });
 
-  it('never repeats an id when the clock is set back', () => {
+  it('never repeats an id when the clock is set back: the counter does not reset', () => {
     const clock = new FixedClock(START);
     const generator = new SequenceIdGenerator(clock);
 
     const before = generator.next();
-    clock.set(START);
-    expect(generator.next()).not.toBe(before);
+    clock.set(START.subtract({ milliseconds: 1 }));
+    const after = generator.next();
+
+    expect(after).toBe(uuidV7(START.epochMilliseconds - 1, counter(2)));
+    expect(after).not.toBe(before);
+  });
+
+  it('carries the counter past two bytes: 65,537 ids at one instant are all distinct', () => {
+    const generator = new SequenceIdGenerator(new FixedClock(START));
+    const ids = new Set<string>();
+    let last = '';
+
+    for (let i = 0; i < 65_537; i += 1) {
+      last = generator.next();
+      ids.add(last);
+    }
+
+    expect(ids.size).toBe(65_537);
+    // 65,537 is 0x01_00_01: the counter fills byte 7 as well as bytes 8 and 9.
+    expect(last).toBe(uuidV7(START.epochMilliseconds, Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 1, 0, 1)));
   });
 });
 
@@ -111,7 +130,13 @@ describe('testMarketContext', () => {
   });
 
   it('throws on a malformed identifier instead of minting it', () => {
-    expect(() => testMarketContext('au', 'mondapac')).toThrow(/market id/);
-    expect(() => testMarketContext('AU', 'Mondapac')).toThrow(/tenant id/);
+    // Anchored: mint's own TypeError also names both ids, so `/market id/` alone would not
+    // prove that the builder checks them.
+    expect(() => testMarketContext('au', 'mondapac')).toThrow(
+      /^testMarketContext: malformed market id/,
+    );
+    expect(() => testMarketContext('AU', 'Mondapac')).toThrow(
+      /^testMarketContext: malformed tenant id/,
+    );
   });
 });

@@ -40,6 +40,7 @@ describe('parseMarketId', () => {
 
   it('rejects a value that is not a string at run time (a repeated header is an array)', () => {
     expect(parseMarketId(['AU'] as unknown as string).ok).toBe(false);
+    expect(parseMarketId(new String('AU') as unknown as string).ok).toBe(false);
     expect(parseMarketId(undefined as unknown as string).ok).toBe(false);
   });
 });
@@ -66,6 +67,7 @@ describe('parseTenantId', () => {
 
   it('rejects a value that is not a string at run time', () => {
     expect(parseTenantId(['mondapac'] as unknown as string).ok).toBe(false);
+    expect(parseTenantId(new String('mondapac') as unknown as string).ok).toBe(false);
     expect(parseTenantId(null as unknown as string).ok).toBe(false);
   });
 });
@@ -140,6 +142,14 @@ describe('isMinted', () => {
   it('refuses a frozen copy and an object that inherits from a minted context', () => {
     expect(isMinted(Object.freeze({ ...minted }))).toBe(false);
     expect(isMinted(Object.create(minted))).toBe(false);
+  });
+
+  it('refuses a Proxy of a minted context, which reads the same fields', () => {
+    const proxy = new Proxy(minted, {});
+
+    expect(proxy.marketId).toBe('AU');
+    expect(proxy).toEqual(minted);
+    expect(isMinted(proxy)).toBe(false);
   });
 
   it('refuses a JSON round trip of a minted context', () => {

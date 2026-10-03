@@ -45,8 +45,10 @@ export function uuidV7(unixMs: number, random: Uint8Array): string {
   if (!Number.isInteger(unixMs) || unixMs < 0 || unixMs > MAX_UNIX_MS) {
     throw new RangeError('uuidV7: the time must be a whole number of milliseconds in 48 bits');
   }
-  if (random.length !== RANDOM_BYTES) {
-    throw new RangeError('uuidV7: exactly 10 random bytes are required');
+  // A Uint8Array only: an array or another typed array would pass a length check and lay
+  // out the wrong bits, and a string or null would fail later with a different error.
+  if (!(random instanceof Uint8Array) || random.length !== RANDOM_BYTES) {
+    throw new RangeError('uuidV7: exactly 10 random bytes in a Uint8Array are required');
   }
 
   const time = unixMs.toString(16).padStart(12, '0');
