@@ -19,8 +19,10 @@ structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (l
 scope; deferred platform foundations and the trigger that forces each one - check it
 before starting a slice). Phase 2 adds ADR-0018 (identity: in-house build, server-side
 sessions, Market-scoped accounts, authorization model), ADR-0019 (AI as a cross-cutting
-capability: launch core, AI rules, where AI code lives) and ADR-0020 (amendments from the
-platform-foundations design). Follow them; change one only through a new superseding ADR.
+capability: launch core, AI rules, where AI code lives), ADR-0020 (amendments from the
+platform-foundations design) and, from identity's G2, ADR-0022 and ADR-0023 (seller access
+state owned by `identity` with one may-sell contract in `sellers`; platform amendments).
+Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
 FulfillmentStrategy, PricingStrategy, OrderWorkflowExtension, AttributeSchema, TaxStrategy,

@@ -49,6 +49,10 @@ would each need operating in every Region Stack (ADR-0003).
    a `UnitOfWork` bound via AsyncLocalStorage (works for HTTP requests, jobs and event
    handlers alike); the outbox row (ADR-0006) is written in the same transaction. Facade
    calls to another module never join the caller's transaction.
+   *(Amended by ADR-0023: the use-case body opens its units; a use case opens at most one
+   read-write unit, after any read-only units its slow work needs; the access gate reads in
+   a unit of its own; a short reservation unit may count an attempt before a credential is
+   verified.)*
 6. **Reversible migrations.** Prisma Migrate generates the up migration; every migration
    folder also holds a `down.sql`, generated with `prisma migrate diff --script` and then
    reviewed. CI applies up → down → up on a fresh database, so the Definition of Done
