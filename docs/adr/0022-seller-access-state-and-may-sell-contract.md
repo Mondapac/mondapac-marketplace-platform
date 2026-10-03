@@ -1,6 +1,6 @@
 # ADR-0022: Seller Access State and the May-Sell Contract
 
-**Status:** Proposed — accepted with the identity G2 approval (CTO, 2026-10-03), after review
+**Status:** Accepted — 2026-10-03, with the identity G2 approval (CTO), after review
 by Mohammad (software-architect) and Hassan (security-tester). No owner decision is changed:
 AC 5 of the identity brief changes only through the mini-review named in decision 5.
 **Relates to:** ADR-0004 decision 5, ADR-0006 decisions 3 and 4, ADR-0008 decision 5,
@@ -73,9 +73,10 @@ the design is in sections 3.3 and 8 of `docs/design/domain/identity.md`.
 - Failing closed puts safety before availability: when `identity` or `sellers` cannot
   answer, nothing from that seller can be bought. After an extraction the contract becomes
   a remote call under the same rule.
-- From the review slice only `sellers` should call approve, reject and auto-approve. How
-  that is enforced (a boundary rule on those facade methods, a required `basisId`, or both)
-  is decided at the `sellers` G2, with security-tester review.
+- `autoApproveSellerAccess` and the `sellers` entry to approve and reject are not built
+  until the `sellers` G2 enforces in CI that only `modules/sellers/` can reach them (a
+  separate contract file that only `sellers` may import), with security-tester review. A
+  required `basisId` alone is not enough.
 - `sellers` updates its file and `identity` records the decision in separate transactions
   (ADR-0004 decision 5). The `sellers` G2 designs what happens when the call is refused or
   the process stops between the two; the `basisId` in the decision event lets `sellers`

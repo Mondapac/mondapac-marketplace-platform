@@ -1,6 +1,6 @@
 # ADR-0023: Platform Amendments from Identity G2
 
-**Status:** Proposed — accepted with the identity G2 approval (CTO, 2026-10-03), after review
+**Status:** Accepted — 2026-10-03, with the identity G2 approval (CTO), after review
 by Mohammad (software-architect) and Hassan (security-tester). No owner decision is changed,
 so none is asked; the owner is informed in the G2 summary.
 **Amends:** ADR-0004 decision 5, ADR-0006 decisions 4 and 7, ADR-0008 decision 2, ADR-0015
@@ -26,11 +26,13 @@ evidence are in the two design documents. The Node minimum (ADR-0014) is ADR-002
    hashing, mail, HTTP, facade or model call runs inside a unit. The access gate
    (`Authenticator`, `AuthorisationCheck`) reads committed state in a unit of its own,
    before the body runs. One further write unit is allowed: a short reservation unit before
-   a credential is verified. It counts the attempt (`attempts + 1 … RETURNING`) and refuses
-   at the threshold without verifying, so parallel requests get no more guesses than the
-   threshold; the write unit after the check releases the reservation (Hassan's finding 1).
-   Read-only work still runs in a transaction, as decision 5 says; that is revisited with
-   the measurements of identity spike 6 (PA5).
+   a password, second-factor code or recovery code is verified. It writes only attempt
+   counters. It increases every counter that applies (`attempts + 1 … RETURNING`) and
+   refuses at the threshold without verifying, so parallel requests get no more guesses than
+   the threshold. The write unit after the check releases the reservation only on success; a
+   failed or refused attempt keeps its count (Hassan's finding 1). Read-only work still runs
+   in a transaction, as decision 5 says; that is revisited with the measurements of identity
+   spike 6 (PA5).
 2. **Event delivery lands with the first subscription (ADR-0006 decision 4).** The publish
    path (outbox writer, relay, `EventBus` port, in-process adapter) lands in identity slice
    1b. The consume side (`platform.event_delivery`, fan-out, dispatcher, back-off, dead
