@@ -29,6 +29,9 @@ core/vertical split and the market/time rules visible and machine-checked.
    ```
 2. **Module layout** (`apps/api/src/modules/<module>/`)
    *(Amended by ADR-0018: `contracts/` also holds the module's permission declarations.)*
+   *(Amended by ADR-0019: `contracts/` also holds the module's AI tool declarations, kinds
+   READ and DRAFT only; `platform/ai` joins the cross-cutting runtime and is the only code
+   that calls a model.)*
    ```
    domain/          aggregates, value objects, domain events, domain services
                     (no NestJS, no Prisma, no I/O)
@@ -47,13 +50,18 @@ core/vertical split and the market/time rules visible and machine-checked.
    `certification`, `catalog`, `inventory`, `pricing`, `cart`, `ordering`, `payments`,
    `commission-payouts` (COM-*, PAY-*), `tax`, `shipping` (SHP-01); audit logging
    (CERT-32, IMP-10) is platform infrastructure (`platform/audit`, ADR-0004); P1: `returns` (refund execution stays in `payments`, RET-06), `notifications`,
-   `search`. Created empty in Phase 1, filled slice by slice.
+   `search`. Created empty in Phase 1, filled slice by slice. *(Amended by ADR-0019: P1
+   also `assistant` (buyer conversation and tool selection), created with its first
+   slice.)*
 4. **Time library.** The Temporal API (via polyfill until native in the Node LTS in use)
    backs `Clock` and the local date/time types in `shared-kernel` (ADR-0005 decision 5).
 5. **Communication contract**
    *(Amended by ADR-0018: facade calls also carry the caller's `ActorContext`; events
    carry no actor and their handlers run as the system actor; no module keeps a read
    model of `identity`'s role, assignment or membership data.)*
+   *(Amended by ADR-0019: an AI tool is a facade method: it carries the caller's
+   `CallContext` unchanged and reaches a wrapped use case; the actor and the Market never
+   come from model output.)*
    - Queries across modules: call the other module's public facade (in-process interface
      from its `contracts/`). No cross-module joins, no reading another module's tables.
    - Reactions/commands across modules: domain events via the outbox (ADR-0006).

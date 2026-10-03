@@ -48,6 +48,8 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | Permission registry in `platform/` *(Amended by ADR-0018: row added.)* | In the same change as the first use case that declares a permission key |
    | CI check that every use case declares its access rule *(Amended by ADR-0018: row added.)* | At the slice named in identity's approved G2 design, no later than the first use case that declares a permission key |
    | Runtime meaning of the Market `status` values *(Amended by ADR-0020: row added.)* | Before the first deployed environment the public can reach; until then "hosted" (`HOSTED_MARKETS`) is the only gate and `status` has no runtime effect |
+   | `platform/ai` (model entry point and provider adapter, switch evaluation, usage budget; each further part with its first consumer) *(Amended by ADR-0019: row added.)* | In the same change set as the first slice that calls a model; not in Phase 2 and not merged during Phase 5; each part of its design approved by the CTO, with security-tester review, before the first slice that consumes it; the per-seller AI switch slice of `sellers` lands before or with it |
+   | CI rules of ADR-0019 R2 and R7 (allow-list of the files that may import the model entry point, checked by `pnpm boundaries`; provider SDK imports only inside `platform/ai`) *(Amended by ADR-0019: row added.)* | In the same change as the model entry point of `platform/ai` |
 
 4. **`domain-is-pure` is a whitelist.** `domain/` may import only its own `domain/` and the
    shared kernel. This is how "no I/O" in ADR-0008 decision 2 is enforced. Libraries reach

@@ -18,7 +18,8 @@ regions, persistence/Prisma, time zones/city rollout, events/outbox, money/GST, 
 structure). Phase 1 added ADR-0014 (runtime and toolchain baseline), ADR-0016 (local object storage) and ADR-0015 (Phase 1
 scope; deferred platform foundations and the trigger that forces each one - check it
 before starting a slice). Phase 2 adds ADR-0018 (identity: in-house build, server-side
-sessions, Market-scoped accounts, authorization model) and ADR-0020 (amendments from the
+sessions, Market-scoped accounts, authorization model), ADR-0019 (AI as a cross-cutting
+capability: launch core, AI rules, where AI code lives) and ADR-0020 (amendments from the
 platform-foundations design). Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
@@ -75,6 +76,49 @@ strategy implementation, not in core logic.
   evaluateClaim entry point, for every certification type and every Offer entry point.
 - Catalog scope (ADR-0010): products and categories are PLATFORM or SELLER scoped within a
   Market; all selling goes through Offers; PLATFORM content is admin-only.
+
+## AI rules (ADR-0019; only the launch core is P1, never on the path to the first sale)
+- R1 Model output is never a certification tag, status, badge text or an input to
+  evaluateClaim. Certification status is shown only as the structured badge built from
+  evaluateClaim; a query with certification intent becomes the CERT-23 filter. AI-filled
+  certificate fields are a draft the seller submits, marked per field for the reviewer.
+  The claim guard (a port in platform/ai that certification implements) is deterministic,
+  fail-closed defence in depth, not the control.
+- R2 Decisions are human: AI never approves, rejects, suspends, revokes, refunds or pays,
+  ticks a manual check, counts as a second reviewer or recommends approval. Model output
+  never feeds a decision use case, a rule-based automation, an access decision, an event
+  or a notification. platform/ai has one model entry point; only files on its checked-in
+  allow-list import it (pnpm boundaries): never a domain/ file, a file of inventory,
+  ordering, payments, commission-payouts or tax, or a deterministic path or decision use
+  case listed in ADR-0019 decision 10. identity, payments and commission-payouts publish
+  no AI tools; credentials, sessions, identity documents, payment and payout data never
+  reach a model.
+- R3 AI acts as the calling user: a tool is a facade method that carries the caller's
+  CallContext unchanged and reaches a wrapped use case. Seller, customer and Market never
+  come from model output; an id a model supplies is input and meets the ownership check.
+  No AI service identity; no AI component holds a permission. Asynchronous AI work runs
+  as the system actor without tools (Market from the event envelope, seller from the
+  owning aggregate, switch re-evaluated). No AI in an acting-as (Login as Seller) session.
+- R4 AI output never changes a domain record: a capability or a DRAFT tool proposes
+  content, or stores a suggestion, that takes effect only when the user submits it
+  through the normal use case. Tools are READ or DRAFT only.
+- R7 Models are called only through platform/ai; no provider SDK import elsewhere.
+  Provider, model and region are Market configuration, with no default ("none" is valid).
+  Data goes to an external AI service only under a no-retention, no-training contract,
+  within the Market's data-residency requirement, in categories the owner approved.
+- R8 Every capability can be switched off per Market and per seller (the seller setting is
+  owned by sellers, SEL-25; platform/ai evaluates; an error means off). Off, failing or
+  out of budget, the host flow completes without AI. An operator can switch AI off
+  without a release.
+- R9 Files, user text and tool results are data, never instructions. Model output is
+  schema-validated and rendered inert (no HTML, links or images; URLs are built by code).
+  No tools under an admin or the system actor.
+- R13, R14 AI gives no religious ruling and no health or allergy advice, and never fills
+  a seller's commitments (handling type, per-Offer attestation, self-declaration).
+- Placement and timing: a domain's AI capability lives in that domain's module ("AI
+  uses" in its brief); the buyer conversation lives in assistant. No AI code in Phase 2,
+  none merged during Phase 5; an AI slice starts only after its host module's facade is
+  merged, never blocks a P0 or launch-required slice, and only one runs at a time.
 
 ## Commands
 - Requires Node.js 24.9+ and pnpm 10 (ADR-0014).
@@ -170,7 +214,9 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
   and must sign off on EVERY Prisma schema change or migration before merge. Slow queries,
   locking problems and data-growth issues also go to database-designer.
 - security-tester review is MANDATORY (not optional under time pressure) before merging
-  anything in auth, payments, or the certification (CERT-*) enforcement path.
+  anything in auth, payments, the certification (CERT-*) enforcement path, or an AI
+  surface (ADR-0019 R15: platform/ai, the assistant module, AI tool declarations, and any
+  code that sends data to a model or uses its output).
 - qa-engineer and security-tester are read-only reviewers by design - bugs/findings go back
   to the implementer, not fixed by the reviewer.
 - qc-release-manager is the final gate; don't merge or close a PLAYBOOK phase without it for
@@ -195,3 +241,11 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
 - Short note added to docs/ if behavior or architecture changed
 - UI slices: built only from library components and exported tokens; any new UI was added
   to the Figma design system first, tokens exported, plugin Audit file clean (ADR-0017)
+- AI slices (ADR-0019 decision 9): evaluation set versioned, synthetic, green against a
+  fake provider with certification-claim leakage = 0; the recorded request respects the
+  field allow-list and holds no canary data; cross-seller, cross-customer and
+  cross-Market canaries, injection samples (one carried by a file) and inert rendering
+  pass; a test walks the non-AI path to the end (capability off, provider timeout, budget
+  exhausted); both Market fixtures; `pnpm verify` stays offline and deterministic. A
+  capability is switched on only after its real-model evaluation is recorded as passed
+  for that provider, model and prompt version
