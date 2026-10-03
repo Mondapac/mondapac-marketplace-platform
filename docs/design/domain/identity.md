@@ -100,8 +100,8 @@ Invitation (kind: seller-owner | staff | admin)  --> roleId, sellerId?
 | `Account` | Population, email (as typed and normalised), display name, status, `emailVerifiedAt`, the instant of the latest sign-up (the anchor of the 7-day purge: M5), the instant of the last "you already have an account" notice, the password credential | One population for life; the email is unique per Market and population (decision 5, ADR-0018 decision 3; a database constraint, 11); a customer account never has an assignment or a membership (R2); a disabled account cannot open a session (3.1); the display name has 1 to 100 characters after trimming, with no control or bidi characters and no URL-like text (HF13) |
 | `PasswordCredential` (entity of `Account`) | The hash string in PHC format, `changedAt` | Only a hash is kept; replacing it ends sessions as in 3.5 (brief s5); never loaded with list queries |
 | `Session` | Token hash, account, population, `sellerId` copy, transport, `createdAt`, `lastSeenAt`, the idle timeout and the absolute expiry (both fixed at creation, because "keep me signed in" differs per session: M2), revocation. The re-confirmation instant of 8.5 joins with its mini-review | 3.5. Not versioned. An admin session is created only from a second-factor proof (AC 10, AC 22). The token is never stored (ADR-0018 decision 2) |
-| `SignInChallenge` | Account, purpose (`second-factor` or `second-factor-enrolment`), token hash, attempts, expiry, the credential's `changedAt` at issue | The state between a correct password (or an invitation, 3.4) and a session. It is never a credential and never an actor (I1). Not versioned. Single use, five attempts, five minutes; an attempt is reserved with `UPDATE … WHERE attempts < 5` before the code is checked (HF1). Void when the password or the factor changes, the account is disabled or the seller suspended (HF11) |
-| `SecondFactor` | Its own id, new at every enrolment (M3); encrypted secret, state, last accepted time step, recovery-code hashes, the instant of the last HF2 lock (its event sends the alert, 6.8) | 3.6. One per account; a time step is accepted once (`UPDATE … WHERE last_accepted_step < $step`); a recovery code is used once |
+| `SignInChallenge` | Account, purpose (`second-factor` or `second-factor-enrolment`), token hash, attempts, expiry, the credential's `changedAt` at issue | The state between a correct password (at sign-in, or with an enrolment link) and a session or an active factor. It is never a credential and never an actor (I1). Not versioned. Single use, five attempts, five minutes; an attempt is reserved with `UPDATE … WHERE attempts < 5` before the code is checked (HF1). Void when the password or the factor changes, the account is disabled or the seller suspended (HF11) |
+| `SecondFactor` | Its own id, new at every enrolment (M3); encrypted secret, state, last accepted time step, recovery-code hashes, the instant of the last HF2 lock (its event sends the alert, 6.8), a replacement secret waiting for its first code (M13) | 3.6. One per account; at most one waiting secret; a time step is accepted once (`UPDATE … WHERE last_accepted_step < $step`); a recovery code is used once |
 | `OneTimeLink` | Account, purpose (`verify-email`, `reset-password`, `confirm-second-factor-reset`, `enrol-second-factor`), token hash, issue and expiry instants, `consumedAt` | 3.7. Bound to one account, one purpose and one Market; single use; at most one usable link per account and purpose (brief s5, AC 19) |
 | `Invitation` | Kind, email, role, seller (or platform), inviter, token hash, state | 3.4, R12. Accepting creates the account with exactly the invited email (AC 29); a `seller-owner` invitation names a new seller id or one whose `SellerAccess` never had a member (HF5) |
 | `Role` | Scope, kind, seed code (system and default) or name (custom), permission keys, `sellerId` for a seller custom role, seed version | Exactly one scope; every key is in that scope (R2); system and default roles are read-only to every actor (R3, R10); a seller custom role belongs to one seller (R9); a custom role's name has 1 to 80 characters with the rules of HF13 and is unique among the custom roles of its seller, or of its Market's platform scope, after trimming, NFC and lower-casing (M10) |
@@ -198,9 +198,9 @@ are created with the invitation), `staff`, `admin`. Lifetime: 7 days; `admin` 72
 
 | From → to | Trigger and guard | Effects | Serves |
 |---|---|---|---|
-| (none) → `pending` | Issue. Guards: the inviter may grant the role (R1, R3, R11: 5.5); `staff`: the actor is the Seller Owner and the seller is `approved`; `seller-owner`: the seller id is new, or its `SellerAccess` never had a member (HF5); the member limit; one pending invitation per email and scope; a pending row past its expiry is replaced (M7) | Token minted at dispatch (6.6); audit; mail | R12, AC 35, AC 37 |
+| (none) → `pending` | Issue. Guards: the inviter may grant the role (R1, R3, R11: 5.5); `staff`: the actor is the Seller Owner and the seller is `approved`; `seller-owner`: the seller id is new, or its `SellerAccess` never had a member (HF5); the member limit; one pending invitation per email and scope, and one pending `seller-owner` invitation per seller (M12), either answered `invitation.already-pending`; a pending row past its expiry is replaced (M7) | Token minted at dispatch (6.6); audit; mail | R12, AC 35, AC 37 |
 | `pending` → `pending` | Re-send by the inviter's side: new token, new expiry, the old token is void | Mail | Flow E2, F2 |
-| `pending` → `accepted` | The invitee presents the token and sets a password. Guards, all re-checked at this moment: not expired or revoked; the role still exists; `staff`: the seller is `approved`; the inviter is still active and could still grant the role (Hassan, 14.2); `admin` with no inviter (7.4): refused once the Market has an active Platform Administrator (HF5) | Account created `active` and `verified` with the invited email, membership and assignment in the same transaction; audit; events. `admin`: the factor is created `pending` in the same transaction and the answer carries the enrolment (3.6, HF6). No session: the invitee signs in | R12, AC 22, AC 29, AC 31, AC 37 |
+| `pending` → `accepted` | The invitee presents the token and sets a password; an admin also presents a code. Guards, all re-checked at this moment: not expired or revoked; the role still exists; `staff`: the seller is `approved`; the inviter is still active and could still grant the role (Hassan, 14.2); `admin` with no inviter (7.4): refused once the Market has an active Platform Administrator (HF5) | Account created `active` and `verified` with the invited email, membership and assignment in the same transaction; audit; events. `admin` (HF6: the first enrolment happens inside acceptance; `ux.md` F6): acceptance completes only with a valid code. A first request checks the token and returns a new 160-bit secret with a tag (HMAC-SHA-256 under a key derived from the stack secret of 6.8, with its own label) that binds it to the invitation and a short expiry (Hassan's number; proposed 15 minutes); nothing is stored. The request with the token, the password, the secret, the tag and a code creates the factor `active`, with its recovery codes shown once, in the same transaction. Leaving earlier creates nothing. No session: the invitee signs in | R12, AC 22, AC 29, AC 31, AC 37 |
 | `pending` → `revoked` | Revoke by the inviter's side before acceptance | Audit | R12 |
 | `pending` → `expired` | `Clock` passes the expiry; checked on use, cleaned by a job | — | AC 29 |
 
@@ -222,14 +222,14 @@ extending the absolute lifetime; an admin session without a second-factor proof 
 ### 3.6 Second factor: `none` → `pending` → `active` → `none`
 | From → to | Trigger and guard | Effects | Serves |
 |---|---|---|---|
-| `none` → `pending` | Start enrolment, in one of two ways only (HF6): an admin inside the acceptance of its invitation (3.4); otherwise from a 60-minute `enrol-second-factor` link mailed to the account and presented with its password. An admin gets the link when sign-in finds no active factor (6.3 step 5); a seller-side account requests it from "Account security" | Secret of 160 bits generated and stored encrypted (7) | Decision 7, AC 22 |
+| `none` → `pending` | Start enrolment from a 60-minute `enrol-second-factor` link mailed to the account and presented with its password (HF6). An admin gets the link when sign-in finds no active factor, which happens only after a reset (6.3 step 5); a seller-side account requests it from "Account security". An admin's first enrolment is not this path: it happens inside its invitation's acceptance, which creates the factor `active` at once (3.4) | Secret of 160 bits generated and stored encrypted (7) | Decision 7, AC 22 |
 | `pending` → `active` | A valid code from the app. Re-checks the account, membership, seller state and that the password has not changed since the challenge (HF11) | Recovery codes shown once; other sessions revoked and the current one gets a new token; open challenges void; audit | AC 11 |
 | `active` → `none` | Disable by the account itself (seller side only, with a code); or reset by an authorised actor (7.3) | Sessions revoked; open challenges void; mail to the account; audit. The next enrolment starts from a link (HF6) | AC 18, AC 33 |
-| `active` → `active` | Replace the device (a code or a recovery code, then a new enrolment); regenerate recovery codes | Old secret or codes void; audit | — |
+| `active` → `active` | Replace the device: a code or a recovery code starts it, and the new secret waits in the factor's replacement field while the old one stays active (M13); the first valid code from the new device swaps them in one guarded update. Regenerate recovery codes, with a code | Swap: the old secret is void, other sessions revoked and the current one gets a new token, open challenges void, mail, audit. A new start replaces a waiting secret; a password change, a reset or disabling clears it. Regenerating: the old codes void; audit | — |
 
 Forbidden: an admin disabling its own factor; a code or a time step accepted twice; resetting
 one's own factor through the reset path; a reset by an actor that lacks a permission the target
-holds (R1, AC 33); an enrolment started with a password alone, outside the two ways above (HF6).
+holds (R1, AC 33); an enrolment started with a password alone, outside invitation acceptance and the mailed link (HF6).
 
 ### 3.7 One-time link and password reset: `requested` → `issued` → `consumed` | `expired`
 | From → to | Trigger and guard | Effects | Serves |
@@ -552,10 +552,10 @@ at boot and never logged (Hassan, H4), also for unknown addresses.
 | # | Topic | Design |
 |---|---|---|
 | 7.1 | Mechanism | Authenticator app only (decision 7): TOTP per RFC 6238 with Hassan's parameters, which every common app accepts: SHA-1, 6 digits, 30 seconds, one step of tolerance each way, a 160-bit secret. A step is accepted only through `UPDATE … WHERE last_accepted_step < $step`, so a code works once even under concurrency. Built on `node:crypto` behind a port `SecondFactorVerifier`: the RFC 6238 and RFC 4226 vectors pass on Node 24.9.0 and 24.21 with HMAC alone, so no package is needed; re-run on 24.15 (ADR-0021). Enrolment gives an `otpauth://` URI and the same secret as text; drawing the QR code is the panel's job, never a remote service (13) |
-| 7.2 | Who | Mandatory for admins: a session is built only from a second-factor proof; an admin enrols inside its invitation's acceptance, or later from a mailed link (3.6, HF6), and can do nothing else without a factor (AC 10, AC 22). Optional for the seller side at launch (AC 30); the facade exposes the status so that payouts can require it from a Seller Owner in Phase 5 (decision 7, VER-10). Customers: none |
+| 7.2 | Who | Mandatory for admins: a session is built only from a second-factor proof; an admin enrols inside its invitation's acceptance (3.4) and, after a reset, again from a mailed link (3.6, HF6), and can do nothing else without a factor (AC 10, AC 22). Optional for the seller side at launch (AC 30); the facade exposes the status so that payouts can require it from a Seller Owner in Phase 5 (decision 7, VER-10). Customers: none |
 | 7.3 | Recovery and reset | Ten single-use recovery codes of 10 Crockford base32 characters, shown once, stored as `SubjectKeyService.hmac` under the account's key (Hassan, H2). A person with neither device nor codes needs a reset: the factor returns to `none`, the sessions end, the account is mailed, an audit row is written, and the next enrolment starts from a mailed link (HF6). Who may reset is the table below |
 | 7.4 | Operator routines (I10) | Two commands of the `api` image, run by the operator with a named Market; each gets its `MarketContext` from the factory and runs a use case with the `system` rule. `first-admin`: refused when the Market already has an admin account; creates an `admin` invitation (72 hours) for the given email with the Platform Administrator role, so there is never a default password (AC 22); its acceptance is refused once the Market has an active Platform Administrator (HF5). `reset-admin-second-factor`: the break-glass of 7.3. Both write an audit row, so neither can run before slice 6 |
-| 7.5 | Secret | 20 random bytes, encrypted with `SubjectKeyService` under the account's key (label `identity.second-factor.secret`), decrypted only inside the verifier; never in an event, a log or an audit row. Destroying the account's key destroys it |
+| 7.5 | Secret | 20 random bytes, encrypted with `SubjectKeyService` under the account's key (label `identity.second-factor.secret`), decrypted only inside the verifier; never in an event, a log or an audit row. A replacement's new secret is encrypted the same way and waits beside the active one until its first valid code (M13). Destroying the account's key destroys both |
 
 | Reset target | Who may reset | Extra control |
 |---|---|---|
@@ -581,7 +581,7 @@ so, and no caller may put them in an event, a log or an audit row.
 |---|---|---|---|
 | `describeActor(ctx)` | Account id, population, seller id, role id, effective permission keys, seller access state, whether a second factor is active | `own-resources`, allowed when not approved | 2; keys from 8a |
 | `membershipOf(ctx, accountId)` | Seller id and role id, or none | `own-resources`, for oneself only, in slice 5; the variant for other accounts, under `identity.team-member.view`, waits for 8a, which brings the registry (decided by Ali; ADR-0018 decision 6) | 5; 8a |
-| `sellerAccessOf(ctx, sellerId)` | The state code and the instant of the last change; never a reason | `anonymous` for request actors and `system` for handlers (two use cases behind one method), because the may-sell contract of 8.3 is asked during a customer's request. Not exposed over HTTP | 5 |
+| `sellerAccessOf(ctx, sellerIds)` | Per seller id, the state code and the instant of the last change; never a reason; an unknown id is absent, which the caller reads as "may not sell" | `anonymous` for request actors and `system` for handlers (two use cases behind one method), because the may-sell contract of 8.3 is asked during a customer's request. Not exposed over HTTP | 5 |
 | `sellerAccountSummaries(ctx, sellerIds)` | Per seller: state, instant of the last change, owner account id, the owner's display name and sign-in email (the sellers list, SEL-14, needs them without a join: sellers brief s7) | `identity.seller-access.view` | With `sellers` |
 | `hasRecentConfirmation(ctx, within)` | Whether this session re-confirmed its password (and factor) within the duration | `own-resources` | Mini-review before `sellers` slice 10 (8.5) |
 | `secondFactorStatusOf(ctx, accountId)` | `none` or `active` | `system` or `own-resources` | 12 |
@@ -651,6 +651,9 @@ outlined them:
 | 6 | One "may this seller sell" contract, in the `sellers` facade: `identity` says `approved` **and** `sellers`' own conditions hold. It fails closed and can only narrow. Catalogue, cart and ordering ask only `sellers` |
 | 7 | Rejected alternative: a precondition port that `sellers` implements behind `identity`'s approve endpoint. One entry point, but a business check behind an `identity` use case, and a Phase 2 stand-in ("always satisfied") that fails open |
 
+ADR-0022 point 6 answers for a set of seller ids in one call; `sellerAccessOf` takes a set too
+(8.1), so the contract makes one `identity` call per request and ADR-0008 decision 5 needs no note.
+
 ### 8.5 Other requests of the sellers brief (its s7 and s11; board request 8)
 | Request | Answer |
 |---|---|
@@ -676,7 +679,7 @@ outlined them:
 | 10 | `account.disabled`, `membership.none`, re-enabling | **Decided by Ali** (14.1-8): inside G1's scope; the screens keep them |
 | 11 | P1 after Phase 3 | Yes: approve and reject move to the `sellers` review page (8.4); suspend, reinstate, seller invitations and the owner-confirmed reset stay `identity`'s |
 | 12 | One list of owner questions | **Accept:** 14.4 |
-| 13 | Second round (`ux.md` 7.2): more codes, lifetimes by kind, the re-apply limit, admin acceptance with the A8 code | Items 1 and 3: **accepted**, in row 1. Item 4: row 2. Item 2 is open (14.5) |
+| 13 | Second round (`ux.md` 7.2): more codes, lifetimes by kind, the re-apply limit, admin acceptance with the A8 code | Items 1 and 3: **accepted**, in row 1. Item 4: row 2. Item 2: **accepted** in 3.4 (HF6) |
 
 ## 9. Email in Phase 2
 
@@ -694,7 +697,7 @@ outlined them:
 | # | Record | Design |
 |---|---|---|
 | 10.1 | `platform.audit_log` | One row per successful action of AC 11 and AC 27, in the transaction of the change, through the audit writer (slice 6). Actions are named `identity.<subject>.<verb>`, for example `identity.seller-access.rejected`, `identity.role.updated`, `identity.invitation.accepted`. `before` and `after` are allow-listed ids, state codes and permission keys; never an email, a name, a role name or a reason (R5, VER-13). The reason text lives in the `AccessDecision` of `identity`, encrypted (11.3); the row holds the decision id |
-| 10.1 | Anonymous audited actions | Three audited actions have no account yet or no session: accepting an invitation, activating a factor inside an admin's invitation acceptance or from an enrolment link, and the owner confirming a reset by link. They need the actor type `ANONYMOUS` (no actor id; the target names the account or the invitation), added to the CHECK in slice 6, before the writer's first row (accepted by Ali, A3). The founding assignment at self-registration writes no row (5.5) |
+| 10.1 | Anonymous audited actions | Three audited actions have no account yet or no session: accepting an invitation (an admin's with its factor), activating a factor from an enrolment link, and the owner confirming a reset by link. They need the actor type `ANONYMOUS` (no actor id; the target names the account or the invitation), added to the CHECK in slice 6, before the writer's first row (accepted by Ali, A3). The founding assignment at self-registration writes no row (5.5) |
 | 10.2 | Sign-in records, an `identity` table | Every sign-in attempt of every population: Market, population, account id or null, outcome code, instant, origin address, session id, correlation id; never the typed email. It has retention (90 days, with the full address: Hassan, H3) and a purge job, which an immutable table cannot have, and it carries the origin, which the audit log must not (brief s9) |
 | 10.2 | Admin sign-ins | In addition, a **successful** admin sign-in writes one audit row (`identity.admin-session.opened`): bounded volume, no personal data, and tamper-evident where it matters most (AC 11; accepted by Hassan) |
 
@@ -864,7 +867,7 @@ row (15.2), and the owner is informed, not asked.
 ### 14.2 Decided by Hassan 2026-10-03
 G2 is recorded only once his findings 1 to 8 and `ux.md` F6 are in the documents; they are. Every
 number in 6 and 7 is his. Where each stands (12.1 names the slice where he checks it): HF1 6.3,
-6.8; HF2 6.8, 7, 9; HF3 6.8; HF4 5.2; HF5 3.4, 5.5, 7.4; HF6 3.6, 6.3, 7; HF7 5.2, 6.4; HF8 3.1,
+6.8; HF2 6.8, 7, 9; HF3 6.8; HF4 5.2; HF5 3.4, 5.5, 7.4; HF6 3.4, 3.6, 6.3, 7; HF7 5.2, 6.4; HF8 3.1,
 5.5; HF9 5.1, 5.2; HF11 3.5, 3.6, 6.3; HF12 6.3, 6.7; HF13 2.1, 9, 11.1; HF14 6.2, 6.4; HF15 3.4,
 6.6. HF10 is the platform document's 4; HF1 and HF8 read the same there (3.1 rows 5 and 6).
 
@@ -883,7 +886,7 @@ a not-found answer byte-identical to a real one (5.2) and a written support chec
 reset (7.3). Dependencies: only the rate limiter, and maybe SMTP (13). Penetration-test additions:
 12.1.
 
-### 14.3 Answers to Mojtaba (data design 11.3)
+### 14.3 Answers to Mojtaba (data design 11.3 and 11.4)
 | # | Answer |
 |---|---|
 | M1 | Confirmed (Ali, A4): `Session` and `SignInChallenge` carry no version (2.1). The other tables listed change by single guarded statements or through their root, whose version rises |
@@ -897,6 +900,8 @@ reset (7.3). Dependencies: only the rate limiter, and maybe SMTP (13). Penetrati
 | M9 | `identity.outbox` lands in slice 1b (decided by Ali; 12.1) |
 | M10 | Confirmed: display names of 1 to 100 characters, role names of 1 to 80. A custom role's name is unique within its seller, or within its Market's platform scope, after trimming, NFC and lower-casing, so it needs a constraint; a clash answers `role.name-taken` (2.1, 8.6) |
 | M11 | Confirmed: fixed windows with a block instant (6.8) |
+| M12 | Accepted: one pending `seller-owner` invitation per seller, answered `invitation.already-pending` (3.4) |
+| M13 | Accepted as recommended: a nullable `pending_secret_ciphertext` on `second_factors`, added with the table in slice 7 (3.6, 7.5) |
 
 ### 14.4 The owner list (Ali's final; one list with `ux.md` 7.4)
 | # | Question, in plain words | Team recommendation |
@@ -914,10 +919,9 @@ their first sign-in (3.2); three re-applications (3.3); the estimate of 12.1.
 | # | Point | Who |
 |---|---|---|
 | 1 | `ux.md` 7.3 item 1 reads a seller-side account's first, optional enrolment as needing only its current password inside a session; 3.6 mails a link for every enrolment outside an admin's acceptance. Recommendation: Reza's reading for that first enrolment (the email is verified and a session exists) and the mailed link after any reset, as HF6 asks; 3.6 then changes for that case only | Hassan, at his final check |
-| 2 | `ux.md` 7.2 item 2 and F6: an admin invitation is accepted only once the A8 code is accepted, and leaving earlier creates nothing; 3.4 creates the account with a `pending` factor at acceptance, and an invitee who leaves enrols later from a mailed link. Recommendation: Reza's reading, which is HF6's letter and leaves no half-enrolled admin: the first request returns a new secret with a tag that binds it to the invitation, and the request with the code creates the account, the active factor and the recovery codes in one unit; 3.4 and 3.6 then change | Hassan and Reza, at the final check |
-| 3 | PH2 to PH4 of the platform document (16 b), which the review did not answer | Hassan |
-| 4 | As in section 1: the audit writer's design before slice 6; the may-sell contract's final name, the way out of the final `rejected` state and the approve entry, at the `sellers` G2; the owner list (14.4) | Ali; the `sellers` G2; the owner |
-| 5 | This revision | Final check by Ali and Hassan |
+| 2 | PH2 to PH4 of the platform document (16 b), which the review did not answer | Hassan |
+| 3 | As in section 1: the audit writer's design before slice 6; the may-sell contract's final name, the way out of the final `rejected` state and the approve entry, at the `sellers` G2; the owner list (14.4) | Ali; the `sellers` G2; the owner |
+| 4 | This revision | Final check by Ali and Hassan |
 
 ## 15. Follow-up changes
 
@@ -928,7 +932,7 @@ only; `ux.md` was already updated by Reza.
 |---|---|---|
 | `docs/design/domain/platform-foundations.md` | The text of 15.1 | After G2; Mohammad, one PR |
 | ADR-0021, ADR-0022, ADR-0023 | 14.1 items 13 and 1; the notes on ADR-0004 decision 5 (naming the reservation unit of HF1 too), ADR-0006 decisions 4 and 7, ADR-0008 decision 2 and ADR-0015 decision 3 | Ali, in parallel; accepted with the G2 approval |
-| `docs/design/data/identity.md`; `docs/design/data/platform.md` | The answers of 14.3; A1 to A8 as decided; slice names 1a to 1d. In platform.md, 10.2 and 10.5 amended on its open branch before it merges (A1); `ANONYMOUS` in the actor CHECK before the writer's first row (A3) | Mojtaba, after this revision |
+| `docs/design/data/identity.md`; `docs/design/data/platform.md` | Applied (ca63d97). Left: 3.10 says an admin's factor is created `pending` at acceptance; it is now created `active` there (3.4), and M13 adds `pending_secret_ciphertext`. In platform.md, 10.2 and 10.5 amended on its open branch before it merges (A1); `ANONYMOUS` in the actor CHECK before the writer's first row (A3) | Mojtaba, after this revision |
 | `docs/modules/identity/ux.md` | 8.2 cites ADR-0021 for the may-sell ADR, which is ADR-0022; 7.3 item 1 follows Hassan's answer (14.5) | Reza |
 | `docs/modules/identity/brief.md` | The G2 row of the approvals table; the change-log rows of 15.2; the section 12 table from `ux.md` section 4 (Reza fills it, Jafar approves) | With the G2 approval; Hadi |
 | `docs/modules/README.md`, the board | G2 status; the ADR numbers; the board items of 15.2; requests 8 and 10 answered; the cookie topology and separate hosts (6.4, HF7) to the frontend track and the D2 ADR | Orchestrator |
