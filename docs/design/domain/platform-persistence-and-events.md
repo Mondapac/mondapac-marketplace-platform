@@ -1,21 +1,26 @@
 # Platform persistence and events — UnitOfWork, market guard, outbox, relay, scheduler, `APP_ROLE`
 
 **Author:** Mohammad (software-architect) — 2026-10-03
-**Status:** Draft — G2 review pending
+**Status:** Draft — G2 review applied 2026-10-03; final check by Ali and Hassan pending.
+Reviews applied: Ali (cto: PA1 to PA8, 16 a) and Hassan (security-tester: his findings 1, 8 and 10,
+in 3.1 and 4, read the same as in the identity design).
 **Ground truth:** `docs/design/domain/platform-foundations.md` ("foundations" below: sections 3.6,
 3.7, 4, 5, 6.4, 8; inputs I4, I5, I7, I14, I15); ADR-0003 (decisions 2, 3, 7), ADR-0004
 (decisions 3 to 5, 7), ADR-0005 (decisions 5, 6), ADR-0006 (all), ADR-0008 (decisions 2, 5, 6),
 ADR-0009 (decision 6), ADR-0014, ADR-0015 (decisions 1 to 5), ADR-0018 (decisions 2 to 4),
-ADR-0020; `docs/design/data/platform.md` (section 1); `docs/modules/identity/brief.md` (sections
-5, 6, 11); the code on branch `docs/identity-g2-design` (`apps/api/src/platform/persistence/`,
-`platform/config/app-config.ts`, `main.ts`, `app.module.ts`, `prisma/`,
-`scripts/check-prisma-boundaries.mjs`, `apps/api/.dependency-cruiser.cjs`, `apps/api/test/db/`).
+ADR-0020; ADR-0021 (Node minimum 24.15) and ADR-0023 (platform amendments from identity G2),
+reserved on the board and written by Ali in parallel; `docs/design/data/platform.md` (section
+1); `docs/modules/identity/brief.md` (sections 5, 6, 11); the code on branch
+`docs/identity-g2-design` (`apps/api/src/platform/persistence/`, `platform/config/app-config.ts`,
+`main.ts`, `app.module.ts`, `prisma/`, `scripts/check-prisma-boundaries.mjs`,
+`apps/api/.dependency-cruiser.cjs`, `apps/api/test/db/`).
 
 ## 1. Scope
 
 A design, not an implementation: a signature appears only where it is the contract, SQL only
 where the query shape is. It covers the platform infrastructure that ADR-0015 decision 3 makes
-land with identity's slice 1 (customer registration), the first slice that emits an event.
+land with identity's slice 1, built as four PRs, 1a to 1d (PA8); 1d, customer registration, is the
+first slice that emits an event.
 
 - **Decided here:** the UnitOfWork (3), the `market_id` guard (4), the outbox (5), the relay and
   the event bus (6), the scheduler (7), `APP_ROLE` (8), the "model to owning module" rule (9), the
@@ -40,15 +45,15 @@ Numbering: **PA** Ali, **PH** Hassan, **PN** identity, **PK** Kazem (in 16); **P
 
 | Row (as numbered in foundations 2) | Item | Designed in | Lands |
 |---|---|---|---|
-| 1 (part) | `DomainEvent` | Envelope: foundations 3.6. Stamping, `PendingEvent`, `defineEvent`: 5 | Slice 1 |
-| 4 (part) | Entry adapters for jobs and consumed events | 7; 6.4 | Job adapter: slice 1. Event adapter: slice 3, with the consume side (6.5) |
-| 5 | UnitOfWork | 3 | Slice 1 |
-| 5 | Outbox and relay | 5, 6.1, 6.2 | Slice 1 |
-| 5 | Event bus | 6.3 to 6.5 | Port and publish path: slice 1. Delivery to subscribers: slice 3, the first subscription (identity's mail handlers; PA1) |
-| 5 | Scheduler | 7 | Runner: slice 1. First job: slice 2 (`identity.purge-expired`; PN4) |
-| 5 | `APP_ROLE` | 8 | Slice 1 |
-| 6 | `market_id` Prisma query guard | 4 | Slice 1, no later than the first repository on a market-scoped model |
-| 7 | "Model to owning module" rule | 9 | Slice 1, no later than the first module-owned Prisma model |
+| 1 (part) | `DomainEvent` | Envelope: foundations 3.6. Stamping, `PendingEvent`, `defineEvent`: 5 | Slice 1b |
+| 4 (part) | Entry adapters for jobs and consumed events | 7; 6.4 | Job adapter: slice 1b. Event adapter: slice 3, with the consume side (6.5) |
+| 5 | UnitOfWork | 3 | Slice 1a |
+| 5 | Outbox and relay | 5, 6.1, 6.2 | Slice 1b |
+| 5 | Event bus | 6.3 to 6.5 | Port and publish path: slice 1b. Delivery to subscribers: slice 3, the first subscription (identity's mail handlers; PA1) |
+| 5 | Scheduler | 7 | Runner: slice 1b. First job: slice 2 (`identity.purge-expired`; PN4) |
+| 5 | `APP_ROLE` | 8 | Slice 1b |
+| 6 | `market_id` Prisma query guard | 4 | Slice 1a, no later than the first repository on a market-scoped model |
+| 7 | "Model to owning module" rule | 9 | Slice 1a, no later than the first module-owned Prisma model |
 
 ## 3. UnitOfWork
 ### 3.1 Port and guarantees
@@ -68,8 +73,8 @@ interface UnitOfWork {
 | 2 | **Opened for one Market.** `run` throws on a `MarketContext` that was not minted (foundations 3.7, C2). The guard compares every query with this Market (4) |
 | 3 | **Commit rule.** `ok` commits. `err` commits nothing and is returned unchanged (the recommendation of I4, adopted). An exception commits nothing and is rethrown. There is no partial commit. A refusal that must leave a trace (a failed-attempt counter) is therefore an `ok` outcome inside the unit, which the use case turns into its own error after the commit (PN1) |
 | 4 | **No nesting.** `run` inside an open unit throws `NestedUnitOfWorkError`: no join, no savepoint, no second transaction. A facade call never joins the caller's transaction (ADR-0004 decision 5), and an inner transaction waiting for a second pooled connection starves the pool (verified: `P2028` after the wait limit with a pool of one) |
-| 5 | **Work is short and repeatable.** No password hashing, no HTTP or mail call, no facade call and no model call inside `work`: a connection is pinned for its whole duration and `work` may run again (row 7). A use case does slow work and facade reads first, then opens at most one read-write unit. A read-only unit may come before the slow work when that work needs stored data (sign-in: read the hash, verify outside, then write; a mail handler: read, send, then record); the write unit re-checks what was read, through the version (10) |
-| 6 | **Isolation.** READ COMMITTED, PostgreSQL's default (verified through the adapter). Invariants are protected by the version column (10), by unique constraints and, where an invariant spans rows (R3's "last admin"), by `isolation: 'serializable'` declared by that use case |
+| 5 | **Work is short and repeatable.** No password hashing, no HTTP or mail call, no facade call and no model call inside `work`: a connection is pinned for its whole duration and `work` may run again (row 7). A use case does slow work and facade reads first, then opens at most one read-write unit for its change. Two kinds of unit may come before that one. A read-only unit, when the slow work needs stored data (a mail handler: read, send, then record). And, where attempts are counted, one short **reservation unit** before the verification (Hassan, finding 1): it increases every attempt counter that applies (`attempts + 1 … RETURNING`) and refuses at the threshold, so nothing is hashed for a refused attempt; the unit after the check releases the reservation on success. A challenge's attempt is reserved the same way, `UPDATE … WHERE attempts < 5`, before the code is checked. N parallel requests therefore get no more guesses than the threshold (identity design 6.3, 6.8). The write unit re-checks what was read, through the version (10) |
+| 6 | **Isolation.** READ COMMITTED, PostgreSQL's default (verified through the adapter). Invariants are protected by the version column (10), by unique constraints and, where an invariant spans rows (R3's "last admin"), by `isolation: 'serializable'` declared by that use case. PostgreSQL detects conflicts only among serializable transactions, so the writers of what such an invariant counts must be serializable as well. For identity (Hassan, finding 8; identity design 5.5): **every** use case that writes `role_assignments`, `seller_memberships.state` or `accounts.status`, inserts and deletes included (sign-up, invitation acceptance, assign, remove, disable, re-enable, erasure, the unverified purge), runs serializable too, and a test asserts each one's isolation |
 | 7 | **Retry.** On a serialisation failure (SQLSTATE `40001`) or a deadlock (`40P01`), `run` rolls back and runs `work` again: three attempts in all, a short random pause between them, then `TransactionConflictError`. Nothing else is retried. The two codes arrive in two different error shapes (14) |
 | 8 | **Timeouts.** At most 2 s to obtain a connection and 5 s for the unit (Prisma's defaults, written down as platform constants); `timeoutMs` raises the second to at most 30 s. Prisma's timeout does not interrupt a running statement (verified): the statement finishes, then the unit fails with `P2028` and rolls back. The hard bound is therefore set in the database (PK1) |
 | 9 | **Read-only.** With `readOnly: true` the guard refuses every write and the platform writers refuse to run. It is still a transaction (ADR-0004 decision 5) and sets nothing in the database (PA5) |
@@ -117,13 +122,13 @@ check, Market comparison, `AuthorisationCheck`; foundations 6.4) → use-case bo
 | 1 | Authorisation runs before the body (ADR-0018 decision 4); a denial opens no transaction and pins no connection |
 | 2 | `Authenticator` and `AuthorisationCheck` read committed state (foundations 6.3 row 4) in a unit of their own. Inside the caller's unit they would join its transaction, against ADR-0004 decision 5, and row 4 of 3.1 would throw |
 | 3 | The ownership check of R6 is part of the body and runs inside the unit, on the rows the unit then changes |
-| 4 | Slow work stays outside the transaction (row 5 of 3.1). Slice 1 hashes a password |
+| 4 | Slow work stays outside the transaction (row 5 of 3.1). Slice 1d hashes a password |
 
-**Toss-up T1: who calls `run` (PA2).**
+**Toss-up T1: who calls `run` (PA2; decided by Ali: option A).**
 
 | Option | For | Against |
 |---|---|---|
-| A (recommended; the identity design follows it). The use-case body calls `run` itself | Hashing and facade reads stay outside the transaction; visible in the code; a use case with no database work opens nothing | "At most one read-write `run` per use case" is a review rule. Softened: no database access exists outside a unit, and a nested `run` throws |
+| A (decided; the identity design follows it). The use-case body calls `run` itself | Hashing and facade reads stay outside the transaction; visible in the code; a use case with no database work opens nothing | "At most one read-write `run` per use case" is a review rule. Softened: no database access exists outside a unit, and a nested `run` throws |
 | B. The mechanism opens the unit from a static declaration | Cannot be forgotten | The whole body, hashing included, runs with a connection pinned; the mechanism of I2 grows |
 
 ## 4. `market_id` guard (I5)
@@ -142,16 +147,16 @@ than the ADR's wording and never weaker (PH1).
 | `update`, `updateMany`, `updateManyAndReturn`, the `update` part of `upsert` | `data` sets neither `marketId` nor `tenantId`: a row never changes Market |
 | Nested writes (a relation field in `data`) | Refused. Verified: an unguarded client stores a nested `create` that carries the other Market. A repository writes each table with its own statement in the same unit |
 | Nested reads (`include`, `select`, relation filters) | Allowed: relations never leave a module schema (ADR-0004 decision 3) and the rows hang from a parent already filtered by Market. Database backstop: PM6 |
-| Any model operation with no open unit; any write in a read-only unit; a model the map does not know | Refused |
-| `$queryRaw`, `$executeRaw` and their `Unsafe` forms | Refused on the guarded client (4.2) |
+| Any model operation with no open unit; any write in a read-only unit; a model the map does not know; an operation or client method the guard does not recognise, a new Prisma operation included (Hassan, finding 10) | Refused: the guard decides from an allow-list, and whatever it does not recognise is refused |
+| `$queryRaw`, `$executeRaw`, their `Unsafe` forms and `$queryRawTyped` | Refused on the guarded client (4.2) |
 
 ### 4.2 Implementation, exemptions, raw SQL
 | Topic | Decision |
 |---|---|
-| Mechanism | One Prisma client extension (`query.$allModels.$allOperations` plus the four raw hooks), applied once where `PrismaService` builds its client. The decision is a pure function of (map entry, operation, arguments, open unit), unit-tested without a database; a refusal throws `MarketGuardError`, so the unit rolls back. Verified on Prisma 7.10 with the `pg` adapter: the hook runs for operations on the interactive-transaction client, with the model, the operation and the full arguments (nested data included); it sees the `AsyncLocalStorage` store; its query runs in the same transaction; interleaved units keep their own store; the cost is under 0.1 ms per query |
+| Mechanism | One Prisma client extension (`query.$allModels.$allOperations` plus the raw hooks, `$queryRawTyped` included; a test of slice 1a proves that each reaches the guard), applied once where `PrismaService` builds its client. The decision is a pure function of (map entry, operation, arguments, open unit), unit-tested without a database; a refusal throws `MarketGuardError`, so the unit rolls back. Verified on Prisma 7.10 with the `pg` adapter: the hook runs for operations on the interactive-transaction client, with the model, the operation and the full arguments (nested data included); it sees the `AsyncLocalStorage` store; its query runs in the same transaction; interleaved units keep their own store; the cost is under 0.1 ms per query |
 | Scoped models | From the generated model map (9): a scoped model has both `marketId` and `tenantId` |
 | Exemption | A model without `market_id` says so in its schema file with a documentation line `/// @market-scope none: <reason>`. The generator fails on a model that has neither the columns nor the line, or both. An exemption is thus one visible line in a file Mojtaba signs off; Phase 2 has none unless the identity data design names one. An exempt model still needs an open unit |
-| Raw SQL | The guard cannot read SQL, so inside a unit raw SQL is refused in slice 1, for modules and platform alike. The platform's own raw statements (the relay's claim, the scheduler lock) run on `PrismaRoot` in transactions of their own and name the Market in the statement. The first repository that needs SQL Prisma cannot express, a row lock for example, brings a raw helper with it, approved by Mojtaba and Hassan: named statements on a checked-in list, the Market bound by the helper as the first parameter, each statement proven by a two-Market database test. Identity needs none in Phase 2: its "last holder" rules run `serializable` (PN5) |
+| Raw SQL | The guard cannot read SQL, so inside a unit raw SQL is refused from slice 1a, for modules and platform alike. The platform's own raw statements (the relay's claim, the scheduler lock) run on `PrismaRoot` in transactions of their own and name the Market in the statement. The first repository that needs SQL Prisma cannot express, a row lock for example, brings a raw helper with it, approved by Mojtaba and Hassan: named statements on a checked-in list, the Market bound by the helper as the first parameter, each statement proven by a two-Market database test. Identity needs none in Phase 2: its "last holder" rules run `serializable` (PN5) |
 
 ## 5. Outbox
 
@@ -262,7 +267,7 @@ RETURNING d.*;
 ```
 
 ### 6.5 What Phase 2 builds
-| Part | Slice 1 | Later |
+| Part | Slice 1b | Later |
 |---|---|---|
 | `DomainEvent`, `PendingEvent`, `defineEvent`, `EventCatalogue`, the contracts test | Built | — |
 | `OutboxWriter`, `identity.outbox` | Built | — |
@@ -271,8 +276,9 @@ RETURNING d.*;
 | Outbox pruning | None: rows are kept; they hold identifiers only | With the first subscriber that needs history (a replay from the kept rows), or at one million rows |
 
 Identity consumes no other module's event in Phase 2 (brief section 6), but subscribes to its
-own to send mail. Splitting slice 1 (publish path) from slice 3 (delivery side) is a reading of
-ADR-0015 decision 3 and ADR-0006 decision 4: **PA1**. Earlier events are not delivered later.
+own to send mail. Splitting slice 1b (publish path) from slice 3 (delivery side) is a reading of
+ADR-0015 decision 3 and ADR-0006 decision 4: **PA1**, accepted by Ali with inline notes in
+ADR-0023; no deployed environment exists before slice 3. Earlier events are not delivered later.
 
 ## 7. Scheduler
 ```ts
@@ -294,7 +300,7 @@ interface JobDefinition {
 | Schedule state | None is stored: with N workers a job runs at most N times per interval, never two at once. No table |
 | Zone-aware work | A "daily" rule is a frequent job whose use case finds the parties whose local boundary has passed (ADR-0005 decision 6). The runner knows no time zone |
 | Batches | Bounded batches, one unit of work per batch (3.1 row 8), until nothing is left or the time is spent |
-| Phase 2 | The runner lands in slice 1 (ADR-0015 decision 3). Validity never depends on a job: expiry is decided at read time against `Clock` (brief section 6), and a job only deletes what is already invalid: expired sessions, expired or used one-time links, expired invitations. Identity's jobs (its 12.2): `identity.purge-expired`, hourly, slice 2; `identity.purge-unverified-accounts`, daily, slice 3. No platform job in Phase 2 |
+| Phase 2 | The runner lands in slice 1b (ADR-0015 decision 3). Validity never depends on a job: expiry is decided at read time against `Clock` (brief section 6), and a job only deletes what is already invalid: expired sessions, expired or used one-time links, expired invitations. Identity's jobs (its 12.2): `identity.purge-expired`, hourly, slice 2; `identity.purge-unverified-accounts`, daily, slice 3. No platform job in Phase 2 |
 | Later | Pruning of delivered and inbox rows (before the first deployed environment); the audit sealer (own design, slice 6); CERT-14/15, SUB-06, HLT-03 at their modules' gates |
 
 ## 8. `APP_ROLE`
@@ -344,7 +350,7 @@ interface JobDefinition {
 | PM8 | Scheduler | No table. Advisory lock keys are 64-bit hashes of `mondapac.job:<name>`. To confirm: no clash with the lock Prisma Migrate takes |
 
 ## 12. Placement and boundaries
-### 12.1 Layout (slice 1)
+### 12.1 Layout (slices 1a and 1b)
 ```
 packages/shared-kernel/src/domain-event.ts   DomainEvent, PendingEvent, defineEvent, field kinds
 apps/api/src/platform/
@@ -367,7 +373,7 @@ The ports sit outside `platform/persistence/` so that `application/` can import 
 | 1 | Model ownership (9) | `check-prisma-boundaries.mjs` | A reference to another module's model; any reference to an outbox or inbox model outside `platform/persistence/outbox/` |
 | 2 | `persistence-root-is-private` (new) | dependency-cruiser, plus the test on `PersistenceModule` exports (foundations 7, item 4) | `modules/*/infrastructure/` importing anything of `platform/persistence/` but `prisma.service.ts` |
 | 3 | `app-role-is-read-in-two-places` (new) | ESLint | `appRole` read outside `main.ts` and `platform/worker/` |
-| 4 | `no-raw-sql-or-transaction-in-modules` (new) | ESLint | `$queryRaw`, `$executeRaw`, their `Unsafe` forms and `$transaction` under `src/modules/`. The guard is the run-time control; the lint only fails earlier |
+| 4 | `no-raw-sql-or-transaction-in-modules` (new) | ESLint | `$queryRaw`, `$executeRaw`, their `Unsafe` forms, `$queryRawTyped` and `$transaction` under `src/modules/`. The guard is the run-time control; the lint only fails earlier |
 
 ### 12.3 Database errors never reach a log or a response whole
 Verified: a CHECK violation (`P2039`) carries the whole failing row in
@@ -386,6 +392,7 @@ Database tests: `pnpm test:db`, as the application role, for AU and ZZ (ADR-0003
 | The guard's decision function over a table of cases (every row of 4.1); `defineEvent` and payload validation; the lock key; the back-off; the conflict classifier on both error shapes | Unit | No database, no Nest |
 | **A query without the Market fails.** For every scoped model in the generated map: no `where`; a `where` without `marketId`; the other fixture's Market; `create` with the other Market or another tenant; a nested write; a query with no open unit; raw SQL | Database | Driven by the map, so a new model is covered without a new test. Until identity's tables exist it runs on `AuditLog` |
 | UnitOfWork: `ok` commits; `err` and a thrown error commit nothing; nested `run` throws; read-only refuses a write; two serialisable units in conflict both succeed after one retry; the timeout; a unit for AU cannot be used with ZZ's context | Database | Replaces the direct `prisma.auditLog` calls in `apps/api/test/db/platform.db-spec.ts` |
+| Isolation of the writers of 3.1 row 6 (Hassan, finding 8): each identity use case that writes `role_assignments`, `seller_memberships.state` or `accounts.status` opens its unit `serializable` | Unit, one assertion per use case | With each writer's slice; Hassan checks it at 8a and 11 |
 | Outbox: an `err` unit leaves no row; stamping (5.1); an undeclared field, another module's type and a ZZ context in an AU unit are refused | Database | Both fixtures |
 | Relay: each row reaches a recording bus and is marked once; two relays at once never publish one row twice; rows of AU and ZZ go out with their own Market | Database | `relay.runOnce()` |
 | **Crash between commit and publish.** A unit commits a state change and its outbox row. Relay A claims the row and its bus throws (and, in a second case, its transaction is aborted after publish): the row is still unpublished. Relay B publishes it. Assert: the row is marked once; the recording bus saw the event at least once and, in the second case, twice with the same `eventId` | Database | Proves "no loss" and documents "at least once" |
@@ -401,10 +408,10 @@ adapter, Node's standard library (`node:async_hooks`, `node:crypto`), the TypeSc
 in a script (already installed) and PostgreSQL cover everything here; nothing is requested for the
 bundled list of ADR-0018 decision 8.
 
-My checks ran in a scratch copy on Node 24.21.0 (the guard run also on 24.9.0, the ADR-0014
-minimum, which slice 0 found cannot run `pnpm install` under `engine-strict`: a question for
-Ali, in identity 14.1) with Prisma 7.10.0, `@prisma/adapter-pg` 7.10.0, `pg` 8.23.1, NestJS 12
-and PostgreSQL 16.15, on a throwaway database that was dropped afterwards.
+My checks ran in a scratch copy on Node 24.21.0 (the guard run also on 24.9.0, then the ADR-0014
+minimum, with `engine-strict` off; ADR-0021 raises the minimum Node version to 24.15) with
+Prisma 7.10.0, `@prisma/adapter-pg` 7.10.0, `pg` 8.23.1, NestJS 12 and PostgreSQL 16.15, on a
+throwaway database that was dropped afterwards.
 
 | Verified | Used in |
 |---|---|
@@ -431,45 +438,49 @@ against fixtures; the map generator, the ownership check and `defineEvent` (not 
 | The use case opens its own unit (T1) | "At most one read-write `run`" is a review rule | The access-rule mechanism can count runs cheaply |
 | The guard refuses nested writes and raw SQL | Repositories write table by table; no row lock until the raw helper exists | The first repository that needs raw SQL (4.2) |
 | The guard lives in the client, not in the database | A raw statement written later can still forget the Market; review and the two-Market test catch it | Hassan asks for a database control: row-level security with a per-transaction setting, as its own design with Mojtaba |
-| Read-only work still opens a transaction | Two extra round trips per read-only unit, including the session and permission reads of every authenticated request (ADR-0018 decision 2) | Measurements show it (PA5) |
+| Read-only work still opens a transaction | Two extra round trips per read-only unit, including the session and permission reads of every authenticated request (ADR-0018 decision 2) | Spike 6 measures it (PA5) |
 | READ COMMITTED by default | An invariant across rows needs a constraint or an explicit `serializable` | A defect is traced to it |
 | One outbox per module, polled per Market | Idle polling is modules × Markets small queries every 500 ms | Many modules publish: wake the relay with `LISTEN`/`NOTIFY`, same tables |
 | No ordering guarantee | Every consumer handles stale and missing versions | A consumer needs strict order per aggregate: a new ADR |
-| The consume side lands in slice 3, not slice 1 (PA1) | 6.4 may change when slice 3 is built; an event published before a subscriber exists is not delivered to it | Slice 3 |
+| The consume side lands in slice 3, not slice 1b (PA1) | 6.4 may change when slice 3 is built; an event published before a subscriber exists is not delivered to it | Slice 3 |
 | Stateless scheduler; the lock is not a correctness control | A job may run once per worker per interval and must tolerate overlap | A job must run exactly once per period (payouts, Phase 5): a schedule-state table |
 | Closed payload vocabulary | A new kind of field is a kernel change | `Money` in an event, with `Money`'s own trigger |
 | `SubjectKeyService` works inside the unit (foundations 4, row 8) | With a deployed key service, unwrapping a key is a network call inside a transaction, the one exception to row 5 of 3.1 | The deployed `KeyWrapper` adapter is designed |
 
 ## 16. Open points
 
-### (a) Decisions for Ali (cto)
-| # | Question | Recommendation |
+### (a) Decided by Ali (cto), 2026-10-03
+Every inline note on an ADR named below is in ADR-0023 "Platform amendments from identity G2",
+which Ali writes in parallel and which is accepted with the G2 approval.
+
+| # | Question | Decided by Ali 2026-10-03 |
 |---|---|---|
-| PA1 | **Touches ADR-0015 decision 3 (row "UnitOfWork, outbox relay, event bus, scheduler, `APP_ROLE`") and ADR-0006 decision 4.** Is the row met when the bus port, the in-process adapter and the whole publish path land in slice 1, while delivery to subscribers (6.4) lands in slice 3 with identity's mail handlers, the first subscription? | Yes, recorded as a note on ADR-0015 decision 3 through an ADR, as ADR-0020 did: slices 1 and 2 have no subscriber, and ADR-0015 itself designs each foundation next to its first consumer. `event_delivery` and `identity.inbox` join Mojtaba's design now. Otherwise 6.4 is built in slice 1 with a test-only subscriber: one more PR in the largest slice |
-| PA2 | T1 (3.4): who calls `UnitOfWork.run` | Option A, the use-case body |
-| PA3 | **Touches ADR-0006 decision 7**, which names `pg_try_advisory_lock`. The design uses `pg_try_advisory_xact_lock` inside a transaction (7). The alternative that keeps the ADR's function is a dedicated `pg` connection held by the scheduler outside Prisma's pool | The transaction-scoped lock, confirmed as a reading of decision 7: one runner per job by advisory lock, and no connection handling of our own |
-| PA4 | The `AsyncLocalStorage` store also holds the `MarketContext` the unit was opened with (3.2). Is that inside foundations 5.2 ("never the source of the Market for business code")? | Yes: it is a comparison value read only in `platform/persistence/`. Without it the guard can check presence only |
-| PA5 | **Touches ADR-0004 decision 5.** Read-only work opens a transaction, as the decision says. A scope without a transaction would do the same job at READ COMMITTED and save two round trips per read | Keep the transaction now; decide again with measurements |
-| PA6 | Job and subscriber definitions live in `presentation/` (ADR-0008 decision 2 lists controllers there) | Yes: they are entry points; no new folder kind |
-| PA7 | `APP_ROLE` is required with no default (8). It changes `.env.example`, the CI boot probe and the start instructions (shared files) | Required |
-| PA8 | Slice 1 as four PRs, in this order: (1) UnitOfWork, guard, model map and ownership check, tested on `AuditLog`; (2) events, outbox writer, relay, bus port, scheduler, `APP_ROLE`; (3) `SubjectKeyService`, `ActorContext` and `CallContext`, the access-rule mechanism with its CI check (identity design 5.2, 12.1); (4) identity's registration. Rule 13 of `CLAUDE.md` says one slice, one PR; ADR-0015's "in the same change as" is read as "no later than" | Four PRs; QC checks the triggers on the last |
+| PA1 | Is ADR-0015 decision 3 (row "UnitOfWork, outbox relay, event bus, scheduler, `APP_ROLE`"), with ADR-0006 decision 4, met when the bus port, the in-process adapter and the publish path land in slice 1b, and delivery to subscribers (6.4) in slice 3 with identity's mail handlers, the first subscription? | Accept. Inline notes on ADR-0015 decision 3 and ADR-0006 decision 4. No deployed environment exists before slice 3. `event_delivery` and `identity.inbox` are in Mojtaba's design now |
+| PA2 | T1 (3.4): who calls `UnitOfWork.run` | Option A: the use-case body |
+| PA3 | ADR-0006 decision 7 names `pg_try_advisory_lock`; the design uses `pg_try_advisory_xact_lock` inside a transaction (7) | Accept, as a reading of decision 7 (note in ADR-0023) |
+| PA4 | The `AsyncLocalStorage` store also holds the `MarketContext` the unit was opened with (3.2): inside foundations 5.2? | Accept: only `platform/persistence` reads the stored Market |
+| PA5 | ADR-0004 decision 5: read-only work opens a transaction; a scope without one would save two round trips per read | Keep the transaction; decision 5 is unchanged. Revisit with spike 6 (identity design 12.3) |
+| PA6 | Job and subscriber definitions live in `presentation/` (ADR-0008 decision 2 lists controllers there) | Accept, with a note on ADR-0008 decision 2 |
+| PA7 | `APP_ROLE` is required with no default (8); it changes shared files | Required, no default. The shared files (`.env.example`, the CI boot probe, the Commands text of `CLAUDE.md`, the root `package.json`) go in a PR of their own, announced on the board first |
+| PA8 | Slice 1 as four PRs: 1a UnitOfWork, guard, model map and ownership check, tested on `AuditLog`; 1b events, outbox writer, `identity.outbox` (data design M9), relay, bus port, scheduler, `APP_ROLE`; 1c `SubjectKeyService`, `ActorContext` and `CallContext`, the access-rule mechanism with its CI check (identity design 5.2, 12.1); 1d identity's registration | Accept, as identity 14.1 item 7: one branch and one PR each (rule 13 of `CLAUDE.md`); ADR-0015's "in the same change as" reads "no later than, never after" (note on decision 3). Bagher checks the ADR-0015 triggers on slice 1d |
+| Added | Ali's own addition | ADR-0023 also notes ADR-0004 decision 5: a use case opens at most one read-write unit; read-only units may come before it, and the gate reads in its own unit. Hassan's finding 1 adds the reservation unit of 3.1 row 5, which that note must name too |
 
 ### (b) Questions for Hassan (security-tester)
-| # | Question |
-|---|---|
-| PH1 | Is the rule set of 4.1 enough for I5: equality on `where` and `create`, nested writes and raw SQL refused, no access outside a unit? Must `where` name the tenant as well? |
-| PH2 | The payload vocabulary (5.3): is an `id` that points at a person acceptable without limit, and is the registry check on `permissionKey` enough for R5? |
-| PH3 | The error reducer of 12.3: is name, Prisma code, SQLSTATE and constraint name the right set to keep? |
-| PH4 | One database role for both `APP_ROLE`s in Phase 2. The worker needs `UPDATE (published_at)` on outboxes and the api does not: is a separate worker role required before the first deployed environment? |
+| # | Question | Answer |
+|---|---|---|
+| PH1 | Is the rule set of 4.1 enough for I5: equality on `where` and `create`, nested writes and raw SQL refused, no access outside a unit? Must `where` name the tenant as well? | Decided (finding 10): yes, once the guard refuses anything it does not recognise, `$queryRawTyped` included (4.1, 4.2). `where` needs the tenant only once a second tenant exists |
+| PH2 | The payload vocabulary (5.3): is an `id` that points at a person acceptable without limit, and is the registry check on `permissionKey` enough for R5? | Open: not answered at review; for his final check |
+| PH3 | The error reducer of 12.3: is name, Prisma code, SQLSTATE and constraint name the right set to keep? | Open, as PH2 |
+| PH4 | One database role for both `APP_ROLE`s in Phase 2. The worker needs `UPDATE (published_at)` on outboxes and the api does not: is a separate worker role required before the first deployed environment? | Open, as PH2 |
 
 ### (c) Inputs to the identity design
 | # | Input |
 |---|---|
 | PN1 | The commit rule (3.1 row 3): `err` commits nothing. A refusal that must persist something is an `ok` outcome of the unit. Followed: identity 6.3 (failed sign-in) |
-| PN2 | The order of a use case (3.1 row 5): slow work and facade reads, then at most one read-write unit; a read-only unit may come first. Nothing external happens inside a unit. Decided: identity sends mail by subscribing to its own events (its section 9), which triggers 6.4 in slice 3; the alternative, a mail table read by a job, was not taken |
+| PN2 | The order of a use case (3.1 row 5): slow work and facade reads, then at most one read-write unit; read-only units and, where attempts are counted, one reservation unit may come first (Hassan, finding 1). Nothing external happens inside a unit. Decided: identity sends mail by subscribing to its own events (its section 9), which triggers 6.4 in slice 3; the alternative, a mail table read by a job, was not taken |
 | PN3 | Repositories take a `MarketContext`, call `tx(market)` on every call and put `marketId` in every `where`, reads by id included; no nested writes (4.1). `Authenticator` and `AuthorisationCheck` each open their own unit and are never called inside one (3.4) |
 | PN4 | Jobs: the name, interval and slice of each (answered: 7 and identity 12.2); validity never depends on a job; every job tolerates a double run |
-| PN5 | A use case that needs a row lock or other raw SQL brings the raw helper (4.2) in its slice. Decided: identity's "last one" rules (R3) use `isolation: 'serializable'` instead (its 5.5) |
+| PN5 | A use case that needs a row lock or other raw SQL brings the raw helper (4.2) in its slice. Decided: identity's "last one" rules (R3) use `isolation: 'serializable'` instead, and so does every writer they count (3.1 row 6; Hassan, finding 8; its 5.5) |
 | PN6 | Events: declared with `defineEvent` in `domain/`, re-exported from `contracts/`, registered at bootstrap; payload kinds from 5.3 only; one event per version step (10); the module binds `OutboxWriterFactory.forModule('identity')`. Catalogue: identity 8.2 |
 | PN7 | Which tables are aggregate roots (each gets `version`): identity 2.1. The two 409 codes (I12): `conflict.stale` and `conflict.retry` (identity 5.2) |
 
@@ -483,17 +494,17 @@ against fixtures; the map generator, the ownership check and `defineEvent` (not 
 ## 17. Follow-up changes
 
 This document changes no other file. After approval these change, each by its owner, in a PR of
-its own where `docs/process/parallel-tracks.md` calls the file shared:
+its own where `docs/process/parallel-tracks.md` calls the file shared (PA7):
 
 | File | Change | When |
 |---|---|---|
-| `docs/design/domain/platform-foundations.md` | Rows 5 to 7 of section 2 and inputs I4, I5, I7, I14 point here; the stamping sentence of 3.6; the layout of 8.1 | After G2 (Mohammad) |
-| A new ADR (next free number on the board), drafted by Ali, with inline notes on ADR-0015 decision 3 and ADR-0006 decision 7 | PA1 and PA3, if accepted | With the G2 approval |
-| `docs/design/data/platform.md` and identity's data design | Mojtaba: the outbox table and grants (PM1, PM2); the sentence of section 1 on outbox, inbox and `event_delivery` | Identity G2 |
-| `apps/api/src/platform/persistence/` (`prisma.service.ts`, `persistence.module.ts`, `database-probe.ts`), new `platform/unit-of-work/`, `events/`, `scheduler/`, `worker/` | 3 to 8 | Slice 1 |
-| `apps/api/src/platform/config/app-config.ts` and its spec, `apps/api/src/main.ts`, `apps/api/test/support/test-config.ts`, `apps/api/src/platform/logging/logging.module.ts` | `APP_ROLE`; the role branch; the error reducer of 12.3 | Slice 1 |
-| `packages/shared-kernel/src/domain-event.ts`, `index.ts` | `DomainEvent`, `PendingEvent`, `defineEvent` | Slice 1 |
-| `scripts/check-prisma-boundaries.mjs`, a new generator script, root `package.json` (shared: `db:generate`, `postinstall`, `dev:worker`), `apps/api/package.json` | The model map and the checks of 9; the worker script | Slice 1 |
-| `apps/api/.dependency-cruiser.cjs`, `eslint.config.mjs` (shared), `apps/api/test/boundaries.spec.ts`, `apps/api/test/boundary-fixtures/`, `apps/api/test/db/platform.db-spec.ts` | Rules 1 to 4 of 12.2; audit rows are written inside a unit of work; the tests of 13 | Slice 1 |
-| `prisma/schema/base.prisma` (`schemas`), `prisma/schema/identity.prisma`, a migration with `down.sql` | The first module schema and `identity.outbox` (Mojtaba signs off); `platform.event_delivery` and `identity.inbox` | Slice 1; slice 3 |
-| `.env.example`, `.github/workflows/ci.yml`, the Commands text of `CLAUDE.md` (all shared) | `APP_ROLE`; the worker in the boot probe; `pnpm dev:worker` | Slice 1 (Kazem for CI) |
+| `docs/design/domain/platform-foundations.md` | Rows 5 to 7 of section 2 and inputs I4, I5, I7, I14 point here; the stamping sentence of 3.6; the layout of 8.1; with the text changes of identity design 15.1 | After G2 (Mohammad), one PR |
+| ADR-0023 "Platform amendments from identity G2", written by Ali | Inline notes on ADR-0004 decision 5 (with the reservation unit of 3.1 row 5), ADR-0006 decisions 4 and 7, ADR-0008 decision 2 and ADR-0015 decision 3 (16 a) | In parallel; accepted with the G2 approval |
+| `docs/design/data/platform.md` and identity's data design | Mojtaba: the outbox table and grants (PM1, PM2), in slice 1b; the sentence of section 1 on outbox, inbox and `event_delivery` | Identity G2 |
+| `apps/api/src/platform/persistence/` (`prisma.service.ts`, `persistence.module.ts`, `database-probe.ts`), new `platform/unit-of-work/`, `events/`, `scheduler/`, `worker/` | 3 and 4: the UnitOfWork and the guard; 5 to 8: events, relay, scheduler, worker | 3 and 4: slice 1a; 5 to 8: slice 1b |
+| `apps/api/src/platform/config/app-config.ts` and its spec, `apps/api/src/main.ts`, `apps/api/test/support/test-config.ts`, `apps/api/src/platform/logging/logging.module.ts` | `APP_ROLE`; the role branch; the error reducer of 12.3 | The reducer: slice 1a; `APP_ROLE` and the branch: slice 1b |
+| `packages/shared-kernel/src/domain-event.ts`, `index.ts` | `DomainEvent`, `PendingEvent`, `defineEvent` | Slice 1b |
+| `scripts/check-prisma-boundaries.mjs`, a new generator script, root `package.json` (shared: `db:generate`, `postinstall`, `dev:worker`), `apps/api/package.json` | The model map and the checks of 9; the worker script | The map and checks: slice 1a; the worker script: slice 1b. The root `package.json` lines go in the shared-files PR of PA7 first |
+| `apps/api/.dependency-cruiser.cjs`, `eslint.config.mjs` (shared), `apps/api/test/boundaries.spec.ts`, `apps/api/test/boundary-fixtures/`, `apps/api/test/db/platform.db-spec.ts` | Rules 1 to 4 of 12.2; audit rows are written inside a unit of work; the tests of 13 | Slice 1a; rule 3 and the relay, scheduler and role tests with slice 1b |
+| `prisma/schema/base.prisma` (`schemas`), `prisma/schema/identity.prisma`, a migration with `down.sql` | The first module schema and `identity.outbox` (Mojtaba signs off; data design M9); `platform.event_delivery` and `identity.inbox` | Slice 1b; slice 3 |
+| `.env.example`, `.github/workflows/ci.yml`, the Commands text of `CLAUDE.md` (all shared) | `APP_ROLE`; the worker in the boot probe; `pnpm dev:worker` | Before slice 1b merges, in a PR of its own announced on the board first (PA7); Kazem for CI |

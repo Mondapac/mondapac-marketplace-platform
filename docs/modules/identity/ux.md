@@ -728,7 +728,7 @@ Every screen also waits for the D1 and D2 ADRs and slice F0 (brief slice 13).
 - Emails are built by `identity` on the backend (brief section 3, SEL-13; DD 9) from the
   `identity.mail.*` keys of section 5; frontend and backend share one key scheme.
 - P1 is a Phase 2 screen: in Phase 3 approve and reject move to the `sellers` review screen (DD
-  8.4, ADR-0021), so build its actions as a list the API supplies.
+  8.4, ADR-0022), so build its actions as a list the API supplies.
 - **Hosting (Hassan 7), input to the D2 ADR:** each panel and the storefront on its own host, so a
   script injected into one panel cannot use the other's session. The sign-in pages of F2 then live
   on separate hosts, and a return URL stays a path of the same host.
