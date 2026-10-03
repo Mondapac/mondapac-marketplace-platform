@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   verify:
-    name: Verify (region ${{ matrix.region.name }})
+    name: Verify (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -26,6 +26,13 @@ jobs:
         region:
           - name: au
             hosted_markets: AU
+        # ADR-0021: the exact minimum of `engines` in package.json, and the version in
+        # .nvmrc. Raise both together (ADR-0021 decision 3).
+        node:
+          - label: minimum
+            version: 24.15.0
+          - label: .nvmrc
+            version-file: .nvmrc
 
     services:
       # Same major version as docker-compose.yml.
@@ -54,8 +61,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          # One of the two is set per matrix entry; node-version wins when both are set.
+          node-version: ${{ matrix.node.version }}
+          node-version-file: ${{ matrix.node.version-file }}
           cache: pnpm
+
+      - name: Show the Node.js version
+        run: node --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
