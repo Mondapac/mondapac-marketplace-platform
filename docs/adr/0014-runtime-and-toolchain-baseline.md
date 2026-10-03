@@ -15,6 +15,8 @@ The Phase 1 skeleton has to pin concrete versions. Three facts constrain the cho
 
 ## Decision
 1. **Node.js 24 LTS, minimum 24.9** (`engines` in the root `package.json`, `.nvmrc`).
+   *(Amended by ADR-0021: the minimum is Node.js 24.15.0, the lowest version the lockfile
+   installs under `engine-strict`; CI runs the exact minimum next to the `.nvmrc` version.)*
 2. **NestJS 12**, laid out like the official NestJS 12 TypeScript template: compiled to
    CommonJS with `module: nodenext`, tested with Jest 30 + `ts-jest`, run through
    `node --experimental-vm-modules`.
@@ -36,6 +38,7 @@ The Phase 1 skeleton has to pin concrete versions. Three facts constrain the cho
 
 ## Consequences
 - Every developer machine and the CI image need Node 24.9+. Node 22 cannot run the tests.
+  *(Amended by ADR-0021: Node 24.15.0+.)*
 - Tests print Node's "VM Modules is an experimental feature" warning. It is expected.
 - Verified by the build session on Linux. The owner reported a green GitHub Actions run
   and a working setup on Windows on 2026-10-01.
