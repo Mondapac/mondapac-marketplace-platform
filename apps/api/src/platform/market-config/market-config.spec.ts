@@ -1,9 +1,18 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKETS } from '../../../test/support/test-config';
+import { readdirSync } from 'node:fs';
+import { parseMarketId } from '@mondapac/shared-kernel';
+import {
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_MARKETS,
+  testMarketId,
+} from '../../../test/support/test-config';
 import { InvalidMarketConfigError, loadMarketConfigs } from './market-config';
 import { MarketNotHostedError, MarketRegistry } from './market-registry';
+
+const QQ = testMarketId('QQ');
 
 const VALID = {
   code: 'QQ',
@@ -28,18 +37,20 @@ function directoryWith(files: Record<string, unknown>): string {
 
 describe('loadMarketConfigs', () => {
   it('loads every hosted market from the repository configuration and the fixtures', () => {
-    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKETS);
+    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
 
     expect([...markets.keys()]).toEqual([...TEST_MARKETS]);
     for (const code of TEST_MARKETS) {
-      const market = markets.get(code);
+      const market = markets.get(testMarketId(code));
       expect(market?.code).toBe(code);
       expect(market?.supportedLocales).toContain(market?.defaultLocale);
     }
   });
 
   it('keeps the two fixtures different in currency, locale and time zone', () => {
-    const [first, second] = [...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKETS).values()];
+    const [first, second] = [
+      ...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values(),
+    ];
 
     expect(first?.defaultCurrency).not.toBe(second?.defaultCurrency);
     expect(first?.defaultLocale).not.toBe(second?.defaultLocale);
@@ -47,13 +58,15 @@ describe('loadMarketConfigs', () => {
   });
 
   it('loads only the hosted markets', () => {
-    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, ['ZZ']);
+    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, [testMarketId('ZZ')]);
 
     expect([...markets.keys()]).toEqual(['ZZ']);
   });
 
   it('fails when a hosted market has no configuration file', () => {
-    expect(() => loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, ['AU', 'NZ'])).toThrow(
+    const hosted = ['AU', 'NZ'].map(testMarketId);
+
+    expect(() => loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, hosted)).toThrow(
       /Hosted market "NZ" has no configuration file/,
     );
   });
@@ -73,34 +86,59 @@ describe('loadMarketConfigs', () => {
   ])('rejects %s', (_case, overrides, message) => {
     const directory = directoryWith({ 'QQ.json': { ...VALID, ...overrides } });
 
-    expect(() => loadMarketConfigs([directory], ['QQ'])).toThrow(InvalidMarketConfigError);
-    expect(() => loadMarketConfigs([directory], ['QQ'])).toThrow(message);
+    expect(() => loadMarketConfigs([directory], [QQ])).toThrow(InvalidMarketConfigError);
+    expect(() => loadMarketConfigs([directory], [QQ])).toThrow(message);
   });
 
   it('rejects a file that is not JSON', () => {
     const directory = directoryWith({ 'QQ.json': '{ not json' });
 
-    expect(() => loadMarketConfigs([directory], ['QQ'])).toThrow(/is not valid JSON/);
+    expect(() => loadMarketConfigs([directory], [QQ])).toThrow(/is not valid JSON/);
   });
 
   it('rejects a market configured in two directories', () => {
     const first = directoryWith({ 'QQ.json': VALID });
     const second = directoryWith({ 'QQ.json': VALID });
 
-    expect(() => loadMarketConfigs([first, second], ['QQ'])).toThrow(/more than once/);
+    expect(() => loadMarketConfigs([first, second], [QQ])).toThrow(/more than once/);
+  });
+});
+
+describe('the Market fixtures', () => {
+  // Platform-foundations design section 9: the kernel specs cannot read these files, so the
+  // kernel's single Market rule is asserted against them here.
+  it('name every configuration file with a code the kernel parseMarketId accepts', () => {
+    const codes = TEST_MARKET_CONFIG_DIRS.flatMap((directory) =>
+      readdirSync(directory)
+        .filter((name) => name.endsWith('.json'))
+        .map((name) => name.slice(0, -'.json'.length)),
+    );
+
+    expect(codes).toEqual(expect.arrayContaining([...TEST_MARKETS]));
+    for (const code of codes) expect(parseMarketId(code).ok).toBe(true);
+  });
+
+  it('give the loaded configurations parsed codes', () => {
+    for (const market of loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values()) {
+      expect(parseMarketId(market.code)).toEqual({ ok: true, value: market.code });
+    }
   });
 });
 
 describe('MarketRegistry', () => {
-  const registry = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKETS));
+  const registry = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 
   it.each(TEST_MARKETS)('returns the configuration of hosted market %s', (code) => {
-    expect(registry.isHosted(code)).toBe(true);
-    expect(registry.get(code).code).toBe(code);
+    expect(registry.isHosted(testMarketId(code))).toBe(true);
+    expect(registry.get(testMarketId(code)).code).toBe(code);
+  });
+
+  it('lists the hosted markets in HOSTED_MARKETS order', () => {
+    expect(registry.hostedMarketIds()).toEqual([...TEST_MARKETS]);
   });
 
   it('rejects a market this Region Stack does not host', () => {
-    expect(registry.isHosted('NZ')).toBe(false);
-    expect(() => registry.get('NZ')).toThrow(MarketNotHostedError);
+    expect(registry.isHosted(testMarketId('NZ'))).toBe(false);
+    expect(() => registry.get(testMarketId('NZ'))).toThrow(MarketNotHostedError);
   });
 });

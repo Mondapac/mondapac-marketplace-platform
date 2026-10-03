@@ -1,5 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { parseMarketId } from '@mondapac/shared-kernel';
+import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
@@ -16,10 +18,17 @@ const locale = z.string().refine((value) => {
   }
 }, 'must be a BCP 47 locale of the form language-REGION');
 const currency = z.string().refine((value) => CURRENCIES.has(value), 'must be an ISO 4217 code');
+/** The Market code, by the kernel's single rule (`parseMarketId`). */
+const marketCode = z.string().transform((value, context) => {
+  const marketId = parseMarketId(value);
+  if (marketId.ok) return marketId.value;
+  context.addIssue('must be a market code such as "NZ"');
+  return z.NEVER;
+});
 
 const marketSchema = z
   .strictObject({
-    code: z.string().regex(/^[A-Z][A-Z0-9_]{1,7}$/),
+    code: marketCode,
     status: z.enum(['planned', 'soft_launch', 'active', 'suspended']),
     defaultLocale: locale,
     supportedLocales: z.array(locale).min(1),
@@ -50,8 +59,8 @@ export class InvalidMarketConfigError extends Error {
  */
 export function loadMarketConfigs(
   directories: readonly string[],
-  hostedMarkets: readonly string[],
-): ReadonlyMap<string, MarketConfig> {
+  hostedMarkets: readonly MarketId[],
+): ReadonlyMap<MarketId, MarketConfig> {
   const files = new Map<string, string>();
   for (const directory of directories) {
     for (const name of readdirSync(directory)) {
@@ -64,7 +73,7 @@ export function loadMarketConfigs(
     }
   }
 
-  const markets = new Map<string, MarketConfig>();
+  const markets = new Map<MarketId, MarketConfig>();
   for (const code of hostedMarkets) {
     const file = files.get(code);
     if (file === undefined) {

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { parseMarketId, type MarketId } from '@mondapac/shared-kernel';
 import { loadAppConfig, type AppConfig } from '../../src/platform/config/app-config';
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
@@ -11,6 +12,16 @@ export const TEST_MARKET_CONFIG_DIRS = [
 
 /** Both market fixtures (ADR-0003 decision 9): the launch market and a synthetic one. */
 export const TEST_MARKETS = ['AU', 'ZZ'] as const;
+
+/** A Market code parsed with the kernel's rule; a malformed code is a mistake in the test. */
+export function testMarketId(code: string): MarketId {
+  const parsed = parseMarketId(code);
+  if (!parsed.ok) throw new Error(`testMarketId: malformed market code "${code}"`);
+  return parsed.value;
+}
+
+/** {@link TEST_MARKETS} as parsed Market ids. */
+export const TEST_MARKET_IDS: readonly MarketId[] = TEST_MARKETS.map(testMarketId);
 
 /** Application config for tests: both markets hosted, logging quiet unless overridden. */
 export function testAppConfig(overrides: Record<string, string> = {}): AppConfig {
