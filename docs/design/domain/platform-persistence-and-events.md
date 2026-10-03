@@ -1,7 +1,7 @@
 # Platform persistence and events — UnitOfWork, market guard, outbox, relay, scheduler, `APP_ROLE`
 
 **Author:** Mohammad (software-architect) — 2026-10-03
-**Status:** Draft — G2 review applied 2026-10-03; final check by Ali and Hassan pending.
+**Status:** Approved at G2, 2026-10-03 (Ali, Hassan). Open: PH4.
 Reviews applied: Ali (cto: PA1 to PA8, 16 a) and Hassan (security-tester: his findings 1, 8 and 10,
 in 3.1 and 4, read the same as in the identity design).
 **Ground truth:** `docs/design/domain/platform-foundations.md` ("foundations" below: sections 3.6,
@@ -201,7 +201,7 @@ payload field with a kind from a closed vocabulary: `id`, `enumOf(values)`, `boo
 
 | Layer | What it enforces |
 |---|---|
-| The vocabulary | A reason, a name, an email or a role name has no kind to be declared with. A new kind is a kernel change reviewed by the security-tester |
+| The vocabulary | A reason, a name, an email or a role name has no kind to be declared with. `enumOf` takes literal constants only (PH2). A new kind is a kernel change reviewed by the security-tester |
 | The writer, at run time | Exactly the declared fields with the declared kinds; a `permissionKey` value must be known to the `PermissionRegistry` or its retired list (foundations 6.1) |
 | `EventCatalogue` at boot (`platform/events/`) | Modules register their definitions, as with permissions: a duplicate type, or a first segment that is not the registering module, fails boot; sealed afterwards; the same in both roles |
 | The contracts test | Builds the catalogue from the booted application and compares it with a checked-in snapshot of every type and its fields. A new type fails until the snapshot changes, so each one is seen in review (the pattern of C4). A changed field list of an existing version fails with "publish a new version" (ADR-0006 decision 6). This is how "no free-string payload field" is tested |
@@ -309,7 +309,7 @@ interface JobDefinition {
 | Variable | Not in the code today: `AppConfig` has no role and `main.ts` always listens. `APP_ROLE`: `api` or `worker` (ADR-0006 decision 4, ADR-0008 decision 1). Required, validated by `loadAppConfig`, no default: a worker that silently started as `api` would relay nothing and nothing would fail (PA7) |
 | `api` runs | The HTTP server: guards, controllers, docs. It writes outbox rows; it never relays, dispatches or schedules |
 | `worker` runs | The relay and the scheduler; from slice 3 the dispatcher, later the audit sealer. No HTTP listener, so no API surface |
-| Shared | **One module graph.** Both roles build the same `AppModule.register()`: every module, the guard array, both authorisation ports (foundations 6.3 row 1), and so the same sealed `PermissionRegistry` (foundations 6.1 row 2), `EventCatalogue` and `JobRegistry`. A use case behaves the same in both. One `DATABASE_URL` and one database role in Phase 2 (PH4) |
+| Shared | **One module graph.** Both roles build the same `AppModule.register()`: every module, the guard array, both authorisation ports (foundations 6.3 row 1), and so the same sealed `PermissionRegistry` (foundations 6.1 row 2), `EventCatalogue` and `JobRegistry`. A use case behaves the same in both. One `DATABASE_URL` and one database role in Phase 2; before the first deployed environment, separate api and worker roles, and only the worker may `UPDATE` `published_at` and the delivery columns (PH4) |
 | Composition root | `main.ts` branches once. `api`: `NestFactory.create`, `configureApp`, `listen`. `worker`: `NestFactory.createApplicationContext`, shutdown hooks, `WorkerRuntime.start()`. Verified: the application context boots the full graph, runs the lifecycle hooks and has no HTTP server; controllers are constructed but nothing routes to them |
 | Who reads the role | `main.ts` and `platform/worker/` only (rule 3 of 12.2). A module never branches on it |
 | Starting and stopping | `main.ts` calls `WorkerRuntime.start()`; no lifecycle hook starts a loop, so building the graph in a test starts no timer. `stop()` runs on shutdown: no new pass, up to 10 s for the pass in flight. Safety never depends on a clean stop (6.2) |
@@ -380,8 +380,9 @@ Verified: a CHECK violation (`P2039`) carries the whole failing row in
 `meta.driverAdapterError.cause.detail`, and a malformed id (`P2007`) puts the input value in the
 message; pino's error serializer copies both. One function in `platform/persistence/` reduces any
 Prisma or driver error to its name, Prisma code, SQLSTATE and constraint name, and the logger uses
-it for every error it serialises. `meta` and `message` of a database error are never logged,
-stored in a dead letter or returned. This answers the open check of I15 (PH3).
+it for every error it serialises; field names may stay. `message`, `meta` (with `meta.cause` and
+`detail`) and query parameters of a database error are never logged, stored in a dead letter or
+returned. This answers the open check of I15 (PH3, decided by Hassan).
 
 ## 13. Testing
 
@@ -469,9 +470,9 @@ which Ali writes in parallel and which is accepted with the G2 approval.
 | # | Question | Answer |
 |---|---|---|
 | PH1 | Is the rule set of 4.1 enough for I5: equality on `where` and `create`, nested writes and raw SQL refused, no access outside a unit? Must `where` name the tenant as well? | Decided (finding 10): yes, once the guard refuses anything it does not recognise, `$queryRawTyped` included (4.1, 4.2). `where` needs the tenant only once a second tenant exists |
-| PH2 | The payload vocabulary (5.3): is an `id` that points at a person acceptable without limit, and is the registry check on `permissionKey` enough for R5? | Open: not answered at review; for his final check |
-| PH3 | The error reducer of 12.3: is name, Prisma code, SQLSTATE and constraint name the right set to keep? | Open, as PH2 |
-| PH4 | One database role for both `APP_ROLE`s in Phase 2. The worker needs `UPDATE (published_at)` on outboxes and the api does not: is a separate worker role required before the first deployed environment? | Open, as PH2 |
+| PH2 | The payload vocabulary (5.3): is an `id` that points at a person acceptable without limit, and is the registry check on `permissionKey` enough for R5? | Decided by Hassan 2026-10-03: yes. Person ids are fine, and the registry check on `permissionKey` is enough for R5. `enumOf` values must be literal constants (5.3). He reviews every diff of the event snapshot |
+| PH3 | The error reducer of 12.3: is name, Prisma code, SQLSTATE and constraint name the right set to keep? | Decided by Hassan 2026-10-03: yes; field names may stay. Never `message`, `meta.cause`, `detail` or query parameters (12.3) |
+| PH4 | One database role for both `APP_ROLE`s in Phase 2. The worker needs `UPDATE (published_at)` on outboxes and the api does not: is a separate worker role required before the first deployed environment? | Decided by Hassan 2026-10-03: yes. Before the first deployed environment, separate api and worker database roles; only the worker may `UPDATE` `published_at` and the delivery columns (8). **Open** until then: Kazem and Mojtaba |
 
 ### (c) Inputs to the identity design
 | # | Input |
@@ -508,3 +509,4 @@ its own where `docs/process/parallel-tracks.md` calls the file shared (PA7):
 | `apps/api/.dependency-cruiser.cjs`, `eslint.config.mjs` (shared), `apps/api/test/boundaries.spec.ts`, `apps/api/test/boundary-fixtures/`, `apps/api/test/db/platform.db-spec.ts` | Rules 1 to 4 of 12.2; audit rows are written inside a unit of work; the tests of 13 | Slice 1a; rule 3 and the relay, scheduler and role tests with slice 1b |
 | `prisma/schema/base.prisma` (`schemas`), `prisma/schema/identity.prisma`, a migration with `down.sql` | The first module schema and `identity.outbox` (Mojtaba signs off; data design M9); `platform.event_delivery` and `identity.inbox` | Slice 1b; slice 3 |
 | `.env.example`, `.github/workflows/ci.yml`, the Commands text of `CLAUDE.md` (all shared) | `APP_ROLE`; the worker in the boot probe; `pnpm dev:worker` | Before slice 1b merges, in a PR of its own announced on the board first (PA7); Kazem for CI |
+| The database bootstrap and `docs/design/data/platform.md` | Separate api and worker database roles; the outbox `UPDATE (published_at)` and the delivery-column grants for the worker only (PH4) | Before the first deployed environment; Kazem and Mojtaba |

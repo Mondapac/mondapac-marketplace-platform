@@ -474,6 +474,7 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
 | `id` | `uuid` | no | PK |
 | `kind` | `text` | no | CHECK `seller-owner`, `staff`, `admin` |
 | `email`, `email_normalized` | `text` | yes | **Personal, plain**, present only while `pending`: CHECK `(state = 'pending') = (email_normalized IS NOT NULL)`, the same for `email`, and the email CHECK of 3.3. Acceptance and revocation set both to NULL |
+| `display_name` | `text` | yes | **Personal, plain.** Only on a `seller-owner` invitation issued by an admin (D 3.4: the shop owner keeps the name entered in D6); CHECK `display_name IS NULL OR (kind = 'seller-owner' AND state = 'pending')`, the name rules of `accounts.display_name` (3.3); acceptance copies it to the account and sets it to NULL, revocation sets it to NULL |
 | `role_id` | `uuid` | no | Plain id (C4): the role may be deleted while the invitation is pending, and acceptance then refuses (R12) |
 | `seller_id` | `uuid` | yes | FK to `seller_access`, RESTRICT. CHECK `(kind = 'admin') = (seller_id IS NULL)` |
 | `invited_by_account_id` | `uuid` | yes | C4; NULL for the first-admin routine, whose acceptance is refused once the Market has an active Platform Administrator (HF5 (b), 3.9) |

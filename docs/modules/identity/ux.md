@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Author | Reza (ui-ux-designer) — 2026-10-03 |
-| Status | Draft — G2 review applied 2026-10-03; final check by Jafar pending. |
+| Status | Approved at G2, 2026-10-03 (Jafar, Ali, Hassan); Figma 1.1.0 and 1.2.0 before any frontend slice. |
 | Module | `identity`, tier A, Phase 2. G1 approved by the owner on 2026-10-02 |
 | Reviewers | Jafar (product-designer), Ali (cto), Hassan (security-tester). Mohammad (software-architect) writes the domain design in parallel |
 | Review applied | Jafar: changes 1 to 12 and his answers to the first draft's open points. Ali: required changes 8 and 9, his slice names and his owner list. Hassan: findings 2, 3, 6, 7, 13 and 15, the session lifetimes and his answers to the first draft's 7.3 |
@@ -58,7 +58,7 @@ design that Ali accepted, 2 required by Hassan 2 and 6).
 | A5 | Forgot password | Seller, Admin, (Cus) | 4 | 13, 21 | P0 | |
 | A6 | Choose a new password | Seller, Admin, (Cus) | 4 | 8, 19 | P0 | **Merged:** "link expired" and "link already used" are one state (Hassan confirmed) |
 | A7 | Two-step verification: enter code | Admin, Seller | 7, 12 | 7, 10, 30 | P0 Admin; optional Seller | **Merged:** "I have lost my device" is a mode of this screen |
-| A8 | Two-step verification: set up | Admin (inside A9, or from the link in E16), Seller (from B4) | 7, 8b, 12 | 10, 22, 30 | as A7 | **Merged:** backup codes are step 3, not a separate screen. An admin enrols only inside invitation acceptance or by a mailed link (Hassan 6) |
+| A8 | Two-step verification: set up | Admin (inside A9, or from the link in E16), Seller (from the link in E16) | 7, 8b, 12 | 10, 22, 30 | as A7 | **Merged:** backup codes are step 3, not a separate screen. Outside an admin's invitation acceptance, every enrolment starts from the mailed link (Hassan 6; his decision of 2026-10-03) |
 | A9 | Accept invitation | Admin, Seller | 7 (admin), 9, 11 | 19, 22, 29, 31, 37 | P0; P1 for staff | Three variants plus "invitation not usable". The admin variant holds the A8 steps (Hassan 6) |
 | A10 | Account suspended | Seller | 5, 9 | 7, 14 | P0 | No session exists; reason for the Seller Owner only |
 | A11 | Confirm the reset of two-step verification | Seller | 12 | 30, 33 | optional Seller | From DD 7.3: the Seller Owner confirms, by the link in E15, a reset that an admin started |
@@ -96,7 +96,7 @@ Text templates, outside Figma. Every email names its account type (criterion 3).
 | E13 | Your password was changed | The account, after a reset or a change | 4 | 8, 32 | From DD 3.7 and 9; not in the brief, accepted by Ali |
 | E14 | Two-step verification was changed or reset | The account | 7, 8b, 12 | 11, 30 | From DD 3.6 and 9; not in the brief, accepted by Ali |
 | E15 | Confirm the reset of two-step verification | Seller Owner | 12 | 33 | From DD 7.3; not in the brief, accepted by Ali |
-| E16 | Set up two-step verification again (a link valid for 60 minutes) | Admin, at the first sign-in after a reset | 7, 8b | 10, 30 | Required by Hassan 6; not in the brief |
+| E16 | Set up two-step verification (a link valid for 60 minutes) | Admin, at the first sign-in after a reset; a seller-side account on request, from B4 or S1 (Hassan, 2026-10-03) | 7, 8b, 12 | 10, 30 | Required by Hassan 6; not in the brief |
 | E17 | Too many wrong two-step codes | The account, when its factor step is paused | 7, 12 | 11, 13 | Required by Hassan 2; not in the brief |
 
 ### 1.3 Listed in the brief or the task, and not designed
@@ -225,7 +225,7 @@ invitation acceptance; enrolling again after a reset also needs a link mailed to
 | 2 | "Use a backup code instead" (same screen, second mode): one code, single use. B4 then shows how many are left | The same two codes |
 | 3 | No phone and no backup codes: A7 says who can help (DD 7.3). Staff: the Seller Owner. Admin: another admin who may reset it. Seller Owner: the support contact (7.4), which follows a written identity check before an admin starts the reset (Hassan's answer to the first draft's 7.3 item 4). The last Platform Administrator: the operator, with no screen | — |
 | 4 | Reset by another person, with D3. A Staff member: the Seller Owner, from B1. An admin: another admin, from B1. A Seller Owner: an admin starts it from P1, E15 goes to the owner, and nothing changes until the owner opens its link (valid for 24 hours, Hassan 15) and confirms on A11 | The action is disabled, with the reason, when R1 or R11 forbids it. A11 with a bad link: `link.rejected` |
-| 5 | After a reset the target's sessions end and E14 is sent. An admin enrols again through the link of E16 at the next sign-in (F6 steps 6 and 7); a seller-side account signs in with its password and B4 shows two-step verification as off | — |
+| 5 | After a reset the target's sessions end and E14 is sent. An admin enrols again through the link of E16 at the next sign-in (F6 steps 6 and 7); a seller-side account signs in with its password and B4 shows two-step verification as off, and setting it up again starts from the link in E16 | — |
 
 ### F8. Invitation acceptance (admin, seller team member, seller created by an admin)
 | # | Step | Failure or branch |
@@ -309,7 +309,7 @@ answer. There is no session list (1.3).
 | **A5 Forgot password.** Ask for a reset link | H1 names the account type; Email; "Send reset link"; "Back to sign in" | Email: required, format | Sent: "If a seller account uses {email}, we've sent a link…", with the 60 minutes | Confirmation that the account exists; a different delay for a known email |
 | **A6 Choose a new password.** Complete the reset | Badge; H1; New password with show/hide and the policy rule (one field); the note that this signs the user out everywhere; "Save new password" | New password: policy. The account email sits in a hidden username field for password managers | Link not usable (as A4, leading to A5); success goes to A1 with a banner | The account email; automatic sign-in |
 | **A7 Two-step verification.** Second step of sign-in | Mode 1: H1; code field; "Verify"; "Use a backup code instead". Mode 2: H1; backup-code field; "Verify"; "Use your authenticator app instead". Under both, "Can't use either?" opens help for this population (F7 step 3) | One field per mode (section 6). No auto-submit and no "remember this device" | Code rejected; challenge ended after too many wrong codes (back to A1 with a message); paused after 10 wrong codes in 24 hours (back to A1, which says so; Hassan 2) | The seller's status (it comes after this step); whether the code was wrong or late |
-| **A8 Set up two-step verification.** Enrol an authenticator app | Three steps labelled in words ("Step 1 of 3"). Step 1: QR code on a white plate; the same key as text in groups of four with Copy; "Open authenticator app". Step 2: code field and "Verify". Step 3: ten backup codes (DD 7.3) as a list in mono type; Copy, Download, Print; the checkbox "I've saved these codes"; "Continue" | The checkbox enables "Continue". Admin (Auth template, inside A9 or from the link in E16): no skip, and a line says admin accounts must use it; from the link the password comes first ("Step 1 of 4", Hassan 6). Seller (in the shell, from B4): "Cancel" until step 2 succeeds | Code rejected; challenge ended; done; link not usable (from E16, with "Back to sign in") | The key or the codes once the step is left; either of them in a URL, browser storage or a log |
+| **A8 Set up two-step verification.** Enrol an authenticator app | Three steps labelled in words ("Step 1 of 3"). Step 1: QR code on a white plate; the same key as text in groups of four with Copy; "Open authenticator app". Step 2: code field and "Verify". Step 3: ten backup codes (DD 7.3) as a list in mono type; Copy, Download, Print; the checkbox "I've saved these codes"; "Continue" | The checkbox enables "Continue". Admin (Auth template, inside A9 or from the link in E16): no skip, and a line says admin accounts must use it; from the link the password comes first ("Step 1 of 4", Hassan 6). Seller (Auth template, from the link in E16 that "Set up" on B4 or S1 sends): the password first, as for an admin; "Cancel" until step 2 succeeds; done: "Two-step verification is on." with a link to Account security | Code rejected; challenge ended; done; link not usable (from E16, with "Back to sign in") | The key or the codes once the step is left; either of them in a URL, browser storage or a log |
 | **A9 Accept invitation.** Turn an invitation into an account | Badge; H1 and body by variant (admin; seller team member, with who invited them and the role; seller created by an admin); Email, read-only; Your name (admin and staff); Password with show/hide (one field); legal slot (L): the privacy collection notice (Jafar 12); "Accept and continue". Seller variants add the note that this account is separate from a customer account with the same email. Admin variant: "Continue" leads to the A8 steps inside this screen (Hassan 6). An existing seller-side account with no team sees "Sign in and join" with its current password (DD 6.7) | Name: required, no control, bidi or URL-like text (Hassan 13). Password: policy | Accepted: A1 with "Your account is ready. Sign in." (no session, DD 3.4); an admin only once the A8 code is accepted. Not usable: one message and no self-service resend | Why it is not usable (cancelled, role deleted and suspended seller look the same) |
 | **A10 Account suspended.** Explain why sign-in stopped | Badge; `InfoBanner` (Critical) "This seller account is suspended". Seller Owner: `ReasonQuote` with the reason and its date. Staff: "Ask your shop owner for details". "Back to sign in". The support contact is in the footer, as on every Auth screen (3.2.6) | None. Shown only after complete authentication; no session exists | Seller Owner; Staff | The reason to Staff; the name of the admin who acted |
 | **A11 Confirm the reset of two-step verification** (Seller Owner; link in E15). Let the owner approve a reset that an admin started (DD 7.3) | Badge; H1; what will happen: two-step verification is turned off, every session ends, and sign-in needs only the password until it is set up again; "Turn off two-step verification"; the line "Didn't ask for this? Close this page and change your password." | No fields | Checking; confirm; done (A1 with a banner); link not usable after one use or 24 hours (Hassan 15; as A4, without resend: the owner asks support again) | Who started the reset; the account's email |
@@ -317,12 +317,12 @@ answer. There is no session list (1.3).
 ### 3.2 Inside the shell
 | Screen and purpose | Content, top to bottom | Fields, validation, actions | States | Never shown |
 |---|---|---|---|---|
-| **S1 Your seller account** (Seller; F5; DD 8.5). Landing while not approved | H1 "Your seller account" with a status `Badge`: "Awaiting approval" (Info, `clock`) or "Changes needed" (Attention, `alert-circle`); with `sellers`, "Not approved" (Critical, `x`) once the re-apply limit is reached (Jafar 6). Card 1: `InfoBanner` Info "We're reviewing your application", or Attention "Your application needs changes". Card 2 (Seller Owner, changes needed): `ReasonQuote` with the label "Reason from MondaPac", the text exactly as written, and its date. Card 3, steps (`ChecklistItem`): "Account created" and "Email confirmed" Done, with dates; a slot for Phase 3 steps; "MondaPac reviews your application" Waiting, or Needs attention when changes are needed. Card 4, help, always last (3.2.6): "Protect your account" with a link to two-step setup (on the allow-list, DD 5.2), and the support contact | None: no inline form (F5). With `sellers`, its steps open their own pages | Skeleton cards; inline error with "Try again" | Other menu items; internal notes; reviewer names; a promised decision time (none for now, Jafar) |
+| **S1 Your seller account** (Seller; F5; DD 8.5). Landing while not approved | H1 "Your seller account" with a status `Badge`: "Awaiting approval" (Info, `clock`) or "Changes needed" (Attention, `alert-circle`); with `sellers`, "Not approved" (Critical, `x`) once the re-apply limit is reached (Jafar 6). Card 1: `InfoBanner` Info "We're reviewing your application", or Attention "Your application needs changes". Card 2 (Seller Owner, changes needed): `ReasonQuote` with the label "Reason from MondaPac", the text exactly as written, and its date. Card 3, steps (`ChecklistItem`): "Account created" and "Email confirmed" Done, with dates; a slot for Phase 3 steps; "MondaPac reviews your application" Waiting, or Needs attention when changes are needed. Card 4, help, always last (3.2.6): "Protect your account" with "Set up two-step verification", which sends E16 as on B4 (on the allow-list, DD 5.2), and the support contact | None: no inline form (F5). With `sellers`, its steps open their own pages | Skeleton cards; inline error with "Try again" | Other menu items; internal notes; reviewer names; a promised decision time (none for now, Jafar) |
 | **P1 Seller accounts** (Admin; a Phase 2 frame of the existing template `Admin · Sellers`, Jafar 9). Decide on sellers | Title "Sellers" with the count and Market name; a search field that takes an exact email (DD 8.6-8). Tabs with counts: Awaiting approval (default), Approved, Changes needed, Suspended, Invited, All. Columns: Seller (owner's name over email); Status (`Badge`, icon and word: as S1, plus Approved Success `check`, Suspended Critical `ban`, Invited Neutral `send`); Since (date of the last status change); Actions. A row whose owner must still confirm a two-step reset says so, with the link's expiry (DD 8.6-8). No KPI strip, bulk bar, certificate, health or order columns in Phase 2: those belong to `sellers` | Primary: "Add seller". The row menu holds only the allowed actions: Approve and Reject… (awaiting approval only, Jafar 1), Suspend…, Lift suspension, View reason, Reset owner's two-step verification (DD 7.3); for invitations Resend and Cancel. A disabled item gives its reason on its description line (`MenuItem`) | Skeleton rows; an empty state per tab; load error in the card with "Try again"; for View-only roles the actions are disabled with the reason | Sign-ups whose email is not confirmed; reason text in the table; another Market's sellers |
 | **B1 Members.** Manage people and invitations | Seller: page "Team & roles", tabs Team and Roles. Admin: page "Roles & permissions", tabs Admins and Roles. Columns: Person (name over email; "You" on the own row); Role (a lock icon marks a system role); Two-step verification (On or Off; Seller only); Status (Active, Invited, Deactivated); Actions. Seller panel in Phase 2: an Info banner says team members can sign in now and that the parts they can use arrive as features are added (the consequence stated in brief section 3) | Primary: "Invite team member" or "Invite admin". Row actions: Change role, Reset two-step verification, Remove from team or Deactivate account (Reactivate account on a deactivated row); for invitations Resend and Cancel. Actions that a rule forbids stay visible, disabled, with the reason (F11 steps 4 to 6) | Skeleton rows; empty (owner only): "It's just you so far" with the invite action; view-only (every action disabled with the reason) | Members of another seller or Market; last sign-in times or sessions |
 | **B2 Roles.** List roles by type | Rows grouped System, Default, Custom (seller panel: Owner, Ready-made, Custom; Jafar answer 7). Columns: Role, with its one-line purpose for a ready-made role; Type (`Badge`); Permissions (a count, "All" for a system role, "None yet" for none, Jafar 11); Members (count); Actions | Primary: "Create role". Row actions: View; custom: Edit, Duplicate, Delete…; default: Duplicate | Skeleton rows; empty custom group: "No custom roles yet" and one line of explanation | Roles of another seller, panel or Market |
 | **B3 Role.** View a role; create or edit a custom one | Back link; H1 is the role name; type `Badge`. System and default roles: a read-only banner says why; a default role offers "Duplicate". Custom: Role name; the line "New features are never added to a custom role automatically" (R10); the counter "{selected} of {total} permissions selected". Permissions: one card per resource with "Select all" (three-state checkbox), then a `CheckboxRow` per permission: checkbox, label, one-line description, and a trailing "Protected" `Badge` with a lock where R11 applies. Labels come from `permission.<key>.label` | Role name: required, unique within this seller or the platform, maximum length from the API, no control, bidi or URL-like text (Hassan 13). A row the user may not give is disabled with its reason in text: not held (R1), or protected (R11; in the seller panel "Only the shop owner can do this. It can't be given to team members yet.", Jafar 5). "Duplicate" fills in "Copy of {roleName}" and leaves unticked, under an Info banner, the permissions the user can't give (Jafar 11). "Save role" and "Cancel" are fixed to the bottom of long lists; leaving with unsaved changes asks first | Skeleton; error summary; saved Toast. Seller panel in Phase 2: the catalogue is short (DD 5.3: two view permissions can be chosen; team and role management is protected and shown locked). An Info banner says more permissions arrive with new features, and a role with no permissions can be saved (DD 5.6 has such default roles) | The other panel's permissions (R2); unknown or retired keys (R7); Market or vertical names in labels |
-| **B4 Account security.** Own password and second factor | Password card: Current password; New password with show/hide and the policy rule (one field); a code field when two-step verification is on (DD 6.5); "Change password". Two-step card: "On since {date}" or "Off", and the backup codes left. Admin: a line says it must stay on. Seller Owner: a line says it becomes compulsory before payouts are switched on (decision 7). Customer: the password card only | Seller, off: "Set up" asks for the password again, then A8 in the shell (DD 3.6). On: "Get new backup codes" (asks for a current code, shows the codes once) and "Move to a new phone" (current code, then A8). Seller only: "Turn off…" (D3, with a code) | `password.current-incorrect`; `password.rejected`; Toast on success | The current key or old codes; a session list |
+| **B4 Account security.** Own password and second factor | Password card: Current password; New password with show/hide and the policy rule (one field); a code field when two-step verification is on (DD 6.5); "Change password". Two-step card: "On since {date}" or "Off", and the backup codes left. Admin: a line says it must stay on. Seller Owner: a line says it becomes compulsory before payouts are switched on (decision 7). Customer: the password card only | Seller, off: "Set up" sends E16, a link valid for 60 minutes, and the card says so, with "Send it again"; A8 opens from that link (DD 3.6; Hassan's decision of 2026-10-03). On: "Get new backup codes" (asks for a current code, shows the codes once) and "Move to a new phone" (current code, then A8). Seller only: "Turn off…" (D3, with a code) | `password.current-incorrect`; `password.rejected`; Toast on success | The current key or old codes; a session list |
 | **B5 No access.** Answer to a page the role does not include, and to a record that cannot be found | No access: lock icon; H1; who to ask (Seller: the shop owner; Admin: an admin who manages roles). Not found: H1 and one line, the same for a record that does not exist and for one of another seller or Market (Hassan: byte-identical answers) | "Go to Home" | No access; not found | The missing permission key; whether the requested record exists anywhere |
 
 ### 3.3 Dialogs
@@ -534,6 +534,7 @@ the seller panel only: system role = Owner, default role = Ready-made (Jafar, an
 | `role.banner.early · body.unsaved · toast.saved` | Only a few permissions exist so far. More appear here as MondaPac adds features. · You have unsaved changes. Leave without saving? · Role saved. Changes apply from each person's next action. |
 | `security.title · title.password · action.change-password · toast.password-changed` | Account security · Password · Change password · Password changed. You've been signed out on your other devices. |
 | `security.title.two-step · status.on · status.off · label.codes-left · action.set-up · .new-codes · .move · .turn-off` | Two-step verification · On since {date} · Off · {count, plural, one {# backup code left} other {# backup codes left}} · Set up · Get new backup codes · Move to a new phone · Turn off… |
+| `security.status.link-sent` | We've sent a link to {email}. Open it within 60 minutes to set up two-step verification. |
 | `security.help.admin · help.owner` | Admin accounts must keep two-step verification on. · Shop owners will need two-step verification before payouts are switched on. |
 | `no-access.title · body.seller · body.admin · action` | You don't have access to this page · Your role doesn't include it. Ask your shop owner if you need it. · Your role doesn't include it. Ask an admin who manages roles. · Go to Home |
 | `no-access.title.not-found · body.not-found` | We can't find that page · It may have been removed, or the link may be wrong. |
@@ -561,7 +562,7 @@ your seller account. A customer account with the same email is separate." (also 
 | `password-changed.seller` · `.admin` · `.customer` | The password for your MondaPac seller account was changed · … admin account · … customer account | — |
 | `two-step-changed.seller` · `.admin` | Two-step verification changed on your MondaPac seller account · … admin account | — |
 | `two-step-reset-confirm` (L) | Confirm the reset of two-step verification on your MondaPac seller account | Review the request |
-| `two-step-setup-again.admin` | Set up two-step verification again on your MondaPac admin account | Set up two-step verification |
+| `two-step-setup-link.seller` · `.admin` | Set up two-step verification on your MondaPac seller account · Set up two-step verification again on your MondaPac admin account | Set up two-step verification |
 | `two-step-locked.seller` · `.admin` | Too many wrong two-step codes on your MondaPac seller account · … admin account | — |
 
 ## 6. Accessibility and responsiveness
@@ -629,10 +630,12 @@ The 2.2 criteria that shape these screens: 2.4.11 (focus not obscured), 2.5.8 (t
 
 The G2 review settled the first draft's open points: Jafar answered 7.1, DD 8.6 answered 7.2, and
 Hassan confirmed 7.3, with two conditions now in the text (B5's answer is byte-identical to "not
-found"; support follows a written identity check before a shop owner's reset). Only what is still
-open is listed.
+found"; support follows a written identity check before a shop owner's reset). The points raised
+while applying the review are answered below. Still open: the privacy notice text (legal) and the
+owner question of 7.4.
 
-### 7.1 For Jafar's final check: readings made while applying the review
+### 7.1 Readings for Jafar's final check: answered 2026-10-03
+Jafar agrees with items 1 and 2; Hassan confirmed the stance of item 3; item 4 waits for legal.
 1. **`Menu` and `MenuItem` move to 1.1.0** with the three items of change 8: sign out (F12, slice
    2) and the account menu of S1's limited shell need them, so without them S1 would still wait on
    1.2.0.
@@ -643,7 +646,7 @@ open is listed.
    I read the limit as essential under 2.2.1. Confirm.
 4. **Privacy notice:** `identity.common.privacy-notice` is a draft; legal confirms it (Jafar 12).
 
-### 7.2 For Mohammad: what the screens still need from the domain design
+### 7.2 For Mohammad: answered by DD 8.6 rows 1 and 2, 3.4 and 3.6 (Ali)
 1. Codes not in DD 8.6 item 1: `role.name-taken`; `invitation.already-pending`; the paused factor
    step of Hassan 2 (proposal: `second-factor.locked` with `retryAfterSeconds`); names with control,
    bidi or URL-like text, Hassan 13 (proposal: `validation.failed` with `details.rule`
@@ -655,11 +658,17 @@ open is listed.
 3. The invitation lifetime by kind (admin 72 hours, Hassan 15; others 7 days), readable for D1.
 4. With `sellers`: the status read says whether the re-apply limit is reached, so S1 and P1 can show
    "Not approved" instead of "Changes needed".
+5. Invitation acceptance takes a display name in the admin and staff variants, under the sign-up
+   name rules (Hassan 13); a `seller-owner` invitee keeps the name the admin gave in D6. Answered:
+   DD 3.4 (Jafar).
 
 ### 7.3 For Hassan
-1. Finding 6 is applied to admins, who must enrol before they have a session. A seller-side account
-   enrols from B4 while signed in, with its current password (DD 3.6), and gets no mailed link.
-   Confirm that reading.
+1. A seller-side account's first, optional enrolment. **Decided by Hassan 2026-10-03:** it starts
+   from the mailed link (E16), like every enrolment outside an admin's invitation acceptance,
+   because from Phase 5 the Seller Owner's factor proves a payout-account change. B4, S1 and A8
+   follow it; "Move to a new phone" still starts with a current code (DD 3.6). He also confirmed the
+   12-hour admin limit stance (7.1 item 3) and accepted the 15-minute tag expiry on the admin
+   enrolment secret.
 
 ### 7.4 Asked of the owner
 The orchestrator puts this question in the single owner list with DD 14.4.
@@ -723,7 +732,7 @@ Every screen also waits for the D1 and D2 ADRs and slice F0 (brief slice 13).
 | P1; D3 to D6; A10; S1 "changes needed"; A9 for a seller created by an admin | 9 | 1.2.0 (A10, S1: 1.1.0) |
 | B3 editor; B2 actions | 10 | 1.2.0 |
 | B1 Team; A9 staff | 11 | 1.2.0 |
-| A7, A8 for sellers; A11; two-step card of B4 | 12 | 1.2.0 (A11: 1.1.0) |
+| A7, A8 for sellers (from the link in E16); A11; two-step card of B4 | 12 | 1.2.0 (A8, A11: 1.1.0) |
 
 - Emails are built by `identity` on the backend (brief section 3, SEL-13; DD 9) from the
   `identity.mail.*` keys of section 5; frontend and backend share one key scheme.
