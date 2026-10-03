@@ -12,7 +12,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "jest --passWithNoTests"
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --passWithNoTests"
+  },
+  "dependencies": {
+    "temporal-polyfill": "1.0.5"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
