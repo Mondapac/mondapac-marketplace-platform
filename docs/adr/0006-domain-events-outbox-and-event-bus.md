@@ -29,6 +29,9 @@ modules.
    transaction — so a crash never loses an event. Retries with backoff and dead-lettering
    (plus an alert) live in this table. Relay and handlers run in the `worker` role of the
    same image (`APP_ROLE=api|worker`).
+   *(Amended by ADR-0023: the delivery side lands in the same change as the first
+   subscription, identity's mail handlers in its slice 3; no deployed environment exists
+   before then.)*
 5. **Idempotent consumers.** Each consuming module records `(event_id, handler)` in its own
    `<module>.inbox` table in the same transaction as its side effects.
 6. **Contracts are public.** Event types and payload schemas live in the publishing
@@ -37,6 +40,8 @@ modules.
 7. **Scheduled jobs.** Zone-aware jobs (ADR-0005 decision 6: CERT-14/15, SUB-06, HLT-03)
    run in the `worker` role; one runner per job via `pg_try_advisory_lock`. Each run
    iterates `HOSTED_MARKETS` and sets an explicit market context (ADR-0003 decision 2).
+   *(Amended by ADR-0023: the lock is the transaction-scoped `pg_try_advisory_xact_lock`,
+   held in a transaction of the runner's own for the whole run.)*
 8. **Swap path.** RabbitMQ or Kafka is added later as another `EventBus` adapter, chosen by
    a new ADR when a real trigger appears (extracting a module into its own service, or
    worker throughput limits). Modules, outbox and inbox do not change.

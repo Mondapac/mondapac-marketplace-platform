@@ -26,7 +26,9 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    migrations and the application get separate roles: the application role is not a
    superuser, does not own the schema, and has only `INSERT` and `SELECT` on
    `platform.audit_log`; a database test proves it cannot disable the triggers.
-3. **Deferred items and their triggers.**
+3. **Deferred items and their triggers.** *(Amended by ADR-0023: "in the same change as"
+   reads "no later than, never after"; identity's slice 1 is delivered as slices 1a to 1d,
+   one branch and one PR each.)*
 
    | Deferred | Must land |
    |---|---|
@@ -34,7 +36,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | Money | Before the first slice that handles a price |
    | Temporal polyfill | With Clock (already approved as a dependency by ADR-0008 decision 4) |
    | Request-level market context | Before the first non-platform endpoint; health and docs are explicitly exempt; never a default market |
-   | UnitOfWork, outbox relay, event bus, scheduler, `APP_ROLE` | With the first slice that emits an event or an audit row |
+   | UnitOfWork, outbox relay, event bus, scheduler, `APP_ROLE` *(Amended by ADR-0023: the delivery side of the event bus lands with the first subscription.)* | With the first slice that emits an event or an audit row |
    | `market_id` Prisma query guard | In the same change as the first repository on a market-scoped model (`audit_log` counts) |
    | Per-model "model to owning module" lint rule | In the same change as the first module-owned Prisma model |
    | Market configuration seeded to the database | When something needs to read Markets from the database; configuration as code stays the source of truth |

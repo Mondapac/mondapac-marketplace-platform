@@ -32,6 +32,9 @@ core/vertical split and the market/time rules visible and machine-checked.
    *(Amended by ADR-0019: `contracts/` also holds the module's AI tool declarations, kinds
    READ and DRAFT only; `platform/ai` joins the cross-cutting runtime and is the only code
    that calls a model.)*
+   *(Amended by ADR-0023: `platform/mail/` joins the cross-cutting runtime: the mail
+   transport port and its adapter, no templates; job and subscriber definitions live in
+   `presentation/jobs/` and `presentation/subscribers/`.)*
    ```
    domain/          aggregates, value objects, domain events, domain services
                     (no NestJS, no Prisma, no I/O)
