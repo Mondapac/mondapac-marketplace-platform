@@ -129,6 +129,9 @@ strategy implementation, not in core logic.
 - `docker compose up -d` starts Postgres, Redis, mail catcher (no object storage yet, ADR-0016). Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`
+- `pnpm dev` builds the shared kernel first; restart it after a kernel change. `pnpm build`
+  ends with `scripts/check-built-kernel.mjs`, which checks that the built API loads one build
+  of the shared kernel.
 - `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
   and drops its own throwaway database)
 - `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).

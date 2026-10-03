@@ -1,13 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "../..",
     "outDir": "./dist",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "types": ["node", "jest"],
     "paths": {
-      "@mondapac/shared-kernel": ["../../packages/shared-kernel/src/index.ts"]
+      "@mondapac/shared-kernel": ["../../packages/shared-kernel/src/index.ts"],
+      "@mondapac/shared-kernel/testing": ["../../packages/shared-kernel/src/testing.ts"]
     }
   },
   "include": ["src", "test"],
