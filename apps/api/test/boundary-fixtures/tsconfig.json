@@ -1,5 +1,12 @@
 {
   "extends": "../../../../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true, "rootDir": "." },
-  "include": ["src"]
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "paths": {
+      "@mondapac/shared-kernel": ["./packages/shared-kernel/src/index.ts"],
+      "@mondapac/shared-kernel/testing": ["./packages/shared-kernel/src/testing.ts"]
+    }
+  },
+  "include": ["src", "packages"]
 }

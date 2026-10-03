@@ -55,6 +55,9 @@ Carried into Phase 2:
 
 - A re-export of `PrismaService` added inside `persistence.module.ts` itself would pass the
   boundary check; review is the control until a test on that module's exports exists.
+  Done in slice 0 item 4: `apps/api/test/boundaries.spec.ts` fails when
+  `persistence.module.ts` exports anything but `PersistenceModule`, or `database-probe.ts`
+  anything but `DatabaseProbe` (re-exports and type exports included).
 - Removing the `configureApp(app)` call from `main.ts` fails no test (only lint); add a
   header assertion to the CI boot probe.
 - CI checks only the syntax of `docker-compose.yml`, which is how the missing MinIO image
@@ -92,9 +95,14 @@ Carried into Phase 2:
   pattern (database-designer to decide with the audit writer slice).
 - The lint rules are guard rails: the wall-clock rule catches only `new Date()` and
   `Date.now()`, and the market/vertical literal list in `eslint.config.mjs` is maintained by
-  hand. Derive the list from `config/markets/` when a second market is added.
+  hand. Derive the list from `config/markets/` when a second market is added. Slice 0 item 4
+  extends the wall-clock rule to `Date()` and `Temporal.Now` in all core code; it is still
+  a guard rail.
 - Startup failures are printed by the framework as coloured text with a stack, not JSON.
-- No positive fixture for domain importing the shared kernel, none for `no-circular`.
+- No positive fixture for domain importing the shared kernel, none for `no-circular`. Done
+  in slice 0 item 4: `domain/uses-kernel.ts` (through a `paths` entry in the fixtures'
+  `tsconfig.json`) and `domain/circular-a.ts`, plus a test that every dependency-cruiser rule
+  has a fixture that breaks it.
 - The synthetic market fixture has no tax rate yet; add it when the tax module defines one.
 - Production `DATABASE_URL` should require TLS (`sslmode=verify-full`) once deployment
   configuration exists.

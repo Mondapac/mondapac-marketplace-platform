@@ -5,9 +5,10 @@
 // one process would make every context from the other copy fail `isMinted`.
 //
 // It checks resolution from the API package, that a context minted through the `/testing`
-// builders passes `isMinted` from the main entry, and (slice 0 item 3b) that the built API's
-// own `platform/` code, which loads the kernel from `apps/api/dist`, accepts such a context
-// and refuses a copy. Item 4 adds the deep-import assertions.
+// builders passes `isMinted` from the main entry, (slice 0 item 3b) that the built API's own
+// `platform/` code, which loads the kernel from `apps/api/dist`, accepts such a context and
+// refuses a copy, and (item 4) that the kernel's package exports refuse a deep import from
+// apps/api: no file of the kernel is reachable at run time except through its two entries.
 //
 // Usage: node scripts/check-built-kernel.mjs   (run by `pnpm build`)
 import { existsSync, realpathSync } from 'node:fs';
@@ -34,6 +35,9 @@ try {
 }
 
 const entries = ['@mondapac/shared-kernel', '@mondapac/shared-kernel/testing'];
+// Deep imports that the kernel's `exports` map must refuse: a file of its build output, and
+// the minting module by a subpath. pnpm boundaries refuses them in the source as well.
+const deepImports = ['@mondapac/shared-kernel/dist/minted.js', '@mondapac/shared-kernel/minted'];
 const resolved = new Map();
 for (const entry of entries) {
   try {
@@ -44,6 +48,19 @@ for (const entry of entries) {
     }
   } catch (error) {
     problems.push(`${entry} does not resolve from apps/api: ${error.code ?? error.message}`);
+  }
+}
+
+for (const deepImport of deepImports) {
+  try {
+    fromApi(deepImport);
+    problems.push(`${deepImport} loads from apps/api: the kernel's exports must refuse it`);
+  } catch (error) {
+    if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
+      problems.push(
+        `${deepImport} failed with ${error.code ?? error.message}, not ERR_PACKAGE_PATH_NOT_EXPORTED`,
+      );
+    }
   }
 }
 
@@ -112,5 +129,6 @@ console.log(
   `Built-kernel check passed: ${[...resolved.values()]
     .map((file) => path.relative(root, file))
     .join(', ')} load one build of the shared kernel; ` +
-    `/testing contexts (${markets.join(', ')}) pass isMinted in apps/api/dist/platform.`,
+    `/testing contexts (${markets.join(', ')}) pass isMinted in apps/api/dist/platform; ` +
+    `${deepImports.join(' and ')} are refused with ERR_PACKAGE_PATH_NOT_EXPORTED.`,
 );

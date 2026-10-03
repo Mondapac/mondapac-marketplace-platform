@@ -2,18 +2,16 @@ import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
-  ApiProperty,
   ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { PinoLogger } from 'nestjs-pino';
 import { NoMarketContext } from '../market-context/no-market-context.decorator';
 import { DatabaseProbe } from '../persistence/database-probe';
+import { HealthResponse } from './health-response';
 
-export class HealthResponse {
-  @ApiProperty({ enum: ['ok'], example: 'ok' })
-  status!: 'ok';
-}
+// This file may import the market exemption (rule 6 of design 8.2), so it exports the
+// controller only (asserted in apps/api/test/boundaries.spec.ts).
 
 /** Platform probes. Exempt from Market resolution (ADR-0015 decision 3): no x-market-id. */
 @ApiTags('platform')

@@ -471,6 +471,43 @@ Checked first: `domain-is-pure` already whitelists the kernel, and a `domain/` f
 | 9 | `use-cases-are-the-only-way-in` (proposed to G2) | dependency-cruiser | `presentation/`, event handlers, job handlers, facade implementations → repositories | 6.4 row 2. Lands with the access-rule mechanism |
 | 10 | "Model to owning module" rule; `market_id` guard | — | — | Already triggered by ADR-0015 for slice 1; designed at G2 (I14, I5) |
 
+Note, 2026-10-03 (slice 0 item 4, Hossein): rules 1 to 8 are in
+`apps/api/.dependency-cruiser.cjs` and `eslint.config.mjs` under the names above (rule 7 is
+`kernel-imports-only-itself`); every ESLint message starts with its rule name, and every ESLint
+block reads `.ts`, `.mts` and `.cts`. Added by the reviews of item 4:
+`kernel-only-through-package-entries` (dependency-cruiser, Bagher: outside the kernel, code
+reaches it only by its two package names, never by a path into its `src/` or `dist/`;
+`scripts/check-built-kernel.mjs` proves that the `exports` map refuses deep imports at run
+time); `market-context-only-through-the-decorator` (dependency-cruiser, Hassan M2: a module
+imports nothing from `platform/market-context/` or `platform/health/` but
+`market.decorator.ts`); rule 5 also as `@typescript-eslint/no-restricted-imports` in modules
+(`mintMarketContext` from the kernel, including `import *` and `export *`; `DiscoveryService`,
+`DiscoveryModule` and `ModulesContainer` from `@nestjs/core`);
+`only-the-guard-attaches-market-context` (ESLint, Hassan: only the guard file uses
+`attachMarketContext`); `imports-are-static` (ESLint, Hassan M3: no computed `import()`,
+`require`, `createRequire`, `process.mainModule` or `eval` in `apps/api/src`; the kernel has no
+`import()` at all, and a module has none either). Rule 4 also forbids `Date()`; rule 3 also
+matches `@js-temporal/polyfill`, the A2 fallback; rule 6 allows
+`platform/health/health.controller.ts` only. Rule 2 also blocks `src/modules/index.ts`. Rule 4
+covers `src/modules/`, `src/platform/` and the kernel; the root bootstrap files and
+`src/verticals/` are outside it. `HealthResponse` moved to `platform/health/health-response.ts`.
+`apps/api/test/boundaries.spec.ts` also checks that `persistence.module.ts`,
+`database-probe.ts`, the guard file and the health controller export only their allowed names,
+that `apps/api/src` and the kernel's `src` hold only `.ts` files, that every rule is an error,
+and that every dependency-cruiser rule has a fixture that breaks it.
+
+Deferred by the reviews of item 4 (W1 to W6 Hassan, B1 Bagher), each with its trigger:
+
+| # | Item | Trigger |
+|---|---|---|
+| W1 | A module copying the exemption metadata of `HealthController`: closed by `market-context-only-through-the-decorator`. Add a test that the only exempt controller in `AppModule` is `HealthController` | The first controller outside `platform/` (slice 1) |
+| W2 | Move `mintMarketContext` to a kernel entry that only the factory may import; `platform/authz` and the UnitOfWork check "hosted" as well as "minted" | Slice 1, with the actor constructors and `createCallContext` |
+| W3 | Split `attachMarketContext` into a file that only the guard may import | Slice 1, when the actor is attached |
+| W4 | Wall-clock forms that rule 4 misses in `domain/` and `application/`: `new globalThis.Date()`, `const D = Date`, `Date['now']()`, `Reflect.construct(Date, [])`, `performance.*`, `new Intl.DateTimeFormat().format()`, `const { Now } = Temporal`; through `no-restricted-properties` and `no-restricted-globals` | Slice 1, the first domain code with an expiry |
+| W5 | `linterOptions.noInlineConfig` for `src/`, so a disable comment cannot switch a boundary rule off | Slice 1 |
+| W6 | The "aliased" exemption of `kernel-only-through-package-entries` trusts `apps/api/tsconfig.json`'s two `paths` entries; review it if `tsconfig.build.json` ever gains `paths` | Any `paths` change in the API's tsconfig files |
+| B1 | Extend `no-wall-clock` to `src/verticals/` | Slice 1, or earlier when the first code lands in `src/verticals/` |
+
 ## 9. Testing
 
 | What | Kind | Notes |
