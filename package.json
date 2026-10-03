@@ -10,8 +10,8 @@
   },
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "pnpm --filter @mondapac/api dev",
-    "build": "pnpm db:generate && pnpm -r build",
+    "dev": "pnpm --filter @mondapac/shared-kernel build && pnpm --filter @mondapac/api dev",
+    "build": "pnpm db:generate && pnpm -r build && node scripts/check-built-kernel.mjs",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
