@@ -792,8 +792,8 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 ### 12.3 Spikes still needed (run, not merged)
 | # | Spike | Status |
 |---|---|---|
-| 1 | Built-in argon2 | RFC 9106 vectors pass on 24.9.0 (this design) and 24.21 (Hassan). Left: the re-run on 24.15 (ADR-0021) and the API's stability index there, with the fallback package if it is not stable (6.5); PHC strings checked against a reference implementation; the pool under load with at most two hashes at once |
-| 2 | TOTP on `node:crypto` | RFC vectors pass on 24.9.0 and 24.21. Left: the re-run on 24.15; enrolment with three common apps (URI and base32) |
+| 1 | Built-in argon2 | RFC 9106 vectors (argon2id, argon2i, argon2d) pass on 24.9.0 (this design), 24.21 (Hassan) and the ADR-0021 minimum 24.15.0, with no experimental warning (ADR-0021 evidence, 2026-10-03). Left: the API's documented stability index on 24.15, with the fallback package if it is not stable (6.5); PHC strings checked against a reference implementation; the pool under load with at most two hashes at once |
+| 2 | TOTP on `node:crypto` | RFC 6238 SHA-1 vectors pass on 24.9.0, 24.21 and 24.15.0 (ADR-0021 evidence, 2026-10-03). Left: enrolment with three common apps (URI and base32) |
 | 3 | Rate-limiter package under NestJS 12, ES modules and the Jest flag; its store | Open |
 | 4 | Mail catcher: HTTP send interface of the pinned image, or SMTP | Open; decides whether an SMTP client is needed |
 | 5 | `__Host-` cookie through the front tier on local `http`, Safari included | Open; needs D2 (separate hosts, HF7) |
