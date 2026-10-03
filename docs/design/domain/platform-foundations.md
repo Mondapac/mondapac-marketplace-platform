@@ -633,3 +633,5 @@ its own where `docs/process/parallel-tracks.md` calls the file shared:
 | `docs/design/data/platform.md` | Mojtaba: a new section closing Q3 (the grant half of the role note); "REVOKE" in 3.4 becomes "grant only" | Before item 7's PR |
 | Board, frontend track | The D2 ADR states what sends `x-market-id`: by default the panel's server tier, which overwrites any client-supplied header | Already on the board |
 | Board, product track (sellers brief) | Sign-in cannot call `sellers` (R7, rule 2, ADR-0018 decision 3; I13) | Already on the board |
+
+Note, 2026-10-03 (Ali): item 3 also ends the root `build` script with `scripts/check-built-kernel.mjs`, which proves on the built API that both kernel entries load one `dist/` and that a `/testing` context passes `isMinted` there; item 4 adds the deep-import assertions. `market-registry.ts` mints nothing; `MarketContextFactory` is the only minter. The tenant literal in `platform.db-spec.ts` is replaced by whichever of items 3 and 7 merges second.

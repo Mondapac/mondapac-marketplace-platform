@@ -7,6 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { PinoLogger } from 'nestjs-pino';
+import { NoMarketContext } from '../market-context/no-market-context.decorator';
 import { DatabaseProbe } from '../persistence/database-probe';
 
 export class HealthResponse {
@@ -14,7 +15,9 @@ export class HealthResponse {
   status!: 'ok';
 }
 
+/** Platform probes. Exempt from Market resolution (ADR-0015 decision 3): no x-market-id. */
 @ApiTags('platform')
+@NoMarketContext()
 @Controller('health')
 export class HealthController {
   constructor(

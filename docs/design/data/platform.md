@@ -361,6 +361,8 @@ same PR, equal to (2).
 | Group role missing | **Fail loudly.** No `IF EXISTS` and no `DO` block: a database migrated without the role would end with no grants, and running the application on the migration URL would be the tempting fix. Measured: `prisma migrate deploy` stops with P3018 and SQLSTATE `42704` (`role … does not exist`); nothing is granted (the first statement already fails), but Prisma records the migration as failed, a second `deploy` answers P3009, and it succeeds only after `prisma migrate resolve --rolled-back <name>`. So bootstrap runs before the first `migrate deploy` everywhere, existing developer volumes included (10.7) |
 | Order | This is item 7's migration, and while its PR is open no other migration PR is (`docs/process/parallel-tracks.md` rule 6). Kazem's bootstrap change to Compose and CI merges with it, in item 7's one PR (10.7): after it, `pnpm verify` would fail on `main` with `42704`; before it, `DATABASE_URL` would name the migration role for one merge. Items 3 and 6 merge `main` after item 7. Item 7 merges before the first slice 1 migration, which is the first to carry table grants under 10.2; from then on a new table without a decided privilege list fails the privilege test (10.5) |
 
+Note, 2026-10-03 (Ali): item 3 no longer waits for item 7: its shared files merge before item 7 claims them, and its catalog test reads `pg_catalog`, so it passes under any role. Item 6 still merges after item 7.
+
 ### 10.4 Test harness and scripts (specification for Hossein)
 
 The throwaway database gets two connections: **application** (a login role of 10.1) and
@@ -538,7 +540,7 @@ owner replace `.env` twice.
   `.env.example`, `.github/workflows/ci.yml`, `package.json`, `README.md`, `CLAUDE.md` and
   `prisma.config.ts`.
 - In them the PR changes only what 10.7 lists.
-- Items 3 and 6 merge `main` after item 7 (10.3).
+- Items 3 and 6 merge `main` after item 7 (10.3); for item 3 see the note there.
 
 ### 10.8 Start-up self-check (closes 10.5 gap 4)
 

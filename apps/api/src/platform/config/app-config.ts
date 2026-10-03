@@ -1,11 +1,18 @@
 import path from 'node:path';
+import { parseMarketId } from '@mondapac/shared-kernel';
+import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 
 // apps/api/{src|dist}/platform/config -> repository root
 const DEFAULT_MARKET_CONFIG_DIR = path.resolve(__dirname, '../../../../../config/markets');
 
-/** A Market code as used in `market_id` columns (ADR-0004): 2-8 upper-case characters. */
-const marketCode = z.string().regex(/^[A-Z][A-Z0-9_]{1,7}$/, 'must be a market code such as "NZ"');
+/** A Market code as used in `market_id` columns (ADR-0004), by the kernel's single rule. */
+const marketCode = z.string().transform((value, context) => {
+  const marketId = parseMarketId(value);
+  if (marketId.ok) return marketId.value;
+  context.addIssue('must be a market code such as "NZ"');
+  return z.NEVER;
+});
 
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
@@ -35,7 +42,7 @@ export interface AppConfig {
   readonly port: number;
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   /** Markets this Region Stack serves (ADR-0003). Never empty, never defaulted. */
-  readonly hostedMarkets: readonly string[];
+  readonly hostedMarkets: readonly MarketId[];
   /** Serve Swagger UI at /docs. Off unless explicitly enabled (fails closed). */
   readonly apiDocsEnabled: boolean;
   /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
