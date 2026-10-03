@@ -1,7 +1,7 @@
 # Physical data model — `identity` schema and its platform tables (G2)
 
 **Author:** Mojtaba (database-designer) — 2026-10-03
-**Status:** Draft — G2 review applied 2026-10-03; final check by Ali and Hassan pending.
+**Status:** Approved at G2, 2026-10-03 (Ali, Hassan). Each migration still needs Mojtaba's sign-off; open: 11.4.
 Reviews applied: Ali (cto) on A1 to A8; Hassan (security-tester) on H1 to H8 and his findings
 that touch tables (cited as HF1 to HF15, as in D 14.2); Mohammad's answers to M1 to M11 (D 14.3).
 Section 11 records each decision; only 11.4 is open.
@@ -437,9 +437,9 @@ it in while the old secret stays active (M13); `last_accepted_step integer` null
 last HF2 lock, written through the root so that its event sends the alert (the lock itself is the
 `second-factor.account` counter, 3.5); `created_at`; `version`.
 - An admin's factor is created `active` in the unit that accepts its invitation, once a valid
-  code arrives; nothing is stored before that (D 3.4, HF6). Any other enrolment starts from an
-  `enrol-second-factor` link (3.7), except where D 3.6 decides otherwise for a seller's first
-  enrolment (open for Hassan, D 14.5).
+  code arrives; nothing is stored before that (D 3.4, HF6). Every other enrolment, a seller's first
+  optional one included, starts from an `enrol-second-factor` link (3.7; decided by Hassan
+  2026-10-03).
 - **A time step is accepted once** (D 7.1): `updateMany` where `id`, `market_id`, `state =
   'active'` and `last_accepted_step IS NULL OR last_accepted_step < $step`, setting the step and
   raising `version` (C5). One row or none, so a code works once under concurrency, and a save of
@@ -814,7 +814,7 @@ rule and the backup codes (3.10); session lifetimes and rotation (3.4).
 | M13 | Device replacement keeps the new secret until its first valid code. Decided by Mohammad 2026-10-03: a nullable `pending_secret_ciphertext` on `second_factors` (3.10), added with the table in slice 7 | Closed |
 | K1 | Format and maximum size of a wrapped key and of the wrapping-key identifier (3.2); where the throttle secret lives (H4); `statement_timeout`, `lock_timeout` and `idle_in_transaction_session_timeout` as role settings of the bootstrap file (PK1 of P): proposed 30 s, 5 s and 60 s | Kazem; values confirmed in spike 6 |
 | S6 | Spike 6: the `upsert` sent as one `INSERT … ON CONFLICT`, and the guard on compound keys (3.5); the `40001` rate (5.1); plans of the sign-in and per-request reads | Hossein, with me |
-| D1 | D 14.5 items 1 and 2 change no table if decided as recommended: the `enrol-second-factor` purpose exists (3.7), and a secret bound to the invitation by a tag is not stored. Storing it instead would add a column to `invitations` | Hassan and Reza |
+| D1 | Closed by Hassan 2026-10-03: every enrolment outside an admin's invitation acceptance, a seller's first optional one included, starts from a mailed `enrol-second-factor` link; no table changes | Closed |
 | — | This revision | Final check by Ali and Hassan |
 
 Owner: none. The 90-day retention reaches the owner only if a legal review asks for a longer one.
