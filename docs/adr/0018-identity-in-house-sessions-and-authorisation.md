@@ -96,7 +96,8 @@ answers that cross modules.
    second check, is in the brief the owner approved: the launch-candidate build; sign-in
    and authorisation across the launch modules (token storage, expiry, revocation and
    error messages; both role editors; vertical and cross-seller escalation; invitations;
-   two Markets). Pass means no open Critical or High finding after retest. The price is
+   two Markets). *(Amended by ADR-0019: plus the AI surfaces that are switched on at
+   launch.)* Pass means no open Critical or High finding after retest. The price is
    not known; the quote returns to the owner. Open, not blocking this ADR, and put to the
    owner when the test is contracted: what an auth change after the tested build needs.
 8. **Dependencies.** This ADR approves no new dependency. One bundled list goes to the

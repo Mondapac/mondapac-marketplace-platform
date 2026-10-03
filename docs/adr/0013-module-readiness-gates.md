@@ -25,7 +25,9 @@ product-scope gap before any code existed. Reviewing every small slice would be 
 2. **Tiers by criticality** (register in `docs/modules/README.md`):
    - **A — G1 + G2 + security review:** identity, sellers (vendor management),
      certification, catalog (products, categories, offers), inventory, ordering,
-     payments, commission-payouts, tax.
+     payments, commission-payouts, tax. *(Amended by ADR-0019: plus `assistant`.
+     `platform/ai` is platform code, not a module: its design document is approved in
+     parts by the CTO, with security-tester review.)*
    - **B — one combined gate:** cart, shipping, notifications, search, content (CMS, blog),
      legal, promotions.
    - **C — product-owner approval only:** reporting and other P2+ features without money,
