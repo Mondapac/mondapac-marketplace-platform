@@ -54,6 +54,8 @@ was considered.
    `Approval Required` (CAT-36) is off, every revision publishes immediately; CERT-21 is
    still enforced at submit and continuously. A rejected revision stays rejected; the next
    edit creates a new pending revision (CAT-32).
+   *(Amended by ADR-0024: the price-jump hold belongs to `pricing`, not to the offer's
+   owning module.)*
 4. **Editorial and legal content.**
    - Blog, CMS pages (STO-12), page sections (STO-11) and banners live in a self-hosted
      headless CMS as `apps/cms`, with its own `cms` schema in each Region Stack (not
