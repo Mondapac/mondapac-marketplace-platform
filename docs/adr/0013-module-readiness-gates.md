@@ -29,7 +29,8 @@ product-scope gap before any code existed. Reviewing every small slice would be 
      `platform/ai` is platform code, not a module: its design document is approved in
      parts by the CTO, with security-tester review.)*
    - **B — one combined gate:** cart, shipping, notifications, search, content (CMS, blog),
-     legal, promotions.
+     legal, promotions. *(Amended by ADR-0024: plus `pricing`, which becomes
+     tier A on the conditions of ADR-0024 decision 3.)*
    - **C — product-owner approval only:** reporting and other P2+ features without money,
      trust or personal-data impact.
 3. **Definition of Ready.** No design work starts for a module without an approved G1 brief,

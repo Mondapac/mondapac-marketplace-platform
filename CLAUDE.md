@@ -22,7 +22,9 @@ sessions, Market-scoped accounts, authorization model), ADR-0019 (AI as a cross-
 capability: launch core, AI rules, where AI code lives), ADR-0020 (amendments from the
 platform-foundations design), ADR-0021 (Node.js minimum 24.15.0, amends ADR-0014) and, from
 identity's G2, ADR-0022 and ADR-0023 (seller access state owned by `identity` with one
-may-sell contract in `sellers`; platform amendments).
+may-sell contract in `sellers`; platform amendments). Phase 3 adds ADR-0024
+(from catalog's G1: `pricing` is its own module, tier B or A by its gate's scope, and owns
+the price-jump hold; wider penetration-test scope).
 Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
@@ -221,7 +223,9 @@ See TEAM-PLAYBOOK-fa.md for the standard flow and example prompts. Rules:
   and must sign off on EVERY Prisma schema change or migration before merge. Slow queries,
   locking problems and data-growth issues also go to database-designer.
 - security-tester review is MANDATORY (not optional under time pressure) before merging
-  anything in auth, payments, the certification (CERT-*) enforcement path, or an AI
+  anything in auth, payments, the certification (CERT-*) enforcement path, a `pricing`
+  use case that sets or changes a price or Cost or a `pricing` facade, event or response
+  that carries Cost (ADR-0024), or an AI
   surface (ADR-0019 R15: platform/ai, the assistant module, AI tool declarations, and any
   code that sends data to a model or uses its output).
 - qa-engineer and security-tester are read-only reviewers by design - bugs/findings go back
