@@ -53,7 +53,7 @@ ALTER TABLE "identity"."accounts"
   ADD CONSTRAINT "accounts_display_name_check" CHECK (
     char_length("display_name") BETWEEN 1 AND 100
     AND "display_name" = btrim("display_name")
-    AND "display_name" !~ '[\u0001-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]'),
+    AND "display_name" !~ '[\u0001-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]'),
   ADD CONSTRAINT "accounts_display_name_required_check" CHECK (
     "population" = 'customer' OR "display_name" IS NOT NULL),
   ADD CONSTRAINT "accounts_status_check" CHECK ("status" IN ('active', 'disabled')),

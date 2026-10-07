@@ -112,7 +112,7 @@ describe('identity.accounts and password_credentials (database constraints)', ()
         it.each([
           ['an empty name', ''],
           ['an outer space', ' Name'],
-          ['a right-to-left override', 'Na‮me'],
+          ['a right-to-left override', 'Na\u202eme'],
           ['101 characters', 'n'.repeat(101)],
         ])('refuses %s', async (_case, displayName) => {
           expect(await violated(insertAccount(market, { population, displayName }))).toBe(
