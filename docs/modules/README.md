@@ -40,9 +40,9 @@
 | sellers | A | ۳ | [`sellers/brief.md`](sellers/brief.md) | تأیید (2026-10-03) | تأیید (2026-10-07) |
 | certification | A | ۳ | [`certification/brief.md`](certification/brief.md) | تأیید (2026-10-03) | تأیید (2026-10-07) |
 | catalog | A | ۳ | [`catalog/brief.md`](catalog/brief.md) | تأیید (2026-10-03) | تأیید (2026-10-07) |
-| inventory | A | ۴ | [`inventory/brief.md`](inventory/brief.md) | تأیید (2026-10-07) | — |
-| pricing | A | ۴ | [`pricing/brief.md`](pricing/brief.md) | تأیید (2026-10-07) | — |
-| cart | B | ۴ | [`cart/brief.md`](cart/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید (2026-10-07) | بخش طراحی: — |
+| inventory | A | ۴ | [`inventory/brief.md`](inventory/brief.md) | تأیید (2026-10-07) | تأیید با شرط (2026-10-07، PR #43)؛ UI: در انتظار ux.md رضا |
+| pricing | A | ۴ | [`pricing/brief.md`](pricing/brief.md) | تأیید (2026-10-07) | تأیید با شرط (2026-10-07، PR #44)؛ UI: در انتظار ux.md رضا |
+| cart | B | ۴ | [`cart/brief.md`](cart/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید (2026-10-07) | بخش طراحی: تأیید با شرط (2026-10-07، PR #45)؛ UI: در انتظار ux.md رضا |
 | ordering | A | ۵ | — | — | — |
 | payments | A | ۵ | — | — | — |
 | commission-payouts | A | ۵ | — | — | — |
