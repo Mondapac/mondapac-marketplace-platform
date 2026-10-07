@@ -91,14 +91,16 @@ function makeSet(name, axes, build, opts) {
 // Lay variants out as a grid: one column per value of the last axis (usually State), one row per
 // combination of the other axes. Single-axis sets flow left to right and wrap at opts.width.
 function gridVariants(set, axes, opts) {
-  const keys = Object.keys(axes); const last = keys[keys.length - 1];
+  // The column axis is the last one unless opts.colAxis names another (a wide axis goes in rows so the set fits the page).
+  const keys = Object.keys(axes); const last = opts.colAxis || keys[keys.length - 1];
+  const rowKeys = keys.filter(function (k) { return k !== last; });
   const PAD = 32, GX = opts.gapX || 24, GY = opts.gapY || 24, MAXW = opts.width || 1040;
   const kids = set.children.slice();
   const cells = [];
   if (keys.length > 1) {
     const rowIndex = {}; let rows = 0;
     kids.forEach(function (c) {
-      const vp = c.variantProperties; const rk = keys.slice(0, -1).map(function (k) { return vp[k]; }).join('|');
+      const vp = c.variantProperties; const rk = rowKeys.map(function (k) { return vp[k]; }).join('|');
       if (rowIndex[rk] === undefined) rowIndex[rk] = rows++;
       cells.push({ node: c, row: rowIndex[rk], col: axes[last].indexOf(vp[last]) });
     });
@@ -236,18 +238,40 @@ function docSection(root, title, desc) {
   return s;
 }
 // A component block: set (left) + doc panel (right)
+const DOC_CONTENT_W = 1440; // page width 1600 less the 80 px side padding of pageShell
+function blockIsWide(set) { return set.width + 24 + 360 > DOC_CONTENT_W; }
+function usagePanelWidth(set, wide) { return wide ? Math.min(DOC_CONTENT_W, Math.max(Math.round(set.width), 720)) : 360; }
 function componentBlock(root, set, doc) {
   const section = docSection(root, doc.title, doc.summary);
   // Usage notes sit to the right of the set; when the set is wide they move below it as columns.
-  const wide = set.width + 24 + 360 > 1440;
+  const wide = blockIsWide(set);
   const groups = [['When to use', doc.use], ['Properties', doc.props], ['Accessibility', doc.a11y], ['Avoid', doc.dont]].filter(function (g) { return g[1]; })
     .map(function (g) { return frame({ name: g[0], dir: 'V', gap: 'space/2', w: 312 }, [text(g[0], 'Heading/H2'), bullets(g[1], 312)]); });
-  const panel = frame({ name: 'Usage', dir: wide ? 'H' : 'V', wrap: wide, gap: wide ? 'space/8' : 'space/4', rowGap: wide ? 'space/4' : undefined, pad: 'space/6', w: wide ? Math.min(1440, Math.max(set.width, 720)) : 360, fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, groups);
+  const panel = frame({ name: 'Usage', dir: wide ? 'H' : 'V', wrap: wide, gap: wide ? 'space/8' : 'space/4', rowGap: wide ? 'space/4' : undefined, pad: 'space/6', w: usagePanelWidth(set, wide), fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, groups);
   const row = frame({ name: 'Component + usage', dir: wide ? 'V' : 'H', gap: 'space/6', align: 'start' });
   row.appendChild(set);
   if (groups.length) add(row, panel); else panel.remove();
   add(section, row);
   return section;
+}
+// Update library: after a set changed size, put its block back the way componentBlock lays it out for that
+// width (row direction, Usage panel direction, wrap and width). Returns true when something changed.
+function fitBlock(set) {
+  const row = set.parent; if (!row || row.type !== 'FRAME' || row.name !== 'Component + usage') return false;
+  const wide = blockIsWide(set); let changed = false;
+  const dir = wide ? 'VERTICAL' : 'HORIZONTAL';
+  if (row.layoutMode !== dir) { row.layoutMode = dir; row.primaryAxisSizingMode = 'AUTO'; row.counterAxisSizingMode = 'AUTO'; changed = true; }
+  const panel = row.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Usage'; })[0];
+  if (panel) {
+    const pdir = wide ? 'HORIZONTAL' : 'VERTICAL'; const w = usagePanelWidth(set, wide);
+    if (panel.layoutMode !== pdir || Math.round(panel.width) !== w) {
+      panel.layoutMode = pdir; panel.layoutWrap = wide ? 'WRAP' : 'NO_WRAP';
+      bindNum(panel, 'itemSpacing', wide ? 'space/8' : 'space/4'); if (wide) bindNum(panel, 'counterAxisSpacing', 'space/4');
+      panel.resize(w, panel.height); panel.layoutSizingHorizontal = 'FIXED'; panel.layoutSizingVertical = 'HUG';
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 // ---------------------------------------------------------------- additions to existing sets (Update library, 1.7.0)

@@ -467,6 +467,14 @@ async function updateLibrary() {
       });
     }
   }
+  // 2d2 · layout fix for two 1.7.0 sets that were wider than the 1440 px page (Audit: layers sticking out of their parent).
+  // Input (Type x State) is laid out with Type in columns; AuthShowcase puts one variant per row. Only positions and
+  // the block around the set change; no variant, layer or instance is renamed, rebuilt or deleted.
+  [['Input', INPUT_AXES, INPUT_OPTS], ['AuthShowcase', { Workspace: ['Admin', 'Seller'] }, { width: SHOWCASE_SET_W, gapX: 40 }]].forEach(function (f) {
+    const rec = S.sets[f[0]]; if (!rec || !rec.set || !own(f[0])) return;
+    if (rec.set.width > DOC_CONTENT_W) { gridVariants(rec.set, f[1], f[2]); added.push(f[0] + ' variants laid out to fit the page (' + Math.round(rec.set.width) + ' px wide)'); }
+    if (fitBlock(rec.set)) added.push(f[0] + ' documentation block re-fitted to the set');
+  });
   // New components. A component of the same name that is not the plugin's blocks it (and what depends on it).
   ['BrandMark', 'MenuItem', 'Menu', 'ReasonQuote', 'Field', 'AuthShowcase'].forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
   if (skipped.Input && !S.sets.Field) skip('Field', 'component Field: it needs the plugin\'s Input with Type=Text');

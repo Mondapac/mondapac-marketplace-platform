@@ -460,14 +460,16 @@ function makeSet(name, axes, build, opts) {
 // Lay variants out as a grid: one column per value of the last axis (usually State), one row per
 // combination of the other axes. Single-axis sets flow left to right and wrap at opts.width.
 function gridVariants(set, axes, opts) {
-  const keys = Object.keys(axes); const last = keys[keys.length - 1];
+  // The column axis is the last one unless opts.colAxis names another (a wide axis goes in rows so the set fits the page).
+  const keys = Object.keys(axes); const last = opts.colAxis || keys[keys.length - 1];
+  const rowKeys = keys.filter(function (k) { return k !== last; });
   const PAD = 32, GX = opts.gapX || 24, GY = opts.gapY || 24, MAXW = opts.width || 1040;
   const kids = set.children.slice();
   const cells = [];
   if (keys.length > 1) {
     const rowIndex = {}; let rows = 0;
     kids.forEach(function (c) {
-      const vp = c.variantProperties; const rk = keys.slice(0, -1).map(function (k) { return vp[k]; }).join('|');
+      const vp = c.variantProperties; const rk = rowKeys.map(function (k) { return vp[k]; }).join('|');
       if (rowIndex[rk] === undefined) rowIndex[rk] = rows++;
       cells.push({ node: c, row: rowIndex[rk], col: axes[last].indexOf(vp[last]) });
     });
@@ -605,18 +607,40 @@ function docSection(root, title, desc) {
   return s;
 }
 // A component block: set (left) + doc panel (right)
+const DOC_CONTENT_W = 1440; // page width 1600 less the 80 px side padding of pageShell
+function blockIsWide(set) { return set.width + 24 + 360 > DOC_CONTENT_W; }
+function usagePanelWidth(set, wide) { return wide ? Math.min(DOC_CONTENT_W, Math.max(Math.round(set.width), 720)) : 360; }
 function componentBlock(root, set, doc) {
   const section = docSection(root, doc.title, doc.summary);
   // Usage notes sit to the right of the set; when the set is wide they move below it as columns.
-  const wide = set.width + 24 + 360 > 1440;
+  const wide = blockIsWide(set);
   const groups = [['When to use', doc.use], ['Properties', doc.props], ['Accessibility', doc.a11y], ['Avoid', doc.dont]].filter(function (g) { return g[1]; })
     .map(function (g) { return frame({ name: g[0], dir: 'V', gap: 'space/2', w: 312 }, [text(g[0], 'Heading/H2'), bullets(g[1], 312)]); });
-  const panel = frame({ name: 'Usage', dir: wide ? 'H' : 'V', wrap: wide, gap: wide ? 'space/8' : 'space/4', rowGap: wide ? 'space/4' : undefined, pad: 'space/6', w: wide ? Math.min(1440, Math.max(set.width, 720)) : 360, fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, groups);
+  const panel = frame({ name: 'Usage', dir: wide ? 'H' : 'V', wrap: wide, gap: wide ? 'space/8' : 'space/4', rowGap: wide ? 'space/4' : undefined, pad: 'space/6', w: usagePanelWidth(set, wide), fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, groups);
   const row = frame({ name: 'Component + usage', dir: wide ? 'V' : 'H', gap: 'space/6', align: 'start' });
   row.appendChild(set);
   if (groups.length) add(row, panel); else panel.remove();
   add(section, row);
   return section;
+}
+// Update library: after a set changed size, put its block back the way componentBlock lays it out for that
+// width (row direction, Usage panel direction, wrap and width). Returns true when something changed.
+function fitBlock(set) {
+  const row = set.parent; if (!row || row.type !== 'FRAME' || row.name !== 'Component + usage') return false;
+  const wide = blockIsWide(set); let changed = false;
+  const dir = wide ? 'VERTICAL' : 'HORIZONTAL';
+  if (row.layoutMode !== dir) { row.layoutMode = dir; row.primaryAxisSizingMode = 'AUTO'; row.counterAxisSizingMode = 'AUTO'; changed = true; }
+  const panel = row.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Usage'; })[0];
+  if (panel) {
+    const pdir = wide ? 'HORIZONTAL' : 'VERTICAL'; const w = usagePanelWidth(set, wide);
+    if (panel.layoutMode !== pdir || Math.round(panel.width) !== w) {
+      panel.layoutMode = pdir; panel.layoutWrap = wide ? 'WRAP' : 'NO_WRAP';
+      bindNum(panel, 'itemSpacing', wide ? 'space/8' : 'space/4'); if (wide) bindNum(panel, 'counterAxisSpacing', 'space/4');
+      panel.resize(w, panel.height); panel.layoutSizingHorizontal = 'FIXED'; panel.layoutSizingVertical = 'HUG';
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 // ---------------------------------------------------------------- additions to existing sets (Update library, 1.7.0)
@@ -972,7 +996,7 @@ async function buildActions(page) {
 
 // Input (release 1.7.0 adds the Type axis: Text, Password, Code). Top level, so "Update library" can add the new variants.
 const INPUT_AXES = { Type: ['Text', 'Password', 'Code'], State: ['Default', 'Hover', 'Focus', 'Filled', 'Disabled', 'Error'] };
-const INPUT_OPTS = { width: 1040, desc: 'Text and search input. Border uses border/input (3:1). Type=Password (1.7.0) adds a show/hide IconButton (exposed as "reveal"; icon eye while the password is hidden, swap it to eye-off while it shows; aria-pressed in code). Type=Code (1.7.0) is one field in the mono text style for a 6-digit code or a backup code: inputmode numeric, autocomplete one-time-code, no auto-advance or auto-submit. Password and Code keep their own text per state, because a TEXT property would force one text on every variant; Value applies to Type=Text.',
+const INPUT_OPTS = { width: 1040, colAxis: 'Type', desc: 'Text and search input. Border uses border/input (3:1). Type=Password (1.7.0) adds a show/hide IconButton (exposed as "reveal"; icon eye while the password is hidden, swap it to eye-off while it shows; aria-pressed in code). Type=Code (1.7.0) is one field in the mono text style for a 6-digit code or a backup code: inputmode numeric, autocomplete one-time-code, no auto-advance or auto-submit. Password and Code keep their own text per state, because a TEXT property would force one text on every variant; Value applies to Type=Text.',
   text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }] };
 const INPUT_DOC = { title: 'Input', summary: 'Search, filters and form fields. Wrap it in Field for a label, helper and error.', use: ['Search inside index pages; filters; form fields inside Field.', 'Type=Password for every password; Type=Code for a one-time code or backup code.'], props: ['Value (text, Type=Text)', 'Leading icon (boolean)', 'Type · State'], a11y: ['Always paired with a visible or visually hidden label (Field).', 'Error state adds a message below; colour is not enough.', 'The show/hide button is named "Show password" or "Hide password" and sits after its field in the focus order.'] };
 const INPUT_ICON = { Text: 'search', Password: 'lock', Code: 'key' };
@@ -1777,8 +1801,9 @@ function showcaseVariant(c, p) {
     frame({ name: 'footer', dir: 'H', sizeH: 'FILL' }, [text('Illustrative examples, not real stores', 'Caption/Default', 'text/on-showcase-muted', { name: 'place' })]),
   ]);
 }
+const SHOWCASE_SET_W = 1040; // one 704 px variant per row, so the set and its Usage panel fit the 1440 px page
 function showcaseBlock(root) {
-  const sc = makeSet('AuthShowcase', { Workspace: ['Admin', 'Seller'] }, showcaseVariant, { width: 1600, gapX: 40, desc: 'The brand panel of the Auth template from 1024 px (identity ux.md 3.0 rule 1, design 1A): 55% of the width beside the form column. Workspace picks the panel colour (bg/auth-showcase-admin or bg/auth-showcase-seller, dark in both themes), the pill and the brand line in text/on-showcase and text/on-showcase-muted. Three overlapping example cards of the panel (bg/surface with the usual text tokens, two rotated by about 2°) carry a visible "Example" caption. Static and decorative: aria-hidden, no focusable element, no motion, the same for every state and account, no request of its own. Names are fictional, no real certifying body, no currency symbol; its words are copy keys identity.auth-showcase.*. Below 1024 px it is not in the page.' });
+  const sc = makeSet('AuthShowcase', { Workspace: ['Admin', 'Seller'] }, showcaseVariant, { width: SHOWCASE_SET_W, gapX: 40, desc: 'The brand panel of the Auth template from 1024 px (identity ux.md 3.0 rule 1, design 1A): 55% of the width beside the form column. Workspace picks the panel colour (bg/auth-showcase-admin or bg/auth-showcase-seller, dark in both themes), the pill and the brand line in text/on-showcase and text/on-showcase-muted. Three overlapping example cards of the panel (bg/surface with the usual text tokens, two rotated by about 2°) carry a visible "Example" caption. Static and decorative: aria-hidden, no focusable element, no motion, the same for every state and account, no request of its own. Names are fictional, no real certifying body, no currency symbol; its words are copy keys identity.auth-showcase.*. Below 1024 px it is not in the page.' });
   componentBlock(root, sc, { title: 'AuthShowcase', summary: 'The static brand panel beside the sign-in form (1.7.0). The same on every Auth screen and state of one panel.',
     use: ['Only in the Auth template, at 1024 px and wider, filling the width beside the 45% form column.'],
     props: ['Workspace: Admin or Seller'],
@@ -3598,6 +3623,14 @@ async function updateLibrary() {
       });
     }
   }
+  // 2d2 · layout fix for two 1.7.0 sets that were wider than the 1440 px page (Audit: layers sticking out of their parent).
+  // Input (Type x State) is laid out with Type in columns; AuthShowcase puts one variant per row. Only positions and
+  // the block around the set change; no variant, layer or instance is renamed, rebuilt or deleted.
+  [['Input', INPUT_AXES, INPUT_OPTS], ['AuthShowcase', { Workspace: ['Admin', 'Seller'] }, { width: SHOWCASE_SET_W, gapX: 40 }]].forEach(function (f) {
+    const rec = S.sets[f[0]]; if (!rec || !rec.set || !own(f[0])) return;
+    if (rec.set.width > DOC_CONTENT_W) { gridVariants(rec.set, f[1], f[2]); added.push(f[0] + ' variants laid out to fit the page (' + Math.round(rec.set.width) + ' px wide)'); }
+    if (fitBlock(rec.set)) added.push(f[0] + ' documentation block re-fitted to the set');
+  });
   // New components. A component of the same name that is not the plugin's blocks it (and what depends on it).
   ['BrandMark', 'MenuItem', 'Menu', 'ReasonQuote', 'Field', 'AuthShowcase'].forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
   if (skipped.Input && !S.sets.Field) skip('Field', 'component Field: it needs the plugin\'s Input with Type=Text');
