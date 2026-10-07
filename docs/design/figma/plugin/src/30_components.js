@@ -119,6 +119,8 @@ async function buildForms(page) {
   const input = makeSet('Input', INPUT_AXES, inputVariant, INPUT_OPTS);
   componentBlock(root, input, INPUT_DOC);
   fieldBlock(root);
+  selectBlock(root);
+  textareaBlock(root);
 
   const cb = makeSet('Checkbox', { Value: ['Unchecked', 'Checked', 'Indeterminate'], State: ['Default', 'Focus', 'Disabled'] }, function (c, p) {
     const on = p.Value !== 'Unchecked';
@@ -128,6 +130,7 @@ async function buildForms(page) {
     if (p.State === 'Focus') focusRing(c);
   }, { width: 520, desc: 'Row selection and checks.' });
   componentBlock(root, cb, { title: 'Checkbox', summary: '16 px box with a 24 px hit area in code.', a11y: ['Header checkbox uses Indeterminate when some rows are selected.', 'Label each row checkbox: "Select MP-10482".'] });
+  checkboxRowBlock(root);
 
   const sw = makeSet('Switch', { On: ['True', 'False'], Size: ['Md', 'Touch'] }, function (c, p) {
     const W = p.Size === 'Touch' ? 40 : 32, H = p.Size === 'Touch' ? 24 : 18, K = H - 4;
@@ -163,6 +166,7 @@ async function buildForms(page) {
     }
   }, { width: 520, desc: 'Applied filter (removable) and the add-filter trigger.', text: [{ prop: 'Label', node: 'label', def: 'Placed: Today' }] });
   componentBlock(root, chip, { title: 'FilterChip', summary: 'Applied filters sit next to search. Removing one updates results at once.', a11y: ['The × button is labelled "Remove filter Placed".'] });
+  fieldPreferred();
   tag(root);
 }
 
@@ -242,5 +246,7 @@ async function buildStatus(page) {
   }, { desc: 'Chart and map tooltip (inverse surface).', text: [{ prop: 'Label', node: 'label', def: 'Today, 2:30 pm' }, { prop: 'Value', node: 'value', def: 'AUD 12,904.60' }] });
   const tipWrap = frame({ name: 'Tooltip', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(tipWrap, tip);
   componentBlock(root, tipWrap, { title: 'Tooltip', summary: 'Inverse surface so it reads above any chart.' });
+  toastBlock(root);
+  dialogBlock(root);
   tag(root);
 }

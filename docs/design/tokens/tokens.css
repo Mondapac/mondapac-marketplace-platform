@@ -1,4 +1,4 @@
-/* MondaPac design tokens v1.7.0. Source of truth: the Figma file 'MondaPac Design System'.
+/* MondaPac design tokens v1.8.0. Source of truth: the Figma file 'MondaPac Design System'.
  * Do not edit by hand. Change the Figma variables, run the plugin command Export tokens and commit these files. */
 :root {
   --mp-color-bg-page: #F5F6F8;
@@ -129,6 +129,8 @@
   --mp-size-bottom-bar: 64px;
   --mp-size-topbar-phone: 56px;
   --mp-size-auth-card: 400px;
+  --mp-size-dialog-sm: 400px;
+  --mp-size-dialog-md: 560px;
   --mp-font-family-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --mp-font-family-mono: 'IBM Plex Mono', ui-monospace, monospace;
   --mp-text-display-hero: 600 30px/38px var(--mp-font-family-sans);

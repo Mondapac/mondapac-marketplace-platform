@@ -121,7 +121,7 @@ function notePage(host, title, subtitle, items) {
 }
 
 async function build(force) {
-  STEP = 0; STEPS = 26; S.report = [];
+  STEP = 0; STEPS = 26; S.report = []; S.sets = {}; PANEL_BODIES.length = 0; // a rebuild starts from no components (S.sets may hold nodes of the library that was just deleted)
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   let first;
@@ -139,8 +139,9 @@ async function build(force) {
   const iconsWrap = await onPage(P.icons, 'Icons', function (h) { return buildIcons(h); });
 
   await onPage(P.actions, 'Actions', buildActions);
-  await onPage(P.forms, 'Forms & selection', buildForms);
+  // Status & feedback first: CheckboxRow (Forms & selection, 1.8.0) places a Badge.
   await onPage(P.status, 'Status & feedback', buildStatus);
+  await onPage(P.forms, 'Forms & selection', buildForms);
   await onPage(P.data, 'Data display', buildDataDisplay);
   await onPage(P.tables, 'Tables & collections', buildTables);
   await onPage(P.nav, 'Navigation & shell', buildNavigation);
@@ -158,11 +159,13 @@ async function build(force) {
   const adminScreens = await onPage(P['tpl-admin'], 'Admin templates', function (h) {
     const list = [tplAdminHome(), tplAdminSellers(), tplAdminReview(), tplAdminPhoneMenu()];
     templatesPage(h, 'Templates · Admin', 'Full screens built only from library instances. Copy a template to start a new Admin screen; never detach the shell.', list);
+    addPanelTemplates(h, 'tpl-admin'); // 1.8.0 Panel: Members, Roles, No access, Account security, dialogs (one canvas row per group, below the first row)
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
     const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
-    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell.', list);
+    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below.', list);
+    addPanelTemplates(h, 'tpl-seller');
     return list;
   });
   const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
@@ -292,6 +295,19 @@ async function updateLibrary() {
   await loadState();
   await hydrateLibrary();
   const T = findHosts();
+  // Release 1.8.0 builds on the 1.7.0 library (Field, Menu, MenuItem, Button Link and Loading, Input Password and Code, ReasonQuote, icon lock).
+  // Refuse a file that does not have it, before anything is touched.
+  const fileVersion = figma.root.getPluginData('version') || '1.0.0';
+  const has170 = function (name, re) { const r = S.sets[name]; return !!(r && (r.comp || (r.set && (!re || r.set.children.some(function (c) { return re.test(c.name); }))))); };
+  const miss170 = [];
+  if (!has170('Field')) miss170.push('Field'); if (!has170('Menu')) miss170.push('Menu'); if (!has170('MenuItem', /State=Selected/)) miss170.push('MenuItem with State=Selected');
+  if (!has170('ReasonQuote')) miss170.push('ReasonQuote'); if (!has170('Button', /Variant=Link/) || !has170('Button', /State=Loading/)) miss170.push('Button Link and Loading');
+  if (!has170('Input', /Type=Password/) || !has170('Input', /Type=Code/)) miss170.push('Input Password and Code'); if (!S.icons.lock) miss170.push('icon lock');
+  if (semverLess(fileVersion, '1.7.0') || miss170.length) {
+    post({ type: 'error', message: semverLess(fileVersion, '1.7.0')
+      ? 'This file is at library version ' + fileVersion + ', below 1.7.0. Release 1.8.0 builds on release 1.7.0 (Field, Menu, MenuItem, Button Link and Loading, Input Password and Code, ReasonQuote, icon lock): run 1.7.0 first (Update library from the 1.7.0 plugin), then run Update library again with this plugin. Nothing was changed.'
+      : 'Release 1.8.0 needs release 1.7.0 items that this file does not have: ' + miss170.join(', ') + '. Run 1.7.0 first (Update library from the 1.7.0 plugin), then run Update library again with this plugin. Nothing was changed.' }); return;
+  }
   const need = ['nav', 'forms', 'review', 'tpl-seller', 'tpl-admin', 'tpl-dark', 'changelog', 'spacing', 'cover', 'icons'].filter(function (k) { return !T[k]; });
   const base = ['CountBadge', 'NavGroupLabel', 'NavItem', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar', 'Topbar', 'Button', 'Input', 'Checkbox', 'Badge', 'InfoBanner', 'ProductThumb', 'ChecklistItem'].filter(function (k) { return !S.sets[k]; });
   if (need.length || base.length || !S.ts['Body/Default'] || !S.es['Focus/Ring']) {
@@ -475,6 +491,68 @@ async function updateLibrary() {
     added.push('component Field');
   }
 
+  // 2e · release 1.8.0 "Panel": Select, Textarea, CheckboxRow, Toast, DialogBody + Dialog and EmptyState are new sets; TableCell gets State=Loading
+  // (the only edit to an existing set, below); Field's Control slot lists Input, Select and Textarea as preferred values.
+  PANEL_SETS.forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
+  const PANEL_DEPS = { CheckboxRow: ['Checkbox', 'Badge'], Toast: ['IconButton'], Dialog: ['Button', 'IconButton', 'DialogBody'], EmptyState: ['Button'] };
+  Object.keys(PANEL_DEPS).forEach(function (n) {
+    if (S.sets[n] || skipped[n]) return;
+    const bad = PANEL_DEPS[n].filter(function (d) { return skipped[d] || (S.sets[d] && !own(d)); });
+    if (bad.length) skip(n, 'component ' + n + ': it needs the plugin\'s ' + bad.join(', '));
+  });
+  const panelNew = function (list) { return list.filter(function (n) { return !S.sets[n] && !skipped[n]; }); };
+  const formsNew = panelNew(['Select', 'Textarea', 'CheckboxRow']);
+  if (formsNew.length) {
+    await onPage(T.forms, 'Panel form components', function (host) {
+      const root = docRoot(host, 'Forms & selection', PANEL_SUBTITLE['Forms & selection']);
+      if (formsNew.indexOf('Select') >= 0) selectBlock(root);
+      if (formsNew.indexOf('Textarea') >= 0) textareaBlock(root);
+      if (formsNew.indexOf('CheckboxRow') >= 0) checkboxRowBlock(root);
+      fitSection(host);
+    });
+    formsNew.forEach(function (n) { added.push('component ' + n); });
+  }
+  const statusNew = panelNew(['Toast', 'DialogBody', 'Dialog']);
+  if (statusNew.length) {
+    await onPage(T.status, 'Panel feedback components', function (host) {
+      const root = docRoot(host, 'Status & feedback', PANEL_SUBTITLE['Status & feedback']);
+      if (statusNew.indexOf('Toast') >= 0) toastBlock(root);
+      if (statusNew.indexOf('Dialog') >= 0 || statusNew.indexOf('DialogBody') >= 0) dialogBlock(root);
+      fitSection(host);
+    });
+    statusNew.forEach(function (n) { added.push('component ' + n); });
+  }
+  const tablesNew = panelNew(['EmptyState']);
+  if (tablesNew.length) {
+    await onPage(T.tables, 'EmptyState', function (host) { emptyStateBlock(docRoot(host, 'Tables & collections', PANEL_SUBTITLE['Tables & collections'])); fitSection(host); });
+    added.push('component EmptyState');
+  }
+  // In place, the only edit to an existing set: TableCell gets the State=Loading variants (cloned from Type=…, State=Default; nothing is renamed or removed).
+  let tcMade = 0; let prefChanged = false;
+  if (!own('TableCell')) skip('TableCell', 'TableCell State=Loading: the TableCell set is not the plugin\'s');
+  else {
+    const rec = S.sets.TableCell;
+    const todo = TABLECELL_TYPES_LOADING.some(function (t) { return !rec.set.children.some(function (c) { return c.name === 'Type=' + t + ', State=Loading'; }); });
+    if (todo || rec.set.description === TABLECELL_DESC_170) {
+      await onPage(pageOf(rec.set), 'TableCell Loading', function () {
+        const made = todo ? addTableCellLoading() : [];
+        tcMade = made.length;
+        if (made.length) added.push('variants added to TableCell (' + made.length + '): State=Loading');
+        if (rec.set.description === TABLECELL_DESC_170) { rec.set.description = TABLECELL_DESC; added.push('update TableCell description'); }
+        fitSection(T.tables.host);
+      });
+    }
+  }
+  const tcLoading = !!(S.sets.TableCell && S.sets.TableCell.set && TABLECELL_TYPES_LOADING.every(function (t) { return S.sets.TableCell.set.children.some(function (c) { return c.name === 'Type=' + t + ', State=Loading'; }); }));
+  if (S.sets.Field && S.sets.Field.comp && own('Field') && own('Input') && own('Select') && own('Textarea')) {
+    const f = S.sets.Field.comp;
+    await onPage(pageOf(f), 'Field Control', function () {
+      if (f.description === FIELD_DESC_170) { f.description = FIELD_DESC; added.push('update Field description'); }
+      prefChanged = fieldPreferred();
+      if (prefChanged) added.push('Field Control: preferred values Input, Select, Textarea');
+    });
+  }
+
   // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
   // A template is built only when every component it places is the plugin's (made earlier or in this run).
   const blockedBy = function (names) { return names.filter(function (n) { return skipped[n] || !own(n); }); };
@@ -520,6 +598,22 @@ async function updateLibrary() {
     });
   }
 
+  // 3c · 1.8.0 templates: Shared · Members, Roles, No access, Not found, Account security and the Dialogs, on Templates · Admin and Templates · Seller.
+  // Built only when every set they place is the plugin's, TableCell has State=Loading, and only the frames the file does not have yet.
+  const panelBlock = blockedBy(PANEL_TEMPLATE_NEEDS); if (!tcLoading) panelBlock.push('TableCell State=Loading');
+  if (panelBlock.length) log('ℹ skipped Panel templates: they need the plugin\'s ' + panelBlock.join(', '));
+  else {
+    const keys = ['tpl-admin', 'tpl-seller'];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]; const present = T[key].host.children.map(function (c) { return c.name; });
+      const missing = panelNames(key).filter(function (n) { return present.indexOf(n) < 0; });
+      if (!missing.length) continue;
+      let made = null;
+      await onPage(T[key], key === 'tpl-admin' ? 'Admin panel templates' : 'Seller panel templates', function (host) { made = addPanelTemplates(host, key, missing); fitSection(host); });
+      added.push('templates Panel · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + ' frames' + (made.bodies ? ', ' + made.bodies + ' template bodies' : '') + ')');
+    }
+  }
+
   // 3 · templates
   const tplKeys = Object.keys(PHONE_TEMPLATES);
   for (let i = 0; i < tplKeys.length; i++) {
@@ -539,7 +633,7 @@ async function updateLibrary() {
 
   // 4 · documentation pages (only edits what the release changed)
   const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
-  const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
+  const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card', 'size/dialog-sm', 'size/dialog-md'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
     .filter(function (d) { return d && sizeTable && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === d.name; }); });
   if (newSizes.length) {
     await onPage(T.spacing, 'Spacing page', function () { newSizes.forEach(function (d) { appendTableRow(sizeTable, [d.name, d.desktop + ' px', d.touch + ' px', SIZE_USE[d.name]], [260, 160, 160, 600]); }); fitSection(T.spacing.host); });
@@ -562,7 +656,7 @@ async function updateLibrary() {
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
   else {
     log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); });
-    const except = [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : '', inputRenamed ? 'the ' + inputRenamed + ' existing Input variants named Type=Text' : ''].filter(Boolean);
+    const except = [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : '', inputRenamed ? 'the ' + inputRenamed + ' existing Input variants named Type=Text' : '', tcMade ? 'the ' + tcMade + ' State=Loading variants added to the existing TableCell set' : '', prefChanged ? 'the preferred swap values of the Field Control slot' : ''].filter(Boolean);
     log('Nothing was deleted or rebuilt' + (except.length ? ', except ' + except.join(' and ') : '') + '. The existing Sidebar keeps its drawn brand mark (a new build uses BrandMark). Next: run Audit file, then Export tokens (the diff shows only the tokens added since this file\'s version, and the version line).');
   }
   post({ type: 'done', report: S.report, added: added });

@@ -1,5 +1,5 @@
 {
- "version": "1.7.0",
+ "version": "1.8.0",
  "generated": "2026-10-07",
  "primitives": [
   {
@@ -1957,6 +1957,22 @@
    "name": "size/auth-card",
    "desktop": 400,
    "touch": 400,
+   "scopes": [
+    "WIDTH_HEIGHT"
+   ]
+  },
+  {
+   "name": "size/dialog-sm",
+   "desktop": 400,
+   "touch": 400,
+   "scopes": [
+    "WIDTH_HEIGHT"
+   ]
+  },
+  {
+   "name": "size/dialog-md",
+   "desktop": 560,
+   "touch": 560,
    "scopes": [
     "WIDTH_HEIGHT"
    ]

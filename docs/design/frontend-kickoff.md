@@ -91,6 +91,7 @@
 | `--mp-radius-card` / `--mp-radius-control` / `--mp-radius-pill` | 12 / 8 / 999px | کارت / کنترل / badge |
 | `--mp-size-control` | 36px (لمسی 48px) | ارتفاع دکمه؛ زیر `[data-density="touch"]` خودکار ۴۸ می‌شود |
 | `--mp-size-topbar-phone` | 56px | ارتفاع نوار بالای موبایل (< ۷۶۰px، هر دو پنل؛ از 1.6.0). `--mp-size-bottom-bar` (64px) ارتفاع نوار پایین فروشنده است |
+| `--mp-size-dialog-sm` / `--mp-size-dialog-md` | 400px / 560px | عرض Dialog (Size=Sm و Md) و Toast؛ Sheet در موبایل تمام‌عرض است (از 1.8.0) |
 | `--mp-shadow-elevation-floating` / `--mp-shadow-focus-ring` | — | نوار اقدام گروهی شناور / حلقهٔ فوکوس (در تم تاریک خودکار عوض می‌شود) |
 
 قواعد عددها:

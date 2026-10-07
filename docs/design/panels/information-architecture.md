@@ -39,8 +39,8 @@ Every screen in section 5 uses one of these. "In Figma" means a template page al
 | T5 | **Auth** (no shell; phone first) | Sign in, sign up, reset, two-step, invitations | — | 1.1.0 |
 | T6 | **Setup step / Form** (grouped cards, `FormActionBar`, error summary) | Seller setup steps, store profile, product and offer forms, admin edit | — | 1.3.0 (`Seller · Setup step`), 1.4.0 (`Seller · Store profile`) |
 | T7 | **Settings** (two-column sections of `SettingRow`) | Market settings, seller settings, notifications | — | 1.4.0 (`Shared · Settings`) |
-| T8 | **Members and roles** (tabs Members, Roles; role editor) | Admin "Roles & permissions", Seller "Team & roles" | — | 1.2.0 (`Shared · Members`, `Shared · Roles`, `Shared · Role editor`) |
-| T9 | **System states** (no access, not found, empty, error; plus `Shared · Account security`) | Every panel route | — | 1.2.0 (`Shared · No access`, `EmptyState`) |
+| T8 | **Members and roles** (tabs Members, Roles; role editor) | Admin "Roles & permissions", Seller "Team & roles" | — | 1.8.0 (Members, Roles) / 1.8.1 (Sellers list, role editor, D4-D6) (`Shared · Members`, `Shared · Roles`, `Shared · Role editor`) |
+| T9 | **System states** (no access, not found, empty, error; plus `Shared · Account security`) | Every panel route | — | 1.8.0 (`Shared · No access`, `EmptyState`) |
 
 ## 3. Navigation config
 
@@ -164,16 +164,16 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 |---|---|---|---|---|---|---|---|
 | Home | `/` | T1 | platform | `F_AdminHome` preview | Preview (content per module) | 1.0 |
 | Review queue | `/review` | T2 | several | this doc 3.1 | G1 (queue tabs land with each module's G2) | after 1.4.0 |
-| Sellers | `/sellers` | T2 | identity, sellers | identity P1; sellers P1 | G2 | 1.2.0, 1.4.0 |
+| Sellers | `/sellers` | T2 | identity, sellers | identity P1; sellers P1 | G2 | 1.8.1, 1.4.0 |
 | Seller page (+ History tab, admin-only card C1) | `/sellers/:id` | T3 | sellers | sellers P2, P2-H, C1 | G2 | 1.4.0 |
 | Review a submission | `/sellers/:id/review` | T3 | sellers | sellers P3 | G2 | 1.4.0 |
-| Add seller; Reject; Suspend; Confirm | dialogs | — | identity | identity D3–D6 | G2 | 1.2.0 |
+| Add seller; Reject; Suspend; Confirm | dialogs | — | identity | identity D3–D6 | G2 | 1.8.1 |
 | Change web address; Correct time zone; Bulk result | dialogs | — | sellers | sellers D7, D8, D10 | G2 | 1.4.0 |
 | Seller settings (Market) | `/settings/sellers` | T7 | sellers | sellers P4 | G2 | 1.4.0 |
-| Admins; Roles; Role editor | `/team...` | T8 | identity | identity B1, B2, B3 | G2 | 1.2.0 |
-| Invite an admin; Change role | dialogs | — | identity | identity D1, D2 | G2 | 1.2.0 |
-| Account security | `/account/security` | `Shared · Account security` (identity ux 4) | identity | identity B4 | G2 | 1.2.0 |
-| No access / not found | any | T9 | identity | identity B5 | G2 | 1.2.0 |
+| Admins; Roles; Role editor | `/team...` | T8 | identity | identity B1, B2, B3 | G2 | 1.8.0 |
+| Invite an admin; Change role | dialogs | — | identity | identity D1, D2 | G2 | 1.8.0 |
+| Account security | `/account/security` | `Shared · Account security` (identity ux 4) | identity | identity B4 | G2 | 1.8.0 |
+| No access / not found | any | T9 | identity | identity B5 | G2 | 1.8.0 |
 | Certificate queue; Issuer requests | `/review?type=…` | T2 | certification | brief 12 | G1 | — |
 | Certificate review | `/certificates/:id/review` | T3 | certification | brief 12; `F_AdminReview` preview must be updated to R2 | G1 | — |
 | Certification types; Issuer registry | `/catalogue/certification-types`, `/catalogue/issuers` | T2, T6 | certification | brief 12 | G1 | — |
@@ -198,10 +198,10 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 | Business details; Address and area; Business number and tax; Shop web address; Review and submit | `/account-setup/...` | T6 | sellers | sellers S2–S6 | G2 | 1.3.0 |
 | Store profile (with the Settings card: minimum order) | `/store` | T6 | sellers | sellers S7, 3.1a; sellers DD 18 | G2 | 1.4.0 |
 | Confirm it's you | dialog | — | sellers | sellers D9 | G2 (needs identity R-2) | 1.4.0 |
-| Team; Roles; Role editor | `/team...` | T8 | identity | identity B1, B2, B3 | G2 | 1.2.0 |
-| Invite a team member; Change role | dialogs | — | identity | identity D1, D2 | G2 | 1.2.0 |
-| Account security | `/account/security` | `Shared · Account security` (identity ux 4) | identity | identity B4 | G2 | 1.2.0 |
-| No access / not found | any | T9 | identity | identity B5 | G2 | 1.2.0 |
+| Team; Roles; Role editor | `/team...` | T8 | identity | identity B1, B2, B3 | G2 | 1.8.0 |
+| Invite a team member; Change role | dialogs | — | identity | identity D1, D2 | G2 | 1.8.0 |
+| Account security | `/account/security` | `Shared · Account security` (identity ux 4) | identity | identity B4 | G2 | 1.8.0 |
+| No access / not found | any | T9 | identity | identity B5 | G2 | 1.8.0 |
 | Home: setup guide, then Today | `/` | T1 | platform | `F_SellerHome` preview | Preview (content per module) | 1.0 |
 | Certifications; Certificate form; Certificate detail | `/certifications...` | T2, T6, T3 | certification | brief 12 | G1 | — |
 | Products and offers; Add a product; Product and offer form; Photos | `/catalogue...` | T2, T6 | catalog | brief 12 | G1 | — |
@@ -219,7 +219,7 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 
 ## 6. Order of design work
 
-1. **Library 1.1.0 "Auth" and 1.2.0 "Panel"** (identity ux 8.1): unblock every Phase 2 frontend slice.
+1. **Library 1.7.0 "Auth" and 1.8.0 "Panel"** (planned as 1.1.0 and 1.2.0) (identity ux 8.1): unblock every Phase 2 frontend slice.
 2. **Library 1.3.0 "Seller setup" and 1.4.0 "Seller admin"** (sellers ux 8.1).
 3. **Nav release:** `NavDrawer`, `BottomTabBar` and the phone templates were released as 1.5.0 (D16, 2026-10-07). Still to come after 1.4.0: the nav config of section 3 as `Sidebar` variants (admin, seller full, seller limited) and the Review queue tab set.
 4. **Module screens** after each G2: certification and catalog (Phase 3), then inventory, pricing and cart seller parts (Phase 4).

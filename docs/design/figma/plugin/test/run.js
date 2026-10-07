@@ -90,6 +90,9 @@ function compareExport(files, label) {
 // taking the later additions out of that 1.6.0 build: 1.0.0 lacks everything from 1.5.0 and 1.6.0; 1.5.0 lacks the
 // 1.6.0 items and still has the old loose phone topbar frame and the text/primary 50% scrim in its phone templates.
 const OLD_CODE = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.6.0.js'), 'utf8');
+// The code.js of release 1.7.0 "Auth" (test/fixtures/code-1.7.0.js, copied before the 1.8.0 work): Update library of 1.8.0 refuses files below 1.7.0, so
+// the older files are first brought to 1.7.0 with this plugin (the paths 1.7.0 supported), and then to 1.8.0 with the current code.
+const CODE_170 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.7.0.js'), 'utf8');
 function load(M, code) { new Function('figma', '__html__', '"use strict";\n' + code)(M.figma, '<html></html>'); return M; }
 const NEW_TEMPLATES = ['Seller · Home (phone)', 'Seller · Menu open (phone)', 'Admin · Menu open (phone)'];
 const SETS_150 = ['NavDrawer', 'BottomTabBar'];
@@ -145,15 +148,22 @@ function downgradeTo15(M) {
   M.ROOT.setPluginData('version', '1.5.0');
   return legacy;
 }
-// An older library: built with the released 1.6.0 plugin, optionally taken back to 1.5.0 or 1.0.0, then the current plugin is loaded.
+// An older library: built with the released 1.6.0 plugin, optionally taken back to 1.5.0 or 1.0.0, then the 1.7.0 plugin is loaded (it updates
+// those files to 1.7.0). A 1.7.0 file is built by the 1.7.0 plugin itself. The caller loads the current code for the 1.8.0 step.
 async function olderFile(opts, from) {
+  if (from === '1.7.0') {
+    const M = start(opts, CODE_170);
+    const r = await send(M, { type: 'build' });
+    check(!r.err, 'the 1.7.0 plugin builds the starting file' + (r.err ? ': ' + r.err.message : ''));
+    return { M: M, legacy: null, coverFrames: 0 };
+  }
   const M = start(opts, OLD_CODE);
   const r = await send(M, { type: 'build' });
   check(!r.err, 'the 1.6.0 plugin builds the starting file' + (r.err ? ': ' + r.err.message : ''));
   let legacy = null; let n = 0;
   if (from === '1.0.0') n = downgradeTo10(M);
   else if (from === '1.5.0') legacy = downgradeTo15(M);
-  load(M, CODE);
+  load(M, CODE_170);
   return { M: M, legacy: legacy, coverFrames: n };
 }
 function countNamed(M, type, name) { return allNodes(M).filter((n) => n.type === type && n.name === name).length; }
@@ -164,8 +174,8 @@ const compOf = (M, name) => allNodes(M).find((n) => n.type === 'COMPONENT' && n.
 const keysOf = (node) => Object.keys(node.componentPropertyDefinitions).map((k) => k.split('#')[0]);
 const hostNamed = (M, name) => M.ROOT.children.find((p) => p.name === name) || M.ROOT.children.map((p) => p.children.find((n) => n.type === 'SECTION' && n.name === name)).find(Boolean);
 
-async function updateScenario(label, opts, from) {
-  console.log('\n■ ' + label);
+async function updateTo170(label, opts, from) {
+  console.log('\n■ ' + label + ' · step 1: to 1.7.0 with the 1.7.0 plugin');
   const from10 = from === '1.0.0', from15 = from === '1.5.0', from16 = from === '1.6.0';
   const F = await olderFile(opts, from); const M = F.M; const legacy = F.legacy;
   if (from10) check(F.coverFrames === 2, 'simulated a 1.0.0 library (new sets, templates, tokens, icon, changelog rows and version removed)');
@@ -238,17 +248,17 @@ async function updateScenario(label, opts, from) {
   if (opts.maxModes > 1) check(M.ROOT.children.length === nPages + 1 && M.ROOT.children.indexOf(auth) === M.ROOT.children.findIndex((p) => p.name === 'Templates · Seller') + 1, 'a Templates · Auth page is added after Templates · Seller');
   else check(M.ROOT.children.length === 3 && auth.type === 'SECTION' && auth.parent.name === '3 · Templates & workspace', 'a Templates · Auth section is added to the templates page (Starter)');
   check(S1_FRAMES.every((n) => countNamed(M, 'FRAME', n) === 1) && DARK_170.every((n) => countNamed(M, 'FRAME', n) === 1 && allNodes(M).find((x) => x.name === n).getPluginData('theme') === 'dark'), 'the 4 S1 frames and the 3 new dark previews exist once each');
-  check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
+  check(textCount(M, '1.7.0') >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === '1.7.0')).length === 1, 'one changelog row for ' + '1.7.0' + ' (and the cover shows it)');
   check(allNodes(M).some((n) => n.type === 'TEXT' && n.characters.indexOf('Auth (planned as 1.1.0 in identity ux.md 8.1).') === 0), 'the 1.7.0 changelog row starts "Auth (planned as 1.1.0 in identity ux.md 8.1)."');
   check(['1.5.0', '1.6.0'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one changelog row each for 1.5.0 and 1.6.0');
   check(['size/topbar-phone', 'size/auth-card'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/topbar-phone and size/auth-card');
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION, 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === '1.7.0', 'file version is ' + '1.7.0');
   const after = allNodes(M);
   const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
   if (from15) check(gone.length === legacy.ids.size && gone.length === 15 && gone.every((n) => legacy.ids.has(n.id)), 'the only deletions are the 3 old phone topbar frames and their layers (' + gone.length + ')');
   else check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
   const scrimIds = new Set(legacy ? legacy.scrims : []);
-  const changed = before.filter((n) => M.byId.has(n.id) && !scrimIds.has(n.id) && !inputVariants.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  const changed = before.filter((n) => M.byId.has(n.id) && !scrimIds.has(n.id) && !inputVariants.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf('1.7.0') >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
   check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date, the Input variant names' + (legacy ? ' and the 2 scrims' : '') + ' (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
   const fresh = after.filter((n) => !beforeIds.has(n.id));
   const tops = fresh.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
@@ -279,9 +289,189 @@ async function updateScenario(label, opts, from) {
   check(!r.err && r.done && r.done.added.length === 0, 'second Update library adds nothing' + (r.err ? ': ' + r.err.message : (r.done && r.done.added.length ? ': ' + r.done.added.join(', ') : '')));
   const after2 = allNodes(M);
   check(after2.length === n2 && after2.every((n) => ids2.has(n.id)) && M.VARS.size === vars2, 'second Update library changes no layer and no variable');
-  r = await send(M, { type: 'export', version: SPEC_VERSION });
-  if (r.done) { compareExport(r.done.files, label + ' export'); check(r.done.files['color.light.json'].includes('"$value": "#11182780"') && r.done.files['color.dark.json'].includes('"$value": "#00000099"') && r.done.files['tokens.css'].includes('--mp-color-bg-scrim: #11182780;') && r.done.files['tokens.css'].includes('--mp-size-topbar-phone: 56px;') && r.done.files['tokens.css'].includes('--mp-color-text-on-showcase-muted: #FFFFFFBD;') && r.done.files['tokens.css'].includes('--mp-size-auth-card: 400px;'), 'export writes bg/scrim and text/on-showcase-muted as hex8, size/topbar-phone and size/auth-card'); }
   return M;
+}
+
+// ---- Release 1.8.0 "Panel": what a new build and an updated file must both hold
+const NEW_180 = ['Select', 'Textarea', 'CheckboxRow', 'Toast', 'DialogBody', 'Dialog', 'EmptyState'];
+const VARIANTS_180 = { Select: 7, Textarea: 6, CheckboxRow: 10, Toast: 2, Dialog: 6, EmptyState: 3 };
+const BODIES_180 = ['Template body · D1 Invite (Admin)', 'Template body · D1 Invite (Admin, list open)', 'Template body · D2 Change role (Admin)', 'Template body · D1 Invite (Seller)', 'Template body · D2 Change role (Seller)'];
+const ADMIN_180 = ['Shared · Members · Admin', 'Shared · Members · Admin · Menu open', 'Shared · Members · Admin · Loading', 'Shared · Members · Admin · Load error', 'Shared · Members · Admin · View only',
+  'Shared · Roles · Admin', 'Shared · Roles · Admin · No custom roles', 'Shared · No access · Admin', 'Shared · Account security · Admin', 'Shared · Account security · Admin · Errors',
+  'Dialogs · Members · Admin', 'Dialogs · Confirm · Admin', 'Shared · Members · Admin (phone)', 'Shared · Not found · Admin (phone)', 'Dialog sheet · Change role (phone)'];
+const SELLER_180 = ['Shared · Members · Seller', 'Shared · Members · Seller · Empty', 'Shared · Members · Seller · Loading', 'Shared · Members · Seller · Load error', 'Shared · Roles · Seller', 'Shared · Roles · Seller · No custom roles',
+  'Shared · No access · Seller', 'Shared · Not found', 'Shared · Account security · Seller · Off', 'Shared · Account security · Seller · Link sent', 'Shared · Account security · Seller · On', 'Shared · Account security · Seller · Saved',
+  'Dialogs · Team · Seller', 'Shared · Members · Seller (phone)', 'Shared · Roles · Seller (phone)', 'Shared · No access · Seller (phone)', 'Shared · Account security · Seller (phone)', 'Dialog sheet · Remove from team (phone)'];
+const VIEW_ONLY_COPY = 'Your role can view people and roles but not change them.';
+const FIELD_DESC_17 = 'Select or Textarea from 1.2.0';
+let BUILD_COUNTS = null; // sets, standalone components and variants of a new 1.8.0 build (scenario 1); an updated file must match
+
+const frameNamed = (M, name) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === name && n.getPluginData('mondapac-ds') === '1');
+const instMain = (n) => (n._main ? n._main.name : '');
+const tcVariants = (M) => setOf(M, 'TableCell').children;
+
+// Facts that hold for every 1.8.0 file, built new or updated.
+function state180(M, opts, label) {
+  const nColl = opts.maxModes > 1 ? 1 : 2;
+  const vars = (name) => [...M.VARS.values()].filter((v) => v.name === name);
+  const dc = [...M.COLLS.values()].find((c) => c.name === 'Dimension');
+  [['size/dialog-sm', 400], ['size/dialog-md', 560]].forEach((d) => {
+    const vs = vars(d[0]); const v0 = vs.find((v) => v.variableCollectionId === dc.id);
+    check(vs.length === nColl && vs.every((v) => v.scopes.join() === 'WIDTH_HEIGHT' && v.codeSyntax.WEB === 'var(--mp-' + d[0].replace('/', '-') + ')') && v0 && dc.modes.every((m) => v0.valuesByMode[m.modeId] === d[1] || v0.valuesByMode[m.modeId] === undefined), label + ': ' + d[0] + ' is ' + d[1] + ' (desktop and touch) with scope WIDTH_HEIGHT and code syntax');
+  });
+  check(NEW_180.every((n) => (setOf(M, n) ? 1 : 0) + (compOf(M, n) ? 1 : 0) === 1 && countNamed(M, setOf(M, n) ? 'COMPONENT_SET' : 'COMPONENT', n) === 1), label + ': Select, Textarea, CheckboxRow, Toast, DialogBody, Dialog and EmptyState exist once each');
+  check(Object.keys(VARIANTS_180).every((n) => setOf(M, n).children.length === VARIANTS_180[n]), label + ': variant counts ' + Object.keys(VARIANTS_180).map((n) => n + ' ' + VARIANTS_180[n]).join(', '));
+  const dlgSet = setOf(M, 'Dialog');
+  check(dlgSet.children.map((c) => c.name).sort().join('|') === ['Size=Sm, Tone=Default, Layout=Centred', 'Size=Sm, Tone=Destructive, Layout=Centred', 'Size=Md, Tone=Default, Layout=Centred', 'Size=Md, Tone=Destructive, Layout=Centred', 'Size=Sm, Tone=Default, Layout=Sheet', 'Size=Sm, Tone=Destructive, Layout=Sheet'].sort().join('|'), label + ': Dialog has Centred by Sm and Md by Default and Destructive, and Sheet by Default and Destructive (no Sheet by Md)');
+  const dk = keysOf(dlgSet);
+  check(['Title', 'Show secondary', 'Content'].every((k) => dk.includes(k)) && dlgSet.children.every((c) => c.findOne((n) => n.name === 'title' && n.componentPropertyReferences && n.componentPropertyReferences.characters) && c.findOne((n) => n.name === 'content' && n.componentPropertyReferences && n.componentPropertyReferences.mainComponent) && c.findOne((n) => n.name === 'secondary' && n.componentPropertyReferences && n.componentPropertyReferences.visible) && c.findOne((n) => n.name === 'primary').isExposedInstance && c.findOne((n) => n.name === 'secondary').isExposedInstance), label + ': Dialog Title, Show secondary and Content are wired in all 6 variants, and primary and secondary are exposed Buttons');
+  const contentKey = Object.keys(dlgSet.componentPropertyDefinitions).find((k) => k.split('#')[0] === 'Content');
+  check(dlgSet.componentPropertyDefinitions.Size.variantOptions.join() === 'Sm,Md' && compOf(M, 'DialogBody') && dlgSet.componentPropertyDefinitions[contentKey].defaultValue === compOf(M, 'DialogBody').id, label + ': the Dialog Content slot defaults to DialogBody');
+  const sheet = dlgSet.children.find((c) => /Layout=Sheet/.test(c.name));
+  check(sheet.width === 360 && sheet.topLeftRadius > 0 && sheet.bottomLeftRadius === 0 && sheet.findOne((n) => n.name === 'footer').children.map((n) => n.name).join() === 'primary,secondary' && dlgSet.children.find((c) => /Layout=Centred/.test(c.name)).findOne((n) => n.name === 'footer').children.map((n) => n.name).join() === 'secondary,primary', label + ': the Sheet is 360 wide with square bottom corners and the primary button first; the Centred footer has Cancel first');
+  const wOf = (name) => dlgSet.children.find((c) => c.name === name).width;
+  check(wOf('Size=Sm, Tone=Default, Layout=Centred') === 400 && wOf('Size=Md, Tone=Default, Layout=Centred') === 560 && dlgSet.children.find((c) => /Size=Md, Tone=Default/.test(c.name)).boundVariables.width && dlgSet.children.find((c) => /Size=Md, Tone=Default/.test(c.name)).boundVariables.width.id === vars('size/dialog-md')[0].id, label + ': Dialog Sm is 400 and Md is 560 wide, bound to size/dialog-sm and size/dialog-md');
+  const ts = setOf(M, 'Toast');
+  check(ts.children.every((c) => c.width === 400 && c.boundVariables.width && c.findOne((n) => n.name === 'action').visible === false) && keysOf(ts).join() === ['Message', 'Action', 'Show action', 'Tone'].filter((k) => keysOf(ts).includes(k)).join(), label + ': Toast is size/dialog-sm wide and its action is off');
+  // TableCell State=Loading
+  const tc = setOf(M, 'TableCell');
+  const loading = tc.children.filter((c) => /State=Loading/.test(c.name));
+  check(tc.children.length === 16 && loading.length === 5 && !tc.children.some((c) => c.name === 'Type=Header, State=Loading') && tc.componentPropertyDefinitions.State.variantOptions.join() === 'Default,Selected,Loading', label + ': TableCell has 16 variants, 5 of them State=Loading (no Header), and State reads Default, Selected, Loading');
+  const same = loading.every((l) => { const d = tc.children.find((c) => c.name === l.name.replace('Loading', 'Default')); return d && d.width === l.width && d.height === l.height && l.fills.length === 1 && l.fills[0].boundVariables.color.id === d.fills[0].boundVariables.color.id && JSON.stringify(l.strokes.map((p) => p.boundVariables.color.id)) === JSON.stringify(d.strokes.map((p) => p.boundVariables.color.id)) && l.strokeBottomWeight === d.strokeBottomWeight; });
+  const muted = M.VARS.get([...M.VARS.values()].find((v) => v.name === 'bg/muted' && v.variableCollectionId === [...M.COLLS.values()].find((c) => c.name === 'Color').id).id);
+  const shapes = loading.every((l) => { const sh = l.findAll((n) => n.type !== 'FRAME' || n.name !== 'lines'); return sh.length > 0 && sh.every((n) => n.type === 'RECTANGLE' && n.fills.length === 1 && n.fills[0].boundVariables.color.id === muted.id) && !l.findOne((n) => n.type === 'TEXT'); });
+  check(same && shapes, label + ': each Loading variant has the size, fill and bottom border of its Default and only bg/muted rectangles (no text)');
+  const two = loading.find((l) => /Two-line/.test(l.name)).findAll((n) => n.type === 'RECTANGLE');
+  check(two.length === 2 && two[0].layoutSizingHorizontal === 'FILL' && two[1].width === 72 && loading.find((l) => /Actions/.test(l.name)).findOne((n) => n.type === 'RECTANGLE').width === 18 && loading.find((l) => /Number/.test(l.name)).findOne((n) => n.type === 'RECTANGLE').width === 40, label + ': skeleton shapes follow the spec (two-line: FILL bar and a 72 px bar; number 40 px; actions a 18 px circle)');
+  check(tc.description.includes('Loading shows skeleton bars; build rows from it for 8 skeleton rows'), label + ': the TableCell description explains Loading');
+  // Field Control: Input, Select and Textarea as preferred swap values
+  const fld = compOf(M, 'Field'); const ck = Object.keys(fld.componentPropertyDefinitions).find((k) => k.split('#')[0] === 'Control');
+  const pv = (fld.componentPropertyDefinitions[ck].preferredValues || []).map((x) => x.key).sort().join();
+  check(pv === ['Input', 'Select', 'Textarea'].map((n) => setOf(M, n).key).sort().join() && fld.description.includes('Select or Textarea from 1.8.0'), label + ': the Field Control slot lists Input, Select and Textarea as preferred values; the description says 1.8.0');
+  check(!fld.description.includes(FIELD_DESC_17), label + ': Field no longer says "from 1.2.0"');
+  // templates
+  const admin = hostNamed(M, 'Templates · Admin'), seller = hostNamed(M, 'Templates · Seller');
+  const once = (host, names) => names.every((n) => host.children.filter((c) => c.type === 'FRAME' && c.name === n && c.getPluginData('mondapac-ds') === '1').length === 1);
+  check(once(admin, ADMIN_180) && once(seller, SELLER_180), label + ': the ' + ADMIN_180.length + ' Admin and ' + SELLER_180.length + ' Seller Panel frames exist once each on the right templates host');
+  check(BODIES_180.every((n) => countNamed(M, 'COMPONENT', n) === 1 && compOf(M, n).description.indexOf('Template body') === 0 && (admin.children.includes(compOf(M, n)) || seller.children.includes(compOf(M, n)))), label + ': the 5 template-body components exist once each, with a description, on the templates hosts');
+  const dm = frameNamed(M, 'Dialogs · Members · Admin')[0];
+  const dialogs = dm.findAll((n) => n.type === 'INSTANCE' && /^D\d/.test(n.name) && n.parent === dm.findOne((x) => x.name === 'dialogs'));
+  check(dialogs.length === 3 && dialogs.every((d) => /Layout=Centred/.test(instMain(d)) && /Size=Sm/.test(instMain(d))) && dialogs.every((d, i) => d.findOne((n) => n.name === 'content')._main.name === [BODIES_180[0], BODIES_180[1], BODIES_180[2]][i]), label + ': Dialogs · Members · Admin has D1, D1 with the list open and D2 (Centred Sm), each with its template body in the Content slot');
+  const open = dialogs[1];
+  check(open.findAll((n) => n.name === 'control').some((n) => instMain(n) === 'State=Open') && open.findOne((n) => n.type === 'INSTANCE' && n.name === 'role-list') && open.findAll((n) => n.type === 'INSTANCE' && /State=Selected/.test(instMain(n))).length === 1 && open.findAll((n) => n.type === 'INSTANCE' && /State=Disabled/.test(instMain(n)) && /MenuItem|^item-/.test(n.name)).length === 1, label + ': the open list shows Select State=Open, a Menu with one selected row (check) and one disabled row');
+  const cf = frameNamed(M, 'Dialogs · Confirm · Admin')[0];
+  const cdl = cf.findAll((n) => n.type === 'INSTANCE' && n.parent && n.parent.name === 'dialogs');
+  const dest = cdl.filter((d) => /Tone=Destructive/.test(instMain(d)));
+  check(cdl.length === 5 && dest.length === 3 && dest.every((d) => /State=Focus/.test(instMain(d.findOne((n) => n.name === 'secondary'))) && /Variant=Destructive/.test(instMain(d.findOne((n) => n.name === 'primary')))) && cdl.filter((d) => /Tone=Default/.test(instMain(d))).every((d) => !/State=Focus/.test(instMain(d.findOne((n) => n.name === 'secondary')))), label + ': 5 confirm dialogs; the 3 Destructive ones have a Destructive primary and Cancel focused');
+  check(cdl.some((d) => d.findOne((n) => n.type === 'TEXT' && n.characters === 'Keep invitation')) && cdl.some((d) => d.findOne((n) => n.type === 'TEXT' && n.characters === 'Reset')), label + ': the Cancel invitation dialog says "Keep invitation" and the reset dialog exists');
+  const sh = frameNamed(M, 'Dialog sheet · Remove from team (phone)')[0];
+  const shd = sh.findOne((n) => n.type === 'INSTANCE' && /Layout=Sheet/.test(instMain(n)));
+  check(sh.width === 360 && sh.height === 780 && shd && /Tone=Destructive/.test(instMain(shd)) && shd.width === 360 && Math.round(shd.y + shd.height) === 780 && sh.findOne((n) => n.name === 'scrim'), label + ': the remove-from-team sheet is a 360 by 780 frame with a scrim and a Destructive Sheet docked at the bottom');
+  // no active Sidebar item, Not found without a resource name, view-only copy, load error copy, toast
+  const noActive = ['Shared · Members · Admin', 'Shared · Roles · Seller', 'Shared · No access · Admin', 'Shared · Not found', 'Shared · Account security · Seller · On'].every((n) => { const sb = frameNamed(M, n)[0].findOne((x) => x.name === 'Sidebar'); return sb && !sb.findAll((x) => x.type === 'INSTANCE' && /^State=Active/.test(instMain(x))).length; });
+  check(noActive && frameNamed(M, 'Shared · Members · Seller (phone)').length === 1, label + ': the Panel pages mark no Sidebar item as active');
+  const nf = frameNamed(M, 'Shared · Not found')[0];
+  const nfText = nf.findOne((n) => n.name === 'Content').findAll((n) => n.type === 'TEXT').map((n) => n.characters).join(' | ') + ' | ' + nf.findOne((n) => n.type === 'INSTANCE' && n.name === 'Topbar').findAll((n) => n.name === 'crumb').map((n) => n.characters).join();
+  check(nfText.includes('We can’t find that page') && nfText.includes('It may have been removed, or the link may be wrong.') && nfText.includes('Go to Home') && !/Kuraby|Yusuf|Finance|Amina|MP-/.test(nfText) && nfText.endsWith('Not found'), label + ': Not found has the copy and names no resource (content and crumb)');
+  const vo = frameNamed(M, 'Shared · Members · Admin · View only')[0];
+  const voTexts = vo.findAll((n) => n.type === 'TEXT' && n.characters === VIEW_ONLY_COPY);
+  const inv = vo.findAll((n) => n.type === 'INSTANCE' && /State=Disabled/.test(instMain(n)) && n.findOne((x) => x.type === 'TEXT' && x.characters === 'Invite admin'));
+  const menuItems = vo.findAll((n) => n.type === 'INSTANCE' && /State=Disabled/.test(instMain(n)) && /^item-/.test(n.name));
+  check(voTexts.length === 4 && inv.length === 1 && menuItems.length === 3, label + ': View only: "Invite admin" is disabled, the helper "' + VIEW_ONLY_COPY + '" sits under the title and on the 3 disabled menu items');
+  const le = frameNamed(M, 'Shared · Members · Seller · Load error')[0];
+  check(le.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'We couldn’t load this list') && le.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'Try again') && le.findAll((n) => n.type === 'INSTANCE' && n.name === 'load-error' && /Tone=Critical/.test(instMain(n))).length === 1 && !le.findOne((n) => n.type === 'INSTANCE' && n.name === 'empty-state'), label + ': Load error is an InfoBanner Critical "We couldn’t load this list" with "Try again" (not an empty state)');
+  const ld = frameNamed(M, 'Shared · Members · Admin · Loading')[0];
+  const ls = frameNamed(M, 'Shared · Members · Seller · Loading')[0];
+  check(ld.findAll((n) => n.type === 'INSTANCE' && /State=Loading/.test(instMain(n))).length === 32 && ls.findAll((n) => n.type === 'INSTANCE' && /State=Loading/.test(instMain(n))).length === 40 && ld.findAll((n) => n.type === 'INSTANCE' && /Type=Header/.test(instMain(n))).length === 4, label + ': the Loading frames keep the real header and have 8 skeleton rows (32 and 40 Loading cells)');
+  const sv = frameNamed(M, 'Shared · Account security · Seller · Saved')[0];
+  check(sv.findOne((n) => n.type === 'INSTANCE' && n.name === 'Toast' && /Tone=Success/.test(instMain(n))) && sv.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'Password changed. You’ve been signed out on your other devices.'), label + ': the Saved frame shows the Success Toast');
+  const emp = frameNamed(M, 'Shared · Roles · Admin · No custom roles')[0];
+  check(emp.findOne((n) => n.type === 'INSTANCE' && /Size=Compact/.test(instMain(n))) && emp.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'No custom roles yet'), label + ': No custom roles uses EmptyState Compact');
+  const na = frameNamed(M, 'Shared · No access · Seller')[0].findOne((n) => n.type === 'INSTANCE' && /Size=Page/.test(instMain(n)));
+  check(na && na.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'You don’t have access to this page'), label + ': No access uses EmptyState Page');
+  // all Panel frames: copy that must not be there
+  const all = ADMIN_180.map((n) => frameNamed(M, n)[0]).concat(SELLER_180.map((n) => frameNamed(M, n)[0]));
+  const txt = all.map((f) => f.findAll((n) => n.type === 'TEXT').map((n) => n.characters).join('\n')).join('\n');
+  check(!/Placeholder:/.test(txt) && !/Reject this seller|Reason for the seller|Leave without saving/.test(txt), label + ': no 1.8.1 content (Sellers list, role editor, D4 to D6, unsaved-changes dialog) in the Panel frames');
+}
+
+// Step 2 of an update scenario: the 1.7.0 file gets 1.8.0 from the current code.
+async function updateTo180(M, label, opts, from) {
+  console.log('\n■ ' + label + ' · step 2: 1.7.0 to 1.8.0 with the current plugin');
+  load(M, CODE);
+  const nColl = opts.maxModes > 1 ? 1 : 2;
+  const before = allNodes(M); const beforeIds = new Set(before.map((n) => n.id)); const nVars = M.VARS.size;
+  const snap = (n) => JSON.stringify([n.name, n.fills, n.name === 'Row' ? null : n.strokes, n.name === 'Row' ? null : n.boundVariables, n.type === 'TEXT' ? n.characters : null]);
+  const beforeSnap = new Map(before.map((n) => [n.id, snap(n)]));
+  const tc0 = setOf(M, 'TableCell'); const tcBefore = tc0.children.map((c) => [c.id, c.name, c.x, c.y, c.width, c.height].join('|'));
+  const tcInst = (X) => allNodes(X).filter((n) => n.type === 'INSTANCE' && n._main && n._main.parent && n._main.parent.name === 'TableCell' && n._main.parent.type === 'COMPONENT_SET');
+  const instBefore = new Map(tcInst(M).map((n) => [n.id, JSON.stringify([n._main.id, n.componentProperties, n.width, n.height])]));
+  const sidebar0 = setOf(M, 'Sidebar'); const sbSnap = sidebar0.findAll(() => true).map((n) => n.id + n.name).join();
+  const fieldDesc0 = compOf(M, 'Field').description;
+  check(NEW_180.every((n) => !setOf(M, n) && !compOf(M, n)) && ![...M.VARS.values()].some((v) => v.name === 'size/dialog-sm' || v.name === 'size/dialog-md') && tc0.children.length === 11 && instBefore.size > 0 && fieldDesc0.includes(FIELD_DESC_17) && frameNamed(M, 'Shared · Members · Admin').length === 0, 'the 1.7.0 file has none of the 1.8.0 items (TableCell has 11 variants and ' + instBefore.size + ' instances)');
+  let r = await send(M, { type: 'update' });
+  check(!r.err, 'Update library finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+  if (r.done) console.log('    ' + r.done.report.join('\n    '));
+  const warn = (r.done ? r.done.report : []).filter((l) => l.indexOf('⚠') === 0 || l.indexOf('ℹ skipped') === 0);
+  check(warn.length === 0, 'no warnings or skips in the update report');
+  const added = r.done ? r.done.added : [];
+  check(NEW_180.every((n) => added.includes('component ' + n)) && added.includes('variants added to TableCell (5): State=Loading') && added.includes('update TableCell description') && added.includes('update Field description') && added.includes('Field Control: preferred values Input, Select, Textarea') && added.includes('templates Panel · Admin (' + ADMIN_180.length + ' frames, 3 template bodies)') && added.includes('templates Panel · Seller (' + SELLER_180.length + ' frames, 2 template bodies)'), 'the report names every addition, including "variants added to TableCell (5)"');
+  check(added.includes('variable size/dialog-sm' + (opts.maxModes > 1 ? ' (Desktop and Touch modes)' : ' (Dimension and Dimension · Touch)')) && added.includes('size table row size/dialog-sm') && added.includes('size table row size/dialog-md') && added.includes('changelog row 1.8.0') && added.includes('file version 1.8.0'), 'the report names the tokens, size table rows, changelog row and the file version');
+  check(M.VARS.size === nVars + 2 * nColl, 'exactly ' + (2 * nColl) + ' variables added (' + (M.VARS.size - nVars) + ')');
+  state180(M, opts, 'updated');
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.0', 'file version is ' + SPEC_VERSION);
+  check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
+  check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
+  // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
+  const tc1 = setOf(M, 'TableCell');
+  check(tc1 === tc0 && tcBefore.every((k) => tc1.children.some((c) => [c.id, c.name, c.x, c.y, c.width, c.height].join('|') === k)), 'the 11 existing TableCell variants keep their ids, names, positions and sizes');
+  const fresh = tc1.children.filter((c) => !beforeIds.has(c.id));
+  check(fresh.length === 5 && fresh.every((c) => /State=Loading/.test(c.name)) && fresh.every((c) => c.x > Math.max.apply(null, tc0.children.filter((k) => beforeIds.has(k.id)).map((k) => k.x + k.width)) - 0.5), 'the 5 new variants are State=Loading and sit in a new column to the right of the existing ones');
+  const instAfter = new Map(tcInst(M).filter((n) => instBefore.has(n.id)).map((n) => [n.id, JSON.stringify([n._main.id, n.componentProperties, n.width, n.height])]));
+  check(instAfter.size === instBefore.size && [...instBefore].every((e) => instAfter.get(e[0]) === e[1]), 'all ' + instBefore.size + ' existing TableCell instances keep their main component, property values and size');
+  check(setOf(M, 'Sidebar') === sidebar0 && sidebar0.findAll(() => true).map((n) => n.id + n.name).join() === sbSnap, 'the existing Sidebar is not touched');
+  const after = allNodes(M);
+  const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
+  check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
+  const changed = before.filter((n) => M.byId.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
+  const freshNodes = after.filter((n) => !beforeIds.has(n.id));
+  const tops = freshNodes.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
+  const okTops = new Set(NEW_180.concat(ADMIN_180, SELLER_180, BODIES_180, ['Row', 'Select', 'Dialog', 'DialogBody']));
+  const stray = tops.filter((n) => !okTops.has(n) && !/^(Variant|Type|State|Size)=/.test(n));
+  check(stray.length === 0, 'new layers sit only in the expected places (' + tops.length + ' roots' + (stray.length ? '; unexpected: ' + stray.join(', ') : '') + ')');
+  const a = audit(M, label);
+  check(BUILD_COUNTS && a.sets.length === BUILD_COUNTS.sets && a.comps === BUILD_COUNTS.comps && a.variants === BUILD_COUNTS.variants, 'the updated file has the same components as a new 1.8.0 build (' + a.sets.length + ' sets, ' + a.comps + ' standalone components, ' + a.variants + ' variants)');
+  const ar = await send(M, { type: 'audit' });
+  const bad = ar.done ? ar.done.report.filter((l) => l.indexOf('⚠') === 0) : ['no audit'];
+  check(bad.length === 0, 'Audit file has zero warnings after the update' + (bad.length ? ': ' + bad.join(' | ') : ''));
+  for (const name of ['Shared · Members · Seller', 'Dialogs · Members · Admin', 'Dialog sheet · Change role (phone)']) {
+    const src = frameNamed(M, name)[0];
+    const clone = src.clone(); clone.name = 'tmp dark';
+    await M.figma.setCurrentPageAsync(clone.page()); M.figma.currentPage.selection = [clone];
+    r = await send(M, { type: 'theme', theme: 'dark' });
+    const lightColl = [...M.COLLS.values()].find((c) => c.name === 'Color');
+    const leaks = [clone].concat(clone.findAll(() => true)).filter((n) => (n._fills || []).concat(n._strokes || []).some((p) => p.boundVariables && !n.instAncestor() && M.VARS.get(p.boundVariables.color.id).variableCollectionId === lightColl.id && !M.COLLS.get(lightColl.id).modes[1]));
+    check(!r.err && (leaks.length === 0 || lightColl.modes.length > 1), 'Dark theme applies to ' + name + ' and leaves no light variable (' + leaks.length + ' left)' + (r.err ? ': ' + r.err.message : ''));
+    clone.remove();
+  }
+  // second run is a no-op
+  const ids2 = new Set(after.filter((n) => !n.removed).map((n) => n.id)); const vars2 = M.VARS.size; const n2 = allNodes(M).length;
+  r = await send(M, { type: 'update' });
+  check(!r.err && r.done && r.done.added.length === 0, 'second Update library adds nothing' + (r.err ? ': ' + r.err.message : (r.done && r.done.added.length ? ': ' + r.done.added.join(', ') : '')));
+  const after2 = allNodes(M);
+  check(after2.length === n2 && after2.every((n) => ids2.has(n.id)) && M.VARS.size === vars2 && tc1.children.length === 16, 'second Update library changes no layer, variant or variable');
+  r = await send(M, { type: 'export', version: SPEC_VERSION });
+  if (r.done) { compareExport(r.done.files, label + ' export'); check(r.done.files['tokens.css'].includes('--mp-size-dialog-sm: 400px;') && r.done.files['tokens.css'].includes('--mp-size-dialog-md: 560px;') && r.done.files['dimension.touch.json'].includes('"dialog-md"') && r.done.files['dimension.desktop.json'].includes('"dialog-md"'), 'export writes size/dialog-sm and size/dialog-md (byte for byte with docs/design/tokens)'); }
+  return M;
+}
+
+async function updateScenario(label, opts, from) {
+  console.log('\n■ ' + label);
+  let M;
+  if (from === '1.7.0') { M = (await olderFile(opts, '1.7.0')).M; check(M.ROOT.getPluginData('version') === '1.7.0', 'built a 1.7.0 library with the 1.7.0 plugin'); }
+  else M = await updateTo170(label, opts, from);
+  return updateTo180(M, label, opts, from);
 }
 
 (async function main() {
@@ -304,6 +494,9 @@ async function updateScenario(label, opts, from) {
   check(warn.length === 0, 'no warnings in the report');
   console.log('  time ' + (Date.now() - t) + ' ms');
   const a1 = audit(M, 's1');
+  BUILD_COUNTS = { sets: a1.sets.length, comps: a1.comps, variants: a1.variants };
+  console.log('  a new build holds ' + BUILD_COUNTS.sets + ' sets, ' + BUILD_COUNTS.comps + ' standalone components and ' + BUILD_COUNTS.variants + ' variants');
+  state180(M, { maxModes: 1 }, 'new build (Starter)');
   // dark preview: no paint should still use the light Color collection
   const findHost = (name) => M.ROOT.children.find((p) => p.name === name) || M.ROOT.children.map((p) => p.children.find((n) => n.type === 'SECTION' && n.name === name)).find(Boolean);
   const darkPage = findHost('Templates · Dark preview');
@@ -363,7 +556,9 @@ async function updateScenario(label, opts, from) {
   r = await send(M, { type: 'build' });
   check(!r.err, 'build finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
   check(M.ROOT.children.length === 27, 'full layout uses 27 pages (got ' + M.ROOT.children.length + ')');
-  audit(M, 's2');
+  const a2 = audit(M, 's2');
+  check(a2.sets.length === BUILD_COUNTS.sets && a2.comps === BUILD_COUNTS.comps && a2.variants === BUILD_COUNTS.variants, 'the modes layout builds the same components as the Starter layout');
+  state180(M, { maxModes: 4 }, 'new build (modes)');
   r = await send(M, { type: 'export', version: SPEC_VERSION });
   if (r.done) compareExport(r.done.files, 'modes');
 
@@ -381,13 +576,15 @@ async function updateScenario(label, opts, from) {
   r = await send(M, { type: 'build' });
   check(r.err && /empty/.test(r.err.message), 'build refuses a non-empty file');
 
-  // 5, 6 · Update library on 1.0.0, 1.5.0 and 1.6.0 files (Starter layout, then modes layout)
+  // 5, 6 · Update library on 1.0.0, 1.5.0, 1.6.0 and 1.7.0 files (Starter layout, then modes layout). The first three go to 1.7.0 with the 1.7.0 plugin, then every file to 1.8.0
   await updateScenario('Scenario 5a · Update library on a 1.0.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 }, '1.0.0');
   await updateScenario('Scenario 5b · Update library on a 1.5.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 }, '1.5.0');
   await updateScenario('Scenario 5c · Update library on a 1.6.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 }, '1.6.0');
+  await updateScenario('Scenario 5d · Update library on a 1.7.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 }, '1.7.0');
   await updateScenario('Scenario 6a · Update library on a 1.0.0 file (modes, full page layout)', { maxModes: 4 }, '1.0.0');
   await updateScenario('Scenario 6b · Update library on a 1.5.0 file (modes, full page layout)', { maxModes: 4 }, '1.5.0');
   await updateScenario('Scenario 6c · Update library on a 1.6.0 file (modes, full page layout)', { maxModes: 4 }, '1.6.0');
+  await updateScenario('Scenario 6d · Update library on a 1.7.0 file (modes, full page layout)', { maxModes: 4 }, '1.7.0');
 
   // 7 · Update library refuses files it must not touch
   console.log('\n■ Scenario 7 · Update library guards');
@@ -412,7 +609,7 @@ async function updateScenario(label, opts, from) {
   check(!r.err && r.done.added.length === 0, 'and a second run is again a no-op');
 
   // 8 · the in-place phone template fixes touch only what the plugin made
-  console.log('\n■ Scenario 8 · In-place fix guards (1.5.0 file)');
+  console.log('\n■ Scenario 8 · In-place fix guards (1.5.0 file, 1.7.0 plugin)');
   async function guardFile() {
     const F = await olderFile({ maxModes: 1, maxPages: 3 }, '1.5.0');
     const X = F.M; const lg = F.legacy;
@@ -453,7 +650,7 @@ async function updateScenario(label, opts, from) {
   check(!r.err && r.done && r.done.report.some((l) => /skipped phone topbar swap: a PhoneTopbar component set that is not the plugin's/.test(l)) && !r.done.added.some((l) => /swap phone topbar/.test(l)) && allNodes(X).filter((n) => n.name === 'Topbar · phone').length === 3, 'a PhoneTopbar set that is not the plugin\'s blocks the swap and is reported' + (r.err ? ': ' + r.err.message : ''));
 
   // 9 · 1.7.0 additions touch only the plugin's own sets, and fill in only what is missing
-  console.log('\n■ Scenario 9 · 1.7.0 update guards (1.6.0 file)');
+  console.log('\n■ Scenario 9 · 1.7.0 update guards (1.6.0 file, 1.7.0 plugin)');
   const STARTER = { maxModes: 1, maxPages: 3 };
   const reportOf = (res) => (res.done ? res.done.report.concat(res.done.added) : []);
   const noOpAgain = async (Y, what) => { const n = allNodes(Y).length; const res = await send(Y, { type: 'update' }); check(!res.err && res.done && res.done.added.length === 0 && allNodes(Y).length === n, what + ': a second run is a no-op' + (res.done && res.done.added.length ? ' (' + res.done.added.join(', ') + ')' : '')); };
@@ -498,6 +695,60 @@ async function updateScenario(label, opts, from) {
   check(!r.err && add9.length === 2 && add9.includes('Button variants (2): Variant=Link and State=Loading') && add9.includes('templates Auth (2 frames)'), 'the update re-adds only those (' + add9.join(', ') + ')');
   check(setOf(Y, 'Button').children.length === 75 && gone9.every((n) => setOf(Y, 'Button').children.filter((c) => c.name === n).length === 1) && goneNames.every((n) => authHost.children.filter((c) => c.name === n).length === 1), 'Button has 75 variants again and each frame exists once');
   await noOpAgain(Y, 'partial file');
+
+  // 10 · release 1.8.0: what Update library refuses, skips and repairs (1.7.0 files)
+  console.log('\n■ Scenario 10 · 1.8.0 update guards');
+  const rep10 = (res) => (res.done ? res.done.report.concat(res.done.added) : []);
+  const fileOf = async () => { const Y = (await olderFile(STARTER, '1.7.0')).M; load(Y, CODE); return Y; };
+  const noOp10 = async (Y, what) => { const n = allNodes(Y).length; const res = await send(Y, { type: 'update' }); check(!res.err && res.done && res.done.added.length === 0 && allNodes(Y).length === n, what + ': a second run is a no-op' + (res.done && res.done.added.length ? ' (' + res.done.added.join(', ') + ')' : '')); };
+  // a. a file below 1.7.0 is refused, with nothing touched
+  let Z = (await olderFile(STARTER, '1.6.0')).M; load(Z, CODE);
+  let nz = allNodes(Z).length, vz = Z.VARS.size;
+  r = await send(Z, { type: 'update' });
+  check(r.err && /below 1\.7\.0/.test(r.err.message) && /run 1\.7\.0 first/.test(r.err.message) && allNodes(Z).length === nz && Z.VARS.size === vz && Z.ROOT.getPluginData('version') === '1.6.0', 'a 1.6.0 file is refused with "run 1.7.0 first" and nothing is changed' + (r.err ? '' : ' (no error)'));
+  Z = (await olderFile(STARTER, '1.0.0')).M; load(Z, CODE);
+  r = await send(Z, { type: 'update' });
+  check(r.err && /below 1\.7\.0/.test(r.err.message), 'a 1.0.0 file is refused too');
+  // b. the version says 1.7.0 but items of 1.7.0 are missing
+  Z = await fileOf(); compOf(Z, 'Field').name = 'Field copy'; setOf(Z, 'MenuItem').name = 'MenuItem copy';
+  nz = allNodes(Z).length; vz = Z.VARS.size;
+  r = await send(Z, { type: 'update' });
+  check(r.err && /needs release 1\.7\.0 items/.test(r.err.message) && /Field/.test(r.err.message) && /MenuItem with State=Selected/.test(r.err.message) && /run 1\.7\.0 first/i.test(r.err.message) && allNodes(Z).length === nz && Z.VARS.size === vz, 'a 1.7.0 file without Field and MenuItem is refused, naming them, with nothing changed' + (r.err ? ': ' + r.err.message : ''));
+  Z = await fileOf(); Z.ROOT.setPluginData('version', '1.6.0');
+  r = await send(Z, { type: 'update' });
+  check(r.err && /below 1\.7\.0/.test(r.err.message), 'a file whose version says 1.6.0 is refused even when it has the 1.7.0 items');
+  // c. a component named Select that is not the plugin's: not touched, no second Select, the templates wait
+  Z = await fileOf();
+  const theirSelect = Z.figma.createComponent(); theirSelect.name = 'Select'; theirSelect.description = 'Our own select';
+  r = await send(Z, { type: 'update' }); let rp = rep10(r);
+  check(!r.err && countNamed(Z, 'COMPONENT', 'Select') === 1 && compOf(Z, 'Select') === theirSelect && theirSelect.description === 'Our own select' && !setOf(Z, 'Select'), 'the foreign Select is kept as it is and no second Select is made' + (r.err ? ': ' + r.err.message : ''));
+  check(rp.some((l) => /ℹ skipped component Select: a component named Select that is not the plugin's/.test(l)) && rp.some((l) => /ℹ skipped Panel templates: they need the plugin's .*Select/.test(l)) && frameNamed(Z, 'Shared · Members · Admin').length === 0, 'Select and the Panel templates are skipped and reported');
+  check(setOf(Z, 'Dialog') && setOf(Z, 'Toast') && setOf(Z, 'Textarea') && setOf(Z, 'EmptyState') && setOf(Z, 'TableCell').children.length === 16 && !rp.some((l) => /Field Control/.test(l)), 'the other components and TableCell Loading still arrive; the Field Control keeps its values');
+  await noOp10(Z, 'foreign Select');
+  // d. a TableCell set that is not the plugin's: no variants, no Loading templates
+  Z = await fileOf(); setOf(Z, 'TableCell').setPluginData('mondapac-ds', '');
+  r = await send(Z, { type: 'update' }); rp = rep10(r);
+  check(!r.err && setOf(Z, 'TableCell').children.length === 11 && rp.some((l) => /ℹ skipped TableCell State=Loading: the TableCell set is not the plugin's/.test(l)) && rp.some((l) => /ℹ skipped Panel templates: they need the plugin's .*TableCell/.test(l)) && frameNamed(Z, 'Shared · Members · Seller').length === 0, 'a foreign TableCell gets no Loading variants; the Panel templates are skipped and reported' + (r.err ? ': ' + r.err.message : ''));
+  check(setOf(Z, 'Select') && setOf(Z, 'Dialog') && setOf(Z, 'EmptyState') && !rp.some((l) => /update TableCell description/.test(l)), 'the new components still arrive and the foreign TableCell description is left alone');
+  await noOp10(Z, 'foreign TableCell');
+  // e. partly updated: two Loading variants, two Loading frames and a template body are gone; only they come back
+  Z = await fileOf();
+  r = await send(Z, { type: 'update' });
+  check(!r.err && r.done && r.done.added.length > 0, 'first update of the partial file');
+  const tcz = setOf(Z, 'TableCell');
+  const lostV = tcz.children.filter((c) => ['Type=Number, State=Loading', 'Type=Actions, State=Loading'].includes(c.name)); lostV.forEach((c) => c.remove());
+  const lostF = ['Shared · Members · Admin · Loading', 'Shared · Members · Seller · Loading'].map((n) => frameNamed(Z, n)[0]); const lostN = lostF.map((f) => f.name); lostF.forEach((f) => f.remove());
+  check(tcz.children.length === 14 && lostV.length === 2 && lostN.length === 2, 'removed 2 Loading variants and 2 Loading frames');
+  r = await send(Z, { type: 'update' }); const add10 = r.done ? r.done.added : [];
+  check(!r.err && add10.length === 3 && add10.includes('variants added to TableCell (2): State=Loading') && add10.includes('templates Panel · Admin (1 frames)') && add10.includes('templates Panel · Seller (1 frames)'), 'the update re-adds only those (' + add10.join(', ') + ')' + (r.err ? ': ' + r.err.message : ''));
+  check(tcz.children.length === 16 && tcz.children.filter((c) => /State=Loading/.test(c.name)).length === 5 && lostN.every((n) => frameNamed(Z, n).length === 1) && BODIES_180.every((n) => countNamed(Z, 'COMPONENT', n) === 1), 'TableCell has 16 variants again, each Loading frame exists once and no template body was made twice');
+  const lx = tcz.children.filter((c) => /State=Loading/.test(c.name)).map((c) => Math.round(c.x));
+  check(lx.every((x) => x === lx[0]), 'the re-added variants join the existing Loading column');
+  await noOp10(Z, 'partial file');
+  // f. a Field Control that already has the preferred values, and a description that was changed by hand, are left alone
+  Z = await fileOf(); compOf(Z, 'Field').description = 'My own Field note';
+  r = await send(Z, { type: 'update' }); rp = rep10(r);
+  check(!r.err && compOf(Z, 'Field').description === 'My own Field note' && !rp.some((l) => /update Field description/.test(l)) && rp.some((l) => /Field Control: preferred values/.test(l)), 'a Field description edited by hand is kept; the preferred values are still added');
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
   process.exitCode = failures ? 1 : 0;

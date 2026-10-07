@@ -19,6 +19,9 @@ function brandMarkBlock(root) {
   return bm;
 }
 
+// 1.7.0 said "Select or Textarea from 1.2.0"; the Panel release is numbered 1.8.0 and adds both. Update library refreshes the description only while it holds the 1.7.0 text.
+const FIELD_DESC = 'A form field: Label, an optional "(optional)" mark, the control, a helper line, a character counter and an error message with an icon. Control is an INSTANCE_SWAP slot (exposed): it takes Input today and Select or Textarea from 1.8.0; set the nested Input\'s Type, State and Value from the Field instance. Show error goes with the control\'s State=Error. Accessibility: the label is a <label> for the control; helper and error are tied to it with aria-describedby and the control gets aria-invalid; errors are text with an icon, never colour alone; optional fields say "(optional)", no asterisks.';
+const FIELD_DESC_170 = FIELD_DESC.replace('Select or Textarea from 1.8.0', 'Select or Textarea from 1.2.0');
 // ---- Field (Forms & selection): label, optional mark, the control slot, helper, counter and error
 function fieldBlock(root) {
   const control = S.sets.Input.set.children.filter(function (v) { const vp = v.variantProperties; return vp.State === 'Default' && (vp.Type === undefined || vp.Type === 'Text'); })[0];
@@ -31,14 +34,14 @@ function fieldBlock(root) {
     ]);
     c.children[3].children[0].name = 'error-icon';
     safe('expose control', function () { c.children[1].isExposedInstance = true; });
-  }, { desc: 'A form field: Label, an optional "(optional)" mark, the control, a helper line, a character counter and an error message with an icon. Control is an INSTANCE_SWAP slot (exposed): it takes Input today and Select or Textarea from 1.2.0; set the nested Input\'s Type, State and Value from the Field instance. Show error goes with the control\'s State=Error. Accessibility: the label is a <label> for the control; helper and error are tied to it with aria-describedby and the control gets aria-invalid; errors are text with an icon, never colour alone; optional fields say "(optional)", no asterisks.',
+  }, { desc: FIELD_DESC,
     text: [{ prop: 'Label', node: 'label', def: 'Email' }, { prop: 'Helper', node: 'helper', def: 'You’ll sign in with this email.' }, { prop: 'Counter', node: 'counter', def: '0 / 500' }, { prop: 'Error', node: 'error-text', def: 'Enter your email.' }],
     bool: [{ prop: 'Optional', node: 'optional', def: false }, { prop: 'Show helper', node: 'helper', def: true }, { prop: 'Show counter', node: 'counter', def: false }, { prop: 'Show error', node: 'error', def: false }],
     swap: [{ prop: 'Control', node: 'control', comp: control }] });
   const wrap = frame({ name: 'Field', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(wrap, f);
   componentBlock(root, wrap, { title: 'Field', summary: 'Every form control in a form sits in a Field (1.7.0): the label above, helper and counter below, the error under the control.',
     use: ['Every input of the Auth screens and of forms inside the shell.', 'Turn on Show error together with the control\'s State=Error; the error summary above the form repeats it.'],
-    props: ['Label, Helper, Counter, Error (text)', 'Optional, Show helper, Show counter, Show error (boolean)', 'Control (instance swap; Input now, Select and Textarea from 1.2.0)'],
+    props: ['Label, Helper, Counter, Error (text)', 'Optional, Show helper, Show counter, Show error (boolean)', 'Control (instance swap; Input, Select or Textarea since 1.8.0)'],
     a11y: ['<label for>; helper and error via aria-describedby; aria-invalid on error.', 'Errors are not announced on each keystroke.', '"(optional)" instead of asterisks.'],
     dont: ['A placeholder instead of a label.', 'Colour alone for the error.'] });
   return f;

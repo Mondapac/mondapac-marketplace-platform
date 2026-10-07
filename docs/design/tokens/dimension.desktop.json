@@ -128,6 +128,14 @@
     "auth-card": {
       "$type": "dimension",
       "$value": "400px"
+    },
+    "dialog-sm": {
+      "$type": "dimension",
+      "$value": "400px"
+    },
+    "dialog-md": {
+      "$type": "dimension",
+      "$value": "560px"
     }
   },
   "border": {
