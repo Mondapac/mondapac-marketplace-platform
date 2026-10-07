@@ -19,7 +19,7 @@ differentiator, so the relaxation must stay explicit, evidence-based and fail-cl
    `SELLER` (the offering seller's certificate) or `MANUFACTURER` (an approved product
    certificate covering that product). Every claim is still a certification record attached
    to an Offer; product content never states a certification (CAT-41/43).
-2. **Policy per category, fail-closed.** `ClaimBasisPolicy` (owned by `certification`,
+2. **Policy per category, fail-closed.** *(Amended by ADR-0028: strictest matching row wins; relaxing revisions need a second admin; categories in use cannot be retired.)* `ClaimBasisPolicy` (owned by `certification`,
    revisioned) maps (certification type, platform category or handling condition) to
    `SELLER_REQUIRED` | `SELLER_OR_MANUFACTURER` | `NOT_APPLICABLE`. With no matching row,
    the certification type's default applies; Halal's default is `SELLER_REQUIRED`. When
@@ -28,7 +28,7 @@ differentiator, so the relaxation must stay explicit, evidence-based and fail-cl
    deli, repacked or portioned goods, prepared food, in-store bakery;
    `SELLER_OR_MANUFACTURER` for sealed packaged, sealed frozen, confectionery, beverages,
    cosmetics. `SELF_DECLARATION` types may only use `SELLER`.
-3. **Manufacturer evidence.** `ProductCertification` (owned by `certification`):
+3. **Manufacturer evidence.** *(Amended by ADR-0028: coverage records the product revision; re-review by another person.)* `ProductCertification` (owned by `certification`):
    manufacturer, type, issuer from the registry (CERT-04), certificate number, issue and
    expiry dates, document (locked storage), and `ProductCertificationCoverage` listing the
    covered product ids (optionally variant ids). Brand alone never counts as coverage.
@@ -43,7 +43,7 @@ differentiator, so the relaxation must stay explicit, evidence-based and fail-cl
    `SEALED_ORIGINAL` and a per-Offer seller attestation that the stock is genuine, sealed
    and unaltered, recorded with time and actor. `REPACKED`, `PREPARED` and `FRESH` always
    require `SELLER`.
-5. **One enforcement point.** `certification` exposes `evaluateClaim(seller, product,
+5. **One enforcement point.** *(Amended by ADR-0028: inputs echoed, version check, entry paths listed.)* `certification` exposes `evaluateClaim(seller, product,
    variant, type, handling, categoryPath)`, returning a `ClaimDecision` (allowed, basis,
    certificate ids, policy revision). The Offer aggregate accepts a tag only with a
    matching `ClaimDecision`; changing handling or category re-evaluates every tag. All
@@ -52,7 +52,7 @@ differentiator, so the relaxation must stay explicit, evidence-based and fail-cl
    holds a valid X certificate, **or** the category policy allows `MANUFACTURER` and an
    approved, unexpired product certificate of type X covers the product and the Offer is
    `SEALED_ORIGINAL` with an attestation.
-6. **Continuous enforcement.** `certification.product-certification-approved / expired /
+6. **Continuous enforcement.** *(Amended by ADR-0028: reconciliation owner and derecognised issuers.)* `certification.product-certification-approved / expired /
    revoked / suspended.v1` and `certification.claim-policy-changed.v1` make `catalog`
    re-evaluate affected tags in idempotent batches: re-anchor to another valid basis
    (`catalog.offer-tag-reanchored.v1`) or suspend the tag and take the Offer off sale.
@@ -63,7 +63,7 @@ differentiator, so the relaxation must stay explicit, evidence-based and fail-cl
    halal-certified; sold in original sealed packaging". If both bases qualify, the seller
    badge is shown. The "Halal" filter includes both, with sub-options "Certified seller"
    and "Manufacturer certified".
-8. **Snapshots and audit.** Order lines record type, basis, certificate ids and revisions,
+8. **Snapshots and audit.** *(Amended by ADR-0028: purchase-moment copy of the attestation and "verified with issuer".)* Order lines record type, basis, certificate ids and revisions,
    issuer, number, expiry, handling and policy revision. Every certificate, coverage and
    policy change is in the audit log (CERT-32).
 9. **Security.** Policy changes, product-certificate approval, coverage edits, handling
