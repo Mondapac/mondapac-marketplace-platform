@@ -29,6 +29,11 @@ class Denial {
   ) {}
 }
 
+/** The key of the constructor: private to this file (M1). */
+const CONSTRUCTION: unique symbol = Symbol('UseCaseGate.construction');
+/** Every gate this file built. */
+const gates = new WeakSet<object>();
+
 const SELLER_STATES: readonly unknown[] = ['pending', 'rejected'];
 
 /** The check's answer, or a denial when it is not one of the shapes the port allows. */
@@ -80,19 +85,33 @@ function decisionOf(decision: AccessDecision): Denial | null {
  * the use-case name, the rule, the actor and its id, and the correlation id. The gate opens no
  * unit of work: the use-case body does that, after admission (platform persistence 3.4).
  *
- * Final: a subclass could replace the decision, so the constructor refuses one.
+ * Final: a subclass could replace the decision, so the constructor refuses one. Minted: the
+ * constructor needs a key private to this file, so a gate exists only through
+ * {@link createUseCaseGate}, which only `platform/authz/` may import (dependency-cruiser
+ * `use-case-gate-is-built-by-authz`); `UseCase` accepts only a gate {@link isUseCaseGate}
+ * recognises (security review of slice 1c, M1). A module never sees this class as a value: it
+ * injects {@link USE_CASE_GATE} and names the type through the `platform/authz` barrel.
  */
 export class UseCaseGate {
   readonly #logger = new Logger('UseCaseGate');
+  readonly #markets: MarketRegistry;
+  /** `null` until identity slice 2 binds it: every authenticated actor is then refused. */
+  readonly #authorisation: AuthorisationCheck | null;
 
   constructor(
-    private readonly markets: MarketRegistry,
-    /** `null` until identity slice 2 binds it: every authenticated actor is then refused. */
-    private readonly authorisation: AuthorisationCheck | null,
+    key: typeof CONSTRUCTION,
+    markets: MarketRegistry,
+    authorisation: AuthorisationCheck | null,
   ) {
     if (new.target !== UseCaseGate) {
       throw new TypeError('UseCaseGate is final; it cannot be subclassed');
     }
+    if (key !== CONSTRUCTION) {
+      throw new TypeError('A UseCaseGate is built by platform/authz only');
+    }
+    this.#markets = markets;
+    this.#authorisation = authorisation;
+    gates.add(this);
   }
 
   /**
@@ -131,7 +150,7 @@ export class UseCaseGate {
       return new Denial('context-not-minted', DENIED);
     }
     const { market, actor } = context;
-    if (!this.markets.isHosted(market.marketId)) return new Denial('market-not-hosted', DENIED);
+    if (!this.#markets.isHosted(market.marketId)) return new Denial('market-not-hosted', DENIED);
     if (actor.marketId !== market.marketId) return new Denial('market-mismatch', DENIED);
 
     const { rule } = declaration;
@@ -145,8 +164,8 @@ export class UseCaseGate {
         : createCallContext(market, anonymousActor(market), context.correlationId);
     }
     if (actor.kind === 'anonymous') return new Denial('authentication-required', UNAUTHENTICATED);
-    if (this.authorisation === null) return new Denial('check-unbound', UNAVAILABLE);
-    return decisionOf(await this.authorisation.check(context, declaration)) ?? context;
+    if (this.#authorisation === null) return new Denial('check-unbound', UNAVAILABLE);
+    return decisionOf(await this.#authorisation.check(context, declaration)) ?? context;
   }
 
   private deny(
@@ -174,4 +193,20 @@ export class UseCaseGate {
     }
     return err(denial.answer);
   }
+}
+
+/**
+ * Builds a gate. Imported only by `platform/authz/` (the module's provider) and by tests; a
+ * dependency-cruiser rule refuses every other importer of this file.
+ */
+export function createUseCaseGate(
+  markets: MarketRegistry,
+  authorisation: AuthorisationCheck | null,
+): UseCaseGate {
+  return new UseCaseGate(CONSTRUCTION, markets, authorisation);
+}
+
+/** True only for a gate {@link createUseCaseGate} built: never a look-alike or a copy. */
+export function isUseCaseGate(value: unknown): value is UseCaseGate {
+  return typeof value === 'object' && value !== null && gates.has(value);
 }

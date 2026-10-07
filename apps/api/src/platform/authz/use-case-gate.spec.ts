@@ -12,7 +12,7 @@ import { MarketRegistry } from '../market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../market-context/tenant';
 import type { AccessDeclaration, PermissionKey } from './access-rule';
 import type { AccessDecision, AuthorisationCheck } from './authorisation-check';
-import { UseCaseGate } from './use-case-gate';
+import { createUseCaseGate, isUseCaseGate, UseCaseGate } from './use-case-gate';
 
 // identity design 5.2 ("Wrapper"), 5.1 (anonymous, HF9), HF4; foundations 6.2 to 6.4.
 
@@ -85,7 +85,7 @@ describe.each(TEST_MARKETS)('UseCaseGate in market %s', (code) => {
   });
 
   const gateWith = (check: AuthorisationCheck | null = new RecordingCheck(ALLOW)) =>
-    new UseCaseGate(registryHosting(TEST_MARKET_IDS), check);
+    createUseCaseGate(registryHosting(TEST_MARKET_IDS), check);
 
   describe('the system rule', () => {
     it('admits the system actor, with the very context it received', async () => {
@@ -275,7 +275,7 @@ describe.each(TEST_MARKETS)('UseCaseGate in market %s', (code) => {
 
     it('refuses a Market this Region Stack does not host (W2)', async () => {
       const others = TEST_MARKETS.filter((other) => other !== code);
-      const gate = new UseCaseGate(registryHosting(others), new RecordingCheck(ALLOW));
+      const gate = createUseCaseGate(registryHosting(others), new RecordingCheck(ALLOW));
 
       await expect(gate.admit(SYSTEM_ONLY, testCallContext(market, 'system'))).resolves.toEqual({
         ok: false,
@@ -290,7 +290,7 @@ describe.each(TEST_MARKETS)('UseCaseGate in market %s', (code) => {
       });
 
       await expect(
-        new UseCaseGate(broken, null).admit(SYSTEM_ONLY, testCallContext(market, 'system')),
+        createUseCaseGate(broken, null).admit(SYSTEM_ONLY, testCallContext(market, 'system')),
       ).resolves.toEqual({ ok: false, error: { code: 'access.unavailable' } });
     });
   });
@@ -342,10 +342,32 @@ describe.each(TEST_MARKETS)('UseCaseGate in market %s', (code) => {
   });
 });
 
-describe('UseCaseGate is final', () => {
+describe('UseCaseGate is final and minted (M1)', () => {
   it('cannot be subclassed: a subclass could replace the decision', () => {
     class Lenient extends UseCaseGate {}
 
-    expect(() => new Lenient(registryHosting(TEST_MARKET_IDS), null)).toThrow(TypeError);
+    expect(
+      () => new Lenient(Symbol('forged') as never, registryHosting(TEST_MARKET_IDS), null),
+    ).toThrow(TypeError);
+  });
+
+  it("cannot be built without the private key, even from a real gate's constructor", () => {
+    const real = createUseCaseGate(registryHosting(TEST_MARKET_IDS), null);
+    const Gate = real.constructor as new (...args: unknown[]) => UseCaseGate;
+
+    expect(() => new Gate(Symbol('UseCaseGate.construction'), registryHosting([]), null)).toThrow(
+      /built by platform\/authz/,
+    );
+    expect(() => new Gate(undefined, registryHosting([]), null)).toThrow(TypeError);
+  });
+
+  it('recognises only the gates its factory built', () => {
+    const real = createUseCaseGate(registryHosting(TEST_MARKET_IDS), null);
+    const lookalike = Object.create(UseCaseGate.prototype) as unknown;
+
+    expect(isUseCaseGate(real)).toBe(true);
+    expect(isUseCaseGate(lookalike)).toBe(false);
+    expect(isUseCaseGate({ admit: () => undefined })).toBe(false);
+    expect(isUseCaseGate(null)).toBe(false);
   });
 });

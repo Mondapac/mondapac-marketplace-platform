@@ -6,14 +6,14 @@ import { TEST_MARKET_IDS, TEST_MARKETS } from '../../../test/support/test-config
 import type { MarketConfig } from '../market-config/market-config';
 import { MarketRegistry } from '../market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../market-context/tenant';
-import type { AccessDeclaration } from './access-rule';
+import type { AccessDeclaration, PermissionKey } from './access-rule';
 import { UseCase, UseCaseDefinitionError } from './use-case';
-import { UseCaseGate } from './use-case-gate';
+import { createUseCaseGate, UseCaseGate } from './use-case-gate';
 
 // identity design 5.2: `execute` is the only public entry; it asks the gate, then `handle`.
 
 const gate = () =>
-  new UseCaseGate(
+  createUseCaseGate(
     new MarketRegistry(new Map(TEST_MARKET_IDS.map((id) => [id, {} as MarketConfig]))),
     null,
   );
@@ -137,9 +137,230 @@ describe('UseCase construction refuses what the CI check also refuses (HF4)', ()
     expect(() => new Malformed(gate())).toThrow(UseCaseDefinitionError);
   });
 
-  it('refuses a gate that is not the platform UseCaseGate', () => {
+  it('refuses a gate that is not the platform UseCaseGate, a look-alike instance included (M1)', () => {
     const lenient = { admit: (_: unknown, context: CallContext) => Promise.resolve(ok(context)) };
+    const lookalike = Object.assign(Object.create(UseCaseGate.prototype) as object, lenient);
 
     expect(() => new PurgeThings(lenient as unknown as UseCaseGate)).toThrow(/UseCaseGate/);
+    expect(() => new PurgeThings(lookalike as UseCaseGate)).toThrow(/UseCaseGate/);
+  });
+
+  it('refuses a declaration given as an accessor', () => {
+    class Computed extends UseCase<void, string> {
+      static override get access(): AccessDeclaration {
+        return { name: 'identity.computed', rule: { kind: 'system' } };
+      }
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      protected handle(): Promise<Result<string, never>> {
+        return Promise.resolve(ok('handled'));
+      }
+    }
+
+    expect(() => new Computed(gate())).toThrow(UseCaseDefinitionError);
+  });
+});
+
+// Security review of slice 1c, H1: the body of handle is reachable only through execute.
+describe.each(TEST_MARKETS)('UseCase keeps handle behind the gate in market %s (H1)', (code) => {
+  const market = testMarketContext(code, PLATFORM_TENANT_ID);
+  const anonymous = () => testCallContext(market, 'anonymous');
+  const system = () => testCallContext(market, 'system');
+  let warnings: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warnings.mockRestore();
+  });
+
+  it('refuses a call of a handle the subclass made public', async () => {
+    class PublicHandle extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.public-handle',
+        rule: { kind: 'system' },
+      };
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      // eslint-disable-next-line @typescript-eslint/require-await -- an async body, as in a module
+      override async handle(context: CallContext): Promise<Result<string, never>> {
+        return ok(`ran as ${context.actor.kind}`);
+      }
+    }
+    const useCase = new PublicHandle(gate());
+
+    expect(() => useCase.handle(anonymous())).toThrow(UseCaseDefinitionError);
+    expect(() => PublicHandle.prototype.handle.call(useCase, anonymous())).toThrow(
+      UseCaseDefinitionError,
+    );
+    await expect(useCase.execute(anonymous())).resolves.toEqual({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
+    await expect(useCase.execute(system())).resolves.toEqual({ ok: true, value: 'ran as system' });
+  });
+
+  it('refuses at construction a constructor that replaces execute', () => {
+    class Reassigned extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.reassigned',
+        rule: { kind: 'system' },
+      };
+      constructor(gate: UseCaseGate) {
+        super(gate);
+        (this as { execute: unknown }).execute = (context: CallContext) => this.handle(context);
+      }
+      protected handle(context: CallContext): Promise<Result<string, never>> {
+        return Promise.resolve(ok(`ran as ${context.actor.kind}`));
+      }
+    }
+
+    expect(() => new Reassigned(gate())).toThrow(TypeError);
+  });
+
+  it('refuses at construction execute or handle as a class field', () => {
+    class ExecuteField extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.execute-field',
+        rule: { kind: 'system' },
+      };
+      override readonly execute = () => Promise.resolve(ok('skipped the gate'));
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      protected handle(): Promise<Result<string, never>> {
+        return Promise.resolve(ok('handled'));
+      }
+    }
+    class HandleField extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.handle-field',
+        rule: { kind: 'system' },
+      };
+      protected readonly handle = () => Promise.resolve(ok('handled'));
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+    }
+
+    expect(() => new ExecuteField(gate())).toThrow(TypeError);
+    expect(() => new HandleField(gate())).toThrow(UseCaseDefinitionError);
+  });
+
+  it('refuses a second public method that calls handle', async () => {
+    class SecondEntry extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.second-entry',
+        rule: { kind: 'system' },
+      };
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      run(context: CallContext) {
+        return this.handle(context);
+      }
+      protected handle(context: CallContext): Promise<Result<string, never>> {
+        return Promise.resolve(ok(`ran as ${context.actor.kind}`));
+      }
+    }
+    const useCase = new SecondEntry(gate());
+
+    expect(() => useCase.run(anonymous())).toThrow(UseCaseDefinitionError);
+    await expect(useCase.execute(system())).resolves.toEqual({ ok: true, value: 'ran as system' });
+    // After execute, the window is closed again.
+    expect(() => useCase.run(system())).toThrow(UseCaseDefinitionError);
+  });
+
+  it('runs an async body to its end, and handle stays closed while the body awaits', async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    class Slow extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.slow',
+        rule: { kind: 'system' },
+      };
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      peek(context: CallContext) {
+        return this.handle(context);
+      }
+      protected async handle(context: CallContext): Promise<Result<string, never>> {
+        await released;
+        return ok(`done in ${context.market.marketId}`);
+      }
+    }
+    const useCase = new Slow(gate());
+
+    const running = useCase.execute(system());
+    await Promise.resolve();
+    expect(() => useCase.peek(system())).toThrow(UseCaseDefinitionError);
+    release();
+    await expect(running).resolves.toEqual({ ok: true, value: `done in ${code}` });
+  });
+});
+
+describe('UseCase freezes its declaration (L1)', () => {
+  it('makes the static access non-writable and its rule immutable after construction', async () => {
+    class Frozen extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.frozen',
+        rule: { kind: 'system' },
+      };
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      protected handle(): Promise<Result<string, never>> {
+        return Promise.resolve(ok('handled'));
+      }
+    }
+    const useCase = new Frozen(gate());
+    const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    expect(() => {
+      (Frozen.access as { rule: unknown }).rule = { kind: 'anonymous' };
+    }).toThrow(TypeError);
+    expect(() => {
+      (Frozen.access.rule as { kind: string }).kind = 'anonymous';
+    }).toThrow(TypeError);
+    expect(() => {
+      (Frozen as { access: unknown }).access = {
+        name: 'identity.frozen',
+        rule: { kind: 'anonymous' },
+      };
+    }).toThrow(TypeError);
+    expect(() =>
+      Object.defineProperty(Frozen, 'access', {
+        value: { name: 'x.y', rule: { kind: 'anonymous' } },
+      }),
+    ).toThrow(TypeError);
+    await expect(
+      useCase.execute(testCallContext(testMarketContext('AU', PLATFORM_TENANT_ID), 'anonymous')),
+    ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+    warnings.mockRestore();
+  });
+
+  it('freezes the key list of a permissions rule', () => {
+    const allOf = ['identity.things.view'] as unknown as readonly [PermissionKey];
+    class Keys extends UseCase<void, string> {
+      static override readonly access: AccessDeclaration = {
+        name: 'identity.keys',
+        rule: { kind: 'permissions', allOf },
+      };
+      constructor(gate: UseCaseGate) {
+        super(gate);
+      }
+      protected handle(): Promise<Result<string, never>> {
+        return Promise.resolve(ok('handled'));
+      }
+    }
+    new Keys(gate());
+
+    expect(Object.isFrozen(allOf)).toBe(true);
+    expect(() => (allOf as unknown as string[]).push('identity.things.edit')).toThrow(TypeError);
   });
 });

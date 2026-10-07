@@ -1,10 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import { MarketRegistry } from '../market-config/market-registry';
-import { UseCaseGate } from './use-case-gate';
+import { createUseCaseGate } from './use-case-gate';
+import { USE_CASE_GATE } from './use-case-gate.token';
 
 /**
  * The access-rule mechanism (identity design 5.2; platform-foundations design 6). Global, like
- * the other platform runtime modules: every module's use cases take the {@link UseCaseGate}.
+ * the other platform runtime modules: every module's use cases take the gate through
+ * {@link USE_CASE_GATE}. This provider is the only place a running process builds a gate (M1).
  *
  * Until identity slice 2 no `AuthorisationCheck` exists, so the gate is built without one and
  * refuses every authenticated actor with `access.unavailable` (no authenticated actor can be
@@ -15,11 +17,11 @@ import { UseCaseGate } from './use-case-gate';
 @Module({
   providers: [
     {
-      provide: UseCaseGate,
+      provide: USE_CASE_GATE,
       inject: [MarketRegistry],
-      useFactory: (markets: MarketRegistry) => new UseCaseGate(markets, null),
+      useFactory: (markets: MarketRegistry) => createUseCaseGate(markets, null),
     },
   ],
-  exports: [UseCaseGate],
+  exports: [USE_CASE_GATE],
 })
 export class AuthzModule {}
