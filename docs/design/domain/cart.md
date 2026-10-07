@@ -1,9 +1,9 @@
 # Cart — design part of the combined gate (tier B)
 
 **Author:** Mohammad (software-architect) — 2026-10-07
-**Status:** Design part of the combined gate: Ali (cto) approve with changes, Hassan (security-tester) approve with conditions, Mojtaba (database-designer) approve with changes, Hadi (product-owner) decisions — all applied 2026-10-07; approval recorded only after catalog G2 (CC1–CC3) and sellers G2 (SC1–SC2) (Ali). Sellers G2 (PR #46) and its minimum-order mini-review (PR #47) are merged and accept SC1–SC3 (7.1); catalog G2 is still open.
+**Status:** Design part of the combined gate: Ali (cto) approve with changes, Hassan (security-tester) approve with conditions, Mojtaba (database-designer) approve with changes, Hadi (product-owner) decisions — all applied 2026-10-07; approval recorded only after catalog G2 (CC1–CC3) and sellers G2 (SC1–SC2) (Ali). Sellers G2 (PR #46) and its minimum-order mini-review (PR #47) are merged and accept SC1–SC3 (7.1); the catalog G2 draft (branch `docs/catalog-g2-design`, 25cbf3a) accepts CC1–CC3 with two refinements, applied here (K-1, 7.1), and is not yet approved.
 **Ground truth:** `docs/modules/cart/brief.md` (domain part of the combined gate approved by the owner 2026-10-07; sections, owner answers and acceptance criteria are cited as "brief s5", "Q3", "AC"; Hassan's rewrite of the guest-cart rules as "brief s5 guest"); `docs/features/03-cart-orders-returns.md` section 1 (CRT-01..09; CRT-09 is the guest cart); ADR-0001, 0002, 0003, 0004 (decision 1: carts in PostgreSQL, `cart` schema, Redis never the source of truth), 0005, 0006, 0007, 0008, 0010, 0013, 0018, 0019, 0020, 0022, 0024 (decision 5: read-time composition decided at this gate); `docs/design/domain/identity.md` ("ID 6.4"), `platform-foundations.md` ("PF 6.2"), `platform-persistence-and-events.md` ("PE 3.1"); `docs/design/domain/inventory.md` ("INV 7.1") and `docs/design/domain/pricing.md` ("PRC 6.2"), as in PRs #43 and #44 (2026-10-07, Ali's and Hassan's reviews applied).
-**Not yet available:** the `catalog` G2 design (`docs/modules/README.md`). What cart needs from it is listed as named dependencies (7.1); until that G2 accepts them, every `catalog` contract here is a placeholder. The `sellers` contracts SC1–SC3 are taken from `docs/design/domain/sellers.md` 7.1 and 18 (merged, PRs #46 and #47).
+**Not yet approved:** the `catalog` G2 design (`docs/modules/README.md`). What cart needs from it is listed as named dependencies (7.1) and taken from the catalog G2 draft ("CAT 9.1", "CAT 9.7", "CAT 18 K-1"; branch `docs/catalog-g2-design`, 25cbf3a), with Hassan's review L3 on that draft (badge data only for `active` tags; other tags left out); until that G2 is approved, every `catalog` contract here is provisional. The `sellers` contracts SC1–SC3 are taken from `docs/design/domain/sellers.md` 7.1 and 18 (merged, PRs #46 and #47).
 
 ## 1. Scope
 
@@ -86,14 +86,16 @@ Forbidden: `MERGED` → anything; an account cart → `MERGED`; a guest cart tha
 
 ### 3.2 Line state (derived on every read, never stored)
 `BUYABLE`, or `UNBUYABLE` with one reason, by this precedence (first match wins, so the client shows one cause):
-1. `offer-unavailable` — `catalog` does not answer the key as on sale in this Market (deleted, off sale, Variant not part of the Offer's product, other Market, unknown).
+1. `offer-unavailable` — `catalog.offerListings` (CC1) leaves the key out of a successful answer, or answers it with `listed: false` or `variantBelongs: false`. One reason, no cause shown: `listed` carries no reason code (CAT 9.7 refinement a), and cart infers nothing else from an absent key (unknown, other Market, deleted, never published and unpublished product all look the same, by design).
 2. `seller-cannot-sell` — the may-sell contract says no or failed (ADR-0022 decision 6, fail closed).
 3. `no-valid-price` — `pricing` answers `no-valid-price` (PRC 6.2).
 4. `out-of-stock` — `inventory` status `OUT`.
 5. `reduce-quantity` — status `LOW` and `quantity > onlyLeft`; `onlyLeft` is public (INV 5.4), so it may be shown.
 6. `check-unavailable` — a facade call for this line failed or answered outside its contract (for example a currency that is not the Market's). Fail closed: not in totals, blocks checkout.
 
-A failed catalog call or `*.batch.too-large` → `check-unavailable` for every affected line. `offer-unavailable` only when a key is absent from a successful answer (Ali, change 4).
+A failed catalog call or `*.batch.too-large` (an oversized batch is refused whole) → `check-unavailable` for every affected line. `offer-unavailable` only when a key is absent from a successful answer or answered `listed: false` or `variantBelongs: false` (Ali, change 4; K-1).
+
+`listed: true` is never permission to buy (Ali, K-1): `BUYABLE` still needs `variantBelongs: true`, may-sell (2), a price (3) and availability (4, 5), and `ordering` re-checks everything at checkout. Every batch facade read here, `offerListings` included, is advisory (ADR-0025 decision 1).
 
 `reduce-quantity` is the only reason the customer clears by changing the quantity; it is the brief's "reduce the quantity" message (brief s4 flow 2). With `IN_STOCK` cart cannot know that a quantity exceeds the stock, because `getAvailability` takes no quantity and answers no exact number (Hassan, Q-S1, INV 7.1). That case is caught by `inventory.reserve` at checkout (`not-enough`, no number) and shown by `ordering`. Decided (Hadi, Q-H3): cart shows "reduce the quantity" only when the status is `LOW`; otherwise `ordering` shows it at reservation.
 
@@ -139,8 +141,8 @@ Input of add: `{offerId, variantId, quantity}`. Any price or currency field is n
 Add, in order (PE 3.1 row 5: facade reads first, then one short write unit):
 1. Guest only: if no valid guest cart exists, reserve a creation count (4); always reserve a line-write count. Over the limit → `request.throttled`. The creation count is used even when the add is then refused (for example `offer-unavailable`); this is deliberate for stopping abuse and must not be moved after the write (Hassan, Low finding).
 2. Read the cart (read-only unit).
-3. Facade reads for the one key (7.1): `catalog` first; if it answers the Offer as on sale in this Market, then `sellers.sellingEligibility` for its seller, `pricing` and `inventory` in parallel (pricing's H5: raw ids reach `pricing` only after `catalog` answered them as published).
-4. `LineEvaluator`: any reason 1–4 or 6 of 3.2 → `cart.offer-not-purchasable` with that reason; nothing is written. An Offer of another Market is absent from catalog's answer → `offer-unavailable` (AC "Offer of another Market").
+3. Facade reads for the one key (7.1): `catalog.offerListings` first; if it answers the key present with `listed: true` and `variantBelongs: true`, then `sellers.sellingEligibility` for its seller, `pricing` and `inventory` in parallel (pricing's H5: raw ids reach `pricing` only after `catalog` answered them as published).
+4. `LineEvaluator`: any reason 1–4 or 6 of 3.2 → `cart.offer-not-purchasable` with that reason; nothing is written. An Offer of another Market is absent from catalog's answer → `offer-unavailable` (AC "Offer of another Market"); so are an unknown, deleted or never-published Offer and an unpublished product, and `listed: false` (3.2 reason 1).
 5. Target = existing quantity (0 if no line) + requested, then `min(target, LineCeilingPolicy.limit)`, where the ceiling is `MarketConfig.maxLineQuantity` (AU 99, Ali). If the limited target is not above the existing quantity, the line is left as it is. The answer says `clamped: 'market-ceiling' | 'only-left'` when it limited the request (AC "ceiling 99, stock 200, 120 → 99").
 6. Open the write unit: reload the cart by version; check the line limit (Q-H1: the per-Market limit, AU 50; a new line over it → `cart.too-many-lines`); create the cart if none (guest: mint the token, 4); create or update the line; a new line takes `priceAtAdd` = the effective `unitPrice` and `addedAt` = now; set `lastChangedAt`; save.
 
@@ -149,11 +151,11 @@ Change quantity: absolute value, the same limit as step 5 (needs the `inventory`
 ### 6.2 Read-time composition (brief s4 flow 2; brief s5 "sellable")
 `cart.view-cart` / `cart.guest-view-cart`:
 1. Read the cart (read-only unit). No cart, or expired (3.1) → an empty cart.
-2. One batch to `catalog` for all keys (≤ 200, the batch limit of pricing and inventory; the line limit of ≤ 50 keeps a view under it, 8).
-3. In parallel, for the keys `catalog` answered as on sale: `sellers.sellingEligibility` and `sellers.sellerSummaries` for the distinct seller ids (may-sell and "Sold by" name, 7.1; at most 50 ids, under the facade's 100), one `pricing.getEffectivePrices`, one `inventory.getAvailability`.
+2. One `catalog.offerListings` batch for all keys (≤ 200, the batch limit of catalog, pricing and inventory; the line limit of ≤ 50 keeps a view under it, 8).
+3. In parallel, for the keys `catalog` answered present with `listed: true` and `variantBelongs: true`: `sellers.sellingEligibility` and `sellers.sellerSummaries` for the distinct seller ids (may-sell and "Sold by" name, 7.1; at most 50 ids, under the facade's 100), one `pricing.getEffectivePrices`, one `inventory.getAvailability`.
 4. `LineEvaluator` per line (3.2), then `CartEvaluator` (6.4).
 
-So one view makes five facade calls in two rounds, whatever the number of lines (brief s9: 20 lines from 5 sellers in one request). A facade error marks the affected lines `check-unavailable` (a failed catalog call or `*.batch.too-large` → `check-unavailable` for every affected line; `offer-unavailable` only when a key is absent from a successful answer); the view still answers (fail closed for buying, not for seeing). The answer per seller group: `sellerId`, "Sold by" display name (CRT-03), lines, subtotal of buyable lines, minimum-order state. Per line: ids, display data and the certification badge exactly as `catalog` returns them (cart builds no claim text; brief s5), quantity, state and reason, `unitPrice` and line amount when priced, `taxInclusive` as `pricing` returns it, the price-change notice (6.3), and `onlyLeft` when `LOW`. Totals: per seller and for the cart, over buyable lines only, in the Market currency (ADR-0007 decision 1; arithmetic across currencies throws, which 3.2 reason 6 prevents).
+So one view makes five facade calls in two rounds, whatever the number of lines (brief s9: 20 lines from 5 sellers in one request). A facade error marks the affected lines `check-unavailable` (a failed catalog call or `*.batch.too-large` → `check-unavailable` for every affected line; `offer-unavailable` only when a key is absent from a successful answer); the view still answers (fail closed for buying, not for seeing). The answer per seller group: `sellerId`, "Sold by" display name (CRT-03), lines, subtotal of buyable lines, minimum-order state. Per line: ids, display data (product name, Variant label, primary image key) and, per tag, the badge data exactly as `catalog` returns it; `offerListings` returns only `active` tags with their badge data and leaves suspended and rechecking tags out (Hassan, L3), and cart shows a certification chip only when badge data is present and builds no claim text (brief s5); quantity, state and reason, `unitPrice` and line amount when priced, `taxInclusive` as `pricing` returns it, the price-change notice (6.3), and `onlyLeft` when `LOW`. Totals: per seller and for the cart, over buyable lines only, in the Market currency (ADR-0007 decision 1; arithmetic across currencies throws, which 3.2 reason 6 prevents). A key absent from catalog's answer has no display data and no chip; the line shows its state only.
 
 ### 6.3 Price-change notice (Q4)
 When a line is priced and `unitPrice ≠ priceAtAdd` (amount or currency), the line carries `priceChanged: { previous: priceAtAdd }` beside the current `unitPrice`. The current effective price is always the one shown and summed; a price pending review is never shown, because `pricing` never answers one (PRC 4.1 step 5). Decided (Hadi, Q-H2): the notice clears when a write actually changes that line (quantity change, or re-add; remove and re-add counts as a change); `priceAtAdd` then becomes the current effective price. A merge does not clear it; a refused or no-op add does not clear it.
@@ -190,9 +192,9 @@ Answer: counts, the lines that were limited (`clamped`) and the guest lines not 
 ### 7.1 What cart needs from others
 | # | From | Need | Status |
 |---|---|---|---|
-| CC1 | `catalog` facade (catalog G2) | Batch, ≤ 200 (Offer, Variant) keys, `anonymous`, published state only: per key `sellerId`, sale state (on sale, or not, from catalog's own Offer state: ADR-0010 decision 3), whether the Variant belongs to the Offer's product, display data (product title, Variant label, primary image reference), and the certification badge structure as catalog shows it (built from `evaluateClaim`). Unknown, foreign-Market and deleted keys are absent | Placeholder until catalog G2 |
-| CC2 | `catalog` | Every sell unit has a stable Variant id (a Simple product has exactly one), the assumption of INV 13 | Placeholder |
-| CC3 | `catalog` | `Offer` and `Variant` id types from `contracts/` | Placeholder |
+| CC1 | `catalog` facade (catalog G2) | Batch, ≤ 200 (Offer, Variant) keys, `anonymous`, published state only: per key `sellerId`, sale state (on sale, or not, from catalog's own Offer state: ADR-0010 decision 3), whether the Variant belongs to the Offer's product, display data (product title, Variant label, primary image reference), and the certification badge structure as catalog shows it (built from `evaluateClaim`). Unknown, foreign-Market and deleted keys are absent | Accepted by the catalog G2 draft (CAT 9.1, 9.7; K-1) with two refinements: `offerListings(ctx, keys: {offerId, variantId}[])`, ≤ 200, `anonymous` and `system`, published state only; per key `sellerId`, `productId`, (a) `listed: boolean` with no reason code, `variantBelongs`, display data (product name, Variant label, primary image key), `publishedRevisionId`, and tags: (b) only `active` tags, each with its badge data; suspended and rechecking tags are left out (Hassan, L3, in the next catalog push). Keys whose Offer is unknown, of another Market, deleted or never published, or whose product is not published, are absent. Advisory (ADR-0025 decision 1); an oversized call is refused whole. Approval recorded only after catalog G2 is approved (Ali) |
+| CC2 | `catalog` | Every sell unit has a stable Variant id (a Simple product has exactly one), the assumption of INV 13 | Match in the catalog G2 draft (CAT 9.7, M-1): a Variant id is never reused or revived |
+| CC3 | `catalog` | `Offer` and `Variant` id types from `contracts/` | Match in the catalog G2 draft (CAT 9.7): branded `Id<'Offer'>`, `Id<'Variant'>` from `catalog/contracts/` |
 | SC1 | `sellers` facade (sellers G2) | The may-sell contract for a set of seller ids, fail closed (ADR-0022 decision 6) | Accepted at sellers G2 (merged, PR #46): `sellingEligibility(ctx, sellerIds)` → `{ eligible }` per id, ≤ 100 ids, `anonymous` and `system`, no reason code, unknown id or error = not eligible (sellers 7.1, 7.2) |
 | SC2 | `sellers` | Public display name per seller ("Sold by", CRT-03), batch | Accepted at sellers G2: `sellerSummaries(ctx, sellerIds)`, the public store name once approved, ≤ 100 ids, `anonymous` (sellers 7.1). An eligible seller always has an approved revision, so a buyable line always has a name; a missing name shows the line's group without one and changes no line state |
 | SC3 | `sellers` (mini-review; brief s8, s11) | Optional minimum order per seller: `Money` in the Market currency, > 0, or none (default) | Accepted by the sellers mini-review (sellers 18, merged in PR #47): `minimumOrder` on `sellerSummaries`, none or `Money` for an approved seller, absent otherwise and on a currency mismatch; set under `sellers.store-settings.edit` (or an admin under `sellers.seller.edit`), version-checked, audited, no event. Built in sellers slice 20, before cart slice 4 |
@@ -228,6 +230,7 @@ Named boundary rule: only `modules/ordering` imports `cart.facade` (the pattern 
 |---|---|---|
 | One owner, one Market per cart | `Cart` constructor (owner union); DB CHECK on owner kind (11); unique account cart per (Market, account) | Unit; two-Market DB test |
 | No Offer from another Market | `catalog` answers only this Market's keys (CC1); add refuses `offer-unavailable` (6.1) | AC "Offer of another Market" |
+| An absent key or `listed: false` is `offer-unavailable`, nothing more; `listed: true` alone never makes a line buyable (K-1) | `LineEvaluator` (3.2); `ordering` re-checks at checkout | Unit: absent key, `listed: false`, `variantBelongs: false`, `listed: true` with may-sell no / no price / `OUT` |
 | Lines unique on (Offer, Variant); quantity integer 1..ceiling | `Cart.addLine` / `changeQuantity`; `LineQuantity`; DB unique and CHECK ≥ 1 | AC CRT-02; AC "120 → 99" |
 | Ceiling = Market ceiling (AU 99), or `onlyLeft` when the stock is low (Q-H3) | `LineCeilingPolicy` in add, change and merge | AC ceiling; merge AC |
 | At most the per-Market line limit (≤ 50; AU 50) distinct lines per cart (Q-H1) | Write unit of add (6.1 step 6) and merge (6.5 step 3) | Unit; merge over the limit |
@@ -239,7 +242,7 @@ Named boundary rule: only `modules/ordering` imports `cart.facade` (the pattern 
 | Guest CSRF without a token: JSON only before parsing, no state change on a safe method, no CORS with credentials (H-2) | Cart presentation layer (4) | `text/plain` with JSON body → `request.csrf` or 415 (slice 3) |
 | Merge: synchronous, idempotent, same Market, sum to limit, older price at add, `MERGED`, cookie cleared | `cart.merge-guest-cart` + `MergePolicy` (6.5) | Merge AC; replay and two-tab tests |
 | Ownership (IDOR) | `handle` of every customer and guest use case (5) | AC "customer A, customer B"; a guest-to-guest test |
-| No claim words of its own | Cart passes catalog's badge structure unchanged; no claim text in cart's contracts | Contracts test |
+| No claim words of its own | Cart passes catalog's badge data unchanged and shows a chip only when badge data is present (only `active` tags carry it, L3); no claim text in cart's contracts | Contracts test; a line whose tags are absent shows no chip |
 | No exact stock shown | Cart has only `getAvailability` (status, `onlyLeft` when LOW) | Inventory AC 8 reused |
 | Purge 90/7 days; on account erasure | Read-time expiry (3.1); job (12); erasure handler (6.7) | AC retention |
 | Boundaries | Dependency rules: cart imports only `contracts/` of the five modules; only `ordering` imports `cart.facade` | `pnpm boundaries` |
@@ -308,7 +311,7 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 
 ## 13. Slices, design system, deferred
 **Slices** (brief s11; every slice: AU and ZZ fixtures, OpenAPI, structured logs with correlation id, `pnpm verify`):
-1. Signed-in cart: add, change, remove, ceiling (needs CC1, SC1, PC1, IC1, PL1 `maxLineQuantity`).
+1. Signed-in cart: add, change, remove, ceiling (needs CC1 `offerListings`, built in catalog slice 11; SC1, PC1, IC1, PL1 `maxLineQuantity`).
 2. Grouped view, "Sold by", read-time state, price-change notice (SC2).
 3. Guest cart and merge — **security-tester review mandatory**: token entropy and hash-only storage, cookie attributes, IDOR across guests and accounts, CSRF and origin, rate limits fail closed, merge replay and two-tab race, cookie cleared. Depends on the trust-proxy setting and PostgreSQL-backed limiter counters (4). Tests add (Hassan): a `text/plain` request with a JSON body → `request.csrf` or 415; a duplicate cookie name; a cookie from another Market; a merge without `x-csrf-token`; the limiter unavailable → `access.unavailable` with nothing written.
 4. Optional minimum order (SC3 accepted in sellers 18; needs sellers slice 20 first; wording O-4 with Jafar and Reza).
@@ -351,7 +354,7 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 
 **Still open**
 - `order_clearances` retention vs `ordering`'s maximum redelivery window → ordering G2 (Ali, Mohammad).
-- Approval recording waits for catalog G2 (CC1–CC3) (Ali); sellers G2 (SC1–SC2) and the SC3 mini-review are merged.
+- Approval recording waits for catalog G2 (CC1–CC3) (Ali); the catalog G2 draft (25cbf3a) accepts them with refinements (a) `listed` boolean and (b) badge data only for `active` tags (K-1, applied in 3.2, 6.1, 6.2, 7.1, 9); sellers G2 (SC1–SC2) and the SC3 mini-review are merged.
 - Erasure event name → identity mini-review with CUS-03 (14).
 - Reza (ui-ux-designer) review of 13 / brief s12: not yet received.
 - Brief edits for the brief editor (Hadi): the merge cap in brief s5 ("min(stock, 99)") and the "Offer deleted" and "reduce quantity" lines in flow 2 need the Q-H3 rewording. The A-1 row was confirmed by Hadi on 2026-10-07 (only the mechanism of brief s6 changes; ordering G2 re-confirms it).
@@ -363,6 +366,7 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 | 2026-10-07 | Hassan (security-tester) | Approve with conditions; no Critical or High; H-1, H-2 decided | Conditions and findings (2 Medium, 2 Low, 1 Info) in 4, 6.1, 6.5, 9, 13, 14 |
 | 2026-10-07 | Mojtaba (database-designer) | Approve with changes; M-1 answered | Changes 1–6 in 11, 12; `order_clearances` retention open → ordering G2 |
 | 2026-10-07 | Hadi (product-owner) | Q-H1, Q-H2, Q-H3 accepted; no owner question | 2.3, 3.2, 6.1, 6.3, 6.5, 8, 9; brief rows in 17 |
+| 2026-10-07 | Ali (cto), on the catalog G2 draft (K-1; Hassan's L3) | CC1 accepted as `offerListings` with (a) `listed` boolean, no reason codes, (b) only `active` tags with badge data; absent key = `offer-unavailable`; `listed: true` is not permission to buy; batch reads advisory (ADR-0025 decision 1); CC2, CC3 match. No brief rule changes (brief flow 2 already shows one "Offer out of sale" reason; brief s5 badge rule unchanged) | 3.2, 6.1, 6.2, 7.1, 9, 13, 15. Recorded as approved only after catalog G2 is approved |
 | — | Reza (ui-ux-designer) | Not yet received (13, brief s12) | — |
 
 Security bar (Ali, unchanged): Hassan reviews slice 3 and slice 5 before merge.
