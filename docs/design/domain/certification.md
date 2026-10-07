@@ -1208,4 +1208,4 @@ the rule (B2); easing a type or a claim rule needs a second admin (H1).
 | `claude/adr-0019-follow-ups.md` | Note: `evaluateClaims`, approve, decline, revoke, expiry and auto-approval of self-declaration are deterministic paths of ADR-0019 decision 10 | Mohammad, with the G2 record |
 | `config/markets/AU.json`, `test/fixtures/markets/ZZ.json`, schema | 5.1 (shared files: own PR, announced) | Slices 2 to 9; Hossein |
 | `.env.example` | Bucket names, scanner address, the index secret | Slices 3, 4, 7; shared-file PR |
-| `docs/modules/README.md`, the board | G2 status; requests of 18; ADR-0029 reserved for object storage and file intake | Orchestrator |
+| `docs/modules/README.md`, the board | G2 status; requests of 18; ADR-0029 for object storage and file intake (Proposed 2026-10-07) | Orchestrator |

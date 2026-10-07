@@ -111,7 +111,7 @@ the store page itself is the storefront's.
 | Board 16 (design track): screens and states of brief s12 | 17.2 |
 | Board 18 (2) and (3): boundary rule "catalog imports neither pricing nor inventory"; no price, stock or "sellable now" in any answer | 9, 9.1, AC 6 test (15.1 slice 1) |
 | ADR-0026: CAT-36, OFR-01, OFR-03 as editable settings with restrictive safe values | 7.3 |
-| ADR-0029 (Ali, reserved): cookieless origin for public photos | 10.4; dependency of slice 13 |
+| ADR-0029 (Ali, Proposed 2026-10-07): cookieless origin for public photos | 10.4; dependency of slice 13 |
 | INV 13, PRC 6.1 CF1 to CF4, CRT 7.1 CC1 to CC3 | 9.1, 9.4, 9.7 |
 | IA 3.1 and 8 item 2: which catalog keys open the Review queue tabs | 8.1 |
 
@@ -1147,7 +1147,7 @@ revert and history; Hassan L2); `public` → `taken-down` (10.5). A rendition is
 | Case | How |
 |---|---|
 | Published photo | Cookieless origin, `Content-Type` set by the server, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'`, no cookies accepted or set, immutable caching; the URL is built by code from the content key (R9 for AI surfaces too) |
-| Pending or draft photo | Only the owning seller (`catalog.own-product.view`) and reviewers (`catalog.product.view`), and only as a **server-made rendition** (never the master or an upload): streamed by the API with `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (Hassan L1) (no signed links in Phase 3: ADR-0029, Hassan) |
+| Pending or draft photo | Only the owning seller (`catalog.own-product.view`) and reviewers (`catalog.product.view`), and only as a **server-made rendition** (never the master or an upload): streamed by the API with `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (Hassan L1); no signed links in Phase 3 (ADR-0029, Hassan) |
 | Raw upload, master | Never served to anyone |
 | Origin (L1) | ADR-0029 must require the cookieless origin to be a **separate registrable domain** (not a subdomain of the panel or API domain), so no cookie scope or same-site rule can reach it |
 | Alt text | Optional; the product name in the request locale when empty (brief s5) |
@@ -1376,7 +1376,7 @@ pace of `identity` and `sellers` (brief s8: "4 weeks" is not credible).
 ### 16.2 ADRs needed
 | ADR | Status | Order |
 |---|---|---|
-| ADR-0029 "Object storage and file intake" incl. the cookieless origin (no signed links in Phase 3); must require the origin to be a **separate registrable domain** (Hassan L1) | Reserved; Ali writes | Accepted before slice 13 (on the first-sale path) |
+| ADR-0029 "Object storage and file intake" incl. the cookieless origin (no signed links in Phase 3); must require the origin to be a **separate registrable domain** (Hassan L1) | Proposed 2026-10-07 (Ali; Hassan reviewed); Accepted after spikes 1 and 2 | Accepted before slice 13 (on the first-sale path) |
 | ADR-0026 (settings store) | Accepted 2026-10-07 | Store landed before slice 10 |
 | ADR-0028 (claim contract) | Accepted 2026-10-07 | Applied here; reading of d1 for a never-published product accepted by Ali as a reading, not an amendment, with the conditions of 5.1a (19.2 item 3) |
 | "ADR 3" of ADR-0019 (provider) | Existing plan | Before slice 25 |
@@ -1654,7 +1654,7 @@ day one (Q1).
 | `docs/features/02-catalog-inventory.md` | OFR-02 per-variant image removed; CAT-53 "moves the shelf" corrected; CAT-31 weight note | Product track; Hadi |
 | `docs/design/data/catalog.md` | New, from 17.1, including the review changes listed there | Mojtaba |
 | `docs/modules/catalog/ux.md` | New, from 17.2, including the review changes listed there | Reza |
-| ADR-0029 (reserved) | Separate registrable domain for the cookieless origin (L1) | Ali |
+| ADR-0029 (Proposed 2026-10-07) | Separate registrable domain for the cookieless origin (L1) | Ali |
 | ADR-0030 (reserved) | Raw SQL only on a checked-in list signed by Ali and Hassan (16.2) | Mohammad drafts (reserved), Hassan reviews |
 | `docs/design/domain/platform-foundations.md` | Row 10 (registry) marked pulled; `AttributeSchema` and `PlainText` noted | Mohammad, with P1 |
 | `docs/design/domain/inventory.md`, `pricing.md`, `cart.md` (PRs #43 to #45) | V-1, P-1, K-1; record "catalog G2 accepted CF1–CF4 / CC1–CC3 with the refinements of 9.7" | Their authors, after this G2 |
