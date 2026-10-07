@@ -36,36 +36,52 @@ function sparkline(vals, w, h, token) {
   return f;
 }
 
+// Button (release 1.7.0 adds Variant=Link and State=Loading). Top level, so "Update library" can add the new variants.
+const BTN = {
+  Primary: { Default: ['action/primary', null, 'text/on-accent'], Hover: ['action/primary-hover', null, 'text/on-accent'], Focus: ['action/primary', null, 'text/on-accent'], Disabled: ['action/primary-disabled', null, 'text/on-accent'] },
+  Secondary: { Default: ['bg/surface', 'border/control', 'text/primary'], Hover: ['bg/subtle', 'border/control', 'text/primary'], Focus: ['bg/surface', 'border/control', 'text/primary'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
+  Destructive: { Default: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Hover: ['status/critical/bg', 'status/critical/border', 'status/critical/fg'], Focus: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
+  Ghost: { Default: [null, null, 'text/link'], Hover: ['bg/subtle', null, 'text/link'], Focus: [null, null, 'text/link'], Disabled: [null, null, 'text/muted'] },
+  Link: { Default: [null, null, 'text/link'], Hover: [null, null, 'text/link-hover'], Focus: [null, null, 'text/link'], Disabled: [null, null, 'text/muted'] },
+};
+const BTN_SIZE = { Sm: ['size/control-sm', 'space/3', 'Label/Button Small', false], Md: ['size/control', 'space/3-5', 'Label/Button', false], Touch: ['size/control', 'space/4', 'Touch/Button', true] };
+const BUTTON_AXES = { Variant: ['Primary', 'Secondary', 'Destructive', 'Ghost', 'Link'], Size: ['Sm', 'Md', 'Touch'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Loading'] };
+const BUTTON_OPTS = { width: 1180, desc: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear. Link (1.7.0): a text action in a sentence or under a form, such as "Forgot password?"; no padding, underlined on hover. State=Loading (1.7.0): the Default colours with a spinner in place of the leading icon, at the same width; the form is read-only while it shows.',
+  text: [{ prop: 'Label', node: 'label', def: 'Button' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: false }, { prop: 'Trailing icon', node: 'icon-trailing', def: false }], swap: [{ prop: 'Icon', node: 'icon-leading', def: 'plus' }] };
+// A 16 px spinner: a faint full ring and a 270° arc, both strokes in the label colour.
+function spinner(token) {
+  const f = frame({ name: 'spinner', w: 16, h: 16 }); f.fills = [];
+  const ring = ellipse({ name: 'track', w: 12, fill: null, stroke: token, strokeW: 2, strokeAlign: 'CENTER', xy: [2, 2] }); ring.opacity = 0.3; add(f, ring);
+  add(f, vector({ name: 'arc', d: 'M 8 2 C 11.314 2 14 4.686 14 8 C 14 11.314 11.314 14 8 14 C 4.686 14 2 11.314 2 8', stroke: token, strokeW: 2, xy: [0, 0] }));
+  return f;
+}
+function buttonVariant(c, p) {
+  const loading = p.State === 'Loading';
+  const t = BTN[p.Variant][loading ? 'Default' : p.State]; const z = BTN_SIZE[p.Size]; const link = p.Variant === 'Link';
+  // text/link-hover is a text colour only, so the icons of a hovered Link stay text/link.
+  const ic = t[2] === 'text/link-hover' ? 'text/link' : t[2];
+  withTouch(z[3], function () {
+    const kids = loading ? [spinner(t[2]), text('Button', z[2], t[2], { name: 'label' })]
+      : [icon('plus', ic, 16), text('Button', z[2], t[2], { name: 'label', underline: link && p.State === 'Hover' }), icon('chevron-down', ic, 16)];
+    body(c, { dir: 'H', h: z[0], px: link ? 0 : z[1], gap: 'space/1-5', align: 'center', justify: 'center', fill: t[0], stroke: t[1], radius: 'radius/control' }, kids);
+    if (!loading) { c.children[0].name = 'icon-leading'; c.children[2].name = 'icon-trailing'; }
+    touchMode(c);
+  });
+  if (p.State === 'Focus') focusRing(c);
+}
+
 async function buildActions(page) {
   const root = pageShell(page, 'Actions', 'Buttons and icon buttons. One primary action per area; secondary for everything else; destructive actions ask for confirmation (…).');
-  const BTN = {
-    Primary: { Default: ['action/primary', null, 'text/on-accent'], Hover: ['action/primary-hover', null, 'text/on-accent'], Focus: ['action/primary', null, 'text/on-accent'], Disabled: ['action/primary-disabled', null, 'text/on-accent'] },
-    Secondary: { Default: ['bg/surface', 'border/control', 'text/primary'], Hover: ['bg/subtle', 'border/control', 'text/primary'], Focus: ['bg/surface', 'border/control', 'text/primary'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
-    Destructive: { Default: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Hover: ['status/critical/bg', 'status/critical/border', 'status/critical/fg'], Focus: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
-    Ghost: { Default: [null, null, 'text/link'], Hover: ['bg/subtle', null, 'text/link'], Focus: [null, null, 'text/link'], Disabled: [null, null, 'text/muted'] },
-  };
-  const SIZE = { Sm: ['size/control-sm', 'space/3', 'Label/Button Small', false], Md: ['size/control', 'space/3-5', 'Label/Button', false], Touch: ['size/control', 'space/4', 'Touch/Button', true] };
-  const button = makeSet('Button', { Variant: ['Primary', 'Secondary', 'Destructive', 'Ghost'], Size: ['Sm', 'Md', 'Touch'], State: ['Default', 'Hover', 'Focus', 'Disabled'] }, function (c, p) {
-    const t = BTN[p.Variant][p.State]; const z = SIZE[p.Size];
-    withTouch(z[3], function () {
-      body(c, { dir: 'H', h: z[0], px: z[1], gap: 'space/1-5', align: 'center', justify: 'center', fill: t[0], stroke: t[1], radius: 'radius/control' }, [
-        icon('plus', t[2] === 'text/on-accent' ? 'text/on-accent' : t[2], 16), text('Button', z[2], t[2], { name: 'label' }), icon('chevron-down', t[2], 16),
-      ]);
-      c.children[0].name = 'icon-leading'; c.children[2].name = 'icon-trailing';
-      touchMode(c);
-    });
-    if (p.State === 'Focus') focusRing(c);
-  }, { width: 1180, desc: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear.',
-    text: [{ prop: 'Label', node: 'label', def: 'Button' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: false }, { prop: 'Trailing icon', node: 'icon-trailing', def: false }], swap: [{ prop: 'Icon', node: 'icon-leading', def: 'plus' }] });
-  componentBlock(root, button, { title: 'Button', summary: 'Height 32 (Sm), 36 (Md) or 48 (Touch). Label in sentence case, verb first.',
-    use: ['Primary for the main action of a page or card (Accept, Start reviewing).', 'Secondary for supporting actions (Export, View shop).', 'Destructive for Reject…, Suspend… — always followed by a confirmation.', 'Touch size on the tablet order board.'],
+  const button = makeSet('Button', BUTTON_AXES, buttonVariant, BUTTON_OPTS);
+  componentBlock(root, button, { title: 'Button', summary: 'Height 32 (Sm), 36 (Md) or 48 (Touch). Label in sentence case, verb first. Link and Loading arrived in 1.7.0.',
+    use: ['Primary for the main action of a page or card (Accept, Start reviewing).', 'Secondary for supporting actions (Export, View shop).', 'Destructive for Reject…, Suspend… — always followed by a confirmation.', 'Link for text actions under a form (Forgot password?, Back to sign in).', 'Loading while a submit is in flight; the form is read-only, no page spinner.', 'Touch size on the tablet order board and on every Auth screen.'],
     props: ['Label (text)', 'Leading icon / Trailing icon (boolean)', 'Icon (instance swap)', 'Variant · Size · State'],
-    a11y: ['Focus state uses the Focus/Ring effect.', 'Disabled buttons explain why nearby (e.g. "Complete the 2 remaining checks").', 'Icon-only actions use IconButton with an aria-label.'],
-    dont: ['Two primary buttons side by side.', 'Colour-only meaning: destructive labels say what they do.'] });
+    a11y: ['Focus state uses the Focus/Ring effect.', 'Disabled buttons explain why nearby (e.g. "Complete the 2 remaining checks").', 'Loading keeps the label and sets aria-busy; the width does not change.', 'Icon-only actions use IconButton with an aria-label.'],
+    dont: ['Two primary buttons side by side.', 'Colour-only meaning: destructive labels say what they do.', 'Link for the main action of a form.'] });
 
   const ICB = { Secondary: { Default: ['bg/surface', 'border/control'], Hover: ['bg/subtle', 'border/control'], Focus: ['bg/surface', 'border/control'], Disabled: ['bg/surface', 'border/default'] }, Ghost: { Default: [null, null], Hover: ['bg/subtle', null], Focus: [null, null], Disabled: [null, null] } };
   const iconBtn = makeSet('IconButton', { Variant: ['Secondary', 'Ghost'], Size: ['Sm', 'Md', 'Touch'], State: ['Default', 'Hover', 'Focus', 'Disabled'] }, function (c, p) {
-    const t = ICB[p.Variant][p.State]; const z = SIZE[p.Size];
+    const t = ICB[p.Variant][p.State]; const z = BTN_SIZE[p.Size];
     withTouch(z[3], function () {
       body(c, { dir: 'H', w: z[0], h: z[0], align: 'center', justify: 'center', fill: t[0], stroke: t[1], radius: 'radius/control' }, [icon('more-vertical', p.State === 'Disabled' ? 'icon/muted' : 'icon/default', 18)]);
       c.children[0].name = 'icon'; touchMode(c);
@@ -76,17 +92,33 @@ async function buildActions(page) {
   tag(root);
 }
 
+// Input (release 1.7.0 adds the Type axis: Text, Password, Code). Top level, so "Update library" can add the new variants.
+const INPUT_AXES = { Type: ['Text', 'Password', 'Code'], State: ['Default', 'Hover', 'Focus', 'Filled', 'Disabled', 'Error'] };
+const INPUT_OPTS = { width: 1040, desc: 'Text and search input. Border uses border/input (3:1). Type=Password (1.7.0) adds a show/hide IconButton (exposed as "reveal"; icon eye while the password is hidden, swap it to eye-off while it shows; aria-pressed in code). Type=Code (1.7.0) is one field in the mono text style for a 6-digit code or a backup code: inputmode numeric, autocomplete one-time-code, no auto-advance or auto-submit. Password and Code keep their own text per state, because a TEXT property would force one text on every variant; Value applies to Type=Text.',
+  text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }] };
+const INPUT_DOC = { title: 'Input', summary: 'Search, filters and form fields. Wrap it in Field for a label, helper and error.', use: ['Search inside index pages; filters; form fields inside Field.', 'Type=Password for every password; Type=Code for a one-time code or backup code.'], props: ['Value (text, Type=Text)', 'Leading icon (boolean)', 'Type · State'], a11y: ['Always paired with a visible or visually hidden label (Field).', 'Error state adds a message below; colour is not enough.', 'The show/hide button is named "Show password" or "Hide password" and sits after its field in the focus order.'] };
+const INPUT_ICON = { Text: 'search', Password: 'lock', Code: 'key' };
+function inputVariant(c, p) {
+  const type = p.Type || 'Text';
+  const border = p.State === 'Error' ? 'status/critical/solid' : (p.State === 'Focus' ? 'action/primary' : (p.State === 'Hover' ? 'text/muted' : 'border/input'));
+  const filled = p.State === 'Filled' || (type !== 'Text' && p.State === 'Focus');
+  let value;
+  if (type === 'Text') value = text(p.State === 'Filled' ? 'MP-10482' : 'Order number or product', 'Body/Default', p.State === 'Filled' ? 'text/primary' : 'text/muted', { name: 'value', sizeH: 'FILL', truncate: true });
+  else if (type === 'Password') value = text(filled ? '••••••••••••••••' : '', 'Body/Default', p.State === 'Disabled' ? 'text/muted' : 'text/primary', { name: 'secret', sizeH: 'FILL', truncate: true });
+  else value = text(filled ? '482913' : '', 'Mono/Default', p.State === 'Disabled' ? 'text/muted' : 'text/primary', { name: 'code', sizeH: 'FILL', truncate: true });
+  const kids = [icon(INPUT_ICON[type], 'icon/muted', 16), value];
+  if (type === 'Password') kids.push(inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: p.State === 'Disabled' ? 'Disabled' : 'Default', Icon: { icon: 'eye' } }, { name: 'reveal' }));
+  body(c, { dir: 'H', w: 280, h: 'size/control', pad: [0, type === 'Password' ? 'space/0-5' : 'space/2-5', 0, 'space/2-5'], gap: 'space/2', align: 'center', fill: p.State === 'Disabled' ? 'bg/muted' : 'bg/surface', stroke: border, radius: 'radius/control' }, kids);
+  c.children[0].name = 'icon-leading';
+  if (type === 'Password') safe('expose reveal', function () { c.children[2].isExposedInstance = true; });
+  if (p.State === 'Focus') focusRing(c);
+}
+
 async function buildForms(page) {
   const root = pageShell(page, 'Forms & selection', 'Inputs, checkboxes, switches, segmented controls, tabs and filter chips.');
-  const input = makeSet('Input', { State: ['Default', 'Hover', 'Focus', 'Filled', 'Disabled', 'Error'] }, function (c, p) {
-    const border = p.State === 'Error' ? 'status/critical/solid' : (p.State === 'Focus' ? 'action/primary' : (p.State === 'Hover' ? 'text/muted' : 'border/input'));
-    body(c, { dir: 'H', w: 280, h: 'size/control', px: 'space/2-5', gap: 'space/2', align: 'center', fill: p.State === 'Disabled' ? 'bg/muted' : 'bg/surface', stroke: border, radius: 'radius/control' }, [
-      icon('search', 'icon/muted', 16), text(p.State === 'Filled' ? 'MP-10482' : 'Order number or product', 'Body/Default', p.State === 'Filled' ? 'text/primary' : 'text/muted', { name: 'value', sizeH: 'FILL', truncate: true }),
-    ]);
-    c.children[0].name = 'icon-leading';
-    if (p.State === 'Focus') focusRing(c);
-  }, { width: 1040, desc: 'Text and search input. Border uses border/input (3:1).', text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }] });
-  componentBlock(root, input, { title: 'Input', summary: 'Search, filters and form fields.', use: ['Search inside index pages; filters; form fields.'], a11y: ['Always paired with a visible or visually hidden label.', 'Error state adds a message below; colour is not enough.'] });
+  const input = makeSet('Input', INPUT_AXES, inputVariant, INPUT_OPTS);
+  componentBlock(root, input, INPUT_DOC);
+  fieldBlock(root);
 
   const cb = makeSet('Checkbox', { Value: ['Unchecked', 'Checked', 'Indeterminate'], State: ['Default', 'Focus', 'Disabled'] }, function (c, p) {
     const on = p.Value !== 'Unchecked';

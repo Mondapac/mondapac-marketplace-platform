@@ -76,19 +76,23 @@ function addColorVariable(c) {
   }
 }
 
+// Adds one primitive to the collection in S.primColl (used by the build and by "Update library", 1.7.0).
+function addPrimitive(p) {
+  const coll = S.primColl;
+  const v = figma.variables.createVariable('color/' + p.name, coll, 'COLOR');
+  v.setValueForMode(coll.modes[0].modeId, rgba(p.hex));
+  v.scopes = [];
+  v.description = p.hex + ' · step = 1000 × (1 − OKLab L)';
+  S.prim[p.name] = v;
+}
+
 async function buildVariables() {
   // 1. Primitives (hidden from publishing, no scopes: designers use semantic tokens only)
   const prim = newCollection('Primitives');
   prim.renameMode(prim.modes[0].modeId, 'Value');
   await safe('hide primitives', function () { prim.hiddenFromPublishing = true; });
-  const pm = prim.modes[0].modeId;
-  SPEC.primitives.forEach(function (p) {
-    const v = figma.variables.createVariable('color/' + p.name, prim, 'COLOR');
-    v.setValueForMode(pm, rgba(p.hex));
-    v.scopes = [];
-    v.description = p.hex + ' · step = 1000 × (1 − OKLab L)';
-    S.prim[p.name] = v;
-  });
+  S.primColl = prim;
+  SPEC.primitives.forEach(addPrimitive);
 
   // 2. Semantic colour: Light + Dark (modes when the plan allows, otherwise a parallel collection)
   const color = newCollection('Color');
@@ -317,6 +321,7 @@ function text(str, style, color, o) {
   if (o.w) { t.resize(o.w, t.height); t.textAutoResize = 'HEIGHT'; }
   if (o.truncate) { t.textAutoResize = 'HEIGHT'; t.textTruncation = 'ENDING'; t.maxLines = 1; }
   if (o.strike) t.textDecoration = 'STRIKETHROUGH';
+  if (o.underline) t.textDecoration = 'UNDERLINE';
   setMeta(t, o);
   return t;
 }

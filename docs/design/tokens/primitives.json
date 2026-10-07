@@ -203,6 +203,10 @@
       "775": {
         "$type": "color",
         "$value": "#141B2C"
+      },
+      "780": {
+        "$type": "color",
+        "$value": "#0B1D2E"
       }
     },
     "brown": {
@@ -567,6 +571,10 @@
       "700": {
         "$type": "color",
         "$value": "#123430"
+      },
+      "705": {
+        "$type": "color",
+        "$value": "#06352E"
       },
       "740": {
         "$type": "color",

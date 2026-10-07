@@ -1,5 +1,5 @@
 {
- "version": "1.6.0",
+ "version": "1.7.0",
  "generated": "2026-10-07",
  "primitives": [
   {
@@ -201,6 +201,10 @@
   {
    "name": "blue/775",
    "hex": "#141B2C"
+  },
+  {
+   "name": "blue/780",
+   "hex": "#0B1D2E"
   },
   {
    "name": "brown/60",
@@ -545,6 +549,10 @@
   {
    "name": "teal/700",
    "hex": "#123430"
+  },
+  {
+   "name": "teal/705",
+   "hex": "#06352E"
   },
   {
    "name": "teal/740",
@@ -1611,6 +1619,67 @@
     "SHAPE_FILL"
    ],
    "description": "Overlay behind drawers and modals; alpha is part of the value"
+  },
+  {
+   "name": "bg/qr",
+   "light": "neutral/0",
+   "dark": "neutral/0",
+   "lightHex": "#FFFFFF",
+   "darkHex": "#FFFFFF",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "QR code plate; white in both themes"
+  },
+  {
+   "name": "bg/auth-showcase-admin",
+   "light": "blue/780",
+   "dark": "blue/780",
+   "lightHex": "#0B1D2E",
+   "darkHex": "#0B1D2E",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "Auth brand panel, Admin; dark in both themes"
+  },
+  {
+   "name": "bg/auth-showcase-seller",
+   "light": "teal/705",
+   "dark": "teal/705",
+   "lightHex": "#06352E",
+   "darkHex": "#06352E",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "Auth brand panel, Seller; dark in both themes"
+  },
+  {
+   "name": "text/on-showcase",
+   "light": "neutral/0",
+   "dark": "neutral/0",
+   "lightHex": "#FFFFFF",
+   "darkHex": "#FFFFFF",
+   "scopes": [
+    "TEXT_FILL",
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "Brand line on the Auth brand panel"
+  },
+  {
+   "name": "text/on-showcase-muted",
+   "light": null,
+   "dark": null,
+   "lightHex": "#FFFFFFBD",
+   "darkHex": "#FFFFFFBD",
+   "scopes": [
+    "TEXT_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Secondary brand line on the Auth brand panel; alpha is part of the value"
   }
  ],
  "dimension": [
@@ -1880,6 +1949,14 @@
    "name": "size/topbar-phone",
    "desktop": 56,
    "touch": 56,
+   "scopes": [
+    "WIDTH_HEIGHT"
+   ]
+  },
+  {
+   "name": "size/auth-card",
+   "desktop": 400,
+   "touch": 400,
    "scopes": [
     "WIDTH_HEIGHT"
    ]

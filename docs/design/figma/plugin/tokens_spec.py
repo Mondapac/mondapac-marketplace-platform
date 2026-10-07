@@ -97,6 +97,12 @@ C = {
  # 1.6.0: appended last so a library updated in place exports in the same order as a fresh build.
  # Hex8 literals (RRGGBBAA): the alpha is part of the value, so there is no primitive and no alias.
  "bg/scrim": ("#11182780", "#00000099", "FRAME_FILL,SHAPE_FILL", "Overlay behind drawers and modals; alpha is part of the value"),
+ # 1.7.0 "Auth": appended last for the same reason. The brand panel colours are the same in both themes.
+ "bg/qr": ("#FFFFFF", "#FFFFFF", "FRAME_FILL,SHAPE_FILL", "QR code plate; white in both themes"),
+ "bg/auth-showcase-admin": ("#0B1D2E", "#0B1D2E", "FRAME_FILL,SHAPE_FILL", "Auth brand panel, Admin; dark in both themes"),
+ "bg/auth-showcase-seller": ("#06352E", "#06352E", "FRAME_FILL,SHAPE_FILL", "Auth brand panel, Seller; dark in both themes"),
+ "text/on-showcase": ("#FFFFFF", "#FFFFFF", "TEXT_FILL,FRAME_FILL,SHAPE_FILL", "Brand line on the Auth brand panel"),
+ "text/on-showcase-muted": ("#FFFFFFBD", "#FFFFFFBD", "TEXT_FILL,STROKE_COLOR", "Secondary brand line on the Auth brand panel; alpha is part of the value"),
 }
 def literal(h): return len(h) == 9
 # family for primitive naming
@@ -104,11 +110,11 @@ FAM = {}
 def fam(name, hexes):
     for h in hexes: FAM.setdefault(h.upper(), name)
 fam("neutral", ["#FFFFFF","#F9FAFB","#F5F6F8","#EEF0F3","#E3E6EB","#D0D5DD","#98A1B0","#8A93A3","#7C8698","#5B6475","#3F4756","#111827","#0E1116","#161A21","#1B2029","#232933","#2A303B","#222833","#3A4250","#6B7586","#E8EBF0","#C3C9D3","#8B95A6","#262C36","#EBEEF2","#4A525E","#232830","#181C24"])
-fam("blue", ["#EDF2FF","#F7F9FF","#EEF3FD","#C9D7F5","#1B45BD","#173FB0","#1D4FD7","#1A45BF","#C7D4F5","#EAF1FB","#1F4E8C","#B9C9F2","#9DB4F0","#DCE6FB","#DDE7F3","#F3F6FC","#D6E0F2","#1B2645","#18213A","#15213A","#2B3F6B","#8FB0FF","#B3C8FF","#3D68E6","#3159D4","#26345A","#13284A","#8DB5F2","#7096FF","#2C3F73","#4A68B8","#22305A","#17263A","#141B2C","#F3F5F8"])
+fam("blue", ["#0B1D2E","#EDF2FF","#F7F9FF","#EEF3FD","#C9D7F5","#1B45BD","#173FB0","#1D4FD7","#1A45BF","#C7D4F5","#EAF1FB","#1F4E8C","#B9C9F2","#9DB4F0","#DCE6FB","#DDE7F3","#F3F6FC","#D6E0F2","#1B2645","#18213A","#15213A","#2B3F6B","#8FB0FF","#B3C8FF","#3D68E6","#3159D4","#26345A","#13284A","#8DB5F2","#7096FF","#2C3F73","#4A68B8","#22305A","#17263A","#141B2C","#F3F5F8"])
 fam("amber", ["#FFFCF7","#FFF1E0","#8F4A00","#C46A00","#FBE3C4","#F2C894","#FFF8EF","#F3D7B0","#211A10","#33240D","#F5B65C","#E08A1E","#4A3418","#6B4A1F","#241A0D"])
 fam("green", ["#E7F6EC","#12663A","#DDF2E5","#F1F8F3","#CFE6D7","#0F2E1D","#6CD49A","#1C4A30","#10221A","#1F4A33"])
 fam("red", ["#FDEBEA","#A8231A","#D92D20","#B42318","#F6C9C5","#F3C4C0","#3B1512","#F79A90","#F04438","#4F201C","#7A2E28"])
-fam("teal", ["#0B6B5C","#F2FAF8","#B7DDD5","#E6F4F1","#DCEFEA","#5BCFB8","#0F2925","#1F4D45","#123430","#143A34"])
+fam("teal", ["#06352E","#0B6B5C","#F2FAF8","#B7DDD5","#E6F4F1","#DCEFEA","#5BCFB8","#0F2925","#1F4D45","#123430","#143A34"])
 fam("lime", ["#3F6212","#F5FAEF","#C8DDB0","#9DBB7A","#A9D570","#1A2812","#35511F","#6E8F45"])
 fam("purple", ["#F1ECFF","#5B3CC4","#271E47","#B9A6FF"])
 fam("coral", ["#FDE7E3","#B23F2E","#3A1A16","#F4A595"])
@@ -125,7 +131,13 @@ def oklab_L(h):
     return 0.2104542553*l+0.7936177850*m-0.0040720468*s
 def rel(h):
     r,g,b=[lin(c) for c in srgb(h)]; return 0.2126*r+0.7152*g+0.0722*b
+def over(fg, bg):
+    """A #RRGGBBAA foreground composited over an opaque background (alpha tokens such as text/on-showcase-muted)."""
+    if not literal(fg): return fg
+    a = int(fg[7:9], 16) / 255
+    return '#' + ''.join('%02X' % round((a * f + (1 - a) * b) * 255) for f, b in zip(srgb(fg), srgb(bg)))
 def cr(a,b):
+    a = over(a, b)
     la,lb=rel(a),rel(b); return (max(la,lb)+0.05)/(min(la,lb)+0.05)
 
 # ---------- primitives: name = family/step, step = 1000*(1-L) rounded to 5, unique ----------
@@ -134,7 +146,10 @@ missing = [h for h in allhex if h not in FAM]
 if missing: sys.exit('no family for ' + ', '.join(missing))
 prim = {}   # hex -> name
 used = set()
-for h in sorted(allhex, key=lambda x: (FAM[x], -oklab_L(x))):
+# Primitives added after 1.0.0 are named after the existing ones, so an existing name never changes
+# (a rename would be a MAJOR change). A new hex that lands on a taken step takes the next free step.
+NEW_PRIMITIVES = ["#0B1D2E", "#06352E"]  # 1.7.0: Auth brand panel
+for h in sorted([x for x in allhex if x not in NEW_PRIMITIVES], key=lambda x: (FAM[x], -oklab_L(x))) + NEW_PRIMITIVES:
     step = int(round((1 - oklab_L(h)) * 1000 / 5.0) * 5)
     if h == '#FFFFFF': step = 0
     name = '%s/%d' % (FAM[h], step)
@@ -178,6 +193,9 @@ need('chart/tooltip-fg', ['chart/tooltip-bg'], 4.5, 'text')
 need('chart/tooltip-muted', ['chart/tooltip-bg'], 4.5, 'text')
 need('icon/default', ['bg/surface'], 3.0, 'icon')
 need('icon/muted', ['bg/surface'], 3.0, 'icon')
+# 1.7.0: brand line on the Auth brand panel (both panel colours are the same in both themes)
+need('text/on-showcase', ['bg/auth-showcase-admin','bg/auth-showcase-seller'], 4.5, 'text')
+need('text/on-showcase-muted', ['bg/auth-showcase-admin','bg/auth-showcase-seller'], 4.5, 'text')
 fails = [c for c in checks if not c[6]]
 for c in fails: print('FAIL', c)
 print(len(checks), 'checks,', len(fails), 'fail;', len(primitives), 'primitives')
@@ -194,6 +212,8 @@ D = {
  "size/bottom-bar": (64,64),
  # 1.6.0: phone top bar height (both panels), appended after bottom-bar for the same reason.
  "size/topbar-phone": (56,56),
+ # 1.7.0 "Auth": width of the Auth form column's content, appended last.
+ "size/auth-card": (400,400),
 }
 DSCOPE = {"space": "GAP,WIDTH_HEIGHT", "radius": "CORNER_RADIUS", "size": "WIDTH_HEIGHT", "border": "STROKE_FLOAT"}
 # ---------- typography ----------
@@ -230,7 +250,7 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.6.0", "generated": "2026-10-07",
+ "version": "1.7.0", "generated": "2026-10-07",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
  "color": [{"name": k, "light": None if literal(v[0]) else prim[v[0].upper()], "dark": None if literal(v[1]) else prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],

@@ -8,9 +8,9 @@
 // with the "Upgrade to modes" command.
 
 /* eslint-disable no-undef */
-const SPEC = {"version":"1.7.0","generated":"2026-10-07","primitives":[{"name":"amber/10","hex":"#FFFCF7"},{"name":"amber/20","hex":"#FFF8EF"},{"name":"amber/35","hex":"#FFF1E0"},{"name":"amber/75","hex":"#FBE3C4"},{"name":"amber/105","hex":"#F3D7B0"},{"name":"amber/145","hex":"#F2C894"},{"name":"amber/180","hex":"#F5B65C"},{"name":"amber/290","hex":"#E08A1E"},{"name":"amber/385","hex":"#C46A00"},{"name":"amber/515","hex":"#8F4A00"},{"name":"amber/565","hex":"#6B4A1F"},{"name":"amber/655","hex":"#4A3418"},{"name":"amber/725","hex":"#33240D"},{"name":"amber/775","hex":"#241A0D"},{"name":"amber/780","hex":"#211A10"},{"name":"blue/20","hex":"#F7F9FF"},{"name":"blue/25","hex":"#F3F6FC"},{"name":"blue/30","hex":"#F3F5F8"},{"name":"blue/35","hex":"#EEF3FD"},{"name":"blue/40","hex":"#EDF2FF"},{"name":"blue/45","hex":"#EAF1FB"},{"name":"blue/75","hex":"#DDE7F3"},{"name":"blue/80","hex":"#DCE6FB"},{"name":"blue/95","hex":"#D6E0F2"},{"name":"blue/120","hex":"#C9D7F5"},{"name":"blue/130","hex":"#C7D4F5"},{"name":"blue/165","hex":"#B9C9F2"},{"name":"blue/170","hex":"#B3C8FF"},{"name":"blue/225","hex":"#9DB4F0"},{"name":"blue/235","hex":"#8DB5F2"},{"name":"blue/240","hex":"#8FB0FF"},{"name":"blue/305","hex":"#7096FF"},{"name":"blue/440","hex":"#3D68E6"},{"name":"blue/465","hex":"#4A68B8"},{"name":"blue/490","hex":"#3159D4"},{"name":"blue/510","hex":"#1D4FD7"},{"name":"blue/550","hex":"#1A45BF"},{"name":"blue/555","hex":"#1B45BD"},{"name":"blue/575","hex":"#1F4E8C"},{"name":"blue/580","hex":"#173FB0"},{"name":"blue/620","hex":"#2C3F73"},{"name":"blue/625","hex":"#2B3F6B"},{"name":"blue/665","hex":"#26345A"},{"name":"blue/680","hex":"#22305A"},{"name":"blue/720","hex":"#13284A"},{"name":"blue/725","hex":"#1B2645"},{"name":"blue/735","hex":"#17263A"},{"name":"blue/745","hex":"#18213A"},{"name":"blue/750","hex":"#15213A"},{"name":"blue/775","hex":"#141B2C"},{"name":"blue/780","hex":"#0B1D2E"},{"name":"brown/60","hex":"#F6EADB"},{"name":"brown/180","hex":"#E4BB8E"},{"name":"brown/505","hex":"#865628"},{"name":"brown/730","hex":"#2F2419"},{"name":"coral/55","hex":"#FDE7E3"},{"name":"coral/205","hex":"#F4A595"},{"name":"coral/475","hex":"#B23F2E"},{"name":"coral/735","hex":"#3A1A16"},{"name":"green/30","hex":"#F1F8F3"},{"name":"green/40","hex":"#E7F6EC"},{"name":"green/60","hex":"#DDF2E5"},{"name":"green/95","hex":"#CFE6D7"},{"name":"green/210","hex":"#6CD49A"},{"name":"green/550","hex":"#12663A"},{"name":"green/630","hex":"#1F4A33"},{"name":"green/635","hex":"#1C4A30"},{"name":"green/730","hex":"#0F2E1D"},{"name":"green/765","hex":"#10221A"},{"name":"honey/40","hex":"#FFF0D6"},{"name":"honey/155","hex":"#F3C46A"},{"name":"honey/470","hex":"#9A5A08"},{"name":"honey/720","hex":"#33260F"},{"name":"lime/20","hex":"#F5FAEF"},{"name":"lime/130","hex":"#C8DDB0"},{"name":"lime/180","hex":"#A9D570"},{"name":"lime/245","hex":"#9DBB7A"},{"name":"lime/390","hex":"#6E8F45"},{"name":"lime/545","hex":"#3F6212"},{"name":"lime/600","hex":"#35511F"},{"name":"lime/745","hex":"#1A2812"},{"name":"neutral/0","hex":"#FFFFFF"},{"name":"neutral/15","hex":"#F9FAFB"},{"name":"neutral/25","hex":"#F5F6F8"},{"name":"neutral/45","hex":"#EEF0F3"},{"name":"neutral/50","hex":"#EBEEF2"},{"name":"neutral/60","hex":"#E8EBF0"},{"name":"neutral/75","hex":"#E3E6EB"},{"name":"neutral/130","hex":"#D0D5DD"},{"name":"neutral/165","hex":"#C3C9D3"},{"name":"neutral/295","hex":"#98A1B0"},{"name":"neutral/335","hex":"#8B95A6"},{"name":"neutral/340","hex":"#8A93A3"},{"name":"neutral/380","hex":"#7C8698"},{"name":"neutral/440","hex":"#6B7586"},{"name":"neutral/500","hex":"#5B6475"},{"name":"neutral/565","hex":"#4A525E"},{"name":"neutral/605","hex":"#3F4756"},{"name":"neutral/625","hex":"#3A4250"},{"name":"neutral/690","hex":"#2A303B"},{"name":"neutral/710","hex":"#262C36"},{"name":"neutral/720","hex":"#232933"},{"name":"neutral/725","hex":"#222833"},{"name":"neutral/730","hex":"#232830"},{"name":"neutral/755","hex":"#1B2029"},{"name":"neutral/775","hex":"#181C24"},{"name":"neutral/785","hex":"#161A21"},{"name":"neutral/790","hex":"#111827"},{"name":"neutral/825","hex":"#0E1116"},{"name":"olive/50","hex":"#EAF2DF"},{"name":"olive/165","hex":"#B6D68B"},{"name":"olive/515","hex":"#4C6A1C"},{"name":"olive/730","hex":"#1F2B14"},{"name":"purple/45","hex":"#F1ECFF"},{"name":"purple/225","hex":"#B9A6FF"},{"name":"purple/525","hex":"#5B3CC4"},{"name":"purple/730","hex":"#271E47"},{"name":"red/45","hex":"#FDEBEA"},{"name":"red/125","hex":"#F6C9C5"},{"name":"red/140","hex":"#F3C4C0"},{"name":"red/220","hex":"#F79A90"},{"name":"red/365","hex":"#F04438"},{"name":"red/425","hex":"#D92D20"},{"name":"red/500","hex":"#B42318"},{"name":"red/520","hex":"#A8231A"},{"name":"red/590","hex":"#7A2E28"},{"name":"red/690","hex":"#4F201C"},{"name":"red/745","hex":"#3B1512"},{"name":"teal/20","hex":"#F2FAF8"},{"name":"teal/45","hex":"#E6F4F1"},{"name":"teal/65","hex":"#DCEFEA"},{"name":"teal/130","hex":"#B7DDD5"},{"name":"teal/220","hex":"#5BCFB8"},{"name":"teal/525","hex":"#0B6B5C"},{"name":"teal/615","hex":"#1F4D45"},{"name":"teal/680","hex":"#143A34"},{"name":"teal/700","hex":"#123430"},{"name":"teal/705","hex":"#06352E"},{"name":"teal/740","hex":"#0F2925"}],"color":[{"name":"bg/page","light":"neutral/25","dark":"neutral/825","lightHex":"#F5F6F8","darkHex":"#0E1116","scopes":["FRAME_FILL"],"description":"Page background behind cards"},{"name":"bg/surface","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR","TEXT_FILL"],"description":"Cards, sidebar, top bar"},{"name":"bg/subtle","light":"neutral/15","dark":"neutral/755","lightHex":"#F9FAFB","darkHex":"#1B2029","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Table header, card footers, hover"},{"name":"bg/muted","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Document viewer, neutral fills"},{"name":"bg/selected","light":"blue/40","dark":"blue/725","lightHex":"#EDF2FF","darkHex":"#1B2645","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Active nav item, applied filter, selected segment"},{"name":"bg/row-selected","light":"blue/20","dark":"blue/745","lightHex":"#F7F9FF","darkHex":"#18213A","scopes":["FRAME_FILL"],"description":"Selected table row"},{"name":"bg/row-attention","light":"amber/10","dark":"amber/780","lightHex":"#FFFCF7","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Rows that need action"},{"name":"bg/info-banner","light":"blue/35","dark":"blue/750","lightHex":"#EEF3FD","darkHex":"#15213A","scopes":["FRAME_FILL"],"description":"Info banner"},{"name":"border/default","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Card and section borders"},{"name":"border/row","light":"neutral/45","dark":"neutral/725","lightHex":"#EEF0F3","darkHex":"#222833","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Row dividers"},{"name":"border/control","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","FRAME_FILL"],"description":"Secondary buttons, segmented controls"},{"name":"border/input","light":"neutral/340","dark":"neutral/440","lightHex":"#8A93A3","darkHex":"#6B7586","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Inputs, checkboxes (3:1 on surface)"},{"name":"border/info","light":"blue/120","dark":"blue/625","lightHex":"#C9D7F5","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Info banner border"},{"name":"text/primary","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["TEXT_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Headings, values"},{"name":"text/secondary","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL"],"description":"Body text, labels"},{"name":"text/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Meta text, axis labels"},{"name":"text/link","light":"blue/555","dark":"blue/240","lightHex":"#1B45BD","darkHex":"#8FB0FF","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Links, selected tab"},{"name":"text/link-hover","light":"blue/580","dark":"blue/170","lightHex":"#173FB0","darkHex":"#B3C8FF","scopes":["TEXT_FILL"],"description":"Link hover"},{"name":"text/on-accent","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Text and icons on primary"},{"name":"icon/default","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Default icon colour"},{"name":"icon/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Secondary icons"},{"name":"action/primary","light":"blue/510","dark":"blue/440","lightHex":"#1D4FD7","darkHex":"#3D68E6","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Primary button, focus, selection"},{"name":"action/primary-hover","light":"blue/550","dark":"blue/490","lightHex":"#1A45BF","darkHex":"#3159D4","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Primary button hover"},{"name":"action/primary-disabled","light":"blue/130","dark":"blue/665","lightHex":"#C7D4F5","darkHex":"#26345A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Disabled primary button"},{"name":"focus/ring","light":"blue/510","dark":"blue/240","lightHex":"#1D4FD7","darkHex":"#8FB0FF","scopes":["STROKE_COLOR","EFFECT_COLOR"],"description":"Keyboard focus ring"},{"name":"status/success/bg","light":"green/40","dark":"green/730","lightHex":"#E7F6EC","darkHex":"#0F2E1D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Success badge background"},{"name":"status/success/fg","light":"green/550","dark":"green/210","lightHex":"#12663A","darkHex":"#6CD49A","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Success text and icon"},{"name":"status/success/track","light":"green/60","dark":"green/635","lightHex":"#DDF2E5","darkHex":"#1C4A30","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Success ring track"},{"name":"status/info/bg","light":"blue/45","dark":"blue/720","lightHex":"#EAF1FB","darkHex":"#13284A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Info badge background"},{"name":"status/info/fg","light":"blue/575","dark":"blue/235","lightHex":"#1F4E8C","darkHex":"#8DB5F2","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Info text and icon"},{"name":"status/attention/bg","light":"amber/35","dark":"amber/725","lightHex":"#FFF1E0","darkHex":"#33240D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Attention badge background"},{"name":"status/attention/fg","light":"amber/515","dark":"amber/180","lightHex":"#8F4A00","darkHex":"#F5B65C","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Attention text and icon"},{"name":"status/attention/solid","light":"amber/385","dark":"amber/290","lightHex":"#C46A00","darkHex":"#E08A1E","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter fill, pips"},{"name":"status/attention/track","light":"amber/75","dark":"amber/655","lightHex":"#FBE3C4","darkHex":"#4A3418","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter track"},{"name":"status/attention/border","light":"amber/145","dark":"amber/565","lightHex":"#F2C894","darkHex":"#6B4A1F","scopes":["STROKE_COLOR"],"description":"Attention card border"},{"name":"status/attention/surface","light":"amber/20","dark":"amber/775","lightHex":"#FFF8EF","darkHex":"#241A0D","scopes":["FRAME_FILL"],"description":"Attention panel background"},{"name":"status/critical/bg","light":"red/45","dark":"red/745","lightHex":"#FDEBEA","darkHex":"#3B1512","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Critical badge background"},{"name":"status/critical/fg","light":"red/520","dark":"red/220","lightHex":"#A8231A","darkHex":"#F79A90","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Critical text and icon"},{"name":"status/critical/solid","light":"red/425","dark":"red/365","lightHex":"#D92D20","darkHex":"#F04438","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Urgent card border, red ring"},{"name":"status/critical/meter","light":"red/500","dark":"red/365","lightHex":"#B42318","darkHex":"#F04438","scopes":["SHAPE_FILL","FRAME_FILL"],"description":"Overdue meter fill"},{"name":"status/critical/track","light":"red/125","dark":"red/690","lightHex":"#F6C9C5","darkHex":"#4F201C","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Overdue meter track"},{"name":"status/critical/border","light":"red/140","dark":"red/590","lightHex":"#F3C4C0","darkHex":"#7A2E28","scopes":["STROKE_COLOR"],"description":"Destructive secondary button border"},{"name":"status/neutral/bg","light":"neutral/45","dark":"neutral/710","lightHex":"#EEF0F3","darkHex":"#262C36","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Neutral badge background"},{"name":"status/neutral/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Neutral text"},{"name":"cert/seller/fg","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Seller-level certificate"},{"name":"cert/seller/bg","light":"teal/20","dark":"teal/740","lightHex":"#F2FAF8","darkHex":"#0F2925","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Seller certificate chip"},{"name":"cert/seller/border","light":"teal/130","dark":"teal/615","lightHex":"#B7DDD5","darkHex":"#1F4D45","scopes":["STROKE_COLOR"],"description":"Seller certificate chip border"},{"name":"cert/seller/tile","light":"teal/45","dark":"teal/700","lightHex":"#E6F4F1","darkHex":"#123430","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Teal identity tile"},{"name":"cert/manufacturer/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Manufacturer certificate"},{"name":"cert/manufacturer/bg","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL"],"description":"Manufacturer chip"},{"name":"cert/manufacturer/border","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR"],"description":"Manufacturer chip border"},{"name":"cert/vegan/fg","light":"lime/545","dark":"lime/180","lightHex":"#3F6212","darkHex":"#A9D570","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Vegan certificate"},{"name":"cert/vegan/bg","light":"lime/20","dark":"lime/745","lightHex":"#F5FAEF","darkHex":"#1A2812","scopes":["FRAME_FILL"],"description":"Vegan chip"},{"name":"cert/vegan/border","light":"lime/130","dark":"lime/600","lightHex":"#C8DDB0","darkHex":"#35511F","scopes":["STROKE_COLOR"],"description":"Vegan chip border"},{"name":"cert/vegan/self-declared-border","light":"lime/245","dark":"lime/390","lightHex":"#9DBB7A","darkHex":"#6E8F45","scopes":["STROKE_COLOR"],"description":"Self-declared chip, dashed"},{"name":"tile/purple-bg","light":"purple/45","dark":"purple/730","lightHex":"#F1ECFF","darkHex":"#271E47","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Identity tile: applications"},{"name":"tile/purple-fg","light":"purple/525","dark":"purple/225","lightHex":"#5B3CC4","darkHex":"#B9A6FF","scopes":["TEXT_FILL","SHAPE_FILL"],"description":"Identity tile text"},{"name":"thumb/meat-bg","light":"coral/55","dark":"coral/735","lightHex":"#FDE7E3","darkHex":"#3A1A16","scopes":["FRAME_FILL"],"description":"Product thumbnail: meat"},{"name":"thumb/meat-fg","light":"coral/475","dark":"coral/205","lightHex":"#B23F2E","darkHex":"#F4A595","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Meat glyph"},{"name":"thumb/poultry-bg","light":"honey/40","dark":"honey/720","lightHex":"#FFF0D6","darkHex":"#33260F","scopes":["FRAME_FILL"],"description":"Product thumbnail: poultry"},{"name":"thumb/poultry-fg","light":"honey/470","dark":"honey/155","lightHex":"#9A5A08","darkHex":"#F3C46A","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Poultry glyph"},{"name":"thumb/bakery-bg","light":"brown/60","dark":"brown/730","lightHex":"#F6EADB","darkHex":"#2F2419","scopes":["FRAME_FILL"],"description":"Product thumbnail: bakery"},{"name":"thumb/bakery-fg","light":"brown/505","dark":"brown/180","lightHex":"#865628","darkHex":"#E4BB8E","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Bakery glyph"},{"name":"thumb/pantry-bg","light":"olive/50","dark":"olive/730","lightHex":"#EAF2DF","darkHex":"#1F2B14","scopes":["FRAME_FILL"],"description":"Product thumbnail: pantry"},{"name":"thumb/pantry-fg","light":"olive/515","dark":"olive/165","lightHex":"#4C6A1C","darkHex":"#B6D68B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Pantry glyph"},{"name":"thumb/other-bg","light":"neutral/50","dark":"neutral/730","lightHex":"#EBEEF2","darkHex":"#232830","scopes":["FRAME_FILL"],"description":"Product thumbnail: other"},{"name":"thumb/other-fg","light":"neutral/565","dark":"neutral/165","lightHex":"#4A525E","darkHex":"#C3C9D3","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Other glyph"},{"name":"chart/series-1","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Main series"},{"name":"chart/series-1-soft","light":"blue/165","dark":"blue/620","lightHex":"#B9C9F2","darkHex":"#2C3F73","scopes":["SHAPE_FILL"],"description":"Past periods in bar charts"},{"name":"chart/split-2","light":"blue/225","dark":"blue/465","lightHex":"#9DB4F0","darkHex":"#4A68B8","scopes":["SHAPE_FILL"],"description":"Second part of a split bar"},{"name":"chart/compare","light":"neutral/380","dark":"neutral/335","lightHex":"#7C8698","darkHex":"#8B95A6","scopes":["STROKE_COLOR"],"description":"Comparison series (dashed)"},{"name":"chart/grid","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Gridlines"},{"name":"chart/axis","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Baseline"},{"name":"chart/meter-track","light":"blue/80","dark":"blue/680","lightHex":"#DCE6FB","darkHex":"#22305A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Meter track, accent"},{"name":"chart/donut-track","light":"teal/65","dark":"teal/680","lightHex":"#DCEFEA","darkHex":"#143A34","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Certificate donut track"},{"name":"chart/tooltip-bg","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Chart tooltip background (inverse)"},{"name":"chart/tooltip-fg","light":"neutral/0","dark":"neutral/790","lightHex":"#FFFFFF","darkHex":"#111827","scopes":["TEXT_FILL"],"description":"Chart tooltip value"},{"name":"chart/tooltip-muted","light":"neutral/130","dark":"neutral/605","lightHex":"#D0D5DD","darkHex":"#3F4756","scopes":["TEXT_FILL"],"description":"Chart tooltip label"},{"name":"map/land","light":"blue/30","dark":"neutral/775","lightHex":"#F3F5F8","darkHex":"#181C24","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Map land"},{"name":"map/water","light":"blue/75","dark":"blue/735","lightHex":"#DDE7F3","darkHex":"#17263A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Map water"},{"name":"map/road","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR"],"description":"Map roads"},{"name":"map/seller-pin","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL"],"description":"Seller with open orders"},{"name":"map/courier","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["SHAPE_FILL"],"description":"Courier position"},{"name":"board/action-bg","light":"amber/20","dark":"amber/780","lightHex":"#FFF8EF","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Needs action column"},{"name":"board/action-border","light":"amber/105","dark":"amber/655","lightHex":"#F3D7B0","darkHex":"#4A3418","scopes":["STROKE_COLOR"],"description":"Needs action column border"},{"name":"board/prep-bg","light":"blue/25","dark":"blue/775","lightHex":"#F3F6FC","darkHex":"#141B2C","scopes":["FRAME_FILL"],"description":"Preparing column"},{"name":"board/prep-border","light":"blue/95","dark":"blue/625","lightHex":"#D6E0F2","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Preparing column border"},{"name":"board/ready-bg","light":"green/30","dark":"green/765","lightHex":"#F1F8F3","darkHex":"#10221A","scopes":["FRAME_FILL"],"description":"Ready column"},{"name":"board/ready-border","light":"green/95","dark":"green/630","lightHex":"#CFE6D7","darkHex":"#1F4A33","scopes":["STROKE_COLOR"],"description":"Ready column border"},{"name":"bg/scrim","light":null,"dark":null,"lightHex":"#11182780","darkHex":"#00000099","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Overlay behind drawers and modals; alpha is part of the value"},{"name":"bg/qr","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"QR code plate; white in both themes"},{"name":"bg/auth-showcase-admin","light":"blue/780","dark":"blue/780","lightHex":"#0B1D2E","darkHex":"#0B1D2E","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Auth brand panel, Admin; dark in both themes"},{"name":"bg/auth-showcase-seller","light":"teal/705","dark":"teal/705","lightHex":"#06352E","darkHex":"#06352E","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Auth brand panel, Seller; dark in both themes"},{"name":"text/on-showcase","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","FRAME_FILL","SHAPE_FILL"],"description":"Brand line on the Auth brand panel"},{"name":"text/on-showcase-muted","light":null,"dark":null,"lightHex":"#FFFFFFBD","darkHex":"#FFFFFFBD","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Secondary brand line on the Auth brand panel; alpha is part of the value"}],"dimension":[{"name":"space/0-5","desktop":2,"touch":2,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1","desktop":4,"touch":4,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1-5","desktop":6,"touch":6,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2","desktop":8,"touch":8,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2-5","desktop":10,"touch":10,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3","desktop":12,"touch":12,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3-5","desktop":14,"touch":14,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4","desktop":16,"touch":16,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4-5","desktop":18,"touch":18,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/5","desktop":20,"touch":20,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/6","desktop":24,"touch":24,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/7","desktop":28,"touch":28,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/8","desktop":32,"touch":32,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/10","desktop":40,"touch":40,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"radius/chip","desktop":6,"touch":6,"scopes":["CORNER_RADIUS"]},{"name":"radius/control","desktop":8,"touch":10,"scopes":["CORNER_RADIUS"]},{"name":"radius/card","desktop":12,"touch":12,"scopes":["CORNER_RADIUS"]},{"name":"radius/column","desktop":14,"touch":14,"scopes":["CORNER_RADIUS"]},{"name":"radius/pill","desktop":999,"touch":999,"scopes":["CORNER_RADIUS"]},{"name":"size/control-sm","desktop":32,"touch":44,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control","desktop":36,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control-lg","desktop":44,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/badge","desktop":22,"touch":24,"scopes":["WIDTH_HEIGHT"]},{"name":"size/icon","desktop":18,"touch":20,"scopes":["WIDTH_HEIGHT"]},{"name":"size/thumb","desktop":28,"touch":32,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar","desktop":248,"touch":248,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar-collapsed","desktop":72,"touch":72,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"border/width","desktop":1,"touch":1,"scopes":["STROKE_FLOAT"]},{"name":"border/width-strong","desktop":2,"touch":2,"scopes":["STROKE_FLOAT"]},{"name":"size/bottom-bar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar-phone","desktop":56,"touch":56,"scopes":["WIDTH_HEIGHT"]},{"name":"size/auth-card","desktop":400,"touch":400,"scopes":["WIDTH_HEIGHT"]}],"type":[{"name":"Display/Hero","family":"IBM Plex Sans","style":"SemiBold","size":30,"lineHeight":38,"letterSpacing":-0.3,"case":null},{"name":"Heading/H1","family":"IBM Plex Sans","style":"SemiBold","size":24,"lineHeight":32,"letterSpacing":-0.24,"case":null},{"name":"Heading/H2","family":"IBM Plex Sans","style":"SemiBold","size":16,"lineHeight":22,"letterSpacing":0,"case":null},{"name":"Heading/Amount","family":"IBM Plex Sans","style":"SemiBold","size":26,"lineHeight":32,"letterSpacing":-0.2,"case":null},{"name":"Heading/Stat","family":"IBM Plex Sans","style":"SemiBold","size":22,"lineHeight":28,"letterSpacing":0,"case":null},{"name":"Body/Default","family":"IBM Plex Sans","style":"Regular","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Medium","family":"IBM Plex Sans","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Strong","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Small","family":"IBM Plex Sans","style":"Regular","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Body/Small Strong","family":"IBM Plex Sans","style":"SemiBold","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Caption/Default","family":"IBM Plex Sans","style":"Regular","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Strong","family":"IBM Plex Sans","style":"SemiBold","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Overline","family":"IBM Plex Sans","style":"SemiBold","size":11,"lineHeight":16,"letterSpacing":0.77,"case":"UPPER"},{"name":"Label/Button","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Label/Button Small","family":"IBM Plex Sans","style":"SemiBold","size":13,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Touch/Body","family":"IBM Plex Sans","style":"Regular","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Strong","family":"IBM Plex Sans","style":"Bold","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Button","family":"IBM Plex Sans","style":"SemiBold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Title","family":"IBM Plex Sans","style":"Bold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Default","family":"IBM Plex Mono","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Small","family":"IBM Plex Mono","style":"Regular","size":11,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Mono/Touch","family":"IBM Plex Mono","style":"Medium","size":15,"lineHeight":20,"letterSpacing":0,"case":null}],"effects":[{"name":"Elevation/Floating","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.22],"x":0,"y":12,"blur":28,"spread":-8,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":4,"blur":8,"spread":-4,"token":null}],"description":"Floating bulk action bar"},{"name":"Elevation/Document","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":1,"blur":2,"spread":0,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.08],"x":0,"y":8,"blur":16,"spread":0,"token":null}],"description":"Document preview paper"},{"name":"Focus/Ring","layers":[{"type":"DROP_SHADOW","rgba":[255,255,255,1],"x":0,"y":0,"blur":0,"spread":2,"token":"bg/surface"},{"type":"DROP_SHADOW","rgba":[29,79,215,1],"x":0,"y":0,"blur":0,"spread":4,"token":"focus/ring"}],"description":"Keyboard focus ring: 2px gap + 2px blue"},{"name":"Ring/Urgent","layers":[{"type":"DROP_SHADOW","rgba":[253,235,234,1],"x":0,"y":0,"blur":0,"spread":3,"token":"status/critical/bg"}],"description":"Ring around urgent order card"}],"motion":{"duration/fast":120,"duration/base":160,"duration/slow":240}};
-const ICONS = {"home":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z\"></path></svg>","inbox":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 12h-6l-2 3h-4l-2-3H2\"></path><path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"></path></svg>","clipboard":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\"></rect><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"></path><path d=\"M12 11h4\"></path><path d=\"M12 16h4\"></path><path d=\"M8 11h.01\"></path><path d=\"M8 16h.01\"></path></svg>","package":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7.5 4.27 9 5.15\"></path><path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"></path><path d=\"m3.3 7 8.7 5 8.7-5\"></path><path d=\"M12 22V12\"></path></svg>","store":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 9.5 5.5 4h13L20 9.5\"></path><path d=\"M4 9.5h16v1a2.7 2.7 0 0 1-5.3.7 2.7 2.7 0 0 1-5.4 0A2.7 2.7 0 0 1 4 10.5z\"></path><path d=\"M5.5 12.5V20h13v-7.5\"></path><path d=\"M10 20v-4.5h4V20\"></path></svg>","users":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"></path><circle cx=\"9\" cy=\"7\" r=\"4\"></circle><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"></path><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"></path></svg>","wallet":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1\"></path><path d=\"M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4\"></path></svg>","file-text":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"></path><path d=\"M16 13H8\"></path><path d=\"M16 17H8\"></path></svg>","sliders":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h10\"></path><path d=\"M18 6h2\"></path><circle cx=\"16\" cy=\"6\" r=\"2\"></circle><path d=\"M4 12h4\"></path><path d=\"M12 12h8\"></path><circle cx=\"10\" cy=\"12\" r=\"2\"></circle><path d=\"M4 18h12\"></path><circle cx=\"18\" cy=\"18\" r=\"2\"></circle></svg>","shield-check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10\"></path><path d=\"m9 12 2 2 4-4\"></path></svg>","undo":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 14 4 9l5-5\"></path><path d=\"M4 9h10.5a5.5 5.5 0 0 1 0 11H11\"></path></svg>","badge-check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z\"></path><path d=\"m9 12 2 2 4-4\"></path></svg>","message":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"></path></svg>","help-circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"></path><path d=\"M12 17h.01\"></path></svg>","panel-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M9 3v18\"></path></svg>","search":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg>","bell":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"></path><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"></path></svg>","chevron-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"></path></svg>","chevron-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"></path></svg>","chevron-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"></path></svg>","x":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg>","plus":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"></path><path d=\"M5 12h14\"></path></svg>","download":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"></path><path d=\"m7 10 5 5 5-5\"></path><path d=\"M12 15V3\"></path></svg>","columns":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg>","more-vertical":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"12\" cy=\"19\" r=\"1\"></circle></svg>","more-horizontal":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"19\" cy=\"12\" r=\"1\"></circle></svg>","check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"></path></svg>","minus":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"></path></svg>","alert-circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 8v4\"></path><path d=\"M12 16h.01\"></path></svg>","alert-triangle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z\"></path><path d=\"M12 9v4\"></path><path d=\"M12 17h.01\"></path></svg>","clock":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6l4 2\"></path></svg>","calendar":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"></rect><path d=\"M16 2v4\"></path><path d=\"M8 2v4\"></path><path d=\"M3 10h18\"></path></svg>","zap":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><path d=\"M13 2 4 14h7l-1 8 9-12h-7z\"></path></svg>","volume":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z\"></path><path d=\"M16 9a5 5 0 0 1 0 6\"></path><path d=\"M19.4 18.4a9 9 0 0 0 0-12.8\"></path></svg>","arrow-up":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 19V5\"></path><path d=\"m5 12 7-7 7 7\"></path></svg>","arrow-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"></path><path d=\"m19 12-7 7-7-7\"></path></svg>","arrow-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 12H5\"></path><path d=\"m12 19-7-7 7-7\"></path></svg>","arrow-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"></path><path d=\"m12 5 7 7-7 7\"></path></svg>","external-link":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 3h6v6\"></path><path d=\"M10 14 21 3\"></path><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"></path></svg>","zoom-in":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path><path d=\"M11 8v6\"></path><path d=\"M8 11h6\"></path></svg>","zoom-out":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path><path d=\"M8 11h6\"></path></svg>","leaf":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z\"></path><path d=\"M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12\"></path></svg>","briefcase":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"></rect><path d=\"M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"></path></svg>","ban":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"m4.9 4.9 14.2 14.2\"></path></svg>","printer":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 9V2h12v7\"></path><path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\"></path><rect x=\"6\" y=\"14\" width=\"12\" height=\"8\"></rect></svg>","truck":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2\"></path><path d=\"M15 18H9\"></path><path d=\"M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 9.38a1 1 0 0 0-.78-.38H14\"></path><circle cx=\"17\" cy=\"18\" r=\"2\"></circle><circle cx=\"7\" cy=\"18\" r=\"2\"></circle></svg>","map-pin":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z\"></path><circle cx=\"12\" cy=\"10\" r=\"3\"></circle></svg>","star":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><path d=\"m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z\"></path></svg>","file":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"></path></svg>","send":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 2-7 20-4-9-9-4z\"></path><path d=\"M22 2 11 13\"></path></svg>","eye":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z\"></path><circle cx=\"12\" cy=\"12\" r=\"3\"></circle></svg>","info":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4\"></path><path d=\"M12 8h.01\"></path></svg>","circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle></svg>","menu":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h16\"></path><path d=\"M4 12h16\"></path><path d=\"M4 18h16\"></path></svg>","eye-off":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.7 5.1A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7\"></path><path d=\"M14.1 14.2a3 3 0 0 1-4.2-4.2\"></path><path d=\"M17.5 17.5A10.4 10.4 0 0 1 12 19c-7 0-10-7-10-7a13.2 13.2 0 0 1 4.6-5.5\"></path><path d=\"m2 2 20 20\"></path></svg>","lock":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"11\" width=\"16\" height=\"10\" rx=\"2\"></rect><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"></path></svg>","mail":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"></rect><path d=\"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7\"></path></svg>","key":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"7.5\" cy=\"15.5\" r=\"5.5\"></circle><path d=\"m21 2-9.6 9.6\"></path><path d=\"m15.5 7.5 3 3L22 7l-3-3\"></path></svg>","user":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"8\" r=\"5\"></circle><path d=\"M20 21a8 8 0 0 0-16 0\"></path></svg>","log-out":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"></path><path d=\"m16 17 5-5-5-5\"></path><path d=\"M21 12H9\"></path></svg>","copy":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"8\" width=\"14\" height=\"14\" rx=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path></svg>","smartphone":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"2\"></rect><path d=\"M12 18h.01\"></path></svg>","trash":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6h18\"></path><path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\"></path><path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"></path></svg>","product-meat":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6.2 8c2.6-3.2 8.4-3.6 11.3-.1 2.6 3.1 1.6 7.8-2.1 9.8-3.1 1.7-6.8 1-8.8-1.5-1.9-2.3-2.4-5.6-.4-8.2z\"></path><circle cx=\"15\" cy=\"11.2\" r=\"1.7\"></circle></svg>","product-poultry":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15.2 4.2a5 5 0 0 1 4.6 6.2c-.7 2.9-3.7 4.4-6.4 3.7l-3.1 3.1\"></path><path d=\"M15.2 4.2c-2.9.7-4.6 3.6-3.9 6.5l-3.1 3.1\"></path><path d=\"M10.3 17.2a1.9 1.9 0 1 1-2.6 2.5 1.9 1.9 0 1 1 .5-3.6\"></path></svg>","product-bakery":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 13.6c0-4 3.4-6.6 7.5-6.6s7.5 2.6 7.5 6.6V17a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 4.5 17z\"></path><path d=\"m9.2 10.4-1.4 3\"></path><path d=\"m12.7 10-1.4 3.4\"></path><path d=\"m16.1 10.6-1.3 2.8\"></path></svg>","product-pantry":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8.6 6.6h6.8l-1.4 2.6c2.9 1.5 4.5 4.2 4.5 6.9a3.4 3.4 0 0 1-3.4 3.4H8.9a3.4 3.4 0 0 1-3.4-3.4c0-2.7 1.6-5.4 4.5-6.9z\"></path><path d=\"M9.2 4.4h5.6\"></path><path d=\"M9.5 14.2h5\"></path></svg>","product-other":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3.6c1 3 4.6 4.6 4.6 9.1a4.6 4.6 0 0 1-9.2 0c0-2 1-3.4 2-4.4.3 1.5 1 2.4 2 2.7-.5-2.8-.2-5.1.6-7.4z\"></path></svg>"};
-const CONTRAST = [["light","text","text/primary","bg/page",16.41,4.5,true],["light","text","text/primary","bg/surface",17.74,4.5,true],["light","text","text/primary","bg/subtle",16.98,4.5,true],["light","text","text/primary","bg/muted",15.54,4.5,true],["light","text","text/primary","bg/selected",15.84,4.5,true],["dark","text","text/primary","bg/page",15.83,4.5,true],["dark","text","text/primary","bg/surface",14.6,4.5,true],["dark","text","text/primary","bg/subtle",13.67,4.5,true],["dark","text","text/primary","bg/muted",12.23,4.5,true],["dark","text","text/primary","bg/selected",12.46,4.5,true],["light","text","text/secondary","bg/page",8.64,4.5,true],["light","text","text/secondary","bg/surface",9.35,4.5,true],["light","text","text/secondary","bg/subtle",8.94,4.5,true],["light","text","text/secondary","bg/row-selected",8.88,4.5,true],["light","text","text/secondary","bg/row-attention",9.13,4.5,true],["dark","text","text/secondary","bg/page",11.36,4.5,true],["dark","text","text/secondary","bg/surface",10.48,4.5,true],["dark","text","text/secondary","bg/subtle",9.82,4.5,true],["dark","text","text/secondary","bg/row-selected",9.58,4.5,true],["dark","text","text/secondary","bg/row-attention",10.34,4.5,true],["light","text","text/muted","bg/page",5.51,4.5,true],["light","text","text/muted","bg/surface",5.96,4.5,true],["light","text","text/muted","bg/subtle",5.7,4.5,true],["dark","text","text/muted","bg/page",7.26,4.5,true],["dark","text","text/muted","bg/surface",6.7,4.5,true],["dark","text","text/muted","bg/subtle",6.27,4.5,true],["light","text","text/link","bg/surface",7.98,4.5,true],["light","text","text/link","bg/selected",7.12,4.5,true],["light","text","text/link","bg/info-banner",7.17,4.5,true],["dark","text","text/link","bg/surface",8.16,4.5,true],["dark","text","text/link","bg/selected",6.97,4.5,true],["dark","text","text/link","bg/info-banner",7.49,4.5,true],["light","text","text/on-accent","action/primary",6.66,4.5,true],["light","text","text/on-accent","action/primary-hover",7.93,4.5,true],["dark","text","text/on-accent","action/primary",4.86,4.5,true],["dark","text","text/on-accent","action/primary-hover",5.98,4.5,true],["light","badge","status/success/fg","status/success/bg",6.29,4.5,true],["dark","badge","status/success/fg","status/success/bg",8.06,4.5,true],["light","badge","status/info/fg","status/info/bg",7.31,4.5,true],["dark","badge","status/info/fg","status/info/bg",7.01,4.5,true],["light","badge","status/attention/fg","status/attention/bg",6.01,4.5,true],["dark","badge","status/attention/fg","status/attention/bg",8.38,4.5,true],["light","badge","status/critical/fg","status/critical/bg",6.25,4.5,true],["dark","badge","status/critical/fg","status/critical/bg",7.67,4.5,true],["light","badge","status/neutral/fg","status/neutral/bg",8.19,4.5,true],["dark","badge","status/neutral/fg","status/neutral/bg",8.43,4.5,true],["light","text","status/attention/fg","status/attention/surface",6.33,4.5,true],["light","text","status/attention/fg","bg/surface",6.67,4.5,true],["dark","text","status/attention/fg","status/attention/surface",9.55,4.5,true],["dark","text","status/attention/fg","bg/surface",9.74,4.5,true],["light","text","status/critical/fg","bg/surface",7.19,4.5,true],["dark","text","status/critical/fg","bg/surface",8.29,4.5,true],["light","text","status/success/fg","bg/surface",7.03,4.5,true],["dark","text","status/success/fg","bg/surface",9.57,4.5,true],["light","chip","cert/seller/fg","cert/seller/bg",6.05,4.5,true],["dark","chip","cert/seller/fg","cert/seller/bg",8.11,4.5,true],["light","chip","cert/manufacturer/fg","cert/manufacturer/bg",9.35,4.5,true],["dark","chip","cert/manufacturer/fg","cert/manufacturer/bg",10.48,4.5,true],["light","chip","cert/vegan/fg","cert/vegan/bg",6.67,4.5,true],["dark","chip","cert/vegan/fg","cert/vegan/bg",9.17,4.5,true],["light","tile","cert/seller/fg","cert/seller/tile",5.68,4.5,true],["dark","tile","cert/seller/fg","cert/seller/tile",7.09,4.5,true],["light","tile","tile/purple-fg","tile/purple-bg",6.3,4.5,true],["dark","tile","tile/purple-fg","tile/purple-bg",7.31,4.5,true],["light","glyph","thumb/meat-fg","thumb/meat-bg",4.86,3.0,true],["dark","glyph","thumb/meat-fg","thumb/meat-bg",7.96,3.0,true],["light","glyph","thumb/poultry-fg","thumb/poultry-bg",4.87,3.0,true],["dark","glyph","thumb/poultry-fg","thumb/poultry-bg",9.06,3.0,true],["light","glyph","thumb/bakery-fg","thumb/bakery-bg",5.25,3.0,true],["dark","glyph","thumb/bakery-fg","thumb/bakery-bg",8.5,3.0,true],["light","glyph","thumb/pantry-fg","thumb/pantry-bg",5.39,3.0,true],["dark","glyph","thumb/pantry-fg","thumb/pantry-bg",9.18,3.0,true],["light","glyph","thumb/other-fg","thumb/other-bg",6.78,3.0,true],["dark","glyph","thumb/other-fg","thumb/other-bg",8.9,3.0,true],["light","ui-boundary","border/input","bg/surface",3.1,3.0,true],["dark","ui-boundary","border/input","bg/surface",3.75,3.0,true],["light","focus","focus/ring","bg/surface",6.66,3.0,true],["light","focus","focus/ring","bg/page",6.16,3.0,true],["dark","focus","focus/ring","bg/surface",8.16,3.0,true],["dark","focus","focus/ring","bg/page",8.85,3.0,true],["light","graphic","chart/series-1","bg/surface",6.66,3.0,true],["dark","graphic","chart/series-1","bg/surface",6.23,3.0,true],["light","graphic","chart/compare","bg/surface",3.67,3.0,true],["dark","graphic","chart/compare","bg/surface",5.77,3.0,true],["light","graphic","status/critical/solid","bg/surface",4.83,3.0,true],["dark","graphic","status/critical/solid","bg/surface",4.64,3.0,true],["light","graphic","status/attention/solid","bg/surface",3.88,3.0,true],["dark","graphic","status/attention/solid","bg/surface",6.5,3.0,true],["light","graphic","map/seller-pin","map/land",6.1,3.0,true],["dark","graphic","map/seller-pin","map/land",6.09,3.0,true],["light","graphic","map/courier","map/land",5.88,3.0,true],["dark","graphic","map/courier","map/land",8.99,3.0,true],["light","text","chart/tooltip-fg","chart/tooltip-bg",17.74,4.5,true],["dark","text","chart/tooltip-fg","chart/tooltip-bg",14.84,4.5,true],["light","text","chart/tooltip-muted","chart/tooltip-bg",12.03,4.5,true],["dark","text","chart/tooltip-muted","chart/tooltip-bg",7.82,4.5,true],["light","icon","icon/default","bg/surface",9.35,3.0,true],["dark","icon","icon/default","bg/surface",10.48,3.0,true],["light","icon","icon/muted","bg/surface",5.96,3.0,true],["dark","icon","icon/muted","bg/surface",6.7,3.0,true],["light","text","text/on-showcase","bg/auth-showcase-admin",17.08,4.5,true],["light","text","text/on-showcase","bg/auth-showcase-seller",13.49,4.5,true],["dark","text","text/on-showcase","bg/auth-showcase-admin",17.08,4.5,true],["dark","text","text/on-showcase","bg/auth-showcase-seller",13.49,4.5,true],["light","text","text/on-showcase-muted","bg/auth-showcase-admin",9.82,4.5,true],["light","text","text/on-showcase-muted","bg/auth-showcase-seller",8.1,4.5,true],["dark","text","text/on-showcase-muted","bg/auth-showcase-admin",9.82,4.5,true],["dark","text","text/on-showcase-muted","bg/auth-showcase-seller",8.1,4.5,true]];
+const SPEC = {"version":"1.6.0","generated":"2026-10-07","primitives":[{"name":"amber/10","hex":"#FFFCF7"},{"name":"amber/20","hex":"#FFF8EF"},{"name":"amber/35","hex":"#FFF1E0"},{"name":"amber/75","hex":"#FBE3C4"},{"name":"amber/105","hex":"#F3D7B0"},{"name":"amber/145","hex":"#F2C894"},{"name":"amber/180","hex":"#F5B65C"},{"name":"amber/290","hex":"#E08A1E"},{"name":"amber/385","hex":"#C46A00"},{"name":"amber/515","hex":"#8F4A00"},{"name":"amber/565","hex":"#6B4A1F"},{"name":"amber/655","hex":"#4A3418"},{"name":"amber/725","hex":"#33240D"},{"name":"amber/775","hex":"#241A0D"},{"name":"amber/780","hex":"#211A10"},{"name":"blue/20","hex":"#F7F9FF"},{"name":"blue/25","hex":"#F3F6FC"},{"name":"blue/30","hex":"#F3F5F8"},{"name":"blue/35","hex":"#EEF3FD"},{"name":"blue/40","hex":"#EDF2FF"},{"name":"blue/45","hex":"#EAF1FB"},{"name":"blue/75","hex":"#DDE7F3"},{"name":"blue/80","hex":"#DCE6FB"},{"name":"blue/95","hex":"#D6E0F2"},{"name":"blue/120","hex":"#C9D7F5"},{"name":"blue/130","hex":"#C7D4F5"},{"name":"blue/165","hex":"#B9C9F2"},{"name":"blue/170","hex":"#B3C8FF"},{"name":"blue/225","hex":"#9DB4F0"},{"name":"blue/235","hex":"#8DB5F2"},{"name":"blue/240","hex":"#8FB0FF"},{"name":"blue/305","hex":"#7096FF"},{"name":"blue/440","hex":"#3D68E6"},{"name":"blue/465","hex":"#4A68B8"},{"name":"blue/490","hex":"#3159D4"},{"name":"blue/510","hex":"#1D4FD7"},{"name":"blue/550","hex":"#1A45BF"},{"name":"blue/555","hex":"#1B45BD"},{"name":"blue/575","hex":"#1F4E8C"},{"name":"blue/580","hex":"#173FB0"},{"name":"blue/620","hex":"#2C3F73"},{"name":"blue/625","hex":"#2B3F6B"},{"name":"blue/665","hex":"#26345A"},{"name":"blue/680","hex":"#22305A"},{"name":"blue/720","hex":"#13284A"},{"name":"blue/725","hex":"#1B2645"},{"name":"blue/735","hex":"#17263A"},{"name":"blue/745","hex":"#18213A"},{"name":"blue/750","hex":"#15213A"},{"name":"blue/775","hex":"#141B2C"},{"name":"brown/60","hex":"#F6EADB"},{"name":"brown/180","hex":"#E4BB8E"},{"name":"brown/505","hex":"#865628"},{"name":"brown/730","hex":"#2F2419"},{"name":"coral/55","hex":"#FDE7E3"},{"name":"coral/205","hex":"#F4A595"},{"name":"coral/475","hex":"#B23F2E"},{"name":"coral/735","hex":"#3A1A16"},{"name":"green/30","hex":"#F1F8F3"},{"name":"green/40","hex":"#E7F6EC"},{"name":"green/60","hex":"#DDF2E5"},{"name":"green/95","hex":"#CFE6D7"},{"name":"green/210","hex":"#6CD49A"},{"name":"green/550","hex":"#12663A"},{"name":"green/630","hex":"#1F4A33"},{"name":"green/635","hex":"#1C4A30"},{"name":"green/730","hex":"#0F2E1D"},{"name":"green/765","hex":"#10221A"},{"name":"honey/40","hex":"#FFF0D6"},{"name":"honey/155","hex":"#F3C46A"},{"name":"honey/470","hex":"#9A5A08"},{"name":"honey/720","hex":"#33260F"},{"name":"lime/20","hex":"#F5FAEF"},{"name":"lime/130","hex":"#C8DDB0"},{"name":"lime/180","hex":"#A9D570"},{"name":"lime/245","hex":"#9DBB7A"},{"name":"lime/390","hex":"#6E8F45"},{"name":"lime/545","hex":"#3F6212"},{"name":"lime/600","hex":"#35511F"},{"name":"lime/745","hex":"#1A2812"},{"name":"neutral/0","hex":"#FFFFFF"},{"name":"neutral/15","hex":"#F9FAFB"},{"name":"neutral/25","hex":"#F5F6F8"},{"name":"neutral/45","hex":"#EEF0F3"},{"name":"neutral/50","hex":"#EBEEF2"},{"name":"neutral/60","hex":"#E8EBF0"},{"name":"neutral/75","hex":"#E3E6EB"},{"name":"neutral/130","hex":"#D0D5DD"},{"name":"neutral/165","hex":"#C3C9D3"},{"name":"neutral/295","hex":"#98A1B0"},{"name":"neutral/335","hex":"#8B95A6"},{"name":"neutral/340","hex":"#8A93A3"},{"name":"neutral/380","hex":"#7C8698"},{"name":"neutral/440","hex":"#6B7586"},{"name":"neutral/500","hex":"#5B6475"},{"name":"neutral/565","hex":"#4A525E"},{"name":"neutral/605","hex":"#3F4756"},{"name":"neutral/625","hex":"#3A4250"},{"name":"neutral/690","hex":"#2A303B"},{"name":"neutral/710","hex":"#262C36"},{"name":"neutral/720","hex":"#232933"},{"name":"neutral/725","hex":"#222833"},{"name":"neutral/730","hex":"#232830"},{"name":"neutral/755","hex":"#1B2029"},{"name":"neutral/775","hex":"#181C24"},{"name":"neutral/785","hex":"#161A21"},{"name":"neutral/790","hex":"#111827"},{"name":"neutral/825","hex":"#0E1116"},{"name":"olive/50","hex":"#EAF2DF"},{"name":"olive/165","hex":"#B6D68B"},{"name":"olive/515","hex":"#4C6A1C"},{"name":"olive/730","hex":"#1F2B14"},{"name":"purple/45","hex":"#F1ECFF"},{"name":"purple/225","hex":"#B9A6FF"},{"name":"purple/525","hex":"#5B3CC4"},{"name":"purple/730","hex":"#271E47"},{"name":"red/45","hex":"#FDEBEA"},{"name":"red/125","hex":"#F6C9C5"},{"name":"red/140","hex":"#F3C4C0"},{"name":"red/220","hex":"#F79A90"},{"name":"red/365","hex":"#F04438"},{"name":"red/425","hex":"#D92D20"},{"name":"red/500","hex":"#B42318"},{"name":"red/520","hex":"#A8231A"},{"name":"red/590","hex":"#7A2E28"},{"name":"red/690","hex":"#4F201C"},{"name":"red/745","hex":"#3B1512"},{"name":"teal/20","hex":"#F2FAF8"},{"name":"teal/45","hex":"#E6F4F1"},{"name":"teal/65","hex":"#DCEFEA"},{"name":"teal/130","hex":"#B7DDD5"},{"name":"teal/220","hex":"#5BCFB8"},{"name":"teal/525","hex":"#0B6B5C"},{"name":"teal/615","hex":"#1F4D45"},{"name":"teal/680","hex":"#143A34"},{"name":"teal/700","hex":"#123430"},{"name":"teal/740","hex":"#0F2925"}],"color":[{"name":"bg/page","light":"neutral/25","dark":"neutral/825","lightHex":"#F5F6F8","darkHex":"#0E1116","scopes":["FRAME_FILL"],"description":"Page background behind cards"},{"name":"bg/surface","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR","TEXT_FILL"],"description":"Cards, sidebar, top bar"},{"name":"bg/subtle","light":"neutral/15","dark":"neutral/755","lightHex":"#F9FAFB","darkHex":"#1B2029","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Table header, card footers, hover"},{"name":"bg/muted","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Document viewer, neutral fills"},{"name":"bg/selected","light":"blue/40","dark":"blue/725","lightHex":"#EDF2FF","darkHex":"#1B2645","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Active nav item, applied filter, selected segment"},{"name":"bg/row-selected","light":"blue/20","dark":"blue/745","lightHex":"#F7F9FF","darkHex":"#18213A","scopes":["FRAME_FILL"],"description":"Selected table row"},{"name":"bg/row-attention","light":"amber/10","dark":"amber/780","lightHex":"#FFFCF7","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Rows that need action"},{"name":"bg/info-banner","light":"blue/35","dark":"blue/750","lightHex":"#EEF3FD","darkHex":"#15213A","scopes":["FRAME_FILL"],"description":"Info banner"},{"name":"border/default","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Card and section borders"},{"name":"border/row","light":"neutral/45","dark":"neutral/725","lightHex":"#EEF0F3","darkHex":"#222833","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Row dividers"},{"name":"border/control","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","FRAME_FILL"],"description":"Secondary buttons, segmented controls"},{"name":"border/input","light":"neutral/340","dark":"neutral/440","lightHex":"#8A93A3","darkHex":"#6B7586","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Inputs, checkboxes (3:1 on surface)"},{"name":"border/info","light":"blue/120","dark":"blue/625","lightHex":"#C9D7F5","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Info banner border"},{"name":"text/primary","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["TEXT_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Headings, values"},{"name":"text/secondary","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL"],"description":"Body text, labels"},{"name":"text/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Meta text, axis labels"},{"name":"text/link","light":"blue/555","dark":"blue/240","lightHex":"#1B45BD","darkHex":"#8FB0FF","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Links, selected tab"},{"name":"text/link-hover","light":"blue/580","dark":"blue/170","lightHex":"#173FB0","darkHex":"#B3C8FF","scopes":["TEXT_FILL"],"description":"Link hover"},{"name":"text/on-accent","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Text and icons on primary"},{"name":"icon/default","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Default icon colour"},{"name":"icon/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Secondary icons"},{"name":"action/primary","light":"blue/510","dark":"blue/440","lightHex":"#1D4FD7","darkHex":"#3D68E6","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Primary button, focus, selection"},{"name":"action/primary-hover","light":"blue/550","dark":"blue/490","lightHex":"#1A45BF","darkHex":"#3159D4","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Primary button hover"},{"name":"action/primary-disabled","light":"blue/130","dark":"blue/665","lightHex":"#C7D4F5","darkHex":"#26345A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Disabled primary button"},{"name":"focus/ring","light":"blue/510","dark":"blue/240","lightHex":"#1D4FD7","darkHex":"#8FB0FF","scopes":["STROKE_COLOR","EFFECT_COLOR"],"description":"Keyboard focus ring"},{"name":"status/success/bg","light":"green/40","dark":"green/730","lightHex":"#E7F6EC","darkHex":"#0F2E1D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Success badge background"},{"name":"status/success/fg","light":"green/550","dark":"green/210","lightHex":"#12663A","darkHex":"#6CD49A","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Success text and icon"},{"name":"status/success/track","light":"green/60","dark":"green/635","lightHex":"#DDF2E5","darkHex":"#1C4A30","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Success ring track"},{"name":"status/info/bg","light":"blue/45","dark":"blue/720","lightHex":"#EAF1FB","darkHex":"#13284A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Info badge background"},{"name":"status/info/fg","light":"blue/575","dark":"blue/235","lightHex":"#1F4E8C","darkHex":"#8DB5F2","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Info text and icon"},{"name":"status/attention/bg","light":"amber/35","dark":"amber/725","lightHex":"#FFF1E0","darkHex":"#33240D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Attention badge background"},{"name":"status/attention/fg","light":"amber/515","dark":"amber/180","lightHex":"#8F4A00","darkHex":"#F5B65C","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Attention text and icon"},{"name":"status/attention/solid","light":"amber/385","dark":"amber/290","lightHex":"#C46A00","darkHex":"#E08A1E","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter fill, pips"},{"name":"status/attention/track","light":"amber/75","dark":"amber/655","lightHex":"#FBE3C4","darkHex":"#4A3418","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter track"},{"name":"status/attention/border","light":"amber/145","dark":"amber/565","lightHex":"#F2C894","darkHex":"#6B4A1F","scopes":["STROKE_COLOR"],"description":"Attention card border"},{"name":"status/attention/surface","light":"amber/20","dark":"amber/775","lightHex":"#FFF8EF","darkHex":"#241A0D","scopes":["FRAME_FILL"],"description":"Attention panel background"},{"name":"status/critical/bg","light":"red/45","dark":"red/745","lightHex":"#FDEBEA","darkHex":"#3B1512","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Critical badge background"},{"name":"status/critical/fg","light":"red/520","dark":"red/220","lightHex":"#A8231A","darkHex":"#F79A90","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Critical text and icon"},{"name":"status/critical/solid","light":"red/425","dark":"red/365","lightHex":"#D92D20","darkHex":"#F04438","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Urgent card border, red ring"},{"name":"status/critical/meter","light":"red/500","dark":"red/365","lightHex":"#B42318","darkHex":"#F04438","scopes":["SHAPE_FILL","FRAME_FILL"],"description":"Overdue meter fill"},{"name":"status/critical/track","light":"red/125","dark":"red/690","lightHex":"#F6C9C5","darkHex":"#4F201C","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Overdue meter track"},{"name":"status/critical/border","light":"red/140","dark":"red/590","lightHex":"#F3C4C0","darkHex":"#7A2E28","scopes":["STROKE_COLOR"],"description":"Destructive secondary button border"},{"name":"status/neutral/bg","light":"neutral/45","dark":"neutral/710","lightHex":"#EEF0F3","darkHex":"#262C36","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Neutral badge background"},{"name":"status/neutral/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Neutral text"},{"name":"cert/seller/fg","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Seller-level certificate"},{"name":"cert/seller/bg","light":"teal/20","dark":"teal/740","lightHex":"#F2FAF8","darkHex":"#0F2925","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Seller certificate chip"},{"name":"cert/seller/border","light":"teal/130","dark":"teal/615","lightHex":"#B7DDD5","darkHex":"#1F4D45","scopes":["STROKE_COLOR"],"description":"Seller certificate chip border"},{"name":"cert/seller/tile","light":"teal/45","dark":"teal/700","lightHex":"#E6F4F1","darkHex":"#123430","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Teal identity tile"},{"name":"cert/manufacturer/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Manufacturer certificate"},{"name":"cert/manufacturer/bg","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL"],"description":"Manufacturer chip"},{"name":"cert/manufacturer/border","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR"],"description":"Manufacturer chip border"},{"name":"cert/vegan/fg","light":"lime/545","dark":"lime/180","lightHex":"#3F6212","darkHex":"#A9D570","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Vegan certificate"},{"name":"cert/vegan/bg","light":"lime/20","dark":"lime/745","lightHex":"#F5FAEF","darkHex":"#1A2812","scopes":["FRAME_FILL"],"description":"Vegan chip"},{"name":"cert/vegan/border","light":"lime/130","dark":"lime/600","lightHex":"#C8DDB0","darkHex":"#35511F","scopes":["STROKE_COLOR"],"description":"Vegan chip border"},{"name":"cert/vegan/self-declared-border","light":"lime/245","dark":"lime/390","lightHex":"#9DBB7A","darkHex":"#6E8F45","scopes":["STROKE_COLOR"],"description":"Self-declared chip, dashed"},{"name":"tile/purple-bg","light":"purple/45","dark":"purple/730","lightHex":"#F1ECFF","darkHex":"#271E47","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Identity tile: applications"},{"name":"tile/purple-fg","light":"purple/525","dark":"purple/225","lightHex":"#5B3CC4","darkHex":"#B9A6FF","scopes":["TEXT_FILL","SHAPE_FILL"],"description":"Identity tile text"},{"name":"thumb/meat-bg","light":"coral/55","dark":"coral/735","lightHex":"#FDE7E3","darkHex":"#3A1A16","scopes":["FRAME_FILL"],"description":"Product thumbnail: meat"},{"name":"thumb/meat-fg","light":"coral/475","dark":"coral/205","lightHex":"#B23F2E","darkHex":"#F4A595","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Meat glyph"},{"name":"thumb/poultry-bg","light":"honey/40","dark":"honey/720","lightHex":"#FFF0D6","darkHex":"#33260F","scopes":["FRAME_FILL"],"description":"Product thumbnail: poultry"},{"name":"thumb/poultry-fg","light":"honey/470","dark":"honey/155","lightHex":"#9A5A08","darkHex":"#F3C46A","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Poultry glyph"},{"name":"thumb/bakery-bg","light":"brown/60","dark":"brown/730","lightHex":"#F6EADB","darkHex":"#2F2419","scopes":["FRAME_FILL"],"description":"Product thumbnail: bakery"},{"name":"thumb/bakery-fg","light":"brown/505","dark":"brown/180","lightHex":"#865628","darkHex":"#E4BB8E","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Bakery glyph"},{"name":"thumb/pantry-bg","light":"olive/50","dark":"olive/730","lightHex":"#EAF2DF","darkHex":"#1F2B14","scopes":["FRAME_FILL"],"description":"Product thumbnail: pantry"},{"name":"thumb/pantry-fg","light":"olive/515","dark":"olive/165","lightHex":"#4C6A1C","darkHex":"#B6D68B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Pantry glyph"},{"name":"thumb/other-bg","light":"neutral/50","dark":"neutral/730","lightHex":"#EBEEF2","darkHex":"#232830","scopes":["FRAME_FILL"],"description":"Product thumbnail: other"},{"name":"thumb/other-fg","light":"neutral/565","dark":"neutral/165","lightHex":"#4A525E","darkHex":"#C3C9D3","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Other glyph"},{"name":"chart/series-1","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Main series"},{"name":"chart/series-1-soft","light":"blue/165","dark":"blue/620","lightHex":"#B9C9F2","darkHex":"#2C3F73","scopes":["SHAPE_FILL"],"description":"Past periods in bar charts"},{"name":"chart/split-2","light":"blue/225","dark":"blue/465","lightHex":"#9DB4F0","darkHex":"#4A68B8","scopes":["SHAPE_FILL"],"description":"Second part of a split bar"},{"name":"chart/compare","light":"neutral/380","dark":"neutral/335","lightHex":"#7C8698","darkHex":"#8B95A6","scopes":["STROKE_COLOR"],"description":"Comparison series (dashed)"},{"name":"chart/grid","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Gridlines"},{"name":"chart/axis","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Baseline"},{"name":"chart/meter-track","light":"blue/80","dark":"blue/680","lightHex":"#DCE6FB","darkHex":"#22305A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Meter track, accent"},{"name":"chart/donut-track","light":"teal/65","dark":"teal/680","lightHex":"#DCEFEA","darkHex":"#143A34","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Certificate donut track"},{"name":"chart/tooltip-bg","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Chart tooltip background (inverse)"},{"name":"chart/tooltip-fg","light":"neutral/0","dark":"neutral/790","lightHex":"#FFFFFF","darkHex":"#111827","scopes":["TEXT_FILL"],"description":"Chart tooltip value"},{"name":"chart/tooltip-muted","light":"neutral/130","dark":"neutral/605","lightHex":"#D0D5DD","darkHex":"#3F4756","scopes":["TEXT_FILL"],"description":"Chart tooltip label"},{"name":"map/land","light":"blue/30","dark":"neutral/775","lightHex":"#F3F5F8","darkHex":"#181C24","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Map land"},{"name":"map/water","light":"blue/75","dark":"blue/735","lightHex":"#DDE7F3","darkHex":"#17263A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Map water"},{"name":"map/road","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR"],"description":"Map roads"},{"name":"map/seller-pin","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL"],"description":"Seller with open orders"},{"name":"map/courier","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["SHAPE_FILL"],"description":"Courier position"},{"name":"board/action-bg","light":"amber/20","dark":"amber/780","lightHex":"#FFF8EF","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Needs action column"},{"name":"board/action-border","light":"amber/105","dark":"amber/655","lightHex":"#F3D7B0","darkHex":"#4A3418","scopes":["STROKE_COLOR"],"description":"Needs action column border"},{"name":"board/prep-bg","light":"blue/25","dark":"blue/775","lightHex":"#F3F6FC","darkHex":"#141B2C","scopes":["FRAME_FILL"],"description":"Preparing column"},{"name":"board/prep-border","light":"blue/95","dark":"blue/625","lightHex":"#D6E0F2","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Preparing column border"},{"name":"board/ready-bg","light":"green/30","dark":"green/765","lightHex":"#F1F8F3","darkHex":"#10221A","scopes":["FRAME_FILL"],"description":"Ready column"},{"name":"board/ready-border","light":"green/95","dark":"green/630","lightHex":"#CFE6D7","darkHex":"#1F4A33","scopes":["STROKE_COLOR"],"description":"Ready column border"},{"name":"bg/scrim","light":null,"dark":null,"lightHex":"#11182780","darkHex":"#00000099","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Overlay behind drawers and modals; alpha is part of the value"}],"dimension":[{"name":"space/0-5","desktop":2,"touch":2,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1","desktop":4,"touch":4,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1-5","desktop":6,"touch":6,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2","desktop":8,"touch":8,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2-5","desktop":10,"touch":10,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3","desktop":12,"touch":12,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3-5","desktop":14,"touch":14,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4","desktop":16,"touch":16,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4-5","desktop":18,"touch":18,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/5","desktop":20,"touch":20,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/6","desktop":24,"touch":24,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/7","desktop":28,"touch":28,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/8","desktop":32,"touch":32,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/10","desktop":40,"touch":40,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"radius/chip","desktop":6,"touch":6,"scopes":["CORNER_RADIUS"]},{"name":"radius/control","desktop":8,"touch":10,"scopes":["CORNER_RADIUS"]},{"name":"radius/card","desktop":12,"touch":12,"scopes":["CORNER_RADIUS"]},{"name":"radius/column","desktop":14,"touch":14,"scopes":["CORNER_RADIUS"]},{"name":"radius/pill","desktop":999,"touch":999,"scopes":["CORNER_RADIUS"]},{"name":"size/control-sm","desktop":32,"touch":44,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control","desktop":36,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control-lg","desktop":44,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/badge","desktop":22,"touch":24,"scopes":["WIDTH_HEIGHT"]},{"name":"size/icon","desktop":18,"touch":20,"scopes":["WIDTH_HEIGHT"]},{"name":"size/thumb","desktop":28,"touch":32,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar","desktop":248,"touch":248,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar-collapsed","desktop":72,"touch":72,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"border/width","desktop":1,"touch":1,"scopes":["STROKE_FLOAT"]},{"name":"border/width-strong","desktop":2,"touch":2,"scopes":["STROKE_FLOAT"]},{"name":"size/bottom-bar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar-phone","desktop":56,"touch":56,"scopes":["WIDTH_HEIGHT"]}],"type":[{"name":"Display/Hero","family":"IBM Plex Sans","style":"SemiBold","size":30,"lineHeight":38,"letterSpacing":-0.3,"case":null},{"name":"Heading/H1","family":"IBM Plex Sans","style":"SemiBold","size":24,"lineHeight":32,"letterSpacing":-0.24,"case":null},{"name":"Heading/H2","family":"IBM Plex Sans","style":"SemiBold","size":16,"lineHeight":22,"letterSpacing":0,"case":null},{"name":"Heading/Amount","family":"IBM Plex Sans","style":"SemiBold","size":26,"lineHeight":32,"letterSpacing":-0.2,"case":null},{"name":"Heading/Stat","family":"IBM Plex Sans","style":"SemiBold","size":22,"lineHeight":28,"letterSpacing":0,"case":null},{"name":"Body/Default","family":"IBM Plex Sans","style":"Regular","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Medium","family":"IBM Plex Sans","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Strong","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Small","family":"IBM Plex Sans","style":"Regular","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Body/Small Strong","family":"IBM Plex Sans","style":"SemiBold","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Caption/Default","family":"IBM Plex Sans","style":"Regular","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Strong","family":"IBM Plex Sans","style":"SemiBold","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Overline","family":"IBM Plex Sans","style":"SemiBold","size":11,"lineHeight":16,"letterSpacing":0.77,"case":"UPPER"},{"name":"Label/Button","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Label/Button Small","family":"IBM Plex Sans","style":"SemiBold","size":13,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Touch/Body","family":"IBM Plex Sans","style":"Regular","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Strong","family":"IBM Plex Sans","style":"Bold","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Button","family":"IBM Plex Sans","style":"SemiBold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Title","family":"IBM Plex Sans","style":"Bold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Default","family":"IBM Plex Mono","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Small","family":"IBM Plex Mono","style":"Regular","size":11,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Mono/Touch","family":"IBM Plex Mono","style":"Medium","size":15,"lineHeight":20,"letterSpacing":0,"case":null}],"effects":[{"name":"Elevation/Floating","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.22],"x":0,"y":12,"blur":28,"spread":-8,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":4,"blur":8,"spread":-4,"token":null}],"description":"Floating bulk action bar"},{"name":"Elevation/Document","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":1,"blur":2,"spread":0,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.08],"x":0,"y":8,"blur":16,"spread":0,"token":null}],"description":"Document preview paper"},{"name":"Focus/Ring","layers":[{"type":"DROP_SHADOW","rgba":[255,255,255,1],"x":0,"y":0,"blur":0,"spread":2,"token":"bg/surface"},{"type":"DROP_SHADOW","rgba":[29,79,215,1],"x":0,"y":0,"blur":0,"spread":4,"token":"focus/ring"}],"description":"Keyboard focus ring: 2px gap + 2px blue"},{"name":"Ring/Urgent","layers":[{"type":"DROP_SHADOW","rgba":[253,235,234,1],"x":0,"y":0,"blur":0,"spread":3,"token":"status/critical/bg"}],"description":"Ring around urgent order card"}],"motion":{"duration/fast":120,"duration/base":160,"duration/slow":240}};
+const ICONS = {"home":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z\"></path></svg>","inbox":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 12h-6l-2 3h-4l-2-3H2\"></path><path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"></path></svg>","clipboard":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\"></rect><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"></path><path d=\"M12 11h4\"></path><path d=\"M12 16h4\"></path><path d=\"M8 11h.01\"></path><path d=\"M8 16h.01\"></path></svg>","package":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7.5 4.27 9 5.15\"></path><path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"></path><path d=\"m3.3 7 8.7 5 8.7-5\"></path><path d=\"M12 22V12\"></path></svg>","store":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 9.5 5.5 4h13L20 9.5\"></path><path d=\"M4 9.5h16v1a2.7 2.7 0 0 1-5.3.7 2.7 2.7 0 0 1-5.4 0A2.7 2.7 0 0 1 4 10.5z\"></path><path d=\"M5.5 12.5V20h13v-7.5\"></path><path d=\"M10 20v-4.5h4V20\"></path></svg>","users":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"></path><circle cx=\"9\" cy=\"7\" r=\"4\"></circle><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"></path><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"></path></svg>","wallet":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1\"></path><path d=\"M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4\"></path></svg>","file-text":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"></path><path d=\"M16 13H8\"></path><path d=\"M16 17H8\"></path></svg>","sliders":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h10\"></path><path d=\"M18 6h2\"></path><circle cx=\"16\" cy=\"6\" r=\"2\"></circle><path d=\"M4 12h4\"></path><path d=\"M12 12h8\"></path><circle cx=\"10\" cy=\"12\" r=\"2\"></circle><path d=\"M4 18h12\"></path><circle cx=\"18\" cy=\"18\" r=\"2\"></circle></svg>","shield-check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10\"></path><path d=\"m9 12 2 2 4-4\"></path></svg>","undo":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 14 4 9l5-5\"></path><path d=\"M4 9h10.5a5.5 5.5 0 0 1 0 11H11\"></path></svg>","badge-check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z\"></path><path d=\"m9 12 2 2 4-4\"></path></svg>","message":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"></path></svg>","help-circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"></path><path d=\"M12 17h.01\"></path></svg>","panel-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M9 3v18\"></path></svg>","search":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg>","bell":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"></path><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"></path></svg>","chevron-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"></path></svg>","chevron-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"></path></svg>","chevron-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"></path></svg>","x":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg>","plus":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"></path><path d=\"M5 12h14\"></path></svg>","download":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"></path><path d=\"m7 10 5 5 5-5\"></path><path d=\"M12 15V3\"></path></svg>","columns":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg>","more-vertical":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"12\" cy=\"19\" r=\"1\"></circle></svg>","more-horizontal":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"19\" cy=\"12\" r=\"1\"></circle></svg>","check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"></path></svg>","minus":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"></path></svg>","alert-circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 8v4\"></path><path d=\"M12 16h.01\"></path></svg>","alert-triangle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z\"></path><path d=\"M12 9v4\"></path><path d=\"M12 17h.01\"></path></svg>","clock":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6l4 2\"></path></svg>","calendar":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"></rect><path d=\"M16 2v4\"></path><path d=\"M8 2v4\"></path><path d=\"M3 10h18\"></path></svg>","zap":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><path d=\"M13 2 4 14h7l-1 8 9-12h-7z\"></path></svg>","volume":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z\"></path><path d=\"M16 9a5 5 0 0 1 0 6\"></path><path d=\"M19.4 18.4a9 9 0 0 0 0-12.8\"></path></svg>","arrow-up":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 19V5\"></path><path d=\"m5 12 7-7 7 7\"></path></svg>","arrow-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"></path><path d=\"m19 12-7 7-7-7\"></path></svg>","arrow-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 12H5\"></path><path d=\"m12 19-7-7 7-7\"></path></svg>","arrow-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"></path><path d=\"m12 5 7 7-7 7\"></path></svg>","external-link":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 3h6v6\"></path><path d=\"M10 14 21 3\"></path><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"></path></svg>","zoom-in":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path><path d=\"M11 8v6\"></path><path d=\"M8 11h6\"></path></svg>","zoom-out":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path><path d=\"M8 11h6\"></path></svg>","leaf":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z\"></path><path d=\"M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12\"></path></svg>","briefcase":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"></rect><path d=\"M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"></path></svg>","ban":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"m4.9 4.9 14.2 14.2\"></path></svg>","printer":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 9V2h12v7\"></path><path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\"></path><rect x=\"6\" y=\"14\" width=\"12\" height=\"8\"></rect></svg>","truck":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2\"></path><path d=\"M15 18H9\"></path><path d=\"M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 9.38a1 1 0 0 0-.78-.38H14\"></path><circle cx=\"17\" cy=\"18\" r=\"2\"></circle><circle cx=\"7\" cy=\"18\" r=\"2\"></circle></svg>","map-pin":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z\"></path><circle cx=\"12\" cy=\"10\" r=\"3\"></circle></svg>","star":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><path d=\"m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z\"></path></svg>","file":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"></path></svg>","send":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 2-7 20-4-9-9-4z\"></path><path d=\"M22 2 11 13\"></path></svg>","eye":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z\"></path><circle cx=\"12\" cy=\"12\" r=\"3\"></circle></svg>","info":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4\"></path><path d=\"M12 8h.01\"></path></svg>","circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle></svg>","menu":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h16\"></path><path d=\"M4 12h16\"></path><path d=\"M4 18h16\"></path></svg>","product-meat":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6.2 8c2.6-3.2 8.4-3.6 11.3-.1 2.6 3.1 1.6 7.8-2.1 9.8-3.1 1.7-6.8 1-8.8-1.5-1.9-2.3-2.4-5.6-.4-8.2z\"></path><circle cx=\"15\" cy=\"11.2\" r=\"1.7\"></circle></svg>","product-poultry":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15.2 4.2a5 5 0 0 1 4.6 6.2c-.7 2.9-3.7 4.4-6.4 3.7l-3.1 3.1\"></path><path d=\"M15.2 4.2c-2.9.7-4.6 3.6-3.9 6.5l-3.1 3.1\"></path><path d=\"M10.3 17.2a1.9 1.9 0 1 1-2.6 2.5 1.9 1.9 0 1 1 .5-3.6\"></path></svg>","product-bakery":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 13.6c0-4 3.4-6.6 7.5-6.6s7.5 2.6 7.5 6.6V17a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 4.5 17z\"></path><path d=\"m9.2 10.4-1.4 3\"></path><path d=\"m12.7 10-1.4 3.4\"></path><path d=\"m16.1 10.6-1.3 2.8\"></path></svg>","product-pantry":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8.6 6.6h6.8l-1.4 2.6c2.9 1.5 4.5 4.2 4.5 6.9a3.4 3.4 0 0 1-3.4 3.4H8.9a3.4 3.4 0 0 1-3.4-3.4c0-2.7 1.6-5.4 4.5-6.9z\"></path><path d=\"M9.2 4.4h5.6\"></path><path d=\"M9.5 14.2h5\"></path></svg>","product-other":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3.6c1 3 4.6 4.6 4.6 9.1a4.6 4.6 0 0 1-9.2 0c0-2 1-3.4 2-4.4.3 1.5 1 2.4 2 2.7-.5-2.8-.2-5.1.6-7.4z\"></path></svg>"};
+const CONTRAST = [["light","text","text/primary","bg/page",16.41,4.5,true],["light","text","text/primary","bg/surface",17.74,4.5,true],["light","text","text/primary","bg/subtle",16.98,4.5,true],["light","text","text/primary","bg/muted",15.54,4.5,true],["light","text","text/primary","bg/selected",15.84,4.5,true],["dark","text","text/primary","bg/page",15.83,4.5,true],["dark","text","text/primary","bg/surface",14.6,4.5,true],["dark","text","text/primary","bg/subtle",13.67,4.5,true],["dark","text","text/primary","bg/muted",12.23,4.5,true],["dark","text","text/primary","bg/selected",12.46,4.5,true],["light","text","text/secondary","bg/page",8.64,4.5,true],["light","text","text/secondary","bg/surface",9.35,4.5,true],["light","text","text/secondary","bg/subtle",8.94,4.5,true],["light","text","text/secondary","bg/row-selected",8.88,4.5,true],["light","text","text/secondary","bg/row-attention",9.13,4.5,true],["dark","text","text/secondary","bg/page",11.36,4.5,true],["dark","text","text/secondary","bg/surface",10.48,4.5,true],["dark","text","text/secondary","bg/subtle",9.82,4.5,true],["dark","text","text/secondary","bg/row-selected",9.58,4.5,true],["dark","text","text/secondary","bg/row-attention",10.34,4.5,true],["light","text","text/muted","bg/page",5.51,4.5,true],["light","text","text/muted","bg/surface",5.96,4.5,true],["light","text","text/muted","bg/subtle",5.7,4.5,true],["dark","text","text/muted","bg/page",7.26,4.5,true],["dark","text","text/muted","bg/surface",6.7,4.5,true],["dark","text","text/muted","bg/subtle",6.27,4.5,true],["light","text","text/link","bg/surface",7.98,4.5,true],["light","text","text/link","bg/selected",7.12,4.5,true],["light","text","text/link","bg/info-banner",7.17,4.5,true],["dark","text","text/link","bg/surface",8.16,4.5,true],["dark","text","text/link","bg/selected",6.97,4.5,true],["dark","text","text/link","bg/info-banner",7.49,4.5,true],["light","text","text/on-accent","action/primary",6.66,4.5,true],["light","text","text/on-accent","action/primary-hover",7.93,4.5,true],["dark","text","text/on-accent","action/primary",4.86,4.5,true],["dark","text","text/on-accent","action/primary-hover",5.98,4.5,true],["light","badge","status/success/fg","status/success/bg",6.29,4.5,true],["dark","badge","status/success/fg","status/success/bg",8.06,4.5,true],["light","badge","status/info/fg","status/info/bg",7.31,4.5,true],["dark","badge","status/info/fg","status/info/bg",7.01,4.5,true],["light","badge","status/attention/fg","status/attention/bg",6.01,4.5,true],["dark","badge","status/attention/fg","status/attention/bg",8.38,4.5,true],["light","badge","status/critical/fg","status/critical/bg",6.25,4.5,true],["dark","badge","status/critical/fg","status/critical/bg",7.67,4.5,true],["light","badge","status/neutral/fg","status/neutral/bg",8.19,4.5,true],["dark","badge","status/neutral/fg","status/neutral/bg",8.43,4.5,true],["light","text","status/attention/fg","status/attention/surface",6.33,4.5,true],["light","text","status/attention/fg","bg/surface",6.67,4.5,true],["dark","text","status/attention/fg","status/attention/surface",9.55,4.5,true],["dark","text","status/attention/fg","bg/surface",9.74,4.5,true],["light","text","status/critical/fg","bg/surface",7.19,4.5,true],["dark","text","status/critical/fg","bg/surface",8.29,4.5,true],["light","text","status/success/fg","bg/surface",7.03,4.5,true],["dark","text","status/success/fg","bg/surface",9.57,4.5,true],["light","chip","cert/seller/fg","cert/seller/bg",6.05,4.5,true],["dark","chip","cert/seller/fg","cert/seller/bg",8.11,4.5,true],["light","chip","cert/manufacturer/fg","cert/manufacturer/bg",9.35,4.5,true],["dark","chip","cert/manufacturer/fg","cert/manufacturer/bg",10.48,4.5,true],["light","chip","cert/vegan/fg","cert/vegan/bg",6.67,4.5,true],["dark","chip","cert/vegan/fg","cert/vegan/bg",9.17,4.5,true],["light","tile","cert/seller/fg","cert/seller/tile",5.68,4.5,true],["dark","tile","cert/seller/fg","cert/seller/tile",7.09,4.5,true],["light","tile","tile/purple-fg","tile/purple-bg",6.3,4.5,true],["dark","tile","tile/purple-fg","tile/purple-bg",7.31,4.5,true],["light","glyph","thumb/meat-fg","thumb/meat-bg",4.86,3.0,true],["dark","glyph","thumb/meat-fg","thumb/meat-bg",7.96,3.0,true],["light","glyph","thumb/poultry-fg","thumb/poultry-bg",4.87,3.0,true],["dark","glyph","thumb/poultry-fg","thumb/poultry-bg",9.06,3.0,true],["light","glyph","thumb/bakery-fg","thumb/bakery-bg",5.25,3.0,true],["dark","glyph","thumb/bakery-fg","thumb/bakery-bg",8.5,3.0,true],["light","glyph","thumb/pantry-fg","thumb/pantry-bg",5.39,3.0,true],["dark","glyph","thumb/pantry-fg","thumb/pantry-bg",9.18,3.0,true],["light","glyph","thumb/other-fg","thumb/other-bg",6.78,3.0,true],["dark","glyph","thumb/other-fg","thumb/other-bg",8.9,3.0,true],["light","ui-boundary","border/input","bg/surface",3.1,3.0,true],["dark","ui-boundary","border/input","bg/surface",3.75,3.0,true],["light","focus","focus/ring","bg/surface",6.66,3.0,true],["light","focus","focus/ring","bg/page",6.16,3.0,true],["dark","focus","focus/ring","bg/surface",8.16,3.0,true],["dark","focus","focus/ring","bg/page",8.85,3.0,true],["light","graphic","chart/series-1","bg/surface",6.66,3.0,true],["dark","graphic","chart/series-1","bg/surface",6.23,3.0,true],["light","graphic","chart/compare","bg/surface",3.67,3.0,true],["dark","graphic","chart/compare","bg/surface",5.77,3.0,true],["light","graphic","status/critical/solid","bg/surface",4.83,3.0,true],["dark","graphic","status/critical/solid","bg/surface",4.64,3.0,true],["light","graphic","status/attention/solid","bg/surface",3.88,3.0,true],["dark","graphic","status/attention/solid","bg/surface",6.5,3.0,true],["light","graphic","map/seller-pin","map/land",6.1,3.0,true],["dark","graphic","map/seller-pin","map/land",6.09,3.0,true],["light","graphic","map/courier","map/land",5.88,3.0,true],["dark","graphic","map/courier","map/land",8.99,3.0,true],["light","text","chart/tooltip-fg","chart/tooltip-bg",17.74,4.5,true],["dark","text","chart/tooltip-fg","chart/tooltip-bg",14.84,4.5,true],["light","text","chart/tooltip-muted","chart/tooltip-bg",12.03,4.5,true],["dark","text","chart/tooltip-muted","chart/tooltip-bg",7.82,4.5,true],["light","icon","icon/default","bg/surface",9.35,3.0,true],["dark","icon","icon/default","bg/surface",10.48,3.0,true],["light","icon","icon/muted","bg/surface",5.96,3.0,true],["dark","icon","icon/muted","bg/surface",6.7,3.0,true]];
 const PLUGIN_TAG = 'mondapac-ds';
 
 const S = {
@@ -77,23 +77,19 @@ function addColorVariable(c) {
   }
 }
 
-// Adds one primitive to the collection in S.primColl (used by the build and by "Update library", 1.7.0).
-function addPrimitive(p) {
-  const coll = S.primColl;
-  const v = figma.variables.createVariable('color/' + p.name, coll, 'COLOR');
-  v.setValueForMode(coll.modes[0].modeId, rgba(p.hex));
-  v.scopes = [];
-  v.description = p.hex + ' · step = 1000 × (1 − OKLab L)';
-  S.prim[p.name] = v;
-}
-
 async function buildVariables() {
   // 1. Primitives (hidden from publishing, no scopes: designers use semantic tokens only)
   const prim = newCollection('Primitives');
   prim.renameMode(prim.modes[0].modeId, 'Value');
   await safe('hide primitives', function () { prim.hiddenFromPublishing = true; });
-  S.primColl = prim;
-  SPEC.primitives.forEach(addPrimitive);
+  const pm = prim.modes[0].modeId;
+  SPEC.primitives.forEach(function (p) {
+    const v = figma.variables.createVariable('color/' + p.name, prim, 'COLOR');
+    v.setValueForMode(pm, rgba(p.hex));
+    v.scopes = [];
+    v.description = p.hex + ' · step = 1000 × (1 − OKLab L)';
+    S.prim[p.name] = v;
+  });
 
   // 2. Semantic colour: Light + Dark (modes when the plan allows, otherwise a parallel collection)
   const color = newCollection('Color');
@@ -322,7 +318,6 @@ function text(str, style, color, o) {
   if (o.w) { t.resize(o.w, t.height); t.textAutoResize = 'HEIGHT'; }
   if (o.truncate) { t.textAutoResize = 'HEIGHT'; t.textTruncation = 'ENDING'; t.maxLines = 1; }
   if (o.strike) t.textDecoration = 'STRIKETHROUGH';
-  if (o.underline) t.textDecoration = 'UNDERLINE';
   setMeta(t, o);
   return t;
 }
@@ -448,7 +443,7 @@ function makeSet(name, axes, build, opts) {
     set.children.forEach(function (c) { ownFind(c, function (n) { return n.name === b.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { visible: k }); }); });
   });
   (opts.swap || []).forEach(function (s) {
-    const def = s.comp || S.icons[s.def];
+    const def = S.icons[s.def];
     const k = set.addComponentProperty(s.prop, 'INSTANCE_SWAP', def.id); keys[s.prop] = k;
     set.children.forEach(function (c) { ownFind(c, function (n) { return n.type === 'INSTANCE' && n.name === s.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { mainComponent: k }); }); });
   });
@@ -504,11 +499,6 @@ function makeComponent(name, build, opts) {
     const k = c.addComponentProperty(b.prop, 'BOOLEAN', b.def); keys[b.prop] = k;
     ownFind(c, function (n) { return n.name === b.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { visible: k }); });
   });
-  (opts.swap || []).forEach(function (s) {
-    const def = s.comp || S.icons[s.def];
-    const k = c.addComponentProperty(s.prop, 'INSTANCE_SWAP', def.id); keys[s.prop] = k;
-    ownFind(c, function (n) { return n.type === 'INSTANCE' && n.name === s.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { mainComponent: k }); });
-  });
   tag(c);
   S.sets[name] = { comp: c, keys: keys, axes: [] };
   S.counts.components++;
@@ -556,7 +546,6 @@ function inst(name, props, o) {
     const key = rec.keys[k]; if (!key) throw new Error('Unknown property ' + k + ' on ' + name);
     let v = props[k];
     if (v && typeof v === 'object' && v.icon) v = S.icons[v.icon].id;
-    else if (v && typeof v === 'object' && v.comp) v = v.comp.id;
     set[key] = v;
   });
   if (Object.keys(set).length) i.setProperties(set);
@@ -617,52 +606,6 @@ function componentBlock(root, set, doc) {
   if (groups.length) add(row, panel); else panel.remove();
   add(section, row);
   return section;
-}
-
-// ---------------------------------------------------------------- additions to existing sets (Update library, 1.7.0)
-// Wire the set's existing TEXT / BOOLEAN / INSTANCE_SWAP properties into a variant that was added later.
-// opts uses the same { prop, node } lists as makeSet; keys come from the set's own definitions.
-function wireVariant(c, keys, opts) {
-  (opts.text || []).forEach(function (t) { const k = keys[t.prop]; if (!k) return; ownFind(c, function (n) { return n.type === 'TEXT' && n.name === t.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { characters: k }); }); });
-  (opts.bool || []).forEach(function (b) { const k = keys[b.prop]; if (!k) return; ownFind(c, function (n) { return n.name === b.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { visible: k }); }); });
-  (opts.swap || []).forEach(function (s) { const k = keys[s.prop]; if (!k) return; ownFind(c, function (n) { return n.type === 'INSTANCE' && n.name === s.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { mainComponent: k }); }); });
-}
-// Add the variants in `combos` that the set does not have yet, built by build(c, props) and wired to the
-// set's properties. New variants are laid out in a block below the existing ones (rows by the other axes,
-// columns by colAxis), so nothing that exists moves. Returns the new components.
-function addVariants(rec, combos, build, opts, colAxis) {
-  const set = rec.set; const have = {};
-  set.children.forEach(function (c) { have[variantName(sortedProps(c.variantProperties, rec.axes))] = 1; });
-  const made = [];
-  combos.forEach(function (p) {
-    const name = variantName(sortedProps(p, rec.axes)); if (have[name]) return;
-    const c = figma.createComponent(); c.name = name; c.fills = [];
-    build(c, p);
-    set.appendChild(c); wireVariant(c, rec.keys, opts || {});
-    made.push(c); have[name] = 1; S.counts.variants++;
-  });
-  if (made.length) placeBelow(set, made, colAxis);
-  return made;
-}
-function sortedProps(p, axes) { const o = {}; axes.forEach(function (a) { if (p[a] !== undefined) o[a] = p[a]; }); return o; }
-function placeBelow(set, comps, colAxis) {
-  const PAD = 32, GX = 24, GY = 24; const fresh = new Set(comps.map(function (c) { return c.id; }));
-  let top = 0, right = 0;
-  set.children.forEach(function (c) { if (fresh.has(c.id)) return; top = Math.max(top, c.y + c.height); right = Math.max(right, c.x + c.width); });
-  const rows = [], rowOf = {}, cols = [], colOf = {};
-  comps.forEach(function (c) {
-    const vp = c.variantProperties; const rk = Object.keys(vp).filter(function (k) { return k !== colAxis; }).map(function (k) { return vp[k]; }).join('|');
-    if (rowOf[rk] === undefined) { rowOf[rk] = rows.length; rows.push(0); }
-    const ck = vp[colAxis]; if (colOf[ck] === undefined) { colOf[ck] = cols.length; cols.push(0); }
-    rows[rowOf[rk]] = Math.max(rows[rowOf[rk]], c.height); cols[colOf[ck]] = Math.max(cols[colOf[ck]], c.width);
-  });
-  const colX = []; let x = PAD; cols.forEach(function (w, i) { colX[i] = x; x += w + GX; });
-  const rowY = []; let y = top + GY; rows.forEach(function (h, i) { rowY[i] = y; y += h + GY; });
-  comps.forEach(function (c) {
-    const vp = c.variantProperties; const rk = Object.keys(vp).filter(function (k) { return k !== colAxis; }).map(function (k) { return vp[k]; }).join('|');
-    c.x = colX[colOf[vp[colAxis]]]; c.y = rowY[rowOf[rk]];
-  });
-  set.resize(Math.max(right, x - GX) + PAD, y - GY + PAD);
 }
 
 // ==== 20_foundations.js ====
@@ -730,7 +673,7 @@ async function pageGettingStarted(page) {
     ['Start', 'Cover · Getting started · Changelog', 'What this is, how to use it, what changed'],
     ['Foundations', 'Colour · Typography · Spacing, size & radius · Elevation & motion · Icons · Accessibility', 'Variables, text styles, effect styles, icon components'],
     ['Components', 'Actions · Forms & selection · Status & feedback · Data display · Tables & collections · Navigation & shell · Review & detail · Board & delivery', 'Component sets with variants and properties, each with usage notes'],
-    ['Templates', 'Admin · Seller · Auth · Dark preview', 'Full screens assembled from instances; the reference for new screens'],
+    ['Templates', 'Admin · Seller · Dark preview', 'Full screens assembled from instances; the reference for new screens'],
     ['Workspace', 'Sandbox · Archive', 'Proposals in progress and retired components'],
   ], [180, 560, 600]));
 
@@ -757,13 +700,12 @@ async function pageGettingStarted(page) {
   tag(root);
 }
 
-// Release notes shown on the Changelog page, oldest first (new releases are appended in place). 1.1.0 to 1.4.0 were reserved for the planned
-// Auth, Panel, Seller setup and Seller admin releases; that content now ships under the next free numbers, starting with 1.7.0 Auth.
+// Release notes shown on the Changelog page, oldest first (new releases are appended in place). 1.1.0 to 1.4.0 are reserved for the planned
+// Auth, Panel, Seller setup and Seller admin releases, so versions skip from 1.0.0 to 1.5.0.
 const CHANGELOG_WIDTHS = [140, 160, 1100];
 const RELEASES = [
   { version: '1.5.0', date: '7 Oct 2026', changes: 'Mobile navigation (D16). New components NavDrawer (phone drawer, Admin and Seller) and BottomTabBar (seller phone bar, 4 or 3 tabs). New token size/bottom-bar (64 px). Three 360 px phone templates: seller home with bottom bar, seller menu open, admin menu open.' },
   { version: '1.6.0', date: '7 Oct 2026', changes: 'Mobile navigation polish (D16 follow-up). New token bg/scrim (overlay colour with alpha in the value: #111827 at 50% light, black at 60% dark), new token size/topbar-phone (56 px), new icon menu, new component PhoneTopbar (Admin and Seller). The three phone templates use PhoneTopbar and the drawer scrim is bound to bg/scrim.' },
-  { version: '1.7.0', date: '7 Oct 2026', changes: 'Auth (planned as 1.1.0 in identity ux.md 8.1). Tokens bg/qr, bg/auth-showcase-admin, bg/auth-showcase-seller, text/on-showcase, text/on-showcase-muted (white at 74%, hex8) and size/auth-card (400 px), with primitives blue/780 and teal/705. Icons eye-off, lock, mail, key, user, log-out, copy, smartphone, trash. New components BrandMark (the Sidebar uses it in a new build), Field, ReasonQuote, Menu and MenuItem, AuthShowcase. Input Type=Password and Type=Code; Button Variant=Link and State=Loading; ChecklistItem Waiting and Needs attention with Show actions and Action; Topbar Show search and Show notifications. Templates Auth (A1 to A11, Seller and Admin, 1280 and 360) and Seller · Your seller account (S1), with dark previews.' },
 ];
 const RELEASE = RELEASES[RELEASES.length - 1];
 async function pageChangelog(page) {
@@ -818,7 +760,7 @@ async function pageTypography(page) {
   tag(root);
 }
 
-const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'size/topbar-phone': 'Phone top bar height (Admin and Seller)', 'size/auth-card': 'Content width of the Auth form column', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
+const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'size/topbar-phone': 'Phone top bar height (Admin and Seller)', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
 async function pageSpacing(page) {
   const root = pageShell(page, 'Spacing, size & radius', 'A 2 px base with 4 px steps for layout. Values switch between Desktop and Touch density; touch makes controls 48 px.');
   let s = docSection(root, 'Spacing');
@@ -913,52 +855,36 @@ function sparkline(vals, w, h, token) {
   return f;
 }
 
-// Button (release 1.7.0 adds Variant=Link and State=Loading). Top level, so "Update library" can add the new variants.
-const BTN = {
-  Primary: { Default: ['action/primary', null, 'text/on-accent'], Hover: ['action/primary-hover', null, 'text/on-accent'], Focus: ['action/primary', null, 'text/on-accent'], Disabled: ['action/primary-disabled', null, 'text/on-accent'] },
-  Secondary: { Default: ['bg/surface', 'border/control', 'text/primary'], Hover: ['bg/subtle', 'border/control', 'text/primary'], Focus: ['bg/surface', 'border/control', 'text/primary'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
-  Destructive: { Default: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Hover: ['status/critical/bg', 'status/critical/border', 'status/critical/fg'], Focus: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
-  Ghost: { Default: [null, null, 'text/link'], Hover: ['bg/subtle', null, 'text/link'], Focus: [null, null, 'text/link'], Disabled: [null, null, 'text/muted'] },
-  Link: { Default: [null, null, 'text/link'], Hover: [null, null, 'text/link-hover'], Focus: [null, null, 'text/link'], Disabled: [null, null, 'text/muted'] },
-};
-const BTN_SIZE = { Sm: ['size/control-sm', 'space/3', 'Label/Button Small', false], Md: ['size/control', 'space/3-5', 'Label/Button', false], Touch: ['size/control', 'space/4', 'Touch/Button', true] };
-const BUTTON_AXES = { Variant: ['Primary', 'Secondary', 'Destructive', 'Ghost', 'Link'], Size: ['Sm', 'Md', 'Touch'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Loading'] };
-const BUTTON_OPTS = { width: 1180, desc: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear. Link (1.7.0): a text action in a sentence or under a form, such as "Forgot password?"; no padding, underlined on hover. State=Loading (1.7.0): the Default colours with a spinner in place of the leading icon, at the same width; the form is read-only while it shows.',
-  text: [{ prop: 'Label', node: 'label', def: 'Button' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: false }, { prop: 'Trailing icon', node: 'icon-trailing', def: false }], swap: [{ prop: 'Icon', node: 'icon-leading', def: 'plus' }] };
-// A 16 px spinner: a faint full ring and a 270° arc, both strokes in the label colour.
-function spinner(token) {
-  const f = frame({ name: 'spinner', w: 16, h: 16 }); f.fills = [];
-  const ring = ellipse({ name: 'track', w: 12, fill: null, stroke: token, strokeW: 2, strokeAlign: 'CENTER', xy: [2, 2] }); ring.opacity = 0.3; add(f, ring);
-  add(f, vector({ name: 'arc', d: 'M 8 2 C 11.314 2 14 4.686 14 8 C 14 11.314 11.314 14 8 14 C 4.686 14 2 11.314 2 8', stroke: token, strokeW: 2, xy: [0, 0] }));
-  return f;
-}
-function buttonVariant(c, p) {
-  const loading = p.State === 'Loading';
-  const t = BTN[p.Variant][loading ? 'Default' : p.State]; const z = BTN_SIZE[p.Size]; const link = p.Variant === 'Link';
-  // text/link-hover is a text colour only, so the icons of a hovered Link stay text/link.
-  const ic = t[2] === 'text/link-hover' ? 'text/link' : t[2];
-  withTouch(z[3], function () {
-    const kids = loading ? [spinner(t[2]), text('Button', z[2], t[2], { name: 'label' })]
-      : [icon('plus', ic, 16), text('Button', z[2], t[2], { name: 'label', underline: link && p.State === 'Hover' }), icon('chevron-down', ic, 16)];
-    body(c, { dir: 'H', h: z[0], px: link ? 0 : z[1], gap: 'space/1-5', align: 'center', justify: 'center', fill: t[0], stroke: t[1], radius: 'radius/control' }, kids);
-    if (!loading) { c.children[0].name = 'icon-leading'; c.children[2].name = 'icon-trailing'; }
-    touchMode(c);
-  });
-  if (p.State === 'Focus') focusRing(c);
-}
-
 async function buildActions(page) {
   const root = pageShell(page, 'Actions', 'Buttons and icon buttons. One primary action per area; secondary for everything else; destructive actions ask for confirmation (…).');
-  const button = makeSet('Button', BUTTON_AXES, buttonVariant, BUTTON_OPTS);
-  componentBlock(root, button, { title: 'Button', summary: 'Height 32 (Sm), 36 (Md) or 48 (Touch). Label in sentence case, verb first. Link and Loading arrived in 1.7.0.',
-    use: ['Primary for the main action of a page or card (Accept, Start reviewing).', 'Secondary for supporting actions (Export, View shop).', 'Destructive for Reject…, Suspend… — always followed by a confirmation.', 'Link for text actions under a form (Forgot password?, Back to sign in).', 'Loading while a submit is in flight; the form is read-only, no page spinner.', 'Touch size on the tablet order board and on every Auth screen.'],
+  const BTN = {
+    Primary: { Default: ['action/primary', null, 'text/on-accent'], Hover: ['action/primary-hover', null, 'text/on-accent'], Focus: ['action/primary', null, 'text/on-accent'], Disabled: ['action/primary-disabled', null, 'text/on-accent'] },
+    Secondary: { Default: ['bg/surface', 'border/control', 'text/primary'], Hover: ['bg/subtle', 'border/control', 'text/primary'], Focus: ['bg/surface', 'border/control', 'text/primary'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
+    Destructive: { Default: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Hover: ['status/critical/bg', 'status/critical/border', 'status/critical/fg'], Focus: ['bg/surface', 'status/critical/border', 'status/critical/fg'], Disabled: ['bg/surface', 'border/default', 'text/muted'] },
+    Ghost: { Default: [null, null, 'text/link'], Hover: ['bg/subtle', null, 'text/link'], Focus: [null, null, 'text/link'], Disabled: [null, null, 'text/muted'] },
+  };
+  const SIZE = { Sm: ['size/control-sm', 'space/3', 'Label/Button Small', false], Md: ['size/control', 'space/3-5', 'Label/Button', false], Touch: ['size/control', 'space/4', 'Touch/Button', true] };
+  const button = makeSet('Button', { Variant: ['Primary', 'Secondary', 'Destructive', 'Ghost'], Size: ['Sm', 'Md', 'Touch'], State: ['Default', 'Hover', 'Focus', 'Disabled'] }, function (c, p) {
+    const t = BTN[p.Variant][p.State]; const z = SIZE[p.Size];
+    withTouch(z[3], function () {
+      body(c, { dir: 'H', h: z[0], px: z[1], gap: 'space/1-5', align: 'center', justify: 'center', fill: t[0], stroke: t[1], radius: 'radius/control' }, [
+        icon('plus', t[2] === 'text/on-accent' ? 'text/on-accent' : t[2], 16), text('Button', z[2], t[2], { name: 'label' }), icon('chevron-down', t[2], 16),
+      ]);
+      c.children[0].name = 'icon-leading'; c.children[2].name = 'icon-trailing';
+      touchMode(c);
+    });
+    if (p.State === 'Focus') focusRing(c);
+  }, { width: 1180, desc: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear.',
+    text: [{ prop: 'Label', node: 'label', def: 'Button' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: false }, { prop: 'Trailing icon', node: 'icon-trailing', def: false }], swap: [{ prop: 'Icon', node: 'icon-leading', def: 'plus' }] });
+  componentBlock(root, button, { title: 'Button', summary: 'Height 32 (Sm), 36 (Md) or 48 (Touch). Label in sentence case, verb first.',
+    use: ['Primary for the main action of a page or card (Accept, Start reviewing).', 'Secondary for supporting actions (Export, View shop).', 'Destructive for Reject…, Suspend… — always followed by a confirmation.', 'Touch size on the tablet order board.'],
     props: ['Label (text)', 'Leading icon / Trailing icon (boolean)', 'Icon (instance swap)', 'Variant · Size · State'],
-    a11y: ['Focus state uses the Focus/Ring effect.', 'Disabled buttons explain why nearby (e.g. "Complete the 2 remaining checks").', 'Loading keeps the label and sets aria-busy; the width does not change.', 'Icon-only actions use IconButton with an aria-label.'],
-    dont: ['Two primary buttons side by side.', 'Colour-only meaning: destructive labels say what they do.', 'Link for the main action of a form.'] });
+    a11y: ['Focus state uses the Focus/Ring effect.', 'Disabled buttons explain why nearby (e.g. "Complete the 2 remaining checks").', 'Icon-only actions use IconButton with an aria-label.'],
+    dont: ['Two primary buttons side by side.', 'Colour-only meaning: destructive labels say what they do.'] });
 
   const ICB = { Secondary: { Default: ['bg/surface', 'border/control'], Hover: ['bg/subtle', 'border/control'], Focus: ['bg/surface', 'border/control'], Disabled: ['bg/surface', 'border/default'] }, Ghost: { Default: [null, null], Hover: ['bg/subtle', null], Focus: [null, null], Disabled: [null, null] } };
   const iconBtn = makeSet('IconButton', { Variant: ['Secondary', 'Ghost'], Size: ['Sm', 'Md', 'Touch'], State: ['Default', 'Hover', 'Focus', 'Disabled'] }, function (c, p) {
-    const t = ICB[p.Variant][p.State]; const z = BTN_SIZE[p.Size];
+    const t = ICB[p.Variant][p.State]; const z = SIZE[p.Size];
     withTouch(z[3], function () {
       body(c, { dir: 'H', w: z[0], h: z[0], align: 'center', justify: 'center', fill: t[0], stroke: t[1], radius: 'radius/control' }, [icon('more-vertical', p.State === 'Disabled' ? 'icon/muted' : 'icon/default', 18)]);
       c.children[0].name = 'icon'; touchMode(c);
@@ -969,33 +895,17 @@ async function buildActions(page) {
   tag(root);
 }
 
-// Input (release 1.7.0 adds the Type axis: Text, Password, Code). Top level, so "Update library" can add the new variants.
-const INPUT_AXES = { Type: ['Text', 'Password', 'Code'], State: ['Default', 'Hover', 'Focus', 'Filled', 'Disabled', 'Error'] };
-const INPUT_OPTS = { width: 1040, desc: 'Text and search input. Border uses border/input (3:1). Type=Password (1.7.0) adds a show/hide IconButton (exposed as "reveal"; icon eye while the password is hidden, swap it to eye-off while it shows; aria-pressed in code). Type=Code (1.7.0) is one field in the mono text style for a 6-digit code or a backup code: inputmode numeric, autocomplete one-time-code, no auto-advance or auto-submit. Password and Code keep their own text per state, because a TEXT property would force one text on every variant; Value applies to Type=Text.',
-  text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }] };
-const INPUT_DOC = { title: 'Input', summary: 'Search, filters and form fields. Wrap it in Field for a label, helper and error.', use: ['Search inside index pages; filters; form fields inside Field.', 'Type=Password for every password; Type=Code for a one-time code or backup code.'], props: ['Value (text, Type=Text)', 'Leading icon (boolean)', 'Type · State'], a11y: ['Always paired with a visible or visually hidden label (Field).', 'Error state adds a message below; colour is not enough.', 'The show/hide button is named "Show password" or "Hide password" and sits after its field in the focus order.'] };
-const INPUT_ICON = { Text: 'search', Password: 'lock', Code: 'key' };
-function inputVariant(c, p) {
-  const type = p.Type || 'Text';
-  const border = p.State === 'Error' ? 'status/critical/solid' : (p.State === 'Focus' ? 'action/primary' : (p.State === 'Hover' ? 'text/muted' : 'border/input'));
-  const filled = p.State === 'Filled' || (type !== 'Text' && p.State === 'Focus');
-  let value;
-  if (type === 'Text') value = text(p.State === 'Filled' ? 'MP-10482' : 'Order number or product', 'Body/Default', p.State === 'Filled' ? 'text/primary' : 'text/muted', { name: 'value', sizeH: 'FILL', truncate: true });
-  else if (type === 'Password') value = text(filled ? '••••••••••••••••' : '', 'Body/Default', p.State === 'Disabled' ? 'text/muted' : 'text/primary', { name: 'secret', sizeH: 'FILL', truncate: true });
-  else value = text(filled ? '482913' : '', 'Mono/Default', p.State === 'Disabled' ? 'text/muted' : 'text/primary', { name: 'code', sizeH: 'FILL', truncate: true });
-  const kids = [icon(INPUT_ICON[type], 'icon/muted', 16), value];
-  if (type === 'Password') kids.push(inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: p.State === 'Disabled' ? 'Disabled' : 'Default', Icon: { icon: 'eye' } }, { name: 'reveal' }));
-  body(c, { dir: 'H', w: 280, h: 'size/control', pad: [0, type === 'Password' ? 'space/0-5' : 'space/2-5', 0, 'space/2-5'], gap: 'space/2', align: 'center', fill: p.State === 'Disabled' ? 'bg/muted' : 'bg/surface', stroke: border, radius: 'radius/control' }, kids);
-  c.children[0].name = 'icon-leading';
-  if (type === 'Password') safe('expose reveal', function () { c.children[2].isExposedInstance = true; });
-  if (p.State === 'Focus') focusRing(c);
-}
-
 async function buildForms(page) {
   const root = pageShell(page, 'Forms & selection', 'Inputs, checkboxes, switches, segmented controls, tabs and filter chips.');
-  const input = makeSet('Input', INPUT_AXES, inputVariant, INPUT_OPTS);
-  componentBlock(root, input, INPUT_DOC);
-  fieldBlock(root);
+  const input = makeSet('Input', { State: ['Default', 'Hover', 'Focus', 'Filled', 'Disabled', 'Error'] }, function (c, p) {
+    const border = p.State === 'Error' ? 'status/critical/solid' : (p.State === 'Focus' ? 'action/primary' : (p.State === 'Hover' ? 'text/muted' : 'border/input'));
+    body(c, { dir: 'H', w: 280, h: 'size/control', px: 'space/2-5', gap: 'space/2', align: 'center', fill: p.State === 'Disabled' ? 'bg/muted' : 'bg/surface', stroke: border, radius: 'radius/control' }, [
+      icon('search', 'icon/muted', 16), text(p.State === 'Filled' ? 'MP-10482' : 'Order number or product', 'Body/Default', p.State === 'Filled' ? 'text/primary' : 'text/muted', { name: 'value', sizeH: 'FILL', truncate: true }),
+    ]);
+    c.children[0].name = 'icon-leading';
+    if (p.State === 'Focus') focusRing(c);
+  }, { width: 1040, desc: 'Text and search input. Border uses border/input (3:1).', text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }] });
+  componentBlock(root, input, { title: 'Input', summary: 'Search, filters and form fields.', use: ['Search inside index pages; filters; form fields.'], a11y: ['Always paired with a visible or visually hidden label.', 'Error state adds a message below; colour is not enough.'] });
 
   const cb = makeSet('Checkbox', { Value: ['Unchecked', 'Checked', 'Indeterminate'], State: ['Default', 'Focus', 'Disabled'] }, function (c, p) {
     const on = p.Value !== 'Unchecked';
@@ -1323,14 +1233,11 @@ async function buildNavigation(page) {
   const subWrap = frame({ name: 'Sub items', dir: 'H', gap: 'space/6', align: 'start' }, [sub, frame({ name: 'Group label', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }, [grp])]);
   componentBlock(root, subWrap, { title: 'NavSubItem · NavGroupLabel', summary: 'Children appear under the active parent only. Group labels are uppercase overlines.' });
 
-  brandMarkBlock(root);
-
   const sidebar = makeSet('Sidebar', { Workspace: ['Admin', 'Seller'], Collapsed: ['False', 'True'] }, function (c, p) {
     const col = p.Collapsed === 'True';
     body(c, { dir: 'V', w: col ? 'size/sidebar-collapsed' : 'size/sidebar', h: 900, fill: 'bg/surface', stroke: 'border/default', sides: ['right'] }, []);
-    // Release 1.7.0: the brand is a BrandMark instance (Update library leaves the Sidebar of an existing file as it is).
     add(c, frame({ name: 'brand', dir: 'H', h: 64, px: 'space/4', gap: 'space/2-5', align: 'center', justify: col ? 'center' : 'start', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [
-      inst('BrandMark', col ? { 'Show wordmark': false } : { Panel: p.Workspace === 'Admin' ? 'Admin' : 'Seller Centre' }, { name: 'brand-mark' }),
+      brandMark(30), col ? null : frame({ name: 'name', dir: 'V' }, [text('MondaPac', 'Heading/H2'), text(p.Workspace === 'Admin' ? 'Admin' : 'Seller Centre', 'Caption/Overline', 'text/muted')]),
     ]));
     if (p.Workspace === 'Seller' && !col) {
       add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 40, px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
@@ -1377,10 +1284,8 @@ async function buildNavigation(page) {
     ]);
     const bell = c.findOne(function (n) { return n.name === 'notifications'; }); const bi = bell.children[0]; bi.x = 9; bi.y = 9;
     const badge = inst('CountBadge', { Tone: 'Critical', Count: '4' }, { name: 'unread' }); bell.appendChild(badge); badge.x = 20; badge.y = 2;
-  }, { width: 1260, desc: TOPBAR_DESC, text: [{ prop: 'Crumb', node: 'crumb', def: 'Home' }], bool: TOPBAR_BOOLS });
-  componentBlock(root, topbar, { title: 'Topbar', summary: 'Market context (AU · AUD · AEST) is always visible because times and money depend on it.', props: ['Workspace: Admin or Seller', 'Crumb (text)', 'Show search, Show notifications (boolean, 1.7.0): off in the limited seller shell (S1)'] });
-  menuBlock(root, {});
-  showcaseBlock(root);
+  }, { width: 1260, desc: 'Breadcrumb, command search (Ctrl K), market context, notifications and the user.', text: [{ prop: 'Crumb', node: 'crumb', def: 'Home' }] });
+  componentBlock(root, topbar, { title: 'Topbar', summary: 'Market context (AU · AUD · AEST) is always visible because times and money depend on it.' });
   buildMobileNav(root, {});
   tag(root);
 }
@@ -1482,31 +1387,6 @@ function buildMobileNav(root, have) {
   }
 }
 
-// ---------------------------------------------------------------- shared definitions that Update library also uses (1.7.0)
-const TOPBAR_DESC = 'Breadcrumb, command search (Ctrl K), market context, notifications and the user. Show search and Show notifications (1.7.0) hide those slots in the limited seller shell (S1).';
-const TOPBAR_BOOLS = [{ prop: 'Show search', node: 'search', def: true }, { prop: 'Show notifications', node: 'notifications', def: true }];
-const CHECKLIST_AXES = { State: ['Done', 'To do', 'Waiting', 'Needs attention'] };
-const CHECKLIST_OPTS = { width: 1000, desc: 'One verification check or one step of a process. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem. Waiting (1.7.0) is a step someone else is working on; Needs attention (1.7.0) is a step the user must act on. Show actions and Action (1.7.0) show one text action under the step; the To do buttons follow Show actions too.',
-  text: [{ prop: 'Title', node: 'title', def: 'Certificate number confirmed with the issuer' }, { prop: 'By', node: 'by', def: 'Needs a person' }, { prop: 'Action', node: 'action-label', def: 'Update your details' }], bool: [{ prop: 'Show actions', node: 'actions', def: true }] };
-const CHECKLIST_DOC = { title: 'ChecklistItem', summary: 'Approve stays disabled until every check is done. Waiting and Needs attention mark the steps of a process, such as the seller application on S1.', props: ['Title, By (text)', 'Show actions (boolean) and Action (text, Waiting and Needs attention)', 'State: Done, To do, Waiting, Needs attention'], a11y: ['The state is a word in By and an icon in the mark, never colour alone.'] };
-const CK_MARK = { Done: ['status/success/fg', null, 'check', 'text/on-accent'], 'To do': ['bg/surface', 'border/input', null, null], Waiting: ['status/info/bg', null, 'clock', 'status/info/fg'], 'Needs attention': ['status/attention/bg', null, 'alert-circle', 'status/attention/fg'] };
-const CK_BY = { Done: ['Checked automatically · 29 Sep, 10:25 am', 'text/muted', 'Caption/Default'], 'To do': ['Needs a person', 'text/muted', 'Caption/Default'], Waiting: ['In progress', 'status/info/fg', 'Caption/Strong'], 'Needs attention': ['Needs changes', 'status/attention/fg', 'Caption/Strong'] };
-function checklistVariant(c, p) {
-  const m = CK_MARK[p.State]; const by = CK_BY[p.State];
-  const mark = frame({ name: 'mark', dir: 'H', w: 22, h: 22, align: 'center', justify: 'center', fill: m[0], stroke: m[1], strokeW: 1.5, radius: 'radius/pill' }, [m[2] ? icon(m[2], m[3], 13) : null]);
-  let actions = null;
-  if (p.State === 'To do') actions = frame({ name: 'actions', dir: 'H', gap: 'space/1-5' }, [inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Confirm' }), inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Flag a problem' })]);
-  if (p.State === 'Waiting' || p.State === 'Needs attention') actions = frame({ name: 'actions', dir: 'H', gap: 'space/1-5' }, [text('Update your details', 'Body/Small Strong', 'text/link', { name: 'action-label' })]);
-  body(c, { dir: 'H', w: 380, pad: [12, 18, 12, 18], gap: 'space/2-5', align: 'start', stroke: 'border/row', sides: ['top'] }, [
-    mark,
-    frame({ name: 'content', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
-      text('Certificate number confirmed with the issuer', 'Body/Default', 'text/primary', { name: 'title', sizeH: 'FILL' }),
-      text(by[0], by[2], by[1], { name: 'by' }),
-      actions,
-    ]),
-  ]);
-}
-
 // ---------------------------------------------------------------- review & detail
 async function buildReview(page) {
   const root = pageShell(page, 'Review & detail', 'Building blocks of the review workspace: queue summary cards, extracted document fields, checks and the activity timeline.');
@@ -1532,9 +1412,19 @@ async function buildReview(page) {
   }, { width: 1000, desc: 'A value read from an uploaded document and whether it matches our records.', text: [{ prop: 'Label', node: 'label', def: 'Holder' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Halal Meats Pty Ltd' }] });
   componentBlock(root, ef, { title: 'ExtractedField', summary: '"Check now" marks the field the reviewer is working on; it matches the highlight on the document.' });
 
-  const ck = makeSet('ChecklistItem', CHECKLIST_AXES, checklistVariant, CHECKLIST_OPTS);
-  componentBlock(root, ck, CHECKLIST_DOC);
-  reasonQuoteBlock(root);
+  const ck = makeSet('ChecklistItem', { State: ['Done', 'To do'] }, function (c, p) {
+    const done = p.State === 'Done';
+    const mark = frame({ name: 'mark', dir: 'H', w: 22, h: 22, align: 'center', justify: 'center', fill: done ? 'status/success/fg' : 'bg/surface', stroke: done ? null : 'border/input', strokeW: 1.5, radius: 'radius/pill' }, [done ? icon('check', 'text/on-accent', 13) : null]);
+    body(c, { dir: 'H', w: 380, pad: [12, 18, 12, 18], gap: 'space/2-5', align: 'start', stroke: 'border/row', sides: ['top'] }, [
+      mark,
+      frame({ name: 'content', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
+        text('Certificate number confirmed with the issuer', 'Body/Default', 'text/primary', { name: 'title', sizeH: 'FILL' }),
+        text(done ? 'Checked automatically · 29 Sep, 10:25 am' : 'Needs a person', 'Caption/Default', 'text/muted', { name: 'by' }),
+        done ? null : frame({ name: 'actions', dir: 'H', gap: 'space/1-5' }, [inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Confirm' }), inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Flag a problem' })]),
+      ]),
+    ]);
+  }, { width: 1000, desc: 'One verification check. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem.', text: [{ prop: 'Title', node: 'title', def: 'Certificate number confirmed with the issuer' }, { prop: 'By', node: 'by', def: 'Needs a person' }] });
+  componentBlock(root, ck, { title: 'ChecklistItem', summary: 'Approve stays disabled until every check is done.' });
 
   const TL = { Blue: ['action/primary', 'bg/selected'], Info: ['status/info/fg', 'status/info/bg'], Neutral: ['status/neutral/fg', 'status/neutral/bg'], Teal: ['cert/seller/fg', 'cert/seller/tile'] };
   const tl = makeSet('TimelineItem', { Tone: Object.keys(TL) }, function (c, p) {
@@ -1596,183 +1486,6 @@ async function buildBoard(page) {
   const mapWrap = frame({ name: 'DeliveryMap', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(mapWrap, map);
   componentBlock(root, mapWrap, { title: 'DeliveryMap', summary: 'Always shown with its legend and the three live numbers (in transit, average delivery, late now).', a11y: ['role="img" with a summary; pins have tooltips with the seller name.'] });
   tag(root);
-}
-
-// ==== 33_components_auth.js ====
-// ---------------------------------------------------------------- release 1.7.0 "Auth" components (identity ux.md section 4, planned there as 1.1.0)
-// BrandMark, Field, ReasonQuote, MenuItem + Menu and AuthShowcase. Built by "Build library" on their library pages and
-// added to an existing file by "Update library" (see 50_main.js). Each block function returns the new set or component.
-
-// ---- BrandMark (Navigation & shell): the mark plus the MondaPac wordmark and the panel name
-function brandMarkBlock(root) {
-  const bm = makeComponent('BrandMark', function (c) {
-    const mark = brandMark(30); mark.name = 'mark';
-    body(c, { dir: 'H', gap: 'space/2-5', align: 'center' }, [
-      mark,
-      frame({ name: 'wordmark', dir: 'V' }, [text('MondaPac', 'Heading/H2', 'text/primary', { name: 'brand-name' }), text('Admin', 'Caption/Overline', 'text/muted', { name: 'panel' })]),
-    ]);
-  }, { desc: 'The MondaPac mark (30 px, action/primary with the letter M), the wordmark and the panel name. Used by the Sidebar header and at the top of the form column on every Auth screen. Panel is the panel name (Admin or Seller Centre); Show wordmark off leaves the mark alone (collapsed sidebar); Show panel off leaves the wordmark without the panel line. Decorative next to a visible panel name; otherwise the link around it is named "MondaPac home".',
-    text: [{ prop: 'Panel', node: 'panel', def: 'Admin' }], bool: [{ prop: 'Show wordmark', node: 'wordmark', def: true }, { prop: 'Show panel', node: 'panel', def: true }] });
-  const wrap = frame({ name: 'BrandMark', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(wrap, bm);
-  componentBlock(root, wrap, { title: 'BrandMark', summary: 'One brand mark for the Sidebar and the Auth template (1.7.0). A Sidebar in a file updated from an earlier release keeps its drawn mark; a new build uses this instance.',
-    props: ['Panel (text): Admin or Seller Centre', 'Show wordmark (boolean)', 'Show panel (boolean)'],
-    a11y: ['The mark is decorative when the panel name is visible next to it.', 'As a home link it is named "MondaPac home".'] });
-  return bm;
-}
-
-// ---- Field (Forms & selection): label, optional mark, the control slot, helper, counter and error
-function fieldBlock(root) {
-  const control = S.sets.Input.set.children.filter(function (v) { const vp = v.variantProperties; return vp.State === 'Default' && (vp.Type === undefined || vp.Type === 'Text'); })[0];
-  const f = makeComponent('Field', function (c) {
-    body(c, { dir: 'V', w: 360, gap: 'space/1-5' }, [
-      frame({ name: 'label-row', dir: 'H', gap: 'space/1', align: 'center' }, [text('Email', 'Body/Strong', 'text/primary', { name: 'label' }), text('(optional)', 'Body/Default', 'text/muted', { name: 'optional' })]),
-      inst('Input', { Type: 'Text', State: 'Default' }, { name: 'control', sizeH: 'FILL' }),
-      frame({ name: 'helper-row', dir: 'H', gap: 'space/2', align: 'start', sizeH: 'FILL' }, [text('You’ll sign in with this email.', 'Caption/Default', 'text/muted', { name: 'helper', sizeH: 'FILL' }), text('0 / 500', 'Caption/Default', 'text/muted', { name: 'counter' })]),
-      frame({ name: 'error', dir: 'H', gap: 'space/1-5', align: 'start', sizeH: 'FILL' }, [icon('alert-circle', 'status/critical/fg', 16), text('Enter your email.', 'Body/Small', 'status/critical/fg', { name: 'error-text', sizeH: 'FILL' })]),
-    ]);
-    c.children[3].children[0].name = 'error-icon';
-    safe('expose control', function () { c.children[1].isExposedInstance = true; });
-  }, { desc: 'A form field: Label, an optional "(optional)" mark, the control, a helper line, a character counter and an error message with an icon. Control is an INSTANCE_SWAP slot (exposed): it takes Input today and Select or Textarea from 1.2.0; set the nested Input\'s Type, State and Value from the Field instance. Show error goes with the control\'s State=Error. Accessibility: the label is a <label> for the control; helper and error are tied to it with aria-describedby and the control gets aria-invalid; errors are text with an icon, never colour alone; optional fields say "(optional)", no asterisks.',
-    text: [{ prop: 'Label', node: 'label', def: 'Email' }, { prop: 'Helper', node: 'helper', def: 'You’ll sign in with this email.' }, { prop: 'Counter', node: 'counter', def: '0 / 500' }, { prop: 'Error', node: 'error-text', def: 'Enter your email.' }],
-    bool: [{ prop: 'Optional', node: 'optional', def: false }, { prop: 'Show helper', node: 'helper', def: true }, { prop: 'Show counter', node: 'counter', def: false }, { prop: 'Show error', node: 'error', def: false }],
-    swap: [{ prop: 'Control', node: 'control', comp: control }] });
-  const wrap = frame({ name: 'Field', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(wrap, f);
-  componentBlock(root, wrap, { title: 'Field', summary: 'Every form control in a form sits in a Field (1.7.0): the label above, helper and counter below, the error under the control.',
-    use: ['Every input of the Auth screens and of forms inside the shell.', 'Turn on Show error together with the control\'s State=Error; the error summary above the form repeats it.'],
-    props: ['Label, Helper, Counter, Error (text)', 'Optional, Show helper, Show counter, Show error (boolean)', 'Control (instance swap; Input now, Select and Textarea from 1.2.0)'],
-    a11y: ['<label for>; helper and error via aria-describedby; aria-invalid on error.', 'Errors are not announced on each keystroke.', '"(optional)" instead of asterisks.'],
-    dont: ['A placeholder instead of a label.', 'Colour alone for the error.'] });
-  return f;
-}
-
-// ---- ReasonQuote (Review & detail): a reason written by MondaPac, quoted exactly
-function reasonQuoteBlock(root) {
-  const rq = makeComponent('ReasonQuote', function (c) {
-    body(c, { dir: 'V', w: 480, pad: 'space/4', gap: 'space/2', fill: 'bg/subtle', stroke: 'border/default', radius: 'radius/card' }, [
-      text('Reason from MondaPac', 'Body/Small Strong', 'text/secondary', { name: 'label' }),
-      frame({ name: 'quote', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [rect({ name: 'bar', w: 3, h: 40, fill: 'border/input', radius: 2, sizeV: 'FILL' }), text('Your Halal certificate is not readable. Upload a clear copy of all pages, then contact us to continue.', 'Body/Default', 'text/primary', { name: 'reason', sizeH: 'FILL' })]),
-      text('Written on 6 Oct 2026', 'Caption/Default', 'text/muted', { name: 'date' }),
-    ]);
-  }, { desc: 'A reason MondaPac wrote to a seller, shown exactly as written with its date (A10, S1, and the read-only state of D4). Plain text with dir="auto" and its line breaks; never shown to staff who are not the Seller Owner; no reviewer name.',
-    text: [{ prop: 'Label', node: 'label', def: 'Reason from MondaPac' }, { prop: 'Reason', node: 'reason', def: 'Your Halal certificate is not readable. Upload a clear copy of all pages, then contact us to continue.' }, { prop: 'Date', node: 'date', def: 'Written on 6 Oct 2026' }] });
-  const wrap = frame({ name: 'ReasonQuote', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(wrap, rq);
-  componentBlock(root, wrap, { title: 'ReasonQuote', summary: 'The reason for a decision about a seller (1.7.0). Label, the text exactly as written, and the date.',
-    props: ['Label, Reason, Date (text)'], a11y: ['The reason is a <blockquote> with dir="auto"; line breaks are kept.'], dont: ['Internal notes or the reviewer\'s name.', 'Reason text in a URL, a page title or telemetry.'] });
-  return rq;
-}
-
-// ---- MenuItem + Menu (Navigation & shell): the account menu and row action menus
-const MI = { Default: [null, 'text/primary', 'icon/default'], Hover: ['bg/subtle', 'text/primary', 'icon/default'], Focus: [null, 'text/primary', 'icon/default'], Disabled: [null, 'text/muted', 'icon/muted'], Destructive: [null, 'status/critical/fg', 'status/critical/fg'], Selected: ['bg/selected', 'text/link', 'text/link'] };
-function menuItemVariant(c, p) {
-  const t = MI[p.State];
-  body(c, { dir: 'H', w: 264, pad: [8, 10, 8, 10], gap: 'space/2-5', align: 'start', fill: t[0], radius: 'radius/control' }, [
-    icon('user', t[2], 18),
-    frame({ name: 'text', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Account security', p.State === 'Selected' ? 'Body/Strong' : 'Body/Medium', t[1], { name: 'label', sizeH: 'FILL' }), text('Only the shop owner can do this.', 'Caption/Default', 'text/muted', { name: 'description', sizeH: 'FILL' })]),
-    p.State === 'Selected' ? icon('check', 'text/link', 16) : null,
-  ]);
-  c.children[0].name = 'icon';
-  if (p.State === 'Selected') c.children[2].name = 'check';
-  if (p.State === 'Focus') focusRing(c);
-}
-function menuBlock(root, have) {
-  let item = have.MenuItem;
-  if (!item) {
-    item = makeSet('MenuItem', { State: ['Default', 'Hover', 'Focus', 'Disabled', 'Destructive', 'Selected'] }, menuItemVariant, { width: 920, desc: 'One item of a Menu or of a Select list. Label, a leading icon and an optional description line. Disabled items stay focusable and give their reason on the description line, so it can be read on touch. Destructive is for actions such as Suspend…; Selected marks the chosen option of a Select (check icon, bg/selected). Focus uses the Focus/Ring effect.',
-      text: [{ prop: 'Label', node: 'label', def: 'Account security' }, { prop: 'Description', node: 'description', def: 'Only the shop owner can do this.' }],
-      bool: [{ prop: 'Leading icon', node: 'icon', def: true }, { prop: 'Show description', node: 'description', def: false }], swap: [{ prop: 'Icon', node: 'icon', def: 'user' }] });
-  }
-  const menu = makeComponent('Menu', function (c) {
-    body(c, { dir: 'V', w: 280, pad: 'space/1-5', gap: 'space/0-5', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' }, [
-      frame({ name: 'header', dir: 'V', pad: [8, 10, 8, 10], sizeH: 'FILL' }, [text('Yusuf Karimi', 'Body/Strong', 'text/primary', { name: 'title', sizeH: 'FILL', truncate: true }), text('Shop owner', 'Caption/Default', 'text/muted', { name: 'subtitle', sizeH: 'FILL', truncate: true })]),
-      inst('MenuItem', { State: 'Default', Label: 'Account security', Icon: { icon: 'lock' } }, { name: 'item-1', sizeH: 'FILL' }),
-      inst('MenuItem', { State: 'Default', Label: 'Help & resources', Icon: { icon: 'help-circle' } }, { name: 'item-2', sizeH: 'FILL' }),
-      rect({ name: 'divider', w: 200, h: 1, fill: 'border/default', sizeH: 'FILL' }),
-      inst('MenuItem', { State: 'Default', Label: 'Sign out', Icon: { icon: 'log-out' } }, { name: 'item-3', sizeH: 'FILL' }),
-    ]);
-    ['item-1', 'item-2', 'item-3'].forEach(function (n) { safe('expose ' + n, function () { c.findOne(function (x) { return x.name === n; }).isExposedInstance = true; }); });
-  }, { desc: 'A floating menu: an optional header (the person and their role) and up to three MenuItem slots with a divider before the last. Items are exposed, so each one\'s State, Label, Icon and description are set from the Menu instance. Used as the account menu of the Topbar (Account security, Help & resources, Sign out) and for row actions. Accessibility: role="menu" on a button with aria-haspopup and aria-expanded; arrow keys move, Esc closes and focus returns to the trigger; a row menu button is named "Actions for {name}".',
-    text: [{ prop: 'Title', node: 'title', def: 'Yusuf Karimi' }, { prop: 'Subtitle', node: 'subtitle', def: 'Shop owner' }],
-    bool: [{ prop: 'Show header', node: 'header', def: true }, { prop: 'Show item 2', node: 'item-2', def: true }, { prop: 'Show divider', node: 'divider', def: true }] });
-  const wrap = frame({ name: 'Menu · MenuItem', dir: 'H', gap: 'space/6', align: 'start' }, [have.MenuItem ? null : item, frame({ name: 'Menu', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }, [menu])]);
-  componentBlock(root, wrap, { title: 'Menu · MenuItem', summary: 'The account menu (sign out) and row action menus (1.7.0). A disabled item says why on its description line.',
-    props: ['MenuItem: Label, Description (text); Leading icon, Show description (boolean); Icon (instance swap); State', 'Menu: Title, Subtitle (text); Show header, Show item 2, Show divider (boolean); item-1 to item-3 exposed'],
-    a11y: ['role="menu" and role="menuitem"; disabled items stay focusable and show their reason.', 'Esc closes the menu and focus returns to its button.'],
-    dont: ['A disabled item without a reason.', 'More than one destructive item without a divider.'] });
-  return menu;
-}
-
-// ---- AuthShowcase (Navigation & shell): the static brand panel beside the Auth form column (ux.md 3.0 rule 1, design 1A)
-const SHOWCASE = {
-  Admin: { fill: 'bg/auth-showcase-admin', pill: 'MondaPac Admin', title: 'The whole marketplace, at a glance.', lede: 'Review sellers and certificates before deadlines, follow sales and keep every decision on the record.' },
-  Seller: { fill: 'bg/auth-showcase-seller', pill: 'MondaPac Seller Centre', title: 'Your shop, ready before the first order.', lede: 'See every order the moment it lands, prepare on time and show customers your verified Halal certificate.' },
-};
-function scCard(name, w, kids) { return frame({ name: name, dir: 'V', w: w, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' }, kids); }
-function scLines(a, b) { return frame({ name: 'lines', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text(a, 'Body/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), text(b, 'Caption/Default', 'text/muted', { sizeH: 'FILL', truncate: true })]); }
-function scVerified(note, tile, tileIcon, tileToken, title, sub) {
-  return [
-    frame({ name: 'head', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [frame({ name: 'tile', dir: 'H', w: 36, h: 36, align: 'center', justify: 'center', fill: tile, radius: 'radius/pill' }, [icon(tileIcon, tileToken, 18)]), scLines(title, sub)]),
-    frame({ name: 'proof', dir: 'H', gap: 'space/2', align: 'center' }, [inst('Badge', { Tone: 'Success', Leading: 'Icon', Label: 'Verified', Icon: { icon: 'check' } }), text(note, 'Caption/Default', 'text/muted')]),
-  ];
-}
-// Two series on one scale: today (solid, chart/series-1) and the same day last week (dashed, chart/compare).
-function scSparkline(w, h) {
-  const today = [8, 10, 9, 12, 14, 13, 16, 18, 17, 21], before = [7, 8, 9, 9, 10, 11, 11, 12, 13, 13];
-  const mn = 6, mx = 22; const pt = function (v, i) { return (2 + i * (w - 4) / (today.length - 1)).toFixed(1) + ' ' + (h - 2 - (v - mn) / (mx - mn) * (h - 4)).toFixed(1); };
-  const f = frame({ name: 'sparkline', w: w, h: h }); f.fills = [];
-  add(f, vector({ name: 'last week', d: 'M ' + before.map(pt).join(' L '), stroke: 'chart/compare', strokeW: 1.5, dash: [4, 3], xy: [0, 0] }));
-  add(f, vector({ name: 'today', d: 'M ' + today.map(pt).join(' L '), stroke: 'chart/series-1', strokeW: 2, xy: [0, 0] }));
-  return f;
-}
-function showcaseCards(ws) {
-  if (ws === 'Admin') {
-    const rows = [['KF', 'Teal', 'Kuraby Fresh Halal Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['SB', 'Amber', 'Sunnybank Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['LP', 'Neutral', 'Logan Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
-    return [
-      scCard('Review queue', 360, [frame({ name: 'head', dir: 'H', justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Review queue', 'Body/Strong'), inst('Badge', { Tone: 'Attention', Leading: 'Dot', Label: '3 due today' })])].concat(rows.map(function (r) {
-        return frame({ name: r[2], dir: 'H', gap: 'space/2-5', align: 'center', pad: [8, 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [inst('IdentityTile', { Tone: r[1], Shape: 'Rounded', Initials: r[0] }), scLines(r[2], r[3]), inst('Badge', { Tone: r[4], Leading: 'None', Label: r[5] })]);
-      }))),
-      scCard('Sales today', 232, [text('Sales today', 'Body/Small Strong', 'text/secondary'), frame({ name: 'value', dir: 'H', gap: 'space/2', align: 'end' }, [text('18,420', 'Heading/Stat'), text('+12%', 'Body/Small Strong', 'status/success/fg')]), scSparkline(200, 48)]),
-      scCard('Certificate approved', 300, scVerified('Logged to audit trail', 'status/success/bg', 'check', 'status/success/fg', 'Certificate approved', 'Halal · seller level')),
-    ];
-  }
-  const items = [['Meat', 'Lamb shoulder', '1.5 kg'], ['Poultry', 'Chicken thigh fillet', '2 kg'], ['Bakery', 'Lebanese bread', '×2']];
-  const chip = frame({ name: 'chip-new', dir: 'H', h: 'size/badge', px: 'space/2', gap: 'space/1-5', align: 'center', fill: 'status/attention/bg', radius: 'radius/pill' }, [dot('status/attention/solid', 8), text('New', 'Caption/Strong', 'status/attention/fg')]);
-  const seg = [['new', 44, 'status/attention/solid', '3 new'], ['packing', 58, 'chart/series-1', '4 packing'], ['ready', 102, 'status/success/fg', '7 ready']];
-  return [
-    scCard('Order ticket', 340, [
-      frame({ name: 'head', dir: 'H', justify: 'between', align: 'start', sizeH: 'FILL' }, [frame({ name: 'ids', dir: 'V', gap: 'space/0-5' }, [text('#MP-1042', 'Mono/Default'), text('Prepare by 11:30', 'Body/Small', 'text/muted')]), chip]),
-      frame({ name: 'items', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, items.map(function (it) { return frame({ name: it[1], dir: 'H', gap: 'space/2-5', align: 'center', sizeH: 'FILL' }, [inst('ProductThumb', { Category: it[0], Size: 'Sm' }), text(it[1], 'Body/Default', 'text/secondary', { sizeH: 'FILL', truncate: true }), text(it[2], 'Body/Strong')]); })),
-      inst('Button', { Variant: 'Primary', Size: 'Md', State: 'Default', Label: 'Mark as ready' }, { name: 'mark-ready', sizeH: 'FILL' }),
-    ]),
-    scCard('Today', 240, [
-      text('Today', 'Body/Small Strong', 'text/secondary'), text('14 orders', 'Heading/Stat'),
-      frame({ name: 'bar', dir: 'H', gap: 2 }, seg.map(function (s) { return rect({ name: s[0], w: s[1], h: 8, fill: s[2], radius: 2 }); })),
-      frame({ name: 'legend', dir: 'H', gap: 'space/3', align: 'center' }, seg.map(function (s) { return frame({ name: s[0], dir: 'H', gap: 'space/1', align: 'center' }, [dot(s[2], 6), text(s[3], 'Caption/Default', 'text/secondary')]); })),
-    ]),
-    scCard('Halal certified seller', 300, scVerified('Checked by MondaPac', 'cert/seller/tile', 'badge-check', 'cert/seller/fg', 'Halal certified seller', 'Shown on all your products')),
-  ];
-}
-const SHOWCASE_POS = { Admin: [[0, 36, -2], [352, 0, 0], [236, 262, 2.5]], Seller: [[0, 36, -2], [344, 0, 0], [260, 262, 2.5]] };
-function showcaseVariant(c, p) {
-  const d = SHOWCASE[p.Workspace];
-  const pill = frame({ name: 'pill', dir: 'H', h: 28, px: 'space/3', gap: 'space/2', align: 'center', fill: 'bg/surface', radius: 'radius/pill' }, [dot('status/success/fg', 8), text(d.pill, 'Caption/Strong', 'text/primary', { name: 'panel' })]);
-  const stage = frame({ name: 'cards', w: 592, h: 420 }); stage.fills = [];
-  showcaseCards(p.Workspace).forEach(function (card, i) { const at = SHOWCASE_POS[p.Workspace][i]; add(stage, card); card.x = at[0]; card.y = at[1]; if (at[2]) card.rotation = at[2]; });
-  const example = frame({ name: 'example', dir: 'H', h: 24, px: 'space/2-5', align: 'center', fill: 'text/on-showcase', fillOpacity: 0.14, radius: 'radius/pill' }, [text('Example', 'Caption/Strong', 'text/on-showcase')]);
-  add(stage, example); example.x = 0; example.y = 0;
-  body(c, { dir: 'V', w: 704, h: 900, pad: [56, 56, 40, 56], gap: 'auto', fill: d.fill, clip: true }, [
-    frame({ name: 'brand-line', dir: 'V', gap: 'space/4' }, [pill, text(d.title, 'Display/Hero', 'text/on-showcase', { name: 'headline', w: 520 }), text(d.lede, 'Body/Default', 'text/on-showcase-muted', { name: 'lede', w: 480 })]),
-    stage,
-    frame({ name: 'footer', dir: 'H', sizeH: 'FILL' }, [text('Australia · Brisbane', 'Caption/Default', 'text/on-showcase-muted', { name: 'place' })]),
-  ]);
-}
-function showcaseBlock(root) {
-  const sc = makeSet('AuthShowcase', { Workspace: ['Admin', 'Seller'] }, showcaseVariant, { width: 1600, gapX: 40, desc: 'The brand panel of the Auth template from 1024 px (identity ux.md 3.0 rule 1, design 1A): 55% of the width beside the form column. Workspace picks the panel colour (bg/auth-showcase-admin or bg/auth-showcase-seller, dark in both themes), the pill and the brand line in text/on-showcase and text/on-showcase-muted. Three overlapping example cards of the panel (bg/surface with the usual text tokens, two rotated by about 2°) carry a visible "Example" caption. Static and decorative: aria-hidden, no focusable element, no motion, the same for every state and account, no request of its own. Names are fictional, no real certifying body, no currency symbol; its words are copy keys identity.auth-showcase.*. Below 1024 px it is not in the page.' });
-  componentBlock(root, sc, { title: 'AuthShowcase', summary: 'The static brand panel beside the sign-in form (1.7.0). The same on every Auth screen and state of one panel.',
-    use: ['Only in the Auth template, at 1024 px and wider, filling the width beside the 45% form column.'],
-    props: ['Workspace: Admin or Seller'],
-    a11y: ['aria-hidden="true", no focusable element, live text rather than an image, no motion.', 'Brand line 4.5:1 or more on both panel colours (text/on-showcase-muted reaches 8.1:1).'],
-    dont: ['Real store or certifier names, real admin routes or permissions.', 'Anything that varies by Market, account, state or URL.', 'A currency symbol in the figures.'] });
-  return sc;
 }
 
 // ==== 40_templates.js ====
@@ -2178,308 +1891,13 @@ function tplAdminPhoneMenu() {
   return withDrawer(phoneScreen('Admin · Menu open (phone)', 'Admin', kids, null), 'Admin');
 }
 
-// ==== 43_templates_auth.js ====
-// ---------------------------------------------------------------- release 1.7.0 templates: Auth (A1 to A11) and Seller · Your seller account (S1)
-// identity ux.md 3.0, 3.1, 3.2 S1, section 5 (en-AU copy) and 8.1 item 1. Every frame is built from library instances,
-// in touch density (3.0 rule 1). Desktop frames are 1280 wide (form column 45% = 576, AuthShowcase 55%); phone frames are
-// 360 wide with the form column alone and a space/4 gutter.
-const AUTH = {
-  Seller: { type: 'Seller account', icon: 'store', panel: 'Seller Centre', email: 'yusuf@kurabyfresh.example', noun: 'seller' },
-  Admin: { type: 'Admin account', icon: 'shield-check', panel: 'Admin', email: 'layla.haddad@mondapac.example', noun: 'admin' },
-};
-const AUTH_SUPPORT = 'Need help? Email support@mondapac.example.';
-const AUTH_POLICY = 'Use at least 15 characters. A short sentence works well.';
-const AUTH_PRIVACY = 'We collect these details to create and protect your account. Read how we handle them in our privacy policy.';
-const AUTH_SEPARATE = 'This is a seller account. It’s separate from any customer account that uses the same email.';
-
-// Touch density for a whole frame: a mode where the plan has modes, otherwise a rebind to "Dimension · Touch".
-function applyDensity(node, density) {
-  if (S.modes.dim) node.setExplicitVariableModeForCollection(S.dimModes.collection, density === 'touch' ? S.dimModes.touch : S.dimModes.desktop);
-  else { const m = pairMaps(S.dim, S.dimTouch); rebindTree(node, density === 'touch' ? m.ab : m.ba); }
-  node.setPluginData('density', density);
-}
-function accountBadge(ws) { return inst('Badge', { Tone: 'Neutral', Leading: 'Icon', Label: AUTH[ws].type, Icon: { icon: AUTH[ws].icon } }, { name: 'account-type' }); }
-function authTitle(s) { return text(s, 'Heading/H1', 'text/primary', { name: 'title', sizeH: 'FILL' }); }
-function authBody(s) { return text(s, 'Body/Default', 'text/secondary', { name: 'body', sizeH: 'FILL' }); }
-function authNote(s, name) { return text(s, 'Body/Small', 'text/muted', { name: name || 'note', sizeH: 'FILL' }); }
-function authStep(s) { return text(s, 'Body/Small Strong', 'text/muted', { name: 'step' }); }
-function authBanner(tone, title, bodyText) { return inst('InfoBanner', { Tone: tone, Title: title, Body: bodyText, 'Show action': false }, { name: tone === 'Critical' ? 'error-summary' : 'banner', sizeH: 'FILL' }); }
-function authField(label, o) {
-  o = o || {};
-  const props = { Label: label, 'Show helper': !!o.helper, 'Show error': !!o.error };
-  if (o.helper) props.Helper = o.helper;
-  if (o.error) props.Error = o.error;
-  const f = inst('Field', props, { name: 'field-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), sizeH: 'FILL' });
-  const type = o.type || 'Text';
-  const state = o.error ? 'Error' : (o.state || ((type === 'Text' ? o.value : o.filled) ? 'Filled' : 'Default'));
-  const ctl = Object.assign({ Type: type, State: state }, prop('Input', 'Leading icon', type !== 'Text'));
-  if (type === 'Text') Object.assign(ctl, prop('Input', 'Value', o.value || ''));
-  setNested(f, 'control', ctl);
-  return f;
-}
-function authPrimary(label, state) { return inst('Button', { Variant: 'Primary', Size: 'Touch', State: state || 'Default', Label: label }, { name: 'primary-action', sizeH: 'FILL' }); }
-function authSecondary(label, iconName, fill) { return inst('Button', { Variant: 'Secondary', Size: 'Touch', State: 'Default', Label: label, 'Leading icon': !!iconName, Icon: { icon: iconName || 'plus' } }, { name: 'secondary-action', sizeH: fill ? 'FILL' : null }); }
-function authLinks(labels) { return frame({ name: 'links', dir: 'V', align: 'start' }, labels.filter(Boolean).map(function (l) { return inst('Button', { Variant: 'Link', Size: 'Touch', State: 'Default', Label: l }, { name: 'link' }); })); }
-function authCheck(label, help) {
-  return frame({ name: 'checkbox-row', dir: 'H', gap: 'space/2-5', align: 'start', sizeH: 'FILL' }, [
-    frame({ name: 'box', dir: 'H', pad: [2, 0, 0, 0] }, [inst('Checkbox', { Value: 'Unchecked', State: 'Default' })]),
-    frame({ name: 'text', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text(label, 'Touch/Body', 'text/primary', { name: 'label', sizeH: 'FILL' }), help ? authNote(help, 'help') : null]),
-  ]);
-}
-function mailTile() { return frame({ name: 'mail-icon', dir: 'H', w: 48, h: 48, align: 'center', justify: 'center', fill: 'bg/selected', radius: 'radius/pill' }, [icon('mail', 'text/link', 24)]); }
-// QR placeholder on its white plate (bg/qr). The modules use bg/auth-showcase-admin, the only token that stays dark in both
-// themes; the real code is drawn by the frontend in black on bg/qr.
-function qrPlate() {
-  const M = 6, Q = 25, N = 21;
-  const plate = frame({ name: 'qr-code', w: 176, h: 176, fill: 'bg/qr', stroke: 'border/default', radius: 'radius/control' });
-  const finder = function (cx, cy) {
-    add(plate, rect({ name: 'finder', w: 7 * M, h: 7 * M, fill: 'bg/auth-showcase-admin', xy: [Q + cx * M, Q + cy * M] }));
-    add(plate, rect({ name: 'finder-gap', w: 5 * M, h: 5 * M, fill: 'bg/qr', xy: [Q + (cx + 1) * M, Q + (cy + 1) * M] }));
-    add(plate, rect({ name: 'finder-eye', w: 3 * M, h: 3 * M, fill: 'bg/auth-showcase-admin', xy: [Q + (cx + 2) * M, Q + (cy + 2) * M] }));
-  };
-  finder(0, 0); finder(14, 0); finder(0, 14);
-  const cells = []; let seed = 7;
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    if ((x < 8 && y < 8) || (x > 12 && y < 8) || (x < 8 && y > 12)) continue;
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    if (seed % 100 < 46) { const px = Q + x * M, py = Q + y * M; cells.push('M ' + px + ' ' + py + ' L ' + (px + M) + ' ' + py + ' L ' + (px + M) + ' ' + (py + M) + ' L ' + px + ' ' + (py + M) + ' Z'); }
-  }
-  add(plate, vector({ name: 'modules', d: cells.join(' '), fill: 'bg/auth-showcase-admin', closed: true }));
-  return plate;
-}
-function keyRow() {
-  return frame({ name: 'setup-key', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [
-    frame({ name: 'key', dir: 'H', h: 'size/control', px: 'space/3', align: 'center', fill: 'bg/subtle', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [text('JBSW Y3DP EHPK 3PXP', 'Mono/Default', 'text/primary', { name: 'key-text' })]),
-    authSecondary('Copy', 'copy'),
-  ]);
-}
-const BACKUP_CODES = ['K7Q2M 9XW4P', '3HJ8R T6V2C', 'W5N9D 4QK7M', 'P2X6F 8RJ3T', 'C9M4V 7HW2K', 'T3K8P 5NX9D', 'F6R2W 3JC8V', 'M8V5H 2TP6Q', 'X4D7K 9MF3R', 'J2W9T 6CV4H'];
-function backupCodes() {
-  const col = function (list, n) { return frame({ name: 'column-' + n, dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, list.map(function (c) { return text(c, 'Mono/Default', 'text/primary'); })); };
-  return frame({ name: 'backup-codes', dir: 'H', gap: 'space/6', pad: 'space/4', fill: 'bg/subtle', stroke: 'border/default', radius: 'radius/card', sizeH: 'FILL' }, [col(BACKUP_CODES.slice(0, 5), 1), col(BACKUP_CODES.slice(5), 2)]);
-}
-
-// ---- the frame: form column (bg/surface, 45%, at least 480) + AuthShowcase (55%); phone: the form column alone
-function authFrame(name, ws, kids, phone) {
-  const content = frame({ name: 'content', dir: 'V', gap: 'space/5', w: phone ? undefined : 'size/auth-card', sizeH: phone ? 'FILL' : null }, kids);
-  const header = frame({ name: 'header', dir: 'H', sizeH: 'FILL' }, [inst('BrandMark', { Panel: AUTH[ws].panel }, { name: 'brand-mark' })]);
-  const footer = frame({ name: 'footer', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text('MondaPac Australia', 'Caption/Strong', 'text/secondary', { name: 'market' }), text(AUTH_SUPPORT, 'Caption/Default', 'text/muted', { name: 'support', sizeH: 'FILL' })]);
-  const form = frame({ name: 'Form column', dir: 'V', gap: 'auto', align: 'center', pad: phone ? [24, 16, 24, 16] : [32, 48, 32, 48], fill: 'bg/surface', w: phone ? undefined : 576, minW: phone ? undefined : 480, sizeH: phone ? 'FILL' : null, sizeV: 'FILL' }, [header, content, footer]);
-  const parts = phone ? [form] : [form, inst('AuthShowcase', { Workspace: ws }, { name: 'AuthShowcase', sizeH: 'FILL', sizeV: 'FILL' })];
-  const scr = frame({ name: name, dir: 'H', w: phone ? 360 : 1280, h: phone ? 780 : 900, fill: 'bg/surface', clip: true }, parts);
-  applyDensity(scr, 'touch');
-  tag(scr);
-  return scr;
-}
-
-// ---- screens: each returns the content column's children
-function authA1(ws, state) {
-  const seller = ws === 'Seller';
-  let banner = null;
-  if (state === 'Error') banner = authBanner('Critical', 'Email or password is incorrect.', 'Check both and try again.');
-  if (state === 'Throttled') banner = authBanner('Critical', 'Too many attempts.', 'Try again in 15 minutes. You can still reset your password.');
-  if (state === 'Two-step paused') banner = authBanner('Critical', 'Too many wrong codes.', 'Two-step sign-in is paused for 24 hours. Reset your password to try again sooner.');
-  if (state === 'Session ended') banner = authBanner('Info', 'Your session has ended.', 'Sign in again to continue.');
-  return [
-    accountBadge(ws), authTitle('Sign in to your ' + AUTH[ws].noun + ' account'), banner,
-    authField('Email', { value: AUTH[ws].email }),
-    authField('Password', { type: 'Password', filled: !state || state === 'Session ended' }),
-    seller ? authCheck('Keep me signed in on this device', 'Only on a device you don’t share. You stay signed in for up to 30 days.') : null,
-    authPrimary('Sign in', state === 'Throttled' ? 'Disabled' : 'Default'),
-    authLinks(['Forgot password?', seller ? 'New to MondaPac? Create a seller account' : null]),
-    seller ? authNote('Seller and customer accounts are separate. Each has its own password.') : null,
-  ];
-}
-function authA2() {
-  return [accountBadge('Seller'), authTitle('Create a seller account'), authBody('First confirm your email. Then MondaPac reviews your application before you can sell.'),
-    authField('Your name', { value: 'Yusuf Karimi' }), authField('Email', { value: AUTH.Seller.email }), authField('Password', { type: 'Password', filled: true, helper: AUTH_POLICY }),
-    authPrimary('Create account'), authNote(AUTH_PRIVACY, 'privacy-notice'), authLinks(['Already have a seller account? Sign in'])];
-}
-function authA3(ws) {
-  const admin = ws === 'Admin';
-  return [accountBadge(ws), mailTile(), authTitle('Check your email'),
-    authBody(admin ? 'Your two-step verification was reset. We’ve sent a link to ' + AUTH.Admin.email + ' to set it up again. The link works for 60 minutes.' : 'We’ve sent an email to ' + AUTH.Seller.email + '. Open it and follow the link to continue.'),
-    authNote('It can take a few minutes. Check your spam folder too.'), authSecondary('Send it again', 'send'),
-    authLinks([admin ? null : 'Wrong address? Sign up again', 'Back to sign in'])];
-}
-function authA4(state) {
-  if (state === 'Not usable') return [accountBadge('Seller'), authTitle('This link can’t be used'), authBody('It may have expired or already been used. Enter your email and we’ll send a new one.'), authField('Email', { value: AUTH.Seller.email }), authPrimary('Send a new link'), authLinks(['Back to sign in'])];
-  return [accountBadge('Seller'), authTitle('Confirm your email'), authBody('Enter your password to confirm your email. Then you’ll see the status of your application.'), authField('Password', { type: 'Password', filled: true }), authPrimary('Confirm email')];
-}
-function authA5(ws, state) {
-  if (state === 'Sent') return [accountBadge(ws), mailTile(), authTitle('Check your email'), authBody('If ' + (ws === 'Admin' ? 'an admin' : 'a seller') + ' account uses ' + AUTH[ws].email + ', we’ve sent a link to reset its password. The link works for 60 minutes.'), authLinks(['Back to sign in'])];
-  return [accountBadge(ws), authTitle('Reset your ' + AUTH[ws].noun + ' account password'), authField('Email', { value: AUTH[ws].email }), authPrimary('Send reset link'), authLinks(['Back to sign in'])];
-}
-function authA6(ws) {
-  return [accountBadge(ws), authTitle('Choose a new password'), authBody('Changing your password signs you out everywhere.'), authField('New password', { type: 'Password', filled: true, helper: AUTH_POLICY }), authPrimary('Save new password')];
-}
-function authA7(ws, state) {
-  const help = ws === 'Admin' ? 'No phone and no backup codes? Ask another admin who manages admin accounts to reset it.' : 'No phone and no backup codes? Email support@mondapac.example from the address you sign in with.';
-  const backup = state === 'Backup code';
-  return [accountBadge(ws), authTitle(backup ? 'Enter a backup code' : 'Enter your 6-digit code'), authBody(backup ? 'Each backup code works once.' : 'Open your authenticator app and enter the code for MondaPac.'),
-    authField(backup ? 'Backup code' : '6-digit code', { type: 'Code', filled: !backup }), authPrimary('Verify'),
-    authLinks([backup ? 'Use your authenticator app instead' : 'Use a backup code instead', 'Can’t use either?']), authNote(help, 'help')];
-}
-// Two-step set-up steps. step: 'password' | 'scan' | 'code' | 'codes'; label like "Step 2 of 4"; cancel: seller set-up before the code is accepted.
-function authSetupStep(ws, step, label, o) {
-  o = o || {};
-  const kids = [accountBadge(ws), authStep(label)];
-  if (step === 'password') return kids.concat([authTitle(o.again ? 'Set up two-step verification again' : 'Set up two-step verification'), authBody('Enter your password to continue.'), ws === 'Admin' ? authNote('Admin accounts must use two-step verification.', 'required') : null, authField('Password', { type: 'Password', filled: true }), authPrimary('Continue'), o.cancel ? authLinks(['Cancel']) : null]);
-  if (step === 'scan') return kids.concat([authTitle('Set up two-step verification'), ws === 'Admin' ? authNote('Admin accounts must use two-step verification.', 'required') : null, authBody('Scan this code with an authenticator app on your phone.'), qrPlate(), authNote('Can’t scan it? Enter this key in the app instead.', 'manual'), keyRow(), authSecondary('Open authenticator app', 'smartphone', true), authPrimary('Continue'), o.cancel ? authLinks(['Cancel']) : null]);
-  if (step === 'code') return kids.concat([authTitle('Set up two-step verification'), authBody('Enter the 6-digit code the app shows.'), authField('6-digit code', { type: 'Code', filled: true }), authPrimary('Verify'), o.cancel ? authLinks(['Cancel']) : null]);
-  return kids.concat([authTitle('Save your backup codes'), authBody('If you lose your phone, a backup code lets you sign in. Each code works once. We can’t show them again.'), backupCodes(),
-    frame({ name: 'code-actions', dir: 'H', gap: 'space/2' }, [authSecondary('Copy', 'copy'), authSecondary('Download', 'download'), authSecondary('Print', 'printer')]),
-    authCheck('I’ve saved these codes'), authPrimary('Continue', 'Disabled')]);
-}
-function authA9(ws, variant) {
-  if (variant === 'Not usable') return [accountBadge(ws), authTitle('This invitation can’t be used'), authBody('Ask the person who invited you to send a new one.'), authLinks(['Back to sign in'])];
-  const email = authField('Email', { value: variant === 'Admin' ? 'omar.saleh@mondapac.example' : (variant === 'Team member' ? 'amina.rahman@kurabyfresh.example' : AUTH.Seller.email), state: 'Disabled', helper: 'You’ll sign in with this email.' });
-  const pw = authField('Password', { type: 'Password', filled: true, helper: AUTH_POLICY });
-  if (variant === 'Admin') return [accountBadge(ws), authTitle('Set up your admin account'), authBody('You’ve been invited to be a MondaPac admin with the role Seller reviewer. Enter your name and choose a password, then set up two-step verification.'), email, authField('Your name', { value: 'Omar Saleh' }), pw, authNote(AUTH_PRIVACY, 'privacy-notice'), authPrimary('Accept and continue')];
-  if (variant === 'Team member') return [accountBadge(ws), authTitle('Join a seller team on MondaPac'), authBody('Yusuf Karimi invited you to join as Order packer. Enter your name and choose a password to accept.'), email, authField('Your name', { value: 'Amina Rahman' }), pw, authNote(AUTH_SEPARATE, 'separate'), authNote(AUTH_PRIVACY, 'privacy-notice'), authPrimary('Accept and continue')];
-  return [accountBadge(ws), authTitle('Set up your seller account'), authBody('MondaPac has created a seller account for you. Choose a password to get started.'), email, pw, authNote(AUTH_SEPARATE, 'separate'), authNote(AUTH_PRIVACY, 'privacy-notice'), authPrimary('Accept and continue')];
-}
-function authA10(variant) {
-  const owner = variant === 'Owner';
-  return [accountBadge('Seller'), authBanner('Critical', 'This seller account is suspended', owner ? 'Nobody on your team can sign in while it’s suspended. The reason is below.' : 'Nobody on the team can sign in while it’s suspended. Ask your shop owner for details.'),
-    owner ? inst('ReasonQuote', { Reason: 'Your Halal certificate expired on 30 Sep 2026 and no renewal was uploaded. Upload a current certificate, then contact us to lift the suspension.', Date: 'Written on 6 Oct 2026' }, { name: 'reason', sizeH: 'FILL' }) : null,
-    authLinks(['Back to sign in'])];
-}
-function authA11() {
-  return [accountBadge('Seller'), authTitle('Turn off two-step verification?'), authBody('A MondaPac admin started this after a request to support. You’ll be signed out everywhere and sign in with your password only, until you set it up again.'), authPrimary('Turn off two-step verification'), authNote('Didn’t ask for this? Close this page and change your password.', 'help')];
-}
-
-// Every Auth frame: [row, name, make]. "Update library" builds only the names a file does not have yet.
-function authScreens() {
-  const L = [];
-  const add2 = function (row, ws, id, state, make, phone) {
-    const name = 'Auth · ' + ws + ' · ' + id + (state ? ' · ' + state : '') + (phone ? ' (phone)' : '');
-    L.push([row, name, function () { return authFrame(name, ws, make(), phone); }]);
-  };
-  [null, 'Error', 'Throttled', 'Two-step paused', 'Session ended'].forEach(function (s) { add2('Seller', 'Seller', 'A1 Sign in', s, function () { return authA1('Seller', s); }); });
-  add2('Seller', 'Seller', 'A2 Sign up', null, authA2);
-  add2('Seller', 'Seller', 'A3 Check your email', null, function () { return authA3('Seller'); });
-  add2('Seller', 'Seller', 'A4 Confirm your email', null, function () { return authA4(null); });
-  add2('Seller', 'Seller', 'A4 Confirm your email', 'Not usable', function () { return authA4('Not usable'); });
-  add2('Seller', 'Seller', 'A5 Forgot password', null, function () { return authA5('Seller', null); });
-  add2('Seller', 'Seller', 'A5 Forgot password', 'Sent', function () { return authA5('Seller', 'Sent'); });
-  add2('Seller', 'Seller', 'A6 Choose a new password', null, function () { return authA6('Seller'); });
-  add2('Seller', 'Seller', 'A7 Two-step verification', null, function () { return authA7('Seller', null); });
-  add2('Seller', 'Seller', 'A7 Two-step verification', 'Backup code', function () { return authA7('Seller', 'Backup code'); });
-  add2('Seller', 'Seller', 'A8 Set up two-step', 'Step 1 of 4', function () { return authSetupStep('Seller', 'password', 'Step 1 of 4', { cancel: true }); });
-  add2('Seller', 'Seller', 'A8 Set up two-step', 'Step 2 of 4', function () { return authSetupStep('Seller', 'scan', 'Step 2 of 4', { cancel: true }); });
-  add2('Seller', 'Seller', 'A8 Set up two-step', 'Step 3 of 4', function () { return authSetupStep('Seller', 'code', 'Step 3 of 4', { cancel: true }); });
-  add2('Seller', 'Seller', 'A8 Set up two-step', 'Step 4 of 4', function () { return authSetupStep('Seller', 'codes', 'Step 4 of 4'); });
-  add2('Seller', 'Seller', 'A9 Accept invitation', 'Seller created by admin', function () { return authA9('Seller', 'Seller'); });
-  add2('Seller', 'Seller', 'A9 Accept invitation', 'Team member', function () { return authA9('Seller', 'Team member'); });
-  add2('Seller', 'Seller', 'A9 Accept invitation', 'Not usable', function () { return authA9('Seller', 'Not usable'); });
-  add2('Seller', 'Seller', 'A10 Account suspended', 'Owner', function () { return authA10('Owner'); });
-  add2('Seller', 'Seller', 'A10 Account suspended', 'Staff', function () { return authA10('Staff'); });
-  add2('Seller', 'Seller', 'A11 Turn off two-step verification', null, authA11);
-  [null, 'Error', 'Throttled', 'Two-step paused', 'Session ended'].forEach(function (s) { add2('Admin', 'Admin', 'A1 Sign in', s, function () { return authA1('Admin', s); }); });
-  add2('Admin', 'Admin', 'A3 Check your email', 'Two-step reset', function () { return authA3('Admin'); });
-  add2('Admin', 'Admin', 'A5 Forgot password', null, function () { return authA5('Admin', null); });
-  add2('Admin', 'Admin', 'A5 Forgot password', 'Sent', function () { return authA5('Admin', 'Sent'); });
-  add2('Admin', 'Admin', 'A6 Choose a new password', null, function () { return authA6('Admin'); });
-  add2('Admin', 'Admin', 'A7 Two-step verification', null, function () { return authA7('Admin', null); });
-  add2('Admin', 'Admin', 'A7 Two-step verification', 'Backup code', function () { return authA7('Admin', 'Backup code'); });
-  add2('Admin', 'Admin', 'A8 Set up two-step again', 'Step 1 of 4', function () { return authSetupStep('Admin', 'password', 'Step 1 of 4', { again: true }); });
-  add2('Admin', 'Admin', 'A9 Accept invitation', null, function () { return authA9('Admin', 'Admin'); });
-  add2('Admin', 'Admin', 'A9 Accept invitation', 'Step 1 of 3', function () { return authSetupStep('Admin', 'scan', 'Step 1 of 3'); });
-  add2('Admin', 'Admin', 'A9 Accept invitation', 'Step 2 of 3', function () { return authSetupStep('Admin', 'code', 'Step 2 of 3'); });
-  add2('Admin', 'Admin', 'A9 Accept invitation', 'Step 3 of 3', function () { return authSetupStep('Admin', 'codes', 'Step 3 of 3'); });
-  add2('Admin', 'Admin', 'A9 Accept invitation', 'Not usable', function () { return authA9('Admin', 'Not usable'); });
-  ['Seller', 'Admin'].forEach(function (ws) {
-    add2('Phone', ws, 'A1 Sign in', null, function () { return authA1(ws, null); }, true);
-    add2('Phone', ws, 'A7 Two-step verification', null, function () { return authA7(ws, null); }, true);
-  });
-  return L;
-}
-// names: only these frames (Update library); otherwise all of them.
-function buildAuthFrames(names) {
-  const out = [];
-  authScreens().forEach(function (d) { if (names && names.indexOf(d[1]) < 0) return; out.push({ row: d[0], frame: d[2]() }); });
-  return out;
-}
-function authFrameNames() { return authScreens().map(function (d) { return d[1]; }); }
-
-// ---- Seller · Your seller account (S1): the landing page while the seller is not approved, in the limited shell
-const S1_STATES = { 'Awaiting approval': ['Info', 'clock', 'Info', 'We’re reviewing your application', 'We’ll email you when there’s a decision. Until then you can’t sell or use the rest of the seller panel.', 'Waiting', 'In progress'],
-  'Changes needed': ['Attention', 'alert-circle', 'Attention', 'Your application needs changes', 'Read the reason below, then contact us to continue.', 'Needs attention', 'Needs changes'],
-  'Not approved': ['Critical', 'x', 'Critical', 'Your application wasn’t approved', 'You’ve reached the limit for new applications. Contact us if you have questions.', 'Needs attention', 'Not approved'] };
-function s1Content(state) {
-  const st = S1_STATES[state];
-  const step = function (s, title, by) { return inst('ChecklistItem', { State: s, Title: title, By: by, 'Show actions': false }, { name: 'step', sizeH: 'FILL' }); };
-  const slot = frame({ name: 'phase-3-slot', dir: 'H', pad: [12, 18, 12, 18], sizeH: 'FILL', stroke: 'border/row', sides: ['top'] }, [
-    frame({ name: 'slot', dir: 'H', px: 'space/3', py: 'space/2', stroke: 'border/input', dash: [4, 4], radius: 'radius/control', sizeH: 'FILL' }, [text('Slot for the steps the sellers module adds in Phase 3', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]),
-  ]);
-  return [
-    frame({ name: 'Page header', dir: 'H', gap: 'space/3', align: 'center', wrap: true, rowGap: 'space/2', sizeH: 'FILL' }, [text('Your seller account', 'Heading/H1'), inst('Badge', { Tone: st[0], Leading: 'Icon', Label: state, Icon: { icon: st[1] } }, { name: 'status' })]),
-    authBanner(st[2], st[3], st[4]),
-    state === 'Changes needed' ? inst('ReasonQuote', { Reason: 'The business name on your application doesn’t match the name registered for your ABN. Send us the registered name or the correct ABN, then contact us to continue.', Date: 'Written on 6 Oct 2026' }, { name: 'reason', sizeH: 'FILL' }) : null,
-    card('Steps', [step('Done', 'Account created', '3 Oct 2026'), step('Done', 'Email confirmed', '3 Oct 2026'), slot, step(st[5], 'MondaPac reviews your application', st[6])]),
-    card('Help', [frame({ name: 'help', dir: 'V', gap: 'space/3', pad: [16, 18, 16, 18], sizeH: 'FILL' }, [text('Protect your account', 'Heading/H2'), text('Turn on two-step verification while you wait.', 'Body/Default', 'text/secondary', { sizeH: 'FILL' }), btn('Set up two-step verification', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'smartphone' } }), text(AUTH_SUPPORT, 'Body/Small', 'text/muted', { name: 'support', sizeH: 'FILL' })])]),
-  ];
-}
-function limitedSidebar() {
-  const sb = inst('Sidebar', { Workspace: 'Seller', Collapsed: 'False' }, { name: 'Sidebar', sizeV: 'FILL' });
-  const keep = { 'nav-home': 1, 'nav-settings': 1 };
-  const items = sb.findOne(function (n) { return n.name === 'items'; });
-  items.children.forEach(function (n) { if (!keep[n.name]) n.visible = false; });
-  const sw = sb.findOne(function (n) { return n.name === 'shop-switcher'; }); if (sw) sw.visible = false;
-  setNested(sb, 'nav-home', Object.assign(prop('NavItem', 'Label', 'Your seller account'), prop('NavItem', 'Icon', S.icons.store.id)));
-  setNested(sb, 'nav-settings', Object.assign(prop('NavItem', 'Label', 'Account security'), prop('NavItem', 'Icon', S.icons.lock.id)));
-  return sb;
-}
-function s1Name(state, phone) { return 'Seller · Your seller account · ' + state + (phone ? ' (phone)' : ''); }
-function tplSellerAccount(state, menuOpen) {
-  const col = frame({ name: 'Column', dir: 'V', sizeH: 'FILL' }, [
-    inst('Topbar', { Workspace: 'Seller', Crumb: 'Your seller account', 'Show search': false, 'Show notifications': false }, { name: 'Topbar', sizeH: 'FILL' }),
-    frame({ name: 'Main', dir: 'V', pad: [28, 32, 40, 32], sizeH: 'FILL' }, [frame({ name: 'content', dir: 'V', gap: 'space/5', w: 760 }, s1Content(state))]),
-  ]);
-  const scr = frame({ name: s1Name(state), dir: 'H', w: 1440, fill: 'bg/page', clip: true }, [limitedSidebar(), col]);
-  if (menuOpen) add(scr, inst('Menu', {}, { name: 'Account menu (open)', abs: [1440 - 280 - 24, 60] }));
-  tag(scr);
-  return scr;
-}
-function tplSellerAccountPhone(state) {
-  const scr = phoneScreen(s1Name(state, true), 'Seller', s1Content(state), null);
-  const bar = scr.children[0];
-  ['menu-button', 'notifications'].forEach(function (n) { const x = bar.findOne(function (k) { return k.name === n; }); if (x) x.visible = false; });
-  return scr;
-}
-// S1 frames: [name, make]. The awaiting frame shows the account menu open (sign out lives there).
-function s1Screens() {
-  return [[s1Name('Awaiting approval'), function () { return tplSellerAccount('Awaiting approval', true); }], [s1Name('Changes needed'), function () { return tplSellerAccount('Changes needed'); }],
-    [s1Name('Not approved'), function () { return tplSellerAccount('Not approved'); }], [s1Name('Awaiting approval', true), function () { return tplSellerAccountPhone('Awaiting approval'); }]];
-}
-// Dark preview copies added in 1.7.0 (sources by name).
-const DARK_170 = ['Auth · Seller · A1 Sign in', 'Auth · Admin · A1 Sign in', s1Name('Changes needed')];
-
-// Rows of frames under a header: Seller, Admin, then phone frames.
-function rowsPage(host, title, subtitle, rows) {
-  const head = frame({ name: title, dir: 'V', gap: 'space/3', w: 1200 }, [text('MondaPac Design System', 'Caption/Overline', 'text/link'), text(title, 'Display/Hero'), para(subtitle, 1100)]);
-  head.fills = []; host.appendChild(head); head.x = 0; head.y = 0; tag(head);
-  placeRows(host, rows, 240);
-}
-function placeRows(host, rows, y) {
-  rows.forEach(function (r) {
-    if (!r.length) return;
-    let x = 0, h = 0;
-    r.forEach(function (s) { host.appendChild(s); s.x = x; s.y = y; x += s.width + 160; h = Math.max(h, s.height); });
-    y += h + 240;
-  });
-  return y;
-}
-const AUTH_SUBTITLE = 'Sign-in and account screens before the panel (identity ux.md 3.1), A1 to A11, for Seller and Admin. 1280 wide: the form column (bg/surface, 45%, at least 480) and AuthShowcase; 360 wide: the form column alone. Touch density at every width. Copy is the en-AU text of ux.md section 5; names and emails are examples.';
-
 // ==== 50_main.js ====
 // ---------------------------------------------------------------- pages & orchestration
 const PAGES = [
   ['cover', 'Cover'], ['start', 'Getting started'], ['changelog', 'Changelog'],
   ['sep-foundations', '———— Foundations'], ['color', 'Colour'], ['type', 'Typography'], ['spacing', 'Spacing, size & radius'], ['elevation', 'Elevation & motion'], ['icons', 'Icons'], ['a11y', 'Accessibility'],
   ['sep-components', '———— Components'], ['actions', 'Actions'], ['forms', 'Forms & selection'], ['status', 'Status & feedback'], ['data', 'Data display'], ['tables', 'Tables & collections'], ['nav', 'Navigation & shell'], ['review', 'Review & detail'], ['board', 'Board & delivery'],
-  ['sep-templates', '———— Templates'], ['tpl-admin', 'Templates · Admin'], ['tpl-seller', 'Templates · Seller'], ['tpl-auth', 'Templates · Auth'], ['tpl-dark', 'Templates · Dark preview'],
+  ['sep-templates', '———— Templates'], ['tpl-admin', 'Templates · Admin'], ['tpl-seller', 'Templates · Seller'], ['tpl-dark', 'Templates · Dark preview'],
   ['sep-workspace', '———— Workspace'], ['sandbox', 'Sandbox'], ['archive', 'Archive'],
 ];
 const COLLECTION_NAMES = ['Primitives', 'Color', 'Color · Dark', 'Dimension', 'Dimension · Touch', 'Typography', 'Motion'];
@@ -2501,7 +1919,7 @@ async function fileIsEmpty() {
 const COMPACT = [
   ['p-start', '1 · Start & foundations', 'H', ['cover', 'start', 'changelog', 'color', 'type', 'spacing', 'elevation', 'icons', 'a11y']],
   ['p-components', '2 · Components', 'H', ['actions', 'forms', 'status', 'data', 'tables', 'nav', 'review', 'board']],
-  ['p-templates', '3 · Templates & workspace', 'V', ['tpl-admin', 'tpl-seller', 'tpl-auth', 'tpl-dark', 'sandbox', 'archive']],
+  ['p-templates', '3 · Templates & workspace', 'V', ['tpl-admin', 'tpl-seller', 'tpl-dark', 'sandbox', 'archive']],
 ];
 const TITLE = {}; PAGES.forEach(function (d) { TITLE[d[0]] = d[1]; });
 
@@ -2597,7 +2015,7 @@ function notePage(host, title, subtitle, items) {
 }
 
 async function build(force) {
-  STEP = 0; STEPS = 26; S.report = [];
+  STEP = 0; STEPS = 25; S.report = [];
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   let first;
@@ -2637,18 +2055,12 @@ async function build(force) {
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
-    const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
-    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell.', list);
+    const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()];
+    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density).', list);
     return list;
   });
-  const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
-    const made = buildAuthFrames();
-    rowsPage(h, 'Templates · Auth', AUTH_SUBTITLE, ['Seller', 'Admin', 'Phone'].map(function (r) { return made.filter(function (m) { return m.row === r; }).map(function (m) { return m.frame; }); }));
-    return made.map(function (m) { return m.frame; });
-  });
   await onPage(P['tpl-dark'], 'Dark preview', function (h) {
-    const byName = {}; sellerScreens.concat(authScreensBuilt).forEach(function (s) { byName[s.name] = s; });
-    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
+    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
     templatesPage(h, 'Templates · Dark preview', S.modes.color
       ? 'These frames use the Dark mode of the Color collection. Select any frame and switch the mode in the Appearance panel to compare.'
       : 'Starter plan: these copies are bound to the "Color · Dark" collection. Use the plugin buttons Dark theme / Light theme on a selection to switch any frame.', clones);
@@ -2731,32 +2143,6 @@ function appendTableRow(tbl, cells, widths) {
 function findTable(host, headers) {
   return host.findAll(function (n) { return n.type === 'FRAME' && n.name === 'Table' && n.children.length && n.children[0].name === 'Header' && n.children[0].children.map(function (c) { return c.name; }).join('|') === headers; })[0] || null;
 }
-function pageOf(node) { let p = node; while (p && p.type !== 'PAGE') p = p.parent; return { page: p, host: p }; }
-function bottomEdge(host) { let b = 0; host.children.forEach(function (c) { b = Math.max(b, c.y + c.height); }); return b; }
-// The library page's root frame (made by pageShell), or a new one to the right of what is there.
-function docRoot(host, title, subtitle) {
-  let root = host.children.filter(function (n) { return n.type === 'FRAME' && n.name === title; })[0];
-  if (!root) { const y = host.children.length ? Math.min.apply(null, host.children.map(function (c) { return c.y; })) : 0; const x = rightEdge(host) + 160; root = pageShell(host, title, subtitle); root.x = x; root.y = y; tag(root); }
-  return root;
-}
-// Templates · Auth (1.7.0) in a file built before it: a section below the other template sections (Starter layout)
-// or a new page after Templates · Seller.
-async function ensureAuthHost(T) {
-  if (T['tpl-auth']) return T['tpl-auth'];
-  const ref = T['tpl-seller'];
-  if (ref.host.type === 'SECTION') {
-    await figma.setCurrentPageAsync(ref.page);
-    let bottom = 0; ref.page.children.forEach(function (n) { bottom = Math.max(bottom, n.y + n.height); });
-    const sec = makeSection(ref.page, 'tpl-auth'); sec.x = ref.host.x; sec.y = bottom + 240; sec.resizeWithoutConstraints(480, 320);
-    T['tpl-auth'] = { page: ref.page, host: sec };
-    return T['tpl-auth'];
-  }
-  let p = null; try { p = figma.createPage(); } catch (e) { return null; }
-  p.name = TITLE['tpl-auth']; p.setPluginData(PLUGIN_TAG, 'page'); p.setPluginData('key', 'tpl-auth'); p.setPluginData('layout', 'full');
-  figma.root.insertChild(figma.root.children.indexOf(ref.page) + 1, p);
-  T['tpl-auth'] = { page: p, host: p };
-  return T['tpl-auth'];
-}
 function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
 async function updateLibrary() {
@@ -2768,17 +2154,15 @@ async function updateLibrary() {
   await loadState();
   await hydrateLibrary();
   const T = findHosts();
-  const need = ['nav', 'forms', 'review', 'tpl-seller', 'tpl-admin', 'tpl-dark', 'changelog', 'spacing', 'cover', 'icons'].filter(function (k) { return !T[k]; });
-  const base = ['CountBadge', 'NavGroupLabel', 'NavItem', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar', 'Topbar', 'Button', 'Input', 'Checkbox', 'Badge', 'InfoBanner', 'ProductThumb', 'ChecklistItem'].filter(function (k) { return !S.sets[k]; });
+  const need = ['nav', 'tpl-seller', 'tpl-admin', 'changelog', 'spacing', 'cover', 'icons'].filter(function (k) { return !T[k]; });
+  const base = ['CountBadge', 'NavGroupLabel', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar'].filter(function (k) { return !S.sets[k]; });
   if (need.length || base.length || !S.ts['Body/Default'] || !S.es['Focus/Ring']) {
     post({ type: 'error', message: 'This library is incomplete, so it cannot be updated safely. Missing: ' + need.concat(base).join(', ') + '. Restore it from version history or rebuild it in a new file.' }); return;
   }
   await loadFonts();
   const added = [];
 
-  // 1 · tokens (1.7.0 adds primitives first: new colour tokens alias them)
-  const missingPrims = S.primColl ? SPEC.primitives.filter(function (p) { return !S.prim[p.name]; }) : [];
-  missingPrims.forEach(function (p) { addPrimitive(p); added.push('primitive ' + p.name); });
+  // 1 · tokens
   const missingColors = SPEC.color.filter(function (c) { return !S.color[c.name]; });
   missingColors.forEach(function (c) { addColorVariable(c); added.push('variable ' + c.name + (S.colorModes.darkCollection ? ' (Color and Color · Dark)' : ' (Light and Dark modes)')); });
   const missingVars = SPEC.dimension.filter(function (d) { return !S.dim[d.name]; });
@@ -2869,133 +2253,6 @@ async function updateLibrary() {
   if (scrimFix.length) added.push('bind drawer scrim to bg/scrim (' + scrimFix.length + ' templates)');
   if (topbarFix.length) added.push('swap phone topbar for PhoneTopbar (' + topbarFix.length + ' templates)');
 
-  // 2d · release 1.7.0 "Auth": variants and properties added to existing sets, then the new components.
-  // Only sets the plugin made are changed (PLUGIN_TAG); a set of the same name made by someone else is skipped and reported.
-  const own = function (name) { const r = S.sets[name]; const n = r && (r.set || r.comp); return !!(n && n.getPluginData(PLUGIN_TAG) === '1'); };
-  const skipped = {};
-  const skip = function (name, why) { skipped[name] = 1; log('ℹ skipped ' + why); };
-  const missingCombos = function (rec, list) { const have = {}; rec.set.children.forEach(function (c) { have[variantName(sortedProps(c.variantProperties, rec.axes))] = 1; }); return list.filter(function (p) { return !have[variantName(sortedProps(p, rec.axes))]; }); };
-  const OLD_DESC = { Button: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear.', Input: 'Text and search input. Border uses border/input (3:1).', ChecklistItem: 'One verification check. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem.', Topbar: 'Breadcrumb, command search (Ctrl K), market context, notifications and the user.' };
-  const NEW_DESC = { Button: BUTTON_OPTS.desc, Input: INPUT_OPTS.desc, ChecklistItem: CHECKLIST_OPTS.desc, Topbar: TOPBAR_DESC };
-  const refreshDesc = function (name) { const n = S.sets[name].set; if (n.description === OLD_DESC[name]) { n.description = NEW_DESC[name]; added.push('update ' + name + ' description'); } };
-  let inputRenamed = 0;
-  if (!own('Button')) skip('Button', 'Button variants Link and Loading: the Button set is not the plugin\'s');
-  else if (missingCombos(S.sets.Button, combos(BUTTON_AXES)).length || S.sets.Button.set.description === OLD_DESC.Button) {
-    await onPage(pageOf(S.sets.Button.set), 'Button variants', function () {
-      const made = addVariants(S.sets.Button, combos(BUTTON_AXES), buttonVariant, BUTTON_OPTS, 'State');
-      if (made.length) added.push('Button variants (' + made.length + '): Variant=Link and State=Loading');
-      refreshDesc('Button');
-    });
-  }
-  if (!own('Input')) skip('Input', 'Input variants Password and Code: the Input set is not the plugin\'s');
-  else {
-    const rec = S.sets.Input;
-    const plain = rec.set.children.filter(function (c) { return c.variantProperties.Type === undefined; });
-    const later = rec.axes.indexOf('Type') >= 0 ? missingCombos(rec, combos(INPUT_AXES)) : ['all'];
-    if (plain.length || later.length || rec.set.description === OLD_DESC.Input) {
-      await onPage(pageOf(rec.set), 'Input variants', function () {
-        // The Type axis is added by naming the existing variants Type=Text; their layers and instances stay as they are.
-        plain.forEach(function (c) { c.name = 'Type=Text, ' + c.name; }); inputRenamed = plain.length;
-        if (rec.axes.indexOf('Type') < 0) rec.axes = ['Type'].concat(rec.axes);
-        if (plain.length) added.push('Input variant property Type (' + plain.length + ' existing variants named Type=Text)');
-        const made = addVariants(rec, combos(INPUT_AXES), inputVariant, INPUT_OPTS, 'State');
-        if (made.length) added.push('Input variants (' + made.length + '): Type=Password and Type=Code');
-        refreshDesc('Input');
-      });
-    }
-  }
-  if (!own('ChecklistItem')) skip('ChecklistItem', 'ChecklistItem variants Waiting and Needs attention: the ChecklistItem set is not the plugin\'s');
-  else {
-    const rec = S.sets.ChecklistItem;
-    if (!rec.keys['Show actions'] || !rec.keys.Action || missingCombos(rec, combos(CHECKLIST_AXES)).length || rec.set.description === OLD_DESC.ChecklistItem) {
-      await onPage(pageOf(rec.set), 'ChecklistItem variants', function () {
-        if (!rec.keys['Show actions']) { rec.keys['Show actions'] = rec.set.addComponentProperty('Show actions', 'BOOLEAN', true); rec.set.children.forEach(function (v) { wireVariant(v, rec.keys, { bool: CHECKLIST_OPTS.bool }); }); added.push('ChecklistItem property Show actions'); }
-        if (!rec.keys.Action) { rec.keys.Action = rec.set.addComponentProperty('Action', 'TEXT', 'Update your details'); added.push('ChecklistItem property Action'); }
-        const made = addVariants(rec, combos(CHECKLIST_AXES), checklistVariant, CHECKLIST_OPTS, 'State');
-        if (made.length) added.push('ChecklistItem variants (' + made.length + '): Waiting and Needs attention');
-        refreshDesc('ChecklistItem');
-      });
-    }
-  }
-  if (!own('Topbar')) skip('Topbar', 'Topbar properties Show search and Show notifications: the Topbar set is not the plugin\'s');
-  else {
-    const rec = S.sets.Topbar; const miss = TOPBAR_BOOLS.filter(function (b) { return !rec.keys[b.prop]; });
-    if (miss.length || rec.set.description === OLD_DESC.Topbar) {
-      await onPage(pageOf(rec.set), 'Topbar properties', function () {
-        miss.forEach(function (b) { rec.keys[b.prop] = rec.set.addComponentProperty(b.prop, 'BOOLEAN', b.def); rec.set.children.forEach(function (v) { wireVariant(v, rec.keys, { bool: [b] }); }); added.push('Topbar property ' + b.prop); });
-        refreshDesc('Topbar');
-      });
-    }
-  }
-  // New components. A component of the same name that is not the plugin's blocks it (and what depends on it).
-  ['BrandMark', 'MenuItem', 'Menu', 'ReasonQuote', 'Field', 'AuthShowcase'].forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
-  if (skipped.Input && !S.sets.Field) skip('Field', 'component Field: it needs the plugin\'s Input with Type=Text');
-  if (skipped.MenuItem && !S.sets.Menu) skip('Menu', 'component Menu: it needs the plugin\'s MenuItem');
-  const navNew = ['BrandMark', 'MenuItem', 'Menu', 'AuthShowcase'].filter(function (n) { return !S.sets[n] && !skipped[n]; });
-  if (navNew.length) {
-    await onPage(T.nav, 'Auth components', function (host) {
-      const root = docRoot(host, 'Navigation & shell', 'One shell for both panels. The Sidebar variant decides the workspace; the menu items come from configuration and permissions.');
-      if (navNew.indexOf('BrandMark') >= 0) brandMarkBlock(root);
-      if (navNew.indexOf('Menu') >= 0 || navNew.indexOf('MenuItem') >= 0) menuBlock(root, { MenuItem: S.sets.MenuItem ? S.sets.MenuItem.set : null });
-      if (navNew.indexOf('AuthShowcase') >= 0) showcaseBlock(root);
-      fitSection(host);
-    });
-    navNew.forEach(function (n) { added.push('component ' + n); });
-  }
-  if (!S.sets.ReasonQuote && !skipped.ReasonQuote) {
-    await onPage(T.review, 'ReasonQuote', function (host) { reasonQuoteBlock(docRoot(host, 'Review & detail', 'Building blocks of the review workspace: queue summary cards, extracted document fields, checks and the activity timeline.')); fitSection(host); });
-    added.push('component ReasonQuote');
-  }
-  if (!S.sets.Field && !skipped.Field) {
-    await onPage(T.forms, 'Field', function (host) { fieldBlock(docRoot(host, 'Forms & selection', 'Inputs, checkboxes, switches, segmented controls, tabs and filter chips.')); fitSection(host); });
-    added.push('component Field');
-  }
-
-  // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
-  // A template is built only when every component it places is the plugin's (made earlier or in this run).
-  const blockedBy = function (names) { return names.filter(function (n) { return skipped[n] || !own(n); }); };
-  const authBlock = blockedBy(['Button', 'Input', 'BrandMark', 'Field', 'AuthShowcase', 'ReasonQuote', 'Badge', 'InfoBanner', 'Checkbox']);
-  const s1Block = blockedBy(['Button', 'ChecklistItem', 'Topbar', 'ReasonQuote', 'MenuItem', 'Menu', 'Sidebar', 'PhoneTopbar', 'Badge', 'InfoBanner']);
-  if (authBlock.length) log('ℹ skipped Auth templates: they need the plugin\'s ' + authBlock.join(', '));
-  else {
-    const present = T['tpl-auth'] ? T['tpl-auth'].host.children.map(function (c) { return c.name; }) : [];
-    const missing = authFrameNames().filter(function (n) { return present.indexOf(n) < 0; });
-    const hostT = missing.length ? await ensureAuthHost(T) : T['tpl-auth'];
-    if (missing.length && !hostT) log('ℹ skipped Auth templates: this file has no free page for Templates · Auth');
-    else if (missing.length) {
-      if (!present.length) added.push((hostT.host.type === 'SECTION' ? 'section ' : 'page ') + TITLE['tpl-auth']);
-      await onPage(hostT, 'Auth templates', function (host) {
-        const made = buildAuthFrames(missing);
-        const rows = ['Seller', 'Admin', 'Phone'].map(function (r) { return made.filter(function (m) { return m.row === r; }).map(function (m) { return m.frame; }); });
-        if (!host.children.length) rowsPage(host, 'Templates · Auth', AUTH_SUBTITLE, rows); else placeRows(host, rows, bottomEdge(host) + 240);
-        fitSection(host);
-      });
-      added.push('templates Auth (' + missing.length + ' frames)');
-    }
-  }
-  if (s1Block.length) log('ℹ skipped Seller · Your seller account templates: they need the plugin\'s ' + s1Block.join(', '));
-  else {
-    const present = T['tpl-seller'].host.children.map(function (c) { return c.name; });
-    const missing = s1Screens().filter(function (d) { return present.indexOf(d[0]) < 0; });
-    if (missing.length) {
-      await onPage(T['tpl-seller'], 'Seller account templates', function (host) { placeRows(host, [missing.map(function (d) { return d[1](); })], bottomEdge(host) + 240); fitSection(host); });
-      missing.forEach(function (d) { added.push('template ' + d[0]); });
-    }
-  }
-  const darkHost = T['tpl-dark'].host; const darkPresent = darkHost.children.map(function (c) { return c.name; });
-  const darkSources = DARK_170.filter(function (n) { return darkPresent.indexOf(n + ' · Dark') < 0; }).map(function (n) {
-    const where = [T['tpl-auth'], T['tpl-seller']].filter(Boolean);
-    for (let i = 0; i < where.length; i++) { const f = where[i].host.children.filter(function (c) { return c.type === 'FRAME' && c.name === n && c.getPluginData(PLUGIN_TAG) === '1'; })[0]; if (f) return f; }
-    return null;
-  }).filter(Boolean);
-  if (darkSources.length) {
-    await onPage(T['tpl-dark'], 'Dark preview', function (host) {
-      let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
-      darkSources.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
-      fitSection(host);
-    });
-  }
-
   // 3 · templates
   const tplKeys = Object.keys(PHONE_TEMPLATES);
   for (let i = 0; i < tplKeys.length; i++) {
@@ -3015,7 +2272,7 @@ async function updateLibrary() {
 
   // 4 · documentation pages (only edits what the release changed)
   const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
-  const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
+  const newSizes = ['size/bottom-bar', 'size/topbar-phone'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
     .filter(function (d) { return d && sizeTable && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === d.name; }); });
   if (newSizes.length) {
     await onPage(T.spacing, 'Spacing page', function () { newSizes.forEach(function (d) { appendTableRow(sizeTable, [d.name, d.desktop + ' px', d.touch + ' px', SIZE_USE[d.name]], [260, 160, 160, 600]); }); fitSection(T.spacing.host); });
@@ -3036,11 +2293,7 @@ async function updateLibrary() {
   await flush();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
-  else {
-    log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); });
-    const except = [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : '', inputRenamed ? 'the ' + inputRenamed + ' existing Input variants named Type=Text' : ''].filter(Boolean);
-    log('Nothing was deleted or rebuilt' + (except.length ? ', except ' + except.join(' and ') : '') + '. The existing Sidebar keeps its drawn brand mark (a new build uses BrandMark). Next: run Audit file, then Export tokens (the diff shows only the tokens added since this file\'s version, and the version line).');
-  }
+  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length || scrimFix.length ? ', except ' + [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : ''].filter(Boolean).join(' and ') : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
   post({ type: 'done', report: S.report, added: added });
 }
 
@@ -3052,9 +2305,6 @@ async function loadState() {
   async function vars(c) { const out = {}; if (!c) return out; for (let i = 0; i < c.variableIds.length; i++) { const v = await figma.variables.getVariableByIdAsync(c.variableIds[i]); if (v) out[v.name] = v; } return out; }
   S.color = await vars(byName.Color); S.colorDark = await vars(byName['Color · Dark']);
   S.dim = await vars(byName.Dimension); S.dimTouch = await vars(byName['Dimension · Touch']);
-  // Primitives by "family/step" (the variable name without "color/"), so Update library can add missing ones (1.7.0).
-  S.prim = {}; S.primColl = byName.Primitives || null;
-  const pv = await vars(byName.Primitives); Object.keys(pv).forEach(function (k) { S.prim[k.replace(/^color\//, '')] = pv[k]; });
   const cm = byName.Color.modes; const dm = byName.Dimension.modes;
   S.modes.color = cm.length > 1; S.modes.dim = dm.length > 1;
   S.colorModes = { collection: byName.Color, light: cm[0].modeId, dark: cm[1] ? cm[1].modeId : null, darkCollection: byName['Color · Dark'] || null, darkAlt: byName['Color · Dark'] ? byName['Color · Dark'].modes[0].modeId : null };
@@ -3206,10 +2456,7 @@ async function exportTokens(version) {
   const files = {};
   // primitives
   const prim = OM();
-  // Sorted by family, then by numeric step: a file updated from an older release has the newer primitives at the end
-  // of the collection, and the export must match a fresh build (the spec lists primitives in this order).
-  const primStep = function (v) { const p = v.name.split('/'); return [p[1], +p[2]]; };
-  const primVars = (await list(byName.Primitives)).sort(function (a, b) { const x = primStep(a), y = primStep(b); return x[0] < y[0] ? -1 : (x[0] > y[0] ? 1 : x[1] - y[1]); });
+  const primVars = await list(byName.Primitives);
   primVars.forEach(function (v) { nestInto(prim, v.name, obj([['$type', 'color'], ['$value', toHex(v.valuesByMode[byName.Primitives.modes[0].modeId])]])); });
   files['primitives.json'] = obj([['$description', 'MondaPac primitives. Do not use directly in UI; use semantic tokens.'], ['color', omGet(prim, 'color')]]);
   // semantic colour, light + dark

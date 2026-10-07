@@ -35,11 +35,14 @@ async function buildNavigation(page) {
   const subWrap = frame({ name: 'Sub items', dir: 'H', gap: 'space/6', align: 'start' }, [sub, frame({ name: 'Group label', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }, [grp])]);
   componentBlock(root, subWrap, { title: 'NavSubItem · NavGroupLabel', summary: 'Children appear under the active parent only. Group labels are uppercase overlines.' });
 
+  brandMarkBlock(root);
+
   const sidebar = makeSet('Sidebar', { Workspace: ['Admin', 'Seller'], Collapsed: ['False', 'True'] }, function (c, p) {
     const col = p.Collapsed === 'True';
     body(c, { dir: 'V', w: col ? 'size/sidebar-collapsed' : 'size/sidebar', h: 900, fill: 'bg/surface', stroke: 'border/default', sides: ['right'] }, []);
+    // Release 1.7.0: the brand is a BrandMark instance (Update library leaves the Sidebar of an existing file as it is).
     add(c, frame({ name: 'brand', dir: 'H', h: 64, px: 'space/4', gap: 'space/2-5', align: 'center', justify: col ? 'center' : 'start', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [
-      brandMark(30), col ? null : frame({ name: 'name', dir: 'V' }, [text('MondaPac', 'Heading/H2'), text(p.Workspace === 'Admin' ? 'Admin' : 'Seller Centre', 'Caption/Overline', 'text/muted')]),
+      inst('BrandMark', col ? { 'Show wordmark': false } : { Panel: p.Workspace === 'Admin' ? 'Admin' : 'Seller Centre' }, { name: 'brand-mark' }),
     ]));
     if (p.Workspace === 'Seller' && !col) {
       add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 40, px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
@@ -86,8 +89,10 @@ async function buildNavigation(page) {
     ]);
     const bell = c.findOne(function (n) { return n.name === 'notifications'; }); const bi = bell.children[0]; bi.x = 9; bi.y = 9;
     const badge = inst('CountBadge', { Tone: 'Critical', Count: '4' }, { name: 'unread' }); bell.appendChild(badge); badge.x = 20; badge.y = 2;
-  }, { width: 1260, desc: 'Breadcrumb, command search (Ctrl K), market context, notifications and the user.', text: [{ prop: 'Crumb', node: 'crumb', def: 'Home' }] });
-  componentBlock(root, topbar, { title: 'Topbar', summary: 'Market context (AU · AUD · AEST) is always visible because times and money depend on it.' });
+  }, { width: 1260, desc: TOPBAR_DESC, text: [{ prop: 'Crumb', node: 'crumb', def: 'Home' }], bool: TOPBAR_BOOLS });
+  componentBlock(root, topbar, { title: 'Topbar', summary: 'Market context (AU · AUD · AEST) is always visible because times and money depend on it.', props: ['Workspace: Admin or Seller', 'Crumb (text)', 'Show search, Show notifications (boolean, 1.7.0): off in the limited seller shell (S1)'] });
+  menuBlock(root, {});
+  showcaseBlock(root);
   buildMobileNav(root, {});
   tag(root);
 }
@@ -189,6 +194,31 @@ function buildMobileNav(root, have) {
   }
 }
 
+// ---------------------------------------------------------------- shared definitions that Update library also uses (1.7.0)
+const TOPBAR_DESC = 'Breadcrumb, command search (Ctrl K), market context, notifications and the user. Show search and Show notifications (1.7.0) hide those slots in the limited seller shell (S1).';
+const TOPBAR_BOOLS = [{ prop: 'Show search', node: 'search', def: true }, { prop: 'Show notifications', node: 'notifications', def: true }];
+const CHECKLIST_AXES = { State: ['Done', 'To do', 'Waiting', 'Needs attention'] };
+const CHECKLIST_OPTS = { width: 1000, desc: 'One verification check or one step of a process. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem. Waiting (1.7.0) is a step someone else is working on; Needs attention (1.7.0) is a step the user must act on. Show actions and Action (1.7.0) show one text action under the step; the To do buttons follow Show actions too.',
+  text: [{ prop: 'Title', node: 'title', def: 'Certificate number confirmed with the issuer' }, { prop: 'By', node: 'by', def: 'Needs a person' }, { prop: 'Action', node: 'action-label', def: 'Update your details' }], bool: [{ prop: 'Show actions', node: 'actions', def: true }] };
+const CHECKLIST_DOC = { title: 'ChecklistItem', summary: 'Approve stays disabled until every check is done. Waiting and Needs attention mark the steps of a process, such as the seller application on S1.', props: ['Title, By (text)', 'Show actions (boolean) and Action (text, Waiting and Needs attention)', 'State: Done, To do, Waiting, Needs attention'], a11y: ['The state is a word in By and an icon in the mark, never colour alone.'] };
+const CK_MARK = { Done: ['status/success/fg', null, 'check', 'text/on-accent'], 'To do': ['bg/surface', 'border/input', null, null], Waiting: ['status/info/bg', null, 'clock', 'status/info/fg'], 'Needs attention': ['status/attention/bg', null, 'alert-circle', 'status/attention/fg'] };
+const CK_BY = { Done: ['Checked automatically · 29 Sep, 10:25 am', 'text/muted', 'Caption/Default'], 'To do': ['Needs a person', 'text/muted', 'Caption/Default'], Waiting: ['In progress', 'status/info/fg', 'Caption/Strong'], 'Needs attention': ['Needs changes', 'status/attention/fg', 'Caption/Strong'] };
+function checklistVariant(c, p) {
+  const m = CK_MARK[p.State]; const by = CK_BY[p.State];
+  const mark = frame({ name: 'mark', dir: 'H', w: 22, h: 22, align: 'center', justify: 'center', fill: m[0], stroke: m[1], strokeW: 1.5, radius: 'radius/pill' }, [m[2] ? icon(m[2], m[3], 13) : null]);
+  let actions = null;
+  if (p.State === 'To do') actions = frame({ name: 'actions', dir: 'H', gap: 'space/1-5' }, [inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Confirm' }), inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Flag a problem' })]);
+  if (p.State === 'Waiting' || p.State === 'Needs attention') actions = frame({ name: 'actions', dir: 'H', gap: 'space/1-5' }, [text('Update your details', 'Body/Small Strong', 'text/link', { name: 'action-label' })]);
+  body(c, { dir: 'H', w: 380, pad: [12, 18, 12, 18], gap: 'space/2-5', align: 'start', stroke: 'border/row', sides: ['top'] }, [
+    mark,
+    frame({ name: 'content', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
+      text('Certificate number confirmed with the issuer', 'Body/Default', 'text/primary', { name: 'title', sizeH: 'FILL' }),
+      text(by[0], by[2], by[1], { name: 'by' }),
+      actions,
+    ]),
+  ]);
+}
+
 // ---------------------------------------------------------------- review & detail
 async function buildReview(page) {
   const root = pageShell(page, 'Review & detail', 'Building blocks of the review workspace: queue summary cards, extracted document fields, checks and the activity timeline.');
@@ -214,19 +244,9 @@ async function buildReview(page) {
   }, { width: 1000, desc: 'A value read from an uploaded document and whether it matches our records.', text: [{ prop: 'Label', node: 'label', def: 'Holder' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Halal Meats Pty Ltd' }] });
   componentBlock(root, ef, { title: 'ExtractedField', summary: '"Check now" marks the field the reviewer is working on; it matches the highlight on the document.' });
 
-  const ck = makeSet('ChecklistItem', { State: ['Done', 'To do'] }, function (c, p) {
-    const done = p.State === 'Done';
-    const mark = frame({ name: 'mark', dir: 'H', w: 22, h: 22, align: 'center', justify: 'center', fill: done ? 'status/success/fg' : 'bg/surface', stroke: done ? null : 'border/input', strokeW: 1.5, radius: 'radius/pill' }, [done ? icon('check', 'text/on-accent', 13) : null]);
-    body(c, { dir: 'H', w: 380, pad: [12, 18, 12, 18], gap: 'space/2-5', align: 'start', stroke: 'border/row', sides: ['top'] }, [
-      mark,
-      frame({ name: 'content', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
-        text('Certificate number confirmed with the issuer', 'Body/Default', 'text/primary', { name: 'title', sizeH: 'FILL' }),
-        text(done ? 'Checked automatically · 29 Sep, 10:25 am' : 'Needs a person', 'Caption/Default', 'text/muted', { name: 'by' }),
-        done ? null : frame({ name: 'actions', dir: 'H', gap: 'space/1-5' }, [inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Confirm' }), inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Flag a problem' })]),
-      ]),
-    ]);
-  }, { width: 1000, desc: 'One verification check. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem.', text: [{ prop: 'Title', node: 'title', def: 'Certificate number confirmed with the issuer' }, { prop: 'By', node: 'by', def: 'Needs a person' }] });
-  componentBlock(root, ck, { title: 'ChecklistItem', summary: 'Approve stays disabled until every check is done.' });
+  const ck = makeSet('ChecklistItem', CHECKLIST_AXES, checklistVariant, CHECKLIST_OPTS);
+  componentBlock(root, ck, CHECKLIST_DOC);
+  reasonQuoteBlock(root);
 
   const TL = { Blue: ['action/primary', 'bg/selected'], Info: ['status/info/fg', 'status/info/bg'], Neutral: ['status/neutral/fg', 'status/neutral/bg'], Teal: ['cert/seller/fg', 'cert/seller/tile'] };
   const tl = makeSet('TimelineItem', { Tone: Object.keys(TL) }, function (c, p) {

@@ -79,7 +79,7 @@ function makeSet(name, axes, build, opts) {
     set.children.forEach(function (c) { ownFind(c, function (n) { return n.name === b.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { visible: k }); }); });
   });
   (opts.swap || []).forEach(function (s) {
-    const def = S.icons[s.def];
+    const def = s.comp || S.icons[s.def];
     const k = set.addComponentProperty(s.prop, 'INSTANCE_SWAP', def.id); keys[s.prop] = k;
     set.children.forEach(function (c) { ownFind(c, function (n) { return n.type === 'INSTANCE' && n.name === s.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { mainComponent: k }); }); });
   });
@@ -135,6 +135,11 @@ function makeComponent(name, build, opts) {
     const k = c.addComponentProperty(b.prop, 'BOOLEAN', b.def); keys[b.prop] = k;
     ownFind(c, function (n) { return n.name === b.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { visible: k }); });
   });
+  (opts.swap || []).forEach(function (s) {
+    const def = s.comp || S.icons[s.def];
+    const k = c.addComponentProperty(s.prop, 'INSTANCE_SWAP', def.id); keys[s.prop] = k;
+    ownFind(c, function (n) { return n.type === 'INSTANCE' && n.name === s.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { mainComponent: k }); });
+  });
   tag(c);
   S.sets[name] = { comp: c, keys: keys, axes: [] };
   S.counts.components++;
@@ -182,6 +187,7 @@ function inst(name, props, o) {
     const key = rec.keys[k]; if (!key) throw new Error('Unknown property ' + k + ' on ' + name);
     let v = props[k];
     if (v && typeof v === 'object' && v.icon) v = S.icons[v.icon].id;
+    else if (v && typeof v === 'object' && v.comp) v = v.comp.id;
     set[key] = v;
   });
   if (Object.keys(set).length) i.setProperties(set);
@@ -242,4 +248,50 @@ function componentBlock(root, set, doc) {
   if (groups.length) add(row, panel); else panel.remove();
   add(section, row);
   return section;
+}
+
+// ---------------------------------------------------------------- additions to existing sets (Update library, 1.7.0)
+// Wire the set's existing TEXT / BOOLEAN / INSTANCE_SWAP properties into a variant that was added later.
+// opts uses the same { prop, node } lists as makeSet; keys come from the set's own definitions.
+function wireVariant(c, keys, opts) {
+  (opts.text || []).forEach(function (t) { const k = keys[t.prop]; if (!k) return; ownFind(c, function (n) { return n.type === 'TEXT' && n.name === t.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { characters: k }); }); });
+  (opts.bool || []).forEach(function (b) { const k = keys[b.prop]; if (!k) return; ownFind(c, function (n) { return n.name === b.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { visible: k }); }); });
+  (opts.swap || []).forEach(function (s) { const k = keys[s.prop]; if (!k) return; ownFind(c, function (n) { return n.type === 'INSTANCE' && n.name === s.node; }).forEach(function (n) { n.componentPropertyReferences = Object.assign({}, n.componentPropertyReferences || {}, { mainComponent: k }); }); });
+}
+// Add the variants in `combos` that the set does not have yet, built by build(c, props) and wired to the
+// set's properties. New variants are laid out in a block below the existing ones (rows by the other axes,
+// columns by colAxis), so nothing that exists moves. Returns the new components.
+function addVariants(rec, combos, build, opts, colAxis) {
+  const set = rec.set; const have = {};
+  set.children.forEach(function (c) { have[variantName(sortedProps(c.variantProperties, rec.axes))] = 1; });
+  const made = [];
+  combos.forEach(function (p) {
+    const name = variantName(sortedProps(p, rec.axes)); if (have[name]) return;
+    const c = figma.createComponent(); c.name = name; c.fills = [];
+    build(c, p);
+    set.appendChild(c); wireVariant(c, rec.keys, opts || {});
+    made.push(c); have[name] = 1; S.counts.variants++;
+  });
+  if (made.length) placeBelow(set, made, colAxis);
+  return made;
+}
+function sortedProps(p, axes) { const o = {}; axes.forEach(function (a) { if (p[a] !== undefined) o[a] = p[a]; }); return o; }
+function placeBelow(set, comps, colAxis) {
+  const PAD = 32, GX = 24, GY = 24; const fresh = new Set(comps.map(function (c) { return c.id; }));
+  let top = 0, right = 0;
+  set.children.forEach(function (c) { if (fresh.has(c.id)) return; top = Math.max(top, c.y + c.height); right = Math.max(right, c.x + c.width); });
+  const rows = [], rowOf = {}, cols = [], colOf = {};
+  comps.forEach(function (c) {
+    const vp = c.variantProperties; const rk = Object.keys(vp).filter(function (k) { return k !== colAxis; }).map(function (k) { return vp[k]; }).join('|');
+    if (rowOf[rk] === undefined) { rowOf[rk] = rows.length; rows.push(0); }
+    const ck = vp[colAxis]; if (colOf[ck] === undefined) { colOf[ck] = cols.length; cols.push(0); }
+    rows[rowOf[rk]] = Math.max(rows[rowOf[rk]], c.height); cols[colOf[ck]] = Math.max(cols[colOf[ck]], c.width);
+  });
+  const colX = []; let x = PAD; cols.forEach(function (w, i) { colX[i] = x; x += w + GX; });
+  const rowY = []; let y = top + GY; rows.forEach(function (h, i) { rowY[i] = y; y += h + GY; });
+  comps.forEach(function (c) {
+    const vp = c.variantProperties; const rk = Object.keys(vp).filter(function (k) { return k !== colAxis; }).map(function (k) { return vp[k]; }).join('|');
+    c.x = colX[colOf[vp[colAxis]]]; c.y = rowY[rowOf[rk]];
+  });
+  set.resize(Math.max(right, x - GX) + PAD, y - GY + PAD);
 }

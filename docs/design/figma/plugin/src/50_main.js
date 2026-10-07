@@ -3,7 +3,7 @@ const PAGES = [
   ['cover', 'Cover'], ['start', 'Getting started'], ['changelog', 'Changelog'],
   ['sep-foundations', '———— Foundations'], ['color', 'Colour'], ['type', 'Typography'], ['spacing', 'Spacing, size & radius'], ['elevation', 'Elevation & motion'], ['icons', 'Icons'], ['a11y', 'Accessibility'],
   ['sep-components', '———— Components'], ['actions', 'Actions'], ['forms', 'Forms & selection'], ['status', 'Status & feedback'], ['data', 'Data display'], ['tables', 'Tables & collections'], ['nav', 'Navigation & shell'], ['review', 'Review & detail'], ['board', 'Board & delivery'],
-  ['sep-templates', '———— Templates'], ['tpl-admin', 'Templates · Admin'], ['tpl-seller', 'Templates · Seller'], ['tpl-dark', 'Templates · Dark preview'],
+  ['sep-templates', '———— Templates'], ['tpl-admin', 'Templates · Admin'], ['tpl-seller', 'Templates · Seller'], ['tpl-auth', 'Templates · Auth'], ['tpl-dark', 'Templates · Dark preview'],
   ['sep-workspace', '———— Workspace'], ['sandbox', 'Sandbox'], ['archive', 'Archive'],
 ];
 const COLLECTION_NAMES = ['Primitives', 'Color', 'Color · Dark', 'Dimension', 'Dimension · Touch', 'Typography', 'Motion'];
@@ -25,7 +25,7 @@ async function fileIsEmpty() {
 const COMPACT = [
   ['p-start', '1 · Start & foundations', 'H', ['cover', 'start', 'changelog', 'color', 'type', 'spacing', 'elevation', 'icons', 'a11y']],
   ['p-components', '2 · Components', 'H', ['actions', 'forms', 'status', 'data', 'tables', 'nav', 'review', 'board']],
-  ['p-templates', '3 · Templates & workspace', 'V', ['tpl-admin', 'tpl-seller', 'tpl-dark', 'sandbox', 'archive']],
+  ['p-templates', '3 · Templates & workspace', 'V', ['tpl-admin', 'tpl-seller', 'tpl-auth', 'tpl-dark', 'sandbox', 'archive']],
 ];
 const TITLE = {}; PAGES.forEach(function (d) { TITLE[d[0]] = d[1]; });
 
@@ -121,7 +121,7 @@ function notePage(host, title, subtitle, items) {
 }
 
 async function build(force) {
-  STEP = 0; STEPS = 25; S.report = [];
+  STEP = 0; STEPS = 26; S.report = [];
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   let first;
@@ -161,12 +161,18 @@ async function build(force) {
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
-    const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()];
-    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density).', list);
+    const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
+    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell.', list);
     return list;
   });
+  const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
+    const made = buildAuthFrames();
+    rowsPage(h, 'Templates · Auth', AUTH_SUBTITLE, ['Seller', 'Admin', 'Phone'].map(function (r) { return made.filter(function (m) { return m.row === r; }).map(function (m) { return m.frame; }); }));
+    return made.map(function (m) { return m.frame; });
+  });
   await onPage(P['tpl-dark'], 'Dark preview', function (h) {
-    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
+    const byName = {}; sellerScreens.concat(authScreensBuilt).forEach(function (s) { byName[s.name] = s; });
+    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
     templatesPage(h, 'Templates · Dark preview', S.modes.color
       ? 'These frames use the Dark mode of the Color collection. Select any frame and switch the mode in the Appearance panel to compare.'
       : 'Starter plan: these copies are bound to the "Color · Dark" collection. Use the plugin buttons Dark theme / Light theme on a selection to switch any frame.', clones);
@@ -249,6 +255,32 @@ function appendTableRow(tbl, cells, widths) {
 function findTable(host, headers) {
   return host.findAll(function (n) { return n.type === 'FRAME' && n.name === 'Table' && n.children.length && n.children[0].name === 'Header' && n.children[0].children.map(function (c) { return c.name; }).join('|') === headers; })[0] || null;
 }
+function pageOf(node) { let p = node; while (p && p.type !== 'PAGE') p = p.parent; return { page: p, host: p }; }
+function bottomEdge(host) { let b = 0; host.children.forEach(function (c) { b = Math.max(b, c.y + c.height); }); return b; }
+// The library page's root frame (made by pageShell), or a new one to the right of what is there.
+function docRoot(host, title, subtitle) {
+  let root = host.children.filter(function (n) { return n.type === 'FRAME' && n.name === title; })[0];
+  if (!root) { const y = host.children.length ? Math.min.apply(null, host.children.map(function (c) { return c.y; })) : 0; const x = rightEdge(host) + 160; root = pageShell(host, title, subtitle); root.x = x; root.y = y; tag(root); }
+  return root;
+}
+// Templates · Auth (1.7.0) in a file built before it: a section below the other template sections (Starter layout)
+// or a new page after Templates · Seller.
+async function ensureAuthHost(T) {
+  if (T['tpl-auth']) return T['tpl-auth'];
+  const ref = T['tpl-seller'];
+  if (ref.host.type === 'SECTION') {
+    await figma.setCurrentPageAsync(ref.page);
+    let bottom = 0; ref.page.children.forEach(function (n) { bottom = Math.max(bottom, n.y + n.height); });
+    const sec = makeSection(ref.page, 'tpl-auth'); sec.x = ref.host.x; sec.y = bottom + 240; sec.resizeWithoutConstraints(480, 320);
+    T['tpl-auth'] = { page: ref.page, host: sec };
+    return T['tpl-auth'];
+  }
+  let p = null; try { p = figma.createPage(); } catch (e) { return null; }
+  p.name = TITLE['tpl-auth']; p.setPluginData(PLUGIN_TAG, 'page'); p.setPluginData('key', 'tpl-auth'); p.setPluginData('layout', 'full');
+  figma.root.insertChild(figma.root.children.indexOf(ref.page) + 1, p);
+  T['tpl-auth'] = { page: p, host: p };
+  return T['tpl-auth'];
+}
 function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
 async function updateLibrary() {
@@ -260,15 +292,17 @@ async function updateLibrary() {
   await loadState();
   await hydrateLibrary();
   const T = findHosts();
-  const need = ['nav', 'tpl-seller', 'tpl-admin', 'changelog', 'spacing', 'cover', 'icons'].filter(function (k) { return !T[k]; });
-  const base = ['CountBadge', 'NavGroupLabel', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar'].filter(function (k) { return !S.sets[k]; });
+  const need = ['nav', 'forms', 'review', 'tpl-seller', 'tpl-admin', 'tpl-dark', 'changelog', 'spacing', 'cover', 'icons'].filter(function (k) { return !T[k]; });
+  const base = ['CountBadge', 'NavGroupLabel', 'NavItem', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar', 'Topbar', 'Button', 'Input', 'Checkbox', 'Badge', 'InfoBanner', 'ProductThumb', 'ChecklistItem'].filter(function (k) { return !S.sets[k]; });
   if (need.length || base.length || !S.ts['Body/Default'] || !S.es['Focus/Ring']) {
     post({ type: 'error', message: 'This library is incomplete, so it cannot be updated safely. Missing: ' + need.concat(base).join(', ') + '. Restore it from version history or rebuild it in a new file.' }); return;
   }
   await loadFonts();
   const added = [];
 
-  // 1 · tokens
+  // 1 · tokens (1.7.0 adds primitives first: new colour tokens alias them)
+  const missingPrims = S.primColl ? SPEC.primitives.filter(function (p) { return !S.prim[p.name]; }) : [];
+  missingPrims.forEach(function (p) { addPrimitive(p); added.push('primitive ' + p.name); });
   const missingColors = SPEC.color.filter(function (c) { return !S.color[c.name]; });
   missingColors.forEach(function (c) { addColorVariable(c); added.push('variable ' + c.name + (S.colorModes.darkCollection ? ' (Color and Color · Dark)' : ' (Light and Dark modes)')); });
   const missingVars = SPEC.dimension.filter(function (d) { return !S.dim[d.name]; });
@@ -359,6 +393,133 @@ async function updateLibrary() {
   if (scrimFix.length) added.push('bind drawer scrim to bg/scrim (' + scrimFix.length + ' templates)');
   if (topbarFix.length) added.push('swap phone topbar for PhoneTopbar (' + topbarFix.length + ' templates)');
 
+  // 2d · release 1.7.0 "Auth": variants and properties added to existing sets, then the new components.
+  // Only sets the plugin made are changed (PLUGIN_TAG); a set of the same name made by someone else is skipped and reported.
+  const own = function (name) { const r = S.sets[name]; const n = r && (r.set || r.comp); return !!(n && n.getPluginData(PLUGIN_TAG) === '1'); };
+  const skipped = {};
+  const skip = function (name, why) { skipped[name] = 1; log('ℹ skipped ' + why); };
+  const missingCombos = function (rec, list) { const have = {}; rec.set.children.forEach(function (c) { have[variantName(sortedProps(c.variantProperties, rec.axes))] = 1; }); return list.filter(function (p) { return !have[variantName(sortedProps(p, rec.axes))]; }); };
+  const OLD_DESC = { Button: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear.', Input: 'Text and search input. Border uses border/input (3:1).', ChecklistItem: 'One verification check. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem.', Topbar: 'Breadcrumb, command search (Ctrl K), market context, notifications and the user.' };
+  const NEW_DESC = { Button: BUTTON_OPTS.desc, Input: INPUT_OPTS.desc, ChecklistItem: CHECKLIST_OPTS.desc, Topbar: TOPBAR_DESC };
+  const refreshDesc = function (name) { const n = S.sets[name].set; if (n.description === OLD_DESC[name]) { n.description = NEW_DESC[name]; added.push('update ' + name + ' description'); } };
+  let inputRenamed = 0;
+  if (!own('Button')) skip('Button', 'Button variants Link and Loading: the Button set is not the plugin\'s');
+  else if (missingCombos(S.sets.Button, combos(BUTTON_AXES)).length || S.sets.Button.set.description === OLD_DESC.Button) {
+    await onPage(pageOf(S.sets.Button.set), 'Button variants', function () {
+      const made = addVariants(S.sets.Button, combos(BUTTON_AXES), buttonVariant, BUTTON_OPTS, 'State');
+      if (made.length) added.push('Button variants (' + made.length + '): Variant=Link and State=Loading');
+      refreshDesc('Button');
+    });
+  }
+  if (!own('Input')) skip('Input', 'Input variants Password and Code: the Input set is not the plugin\'s');
+  else {
+    const rec = S.sets.Input;
+    const plain = rec.set.children.filter(function (c) { return c.variantProperties.Type === undefined; });
+    const later = rec.axes.indexOf('Type') >= 0 ? missingCombos(rec, combos(INPUT_AXES)) : ['all'];
+    if (plain.length || later.length || rec.set.description === OLD_DESC.Input) {
+      await onPage(pageOf(rec.set), 'Input variants', function () {
+        // The Type axis is added by naming the existing variants Type=Text; their layers and instances stay as they are.
+        plain.forEach(function (c) { c.name = 'Type=Text, ' + c.name; }); inputRenamed = plain.length;
+        if (rec.axes.indexOf('Type') < 0) rec.axes = ['Type'].concat(rec.axes);
+        if (plain.length) added.push('Input variant property Type (' + plain.length + ' existing variants named Type=Text)');
+        const made = addVariants(rec, combos(INPUT_AXES), inputVariant, INPUT_OPTS, 'State');
+        if (made.length) added.push('Input variants (' + made.length + '): Type=Password and Type=Code');
+        refreshDesc('Input');
+      });
+    }
+  }
+  if (!own('ChecklistItem')) skip('ChecklistItem', 'ChecklistItem variants Waiting and Needs attention: the ChecklistItem set is not the plugin\'s');
+  else {
+    const rec = S.sets.ChecklistItem;
+    if (!rec.keys['Show actions'] || !rec.keys.Action || missingCombos(rec, combos(CHECKLIST_AXES)).length || rec.set.description === OLD_DESC.ChecklistItem) {
+      await onPage(pageOf(rec.set), 'ChecklistItem variants', function () {
+        if (!rec.keys['Show actions']) { rec.keys['Show actions'] = rec.set.addComponentProperty('Show actions', 'BOOLEAN', true); rec.set.children.forEach(function (v) { wireVariant(v, rec.keys, { bool: CHECKLIST_OPTS.bool }); }); added.push('ChecklistItem property Show actions'); }
+        if (!rec.keys.Action) { rec.keys.Action = rec.set.addComponentProperty('Action', 'TEXT', 'Update your details'); added.push('ChecklistItem property Action'); }
+        const made = addVariants(rec, combos(CHECKLIST_AXES), checklistVariant, CHECKLIST_OPTS, 'State');
+        if (made.length) added.push('ChecklistItem variants (' + made.length + '): Waiting and Needs attention');
+        refreshDesc('ChecklistItem');
+      });
+    }
+  }
+  if (!own('Topbar')) skip('Topbar', 'Topbar properties Show search and Show notifications: the Topbar set is not the plugin\'s');
+  else {
+    const rec = S.sets.Topbar; const miss = TOPBAR_BOOLS.filter(function (b) { return !rec.keys[b.prop]; });
+    if (miss.length || rec.set.description === OLD_DESC.Topbar) {
+      await onPage(pageOf(rec.set), 'Topbar properties', function () {
+        miss.forEach(function (b) { rec.keys[b.prop] = rec.set.addComponentProperty(b.prop, 'BOOLEAN', b.def); rec.set.children.forEach(function (v) { wireVariant(v, rec.keys, { bool: [b] }); }); added.push('Topbar property ' + b.prop); });
+        refreshDesc('Topbar');
+      });
+    }
+  }
+  // New components. A component of the same name that is not the plugin's blocks it (and what depends on it).
+  ['BrandMark', 'MenuItem', 'Menu', 'ReasonQuote', 'Field', 'AuthShowcase'].forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
+  if (skipped.Input && !S.sets.Field) skip('Field', 'component Field: it needs the plugin\'s Input with Type=Text');
+  if (skipped.MenuItem && !S.sets.Menu) skip('Menu', 'component Menu: it needs the plugin\'s MenuItem');
+  const navNew = ['BrandMark', 'MenuItem', 'Menu', 'AuthShowcase'].filter(function (n) { return !S.sets[n] && !skipped[n]; });
+  if (navNew.length) {
+    await onPage(T.nav, 'Auth components', function (host) {
+      const root = docRoot(host, 'Navigation & shell', 'One shell for both panels. The Sidebar variant decides the workspace; the menu items come from configuration and permissions.');
+      if (navNew.indexOf('BrandMark') >= 0) brandMarkBlock(root);
+      if (navNew.indexOf('Menu') >= 0 || navNew.indexOf('MenuItem') >= 0) menuBlock(root, { MenuItem: S.sets.MenuItem ? S.sets.MenuItem.set : null });
+      if (navNew.indexOf('AuthShowcase') >= 0) showcaseBlock(root);
+      fitSection(host);
+    });
+    navNew.forEach(function (n) { added.push('component ' + n); });
+  }
+  if (!S.sets.ReasonQuote && !skipped.ReasonQuote) {
+    await onPage(T.review, 'ReasonQuote', function (host) { reasonQuoteBlock(docRoot(host, 'Review & detail', 'Building blocks of the review workspace: queue summary cards, extracted document fields, checks and the activity timeline.')); fitSection(host); });
+    added.push('component ReasonQuote');
+  }
+  if (!S.sets.Field && !skipped.Field) {
+    await onPage(T.forms, 'Field', function (host) { fieldBlock(docRoot(host, 'Forms & selection', 'Inputs, checkboxes, switches, segmented controls, tabs and filter chips.')); fitSection(host); });
+    added.push('component Field');
+  }
+
+  // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
+  // A template is built only when every component it places is the plugin's (made earlier or in this run).
+  const blockedBy = function (names) { return names.filter(function (n) { return skipped[n] || !own(n); }); };
+  const authBlock = blockedBy(['Button', 'Input', 'BrandMark', 'Field', 'AuthShowcase', 'ReasonQuote', 'Badge', 'InfoBanner', 'Checkbox']);
+  const s1Block = blockedBy(['Button', 'ChecklistItem', 'Topbar', 'ReasonQuote', 'MenuItem', 'Menu', 'Sidebar', 'PhoneTopbar', 'Badge', 'InfoBanner']);
+  if (authBlock.length) log('ℹ skipped Auth templates: they need the plugin\'s ' + authBlock.join(', '));
+  else {
+    const present = T['tpl-auth'] ? T['tpl-auth'].host.children.map(function (c) { return c.name; }) : [];
+    const missing = authFrameNames().filter(function (n) { return present.indexOf(n) < 0; });
+    const hostT = missing.length ? await ensureAuthHost(T) : T['tpl-auth'];
+    if (missing.length && !hostT) log('ℹ skipped Auth templates: this file has no free page for Templates · Auth');
+    else if (missing.length) {
+      if (!present.length) added.push((hostT.host.type === 'SECTION' ? 'section ' : 'page ') + TITLE['tpl-auth']);
+      await onPage(hostT, 'Auth templates', function (host) {
+        const made = buildAuthFrames(missing);
+        const rows = ['Seller', 'Admin', 'Phone'].map(function (r) { return made.filter(function (m) { return m.row === r; }).map(function (m) { return m.frame; }); });
+        if (!host.children.length) rowsPage(host, 'Templates · Auth', AUTH_SUBTITLE, rows); else placeRows(host, rows, bottomEdge(host) + 240);
+        fitSection(host);
+      });
+      added.push('templates Auth (' + missing.length + ' frames)');
+    }
+  }
+  if (s1Block.length) log('ℹ skipped Seller · Your seller account templates: they need the plugin\'s ' + s1Block.join(', '));
+  else {
+    const present = T['tpl-seller'].host.children.map(function (c) { return c.name; });
+    const missing = s1Screens().filter(function (d) { return present.indexOf(d[0]) < 0; });
+    if (missing.length) {
+      await onPage(T['tpl-seller'], 'Seller account templates', function (host) { placeRows(host, [missing.map(function (d) { return d[1](); })], bottomEdge(host) + 240); fitSection(host); });
+      missing.forEach(function (d) { added.push('template ' + d[0]); });
+    }
+  }
+  const darkHost = T['tpl-dark'].host; const darkPresent = darkHost.children.map(function (c) { return c.name; });
+  const darkSources = DARK_170.filter(function (n) { return darkPresent.indexOf(n + ' · Dark') < 0; }).map(function (n) {
+    const where = [T['tpl-auth'], T['tpl-seller']].filter(Boolean);
+    for (let i = 0; i < where.length; i++) { const f = where[i].host.children.filter(function (c) { return c.type === 'FRAME' && c.name === n && c.getPluginData(PLUGIN_TAG) === '1'; })[0]; if (f) return f; }
+    return null;
+  }).filter(Boolean);
+  if (darkSources.length) {
+    await onPage(T['tpl-dark'], 'Dark preview', function (host) {
+      let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
+      darkSources.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
+      fitSection(host);
+    });
+  }
+
   // 3 · templates
   const tplKeys = Object.keys(PHONE_TEMPLATES);
   for (let i = 0; i < tplKeys.length; i++) {
@@ -378,7 +539,7 @@ async function updateLibrary() {
 
   // 4 · documentation pages (only edits what the release changed)
   const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
-  const newSizes = ['size/bottom-bar', 'size/topbar-phone'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
+  const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
     .filter(function (d) { return d && sizeTable && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === d.name; }); });
   if (newSizes.length) {
     await onPage(T.spacing, 'Spacing page', function () { newSizes.forEach(function (d) { appendTableRow(sizeTable, [d.name, d.desktop + ' px', d.touch + ' px', SIZE_USE[d.name]], [260, 160, 160, 600]); }); fitSection(T.spacing.host); });
@@ -399,7 +560,11 @@ async function updateLibrary() {
   await flush();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
-  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length || scrimFix.length ? ', except ' + [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : ''].filter(Boolean).join(' and ') : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
+  else {
+    log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); });
+    const except = [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : '', inputRenamed ? 'the ' + inputRenamed + ' existing Input variants named Type=Text' : ''].filter(Boolean);
+    log('Nothing was deleted or rebuilt' + (except.length ? ', except ' + except.join(' and ') : '') + '. The existing Sidebar keeps its drawn brand mark (a new build uses BrandMark). Next: run Audit file, then Export tokens (the diff shows only the tokens added since this file\'s version, and the version line).');
+  }
   post({ type: 'done', report: S.report, added: added });
 }
 
@@ -411,6 +576,9 @@ async function loadState() {
   async function vars(c) { const out = {}; if (!c) return out; for (let i = 0; i < c.variableIds.length; i++) { const v = await figma.variables.getVariableByIdAsync(c.variableIds[i]); if (v) out[v.name] = v; } return out; }
   S.color = await vars(byName.Color); S.colorDark = await vars(byName['Color · Dark']);
   S.dim = await vars(byName.Dimension); S.dimTouch = await vars(byName['Dimension · Touch']);
+  // Primitives by "family/step" (the variable name without "color/"), so Update library can add missing ones (1.7.0).
+  S.prim = {}; S.primColl = byName.Primitives || null;
+  const pv = await vars(byName.Primitives); Object.keys(pv).forEach(function (k) { S.prim[k.replace(/^color\//, '')] = pv[k]; });
   const cm = byName.Color.modes; const dm = byName.Dimension.modes;
   S.modes.color = cm.length > 1; S.modes.dim = dm.length > 1;
   S.colorModes = { collection: byName.Color, light: cm[0].modeId, dark: cm[1] ? cm[1].modeId : null, darkCollection: byName['Color · Dark'] || null, darkAlt: byName['Color · Dark'] ? byName['Color · Dark'].modes[0].modeId : null };
@@ -562,7 +730,10 @@ async function exportTokens(version) {
   const files = {};
   // primitives
   const prim = OM();
-  const primVars = await list(byName.Primitives);
+  // Sorted by family, then by numeric step: a file updated from an older release has the newer primitives at the end
+  // of the collection, and the export must match a fresh build (the spec lists primitives in this order).
+  const primStep = function (v) { const p = v.name.split('/'); return [p[1], +p[2]]; };
+  const primVars = (await list(byName.Primitives)).sort(function (a, b) { const x = primStep(a), y = primStep(b); return x[0] < y[0] ? -1 : (x[0] > y[0] ? 1 : x[1] - y[1]); });
   primVars.forEach(function (v) { nestInto(prim, v.name, obj([['$type', 'color'], ['$value', toHex(v.valuesByMode[byName.Primitives.modes[0].modeId])]])); });
   files['primitives.json'] = obj([['$description', 'MondaPac primitives. Do not use directly in UI; use semantic tokens.'], ['color', omGet(prim, 'color')]]);
   // semantic colour, light + dark
