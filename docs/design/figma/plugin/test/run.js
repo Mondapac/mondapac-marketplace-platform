@@ -272,6 +272,13 @@ async function updateScenario(label, opts) {
   const n0 = allNodes(M).length;
   r = await send(M, { type: 'update' });
   check(!r.err && r.done.added.length === 0 && allNodes(M).length === n0, 'Update library on a current 1.5.0 file is a no-op');
+  const drawerLists = () => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'items' && n.parent && n.parent.type === 'COMPONENT' && n.parent.parent && n.parent.parent.name === 'NavDrawer');
+  check(drawerLists().length === 2 && drawerLists().every((l) => l.itemSpacing === 0), 'NavDrawer item lists have no gap (both variants)');
+  drawerLists().forEach((l) => { l.itemSpacing = 2; });
+  r = await send(M, { type: 'update' });
+  check(!r.err && r.done.added.some((a) => /fix NavDrawer item spacing \(2 variants\)/.test(a)) && drawerLists().every((l) => l.itemSpacing === 0) && allNodes(M).length === n0, 'Update library fixes the item gap of an earlier 1.5.0 NavDrawer without adding or removing layers');
+  r = await send(M, { type: 'update' });
+  check(!r.err && r.done.added.length === 0, 'and a second run is again a no-op');
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
   process.exitCode = failures ? 1 : 0;
