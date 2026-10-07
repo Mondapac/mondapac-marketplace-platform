@@ -22,11 +22,11 @@
 
 | سطح | دروازه‌ها | ماژول‌ها |
 |---|---|---|
-| **A** | G1 + G2 + بازبینی امنیتی | identity، sellers (مدیریت فروشنده)، certification، catalog (محصول، دسته‌بندی، Offer)، inventory، ordering، payments، commission-payouts، tax، assistant (گفت‌وگوی خریدار؛ دروازه‌هایش فقط هستهٔ ۳ AI را می‌بندند، ADR-0019) |
+| **A** | G1 + G2 + بازبینی امنیتی | identity، sellers (مدیریت فروشنده)، certification، catalog (محصول، دسته‌بندی، Offer)، inventory، pricing (قیمت؛ ADR-0024 تصمیم ۳، G1 2026-10-07)، ordering، payments، commission-payouts، tax، assistant (گفت‌وگوی خریدار؛ دروازه‌هایش فقط هستهٔ ۳ AI را می‌بندند، ADR-0019) |
 | **B** | یک دروازهٔ ترکیبی | cart، shipping، notifications، search، content (CMS و بلاگ)، legal، promotions |
 | **C** | فقط تأیید PO | reporting و قابلیت‌های P2 به بعد بدون اثر روی پول، اعتماد یا دادهٔ شخصی |
 
-`platform/ai` کد پلتفرم است، نه ماژول: سند طراحی‌اش بخش‌به‌بخش با تأیید CTO و بازبینی security-tester تأیید می‌شود (ADR-0019 تصمیم ۶). ردیف ثبت وضعیت `assistant` با پیش‌نویس برگه‌اش اضافه می‌شود. سطح نهایی `pricing` (B یا A طبق ADR-0024 تصمیم ۳) را CTO با تأیید دروازه‌اش در برگه و ردیف ثبت می‌کند.
+`platform/ai` کد پلتفرم است، نه ماژول: سند طراحی‌اش بخش‌به‌بخش با تأیید CTO و بازبینی security-tester تأیید می‌شود (ADR-0019 تصمیم ۶). ردیف ثبت وضعیت `assistant` با پیش‌نویس برگه‌اش اضافه می‌شود. سطح `pricing` طبق ADR-0024 تصمیم ۳ A است، چون صاحب پروژه قیمت ویژه و نگه‌داشتن جهش قیمت را برای راه‌اندازی نگه داشت؛ علی (cto) در مرور برگه پذیرفت و با G1 ثبت شد (2026-10-07).
 
 **«مدیریت فروش»** یک ماژول واحد نیست: شامل ordering (سفارش)، commission-payouts (کمیسیون و تسویه)، promotions (تخفیف و کوپن) و reporting (گزارش فروش) است و هرکدام با سطح خودش از دروازه عبور می‌کند.
 
@@ -40,8 +40,9 @@
 | sellers | A | ۳ | [`sellers/brief.md`](sellers/brief.md) | تأیید (2026-10-03) | — |
 | certification | A | ۳ | [`certification/brief.md`](certification/brief.md) | تأیید (2026-10-03) | — |
 | catalog | A | ۳ | [`catalog/brief.md`](catalog/brief.md) | تأیید (2026-10-03) | — |
-| inventory | A | ۴ | — | — | — |
-| cart | B | ۴ | — | — | — |
+| inventory | A | ۴ | [`inventory/brief.md`](inventory/brief.md) | تأیید (2026-10-07) | — |
+| pricing | A | ۴ | [`pricing/brief.md`](pricing/brief.md) | تأیید (2026-10-07) | — |
+| cart | B | ۴ | [`cart/brief.md`](cart/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید (2026-10-07) | بخش طراحی: — |
 | ordering | A | ۵ | — | — | — |
 | payments | A | ۵ | — | — | — |
 | commission-payouts | A | ۵ | — | — | — |
