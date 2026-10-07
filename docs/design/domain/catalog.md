@@ -1147,7 +1147,7 @@ revert and history; Hassan L2); `public` → `taken-down` (10.5). A rendition is
 | Case | How |
 |---|---|
 | Published photo | Cookieless origin, `Content-Type` set by the server, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'`, no cookies accepted or set, immutable caching; the URL is built by code from the content key (R9 for AI surfaces too) |
-| Pending or draft photo | Only the owning seller (`catalog.own-product.view`) and reviewers (`catalog.product.view`), and only as a **server-made rendition** (never the master or an upload): streamed by the API with `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (Hassan L1), or a signed link valid ≤ 5 minutes on the cookieless origin if ADR-0029 provides signing, with the same headers |
+| Pending or draft photo | Only the owning seller (`catalog.own-product.view`) and reviewers (`catalog.product.view`), and only as a **server-made rendition** (never the master or an upload): streamed by the API with `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (Hassan L1) (no signed links in Phase 3: ADR-0029, Hassan) |
 | Raw upload, master | Never served to anyone |
 | Origin (L1) | ADR-0029 must require the cookieless origin to be a **separate registrable domain** (not a subdomain of the panel or API domain), so no cookie scope or same-site rule can reach it |
 | Alt text | Optional; the product name in the request locale when empty (brief s5) |
@@ -1376,7 +1376,7 @@ pace of `identity` and `sellers` (brief s8: "4 weeks" is not credible).
 ### 16.2 ADRs needed
 | ADR | Status | Order |
 |---|---|---|
-| ADR-0029 "Object storage and file intake" incl. the cookieless origin and signed links; must require the origin to be a **separate registrable domain** (Hassan L1) | Reserved; Ali writes | Accepted before slice 13 (on the first-sale path) |
+| ADR-0029 "Object storage and file intake" incl. the cookieless origin (no signed links in Phase 3); must require the origin to be a **separate registrable domain** (Hassan L1) | Reserved; Ali writes | Accepted before slice 13 (on the first-sale path) |
 | ADR-0026 (settings store) | Accepted 2026-10-07 | Store landed before slice 10 |
 | ADR-0028 (claim contract) | Accepted 2026-10-07 | Applied here; reading of d1 for a never-published product accepted by Ali as a reading, not an amendment, with the conditions of 5.1a (19.2 item 3) |
 | "ADR 3" of ADR-0019 (provider) | Existing plan | Before slice 25 |
