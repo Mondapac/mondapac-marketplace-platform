@@ -146,7 +146,7 @@ ImportJob (one seller; P1)           AiListingSuggestion, AiClaimFlag (P1, 13)
 
 | Aggregate | Holds | Invariants it owns |
 |---|---|---|
-| `Product` | Scope, `typeCode` (from the registry, 3.2), `familyCode`, `productCode`, owner seller id (SELLER), `ownBrand`, the variant registry, the working copy, revisions, the two revision pointers, lifecycle status (4.1), `claimTextFlaggedAt` (6.4), takedown marks (10.5), `promotedAt` | Type and family never change after creation (CAT-10). `productCode` unique per Market. A SELLER product has an owner, a PLATFORM product none. **Content of a PLATFORM product changes only through an admin use case**: the aggregate's content commands take an `AuthorKind` and refuse `seller` when scope is PLATFORM (CAT-43, AC 3), so no path (form, Import, AI accept) can bypass it. At most one published and one pending revision (VER-01). A Simple product has exactly one variant, created with the product and never retired; a Configurable product has at least one non-retired variant (CC2, INV 13). A variant id is never reused or revived (2.3 M-1) |
+| `Product` | Scope, `typeCode` (from the registry, 3.2), `familyCode`, `productCode`, owner seller id (SELLER), `ownBrand`, the variant registry, the working copy, revisions, the two revision pointers, lifecycle status (4.1), `claimTextFlaggedAt` (6.4), takedown marks (10.5), `promotedAt` | Type and family never change after creation (CAT-10). `productCode` unique per Market. A SELLER product has an owner, a PLATFORM product none. **Content of a PLATFORM product changes only through an admin use case**: the aggregate's content commands take an `AuthorKind` and refuse `seller` when scope is PLATFORM (CAT-43, AC 3), so no path (form, Import, AI accept) can bypass it. At most one published and one pending revision (VER-01). A Simple product has exactly one variant, created with the product and never retired; a Configurable product has at least one non-retired variant (CC2, INV 13). A variant id is never reused or revived (2.3 M-1). A product has at most `maxVariantsPerProduct` non-retired variants (7.1; AU 100) |
 | `ProductRevision` (entity of `Product`) | Revision number, base revision id (the published one it was built on), the attribute-schema version it was validated against, immutable content (name, short and full description per locale; attribute values; variant definitions with option values and labels; platform category ids (≥ 1); tax category code; image refs in order with alt text; per-field provenance for AIS-03), `contentHash`, author kind and account id, change classification (sensitive or minor, 4.3), status (4.2), decision (reviewer, instant, reason code, reason text) | Content never changes (VER-01). Created only from a complete working copy (CAT-31). A decision names this revision number (brief s5: approval is bound to what was reviewed) |
 | `Offer` | Seller id, product id, `sellerSku` (unique per seller, CAT-10; **one per Offer**, no per-variant SKU in Phase 3; stock is per `variantId` in `inventory`; Hadi), condition code (Market list), description per locale, handling (`SEALED_ORIGINAL`, `REPACKED`, `PREPARED`, `FRESH`), attestation record (instant, account id, or none), shelf (a `SellerCategory` id of the same seller, or none), status (4.4), stored off-sale causes, `firstPublishedAt`, tags | At most one non-deleted Offer per (seller, product), drafts and pending included (OFR-02). A SELLER product accepts an Offer only from its owner (CAT-40). Deleted is terminal and the id is never reused. Seller id never changes (pricing's copy relies on it, PRC 2.3). The shelf belongs to the Offer's seller (CAT-52, AC 35). Handling and the attestation are written only by `own-offer.set-handling` and `own-offer.record-attestation` of a seller actor, never in acting-as, never through `own-offer.edit`, Import or a bulk action (brief s5; Ali B1). A tag is stored only with an allowed `ClaimDecision` whose inputs equal the state being saved (5.2) |
 | `OfferTag` (entity of `Offer`) | Type code, status (5.3), the claim copy (5.4), the instant and cause of the last change, who removed it and when (removed by seller) | One non-removed tag per (Offer, type). The copy only restricts (ADR-0028 d3) |
@@ -288,6 +288,12 @@ or retired id); a new variant is sent without an id and the server mints it (`Id
 that deletes a `proposed` variant retires it and writes `catalog.variant-removed.v1` in the same
 unit (M-1); a `published` variant is retired only at the publish that removes it, which writes the
 event in the publish unit.
+
+**Variant limit (Ali, Phase 4 ruling).** Every variant add is checked against the Market's
+`catalog.maxVariantsPerProduct` (7.1; AU 100) counting non-retired variants: at the working-copy
+save, at submit, at publish (approve, auto-publish, revert) and in each Import row. Over the limit the
+request is refused with `variant.limit-reached` (with `max`), nothing saved; at publish it refuses
+the approval. The limit also bounds `offer-moved`'s `variantMapping` (9.4) to that many entries.
 
 ### 4.3 `ProductRevisionPolicy` (VER-02, VER-03; owned here)
 A pure domain service: `classify(published, candidate, marketPolicy) → { sensitive: boolean,
@@ -581,6 +587,14 @@ for `text.invisible-character`, never for `claim-text.found`. It is convenience;
 the control. NFKC, case folding, confusables and the separator and
 digit passes are the matcher's.
 
+**A ZWNJ or ZWJ outside a joining script survives the helper (confirmed).** Because the helper keeps
+every ZWNJ and ZWJ, `text.invisible-character` can remain after it runs. The person fixes it by hand:
+each `text.invisible-character` hit carries `{ field, locale, offset, character: 'ZWNJ' | 'ZWJ' |
+'other' }`, so the panel can say "There is an invisible joining character here" and place the cursor
+or selection at that offset; the person deletes it (one Backspace) and saves. A press-only
+"remove this one character" action at a named offset would be a change to Hassan's 3a condition and
+is **not** allowed unless he rules it; until then, manual deletion is the path.
+
 ### 6.4 When the vocabulary grows (Q6; AC 25)
 On `certification-type-revised.v1` with `claimTermsChanged: true`, job `catalog.rescan-claim-text`
 (per Market, batches of 100 texts per `matchClaimTerms` call) scans the **published** texts of
@@ -634,6 +648,7 @@ path (SL 4 pattern).
 | `importLimits` | File ≤ 10 MiB, decompressed ≤ 50 MiB, 5,000 rows, 10,000 characters per cell (Hassan) | Small | 14 |
 | `promotionEnabled` | `false` until counsel approves the content-licence clause (ADR-0010 d5) | `true` | 4.5 |
 | `reconcileAtLocalTime` | `03:00` | `04:00` | 5.6 |
+| `maxVariantsPerProduct` | `100` (Ali, Phase 4 ruling) | `3` (so tests reach the limit) | 2.1, 4.2, 9.4 (`offer-moved`), 14 |
 | `reviewChecks` | The four check codes and their label keys of 8.3a | Two codes | 8.3a |
 
 Locales come from the Market's `supportedLocales` (INTL-10); the language tab is hidden when the
@@ -663,6 +678,11 @@ Declared in `modules/catalog/contracts/market-settings.ts`, read through the por
 | `catalog.approval-required` (CAT-36) | boolean | `true` (Q2) | `true` | In the submit unit (4.2 row 1, 4.4) | New submissions wait for review; nothing published is hidden |
 | `catalog.seller-can-create-product` (OFR-01) | boolean | `true` | `false` | `own-product.create` only | New SELLER products refused (`setting.product-creation-off`); existing products, Offers, drafts and their edits and submits are unaffected |
 | `catalog.sell-from-catalogue` (OFR-03) | boolean | `true` | `false` | `own-offer.create-on-platform-product` and the OFR-03 search hint only | New Offers on PLATFORM products refused; existing Offers stay listed |
+
+`catalog.maxVariantsPerProduct` (7.1) is Market configuration, not an admin-editable setting: it
+bounds contracts of other modules (the `offer-moved` re-key), so it changes only by a configuration
+release with a mini-review of `inventory` and `pricing`. Lowering it never retires a variant; it only
+refuses new adds.
 
 **Rule (task requirement and ADR-0026 d6):** a setting is read only at a creation or submit
 command. An Import row is such a command: each row reads OFR-01 ("My products") or OFR-03 ("Sell
@@ -726,7 +746,8 @@ session (and when the context cannot say, CD M5).
 
 | Use case | Rule | AA | Notes |
 |---|---|---|---|
-| `own-products.list`, `own-product.read`, `own-offer.read`, `own-image.preview`, `own-revision.read` | `permissions [catalog.own-product.view]` | — | Own seller only (repository takes the seller id from the actor) |
+| `own-products.list`, `own-product.read`, `own-offer.read`, `own-image.preview`, `own-revision.read`, `own-product.photos`, `own-offer.badge-options` | `permissions [catalog.own-product.view]` | — | Own seller only (repository takes the seller id from the actor); reads of 9.2a |
+| `own-image.reorder` | `permissions [catalog.own-product.edit]` | allowed (content only) | 9.2a; working copy only |
 | `own-product.create`, `.save-draft`, `.submit`, `.delete`, `.revert`; `own-image.upload`, `.remove`; `own-offer.create-on-platform-product`, `.edit`, `.submit`, `.delete`; `claim-text.check` | `permissions [catalog.own-product.edit]` | allowed (content only); the claim-bearing commands are the next row | `sellingEligibility` on every write; SEL-12 on create and submit; a tag in the submitted form is added through the next row's rule. `own-offer.edit` and `.create-on-platform-product` have closed input schemas with no handling, attestation or tag field (B1; L8); a create with initial handling, attestation or tags is a create followed by the next row's commands, so acting-as gets a draft without them. Ids resolved in the actor's own seller scope (M3); `own-image.upload` refuses a PLATFORM product |
 | `own-offer.set-handling`, `.record-attestation`, `.add-tag`, `.remove-tag`, `.remove-suspended-tag` | `permissions [catalog.own-product.edit]` | refused | Brief s5, AC 19 |
 | `catalog-products.search-for-offer` (OFR-03) | `permissions [catalog.own-product.view]` | — | ≥ 3 characters; Market from context; PLATFORM, published, not retired; per result whether the seller already has an Offer, whether the type is allowed |
@@ -741,7 +762,8 @@ session (and when the context cannot say, CD M5).
 | `platform-product.*` (create, save-draft, submit, revert, upload) | `permissions [catalog.platform-product.edit]` | — | CAT-41 |
 | `platform-product.retire` | `permissions [catalog.platform-product.retire]` | — | Confirm carries the count shown |
 | `tax-category.override` | `permissions [catalog.tax-category.override]` | — | 4.3 |
-| `platform-category.*` | `permissions [catalog.category-tree.edit]` (create, rename, move, merge, archive); read: `catalog.product.view` | — | 4.6 |
+| `platform-category.*` | `permissions [catalog.category-tree.edit]` (create, rename, move, merge, archive); read and `platform-category.impact`: `catalog.product.view` | — | 4.6, 9.2a |
+| `admin-product.offers` | `permissions [catalog.product.view]` | — | 9.2a (Offers tab) |
 | `attribute-definition.*`, `attribute-family.*` | `permissions [catalog.attribute.edit]` | — | Unsetting `material` and removing a family's required field are relaxations recorded in audit. **Two-person rule (Hassan 2; ADR-0028 consequences)** for clearing `material`, archiving or deleting a definition whose current revision is `material`, and removing a `material` definition from a family: one admin requests (`attribute-definition.request-relaxation`, naming the definition id and its version), a **different** account id holding `catalog.attribute.edit` confirms (`.confirm-relaxation`); never in an acting-as session; the request expires after 72 h (proposal) and fails if the definition version changed; both account ids are in the audit row `catalog.attribute-definition.revised` |
 | `category-proposal.approve`, `.reject` | `permissions [catalog.category-proposal.decide]` | — | 4.7 |
 | `seller-category.promote`, `.merge` | `permissions [catalog.seller-category.promote-merge]` | — | 4.7 |
@@ -874,6 +896,78 @@ Certification Reviewer role needs `catalog.product.view` (8.1).
 
 All three are consistent with 8.2; `offer.review-read` is the only use case added for them.
 
+### 9.2a Panel reads (Reza, ux.md 7.2 items 3, 4, 8, 9, 10)
+All are HTTP reads in read-only units (ADR-0025), answers advisory; every write re-checks.
+
+**Badge options (`own-offer.badge-options`, item 3).** Input: `offerId`, optional preview values
+`handling` and `attestationRecorded` (the form's unsaved choices). The server builds one
+`ClaimQuery` per **active** certification type of the Market (`certificationTypes`) with 5.1's
+builder, seller id from the actor and the preview values in place of the stored ones, and calls
+`evaluateClaims` (≤ 100 queries per call). Answer per type: `typeCode`, `allowed`, `reason` (the
+CUX 3.7 enum), `basis`, `badgeData` only when allowed (for the preview), plus `currentTag` (status
+and basis of this Offer's tag of that type, if any); and `attestation.available` = handling (preview
+or stored) is `SEALED_ORIGINAL` and at least one type's answer is allowed on, or refused only for a
+missing attestation on, the manufacturer basis. `Cache-Control: no-store`; fresh on every call;
+**nothing is stored** (a decision becomes a tag only through `own-offer.add-tag`, 5.2). For a product
+with no frozen revision (never submitted), each type answers `reason: 'decided-at-submit'` with no
+basis (5.1a: never the working copy). `claim.check-unavailable` when the facade fails. Rate limit:
+the OFR-03 search limit (60 per minute).
+
+**Sensitive fields (item 4).** `own-product.read` and `admin-product.read` return `maxVariants`
+(7.1) and
+`sensitiveFields`: the field ids (6.2 names) of the Market's `sensitiveChanges` (7.1) plus
+`images` (always reviewed, H1), so the panel never hardcodes them. The submit answer returns
+`classification: { outcome: 'published' | 'pending', sensitive, reasons: SensitiveReason[] }`
+(4.3), reasons as codes (`platform-categories`, `tax-category`, `name`, `primary-image`,
+`image-added-or-replaced`, `variant-removed`, `never-published`, `approval-required`).
+
+**Review queue rows (item 8).** `review-queue.list` (oldest first, page of 50): per row `kind`
+(`product-revision` | `offer-first-publication`), product id and name in the reviewer's locale,
+seller id and store name (`sellerSummaries`, ≤ 100 ids per page), `firstPublication`, the
+classification reasons above ("what changed"), `submittedAt` ("waiting since", an instant the panel
+shows in the reviewer's zone), and the required checks of 8.3a. No AIA-03 flag in the list (R2: it
+never orders or filters the queue).
+
+**`platform-category.impact` (item 8).** Input: category id and the intended action (`move`,
+`merge`, `archive`). Answer: counts of published products whose published revision names the
+category or a descendant, of non-deleted Offers on them, of listed Offers, and of Offers with an
+`active` tag; plus `complete` (bounded at 10 seconds, as 6.5: otherwise "at least N"). Advisory: the
+confirm of 4.6 sends nothing from it, and the use case re-checks its own guards.
+
+**Offers tab (`admin-product.offers`, item 8).** Per product, page of 50 by `firstPublishedAt`:
+Offer id, seller id and store name, `sellerSku`, condition, status, `listed`, the stored off-sale
+causes (admins may see them; anonymous callers never do, K-1), tags with status and basis and badge
+data for `active` ones, and the allowed actions below.
+
+**Allowed actions (item 8; the ID 8.6 pattern).** Every read of a product, revision, Offer, tag,
+category, proposal and setting carries `actions: { [actionCode]: { allowed: boolean, denial?: code }
+}`, computed by the same guard functions as the use cases for the reading actor (acting-as included).
+Action codes are the use-case names of 8.2. Denial codes: `access.permission-missing`,
+`access.acting-as-refused`, `seller.not-eligible`, `type.not-allowed`,
+`setting.product-creation-off`, `setting.sell-from-catalogue-off`, `review.not-current-revision`,
+`review.first-approval-needs-match-check`, `review.checks-missing` (codes listed),
+`offer.locked-pending-first-publish`, `offer.exists-for-product`, `category.referenced-by-policy`
+(with type codes), `category.check-unavailable`, `category.only-platform-category`,
+`retire.count-changed` (at the action only), `match.*` (9.2), `promotion.disabled`. Throttling is
+an error, not a denial: `request.throttled` with `retryAfterSeconds` for per-minute limits and
+`request.daily-limit-reached` with `retryAfterSeconds` for 24-hour limits.
+
+**Setting metadata (`market-settings.read`, item 9).** Per code of 7.3: `value`, `defaultValue`,
+`safeValue`, `version` (sent back by `.change`; a stale version is `conflict.stale`), `changedBy`
+(account id and display name through identity R-11, request I-2), `changedAt`, and
+`safeValueInForce: true` when the store read failed and the safe value applies (ADR-0026 d5), in
+which case `.change` is refused with `setting.store-unavailable`.
+
+**Photos (`own-product.photos`, item 10; admin: inside `admin-product.read`).** Per image of the
+working copy (seller) or of the revision being viewed (reviewer): `imageId`, a server-made `label`
+("Photo 3"; client file names are never stored, 6.2), `state` (10.3), `refusalCode` (10.2 codes),
+`thumbnailUrl` built by code (pending or draft: the API path, `no-store`, 10.4; public: the
+cookieless origin), pixel width and height, bytes, `isPrimary`, `position`, `altText`. Reorder:
+`own-image.reorder(productId, imageIds[], workingCopyVersion)` takes the **whole** list; it must be
+exactly the working copy's image set (else `photos.order-mismatch`, nothing changed); it changes the
+working copy only (the first is primary; a primary change is sensitive at submit, 4.3). Admins
+reorder PLATFORM photos through `platform-product.save-draft`.
+
 ### 9.3 Ports
 | Port | Declared in | Implemented by | Notes |
 |---|---|---|---|
@@ -900,7 +994,7 @@ ships in the slice that changes the state (brief s6).
 | `catalog.offer-created.v1` | `offerId`, `productId`, `sellerId` | `inventory` (INV 3.5) |
 | `catalog.offer-published.v1` | `offerId` | Own mail; `search` |
 | `catalog.offer-deleted.v1` | `offerId`, `productId`, `sellerId` | `pricing` (CF2), `inventory` (INV 3.5) |
-| `catalog.offer-moved.v1` | `offerId`, `fromProductId`, `toProductId`, `variantMapping: {from, to}[]` (ids only) | `pricing` (CF4), `inventory` (request V-1) |
+| `catalog.offer-moved.v1` | `offerId`, `fromProductId`, `toProductId`, `variantMapping: {from, to}[]` (ids only; at most `maxVariantsPerProduct` entries, AU 100, since the mapping covers the duplicate's non-retired variants) | `pricing` (CF4), `inventory` (request V-1) |
 | `catalog.offer-listing-changed.v1` | `offerId`, `listed` | `search`, storefront (Phase 6) |
 | `catalog.offer-tag-added.v1`, `-removed.v1`, `-suspended.v1`, `-restored.v1`, `-basis-switched.v1` | `offerId`, `typeCode`, `basis` (enum or null) | Own mail; `search` |
 | `catalog.platform-category-created.v1`, `-moved.v1`, `-merged.v1` (with `targetCategoryId`), `-archived.v1` | `categoryId` | Own handler (4.6); `search` |
@@ -1132,7 +1226,7 @@ Designed to the level its slice needs; built after the shop-visit research (Q5).
 | Modes | "My products" (creates SELLER products and their Offers through the same use cases as the form) and "Sell from catalogue" (Offers on PLATFORM products by `product_code`; OFR-12) |
 | Formats | CSV and XLSX only (no XLS, no XML); formulas never evaluated; XLSX parsed in the sandboxed intake process with Hassan's limits (19.2 item 7): file ≤ 10 MiB, decompressed ≤ 50 MiB, 5,000 rows, 10,000 characters per cell; one running job per seller (brief s5) |
 | Execution | Background job in the worker under the seller's identity kept on the job (seller id and account id from the starting `ActorContext`); `sellingEligibility` and `allowedProductTypesOf` asked again per row; a seller suspended mid-job: the remaining rows fail (AC 40) |
-| Each row | Calls the same application services as the form (claim text, SEL-12, CAT-36, one Offer rule, SKU unique, `evaluateClaims` for the requested type codes only; 5.4) — no shortcut. Each row reads OFR-01 ("My products") or OFR-03 ("Sell from catalogue") like the form (L9); a `product_code` that is SELLER, unpublished, retired, foreign or unknown answers the same byte-identical "not found" (M3). The update key is the Offer's `sellerSku` plus the variant option values (Hadi; one SKU per Offer) and covers only the seller's own rows; Import never deletes |
+| Each row | Calls the same application services as the form (claim text, SEL-12, CAT-36, one Offer rule, SKU unique, `evaluateClaims` for the requested type codes only; 5.4) — no shortcut. Each row reads OFR-01 ("My products") or OFR-03 ("Sell from catalogue") like the form (L9); a `product_code` that is SELLER, unpublished, retired, foreign or unknown answers the same byte-identical "not found" (M3). Variant adds are checked against `maxVariantsPerProduct` (`variant.limit-reached` for that row). The update key is the Offer's `sellerSku` plus the variant option values (Hadi; one SKU per Offer) and covers only the seller's own rows; Import never deletes |
 | Refused columns | Any column that would set approval status, a claim decision, basis, certificate, tag status, handling attestation or provenance is refused (OFR-12; brief s5). The attestation is never recorded from a file. A `status` column cannot publish |
 | Images | File names referring to a ZIP of the same job pass the photo intake (10.2); a URL is never fetched (AC 40). Rows without a photo stay drafts (brief s7) |
 | Price and stock columns | Not read by `catalog`. They are `pricing`'s and `inventory`'s; how they reach those modules is for their gates (ADR-0024 consequences) |
@@ -1275,6 +1369,9 @@ now; this document does not edit it):
 10. SKU (Hadi): one `sellerSku` per Offer; no per-variant SKU column in Phase 3; Import's update key
     is (seller, `sellerSku`, variant option values).
 11. Bulk approve cap of 50 (Hassan 3b): no storage change; noted for request validation.
+12. Variant limit (`catalog.maxVariantsPerProduct`, AU 100): enforced in the application layer
+    under the product's version (a count of non-retired variants in the save, submit and publish
+    units); Mojtaba decides whether a check or index helps; Market configuration, no table.
 
 ### 17.2 For Reza (`docs/modules/catalog/ux.md`; brief s12; IA 5.2, 5.3)
 The screens of brief s12 on the IA's templates and routes: seller `/catalogue` (T2 list with
@@ -1343,6 +1440,14 @@ now; this document does not edit it):
 19. No SKU field on `VariantRow` (Hadi: one SKU per Offer); "(required)" only on the default locale
     (default pending the owner).
 20. `material` relaxation: request and confirm by two different admins, with expiry (8.2).
+21. Items 3, 4, 8, 9, 10 are answered in 9.2a. Changes for `ux.md`: before the first submit,
+    badge options answer "decided at submit" (no preview); queue rows carry no AIA-03 flag; the
+    daily limit has its own code `request.daily-limit-reached`; reorder sends the whole list.
+22. ZWNJ/ZWJ outside a joining script (6.3): the error can remain after the helper; the panel
+    places the cursor at the reported offset and the person deletes the character.
+23. Variant limit: `variant.limit-reached` (with `max`) on adding a size beyond
+    `maxVariantsPerProduct` (AU 100) at save, submit, approve and Import; the panel disables "Add a
+    size" at the limit from the product read (`maxVariants`).
 
 ## 18. Requests to other modules
 No port, facade or event of another module is changed by this document.
@@ -1355,8 +1460,8 @@ No port, facade or event of another module is changed by this document.
 | X-3 | `certification` | The intake components (`MalwareScanner`, `DocumentInspector`, image re-encode) move to `platform/storage` intake as CD 8.2 foresees, with ADR-0029 | 13 |
 | I-1 | `identity` (mini-review) | Register the keys of 8.1 and map them to default roles (R10); `catalog.product.view` for the Certification Reviewer role (9.2); no catalog use case in the limited allow-list (board 15 item 5); protected keys of 8.1 | 1, 10 |
 | I-2 | `identity` | Reuse R-4 (contact point) and R-11 (admin display names), as `sellers` and `certification` | 10 |
-| V-1 | `inventory` (PR #43; **ruled by Ali**) | An idempotent handler of `catalog.offer-moved.v1` that re-keys stock from (Offer, fromVariant) to (Offer, toVariant). Catalog slice 16 does not merge before it | Before catalog 16 |
-| P-1 | `pricing` (PR #44; **ruled by Ali**) | Adopt `offerSellUnits` (not `offersForPricing`); treat `proposed` variants as priceable; handle a `deleted` Offer present in the answer; re-key on `offer-moved` (no `variant-removed` is sent for a matched duplicate's variants); consume `variant-removed` at a draft save too (B2) | Their slice 1 |
+| V-1 | `inventory` (PR #43; **ruled by Ali**) | An idempotent handler of `catalog.offer-moved.v1` that re-keys stock from (Offer, fromVariant) to (Offer, toVariant). The mapping has at most `catalog.maxVariantsPerProduct` entries (AU 100), so the re-key is bounded and fits one unit. Catalog slice 16 does not merge before it | Before catalog 16 |
+| P-1 | `pricing` (PR #44; **ruled by Ali**) | Adopt `offerSellUnits` (not `offersForPricing`); treat `proposed` variants as priceable; handle a `deleted` Offer present in the answer; re-key on `offer-moved` (at most `catalog.maxVariantsPerProduct` mapping entries, AU 100; no `variant-removed` is sent for a matched duplicate's variants); consume `variant-removed` at a draft save too (B2) | Their slice 1 |
 | K-1 | cart (PR #45; **ruled by Ali**) | `offerListings` returns `listed: boolean` without reasons and badge data only for `active` tags (anonymous: `active` tags only, L3); a never-published Offer is absent. Cart treats an absent key as unavailable and never treats `listed` as permission to buy | Their slice using CC1 |
 | A-1 | `platform/ai` part 1 | Declare AIS-03 and AIA-03 (seller-scoped), their field allow-lists (13), the allow-list entries of 13.3 | 25 |
 | PL-1 | Platform | `ExtensionPointRegistry`, `AttributeSchema`, `PlainText` (P1); the ADR-0026 store by slice 10 | P1, 10 |
@@ -1445,6 +1550,8 @@ day one (Q1).
 | Reza ux.md 7.2 items 1, 2 | Per-field refusal on draft saves (no claim word ever stored); `claim-text.found` payload with `typeCode` | 6.1, 17.2 |
 | Reza ux.md 7.6 | Named checks stored on the decision and gating, required set derived by the server; photo check of H1 | 8.3a, 7.1, 17.2 |
 | Final conditions (Hassan 1a, 1b, 2, 3a, 3b; Ali ADR-0030, slice 20; Hadi SKU, locale, CAT-53) | See 19.3 rows | 2.1, 4.2, 4.3, 4.7, 5.4, 6.3, 8.2, 8.4, 11.1, 11.3, 14, 15.1, 16.2, 17.1, 17.2, 19, 20 |
+| Ali Phase 4: `catalog.maxVariantsPerProduct` | Market configuration (AU 100); checked at save, submit, publish and Import; `variant.limit-reached`; bounds `offer-moved` mapping | 2.1, 4.2, 7.1, 7.3, 9.2a, 9.4, 14, 17.1, 17.2, 18 |
+| Reza ux.md 7.2 items 3, 4, 8, 9, 10; ZWNJ after the helper | Badge options, sensitive fields, queue rows, `platform-category.impact`, Offers tab, allowed actions and throttle codes, setting metadata, photos read and reorder; manual removal at a reported offset | 9.2a, 8.2, 6.3 |
 | Reza ux.md 7.2 items 7, 8; IA additions | `retire.count-changed`; `revision.similar-products`; `matchable` with denial codes; routes `/offers/:id/review`, `/revisions/:id/match`, `/settings/catalogue` confirmed; `offer.review-read` added | 4.1, 9.2, 8.2, 17.2 |
 
 ## 20. Follow-up changes
