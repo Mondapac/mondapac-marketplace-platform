@@ -324,6 +324,11 @@ async function updateLibrary() {
   // 2c · fixes to the phone templates an earlier 1.5.0 update added (release 1.6.0): the drawer scrim takes bg/scrim
   // at 100% (it was text/primary at 50%) and the loose "Topbar · phone" frame becomes a PhoneTopbar instance.
   // The old frame is the only thing this release deletes, and only inside a plugin-made phone template.
+  // The old frame is only removed when it has the 1.5.0 shape, and only if PhoneTopbar is the plugin's own set.
+  function isPluginPhoneTopbar(n) {
+    return n.type === 'FRAME' && n.layoutMode === 'HORIZONTAL' && Math.round(n.height) === 56 && ['menu-button', 'panel-name', 'notifications', 'account-button'].every(function (nm) { return n.children.some(function (c) { return c.name === nm; }); });
+  }
+  const ptbOk = !!(S.sets.PhoneTopbar && S.sets.PhoneTopbar.set && S.sets.PhoneTopbar.set.getPluginData(PLUGIN_TAG) === '1'); let clash = false;
   const phoneTplKeys = Object.keys(PHONE_TEMPLATES); const scrimFix = []; const topbarFix = [];
   phoneTplKeys.forEach(function (key) {
     T[key].host.children.forEach(function (scr) {
@@ -331,8 +336,10 @@ async function updateLibrary() {
       const scrim = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'scrim'; })[0];
       const bound = S.color['bg/scrim'] ? S.color['bg/scrim'].id : null;
       if (scrim && bound && !(scrim.fills.length === 1 && scrim.fills[0].boundVariables && scrim.fills[0].boundVariables.color && scrim.fills[0].boundVariables.color.id === bound && (scrim.fills[0].opacity === undefined || scrim.fills[0].opacity === 1))) scrimFix.push({ key: key, scrim: scrim });
-      const old = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Topbar · phone'; })[0];
-      if (old && S.sets.PhoneTopbar) topbarFix.push({ key: key, scr: scr, old: old });
+      const old = scr.children.filter(function (n) { return n.name === 'Topbar · phone'; })[0];
+      if (old && !isPluginPhoneTopbar(old)) log('ℹ skipped Topbar · phone in ' + scr.name + ': not the plugin\'s frame');
+      else if (old && !ptbOk) { if (!clash) log('ℹ skipped phone topbar swap: a PhoneTopbar component set that is not the plugin\'s already exists in this file'); clash = true; }
+      else if (old) topbarFix.push({ key: key, scr: scr, old: old });
     });
   });
   for (let i = 0; i < phoneTplKeys.length; i++) {
@@ -392,7 +399,7 @@ async function updateLibrary() {
   await flush();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
-  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length ? ', except the old phone topbar frame replaced inside ' + topbarFix.length + ' phone templates' : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
+  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length || scrimFix.length ? ', except ' + [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : ''].filter(Boolean).join(' and ') : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
   post({ type: 'done', report: S.report, added: added });
 }
 

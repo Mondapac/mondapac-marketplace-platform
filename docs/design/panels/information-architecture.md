@@ -139,7 +139,7 @@ Edge cases the frontend and the Figma frames must cover:
 Three items were left open for Reza when library 1.5.0 shipped; all are decided (2026-10-07) and released as library 1.6.0:
 - Scrim: token `bg/scrim` (`--mp-color-bg-scrim`), `#111827` at 50% in light and black at 60% in dark. The alpha is part of the value, so the drawer scrim frame uses the token at 100%.
 - Menu icon: a new `menu` icon (three lines) for the phone topbar menu button; `panel-left` stays for the NavItem collapse.
-- Topbar height: token `size/topbar-phone` (`--mp-size-topbar-phone`, 56 px) and a `PhoneTopbar` component (Admin and Seller) used by the three phone templates. The menu button is `aria-label` "Open menu" with `aria-expanded`, `aria-controls` and `aria-haspopup="dialog"`; the bell reads "Notifications, N unread" and the account button "Account". Focus order is menu, notifications, account. RTL mirrors the layer order and not the icons. The limited seller shell omits the menu-button slot. The acting-as banner sits below the topbar, not inside it, above the scrim and drawer.
+- Topbar height: token `size/topbar-phone` (`--mp-size-topbar-phone`, 56 px) and a `PhoneTopbar` component (Admin and Seller) used by the three phone templates. The menu button is `aria-label` "Open menu" with `aria-expanded`, `aria-controls` and `aria-haspopup="dialog"`; the bell reads "Notifications, N unread" and the account button "Account". Focus order is menu, notifications, account. RTL mirrors the layer order and not the icons. The limited seller shell omits the menu-button slot. The acting-as banner sits below the topbar in the layout, not inside it; it is stacked above the scrim, the drawer and the bottom bar.
 
 ## 5. Screen inventory
 

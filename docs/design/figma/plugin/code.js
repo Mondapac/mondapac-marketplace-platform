@@ -1319,12 +1319,12 @@ function buildMobileNav(root, have) {
     // Count and Initials are properties of the nested CountBadge and IdentityTile; exposing them shows both on every PhoneTopbar instance.
     safe('expose count', function () { c.findOne(function (n) { return n.name === 'unread'; }).isExposedInstance = true; });
     safe('expose initials', function () { c.findOne(function (n) { return n.name === 'account'; }).isExposedInstance = true; });
-  }, { width: 760, gapX: 40, desc: 'Phone top bar (below 760 px, D16) for both panels; the desktop Topbar is unchanged. 56 px high (size/topbar-phone), 360 wide here and fill width in screens. Auto layout, horizontal, 8 px side padding and 8 px gap, centred vertically, bg/surface with a bottom border/default. Workspace picks the panel name: Admin or Seller Centre. Layers in order: menu-button (IconButton Ghost, Touch, icon menu), brand-mark, panel-name (Heading/H2, fills the width, truncates), notifications (48 px frame: bell IconButton plus a Critical CountBadge at x26 y4) and account-button (48 px frame with a Circle IdentityTile). Count (CountBadge) and Initials (IdentityTile) are exposed from the nested instances. Accessibility: the bar is a <header> banner landmark. Menu button: aria-label "Open menu", aria-expanded, aria-controls the drawer id, aria-haspopup="dialog". Bell: label "Notifications, N unread". Account button: label "Account". Focus order is menu, notifications, account; when the drawer closes, focus returns to the menu button. RTL mirrors the layer order (the menu button sits at inline-start, the side the drawer opens from); icons do not mirror. The limited seller shell has no drawer, so it omits the menu-button slot (the brand mark then starts the bar). The acting-as banner sits below the topbar, never inside it, in every shell state, and stays above the scrim and the drawer.' });
+  }, { width: 760, gapX: 40, desc: 'Phone top bar (below 760 px, D16) for both panels; the desktop Topbar is unchanged. 56 px high (size/topbar-phone), 360 wide here and fill width in screens. Auto layout, horizontal, 8 px side padding and 8 px gap, centred vertically, bg/surface with a bottom border/default. Workspace picks the panel name: Admin or Seller Centre. Layers in order: menu-button (IconButton Ghost, Touch, icon menu), brand-mark, panel-name (Heading/H2, fills the width, truncates), notifications (48 px frame: bell IconButton plus a Critical CountBadge at x26 y4) and account-button (48 px frame with a Circle IdentityTile). Count (CountBadge) and Initials (IdentityTile) are exposed from the nested instances. Accessibility: the bar is a <header> banner landmark. Menu button: aria-label "Open menu", aria-expanded, aria-controls the drawer id, aria-haspopup="dialog". Bell: label "Notifications, N unread". Account button: label "Account". Focus order is menu, notifications, account; when the drawer closes, focus returns to the menu button. RTL mirrors the layer order (the menu button sits at inline-start, the side the drawer opens from); icons do not mirror. The limited seller shell has no drawer, so it omits the menu-button slot (the brand mark then starts the bar). The acting-as banner sits below the topbar in the layout, never inside it, in every shell state; it is stacked above the scrim, the drawer and the bottom bar.' });
   componentBlock(root, ptb, { title: 'PhoneTopbar', summary: 'The 56 px bar at the top of every phone screen in both panels. The desktop Topbar (breadcrumb, search, market) is unchanged.',
     use: ['Below 760 px in the Admin and Seller panels, above the page content.', 'Phone landscape wider than 760 px uses the desktop Topbar and the 72 px rail.'],
     props: ['Workspace: Admin or Seller', 'Count: unread number on the bell (exposed from the nested CountBadge)', 'Initials: person initials (exposed from the nested IdentityTile)'],
     a11y: ['<header> banner landmark; the page has one banner.', 'Menu button: aria-label "Open menu", aria-expanded, aria-controls the drawer id, aria-haspopup="dialog".', 'Bell label "Notifications, N unread"; account button label "Account".', 'Focus order: menu, notifications, account. Focus returns to the menu button when the drawer closes.', 'RTL mirrors the layer order; icons do not mirror.'],
-    dont: ['A menu-button slot on the limited seller shell (it has no drawer).', 'The acting-as banner inside the bar: it sits below the topbar and above the scrim and drawer.', 'panel-left for the menu button: that icon stays for the NavItem collapse.'] });
+    dont: ['A menu-button slot on the limited seller shell (it has no drawer).', 'The acting-as banner inside the bar: it sits below the topbar in the layout and is stacked above the scrim, the drawer and the bottom bar.', 'panel-left for the menu button: that icon stays for the NavItem collapse.'] });
   }
   if (!have.NavDrawer) {
   const drawer = makeSet('NavDrawer', { Workspace: ['Admin', 'Seller'] }, function (c, p) {
@@ -2218,6 +2218,11 @@ async function updateLibrary() {
   // 2c · fixes to the phone templates an earlier 1.5.0 update added (release 1.6.0): the drawer scrim takes bg/scrim
   // at 100% (it was text/primary at 50%) and the loose "Topbar · phone" frame becomes a PhoneTopbar instance.
   // The old frame is the only thing this release deletes, and only inside a plugin-made phone template.
+  // The old frame is only removed when it has the 1.5.0 shape, and only if PhoneTopbar is the plugin's own set.
+  function isPluginPhoneTopbar(n) {
+    return n.type === 'FRAME' && n.layoutMode === 'HORIZONTAL' && Math.round(n.height) === 56 && ['menu-button', 'panel-name', 'notifications', 'account-button'].every(function (nm) { return n.children.some(function (c) { return c.name === nm; }); });
+  }
+  const ptbOk = !!(S.sets.PhoneTopbar && S.sets.PhoneTopbar.set && S.sets.PhoneTopbar.set.getPluginData(PLUGIN_TAG) === '1'); let clash = false;
   const phoneTplKeys = Object.keys(PHONE_TEMPLATES); const scrimFix = []; const topbarFix = [];
   phoneTplKeys.forEach(function (key) {
     T[key].host.children.forEach(function (scr) {
@@ -2225,8 +2230,10 @@ async function updateLibrary() {
       const scrim = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'scrim'; })[0];
       const bound = S.color['bg/scrim'] ? S.color['bg/scrim'].id : null;
       if (scrim && bound && !(scrim.fills.length === 1 && scrim.fills[0].boundVariables && scrim.fills[0].boundVariables.color && scrim.fills[0].boundVariables.color.id === bound && (scrim.fills[0].opacity === undefined || scrim.fills[0].opacity === 1))) scrimFix.push({ key: key, scrim: scrim });
-      const old = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Topbar · phone'; })[0];
-      if (old && S.sets.PhoneTopbar) topbarFix.push({ key: key, scr: scr, old: old });
+      const old = scr.children.filter(function (n) { return n.name === 'Topbar · phone'; })[0];
+      if (old && !isPluginPhoneTopbar(old)) log('ℹ skipped Topbar · phone in ' + scr.name + ': not the plugin\'s frame');
+      else if (old && !ptbOk) { if (!clash) log('ℹ skipped phone topbar swap: a PhoneTopbar component set that is not the plugin\'s already exists in this file'); clash = true; }
+      else if (old) topbarFix.push({ key: key, scr: scr, old: old });
     });
   });
   for (let i = 0; i < phoneTplKeys.length; i++) {
@@ -2286,7 +2293,7 @@ async function updateLibrary() {
   await flush();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
-  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length ? ', except the old phone topbar frame replaced inside ' + topbarFix.length + ' phone templates' : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
+  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length || scrimFix.length ? ', except ' + [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : ''].filter(Boolean).join(' and ') : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
   post({ type: 'done', report: S.report, added: added });
 }
 

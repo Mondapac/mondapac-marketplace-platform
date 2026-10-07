@@ -108,6 +108,12 @@ function downgradeTo10(M) {
   M.ROOT.setPluginData('version', '1.0.0');
   return n;
 }
+// The 1.5.0 loose topbar: horizontal, 56 high, with the four layers the plugin named.
+function legacyFrame(M) {
+  const old = M.figma.createFrame(); old.name = 'Topbar · phone'; old.layoutMode = 'HORIZONTAL'; old.resize(360, 56);
+  ['menu-button', 'panel-name', 'notifications', 'account-button'].forEach((n) => { const k = M.figma.createRectangle(); k.name = n; old.appendChild(k); });
+  return old;
+}
 // A 1.5.0 file: PhoneTopbar instances become the old loose frame, scrims go back to text/primary at 50%.
 function downgradeTo15(M) {
   const colorColl = [...M.COLLS.values()].find((c) => c.name === 'Color');
@@ -115,10 +121,9 @@ function downgradeTo15(M) {
   const legacy = { ids: new Set(), frames: 0, scrims: [] };
   allNodes(M).filter((n) => n.type === 'FRAME' && NEW_TEMPLATES.includes(n.name)).forEach((scr) => {
     const tb = scr.children.find((c) => c.type === 'INSTANCE' && c.name === 'PhoneTopbar');
-    const old = M.figma.createFrame(); old.name = 'Topbar · phone'; old.layoutMode = 'HORIZONTAL'; old.resize(360, 56);
-    const kid = M.figma.createRectangle(); kid.name = 'menu-button'; old.appendChild(kid);
+    const old = legacyFrame(M);
     scr.insertChild(0, old); tb.remove();
-    legacy.ids.add(old.id); legacy.ids.add(kid.id); legacy.frames++;
+    legacy.ids.add(old.id); old.children.forEach((k) => legacy.ids.add(k.id)); legacy.frames++;
     const scrim = scr.children.find((c) => c.type === 'FRAME' && c.name === 'scrim');
     if (scrim) { const p = M.figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', textPrimary); p.opacity = 0.5; scrim.fills = [p]; legacy.scrims.push(scrim.id); }
   });
@@ -193,7 +198,7 @@ async function updateScenario(label, opts, from) {
   const after = allNodes(M);
   const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
   if (from10) check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
-  else check(gone.length === 6 && gone.every((n) => legacy.ids.has(n.id)), 'the only deletions are the 3 old phone topbar frames and their layers (' + gone.length + ')');
+  else check(gone.length === legacy.ids.size && gone.length === 15 && gone.every((n) => legacy.ids.has(n.id)), 'the only deletions are the 3 old phone topbar frames and their layers (' + gone.length + ')');
   const scrimIds = new Set(legacy ? legacy.scrims : []);
   const changed = before.filter((n) => M.byId.has(n.id) && !scrimIds.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
   check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date' + (legacy ? ' and the 2 scrims' : '') + ' (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
@@ -353,6 +358,48 @@ async function updateScenario(label, opts, from) {
   check(!r.err && r.done.added.some((a) => /fix NavDrawer item spacing \(2 variants\)/.test(a)) && drawerLists().every((l) => l.itemSpacing === 0) && allNodes(M).length === n0, 'Update library fixes the item gap of an earlier 1.5.0 NavDrawer without adding or removing layers');
   r = await send(M, { type: 'update' });
   check(!r.err && r.done.added.length === 0, 'and a second run is again a no-op');
+
+  // 8 · the in-place phone template fixes touch only what the plugin made
+  console.log('\n■ Scenario 8 · In-place fix guards (1.5.0 file)');
+  async function guardFile() {
+    const X = start({ maxModes: 1, maxPages: 3 });
+    await send(X, { type: 'build' });
+    const lg = downgradeTo15(X);
+    const tpl = (n) => allNodes(X).find((x) => x.type === 'FRAME' && x.name === n);
+    const bar = (n) => tpl(n).children.find((c) => c.name === 'Topbar · phone' || c.name === 'PhoneTopbar');
+    return { X, lg, tpl, bar };
+  }
+  let G = await guardFile();
+  let X = G.X;
+  // a. wrong shape in a tagged template; b. matching frame in an untagged screen; c. frame outside templates; d. topbar already gone; e. renamed template
+  const wrong = G.bar('Seller · Home (phone)'); wrong.children[3].remove();
+  G.tpl('Seller · Menu open (phone)').setPluginData('mondapac-ds', '');
+  const sellerHost = G.tpl('Seller · Home (phone)').parent; const outside = legacyFrame(X); sellerHost.appendChild(outside);
+  const gone = G.bar('Admin · Menu open (phone)'); gone.remove();
+  const untaggedOld = G.bar('Seller · Menu open (phone)');
+  r = await send(X, { type: 'update' });
+  check(!r.err && r.done, 'update runs on the guard file without error' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+  const rep = r.done ? r.done.report.concat(r.done.added) : [];
+  check(!wrong.removed && wrong.parent === G.tpl('Seller · Home (phone)') && rep.includes('ℹ skipped Topbar · phone in Seller · Home (phone): not the plugin\'s frame'), 'a Topbar · phone frame with the wrong shape in a plugin template survives and is reported');
+  check(!untaggedOld.removed && !rep.some((l) => /skipped Topbar · phone in Seller · Menu open/.test(l)), 'a matching frame inside an untagged screen survives');
+  check(!outside.removed && outside.parent === sellerHost, 'a matching frame outside the templates survives');
+  check(!G.tpl('Admin · Menu open (phone)').children.some((c) => c.name === 'PhoneTopbar'), 'a template whose old topbar is already gone does not get a PhoneTopbar re-added');
+  check(!rep.some((l) => /swap phone topbar/.test(l)), 'no swap is reported when nothing qualified');
+  check(rep.includes('bind drawer scrim to bg/scrim (1 templates)') || rep.some((l) => /bind drawer scrim to bg\/scrim \(\d templates\)/.test(l)), 'the scrim fix runs only on plugin templates (' + rep.filter((l) => /scrim to/.test(l)).join() + ')');
+  r = await send(X, { type: 'update' });
+  check(!r.err && r.done.added.length === 0, 'second update on the guard file adds nothing');
+  // renamed template: skipped without a crash, its old frame stays
+  G = await guardFile(); X = G.X;
+  const renamed = G.tpl('Seller · Home (phone)'); const renamedBar = G.bar('Seller · Home (phone)'); renamed.name = 'My own home';
+  r = await send(X, { type: 'update' });
+  check(!r.err && !renamedBar.removed && renamedBar.parent === renamed, 'a renamed phone template is skipped without a crash and keeps its topbar frame' + (r.err ? ': ' + r.err.message : ''));
+  check(r.done && r.done.added.includes('swap phone topbar for PhoneTopbar (2 templates)') && r.done.added.includes('bind drawer scrim to bg/scrim (2 templates)'), 'the report counts only the two templates that qualified');
+  // a PhoneTopbar set that is not the plugin's: no swap, clash reported
+  G = await guardFile(); X = G.X;
+  const mine = X.figma.createComponent(); mine.name = 'Workspace=Admin';
+  const theirs = X.figma.combineAsVariants([mine], X.figma.currentPage); theirs.name = 'PhoneTopbar';
+  r = await send(X, { type: 'update' });
+  check(!r.err && r.done && r.done.report.some((l) => /skipped phone topbar swap: a PhoneTopbar component set that is not the plugin's/.test(l)) && !r.done.added.some((l) => /swap phone topbar/.test(l)) && allNodes(X).filter((n) => n.name === 'Topbar · phone').length === 3, 'a PhoneTopbar set that is not the plugin\'s blocks the swap and is reported' + (r.err ? ': ' + r.err.message : ''));
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
   process.exitCode = failures ? 1 : 0;
