@@ -7,6 +7,7 @@ const ROOT = path.join(__dirname, '..');
 const CODE = fs.readFileSync(path.join(ROOT, 'code.js'), 'utf8');
 // Token files to compare with: the repo's docs/design/tokens, or repo-tokens/ next to the plugin.
 const TOKENS = [path.join(ROOT, '..', '..', 'tokens'), path.join(ROOT, 'repo-tokens')].find((d) => fs.existsSync(path.join(d, 'tokens.css')));
+const SPEC_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'spec.json'), 'utf8')).version;
 let failures = 0;
 process.on('unhandledRejection', (e) => { console.error('✕ UNHANDLED REJECTION', e && e.stack ? e.stack : e); failures++; });
 
@@ -83,6 +84,75 @@ function compareExport(files, label) {
   });
 }
 
+
+// ---- Update library: simulate a file built by plugin 1.0.0 by taking the 1.5.0 additions out of a fresh build
+const NEW_TEMPLATES = ['Seller · Home (phone)', 'Seller · Menu open (phone)', 'Admin · Menu open (phone)'];
+const NEW_SETS = ['NavDrawer', 'BottomTabBar'];
+function allNodes(M) { const out = []; M.ROOT.children.forEach((p) => p.findAll(() => true).forEach((n) => out.push(n))); return out; }
+function downgradeTo10(M) {
+  const all = allNodes(M);
+  all.filter((n) => n.type === 'FRAME' && NEW_TEMPLATES.includes(n.name) && !n.removed).forEach((n) => n.remove());
+  allNodes(M).filter((n) => n.type === 'FRAME' && NEW_SETS.includes(n.name) && n.parent.name === 'Navigation & shell').forEach((n) => n.remove());
+  [...M.COLLS.values()].filter((c) => c.name.indexOf('Dimension') === 0).forEach((c) => { c.variableIds.map((id) => M.VARS.get(id)).filter((v) => v.name === 'size/bottom-bar').forEach((v) => v.remove()); });
+  allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && (x.characters === 'size/bottom-bar' || x.characters === SPEC_VERSION))).forEach((n) => n.remove());
+  const cover = allNodes(M).filter((n) => n.type === 'FRAME' && (n.name === 'Version' || n.name === 'Updated') && n.children.length === 2);
+  cover.forEach((f) => { f.children[1].characters = f.name === 'Version' ? '1.0.0' : '1 Oct 2026'; });
+  M.ROOT.setPluginData('version', '1.0.0');
+  return cover.length;
+}
+function countNamed(M, type, name) { return allNodes(M).filter((n) => n.type === type && n.name === name).length; }
+function textCount(M, str) { return allNodes(M).filter((n) => n.type === 'TEXT' && n.characters === str).length; }
+
+async function updateScenario(label, opts) {
+  console.log('\n■ ' + label);
+  const M = start(opts);
+  let r = await send(M, { type: 'build' });
+  check(!r.err, 'build finished' + (r.err ? ': ' + r.err.message : ''));
+  check(downgradeTo10(M) === 2, 'simulated a 1.0.0 library (new sets, templates, token, changelog row and version removed)');
+  check(countNamed(M, 'COMPONENT_SET', 'NavDrawer') === 0 && countNamed(M, 'COMPONENT_SET', 'BottomTabBar') === 0 && !allNodes(M).some((n) => n.name === 'Seller · Home (phone)'), '1.0.0 library has none of the new items');
+  const dimVars = () => [...M.VARS.values()].filter((v) => v.name === 'size/bottom-bar');
+  check(dimVars().length === 0, 'size/bottom-bar is missing before the update');
+  const before = allNodes(M); const beforeIds = new Set(before.map((n) => n.id)); const nVars = M.VARS.size;
+  r = await send(M, { type: 'update' });
+  check(!r.err, 'Update library finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+  if (r.done) console.log('    ' + r.done.report.join('\n    '));
+  const warn = (r.done ? r.done.report : []).filter((l) => l.indexOf('⚠') === 0);
+  check(warn.length === 0, 'no warnings in the update report');
+  check(countNamed(M, 'COMPONENT_SET', 'NavDrawer') === 1 && countNamed(M, 'COMPONENT_SET', 'BottomTabBar') === 1, 'NavDrawer and BottomTabBar exist once each');
+  check(NEW_TEMPLATES.every((n) => allNodes(M).filter((x) => x.type === 'FRAME' && x.name === n).length === 1), 'the 3 phone templates exist once each');
+  const bb = dimVars();
+  const wantVars = opts.maxModes > 1 ? 1 : 2;
+  check(bb.length === wantVars && bb.every((v) => v.scopes.join() === 'WIDTH_HEIGHT' && v.codeSyntax.WEB === 'var(--mp-size-bottom-bar)'), 'size/bottom-bar added to ' + wantVars + ' Dimension collection(s) with scope and code syntax');
+  const dc = [...M.COLLS.values()].find((c) => c.name === 'Dimension');
+  const v0 = bb.find((v) => v.variableCollectionId === dc.id);
+  check(v0 && dc.modes.every((m) => v0.valuesByMode[m.modeId] === 64 || v0.valuesByMode[m.modeId] === undefined), 'size/bottom-bar is 64 in desktop and touch');
+  check(M.VARS.size === nVars + wantVars, 'exactly ' + wantVars + ' variable(s) added (' + (M.VARS.size - nVars) + ')');
+  check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION, 'file version is ' + SPEC_VERSION);
+  const after = allNodes(M);
+  const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
+  check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
+  const fresh = after.filter((n) => !beforeIds.has(n.id));
+  const tops = fresh.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
+  const okTops = new Set(NEW_TEMPLATES.concat(NEW_SETS, ['Row']));
+  const stray = tops.filter((n) => !okTops.has(n));
+  check(stray.length === 0, 'new layers sit only in the expected places (' + tops.length + ' roots' + (stray.length ? '; unexpected: ' + stray.join(', ') : '') + ')');
+  check(after.length === before.length + fresh.length, 'existing node count otherwise unchanged (' + before.length + ' + ' + fresh.length + ' = ' + after.length + ')');
+  audit(M, label);
+  const ar = await send(M, { type: 'audit' });
+  const bad = ar.done ? ar.done.report.filter((l) => l.indexOf('⚠') === 0) : ['no audit'];
+  check(bad.length === 0, 'Audit file has zero warnings after the update' + (bad.length ? ': ' + bad.join(' | ') : ''));
+  // second run is a no-op
+  const ids2 = new Set(after.map((n) => n.id)); const vars2 = M.VARS.size;
+  r = await send(M, { type: 'update' });
+  check(!r.err && r.done && r.done.added.length === 0, 'second Update library adds nothing' + (r.err ? ': ' + r.err.message : ''));
+  const after2 = allNodes(M);
+  check(after2.length === after.length && after2.every((n) => ids2.has(n.id)) && M.VARS.size === vars2, 'second Update library changes no layer and no variable');
+  r = await send(M, { type: 'export', version: SPEC_VERSION });
+  if (r.done) compareExport(r.done.files, label + ' export');
+  return M;
+}
+
 (async function main() {
   // Icon data: every icon must be distinct and well formed (a broken extraction once made 14 icons identical).
   console.log('\n■ Icon data');
@@ -126,7 +196,7 @@ function compareExport(files, label) {
   r = await send(M, { type: 'build' });
   check(r.err && /already has/.test(r.err.message), 'second build without Rebuild is refused');
   // export
-  r = await send(M, { type: 'export', version: '1.0.0' });
+  r = await send(M, { type: 'export', version: SPEC_VERSION });
   check(!r.err, 'export finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
   if (r.done) compareExport(r.done.files, 'starter');
   // theme commands on a selection
@@ -153,7 +223,7 @@ function compareExport(files, label) {
   check(M.ROOT.children.length === 26, 'upgrade split sections into 26 pages (got ' + M.ROOT.children.length + ': ' + M.ROOT.children.map((p) => p.name + '(' + p.children.length + ')').join(', ') + ')');
   const orphan = []; M.ROOT.children.forEach((p) => p.findAll(() => true).forEach((n) => (n._fills || []).concat(n._strokes || []).forEach((pp) => { if (pp.boundVariables && !M.VARS.get(pp.boundVariables.color.id)) orphan.push(pathOf(n)); })));
   check(orphan.length === 0, 'no layer is bound to a deleted variable after upgrade (' + orphan.length + ')');
-  r = await send(M, { type: 'export', version: '1.0.0' });
+  r = await send(M, { type: 'export', version: SPEC_VERSION });
   if (r.done) compareExport(r.done.files, 'after upgrade');
 
   // 2 · Professional plan (modes allowed from the start)
@@ -163,7 +233,7 @@ function compareExport(files, label) {
   check(!r.err, 'build finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
   check(M.ROOT.children.length === 26, 'full layout uses 26 pages (got ' + M.ROOT.children.length + ')');
   audit(M, 's2');
-  r = await send(M, { type: 'export', version: '1.0.0' });
+  r = await send(M, { type: 'export', version: SPEC_VERSION });
   if (r.done) compareExport(r.done.files, 'modes');
 
   // 3 · IBM Plex not available
@@ -179,6 +249,25 @@ function compareExport(files, label) {
   M.figma.createFrame();
   r = await send(M, { type: 'build' });
   check(r.err && /empty/.test(r.err.message), 'build refuses a non-empty file');
+
+  // 5 · Update library on a 1.0.0-style file (Starter layout, then modes layout)
+  await updateScenario('Scenario 5 · Update library on a 1.0.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 });
+  await updateScenario('Scenario 6 · Update library on a 1.0.0 file (modes, full page layout)', { maxModes: 4 });
+
+  // 7 · Update library refuses files it must not touch
+  console.log('\n■ Scenario 7 · Update library guards');
+  M = start({ maxModes: 1 });
+  r = await send(M, { type: 'update' });
+  check(r.err && /empty/.test(r.err.message), 'Update library refuses an empty file');
+  M = start({ maxModes: 1 });
+  M.figma.createFrame();
+  r = await send(M, { type: 'update' });
+  check(r.err && /no MondaPac library/.test(r.err.message), 'Update library refuses a file without the library');
+  M = start({ maxModes: 1, maxPages: 3 });
+  r = await send(M, { type: 'build' });
+  const n0 = allNodes(M).length;
+  r = await send(M, { type: 'update' });
+  check(!r.err && r.done.added.length === 0 && allNodes(M).length === n0, 'Update library on a current 1.5.0 file is a no-op');
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
   process.exitCode = failures ? 1 : 0;

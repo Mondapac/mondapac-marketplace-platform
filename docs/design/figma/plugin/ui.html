@@ -28,7 +28,7 @@
 <body>
 <header>
   <h1>MondaPac Design System</h1>
-  <div class="muted">Generates and maintains the Admin + Seller panel library. Spec <span id="spec">1.0.0</span>.</div>
+  <div class="muted">Generates and maintains the Admin + Seller panel library. Spec <span id="spec">1.5.0</span>.</div>
 </header>
 
 <section>
@@ -40,13 +40,19 @@
 </section>
 
 <section>
+  <h2>Update library</h2>
+  <div class="muted">For a file that already has the library: adds only what this plugin release brings (new tokens, components, templates, changelog row) and leaves everything else untouched. Safe to run again; it refuses an empty file.</div>
+  <div class="row" style="margin-top:10px"><button id="update">Update library</button></div>
+</section>
+
+<section>
   <h2>Selection</h2>
   <div class="row"><button data-theme="dark">Dark theme</button><button data-theme="light">Light theme</button><button data-density="touch">Touch density</button><button data-density="desktop">Desktop density</button></div>
 </section>
 
 <section>
   <h2>Tokens for code</h2>
-  <div class="row">Version <input type="text" id="version" value="1.0.0"><button id="export">Export tokens</button></div>
+  <div class="row">Version <input type="text" id="version" value="1.5.0"><button id="export">Export tokens</button></div>
   <div class="muted" style="margin-top:6px">Save the files into <code>docs/design/tokens/</code> in the repo and commit them.</div>
   <div id="files"></div>
   <textarea id="out" readonly placeholder="Exported files appear here"></textarea>
@@ -73,7 +79,8 @@
   $('build').onclick = () => { busy(true); $('bar').style.width = '2%'; logLines(['Building… this takes a minute or two. Keep this file open.']); send({ type: 'build', force: $('force').checked }); };
   document.querySelectorAll('[data-theme]').forEach((b) => { b.onclick = () => send({ type: 'theme', theme: b.dataset.theme }); });
   document.querySelectorAll('[data-density]').forEach((b) => { b.onclick = () => send({ type: 'density', density: b.dataset.density }); });
-  $('export').onclick = () => { busy(true); send({ type: 'export', version: $('version').value.trim() || '1.0.0' }); };
+  $('export').onclick = () => { busy(true); send({ type: 'export', version: $('version').value.trim() || '1.5.0' }); };
+  $('update').onclick = () => { busy(true); $('bar').style.width = '2%'; logLines(['Updating the library…']); send({ type: 'update' }); };
   $('upgrade').onclick = () => { busy(true); send({ type: 'upgrade' }); };
   $('audit').onclick = () => { busy(true); logLines(['Auditing…']); send({ type: 'audit' }); };
 
