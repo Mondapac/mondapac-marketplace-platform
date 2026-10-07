@@ -1,9 +1,9 @@
 # Cart — design part of the combined gate (tier B)
 
 **Author:** Mohammad (software-architect) — 2026-10-07
-**Status:** Design part of the combined gate: Ali (cto) approve with changes, Hassan (security-tester) approve with conditions, Mojtaba (database-designer) approve with changes, Hadi (product-owner) decisions — all applied 2026-10-07; approval recorded only after catalog G2 (CC1–CC3) and sellers G2 (SC1–SC2) (Ali). Sellers G2 merged 2026-10-07 (PR #46) and accepts SC1–SC2 (7.1); catalog G2 is still open.
+**Status:** Design part of the combined gate: Ali (cto) approve with changes, Hassan (security-tester) approve with conditions, Mojtaba (database-designer) approve with changes, Hadi (product-owner) decisions — all applied 2026-10-07; approval recorded only after catalog G2 (CC1–CC3) and sellers G2 (SC1–SC2) (Ali). Sellers G2 (PR #46) and its minimum-order mini-review (PR #47) are merged and accept SC1–SC3 (7.1); catalog G2 is still open.
 **Ground truth:** `docs/modules/cart/brief.md` (domain part of the combined gate approved by the owner 2026-10-07; sections, owner answers and acceptance criteria are cited as "brief s5", "Q3", "AC"; Hassan's rewrite of the guest-cart rules as "brief s5 guest"); `docs/features/03-cart-orders-returns.md` section 1 (CRT-01..09; CRT-09 is the guest cart); ADR-0001, 0002, 0003, 0004 (decision 1: carts in PostgreSQL, `cart` schema, Redis never the source of truth), 0005, 0006, 0007, 0008, 0010, 0013, 0018, 0019, 0020, 0022, 0024 (decision 5: read-time composition decided at this gate); `docs/design/domain/identity.md` ("ID 6.4"), `platform-foundations.md` ("PF 6.2"), `platform-persistence-and-events.md` ("PE 3.1"); `docs/design/domain/inventory.md` ("INV 7.1") and `docs/design/domain/pricing.md` ("PRC 6.2"), as in PRs #43 and #44 (2026-10-07, Ali's and Hassan's reviews applied).
-**Not yet available:** the `catalog` G2 design (`docs/modules/README.md`). What cart needs from it is listed as named dependencies (7.1); until that G2 accepts them, every `catalog` contract here is a placeholder. The `sellers` contracts SC1–SC2 are taken from `docs/design/domain/sellers.md` 7.1 (merged, PR #46); SC3 waits for a sellers mini-review.
+**Not yet available:** the `catalog` G2 design (`docs/modules/README.md`). What cart needs from it is listed as named dependencies (7.1); until that G2 accepts them, every `catalog` contract here is a placeholder. The `sellers` contracts SC1–SC3 are taken from `docs/design/domain/sellers.md` 7.1 and 18 (merged, PRs #46 and #47).
 
 ## 1. Scope
 
@@ -159,9 +159,9 @@ So one view makes five facade calls in two rounds, whatever the number of lines 
 When a line is priced and `unitPrice ≠ priceAtAdd` (amount or currency), the line carries `priceChanged: { previous: priceAtAdd }` beside the current `unitPrice`. The current effective price is always the one shown and summed; a price pending review is never shown, because `pricing` never answers one (PRC 4.1 step 5). Decided (Hadi, Q-H2): the notice clears when a write actually changes that line (quantity change, or re-add; remove and re-add counts as a change); `priceAtAdd` then becomes the current effective price. A merge does not clear it; a refused or no-op add does not clear it.
 
 ### 6.4 Minimum order per seller (CRT-05; Q5)
-- Data: `sellers` holds an optional minimum per seller, `Money` in the Market currency; absent = any amount (default). A sellers mini-review adds it (brief s8, s11; SEL-24 "Settings"; 7.1 SC3).
+- Data: `sellers` holds an optional minimum per seller on its store profile, `Money` in the Market currency, > 0 and at most the Market's `minimumOrderMax`; none = any amount (default). Cart reads it as `minimumOrder` in the same `sellerSummaries` call as the "Sold by" name (sellers 18, merged in PR #47; 7.1 SC3): none or `Money` for an approved seller; the field is **absent** for a seller without an approved revision and when the stored currency differs from the Market's (sellers logs the error).
 - Rule (`CartEvaluator`): for a seller group with at least one buyable line, if the subtotal of its buyable lines is below the minimum, the group is `below-minimum` with the minimum (public) and checkout is blocked with a message for that seller only. Adding more from that seller clears it (AC CRT-05). The subtotal uses the effective unit prices, which in AU are GST-inclusive, without shipping (brief s5). Decided (Ali, A-2): the minimum is compared with the subtotal of effective unit prices in the Market's display convention (`MarketConfig.pricesIncludeTax`); the seller's minimum is entered and labelled in that same convention, and cart computes no tax (ADR-0007 decision 4). Mixed `taxInclusive` flags within one seller group → `check-unavailable`.
-- A minimum in another currency, or a `sellers` failure: the group is `check-unavailable` (fail closed).
+- Fail closed: for a seller group with a buyable line, an absent `minimumOrder`, a `Money` in another currency, or a `sellers` failure makes the group `check-unavailable`. "None" and "absent" are never confused: only an explicit none means any amount. A change applies to open carts on their next read; `sellers` publishes no event for it (sellers 18 decision 7).
 - `ordering` re-applies the minimum on the server (brief s5).
 
 ### 6.5 Merge (CRT-08; brief s4 flow 4, s5 merge)
@@ -195,13 +195,13 @@ Answer: counts, the lines that were limited (`clamped`) and the guest lines not 
 | CC3 | `catalog` | `Offer` and `Variant` id types from `contracts/` | Placeholder |
 | SC1 | `sellers` facade (sellers G2) | The may-sell contract for a set of seller ids, fail closed (ADR-0022 decision 6) | Accepted at sellers G2 (merged, PR #46): `sellingEligibility(ctx, sellerIds)` → `{ eligible }` per id, ≤ 100 ids, `anonymous` and `system`, no reason code, unknown id or error = not eligible (sellers 7.1, 7.2) |
 | SC2 | `sellers` | Public display name per seller ("Sold by", CRT-03), batch | Accepted at sellers G2: `sellerSummaries(ctx, sellerIds)`, the public store name once approved, ≤ 100 ids, `anonymous` (sellers 7.1). An eligible seller always has an approved revision, so a buyable line always has a name; a missing name shows the line's group without one and changes no line state |
-| SC3 | `sellers` (mini-review; brief s8, s11) | Optional minimum order per seller: `Money` in the Market currency, > 0, or none (default); seller setting under SEL-24 "Settings", its permission key, audit and change-log row in `sellers` | Sellers mini-review |
+| SC3 | `sellers` (mini-review; brief s8, s11) | Optional minimum order per seller: `Money` in the Market currency, > 0, or none (default) | Accepted by the sellers mini-review (sellers 18, merged in PR #47): `minimumOrder` on `sellerSummaries`, none or `Money` for an approved seller, absent otherwise and on a currency mismatch; set under `sellers.store-settings.edit` (or an admin under `sellers.seller.edit`), version-checked, audited, no event. Built in sellers slice 20, before cart slice 4 |
 | PC1 | `pricing` | `getEffectivePrices` (PRC 6.2), ≤ 200 keys, `anonymous` | Designed |
 | IC1 | `inventory` | `getAvailability` (INV 7.1), ≤ 200 keys, `anonymous`, no quantity, no exact number | Designed |
 | ID1 | `identity` | Customer sessions and `ActorContext`; the origin check for unsafe anonymous requests (ID 6.4); an event when a customer account is erased (CUS-03) | Event: identity mini-review when CUS-03 is designed |
 | PL1 | `platform/` | `MarketConfig.maxLineQuantity` (the shared-file PR announced on the board, Ali A2); the rate limiter; scheduler; inbox and `runOnce`; `Clock`, `IdGenerator`, UnitOfWork | `maxLineQuantity` shared with inventory's follow-up |
 
-The sellers G2 serves SC1 and SC2 as two batch methods, so a view makes two `sellers` calls in the same round (6.2); each is still asked once per request (ADR-0022 decision 6). SC3 is added by the sellers mini-review, which chooses whether it extends `sellerSummaries` or adds a method; until then the minimum-order slice (13, slice 4) does not start.
+The sellers G2 serves SC1 and SC2 as two batch methods, so a view makes two `sellers` calls in the same round (6.2); SC3 rides on `sellerSummaries`, so it adds no call. Ali ruled this within ADR-0022 decision 6, which forbids a call per seller, not one batched call to each of two contracts, under three conditions: each contract is called once per request with the deduplicated seller ids, in parallel, and a test asserts the call counts; may-sell is never derived from `sellerSummaries`; the cart's line limit (≤ 50, 8) keeps distinct sellers at or under the facade's 100, so the call is never split into chunks.
 
 ### 7.2 Public facade (`modules/cart/contracts/cart.facade.ts`)
 | Method | Rule | Notes |
@@ -311,7 +311,7 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 1. Signed-in cart: add, change, remove, ceiling (needs CC1, SC1, PC1, IC1, PL1 `maxLineQuantity`).
 2. Grouped view, "Sold by", read-time state, price-change notice (SC2).
 3. Guest cart and merge — **security-tester review mandatory**: token entropy and hash-only storage, cookie attributes, IDOR across guests and accounts, CSRF and origin, rate limits fail closed, merge replay and two-tab race, cookie cleared. Depends on the trust-proxy setting and PostgreSQL-backed limiter counters (4). Tests add (Hassan): a `text/plain` request with a JSON body → `request.csrf` or 415; a duplicate cookie name; a cookie from another Market; a merge without `x-csrf-token`; the limiter unavailable → `access.unavailable` with nothing written.
-4. Optional minimum order (after the SC3 sellers mini-review).
+4. Optional minimum order (SC3 accepted in sellers 18; needs sellers slice 20 first; wording O-4 with Jafar and Reza).
 5. Hand-off to `ordering`, purge job, order-placed and erasure handling — with Phase 5; **security review mandatory** for the hand-off and `clearPurchasedLines`; `getCheckoutLines`, `clearPurchasedLines` and this slice are re-confirmed by a mini-review at ordering's G2 (the INV 7.2 pattern; Ali, change 2).
 
 **Design system (brief s12; Reza, Figma first, ADR-0017):** cart page grouped by seller with "Sold by" and subtotal; mini-cart drawer; unbuyable-line state per reason of 3.2; "reduce the quantity" with "only N left"; price-change notice; minimum-order message per seller; sign-in prompt for a guest at checkout; the minimum-order field in seller settings (sellers' screen). All text, not colour only (brief s9).
@@ -320,7 +320,7 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 
 ## 14. Dependencies
 - **catalog G2:** CC1–CC3 accepted there; the cart design is approved only after that, as for inventory and pricing (Ali A4). If catalog G2 changes them, a mini-review follows.
-- **sellers G2 (merged, PR #46) and mini-review:** SC1 and SC2 accepted (7.1); SC3 (minimum order, a brief change-log row in `sellers`) still needs the mini-review.
+- **sellers G2 (merged, PR #46) and mini-review (merged, PR #47):** SC1, SC2 and SC3 accepted (7.1); sellers slice 20 before cart slice 4.
 - **identity:** the erasure event (with CUS-03); the checked-in list of non-permission rules gains cart's entries.
 - **platform:** `maxLineQuantity` in `MarketConfig` (the shared-file PR announced on the board); rate limiter with PostgreSQL counters (HMAC keys, fixed windows) and the trust-proxy setting, before slice 3 (Hassan); scheduler; inbox.
 - **ordering G2:** mini-review re-confirming `getCheckoutLines`, `clearPurchasedLines` and slice 5 (A-1 decided: option A); `order_clearances` retention ≥ ordering's maximum redelivery window (open); re-applying ceiling and minimum; showing `inventory.insufficient` (`not-enough`, `over-limit`) at checkout, since cart cannot see a quantity above the threshold or the per-customer cap (INV 5.1, 5.4).
@@ -347,14 +347,14 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 - **Q-H2.** **Decided (Hadi): accepted as recommended**; remove and re-add counts as a change, a refused or no-op add does not clear; applied in 6.1, 6.3, 6.5. Original recommendation: when the customer changes that line (quantity change or re-add), `priceAtAdd` becomes the current price; a merge does not clear it.
 - **Q-H3.** **Decided (Hadi): accepted**, including that an add without a valid price is refused; applied in 2.3, 3.2, 9. Original question: "up to min(sellable, 99)" becomes "up to the Market ceiling, and to 'only N left' when the stock is low"; AC "quantity 5, stock 3" is shown by cart when the stock is within the low-stock threshold and otherwise at reservation by `ordering`. Also confirm that an add without a valid price is refused (2.3).
 
-**Owner:** none (Hadi: none of Q-H1..Q-H3 needs the owner; the owner is informed in the summary).
+**Owner:** none (Hadi: none of Q-H1..Q-H3 needs the owner). The owner was informed of three points (the 50-line limit, no exact stock number in the cart, the guest-cookie protections) and accepted them on 2026-10-07.
 
 **Still open**
 - `order_clearances` retention vs `ordering`'s maximum redelivery window → ordering G2 (Ali, Mohammad).
-- Approval recording waits for catalog G2 (CC1–CC3) and sellers G2 (SC1–SC2) (Ali); SC3 (sellers mini-review) gates slice 4 only.
+- Approval recording waits for catalog G2 (CC1–CC3) (Ali); sellers G2 (SC1–SC2) and the SC3 mini-review are merged.
 - Erasure event name → identity mini-review with CUS-03 (14).
 - Reza (ui-ux-designer) review of 13 / brief s12: not yet received.
-- Brief edits for the brief editor (Hadi): the merge cap in brief s5 ("min(stock, 99)") and the "Offer deleted" and "reduce quantity" lines in flow 2 need the Q-H3 rewording; A-1 row through a Hadi+Ali mini-review.
+- Brief edits for the brief editor (Hadi): the merge cap in brief s5 ("min(stock, 99)") and the "Offer deleted" and "reduce quantity" lines in flow 2 need the Q-H3 rewording. The A-1 row was confirmed by Hadi on 2026-10-07 (only the mechanism of brief s6 changes; ordering G2 re-confirms it).
 
 ## 16. Review record
 | Date | Reviewer | Verdict | Applied |
