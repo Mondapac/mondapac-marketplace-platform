@@ -1,6 +1,6 @@
 // Built-kernel check (platform-foundations design 3.7 and its section 13 note): after
-// `pnpm build`, the API must load ONE build of the shared kernel through both of its
-// entries, `@mondapac/shared-kernel` and `@mondapac/shared-kernel/testing`. Minted
+// `pnpm build`, the API must load ONE build of the shared kernel through its three
+// entries, `@mondapac/shared-kernel`, `/testing` and `/contexts` (slice 1c). Minted
 // contexts are recorded in a module-private WeakSet, so a second copy of the kernel in
 // one process would make every context from the other copy fail `isMinted`.
 //
@@ -8,7 +8,7 @@
 // builders passes `isMinted` from the main entry, (slice 0 item 3b) that the built API's own
 // `platform/` code, which loads the kernel from `apps/api/dist`, accepts such a context and
 // refuses a copy, and (item 4) that the kernel's package exports refuse a deep import from
-// apps/api: no file of the kernel is reachable at run time except through its two entries.
+// apps/api: no file of the kernel is reachable at run time except through its entries.
 //
 // Usage: node scripts/check-built-kernel.mjs   (run by `pnpm build`)
 import { existsSync, realpathSync } from 'node:fs';
@@ -34,7 +34,12 @@ try {
   process.exit(1);
 }
 
-const entries = ['@mondapac/shared-kernel', '@mondapac/shared-kernel/testing'];
+// The `/contexts` entry (identity slice 1c) holds the actor and call-context constructors.
+const entries = [
+  '@mondapac/shared-kernel',
+  '@mondapac/shared-kernel/testing',
+  '@mondapac/shared-kernel/contexts',
+];
 // Deep imports that the kernel's `exports` map must refuse: a file of its build output, and
 // the minting module by a subpath. pnpm boundaries refuses them in the source as well.
 const deepImports = ['@mondapac/shared-kernel/dist/minted.js', '@mondapac/shared-kernel/minted'];
@@ -68,12 +73,23 @@ if (problems.length === 0) {
   try {
     const kernel = fromApi('@mondapac/shared-kernel');
     const testing = fromApi('@mondapac/shared-kernel/testing');
+    const contexts = fromApi('@mondapac/shared-kernel/contexts');
     for (const market of markets) {
       const context = testing.testMarketContext(market, 'mondapac');
       if (!kernel.isMinted(context)) {
         problems.push(
           `a ${market} context minted through /testing fails isMinted from the main entry`,
         );
+      }
+      // An actor and a call context built through /contexts from a /testing market context:
+      // one WeakSet across the three entries.
+      const call = contexts.createCallContext(
+        context,
+        contexts.systemActor(context),
+        'built-kernel-check-0001',
+      );
+      if (!kernel.isMinted(call) || !kernel.isMinted(call.actor)) {
+        problems.push(`a ${market} call context built through /contexts fails isMinted`);
       }
     }
   } catch (error) {

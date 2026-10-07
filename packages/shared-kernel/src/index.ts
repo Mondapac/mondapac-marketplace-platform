@@ -4,8 +4,10 @@
 //
 // Slice 0 (platform-foundations design, section 3): Result, Id, Clock and Temporal,
 // MarketContext with minting, CorrelationId. Slice 1b (platform persistence design 5):
-// DomainEvent, PendingEvent, defineEvent and the payload field kinds. ActorContext and
-// CallContext arrive in slice 1c; Money has its own trigger (ADR-0015).
+// DomainEvent, PendingEvent, defineEvent and the payload field kinds. Slice 1c (identity design
+// 4, foundations 3.4 and 5.2): the ActorContext and CallContext types and ContextMismatchError;
+// their constructors are on the `/contexts` entry, for the platform's entry adapters only.
+// Money has its own trigger (ADR-0015).
 //
 // Named exports only. Fakes and test builders live on the `/testing` entry and are never
 // re-exported from here.
@@ -25,6 +27,18 @@ export { parseCorrelationId } from './correlation-id';
 export type { CorrelationId } from './correlation-id';
 
 export { isMinted } from './minted';
+
+export { POPULATIONS } from './actor-context';
+export type {
+  ActorContext,
+  AnonymousActor,
+  AuthenticatedActor,
+  Population,
+  SystemActor,
+} from './actor-context';
+
+export { ContextMismatchError } from './call-context';
+export type { CallContext, ContextMismatchReason } from './call-context';
 
 export {
   checkAggregateVersion,

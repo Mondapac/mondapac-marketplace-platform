@@ -112,9 +112,113 @@ module.exports = {
       severity: 'error',
       from: { pathNot: 'packages/shared-kernel/' },
       to: {
-        path: ['packages/shared-kernel/(src|dist)/', '^@mondapac/shared-kernel/(?!testing$)'],
+        path: [
+          'packages/shared-kernel/(src|dist)/',
+          '^@mondapac/shared-kernel/(?!(testing|contexts)$)',
+        ],
         // The package names resolve through tsconfig.json's paths, which marks them aliased.
         dependencyTypesNot: ['aliased'],
+      },
+    },
+    {
+      // Rule 5 of 8.2 for the slice 1c constructors (identity slice 1c; foundations 3.7, 5.2).
+      // ESLint's rule 5 matches names; this rule closes the entry itself, so no import form,
+      // barrel or alias outside platform/ reaches the constructors.
+      name: 'contexts-are-built-by-platform',
+      comment:
+        'Only the platform entry adapters build actors and call contexts: nothing outside ' +
+        'src/platform/ imports @mondapac/shared-kernel/contexts. A module receives its ' +
+        'CallContext from the adapter that called it; it never mints a system actor.',
+      severity: 'error',
+      from: { pathNot: ['^src/platform/', 'packages/shared-kernel/'] },
+      to: {
+        path: [
+          'packages/shared-kernel/src/contexts\\.ts$',
+          'packages/shared-kernel/dist/contexts\\.(js|d\\.ts)$',
+          '^@mondapac/shared-kernel/contexts$',
+        ],
+      },
+    },
+    {
+      // Rule 9 of 8.2, first half (identity design 5.2; foundations 6.4 row 2).
+      name: 'use-cases-are-the-only-way-in',
+      comment:
+        'An entry point of a module (presentation/, which holds controllers, jobs/ and ' +
+        'subscribers/; contracts/; and every *.facade.ts implementation) imports from its ' +
+        "module's application/ only use-cases/*.use-case.ts, so the UseCaseGate runs for " +
+        "everything an entry point reaches. The module's index.ts is an entry point too " +
+        '(security review of slice 1c, L2).',
+      severity: 'error',
+      from: {
+        path: '^src/modules/([^/]+)/(?:presentation/|contracts/|index\\.ts$|.+\\.facade\\.ts$)',
+      },
+      to: {
+        path: '^src/modules/$1/application/',
+        pathNot: '^src/modules/$1/application/use-cases/[^/]+\\.use-case\\.ts$',
+      },
+    },
+    {
+      // Rule 9 of 8.2, second half (identity design 5.2).
+      name: 'repositories-stay-behind-use-cases',
+      comment:
+        'A repository (a *.repository.ts file) is imported only by application/ and ' +
+        "infrastructure/ of a module, and by the module's Nest module, which binds the " +
+        'implementation to its port. Controllers, jobs, subscribers and facades go through a ' +
+        'use case.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/[^/]+/(application|infrastructure)/',
+          '^src/modules/[^/]+/[^/]+\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/[^/]+/.+\\.repository\\.ts$' },
+    },
+    {
+      // Security review of slice 1c, M1.
+      name: 'use-case-gate-is-built-by-authz',
+      comment:
+        'Only platform/authz/ imports the gate file, which holds the factory that builds a ' +
+        'UseCaseGate: a gate built elsewhere could bind a lenient registry or check. Modules ' +
+        'inject USE_CASE_GATE from the platform/authz barrel.',
+      severity: 'error',
+      from: { pathNot: '^src/platform/authz/' },
+      to: { path: '^src/platform/authz/use-case-gate\\.ts$' },
+    },
+    {
+      // Security review of slice 1c, M1.
+      name: 'modules-reach-authz-through-its-barrel',
+      comment:
+        'A module imports from platform/authz/ only its index.ts: the base class, the ' +
+        "declaration types, the permission helpers, the answers and the gate's token and type.",
+      severity: 'error',
+      from: { path: '^src/(?:modules|verticals)/' },
+      to: { path: '^src/platform/authz/', pathNot: '^src/platform/authz/index\\.ts$' },
+    },
+    {
+      // Security review of slice 1c, L3.
+      name: 'subject-keys-only-in-infrastructure',
+      comment:
+        'Encrypting or hashing a field is persistence work: in a module, only infrastructure/ ' +
+        'uses the SubjectKeyService.',
+      severity: 'error',
+      from: {
+        path: '^src/(?:modules|verticals)/',
+        pathNot: '^src/modules/[^/]+/infrastructure/',
+      },
+      to: { path: '^src/platform/subject-keys/' },
+    },
+    {
+      // Security review of slice 1c, L3.
+      name: 'subject-keys-only-through-the-port',
+      comment:
+        'A module reaches subject keys through the port (subject-key-service.ts) and its labels ' +
+        '(labels.ts) only: never the wrapper, the key store or the implementation.',
+      severity: 'error',
+      from: { path: '^src/(?:modules|verticals)/' },
+      to: {
+        path: '^src/platform/subject-keys/',
+        pathNot: '^src/platform/subject-keys/(?:subject-key-service|labels)\\.ts$',
       },
     },
     {

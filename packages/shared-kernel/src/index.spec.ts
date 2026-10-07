@@ -1,10 +1,13 @@
+import * as contexts from './contexts';
 import * as kernel from './index';
 import * as testing from './testing';
 
 describe('the public surface of the kernel', () => {
-  it('exports exactly the slice 0 and slice 1b names from the main entry', () => {
+  it('exports exactly the slice 0, 1b and 1c names from the main entry', () => {
     expect(Object.keys(kernel).sort()).toEqual([
+      'ContextMismatchError',
       'MAX_AGGREGATE_VERSION',
+      'POPULATIONS',
       'Temporal',
       'checkAggregateVersion',
       'defineEvent',
@@ -28,15 +31,33 @@ describe('the public surface of the kernel', () => {
     expect(testing).not.toHaveProperty('default');
   });
 
-  it('does not export the internal mint function', () => {
-    expect(kernel).not.toHaveProperty('mint');
-    expect(testing).not.toHaveProperty('mint');
+  it('does not export the internal mint functions', () => {
+    for (const entry of [kernel, testing, contexts]) {
+      expect(entry).not.toHaveProperty('mint');
+      expect(entry).not.toHaveProperty('mintAuthenticatedActor');
+    }
+  });
+
+  it('keeps the actor and call-context constructors on the /contexts entry only (slice 1c)', () => {
+    expect(Object.keys(contexts).sort()).toEqual([
+      'anonymousActor',
+      'createCallContext',
+      'systemActor',
+    ]);
+    expect(contexts).not.toHaveProperty('default');
+    for (const name of Object.keys(contexts)) {
+      expect(kernel).not.toHaveProperty(name);
+      expect(testing).not.toHaveProperty(name);
+    }
   });
 
   it('keeps the fakes and builders on the testing entry only', () => {
     expect(Object.keys(testing).sort()).toEqual([
       'FixedClock',
       'SequenceIdGenerator',
+      'TEST_CORRELATION_ID',
+      'testAuthenticatedActor',
+      'testCallContext',
       'testMarketContext',
     ]);
     for (const name of Object.keys(testing)) expect(kernel).not.toHaveProperty(name);

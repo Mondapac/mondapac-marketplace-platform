@@ -1,12 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { parseCorrelationId } from '@mondapac/shared-kernel';
 import type { IdGenerator } from '@mondapac/shared-kernel';
+import { createCallContext, systemActor } from '@mondapac/shared-kernel/contexts';
 import type { MarketRegistry } from '../market-config/market-registry';
 import type { MarketContextFactory } from '../market-context/market-context.factory';
 import { jobLockKey, type JobLock, type JobLockOutcome } from './job-lock';
 import {
   DEFAULT_MAX_RUN_MS,
   intervalMsOf,
+  type JobContext,
   type JobDefinition,
   type JobRegistry,
 } from './job-registry';
@@ -69,14 +71,20 @@ export class Scheduler {
   }
 
   private async runForMarket(job: JobDefinition, marketId: string): Promise<boolean> {
-    const context = this.contexts.forMarket(marketId);
+    const market = this.contexts.forMarket(marketId);
     const correlationId = parseCorrelationId(this.ids.next<'job-run'>());
-    if (!context.ok || !correlationId.ok) {
+    if (!market.ok || !correlationId.ok) {
       this.logger.error({ msg: 'job.market-skipped', job: job.name, marketId });
       return false;
     }
     try {
-      await job.run({ market: context.value, correlationId: correlationId.value });
+      // The job's CallContext: this Market's system actor (foundations 5.1; P 7).
+      const context: JobContext = createCallContext(
+        market.value,
+        systemActor(market.value),
+        correlationId.value,
+      );
+      await job.run(context);
       return true;
     } catch (error) {
       this.logger.error({

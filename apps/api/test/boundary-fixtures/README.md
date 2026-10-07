@@ -9,7 +9,8 @@ are excluded from the normal lint, typecheck and build.
   `pnpm boundaries` runs on `apps/api/src/`. Each file says whether it is a violation or an
   allowed case.
 - `packages/shared-kernel/src/` is a miniature shared kernel. `tsconfig.json` maps
-  `@mondapac/shared-kernel` and `@mondapac/shared-kernel/testing` to it, as
+  `@mondapac/shared-kernel`, `@mondapac/shared-kernel/testing` and
+  `@mondapac/shared-kernel/contexts` to it, as
   `apps/api/tsconfig.json` maps them to the real kernel. The kernel's ESLint blocks in
   `eslint.config.mjs` name this folder next to the real one.
 - `packages/shared-kernel/dist/` holds two stand-ins for the kernel's build output, so that

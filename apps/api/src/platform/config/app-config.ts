@@ -57,6 +57,12 @@ export interface AppConfig {
    */
   readonly appRole: AppRole;
   readonly nodeEnv: 'development' | 'test' | 'production';
+  /**
+   * True when `NODE_ENV` was set in the environment, false when `nodeEnv` is the default. A
+   * development-only stand-in (the local key wrapper) starts only on an explicit value, so a
+   * deployment that forgets `NODE_ENV` fails closed (security review of slice 1c, M2).
+   */
+  readonly nodeEnvExplicit: boolean;
   readonly port: number;
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   /** Markets this Region Stack serves (ADR-0003). Never empty, never defaulted. */
@@ -103,6 +109,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
   return Object.freeze({
     appRole: parsed.data.APP_ROLE,
     nodeEnv: parsed.data.NODE_ENV,
+    nodeEnvExplicit: env.NODE_ENV !== undefined,
     port: parsed.data.PORT,
     logLevel: parsed.data.LOG_LEVEL,
     hostedMarkets: Object.freeze([...parsed.data.HOSTED_MARKETS]),

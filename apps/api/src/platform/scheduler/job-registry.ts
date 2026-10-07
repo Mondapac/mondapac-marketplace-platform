@@ -1,18 +1,16 @@
 import { Injectable, type OnApplicationBootstrap, type Provider } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { CorrelationId, MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, SystemActor } from '@mondapac/shared-kernel';
 import { jobLockKey, PRISMA_MIGRATE_LOCK_KEY } from './job-lock';
 
 /**
- * What a job run receives for one Market (platform persistence design, "P", 7): the Market's
- * context and a newly generated correlation id. Identity slice 1c replaces it with the
- * kernel's `CallContext` carrying that Market's system actor (foundations 5.1); both fields
- * stay, so a job written now keeps compiling.
+ * What a job run receives for one Market (platform persistence design, "P", 7; foundations
+ * 5.1): a minted `CallContext` of that Market, its system actor and a newly generated
+ * correlation id, built by the scheduler through `createCallContext`. The type requires the
+ * system actor, so a job always has the context a `system` use case needs and never builds one
+ * itself (security review of slice 1b, I3); the context is passed to the use case unchanged.
  */
-export interface JobContext {
-  readonly market: MarketContext;
-  readonly correlationId: CorrelationId;
-}
+export type JobContext = CallContext & { readonly actor: SystemActor };
 
 /**
  * A scheduled job (P 7). Declared in the owning module's `presentation/jobs/`, registered

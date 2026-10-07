@@ -27,6 +27,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // docs/design/data/identity.md section 7 (PM2): the envelope is immutable to the application.
     'identity.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/identity.md section 7 (PF 4): a tombstone, no DELETE; the identity
+    // columns are frozen by the trigger as well.
+    'platform.subject_keys': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['wrapped_key', 'wrapping_key_id', 'rewrapped_at', 'destroyed_at'],
+    },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   securityDefinerFunctions: {},

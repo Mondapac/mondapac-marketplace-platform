@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
 import { CORE_MODULES } from './modules';
+import { AuthzModule } from './platform/authz/authz.module';
 import { ClockModule } from './platform/clock/clock.module';
 import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
@@ -15,6 +16,7 @@ import { MarketContextGuard } from './platform/market-context/market-context.gua
 import { MarketContextModule } from './platform/market-context/market-context.module';
 import { PersistenceModule } from './platform/persistence/persistence.module';
 import { SchedulerModule } from './platform/scheduler/scheduler.module';
+import { SubjectKeysModule } from './platform/subject-keys/subject-keys.module';
 import { WorkerModule } from './platform/worker/worker.module';
 
 /**
@@ -49,7 +51,9 @@ export class AppModule {
         IdsModule,
         MarketConfigModule,
         MarketContextModule,
+        AuthzModule,
         PersistenceModule,
+        SubjectKeysModule,
         EventsModule,
         SchedulerModule,
         WorkerModule,

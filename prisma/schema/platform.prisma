@@ -45,3 +45,35 @@ model AuditLog {
   @@map("audit_log")
   @@schema("platform")
 }
+
+/// One wrapped data key per subject (platform-foundations design 4; ADR-0009 decisions 6 and
+/// 8; docs/design/data/identity.md 3.2). Read and written only by the SubjectKeyService through
+/// its store in platform/persistence/. A subject has one key for life: the primary key on the
+/// subject refuses a second one, in any Market. Destroying the key sets wrapped_key to NULL and
+/// keeps the row as a tombstone; a hand-written trigger makes that one-way and freezes the
+/// identity columns for every role, and the application has no DELETE. CHECKs, the trigger
+/// and the column-level grants are hand-written in the migration. Not personal data: an
+/// opaque id and ciphertext.
+model SubjectKey {
+  /// An account id or a seller id; the table does not record which (ids never repeat across kinds).
+  subjectId     String    @id @map("subject_id") @db.Uuid
+  /// Market of the subject (ADR-0003); bound into the wrap, so a row moved to another Market does not unwrap.
+  marketId      String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); supplied by the writer, no database default. Not bound into the wrap.
+  tenantId      String    @map("tenant_id")
+  /// Always 1 in Phase 2; part of the wrap binding (PF 4 row 10).
+  keyVersion    Int       @map("key_version")
+  /// The data key wrapped under the regional wrapping key, as a versioned text envelope; NULL once destroyed.
+  wrappedKey    String?   @map("wrapped_key")
+  /// Which regional wrapping key and version wrapped it (PF 4 row 2).
+  wrappingKeyId String    @map("wrapping_key_id")
+  /// From Clock, UTC.
+  createdAt     DateTime  @map("created_at") @db.Timestamptz(6)
+  /// The last rotation of the wrapping key.
+  rewrappedAt   DateTime? @map("rewrapped_at") @db.Timestamptz(6)
+  /// Set by destroyKey; the row stays as a tombstone.
+  destroyedAt   DateTime? @map("destroyed_at") @db.Timestamptz(6)
+
+  @@map("subject_keys")
+  @@schema("platform")
+}

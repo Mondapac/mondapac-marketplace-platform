@@ -1,15 +1,15 @@
 import {
   checkAggregateVersion,
   encodePayload,
+  isMinted,
   parseCorrelationId,
   parseId,
   Temporal,
 } from '@mondapac/shared-kernel';
-import type { Id, IdGenerator, PendingEvent } from '@mondapac/shared-kernel';
+import type { CallContext, Id, IdGenerator, PendingEvent } from '@mondapac/shared-kernel';
 import type { EventCatalogue } from '../../events/event-catalogue';
 import {
   OutboxWriteRefusedError,
-  type EventContext,
   type OutboxWriter,
   type OutboxWriterFactory,
   type PermissionKeyLookup,
@@ -54,10 +54,12 @@ class PrismaOutboxWriter implements OutboxWriter {
   ) {}
 
   async append(
-    context: EventContext,
+    context: CallContext,
     events: readonly PendingEvent[],
     causedBy?: Id,
   ): Promise<void> {
+    // Foundations 3.7: a context copied, spread or rebuilt from JSON is refused.
+    if (!isMinted(context)) throw new OutboxWriteRefusedError('context-not-minted');
     const unit = unitStorage.getStore();
     if (unit === undefined || unit.closed) throw new NoUnitOfWorkError();
     if (unit.readOnly) throw new OutboxWriteRefusedError('read-only-unit');
@@ -75,7 +77,7 @@ class PrismaOutboxWriter implements OutboxWriter {
     await delegate.createMany({ data: rows });
   }
 
-  private rowOf(event: PendingEvent, context: EventContext, causationId: string | null): OutboxRow {
+  private rowOf(event: PendingEvent, context: CallContext, causationId: string | null): OutboxRow {
     const definition = this.catalogue.get(event.type);
     if (definition === undefined) {
       throw new OutboxWriteRefusedError(

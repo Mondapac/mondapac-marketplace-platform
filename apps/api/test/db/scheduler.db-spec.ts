@@ -17,8 +17,8 @@ import { testDatabaseUrl } from './test-database';
 
 // Platform persistence design ("P") 7 and the row "Scheduler" of 13, for both Market fixtures,
 // on the real advisory lock as the application role: two runners and one lock run the job
-// once; a job that fails for AU still runs for ZZ; each run gets its Market's context and its
-// own correlation id. Ali's F2: the lock transaction survives the login role's idle timeout.
+// once; a job that fails for AU still runs for ZZ; each run gets its Market's system actor and
+// its own correlation id. Ali's F2: the lock transaction survives the login role's idle timeout.
 
 const NAME = 'identity.test-job';
 
@@ -114,6 +114,12 @@ describe('scheduler (database integration)', () => {
     expect(result).toEqual({ outcome: 'ran', failedMarkets: ['AU'] });
     expect(seen.map((context) => context.market.marketId)).toEqual(['AU', 'ZZ']);
     expect(seen.every((context) => isMinted(context.market))).toBe(true);
+    // P 13: each run gets the system actor of its Market, in a minted CallContext.
+    expect(seen.every((context) => isMinted(context))).toBe(true);
+    expect(seen.map((context) => [context.actor.kind, context.actor.marketId])).toEqual([
+      ['system', 'AU'],
+      ['system', 'ZZ'],
+    ]);
     expect(new Set(seen.map((context) => context.correlationId)).size).toBe(2);
     expect(errors).toHaveBeenCalledWith(
       expect.objectContaining({ msg: 'job.failed', job: NAME, marketId: 'AU' }),
