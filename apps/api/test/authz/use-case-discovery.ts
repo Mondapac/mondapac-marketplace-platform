@@ -19,6 +19,9 @@ import { UseCase } from '../../src/platform/authz/use-case';
 
 const API_ROOT = path.resolve(__dirname, '../..');
 const USE_CASE_SOURCE = path.join(API_ROOT, 'src/platform/authz/use-case.ts');
+const JOB_REGISTRY_SOURCE = path.join(API_ROOT, 'src/platform/scheduler/job-registry.ts');
+/** Where a module's entry points live (identity design 5.2; security review of slice 1c, L2). */
+const PRESENTATION_PATH = /^modules\/[^/]+\/presentation\//;
 
 /** `modules/<module>/application/use-cases/<stem>.use-case.ts`, nothing nested. */
 const USE_CASE_PATH = /^modules\/([^/]+)\/application\/use-cases\/([^/]+)\.use-case\.ts$/;
@@ -32,6 +35,8 @@ export type DiscoveryProblemCode =
   | 'use-case-outside-glob'
   | 'extends-use-case'
   | 'execute-overridden'
+  | 'controller-outside-presentation'
+  | 'job-outside-presentation'
   | 'export-count'
   | 'declaration-invalid'
   | 'name-mismatch'
@@ -167,6 +172,34 @@ function derivation(checker: ts.TypeChecker, type: ts.Type): 'direct' | 'indirec
   return null;
 }
 
+/** True for a `@Controller(...)` decorator of `@nestjs/common` on a class. */
+function isControllerDecorator(checker: ts.TypeChecker, decorator: ts.Decorator): boolean {
+  const call = decorator.expression;
+  if (!ts.isCallExpression(call)) return false;
+  let symbol = checker.getSymbolAtLocation(call.expression);
+  if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) {
+    symbol = checker.getAliasedSymbol(symbol);
+  }
+  return (
+    symbol?.getName() === 'Controller' &&
+    (symbol.declarations ?? []).some((declaration) =>
+      declaration.getSourceFile().fileName.includes('@nestjs/common'),
+    )
+  );
+}
+
+/** True for an object literal that the type checker reads as a `JobDefinition`. */
+function isJobDefinition(checker: ts.TypeChecker, node: ts.ObjectLiteralExpression): boolean {
+  const contextual = checker.getContextualType(node);
+  const symbol = contextual?.getSymbol() ?? contextual?.aliasSymbol;
+  return (
+    symbol?.getName() === 'JobDefinition' &&
+    (symbol.declarations ?? []).some(
+      (declaration) => path.resolve(declaration.getSourceFile().fileName) === JOB_REGISTRY_SOURCE,
+    )
+  );
+}
+
 /** The static half: every class that derives from `UseCase`, in any file of the tree. */
 function staticProblems(sourceRoot: string, files: readonly string[]): DiscoveryProblem[] {
   const configPath = path.join(API_ROOT, 'tsconfig.json');
@@ -182,8 +215,29 @@ function staticProblems(sourceRoot: string, files: readonly string[]): Discovery
     if (source === undefined) continue;
     const relative = toPosix(path.relative(sourceRoot, file));
     const inGlob = USE_CASE_PATH.test(relative);
+    // L2: in a module, controllers and job definitions are entry points and sit in
+    // presentation/, where rule 9 limits what they import. Event handlers join with slice 3.
+    const outsidePresentation =
+      relative.startsWith('modules/') && !PRESENTATION_PATH.test(relative);
 
     const visit = (node: ts.Node): void => {
+      if (outsidePresentation && ts.isClassDeclaration(node)) {
+        const decorators = ts.canHaveDecorators(node) ? (ts.getDecorators(node) ?? []) : [];
+        if (decorators.some((decorator) => isControllerDecorator(checker, decorator))) {
+          problems.push({
+            file: relative,
+            code: 'controller-outside-presentation',
+            detail: node.name?.text ?? '(anonymous class)',
+          });
+        }
+      }
+      if (
+        outsidePresentation &&
+        ts.isObjectLiteralExpression(node) &&
+        isJobDefinition(checker, node)
+      ) {
+        problems.push({ file: relative, code: 'job-outside-presentation' });
+      }
       if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
         // A class expression's type is its constructor; its instance type is what derives.
         const type = checker.getTypeAtLocation(node);

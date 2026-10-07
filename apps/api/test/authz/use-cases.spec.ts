@@ -82,6 +82,8 @@ describe('use-case discovery fixtures', () => {
       expect(lines(result.problems)).toEqual([
         // A module's catalogue declares only that module's keys.
         'catalogue-module-mismatch modules/gamma/contracts/index.ts delta',
+        // L2: entry points sit in presentation/ (a controller, under an alias; an inline job).
+        'controller-outside-presentation modules/beta/application/beta.controller.ts BetaController',
         // Each file: exactly one exported direct subclass, with a valid declaration of its own.
         `declaration-invalid ${useCases}/bad-declaration.use-case.ts rule-kind-unknown`,
         `declaration-invalid ${useCases}/no-declaration.use-case.ts declaration-missing`,
@@ -93,6 +95,7 @@ describe('use-case discovery fixtures', () => {
         `file-misnamed ${useCases}/Bad_Name.use-case.ts Bad_Name.use-case.ts`,
         `file-misnamed ${useCases}/helpers.ts helpers.ts`,
         `file-misnamed ${useCases}/nested/deep.use-case.ts deep.use-case.ts`,
+        'job-outside-presentation modules/beta/beta.module.ts',
         'key-retired modules/beta/contracts/index.ts beta.things.purge',
         `key-undeclared ${useCases}/undeclared-key.use-case.ts beta.things.unknown`,
         `keys-span-scopes ${useCases}/mixed-scopes.use-case.ts`,

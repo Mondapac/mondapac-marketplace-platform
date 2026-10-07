@@ -4,4 +4,5 @@ export { declarePermissions, definePermission } from '../../../src/platform/auth
 export type { AccessDeclaration, PermissionKey } from '../../../src/platform/authz/access-rule';
 export { UseCase } from '../../../src/platform/authz/use-case';
 export type { CallContext, Result } from '@mondapac/shared-kernel';
-export { ok } from '@mondapac/shared-kernel';
+export { ok, Temporal } from '@mondapac/shared-kernel';
+export { registerJobs, type JobDefinition } from '../../../src/platform/scheduler/job-registry';

@@ -146,9 +146,12 @@ module.exports = {
         'An entry point of a module (presentation/, which holds controllers, jobs/ and ' +
         'subscribers/; contracts/; and every *.facade.ts implementation) imports from its ' +
         "module's application/ only use-cases/*.use-case.ts, so the UseCaseGate runs for " +
-        'everything an entry point reaches.',
+        "everything an entry point reaches. The module's index.ts is an entry point too " +
+        '(security review of slice 1c, L2).',
       severity: 'error',
-      from: { path: '^src/modules/([^/]+)/(?:presentation/|contracts/|.+\\.facade\\.ts$)' },
+      from: {
+        path: '^src/modules/([^/]+)/(?:presentation/|contracts/|index\\.ts$|.+\\.facade\\.ts$)',
+      },
       to: {
         path: '^src/modules/$1/application/',
         pathNot: '^src/modules/$1/application/use-cases/[^/]+\\.use-case\\.ts$',
@@ -170,6 +173,53 @@ module.exports = {
         ],
       },
       to: { path: '^src/modules/[^/]+/.+\\.repository\\.ts$' },
+    },
+    {
+      // Security review of slice 1c, M1.
+      name: 'use-case-gate-is-built-by-authz',
+      comment:
+        'Only platform/authz/ imports the gate file, which holds the factory that builds a ' +
+        'UseCaseGate: a gate built elsewhere could bind a lenient registry or check. Modules ' +
+        'inject USE_CASE_GATE from the platform/authz barrel.',
+      severity: 'error',
+      from: { pathNot: '^src/platform/authz/' },
+      to: { path: '^src/platform/authz/use-case-gate\\.ts$' },
+    },
+    {
+      // Security review of slice 1c, M1.
+      name: 'modules-reach-authz-through-its-barrel',
+      comment:
+        'A module imports from platform/authz/ only its index.ts: the base class, the ' +
+        "declaration types, the permission helpers, the answers and the gate's token and type.",
+      severity: 'error',
+      from: { path: '^src/(?:modules|verticals)/' },
+      to: { path: '^src/platform/authz/', pathNot: '^src/platform/authz/index\\.ts$' },
+    },
+    {
+      // Security review of slice 1c, L3.
+      name: 'subject-keys-only-in-infrastructure',
+      comment:
+        'Encrypting or hashing a field is persistence work: in a module, only infrastructure/ ' +
+        'uses the SubjectKeyService.',
+      severity: 'error',
+      from: {
+        path: '^src/(?:modules|verticals)/',
+        pathNot: '^src/modules/[^/]+/infrastructure/',
+      },
+      to: { path: '^src/platform/subject-keys/' },
+    },
+    {
+      // Security review of slice 1c, L3.
+      name: 'subject-keys-only-through-the-port',
+      comment:
+        'A module reaches subject keys through the port (subject-key-service.ts) and its labels ' +
+        '(labels.ts) only: never the wrapper, the key store or the implementation.',
+      severity: 'error',
+      from: { path: '^src/(?:modules|verticals)/' },
+      to: {
+        path: '^src/platform/subject-keys/',
+        pathNot: '^src/platform/subject-keys/(?:subject-key-service|labels)\\.ts$',
+      },
     },
     {
       name: 'module-public-api-only',

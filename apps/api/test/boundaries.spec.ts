@@ -135,13 +135,17 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'market-exemption-is-platform-only',
         'module-internals-are-private',
         'module-public-api-only',
+        'modules-reach-authz-through-its-barrel',
         'no-circular',
         'persistence-internals-are-private',
         'persistence-root-is-private',
         'platform-does-not-import-modules',
         'prisma-only-in-infrastructure',
         'repositories-stay-behind-use-cases',
+        'subject-keys-only-in-infrastructure',
+        'subject-keys-only-through-the-port',
         'temporal-only-through-kernel',
+        'use-case-gate-is-built-by-authz',
         'use-cases-are-the-only-way-in',
       ]);
       expect(rules.filter((rule) => rule.severity !== 'error')).toEqual([]);
@@ -173,6 +177,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'market-exemption-is-platform-only: src/platform/market-context/index.ts',
         'module-internals-are-private: src/platform/reaches-into-module.ts',
         'module-public-api-only: src/modules/alpha/application/reaches-into-module.ts',
+        'modules-reach-authz-through-its-barrel: src/modules/alpha/application/reaches-use-case-gate.ts',
         'no-circular: src/modules/alpha/domain/circular-a.ts',
         'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-service.ts',
         'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-via-barrel.ts',
@@ -181,10 +186,15 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'platform-does-not-import-modules: src/platform/reaches-into-module.ts',
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
         'repositories-stay-behind-use-cases: src/modules/alpha/presentation/jobs/reaches-repository.ts',
+        'subject-keys-only-in-infrastructure: src/modules/alpha/application/uses-subject-keys.ts',
+        'subject-keys-only-through-the-port: src/modules/alpha/infrastructure/reaches-key-wrapper.ts',
         'temporal-only-through-kernel: src/platform/uses-js-temporal-polyfill.ts',
         'temporal-only-through-kernel: src/platform/uses-temporal-polyfill.ts',
+        'use-case-gate-is-built-by-authz: src/modules/alpha/application/reaches-use-case-gate.ts',
+        'use-case-gate-is-built-by-authz: src/platform/builds-use-case-gate.ts',
         'use-cases-are-the-only-way-in: src/modules/alpha/infrastructure/alpha.facade.ts',
         'use-cases-are-the-only-way-in: src/modules/alpha/presentation/reaches-application-service.ts',
+        'use-cases-are-the-only-way-in: src/modules/beta/index.ts',
       ]);
     });
 
@@ -224,6 +234,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/alpha/application/use-cases/find-thing.use-case.ts',
       'src/modules/alpha/infrastructure/prisma-thing.repository.ts',
       'src/modules/alpha/alpha.module.ts',
+      // M1: platform/authz builds the gate; a module imports the barrel.
+      'src/platform/authz/authz.module.ts',
+      'src/modules/alpha/application/uses-authz-barrel.ts',
+      // L3: a module's infrastructure uses the SubjectKeyService port and its labels.
+      'src/modules/alpha/infrastructure/encrypts-field.ts',
     ])('accepts the allowed file %s', (file) => {
       expect(cruise.modules.map((module) => module.source)).toContain(file);
       expect(found.filter((violation) => violation.endsWith(`: ${file}`))).toEqual([]);
