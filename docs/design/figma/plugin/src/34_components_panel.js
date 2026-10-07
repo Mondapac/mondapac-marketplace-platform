@@ -136,7 +136,7 @@ const DIALOG_AXES = { Size: ['Sm', 'Md'], Tone: ['Default', 'Destructive'], Layo
 function dialogOpts(content) {
   return { width: 1400, gapX: 40, gapY: 40, skip: function (p) { return p.Layout === 'Sheet' && p.Size === 'Md'; },
     desc: 'A modal dialog over a bg/scrim scrim (the scrim belongs to the screen, not to this component). Size Sm is size/dialog-sm (400 px: confirm, change-role and invite dialogs), Md is size/dialog-md (560 px: dialogs with a reason field). Tone=Destructive makes the primary button a Destructive Button and changes nothing else; it opens with focus on Cancel (show the secondary Button in State=Focus). Layout=Sheet is for widths below 480 px: 360 here and full width in screens, top corners rounded, buttons stacked and full width with the primary first, then Cancel, both Size=Touch; it ignores Size, so Sheet by Md does not exist. Title is Heading/H2 and never truncates; Show secondary off is the single-button state (a read-only "View reason" dialog with one Close button). Content is a swap slot that defaults to DialogBody; primary and secondary are exposed Button instances, so their Label is set from the Dialog instance. role="dialog" (alertdialog when Destructive), aria-modal, aria-labelledby the title, aria-describedby the first body text; focus moves in, is trapped and returns to the trigger; Esc closes, except that a dialog holding typed text does not close on a scrim click; the page behind is inert. Max height 90% of the viewport: header and footer stay pinned and the body scrolls. No slide or fade under prefers-reduced-motion.',
-    text: [{ prop: 'Title', node: 'title', def: 'Change role for Omar Saleh' }], bool: [{ prop: 'Show secondary', node: 'secondary', def: true }], swap: [{ prop: 'Content', node: 'content', comp: content }] };
+    text: [{ prop: 'Title', node: 'title', def: 'Change role for Amira Said' }], bool: [{ prop: 'Show secondary', node: 'secondary', def: true }], swap: [{ prop: 'Content', node: 'content', comp: content }] };
 }
 function dialogVariant(c, p) {
   const sheet = p.Layout === 'Sheet'; const dest = p.Tone === 'Destructive';
@@ -145,7 +145,7 @@ function dialogVariant(c, p) {
   const primary = inst('Button', { Variant: dest ? 'Destructive' : 'Primary', Size: sheet ? 'Touch' : 'Md', State: 'Default', Label: dest ? 'Deactivate account' : 'Change role' }, { name: 'primary', sizeH: sheet ? 'FILL' : null });
   body(c, { dir: 'V', w: w, fill: 'bg/surface', stroke: 'border/default', clip: true, effect: 'Elevation/Floating' }, [
     frame({ name: 'header', dir: 'H', pad: sheet ? 'space/4' : ['space/5', 'space/5', 'space/2', 'space/5'], gap: 'space/3', align: 'start', sizeH: 'FILL' }, [
-      text('Change role for Omar Saleh', 'Heading/H2', 'text/primary', { name: 'title', sizeH: 'FILL' }),
+      text('Change role for Amira Said', 'Heading/H2', 'text/primary', { name: 'title', sizeH: 'FILL' }),
       inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'close' }),
     ]),
     frame({ name: 'body', dir: 'V', gap: 'space/4', pad: sheet ? [0, 'space/4', 0, 'space/4'] : [0, 'space/5', 0, 'space/5'], sizeH: 'FILL' }, [inst('DialogBody', {}, { name: 'content', sizeH: 'FILL' })]),

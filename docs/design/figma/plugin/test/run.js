@@ -362,7 +362,7 @@ function state180(M, opts, label) {
   const cf = frameNamed(M, 'Dialogs · Confirm · Admin')[0];
   const cdl = cf.findAll((n) => n.type === 'INSTANCE' && n.parent && n.parent.name === 'dialogs');
   const dest = cdl.filter((d) => /Tone=Destructive/.test(instMain(d)));
-  check(cdl.length === 5 && dest.length === 3 && dest.every((d) => /State=Focus/.test(instMain(d.findOne((n) => n.name === 'secondary'))) && /Variant=Destructive/.test(instMain(d.findOne((n) => n.name === 'primary')))) && cdl.filter((d) => /Tone=Default/.test(instMain(d))).every((d) => !/State=Focus/.test(instMain(d.findOne((n) => n.name === 'secondary')))), label + ': 5 confirm dialogs; the 3 Destructive ones have a Destructive primary and Cancel focused');
+  check(cdl.length === 5 && dest.length === 4 && dest.every((d) => /State=Focus/.test(instMain(d.findOne((n) => n.name === 'secondary'))) && /Variant=Destructive/.test(instMain(d.findOne((n) => n.name === 'primary')))) && cdl.filter((d) => /Tone=Default/.test(instMain(d))).every((d) => !/State=Focus/.test(instMain(d.findOne((n) => n.name === 'secondary')))), label + ': 5 confirm dialogs; the 4 Destructive ones (incl. Reset two-step verification) have a Destructive primary and Cancel focused');
   check(cdl.some((d) => d.findOne((n) => n.type === 'TEXT' && n.characters === 'Keep invitation')) && cdl.some((d) => d.findOne((n) => n.type === 'TEXT' && n.characters === 'Reset')), label + ': the Cancel invitation dialog says "Keep invitation" and the reset dialog exists');
   const sh = frameNamed(M, 'Dialog sheet · Remove from team (phone)')[0];
   const shd = sh.findOne((n) => n.type === 'INSTANCE' && /Layout=Sheet/.test(instMain(n)));

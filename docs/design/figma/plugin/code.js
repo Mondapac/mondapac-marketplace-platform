@@ -1926,7 +1926,7 @@ const DIALOG_AXES = { Size: ['Sm', 'Md'], Tone: ['Default', 'Destructive'], Layo
 function dialogOpts(content) {
   return { width: 1400, gapX: 40, gapY: 40, skip: function (p) { return p.Layout === 'Sheet' && p.Size === 'Md'; },
     desc: 'A modal dialog over a bg/scrim scrim (the scrim belongs to the screen, not to this component). Size Sm is size/dialog-sm (400 px: confirm, change-role and invite dialogs), Md is size/dialog-md (560 px: dialogs with a reason field). Tone=Destructive makes the primary button a Destructive Button and changes nothing else; it opens with focus on Cancel (show the secondary Button in State=Focus). Layout=Sheet is for widths below 480 px: 360 here and full width in screens, top corners rounded, buttons stacked and full width with the primary first, then Cancel, both Size=Touch; it ignores Size, so Sheet by Md does not exist. Title is Heading/H2 and never truncates; Show secondary off is the single-button state (a read-only "View reason" dialog with one Close button). Content is a swap slot that defaults to DialogBody; primary and secondary are exposed Button instances, so their Label is set from the Dialog instance. role="dialog" (alertdialog when Destructive), aria-modal, aria-labelledby the title, aria-describedby the first body text; focus moves in, is trapped and returns to the trigger; Esc closes, except that a dialog holding typed text does not close on a scrim click; the page behind is inert. Max height 90% of the viewport: header and footer stay pinned and the body scrolls. No slide or fade under prefers-reduced-motion.',
-    text: [{ prop: 'Title', node: 'title', def: 'Change role for Omar Saleh' }], bool: [{ prop: 'Show secondary', node: 'secondary', def: true }], swap: [{ prop: 'Content', node: 'content', comp: content }] };
+    text: [{ prop: 'Title', node: 'title', def: 'Change role for Amira Said' }], bool: [{ prop: 'Show secondary', node: 'secondary', def: true }], swap: [{ prop: 'Content', node: 'content', comp: content }] };
 }
 function dialogVariant(c, p) {
   const sheet = p.Layout === 'Sheet'; const dest = p.Tone === 'Destructive';
@@ -1935,7 +1935,7 @@ function dialogVariant(c, p) {
   const primary = inst('Button', { Variant: dest ? 'Destructive' : 'Primary', Size: sheet ? 'Touch' : 'Md', State: 'Default', Label: dest ? 'Deactivate account' : 'Change role' }, { name: 'primary', sizeH: sheet ? 'FILL' : null });
   body(c, { dir: 'V', w: w, fill: 'bg/surface', stroke: 'border/default', clip: true, effect: 'Elevation/Floating' }, [
     frame({ name: 'header', dir: 'H', pad: sheet ? 'space/4' : ['space/5', 'space/5', 'space/2', 'space/5'], gap: 'space/3', align: 'start', sizeH: 'FILL' }, [
-      text('Change role for Omar Saleh', 'Heading/H2', 'text/primary', { name: 'title', sizeH: 'FILL' }),
+      text('Change role for Amira Said', 'Heading/H2', 'text/primary', { name: 'title', sizeH: 'FILL' }),
       inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'close' }),
     ]),
     frame({ name: 'body', dir: 'V', gap: 'space/4', pad: sheet ? [0, 'space/4', 0, 'space/4'] : [0, 'space/5', 0, 'space/5'], sizeH: 'FILL' }, [inst('DialogBody', {}, { name: 'content', sizeH: 'FILL' })]),
@@ -2815,8 +2815,9 @@ function tplMembersAdmin(state) {
     tabsBar([['Admins', '5', true], ['Roles', null, false]]),
     membersTable('Admin', state === 'Loading' || state === 'Load error' ? state : null),
   ]);
-  // The menus are placed by estimate under the actions button of the second row (System role) or the first row (view only); nudge in Figma.
-  if (state === 'Menu open') add(scr, rowMenu([['Disabled', 'Change role', 'user', 'At least ' + ADMIN_MEMBERS[1].role + ' must remain.'], ['Default', 'Reset two-step verification', 'smartphone'], ['Destructive', 'Deactivate account…', 'ban']], [1128, 374]));
+  // The menus are placed by estimate under the actions button of the third row (a peer the actor may manage) or the first row (view only); nudge in Figma.
+  // A member who outranks the actor or is the last holder of a system role (Omar Saleh) gets every item disabled (ux.md F11 steps 4-5).
+  if (state === 'Menu open') add(scr, rowMenu([['Default', 'Change role', 'user'], ['Default', 'Reset two-step verification', 'smartphone'], ['Destructive', 'Deactivate account…', 'ban']], [1128, 438]));
   if (view) add(scr, rowMenu([['Disabled', 'Change role', 'user', VIEW_ONLY], ['Disabled', 'Reset two-step verification', 'smartphone', VIEW_ONLY], ['Disabled', 'Deactivate account…', 'ban', VIEW_ONLY]], [1128, 310]));
   return scr;
 }
@@ -2852,7 +2853,7 @@ function tplMembersPhone(ws) {
 const ROLE_GROUPS = {
   Admin: [['System', [{ name: 'Platform owner', system: true, type: 'System', perms: 'All', members: '1' }]],
     ['Default', [{ name: 'Seller reviewer', purpose: 'Reviews seller applications and certificates.', type: 'Default', perms: '14', members: '2' }, { name: 'Support agent', purpose: 'Answers sellers and customers.', type: 'Default', perms: '8', members: '3' }]],
-    ['Custom', [{ name: 'Finance reviewer', type: 'Custom', perms: '9', members: '1' }, { name: 'Content editor', type: 'Custom', perms: 'None yet', members: '0' }]]],
+    ['Custom', [{ name: 'Compliance lead', type: 'Custom', perms: '12', members: '1' }, { name: 'Finance reviewer', type: 'Custom', perms: '9', members: '1' }, { name: 'Content editor', type: 'Custom', perms: 'None yet', members: '0' }]]],
   Seller: [['Owner', [{ name: 'Owner', system: true, type: 'Owner', perms: 'All', members: '1' }]],
     ['Ready-made', [{ name: 'Order packer', purpose: 'Packs and prepares orders.', type: 'Ready-made', perms: '4', members: '1' }, { name: 'Catalogue editor', purpose: 'Keeps offers and stock up to date.', type: 'Ready-made', perms: '3', members: '0' }]],
     ['Custom', [{ name: 'Shift lead', type: 'Custom', perms: '6', members: '0' }]]],
@@ -3002,7 +3003,7 @@ function bodyInvite(ws, open) {
 }
 function bodyChangeRole(ws) {
   const admin = ws === 'Admin';
-  return [frame({ name: 'current', dir: 'V', gap: 'space/3', sizeH: 'FILL' }, [readOnlyPair('Name', admin ? 'Omar Saleh' : 'Amina Rahman'), readOnlyPair('Current role', admin ? 'Seller reviewer' : 'Order packer')]),
+  return [frame({ name: 'current', dir: 'V', gap: 'space/3', sizeH: 'FILL' }, [readOnlyPair('Name', admin ? 'Amira Said' : 'Amina Rahman'), readOnlyPair('Current role', admin ? 'Finance reviewer' : 'Order packer')]),
     panelField('Role', { select: { state: 'Filled', value: admin ? 'Support agent' : 'Catalogue editor' } }),
     text(DIALOGBODY_TEXT, 'Body/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' })];
 }
@@ -3040,16 +3041,16 @@ function tplDialogsMembers() {
   return dialogScene('Dialogs · Members · Admin', [
     dlg({ name: 'D1 Invite an admin', title: 'Invite an admin', primary: 'Send invitation', secondary: 'Cancel', content: b1 }),
     dlg({ name: 'D1 Invite an admin · list open', title: 'Invite an admin', primary: 'Send invitation', secondary: 'Cancel', content: b1o }),
-    dlg({ name: 'D2 Change role', title: 'Change role for Omar Saleh', primary: 'Change role', secondary: 'Cancel', content: b2 }),
+    dlg({ name: 'D2 Change role', title: 'Change role for Amira Said', primary: 'Change role', secondary: 'Cancel', content: b2 }),
   ]);
 }
 function tplDialogsConfirm() {
   return dialogScene('Dialogs · Confirm · Admin', [
     dlg({ name: 'Approve', title: 'Approve this seller?', text: 'They get full access to the seller panel and an email to say so.', primary: 'Approve seller', secondary: 'Cancel' }),
-    dlg({ name: 'Deactivate admin', tone: 'Destructive', title: 'Deactivate Omar Saleh’s admin account?', text: 'They’re signed out straight away and can’t sign in.', primary: 'Deactivate account', secondary: 'Cancel', focusCancel: true }),
+    dlg({ name: 'Deactivate admin', tone: 'Destructive', title: 'Deactivate Amira Said’s admin account?', text: 'They’re signed out straight away and can’t sign in.', primary: 'Deactivate account', secondary: 'Cancel', focusCancel: true }),
     dlg({ name: 'Delete role', tone: 'Destructive', title: 'Delete the role “Finance reviewer”?', text: 'This can’t be undone. 2 pending invitations with this role stop working.', primary: 'Delete role', secondary: 'Cancel', focusCancel: true }),
     dlg({ name: 'Cancel invitation', tone: 'Destructive', title: 'Cancel the invitation to noor.hassan@mondapac.example?', text: 'The link in their email stops working.', primary: 'Cancel invitation', secondary: 'Keep invitation', focusCancel: true }),
-    dlg({ name: 'Reset two-step verification', title: 'Reset two-step verification for Omar Saleh?', text: 'They’re signed out. At their next sign-in we email them a link to set it up again.', primary: 'Reset', secondary: 'Cancel' }),
+    dlg({ name: 'Reset two-step verification', tone: 'Destructive', title: 'Reset two-step verification for Amira Said?', text: 'They’re signed out. At their next sign-in we email them a link to set it up again.', primary: 'Reset', secondary: 'Cancel', focusCancel: true }),
   ]);
 }
 function tplDialogsTeam() {
@@ -3063,7 +3064,7 @@ function tplDialogsTeam() {
 }
 function tplSheetChangeRole() {
   const b2 = tplBody('Template body · D2 Change role (Admin)', function () { return bodyChangeRole('Admin'); });
-  return sheetScene('Dialog sheet · Change role (phone)', dlg({ name: 'D2 Change role (sheet)', layout: 'Sheet', title: 'Change role for Omar Saleh', primary: 'Change role', secondary: 'Cancel', content: b2 }));
+  return sheetScene('Dialog sheet · Change role (phone)', dlg({ name: 'D2 Change role (sheet)', layout: 'Sheet', title: 'Change role for Amira Said', primary: 'Change role', secondary: 'Cancel', content: b2 }));
 }
 function tplSheetRemove() {
   return sheetScene('Dialog sheet · Remove from team (phone)', dlg({ name: 'D3 Remove from team (sheet)', layout: 'Sheet', tone: 'Destructive', title: 'Remove Amina Rahman from your team?', text: 'They’re signed out straight away and can’t sign in to your seller panel again.', primary: 'Remove from team', secondary: 'Cancel', focusCancel: true }));
