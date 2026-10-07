@@ -100,6 +100,8 @@ function label(message: Linter.LintMessage): string {
 
 const times = (count: number, entry: string): string[] => Array<string>(count).fill(entry);
 const syntax = (rule: string, count = 1): string[] => times(count, `no-restricted-syntax: ${rule}`);
+const properties = (rule: string, count = 1): string[] =>
+  times(count, `no-restricted-properties: ${rule}`);
 const imports = (rule: string, count = 1): string[] =>
   times(count, `@typescript-eslint/no-restricted-imports: ${rule}`);
 const kernelImports = (count = 1): string[] =>
@@ -498,6 +500,14 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         syntax('no-raw-sql-or-transaction-in-modules'),
       ],
       ['src/platform/uses-raw-sql.ts', []],
+      // P 12.2 rule 3: only main.ts and platform/worker/ read appRole.
+      ['src/platform/reads-app-role.ts', properties('app-role-is-read-in-two-places', 2)],
+      [
+        'src/modules/alpha/application/reads-app-role.ts',
+        properties('app-role-is-read-in-two-places'),
+      ],
+      ['src/main.ts', []],
+      ['src/platform/worker/starts-worker.ts', []],
       // Rule 5: the named import and its namespace form, the factory import.
       [
         'src/modules/alpha/application/mints-market-context.ts',
