@@ -1,5 +1,7 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { testAppConfig } from '../../../test/support/test-config';
+import { EVENT_BUS, OUTBOX_RELAY } from '../events/event-bus';
+import { JOB_LOCK } from '../scheduler/job-lock';
 import { InvalidUnitOfWorkOptionsError } from '../unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWorkOptions } from '../unit-of-work/unit-of-work';
 import { DatabaseProbe } from './database-probe';
@@ -16,11 +18,14 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
     )[]
   ).map((provider) => ('provide' in provider ? provider.provide : provider));
 
-  it('exports the door for modules, the UnitOfWork port and the probe, and nothing else', () => {
+  it('exports the door for modules, the UnitOfWork port, the probe and the event and scheduler port implementations, and nothing else (no outbox writer factory)', () => {
     expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, PersistenceModule)).toEqual([
       PrismaService,
       UNIT_OF_WORK,
       DatabaseProbe,
+      EVENT_BUS,
+      OUTBOX_RELAY,
+      JOB_LOCK,
     ]);
   });
 

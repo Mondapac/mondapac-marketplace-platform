@@ -1,35 +1,38 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Logger } from 'nestjs-pino';
-import { AppModule } from './app.module';
-import { databaseIsolationAccepted, databaseRoleAccepted } from './check-database-role';
-import { APP_OPTIONS, configureApp } from './configure-app';
 import { loadEnvFile } from './load-env-file';
-import type { AppConfig } from './platform/config/app-config';
-import { APP_CONFIG } from './platform/config/config.module';
-import { DatabaseProbe } from './platform/persistence/database-probe';
+import { loadAppConfig } from './platform/config/app-config';
+import { startApi } from './start-api';
+import { startWorker } from './start-worker';
 
+/**
+ * The composition root (platform persistence design, "P", 8). It reads `APP_ROLE` and
+ * branches once: `api` serves HTTP, `worker` runs the relay and the scheduler. Both build the
+ * same module graph. Only this file and `platform/worker/` read the role (P 12.2 rule 3).
+ *
+ * A missing or unknown `APP_ROLE` fails boot here, before either role starts (no default;
+ * main.spec.ts). The worker exits 0 after a clean stop on SIGTERM or SIGINT and 1 if the stop
+ * fails; its path never calls `enableShutdownHooks`, so nothing re-raises the signal.
+ */
 async function bootstrap(): Promise<void> {
   loadEnvFile();
+  const config = loadAppConfig(process.env);
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.register(), APP_OPTIONS);
-  const logger = app.get(Logger);
-  app.useLogger(logger);
-  configureApp(app);
-
-  // Before listening, so a mis-wired database secret never serves a request (10.8), and a
-  // database whose default isolation is not READ COMMITTED never runs a unit (ADR-0025).
-  const probe = app.get(DatabaseProbe);
-  if (
-    !(await databaseRoleAccepted(probe, logger)) ||
-    !(await databaseIsolationAccepted(probe, logger))
-  ) {
-    await app.close();
-    process.exit(1);
+  if (config.appRole === 'worker') {
+    const worker = await startWorker(config);
+    if (worker === undefined) process.exit(1);
+    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+      process.once(signal, () => {
+        worker.stop().then(
+          () => process.exit(0),
+          () => process.exit(1),
+        );
+      });
+    }
+    return;
   }
 
-  await app.listen(app.get<AppConfig>(APP_CONFIG).port);
+  const api = await startApi(config);
+  if (api === undefined) process.exit(1);
 }
 
 bootstrap().catch((error: unknown) => {

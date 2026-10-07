@@ -3,9 +3,9 @@ import { InvalidConfigError, loadAppConfig as load } from './app-config';
 
 const DATABASE_URL = 'postgresql://user:secret@localhost:5432/db';
 
-/** Loads config with a valid DATABASE_URL unless the test overrides it. */
+/** Loads config with a valid DATABASE_URL and APP_ROLE unless the test overrides them. */
 function loadAppConfig(env: Record<string, string | undefined>) {
-  return load({ DATABASE_URL, ...env });
+  return load({ DATABASE_URL, APP_ROLE: 'api', ...env });
 }
 
 describe('loadAppConfig', () => {
@@ -13,6 +13,7 @@ describe('loadAppConfig', () => {
     const config = loadAppConfig({ HOSTED_MARKETS: 'AU, ZZ' });
 
     expect(config).toEqual({
+      appRole: 'api',
       nodeEnv: 'development',
       port: 3000,
       logLevel: 'info',
@@ -23,6 +24,30 @@ describe('loadAppConfig', () => {
       databasePoolMax: 10,
     });
   });
+
+  it.each(['api', 'worker'] as const)('takes the process role %s from APP_ROLE', (role) => {
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU', APP_ROLE: role }).appRole).toBe(role);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['unknown', 'scheduler'],
+    ['in upper case', 'WORKER'],
+  ])(
+    'refuses an APP_ROLE that is %s: there is no default (platform persistence 8, PA7)',
+    (_case, value) => {
+      expect.assertions(2);
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', APP_ROLE: value });
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidConfigError);
+        expect((error as InvalidConfigError).issues).toEqual([
+          'APP_ROLE: APP_ROLE is required and must be "api" or "worker"; there is no default',
+        ]);
+      }
+    },
+  );
 
   it('takes the pool maximum from DATABASE_POOL_MAX (platform persistence design 3.1 row 8)', () => {
     expect(loadAppConfig({ HOSTED_MARKETS: 'AU', DATABASE_POOL_MAX: '25' }).databasePoolMax).toBe(

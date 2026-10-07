@@ -1,8 +1,8 @@
 # platform/persistence
 
-Implements platform persistence design sections 3, 4, 9 and 12.3
-(docs/design/domain/platform-persistence-and-events.md) and ADR-0025. This is identity
-slice 1a. The outbox writer and the relay come in slice 1b.
+Implements platform persistence design sections 3 to 9 and 12.3
+(docs/design/domain/platform-persistence-and-events.md) and ADR-0025: identity slices 1a
+(UnitOfWork, guard, model map) and 1b (outbox, relay, scheduler lock, `APP_ROLE`).
 
 ## What a module uses
 - `UNIT_OF_WORK` (`platform/unit-of-work/unit-of-work.ts`): `run(market, work, options)`.
@@ -61,3 +61,36 @@ change does not have them, and the API will not start on it until you run
 ## Logging
 `reduceDatabaseError` reduces a database error to `{name, prismaCode, sqlState, constraint}`.
 Rows, values and SQL are never logged.
+
+## Events (slice 1b; P 5 and 6)
+- Declare an event with `defineEvent` (kernel) in `modules/<m>/domain/events/`, re-export
+  it from `contracts/`, and register it in the module's Nest module:
+  `providers: [outboxWriterFor('<m>'), registerEvents('<m>', EVENTS)]`.
+  - Payload fields come from `eventField` only: `id`, `enumOf`, `boolean`, `integer`,
+    `instant`, `permissionKey`, `listOf`, `optional`. No kind takes free text.
+  - `permissionKey` values are refused until the permission registry exists (slice 8a).
+- A use case appends inside its read-write unit, after saving the aggregate:
+  `await outbox.append(context, aggregate.pendingEvents)` (token `OUTBOX_WRITER`).
+  - The writer stamps the event id, Market, tenant and correlation id.
+  - It refuses (and so rolls the unit back) when no unit is open, in a read-only unit, for
+    another Market, another module's type, a type not in the catalogue, a bad version, or a
+    payload that does not match its definition.
+- `outbox/` holds the writer, the relay and the in-process bus. It is the only folder that
+  may name an outbox model (`pnpm boundaries`).
+- The relay runs in the `worker` role only: per module outbox and hosted Market, it claims
+  50 rows with `FOR UPDATE SKIP LOCKED`, publishes them to the `EventBus`, marks them, and
+  commits. At least once, no order. Slice 1b has no subscriber; delivery comes in slice 3.
+- `apps/api/test/contracts/event-catalogue.snapshot.json` lists every event type and its
+  fields. A new type or a changed field list fails the contracts test until the snapshot
+  changes (a changed list means: publish a new version).
+
+## Scheduler and worker (slice 1b; P 7 and 8)
+- A job is a `JobDefinition` in `modules/<m>/presentation/jobs/`, registered with
+  `registerJobs('<m>', [job])`. It runs once per hosted Market with that Market's context
+  and a new correlation id; it must be safe to run twice and at once.
+- `AdvisoryJobLock` holds `pg_try_advisory_xact_lock` in its own transaction for the whole
+  run, with `SET LOCAL idle_in_transaction_session_timeout = 0` (the login role's 60 s limit
+  would end it otherwise).
+- `APP_ROLE` (`api` or `worker`) is required, with no default. `main.ts` reads it and calls
+  `startApi` or `startWorker`; both build the same module graph. The worker has no HTTP
+  listener; SIGTERM stops the relay and the scheduler (up to 10 s), then closes the graph.

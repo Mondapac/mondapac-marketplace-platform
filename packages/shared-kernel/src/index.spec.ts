@@ -2,10 +2,16 @@ import * as kernel from './index';
 import * as testing from './testing';
 
 describe('the public surface of the kernel', () => {
-  it('exports exactly the slice 0 names from the main entry', () => {
+  it('exports exactly the slice 0 and slice 1b names from the main entry', () => {
     expect(Object.keys(kernel).sort()).toEqual([
+      'MAX_AGGREGATE_VERSION',
       'Temporal',
+      'checkAggregateVersion',
+      'defineEvent',
+      'describeEventDefinition',
+      'encodePayload',
       'err',
+      'eventField',
       'isMinted',
       'mintMarketContext',
       'ok',

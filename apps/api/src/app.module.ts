@@ -5,6 +5,7 @@ import { CORE_MODULES } from './modules';
 import { ClockModule } from './platform/clock/clock.module';
 import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
+import { EventsModule } from './platform/events/events.module';
 import { HealthModule } from './platform/health/health.module';
 import { ConflictFilter } from './platform/http/conflict-filter';
 import { IdsModule } from './platform/ids/ids.module';
@@ -13,6 +14,8 @@ import { MarketConfigModule } from './platform/market-config/market-config.modul
 import { MarketContextGuard } from './platform/market-context/market-context.guard';
 import { MarketContextModule } from './platform/market-context/market-context.module';
 import { PersistenceModule } from './platform/persistence/persistence.module';
+import { SchedulerModule } from './platform/scheduler/scheduler.module';
+import { WorkerModule } from './platform/worker/worker.module';
 
 /**
  * Every global guard of the application, in the order they run (platform-foundations 5.1).
@@ -31,7 +34,8 @@ export interface AppModuleOptions {
 
 /**
  * Composition root of the modular monolith (ADR-0008). Registers the platform
- * runtime and every bounded-context module.
+ * runtime and every bounded-context module. Both process roles build this same graph
+ * (platform persistence design 8): the same guards, event catalogue and job registry.
  */
 @Module({})
 export class AppModule {
@@ -46,6 +50,9 @@ export class AppModule {
         MarketConfigModule,
         MarketContextModule,
         PersistenceModule,
+        EventsModule,
+        SchedulerModule,
+        WorkerModule,
         HealthModule,
         ...CORE_MODULES,
       ],

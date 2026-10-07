@@ -47,3 +47,19 @@ export async function databaseIsolationAccepted(
   );
   return false;
 }
+
+/**
+ * Both start-up self-checks, as each role runs them before doing anything: the database role
+ * (10.8), then the default isolation (ADR-0025). False when either refuses; the reason is logged.
+ */
+export async function databaseAccepted(
+  probe: {
+    roleProblems(): Promise<readonly RoleProblem[]>;
+    defaultTransactionIsolation(): Promise<string>;
+  },
+  logger: LoggerService,
+): Promise<boolean> {
+  return (
+    (await databaseRoleAccepted(probe, logger)) && (await databaseIsolationAccepted(probe, logger))
+  );
+}

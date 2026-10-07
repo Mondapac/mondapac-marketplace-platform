@@ -25,7 +25,15 @@ const hostedMarkets = z
   .pipe(z.array(marketCode).min(1, 'HOSTED_MARKETS must list at least one market'))
   .refine((codes) => new Set(codes).size === codes.length, 'HOSTED_MARKETS has duplicates');
 
+/** The two process roles (platform persistence design 8; ADR-0006 decision 4, ADR-0008 decision 1). */
+export const APP_ROLES = ['api', 'worker'] as const;
+export type AppRole = (typeof APP_ROLES)[number];
+
 const envSchema = z.object({
+  // Required, no default (PA7): a worker that silently started as `api` would relay nothing.
+  APP_ROLE: z.enum(APP_ROLES, {
+    error: 'APP_ROLE is required and must be "api" or "worker"; there is no default',
+  }),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -43,6 +51,11 @@ const envSchema = z.object({
 export const MIGRATION_DATABASE_URL = 'MIGRATION_DATABASE_URL';
 
 export interface AppConfig {
+  /**
+   * `api` serves HTTP; `worker` runs the relay and the scheduler (platform persistence 8).
+   * Read by `main.ts` only (and `platform/worker/`, P 12.2 rule 3); a module never branches on it.
+   */
+  readonly appRole: AppRole;
   readonly nodeEnv: 'development' | 'test' | 'production';
   readonly port: number;
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
@@ -88,6 +101,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
   }
   if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
   return Object.freeze({
+    appRole: parsed.data.APP_ROLE,
     nodeEnv: parsed.data.NODE_ENV,
     port: parsed.data.PORT,
     logLevel: parsed.data.LOG_LEVEL,
