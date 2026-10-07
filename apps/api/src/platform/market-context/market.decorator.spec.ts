@@ -9,11 +9,8 @@ import {
 import { loadMarketConfigs } from '../market-config/market-config';
 import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from './market-context.factory';
-import {
-  attachMarketContext,
-  marketContextOf,
-  MissingMarketContextError,
-} from './market.decorator';
+import { attachMarketContext } from './attached-market-context';
+import { marketContextOf, MissingMarketContextError } from './market.decorator';
 import { PLATFORM_TENANT_ID } from './tenant';
 
 describe('the MarketContext of a request', () => {

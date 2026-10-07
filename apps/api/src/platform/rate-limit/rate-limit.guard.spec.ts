@@ -5,7 +5,7 @@ import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../test/support/test-config';
 import { loadMarketConfigs } from '../market-config/market-config';
 import { MarketRegistry } from '../market-config/market-registry';
-import { attachMarketContext } from '../market-context/market.decorator';
+import { attachMarketContext } from '../market-context/attached-market-context';
 import { RateLimitGuard } from './rate-limit.guard';
 
 class SomeController {
