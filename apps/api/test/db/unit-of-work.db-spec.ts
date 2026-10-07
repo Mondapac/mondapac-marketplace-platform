@@ -32,6 +32,7 @@ import {
   createPersistence,
   gate,
   marketOf,
+  modelMap,
   otherMarketOf,
   randomUUID,
   recordDriverStatements,
@@ -510,7 +511,13 @@ describe('UnitOfWork (database integration)', () => {
 
           expect(Object.isFrozen(view)).toBe(true);
           expect(Object.getPrototypeOf(view)).toBeNull();
-          expect(Reflect.ownKeys(view)).toEqual(['auditLog']);
+          // One delegate per model of the map: the outbox models too, which only
+          // platform/persistence/outbox/ may name (pnpm boundaries).
+          expect([...Reflect.ownKeys(view)].sort()).toEqual(
+            Object.values(modelMap.models)
+              .map((entry) => entry.clientProperty)
+              .sort(),
+          );
           for (const member of CLIENT_MEMBERS) expect(member in view).toBe(false);
 
           const delegate = Reflect.get(view, 'auditLog') as Record<string, unknown>;

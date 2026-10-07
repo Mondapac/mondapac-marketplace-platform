@@ -20,9 +20,12 @@ export interface ExpectedPrivileges {
 
 export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
   schemas: {
+    identity: ['USAGE'],
     platform: ['USAGE'],
   },
   tables: {
+    // docs/design/data/identity.md section 7 (PM2): the envelope is immutable to the application.
+    'identity.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
