@@ -117,16 +117,10 @@ jobs:
           echo "API did not become ready" >&2
           exit 1
 
-      # PK2: the worker role opens no port and stops cleanly on SIGTERM. The worker entry
-      # (platform/worker/) arrives with identity slice 1b; before it exists main.ts ignores
-      # APP_ROLE and would serve HTTP, so the step is skipped until the directory exists. Once
-      # it does, a missing or failing worker fails the job. Remove the guard after the merge.
+      # PK2: the worker role opens no port and exits 0 on SIGTERM (main.ts handles the signal
+      # itself; exit 143 would mean no handler ran).
       - name: Boot the worker role, check it opens no port and stops on SIGTERM
         run: |
-          if [ ! -d apps/api/src/platform/worker ]; then
-            echo "No platform/worker yet (identity slice 1b): worker boot skipped"
-            exit 0
-          fi
           APP_ROLE=worker PORT=3100 node apps/api/dist/main &
           worker=$!
           sleep 8
