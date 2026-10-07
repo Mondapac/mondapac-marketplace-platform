@@ -5,7 +5,7 @@ import { Logger } from 'nestjs-pino';
 import { parseCorrelationId } from '@mondapac/shared-kernel';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/configure-app';
+import { APP_OPTIONS, configureApp } from '../src/configure-app';
 import { buildOpenApiDocument } from '../src/openapi';
 import {
   MarketNotHostedError,
@@ -50,7 +50,7 @@ describe('API skeleton (integration)', () => {
         }),
       ],
     }).compile();
-    app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true });
+    app = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
     app.useLogger(app.get(Logger));
     configureApp(app);
     await app.init();
