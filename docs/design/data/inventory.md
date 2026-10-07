@@ -1,7 +1,7 @@
 # Physical data model — `inventory` schema (G2)
 
 **Author:** Mojtaba (database-designer) — 2026-10-07
-**Status:** Draft for G2 review (Ali (cto), Mohammad (software-architect), Hassan (security-tester)). Each migration still needs Mojtaba's sign-off. Open points: section 11.
+**Status:** Draft for G2 review (Ali (cto), Mohammad (software-architect), Hassan (security-tester)). Each migration still needs Mojtaba's sign-off. Revised 2026-10-07 for catalog's request V-1 (the re-key of D 3.6; Ali's ruling), with catalog's names from its G2 draft (branch `docs/catalog-g2-design`, 25cbf3a), which accepts D 13; approval recorded only after catalog G2. Open points: section 11.
 **Ground truth:** `docs/design/domain/inventory.md` (Mohammad's G2 domain draft, cited as **D**, for example "D 4.2"), read in its revision with Ali's and Hassan's reviews applied (D 15); `docs/modules/inventory/brief.md` (G1 approved 2026-10-07; cited as "brief s5", "Q9", "AC 3"); `docs/design/domain/platform-persistence-and-events.md` (**P**); `docs/design/data/platform.md` section 10 (grants, cited as "platform.md 10.2"); `docs/design/data/identity.md` (**ID**; its conventions C1 to C11 are reused here by number); ADR-0001, 0003, 0004 (decisions 3 to 6), 0005, 0006, 0008 (decision 6), 0009, 0010 (decision 2), 0020 (decision 6), 0023, 0024 (decision 5).
 **Prisma models:** `prisma/schema/inventory.prisma` (new). Nothing here exists yet. This document is the specification the migrations are written from. After G2 it moves to `docs/design/data/inventory.md`, the path D 1 names.
 
@@ -69,7 +69,7 @@ ID's conventions apply unchanged unless a row below says otherwise.
 | C8 | Deletes: `ON DELETE CASCADE` only for `reservation_lines` from `reservations`, because a line has no meaning without its reservation. Every other foreign key is `RESTRICT`. The application never deletes a seller inventory, a source, a stock item or a ledger row (no source delete in the brief, D 12.3; stock items are retired, D 3.3) |
 | C9 | As ID C9: Prisma model names start with `Inventory` (`InventoryStockItem`, `InventoryOutbox`); tables are mapped with `@@map` |
 | C10 | **Raw SQL: one named statement, `inventory.lock-stock-items`** (4.3), through the platform raw helper (P 4.2; D 4.4, Hassan's conditions). Everything else is Prisma, with `marketId` at the top level of every `where` (P 4.1), the held sum included (`groupBy`, Hassan's decision, D 14.2) |
-| C11 | **Isolation.** READ COMMITTED, except for the two use cases of 4.5, which run `serializable`: `inventory.set-stock-level` and the retirement handler `inventory.retire-sell-units` (finding F2) |
+| C11 | **Isolation.** READ COMMITTED, except for the use cases of 4.5, which run `serializable`: `inventory.set-stock-level`, the retirement handler `inventory.retire-sell-units` (finding F2) and the re-key handler `inventory.rekey-moved-offer` (D 3.6; it also creates first stock items and tombstones) |
 
 ## 3. Tables
 
@@ -80,7 +80,7 @@ Columns of C1 are left out. "Personal" marks personal data (ADR-0018 decision 6)
 Both are the identity tables with the module name changed (ID 3.1 and 3.8; P 11 PM1 and PM4): the `type` CHECK is `^inventory\.[a-z0-9-]+\.v[1-9][0-9]*$` and the `handler` CHECK is `^inventory\.[a-z0-9-]+$`. The columns, the unique key `(market_id, aggregate_id, aggregate_version)`, the claim index `(market_id, event_id) WHERE published_at IS NULL` and the inbox primary key `(event_id, handler)` are the same. The catalog test "every outbox has the same columns" (P 13) covers them.
 
 - The only aggregate type in the outbox is `availability-signal` (D 7.3). `aggregate_version` is `availability_signals.version`, so the unique key also proves "one event per version step".
-- The inbox gets no other index and no `DELETE` grant until the platform prune job exists (ID 3.8). It receives one row per consumed event: seller approvals plus catalog Offer and Variant events (9).
+- The inbox gets no other index and no `DELETE` grant until the platform prune job exists (ID 3.8). It receives one row per consumed event: seller approvals plus catalog Offer and Variant events, `catalog.offer-moved.v1` included (9).
 
 ### 3.2 `inventory.seller_inventories` (slice 1)
 
@@ -145,14 +145,14 @@ Both are the identity tables with the module name changed (ID 3.1 and 3.8; P 11 
 | `stock_item_id`, `offer_id`, `variant_id` | `uuid` | no | FK `(market_id, stock_item_id, offer_id, variant_id)` → `stock_items`, RESTRICT. The copies of the Offer and Variant ids are immutable and proved equal (C3), so a ledger can be read by Offer without a join |
 | `delta` | `integer` | no | Signed. CHECK `<> 0`: setting the same level is not a change and writes no row (D 2.1, "every `onHand` change"; 11.2 M4) |
 | `resulting_on_hand` | `integer` | no | CHECK `>= 0 AND resulting_on_hand - delta >= 0`, so the previous level was not negative either |
-| `reason` | `text` | no | CHECK `seller-set`, `shipment`, `restock` (D 2.1, a closed list; a new reason needs a migration) |
+| `reason` | `text` | no | CHECK `seller-set`, `shipment`, `restock`, `re-key` (D 2.1, D 3.6; a closed list; a new reason needs a migration). `re-key` is in migration 2 from the start, so V-1 adds no migration |
 | `actor_kind` | `text` | no | CHECK `account`, `module` |
 | `actor_account_id` | `uuid` | yes | Identifier (C4). CHECK `(actor_kind = 'account') = (actor_account_id IS NOT NULL)` |
 | `actor_module` | `text` | yes | CHECK `^[a-z][a-z0-9-]*$` and `(actor_kind = 'module') = (actor_module IS NOT NULL)` |
 | `correlation_id` | `text` | no | CHECK as `audit_log_correlation_id_check` |
 | `occurred_at` | `timestamptz(6)` | no | |
 
-- CHECK `reason <> 'shipment' OR actor_kind = 'module'`: a shipment always comes from `ordering` (D 3.2).
+- CHECK `reason NOT IN ('shipment', 're-key') OR actor_kind = 'module'`: a shipment always comes from `ordering` (D 3.2); a re-key always comes from the handler of D 3.6 (`actor_module = 'inventory'`, correlation id from the event envelope).
 - **Acting-as** (D 2.1, Hassan finding 8, "once SEL-08 exists"): the nullable column `acting_as_account_id uuid`, with CHECK `acting_as_account_id IS NULL OR actor_kind = 'account'`, arrives in SEL-08's slice. Adding a nullable column with no default is a catalog-only change in PostgreSQL 11 and later, so the append-only table is not rewritten.
 - **Append-only by privilege**: `SELECT, INSERT` only (7; measured: `UPDATE` and `DELETE` fail with `42501`). It is never pruned (brief s5). There is no trigger and no hash chain: the tamper-evident record of an admin action is the audit row, and admins cannot write stock at launch (brief s2).
 - One index, `(market_id, stock_item_id, occurred_at, id)`: the ledger of one stock item, for its seller and for the admin, newest first, with keyset pagination on `(occurred_at, id)`.
@@ -166,7 +166,7 @@ Both are the identity tables with the module name changed (ID 3.1 and 3.8; P 11 
 | `holder_account_id` | `uuid` | no | **Identifier** of the customer (C4). Brief s9: no other customer data is stored here |
 | `checkout_ref` | `uuid` | no | `ordering`'s id for the checkout (C4). `commitReservation` must match it (D 3.1, Hassan finding 5); the comparison is on the row read by primary key, so it needs no index. The type is an assumption until the ordering G2 (11.3) |
 | `status` | `text` | no | CHECK `active`, `released`, `expired`, `committed` (D 3.1). FULFILLED and CANCELLED are derived from the lines and are not stored (D 3.2) |
-| `release_cause` | `text` | yes | CHECK `superseded`, `cancelled`, `payment-failed`, `customer` (D 2.1, Ali). See the CHECK below |
+| `release_cause` | `text` | yes | CHECK `superseded`, `cancelled`, `payment-failed`, `customer`, `offer-moved` (D 2.1, D 3.6; Ali). See the CHECK below. `offer-moved` is in migration 3 from the start |
 | `expires_at` | `timestamptz(6)` | no | `created_at` + the Market's duration (Q2), computed by the domain. Never changes. CHECK `> created_at` |
 | `created_at` | `timestamptz(6)` | no | |
 | `status_changed_at` | `timestamptz(6)` | no | The anchor of the prune (9). CHECK `>= created_at`. Not in D 2.1: 11.2 M2 |
@@ -241,7 +241,7 @@ Both are the identity tables with the module name changed (ID 3.1 and 3.8; P 11 
 | `scope` | `text` | no | CHECK `offer`, `variant` |
 | `offer_id` | `uuid` | no | C4 |
 | `variant_id` | `uuid` | yes | CHECK `(scope = 'variant') = (variant_id IS NOT NULL)` |
-| `source_aggregate_version` | `integer` | no | The `aggregate_version` of the catalog event that retired it: the comparison for "Variant-added clears a tombstone only if newer" (D 3.5). CHECK `>= 1`. A placeholder until the catalog G2 names the aggregate (D 13) |
+| `source_aggregate_version` | `integer` | no | The `aggregate_version` of the catalog event that retired it (`offer-deleted`, `variant-removed`, or `offer-moved` for the re-key of D 3.6): the comparison for "Variant-added clears a tombstone only if newer" (D 3.5). CHECK `>= 1`. Kept for audit only: catalog never reuses a removed Variant id (CAT M-1), so the comparison never clears a tombstone |
 | `retired_at` | `timestamptz(6)` | no | |
 
 - Partial unique `(market_id, offer_id) WHERE scope = 'offer'` and partial unique `(market_id, offer_id, variant_id) WHERE scope = 'variant'`. There are two because Prisma cannot declare `NULLS NOT DISTINCT` (ID 8.4). Both also serve the tombstone check of the stock upsert.
@@ -270,7 +270,7 @@ The raw literal-state statement would be 30 times smaller on disk. I do **not** 
 
 | # | Rule |
 |---|---|
-| L1 | **The lock set is every stock item of every affected sell unit**, in every unit that changes a sell unit's sellable quantity: reserve, the commit re-take, commit, release, line cancel, shipment, stock write, retirement and the expiry job. That means all sources, retired items included. D 4.2 already does this for `reserve`; F1 extends it to every writer. The reason: a sell unit's signal is the maximum over all its sources (Q10). If two units each lock only "their" source, each computes that maximum from the other's old value, and the signal can stay wrong with no conflict raised. Example: two sources drop to 0 at the same moment, and the signal stays `in-stock`. Retired items are included because their committed lines still change (D 3.3); `reserve` may leave them out, as D 4.2 says, without harm |
+| L1 | **The lock set is every stock item of every affected sell unit**, in every unit that changes a sell unit's sellable quantity: reserve, the commit re-take, commit, release, line cancel, shipment, stock write, retirement, the re-key (D 3.6) and the expiry job. That means all sources, retired items included. D 4.2 already does this for `reserve`; F1 extends it to every writer. The reason: a sell unit's signal is the maximum over all its sources (Q10). If two units each lock only "their" source, each computes that maximum from the other's old value, and the signal can stay wrong with no conflict raised. Example: two sources drop to 0 at the same moment, and the signal stays `in-stock`. Retired items are included because their committed lines still change (D 3.3); `reserve` may leave them out, as D 4.2 says, without harm |
 | L2 | Inside the unit, the use case first reads the ids of those stock items (Prisma, on the prefix of the inventory key), then passes them all to **one** `inventory.lock-stock-items` call, ordered by `id`. Measured: `LockRows` sits above the `Sort` by `id`, so rows are locked in ascending order. With 16 clients locking random, crossing sets of 3 out of 6 sell units: **0 deadlocks in 800 transactions**. The same work locked sell unit by sell unit in request order: **641 deadlocks in 800** |
 | L3 | A stock item created and committed between that read and the lock is not locked by this unit. Allocation therefore uses **only the locked items**: there is no oversell, because a new item has no holds. After the lock, every read that decides something is a **new statement**: the held sums, the sell unit's stock items when the signal is recomputed (so the new item is counted there), the signal row and the reservation. Under READ COMMITTED each new statement sees everything that committed before the lock was granted (D 4.2 step 4) |
 | L4 | After the stock locks, the unit may write `reservations`, `reservation_lines`, `availability_signals`, `stock_items`, `stock_movements` and `outbox` in any order. No unit takes a row lock on those tables before its stock locks, the expiry job included (4.4) |
@@ -322,6 +322,7 @@ Every unit is READ COMMITTED unless C11 says otherwise. "Lock" means: read the i
 | `cancelCommittedLine`, `recordShipment` | Find the line by `(market_id, order_line_id)` → lock its sell unit → line `cancelled`; or line `fulfilled` plus `on_hand − quantity`, version + 1, and a `shipment` movement → signals |
 | `set-stock-level` (**serializable**, C11) | Catalog ownership checks before the unit (D 4.5) → lock the sell unit → read the tombstones of 3.10 and refuse if retired → insert the item, or check its `version` → sum → refuse below `reserved + pending` (AC 9) → update `on_hand` and version → movement → signals |
 | `retire-sell-units` (handler, **serializable**) | `runOnce` → lock the Offer's (or Variant's) items → insert the tombstone → `updateMany retired_at` where the Offer (and Variant) match and `retired_at IS NULL`, as a new statement (L3) → signals |
+| `rekey-moved-offer` (handler, **serializable**; D 3.6) | `runOnce`; the mapping is validated before the unit → read the ids of every stock item of (Offer, `from`) and (Offer, `to`) for every pair (`variant_id IN (…)` on the prefix of the inventory key) → read the live holds on the source items through the held index (`state = 'active'`, `expires_at > $now`) and the stock items of every line of those reservations → **one** lock call with the union, ascending `id`, at most 1,000 (else the handler fails; D 14.1 V-1a) → read the Offer tombstone and the variant tombstones of the `to` variants (new statement, L3) → `updateMany` those reservations to `released`, cause `offer-moved`, guarded on `status = 'active'`, and their lines → sum over the locked items (pending per item) → per pair and source: insert the (Offer, `to`, source) item with `on_hand = moved`, or, if it exists, `on_hand + moved`, version + 1 (never overwritten) → two `re-key` movements per moved item (none when `moved = 0`) → `updateMany retired_at` on the source items where `retired_at IS NULL` → insert the variant tombstones of the `from` variants (`createMany` with `skipDuplicates`, the partial unique key of 3.10) → signals of old and new sell units → outbox. A target insert that meets `P2002` (a racing stock write) or a `40001` is retried by the UnitOfWork, and the retry finds the row and adds to it |
 | `expire-reservations` (job) | Per batch: candidates without a lock (9) → their lines' sell units → lock → `updateMany` the headers to `status = 'expired'` where `id IN (…) AND status = 'active' AND expires_at <= $now`, version + 1 → lines `active` → `expired` for the headers that changed → signals → outbox |
 | Availability read (`getAvailability`, read-only unit, at most 200 keys, D 7.1) | The stock items of the sell units → sum → thresholds → status. No lock |
 
@@ -446,7 +447,7 @@ Assumptions (not measured; one Market, Greater Brisbane, first year): 10² to 10
 | `stock_movements` | One per stock write and per shipment: 10³ to 10⁴ per day, so at most about 4 × 10⁶ per year | **Never deleted** (brief s5). At 5 × 10⁷ rows, monthly range partitions on `occurred_at` for maintenance; partitions are never dropped. Archiving would be an owner decision |
 | `reservations` and `reservation_lines` | Up to 10⁴ headers and 3 × 10⁴ lines per day | Released and expired rows are pruned after 30 days (proposed; 11.2 M7), which keeps the held index near 30 days of lines plus the committed ones (about 3 × 10⁶ lines at the upper bound, about 200 MB). Committed rows (pending, then fulfilled or cancelled) are kept; their retention is open (11.3 R1) and drives the index's long-term size |
 | `outbox` | One event per change of status or `onlyLeft` (every reservation on a LOW item changes `onlyLeft`) plus `low-stock-reached`: up to 10⁴ per day | Reaches the one-million-row trigger of P 6.5 within months at the upper bound, so inventory is likely the module that forces the platform's outbox prune |
-| `inbox` | Seller approvals plus catalog Offer and Variant events: 10⁴ to 10⁵ | The platform prune job |
+| `inbox` | Seller approvals plus catalog Offer and Variant events (and `offer-moved`, one per CAT-45 match): 10⁴ to 10⁵ | The platform prune job |
 | `seller_inventories`, `sources`, `offer_purchase_limits`, `retirements` | 10² to 10⁵ | None needed |
 
 | Job (per hosted Market; `market_id` in every statement) | Batch statement |
@@ -478,6 +479,7 @@ Measured on 2026-10-07 on PostgreSQL 16.15, in two throwaway databases with thro
 | The held-sum `groupBy` as generated by Prisma: `EXPLAIN` shows the held index with `state` in the index condition, under `force_generic_plan` | 4 |
 | **Concurrency** (brief s8, D 12.1): N parallel `reserve` calls through the real use case on a sell unit with sellable 1 give exactly one success, for AU and ZZ at the same time; multi-seller carts crossing in opposite request order give no deadlock and no `TransactionConflictError`; a stock write racing a reservation of the same sell unit never goes below `reserved + pending` | 4 |
 | The sixteen cases above plus the release-cause CHECK as constraint tests; the privilege map of platform.md 10.5 with the column lists of section 7; the partial-index catalog test with the list of 8.4; "every outbox has the same columns" | Per migration |
+| The re-key of D 3.6, AU and ZZ: moved quantity is `on_hand − pending`, the ledger keeps the old rows and gains two `re-key` movements, the source items are retired with tombstones, a pre-existing target row is added to, a live hold is released with `offer-moved`, a replay with a new event id moves nothing, a stock write racing the move ends in `40001` and its retry is refused by the tombstone, and an over-cap lock set fails without a change | 2, before catalog slice 16; the reservation step (live hold released) with 4 |
 | The header and line state mirror after every transition; the retirement race of 4.5 with both units at once; expiry at read time with the job off (AC 4); a repeated approval event → one Default (AC 10) | 1, 2, 4, 5 |
 
 ## 11. Review record and open points
@@ -516,6 +518,7 @@ Measured on 2026-10-07 on PostgreSQL 16.15, in two throwaway databases with thro
 | R4 | Pooler mode and statement caching (generic plans): the design is now safe under both, but Kazem should know that the held-sum shape is part of the contract. `lock_timeout` and `statement_timeout` on the application role (ID K1) | Kazem |
 | S1 | Spike: Prisma 7 composite relations of three and four columns, one of them with a `timestamptz` (8.4); the SQL Prisma generates for the `groupBy` of 4.3; the `40001` rate of serializable stock writes | Hossein, with me. **Open: Hossein's Prisma spike** |
 | C1 | The Market configuration keys of D 8 in `config/markets/*.json` (a shared-file PR) | Hossein (backend track), announced on the board |
+| V-1 | Physical impact of the re-key (D 3.6): CHECK values `re-key` (3.5) and `offer-moved` (3.6) written into migrations 2 and 3 from the start, so **no new migration**; no new index (the inventory-key prefix, the held index and the tombstone keys serve every read); no new grant (the column lists of 7 already cover it); no key column is updated, so the `ON UPDATE RESTRICT` foreign keys of C3 and the append-only ledger are untouched. The only open point is the lock-set cap (D 14.1 V-1a) | Ali (cap, with catalog G2); Hassan (security review of the handler, D 14.1 V-1b) |
 
 ## 12. Follow-up changes
 
