@@ -320,7 +320,23 @@ ALTER TABLE "sellers"."tax_registration_periods"
 `store_profiles` (slice 1): `seller_id` PK and unique `(market_id, seller_id)` (S3), FK to
 `seller_files`, RESTRICT; `published_revision_id uuid` nullable, column and FK added in slice 12:
 `(market_id, seller_id, published_revision_id)` → `store_profile_revisions (market_id, seller_id,
-id)`, RESTRICT; `version`; `created_at`. Created empty by the handler of D 7.5.
+id)`, RESTRICT; `version`; `created_at`. Created empty by the handler of D 7.5. **Slice 20 (D 18; sign-off
+recorded in D 18's review table):** `minimum_order_amount bigint` (minor units, ADR-0007) and
+`minimum_order_currency char(3)` (ISO 4217), both nullable, clear (public commercial value, not
+personal); `minimum_order_changed_at timestamptz(6)` and `minimum_order_changed_by_account_id uuid`
+(no FK, ADR-0004 decision 3), nullable until the first change. Null = no minimum (D 18 decision 2).
+Constraints: `store_profiles_minimum_order_pair_check` `(minimum_order_amount IS NULL) =
+(minimum_order_currency IS NULL)`; `store_profiles_minimum_order_amount_check`
+`minimum_order_amount > 0` (null passes); `store_profiles_minimum_order_currency_check`
+`minimum_order_currency ~ '^[A-Z]{3}$'`; `store_profiles_minimum_order_changed_check`
+`(minimum_order_changed_at IS NULL) = (minimum_order_changed_by_account_id IS NULL)`, and a set
+amount implies a set change (`minimum_order_amount IS NULL OR minimum_order_changed_at IS NOT
+NULL`). Equality with the Market's currency is not a constraint: the Market's currency is
+`MarketConfig`, not a row in this schema (6); the use case checks it (D 18 decision 3) and the
+facade re-checks before returning `minimumOrder`, so a row left from a Market currency change reads
+as a fault, never as a minimum in the wrong currency. The upper bound (D 18 decision 3) is a per-Market
+configuration value checked in the use case, not a CHECK. Read with the row of `sellerSummaries` (A1); no
+new index.
 
 `store_profile_revisions` (slice 12): `id` PK; `seller_id`, FK `(market_id, seller_id)` →
 `store_profiles`, RESTRICT; `revision_no integer` CHECK `>= 1`, unique `(market_id, seller_id,
@@ -551,7 +567,7 @@ Markets, and each one has a named query.
 
 | # | Query (D section) | Statement shape | Index |
 |---|---|---|---|
-| A1 | `sellerSummaries`, `sellingEligibility` for a set of ids (7.1, 7.2) | `seller_files WHERE market_id = $1 AND seller_id IN (…)`, then the approved revisions by primary key | Unique `(market_id, seller_id)`; `business_file_revisions_pkey` |
+| A1 | `sellerSummaries`, `sellingEligibility` for a set of ids (7.1, 7.2) | `seller_files WHERE market_id = $1 AND seller_id IN (…)`, then the approved revisions by primary key; since slice 20, `sellerSummaries` also reads `store_profiles` (the four `minimum_order_*` columns only) with the same predicate, one statement per batch, no N+1 | Unique `(market_id, seller_id)` on both tables; `business_file_revisions_pkey` |
 | A2 | Seller's own file, review page, facades by one id | By `(market_id, seller_id)` | As A1 |
 | A3 | Reviewer queue: pending onboarding revisions, oldest first; the identity-change queue the same with the other kind (7.8, "Awaiting review") | `business_file_revisions WHERE market_id = $1 AND status = 'pending' AND kind = $2 ORDER BY created_at, id` with keyset `(created_at, id) > ($c, $i)`, 26 rows | Partial `(market_id, kind, created_at, id) WHERE status = 'pending'` (slice 5) |
 | A4 | "Incomplete" tab: never approved, no pending revision, most recently changed first (7.8) | `seller_files WHERE market_id = $1 AND approved_revision_id IS NULL AND draft_complete = false` and no pending revision (a Prisma `none` relation filter, served by the pending partial unique), keyset on `(last_changed_at, seller_id)` | Partial `(market_id, last_changed_at, seller_id) WHERE approved_revision_id IS NULL` (slice 6); also the purge (10.1) |
@@ -643,6 +659,7 @@ Aligned with D 11.1 as revised at G2 (slices P1 and P2, 7a-read, 7a-decide, 7a-a
 | 13 | 12 | `sellers_store_profile_revisions` | `store_profile_revisions`; `store_profiles.published_revision_id` and its FK |
 | 14 | 14 | `sellers_allowed_product_types` | `seller_allowed_product_types` |
 | 15 | 18 | `sellers_purge_grants` | The `DELETE` grants of section 8 marked "18"; nothing else |
+| 16 | 20 (D 18; for Mojtaba's sign-off) | `sellers_minimum_order` | The four nullable columns of 3.8 (`ADD COLUMN`, no default, no rewrite) and their five CHECKs, each `ADD CONSTRAINT … NOT VALID` then `VALIDATE` (9.3), under `lock_timeout`; no backfill (null = none); no grant change (`UPDATE` already granted). Down: drop the five CHECKs, then the four columns |
 | — | Conditional | `sellers_area_open_notice` | The two columns of 3.1, only if the owner or Hadi accepts the "area open" mail (D 10), in the slice that builds it |
 
 No migration: P1, 4b, 7a-auto, 7b, 8, 9, 13, 15, 16, 17 and 19.
