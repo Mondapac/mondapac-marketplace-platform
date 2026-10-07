@@ -670,7 +670,18 @@
 
 | عنصر صفحه | کامپوننت موجود در Figma | تغییر لازم | نوع نسخه |
 |---|---|---|---|
-| (در G2 پر می‌شود) | | | |
+| Photo grid with main mark and keyboard reorder | `UploadItem`, `UploadArea` | `UploadItem`: Layout Tile, Main, Taken down, Description slot, Move earlier and later | MINOR 1.7.0 |
+| Size rows (variants) | `Select`, `Input`, `Badge` | New `VariantRow` (Row, Card; Live, New, Error) | MINOR 1.7.0 |
+| Claim-word error, changes-needed reason, autosave bar | `Field`, `ReasonQuote`, `FormActionBar` | `Field` Quote and Action link; `ReasonQuote` Field and Next step; `FormActionBar` Autosave | MINOR 1.7.0 |
+| Product, revision, Offer, badge and proposal states | `StatusBadge` | 23 value rows (words in ux.md 3.3); "Live" never "Approved" | MINOR 1.7.0 |
+| Category and product pickers | `PickerList` (certification 1.6.0) | Path labels, Single | MINOR 1.7.0 |
+| Category tree | None | New `CategoryTree`, `TreeNode` (keyboard tree) | MINOR 1.8.0 |
+| Revision compare and photo compare | `DataRow` Compare | State Sensitive; thumbnail strip with Added, Removed, Moved | MINOR 1.8.0 |
+| AI listing suggestion (AIS-03) | `ExtractedField` Mode Suggestion | Context (Listing) state words | MINOR 1.7.0 |
+| Reviewer checks, settings rows, dialogs, badges, filter | `CheckboxRow`, `SettingRow`, `Dialog`, `CertChip`, `CertDetail`, `FilterGroup` | None (frames only) | n/a |
+| Icons | `icons.json` | Add `image`, `layers`, `folder`, `archive`, `git-merge`, `link`, `tag`, `trash-2` | MINOR 1.7.0 |
+| Templates | Seller and Admin templates of 1.0 to 1.6.0 | New: `Seller · Products`, `Seller · Product form`, `Admin · Products`, `Admin · Revision review`, `Admin · Category tree`; reused: `Shared · Settings`, `Seller · Setup step` | 1.7.0 and 1.8.0 |
+| Mobile navigation (D16) | None | Not part of this module | Open |
 
 **صفحه‌ها و حالت‌هایی که این ماژول لازم دارد (برای برنامه‌ریزی طراحان).** منبع: `docs/design/figma/README.md` و `docs/design/research/direction-c.md`؛ **خودِ فایل Figma برای این برگه باز نشده است.** قالب‌های موجود: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board). هیچ قالبی برای فهرست محصول، فرم محصول یا بازبینی محصول نیست. کامپوننت‌های مرتبطِ موجود: `ProductThumb`، `StatusBadge`، `CertChip`، `Badge`، `TableCell`، `Tab`، `FilterChip`، `Pagination`، `BulkActionBar`، `CardHeader`، `Input`، `Checkbox`، `Switch`، `SegmentedControl`، `Button`، `InfoBanner`، `Tooltip`، `TimelineItem`، `ChecklistItem`، `QueueCard`. انتخاب کامپوننت برای هر عنصر پیشنهاد برای G2 است (مرور G1، Mohammad).
 
@@ -692,8 +703,8 @@
 - **نشان:** طبق `direction-c.md` سه نشان جدا دیده می‌شود (گواهی فروشنده، گواهی تولیدکننده، خوداظهاری). واژهٔ «verified» در آن سند پیش از تأیید حقوقی به کار نرود (برگهٔ certification). در پنل‌ها هم نشان فقط از دادهٔ ساختاریافته ساخته می‌شود و هیچ‌جا بدون مبنا نیست.
 - **ایمیل‌ها:** محصول تأیید شد؛ Changes needed با فیلد، دلیل و گام بعدی؛ کالای شما به کالای مشترک وصل شد (CAT-45؛ مرور G1، Jafar)؛ برچسب معلق شد و Offer از فروش بیرون رفت (با علت)؛ برچسب برگشت؛ این نوع کالا دیگر برای شما مجاز نیست؛ محصول شما به پلتفرم ارتقا یافت (CAT-44)؛ متن منتشرشده‌تان حالا واژهٔ ادعا دارد (سؤال ۶)؛ پیشنهاد دسته پذیرفته یا رد شد؛ Import تمام شد. فهرست دقیق، متن و کانال (تا ماژول `notifications`) در G2.
 
-- قالب‌های تازه در Figma: (در G2)
-- نسخهٔ سیستم طراحی بعد از این ماژول: (در G2)
+- قالب‌های تازه در Figma: پنج قالب (جدول بالا؛ جزئیات در `docs/modules/catalog/ux.md` بخش ۴)
+- نسخهٔ سیستم طراحی بعد از این ماژول: 1.8.0 (پس از 1.6.0 ماژول certification؛ شمارهٔ نسخه ممکن است با ماژول‌های فاز ۴ جابه‌جا شود)
 
 ---
 
