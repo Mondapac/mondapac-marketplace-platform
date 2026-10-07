@@ -1,9 +1,9 @@
 # Pricing — G2 domain design
 
 **Author:** Mohammad (software-architect) — 2026-10-07
-**Status:** Draft for G2 review; Ali (cto) approve with changes and Hassan (security-tester) accept with changes applied 2026-10-07; approval recorded only after catalog G2 (Ali A4). Mojtaba's data design (docs/design/data/pricing.md) reviewed by Hassan 2026-10-07 (approved with conditions; H-D1 and M7 decided, 15, 17). Still to review: Reza and Jafar for the screens of brief s12. Open: section 15; review record: section 17.
+**Status:** Draft for G2 review; Ali (cto) approve with changes and Hassan (security-tester) accept with changes applied 2026-10-07; approval recorded only after catalog G2 (Ali A4). Mojtaba's data design (docs/design/data/pricing.md) reviewed by Hassan 2026-10-07 (approved with conditions; H-D1 and M7 decided, 15, 17). Revised 2026-10-07 for catalog's G2 draft (branch `docs/catalog-g2-design`, 25cbf3a), which accepts CF1–CF4 with refinements, applied here as Ali's ruling P-1 (6.1, 6.4, 17). Still to review: Reza and Jafar for the screens of brief s12. Open: section 15; review record: section 17.
 **Ground truth:** `docs/modules/pricing/brief.md` (G1 approved by the owner 2026-10-07; sections, owner answers and acceptance criteria are cited as "brief s5", "Q8", "AC 10"; the role-review table as "G1 review"); ADR-0024 (pricing is its own module; mandatory security review of price and Cost writes; `catalog` imports neither `pricing` nor `inventory`); ADR-0001, 0002, 0003, 0004, 0005, 0006, 0007 (decisions 1, 2, 4, 8, 10), 0008, 0009 (decision 2, V2), 0013, 0018, 0019, 0020, 0022, 0023; `docs/features/02-catalog-inventory.md` (CAT-16, CAT-17), `docs/features/10-versioning.md` (VER-03, VER-06, VER-09); `docs/modules/catalog/brief.md` (s3, s5, s11 "inputs for the `pricing` brief"); `docs/modules/cart/brief.md` (the first consumer); `docs/modules/inventory/brief.md` (sibling patterns); `docs/design/domain/identity.md` ("ID 5.2"), `platform-foundations.md` ("PF") and `platform-persistence-and-events.md` ("PE"); `apps/api/src/platform/market-config/market-config.ts` (today's `MarketConfig`).
-**Not yet available:** the `catalog` G2 design (`docs/modules/README.md`: catalog G2 not approved). Section 6.1 lists what this design needs from it (CF1 to CF4); see A4.
+**Not yet approved:** the `catalog` G2 design (`docs/modules/README.md`: catalog G2 not approved). Its draft (branch `docs/catalog-g2-design`, 25cbf3a; cited "catalog G2 9.1") accepts CF1 to CF4 of 6.1 with the refinements of P-1; this G2's approval is still recorded only after catalog G2 is approved (A4).
 
 ## 1. Scope
 
@@ -40,7 +40,7 @@ CostSeries   (one per marketId + offerId + variantId; separate root, separate re
 
 | Aggregate | Holds (logical; physical design is Mojtaba's) | Invariants it owns |
 |---|---|---|
-| `PriceSeries` | `offerId`, `variantId`, `productId` and `sellerId` as copies taken from the `catalog` facade when the series is created (2.3), `retiredAt` and a retirement cause, the regular and special records, and boundary markers | One series per (Market, Offer, Variant). At most one `PENDING_REVIEW` regular record, and at most one `PENDING_REVIEW` special record (brief s5). Regular effective periods do not overlap, and their starts are strictly increasing (brief s5). No record is ever written for a retired series, and no series is created for an Offer or a (Product, Variant) that has a retirement tombstone (6.4; Hassan finding 3; keyed by Product because Variant-removed carries no Offer id, M5). Record content never changes; only status fields change, each written once (brief s5: "never deleted or rewritten") |
+| `PriceSeries` | `offerId`, `variantId`, `productId` and `sellerId` as copies taken from the `catalog` facade when the series is created (2.3), `retiredAt` and a retirement cause, the regular and special records, and boundary markers | One series per (Market, Offer, Variant). At most one `PENDING_REVIEW` regular record, and at most one `PENDING_REVIEW` special record (brief s5). Regular effective periods do not overlap, and their starts are strictly increasing (brief s5). No record is ever written for a retired series, and no series is created for an Offer or a (Product, Variant) that has a retirement tombstone (6.4; Hassan finding 3; keyed by Product because Variant-removed carries no Offer id, M5). The Variant id and the `productId` copy change only through the CF4 re-key, together and on a series that is not retired (6.4). Record content never changes; only status fields change, each written once (brief s5: "never deleted or rewritten") |
 | `RegularPriceRecord` (entity) | `amount: Money`; `taxInclusive` (the Market's `pricesIncludeTax` at write time, 4.5); `status`; `submittedAt`; `submittedBy` (account id, plus the acting-as account when SEL-08 exists, 5.4); `effectiveFrom`, set at acceptance or approval; the end of its effective period, closed when the next record becomes effective; for a measured record, the anchor record id and anchor amount it was measured against, and the direction (`up` or `down`) if it was held; `decidedAt`, `decidedBy`, reason code and optional note on a decision; `supersededBy` (a record id) or a system cause | Amount greater than 0 and no more than the Market maximum, in the Market currency (4.4). `effectiveFrom` is never earlier than the acceptance or approval instant, and is never set by input (Q5: "from now" only). The first record of a series is never held (brief s4 flow 2) |
 | `SpecialPriceRecord` (entity) | `amount: Money`; `startsAt` and `endsAt` as UTC instants, plus the seller's IANA `zone` stored on the record (brief s5; ADR-0005; a later change of the seller's zone does not move an existing window, Ali); the regular record id and amount, and the anchor record id and amount (2.4), it was measured against (Hassan finding 1); `status`; submitted, decided and withdrawn instants and actors; reason code | Amount strictly below the regular price in effect at submission, and again at approval (4.3). `endsAt > startsAt`, and `startsAt` is not before the submission instant (4.3). One special at a time (Q3, owner 2026-10-07; a new one replaces the current one): at most one `PENDING_REVIEW` special per series, and the effective periods of specials, `[effective start, min(endsAt, withdrawnAt))`, never overlap (M4) |
 | `CostSeries` | `offerId`, `variantId`, `sellerId`, the cost records; each record stores `submittedBy` and, once SEL-08 exists, the acting-as account (Hassan finding 4, H2) | Amount `Money` in the Market currency and greater than 0, or a "cleared" record (Cost is optional, Q7). It never creates a hold (brief s5). Append-only |
@@ -64,7 +64,7 @@ CostSeries   (one per marketId + offerId + variantId; separate root, separate re
 | Regular and special prices in **one** root (`PriceSeries`) | "Special < regular" and "the hold is measured against the last approved price" span both streams. One root gives one version, so writes in one series are serialised by optimistic concurrency (brief s5) | A seller editing the regular price and the special price of one Variant at the same time gets `conflict.stale` on the second write |
 | Cost in its **own** root, repository and type | Brief s5: a separate stream and a DTO the read facades cannot serialise. A separate root means no `PriceSeries` load can bring Cost into memory | Two writes when the form saves price and Cost together; they are independent, and either may fail alone (the form shows which) |
 | `ACCEPTED` and `APPROVED` as separate statuses | The brief says "approved/accepted" (s5): one passed without review, the other passed review. The approval instant resets the jump anchor (4.2); an acceptance does not | One more status |
-| `sellerId` and `productId` copied onto the series | `sellerId` lets the series be scoped to a seller (seller lists, queue display). `productId` lets a "Variant removed" event (keyed by product) find its series. **Ownership is never decided from the copy:** every write asks the `catalog` facade (5.2) | A copy that could go stale if `catalog` ever moves an Offer between sellers. No such flow exists; CAT-45 keeps the seller (14) |
+| `sellerId` and `productId` copied onto the series | `sellerId` lets the series be scoped to a seller (seller lists, queue display). `productId` lets a "Variant removed" event (keyed by product) find its series. **Ownership is never decided from the copy:** every write asks the `catalog` facade (5.2) | A copy that could go stale if `catalog` ever moves an Offer between sellers. No such flow exists: an Offer never changes seller (catalog G2 2.1); CAT-45 changes only the product, and the CF4 re-key updates the `productId` copy with the Variant id (6.4) |
 | Status changes as write-once fields, not new rows | ADR-0009 V2 plus brief s5 ("append-only"): content is immutable; a decision is recorded once. Same pattern as identity's `AccessDecision` | Mojtaba's grants must allow `UPDATE` on status columns only (PD3) |
 | No admin path that writes a price | Brief s2: the admin approves or rejects; only the seller sets prices | Support cannot fix a typo for a seller; the seller resubmits |
 | No "remove the regular price" use case | Brief s4 has no such flow; taking an Offer off sale belongs to `catalog` (ADR-0024 decision 5). Supersede pending changes by resubmitting the current price (3.1) | — |
@@ -166,20 +166,20 @@ Until the ADR "Market settings editable by an admin" exists, the values are conf
 There is no admin key for Cost: no admin path reads Cost (brief s5: not in the queue, not in history).
 
 ### 5.2 Use cases
-"Ownership" runs in `handle`, before the unit opens: one batched call to the `catalog` facade (CF1) for the Offer. The Offer must exist and not be deleted, its `sellerId` must equal `ActorContext.sellerId`, its Market must equal the `MarketContext`, and the Variant must belong to the Offer's product (brief s4 flow 2; G1 review, Hassan). Any failure returns `pricing.offer-not-found`, byte-identical for "not yours", "other Market" and "absent" (ID 5.2). Every `pricing.offer-not-found` on a write is recorded, with its cause kept inside the audit row and never in the answer, so every cause takes the same path and the timing does not reveal that an Offer exists (Hassan finding 2, H3); at most 1 audit row per (actor, Offer) per minute (H3) and, because the Offer id comes from the caller, at most 20 such rows per actor per minute across all Offers, after which one `pricing.offer-write-refused.suppressed` summary row is written for that minute and nothing more (Hassan, pricing-data review, M7). The counters live in PostgreSQL (pricing-data 3.8) and are updated in the same unit as the audit row, so a counter never advances without its row; Redis is not used (Hassan: PostgreSQL keeps the counter atomic with the audit row and fails closed). The pricing write routes also sit behind the platform's general per-account rate limit (ID 6.8); slice 1 proves it with a test (Hassan). Inside the unit, a series is not created when a retirement tombstone exists for the Offer or the (Product, Variant) (6.4; M5); the answer is `pricing.offer-not-found` (Hassan finding 3).
+"Ownership" runs in `handle`, before the unit opens: one batched call to the `catalog` facade `offerSellUnits` (CF1) for the Offer. The Offer must be present (catalog answers only for the context's Market, so another Market's Offer is absent) with a `status` other than `deleted` (a deleted Offer is present with `status: deleted` and no sell units), its `sellerId` must equal `ActorContext.sellerId`, and the Variant must be one of its `sellUnits`: the product's non-retired Variants, `proposed` included, so a seller can price before the first publish (brief s4 flow 2; G1 review, Hassan; P-1). Any failure returns `pricing.offer-not-found`, byte-identical for "not yours", "other Market", "absent", "deleted" and "Variant not priceable" (ID 5.2). The answer is advisory (ADR-0025 decision 1: read outside the write unit, so it can be stale by commit): a deletion or removal that lands after it is closed by the tombstones, the retirement version bump and the serializable units (6.4, 9), never by the read. Every `pricing.offer-not-found` on a write is recorded, with its cause kept inside the audit row and never in the answer, so every cause takes the same path and the timing does not reveal that an Offer exists (Hassan finding 2, H3); at most 1 audit row per (actor, Offer) per minute (H3) and, because the Offer id comes from the caller, at most 20 such rows per actor per minute across all Offers, after which one `pricing.offer-write-refused.suppressed` summary row is written for that minute and nothing more (Hassan, pricing-data review, M7). The counters live in PostgreSQL (pricing-data 3.8) and are updated in the same unit as the audit row, so a counter never advances without its row; Redis is not used (Hassan: PostgreSQL keeps the counter atomic with the audit row and fails closed). The pricing write routes also sit behind the platform's general per-account rate limit (ID 6.8); slice 1 proves it with a test (Hassan). Inside the unit, a series is not created when a retirement tombstone exists for the Offer or the (Product, Variant) (6.4; M5); the answer is `pricing.offer-not-found` (Hassan finding 3).
 
 | Use case | Access rule | When the seller is not approved | Ownership |
 |---|---|---|---|
 | `pricing.set-regular-price` | `permissions: [pricing.price.edit]` | deny | As above |
 | `pricing.set-special-price`, `pricing.withdraw-special-price` | `permissions: [pricing.price.edit]` | deny | As above |
-| `pricing.view-offer-pricing` (seller panel) | `permissions: [pricing.price.view]` | deny | As above; batch for the Offer list |
+| `pricing.view-offer-pricing` (seller panel) | `permissions: [pricing.price.view]` | deny | As above; batch for the Offer list, at most 200 Offer ids per `offerSellUnits` call (a larger call is refused whole, so a page is never larger) |
 | `pricing.set-cost` | `allOf: [pricing.price.edit, pricing.cost.view]` (decided by Hassan, H1: nobody overwrites a Cost they cannot see; no new key) | deny | As above |
 | `pricing.view-cost` | `permissions: [pricing.cost.view]` | deny | As above |
 | `pricing.list-price-holds`, `pricing.view-price-hold` | `permissions: [pricing.price-hold.view]` | — | Market from context; queue oldest first |
 | `pricing.approve-price-hold`, `pricing.reject-price-hold` | `permissions: [pricing.price-hold.decide]` | — | The record id from input is looked up in the context's Market only |
 | `pricing.read-effective-prices` | `anonymous` (cart and storefront; customers and guests) | — | None for the in-process facade: unknown or foreign keys answer "no valid price" (accepted by Hassan, H5). Any HTTP route that takes raw ids must filter through catalog's published state, so draft prices are not readable through a public route (H5) |
 | `pricing.read-effective-prices-for-system` | `system` (ordering saga, event handlers, jobs) | — | Market from the envelope |
-| `pricing.retire-series-for-removed-offer`, `pricing.retire-series-for-removed-variant` | `system` (event) | — | Market from the envelope |
+| `pricing.retire-series-for-removed-offer`, `pricing.retire-series-for-removed-variant`, `pricing.rekey-series-for-moved-offer` | `system` (event) | — | Market from the envelope |
 | `pricing.publish-special-price-boundaries` | `system` (job) | — | Per hosted Market |
 
 "Deny when not approved" follows the catalog brief: every seller action comes after approval. No pricing use case joins the allow-list of ID 5.2.
@@ -208,10 +208,11 @@ Until the SEL-08 mini-review decides whether acting-as may touch prices, price, 
 ### 6.1 What `pricing` needs from others
 | # | From | Need |
 |---|---|---|
-| CF1 | `catalog` facade (input to the catalog G2) | Batch `offersForPricing(ctx, offerIds)` → per Offer: `sellerId`, lifecycle (deleted or not), `productId`, and the set of Variant ids that may be priced. Which Variants count (published only, or also a pending revision) is for catalog G2 to define. Unknown and foreign ids are absent |
-| CF2 | `catalog` events | Offer deleted (`offerId`); Variant removed (`productId`, `variantId`). Ids only. Offer created is not needed: creating an Offer creates no price (brief s4 flow 1); this is a brief s6 change-log row |
-| CF3 | `catalog` | The `Offer` and `Variant` id types exported from `contracts/` |
-| CF4 | `catalog` (P1, with CAT-45) | An event carrying the Variant mapping when an Offer moves to a platform product, so `pricing` can re-key its series (14) |
+| CF1 | `catalog` facade (catalog G2 9.1, slice 7; accepted, P-1) | `offerSellUnits(ctx, offerIds)`, 1 to 200 ids (a larger call is refused whole), `anonymous` and `system` pair, in-process → per Offer: `sellerId`, `productId`, `status` (`draft`, `pending-first-publish`, `changes-needed`, `published`, `deleted`), `listed`, and `sellUnits`: the product's non-retired Variants (`proposed` and `published`), the Variants that may be priced. Unknown and other-Market ids are absent; a `deleted` Offer is present with `status: deleted` and no sell units (5.2). Advisory (ADR-0025 decision 1); pricing never reads `listed` for a write |
+| CF2 | `catalog` events (catalog G2 9.4; accepted) | `catalog.offer-deleted.v1` (`offerId`, `productId`, `sellerId`; pricing uses `offerId`); `catalog.variant-removed.v1` (`productId`, `variantId`), sent once per Variant in the unit that retires it, including the working-copy save that deletes a `proposed` Variant, and never followed by an add of the same id. Ids only. Offer created is not needed: creating an Offer creates no price (brief s4 flow 1); this is a brief s6 change-log row |
+| CF3 | `catalog` | The `Offer`, `Variant` and `Product` id types exported from `contracts/` (branded `Id<…>`; accepted) |
+| CF4 | `catalog` (P1, with CAT-45; catalog G2 9.4; accepted) | `catalog.offer-moved.v1` (`offerId`, `fromProductId`, `toProductId`, `variantMapping: {from, to}[]`, ids only), so `pricing` re-keys its series (6.4). No `variant-removed` is sent for the matched duplicate's Variants (catalog G2 9.7) |
+| — | `catalog` facade `offerListings` (catalog G2 9.1, slice 11) | The published-state filter of H5 for any HTTP route that takes raw ids (5.2, 6.2); ≤ 200 keys, advisory |
 | — | `sellers` facade | The seller's operating IANA zone for special windows (A1, approved by Ali): `sellerSummaries(ctx, sellerIds)` → `operatingTimezone` with a `provisional` flag, `anonymous` for request actors and `system` for handlers, ≤ 100 ids (sellers G2, merged in PR #46, 7.1). Missing or provisional zone: the write is refused with `pricing.seller-zone-unavailable`, never the Market timezone (4.3) |
 | — | `identity` | The gate and `ActorContext` only |
 | — | `platform/` | `MarketRegistry`, `MarketContextFactory`, `Clock`, `IdGenerator`, UnitOfWork, outbox, inbox (`runOnce`), scheduler, audit writer, permission registry |
@@ -234,13 +235,14 @@ type PriceAnswer =
 - One method, two use cases behind it (`anonymous` and `system`), chosen by actor kind, as identity's `sellerAccessOf` does (ID 8.1).
 - `ordering` freezes `effectiveRecordId`, the amount and the flag (ADR-0007 decision 8, VER-06); `pricing` stores nothing about orders.
 - The caller supplies no instant: "now" is `pricing`'s `Clock`.
-- The batch limit is 200 keys; above it the answer is `pricing.batch.too-large` (inventory's facade uses the same limit, Ali). An HTTP route over this facade that takes raw ids filters through catalog's published state (H5).
+- The batch limit is 200 keys; above it the whole call is refused with `pricing.batch.too-large`, never answered in part (inventory's and catalog's facades use the same limit, Ali). An HTTP route over this facade that takes raw ids filters through catalog's `offerListings` (H5).
+- The answer is advisory (ADR-0025 decision 1: a read-only unit opens no transaction): it is true at `evaluatedAt`, and `ordering` re-checks and freezes the record id at purchase (VER-06). The same holds for every batch facade read pricing makes.
 - No Cost type is reachable from this file (6.5).
 
 ### 6.3 Events published (ids, enums and instants only; PE 5.3)
 | Type | Aggregate | Payload |
 |---|---|---|
-| `pricing.effective-price-changed.v1` | price-series | `offerId`, `variantId`, `cause` (`regular-accepted`, `hold-approved`, `special-started`, `special-ended`, `special-withdrawn`, `series-retired`), `effectiveFrom` |
+| `pricing.effective-price-changed.v1` | price-series | `offerId`, `variantId`, `cause` (`regular-accepted`, `hold-approved`, `special-started`, `special-ended`, `special-withdrawn`, `series-retired`, `series-rekeyed`), `effectiveFrom`. For `series-rekeyed` the ids are the new key; the old key now answers "no valid price" |
 | `pricing.price-hold-opened.v1` | price-series | `offerId`, `variantId`, `recordId`, `kind` (`regular`, `special`), `direction` (`up`, `down`) |
 | `pricing.price-hold-decided.v1` | price-series | `offerId`, `variantId`, `recordId`, `kind`, `outcome` (`approved`, `rejected`, `superseded`) |
 
@@ -251,10 +253,13 @@ type PriceAnswer =
 ### 6.4 Events consumed
 | Event | Handler | Effect |
 |---|---|---|
-| Offer deleted (CF2) | `pricing.retire-series-for-removed-offer` | Every series of the Offer is retired; pending records → `SUPERSEDED` (cause `offer-removed`); active special → `WITHDRAWN`; events. The Cost series is retired too |
-| Variant removed (CF2) | `pricing.retire-series-for-removed-variant` | The same, for series with that (`productId`, `variantId`) |
+| `catalog.offer-deleted.v1` (CF2) | `pricing.retire-series-for-removed-offer` | Every series of the Offer is retired; pending records → `SUPERSEDED` (cause `offer-removed`); active special → `WITHDRAWN`; events. The Cost series is retired too |
+| `catalog.variant-removed.v1` (CF2) | `pricing.retire-series-for-removed-variant` | The same, for series with that (`productId`, `variantId`). It arrives at a draft save too, so a `proposed` Variant that was priced and then deleted has its series retired (P-1) |
+| `catalog.offer-moved.v1` (CF4; P1, before catalog's CAT-45 slice) | `pricing.rekey-series-for-moved-offer` | For each price and Cost series of the Offer with `productId = fromProductId` that is not retired: when its Variant is the `from` of exactly one pair, that pair's `to` is named once, no series exists for (Offer, `to`) and (`toProductId`, `to`) has no tombstone, the series keeps its id, records, pending holds and specials, and its `variantId` becomes `to` and `productId` becomes `toProductId`; event `effective-price-changed` (`series-rekeyed`); audit. Otherwise (an unmapped Variant, a `to` named twice, a target series already present, a tombstoned target) the series is retired as for a removed Variant (cause `variant-removed`): fail closed, the seller prices the new Variant again. A tombstone (`fromProductId`, `from`) is recorded for every old key of the Offer, so no series is created under an old key afterwards |
 
-Both use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4), so a repeat is a no-op. The Market comes from the envelope. Retiring an already retired series is a no-op. Both handlers also record a retirement tombstone (Offer, or Product + Variant: Variant-removed carries no Offer id; M5), even when no series exists yet, so a price written after the event never creates a new, never-retired series (Hassan finding 3; the pattern of inventory's 3.5). Both handlers ship in slice 1, because slice 1 creates series (M5). A tombstone is permanent: whether a removed Variant id can ever return is for catalog G2 (M5 (c), 15).
+**No `variant-removed` for a moved Offer (catalog G2 9.7), and why a stray one is harmless.** Catalog sends none for the matched duplicate's Variants; pricing re-keys on `offer-moved` only. If one arrives anyway: after the re-key, the Variant-removed handler looks up series by (`productId`, `variantId`) = the old pair, which no re-keyed series carries any more (it carries `toProductId`), so it only records a tombstone that already exists. Before the re-key (out-of-order delivery), it retires the old series; the re-key handler leaves a retired series as it is, so no price is carried to the new key and the seller prices again. Neither order serves a wrong price, and a stray event can never retire a re-keyed series.
+
+All three use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4), so a repeat is a no-op. The Market comes from the envelope. Retiring an already retired series is a no-op. The two retirement handlers also record a retirement tombstone (Offer, or Product + Variant: Variant-removed carries no Offer id; M5), even when no series exists yet, so a price written after the event never creates a new, never-retired series (Hassan finding 3; the pattern of inventory's 3.5). Both retirement handlers ship in slice 1, because slice 1 creates series (M5); the re-key handler ships before catalog's CAT-45 slice (14). A tombstone is permanent: a removed Variant id never returns (catalog G2 M-1, answering M5 (c)).
 
 ### 6.5 Keeping Cost inside (brief s5, ADR-0024 decision 2)
 | Layer | Mechanism |
@@ -281,6 +286,7 @@ Both use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4), so a
 | PD5 | Queue read: pending records by Market, oldest first |
 | PD6 | Boundary markers: unique (special record, boundary) |
 | PD7 | Retirement tombstones (Offer, or Product + Variant; M5), read in the unit that creates a series (6.4; Hassan finding 3) |
+| PD8 | The CF4 re-key (6.4): `variantId` and the `productId` copy of a price or Cost series change together, only while it is not retired; the series id, Offer, seller, currency and every record stay; one series per (Market, Offer, Variant) still holds after the change |
 
 ## 8. Audit (brief s9; IMP-10)
 The audit writer runs in the caller's unit (PE 3.3). It needs its own design and build before slice 1 (13).
@@ -291,7 +297,8 @@ The audit writer runs in the caller's unit (PE 3.3). It needs its own design and
 | `pricing.price-hold.approved`, `.rejected` | record | Reason code; the optional note stays on the record |
 | `pricing.special-price.accepted`, `.held`, `.withdrawn` | record | Amount, window instants and zone |
 | `pricing.cost.set`, `.cleared` | cost record | **No amount** (H2); the actor is on the cost record itself (Hassan finding 4) |
-| `pricing.offer-write-refused` | offer id | The cause (`absent`, `not-yours`, `other-market`) inside the row only; every `offer-not-found` on a write; at most 1 row per (actor, Offer) per minute (H3, Hassan finding 2) and at most 20 per actor per minute (M7) |
+| `pricing.offer-write-refused` | offer id | The cause (`absent`, `not-yours`, `other-market`, `deleted`, `variant-not-priceable`) inside the row only; every `offer-not-found` on a write; at most 1 row per (actor, Offer) per minute (H3, Hassan finding 2) and at most 20 per actor per minute (M7) |
+| `pricing.series.rekeyed` | series | Old and new (`productId`, `variantId`); no amount (system actor, 6.4) |
 | `pricing.offer-write-refused.suppressed` | actor | One summary row per actor per minute once the per-actor cap is reached: the count of refusals not recorded, no Offer ids (M7) |
 
 Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transitions (6.4) record the system actor.
@@ -301,7 +308,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - **Same value:** setting a regular price equal to the current effective one creates no record. It supersedes a pending one if present (3.1).
 - **Strictly increasing starts:** `effectiveFrom = max(now, previous + 1 ms)`, which holds even when API nodes' clocks differ slightly.
 - **Approve or reject:** names the record id. If the record is no longer pending, the answer is `pricing.hold.not-pending`.
-- **Serializable units (M3):** the unit that creates a series and the two retirement handlers (6.4) run `serializable`, which closes the write skew between a first price and a retirement.
+- **Serializable units (M3):** the unit that creates a series, the two retirement handlers and the re-key handler (6.4) run `serializable`, which closes the write skew between a first price and a retirement or a re-key.
 - **Consumed events:** inbox `runOnce` (6.4).
 - **Boundary job:** markers make each (record, boundary) publish once (11).
 
@@ -317,7 +324,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | Effective from approval; reject leaves the previous price | `PriceSeries.approveHold` / `rejectHold` | AC 10 |
 | Special < regular; window in the seller's zone; special discount hold | `PriceSeries.proposeSpecial` and `SpecialWindow`; re-checked in `approveHold`; read-time guard in the resolver | AC 13–15 |
 | Every write path goes through the use cases | Repositories are importable only by pricing use cases (ID 5.2 boundary rule 9); a future Import calls the same use cases (ADR-0024 decision 2) | Boundary fixtures |
-| Ownership, Variant, Market | Application layer via CF1 (5.2); never from input or the stored copy | AC 7 |
+| Ownership, Variant, Market | Application layer via `offerSellUnits` (CF1, 5.2), advisory, backed by tombstones and serializable units; never from input or the stored copy | AC 7 |
 | Cost separate, never leaves | 6.5 | AC 6, 8 |
 | Append-only | Aggregate (no content setters), repository (no update of content), grants (PD3) | AC 9 |
 | `catalog` never imports `pricing` | Named boundary rule (ADR-0024 decision 5, catalog's slice 1) | Boundary fixtures |
@@ -338,7 +345,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
   - the audit writer and seal design (before slice 1; identity slice 6);
   - event delivery and inbox (built with identity slice 3);
   - scheduler (slice 5);
-  - `catalog` facade CF1 and events CF2 (catalog G2 and slices);
+  - `catalog` facade `offerSellUnits` (CF1, catalog slice 7) and events CF2 (catalog G2 and slices); `catalog.offer-moved.v1` (CF4) before catalog's CAT-45 slice;
   - sellers: `sellerSummaries` with the time zone (sellers slices 1 and 2; accepted at sellers G2, PR #46) (slice 5);
   - platform `MarketConfig`: `pricesIncludeTax` (and inventory's `maxLineQuantity`), in a small shared-file PR announced on the board first (slice 1; A2);
   - identity's permission registry and default-role seed change (slices 1, 3, 4).
@@ -346,7 +353,8 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - **Tests:**
   - every domain test runs against AU and the second Market `test/fixtures/markets/ZZ.json` (JPY, minor-unit exponent 0, `pricesIncludeTax = false`, different threshold and maximum; Ali);
   - the special-price hold against the anchor (alternating regular and special cuts within W are held; Hassan finding 1);
-  - a series is not created after a retirement tombstone (Hassan finding 3); the decider is never the submitter (H4); acting-as writes and Cost reads are refused (Hassan finding 6);
+  - a series is not created after a retirement tombstone (Hassan finding 3); a deleted Offer (present with `status: deleted`) and a Variant outside `sellUnits` answer `pricing.offer-not-found`; a `proposed` Variant can be priced, and its series is retired by a draft-save `variant-removed`; an `offerSellUnits` call never exceeds 200 ids;
+  - the re-key (P1): mapped series keep their records under the new key; unmapped, colliding or tombstoned targets are retired; a `variant-removed` for the old pair, delivered before or after `offer-moved`, never retires a re-keyed series; old keys answer "no valid price"; the decider is never the submitter (H4); acting-as writes and Cost reads are refused (Hassan finding 6);
   - the Cost log-redaction test and validation `details` without values (Hassan finding 5);
   - the ADR-0005 zone fixtures and DST days for windows;
   - a contracts snapshot of events and the Cost type test; the snapshot test is **mandatory**, as it is the only check of the outbox "no amount" rule (Hassan, pricing-data review);
@@ -364,7 +372,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | CAT-17 customer-group and tiered prices | P2 |
 | Non-fixed `PricingStrategy` (the interface then moves to `contracts/`, A3), sale by actual weight, future-dated regular price | Out of scope (Q3, Q4, Q5) |
 | Import of prices (OFR-10..12) | Later; must call the same use cases |
-| Re-keying series on CAT-45 Variant mapping | P1 with CAT-45 (CF4) |
+| Re-keying series on CAT-45 Variant mapping (`catalog.offer-moved.v1`, designed in 6.4) | P1, merged before catalog's CAT-45 slice (CF4) |
 | INV-06 bulk price edit; promotions and coupons | P2 |
 | Vertical override of `PricingPolicy` | When `catalog` exposes a vertical |
 | Notifications of hold outcomes | Phase 6, from the events of 6.3 |
@@ -377,8 +385,9 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - J1. The closed list of rejection reason codes and their wording for the seller (Q4).
 
 **Catalog G2 (condition from Ali, A4)**
-- CF1 to CF4 (6.1) must be accepted there; this G2's approval is recorded only after that. If catalog G2 changes any of them, a mini-review follows.
-- M5 (c). Can a removed Variant id ever come back? This design assumes not (the (Product, Variant) tombstone is permanent). If catalog G2 says yes, pricing adds a Variant-added rule like inventory's 3.5 through a mini-review.
+- CF1 to CF4 (6.1) are accepted by catalog's G2 draft (25cbf3a) with the refinements of P-1, applied here; this G2's approval is still recorded only after catalog G2 is approved (A4). If catalog G2 changes any of them again, a mini-review follows.
+- M5 (c). Answered by the draft: a removed Variant id never comes back (catalog G2 M-1); the (Product, Variant) tombstone stays permanent.
+- C1 (Ali, with catalog). Is `variantMapping` one-to-one and complete for the Offer's non-retired Variants? This design does not need it to be: a Variant without exactly one target is retired, fail closed (6.4); if the answer is yes, that branch is only a backstop.
 
 **Still open in Mojtaba's data design (pricing-data 11.2)**
 - Mojtaba: fold M7's per-actor counter into pricing-data 3.8, 7 and 8.1 (physical shape is his).
@@ -396,13 +405,14 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | Q5 | Owner | Default roles as proposed in 5.3: Store Manager and Catalogue and Stock view and edit prices; Cost only with the Seller Owner; Catalogue Moderator views and decides holds (protected) and views history; Viewer gets the view keys |
 | M1–M3 | Mojtaba | pricing-data 11.1: a stored period end with column-level `UPDATE` grants; three statements and two partial live indexes for the batch read (6.2); two insert-only tombstone tables, with the creating unit and both handlers `serializable` (9) |
 | M4 | Mohammad | (a) PD2 is "one pending special plus no overlap among specials in effect", not "one non-final special" (2.1, 7). (b) A `WITHDRAWN` special is in effect until `withdrawnAt` (3.2, 4.1, 11). (c) Job horizon H = 7 days with a daily alert for older unmarked boundaries (11) |
-| M5 | Mohammad | (a) The Variant tombstone is keyed by (Product, Variant) (2.1, 5.2, 6.4, 7). (b) Both retirement handlers ship in slice 1 (6.4). (c) stays with catalog G2 (above) |
+| M5 | Mohammad | (a) The Variant tombstone is keyed by (Product, Variant) (2.1, 5.2, 6.4, 7). (b) Both retirement handlers ship in slice 1 (6.4). (c) answered by catalog's G2 draft: a removed Variant id never returns (M-1) |
 | M6 | Mohammad | Accepted as proposed: `supersede_cause` (`replaced`, `cancelled`, `offer-removed`, `variant-removed`), `withdraw_cause` (`seller`, `replaced`, `offer-removed`, `variant-removed`), `retire_cause` (`offer-removed`, `variant-removed`); `decision_note` 1 to 1,000 characters (Jafar's wording of J1 does not change the limit); `currency` on the series tables (P2) |
 | A1 | Ali | Approved: the one-way dependency on `sellers` (ADR-0005 needs the seller's zone), and dropping the Offer-created subscription. Recorded as a brief change-log row through a mini-review signed by Hadi and Ali (16) |
 | A2 | Ali | Option A made a general rule (4.6): values read by more than one module in `MarketConfig`; values read by one module in its own per-Market policy, checked at boot, no default |
 | A3 | Ali | Declare `PricingStrategy` now in `pricing/domain`, one `fixed` implementation, no registry (2.2) |
 | A4 | Ali | Confirmed: both G2s reviewed now; approval recorded only after catalog G2 accepts CF1–CF4 |
 | A5 | Ali | No ADR just for this; queued for the next ADR that amends ADR-0019 (12) |
+| P-1 | Ali | Catalog's G2 draft accepted with refinements: the facade is `offerSellUnits`; priceable = non-retired Variants including `proposed`; a deleted Offer is present with `status: deleted` and no sell units, and a write to it answers `pricing.offer-not-found`; re-key on `catalog.offer-moved.v1`, with no `variant-removed` for a moved Offer's old Variants; `variant-removed` consumed at every retirement, a draft save included; facade reads advisory (ADR-0025 decision 1), ordering re-checks; batches ≤ 200, a larger call refused whole (5.2, 6.1 to 6.4, 9, 13, 14) |
 | H1 | Hassan | `allOf(price.edit, cost.view)` (5.2) |
 | H2 | Hassan | Accept, with `submittedBy` and the acting-as account on `CostRecord` (finding 4) |
 | H3 | Hassan | Accept, with finding 2 (every `offer-not-found` recorded, cause inside the row) and at most 1 audit row per (actor, Offer) per minute (5.2, 8) |
@@ -418,11 +428,12 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - Sellers G2: seller zone in the sellers facade (A1, 4.3). Done: sellers G2 merged 2026-10-07 (PR #46) with `operatingTimezone` in `sellerSummaries`.
 - `docs/features`: VER-03 wording (ADR-0024).
 - ADR-0019 decision 10: queued for the next ADR that amends ADR-0019; the owner accepts that ADR (A5; no ADR just for this).
-- Catalog G2: CF1 to CF4.
+- Catalog G2: CF1 to CF4. Accepted in its draft (25cbf3a) with P-1's refinements, applied here; recorded at catalog's G2 approval.
+- Pricing brief change log: s6 adds the consumed event `catalog.offer-moved.v1` (CF4 re-key), through a mini-review signed by Hadi and Ali (row added in this PR).
 
 ## 17. Review record
 
-Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-tester, accept with changes); both sets of changes are applied in sections 2 to 16. The approval is recorded only after catalog's G2 accepts CF1–CF4 (Ali A4). Mojtaba's data design answered M1–M3; his M4–M6 are answered in 15. The screens of brief s12 are still to come.
+Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-tester, accept with changes); both sets of changes are applied in sections 2 to 16. The approval is recorded only after catalog's G2 is approved (Ali A4); its draft (25cbf3a) accepts CF1–CF4 with refinements, applied 2026-10-07 under Ali's ruling P-1 (6.1, 6.4). Mojtaba's data design answered M1–M3; his M4–M6 are answered in 15. The screens of brief s12 are still to come.
 
 **Ali's decisions**
 - Required changes 1–5: `PricingStrategy` declared (2.2, 14); missing seller zone refused with `pricing.seller-zone-unavailable`, zone stored on the record (4.3, 5.5, 6.1, 13, 16); T2 replaced by the A2 rule (4.6, 16); second Market on `ZZ.json`, JPY, exponent 0, `pricesIncludeTax = false` (4.4, 13); A1 and A5 recorded (15, 16).
@@ -432,6 +443,7 @@ Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-test
 - A3: declare `PricingStrategy` now.
 - A4: approval waits for catalog G2.
 - A5: no ADR; queued for the next ADR-0019 amendment.
+- P-1 (2026-10-07, on catalog's G2 draft 25cbf3a): `offerSellUnits`; `proposed` Variants priceable; deleted Offer present and refused with `pricing.offer-not-found`; re-key on `offer-moved`; `variant-removed` at every retirement; advisory facade reads; batches ≤ 200, refused whole (5.2, 6.1 to 6.4, 8, 9, 13 to 16).
 - No ADR conflict, no new ADR, no import cycle.
 
 **Hassan's findings and answers**

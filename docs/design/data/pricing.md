@@ -1,7 +1,7 @@
 # Physical data model — `pricing` schema (G2)
 
 **Author:** Mojtaba (database-designer) — 2026-10-07
-**Status:** Draft for G2 review. Reviewers: Mohammad (software-architect), Ali (cto), Hassan (security-tester); Kazem (devops-engineer) for 8.3. Each migration still needs my sign-off. Open points: 11.2.
+**Status:** Draft for G2 review. Reviewers: Mohammad (software-architect), Ali (cto), Hassan (security-tester); Kazem (devops-engineer) for 8.3. Each migration still needs my sign-off. Revised 2026-10-07 for Ali's ruling P-1 on catalog's G2 draft (25cbf3a): the CF4 re-key (3.2, 3.6, 3.7, 5.1, 7, 8.1, 11.2 M8). Open points: 11.2.
 **Ground truth:** `docs/design/domain/pricing.md` (Mohammad, revised 2026-10-07 with Ali's and Hassan's reviews applied; cited as **D**, for example "D 3.1"; its inputs PD1 to PD7 and questions M1 to M3); `docs/modules/pricing/brief.md` (G1 approved by the owner 2026-10-07; "brief s5", "AC 12", "Q8"); `docs/design/domain/platform-persistence-and-events.md` (**P**; inputs PM1 to PM8); `docs/design/data/platform.md` section 10 (roles and grants, cited "platform.md 10"); `docs/design/data/identity.md` (conventions C1 to C11, cited "ID-data"); ADR-0004 (decisions 3 to 7), ADR-0006, ADR-0007 (decisions 1, 2, 4, 8, 10), ADR-0008, ADR-0009 (decision 2, V2), ADR-0020 (decision 6), ADR-0023 (decision 1), ADR-0024.
 **Prisma models:** `prisma/schema/pricing.prisma` (new). Nothing here exists yet. This document is the specification the migrations are written from.
 **Business rules:** none changed. Wherever the mapping needed a value or a reading that neither the brief nor D gives, it is an open question in 11.2, and the table shows my proposal.
@@ -15,7 +15,7 @@ ADR-0009 patterns: **V2** for the regular and special price records (effective p
 | Table | Holds (D 2.1, D 7) | ADR-0009 pattern | Created in (brief s11 slice) |
 |---|---|---|---|
 | `pricing.outbox` | The module's events (ADR-0006 decision 2; D 6.3) | None: a queue | 1 |
-| `pricing.inbox` | Handled deliveries of catalog's events (D 6.4) | None | 1 |
+| `pricing.inbox` | Handled deliveries of catalog's events (D 6.4: `offer-deleted`, `variant-removed`; `offer-moved` from P1) | None | 1 |
 | `pricing.price_series` | `PriceSeries` root: one per (Market, Offer, Variant) | None: live root, versioned | 1 |
 | `pricing.regular_price_records` | `RegularPriceRecord` | V2, plus write-once decision columns | 1 |
 | `pricing.retired_offers`, `pricing.retired_variants` | Retirement tombstones (PD7; Hassan finding 3) | V4 append-only | 1 |
@@ -68,7 +68,7 @@ ID-data C1 to C10 apply unchanged: `market_id varchar(8)` and `tenant_id text` w
 | P7 | **Statement order inside a unit: shrink, then grow.** The `EXCLUDE` constraints are immediate. A unit that changes effective periods first closes or shortens the existing period (`effective_to`, `withdrawn_at`) and only then inserts or approves the new record. The reverse order fails with `23P01` (measured). Before both, the unit raises the series `version` (P 10) as its **first** statement, so a concurrent writer of the same series waits on that row and then finds the version stale. It never reaches the constraints |
 | P8 | **Who-did-it columns** (`submitted_by_account_id`, `decided_by_account_id`, `withdrawn_by_account_id`) are plain ids without a foreign key (ID-data C4). The acting-as account (D 5.4) is **not** a column yet. Hassan's finding 6 refuses every price, special-price and Cost write in an acting-as session until the SEL-08 mini-review. That review adds `*_acting_as_account_id uuid NULL` columns: a metadata-only `ALTER TABLE … ADD COLUMN` that also extends the immutable list of the triggers (8.2) |
 | P9 | **Prisma model names** start with `Pricing` (`PricingPriceSeries`, `PricingRegularPriceRecord`, `PricingCostRecord`, …), tables mapped with `@@map` (ID-data C9) |
-| P10 | **Isolation.** READ COMMITTED, except two kinds of unit that run `serializable`: a unit that **creates** a `price_series` or `cost_series` row, and the two retirement handlers (5.1; measured). The batch read is a read-only unit (6.1) |
+| P10 | **Isolation.** READ COMMITTED, except two kinds of unit that run `serializable`: a unit that **creates** a `price_series` or `cost_series` row, and the two retirement handlers (5.1; measured); from P1 also the re-key handler (3.2.1; not measured). The batch read is a read-only unit with no transaction (ADR-0025 decision 1; 6.1) |
 
 ## 3. Tables
 
@@ -87,9 +87,9 @@ The two tables of ID-data 3.1 and 3.8, under this schema, with these changes onl
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
-| `offer_id` | `uuid` | no | catalog's Offer id (plain id, C4) |
-| `variant_id` | `uuid` | no | catalog's Variant id |
-| `product_id` | `uuid` | no | Copy from the catalog facade at creation (D 2.3); the Variant-removed handler finds series by it |
+| `offer_id` | `uuid` | no | catalog's Offer id (plain id, C4). Never changes |
+| `variant_id` | `uuid` | no | catalog's Variant id. Changes only in the CF4 re-key, with `product_id` (3.2.1) |
+| `product_id` | `uuid` | no | Copy from the catalog facade (`offerSellUnits`) at creation (D 2.3); the Variant-removed handler finds series by it. Changes only in the CF4 re-key, with `variant_id` (3.2.1) |
 | `seller_id` | `uuid` | no | Copy at creation (D 2.3). **Ownership is never decided from it** (D 5.2) |
 | `currency` | `char(3)` | no | P2. CHECK `^[A-Z]{3}$` |
 | `retired_at` | `timestamptz(6)` | yes | Set once by a retirement handler |
@@ -102,7 +102,15 @@ The two tables of ID-data 3.1 and 3.8, under this schema, with these changes onl
 - `price_series_market_id_product_id_variant_id_idx`: the Variant-removed handler (D 6.4).
 - The Offer-removed handler uses the leading `(market_id, offer_id)` of the unique key.
 - Not added: `(market_id, seller_id)`. No query lists series by seller. Seller screens start from catalog's Offer list and ask by key (6.1).
-- A retired series is never "un-retired" and never receives a record (D 2.1). Its row stays, so its key can never be priced again. See 11.2 M5 on whether a Variant id can return.
+- A retired series is never "un-retired", never receives a record and is never re-keyed (D 2.1, 6.4). Its row stays, so its key can never be priced again. A removed Variant id never returns (catalog G2 M-1; 11.2 M5 (c) answered).
+
+#### 3.2.1 The CF4 re-key (P1; D 6.4, PD8)
+
+`pricing.rekey-series-for-moved-offer` changes `variant_id` and `product_id` of an existing row in place. The series id stays, so every record, the anchor and basis foreign keys (P3), the markers and the ids `ordering` froze are untouched.
+- **Statement order (P7), in one `serializable` unit (5.1):** raise `version` of every non-retired series of the Offer (`price_series` and `cost_series`); read the target keys (Offer, `to`) and the `(toProductId, to)` tombstones; insert the `(fromProductId, from)` tombstones (`skipDuplicates`); retire the series that cannot move (as the Variant-removed handler, cause `variant-removed`); then one `UPDATE` per moving series setting `variant_id` and `product_id`.
+- **Unique key `(market_id, offer_id, variant_id)`:** the handler moves a series only when its `to` is named once and no row holds (Offer, `to`). Old and new Variant ids are distinct (ids are never reused), so no swap passes through a transient duplicate. A concurrent first price for (Offer, `to`) either commits first (the handler then sees the target and retires the old series) or meets the handler's read and fails with `40001` (PostgreSQL reports a unique conflict on a key the transaction read as absent as a serialization failure); the UnitOfWork retries. Not measured yet (11.2 M8).
+- **`EXCLUDE` constraints:** keyed by `(market_id, series_id)` and the periods; no record row is updated, so the re-key never touches them and cannot raise `23P01`.
+- **Guard:** trigger `price_series_guard_update` (`BEFORE UPDATE`, also on `cost_series`): `id`, `market_id`, `tenant_id`, `offer_id`, `seller_id`, `currency`, `created_at` never change; `variant_id` and `product_id` change only together, only while `OLD.retired_at IS NULL`, and only with `NEW.version > OLD.version`; `retired_at` and `retire_cause` are written once. `23001` otherwise, for the owner too (P5).
 
 ### 3.3 `pricing.regular_price_records` (slice 1; D 2.1, 3.1, 4.2)
 
@@ -236,13 +244,14 @@ The job writes the marker **first** in its unit, with `createMany({ skipDuplicat
 | `retired_variants` | PK `(market_id, product_id, variant_id)` | as above |
 
 - A handler records the tombstone even when no series exists (D 6.4) with `createMany({ skipDuplicates: true })`, so a redelivery is a no-op on top of the inbox.
-- **The Variant tombstone is keyed by `(product_id, variant_id)`, not "(Offer, Variant)" (D 2.1, 5.2).** CF2's Variant-removed event carries `productId` and `variantId` and no Offer id (D 6.1). Pricing cannot list the Offers of a product that have no series yet. Series creation checks both tombstones: `(offer_id)` and `(product_id, variant_id)`, with `product_id` taken from the CF1 answer. Same guarantee, different key. Mohammad confirms (11.2 M5).
-- Never removed: pricing does not subscribe to Variant-added (D 6.1, CF2). See 11.2 M5.
+- **The Variant tombstone is keyed by `(product_id, variant_id)`, not "(Offer, Variant)" (D 2.1, 5.2).** `catalog.variant-removed.v1` carries `productId` and `variantId` and no Offer id (D 6.1). It is sent at every retirement, a draft save included, so a priced `proposed` Variant gets its tombstone. Pricing cannot list the Offers of a product that have no series yet. Series creation checks both tombstones: `(offer_id)` and `(product_id, variant_id)`, with `product_id` taken from the `offerSellUnits` answer. Same guarantee, different key. Mohammad confirms (11.2 M5).
+- The re-key (3.2.1) also writes `(fromProductId, from)` Variant tombstones, so no series is created under a moved Offer's old key, even from a stale (advisory) `offerSellUnits` answer.
+- Never removed: pricing does not subscribe to Variant-added, and a removed Variant id never returns (catalog G2 M-1).
 - Insert-only. Two point lookups by primary key in the creating unit; no other index.
 
 ### 3.7 `pricing.cost_series` and `pricing.cost_records` (slice 3; D 2.1, 6.5)
 
-`cost_series` has the columns, keys, CHECKs and grants of `price_series` (3.2) under its own names: `cost_series_market_id_offer_id_variant_id_key`, `cost_series_market_id_id_currency_key`, `cost_series_market_id_product_id_variant_id_idx`. It is a separate root with its own `version` (D 2.3). The retirement handlers retire it too (D 6.4).
+`cost_series` has the columns, keys, CHECKs and grants of `price_series` (3.2) under its own names: `cost_series_market_id_offer_id_variant_id_key`, `cost_series_market_id_id_currency_key`, `cost_series_market_id_product_id_variant_id_idx`. It is a separate root with its own `version` (D 2.3). The retirement handlers retire it too, and the re-key moves it with the same rules and guard trigger (3.2.1; D 6.4).
 
 `cost_records`:
 
@@ -294,7 +303,7 @@ D 5.2 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, O
 | Invariant | Why not a constraint | Enforced by |
 |---|---|---|
 | Currency equals the Market's currency; amount ≤ the Market maximum (Q10) | Configuration, not schema | `PriceAmount` and `PriceLimits` (D 4.4); P2 keeps a series single-currency |
-| Who may write, ownership, Variant and Market of the Offer (D 5.2) | Cross-module (catalog), and the actor | Application layer, through CF1 |
+| Who may write, ownership, Variant and Market of the Offer (D 5.2) | Cross-module (catalog), and the actor | Application layer, through `offerSellUnits` (CF1; advisory, ADR-0025 decision 1) |
 | The jump hold and the anchor choice (D 2.4, 4.2, 4.3); "the first price is never held" | Needs policy (T, W) and history | `JumpPolicy`, `PriceSeries`; the CHECKs only keep a held row self-consistent |
 | `effective_from = max(now, previous + 1 ms)`; starts strictly increasing in submission order | Needs the previous row | `PriceSeries` (D 9); the `EXCLUDE` and `effective_to > effective_from` back it |
 | A special is below the regular price **in effect at approval** and at read time (D 3.2, 4.1 step 4) | Cross-row and time-dependent | `approveHold`, `EffectivePriceResolver`; the row CHECK holds the submission-time comparison |
@@ -302,7 +311,8 @@ D 5.2 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, O
 | No series is created after a tombstone (Hassan finding 3) | Absence of a row in another table | The creating unit reads both tombstones; the creating unit and the handlers run `serializable` (5.1) |
 | Which transition follows which | CHECKs carry value sets and columns; the triggers carry only "content is immutable, a column is written once, a final status is final" | The aggregates (D 3) |
 | `superseded_by_record_id` names a later record of the same series | Written before its target exists (3.3) | `PriceSeries` |
-| The copies on `price_series` (`product_id`, `seller_id`) equal catalog's | Cross-module | Read once at creation; never used for ownership (D 2.3) |
+| The copies on `price_series` (`product_id`, `seller_id`) equal catalog's | Cross-module | Read once at creation; `product_id` updated by the CF4 re-key; never used for ownership (D 2.3) |
+| A re-key moves a series only to a free, untombstoned (Offer, `to`) named once | Cross-row, needs the event's mapping | The re-key handler (3.2.1); the unique key and the guard trigger back it |
 | Cost never leaves the module | Behaviour | D 6.5 (types, routes, boundary rule, tests); grants (7) |
 | H3's one audit row per (actor, Offer) per minute | A rate, not a row rule | 3.8, if adopted |
 
@@ -312,7 +322,8 @@ The tombstone rule is a write skew. Creator: read the tombstones (none), then in
 
 So `isolation: 'serializable'` is declared by:
 - every unit that **inserts** a `price_series` or `cost_series` row (the first price, first special or first Cost of a key);
-- `pricing.retire-series-for-removed-offer` and `pricing.retire-series-for-removed-variant`.
+- `pricing.retire-series-for-removed-offer` and `pricing.retire-series-for-removed-variant`;
+- `pricing.rekey-series-for-moved-offer` (P1; 3.2.1): the same skew with a creator under the old key (closed by the `(fromProductId, from)` tombstone) or the new key (closed by the unique key and its read of the target).
 
 Writes to an existing series stay READ COMMITTED: retirement raises the version, so they become stale.
 
@@ -345,7 +356,7 @@ The facade answers 1 to 200 `(offerId, variantId)` keys (D 6.2). Three statement
 | Range containment on the gist index (`tstzrange(…) @> t`) | Not expressible in Prisma; needs raw SQL (P 4.2) | Not used |
 | One statement with `include` of the records | Prisma's default relation strategy issues the same three statements; the join strategy's status in Prisma 7.10 was not checked | No gain expected; not pursued |
 
-**Isolation of the read.** The UnitOfWork offers READ COMMITTED or serializable only (P 3.1). Each of the three statements then sees its own snapshot. Every write use case changes one stream of one series (regular, special, or retirement), so a mixed read shows a state that was true for each stream within the read's few milliseconds. The resolver's read-time guard keeps the buyer at or below the regular price (D 4.1 step 4), and `ordering` freezes a real record id. Accepted as is. A read-only `REPEATABLE READ` option on the UnitOfWork would give one snapshot without serialisation failures; it is a platform change and not needed now.
+**Isolation of the read.** A read-only unit opens no transaction (ADR-0025 decision 1), so each of the three statements sees its own snapshot and the answer is advisory; `ordering` re-checks at purchase (D 6.2). Every write use case changes one stream of one series (regular, special, or retirement), so a mixed read shows a state that was true for each stream within the read's few milliseconds. The resolver's read-time guard keeps the buyer at or below the regular price (D 4.1 step 4), and `ordering` freezes a real record id. Accepted as is. A read-only `REPEATABLE READ` option on the UnitOfWork would give one snapshot without serialisation failures; it is a platform change and not needed now.
 
 **Proposed facade wording** (D 6.2 says "one query per call"): "one statement per table, three per call whatever the number of keys".
 
@@ -360,6 +371,7 @@ The facade answers 1 to 200 `(offerId, variantId)` keys (D 6.2). Three statement
 | One held record with its anchor (D 5.2) | Primary key, then the anchor by primary key | PKs |
 | Seller panel: price, special and hold status for a page of Offers (D 5.2) | Q1 to Q3 plus the pending records by `(market_id, series_id)` and the latest decision | Pending keys; `(market_id, series_id, id)` read newest first |
 | Retirement handlers (D 6.4) | Series of an Offer, or of a (product, Variant); then their pending and live records | Series unique key; `price_series_market_id_product_id_variant_id_idx`; pending keys; live indexes |
+| Re-key handler (3.2.1) | Series of the Offer; target keys (Offer, `to`); tombstones by primary key | Leading `(market_id, offer_id)` of the series unique key; `retired_variants_pkey`. No new index |
 | Boundary job, starts (D 11) | Specials with `effective_from` in `(now − H, now]`, no `start` marker (Prisma `none` relation filter = `NOT EXISTS`), `ORDER BY effective_from LIMIT 100` | `special_price_records_market_id_effective_from_live_idx` + marker PK |
 | Boundary job, natural ends | `status IN (accepted, approved)`, `ends_at` in `(now − H, now]`, no `end` marker | `special_price_records_market_id_ends_at_live_idx` |
 | Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, newest first | `cost_records_market_id_cost_series_id_submitted_at_id_idx` |
@@ -382,7 +394,7 @@ Under platform.md 10.2: hand-written in the `migration.sql` that creates the tab
 |---|---|---|
 | `pricing.outbox` | `SELECT, INSERT, UPDATE (published_at)` | PM2 |
 | `pricing.inbox` | `SELECT, INSERT` | `DELETE` arrives with the prune job |
-| `pricing.price_series`, `pricing.cost_series` | `SELECT, INSERT, UPDATE (retired_at, retire_cause, version)` | Keys, copies and currency never change; no `DELETE` |
+| `pricing.price_series`, `pricing.cost_series` | `SELECT, INSERT, UPDATE (retired_at, retire_cause, version)`; from P1 also `UPDATE (variant_id, product_id)` (8.1 row 7) | Offer, seller and currency never change; `variant_id` and `product_id` only through the re-key, under the guard trigger (3.2.1); no `DELETE` |
 | `pricing.regular_price_records` | `SELECT, INSERT, UPDATE (status, effective_from, effective_to, decided_at, decided_by_account_id, decision_reason_code, decision_note, superseded_at, superseded_by_record_id, supersede_cause)` | PD3: status, decision and period-end columns only; no `DELETE` |
 | `pricing.special_price_records` | `SELECT, INSERT, UPDATE (status, effective_from, decided_at, decided_by_account_id, decision_reason_code, decision_note, superseded_at, superseded_by_record_id, supersede_cause, withdrawn_at, withdrawn_by_account_id, withdraw_cause)` | PD3; the window and the zone are not updatable |
 | `pricing.special_price_boundaries`, `pricing.retired_offers`, `pricing.retired_variants`, `pricing.cost_records` | `SELECT, INSERT` | Append-only |
@@ -410,6 +422,7 @@ Column-level `UPDATE` follows the four conditions of platform.md 10.2: it replac
 | 5 | 4 | `pricing_price_hold_indexes` | The regular queue index and the "latest approved" index |
 | 6 | 5 | `pricing_special_prices` | `special_price_records` (all its constraints, indexes, triggers), `special_price_boundaries`, grants |
 | — | 6 (P1) | None expected | VER-09's admin history list brings its own index with its reader |
+| 7 | P1, before catalog's CAT-45 slice | `pricing_series_rekey` | `price_series_guard_update` on both series tables (function and triggers); `GRANT UPDATE (variant_id, product_id)` on both. Metadata only, no lock that matters; `down.sql` revokes, then drops the triggers and the function |
 
 Migrations 1 and 2 are in one PR (slice 1), as identity's slice 3 carried two. If the retirement handlers ship later than slice 1 (11.2 M5), the tombstone tables still land in migration 2: the creating unit reads them from the first price on.
 
@@ -455,7 +468,7 @@ Migrations 1 and 2 are in one PR (slice 1), as identity's slice 3 carried two. I
 | `cost_records` | 10⁴ to 10⁵ | Not measured | Kept |
 | `retired_offers`, `retired_variants` | Deleted Offers and removed Variants: 10³ to 10⁴ | — | Kept (a tombstone must outlive the redelivery window; there is no Variant-added clearing) |
 | `outbox` | About 1.5 events per change: up to 2 × 10⁶ | — | Platform pruning (P 6.5); decided at 10⁶ rows as for identity |
-| `inbox` | catalog's Offer-deleted and Variant-removed events | — | Platform prune job (ID-data 3.8) |
+| `inbox` | catalog's `offer-deleted`, `variant-removed` (draft saves included) and, from P1, `offer-moved` events | — | Platform prune job (ID-data 3.8) |
 
 - **Writes:** the bulk load of 1.3 × 10⁶ regular rows with all indexes took 101 s (about 78 µs per row in bulk). Single-row latency was not measured.
 - **Update churn** is one or two updates per record in its life (period end; decision), each touching an indexed column, so they are not HOT. Autovacuum defaults are enough at this rate. `price_series` takes a version update per write and per boundary; it is the table to watch first.
@@ -482,7 +495,7 @@ Measured on 2026-10-07 on PostgreSQL 16.15. The setup was a throwaway database a
 | Tombstone race: READ COMMITTED leaves a live series after the tombstone; SERIALIZABLE refuses the creator with `40001` and leaves none | 5.1, M3 |
 | Plans and timings of section 6 (batch read in three shapes, with and without each live index, at 12 and 60 records per series; queue pages; job discovery with and without horizon at steady state); sizes of section 9 | 6, 9 |
 
-**Not measured:** PostgreSQL 17 (Compose and CI); anything through Prisma (no `node_modules` in this environment; spike S1); the market guard; concurrency through the UnitOfWork, including the `40001` retry rate; the "latest approved" and Cost reads at volume; single-row insert latency; `CREATE INDEX CONCURRENTLY` under Prisma Migrate.
+**Not measured:** PostgreSQL 17 (Compose and CI); anything through Prisma (no `node_modules` in this environment; spike S1); the market guard; concurrency through the UnitOfWork, including the `40001` retry rate; the "latest approved" and Cost reads at volume; single-row insert latency; `CREATE INDEX CONCURRENTLY` under Prisma Migrate; the re-key (3.2.1), including the `40001` on a concurrent first price for the target key.
 
 ## 11. Answers and open points
 
@@ -499,7 +512,8 @@ Measured on 2026-10-07 on PostgreSQL 16.15. The setup was a throwaway database a
 | # | Point | Who |
 |---|---|---|
 | M4 | (a) PD2 mapped to "one pending special + no overlap among specials in effect" instead of "one non-final special" (3.4). (b) A `withdrawn` special counts as in effect until `withdrawn_at`; D 4.1 steps 3 and 5 and D 11 to say so (3.4). (c) The boundary job's horizon H (proposal 7 days) and the daily alert for older unmarked boundaries (6.2) | Mohammad |
-| M5 | (a) The Variant tombstone keyed by `(product_id, variant_id)`, as CF2 carries no Offer id (3.6). (b) Which slice ships the two retirement handlers: at the latest slice 1, because slice 1 creates series. (c) Can a removed Variant id ever come back? If yes, that (Offer, Variant) can never be priced again under D 2.1 and 3.6; it needs a Variant-added rule like inventory's (catalog G2, through Mohammad) | Mohammad; catalog G2 for (c) |
+| M5 | (a) The Variant tombstone keyed by `(product_id, variant_id)`, as CF2 carries no Offer id (3.6). (b) Which slice ships the two retirement handlers: at the latest slice 1, because slice 1 creates series. (c) Can a removed Variant id ever come back? **Answered by catalog's G2 draft (M-1): never**; tombstones stay one-way | Mohammad; (c) closed |
+| M8 | The CF4 re-key (3.2.1, 8.1 row 7): (a) widening `UPDATE` on both series tables to `variant_id` and `product_id`, guarded by the trigger (Hassan: security review, pricing is a mandatory module); (b) measure the re-key unit, the `40001` on a concurrent target insert, and that no `EXCLUDE` is touched, in the P1 PR; (c) whether `variantMapping` is one-to-one and complete (catalog; the design retires anything else, fail closed) | Hassan (a); Hossein with me (b); Ali with catalog (c) |
 | M6 | Proposed value lists and limits: `supersede_cause` (`replaced`, `cancelled`, `offer-removed`, `variant-removed`), `withdraw_cause` (`seller`, `replaced`, `offer-removed`, `variant-removed`), `retire_cause`; `decision_note` at most 1,000 characters (Jafar for the wording with Q4); `currency` on the series tables (P2) | Mohammad |
 | M7 | Where the H3 counter (1 audit row per actor and Offer per minute) lives: the proposed table 3.8, or something else | **Decided 2026-10-07** (Mohammad; security half Hassan): the PostgreSQL table of 3.8, updated in the same unit as the audit row, so the counter cannot advance without its row; Redis rejected. Added (Hassan, Medium: the Offer id comes from the caller): a per-actor cap of 20 rows a minute across Offers, then one `pricing.offer-write-refused.suppressed` summary row for that minute. The pricing write routes are under the general per-account rate limit (tested in slice 1). Follow-up for Mojtaba: the per-actor counter in 3.8, 7 and 8.1 (D 5.2, 8) |
 | H-D1 | Cost isolation in the database: option A (structure plus code, recommended) or B (separate group, login and client) (7) | **Decided by Hassan 2026-10-07: option A**, with three conditions: (1) `pnpm boundaries` enforces in CI that only `infrastructure/cost/` uses `PricingCost*`; (2) when the worker gets its own group, its access to `cost_records` is revoked in the same PR; (3) move to option B if raw SQL, a reporting replica or an export ever reads the `pricing` schema (D 6.5) |
@@ -518,7 +532,7 @@ This document changes no other file. After G2:
 
 | File | Change | When |
 |---|---|---|
-| `docs/design/domain/pricing.md` | M3: serializable units in D 9; M4 (a) to (c) in D 2.1, 4.1, 11; M5 (a) in D 2.1, 5.2, 6.4; facade wording "three statements per call" (6.1) | With Mohammad's next revision |
+| `docs/design/domain/pricing.md` | Done 2026-10-07, with P-1 (CF1 to CF4, re-key in D 6.4, PD8). Earlier: M3: serializable units in D 9; M4 (a) to (c) in D 2.1, 4.1, 11; M5 (a) in D 2.1, 5.2, 6.4; facade wording "three statements per call" (6.1) | With Mohammad's next revision |
 | `docs/design/data/pricing.md` | This document, moved into the repo (D 1 names that path) | With the G2 PR; Mojtaba |
 | `prisma/schema/base.prisma`, `pricing.prisma`; the migrations of 8.1 with `down.sql` | As specified; each needs my sign-off | Per slice; Hossein |
 | Privilege map, partial-index list, exclusion-constraint list, outbox column test (`pnpm test:db`) | Section 7 and 8.4 | With each migration; Hossein |
