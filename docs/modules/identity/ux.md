@@ -415,7 +415,7 @@ A10 use (Jafar 8), and **1.2.0 "Panel"**.
 | Account menu and row action menus | `Topbar` user block has no menu; `TableCell Type=Actions` holds only an `IconButton` | New components `Menu` and `MenuItem` (Default, Hover, Focus, Disabled, Destructive; an optional description line, so the reason for a disabled item can be read on touch, Jafar 9) | MINOR 1.1.0: sign out (slice 2) and S1's account menu need it |
 | Role picker | None | New component `Select` (trigger states as `Input`; list built from `MenuItem`, plus Selected) | MINOR 1.2.0 |
 | Reason field | None | New component `Textarea` (states as `Input`) | MINOR 1.2.0 |
-| Dialogs D1 to D6 | None | New component `Dialog` (Size Sm, Md; Tone Default, Destructive; Layout Centred, or Sheet below 480 px, Jafar 9); tokens `bg/scrim`, `size/dialog-sm`, `size/dialog-md`; effect `Elevation/Floating` | MINOR 1.2.0 |
+| Dialogs D1 to D6 | None | New component `Dialog` (Size Sm, Md; Tone Default, Destructive; Layout Centred, or Sheet below 480 px, Jafar 9); tokens `size/dialog-sm`, `size/dialog-md` (`bg/scrim` exists since 1.6.0); effect `Elevation/Floating` | MINOR 1.2.0 |
 | Confirmation after an action | None | New component `Toast` (Success, Critical) | MINOR 1.2.0 |
 | Tables on P1, B1, B2 | `Tab`, `TableCell`, `Pagination`, `IdentityTile`, `CardHeader` | `TableCell`: new `State=Loading` (skeleton) | MINOR 1.2.0 |
 | Empty lists | None (README section 14 lists Empty and Loading as open) | New component `EmptyState` (icon, title, body, optional action) | MINOR 1.2.0 |
@@ -740,8 +740,8 @@ Follow `docs/design/figma/update-procedure.md`: Sandbox, review, publish, Export
    the password first), A9 (three variants, the admin one with the A8 steps; not usable), A10
    (owner, staff) and A11, for Seller and Admin where each applies. Template
    `Seller · Your seller account` (awaiting approval, changes needed, and the final not approved).
-2. **Release 1.2.0 "Panel"** (slices 8a to 12): tokens `size/dialog-sm` (`bg/scrim` exists since 1.6.0),
-   `size/dialog-md`; `Dialog` with the sheet layout, `Textarea`, `Select`, `Toast`, `EmptyState`,
+2. **Release 1.2.0 "Panel"** (slices 8a to 12): tokens `size/dialog-sm` and `size/dialog-md`
+   (`bg/scrim` exists since 1.6.0); `Dialog` with the sheet layout, `Textarea`, `Select`, `Toast`, `EmptyState`,
    `CheckboxRow`; the `TableCell` loading variant; the Phase 2 frame of `Admin · Sellers`; then the
    five shared templates with their dialogs. The role editor needs frames for custom, default and
    system roles (both panels' words), a row disabled by R1, a row disabled by R11 (both panels'
