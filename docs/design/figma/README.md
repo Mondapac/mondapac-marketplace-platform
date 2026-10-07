@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| نسخه | 1.6.0 «Mobile navigation polish» (۷ اکتبر ۲۰۲۶). نسخهٔ 1.5.0 «Mobile navigation» همان روز بود و نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
+| نسخه | 1.7.0 «Auth» (۷ اکتبر ۲۰۲۶). نسخه‌های 1.6.0 «Mobile navigation polish» و 1.5.0 «Mobile navigation» همان روز بودند و نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
 | فایل Figma | **MondaPac Design System** (Drafts تیم mondapac، پلن Starter) |
 | مالک کتابخانه | رضا (UI/UX) |
 | هم‌خوان‌ها | جعفر (Product Designer)، مهدی (Frontend)، سجاد (QA)، هادی (Product Owner) |
@@ -38,7 +38,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 |---|---|---|
 | 1 · Start & foundations | Cover، Getting started، Changelog، Colour، Typography، Spacing size & radius، Elevation & motion، Icons، Accessibility | هر کدام یک صفحه، زیر جداکنندهٔ «Foundations» |
 | 2 · Components | Actions، Forms & selection، Status & feedback، Data display، Tables & collections، Navigation & shell، Review & detail، Board & delivery | هر کدام یک صفحه، زیر «Components» |
-| 3 · Templates & workspace | Templates · Admin، Templates · Seller، Templates · Dark preview، Sandbox، Archive | زیر «Templates» و «Workspace» |
+| 3 · Templates & workspace | Templates · Admin، Templates · Seller، Templates · Auth (از 1.7.0)، Templates · Dark preview، Sandbox، Archive | زیر «Templates» و «Workspace» |
 
 - **Sandbox:** پیشنهادهای در حال کار. چیزی که اینجاست جزو کتابخانه نیست.
 - **Archive:** کامپوننت‌های کنارگذاشته، تا وقتی که دیگر جایی استفاده نشوند.
@@ -49,11 +49,11 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 | Collection | تعداد | حالت‌ها (Modes) | محتوا |
 |---|---|---|---|
-| Primitives | ۱۳۷ | Value | رنگ‌های خام. از Library پنهان‌اند و scope ندارند، پس طراح مستقیم انتخابشان نمی‌کند. |
-| Color | ۹۰ | Light (+ Dark بعد از ارتقا) | توکن‌های معنایی که به Primitives اشاره می‌کنند (alias). تنها استثنا `bg/scrim` است: مقدار hex8 با شفافیت داخل خود مقدار، بدون alias. |
-| Color · Dark | ۹۰ | Dark | فقط روی Starter. همان نام‌ها با مقدار تاریک. |
-| Dimension | ۳۲ | Desktop (+ Touch بعد از ارتقا) | فاصله، گوشه، اندازهٔ کنترل، عرض منو، ضخامت مرز. |
-| Dimension · Touch | ۳۲ | Touch | فقط روی Starter. اندازه‌های لمسی تبلت. |
+| Primitives | ۱۳۹ | Value | رنگ‌های خام. از Library پنهان‌اند و scope ندارند، پس طراح مستقیم انتخابشان نمی‌کند. |
+| Color | ۹۵ | Light (+ Dark بعد از ارتقا) | توکن‌های معنایی که به Primitives اشاره می‌کنند (alias). دو استثنا `bg/scrim` و `text/on-showcase-muted` (از 1.7.0، `#FFFFFFBD`) هستند: مقدار hex8 با شفافیت داخل خود مقدار، بدون alias. |
+| Color · Dark | ۹۵ | Dark | فقط روی Starter. همان نام‌ها با مقدار تاریک. |
+| Dimension | ۳۳ | Desktop (+ Touch بعد از ارتقا) | فاصله، گوشه، اندازهٔ کنترل، عرض منو، عرض کارت ورود (`size/auth-card`)، ضخامت مرز. |
+| Dimension · Touch | ۳۳ | Touch | فقط روی Starter. اندازه‌های لمسی تبلت. |
 | Typography | ۴۶ | Value | خانوادهٔ فونت، اندازه و ارتفاع خط هر سبک متن. داخل Text styleها bind شده‌اند. |
 | Motion | ۳ | Value | مدت حرکت: 120، 160 و 240 میلی‌ثانیه. |
 
@@ -77,17 +77,17 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 ## ۵. کامپوننت‌ها
 
-**۴۴ کامپوننت** (۳۳ مجموعهٔ variant با ۲۴۶ variant، و ۱۱ کامپوننت تکی) و **۵۹ آیکن**:
+**۵۰ کامپوننت** (۳۵ مجموعهٔ variant با ۲۹۵ variant، و ۱۵ کامپوننت تکی) و **۶۸ آیکن**:
 
 | صفحه | کامپوننت‌ها |
 |---|---|
-| Actions | Button، IconButton |
-| Forms & selection | Input، Checkbox، Switch، SegmentedControl، Tab، FilterChip |
+| Actions | Button (از 1.7.0 با `Variant=Link` و `State=Loading`)، IconButton |
+| Forms & selection | Input (از 1.7.0 با محور `Type`: Text، Password، Code)، **Field** (از 1.7.0: برچسب، راهنما، شمارنده و خطا دور یک Input)، Checkbox، Switch، SegmentedControl، Tab، FilterChip |
 | Status & feedback | Badge، StatusBadge، CountBadge، CertChip، HealthIndicator، Meter، DeadlineBadge، InfoBanner، Tooltip |
 | Data display | IdentityTile، ProductThumb، Sparkline، StatTile، TrendChart، DonutProgress، SplitBar، WeeklyBars، CountdownRing |
 | Tables & collections | TableCell، CardHeader، Pagination، BulkActionBar |
-| Navigation & shell | NavItem، NavSubItem، NavGroupLabel، Sidebar، Topbar، **NavDrawer** و **BottomTabBar** (از 1.5.0، منوی موبایل D16) و **PhoneTopbar** (از 1.6.0، نوار بالای موبایل ۵۶ پیکسلی، Admin و Seller) |
-| Review & detail | QueueCard، ExtractedField، ChecklistItem، TimelineItem |
+| Navigation & shell | NavItem، NavSubItem، NavGroupLabel، Sidebar، Topbar، **NavDrawer** و **BottomTabBar** (از 1.5.0، منوی موبایل D16) و **PhoneTopbar** (از 1.6.0، نوار بالای موبایل ۵۶ پیکسلی، Admin و Seller)؛ از 1.7.0: **BrandMark**، **Menu** و **MenuItem** (منوی حساب)، **AuthShowcase** (پنل کناری صفحه‌های ورود، Admin و Seller)، و در Topbar دو property تازهٔ `Show search` و `Show notifications` |
+| Review & detail | QueueCard، ExtractedField، ChecklistItem (از 1.7.0 با حالت‌های Waiting و Needs attention و propertyهای `Show actions` و `Action`)، TimelineItem، **ReasonQuote** (از 1.7.0، دلیل تصمیم بازبین) |
 | Board & delivery | OrderCard، DeliveryMap |
 
 **قواعد ساخت هر کامپوننت:**
@@ -109,8 +109,9 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 ## ۶. قالب‌ها و تم تاریک
 
 - **قالب‌ها** فقط از instanceهای کتابخانه ساخته شده‌اند: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board تبلت). از 1.5.0 سه قالب موبایل ۳۶۰ پیکسلی هم هست: Seller Home با BottomTabBar، Seller با منوی باز روی scrim، Admin با منوی باز. از 1.6.0 نوار بالای موبایل (۵۶ پیکسل) کامپوننت PhoneTopbar است و هر سه قالب یک instance از آن دارند. پرده‌ی پشت کشو (scrim) به توکن `bg/scrim` bind شده است.
+- از 1.7.0 صفحهٔ (روی Starter: Section) **Templates · Auth** صفحه‌های ورود و حساب پیش از پنل را دارد (ux.md ماژول identity، بخش 3.1، A1 تا A11): ۲۴ فریم Seller و ۱۷ فریم Admin در عرض ۱۲۸۰ (ستون فرم و AuthShowcase) و ۴ فریم ۳۶۰ پیکسلی (A1 و A7 برای هر دو پنل). Templates · Seller هم سه قالب «Seller · Your seller account» (S1: Awaiting approval، Changes needed، Not approved) و یک نسخهٔ موبایل Awaiting approval گرفته است.
 - برای صفحهٔ جدید، یک قالب را کپی کنید. **پوسته (Sidebar و Topbar) را detach نکنید.** آیتم فعال منو را با property `State` روی NavItem تودرتو عوض کنید.
-- **Dark preview** سه قالب را در تم تاریک نشان می‌دهد.
+- **Dark preview** شش قالب را در تم تاریک نشان می‌دهد (از 1.7.0: A1 Sign in برای Seller و Admin و «Seller · Your seller account · Changes needed»).
 - **تعویض تم یا تراکم یک فریم:**
   - روی Starter: فریم را انتخاب کنید و در افزونه «Dark theme / Light theme» یا «Touch density / Desktop density» را بزنید. افزونه متغیرها را به collection دیگر وصل می‌کند.
   - بعد از ارتقا: از پنل Appearance فیگما، mode را عوض کنید.
@@ -162,7 +163,8 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
   - MINOR: کامپوننت، variant یا توکن تازه.
   - PATCH: اصلاح مقدار یا ظاهر بدون تغییر API.
 - نسخه در افزونه (فیلد Version هنگام Export) و صفحهٔ Changelog ثبت می‌شود.
-- نسخه‌های 1.1.0 تا 1.4.0 برای انتشارهای برنامه‌ریزی‌شدهٔ Auth، Panel، Seller setup و Seller admin رزرو شده‌اند. به همین دلیل بعد از 1.0.0 مستقیم 1.5.0 آمد و بعد از آن 1.6.0.
+- نسخه‌های 1.1.0 تا 1.4.0 برای انتشارهای برنامه‌ریزی‌شدهٔ Auth، Panel، Seller setup و Seller admin رزرو شده بودند. به همین دلیل بعد از 1.0.0 مستقیم 1.5.0 آمد و بعد از آن 1.6.0. چون 1.5.0 و 1.6.0 زودتر منتشر شدند، محتوای 1.1.0 تا 1.4.0 حالا با شماره‌های آزاد بعدی منتشر می‌شود و از **1.7.0 Auth** شروع شد (در بخش 8.1 فایل ux.md ماژول identity با نام 1.1.0 برنامه‌ریزی شده بود). شماره‌های 1.1.0 تا 1.4.0 استفاده نمی‌شوند.
+- **1.7.0 Auth (۷ اکتبر ۲۰۲۶):** توکن‌های `bg/qr` (در هر دو تم سفید)، `bg/auth-showcase-admin` (`#0B1D2E`)، `bg/auth-showcase-seller` (`#06352E`)، `text/on-showcase`، `text/on-showcase-muted` (hex8، کنتراست دست‌کم 4.5:1 روی هر دو پنل) و `size/auth-card` (۴۰۰)، دو Primitive تازه، ۹ آیکن، کامپوننت‌های BrandMark، Field، ReasonQuote، Menu، MenuItem و AuthShowcase، variantها و propertyهای تازهٔ Button، Input، ChecklistItem و Topbar، و قالب‌های Auth و S1. فریم‌هایی که هنوز ساخته نشده‌اند (TODO) در [`plugin/README.md`](plugin/README.md) فهرست شده‌اند.
 - **کنار گذاشتن:** نام کامپوننت `Deprecated / <Name>` می‌شود. در توضیح می‌نویسیم «Use <Replacement> instead (since vX.Y)» و به Archive منتقل می‌شود. حذف واقعی فقط در نسخهٔ MAJOR بعدی است.
 
 ---
@@ -190,7 +192,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 | محدودیت Starter | راه حل فعلی | بعد از ارتقا به Professional |
 |---|---|---|
-| ۳ صفحه در هر فایل | هر موضوع یک Section | Upgrade to modes → ۲۶ صفحه |
+| ۳ صفحه در هر فایل | هر موضوع یک Section | Upgrade to modes → ۲۷ صفحه |
 | ۱ mode در هر collection | collectionهای موازی `Color · Dark` و `Dimension · Touch` | Upgrade to modes → Light/Dark و Desktop/Touch در یک collection. همهٔ لایه‌ها دوباره وصل می‌شوند و collectionهای موازی حذف می‌شوند. |
 | انتشار Team library ممکن نیست | صفحه‌های محصول در همین فایل ساخته می‌شوند | این فایل به‌عنوان Library منتشر می‌شود و فایل‌های محصول از آن استفاده می‌کنند |
 | Dev Mode نیست | Code syntax روی متغیرها تنظیم شده و توکن‌ها در ریپو هستند | Dev Mode اسم CSS هر مقدار را نشان می‌دهد |
@@ -211,12 +213,12 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 | Build library | ساخت کامل در فایل خالی. «Rebuild» هر چه افزونه ساخته پاک می‌کند و از نو می‌سازد. **روی کتابخانه‌ای که دستی ویرایش شده اجرا نشود؛ برای نسخهٔ تازهٔ افزونه از Update library استفاده کنید.** |
 | Dark theme / Light theme | تعویض تم فریم‌های انتخاب‌شده |
 | Touch density / Desktop density | تعویض تراکم فریم‌های انتخاب‌شده |
-| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). تنها ویرایش روی چیزهای موجود، اصلاح‌های نام‌برده است و هر کدام در گزارش می‌آید. برای 1.5.0: فاصلهٔ ردیف‌های NavDrawer صفر می‌شود اگر به‌روزرسانی قبلی آن را با فاصله ساخته باشد. برای 1.6.0: پردهٔ پشت کشو در قالب‌های موبایل به `bg/scrim` با ۱۰۰٪ bind می‌شود و فریم قدیمی «Topbar · phone» با instance کامپوننت PhoneTopbar عوض می‌شود. همین فریم قدیمی تنها چیزی است که حذف می‌شود، و فقط داخل قالب موبایلی که خود افزونه ساخته. در بقیه چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. برای 1.6.0: توکن‌های `bg/scrim` و `size/topbar-phone`، آیکن `menu` و کامپوننت PhoneTopbar. فایل 1.0.0 مستقیم به 1.6.0 می‌رسد. |
+| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). تنها ویرایش روی چیزهای موجود، اصلاح‌های نام‌برده است و هر کدام در گزارش می‌آید. برای 1.5.0: فاصلهٔ ردیف‌های NavDrawer صفر می‌شود اگر به‌روزرسانی قبلی آن را با فاصله ساخته باشد. برای 1.6.0: پردهٔ پشت کشو در قالب‌های موبایل به `bg/scrim` با ۱۰۰٪ bind می‌شود و فریم قدیمی «Topbar · phone» با instance کامپوننت PhoneTopbar عوض می‌شود. همین فریم قدیمی تنها چیزی است که حذف می‌شود، و فقط داخل قالب موبایلی که خود افزونه ساخته. در بقیه چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. برای 1.6.0: توکن‌های `bg/scrim` و `size/topbar-phone`، آیکن `menu` و کامپوننت PhoneTopbar. برای 1.7.0: توکن‌ها، آیکن‌ها و کامپوننت‌های Auth، variantها و propertyهای تازهٔ Button، Input، ChecklistItem و Topbar، صفحهٔ Templates · Auth، قالب‌های S1 و سه پیش‌نمایش تاریک. variantهای موجود Input فقط نام `Type=Text, State=…` می‌گیرند تا محور Type اضافه شود. به مجموعه‌ای که افزونه نساخته (برچسب افزونه ندارد) چیزی اضافه نمی‌شود؛ رد شدنش و قالب‌هایی که به آن وابسته‌اند در گزارش می‌آید. **Sidebar موجود از نو ساخته نمی‌شود:** نشان برند کشیده‌شده‌اش می‌ماند و فقط ساخت تازه در Sidebar از BrandMark استفاده می‌کند. فایل 1.0.0، 1.5.0 یا 1.6.0 مستقیم به 1.7.0 می‌رسد. |
 | Export tokens | ۷ فایل توکن از متغیرها و استایل‌های Figma |
 | Audit file | lint کل فایل. روی نسخهٔ 1.6.0 در Figma واقعی (2026-10-07): ۱۲٬۷۷۰ لایه و صفر هشدار |
 | Upgrade to modes | بعد از ارتقای پلن |
 
-توسعهٔ خود افزونه: [`plugin/README.md`](plugin/README.md). هر تغییر در افزونه باید `node test/run.js` را بدون خطا بگذراند. این تست با شبیه‌ساز سخت‌گیر API فیگما هفت سناریو را اجرا می‌کند (از جمله «Update library» روی کتابخانهٔ هم‌سبک 1.0.0) و برابری Export با ریپو را می‌سنجد.
+توسعهٔ خود افزونه: [`plugin/README.md`](plugin/README.md). هر تغییر در افزونه باید `node test/run.js` را بدون خطا بگذراند. این تست با شبیه‌ساز سخت‌گیر API فیگما نُه سناریو را اجرا می‌کند (از جمله «Update library» روی فایل‌های 1.0.0، 1.5.0 و 1.6.0 که افزونهٔ منتشرشدهٔ 1.6.0 ساخته، و محافظ‌های به‌روزرسانی) و برابری Export با ریپو را می‌سنجد.
 
 ---
 
