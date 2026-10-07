@@ -10,6 +10,8 @@ module.exports = {
     // Fakes and builders (platform-foundations 8.1). Both entries map to the kernel's sources,
     // so tests load one copy of the kernel, as the built API loads one copy of its dist/.
     '^@mondapac/shared-kernel/testing$': '<rootDir>/../../packages/shared-kernel/src/testing.ts',
+    // The actor and call-context constructors (identity slice 1c): platform entry adapters only.
+    '^@mondapac/shared-kernel/contexts$': '<rootDir>/../../packages/shared-kernel/src/contexts.ts',
   },
   collectCoverageFrom: ['src/**/*.ts'],
   coverageDirectory: './coverage',
