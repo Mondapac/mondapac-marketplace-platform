@@ -559,8 +559,10 @@ stricter list: Hassan's five checks plus Ali's ownership of the database.
 
 | Reason code | Refused when `current_user` … | How (measured, 10.6) |
 |---|---|---|
-| `role_attribute` | has `rolsuper`, `rolcreaterole`, `rolcreatedb`, `rolreplication` or `rolbypassrls` | `pg_roles` |
+| `session_role` | differs from `session_user` (added in item 7 from Hassan's review: a privileged login connecting with `options=-c role=…` or `ALTER ROLE … SET role` could `SET ROLE` back) | `session_user <> current_user` |
+| `role_attribute` | or `session_user` has `rolsuper`, `rolcreaterole`, `rolcreatedb`, `rolreplication` or `rolbypassrls` (subject `role.attribute`) | `pg_roles` |
 | `role_membership` | is a member of any role but itself and `mondapac_app` (so also when `mondapac_app` is a member of a role) | `pg_has_role(current_user, oid, 'MEMBER')` over `pg_roles`; it follows membership chains |
-| `owner_membership` | is, or is a member of, the owner of the database or of `platform.audit_log` (this also covers connecting as the owner itself, which `role_membership` passes as "itself") | `pg_has_role` on `pg_database.datdba` and `pg_class.relowner` |
+| `owner_membership` | is, or is a member of, the owner of the database or of any schema, relation or function outside PostgreSQL's own schemas (this also covers connecting as the owner itself, which `role_membership` passes as "itself"; widened in item 7 from Hassan's review, was the database and `platform.audit_log` only) | `pg_has_role` on `pg_database.datdba`, `pg_namespace.nspowner`, `pg_class.relowner` and `pg_proc.proowner` |
 | `create_on_database`, `create_on_schema` | has `CREATE` on the database or on any schema | `has_database_privilege`; `has_schema_privilege` over `pg_namespace` |
-| `audit_log_privilege` | holds `UPDATE`, `DELETE`, `TRUNCATE` or `TRIGGER` on `platform.audit_log`, a column-level `UPDATE` included | `has_table_privilege(…, 'UPDATE, DELETE, TRUNCATE, TRIGGER')` or `has_any_column_privilege(…, 'UPDATE')`; `has_table_privilege` alone misses a column-level `UPDATE` (measured) |
+| `temporary_on_database` | has `TEMPORARY` on the database (added in item 7, Mojtaba and Hassan: closes 10.5 gap 5 in deployed environments too) | `has_database_privilege(…, 'TEMPORARY')` |
+| `audit_log_privilege` | holds `UPDATE`, `DELETE`, `TRUNCATE` or `TRIGGER` on `platform.audit_log`, a column-level `UPDATE` included, or `MAINTAIN` on PostgreSQL 17 and later (it allows `LOCK TABLE`; added in item 7 from Hassan's review) | `has_table_privilege(…, 'UPDATE, DELETE, TRUNCATE, TRIGGER')` or `has_any_column_privilege(…, 'UPDATE')`; `has_table_privilege` alone misses a column-level `UPDATE` (measured) |

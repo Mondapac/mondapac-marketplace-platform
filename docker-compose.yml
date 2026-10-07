@@ -1,21 +1,38 @@
 # Local development dependencies only (ADR-0004): PostgreSQL, Redis and a mail catcher.
-# A local S3-compatible server is added with the first slice that stores files (ADR-0016). Credentials here are local-only defaults, never secrets, and
-# every port is published on 127.0.0.1 only so other machines on the network cannot reach them.
+# A local S3-compatible server is added with the first slice that stores files (ADR-0016).
+# Credentials here are local-only defaults, never secrets, and every port is published on
+# 127.0.0.1 only so other machines on the network cannot reach them.
+#
+# PostgreSQL roles (docs/design/data/platform.md section 10): `postgres` is the bootstrap
+# superuser and nothing else; no URL names it. On a fresh volume the image runs
+# scripts/db/bootstrap-dev.sql once, which creates the migration role `mondapac_migrator`
+# (owner of the database) and the application login `mondapac_api` (group `mondapac_app`).
+# On an existing volume, run it again with `pnpm db:bootstrap`.
 name: mondapac
 
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: mondapac
-      POSTGRES_PASSWORD: mondapac
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: mondapac
     ports:
       - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Runs once, on an empty data directory. A checkout without the file fails instead of
+      # mounting an empty directory.
+      - type: bind
+        source: ./scripts/db/bootstrap-dev.sql
+        target: /docker-entrypoint-initdb.d/10-bootstrap-dev.sql
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U mondapac -d mondapac']
+      # Over TCP: during the first initialisation the image runs a socket-only server, which
+      # a socket check would report healthy before the real server is up.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d mondapac']
       interval: 5s
       timeout: 3s
       retries: 10

@@ -91,4 +91,26 @@ describe('loadAppConfig', () => {
       expect((error as InvalidConfigError).issues).toHaveLength(2);
     }
   });
+
+  it.each(
+    ['development', 'test', 'production'].flatMap((nodeEnv) =>
+      ['postgresql://mondapac_migrator:secret@localhost:5432/mondapac', ''].map(
+        (value) => [nodeEnv, value] as const,
+      ),
+    ),
+  )(
+    'refuses MIGRATION_DATABASE_URL in the environment (NODE_ENV %s, value %p) without printing its value',
+    (nodeEnv, value) => {
+      expect.assertions(3);
+      try {
+        loadAppConfig({ NODE_ENV: nodeEnv, HOSTED_MARKETS: 'AU', MIGRATION_DATABASE_URL: value });
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidConfigError);
+        expect((error as InvalidConfigError).issues).toEqual([
+          expect.stringMatching(/^MIGRATION_DATABASE_URL: must not be set/) as unknown,
+        ]);
+        expect((error as Error).message).not.toContain('secret');
+      }
+    },
+  );
 });

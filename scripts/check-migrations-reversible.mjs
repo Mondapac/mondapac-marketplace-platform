@@ -3,7 +3,10 @@
 // nothing is left behind, apply all migrations again (up), and finally check that the
 // migrated database matches prisma/schema (no drift).
 //
-// Usage: DATABASE_URL=postgresql://... node scripts/check-migrations-reversible.mjs
+// It connects as the migration role (MIGRATION_DATABASE_URL, never DATABASE_URL), which
+// owns and creates the throwaway database (docs/design/data/platform.md 10.4, 10.7).
+//
+// Usage: MIGRATION_DATABASE_URL=postgresql://... node scripts/check-migrations-reversible.mjs
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -16,12 +19,12 @@ const { Client } = require('pg');
 try {
   process.loadEnvFile();
 } catch {
-  // No .env file: DATABASE_URL must come from the environment.
+  // No .env file: MIGRATION_DATABASE_URL must come from the environment.
 }
 
-const baseUrl = process.env.DATABASE_URL;
+const baseUrl = process.env.MIGRATION_DATABASE_URL;
 if (!baseUrl) {
-  console.error('DATABASE_URL is required.');
+  console.error('MIGRATION_DATABASE_URL (the migration role) is required; see .env.example.');
   process.exit(1);
 }
 
@@ -45,7 +48,7 @@ scratchUrl.pathname = `/${scratchName}`;
 
 function migrateDeploy() {
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
-    env: { ...process.env, DATABASE_URL: scratchUrl.toString() },
+    env: { ...process.env, MIGRATION_DATABASE_URL: scratchUrl.toString() },
     stdio: ['ignore', 'ignore', 'inherit'],
     shell: process.platform === 'win32',
   });
@@ -56,6 +59,10 @@ await admin.connect();
 let failed = false;
 try {
   await admin.query(`CREATE DATABASE "${scratchName}"`);
+  // A new database gets the default ACL, not its template's: the same two statements as
+  // every application database (10.7).
+  await admin.query(`REVOKE ALL ON DATABASE "${scratchName}" FROM PUBLIC`);
+  await admin.query(`GRANT CONNECT ON DATABASE "${scratchName}" TO "mondapac_app"`);
 
   console.log(`up:   ${migrations.length} migration(s)`);
   migrateDeploy();
@@ -68,7 +75,9 @@ try {
       await scratch.query(readFileSync(path.join(migrationsDir, name, 'down.sql'), 'utf8'));
     }
 
-    // After all downs only empty schemas and Prisma's own bookkeeping table may remain.
+    // After all downs only empty schemas without grants and Prisma's own bookkeeping table
+    // may remain. Table grants vanish with their tables; a schema grant survives a missing
+    // REVOKE (10.5 guard 2).
     const leftovers = await scratch.query(`
       SELECT n.nspname || '.' || c.relname AS name
         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -83,6 +92,12 @@ try {
         FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
          AND t.typtype IN ('e', 'd')
+      UNION ALL
+      SELECT n.nspname || ' (schema privilege ' || a.privilege_type || ' held by '
+             || CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END || ')'
+        FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
+       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public')
+         AND a.grantee <> n.nspowner
     `);
     if (leftovers.rowCount > 0) {
       throw new Error(
@@ -112,7 +127,7 @@ try {
         '--exit-code',
       ],
       {
-        env: { ...process.env, DATABASE_URL: scratchUrl.toString() },
+        env: { ...process.env, MIGRATION_DATABASE_URL: scratchUrl.toString() },
         stdio: ['ignore', 'ignore', 'inherit'],
         shell: process.platform === 'win32',
       },
