@@ -9,7 +9,7 @@ const PAGES = [
 const COLLECTION_NAMES = ['Primitives', 'Color', 'Color · Dark', 'Dimension', 'Dimension · Touch', 'Typography', 'Motion'];
 
 function post(msg) { try { figma.ui.postMessage(msg); } catch (e) { /* UI closed */ } }
-let STEP = 0; const STEPS = 25;
+let STEP = 0; let STEPS = 25;
 function progress(label) { STEP++; post({ type: 'progress', step: STEP, total: STEPS, label: label }); }
 function wait() { return new Promise(function (r) { setTimeout(r, 0); }); }
 
@@ -121,7 +121,7 @@ function notePage(host, title, subtitle, items) {
 }
 
 async function build(force) {
-  STEP = 0; S.report = [];
+  STEP = 0; STEPS = 25; S.report = [];
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   let first;
@@ -156,12 +156,12 @@ async function build(force) {
   await onPage(P.start, 'Getting started', pageGettingStarted);
 
   const adminScreens = await onPage(P['tpl-admin'], 'Admin templates', function (h) {
-    const list = [tplAdminHome(), tplAdminSellers(), tplAdminReview()];
+    const list = [tplAdminHome(), tplAdminSellers(), tplAdminReview(), tplAdminPhoneMenu()];
     templatesPage(h, 'Templates · Admin', 'Full screens built only from library instances. Copy a template to start a new Admin screen; never detach the shell.', list);
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
-    const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard()];
+    const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()];
     templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density).', list);
     return list;
   });
@@ -196,6 +196,135 @@ async function build(force) {
   if (S.modes.color) log('✓ Light/Dark and Desktop/Touch are variable modes.');
   log('✓ Layout: ' + (L.compact ? '3 pages with sections (Starter).' : PAGES.length + ' pages.'));
   post({ type: 'done', report: S.report, counts: S.counts, modes: S.modes });
+}
+
+// ---------------------------------------------------------------- update library (add what a newer plugin release brings)
+// Idempotent: every step first checks whether its result already exists and only adds what is missing.
+// It never deletes, renames or rebuilds anything, so designs made with the library keep working.
+const PHONE_TEMPLATES = { 'tpl-seller': { names: ['Seller · Home (phone)', 'Seller · Menu open (phone)'], make: function () { return [tplSellerPhoneHome(), tplSellerPhoneMenu()]; } },
+  'tpl-admin': { names: ['Admin · Menu open (phone)'], make: function () { return [tplAdminPhoneMenu()]; } } };
+
+// Rebuild S.ts, S.es, S.icons and S.sets from what is already in the file.
+async function hydrateLibrary() {
+  S.ts = {}; S.es = {}; S.icons = {}; S.sets = {};
+  (await figma.getLocalTextStylesAsync()).forEach(function (st) { S.ts[st.name] = st; });
+  (await figma.getLocalEffectStylesAsync()).forEach(function (st) { S.es[st.name] = st; });
+  figma.root.children.forEach(function (page) {
+    page.findAll(function (n) { return n.type === 'COMPONENT_SET' || n.type === 'COMPONENT'; }).forEach(function (n) {
+      if (n.type === 'COMPONENT' && n.parent && n.parent.type === 'COMPONENT_SET') return;
+      if (n.name.indexOf('Icon/') === 0) { if (n.type === 'COMPONENT' && !S.icons[n.name.slice(5)]) S.icons[n.name.slice(5)] = n; return; }
+      if (S.sets[n.name]) return;
+      const defs = n.componentPropertyDefinitions; const keys = {}; const axes = [];
+      Object.keys(defs).forEach(function (k) { if (defs[k].type === 'VARIANT') axes.push(k); else keys[k.split('#')[0]] = k; });
+      S.sets[n.name] = n.type === 'COMPONENT_SET' ? { set: n, keys: keys, axes: axes } : { comp: n, keys: keys, axes: [] };
+    });
+  });
+}
+// T[key] = { page, host } for the pages (full layout) or sections (Starter layout) the build made.
+function findHosts() {
+  const T = {};
+  figma.root.children.forEach(function (p) {
+    if (p.getPluginData(PLUGIN_TAG) !== 'page') return;
+    const key = p.getPluginData('key');
+    const secs = p.children.filter(function (n) { return n.type === 'SECTION' && n.getPluginData('key'); });
+    if (p.getPluginData('layout') === 'compact') secs.forEach(function (n) { T[n.getPluginData('key')] = { page: p, host: n }; });
+    else T[key] = { page: p, host: secs.filter(function (n) { return n.getPluginData('key') === key; })[0] || p };
+  });
+  return T;
+}
+function rightEdge(host) { let r = 0; host.children.forEach(function (c) { r = Math.max(r, c.x + c.width); }); return r; }
+// A Starter section is a fixed-size box: grow it so new content stays inside.
+function fitSection(host) {
+  if (host.type !== 'SECTION') return;
+  let w = host.width, h = host.height;
+  host.children.forEach(function (c) { w = Math.max(w, c.x + c.width + 80); h = Math.max(h, c.y + c.height + 96); });
+  host.resizeWithoutConstraints(w, h);
+}
+function appendTableRow(tbl, cells, widths) {
+  const prev = tbl.children[tbl.children.length - 1];
+  const row = tableRow(cells, widths, true); add(tbl, row);
+  if (prev && prev.name === 'Row') { prev.strokes = [paint('border/row')]; prev.strokeAlign = 'INSIDE'; prev.strokeTopWeight = 0; prev.strokeLeftWeight = 0; prev.strokeRightWeight = 0; prev.strokeBottomWeight = 1; }
+  return row;
+}
+function findTable(host, headers) {
+  return host.findAll(function (n) { return n.type === 'FRAME' && n.name === 'Table' && n.children.length && n.children[0].name === 'Header' && n.children[0].children.map(function (c) { return c.name; }).join('|') === headers; })[0] || null;
+}
+function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
+
+async function updateLibrary() {
+  STEP = 0; STEPS = 6; S.report = [];
+  await figma.loadAllPagesAsync();
+  const state = await fileIsEmpty();
+  if (state.empty) { post({ type: 'error', message: 'This file is empty. Update library only adds to an existing MondaPac library; use Build library in a new file.' }); return; }
+  if (!state.hasLibrary) { post({ type: 'error', message: 'This file has no MondaPac library. Use Build library in a new, empty design file.' }); return; }
+  await loadState();
+  await hydrateLibrary();
+  const T = findHosts();
+  const need = ['nav', 'tpl-seller', 'tpl-admin', 'changelog', 'spacing', 'cover'].filter(function (k) { return !T[k]; });
+  const base = ['CountBadge', 'NavGroupLabel', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar'].filter(function (k) { return !S.sets[k]; });
+  if (need.length || base.length || !S.ts['Body/Default'] || !S.es['Focus/Ring']) {
+    post({ type: 'error', message: 'This library is incomplete, so it cannot be updated safely. Missing: ' + need.concat(base).join(', ') + '. Restore it from version history or rebuild it in a new file.' }); return;
+  }
+  await loadFonts();
+  const added = [];
+
+  // 1 · tokens
+  const missingVars = SPEC.dimension.filter(function (d) { return !S.dim[d.name]; });
+  missingVars.forEach(function (d) { addDimensionVariable(d); added.push('variable ' + d.name + (S.dimModes.touchCollection ? ' (Dimension and Dimension · Touch)' : ' (Desktop and Touch modes)')); });
+
+  // 2 · components, documented on the Navigation & shell page
+  const have = { NavDrawer: !!S.sets.NavDrawer, BottomTabBar: !!S.sets.BottomTabBar };
+  if (!have.NavDrawer || !have.BottomTabBar) {
+    await onPage(T.nav, 'Navigation components', function (host) {
+      let root = host.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Navigation & shell'; })[0];
+      if (!root) { const y = host.children.length ? Math.min.apply(null, host.children.map(function (c) { return c.y; })) : 0; const x = rightEdge(host) + 160; root = pageShell(host, 'Navigation & shell', 'One shell for both panels. The Sidebar variant decides the workspace; the menu items come from configuration and permissions.'); root.x = x; root.y = y; tag(root); }
+      buildMobileNav(root, have);
+      fitSection(host);
+    });
+    if (!have.NavDrawer) added.push('component NavDrawer');
+    if (!have.BottomTabBar) added.push('component BottomTabBar');
+  }
+
+  // 3 · templates
+  const tplKeys = Object.keys(PHONE_TEMPLATES);
+  for (let i = 0; i < tplKeys.length; i++) {
+    const key = tplKeys[i]; const def = PHONE_TEMPLATES[key];
+    const present = T[key].host.children.map(function (c) { return c.name; });
+    if (def.names.every(function (n) { return present.indexOf(n) >= 0; })) continue;
+    await onPage(T[key], key === 'tpl-seller' ? 'Seller phone templates' : 'Admin phone template', function (host) {
+      const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0];
+      const y = ref ? ref.y : 240; let x = rightEdge(host) + 160;
+      def.make().forEach(function (scr) {
+        if (present.indexOf(scr.name) >= 0) { scr.remove(); return; }
+        host.appendChild(scr); scr.x = x; scr.y = y; x += scr.width + 160; added.push('template ' + scr.name);
+      });
+      fitSection(host);
+    });
+  }
+
+  // 4 · documentation pages (only edits what the release changed)
+  const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
+  const bar = SPEC.dimension.filter(function (d) { return d.name === 'size/bottom-bar'; })[0];
+  if (sizeTable && bar && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === bar.name; })) {
+    await onPage(T.spacing, 'Spacing page', function () { appendTableRow(sizeTable, [bar.name, bar.desktop + ' px', bar.touch + ' px', SIZE_USE[bar.name]], [260, 160, 160, 600]); fitSection(T.spacing.host); });
+    added.push('size table row ' + bar.name);
+  }
+  const logTable = findTable(T.changelog.host, 'Version|Date|Changes');
+  if (logTable && !logTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === RELEASE.version; })) {
+    await onPage(T.changelog, 'Changelog', function () { appendTableRow(logTable, [RELEASE.version, RELEASE.date, RELEASE.changes], CHANGELOG_WIDTHS); fitSection(T.changelog.host); });
+    added.push('changelog row ' + RELEASE.version);
+  }
+  const meta = { Version: SPEC.version, Updated: RELEASE.date };
+  const coverEdits = [];
+  const coverOf = function (k) { const f = T.cover.host.findOne(function (n) { return n.type === 'FRAME' && n.name === k && n.children.length === 2; }); const t = f && f.children[1]; return t && t.type === 'TEXT' ? t : null; };
+  if (coverOf('Version') && semverLess(coverOf('Version').characters, SPEC.version)) Object.keys(meta).forEach(function (k) { const t = coverOf(k); if (t) coverEdits.push([t, meta[k]]); });
+  if (coverEdits.length) { await onPage(T.cover, 'Cover', function () { coverEdits.forEach(function (e) { e[0].characters = e[1]; }); }); added.push('cover version'); }
+
+  await flush();
+  if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
+  if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
+  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt. Next: run Audit file, then Export tokens (expect a diff only for size/bottom-bar and the version line).'); }
+  post({ type: 'done', report: S.report, added: added });
 }
 
 // ---------------------------------------------------------------- state for commands run on an existing file
@@ -456,6 +585,7 @@ post({ type: 'init', version: figma.root.getPluginData('version') || SPEC.versio
 figma.ui.onmessage = async function (msg) {
   try {
     if (msg.type === 'build') await build(!!msg.force);
+    else if (msg.type === 'update') await updateLibrary();
     else if (msg.type === 'theme') await themeSelection(msg.theme);
     else if (msg.type === 'density') await densitySelection(msg.density);
     else if (msg.type === 'upgrade') await upgradeModes();

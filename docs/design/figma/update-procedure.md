@@ -67,7 +67,7 @@ Prefer reuse. A new component needs a reason in the brief.
 
 ## Working notes (learned while building v1.0.0)
 - Re-run the plugin with Ctrl+Alt+P. The first click inside the plugin only focuses its iframe.
-- Never run **Rebuild** on the hand-edited library: it deletes and regenerates everything the plugin made.
+- Never run **Rebuild** on the hand-edited library: it deletes and regenerates everything the plugin made. To bring it to a newer plugin release use **Update library**: it only adds what is missing and can be run again safely.
 - After `device_commit_files`, compare md5 on the device. A commit made right after staging can land a stale copy.
 - Figma API facts that the plugin tests enforce:
   - Nodes are not extensible.

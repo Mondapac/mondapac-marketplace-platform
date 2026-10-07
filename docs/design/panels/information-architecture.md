@@ -7,14 +7,14 @@
 | Authors | Jafar (product-designer), Reza (ui-ux-designer) |
 | Reviewers | Hadi (product-owner), Mahdi (frontend-developer), Ali (cto), Hassan (security-tester), Sajad (qa-engineer) |
 | Builds on | `docs/design/research/panels-ux-strategy.md` sections 5 and 6 (draft IA), `docs/design/frontend-kickoff.md` (approved look A with C's components), `docs/design/figma/README.md` (library 1.0), the G2 UX specs `docs/modules/identity/ux.md` and `docs/modules/sellers/ux.md`, and section 12 of every module brief |
-| Preview | Design canvas "MondaPac Panel Shell" (https://claude.ai/artifact/TN1WZcJdeJ1zzBwZNRqwrZ), page "Panels · IA and key screens (2026-10-07)": S1, P3, B1–B3, the D16 proposal and the sidebar. This is a review preview, not the Figma library; the Figma work follows section 6 and `docs/design/figma/update-procedure.md` (ADR-0017) |
+| Preview | Design canvas "MondaPac Panel Shell" (https://claude.ai/artifact/TN1WZcJdeJ1zzBwZNRqwrZ), page "Panels · IA and key screens (2026-10-07)": S1, P3, B1–B3, the D16 mobile navigation and the sidebar. This is a review preview, not the Figma library; the Figma work follows section 6 and `docs/design/figma/update-procedure.md` (ADR-0017) |
 
 ## خلاصه برای صاحب پروژه
 
 - **یک پوسته، دو پیکربندی.** هر دو پنل همان `AppShell`، `Sidebar` و `Topbar` را دارند. فرقشان فقط فهرست منو، شمارنده‌ها و مجوزهاست. این سند فهرست کامل منوی هر دو پنل را، با کلید مجوز و فاز هر آیتم، یک‌جا می‌آورد تا مهدی (توسعه‌دهندهٔ فرانت‌اند) منو را از یک فایل پیکربندی بسازد.
 - **فهرست همهٔ صفحه‌ها.** صفحه‌ها و پنجره‌های دو پنل در ۵۵ ردیف آمده‌اند. ۲۶ ردیف مشخصات تأییدشدهٔ G2 دارند (هویت و فروشنده)، ۲ ردیف پیش‌نمایش‌های موجودند، ۱۴ ردیف منتظر G2 ماژول خودشان‌اند (گواهی، کاتالوگ، موجودی، قیمت) و ۱۳ ردیف مال فازهای بعدی‌اند. طبق ADR-0013 این دو گروه آخر هنوز طراحی جزئی نمی‌شوند.
 - **نُه قالب صفحه** همهٔ این صفحه‌ها را می‌پوشانند؛ چهار تای آن‌ها در Figma هست و پنج تا (Auth، Form، Settings، Members/Roles، حالت‌های سیستمی) با نسخه‌های 1.1.0 تا 1.4.0 کتابخانه می‌آیند.
-- **منوی موبایل (D16)** که جلوی چند صفحهٔ فرانت را گرفته بود، اینجا پیشنهاد شده است: کشوی کناری با همان منو برای هر دو پنل، و برای فروشنده یک نوار پایین چهارتایی. این تنها تصمیمی است که از شما خواسته می‌شود؛ نوار پایین را هادی (مالک محصول) هم باید تأیید کند، چون در پژوهش اولیه فقط کشو آمده بود.
+- **منوی موبایل (D16) تصمیم گرفته شد** (صاحب پروژه، ۲۰۲۶-۱۰-۰۷، گزینهٔ ۱): کشوی کناری با همان منو برای هر دو پنل، و برای فروشنده یک نوار پایین (خانه، سفارش‌ها، کاتالوگ، بیشتر). هادی (مالک محصول) نوار پایین را تأیید کرد. منوی آیکونی ۷۲ پیکسلی تبلت روی گوشی به کار نمی‌رود (بخش ۴.۱).
 
 ## 1. Rules this architecture follows
 
@@ -98,9 +98,9 @@ A seller who is not approved signs in to a limited shell (identity decisions 6 a
 
 Breadcrumb (panel name, then page); global search with Ctrl/Cmd+K (hidden in the limited shell); Market chip (`AU · AUD · Brisbane AEST`, from Market configuration, board request 6); notifications; user menu (name, role, Account security, Sign out). Admin and seller topbars differ only in the search hint and the user's role line.
 
-## 4. Breakpoints and mobile navigation (proposal for D16)
+## 4. Breakpoints and mobile navigation (D16, decided)
 
-D16 is the open "mobile drawer navigation" item of `docs/design/figma/README.md` section 14 and `claude/design-status.md`; identity ux sections 6 and 8.2 and sellers ux sections 1.3 and 4 list it as blocking phone layouts. It is not one of D1 to D7 in `panels-ux-strategy.md` section 8.
+D16 was the open "mobile drawer navigation" item of `docs/design/figma/README.md` section 14 and `claude/design-status.md`; identity ux sections 6 and 8.2 and sellers ux sections 1.3 and 4 listed it as blocking phone layouts. It is not one of D1 to D7 in `panels-ux-strategy.md` section 8.
 
 | Width | Sidebar | Topbar | Notes |
 |---|---|---|---|
@@ -108,12 +108,33 @@ D16 is the open "mobile drawer navigation" item of `docs/design/figma/README.md`
 | 760–1279 px | Collapsed to 72 px icons (`size-sidebar-collapsed`); expands as an overlay on demand | Search becomes an icon button | Seller tablet; the order board keeps its own touch layout (T4) |
 | Below 760 px | Hidden; the same config opens as a **drawer** from the inline-start edge | 56 px: menu button, panel mark, notifications, account | Phone |
 
-Proposal:
+Decision (owner, 2026-10-07, option 1; Hadi confirmed the bottom bar):
 - **Both panels: drawer.** The drawer renders the same nav config as the desktop sidebar, same groups and order, so nothing is phone-only. While open, the background is `inert` and the drawer is `aria-modal`; focus is trapped; Esc, the scrim and any navigation close it; focus returns to the menu button. It renders only the already-filtered config. Targets are 48 px (`data-density="touch"`, `--mp-size-control`).
 - **Seller only: a bottom bar** with four tabs (Home, Orders, Catalogue, More). "More" opens the drawer. Reason: a shop owner or staff member on a phone switches between orders and stock many times an hour (V1 and V2 in `panels-ux-strategy.md` 2.2); one thumb tap beats opening a drawer each time. Admin work on a phone is occasional, so admin keeps the drawer only.
 - The bottom bar is shown only when the user may see at least two of Home, Orders and Catalogue; it then shows those items plus More, which is always present. Otherwise only the drawer is used.
 
-This is the only owner decision in this document: drawer for both panels, with or without the seller bottom bar. The bottom bar is new scope beyond `panels-ux-strategy.md` 6.1 (drawer only), so Hadi confirms it too. Library impact: new components `NavDrawer` and `BottomTabBar` (touch density), token `size/bottom-bar` (64 px), template frames at 360 px; a MINOR release after 1.4.0.
+The owner chose the drawer for both panels plus the seller bottom bar on 2026-10-07. The bottom bar is new scope beyond `panels-ux-strategy.md` 6.1 (drawer only); Hadi confirmed it the same day. Library impact: new components `NavDrawer` and `BottomTabBar` (touch density), token `size/bottom-bar` (64 px), template frames at 360 px; released as library 1.5.0 (2026-10-07), ahead of the reserved 1.1.0–1.4.0.
+
+### 4.1 The tablet rail on phones (team review, 2026-10-07)
+
+The owner asked whether the 72 px icon rail of 760–1279 px should also serve phones. Team verdict (Reza, Jafar, Hadi, Mahdi): **no rail below 760 px**, neither instead of nor beside the drawer and bottom bar.
+- Content width: a 72 px rail takes 20% of a 360 px screen and leaves about 256 px after padding, so tables and order cards scroll sideways at once.
+- Labels: icon-only items are hard to recognise, and a 72 px rail cannot hold readable labels; touch has no hover tooltip.
+- Two persistent navs: rail plus bottom bar would duplicate Home, Orders and Catalogue and add a third mode below 760 px.
+- RTL: the mirrored rail sits on the thumb edge and meets the system back-swipe.
+- Cost (Mahdi): about one extra day plus a rework of the 360 px frames, for no gain.
+
+Phone landscape (for example 844×390) is wider than 760 px and so already gets the tablet rail; the bottom bar never appears there. Below 760 px in landscape the portrait rules apply. Reza's alternative (a height-based rule that swaps the bar for the rail on short screens) is kept as a later option if usage data shows sellers work in landscape.
+
+Edge cases the frontend and the Figma frames must cover:
+1. The limited seller shell has no drawer and no bottom bar (section 3.3).
+2. Tabs come from the already-filtered nav config: a missing permission means fewer tabs, never a disabled tab. Before Orders ships (phase 5) the bar shows Home, Catalogue and More only if both Home and Catalogue are visible; otherwise only the drawer.
+3. Every tab has a visible label, a target of at least 48 px and respects the bottom safe area.
+4. The Orders badge caps at "9+" and follows the badge rule of section 7.
+5. The bar hides while the on-screen keyboard is open.
+6. More opens the same drawer; while the drawer is open More shows as active, and on a route that is not one of the tabs More is the active tab.
+7. The acting-as banner, when SEL-08 adds it, is visible in every shell state, drawer open included, and sits above the bar, never under it. No AI entry point appears in the shell during acting-as (ADR-0019 R3).
+8. Test the boundary at 759 px (drawer, bar) and 760 px (rail, no bar).
 
 ## 5. Screen inventory
 
@@ -195,13 +216,13 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 
 1. **Library 1.1.0 "Auth" and 1.2.0 "Panel"** (identity ux 8.1): unblock every Phase 2 frontend slice.
 2. **Library 1.3.0 "Seller setup" and 1.4.0 "Seller admin"** (sellers ux 8.1).
-3. **Nav release (after 1.4.0):** the nav config of section 3 as `Sidebar` variants (admin, seller full, seller limited), `NavDrawer`, `BottomTabBar` once D16 is decided, and the Review queue tab set.
+3. **Nav release:** `NavDrawer`, `BottomTabBar` and the phone templates were released as 1.5.0 (D16, 2026-10-07). Still to come after 1.4.0: the nav config of section 3 as `Sidebar` variants (admin, seller full, seller limited) and the Review queue tab set.
 4. **Module screens** after each G2: certification and catalog (Phase 3), then inventory, pricing and cart seller parts (Phase 4).
 5. Each release follows `docs/design/figma/update-procedure.md`: sandbox, review, publish, Audit with zero warnings, token export, changelog, `claude/design-status.md`.
 
 ## 7. Hand-off to the frontend track
 
-- Build the sidebar from a typed nav config per panel (`id`, label key, route, group, `anyOf` permission keys, badge source, children), filtered by the caller's effective permission keys from the session. No `if (role === …)` in components.
+- Build the sidebar from a typed nav config per panel (`id`, label key, route, group, `anyOf` permission keys, badge source, children), filtered by the caller's effective permission keys that the server returns for the session. No `if (role === …)` in components. The sidebar, drawer and bottom bar all render this one filtered config. Filtering is presentation only: every route and API call still authorizes in the application layer (ADR-0018).
 - Badge counts come from one lightweight endpoint per panel. The server filters them with the same permission check as the queue; a source the caller may not open is left out, not sent as 0. Counts are scoped to the caller's Market, and to their seller id in the seller panel. The limited shell makes no badge call.
 - Routes in section 5 are paths within each panel's own host (Hassan 7: each panel on its own host); D2's ADR decides the app topology. Each panel host ships only its own nav config and route bundle: the admin config never appears in the seller build.
 - An unknown route and another seller's or Market's record land on B5 "not found", byte-identical. A route the user has no view key for lands on B5 "no access". No session goes to A1, with a return URL only if it is a path of the same panel (identity F2 step 7). The limited shell sends other routes to S1.
@@ -214,12 +235,13 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 5. B5 bodies for "not found" are byte-identical across unknown id, other seller and other Market.
 6. Drawer: focus trapped, Esc, scrim and navigation close it, focus returns to the menu button, background inert.
 7. Items whose keys say "(module G2)" are untestable until that G2 names the key; they are not built before then.
+8. Bottom bar: the edge cases of section 4.1 (tabs from the filtered config, 759/760 px boundary, keyboard hides the bar, More active state).
 
 ## 8. Open points
 
 | # | Point | Owner |
 |---|---|---|
-| 1 | D16: drawer for both panels, with or without the seller bottom bar (section 4); the bottom bar is a proposal Hadi confirms | Owner, Hadi |
+| 1 | ~~D16~~ Decided 2026-10-07: drawer for both panels plus the seller bottom bar; no rail on phones (section 4.1) | Closed |
 | 2 | Which certification, catalog and pricing decision keys open each Review queue tab | Each module's G2 |
 | 3 | `F_AdminReview` (certificate review preview) predates ADR-0019 R2 and must drop "automatic checks" that an AI could tick before it becomes a template | certification G2, Reza |
 | 4 | Customers screen needs the "find and deactivate a customer" mini-review before the first real customer (identity ux 1.3), and a phase | Hadi |
