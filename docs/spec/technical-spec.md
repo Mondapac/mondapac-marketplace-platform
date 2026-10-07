@@ -368,7 +368,7 @@
 | Presentation (Web) | Next.js / React, TypeScript |
 | Presentation (Mobile) | React Native / Flutter |
 | API Gateway | Kong / AWS API Gateway |
-| Application/Backend | Node.js 24.15.0+ (ADR-0014، ADR-0021)، NestJS، Prisma v7 (ADR-0004) — پیش‌فرض تصمیم‌گرفته‌شده در `CLAUDE.md` |
+| Application/Backend | Node.js 24.20.0+ (ADR-0014، ADR-0021)، NestJS، Prisma v7 (ADR-0004) — پیش‌فرض تصمیم‌گرفته‌شده در `CLAUDE.md` |
 | Communication (Sync) | REST, gRPC |
 | Communication (Async) | Apache Kafka |
 | Domain/Business Logic | DDD + Hexagonal Architecture |

@@ -1,5 +1,7 @@
 # ADR-0021: Node.js Minimum 24.15.0, Tested in CI
 
+*(The minimum was raised to 24.20.0 on 2026-10-07 through decision 3; see decision 1.)*
+
 **Status:** Accepted — 2026-10-03 (CTO, decided at the review of the database role and
 grant note; evidence by Kazem and Hossein on 24.15.0 with `engine-strict` on). No owner
 decision is changed, so none is asked; the owner is informed in the Phase 2 status summary.

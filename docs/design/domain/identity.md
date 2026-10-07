@@ -8,7 +8,7 @@ this design). The owner gets a Persian summary with the questions of 14.4 only.
 **Ground truth:** `docs/modules/identity/brief.md` (G1 approved 2026-10-02; sections, decisions,
 rules R1 to R12 and acceptance criteria are cited as "brief s5", "decision 6", "R3", "AC 14");
 ADR-0018 and ADR-0020; ADR-0003 to ADR-0006, ADR-0008, ADR-0009, ADR-0013 to ADR-0015; ADR-0021
-(Node minimum 24.15), ADR-0022 (seller access, 8.4) and ADR-0023 (platform amendments), reserved
+(Node minimum 24.15; 24.20.0 since 2026-10-07), ADR-0022 (seller access, 8.4) and ADR-0023 (platform amendments), reserved
 on the board and written by Ali in parallel;
 `docs/design/domain/platform-foundations.md` (cited as "PF 6.2"); `docs/design/data/platform.md`;
 `docs/features/` (SEL-01..07, SEL-13, CUS-01, CUS-03, ADM-05, PNL-05, IMP-10, VER-10..14, INTL-11,
@@ -801,7 +801,7 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 
 ## 13. Dependencies (the one list for the owner, ADR-0018 decision 8)
 
-| Need | Node 24 standard library (minimum 24.15, ADR-0021)? | Candidates and criteria | Recommendation |
+| Need | Node 24 standard library (minimum 24.20.0 since 2026-10-07, ADR-0021)? | Candidates and criteria | Recommendation |
 |---|---|---|---|
 | Password hashing | Yes: `crypto.argon2` (spike 1) | Fallbacks if the spike fails: `@node-rs/argon2`, `argon2`, `hash-wasm`; criteria: no install script (ADR-0014 decision 5), PHC output, maintained | **No package (final, 2026-10-07):** the minimum is 24.20.0, where it is stable (spike 1) |
 | TOTP, base32, recovery codes | Yes: HMAC and random bytes (spike 2) | `otplib` | **No package** |

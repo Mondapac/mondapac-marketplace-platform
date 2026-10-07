@@ -8,7 +8,7 @@ in 3.1 and 4, read the same as in the identity design).
 3.7, 4, 5, 6.4, 8; inputs I4, I5, I7, I14, I15); ADR-0003 (decisions 2, 3, 7), ADR-0004
 (decisions 3 to 5, 7), ADR-0005 (decisions 5, 6), ADR-0006 (all), ADR-0008 (decisions 2, 5, 6),
 ADR-0009 (decision 6), ADR-0014, ADR-0015 (decisions 1 to 5), ADR-0018 (decisions 2 to 4),
-ADR-0020; ADR-0021 (Node minimum 24.15) and ADR-0023 (platform amendments from identity G2),
+ADR-0020; ADR-0021 (Node minimum 24.15; 24.20.0 since 2026-10-07) and ADR-0023 (platform amendments from identity G2),
 reserved on the board and written by Ali in parallel; `docs/design/data/platform.md` (section
 1); `docs/modules/identity/brief.md` (sections 5, 6, 11); the code on branch
 `docs/identity-g2-design` (`apps/api/src/platform/persistence/`, `platform/config/app-config.ts`,
