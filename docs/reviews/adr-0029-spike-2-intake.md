@@ -7,14 +7,18 @@
 (ADR-0029, Spikes). Samples were generated for the test and are not committed.
 
 ## Result in one paragraph
-Decisions 7 and 8 hold with four corrections for the ADR text: (1) the 512 MiB memory limit of
-the child cannot be a process rlimit for Node with sharp, so it comes from a cgroup limit on the
-intake worker container (Kazem); (2) ClamAV does not alert on an archive **member** above
-`MaxFileSize`, so bomb protection is our type allow-list and size caps, never the scanner; (3)
-sharp reads only the first frame of an APNG, so APNG must be refused by an `acTL` chunk check of
-our own; (4) qpdf does not see bytes after the final `%%EOF`, so the polyglot rule of decision 8
-stays our own check. Everything the ADR asked for in the sandbox (no network, clean environment,
-no inherited descriptors, no credentials, read-only root, caps dropped, wall-time kill) was proven.
+Decisions 7 and 8 are **partly proven**. Proven here: the sandbox properties of bubblewrap (no
+network, clean environment, no inherited descriptors, no credentials, read-only root, caps
+dropped, wall-time kill), the sharp re-encode and the main PDF checks. **Not proven:** seccomp,
+the memory limit, ClamAV with a real signature set, and bubblewrap inside the production worker
+container run as a non-root user (this spike ran as root outside Docker). Four corrections for
+the ADR text: (1) the 512 MiB memory limit of the child cannot be a process rlimit for Node with
+sharp, so it comes from a cgroup limit on the intake worker container (Kazem), not per file; (2)
+ClamAV does not alert on an archive **member** above `MaxFileSize` (measured for a zip only), so
+bomb protection is our type allow-list and size caps, never the scanner, and ClamAV is
+signature-based defence in depth; (3) sharp reads only the first frame of an APNG, so APNG must
+be refused by an `acTL` chunk check of our own; (4) qpdf does not see bytes after the final
+`%%EOF`, so the polyglot rule of decision 8 stays our own check.
 
 ## 1. ClamAV (decision 6)
 The signature mirror `database.clamav.net` is blocked from this container, so `freshclam` failed
@@ -121,3 +125,41 @@ ClamAV memory and start time with the real signature set, and `freshclam` from t
 network; the cgroup memory limit; the seccomp filter; nsjail (bubblewrap met the ADR's list, so it
 is the proposal); PDFium; a real HEIC sample; throughput under load. Hassan reviews this report
 before ADR-0029 is Accepted.
+
+Also not measured: an oversize stream inside a PDF under ClamAV, ClamAV over the internal network
+instead of a Unix socket (clamd has no authentication; `SHUTDOWN` and `RELOAD` must be
+unreachable from other hosts), a multi-page PDF and `/UserUnit`, hex-escaped PDF names,
+JBIG2Decode and JPXDecode, a 40 MP interlaced 16-bit PNG, a pids limit, a size-limited tmpfs,
+`RLIMIT_FSIZE` and `RLIMIT_NOFILE`, and the descriptors of a real worker with database, S3 and
+clamd connections open.
+
+## Conditions before ADR-0029 is Accepted (Hassan and Bagher, 2026-10-07)
+
+1. **Sandbox (decision 7).** A probe suite passes in CI on the real worker image, run as its
+   non-root user with Kazem's production container settings (not `privileged`, not
+   `seccomp=unconfined`): a seccomp allow-list, `--disable-userns` or equivalent, and a probe
+   inside the child that asserts `ptrace`, `mount`, `unshare`, `setns`, `keyctl`, `bpf`,
+   `perf_event_open`, `userfaultfd`, `io_uring_*`, `process_vm_*` and `open_by_handle_at` fail. If
+   bubblewrap cannot run that way, nsjail or another mechanism is chosen and the suite re-run.
+   Kazem's list gains "bubblewrap inside the production container".
+2. **Descriptors.** The launcher closes every descriptor above 2; a test on the real worker lists
+   `/proc/self/fd` in the child and expects 0, 1 and 2 only.
+3. **Limits.** Each child has its own limits (address space, file size, open files, pids, a
+   size-limited tmpfs, wall and CPU time, an output cap); the cgroup figure is measured with the
+   worst legal image and PDF, and every parser (`qpdf`, `pdfinfo`, `pdftoppm`, sharp) runs inside
+   the sandbox.
+4. **Scanner (decision 6).** ADR wording becomes: ClamAV is a signature check, not a
+   decompression-bomb or completeness control; scan and parse use the same bytes (SHA-256). A
+   run with the real signature set, production size limits and an oversize PDF stream is
+   recorded first.
+5. **Polyglot (decision 8).** The end rule is a structural parse (JPEG segments to the real EOI,
+   PNG chunks with CRC to IEND, PDF last `startxref` and `%%EOF`), tested with appended payloads
+   that themselves end in `FFD9`, `IEND` and `%%EOF`.
+6. **PDF (decision 8).** An allow-list of objects and actions, not only a search for names;
+   JBIG2Decode, JPXDecode and Crypt refused unless condition 1 holds; the page, size and DPI caps
+   are numbers in the ADR. The `/URI` refusal is a product decision for the owner.
+7. **HEIC and HEIF** are refused at intake.
+8. **ADR amendment.** Ali amends ADR-0029 with the four corrections and these conditions; merging
+   this report does not do it. Spike code and sample generators are kept under
+   `docs/reviews/spikes/` or attached for re-runs; slices 3 and 4 turn each property into a CI
+   test.
