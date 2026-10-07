@@ -765,7 +765,7 @@ const RELEASES = [
   { version: '1.6.0', date: '7 Oct 2026', changes: 'Mobile navigation polish (D16 follow-up). New token bg/scrim (overlay colour with alpha in the value: #111827 at 50% light, black at 60% dark), new token size/topbar-phone (56 px), new icon menu, new component PhoneTopbar (Admin and Seller). The three phone templates use PhoneTopbar and the drawer scrim is bound to bg/scrim.' },
   { version: '1.7.0', date: '7 Oct 2026', changes: 'Auth (planned as 1.1.0 in identity ux.md 8.1). Tokens bg/qr, bg/auth-showcase-admin, bg/auth-showcase-seller, text/on-showcase, text/on-showcase-muted (white at 74%, hex8) and size/auth-card (400 px), with primitives blue/780 and teal/705. Icons eye-off, lock, mail, key, user, log-out, copy, smartphone, trash. New components BrandMark (the Sidebar uses it in a new build), Field, ReasonQuote, Menu and MenuItem, AuthShowcase. Input Type=Password and Type=Code; Button Variant=Link and State=Loading; ChecklistItem Waiting and Needs attention with Show actions and Action; Topbar Show search and Show notifications. Templates Auth (A1 to A11, Seller and Admin, 1280 and 360) and Seller · Your seller account (S1), with dark previews.' },
   { version: '1.8.0', date: '7 Oct 2026', changes: 'Panel (planned as 1.2.0 in the Panel spec). Tokens size/dialog-sm (400 px) and size/dialog-md (560 px). New components Select, Textarea, CheckboxRow, Toast, DialogBody and Dialog (6 variants: Size, Tone, Layout) and EmptyState (Page, Card, Compact). TableCell gains State=Loading (5 skeleton variants, added in place). The Field Control slot lists Input, Select and Textarea as preferred values. Templates Shared · Members, Roles, No access, Not found and Account security for Admin and Seller (1440 and 360), the dialogs D1 to D3 with the confirm dialogs and two phone sheets. The Sellers list, the role editor and dialogs D4 to D6 follow in 1.8.1.' },
-  { version: '1.8.1', date: '7 Oct 2026', changes: 'Audit fixes for the Panel pages. Panel desktop pages are at least 900 px high, so the Sidebar holds its own items on short pages; the admin phone members screen shows the 3 cards that fit; the CheckboxRow set puts Value in columns and State in rows, so it no longer sticks out of its documentation row. Update library repairs the frames and the CheckboxRow set of a 1.8.0 file in place (nothing is deleted except the two member cards that did not fit); no token, component or variant changes.' },
+  { version: '1.8.1', date: '7 Oct 2026', changes: 'Audit fixes for the Panel pages. Panel desktop pages are at least 900 px high, so the Sidebar holds its own items on short pages; the admin phone members screen shows the 3 cards that fit; the CheckboxRow set puts Value in columns and State in rows, so it no longer sticks out of its documentation row. Update library repairs the frames and the CheckboxRow set of a 1.8.0 file in place (nothing is deleted except the two member cards that did not fit). Update library no longer moves existing frames; overlaps are reported. No token, component or variant changes.' },
 ];
 const RELEASE = RELEASES[RELEASES.length - 1];
 async function pageChangelog(page) {
@@ -2714,12 +2714,16 @@ function rowsPage(host, title, subtitle, rows) {
   head.fills = []; host.appendChild(head); head.x = 0; head.y = 0; tag(head);
   placeRows(host, rows, 240);
 }
+// 1.8.1: rows are stacked from the sizes read AFTER every frame is in the host and positioned (a hugging frame's height is final only then),
+// never from a size read while the frame was being built. `y` must come from bottomEdge() of what the host already holds.
 function placeRows(host, rows, y) {
-  rows.forEach(function (r) {
-    if (!r.length) return;
-    let x = 0, h = 0;
-    r.forEach(function (s) { host.appendChild(s); s.x = x; s.y = y; x += s.width + 160; h = Math.max(h, s.height); });
-    y += h + 240;
+  const live = rows.filter(function (r) { return r.length; });
+  live.forEach(function (r) { r.forEach(function (s) { host.appendChild(s); }); });
+  live.forEach(function (r) {
+    let x = 0, bottom = y;
+    r.forEach(function (s) { s.x = x; s.y = y; x += s.width + 160; });
+    r.forEach(function (s) { bottom = Math.max(bottom, s.y + s.height); });
+    y = bottom + 240;
   });
   return y;
 }
@@ -3122,19 +3126,6 @@ function panelDefs() {
 }
 // The desktop pages built by shellPage (they hug their content, 1.8.1 minimum height): every group except the dialog scenes and the phone frames.
 function panelShellNames(key) { return panelDefs()[key].filter(function (d) { return ['members', 'roles', 'access', 'security'].indexOf(d[0]) >= 0; }).map(function (d) { return d[1]; }); }
-// After pages grew (Update library 1.8.1), push the canvas rows below them down so the 240 px between rows stays. Rows are frames that share a y.
-function reflowRows(host, grown) {
-  const growth = {}; grown.forEach(function (f) { growth[f.scr.id] = f.scr.height - f.old; });
-  const rows = {}; host.children.forEach(function (n) { const k = Math.round(n.y); (rows[k] = rows[k] || []).push(n); });
-  const ys = Object.keys(rows).map(Number).sort(function (a, b) { return a - b; });
-  let shift = 0, prevBottom = null;
-  ys.forEach(function (y) {
-    if (prevBottom !== null) shift = Math.max(shift, prevBottom + 240 - y);
-    let bottom = 0, grew = false;
-    rows[y].forEach(function (n) { n.y = n.y + shift; bottom = Math.max(bottom, n.y + n.height); if (growth[n.id] > 0) grew = true; });
-    prevBottom = grew || shift > 0 ? bottom : null;
-  });
-}
 function panelNames(key) { return panelDefs()[key].map(function (d) { return d[1]; }); }
 // Build the frames in `names` (all when omitted), one canvas row per group below what the host already holds, then the template bodies
 // that were made on the way. Returns how many of each were made.
@@ -3244,8 +3235,10 @@ function arrangeSections(T) {
   });
 }
 
+const UPDATE_TOUCHED = []; // pages Update library changed in this run (their overlaps are reported at the end)
 async function onPage(target, label, fn) {
   await figma.setCurrentPageAsync(target.page);
+  if (UPDATE_TOUCHED.indexOf(target.page) < 0) UPDATE_TOUCHED.push(target.page);
   const r = await fn(target.host);
   await flush();
   progress(label);
@@ -3413,6 +3406,21 @@ function findTable(host, headers) {
 }
 function pageOf(node) { let p = node; while (p && p.type !== 'PAGE') p = p.parent; return { page: p, host: p }; }
 function bottomEdge(host) { let b = 0; host.children.forEach(function (c) { b = Math.max(b, c.y + c.height); }); return b; }
+// 1.8.1: Update library never moves a frame (the owner may have placed it). After a repair made a screen taller it only reports top-level nodes whose bounds now overlap.
+function reportOverlapsIn(parent, label) {
+  const kids = parent.children.filter(function (n) { return n.visible !== false; });
+  for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) {
+    const a = kids[i], b = kids[j];
+    if (a.x + a.width > b.x + 0.5 && b.x + b.width > a.x + 0.5 && a.y + a.height > b.y + 0.5 && b.y + b.height > a.y + 0.5) log('ℹ overlap: ' + a.name + ' and ' + b.name + ' on ' + label + '; move one by hand');
+  }
+}
+// Pages (and the sections on them) that this run changed; nothing is moved, whatever is found.
+function reportOverlaps() {
+  UPDATE_TOUCHED.forEach(function (pg) {
+    reportOverlapsIn(pg, pg.name);
+    pg.children.forEach(function (n) { if (n.type === 'SECTION') reportOverlapsIn(n, pg.name + ' › ' + n.name); });
+  });
+}
 // The library page's root frame (made by pageShell), or a new one to the right of what is there.
 function docRoot(host, title, subtitle) {
   let root = host.children.filter(function (n) { return n.type === 'FRAME' && n.name === title; })[0];
@@ -3440,7 +3448,7 @@ async function ensureAuthHost(T) {
 function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
 async function updateLibrary() {
-  STEP = 0; STEPS = 8; S.report = [];
+  STEP = 0; STEPS = 8; S.report = []; UPDATE_TOUCHED.length = 0;
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   if (state.empty) { post({ type: 'error', message: 'This file is empty. Update library only adds to an existing MondaPac library; use Build library in a new file.' }); return; }
@@ -3484,7 +3492,7 @@ async function updateLibrary() {
       const wrap = host.findAll(function (n) { return n.type === 'FRAME' && n.name === 'Icons' && n.layoutWrap === 'WRAP'; })[0];
       missingIcons.forEach(function (n) {
         const cell = iconCell(n);
-        if (wrap) add(wrap, cell); else { host.appendChild(cell); cell.x = rightEdge(host) + 160; cell.y = 0; }
+        if (wrap) add(wrap, cell); else { cell.x = rightEdge(host) + 160; cell.y = 0; host.appendChild(cell); }
       });
       fitSection(host);
     });
@@ -3807,7 +3815,6 @@ async function updateLibrary() {
     for (const key of Object.keys(byHost)) {
       await onPage(T[key], key === 'tpl-admin' ? 'Admin panel page heights' : 'Seller panel page heights', function (host) {
         byHost[key].forEach(function (f) { f.scr.minHeight = PANEL_MIN_H; });
-        reflowRows(host, byHost[key]);
         fitSection(host);
       });
     }
@@ -3866,6 +3873,7 @@ async function updateLibrary() {
   if (coverEdits.length) { await onPage(T.cover, 'Cover', function () { coverEdits.forEach(function (e) { e[0].characters = e[1]; }); }); added.push('cover version'); }
 
   await flush();
+  reportOverlaps();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
   else {
