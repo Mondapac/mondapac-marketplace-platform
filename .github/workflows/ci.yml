@@ -105,7 +105,7 @@ jobs:
       # refuses any role but the application login.
       - name: Boot the API for this region, probe readiness and the security headers
         run: |
-          PORT=3000 node apps/api/dist/main &
+          APP_ROLE=api PORT=3000 node apps/api/dist/main &
           for attempt in $(seq 1 30); do
             if curl --silent --fail http://localhost:3000/health/ready; then
               # The security headers on a 200, a 404 and a 400 (slice 0 item 6).
@@ -116,6 +116,28 @@ jobs:
           done
           echo "API did not become ready" >&2
           exit 1
+
+      # PK2: the worker role opens no port and stops cleanly on SIGTERM. The worker entry
+      # (platform/worker/) arrives with identity slice 1b; before it exists main.ts ignores
+      # APP_ROLE and would serve HTTP, so the step is skipped until the directory exists. Once
+      # it does, a missing or failing worker fails the job. Remove the guard after the merge.
+      - name: Boot the worker role, check it opens no port and stops on SIGTERM
+        run: |
+          if [ ! -d apps/api/src/platform/worker ]; then
+            echo "No platform/worker yet (identity slice 1b): worker boot skipped"
+            exit 0
+          fi
+          APP_ROLE=worker PORT=3100 node apps/api/dist/main &
+          worker=$!
+          sleep 8
+          kill -0 "$worker" || { echo "Worker exited early" >&2; exit 1; }
+          if ss -ltnp | grep -q "pid=$worker,"; then
+            echo "Worker opened a listening port" >&2
+            ss -ltnp | grep "pid=$worker," >&2
+            exit 1
+          fi
+          kill -TERM "$worker"
+          wait "$worker" || { echo "Worker did not stop cleanly on SIGTERM" >&2; exit 1; }
 
       # The only step that runs docker-compose.yml's PostgreSQL: the init-directory path of the
       # bootstrap and `pnpm db:bootstrap`. Port 5433 keeps it apart from the service container.

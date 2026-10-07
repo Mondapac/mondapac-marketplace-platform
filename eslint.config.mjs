@@ -320,6 +320,28 @@ export default tseslint.config(
     },
   },
   {
+    // P 12.2 rule 3, app-role-is-read-in-two-places: only main.ts and platform/worker/ read the
+    // process role (APP_ROLE, P 8). Every other file receives behaviour, not the role.
+    files: [`apps/api/src/**/*.${TS}`, `${FIXTURES}/src/**/*.${TS}`],
+    ignores: [
+      ...SPEC_FILES,
+      'apps/api/src/main.ts',
+      'apps/api/src/platform/worker/**',
+      `${FIXTURES}/src/main.ts`,
+      `${FIXTURES}/src/platform/worker/**`,
+    ],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          property: 'appRole',
+          message:
+            'app-role-is-read-in-two-places: only main.ts and platform/worker/ read appRole (P 12.2 rule 3).',
+        },
+      ],
+    },
+  },
+  {
     // The domain and application layers of a module.
     files: [`**/src/modules/*/domain/**/*.${TS}`, `**/src/modules/*/application/**/*.${TS}`],
     ignores: SPEC_FILES,
