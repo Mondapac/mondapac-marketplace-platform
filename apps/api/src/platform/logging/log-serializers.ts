@@ -67,6 +67,27 @@ function tokenField(value: unknown, field: string): string | undefined {
 }
 
 /**
+ * The `at ...` lines of a stack. The stack opens with the message, which can span several
+ * lines and can itself hold a line that looks like a frame (a quoted value followed by a
+ * newline and `at`). So the header is cut by position first: everything up to the end of
+ * the message when the stack carries it, else the first line; only then are frame lines
+ * kept.
+ */
+function framesOf(stack: string | undefined, message: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  const end = message ? stack.indexOf(message) : -1;
+  const body =
+    end >= 0
+      ? stack.slice(end + message!.length)
+      : stack.slice(stack.indexOf('\n') + 1 || stack.length);
+  const frames = body
+    .split('\n')
+    .filter((line) => /^\s+at /.test(line))
+    .join('\n');
+  return frames || undefined;
+}
+
+/**
  * body-parser puts the raw body on its error (`body`) and quotes it in `message`; a
  * database driver error can quote values in `message` and `detail` (identity I15). So an
  * error is logged by its name, its code, body-parser's reason and its stack frames only.
@@ -78,11 +99,7 @@ function serializeError(err: unknown): LoggedError {
   const name = tokenField(raw, 'name') ?? 'Error';
   const code = tokenField(raw, 'code');
   const kind = tokenField(raw, 'type');
-  // Frame lines only: the message, which heads the stack, can span several lines.
-  const frames = stringField(raw, 'stack')
-    ?.split('\n')
-    .filter((line) => /^\s+at /.test(line))
-    .join('\n');
+  const frames = framesOf(stringField(raw, 'stack'), stringField(raw, 'message'));
   return {
     type: name,
     ...(code === undefined ? {} : { code }),
@@ -117,5 +134,24 @@ export const LOG_HOOKS = {
       return;
     }
     method.apply(this, args);
+  },
+};
+
+/**
+ * Serializers apply to their own key only (`err`). An error logged under any other key
+ * (`{ error }`, `{ cause }`) would be written with its own properties, a driver error's
+ * `detail` among them; so every top-level error value goes through the error serializer.
+ */
+export const LOG_FORMATTERS = {
+  log(object: Record<string, unknown>): Record<string, unknown> {
+    // `err` is left to its serializer, which runs after this.
+    const isLoose = ([key, value]: [string, unknown]) => key !== 'err' && value instanceof Error;
+    if (!Object.entries(object).some(isLoose)) return object;
+    return Object.fromEntries(
+      Object.entries(object).map((entry) => [
+        entry[0],
+        isLoose(entry) ? serializeError(entry[1]) : entry[1],
+      ]),
+    );
   },
 };

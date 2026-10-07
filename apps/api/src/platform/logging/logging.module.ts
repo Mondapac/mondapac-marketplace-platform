@@ -9,7 +9,7 @@ import { pinoHttp, type HttpLogger } from 'pino-http';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
 import { CORRELATION_ID_HEADER } from './correlation-id';
-import { LOG_HOOKS, LOG_SERIALIZERS } from './log-serializers';
+import { LOG_FORMATTERS, LOG_HOOKS, LOG_SERIALIZERS } from './log-serializers';
 
 /**
  * The caller's `x-correlation-id` when it fits the kernel's rule, as `clientRequestId`
@@ -32,7 +32,12 @@ export const HTTP_LOGGER = Symbol('HTTP_LOGGER');
  * rejects is still logged with its correlation id (slice 0 item 5, Security L4).
  */
 function createHttpLogger(config: AppConfig, destination?: DestinationStream): HttpLogger {
-  const options = { level: config.logLevel, serializers: LOG_SERIALIZERS, hooks: LOG_HOOKS };
+  const options = {
+    level: config.logLevel,
+    serializers: LOG_SERIALIZERS,
+    hooks: LOG_HOOKS,
+    formatters: LOG_FORMATTERS,
+  };
   const logger = destination ? pino(options, destination) : pino(options);
   return pinoHttp({
     logger,

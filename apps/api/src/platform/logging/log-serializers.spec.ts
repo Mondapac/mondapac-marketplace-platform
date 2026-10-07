@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 import { pino, type Logger } from 'pino';
-import { LOG_HOOKS, LOG_SERIALIZERS } from './log-serializers';
+import { LOG_FORMATTERS, LOG_HOOKS, LOG_SERIALIZERS } from './log-serializers';
 
 const SECRET = 'secret-value-0001';
 
@@ -12,7 +12,10 @@ function capturingLogger(): { logger: Logger; lines: Record<string, unknown>[] }
       callback();
     },
   });
-  const logger = pino({ serializers: LOG_SERIALIZERS, hooks: LOG_HOOKS }, stream);
+  const logger = pino(
+    { serializers: LOG_SERIALIZERS, hooks: LOG_HOOKS, formatters: LOG_FORMATTERS },
+    stream,
+  );
   return { logger, lines };
 }
 
@@ -77,6 +80,29 @@ describe('LOG_SERIALIZERS.err', () => {
     ).not.toHaveProperty('code');
   });
 
+  it('drops a frame-like line injected into the message (Hassan finding 1)', () => {
+    const error = new Error(`bad value\n    at ${SECRET}-frame-injection`);
+
+    const logged = LOG_SERIALIZERS.err(error);
+
+    expect(logged.stack).toMatch(/^\s+at /);
+    expect(JSON.stringify(logged)).not.toContain(SECRET);
+  });
+
+  it('drops the first line when the stack does not carry the message', () => {
+    const error = Object.assign(new Error('x'), {
+      stack: `Error: rewritten ${SECRET}\n    at f (file.ts:1:1)`,
+    });
+
+    expect(LOG_SERIALIZERS.err(error).stack).toBe('    at f (file.ts:1:1)');
+  });
+
+  it('logs an error whose name carries text as a bare Error', () => {
+    const error = Object.assign(new Error('x'), { name: `Key (email)=(${SECRET})` });
+
+    expect(LOG_SERIALIZERS.err(error)).toMatchObject({ type: 'Error' });
+  });
+
   it.each([SECRET, 42, null, undefined, { message: SECRET }])(
     'logs a thrown value that is not an error as a bare Error (%p)',
     (value) => {
@@ -104,5 +130,24 @@ describe('LOG_HOOKS.logMethod', () => {
     logger.info('started');
 
     expect(lines.map((line) => line.msg)).toEqual(['mail delivery failed', undefined, 'started']);
+  });
+});
+
+describe('LOG_FORMATTERS.log', () => {
+  it('serializes an error logged under any key, not only `err`', () => {
+    const { logger, lines } = capturingLogger();
+    const driverError = Object.assign(new Error(`duplicate ${SECRET}`), {
+      code: '23505',
+      detail: `Key (email)=(${SECRET})`,
+    });
+
+    logger.warn({ error: driverError, context: 'Probe' }, 'insert failed');
+
+    expect(lines[0]).toMatchObject({
+      error: { type: 'Error', code: '23505' },
+      context: 'Probe',
+      msg: 'insert failed',
+    });
+    expect(JSON.stringify(lines)).not.toContain(SECRET);
   });
 });

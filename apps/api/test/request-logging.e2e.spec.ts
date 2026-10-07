@@ -1,4 +1,4 @@
-import { Controller, Get, Logger } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Logger, Post } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { NoMarketContext } from '../src/platform/market-context/no-market-context.decorator';
@@ -23,6 +23,17 @@ class FailingController {
   }
 }
 
+/** Test-only: echoes the parsed body, so a test can show the parser still runs. */
+@NoMarketContext()
+@Controller('test/echo')
+class EchoController {
+  @Post()
+  @HttpCode(200)
+  echo(@Body() body: unknown): unknown {
+    return body;
+  }
+}
+
 // Slice 0 item 5 (Security L4): the request logger runs before the body parser. Its own file:
 // one application per Jest module registry (see test/support/test-app.ts).
 describe('request logging before body parsing (integration)', () => {
@@ -30,7 +41,7 @@ describe('request logging before body parsing (integration)', () => {
   let logLines: LogLine[];
 
   beforeAll(async () => {
-    ({ app, logLines } = await createTestApp({ controllers: [FailingController] }));
+    ({ app, logLines } = await createTestApp({ controllers: [FailingController, EchoController] }));
   });
 
   afterAll(async () => {
@@ -62,6 +73,18 @@ describe('request logging before body parsing (integration)', () => {
     expect(JSON.stringify(logLines)).not.toContain('secret-query-value');
   });
 
+  it('logs nothing of a malformed body that looks like a stack frame (Hassan finding 1)', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/health')
+      .set('content-type', 'application/json')
+      .send(`{"a": x\n    at ${SECRET}}`)
+      .expect(400);
+
+    const line = completionLineOf(logLines, response.headers['x-correlation-id'] as string);
+    expect(line.err).toMatchObject({ type: 'SyntaxError', kind: 'entity.parse.failed' });
+    expect(JSON.stringify(line)).not.toContain(SECRET);
+  });
+
   it('logs a body over the limit as a 413 with its correlation id', async () => {
     const response = await request(app.getHttpServer())
       .post('/health')
@@ -69,21 +92,40 @@ describe('request logging before body parsing (integration)', () => {
       .send(JSON.stringify({ password: SECRET, padding: 'x'.repeat(200 * 1024) }))
       .expect(413);
 
-    const line = completionLineOf(logLines, response.headers['x-correlation-id'] as string);
+    const correlationId = response.headers['x-correlation-id'] as string;
+    expect(correlationId).toMatch(UUID);
+    const line = completionLineOf(logLines, correlationId);
     expect(line.res).toEqual({ statusCode: 413 });
+    expect(line.req).toMatchObject({ contentLength: expect.any(Number) as unknown });
     expect(line.err).toMatchObject({ type: 'PayloadTooLargeError', kind: 'entity.too.large' });
   });
 
-  it('still parses a valid body and logs the request as completed', async () => {
+  it.each([
+    ['JSON', 'application/json', JSON.stringify({ field: 'value' })],
+    ['a form', 'application/x-www-form-urlencoded', 'field=value'],
+  ])('still parses %s body and logs the request as completed', async (_kind, type, body) => {
     const response = await request(app.getHttpServer())
-      .post('/health')
-      .type('form')
-      .send({ password: SECRET })
-      .expect(404);
+      .post('/test/echo')
+      .set('content-type', type)
+      .send(body)
+      .expect(200);
 
+    expect(response.body).toEqual({ field: 'value' });
     const line = completionLineOf(logLines, response.headers['x-correlation-id'] as string);
     expect(line.msg).toBe('request completed');
     expect(line).not.toHaveProperty('err');
+  });
+
+  it("mounts the request logger first and one JSON parser after it, none of Nest's own", () => {
+    const router = (app.getHttpAdapter().getInstance() as { router: { stack: { name: string }[] } })
+      .router;
+    const names = router.stack.map((layer) => layer.name);
+    const logger = names.indexOf('result');
+
+    expect(names.filter((name) => name === 'jsonParser')).toHaveLength(1);
+    expect(names.filter((name) => name === 'urlencodedParser')).toHaveLength(1);
+    expect(logger).toBeGreaterThanOrEqual(0);
+    expect(names.slice(0, logger).filter((name) => name.endsWith('Parser'))).toEqual([]);
   });
 
   it('writes a line logged outside a request as JSON through the same serializers', () => {
