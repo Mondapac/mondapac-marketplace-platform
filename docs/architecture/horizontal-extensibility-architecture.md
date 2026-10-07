@@ -61,13 +61,15 @@
 ### ۴.۱ `ProductTypeHandler`
 ```
 interface ProductTypeHandler {
-  typeCode: string                          // "physical_good" | "menu_item" | "quote_item" | ...
+  typeCode: string                          // نوع ساختاری: Simple | Configurable (ثبت در core) | نوع خاص یک Vertical (ثبت در verticals/<vertical>/)
   validateAttributes(attrs): ValidationResult
-  computeAvailability(product, context): AvailabilityStatus
   renderSummary(product): ProductSummaryDTO  // برای Catalog API عمومی
 }
 ```
-هستهٔ فعلی (`CAT-*`) همین الگو را برای Simple/Configurable/Bundle دارد؛ فقط باید از یک enum بسته به یک **رجیستری باز** تبدیل شود که هر Vertical Module نوع خودش را ثبت می‌کند (دقیقاً معادل کاری که با `CertificationType` کردیم).
+**اصلاح بعد از G1 ماژول `catalog`:**
+- `computeAvailability` از این Interface بیرون آمد. `catalog` قیمت و موجودی را نه نگه می‌دارد و نه می‌خواند، و هیچ facade، رویداد یا پاسخ آن قیمت، موجودی یا «قابل فروش الان» ندارد. اینکه کدام ماژول‌ها «قابل فروش الان» را ترکیب می‌کنند در دروازه‌های cart، `ordering`، `search` و ویترین تصمیم گرفته می‌شود (ADR-0024 تصمیم ۵؛ برگهٔ catalog بخش ۸ ناسازگاری ۱).
+- `typeCode` نوع ساختاری محصول است، نه نام Vertical. core نوع‌های Simple و Configurable را ثبت می‌کند و نوع خاص یک Vertical در `verticals/` ثبت می‌شود (ADR-0001 تصمیم ۱ و ۵؛ برگهٔ catalog بخش ۵ و بخش ۸ ناسازگاری ۷).
+هستهٔ فعلی (`CAT-*`) همین الگو را برای نوع‌های محصول دارد؛ فقط باید از یک enum بسته به یک **رجیستری باز** تبدیل شود که هر Vertical Module نوع خودش را ثبت می‌کند (دقیقاً معادل کاری که با `CertificationType` کردیم).
 
 ### ۴.۲ `FulfillmentStrategy`
 ```
