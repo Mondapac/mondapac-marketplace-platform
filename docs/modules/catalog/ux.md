@@ -590,7 +590,7 @@ shows nobody's name. If the owner decides otherwise only `status.body.awaiting`,
 10. **Closed.** Photo read per image: `label`, `state`, `refusalCode`, `thumbnailUrl`, size, `isPrimary`, `position`, `altText`; reorder takes the whole list (`photos.order-mismatch`).
 
 ### 7.3 Questions for Hassan
-**Closed by Hassan's conditions (DD 6.3, 3a):** the "Remove hidden characters" helper runs only when pressed, keeps ZWNJ and ZWJ, never saves or submits, and is offered only for `text.invisible-character` (3.4). Still to confirm: the matched span is shown to the seller (it is their own text); in-memory-only draft text on the product form.
+**Closed by Hassan's conditions (DD 6.3, 3a):** the "Remove hidden characters" helper runs only when pressed, keeps ZWNJ and ZWJ, never saves or submits, and is offered only for `text.invisible-character` (3.4). Confirmed by DD 6.1: the matched span is shown to the seller (it is their own text). Non-blocking, for the slice review: in-memory-only draft text on the product form.
 
 ### 7.4 Proposals and decisions I took that the team may overturn
 1. (Closed: the bulk cap of 50 comes from the server, `batch.too-large` with `max`.)
@@ -605,7 +605,7 @@ The handling examples, the attestation text, the fixed buyer sentence beside pho
 ### 7.6 Named review checks
 **Closed (DD 8.3a, Hassan H1).** The named checks are stored and **gating**; the server derives which are required from the revision (photo check on any added or replaced photo and every first publication; category and tax checks on a change or first publication; not-a-duplicate on a first approval of a seller product). PA2 shows only the required ones and disables Approve until they are ticked (`review.checks-missing`); bulk approve skips photo-check items (FP6 step 6). Check codes and labels are Market configuration (`catalog.reviewChecks`).
 
-### 7.7 For Jafar
+### 7.7 For Jafar (non-blocking; for the research and the slice reviews)
 - **Provisional:** one long form page with cards and a "Jump to" row (not a multi-step wizard) and the autosave bar; photos before categories; the order Basics, Photos, Categories and tax, Details, Sizes, Offer, Badges. Research should test: phone upload of several photos; whether sellers understand "Sealed original, Repacked, Prepared, Fresh"; whether "Paused" reads as a badge state; the search-first "Add a product" for a seller who already knows what they sell; reviewers wanting photos above or beside the compare.
 - **Please confirm:** the fixed oldest-first sort; the "Review needed if you change this" marks on a Live product; the words "Shared product" (seller) versus "Platform product" (admin).
 
@@ -622,7 +622,7 @@ The handling examples, the attestation text, the fixed buyer sentence beside pho
 3. **Prepared reasons for category proposals** (3.3a, keys `proposal-*`): approved by Hadi.
 4. **Closed (Hadi).** The Persian column of 3.3 keeps "Changes needed" untranslated, as the brief does (CAT-32). The category-proposal reasons of 3.3a are approved with his wording; the narrower bulk approve (first approvals and photo-check rows are skipped) is accepted.
 5. **Delivery risk to record on the board:** ID-UX 1.1/1.2, SL-UX 1.3/1.4 and CUX 1.5/1.6 are all unbuilt, and 1.7.0 and 1.8.0 need 1.6.0 first.
-6. Bulk approve now never approves a first approval (every first publication needs the photo check). The brief's CAT-33 text still allows bulk approval of "products"; Hadi to confirm the reduced scope.
+6. Bulk approve now never approves a first approval (every first publication needs the photo check). **Closed (Hadi, 2026-10-07):** the reduced scope is accepted and the brief's CAT-33 rule now says so (brief change log).
 
 ### 7.9 Not designed, and why
 Video or video links (brief s5); rich text (plain text only); price, special price, cost, stock and "sellable now" (other modules); per-size Offer photos (DD 19.2-12); the buyer storefront, product page and listing (Phase 6, 3.5 fixes the rules); the Import detail screens (until the research); the seller-side version compare and revert detail (P1 slice 15; the entry in PS6 is reserved); mobile navigation (D16); the AI listing writer beyond the field pattern in section 4 (slice 25, optional for launch; the controls are absent with AI off, the states "Writing", "We couldn't write this", "AI help has reached its limit" never block typing or submit).
