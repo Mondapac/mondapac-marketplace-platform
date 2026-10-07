@@ -100,7 +100,7 @@ same-parent FKs carry the discriminating column (CE4); contract enums keep the d
 |---|---|
 | CA1 | **Version (PM5, D 2.1).** Every root of D 2.1 has `version integer NOT NULL` CHECK `>= 1`: `products`, `offers`, `platform_categories`, `attribute_definitions`, `attribute_families`, `seller_categories`, `category_proposals`, `product_images`, `import_jobs`. Entities (variants, working copy, revisions, tags) have none: a change to them raises the root's version (P 10) |
 | CA2 | **Model names start with `Catalog`** (C9): `CatalogProduct`, `CatalogOfferTag`, `CatalogOutbox`, with `@@map` |
-| CA3 | **Insert-only tables** (D 11.4, 17.1): revisions and their content children, decisions, Offer history, tag history, publication decisions, revision images, renditions, category and attribute revisions, relaxation requests and outcomes, AI claim flags. The application holds `SELECT, INSERT` only, **and** the CE-data 6.1 triggers refuse `UPDATE`, `DELETE` (row) and `TRUNCATE` (statement) for every role, the owner included, through one function `catalog.reject_mutation()` (6.1). The one `DELETE` D allows (a never-submitted draft product with its working copy, draft Offer and draft images) touches **no** insert-only table: a never-submitted product has no revision, decision or history row by construction (Q-K2 for the draft Offer's history row) |
+| CA3 | **Insert-only tables** (D 11.4, 17.1): revisions and their content children, decisions, Offer history, tag history, publication decisions, revision images, renditions, category and attribute revisions, AI claim flags (relaxation requests carry a one-way status, 3.21). The application holds `SELECT, INSERT` only, **and** the CE-data 6.1 triggers refuse `UPDATE`, `DELETE` (row) and `TRUNCATE` (statement) for every role, the owner included, through one function `catalog.reject_mutation()` (6.1). No product, variant or Offer row is ever physically deleted (D 4.1, Q-K2): a discarded draft keeps its product row (`discarded`), its Offer (`deleted`) and its variants (`retired`); only the working copy, the draft image rows and AI suggestions are deleted (10.1) |
 | CA4 | **Codes.** Product type codes, condition codes, tax category codes, review reason codes, review check codes, family and attribute codes are Market or registry configuration: `text` CHECK `^[a-z][a-z0-9_-]{0,63}$` (S8). Certification type codes in tags: the same pattern (a validated vocabulary code, D 19.2 item 10). Locales: the CE-data 3.3 BCP 47 CHECK |
 | CA5 | **Text.** Customer-visible text is clear (business content, D 11.1) and gets the S7 class: no outer spaces, no C0/C1 control and no bidi formatting character, with a length bound per column. ZWNJ and ZWJ are allowed by the CHECK (D 6.3: the joining-script rule is `PlainText`'s, which a CHECK cannot express) |
 | CA6 | **Per-locale text** that is queried (product name, category names) is a row per locale; text that is only read whole (Offer description, image alt text, variant labels, attribute values) is `jsonb` CHECK `jsonb_typeof = 'object'` with locale keys, validated by the aggregate. This is my answer to spike 1 (D 15.3): rows where a query or index needs them (categories, variants, images, names), `jsonb` where nothing queries inside (13 Q-K1 for Mohammad) |
@@ -123,7 +123,8 @@ migration in 8. "Privileges" lines are in 7.
 | `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Never updated. Target of the variant FK (3.2) |
 | `family_code` | `text` | no | 1 | CA4; never updated |
 | `product_code` | `text COLLATE "C"` | no | 1 | From `product_code_counters` (3.3), never input. CHECK `^[A-Z0-9][A-Z0-9-]{3,31}$`. **Unique `(market_id, product_code)`** (D 17.1). Never updated |
-| `status` | `text` | no | 1 | CHECK `draft`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1) |
+| `status` | `text` | no | 1 | CHECK `draft`, `discarded`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1; `discarded` terminal, Q-K2) |
+| `discarded_at` | `timestamptz(6)` | yes | 1 | CHECK `products_discarded_check`: `(status = 'discarded') = (discarded_at IS NOT NULL)`; CHECK `status <> 'discarded' OR (published_revision_id IS NULL AND pending_revision_id IS NULL)` (a backstop: a discarded product has no published or pending revision; "never submitted" itself is the use case's check. Added with the pointers in migration 4) |
 | `own_brand` | `boolean` | no | 1 | CAT-46; insert writes `false` |
 | `matched_into_product_id` | `uuid` | yes | 1 | FK `(market_id, matched_into_product_id)` → `products`. CHECK `(status = 'matched') = (matched_into_product_id IS NOT NULL)`; CHECK `<> id` |
 | `promoted_at`, `retired_at`, `withdrawn_at` | `timestamptz(6)` | yes | 1 | CHECK `(status = 'retired') = (retired_at IS NOT NULL)`, the same for `withdrawn`; `promoted_at IS NULL OR scope = 'PLATFORM'` |
@@ -139,8 +140,9 @@ migration in 8. "Privileges" lines are in 7.
 - **Partial unique `(market_id, published_revision_id) WHERE published_revision_id IS NOT NULL`**: the
   join "published product of this revision" used by the category re-ask (A9) and the name search
   (A13); unique because a revision belongs to one product.
-- `DELETE` only for a never-submitted draft (D 4.1): the revisions' FK to the root is RESTRICT, so a
-  delete of a submitted product fails with `23503`; the repository maps it to `product.has-revisions`.
+- **No `DELETE` grant** (Q-K2). `own-product.delete` of a never-submitted draft and the prune job set
+  `discarded` (10.1); the row leaves every list and read by its status (A5 filters
+  `status <> 'discarded'` over its existing index; drafts are a small share of a seller's rows).
 
 ### 3.2 `product_variants` (slice 1; D 2.3 M-1, D 17.1 item 2)
 
@@ -153,21 +155,25 @@ migration in 8. "Privileges" lines are in 7.
 | `created_at` | `timestamptz(6)` | no | |
 | `published_at`, `retired_at` | `timestamptz(6)` | yes | CHECK `(state = 'retired') = (retired_at IS NOT NULL)`; `state = 'proposed' OR published_at IS NOT NULL OR state = 'retired'` |
 
-- **CHECK `product_variants_single_never_retired_check`**: `variant_model = 'options' OR state <> 'retired'`
-  (a Simple product's variant is never retired, D 2.1). **Partial unique `(market_id, product_id)
+- **Simple variant never retired** (D 2.1): enforced by the guard trigger, not a CHECK, because of
+  the one exception on discard (below, Q-K15): `single` → `retired` is refused (`23514`) unless the
+  product is `discarded`. **Partial unique `(market_id, product_id)
   WHERE variant_model = 'single'`**: exactly one variant row for a Simple product (measured).
 - Unique `(market_id, id)` and `(market_id, product_id, id)` (target of 3.10's same-product FK; also
   the count path of the variant limit, 6.3 A16).
 - **Guard trigger `product_variants_guard`** (6.1; measured): refuses a change of `id`,
   `product_id`, `variant_model`, `created_at`; allows only `proposed → published`, `proposed →
-  retired`, `published → retired`; refuses `DELETE` unless the row is `proposed`. So a retired id is
+  retired`, `published → retired`; refuses every `DELETE` (Q-K2). So a retired id is
   never revived and never re-enters `proposed` or `published` (D 17.1 item 2), for every role. A
   second trigger on `product_revision_variants` refuses a retired variant in any new revision (3.10).
-- An id is never reused: ids are UUIDv7 from `IdGenerator`, and a retired row is never deleted. The
-  only deleted rows are `proposed` variants of a never-submitted draft product (D 4.1, Q-K2).
+- An id is never reused: ids are UUIDv7 from `IdGenerator`, and no variant row is ever deleted
+  (Q-K2: a discarded draft retires its variants with `catalog.variant-removed.v1`).
+- Simple products on discard: D 2.1 says a `single` variant is never retired, yet D 4.1 retires every
+  non-retired variant of a discarded draft. The guard trigger's rule: `single` → `retired` only when the product row is already
+  `discarded` (the discard unit updates the product first; the trigger reads it, same unit). Q-K15.
 - The `catalog.variant-removed.v1` outbox row is written in the unit that sets `retired` (the
-  working-copy save or the publish; D 2.3 M-1, B2). That unit raises the product's version; see Q-K3
-  on several events in one unit.
+  working-copy save or the publish; D 2.3 M-1, B2). That unit raises the product's version by one per
+  event, in a fixed order (Q-K3).
 
 ### 3.3 `product_code_counters` (slice 1)
 
@@ -198,7 +204,7 @@ database stays the source of truth.
 | `slug` | `text COLLATE "C"` | no | CHECK `^[a-z0-9]+(-[a-z0-9]+)*$`, 2 to 80. **Unique `(market_id, slug)`** (D 17.1) |
 | `status` | `text` | no | CHECK `active`, `merged`, `archived` |
 | `merged_into_id` | `uuid` | yes | FK to `platform_categories`. CHECK `(status = 'merged') = (merged_into_id IS NOT NULL)` |
-| `published_revision_id` | `uuid` | no | Current revision (name, parent). FK `(market_id, id, published_revision_id)` → revisions of this category. Written in the creating unit (the FK is `DEFERRABLE INITIALLY DEFERRED`, the only deferred FK of the schema, because root and revision 1 reference each other; measured shape of CE-data 3.1, where the column was nullable instead: Q-K10) |
+| `published_revision_id` | `uuid` | yes | Current revision (name, parent). FK `(market_id, id, published_revision_id)` → revisions of this category. Nullable (Q-K10, as CE-data 3.1): the creating unit inserts the root with NULL, then revision 1, then sets the pointer; NULL is never visible after commit. Plain FK, no deferred constraint |
 | `created_by_kind` | `text` | no | CHECK `seed`, `admin` (D 17.1 item 4). Never updated |
 | `version`, `created_at` | | no | CA1 |
 
@@ -223,7 +229,7 @@ database stays the source of truth.
 `attribute_definitions` (root): `id`; `code` CA4, **unique `(market_id, code)`**, never updated;
 `data_type` CHECK `text`, `long-text`, `integer`, `decimal`, `boolean`, `select`, `multi-select`,
 `date` (D 3.3; no `image`, no money), never updated; `localizable boolean`, never updated; `status`
-CHECK `active`, `archived`; `published_revision_id` (same-definition FK, deferred as 3.4);
+CHECK `active`, `archived`; `published_revision_id` (same-definition FK, nullable as 3.4, Q-K10; families the same);
 `created_by_kind` CHECK `seed`, `admin`; `version`;
 `created_at`.
 
@@ -250,7 +256,7 @@ validated against can always be rebuilt.
 ### 3.6 `product_working_copies` (slice 4; D 2.3 M-2)
 
 PK `(market_id, product_id)` (C7, 1:1); FK to `products`, `ON DELETE CASCADE` (C8: no meaning
-without the product; only the draft delete removes a product); `content jsonb NOT NULL` CHECK object
+without the product; deleted explicitly when a draft is discarded, 10.1); `content jsonb NOT NULL` CHECK object
 (the incomplete draft: texts, attribute values, variant drafts naming registry ids, category ids, tax
 category, image ids with alt text); `content_schema_version smallint`; `base_revision_id uuid` (the
 published revision it was started from; FK same product); `last_saved_at`; `last_saved_by_account_id`.
@@ -258,7 +264,10 @@ published revision it was started from; FK same product); `last_saved_at`; `last
 Why `jsonb`: OFR-04 allows an incomplete draft, nothing queries inside it, and a submit validates and
 freezes it into rows (3.9 to 3.11). The claim-text rule "no claim word is ever stored, not even in a
 draft" (D 6.1) is the save use case's; the database cannot check it. AI suggestions are a separate
-table purged with the draft (3.20). Grants `SELECT, INSERT, UPDATE`; delete by cascade only.
+table purged with the draft (3.20). Grants `SELECT, INSERT, UPDATE, DELETE` (discard and prune, 10.1).
+Index `product_working_copies_market_id_last_saved_at_idx` `(market_id, last_saved_at, product_id)`:
+the prune job's range (A22); the seller list's "removed on" date (from day 166) reads `last_saved_at`
+through the PK.
 
 ### 3.7 `product_revisions` (slice 4; V1)
 
@@ -458,7 +467,7 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
     claim-policy re-ask of a whole type uses `(market_id, type_code, offer_id)` with `status <>
     'removed'` (the same index without the status narrowing: one index
     `offer_tags_market_id_type_code_open_idx`, the suspended subset is a filter over it at the
-    measured volumes; Q-K5 if suspended tags grow).
+    measured volumes; Q-K5 accepted: a partial index only if suspended plus rechecking tags pass 5%).
   - Reconciliation (D 5.6): `(market_id, evaluated_at, id) WHERE status NOT IN ('removed',
     'pending-publish')` (D 17.1 item 12a: reconciliation skips `pending-publish`; the query repeats
     the predicate literally so the partial index matches). The daily run reads every other tag; it **joins** `product_revision_decisions` for `copy_revision_id` with
@@ -572,7 +581,7 @@ history is the row plus the audit rows (`catalog.attribute-relaxation.requested`
 | `market_id`, `tenant_id` | as 2 | no | |
 | `definition_id` | `uuid` | no | FK `(market_id, definition_id)` to `attribute_definitions` |
 | `definition_version` | `integer` | no | The root's version named by the request (D 8.2); the confirm unit refuses if it changed. CHECK `> 0` |
-| `kind` | `text` | no | CHECK `clear-material`, `archive`, `delete`, `remove-from-family` (D 8.2 names) |
+| `kind` | `text` | no | CHECK `clear-material`, `archive`, `delete`, `remove-from-family` (D 8.2 names; `delete` performs an archive, Q-K6) |
 | `family_id` | `uuid` | yes | FK `(market_id, family_id)` to `attribute_families`; CHECK `(kind = 'remove-from-family') = (family_id IS NOT NULL)` |
 | `status` | `text` | no | CHECK `open`, `confirmed`, `cancelled`, `expired`; default `open` |
 | `requested_by_account_id` | `uuid` | no | C4 |
@@ -580,6 +589,7 @@ history is the row plus the audit rows (`catalog.attribute-relaxation.requested`
 | `expires_at` | `timestamptz(6)` | no | `requested_at + 72 h` (D 8.2 proposal) computed by the application from Market configuration. CHECK `expires_at > requested_at AND expires_at <= requested_at + interval '7 days'` (a backstop against a misconfigured period, not the 72 h itself) |
 | `confirmed_by_account_id` | `uuid` | yes | |
 | `closed_at` | `timestamptz(6)` | yes | When `status` left `open` (confirm, cancel or the job) |
+| `cancel_reason` | `text` | yes | CHECK `requester`, `definition-changed`; CHECK `(status = 'cancelled') = (cancel_reason IS NOT NULL)` (Q-K14) |
 | `version` | `integer` | no | Default 1, CHECK `> 0` (D 17.1 item 12a). Confirm, cancel and the expiry job each run one conditional update `… SET status = $to, version = version + 1 WHERE market_id = $m AND id = $id AND status = 'open' AND version = $v` (Prisma `updateMany`, count checked): 0 rows means another of the three won, and the unit is refused or (job) skipped |
 
 CHECKs (the database backstop for Hassan 2):
@@ -610,7 +620,13 @@ Guard trigger `attribute_relaxation_requests_guard()` (`BEFORE UPDATE OR DELETE`
 `TRUNCATE` trigger of 6.1): `DELETE` refused (`23001`); on `UPDATE`, `OLD.status` must be `open`
 (`23001` otherwise: a closed request never changes), and every column except `status`,
 `confirmed_by_account_id`, `closed_at`, `version` must be unchanged (`23001`). Grants back it up with
-`UPDATE (status, confirmed_by_account_id, closed_at, version)` only (7).
+`UPDATE (status, confirmed_by_account_id, closed_at, cancel_reason, version)` only (7).
+
+**Definition changed (Q-K14):** the unit that revises or archives a definition, or changes a family's
+membership of it, sets that definition's `open` request (found by the open partial unique) to
+`cancelled` with `cancel_reason = 'definition-changed'`, by the same conditional update on `version`,
+with audit `catalog.attribute-relaxation.cancelled`. It takes the definition root first, then the
+request: the lock order of the confirm unit.
 
 The confirm unit, in this order: lock the definition root (version check against
 `definition_version`), update the request to `confirmed` (expected `version`), insert the
@@ -644,7 +660,7 @@ can both pass a cap of 5 and make 6. Accepted (a soft cap; Q-K7).
 The SL-data 3.5 shape: `id`; `url_key text COLLATE "C"` (pattern of slugs, 2 to 120), **unique
 `(market_id, url_key)`** (D 17.1); `product_id` FK; `state` CHECK `held`, `retired`; partial unique
 `(market_id, product_id) WHERE state = 'held'`; `version`; `created_at`, `retired_at`. A retired key is
-never reused. D lists no migration for slice 22: Q-K9.
+never reused. Migration 14 (slice 22; Q-K9 answered).
 
 ### 3.24 Import (slice 24; outline)
 
@@ -673,7 +689,8 @@ slice 25 after `platform/ai` part 1.
 `(market_id, aggregate_id, aggregate_version)`; claim index `(market_id, event_id) WHERE published_at
 IS NULL`). Aggregate types: `product`, `offer`, `platform-category`, `attribute-definition`,
 `attribute-family`, `seller-category`, `category-proposal`, `product-image`, `import-job`. Payloads ids,
-codes, booleans (D 9.4). See Q-K3 on several events per unit.
+codes, booleans (D 9.4). A unit writing n events for one aggregate raises its `version` by n, one version
+per event in a fixed order; the unique key above is unchanged (Q-K3).
 
 `rate_counters` (slice 4): the SL-data 3.11 shape (PK `(market_id, kind, key_hash)`, HMAC under this
 module's rate-counter key, fixed window, `count >= 0`, reserve before the work, fail closed with
@@ -709,7 +726,7 @@ limits are request validation: **no storage**.
 | A Configurable product has ≥ 1 non-retired variant; at most `maxVariantsPerProduct` non-retired variants (D 17.1 item 12) | Cross-row; the limit is Market configuration (AU 100, ZZ 3) | Count in the save, submit and publish units under the product version (A16: index range on the existing unique, 0.06 ms). No CHECK or trigger: a database backstop would need the Market value; the product version already serialises every writer of the product's variants |
 | `copy_revision_published` is true exactly when the named revision was published | Cross-table | Writer; reconciliation joins the decision table (3.15), so a wrong flag is repaired within a day |
 | The required checks are the right set for the revision | Server derivation (D 8.3a) | Approve use case; the database holds `required ⊆ confirmed` |
-| Tags of a category subtree marked `rechecking` in the move unit (M1) | Cross-table bulk write | Use case (A10); bound in Q-K4 |
+| Tags of a category subtree marked `rechecking` in the move unit (M1) | Cross-table bulk write | Use case (A10); bounded by `catalog.maxCategoryChangeTags` (Q-K4) |
 | Ids of other modules exist | Other schemas | Facades |
 | No claim word in any stored text, drafts included | Matcher in `certification` | Use cases (D 6.1) |
 | One proposal cap per seller | Configuration | Soft cap (3.22, Q-K7) |
@@ -763,7 +780,7 @@ Measured on these numbers (11).
 | A7 | Publish fan-out (D 5.4): Offers of a product, keyset 100; M1 marking of their tags | `offers WHERE market_id AND product_id = $p AND status <> 'deleted' AND id > $c ORDER BY id LIMIT 100`; one `updateMany` on `offer_tags` with `offerId in (…)` | `(market_id, product_id, id) WHERE status <> 'deleted'`; tag partial unique |
 | A8 | Category tree and paths (D 4.6, 5.1) | Whole Market tree, cached in process by `category_trees.version` | Sequential read of the Market's rows; `category_trees` PK |
 | A9 | Category re-ask selection: published products under a subtree (ids computed from A8) | `product_revision_categories WHERE market_id AND category_id = ANY($subtree)` joined to `products` on `published_revision_id` | `(market_id, category_id, revision_id)`; products partial unique on `published_revision_id` |
-| A10 | M1 marking in the category unit; `platform-category.impact` counts (D 9.2a) | A9 → Offers → tags (`updateMany` or `count`) | A9, A7 |
+| A10 | M1 marking in the category unit; `platform-category.impact` counts (D 9.2a) | A9 → Offers → tags (`updateMany` or `count`); the unit counts first and refuses with `category.impact-too-large` above the Market's `catalog.maxCategoryChangeTags` (AU 50,000, ≈ 8 s by the measured 1.7 s per 11,242; test Market 10). Market configuration, no column or table (Q-K4) | A9, A7 |
 | A11 | Certification-event selection (D 5.5) | Tags by certificate, submission, issuer, (seller, type), (type, unsettled) | 3.15 partial indexes |
 | A12 | Offers tab of a product, page 50 by `first_published_at` (D 9.2a) | A7's index range, sorted in memory (at most ~10³ Offers per product today) | A7's index; a `(…, first_published_at, id)` index only when a product passes 10⁴ Offers |
 | A13 | OFR-03 search, admin search, similar products (≥ 3 characters; D 9.2) | `product_revision_texts.name ILIKE $q` joined to `products` (published, scope, not retired) | **GIN trigram on `name`** (Option A of 6.2) |
@@ -774,6 +791,7 @@ Measured on these numbers (11).
 | A18 | Takedown, master retention: revisions using an image | `product_revision_images (market_id, image_id)` | 3.11 |
 | A19 | One Offer per (seller, product); SKU per seller; Import update key | Partial uniques of 3.13; `option_key` unique of 3.10 | As listed |
 | A20 | Outbox claim; inbox | PM1, PM4 | ID-data 3.1, 3.8 |
+| A22 | Prune abandoned drafts (D 4.1) | `product_working_copies WHERE market_id AND last_saved_at < $now - 180 d ORDER BY last_saved_at, product_id` keyset 100, joined to `products` by PK with `status = 'draft'` | `(market_id, last_saved_at, product_id)` (3.6). Not measured: a range scan over the oldest saves |
 | A21 | Relaxation expiry job and PA7 "Waiting for you" (`attribute-relaxations.list-open`, D 8.2) | `WHERE market_id AND status = 'open' AND expires_at < $now` (job) / `> $now ORDER BY expires_at, id` (list); definition code, name and version by PK batch | `(market_id, status, expires_at, id)` (3.21). Not measured: ≤ 10² rows per Market a year |
 
 **Not added, on purpose:** any index on `jsonb` columns (descriptions, attribute values, badge data:
@@ -822,20 +840,21 @@ No sequence; no function gets a grant.
 |---|---|---|---|
 | `outbox` | `SELECT, INSERT`, `UPDATE (published_at)` | Never | PM2 |
 | `inbox` | `SELECT, INSERT` | Prune job | PM4 |
-| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | 7 (never-submitted drafts; FKs refuse others) | Type, family, code, creator immutable (CAT-10) |
-| `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | 7 (`proposed` rows of a draft; the guard refuses others) | M-1 |
+| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
+| `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
 | `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version)` | Never | Slug, creator kind immutable; never deleted |
-| `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, version)` | Never (Q-K6 on "delete") | Code, type, localizable immutable |
-| `product_working_copies` | `SELECT, INSERT, UPDATE` | Cascade only | |
-| `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | 7 (draft Offer of a never-submitted product) | `seller_id` never changes (PRC 2.3) |
+| `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, version)` | Never: "delete" means archive (Q-K6) | Code, type, localizable immutable |
+| `product_working_copies` | `SELECT, INSERT, UPDATE, DELETE` | 4 (discard and prune, 10.1) | |
+| `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
 | `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
-| `product_images` | `SELECT, INSERT, UPDATE` | 13 (draft images of a never-submitted product; master retention) | |
+| `product_images` | `SELECT, INSERT, UPDATE` | 13 (draft images of a discarded draft; master retention) | |
 | `claim_text_rescans` | `SELECT, INSERT, UPDATE` | Never | |
 | `seller_categories`, `category_proposals` | `SELECT, INSERT, UPDATE` | Never | |
 | `seller_category_names` | `SELECT, INSERT, UPDATE, DELETE` | 23 | Mutable names |
+| `attribute_relaxation_requests` | `SELECT, INSERT`, `UPDATE (status, confirmed_by_account_id, closed_at, cancel_reason, version)` | Never (the guard refuses it) | One-way status (3.21) |
 | `product_url_keys` | `SELECT, INSERT`, `UPDATE (state, retired_at, version)` | 22 (never-public keys, SL-data 3.5) | |
 | `import_jobs` | `SELECT, INSERT, UPDATE` | 24 (retention) | |
 | `ai_listing_suggestions` | `SELECT, INSERT, DELETE` | 25 | Purged with the draft |
@@ -847,10 +866,12 @@ connection `UPDATE … WHERE false`, `DELETE … WHERE false` and `TRUNCATE` fai
 owner connection `UPDATE` and `DELETE` **against a real row** inserted by the test fail with `23001`,
 the row is unchanged afterwards, and `TRUNCATE` fails with `23001`; driven by the list in the
 expected map. Also against real rows: the variant guard (`retired → published`, `published →
-proposed`, `DELETE` of a published row: `23001`; a v4 id: `23514`), the not-retired revision trigger
+proposed`, any `DELETE`: `23001`; a v4 id: `23514`; a `single` variant retired while its product is
+not `discarded`: `23514`), `products_discarded_check` and a `discarded` product with a revision
+pointer (`23514`), a `DELETE` on `products` or `offers` as `mondapac_app` (`42501`), the not-retired revision trigger
 (`23514`), the no-cycle trigger (`23514`), `offers_listed_check`, `offer_tags_badge_data_check`,
 `product_revision_decisions_checks_check`, `offer_tags_pending_publish_check` (a `pending-publish` row
-with badge data or with `copy_revision_published = true`: `23514`), the four relaxation CHECKs of 3.21 and its guard (`UPDATE`
+with badge data or with `copy_revision_published = true`: `23514`), the relaxation CHECKs of 3.21 (including `cancel_reason`) and its guard (`UPDATE`
 of a `confirmed` row, of `requested_by_account_id` on an `open` row, `DELETE`: `23001`), a second
 `open` request for one definition (`23505`), the shelf FK with another
 seller's category (`23503`), and a child row in the other Market (PM6, `23503`). Column-level
@@ -862,11 +883,11 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 
 | # | Slice | Migration | Contains |
 |---|---|---|---|
-| 1 | 1 | `catalog_products_core` | `CREATE SCHEMA "catalog"`; `reject_mutation()`; `outbox`, `inbox`; `products` (slice-1 columns); `product_variants` with guard trigger, CA7 CHECK, single partial unique; `product_code_counters`; grants |
+| 1 | 1 | `catalog_products_core` | `CREATE SCHEMA "catalog"`; `reject_mutation()`; `outbox`, `inbox`; `products` (slice-1 columns); `product_variants` with guard trigger (including the Simple-variant rule), CA7 CHECK, single partial unique; `products.discarded_at` and `products_discarded_check`; `product_code_counters`; grants |
 | 2 | 2 | `catalog_category_tree` | `category_trees`; `platform_categories` with the no-cycle trigger and function; revisions and names with triggers |
 | 3 | 3 | `catalog_attributes` | The five tables of 3.5 (revisions' `relaxation_request_id` column without its FK) |
-| 4 | 4 | `catalog_revisions` | `product_working_copies`; `product_revisions`, texts, categories, variants (with the not-retired trigger), decisions (check columns included); `rate_counters`; on `products`: `published_revision_id`, `pending_revision_id`, `pending_submitted_at`, their FKs and CHECKs (`NOT VALID` then `VALIDATE`), the published-revision partial unique, the seller-list and queue partial indexes |
-| 5 | 7 | `catalog_offers` | `offers` (without `shelf_category_id`), `offer_history`; `DELETE` on `products`, `product_variants`, `offers` |
+| 4 | 4 | `catalog_revisions` | `product_working_copies`; `product_revisions`, texts, categories, variants (with the not-retired trigger), decisions (check columns included); `rate_counters`; on `products`: `published_revision_id`, `pending_revision_id`, `pending_submitted_at`, their FKs and CHECKs (`NOT VALID` then `VALIDATE`), the published-revision partial unique, the seller-list and queue partial indexes; the `discarded`-without-revision CHECK (`NOT VALID` then `VALIDATE`); `product_working_copies_market_id_last_saved_at_idx` with `DELETE` granted |
+| 5 | 7 | `catalog_offers` | `offers` (without `shelf_category_id`), `offer_history`; no `DELETE` on `products`, `product_variants`, `offers` (Q-K2) |
 | 6 | 8 | `catalog_offer_tags` | `offer_tags` (copy, check constraints, open-tag partial unique, autovacuum settings), `offer_tag_history` |
 | 7 | 9 | `catalog_name_search` | Trigram index of 6.2 (after the platform `pg_trgm` PR) |
 | 8 | 10 | `catalog_review` | `offer_publication_decisions`; the Offer queue partial index |
@@ -875,7 +896,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 11 | 13 | `catalog_images` | `product_images`, renditions, `product_revision_images`; `products.photo_taken_down_at` |
 | 12 | 18 | `catalog_claim_text_rescan` | `claim_text_rescans`; `products.claim_text_flagged_at` |
 | 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the status index, the open partial unique and the guard trigger; the FKs from definition and family revisions' `relaxation_request_id` (`NOT VALID`, then `VALIDATE`). `down.sql`: drop those FKs, then the trigger, function and table |
-| 14 | 22 | `catalog_url_keys` | `product_url_keys` (Q-K9: D lists no migration for slice 22) |
+| 14 | 22 | `catalog_url_keys` | `product_url_keys` (Q-K9) |
 | 15 | 23 | `catalog_seller_categories` | The tables of 3.22; `offers.shelf_category_id` and its FK (`NOT VALID`, `VALIDATE`) |
 | 16 | 24 | `catalog_import` | 3.24 |
 | 17 | 25, 26 | `catalog_ai_listing`, `catalog_ai_claim_flags` | 3.25 |
@@ -917,8 +938,8 @@ Backfills never run inside a migration.
 
 - Prisma expresses tables, types, keys, plain indexes and the composite FKs, including the pointer
   FKs whose fields overlap other keys (SL-data spike S2).
-- Hand-written: every CHECK; `COLLATE "C"`; the triggers and functions; the deferred category and
-  definition pointer FKs (`DEFERRABLE INITIALLY DEFERRED` is not Prisma syntax: Q-K10); the grants;
+- Hand-written: every CHECK; `COLLATE "C"`; the triggers and functions; the grants (the current-revision
+  pointers are nullable plain FKs, so no deferred constraint is needed, Q-K10);
   the autovacuum settings; the trigram index; and the partial indexes, invisible to Prisma, listed for
   the catalog test: `products_market_id_published_revision_id_key`,
   `products_market_id_owner_seller_id_created_at_idx`, `products_market_id_pending_submitted_at_idx`,
@@ -946,16 +967,25 @@ Backfills never run inside a migration.
 
 No column is encrypted and catalog uses no `SubjectKeyService` key. **Erasure** (`identity`'s
 CUS-03, later): catalog holds no field that key destruction must reach; account ids stay as opaque
-ids, which is what the audit log does too. What happens to a closed seller's products and Offers
-(withdraw, keep revisions for VER-06 references) is a domain question: Q-K11.
+ids, which is what the audit log does too. A closed or erased seller's products and Offers follow D 4.6a;
+no data change now. When the seller-erasure design lands (CUS-03, D S-1), the consuming handler uses
+existing columns and statuses only (Q-K11).
 
 ## 10. Retention, purge and jobs
 
 ### 10.1 Draft product delete
 
-`own-product.delete` of a never-submitted product (D 4.1) deletes in one unit: images rows (objects
-after commit), the draft Offer, `proposed` variants, the working copy (cascade) and the product. No
-insert-only table is touched (CA3); see Q-K2 for the Offer's history row and the events.
+`own-product.delete` of a never-submitted product and the job `catalog.prune-abandoned-drafts`
+(180 days without a working-copy save; D 4.1, Q-K2) run one unit per product, locks in the order
+product → Offer → variants:
+1. `products`: `status = 'discarded'`, `discarded_at`, `version` (expected version; the CHECK of 3.1
+   refuses a product with a published or pending revision);
+2. the draft Offer: `status = 'deleted'`, an `offer_history` row, `catalog.offer-deleted.v1`;
+3. each non-retired variant: `retired` with `catalog.variant-removed.v1` (Q-K15 for a `single` one);
+4. `DELETE` the working copy, the draft `product_images` rows (objects deleted after commit) and the
+   AI suggestions.
+Each event raises its aggregate's version by one (Q-K3). No audit row (D 4.1). No insert-only row is
+changed; history rows stay.
 
 ### 10.2 Master retention (D 10.5, D 17.1 item 1)
 
@@ -974,7 +1004,7 @@ of `received` / `scanning` rows older than 1 hour deletes stuck raw objects and 
 | `tag_reevaluation_requests` | Settled or superseded after 30 days |
 | `inbox` | Platform prune job |
 | Revisions, decisions, histories | Kept (ADR-0009 d7: published revisions kept; VER-06 references them) |
-| Working copies of abandoned drafts | ADR-0009 d7 asks for a prune; D sets no period: Q-K2 |
+| Abandoned drafts | `catalog.prune-abandoned-drafts`, 180 days (10.1, 10.4) |
 
 ### 10.4 Jobs
 
@@ -985,6 +1015,7 @@ of `received` / `scanning` rows older than 1 hour deletes stuck raw objects and 
 | `catalog.rescan-claim-text` | On event, resumable | `7391146002835117703` | A14 |
 | `catalog.purge-unreferenced-masters` | Daily | `4870913325561946201` | 10.2 |
 | `catalog.purge-expired` | Hourly | `1158342076693420958` | 10.3 |
+| `catalog.prune-abandoned-drafts` | Daily, per hosted Market | `8836021957413306627` | A22, 10.1: one product per unit, keyset by `(last_saved_at, product_id)` |
 | `catalog.expire-relaxation-requests` | 15 min, per hosted Market | `5307714682290153049` | A21: each `open` row past `expires_at` → `expired` in its own unit (expected `version`), audit and `catalog.material-request-expired.v1` |
 
 None equals Prisma Migrate's `72707369` or a key of identity, sellers or certification (a test
@@ -1044,7 +1075,7 @@ load.
 | 2 Variants: `variant-removed` in the save unit; retired never returns; server-minted ids | 3.2 (guard, CA7), 3.10 (trigger), Q-K3 |
 | 3 Tags: copy keeps the revision id, indexed for exclusion; bounded, indexed M1 marking | 3.15 (`copy_revision_id`, `copy_revision_published`, partial predicates), A7, A10, 11, Q-K4 |
 | 4 Seeds record "created by seed" only; no seed update path | `created_by_kind` in 3.4, 3.5; grants 7; seed test 3.4 |
-| 5, 9 Two-person relaxation: requester, confirmer (different), definition id and version, kind and family id, status `open` → `confirmed` / `cancelled` / `expired`, expiry, index `(market, status, expires_at)` for the 15-minute job and the list | 3.21 (guard trigger, four CHECKs, open partial unique), A21, 10.4 |
+| 5, 9 Two-person relaxation: requester, confirmer (different), definition id and version, kind and family id, status `open` → `confirmed` / `cancelled` / `expired`, expiry, index `(market, status, expires_at)` for the 15-minute job and the list | 3.21 (guard trigger, CHECKs, open partial unique, `cancel_reason` (Q-K14)), A21, 10.4 |
 | 6 Read targets for `offerListings`, seller list, review queue | A2, A5, A6; 11 |
 | 7 Raw SQL on the ADR-0030 list | 6.3: none needed |
 | 8 Counters for `claim-text.check` per minute and 24 h | 3.26 |
@@ -1056,24 +1087,27 @@ load.
 | D 5.4 tax-override suspension in the override unit | 3.7 `revision_kind = 'tax-override'`, 3.12 `admin-authored`, 3.16 entry path `tax-category-override`; `unavailable` → `rechecking` is a status write of 3.15 in the same unit |
 | D 9.2a panel reads | A6 (queue rows with kind), A10 (impact counts), A12 (Offers tab), `sensitive_reasons` codes in 3.7 |
 
-## 13. Questions to Mohammad
+## 13. Questions to Mohammad (closed)
 
-| # | Point | My proposal |
-|---|---|---|
-| Q-K1 | Spike 1 answer: rows for queried content (texts, categories, variants, images), `jsonb` for attribute values, descriptions, labels and the working copy (CA6) | Accept; Hossein's spike confirms Prisma ergonomics only |
-| Q-K2 | Draft delete (D 4.1): the draft Offer may already have `offer-created` sent (inventory, pricing) and a `created` history row, and its `proposed` variants may be priced. Deleting with "no event" leaves consumers with orphans, and the history row is insert-only. Also: no prune period for abandoned working copies (ADR-0009 d7) | Publish `offer-deleted` and `variant-removed` on the draft delete, and keep the Offer row as `deleted` (no physical delete of Offers at all); delete only product, working copy, proposed variants' **rows**… or keep them retired. My preference: no physical delete of Offers or variants ever; the product row may go. Set a prune period (e.g. 180 days of inactivity) |
-| Q-K3 | P 10 / I7: "at most one event per version" and the outbox unique `(aggregate_id, aggregate_version)`. A publish writes `revision-published`, one `variant-added`/`-removed` per variant and maybe `material-content-changed` for one product; a settle can write several tag events and `offer-listing-changed` for one Offer | Raise the root's version once per event in the unit (version += n), each event its own version; or ask Ali for an amendment allowing an event sequence number. The unique stays either way |
-| Q-K4 | M1 marking for a root-level category move: 11,242 tag updates, 1.7 s in one unit at the ceiling, holding row locks that block seller edits of those Offers (they retry). Is a bound wanted? | Keep one unit (it is M1's guarantee); refuse the move above a configured tag count (proposal 50,000, ≈ 8 s) with `category.impact-too-large`, shown by `platform-category.impact` first. Admin moves children in parts |
-| Q-K5 | Manufacturer approval re-asks every suspended and rechecking tag of a type; I serve it from the open-tags-by-type index with a status filter | Fine while suspended tags are ≤ 5%; a dedicated partial index if the metric of 19.2 item 5 shows more |
-| Q-K6 | "Deleting a material definition" (D 8.2): physical delete or archive? | Archive only; no `DELETE` grant on definitions (a definition revision may be named by product revisions' schema refs) |
-| Q-K7 | The CAT-54 pending cap can be exceeded by two concurrent proposals | Accept as soft, or serialise by raising a per-seller row (no such root exists in catalog) |
-| Q-K8 | The cycle trigger uses a recursive query inside a trigger function | Outside ADR-0030 (not application SQL); Ali to confirm |
-| Q-K9 | Slice 22 (URL key) needs a migration (`product_url_keys`); D 15.1 lists none | Add 22 to the migration list |
-| Q-K10 | Category and definition roots point at their current revision and revision 1 points back: a deferred FK (hand-written, not Prisma syntax), or a nullable pointer as CE-data 3.1 | Nullable pointer as in certification (NULL only inside the creating unit), no deferred FK; I switch to that if you agree |
-| Q-K11 | A seller's account closure or erasure: what happens to its products, Offers and tags? | Domain decision; data needs nothing new either way |
-| Q-K12 | 5.1a point 5: a tag whose copy names a **previously published, now superseded** revision (a PLATFORM publish marks it `rechecking` but the copy still names the old revision until the fan-out settles it): included in handlers? | Included: I set `copy_revision_published` from "was the published revision at decision time", so such tags stay selectable |
-| Q-K13 | Slice 4 completeness asks for ≥ 1 clean image, but images arrive in slice 13 | Slice 4 checks images only once slice 13 has merged; until then no revision has images |
-| Q-K14 | D 8.2: a confirm fails when the definition version changed, but the request then stays `open` and (one open per definition) blocks a new request until the requester cancels or it expires | The unit that revises a definition closes its `open` request as `cancelled` in the same unit (audit `.cancelled`, reason `definition-changed`); no new status value. Or add `invalidated` to the status list |
+Answered in D 19.4 and D 17.1 item 12b (2026-10-07), except Q-K8 (Ali). Q-K15 is new.
+
+| # | Point | Answer | Applied in |
+|---|---|---|---|
+| Q-K1 | Rows for queried content, `jsonb` for attribute values, descriptions, labels, working copy | **Closed.** Accepted, on two conditions: revision content stays immutable (CA3 triggers), and the 6.4 rescan reaches every checked text (A14 reads texts by PK; descriptions and labels in `jsonb` are read whole) | 2 CA6, 3.7 to 3.10, A14 |
+| Q-K2 | Draft delete with events already sent; no prune period | **Closed.** No physical delete of products, Offers or variants: product `discarded`, Offer `deleted`, variants retired, with events; working copy and draft images deleted; 180-day prune job | 3.1, 3.2, 3.6, 7, 10.1, 10.4 (`catalog.prune-abandoned-drafts`), A22 |
+| Q-K3 | Several events per aggregate in one unit vs one event per version | **Closed.** `version += n`, one version per event in a fixed order; outbox unique unchanged | 3.2, 3.26 |
+| Q-K4 | Bound on M1 marking for a root move | **Closed.** One unit, refused with `category.impact-too-large` above `catalog.maxCategoryChangeTags` (AU 50,000; test Market 10). Market configuration, no storage | A10, 5 |
+| Q-K5 | Suspended-tag re-ask from the by-type index | **Closed.** Accepted; partial index only if suspended plus rechecking pass 5% | 3.15 |
+| Q-K6 | Delete or archive a definition | **Closed.** Archive only; no `DELETE` grant | 3.21 `kind`, 7 |
+| Q-K7 | CAT-54 pending cap under concurrency | **Closed.** Soft cap accepted | 3.22 |
+| Q-K8 | Recursive query in the cycle trigger vs ADR-0030 | **Open, with Ali** | 6.1, 14 |
+| Q-K9 | Slice 22 migration | **Closed.** Added to D 15.1 | 8.1 #14 |
+| Q-K10 | Deferred FK or nullable pointer | **Closed.** Nullable pointer, NULL only inside the creating unit; no deferred FK | 3.4, 3.5, 8.4 |
+| Q-K11 | Seller closure and erasure | **Closed.** No data change now (D 4.6a); erasure waits for CUS-03 (D S-1) | 9 |
+| Q-K12 | Superseded but once-published copies | **Closed.** Selectable, via `copy_revision_published` as proposed | 3.15 |
+| Q-K13 | Image completeness before slice 13 | **Closed.** The rule switches on when slice 13 merges | 8.1 #11 |
+| Q-K14 | Open request after a definition change | **Closed.** The revise, archive or family-membership unit cancels it with reason `definition-changed`, audited | 3.21 (`cancel_reason`) |
+| **Q-K15 (new)** | D 2.1 says a Simple product's variant is never retired; D 4.1 (Q-K2) retires every non-retired variant of a discarded draft | Proposal applied: the guard trigger allows `single` → `retired` only when the product is `discarded`, so consumers that saw `variant-added` get `variant-removed`. Alternative: leave the Simple variant `proposed` on discard and send no event. Please confirm in D 2.1 | 3.2 |
 
 ## 14. Open
 
@@ -1083,6 +1117,8 @@ load.
 | O2 | Spike 2 re-runs A2, A7, A10 through Prisma with concurrent seller edits (lock waits under M1) | Hossein, with me |
 | O3 | Rendition size codes and object key format with ADR-0029 | Ali, Kazem |
 | O4 | The rate-counter key (HKDF split as SL-data 4.4) | Kazem, Hassan |
+| O5 | Q-K8: recursive query in the cycle trigger is outside ADR-0030 | Ali |
+| O6 | Q-K15: Simple variant retired on discard (D 2.1 exception) | Mohammad |
 
 ## 15. Follow-up changes
 
@@ -1091,4 +1127,4 @@ load.
 | `prisma/schema/base.prisma`, `catalog.prisma`; migrations of 8.1 with `down.sql` | As specified | Per slice; Hossein; my sign-off |
 | Privilege map and catalog tests of `pnpm test:db` | Section 7 lists, the insert-only list of 6.1, the trigger cases, the partial indexes of 8.4, `catalog.outbox` in the outbox test, the "no money or stock column" name test (1) | With each migration |
 | `docs/design/data/platform.md` 10.5 guard 1 | `pg_trgm` in the extension map (with O1) | Platform PR before migration 7 |
-| `docs/design/domain/catalog.md` | Answers to Q-K1 to Q-K14 (Mohammad) | Before slice 1 |
+| `docs/design/domain/catalog.md` | Q-K15 confirmed in D 2.1 (Mohammad); Q-K8 (Ali) | Before slice 1 |

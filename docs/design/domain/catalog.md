@@ -270,7 +270,7 @@ SELLER product (it is withdrawn instead); "un-retire".
 ### 4.2 Product revision: `pending` → `published` | `changes-needed` | `superseded`
 | # | From → to | Trigger and guard | Effects |
 |---|---|---|---|
-| 1 | (working copy) → `pending` or `published` | `own-product.submit` (seller) or `platform-product.submit` (admin). Before the unit: `sellingEligibility` (seller); claim-text check over every checked field of the working copy (6; failure or unavailable refuses); for a SELLER product, `evaluateClaims` for every non-removed tag of the owner's Offer against the frozen revision being submitted (5.2; T4: refused with the list of tags that would no longer be allowed). For an already-published product this ask **stores nothing** (5.1a point 4); for a never-published product the copy names the submitted revision and the Offer stays unlisted (5.1a points 2, 5). In the unit: completeness for the schema (name, descriptions in the Market's **default locale only** by default, other locales optional and falling back by INTL-13, pending the owner's confirmation through Hadi; the claim-text check runs on every filled locale; ≥ 1 platform category, tax category from the Market list, ≥ 1 clean image for a new product; CAT-31, brief s5), the base revision equals the current published one (else `revision.base-changed`), the setting `catalog.approval-required` read in this unit (ADR-0026 d2), classification by `ProductRevisionPolicy` (4.3) | Revision N with base, schema ref, provenance (server-built, 13.1), `contentHash`. **Published at once** when approval is off, or the product is published, the change is minor and no sensitive revision is pending (4.3), **except** that a revision adding or replacing any image always goes to review, whatever CAT-36 says (Hassan H1; 4.3). Otherwise **pending**; an existing pending revision becomes `superseded` (the client must send `replacePending: true` after the warning, brief s4 d 1). Event `catalog.product-revision-submitted.v1` |
+| 1 | (working copy) → `pending` or `published` | `own-product.submit` (seller) or `platform-product.submit` (admin). Before the unit: `sellingEligibility` (seller); claim-text check over every checked field of the working copy (6; failure or unavailable refuses); for a SELLER product, `evaluateClaims` for every non-removed tag of the owner's Offer against the frozen revision being submitted (5.2; T4: refused with the list of tags that would no longer be allowed). For an already-published product this ask **stores nothing** (5.1a point 4); for a never-published product the copy names the submitted revision and the Offer stays unlisted (5.1a points 2, 5). In the unit: completeness for the schema (name, descriptions in the Market's **default locale only** by default, other locales optional and falling back by INTL-13 (owner decision 2026-10-07); the claim-text check runs on every filled locale; ≥ 1 platform category, tax category from the Market list, ≥ 1 clean image for a new product; CAT-31, brief s5), the base revision equals the current published one (else `revision.base-changed`), the setting `catalog.approval-required` read in this unit (ADR-0026 d2), classification by `ProductRevisionPolicy` (4.3) | Revision N with base, schema ref, provenance (server-built, 13.1), `contentHash`. **Published at once** when approval is off, or the product is published, the change is minor and no sensitive revision is pending (4.3), **except** that a revision adding or replacing any image always goes to review, whatever CAT-36 says (Hassan H1; 4.3). Otherwise **pending**; an existing pending revision becomes `superseded` (the client must send `replacePending: true` after the warning, brief s4 d 1). Event `catalog.product-revision-submitted.v1` |
 | 2 | `pending` → `superseded` | A later submit (row 1), a withdrawal of the product, a promotion (CAT-44 sets aside the seller's pending revisions) | A reviewer with the page open gets `review.not-current-revision` |
 | 3 | `pending` → `published` | `product-revision.approve` (key `catalog.product.approve`), naming revision N and the product version; N is the pending one (AC 29); the owner's `sellingEligibility` yes, else **skipped** in bulk (CAT-33) and refused singly with `seller.not-eligible`; claim text re-checked (vocabulary may have grown since submit); for a SELLER product every tag of the owner's Offer re-asked against N before the unit (5.1a point 3) | The previous published revision `superseded`; pointer moves; variant registry updated (M-1); publish fan-out (5.4); events `catalog.product-revision-published.v1`, `catalog.variant-added.v1` / `-removed.v1` per changed variant, `catalog.product-material-content-changed.v1` when a material attribute changed (5.7); audit; mail |
 | 4 | (row 1, published at once) | As row 3 without a reviewer; the system records `autoPublished` with the setting value read | Same effects |
@@ -365,7 +365,9 @@ No data change is needed now (Mojtaba agrees).
 ### 4.7 Seller category and proposal (CAT-51 to CAT-54)
 `pending` → `approved` | `rejected` | `cancelled`. Proposal by `own-category.propose`
 (`mayProposeCategories` yes at the command; pending cap; claim-text check on names and
-description). Decision by `category-proposal.approve` / `.reject` (key
+description). The CAT-54 pending cap is a **soft cap** (Q-K7, accepted): two concurrent proposals may
+exceed it by one, since catalog has no per-seller root to serialise on; it is an anti-spam limit, not
+a safety rule, and the next proposal is refused until the count is under the cap. Decision by `category-proposal.approve` / `.reject` (key
 `catalog.category-proposal.decide`), always required regardless of CAT-36. On
 `sellers.category-proposals-revoked.v1`, pending proposals become `cancelled` with reason
 `permission-revoked` (CAT-51, AC 35). Promote (same id into the platform tree; free platform slug)
@@ -557,7 +559,9 @@ read certification's tables, and the only tags that can gain from a new manufact
 are tags that are not `active` (an `active` tag is already allowed), the handler re-asks every
 `suspended` and `rechecking` tag of that type in the Market, batched; the daily reconciliation is
 the backstop. Volume: suspended tags are few by construction. No request to `certification` is
-needed (alternative: a facade `coveredProducts(revisionId)`; 19.2 item 5).
+needed (alternative: a facade `coveredProducts(revisionId)`; 19.2 item 5). Served from the open
+tags-by-type index with a status filter (Q-K5, accepted); a dedicated partial index on suspended and
+rechecking tags is added only if the re-ask metric of 19.2 item 5 shows them above 5% of a type's tags.
 
 Rules: tags whose copy names a revision that is not published are not selected (5.1a point 5);
 one inbox row per event (ADR-0006 decision 5); selection and settling in bounded batches of
@@ -1354,7 +1358,7 @@ pace of `identity` and `sellers` (brief s8: "4 weeks" is not credible).
 ### 15.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|
-| 1 | Prisma 7 with the variant registry and revision content as rows vs `jsonb` (Hossein, Mojtaba) |
+| 1 | Prisma 7 with the variant registry and revision content as rows vs `jsonb` (Hossein, Mojtaba). **Decided by Mojtaba's data design (Q-K1, accepted):** rows for queried content (texts, categories, variants, images), `jsonb` for attribute values, descriptions, labels and the working copy; the spike checks Prisma ergonomics only. Domain conditions: revision content stays immutable either way, and every claim-checked text stays reachable by the rescan (6.4) |
 | 2 | Fan-out and reconciliation at volume: 10,000 Offers, 2 types, batches of 100 against a fake `evaluateClaims` with certification's measured P95 (CD 4.2 rule 5); target 5 minutes per 1,000 Offers |
 | 3 | `matchClaimTerms` latency for a full product form (≈ 40 texts) and the rescan over 20,000 texts |
 
@@ -1431,7 +1435,9 @@ now; this document does not edit it):
 10. SKU (Hadi): one `sellerSku` per Offer; no per-variant SKU column in Phase 3; Import's update key
     is (seller, `sellerSku`, variant option values).
 11. Bulk approve cap of 50 (Hassan 3b): no storage change; noted for request validation.
-12b. Answers to data-design questions (data 13): Q-K2 no physical delete of Offers or variants, the
+12b. Answers to data-design questions (data 13): Q-K1 rows vs `jsonb` as proposed (15.3 spike 1);
+    Q-K5 by-type index with status filter, partial index only above 5% (5.5); Q-K7 soft pending cap
+    (4.7); Q-K2 no physical delete of Offers or variants, the
     product row stays as `discarded`, prune after 180 days (4.1); Q-K3 version += n, one version per
     event (4 intro); Q-K4 refuse above `maxCategoryChangeTags` 50,000 with
     `category.impact-too-large` (4.6, 7.1); Q-K6 archive only, no `DELETE` grant on definitions
@@ -1510,7 +1516,7 @@ now; this document does not edit it):
     offered only for `text.invisible-character`.
 18. Bulk approve: at most 50 rows; `batch.too-large` (Hassan 3b).
 19. No SKU field on `VariantRow` (Hadi: one SKU per Offer); "(required)" only on the default locale
-    (default pending the owner).
+    (owner decision 2026-10-07).
 20. `material` relaxation: request and confirm by two different admins, with expiry (8.2).
 21. Items 3, 4, 8, 9, 10 are answered in 9.2a. Changes for `ux.md`: before the first submit,
     badge options answer "decided at submit" (no preview); queue rows carry no AIA-03 flag; the
@@ -1605,7 +1611,7 @@ day one (Q1).
 | Mojtaba (database-designer) | Pending (data design in progress; changes listed in 17.1) | |
 | Reza (ui-ux-designer) | Pending (`ux.md` in progress; changes listed in 17.2) | |
 | Jafar (product-designer) | Pending | |
-| Hadi (product-owner) | Answered: one SKU per Offer (2.1, 14); default locale only required, as a default pending the owner (4.2 row 1); CAT-53 merge clears the shelf (4.7). Pending: OFR-02 correction, 19.1 text | 2026-10-07 |
+| Hadi (product-owner) | Answered: one SKU per Offer (2.1, 14); default locale only required, confirmed by the owner 2026-10-07 (4.2 row 1); CAT-53 merge clears the shelf (4.7). Pending: OFR-02 correction, 19.1 text | 2026-10-07 |
 
 ### 19.4 Review record: where each change was applied
 | Item | Change | Applied in |
@@ -1632,6 +1638,7 @@ day one (Q1).
 | Reza ux.md 7.6 | Named checks stored on the decision and gating, required set derived by the server; photo check of H1 | 8.3a, 7.1, 17.2 |
 | Final conditions (Hassan 1a, 1b, 2, 3a, 3b; Ali ADR-0030, slice 20; Hadi SKU, locale, CAT-53) | See 19.3 rows | 2.1, 4.2, 4.3, 4.7, 5.4, 6.3, 8.2, 8.4, 11.1, 11.3, 14, 15.1, 16.2, 17.1, 17.2, 19, 20 |
 | Hassan on `requestedTags` and relaxations | M1: acting-as refusal on `.submit` with `requestedTags`, and the B1/AA contract test; M2: `pending-publish` tag status with no badge data, the entry-path row and contract test; L3: 5.2 equality and retry for requested tags; L4: 5.1a point 4 limited to T4; Low: version checks on confirm, cancel and expiry | 5.1a points 4 and 6, 5.3, 5.4, 8.2, 8.3 |
+| Mojtaba data 13: Q-K1, K5, K7 | Rows vs `jsonb` accepted (rescan reach and immutability as conditions); suspended-tag re-ask from the by-type index, partial index only above 5%; CAT-54 cap soft | 15.3, 5.5, 4.7, 17.1 |
 | Mojtaba data 13: Q-K2, K3, K4, K6, K9, K10, K11, K12, K13, K14 | Draft delete keeps Offer and variant rows (`discarded` product, events, 180-day prune); version += n per event; `category.impact-too-large` above 50,000 tags; archive only; slice 22 migration; nullable pointer; closure/erasure table and S-1; superseded-but-once-published copies selectable; image completeness with slice 13; revise cancels the open relaxation | 4 intro, 4.1, 4.6, 4.6a, 5.1a point 5, 7.1, 8.2, 15.1, 17.1, 18 |
 | Hadi: narrower bulk approve | Rows needing the named photo check are skipped; every skipped row listed with its reason code | 4.2, 8.4 |
 | Reza ux.md 7.10 | `requestedTags` at the first submit (submit-time ask, whole submit refused if not allowed, refused in acting-as, re-asked at publish); `attribute-relaxations.list-open`; expiry job, `catalog.material-request-expired.v1`, EC14 | 5.1a point 6, 8.2, 9.4, 11.3, 12, 17.1, 17.2 |
