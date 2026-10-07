@@ -48,6 +48,16 @@ ALTER ROLE mondapac_api LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPL
   NOBYPASSRLS PASSWORD 'mondapac_api';
 GRANT mondapac_app TO mondapac_api;
 
+-- Role settings of every application login (10.7, K1a): they bound what a stuck statement, a
+-- lock wait or an idle transaction can hold. ALTER ROLE ... SET without IN DATABASE; never on
+-- the group (its settings do not reach members) and never on the migration role (long DDL).
+-- No login sets default_transaction_isolation or default_transaction_read_only. Order: pool
+-- wait 2 s < lock_timeout 3 s < UnitOfWork 5 s < statement_timeout 30 s. ALTER ROLE SET
+-- overwrites, so a re-run converges.
+ALTER ROLE mondapac_api SET statement_timeout = '30s';
+ALTER ROLE mondapac_api SET lock_timeout = '3s';
+ALTER ROLE mondapac_api SET idle_in_transaction_session_timeout = '60s';
+
 -- The migration role owns the database and everything in it. CREATEDB and pg_signal_backend
 -- serve the throwaway databases of the tests and scripts (development and CI only).
 ALTER ROLE mondapac_migrator LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS

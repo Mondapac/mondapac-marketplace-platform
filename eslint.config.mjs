@@ -128,6 +128,18 @@ const contextImportsOfModules = [
   },
 ];
 
+// P 12.2 rule 4, no-raw-sql-or-transaction-in-modules: raw SQL and $transaction belong to the
+// platform (UnitOfWork); a module reaches the database through the unit-of-work port. It is part
+// of both module groups below, because a later block replaces the whole rule value.
+const noRawSqlOrTransactionInModules = [
+  {
+    selector:
+      'MemberExpression[property.name=/^\\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|queryRawTyped|transaction)$/]',
+    message:
+      'no-raw-sql-or-transaction-in-modules: Raw SQL and $transaction are platform-only (P 12.2 rule 4).',
+  },
+];
+
 // Security review of slice 0: only MarketContextGuard attaches a request's MarketContext.
 const onlyTheGuardAttaches = forbidNames(
   ['attachMarketContext'],
@@ -301,6 +313,7 @@ export default tseslint.config(
         ...noWallClock,
         ...onlyTheGuardAttaches,
         ...contextsAreMintedByPlatform,
+        ...noRawSqlOrTransactionInModules,
         ...moduleStaticImportsOnly,
       ],
       '@typescript-eslint/no-restricted-imports': contextImportsOfModules,
@@ -318,6 +331,7 @@ export default tseslint.config(
         ...noDateConversion,
         ...onlyTheGuardAttaches,
         ...contextsAreMintedByPlatform,
+        ...noRawSqlOrTransactionInModules,
         ...moduleStaticImportsOnly,
       ],
     },
