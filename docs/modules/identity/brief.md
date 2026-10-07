@@ -474,7 +474,27 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 
 | عنصر صفحه | کامپوننت موجود در Figma | تغییر لازم | نوع نسخه |
 |---|---|---|---|
-| (در G2 پر می‌شود) | | | |
+| قالب صفحه‌های پیش از ورود (کارت تک‌ستونه، اول گوشی، نام پنل و نوع حساب در سرصفحه) | none (قالب‌ها فقط Admin و Seller داخل `AppShell` هستند) | قالب تازهٔ «Auth» با property `Workspace=Admin\|Seller`، در گوشی ۳۶۰ و دسکتاپ ۱۴۴۰، و Touch برای Seller | MINOR |
+| فیلد فرم با برچسب، متن کمکی و پیام خطا | `Input` (State: Default، Hover، Focus، Filled، Disabled، Error؛ بدون برچسب و متن کمکی؛ آیکن جست‌وجو پیش‌فرض) | propertyهای TEXT `Label`، `Help`، `Error message` و BOOLEAN نمایش آن‌ها؛ variant `Size=Touch` (۴۸px) | MINOR |
+| فیلد رمز با Show/Hide | none | variant تازهٔ `Type=Password` در `Input` با `IconButton` انتهایی؛ آیکن تازهٔ `eye-off` (آیکن `eye` هست) | MINOR |
+| ورودی کد (TOTP و کد پشتیبان)، یک فیلد | none | variant تازهٔ `Type=Code` در `Input` (Mono، بدون آیکن) | MINOR |
+| متن دلیل رد و تعلیق | none | کامپوننت تازهٔ `Textarea` (Default، Hover، Focus، Disabled، Error؛ برچسب، متن کمکی، شمارندهٔ حروف) | MINOR |
+| انتخاب نقش در دعوت و تغییر نقش | none | کامپوننت تازهٔ `Select` با فهرست گزینه، گزینهٔ غیرفعال همراه دلیل، و `Size=Touch` | MINOR |
+| Dialog تأیید، دلیل، دعوت و حذف | none | کامپوننت تازهٔ `Dialog` (`Variant=Default\|Destructive`، `Size=Sm\|Md`؛ عنوان، متن، ناحیهٔ محتوا، دکمه‌ها) | MINOR |
+| پیام موفقیت کوتاه (نقش ذخیره شد، دعوت فرستاده شد) | none | کامپوننت تازهٔ `Toast` (`Tone=Success\|Info\|Critical`) | MINOR |
+| دکمه در حال ارسال؛ لینک‌های «Forgot password?» و «Start again» | `Button` (Primary، Secondary، Destructive، Ghost؛ State بدون Loading) | `State=Loading` و `Variant=Link` | MINOR |
+| منوی کاربر در نوار بالا (Account security، Sign out) | none (`Topbar` فقط نام و نقش کاربر را نشان می‌دهد) | کامپوننت تازهٔ `Menu` (آیتم با آیکن، جداکننده، آیتم Destructive) | MINOR |
+| پوستهٔ محدود فروشندهٔ در انتظار یا ردشده | `Sidebar`، `Topbar`، `NavItem` | BOOLEANهای `Show search` و `Show notifications` روی `Topbar`؛ آیتم‌های منو با پیکربندی `NavItem` (بدون تغییر) | MINOR |
+| بنرهای وضعیت (نشست تمام شد، محدود شده‌اید، لینک منقضی، دلیل رد یا تعلیق) | `InfoBanner` (Info، Attention، Critical، Success؛ Title، Body، Action) | بدون تغییر | — |
+| Badge وضعیت دسترسی فروشنده (Awaiting approval، Approved، Not approved، Suspended) و نوع نقش (System، Default، Custom) | `Badge` (Tone و Leading؛ همان الگوی قالب Admin · Sellers) | بدون تغییر (`StatusBadge` برای چرخهٔ سفارش است و به کار نمی‌رود) | — |
+| فهرست دسترسی فروشنده‌ها (ADM-01) | قالب Admin · Sellers (`Tab`، `TableCell`، `CountBadge`، `Pagination`) | قالب تازهٔ «Seller access» از کپی همان قالب، بدون `BulkActionBar` و KPI | MINOR |
+| تاریخچهٔ وضعیت فروشنده (ADM-02) | `TimelineItem` (Tone: Blue، Info، Neutral، Teal) | `Tone=Critical` برای رد و تعلیق؛ قالب تازهٔ «Seller access detail» | MINOR |
+| اعضا، دعوت‌ها و نقش‌ها (TEAM-01، ROLE-01) | `TableCell`، `IdentityTile`، `Badge`، `Tab` | قالب مشترک تازهٔ «Team & roles» با `Workspace=Admin\|Seller` | MINOR |
+| انتخاب مجوز در ویرایشگر نقش؛ مجوز محافظت‌شده | `Checkbox` (Unchecked، Checked، Indeterminate × Default، Focus، Disabled)، `CardHeader`، `Tooltip` | ترکیب در قالب مشترک تازهٔ «Role editor» (بدون کامپوننت تازه)؛ آیکن تازهٔ `lock` | MINOR |
+| حالت خالی (نقش دلخواه ندارید، صفی منتظر نیست، Staff بدون بخش) | none (README بخش ۱۴: Empty و Loading باز است) | کامپوننت تازهٔ `EmptyState` (آیکن، عنوان، متن، اقدام اختیاری)، چون در هر دو پنل و چند صفحه تکرار می‌شود | MINOR |
+| skeleton جدول | `TableCell` (State: Default، Selected) | `State=Loading` | MINOR |
+| QR، کلید دستی و کدهای پشتیبان در راه‌اندازی عامل دوم | none | ترکیب یک‌باره در قالب Auth با متن‌سبک‌های Mono؛ آیکن تازهٔ `copy` (آیکن `download` و `printer` هست) | MINOR |
+| قالب ایمیل‌ها (EM-01..13 در `screens.md`) | بیرون از Figma پنل | قالب متنی با کلید ترجمه در کد؛ طراحی HTML برندشده موضوع این جدول نیست | — |
 
 **صفحه‌هایی که این ماژول لازم دارد (برای برنامه‌ریزی طراحان):**
 
@@ -499,8 +519,8 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 - **ایمیل‌ها (بیرون از Figma پنل؛ قالب متنی لازم است؛ هر ایمیل نوع حساب را نام می‌برد):** خوش‌آمد، اطلاع به ادمین، نتیجهٔ تأیید، رد با دلیل، تعلیق با دلیل و رفع تعلیق، تأیید ایمیل، بازیابی رمز، دعوت (فروشنده، Staff، ادمین).
 - **صفحه‌های مشتری (ویترین):** بیرون از دامنهٔ سیستم طراحی فعلی؛ بخش ۸.
 
-- قالب‌های تازه در Figma: (در G2)
-- نسخهٔ سیستم طراحی بعد از این ماژول: (در G2)
+- قالب‌های تازه در Figma: «Auth» (مشترک، `Workspace=Admin|Seller`)؛ «Seller access» و «Seller access detail» (Admin)؛ «Account status» (Seller، پوستهٔ محدود)؛ و قالب‌های مشترک «Team & roles»، «Role editor» و «Account security». فهرست کامل صفحه‌ها، حالت‌ها و جریان‌ها: `docs/modules/identity/screens.md`. **این جدول از `docs/design/figma/README.md` و کد افزونه (`docs/design/figma/plugin/src/`) ساخته شده است؛ خودِ فایل Figma باز نشده است.** پیش از هر برش UI باید در Figma بررسی و اصلاح شود (CLAUDE.md قاعدهٔ ۱۲: اول Figma).
+- نسخهٔ سیستم طراحی بعد از این ماژول: **1.1.0** (برنامه‌ریزی‌شده؛ همهٔ تغییرها MINOR‌اند: شش کامپوننت تازه (`Textarea`، `Select`، `Dialog`، `Toast`، `Menu`، `EmptyState`)، فیلد رمز و ورودی کد به‌صورت variant تازه در `Input`، variantها و propertyهای تازه، سه آیکن تازه (`eye-off`، `lock`، `copy`) و شش قالب تازه؛ هیچ تغییر نام یا حذفی نیست). نسخه فقط بعد از انتشار در Figma و Export توکن‌ها ثبت می‌شود.
 
 ---
 
