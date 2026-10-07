@@ -281,12 +281,16 @@ function rowsPage(host, title, subtitle, rows) {
   head.fills = []; host.appendChild(head); head.x = 0; head.y = 0; tag(head);
   placeRows(host, rows, 240);
 }
+// 1.8.1: rows are stacked from the sizes read AFTER every frame is in the host and positioned (a hugging frame's height is final only then),
+// never from a size read while the frame was being built. `y` must come from bottomEdge() of what the host already holds.
 function placeRows(host, rows, y) {
-  rows.forEach(function (r) {
-    if (!r.length) return;
-    let x = 0, h = 0;
-    r.forEach(function (s) { host.appendChild(s); s.x = x; s.y = y; x += s.width + 160; h = Math.max(h, s.height); });
-    y += h + 240;
+  const live = rows.filter(function (r) { return r.length; });
+  live.forEach(function (r) { r.forEach(function (s) { host.appendChild(s); }); });
+  live.forEach(function (r) {
+    let x = 0, bottom = y;
+    r.forEach(function (s) { s.x = x; s.y = y; x += s.width + 160; });
+    r.forEach(function (s) { bottom = Math.max(bottom, s.y + s.height); });
+    y = bottom + 240;
   });
   return y;
 }

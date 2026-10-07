@@ -411,8 +411,15 @@ const phoneMain = (M) => frameNamed(M, ADMIN_PHONE)[0].children.find((c) => c.na
 const cbParts = (M) => { const set = setOf(M, 'CheckboxRow'); const row = set.parent; return { set: set, row: row, usage: row.children.find((c) => c.name === 'Usage') }; };
 const shellFrames = (M) => SHELL_ADMIN.concat(SHELL_SELLER).map((n) => frameNamed(M, n)[0]);
 
+// Top-level children of every page and of every section on it (the nodes the canvas layout is made of).
+function topLevel(M) { const out = []; M.ROOT.children.forEach((p) => { p.children.forEach((n) => { out.push([p.name, n]); if (n.type === 'SECTION') n.children.forEach((c) => out.push([p.name + ' › ' + n.name, c])); }); }); return out; }
+const overlapsOf = (M) => { const by = {}; topLevel(M).forEach((e) => { (by[e[0]] = by[e[0]] || []).push(e[1]); }); const out = []; Object.keys(by).forEach((k) => { const a = by[k]; for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) { const p = a[i], q = a[j]; if (p.x + p.width > q.x + 0.5 && q.x + q.width > p.x + 0.5 && p.y + p.height > q.y + 0.5 && q.y + q.height > p.y + 0.5) out.push(k + ': ' + p.name + ' / ' + q.name); } }); return out; };
+const posOf = (M) => new Map(topLevel(M).map((e) => [e[1].id, e[1].x + ',' + e[1].y]));
+
 // Facts that hold for every 1.8.1 file, built new or repaired.
-function state181(M, label) {
+function state181(M, label, skipOverlap) {
+  const ov = skipOverlap ? [] : overlapsOf(M);
+  check(skipOverlap || ov.length === 0, label + ': ' + (skipOverlap ? 'overlap check skipped (update path: see the report check)' : 'no two top-level children of a page or section overlap') + ' (' + ov.length + (ov.length ? ': ' + ov.slice(0, 3).join(' | ') : '') + ')');
   const shell = shellFrames(M);
   const low = shell.filter((f) => f.height < 900 - 0.5);
   check(shell.length === 22 && low.length === 0, label + ': every Panel desktop page is at least 900 high (' + shell.length + ' pages, ' + low.length + ' lower' + (low.length ? ': ' + low.map((f) => f.name + ' ' + f.height).join(', ') : '') + ')');
@@ -460,7 +467,9 @@ async function updateTo180(M, label, opts, from) {
   check(added.includes('variable size/dialog-sm' + (opts.maxModes > 1 ? ' (Desktop and Touch modes)' : ' (Dimension and Dimension · Touch)')) && added.includes('size table row size/dialog-sm') && added.includes('size table row size/dialog-md') && added.includes('changelog row 1.8.0') && added.includes('changelog row 1.8.1') && added.includes('file version ' + SPEC_VERSION), 'the report names the tokens, size table rows, changelog row and the file version');
   check(M.VARS.size === nVars + 2 * nColl, 'exactly ' + (2 * nColl) + ' variables added (' + (M.VARS.size - nVars) + ')');
   state180(M, opts, 'updated');
-  state181(M, 'updated');
+  state181(M, 'updated', true); // overlaps of the update path are checked just below: reported, not absent
+  { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
+    check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
   check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.1', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
@@ -807,20 +816,29 @@ async function updateScenario(label, opts, from) {
     check(cbParts(Q).set.width > 2900, 'the 1.8.0 CheckboxRow set is ' + Math.round(cbParts(Q).set.width) + ' wide');
     load(Q, CODE);
     const ids0 = new Map(allNodes(Q).map((n) => [n.id, n.name])); const cardNodes = new Set(); OVERFLOW_CARDS.forEach((nm) => { const c = phoneMain(Q).children.find((k) => k.name === nm); cardNodes.add(c.id); c.findAll(() => true).forEach((k) => cardNodes.add(k.id)); });
+    // the owner moved frames by hand: put one frame 20 px under a page that is about to grow, so the repair makes them overlap
+    // the mock does not measure real text, so make one page short (as real Figma shows several): hide its Sidebar and Column content so it hugs to 600
+    const grower = shellFrames(Q).find((f) => !FIXED_900.includes(f.name) && f.parent.name === 'Templates · Admin');
+    if (grower) { grower.children[1].children.forEach((k) => { k.visible = false; }); grower.children[0].visible = false; grower.children[1].minHeight = 600; }
+    const mover = frameNamed(Q, 'Dialogs · Confirm · Admin')[0];
+    check(!!grower && !!mover && grower.height < 900 - 0.5, 'the 1.8.0 file has a Panel page made shorter than 900 and a frame to move by hand');
+    if (grower && mover) { mover.x = grower.x; mover.y = grower.y + grower.height + 20; }
+    const pos0 = posOf(Q);
     const heights0 = new Map(shellFrames(Q).map((f) => [f.id, f.height])); const nCb0 = cbParts(Q).set.children.map((c) => c.id).join();
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.0 file ' + tag11 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
-    check(r.done && r.done.added.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)', 'changelog row 1.8.1', 'cover version', 'file version 1.8.1'].join('|') && !rp11.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
-    state181(Q, '1.8.0 file repaired ' + tag11);
+    check(r.done && r.done.added.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)', 'changelog row 1.8.1', 'cover version', 'file version 1.8.1'].join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    state181(Q, '1.8.0 file repaired ' + tag11, true);
     const gone11 = [...ids0.keys()].filter((id) => !Q.byId.has(id));
     check(gone11.length === cardNodes.size && gone11.every((id) => cardNodes.has(id)), 'the only deletions are the 2 member cards and their layers (' + gone11.length + ')');
     check(shellFrames(Q).every((f) => heights0.has(f.id)), 'no Panel page was replaced (same ids)');
     check(cbParts(Q).set.children.map((c) => c.id).join() === nCb0, 'the 10 CheckboxRow variants keep their ids');
-    // the canvas rows below the pages that grew keep their distance
-    const hostA = hostNamed(Q, 'Templates · Admin'); const rowsA = {}; hostA.children.forEach((n) => { rowsA[Math.round(n.y)] = Math.max(rowsA[Math.round(n.y)] || 0, n.height); });
-    const ysA = Object.keys(rowsA).map(Number).sort((a, b) => a - b); const gapsA = ysA.slice(1).map((y, i) => y - (ysA[i] + rowsA[ysA[i]]));
-    check(gapsA.every((g) => g >= 100), 'the canvas rows of Templates · Admin do not overlap after the pages grew (smallest gap ' + Math.min.apply(null, gapsA) + ')');
+    // Update library never moves a frame; an overlap that the repair causes is reported, not fixed
+    const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id));
+    check(moved.length === 0, 'no top-level node of any page or section moved during the update (' + moved.length + ' moved)');
+    const ovl = overlapsOf(Q);
+    check(grower && mover && ovl.some((o) => o.indexOf(grower.name) >= 0 && o.indexOf(mover.name) >= 0) && rp11.some((l) => (l.indexOf('\u2139 overlap: ' + grower.name + ' and ' + mover.name + ' on ') === 0 || l.indexOf('\u2139 overlap: ' + mover.name + ' and ' + grower.name + ' on ') === 0) && /Templates \u00b7 Admin; move one by hand$/.test(l)), 'the overlap the repair caused is reported by name and left as it is (' + ovl.length + ' overlaps)');
     const n11 = allNodes(Q).length; const idsAfter = new Set(allNodes(Q).map((n) => n.id));
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === n11 && allNodes(Q).every((n) => idsAfter.has(n.id)) && !r.done.report.some((l) => /^ℹ/.test(l)), 'a second run adds nothing, changes no layer and reports nothing to skip');

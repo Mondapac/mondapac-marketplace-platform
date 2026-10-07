@@ -394,19 +394,6 @@ function panelDefs() {
 }
 // The desktop pages built by shellPage (they hug their content, 1.8.1 minimum height): every group except the dialog scenes and the phone frames.
 function panelShellNames(key) { return panelDefs()[key].filter(function (d) { return ['members', 'roles', 'access', 'security'].indexOf(d[0]) >= 0; }).map(function (d) { return d[1]; }); }
-// After pages grew (Update library 1.8.1), push the canvas rows below them down so the 240 px between rows stays. Rows are frames that share a y.
-function reflowRows(host, grown) {
-  const growth = {}; grown.forEach(function (f) { growth[f.scr.id] = f.scr.height - f.old; });
-  const rows = {}; host.children.forEach(function (n) { const k = Math.round(n.y); (rows[k] = rows[k] || []).push(n); });
-  const ys = Object.keys(rows).map(Number).sort(function (a, b) { return a - b; });
-  let shift = 0, prevBottom = null;
-  ys.forEach(function (y) {
-    if (prevBottom !== null) shift = Math.max(shift, prevBottom + 240 - y);
-    let bottom = 0, grew = false;
-    rows[y].forEach(function (n) { n.y = n.y + shift; bottom = Math.max(bottom, n.y + n.height); if (growth[n.id] > 0) grew = true; });
-    prevBottom = grew || shift > 0 ? bottom : null;
-  });
-}
 function panelNames(key) { return panelDefs()[key].map(function (d) { return d[1]; }); }
 // Build the frames in `names` (all when omitted), one canvas row per group below what the host already holds, then the template bodies
 // that were made on the way. Returns how many of each were made.

@@ -91,8 +91,10 @@ function arrangeSections(T) {
   });
 }
 
+const UPDATE_TOUCHED = []; // pages Update library changed in this run (their overlaps are reported at the end)
 async function onPage(target, label, fn) {
   await figma.setCurrentPageAsync(target.page);
+  if (UPDATE_TOUCHED.indexOf(target.page) < 0) UPDATE_TOUCHED.push(target.page);
   const r = await fn(target.host);
   await flush();
   progress(label);
@@ -260,6 +262,21 @@ function findTable(host, headers) {
 }
 function pageOf(node) { let p = node; while (p && p.type !== 'PAGE') p = p.parent; return { page: p, host: p }; }
 function bottomEdge(host) { let b = 0; host.children.forEach(function (c) { b = Math.max(b, c.y + c.height); }); return b; }
+// 1.8.1: Update library never moves a frame (the owner may have placed it). After a repair made a screen taller it only reports top-level nodes whose bounds now overlap.
+function reportOverlapsIn(parent, label) {
+  const kids = parent.children.filter(function (n) { return n.visible !== false; });
+  for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) {
+    const a = kids[i], b = kids[j];
+    if (a.x + a.width > b.x + 0.5 && b.x + b.width > a.x + 0.5 && a.y + a.height > b.y + 0.5 && b.y + b.height > a.y + 0.5) log('ℹ overlap: ' + a.name + ' and ' + b.name + ' on ' + label + '; move one by hand');
+  }
+}
+// Pages (and the sections on them) that this run changed; nothing is moved, whatever is found.
+function reportOverlaps() {
+  UPDATE_TOUCHED.forEach(function (pg) {
+    reportOverlapsIn(pg, pg.name);
+    pg.children.forEach(function (n) { if (n.type === 'SECTION') reportOverlapsIn(n, pg.name + ' › ' + n.name); });
+  });
+}
 // The library page's root frame (made by pageShell), or a new one to the right of what is there.
 function docRoot(host, title, subtitle) {
   let root = host.children.filter(function (n) { return n.type === 'FRAME' && n.name === title; })[0];
@@ -287,7 +304,7 @@ async function ensureAuthHost(T) {
 function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
 async function updateLibrary() {
-  STEP = 0; STEPS = 8; S.report = [];
+  STEP = 0; STEPS = 8; S.report = []; UPDATE_TOUCHED.length = 0;
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   if (state.empty) { post({ type: 'error', message: 'This file is empty. Update library only adds to an existing MondaPac library; use Build library in a new file.' }); return; }
@@ -331,7 +348,7 @@ async function updateLibrary() {
       const wrap = host.findAll(function (n) { return n.type === 'FRAME' && n.name === 'Icons' && n.layoutWrap === 'WRAP'; })[0];
       missingIcons.forEach(function (n) {
         const cell = iconCell(n);
-        if (wrap) add(wrap, cell); else { host.appendChild(cell); cell.x = rightEdge(host) + 160; cell.y = 0; }
+        if (wrap) add(wrap, cell); else { cell.x = rightEdge(host) + 160; cell.y = 0; host.appendChild(cell); }
       });
       fitSection(host);
     });
@@ -654,7 +671,6 @@ async function updateLibrary() {
     for (const key of Object.keys(byHost)) {
       await onPage(T[key], key === 'tpl-admin' ? 'Admin panel page heights' : 'Seller panel page heights', function (host) {
         byHost[key].forEach(function (f) { f.scr.minHeight = PANEL_MIN_H; });
-        reflowRows(host, byHost[key]);
         fitSection(host);
       });
     }
@@ -713,6 +729,7 @@ async function updateLibrary() {
   if (coverEdits.length) { await onPage(T.cover, 'Cover', function () { coverEdits.forEach(function (e) { e[0].characters = e[1]; }); }); added.push('cover version'); }
 
   await flush();
+  reportOverlaps();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
   else {
