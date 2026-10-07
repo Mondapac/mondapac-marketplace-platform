@@ -106,7 +106,7 @@ D16 was the open "mobile drawer navigation" item of `docs/design/figma/README.md
 |---|---|---|---|
 | 1280 px and up | Expanded, 248 px (`size-sidebar`) | Full | Desktop admin work |
 | 760–1279 px | Collapsed to 72 px icons (`size-sidebar-collapsed`); expands as an overlay on demand | Search becomes an icon button | Seller tablet; the order board keeps its own touch layout (T4) |
-| Below 760 px | Hidden; the same config opens as a **drawer** from the inline-start edge | 56 px: menu button, panel mark, notifications, account | Phone |
+| Below 760 px | Hidden; the same config opens as a **drawer** from the inline-start edge | 56 px: menu button, panel mark, notifications, account (limited seller shell: panel mark, account; see 4.1) | Phone |
 
 Decision (owner, 2026-10-07, option 1; Hadi confirmed the bottom bar):
 - **Both panels: drawer.** The drawer renders the same nav config as the desktop sidebar, same groups and order, so nothing is phone-only. While open, the background is `inert` and the drawer is `aria-modal`; focus is trapped; Esc, the scrim and any navigation close it; focus returns to the menu button. It renders only the already-filtered config. Targets are 48 px (`data-density="touch"`, `--mp-size-control`).
