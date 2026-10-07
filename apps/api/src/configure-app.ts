@@ -39,7 +39,8 @@ export function configureApp(app: NestExpressApplication): void {
   app.use(app.get<HttpLogger>(HTTP_LOGGER));
   app.use(securityHeaders({ docsEnabled: config.apiDocsEnabled }));
   // JSON only, at most 64 KiB, objects and arrays only. No CORS middleware until origins exist.
-  app.useBodyParser('json', { limit: '64kb', strict: true });
+  // inflate: false - a compressed body is refused with 415, never decompressed (Hassan L1).
+  app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });
   app.use(answerBodyError);
 
   if (config.apiDocsEnabled) {

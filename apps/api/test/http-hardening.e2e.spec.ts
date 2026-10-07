@@ -1,4 +1,6 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { gzipSync } from 'node:zlib';
+import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { NoMarketContext } from '../src/platform/market-context/no-market-context.decorator';
@@ -16,6 +18,11 @@ class EchoController {
   @HttpCode(200)
   echo(@Body() body: unknown): unknown {
     return body === undefined ? { parsed: false } : body;
+  }
+
+  @Get('ip')
+  ip(@Req() req: Request): { ip: string | undefined } {
+    return { ip: req.ip };
   }
 }
 
@@ -90,6 +97,7 @@ describe('HTTP hardening (integration, slice 0 item 6)', () => {
       await post(exactly(64 * ONE_KIB)).expect(200);
       const response = await post(exactly(64 * ONE_KIB + 1)).expect(413);
       expect(response.body).toEqual({ statusCode: 413, code: 'request.body-too-large' });
+      expect(response.headers['x-correlation-id']).toEqual(expect.any(String));
     });
 
     it('refuses a top-level JSON primitive (strict)', async () => {
@@ -111,6 +119,24 @@ describe('HTTP hardening (integration, slice 0 item 6)', () => {
       expect(response.body).toEqual({ statusCode: 415, code: 'request.body-unsupported' });
     });
 
+    it.each([
+      ['gzip', gzipSync(JSON.stringify({ password: SECRET }))],
+      ['gzip', Buffer.from(`not gzip ${SECRET}`)],
+      ['deflate', Buffer.from(`not deflate ${SECRET}`)],
+      ['br', Buffer.from(`not brotli ${SECRET}`)],
+    ])('refuses a %s-encoded body with 415 and never decompresses it', async (encoding, body) => {
+      const response = await request(app.getHttpServer())
+        .post('/test/hardening-echo')
+        .set('content-type', 'application/json')
+        .set('content-encoding', encoding)
+        .send(body)
+        .expect(415);
+
+      expect(response.body).toEqual({ statusCode: 415, code: 'request.body-unsupported' });
+      expect(response.text).not.toMatch(/header check|decompress|zlib/i);
+      expect(response.text).not.toContain(SECRET);
+    });
+
     it('does not parse a form body', async () => {
       const response = await post(`password=${SECRET}`, 'application/x-www-form-urlencoded').expect(
         200,
@@ -120,9 +146,17 @@ describe('HTTP hardening (integration, slice 0 item 6)', () => {
     });
   });
 
-  it('trusts no proxy: X-Forwarded-For does not change the client address', () => {
+  it('trusts no proxy: X-Forwarded-For does not change the client address', async () => {
     const express = app.getHttpAdapter().getInstance() as { get(name: string): unknown };
-
     expect(express.get('trust proxy')).toBe(false);
+
+    const response = await request(app.getHttpServer())
+      .get('/test/hardening-echo/ip')
+      .set('x-forwarded-for', '1.2.3.4')
+      .expect(200);
+
+    const { ip } = response.body as { ip: unknown };
+    expect(typeof ip).toBe('string');
+    expect(ip).not.toBe('1.2.3.4');
   });
 });

@@ -38,6 +38,12 @@ describe('API docs (integration)', () => {
     expect(page.headers['cache-control']).toBe('no-store');
   });
 
+  it('gives the Swagger UI assets under /docs/ the same relaxed CSP', async () => {
+    const asset = await request(app.getHttpServer()).get('/docs/swagger-ui-init.js').expect(200);
+
+    expect(asset.headers['content-security-policy']).toContain("script-src 'self'");
+  });
+
   it('documents x-market-id on market-scoped operations and not on /health', async () => {
     const response = await request(app.getHttpServer()).get('/docs-json').expect(200);
 
