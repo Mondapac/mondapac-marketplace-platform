@@ -92,4 +92,24 @@ BEGIN
 END
 $ownership$;
 
+-- Memberships are only added above, so a leftover one would survive a re-run (10.1: the group
+-- belongs to nothing, the login belongs to the group only, the migration role to neither).
+DO $$
+DECLARE
+  stray text;
+BEGIN
+  SELECT string_agg(format('%s in %s', member.rolname, grp.rolname), ', ') INTO stray
+    FROM pg_catalog.pg_auth_members m
+    JOIN pg_catalog.pg_roles member ON member.oid = m.member
+    JOIN pg_catalog.pg_roles grp ON grp.oid = m.roleid
+   WHERE member.rolname = 'mondapac_app'
+      OR (member.rolname = 'mondapac_api' AND grp.rolname <> 'mondapac_app')
+      OR (member.rolname = 'mondapac_migrator' AND grp.rolname <> 'pg_signal_backend');
+  IF stray IS NOT NULL THEN
+    RAISE EXCEPTION 'unexpected role memberships: %', stray
+      USING HINT = 'REVOKE them as the cluster superuser, or recreate the Compose volume.';
+  END IF;
+END
+$$;
+
 COMMIT;

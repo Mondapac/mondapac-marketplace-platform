@@ -13,6 +13,7 @@ import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { findRoleProblems } from '../../src/platform/persistence/database-role-check';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
+import { EXPECTED_PRIVILEGES } from './expected-privileges';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 const RESTRICT_VIOLATION = '23001';
@@ -243,6 +244,44 @@ describe('platform persistence (database integration)', () => {
     });
   });
 
+  describe('the application role on tables with a column-level UPDATE (10.4)', () => {
+    // Driven by the privilege map, so a new such table needs no new test. The first one is
+    // `platform.subject_keys` (identity slice 1); until then the list is empty.
+    const tables = Object.entries(EXPECTED_PRIVILEGES.tables).filter(
+      ([, entry]) => entry.columnUpdate.length > 0,
+    );
+
+    it('takes its tables from the privilege map', () => {
+      expect(tables.map(([name]) => name)).toEqual(
+        Object.keys(EXPECTED_PRIVILEGES.tables).filter(
+          (name) => EXPECTED_PRIVILEGES.tables[name]!.columnUpdate.length > 0,
+        ),
+      );
+    });
+
+    it('may update the listed columns only', async () => {
+      for (const [name, entry] of tables) {
+        const [schema, table] = name.split('.') as [string, string];
+        const columns = await sql.query<{ attname: string }>(
+          `SELECT a.attname FROM pg_attribute a
+            WHERE a.attrelid = format('%I.%I', $1::text, $2::text)::regclass
+              AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
+          [schema, table],
+        );
+        const states: Record<string, string> = {};
+        const expected: Record<string, string> = {};
+        for (const { attname } of columns.rows) {
+          states[attname] = await sqlStateOf(
+            sql,
+            `UPDATE "${schema}"."${table}" SET "${attname}" = "${attname}" WHERE false`,
+          );
+          expected[attname] = entry.columnUpdate.includes(attname) ? 'ok' : INSUFFICIENT_PRIVILEGE;
+        }
+        expect({ [name]: states }).toEqual({ [name]: expected });
+      }
+    });
+  });
+
   describe('the connected application role', () => {
     it('has no role attribute beyond LOGIN', async () => {
       const { rows } = await sql.query(
@@ -326,7 +365,29 @@ describe('platform persistence (database integration)', () => {
         'owner_membership',
         'role_attribute',
         'role_membership',
+        'temporary_on_database',
       ]);
+    });
+
+    it('refuses a session whose login switched to another role (Hassan, item 7)', async () => {
+      // The migration role is a member of pg_signal_backend in development and CI (10.1); the
+      // same holds for a privileged login that connects with `options=-c role=mondapac_api`.
+      await owner.query('BEGIN');
+      try {
+        // Rolled back below. Without USAGE on `platform` the check errors, which also fails
+        // start-up; the grant lets it reach its rows.
+        await owner.query('GRANT USAGE ON SCHEMA platform TO pg_signal_backend');
+        await owner.query('SET LOCAL ROLE pg_signal_backend');
+        const problems = await run(owner);
+
+        expect(problems).toContainEqual({ code: 'session_role', subject: 'mondapac_migrator' });
+        expect(problems).toContainEqual({
+          code: 'role_attribute',
+          subject: 'mondapac_migrator.rolcreatedb',
+        });
+      } finally {
+        await owner.query('ROLLBACK');
+      }
     });
   });
 });

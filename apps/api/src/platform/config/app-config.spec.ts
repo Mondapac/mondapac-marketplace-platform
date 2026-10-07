@@ -92,12 +92,18 @@ describe('loadAppConfig', () => {
     }
   });
 
-  it.each(['postgresql://mondapac_migrator:secret@localhost:5432/mondapac', ''])(
-    'refuses MIGRATION_DATABASE_URL in the environment (%p) without printing its value',
-    (value) => {
+  it.each(
+    ['development', 'test', 'production'].flatMap((nodeEnv) =>
+      ['postgresql://mondapac_migrator:secret@localhost:5432/mondapac', ''].map(
+        (value) => [nodeEnv, value] as const,
+      ),
+    ),
+  )(
+    'refuses MIGRATION_DATABASE_URL in the environment (NODE_ENV %s, value %p) without printing its value',
+    (nodeEnv, value) => {
       expect.assertions(3);
       try {
-        loadAppConfig({ HOSTED_MARKETS: 'AU', MIGRATION_DATABASE_URL: value });
+        loadAppConfig({ NODE_ENV: nodeEnv, HOSTED_MARKETS: 'AU', MIGRATION_DATABASE_URL: value });
       } catch (error) {
         expect(error).toBeInstanceOf(InvalidConfigError);
         expect((error as InvalidConfigError).issues).toEqual([

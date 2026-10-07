@@ -120,12 +120,22 @@ jobs:
           POSTGRES_PORT: '5433'
         run: |
           docker compose up -d --wait postgres
-          roles=$(docker compose exec -T postgres psql -U postgres -d mondapac -Atc \
-            "SELECT count(*) FROM pg_roles WHERE rolname IN ('mondapac_app', 'mondapac_api', 'mondapac_migrator')")
-          if [ "$roles" != "3" ]; then
-            echo "The Compose bootstrap created $roles of the 3 database roles" >&2
-            docker compose down -v
+          state=$(docker compose exec -T postgres psql -U postgres -d mondapac -Atc "
+            SELECT (SELECT count(*) FROM pg_roles
+                     WHERE rolname IN ('mondapac_app', 'mondapac_api', 'mondapac_migrator')
+                       AND NOT rolsuper)
+                   || ' ' || pg_get_userbyid(datdba)
+              FROM pg_database WHERE datname = current_database()")
+          if [ "$state" != "3 mondapac_migrator" ]; then
+            echo "The Compose bootstrap left roles and owner as: $state" >&2
             exit 1
           fi
           pnpm db:bootstrap
+
+      - name: Compose smoke clean-up
+        if: always()
+        env:
+          POSTGRES_PORT: '5433'
+        run: |
+          if [ "${{ job.status }}" != "success" ]; then docker compose logs postgres || true; fi
           docker compose down -v
