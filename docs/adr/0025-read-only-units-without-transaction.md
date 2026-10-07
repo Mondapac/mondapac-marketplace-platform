@@ -2,9 +2,11 @@
 
 **Status:** Accepted — 2026-10-07 (CTO), on Hassan's (security-tester) review of 2026-10-07
 (accept option A with conditions), after Mohammad (software-architect) and Mojtaba
-(database-designer) reviewed identity spike 6. Decision 1 holds only while condition (b) below
-holds: if slice 1a cannot type `MarketTransaction` as model delegates only, this decision returns
-to Proposed and P 3.1 row 9 reverts. No owner decision is changed, so none is asked; the owner is
+(database-designer) reviewed identity spike 6. Decision 1 holds only while the conditions below
+hold: if slice 1a cannot meet conditions (a) to (e) (in particular (b), typed and at run time),
+decision 1 returns to Proposed, read-only units open a transaction as before (with no
+`SET TRANSACTION`; decision 2 is unaffected) and P 3.1 row 9 reverts. A revert is recorded here as
+a dated status line. No owner decision is changed, so none is asked; the owner is
 informed in the Phase 2 status summary.
 **Amends:** ADR-0004 decision 5 and ADR-0023 decision 1 (the sentence "Read-only work still runs
 in a transaction … (PA5)")
@@ -74,7 +76,10 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
 - Forward constraints (Hassan): (i) if row-level security driven by a per-transaction setting is
   ever adopted, read-only units return to transactions or carry the setting on every statement;
   session-level `SET` or `set_config(…, false)` on pooled connections is forbidden everywhere;
-  (ii) no login role sets `default_transaction_isolation` or `default_transaction_read_only`;
+  (ii) no login role and no database sets `default_transaction_isolation` or
+  `default_transaction_read_only` (the role test of data platform.md 10.4 asserts that
+  `pg_db_role_setting` has no entry for either key and that `default_transaction_read_only` is
+  `off`);
   (iii) the `test:db` role-settings check runs as the login role outside a transaction.
 - Kazem sizes the pool with per-statement connections in mind. Mojtaba sees no plan change.
 - A wrong database or role default stops the API at boot instead of silently weakening every
