@@ -26,7 +26,8 @@ did not make, the choice is mine and is listed in 13 for Mohammad.
 
 ADR-0009 patterns: **V1** for product revisions, platform-category revisions, attribute-definition
 and family revisions (root with pointers, insert-only revision rows); **V4** for revision decisions,
-Offer history, tag history, Offer publication decisions and the relaxation requests (insert-only).
+Offer history, tag history and Offer publication decisions (insert-only). The relaxation requests
+carry a one-way status under a guard trigger (3.21).
 **V2** and **V3** are not used (prices are `pricing`'s; the order snapshot is `ordering`'s).
 
 **No price, Cost, stock, quantity or "sellable" column exists in this schema** (ADR-0024 d1, d5;
@@ -52,7 +53,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `tag_reevaluation_requests` | Fan-out and handler work items (D 5.4, 5.5) | Work queue | 11 |
 | `product_images`, `product_image_renditions`, `product_revision_images` | `ProductImage`, its renditions, the revision's ordered images | Root; renditions and revision images insert-only | 13 |
 | `claim_text_rescans` | Rescan progress (D 6.4) | Job state | 18 |
-| `attribute_relaxation_requests`, `attribute_relaxation_outcomes` | Two-admin rule for `material` relaxations (D 8.2, 19.2 item 8) | V4, insert-only + trigger | 21 |
+| `attribute_relaxation_requests` | Two-admin rule for `material` relaxations (D 8.2, 19.2 item 8) | One-way status, guard trigger | 21 |
 | `product_url_keys` | URL key per Market (CAT-12) | Held / retired keys | 22 (Q-K9) |
 | `seller_categories`, `seller_category_names`, `category_proposals` | `SellerCategory`, `CategoryProposal` | Roots | 23 |
 | `import_jobs`, `import_job_errors` | `ImportJob` (outline) | Root; errors insert-only | 24 |
@@ -65,7 +66,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
  platform_categories --< platform_category_revisions --< platform_category_revision_names
    | (parent_id, merged_into_id: same-table FKs; no-cycle trigger)
  attribute_definitions --< attribute_definition_revisions --< ..._revision_options
-   |-- attribute_relaxation_requests --< attribute_relaxation_outcomes (0..1)
+   |-- attribute_relaxation_requests (open -> confirmed | cancelled | expired)
  attribute_families --< attribute_family_revisions
  product_code_counters (1 per Market)
  products (published_/pending_revision_id: same-product FKs)
@@ -223,15 +224,14 @@ database stays the source of truth.
 `data_type` CHECK `text`, `long-text`, `integer`, `decimal`, `boolean`, `select`, `multi-select`,
 `date` (D 3.3; no `image`, no money), never updated; `localizable boolean`, never updated; `status`
 CHECK `active`, `archived`; `published_revision_id` (same-definition FK, deferred as 3.4);
-`pending_relaxation_request_id` (slice 21; same-definition FK to 3.17: at most one open two-admin
-request per definition by construction); `created_by_kind` CHECK `seed`, `admin`; `version`;
+`created_by_kind` CHECK `seed`, `admin`; `version`;
 `created_at`.
 
 `attribute_definition_revisions` (insert-only): `id`; `definition_id` FK; `revision_no`; `material
 boolean NOT NULL` (ADR-0012 d3; set by people, D 2.1); `is_variant_option boolean`; `bounds jsonb`
 (object: `maxLength`, `min`, `max`); `names jsonb` (locale → name, CA6); `author_kind` CHECK `seed`,
-`admin`; `author_account_id`; `relaxation_request_id uuid` (FK to 3.17, NULL unless this revision
-clears `material`); CHECK `NOT is_variant_option OR` the root's type is `select` cannot be expressed
+`admin`; `author_account_id`; `relaxation_request_id uuid` (FK to 3.21, NULL unless this revision
+is a confirmed relaxation); CHECK `NOT is_variant_option OR` the root's type is `select` cannot be expressed
 across tables: aggregate (5). `created_at`.
 
 `attribute_definition_revision_options` (insert-only): PK `(market_id, revision_id, option_code)`;
@@ -551,35 +551,66 @@ follows the image `state` (`public`), not a column here, so the row stays insert
 `counts jsonb`; `started_at`, `finished_at`, `failed_at`. Grants `SELECT, INSERT, UPDATE`. A failed run
 keeps its cursor and retries; it never clears a flag (D 6.4).
 
-### 3.21 `attribute_relaxation_requests` and `attribute_relaxation_outcomes` (slice 21; D 17.1 items 5, 9)
+### 3.21 `attribute_relaxation_requests` (slice 21; D 8.2, D 17.1 items 5, 9)
 
-`attribute_relaxation_requests` (insert-only):
+One row per two-admin request, with its lifecycle on the row (D 8.2: `open` → `confirmed` |
+`cancelled` | `expired`). Not insert-only: `status` moves once, out of `open`, and nothing else
+changes after the insert except the columns that record that move (guard trigger below). The
+history is the row plus the audit rows (`catalog.attribute-relaxation.requested`, `.cancelled`,
+`.expired`, `catalog.attribute-definition.revised` with both account ids, D 11.3).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
-| `id` | `uuid` | no | PK |
-| `definition_id` | `uuid` | no | FK to `attribute_definitions` |
-| `definition_version` | `integer` | no | The root's version named by the request (D 8.2); the confirm fails if it changed |
-| `kind` | `text` | no | CHECK `clear-material`, `archive-definition`, `delete-definition`, `remove-from-family` (Hassan 2) |
-| `family_id` | `uuid` | yes | FK to `attribute_families`; CHECK `(kind = 'remove-from-family') = (family_id IS NOT NULL)` |
+| `id` | `uuid` | no | PK `(market_id, id)` as everywhere |
+| `market_id`, `tenant_id` | as 2 | no | |
+| `definition_id` | `uuid` | no | FK `(market_id, definition_id)` to `attribute_definitions` |
+| `definition_version` | `integer` | no | The root's version named by the request (D 8.2); the confirm unit refuses if it changed. CHECK `> 0` |
+| `kind` | `text` | no | CHECK `clear-material`, `archive`, `delete`, `remove-from-family` (D 8.2 names) |
+| `family_id` | `uuid` | yes | FK `(market_id, family_id)` to `attribute_families`; CHECK `(kind = 'remove-from-family') = (family_id IS NOT NULL)` |
+| `status` | `text` | no | CHECK `open`, `confirmed`, `cancelled`, `expired`; default `open` |
 | `requested_by_account_id` | `uuid` | no | C4 |
 | `requested_at` | `timestamptz(6)` | no | |
-| `expires_at` | `timestamptz(6)` | no | `requested_at + 72 h` (D 8.2 proposal) computed by the application. CHECK `expires_at > requested_at AND expires_at <= requested_at + interval '7 days'` (a backstop against a misconfigured period, not the 72 h itself) |
+| `expires_at` | `timestamptz(6)` | no | `requested_at + 72 h` (D 8.2 proposal) computed by the application from Market configuration. CHECK `expires_at > requested_at AND expires_at <= requested_at + interval '7 days'` (a backstop against a misconfigured period, not the 72 h itself) |
+| `confirmed_by_account_id` | `uuid` | yes | |
+| `closed_at` | `timestamptz(6)` | yes | When `status` left `open` (confirm, cancel or the job) |
+| `version` | `integer` | no | Optimistic lock: confirm, cancel and the job race on the same row |
 
-Unique `(market_id, id, requested_by_account_id)` (target below). The root's
-`pending_relaxation_request_id` (3.5) makes "one open request per definition" structural.
+CHECKs (the database backstop for Hassan 2):
+- `attribute_relaxation_requests_two_people_check`: `confirmed_by_account_id IS NULL OR
+  confirmed_by_account_id <> requested_by_account_id`;
+- `attribute_relaxation_requests_confirmed_check`: `(status = 'confirmed') = (confirmed_by_account_id
+  IS NOT NULL)`;
+- `attribute_relaxation_requests_closed_check`: `(status = 'open') = (closed_at IS NULL)`;
+- `attribute_relaxation_requests_confirm_in_time_check`: `status <> 'confirmed' OR closed_at <=
+  expires_at` (a late confirm cannot be stored even if the unit's `Clock` check were skipped; the
+  unit's own refusal `relaxation.expired` stays the control).
 
-`attribute_relaxation_outcomes` (insert-only): PK `(market_id, request_id)` (0..1 per request);
-`requested_by_account_id` with FK `(market_id, request_id, requested_by_account_id)` →
-`attribute_relaxation_requests (market_id, id, requested_by_account_id)` (the real requester, as
-CE-data 3.16's author FK); `outcome` CHECK `confirmed`, `expired`, `withdrawn`, `invalidated`
-(definition version changed); `confirmed_by_account_id uuid`; **CHECK
-`confirmed_by_account_id IS NULL OR confirmed_by_account_id <> requested_by_account_id`** and CHECK
-`(outcome = 'confirmed') = (confirmed_by_account_id IS NOT NULL)`: two different people (Hassan 2);
-`decided_at`. The confirm unit writes the outcome, the definition's (or family's) new revision with
-`relaxation_request_id`, clears the pointer and writes the audit row with both account ids (D 11.3).
-"Expired" is decided against `Clock` at the confirm or a later request; no job is needed. The
-acting-as refusal is the use case's. Both ids are account ids (pseudonymous, 9).
+Indexes:
+- `attribute_relaxation_requests_market_id_status_expires_at_idx` `(market_id, status, expires_at,
+  id)`: the expiry job (`status = 'open' AND expires_at < $now`, keyset by `(expires_at, id)`) and
+  the PA7 list (`status = 'open' AND expires_at > $now ORDER BY expires_at, id`; with a fixed
+  period, `expires_at` order is `requested_at` order, so "oldest first" needs no second index). A full
+  index, not a partial `WHERE status = 'open'`: the status is a bound parameter in Prisma's queries
+  (platform.md 10.9), and the table is tiny (tens of rows a year), so the closed rows cost nothing.
+- **Partial unique** `attribute_relaxation_requests_open_definition_key` `(market_id, definition_id)
+  WHERE status = 'open'`: at most one open request per definition. A uniqueness constraint does not
+  depend on the plan, so the 10.9 caveat does not apply. The request unit first closes a stale `open`
+  row of the same definition past `expires_at` as `expired` (same audit and event as the job), so a
+  new request never waits up to 15 minutes for the job. This replaces the earlier root pointer
+  `attribute_definitions.pending_relaxation_request_id` (removed from 3.5).
+
+Guard trigger `attribute_relaxation_requests_guard()` (`BEFORE UPDATE OR DELETE`, plus the
+`TRUNCATE` trigger of 6.1): `DELETE` refused (`23001`); on `UPDATE`, `OLD.status` must be `open`
+(`23001` otherwise: a closed request never changes), and every column except `status`,
+`confirmed_by_account_id`, `closed_at`, `version` must be unchanged (`23001`). Grants back it up with
+`UPDATE (status, confirmed_by_account_id, closed_at, version)` only (7).
+
+The confirm unit, in this order: lock the definition root (version check against
+`definition_version`), update the request to `confirmed` (expected `version`), insert the
+definition's (or family's) new revision with `relaxation_request_id`, write the audit row with both
+account ids. Lock order definition root → request (the request unit takes the same order), so
+confirm and a second request cannot deadlock. The acting-as refusal is the use case's. Both ids are
+account ids (pseudonymous, 9).
 
 ### 3.22 Seller categories and proposals (slice 23)
 
@@ -696,7 +727,7 @@ Insert-only tables: `platform_category_revisions`, `platform_category_revision_n
 `attribute_family_revisions`, `product_revisions`, `product_revision_texts`,
 `product_revision_categories`, `product_revision_variants`, `product_revision_images`,
 `product_revision_decisions`, `offer_history`, `offer_tag_history`, `offer_publication_decisions`,
-`product_image_renditions`, `attribute_relaxation_requests`, `attribute_relaxation_outcomes`,
+`product_image_renditions`,
 `import_job_errors`, `ai_claim_flags`.
 
 Other trigger functions (no grant, platform.md 10.2; all `SECURITY INVOKER`):
@@ -736,6 +767,7 @@ Measured on these numbers (11).
 | A18 | Takedown, master retention: revisions using an image | `product_revision_images (market_id, image_id)` | 3.11 |
 | A19 | One Offer per (seller, product); SKU per seller; Import update key | Partial uniques of 3.13; `option_key` unique of 3.10 | As listed |
 | A20 | Outbox claim; inbox | PM1, PM4 | ID-data 3.1, 3.8 |
+| A21 | Relaxation expiry job and PA7 "Waiting for you" (`attribute-relaxations.list-open`, D 8.2) | `WHERE market_id AND status = 'open' AND expires_at < $now` (job) / `> $now ORDER BY expires_at, id` (list); definition code, name and version by PK batch | `(market_id, status, expires_at, id)` (3.21). Not measured: ≤ 10² rows per Market a year |
 
 **Not added, on purpose:** any index on `jsonb` columns (descriptions, attribute values, badge data:
 nothing queries inside them); an index on `product_revisions (market_id, product_id, submitted_at)`
@@ -788,7 +820,7 @@ No sequence; no function gets a grant.
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
 | `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version)` | Never | Slug, creator kind immutable; never deleted |
-| `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, pending_relaxation_request_id, version)` (families without the request column) | Never (Q-K6 on "delete") | Code, type, localizable immutable |
+| `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, version)` | Never (Q-K6 on "delete") | Code, type, localizable immutable |
 | `product_working_copies` | `SELECT, INSERT, UPDATE` | Cascade only | |
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | 7 (draft Offer of a never-submitted product) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
@@ -810,7 +842,9 @@ the row is unchanged afterwards, and `TRUNCATE` fails with `23001`; driven by th
 expected map. Also against real rows: the variant guard (`retired → published`, `published →
 proposed`, `DELETE` of a published row: `23001`; a v4 id: `23514`), the not-retired revision trigger
 (`23514`), the no-cycle trigger (`23514`), `offers_listed_check`, `offer_tags_badge_data_check`,
-`product_revision_decisions_checks_check`, the relaxation confirmer CHECK, the shelf FK with another
+`product_revision_decisions_checks_check`, the four relaxation CHECKs of 3.21 and its guard (`UPDATE`
+of a `confirmed` row, of `requested_by_account_id` on an `open` row, `DELETE`: `23001`), a second
+`open` request for one definition (`23505`), the shelf FK with another
 seller's category (`23503`), and a child row in the other Market (PM6, `23503`). Column-level
 `UPDATE` tables join the platform.md 10.4 column test.
 
@@ -822,7 +856,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 |---|---|---|---|
 | 1 | 1 | `catalog_products_core` | `CREATE SCHEMA "catalog"`; `reject_mutation()`; `outbox`, `inbox`; `products` (slice-1 columns); `product_variants` with guard trigger, CA7 CHECK, single partial unique; `product_code_counters`; grants |
 | 2 | 2 | `catalog_category_tree` | `category_trees`; `platform_categories` with the no-cycle trigger and function; revisions and names with triggers |
-| 3 | 3 | `catalog_attributes` | The five tables of 3.5 (without `pending_relaxation_request_id`) |
+| 3 | 3 | `catalog_attributes` | The five tables of 3.5 (revisions' `relaxation_request_id` column without its FK) |
 | 4 | 4 | `catalog_revisions` | `product_working_copies`; `product_revisions`, texts, categories, variants (with the not-retired trigger), decisions (check columns included); `rate_counters`; on `products`: `published_revision_id`, `pending_revision_id`, `pending_submitted_at`, their FKs and CHECKs (`NOT VALID` then `VALIDATE`), the published-revision partial unique, the seller-list and queue partial indexes |
 | 5 | 7 | `catalog_offers` | `offers` (without `shelf_category_id`), `offer_history`; `DELETE` on `products`, `product_variants`, `offers` |
 | 6 | 8 | `catalog_offer_tags` | `offer_tags` (copy, check constraints, open-tag partial unique, autovacuum settings), `offer_tag_history` |
@@ -832,7 +866,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 10 | 12 | `catalog_tag_selection` | The five selection indexes and the reconciliation index of 3.15 |
 | 11 | 13 | `catalog_images` | `product_images`, renditions, `product_revision_images`; `products.photo_taken_down_at` |
 | 12 | 18 | `catalog_claim_text_rescan` | `claim_text_rescans`; `products.claim_text_flagged_at` |
-| 13 | 21 | `catalog_attribute_relaxation` | The two tables of 3.21; `attribute_definitions.pending_relaxation_request_id` and its FK (`NOT VALID`, `VALIDATE`) |
+| 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the status index, the open partial unique and the guard trigger; the FKs from definition and family revisions' `relaxation_request_id` (`NOT VALID`, then `VALIDATE`). `down.sql`: drop those FKs, then the trigger, function and table |
 | 14 | 22 | `catalog_url_keys` | `product_url_keys` (Q-K9: D lists no migration for slice 22) |
 | 15 | 23 | `catalog_seller_categories` | The tables of 3.22; `offers.shelf_category_id` and its FK (`NOT VALID`, `VALIDATE`) |
 | 16 | 24 | `catalog_import` | 3.24 |
@@ -943,6 +977,7 @@ of `received` / `scanning` rows older than 1 hour deletes stuck raw objects and 
 | `catalog.rescan-claim-text` | On event, resumable | `7391146002835117703` | A14 |
 | `catalog.purge-unreferenced-masters` | Daily | `4870913325561946201` | 10.2 |
 | `catalog.purge-expired` | Hourly | `1158342076693420958` | 10.3 |
+| `catalog.expire-relaxation-requests` | 15 min, per hosted Market | `5307714682290153049` | A21: each `open` row past `expires_at` → `expired` in its own unit (expected `version`), audit and `catalog.material-request-expired.v1` |
 
 None equals Prisma Migrate's `72707369` or a key of identity, sellers or certification (a test
 compares the registered keys).
@@ -1001,7 +1036,7 @@ load.
 | 2 Variants: `variant-removed` in the save unit; retired never returns; server-minted ids | 3.2 (guard, CA7), 3.10 (trigger), Q-K3 |
 | 3 Tags: copy keeps the revision id, indexed for exclusion; bounded, indexed M1 marking | 3.15 (`copy_revision_id`, `copy_revision_published`, partial predicates), A7, A10, 11, Q-K4 |
 | 4 Seeds record "created by seed" only; no seed update path | `created_by_kind` in 3.4, 3.5; grants 7; seed test 3.4 |
-| 5, 9 Two-person relaxation: requester, confirmer (different), definition id and version, expiry, append-only, four kinds | 3.21, 3.5 pointer |
+| 5, 9 Two-person relaxation: requester, confirmer (different), definition id and version, kind and family id, status `open` → `confirmed` / `cancelled` / `expired`, expiry, index `(market, status, expires_at)` for the 15-minute job and the list | 3.21 (guard trigger, four CHECKs, open partial unique), A21, 10.4 |
 | 6 Read targets for `offerListings`, seller list, review queue | A2, A5, A6; 11 |
 | 7 Raw SQL on the ADR-0030 list | 6.3: none needed |
 | 8 Counters for `claim-text.check` per minute and 24 h | 3.26 |
@@ -1029,6 +1064,7 @@ load.
 | Q-K11 | A seller's account closure or erasure: what happens to its products, Offers and tags? | Domain decision; data needs nothing new either way |
 | Q-K12 | 5.1a point 5: a tag whose copy names a **previously published, now superseded** revision (a PLATFORM publish marks it `rechecking` but the copy still names the old revision until the fan-out settles it): included in handlers? | Included: I set `copy_revision_published` from "was the published revision at decision time", so such tags stay selectable |
 | Q-K13 | Slice 4 completeness asks for ≥ 1 clean image, but images arrive in slice 13 | Slice 4 checks images only once slice 13 has merged; until then no revision has images |
+| Q-K14 | D 8.2: a confirm fails when the definition version changed, but the request then stays `open` and (one open per definition) blocks a new request until the requester cancels or it expires | The unit that revises a definition closes its `open` request as `cancelled` in the same unit (audit `.cancelled`, reason `definition-changed`); no new status value. Or add `invalidated` to the status list |
 
 ## 14. Open
 
@@ -1046,4 +1082,4 @@ load.
 | `prisma/schema/base.prisma`, `catalog.prisma`; migrations of 8.1 with `down.sql` | As specified | Per slice; Hossein; my sign-off |
 | Privilege map and catalog tests of `pnpm test:db` | Section 7 lists, the insert-only list of 6.1, the trigger cases, the partial indexes of 8.4, `catalog.outbox` in the outbox test, the "no money or stock column" name test (1) | With each migration |
 | `docs/design/data/platform.md` 10.5 guard 1 | `pg_trgm` in the extension map (with O1) | Platform PR before migration 7 |
-| `docs/design/domain/catalog.md` | Answers to Q-K1 to Q-K13 (Mohammad) | Before slice 1 |
+| `docs/design/domain/catalog.md` | Answers to Q-K1 to Q-K14 (Mohammad) | Before slice 1 |

@@ -394,7 +394,8 @@ Batches: at most 100 queries per call (CD 4.1); the fan-out splits larger sets.
    that revision (5.2). A tag not allowed at that publish becomes `suspended` (cause `tag-suspended`).
 4. A submit-time ask on an **already-published** product (the T4 check of 4.2 row 1) stores
    nothing: it only refuses or lets the submit through; tags keep the copy of the published revision
-   until the publish re-asks.
+   until the publish re-asks. This point covers **only** the T4 check of existing tags; tags requested
+   at a first submit are written as point 6 says (Hassan L4).
 5. **Which tags the handlers and reconciliation see (B3, option chosen: exclude).** A tag whose copy
    names a revision that is `pending`, `superseded` or `changes-needed` (only possible on a product
    never published) is **excluded** from the certification-event handlers (5.5) and the daily
@@ -408,8 +409,14 @@ Batches: at most 100 queries per call (CD 4.1); the fan-out splits larger sets.
    - **When:** at submit, under the claim-bearing commands' rule (8.2 row of `.add-tag`): the server
      asks `evaluateClaims` for each requested type against the frozen revision being submitted
      (point 1), before the unit. If every requested type is allowed, the tags are written in the
-     submit unit with copies naming that revision (not listed, no badge, excluded from 5.5 and 5.6,
-     point 5). If any is not allowed, the **whole submit is refused** with
+     submit unit with status **`pending-publish`** (5.3) and copies naming that revision, **without
+     badge data** (badge data is copied only when publish makes the tag `active`); the Offer is not
+     listed, and the tags are excluded from 5.5 and 5.6 (point 5). The 5.2 rule applies unchanged
+     (Hassan L3): the unit re-reads the Offer and product under version and writes a tag only when
+     the decision's `inputs` equal the queries rebuilt from the state being saved; a lost race
+     restarts from the ask (at most 3 attempts, then `conflict.retry`). On a later submit of a
+     never-published product the set of `pending-publish` tags becomes exactly `requestedTags`
+     (types left out are removed, the rest asked again against the new revision). If any is not allowed, the **whole submit is refused** with
      `claim.requested-tag-not-allowed` (per type: code and CUX 3.7 reason), the same no-silent-loss
      rule as T4; `unavailable` refuses with `claim.check-unavailable`.
    - **Acting-as:** a submit whose `requestedTags` is non-empty is refused with
@@ -442,11 +449,15 @@ Batches: at most 100 queries per call (CD 4.1); the fan-out splits larger sets.
    provenance field; Import accepts only "requested type codes" (AC 9, AC 38).
 
 ### 5.3 Tag status
-`active` ⇄ `rechecking`; `active` | `rechecking` → `suspended`; `suspended` → `active` |
-`rechecking`; `active` | `suspended` → `removed` (terminal for that tag row).
+`pending-publish` → `active` | `suspended` | `removed`; `active` ⇄ `rechecking`; `active` |
+`rechecking` → `suspended`; `suspended` → `active` | `rechecking`; `active` | `suspended` →
+`removed` (terminal for that tag row).
 
 | From → to | Trigger | Effect on the Offer | Seller sees (brief s4 table) |
 |---|---|---|---|
+| (none) → `pending-publish` | Requested at the first submit (`requestedTags` of `own-product.submit` or `own-offer.submit` on a never-published product; refused in acting-as), allowed by 5.2 against the frozen submitted revision (5.1a point 6) | Not listed (the product is unpublished); **no badge data stored or returned**; excluded from 5.5 and 5.6 | "Checked at submit, confirmed at publish" |
+| `pending-publish` → `active` or `suspended` | Publish re-asks against the revision being published before the pointer moves (5.1a point 3); badge data copied only on `active` | `suspended` adds cause `tag-suspended` | Badge, or reason and next step |
+| `pending-publish` → `removed` | Left out of `requestedTags` at a later submit, or the Offer is deleted or the product withdrawn | — | — |
 | (none) → `active` | Seller adds a type in the Offer form (`own-offer.add-tag`; refused in acting-as), allowed by 5.2 | — | Type and basis |
 | `active` → `rechecking` | A handler or the reconciliation selected the tag and has not settled it, or `evaluateClaims` was `unavailable` | Listed; the display copy carries **no badge data** while `rechecking` (cart and storefront show no badge); `ordering` asks fresh anyway (ADR-0028 d4) | "Checking your certificate" |
 | `active` or `rechecking` → `active` (basis switched) | A fresh decision allows another basis (ADR-0012 d6) | — | New basis; event `catalog.offer-tag-basis-switched.v1` |
@@ -457,7 +468,7 @@ Batches: at most 100 queries per call (CD 4.1); the fan-out splits larger sets.
 | `removed` → (new `active` row) | Adding the type again: a new entry path (ADR-0028 d5 "tag re-enabled") | — | — |
 
 ### 5.4 The claim copy (ADR-0028 d3, d11; brief s6)
-Stored per `active`, `rechecking` and `suspended` tag: type code; basis; certificate kind, id and
+Stored per `pending-publish`, `active`, `rechecking` and `suspended` tag (no badge data for `pending-publish`): type code; basis; certificate kind, id and
 version (submission or revision id); issuer id; type revision id; policy revision id or "default";
 `validUntil`; the badge data of the decision (CD 4.5) — kept only while `active`; the hash of the
 inputs it was decided on (product revision id, variant ids, handling, attestation, category paths);
@@ -473,6 +484,7 @@ badge data of the tags whose copy names that submission (by re-asking, never by 
 | Offer create, edit (description, condition, shelf, SKU included: "ask on every write", AC 11) | `own-offer.create*`, `own-offer.edit` (content fields only; its input type has **no** handling, attestation or tag field, so an acting-as session cannot reach them through it; B1) | All tags of the Offer |
 | Handling change; attestation recorded or withdrawn | `own-offer.set-handling`, `own-offer.record-attestation` (separate commands, refused in acting-as; 8.2) | All tags |
 | Tag added or re-enabled | `own-offer.add-tag` | That tag |
+| Tag requested at the first submit (Hassan M2) | `own-product.submit`, `own-offer.submit` with `requestedTags` (5.1a point 6) | The requested types, against the frozen submitted revision; written `pending-publish` without badge data; re-asked at publish |
 | Product revision submit (SELLER) | 4.2 row 1 | The owner's Offer, against the submitted revision (T4) |
 | Product revision publish (approve, auto, revert) incl. a variant added or removed | 4.2 rows 3, 4, 6 | Every Offer of the product; for PLATFORM products in idempotent batches through the fan-out job (below) |
 | Platform category move, merge, archive (C-4, C-8) | Own handler of the category events | Every Offer under the affected subtree, batched |
@@ -771,7 +783,7 @@ session (and when the context cannot say, CD M5).
 |---|---|---|---|
 | `own-products.list`, `own-product.read`, `own-offer.read`, `own-image.preview`, `own-revision.read`, `own-product.photos`, `own-offer.badge-options` | `permissions [catalog.own-product.view]` | — | Own seller only (repository takes the seller id from the actor); reads of 9.2a |
 | `own-image.reorder` | `permissions [catalog.own-product.edit]` | allowed (content only) | 9.2a; working copy only |
-| `own-product.create`, `.save-draft`, `.submit`, `.delete`, `.revert`; `own-image.upload`, `.remove`; `own-offer.create-on-platform-product`, `.edit`, `.submit`, `.delete`; `claim-text.check` | `permissions [catalog.own-product.edit]` | allowed (content only); the claim-bearing commands are the next row | `sellingEligibility` on every write; SEL-12 on create and submit; a tag in the submitted form is added through the next row's rule. `own-offer.edit` and `.create-on-platform-product` have closed input schemas with no handling, attestation or tag field (B1; L8); a create with initial handling, attestation or tags is a create followed by the next row's commands, so acting-as gets a draft without them. Ids resolved in the actor's own seller scope (M3); `own-image.upload` refuses a PLATFORM product |
+| `own-product.create`, `.save-draft`, `.submit`, `.delete`, `.revert`; `own-image.upload`, `.remove`; `own-offer.create-on-platform-product`, `.edit`, `.submit`, `.delete`; `claim-text.check` | `permissions [catalog.own-product.edit]` | allowed (content only); the claim-bearing commands are the next row | `sellingEligibility` on every write; SEL-12 on create and submit; a tag in the submitted form is added through the next row's rule: `.submit` with a non-empty `requestedTags` is **refused in acting-as** (`access.acting-as-refused`; Hassan M1), with an empty list it is content only. `own-offer.edit` and `.create-on-platform-product` have closed input schemas with no handling, attestation or tag field (B1; L8); a create with initial handling, attestation or tags is a create followed by the next row's commands, so acting-as gets a draft without them. Ids resolved in the actor's own seller scope (M3); `own-image.upload` refuses a PLATFORM product |
 | `own-offer.set-handling`, `.record-attestation`, `.add-tag`, `.remove-tag`, `.remove-suspended-tag` | `permissions [catalog.own-product.edit]` | refused | Brief s5, AC 19 |
 | `catalog-products.search-for-offer` (OFR-03) | `permissions [catalog.own-product.view]` | — | ≥ 3 characters; Market from context; PLATFORM, published, not retired; per result whether the seller already has an Offer, whether the type is allowed |
 | `own-category.propose`, `.cancel` | `permissions [catalog.own-category.propose]` | — | `mayProposeCategories` at the command |
@@ -787,9 +799,9 @@ session (and when the context cannot say, CD M5).
 | `tax-category.override` | `permissions [catalog.tax-category.override]` | — | 4.3 |
 | `platform-category.*` | `permissions [catalog.category-tree.edit]` (create, rename, move, merge, archive); read and `platform-category.impact`: `catalog.product.view` | — | 4.6, 9.2a |
 | `admin-product.offers` | `permissions [catalog.product.view]` | — | 9.2a (Offers tab) |
-| `attribute-definition.*`, `attribute-family.*` | `permissions [catalog.attribute.edit]` | — | Unsetting `material` and removing a family's required field are relaxations recorded in audit. **Two-person rule (Hassan 2; ADR-0028 consequences)** for clearing `material`, archiving or deleting a definition whose current revision is `material`, and removing a `material` definition from a family: one admin requests (`attribute-definition.request-relaxation`, naming the definition id and its version), a **different** account id holding `catalog.attribute.edit` confirms (`.confirm-relaxation`); never in an acting-as session; the request expires after 72 h (proposal) and fails if the definition version changed; both account ids are in the audit row `catalog.attribute-definition.revised`. Lifecycle of a request: `open` → `confirmed` | `cancelled` (by the requester) | `expired` (job below); confirm after `expiresAt` is refused with `relaxation.expired` by the unit's own `Clock` check, whatever the job has done |
+| `attribute-definition.*`, `attribute-family.*` | `permissions [catalog.attribute.edit]` | — | Unsetting `material` and removing a family's required field are relaxations recorded in audit. **Two-person rule (Hassan 2; ADR-0028 consequences)** for clearing `material`, archiving or deleting a definition whose current revision is `material`, and removing a `material` definition from a family: one admin requests (`attribute-definition.request-relaxation`, naming the definition id and its version), a **different** account id holding `catalog.attribute.edit` confirms (`.confirm-relaxation`); never in an acting-as session; the request expires after 72 h (proposal) and fails if the definition version changed; both account ids are in the audit row `catalog.attribute-definition.revised`. Lifecycle of a request: `open` → `confirmed` | `cancelled` (by the requester) | `expired` (job below); confirm after `expiresAt` is refused with `relaxation.expired` by the unit's own `Clock` check, whatever the job has done. **No races (Hassan, Low):** the request row has a `version`; confirm and cancel name it, and confirm, cancel and the expiry job each change state only from `open` with a conditional update on that version in their unit; the loser gets `conflict.stale` (job: skips the row) and nothing changes |
 | `attribute-relaxations.list-open` (PA7 "Waiting for you") | `permissions [catalog.attribute.edit]` | refused | `open` requests of the Market, not expired, oldest first: request id, kind (`clear-material`, `archive`, `delete`, `remove-from-family` with family id), definition id, code, name in the admin's locale and version, requester account id and display name (identity R-11, I-2), `requestedAt`, `expiresAt`, and allowed actions: `confirm` denied with `relaxation.same-admin` on the reader's own requests (shown with `mine: true`; `cancel` allowed there) |
-| `catalog.expire-relaxation-requests` (job) | `system` | — | Worker, per hosted Market, every 15 minutes: each `open` request past `expiresAt` becomes `expired` in its own unit, with audit `catalog.attribute-relaxation.expired` and the event `catalog.material-request-expired.v1` in the outbox; the own handler sends EC14 to the requester |
+| `catalog.expire-relaxation-requests` (job) | `system` | — | Worker, per hosted Market, every 15 minutes: each `open` request past `expiresAt` becomes `expired` in its own unit (conditional on `open` and its version, so a confirm or cancel that won is never overwritten), with audit `catalog.attribute-relaxation.expired` and the event `catalog.material-request-expired.v1` in the outbox; the own handler sends EC14 to the requester |
 | `category-proposal.approve`, `.reject` | `permissions [catalog.category-proposal.decide]` | — | 4.7 |
 | `seller-category.promote`, `.merge` | `permissions [catalog.seller-category.promote-merge]` | — | 4.7 |
 | `market-settings.read`, `.change` | view / edit keys | refused | 7.3 |
@@ -802,7 +814,8 @@ session (and when the context cannot say, CD M5).
 | Rule | Enforcement point | Test |
 |---|---|---|
 | CERT-21 via `evaluateClaims` only; equal inputs under version | `Offer.applyClaimDecisions` (domain) refuses a decision whose inputs differ from its own state; `ClaimQueryBuilder` the only builder | AC 7 to 11 |
-| Every entry path asks | The table of 5.4; a test per row; a contract test lists every use case that changes an Offer's handling, attestation, product, category path or variant set and asserts it calls the builder | AC 10, 11; Hassan |
+| Every entry path asks | The table of 5.4; a test per row; a contract test lists every use case that changes an Offer's handling, attestation, product, category path or variant set, **or writes a tag (including `own-*.submit` with `requestedTags`, Hassan M2)**, and asserts it calls the builder | AC 10, 11; Hassan |
+| Acting-as cannot reach claim inputs (B1/AA contract test) | A contract test runs every command of 8.2 marked "refused" in an acting-as session, plus `own-offer.edit`, `.create-on-platform-product` with handling, attestation or tag fields, and **`own-product.submit` and `own-offer.submit` with a non-empty `requestedTags`** (Hassan M1), and asserts refusal and no change | AC 19; B1 |
 | Copies only restrict | No read of a tag copy in any use case that activates a tag; only `allowed` decisions activate | AC 13, 14 |
 | CAT-43 | `Product` content commands refuse `AuthorKind.seller` on PLATFORM | AC 3 |
 | One Offer per (seller, product), SKU unique per seller | Aggregate check plus Mojtaba's partial unique indexes | AC 2 |
@@ -1399,6 +1412,8 @@ now; this document does not edit it):
 10. SKU (Hadi): one `sellerSku` per Offer; no per-variant SKU column in Phase 3; Import's update key
     is (seller, `sellerSku`, variant option values).
 11. Bulk approve cap of 50 (Hassan 3b): no storage change; noted for request validation.
+12a. Tag status gains `pending-publish` (5.3), whose copy row holds no badge data; the relaxation
+    request row gains `version` for the conditional updates of confirm, cancel and expiry (8.2).
 12. Variant limit (`catalog.maxVariantsPerProduct`, AU 100): enforced in the application layer
     under the product's version (a count of non-retired variants in the save, submit and publish
     units); Mojtaba decides whether a check or index helps; Market configuration, no table.
@@ -1588,6 +1603,7 @@ day one (Q1).
 | Reza ux.md 7.2 items 1, 2 | Per-field refusal on draft saves (no claim word ever stored); `claim-text.found` payload with `typeCode` | 6.1, 17.2 |
 | Reza ux.md 7.6 | Named checks stored on the decision and gating, required set derived by the server; photo check of H1 | 8.3a, 7.1, 17.2 |
 | Final conditions (Hassan 1a, 1b, 2, 3a, 3b; Ali ADR-0030, slice 20; Hadi SKU, locale, CAT-53) | See 19.3 rows | 2.1, 4.2, 4.3, 4.7, 5.4, 6.3, 8.2, 8.4, 11.1, 11.3, 14, 15.1, 16.2, 17.1, 17.2, 19, 20 |
+| Hassan on `requestedTags` and relaxations | M1: acting-as refusal on `.submit` with `requestedTags`, and the B1/AA contract test; M2: `pending-publish` tag status with no badge data, the entry-path row and contract test; L3: 5.2 equality and retry for requested tags; L4: 5.1a point 4 limited to T4; Low: version checks on confirm, cancel and expiry | 5.1a points 4 and 6, 5.3, 5.4, 8.2, 8.3 |
 | Hadi: narrower bulk approve | Rows needing the named photo check are skipped; every skipped row listed with its reason code | 4.2, 8.4 |
 | Reza ux.md 7.10 | `requestedTags` at the first submit (submit-time ask, whole submit refused if not allowed, refused in acting-as, re-asked at publish); `attribute-relaxations.list-open`; expiry job, `catalog.material-request-expired.v1`, EC14 | 5.1a point 6, 8.2, 9.4, 11.3, 12, 17.1, 17.2 |
 | Ali Phase 4: `catalog.maxVariantsPerProduct` | Market configuration (AU 100); checked at save, submit, publish and Import; `variant.limit-reached`; bounds `offer-moved` mapping | 2.1, 4.2, 7.1, 7.3, 9.2a, 9.4, 14, 17.1, 17.2, 18 |
