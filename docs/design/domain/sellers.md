@@ -33,7 +33,8 @@ A design, not an implementation: a signature appears only where it is the contra
 - **In Reza's `docs/modules/sellers/ux.md`:** pages, states and copy, and the table of brief s12;
   what the API gives the panel is in 13.2.
 - **Left open, with the reason:** the questions of 16.1 need the owner; Hassan's numbers are set
-  (6.5); the editable "approval required" value waits for the ADR of 14.1;
+  (6.5); the editable "approval required" value follows ADR-0026 (accepted 2026-10-07; 14.1) and
+  is built in slice 15;
   anything that waits on counsel or the register's agreement is named where it applies.
 
 ### 1.1 Brief slices and where they are covered
@@ -53,12 +54,13 @@ A design, not an implementation: a signature appears only where it is the contra
 | 12 Public store profile | 2.1, 3.7, 7.1 |
 | 13 Category-proposal permission and its revoke event | 7.1, 7.4 |
 | 14 Restricting allowed product types | 7.1, 11 |
-| 15 Global settings page ("approval required") | 4.1, 14.1 |
+| 15 Global settings page ("approval required") | 4.1, 6.2, 14.1 (ADR-0026), 19 |
 | 16 Per-seller AI switch | 6.4, 7.6 |
 | 17 Panel screens | 13.2; Reza's document |
 | (mini-review 2026-10-07) 20 Minimum order per seller (SEL-15, SEL-24 Settings; cart CRT-05, SC3) | 2.1, 6.1, 6.2, 7.1, 9, 11.1, 18 |
 | (new) 18 Retention of abandoned and rejected files | 8.4, 14.2, 15 |
 | (new at G2) 19 Business history read (P2-H, AC 26) | 6.2, 11 |
+| (mini-review 2026-10-07, request S-1) The fixed zone read `approvedSellerZones` for `certification` | 6.2, 6.3, 6.5, 7.1, 7.1a, 11.1 (slices 2 and 5), 19 |
 
 ### 1.2 Inputs from other documents
 | Input | Answered in |
@@ -68,7 +70,8 @@ A design, not an implementation: a signature appears only where it is the contra
 | ID 3.3 and 14.5 item 3: the way out of the final `rejected` state | 3.3, 15 (R-7) |
 | ID 8.5: approve only with a current submission; auto-approval only after `sellers`' checks; re-confirmation before slice 10; the reviewer notice after a submission | 7.3, 15 (R-1 to R-3) |
 | ID 8.5 last row: the steps card of S1 | 7.1 (`onboardingSteps`), 13.2 |
-| Board 8 item 3, 11 item 4: the ADR "admin-editable Market settings" | 14.1; not written; slice 15 waits for it |
+| Board 8 item 3, 11 item 4: the ADR "admin-editable Market settings" | 14.1: ADR-0026, accepted 2026-10-07; aligned in 19; slice 15 builds on it |
+| `certification` request S-1 (its domain design 2.3 T2, 4.2 step 1, 8.5, 18; ADR-0028 decision 8): one fixed, caller-independent read of non-provisional zones for `evaluateClaims` | 7.1, 7.1a, 19 |
 | Board 11 item 1 and the ADR-0019 follow-ups: the AI switch is `sellers`'; its port is a named exception; off also stops AIA-01 | 6.4, 7.6 |
 | Board 13 item 3 (certification G1): AI off for a new seller until an admin switches it on; the switch-on notifies the seller; the reviewer gets legal name, trading name and business address | 2.1, 7.1 (`reviewerBusinessDetails`), 10 |
 | Board 15 item 4 (catalog G1): allowed types default "all"; offers of a type no longer allowed leave sale with a notice; the public store name on every badge has no claim check (Hassan) | 7.1, 7.4, 16.2 item 6 |
@@ -113,7 +116,7 @@ SellerAdminSettings (id = sellerId): allowed product types, category proposals, 
 |---|---|
 | Access state (`pending`, `approved`, `rejected`, `suspended`), decisions and their reasons, the re-apply count | `identity` (ADR-0022 decision 1). `sellers` stores no copy, not even a read model (decision 2) |
 | Account, sign-in email, membership, roles | `identity` (R8 of its brief) |
-| "Approval required" as an editable value | Market configuration until the ADR of 14.1; then the store that ADR names. Not a `sellers` table: `identity` reads it too and imports no module |
+| "Approval required" as an editable value | A setting declared by `sellers` and stored in the platform store of ADR-0026 (`platform/market-config/`, `platform` schema; 14.1), seeded from Market configuration (4.1). Not a `sellers` table: `identity` reads it too and imports no module |
 | ServiceArea definitions | `config/service-areas/` read through a platform port (4.3); `sellers` stores only the code the address fell in |
 | Certificates, offers, categories, type codes' meaning | `certification`, `catalog` (ProductTypeHandler registry). `sellers` stores type codes as opaque strings |
 | Commission, payout account, the "show customers" and other later SEL-15 settings | Their own modules or later slices (brief s3) |
@@ -288,7 +291,7 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 | `timezones` | Region → IANA zone, with postcode exceptions (data file) | Its own | `TimezoneResolver` |
 | `reviewChecks` | Codes and translation keys of the reviewer's named checks, which are required, and `manual-register-check` | A smaller list | 3.1, 7.3 |
 | `rejectReasons` | Codes and translation keys of the prepared reasons (brief s7) | Its own | Bulk reject, identity change |
-| `approvalRequired` | `true` (until the ADR of 14.1) | `false` | 7.3, AC 12, AC 19 |
+| `approvalRequired` | `true`: the checked-in default that seeds the ADR-0026 store; once seeded, the store is the source of truth and a change here no longer changes a live Market (14.1) | `false` | 7.3, AC 12, AC 19. The safe value (`true`) is in `sellers`' code, not here (ADR-0026 decision 5) |
 | `fileRetention` | Waits for counsel (16.1 item 3); two values: never-submitted drafts and finally rejected files | A short duration | 8.4 |
 | `minimumOrderMax` | Hadi sets it (18 decision 3) | Its own value, in its own currency | `my-store-settings.save-minimum-order`, `seller.change-minimum-order` |
 
@@ -350,7 +353,7 @@ Declared in `modules/sellers/contracts/permissions.ts` (R7 of the identity brief
 | `sellers.ai-switch.edit` | platform | yes (Hassan L8) | The per-seller AI switch (ADR-0019 decision 7: its own key) | Platform Administrator only, until the owner's cost decision |
 | `sellers.business-history.view` | platform | yes | History of business data and register results (VER-14); each read audited | Platform Administrator only |
 | `sellers.market-settings.view` | platform | no | The sellers settings page (SEL-15) | Onboarding and Compliance; Viewer |
-| `sellers.market-settings.edit` | platform | yes | Change "approval required" (slice 15) | Platform Administrator only |
+| `sellers.market-settings.edit` | platform | yes | Change "approval required" (slice 15). Protected as ADR-0026 decision 7 requires; a change of `sellers.approval-required` to `false` requires `identity.hasRecentConfirmation` (R-2, 10 minutes, never satisfied in acting-as); that step-up is how the admin second factor (ADR-0018 decision 5) applies to this key (Hassan L8); each change mails the Market's senior admins through `identity` (14.1) | Platform Administrator only |
 | `sellers.store-profile.view` | seller | no | Read the store profile (PNL-02) | Store Manager; Customer Service |
 | `sellers.store-profile.edit` | seller | no | Edit Description, Policies, Meta, Social, phone and contact email | Store Manager |
 | `sellers.store-settings.edit` | seller | no | Edit the SEL-24 "Settings" group: the minimum order (18) | Store Manager |
@@ -388,11 +391,12 @@ enforces; no work now.
 | `review.record-check`, `review.relookup`, `review.record-manual-check` | `permissions [sellers.seller-file.review]` | — | Only on the pending revision |
 | `review.approve`, `review.reject` (single and bulk) | `permissions [identity.seller-access.approve]` | — | 7.3; bulk carries `[{ sellerId, revisionId }]`, at most 50, 10 bulk requests per minute per admin (Hassan M2) |
 | `identity-change.approve`, `.reject` | `permissions [sellers.identity-change.approve]` | — | 3.1 |
-| `seller.edit`, `seller.change-slug`, `seller.submit-on-behalf`, `seller.correct-timezone` | `permissions [sellers.seller.edit]` | — | Audited. The admin route is the only one in acting-as (6.4). On an awaiting-review seller an edit of a reviewed field withdraws the pending revision after a warning (3.1, Jafar 4) |
+| `seller.edit`, `seller.change-slug`, `seller.submit-on-behalf`, `seller.correct-timezone` | `permissions [sellers.seller.edit]` | — | Audited. The admin route is the only one in acting-as (6.4). On an awaiting-review seller an edit of a reviewed field withdraws the pending revision after a warning (3.1, Jafar 4). For a seller with an approved revision, `seller.correct-timezone` is refused (`seller.use-identity-edit`): the admin corrects the zone through `seller.edit-approved-identity` (H1), which approves a revision carrying it, so the corrected zone reaches `approvedSellerZones` at once and is reviewed (7.1a row 9; Ali F3) |
 | `seller.edit-approved-identity` | `permissions [sellers.seller.edit, sellers.identity-change.approve]` (both) | — | Hassan H1: an edit of business identity on an approved seller; reviewer-approval guards of 3.1; applies at once and notifies the owner (brief s5); audited |
 | `seller-settings.change-types`, `.change-category-proposals` | `permissions [sellers.seller-settings.edit]` | — | Audited, same unit |
 | `seller-settings.change-ai-switch` | `permissions [sellers.ai-switch.edit]` | — | Audited; mail on switch-on (10) |
-| `market-settings.read`, `.change-approval-required` | view / edit keys | — | Slice 15, after the ADR of 14.1 |
+| `market-settings.read`, `market-settings.change` | view / edit keys | — | Slice 15, on the ADR-0026 store (14.1). `market-settings.change` takes the setting code as input and validates it and the value against the declaration, as `catalog` 7.3 (Ali F5). The change names the expected setting version (a stale edit is refused, `conflict.stale`), is refused in acting-as, and writes value, history, audit and `platform.market-setting.changed.v1` in one unit (ADR-0026 decision 3); a change of `sellers.approval-required` to `false` requires `identity.hasRecentConfirmation` (R-2, 10 minutes, never satisfied in acting-as); that step-up is how the admin second factor (ADR-0018 decision 5) applies to this key (Hassan L8) |
+| `approved-seller-zones.read` (`.anonymous`, `.system`) | `anonymous` and `system` pair | — | The facade read of 7.1a (request S-1). Not over HTTP; reads only the `MarketContext` from the context, never the actor; the same answer for every caller |
 | Facade reads (7.1) | `anonymous` and `system` pairs, or `permissions` | — | 7.1 |
 | Handlers and jobs (7.5, 11) | `system` | — | |
 
@@ -419,6 +423,7 @@ completing details (a seller who cannot read the form cannot complete it).
 | No personal data in events, outbox, audit, logs | `defineEvent` vocabulary (PP 5.3); audit allow-lists (9); log fields are ids and codes | AC 27, AC 34 |
 | Lookup: who, what the seller sees, what blocks | 7.7 | AC 30 to 33 |
 | Acting-as and rate limits | 6.4, 6.5 | Tests per row |
+| The zone a certification claim is measured in never depends on the caller (ADR-0028 decision 8; request S-1) | `approvedSellerZones` (7.1a): one query function behind both use cases of the pair, reading only `MarketContext` and the approved revision | Byte-identical answers under every caller kind (7.1a row 5), AU and ZZ |
 
 ### 6.4 Acting-as (SEL-08) and the AI switch
 | Rule | Source |
@@ -444,7 +449,7 @@ a fixed window from the first reservation; a counter store that cannot answer fa
 | Submissions (submit, submit again, request-change) | 5 per 24 h per seller file; the reviewer notice coalesced to at most 1 per seller per 6 h (R-3) |
 | Withdraw and cancel | 10 per 24 h per seller file (14.4 Q-M22) |
 | Bulk approve or reject | 50 ids per request; 10 requests per minute per admin |
-| Facade batch (`sellerSummaries`, `sellingEligibility`) | 100 ids per call |
+| Facade batch (`sellerSummaries`, `sellingEligibility`, `approvedSellerZones`) | 100 ids per call; `approvedSellerZones` answers an empty list with an empty map without reading, and refuses whole a call of more than 100 entries (before or after collapsing duplicates) or with a malformed id (7.1a row 4) |
 | Re-confirmation window (R-2) | 10 minutes, session-bound |
 
 ## 7. Boundary
@@ -464,6 +469,7 @@ it in an event, a log or an audit row.
 | Method | Returns | Access rule | Slice |
 |---|---|---|---|
 | `sellerSummaries(ctx, sellerIds)` | Per id: exists, `operatingTimezone` (from the approved revision, otherwise the draft's, with a `provisional` flag), slug if held, the public store name once approved; since slice 20, `minimumOrder` (`{ set: false }` or `{ set: true, money: Money }`) for a seller with an approved revision only, to every caller (it is public: cart shows it), and absent otherwise, so a caller never reads an absent value as "no minimum" (18). A stored currency that differs from the Market's currency (a fault, for example after a Market currency change) also returns `minimumOrder` absent and writes an error log (ids and codes only), so cart answers `check-unavailable` (CRT-05 fails closed; Mojtaba's re-check). For a seller with no approved revision, the slug and provisional zone go only to `system` and authenticated callers (Hassan L4). At most 100 ids | `anonymous` for request actors and `system` for handlers (two use cases behind one method, as `identity.sellerAccessOf`); not over HTTP | 1; time zone from 2 |
+| `approvedSellerZones(ctx, sellerIds)` | Per distinct requested id: `{ zone }`, the `operatingTimezone` of the seller's **approved** revision, or `{ zone: null }`. Never the draft's zone and no `provisional` flag. The same answer for every caller (7.1a). 1 to 100 distinct ids; a larger or malformed call is refused whole. Request S-1 of `certification`, for `evaluateClaims` only | `anonymous` for request actors and `system` for handlers and jobs (two use cases behind one method, as `sellerSummaries`); not over HTTP | 2 (contract; `null` for every id); 5 (reads the approved revision) |
 | `sellingEligibility(ctx, sellerIds)` | The may-sell contract (7.2). At most 100 ids (Hassan L4) | `anonymous` and `system` pair | 9 |
 | `allowedProductTypesOf(ctx, sellerId)` | `all`, or the set of type codes | `anonymous` and `system` pair | 9 (always `all`); 14 |
 | `mayProposeCategories(ctx, sellerId)` | Boolean | `anonymous` and `system` pair | 13 |
@@ -474,6 +480,28 @@ it in an event, a log or an audit row.
 
 "Business name" is read as the legal name and "store name" as the trading name of the
 certification brief; both come from SEL-24's General group (brief s8 item 13).
+
+### 7.1a The fixed zone read: `approvedSellerZones` (request S-1; mini-review 19)
+`certification` measures a seller certificate's expiry in the seller's current non-provisional
+zone and never later than the boundary stored at approval (its T2, ADR-0028 decision 8). That zone
+must not depend on who is asking: `sellerSummaries` returns the provisional zone to `system` and
+authenticated callers but not to anonymous ones (Hassan L4), so the same claim could get two
+answers. This read is the one source of the claim's zone. `sellerSummaries` stays as it is for
+`certification`'s submit and approve guards and its expiry job (certification 8.5) and for every
+other caller.
+
+| # | Rule |
+|---|---|
+| 1 | **Name and signature:** `approvedSellerZones(ctx: CallContext, sellerIds: readonly SellerId[]): Promise<ReadonlyMap<SellerId, { zone: IanaZoneId \| null }>>`. Exactly one entry per distinct requested id, so an absent key never has to be read as anything. A contract test asserts that the keys equal the set of distinct requested ids. A consumer treats a missing key as `{ zone: null }` and an unexpected key as a fault (the whole batch is unavailable) (Hassan L2) |
+| 2 | **Answers** (the context's Market only): a seller with an approved revision gets that revision's `operatingTimezone`, also while an identity change is pending (the approved revision answers until another is approved; AC 20). `zone: null` for: an unknown id; a seller of another Market (byte-identical to unknown, AC 1); a file with no approved revision (draft, pending, rejected, withdrawn); a purged file (8.4); a seller that `identity` reports `approved` but that has no approved revision (Phase 2 data, 3.1). The draft's zone is never returned. Before certification's claim path is live in a Market, the backfill of 14.3 Q-M4 must have given every identity-approved seller an approved revision. The slice 5 test asserts no approved seller answers null after the backfill (Ali F2) |
+| 3 | **Suspended sellers** (and any other `identity` state of a seller with an approved revision): the approved revision's zone. The read never asks `identity`. Suspension is the may-sell question, answered only by `sellingEligibility` (ADR-0022 decision 6); `certification` keeps the claim and may-sell apart (CERT-12) and `catalog` asks both. Returning `null` for a suspended seller would put a second module, a call outside the unit and a new failure mode in every `evaluateClaims` batch, and would flip the claim on suspend and reinstate with no event that `certification` re-evaluates on (option B, rejected; Ali ruled A, 19 O-2). No consumer shows a badge from `evaluateClaims` alone; `catalog` requires `sellingEligibility` too (ADR-0022 decision 6) (Hassan, O-2 condition) |
+| 4 | **Batch:** at most 100 ids (6.5; equal to the seller ids of one `evaluateClaims` batch). Duplicates are collapsed. An empty list answers an empty map without reading (Ali F1). More than 100 entries before or after collapsing duplicates (Hassan L6), or any id that does not parse as a seller id, refuses the **whole** call (`batch.too-large` for the size, `input.invalid` otherwise) before anything is read; never truncated (as `catalog`'s L7, which refuses at 200). The caller passes only ids that passed its own validation, and makes no call when no seller-basis query remains (certification 4.2 step 0 answers those queries without it). A refusal is thrown; the signature has no refusal value, so a consumer that catches any error fails closed (Hassan L1) |
+| 5 | **Independent of the caller:** both use cases of the pair call one query function with the `MarketContext` and the ids only. Nothing reads the actor's id, population, permissions, seller id or acting-as flag, and nothing branches on them; `system` sees nothing more than `anonymous`. Test (slice 2, extended in 5 and 7a-decide): the same batch under `anonymous`, `system`, a seller actor that owns one of the ids, a seller actor that owns none, an admin and an acting-as session returns byte-identical answers, on AU and ZZ. The batch includes an id of a ZZ seller with an approved revision, queried under AU (and the reverse), and a uuid never issued. Their entries are byte-identical. Entries are in the first-occurrence order of the request, so the bytes do not depend on row order (Hassan L3) |
+| 6 | **Fails closed, whole:** a read error or timeout throws `sellers.unavailable`; there is no partial answer and nothing is cached. `certification` then treats every seller of the batch as having no zone, which is "not allowed" (its 4.2 step 1) |
+| 7 | **Read:** one read-only unit (ADR-0025), Prisma only, as data design A18 (the pointer, then the revision; two snapshots are safe, A18), on `sellers`' own rows: the approved pointer on `seller_files` and the clear `operating_timezone` of that revision. No `identity` call, no key unwrap (8.1: the zone is clear), no new index |
+| 8 | **Nothing written:** no event, no audit row (no personal data is read); logs carry ids, counts and codes only. A refused call logs the code, the Market and the id count only. A malformed id is never echoed in a log line or an error message. Zone values and the id list are not logged. `sellers.unavailable` carries no SQL or driver text (Hassan L5) |
+| 9 | **Zone correction:** an approved revision's content, its zone included, never changes (2.1; data design 3.2 grants). Before approval, `seller.correct-timezone` changes the draft's zone, and so `sellerSummaries`' provisional zone. For a seller with an approved revision, `seller.correct-timezone` is refused (`seller.use-identity-edit`). The admin corrects the zone through `seller.edit-approved-identity` (H1, the fast path: both keys, the reviewer-approval guards, one unit), which approves a revision carrying it, so the corrected zone reaches this read at once and is reviewed. A seller's own reviewed identity change also moves it. Test in slice 10 (Ali F3; O-1 closed in 19) |
+| 10 | **Consumers:** `certification`'s `evaluateClaims` only. Another consumer is a `sellers` mini-review, because the answer is a fixed contract |
 
 ### 7.2 The may-sell contract: `sellingEligibility`
 | # | Decision |
@@ -492,7 +520,7 @@ Each call is a two-step write around a facade call outside any unit (PP 3.1 row 
 
 | Step | Approve (reviewer) | Reject (reviewer) | Submit again (owner, state `rejected`) | Automatic approval (handler) |
 |---|---|---|---|---|
-| Unit 1 | Revision N pending, version matches; required checks recorded; register check of (seller, N's `identifier_index`) acceptable (3.4); take the `IdentifierClaim`; set intent `approve-requested` | Revision N pending; reason code (and text, if the reviewer writes one) is not stored by `sellers`; set intent | Create revision N (`pending`); set intent `reapply-requested` | As approve, plus: approval required neither at registration (`approvalRequiredAtRegistration` false) nor by the Market's current policy (the stricter wins; AC 19); the register result is `active`, within `maxResultAge`, with no mismatch; no claim word in any token of the store name or slug (3.5); the claim is free (ADR-0022 decision 5, AC 33; Hassan M1). Any of these failing sends the file to a person |
+| Unit 1 | Revision N pending, version matches; required checks recorded; register check of (seller, N's `identifier_index`) acceptable (3.4); take the `IdentifierClaim`; set intent `approve-requested` | Revision N pending; reason code (and text, if the reviewer writes one) is not stored by `sellers`; set intent | Create revision N (`pending`); set intent `reapply-requested` | As approve, plus: approval required neither at registration (`approvalRequiredAtRegistration` false) nor by the Market's current policy, read in this unit (ADR-0026 decision 2; a missing row gives `true`; a read error aborts the unit, which ends without approving, and the file goes to a person; the read is never moved out of this unit to make a fallback possible: 14.1 row 5, Hassan L7) (the stricter wins; AC 19); the register result is `active`, within `maxResultAge`, with no mismatch; no claim word in any token of the store name or slug (3.5); the claim is free (ADR-0022 decision 5, AC 33; Hassan M1). Any of these failing sends the file to a person |
 | Call | `identity.approveSellerAccess(ctx, sellerId, basisId = N)` | `identity.rejectSellerAccess(ctx, sellerId, reason, basisId = N)` | `identity.reapplySellerAccess(ctx, sellerId)` | `identity.autoApproveSellerAccess(ctx, sellerId, basisId = N)` |
 | Unit 2, success | N `approved`, intent cleared | N `rejected`, intent cleared | Intent cleared; N stays `pending`; the reviewer notice (7.5) | As approve |
 | Unit 2, refusal | Claim released, intent cleared, N stays `pending`; the code is returned (`seller-access.wrong-state` and so on) | Intent cleared | N `withdrawn`; `seller-access.reapply-limit` returned (3.3) | Claim released; N stays `pending` for a person |
@@ -537,13 +565,13 @@ booleans and instants from the closed vocabulary (PP 5.3); no actor (ADR-0018 de
 | `sellers.category-proposals-granted.v1`, `-revoked.v1` | seller-admin-settings | `sellerId` | `catalog` (CAT-51, AC 15) |
 | `sellers.ai-switch-changed.v1` | seller-admin-settings | `sellerId`, `enabled` | `sellers`' mail handler (10) |
 | `sellers.tax-registration-recorded.v1` | seller-tax-profile | `sellerId` only; `tax` reads `taxProfileOf` (Hassan L1) | Later `tax` |
-| `sellers.market-settings-changed.v1` | (per the ADR of 14.1) | `setting` (enum), `enabled` | Slice 15 |
+| (none for "approval required") | — | — | Not a `sellers` event: the change publishes the platform event `platform.market-setting.changed.v1` (Market, code, version; no actor, no value; ADR-0026 decision 3). `identity` consumes it for the senior-admin mail (14.1) |
 | `sellers.seller-file-purged.v1` | seller-file | `sellerId` | 8.4 |
 
 ### 7.5 Events consumed (`presentation/subscribers/`, system actor, `runOnce`)
 | Event | Handler | Effect |
 |---|---|---|
-| `identity.seller-registered.v1` | `sellers.create-file` | Creates `SellerFile`, `SellerAdminSettings` (types `all`, proposals off, AI off), `SellerTaxProfile` and `StoreProfile` (empty) under the same id, in one unit; records `approvalRequiredAtRegistration` from the Market policy at that moment, so a later switch-off never approves sellers already waiting (AC 19). Never in `identity`'s transaction (ADR-0004 decision 5). Idempotent by the inbox and by the primary key. Until it runs, the facade answers "no file" and may-sell is no |
+| `identity.seller-registered.v1` | `sellers.create-file` | Creates `SellerFile`, `SellerAdminSettings` (types `all`, proposals off, AI off), `SellerTaxProfile` and `StoreProfile` (empty) under the same id, in one unit; records `approvalRequiredAtRegistration` from the Market policy at that moment, read in the same unit (ADR-0026 decision 2; a missing row gives `true`; a read error aborts the unit, the inbox retries it, and no value it did not read is ever recorded; the read is never moved out of this unit to make a fallback possible: 14.1 row 5, Hassan L7), so a later switch-off never approves sellers already waiting (AC 19). Never in `identity`'s transaction (ADR-0004 decision 5). Idempotent by the inbox and by the primary key. Until it runs, the facade answers "no file" and may-sell is no |
 | `identity.seller-access-approved.v1`, `-rejected.v1` | `sellers.close-decision` | Finds the revision named by the decision's `basisId` (ADR-0022 decision 4; carried in v1 of these events, which are not merged yet, so no v2: identity owner at G2); finishes unit 2 if it was not done, re-taking the claim if needed (7.3). A decision with no `basisId` (Phase 2 data) changes nothing |
 | `identity.seller-access-reapplied.v1` | `sellers.close-decision` | Clears a `reapply-requested` intent |
 | `sellers.business-file-submitted.v1` (its own) | `sellers.after-submission` | Kind `onboarding`: when approval is required neither at registration nor by the current policy, the automatic approval of 7.3; otherwise, or when it is refused, `identity.notifyAccessReviewers(ctx, sellerId)` (R-3). Kind `identity-change`: mail to the sign-in address (10) |
@@ -553,7 +581,7 @@ booleans and instants from the closed vocabulary (PP 5.3); no actor (ADR-0018 de
 | Port | Declared in | Implemented by | Notes |
 |---|---|---|---|
 | `BusinessRegisterLookup`, `BusinessIdentifierScheme`, `AddressFormat`, `TimezoneResolver` | `sellers/application/ports` | `sellers/infrastructure` | 4.2, 7.7 |
-| `SellerMarketPolicy` (approval required, identifier rules, review checks, reasons, retention) | `sellers/application/ports` | Adapter reading Market configuration; after the ADR of 14.1, that ADR's store | `identity` reads "approval required" through its own `IdentityMarketPolicy` (ID 8.5); both read the same value |
+| `SellerMarketPolicy` (approval required, identifier rules, review checks, reasons, retention) | `sellers/application/ports` | "Approval required": from slice 15 the ADR-0026 platform reader (setting `sellers.approval-required`, in the caller's unit, no cache, safe value `true`), Market configuration until then; every other value: Market configuration (14.1 row 8) | `identity` reads "approval required" through its own `IdentityMarketPolicy` (ID 8.5); both read the same value |
 | `IdentifierIndex` | `sellers/application/ports` | HMAC-SHA-256 under a 32-byte stack secret, required at boot, never logged, bound to the Market and the scheme (8.2). The secret must differ from `identity`'s throttle secret (boot check) and is backed up like the KEK; rotation is not needed before launch (Hassan) | Moves to `platform/` when a second module needs one |
 | `ServiceAreaDirectory` | `platform/market-config` | Platform | 4.3 |
 | AI switch reader (name in the `platform/ai` design) | `platform/ai` | `sellers` | **Named exception** (ADR-0019 decision 7): takes a `MarketContext` and a seller id, no actor; not a use case, so the gate does not run; reads `SellerAdminSettings.aiEnabled` in a read-only unit; a missing row or an error is "off" (platform/ai evaluates; R8). Off also stops the admin-side reading of that seller's files (AIA-01). Bound in the composition root; unbound, boot fails in both `APP_ROLE`s. Recorded in the checked-in list of non-permission declarations so review sees it (PF 6.2 row 5). Default off for a new seller (owner, certification G1) |
@@ -652,7 +680,7 @@ never a name, phone, address, identifier, reason text or register value.
 | `sellers.identity-change.approved`, `.rejected` | Reviewer |
 | `sellers.minimum-order.changed` | Seller or admin, with the actor recorded (18). `before` and `after` hold `{ set, amount (minor units), currency }`: a public commercial value, not personal data, so it is allowed here as an exception to the list above |
 | `sellers.allowed-product-types.changed`, `sellers.category-proposals.changed`, `sellers.ai-switch.changed` | Admin (AC 14, AC 15; "who, when, before and after") |
-| `sellers.market-settings.changed` | Admin (AC 19) |
+| `sellers.market-settings.changed` | Admin (AC 19); written by the change use case in the same unit as the platform store's history row (ADR-0026 decision 3; 14.1) |
 | `sellers.tax-registration.recorded` | Seller or admin (brief s5) |
 | `sellers.business-history.viewed` | Every authorised read (VER-14, AC 26) |
 
@@ -675,7 +703,7 @@ contact email (brief s5), read from `identity` (R-4).
 | AI switched on for your shop (text seen by counsel; board 13 item 3) | `ai-switch-changed` with `enabled` true. Switching off sends nothing in Phase 3 (16.2 item 8) |
 | **Proposal, not decided (Jafar 7; owner or Hadi decides):** "Your area is now open", one line saying the seller can now submit | If accepted: a job per Market after a deploy that switched an area's `sellerOnboardingEnabled` on re-evaluates files in `outside-service-area` and mails each such seller once (a per-file "notified" marker, Mojtaba). Not built unless accepted; recorded in the brief change log (17) |
 
-Notices to admins (the reviewer notice) are `identity`'s (R-3). Until the proposal above is
+Notices to admins (the reviewer notice, and the senior-admin mail on a change of "approval required", ADR-0026 decision 10) are `identity`'s (R-3, 14.1). Until the proposal above is
 accepted, outside-area sellers get no automatic mail when an area opens; the admin list has a
 filter for them (16.2 item 5).
 
@@ -690,11 +718,11 @@ A). Sizes as in ID 12.1: S, M, L, XL.
 | P1 | Shared-file platform PRs, announced on the board (backend track): `ServiceAreaDirectory`, `config/service-areas/`, the `sellers` part of the Market configuration schema | S each | — | Boot validation |
 | P2 | Platform migration: `btree_gist` in schema `extensions` (not on the app role's `search_path`; a test asserts `mondapac_app` has no USAGE); the narrow platform.md 10.5 guard-1 amendment (Ali's O1 ruling; Mojtaba writes it); spike S1 shows Prisma's drift check ignores the extension | S | — ; before slice 3's migration (ADR-0023 decision 5) | The guard amendment |
 | 1 | File created from `identity.seller-registered.v1`; `sellerSummaries`; `sellers.outbox`, `sellers.inbox`; a deploy-time backfill that only creates missing files (14.3 Q-M4) | M | `identity` slices 3 (delivery side) and 5; R-6 for id paging only | Idempotence; no personal data in the event |
-| 2 | Complete details: General, Address, phone, slug check, time zone, ServiceArea; encryption of live fields | L | 1; P1 | Plain text, slug rules, limits (6.5) |
+| 2 | Complete details: General, Address, phone, slug check, time zone, ServiceArea; encryption of live fields. `approvedSellerZones` (7.1a): contract, batch rule, the pair, caller-independence test; answers `zone: null` for every id, because no revision exists before slice 5 (request S-1; before `certification` slice 1 merges) | L | 1; P1; mini-review 19 approved | Plain text, slug rules, limits (6.5); 7.1a rows 4 to 6; `approvedSellerZones` is in the CI check that anonymous and system pairs are not reachable over HTTP (certification L3), and a `pnpm boundaries` rule lets only `modules/certification/application/**` call it (Hassan L4) |
 | 3 | Business identifier from Market configuration; `IdentifierIndex`; tax registration (V2, `EffectivePeriod`) | M | 2; P2 | Index secret (7.6); AC 3 |
 | 4a | Register lookup: port, `none` and `fake`, quotas, results, seller and reviewer view | M | 3 | Quota reservation; no leak (AC 30, 34); L10 |
 | 4b | The register adapter | M | 4a; merges only after Ali's vendor review of the register's web-service agreement is recorded. Switching AU to `abr` is a separate configuration PR after the key arrives (owner queue item 11) | The outbound hardening of 7.7 (L7) |
-| 5 | Submit: revisions (`Revision<T>`, content hash), completeness, withdraw on edit, `onboardingSteps`, the reviewer notice | L | 4a; `ContentHash` (2.4 rule 3); **identity mini-review 3** (R-3); allow-list entries (R-8) | AC 4, AC 5, AC 10; acting-as (6.4) |
+| 5 | Submit: revisions (`Revision<T>`, content hash), completeness, withdraw on edit, `onboardingSteps`, the reviewer notice; `approvedSellerZones` reads the approved pointer and revision (7.1a rows 2, 3, 7; tested with a fixture approved revision; 7a-decide adds the approve-then-read case) | L | 4a; `ContentHash` (2.4 rule 3); **identity mini-review 3** (R-3); allow-list entries (R-8) | AC 4, AC 5, AC 10; acting-as (6.4); 7.1a row 5 re-run with real rows; no identity-approved seller answers `null` after the backfill (7.1a row 2, Ali F2); the A18 plans recorded (data design 12, Mojtaba F4) |
 | 6 | Admin seller list | M | 5; R-6 | AC 1, AC 17; clear fields only (M4) |
 | 7a-read | Review page (`review.read`), review checks, re-lookup, manual register check; the `sellers.business-details.view` key | L | 6; R-5; R-11 | M4 split; L3; AC 32 |
 | 7a-decide | Approve and reject through `identity` with `basisId`; identifier claim; decision intent; reconciliation job | L | 7a-read; **identity mini-review 1** (R-1), released with it | The contract-file rule; M3 deadline and interleaving test; AC 9, 10, 21, 22 (single) |
@@ -702,12 +730,12 @@ A). Sizes as in ID 12.1: S, M, L, XL.
 | 7b | Submit again and the re-apply limit; the final state's way out (R-7) | M | 7a-decide; R-7 | AC 11 |
 | 8 | Admin edit, submit on behalf, bulk approve and reject | M | 7a-decide | AC 16, AC 22; M2 |
 | 9 | `sellingEligibility`; `allowedProductTypesOf` (always `all`); `reviewerBusinessDetails` | M | 7a-decide | AC 13; L4; must merge before `catalog`'s first Offer slice and `certification` slice 7 |
-| 10 | Change of business identity after approval; admin edit of an approved seller (H1); live contact edit with its history | L | 7a-decide; **identity mini-review 2** (R-2); R-4 | AC 20, AC 23; the H1 test; L2; L6; re-run the postcode-mismatch comparison (7.7) after an address-only change (Hassan, G2 confirmation, Low) |
+| 10 | Change of business identity after approval; admin edit of an approved seller (H1); live contact edit with its history | L | 7a-decide; **identity mini-review 2** (R-2); R-4 | AC 20, AC 23; the H1 test; L2; L6; re-run the postcode-mismatch comparison (7.7) after an address-only change (Hassan, G2 confirmation, Low); `seller.correct-timezone` on an approved seller is refused with `seller.use-identity-edit` and changes nothing, and a zone corrected through `seller.edit-approved-identity` is the next answer of `approvedSellerZones` (7.1a row 9, Ali F3) |
 | 11 | Periodic re-check | S | 4b; P2, after launch (SEL-27) | AC 35; budget share (L7) |
 | 12 | Public store profile (V1, allow-list facade) | M | 5 | AC 24, AC 25; M5; L9 |
 | 13 | Category proposals and their events | S | 1 | AC 15; just before `catalog`'s CAT-51 slices |
 | 14 | Restricting allowed types | S | `catalog` G2 (type registry) | AC 14 |
-| 15 | Settings page: "approval required" | M | The ADR of 14.1 | AC 19 |
+| 15 | Settings page: "approval required" on the ADR-0026 store: the setting declaration, `SellerMarketPolicy` on the platform reader, `market-settings.read` and `market-settings.change` (setting code as input, Ali F5) | M | ADR-0026 (accepted) and its platform store, whichever slice lands it first (11.2). **Merge condition (Ali F4, Medium):** identity's ADR-0026 alignment (its mini-review): IdentityMarketPolicy on the platform reader with code sellers.approval-required, and the decision-10 subscriber for the senior-admin mail. It merges in the same release as slice 15 or earlier; the settings change use case is not exposed before it | AC 19 on AU and ZZ; `true` on a missing row; a read error aborts the deciding unit (Hassan L7); stale version refused; unknown setting code refused; refused in acting-as; protected key; the step-up on a change to `false` (Hassan L8); no value in the platform event or the mail |
 | 16 | AI switch and its port implementation; switch-on mail | S | `platform/ai` part 1 (declares the port); before or with the first model-calling slice (ADR-0019 decision 8) | AC 29; R2, R8; L6, L8 |
 | 17 | Panel screens: one frontend PR per row of `ux.md` 8.2 | XL in all | Figma and F0 (ADR-0017); each after its backend slice | Frontend track; UX Open 4 and 5 |
 | 18 | Retention purge | M | Counsel's period; ADR 14.2; R-9 | Erasure completeness; M7 |
@@ -733,7 +761,8 @@ has the measured pace of identity's slices.
 | `SubjectKeyService.hmac` (PF 4 row 4) | 5 |
 | First outbound HTTP call to an external service | 4b |
 | The `sellers` section of the Market configuration schema; ZZ fixture values | 2 to 5 |
-| Not pulled: the extension-point registry (4.2), object storage (Q2), Redis, the Market configuration in the database (waits for the ADR of 14.1) | — |
+| The ADR-0026 settings store (`platform/market-config/`, history table, seeding, `platform.market-setting.changed.v1`): pulled by slice 15 unless `catalog`'s CAT-36/OFR setting slice or the first `platform/ai` switch slice lands it first (ADR-0026 status) | 15 |
+| Not pulled: the extension-point registry (4.2), object storage (Q2), Redis | — |
 
 ### 11.3 Spikes (run, not merged)
 | # | Spike |
@@ -775,23 +804,26 @@ the steps of `onboardingSteps`; the reviewer page parts of brief s4 b; bulk resu
 
 ## 14. ADRs needed
 
-### 14.1 Admin-editable Market settings (ADR-0026, reserved on the board 2026-10-07; not written)
-Requested by the brief (s11), board 8 item 3, 11 item 4 and 15 item 3. **Order (Ali, G2):** not a
-G2 condition. Accepted before the earliest of: `sellers` slice 15; `catalog`'s CAT-36 and OFR
-runtime-setting slices; any AI capability switched on in a Market. Mohammad drafts it before
-`catalog`'s G2 is recorded; Hassan reviews. The brief asked for it before this G2; the change of
-order goes in the brief's change log (17): R7 of the identity brief holds, because `identity` and
-`sellers` read the same value from configuration through their own policy ports. **Proposed decision:**
-Market settings that an admin may change at run time (SEL-15 "approval required", CAT-36, the
-OFR-01 and OFR-03 settings, and the operator's switch-off of one AI capability or all AI, ADR-0019
-R8) live in a platform store keyed by Market and setting code, seeded from `config/markets/`
-(which stays the source of the default and of every setting not on the editable list). Each
-setting is declared by its owning module with its type, default and permission key; reads are
-synchronous, see a committed change at once and fail closed to the configured value; each change
-is a use case of the owning module, audited, and does not cross Markets. Effective dating and a
-notice to senior admins are decided in that ADR. It amends ADR-0003 decision 5 and pulls the
-"Market configuration seeded to the database" trigger of ADR-0015 decision 3. **Effect here:**
-this design does not wait for it except in slice 15.
+### 14.1 Admin-editable Market settings (ADR-0026, Accepted 2026-10-07)
+Requested by the brief (s11), board 8 item 3, 11 item 4 and 15 item 3. ADR-0026
+(`docs/adr/0026-admin-editable-market-settings.md`) was accepted by the owner on 2026-10-07; this
+design follows it (mini-review 19, task B). Its consequences ask for this mini-review, because the
+earlier proposal here said "fail closed to the configured value". R7 of the identity brief holds:
+`identity` and `sellers` read the same value through their own policy ports, and neither imports
+the other.
+
+| # | ADR-0026 | In `sellers` |
+|---|---|---|
+| 1 | Decision 1: one platform store (`platform/market-config/`, `platform` schema), values owned by modules | `sellers` declares one editable setting, "approval required" (SEL-15; code `sellers.approval-required`, boolean; O-3 closed by Mojtaba 2026-10-07: code `sellers.approval-required` accepted; format `<owner>.<kebab-name>` (pattern `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*(-[a-z0-9]+)*)+$`, max 100 ASCII chars, enforced in the platform store design; the registry checks at boot that the prefix equals the declaring module); a stable key never renamed or reused; the config default path `sellers.approvalRequired` is a separate identifier), in `modules/sellers/contracts/` and registers it at boot: type, default path `sellers.approvalRequired` in `config/markets/<code>.json` (4.1), safe value, view key `sellers.market-settings.view`, edit key `sellers.market-settings.edit`, reader list `sellers` and `identity`. No `sellers` table holds it (2.2) |
+| 2 | Decision 2: reading | `SellerMarketPolicy` reads it through the platform reader in the caller's unit, with no cache. The two decisions that must match the value read it in their own read-write unit: `sellers.create-file` (records `approvalRequiredAtRegistration`, 7.5) and unit 1 of the automatic approval (7.3). `identity`'s `IdentityMarketPolicy` names the same code as a literal (ID 8.5). `identity`'s `IdentityMarketPolicy` gets the registry's safe value (`true`) through the platform reader and has no fallback of its own. A test on each side shows `true` on a missing row (Hassan L9) |
+| 3 | Decision 3: changing | `market-settings.change` (6.2), taking the setting code as input and validating it against the declaration (as `catalog` 7.3), under `sellers.market-settings.edit`, refused in acting-as, with the expected version (a stale edit is refused); a change to `false` needs the step-up of row 7. One unit writes the value, the append-only history row (who, when, before, after), the audit row `sellers.market-settings.changed` (9) and `platform.market-setting.changed.v1` (Market, code, version; no actor, no value). `sellers` publishes no event of its own for it (7.4). An admin belongs to one Market; tests on AU and ZZ (AC 19) |
+| 4 | Decision 4: seeding | At boot the platform inserts a missing row from 4.1's value (AU `true`, ZZ `false`) as the system actor, with history and audit rows; it never overwrites a row. After seeding the store, not `config/markets/`, is the source of truth for this value. `mondapac_api` has INSERT and SELECT only on the history table. Boot alerts when it inserts a row for a Market that already has other rows, and logs any difference from the checked-in value (Ali F6) |
+| 5 | Decision 5: fail mode | The safe value is **`true` (approval required)**, declared in `sellers`' code, never in `config/markets/`. Never another Market's value; an error log, an alert and a metric. A missing row gives `true`. A read error aborts the unit: `sellers.create-file` is retried by the inbox and never records a value it did not read; unit 1 of the automatic approval ends without approving and the file goes to a person. The read is never moved out of the deciding unit to make a fallback possible (Hassan L7; 7.3 unit 1, 7.5). This replaces "fail closed to the configured value". ADR-0026 decision 5 returns the safe value on a read failure; inside a deciding unit a failed read poisons the transaction, so `sellers` applies decision 5 as "abort the unit": no value is written or approved on an unread setting, and the outcome is no less restrictive than returning `true`. Outside a deciding unit (display reads) the reader returns `true` as the ADR says (Bagher QC 1; a narrowing, not an amendment, to be confirmed by Ali in FU-1). 7.3 already takes the stricter of the two values (M1) |
+| 6 | Decision 6: effective dating | Forward only, at commit. `approvalRequiredAtRegistration` keeps the value used at sign-up and the stricter wins, so a switch-off never approves sellers already waiting (AC 19; brief s7) |
+| 7 | Decision 7: permissions | `sellers.market-settings.edit` is protected (6.1, unchanged); a change of `sellers.approval-required` to `false` requires `identity.hasRecentConfirmation` (R-2, 10 minutes, never satisfied in acting-as); that step-up is how the admin second factor (ADR-0018 decision 5) applies to this key (Hassan L8); no two-person rule |
+| 8 | Decision 9: never a setting | Every other field of 4.1 stays checked-in Market configuration: identifier rules, register limits, review checks, reject reasons, retention, `minimumOrderMax`; ServiceArea activation stays configuration (4.3, 16.2 item 5; if it ever changes at run time it is a dated record, ADR-0026 decision 6). Making any of them editable needs Hassan's review and a `sellers` mini-review. Per-seller settings (SEL-25, the AI switch) stay in `SellerAdminSettings` |
+| 9 | Decision 10: telling senior admins | The setting's edit key is protected, so `identity` mails the holders of the Market's admin system role on each change, naming what changed and pointing to the audit log, never the value. `sellers` sends no mail for it (10) |
+| 10 | Status: the store lands no later than the earliest of `sellers` slice 15, `catalog`'s CAT-36, OFR-01 and OFR-03 setting slices, and the first `platform/ai` switch slice | Slice 15 needs it (11.1, 11.2). Until then 4.1's `approvalRequired` is read from configuration as today, and AU stays `true` |
 
 ### 14.2 Retention and erasure of a seller application across `identity` and `sellers` (ADR-0027, reserved 2026-10-07)
 **Order (Ali, G2):** second, before slice 18, after counsel gives the period (`identity` destroys a
@@ -902,7 +934,7 @@ mail to waiting outside-area sellers (proposal in 10).
 | 2 | T2: encrypt live personal business data | Option B | Accepted (Hassan, Ali) |
 | 3 | Lookup numbers; what the register's agreement lets us keep | 30 days; 10 new values per account per day; 1,000 per Market per day; 90 days | Hassan's numbers replace the proposal: 30 days for manual and automatic approval; 5 new values per account per 24 h; 30 re-lookups per admin and 30 per origin per 24 h; 1,000 per Market per 24 h, alert at 80%, periodic job at most 50%; 90 days (6.5). Agreement: Ali's vendor review before 4b merges |
 | 4 | Time zone correction | Admin only, audited; a seller asks support | Accepted (Hassan) |
-| 5 | ServiceArea activation stays configuration, not effective-dated, in Phase 3 | Accept | Accepted (Ali); run-time editing only through 14.1 if ever |
+| 5 | ServiceArea activation stays configuration, not effective-dated, in Phase 3 | Accept | Accepted (Ali). ADR-0026 decision 6 (2026-10-07): not an editable setting; if it ever changes at run time, it is a dated record of its owning module (14.1 row 8) |
 | 6 | The public store name appears on every certification badge and has no claim check | A required review check on every revision; claim words in the slug reserved list; later a `certification` port | Accepted with Ali change 3 (claim words in a checked-in data file, later supplied by the port) and Hassan M1 (per-token match: refused in a slug, flagged in a store name and blocks automatic approval) (3.5, 7.3) |
 | 7 | Decrypting the published profile per read | Accept until the storefront G2 | Accepted with Hassan M5: no HTTP exposure without a read-model or cache design he reviews (7.1) |
 | 8 | Mail when AI is switched off | None in Phase 3 | Unchanged (Hadi; counsel may ask for one) |
@@ -918,6 +950,7 @@ mail to waiting outside-area sellers (proposal in 10).
 | Jafar (product-designer), on `ux.md` | Accept with changes; items for this document applied (16.4.3) | 2026-10-07 |
 | Mojtaba (database-designer) | O9 closed; Q-M19 to Q-M24 answered (14.4) | 2026-10-07 |
 | Reza (ui-ux-designer) | Author of `ux.md`; Jafar's items 1, 3, 6, 8 to 11 and the six section 4 edits applied (`ux.md` 9) | 2026-10-07 |
+| Ali (cto), Hassan (security-tester), Mojtaba (database-designer) | Mini-review 19 (request S-1; ADR-0026 alignment): Ali approve with conditions; Hassan accept with changes; Mojtaba approved with F1 applied (19) | 2026-10-07 |
 
 ### 16.4 G2 review record (2026-10-07)
 How each actionable item was applied in this document. Items for the data design and `ux.md` are
@@ -1002,7 +1035,7 @@ H1 closed: Hassan confirmed the applied text (3.1, 6.2, slice 10) in writing on 
 | `config/markets/AU.json`, `test/fixtures/markets/ZZ.json`, the configuration schema, `config/service-areas/` | 4.1, 4.3 (shared files: their own PR, announced on the board) | Slices 2 to 5; Hossein |
 | `.env.example` | The `IdentifierIndex` secret (distinct from the throttle secret, boot check); the register access key (secret per Region Stack) | Slices 3 and 4b; shared-file PR |
 | `docs/modules/sellers/brief.md` (optional) | Clarifying change-log row: SEL-22's "email" is the sign-in email; the contact email is optional (14.4 Q-M19) | Hadi |
-| ADR of 14.1 | Draft | Mohammad, before `catalog`'s G2 is recorded; Hassan reviews |
+| ADR of 14.1 | Written and accepted as ADR-0026 (owner, 2026-10-07); this design aligned in 19 | Done |
 | `docs/modules/README.md`, the board | G2 status once the blockers of 16.4.1 close; the ADRs of 14.1 and 14.2 reserved; requests R-1 to R-12 to the backend track; Kazem checks the managed provider's extension allow-list before the first deployed environment (O1) | Orchestrator |
 
 ## 18. Mini-review 2026-10-07: minimum order (ADR-0013 decision 4)
@@ -1036,8 +1069,7 @@ leaves stored minimums in the old currency; they read as absent (cart `check-una
 each is cleared or re-entered. The runbook lists them by the error log and has admins re-enter them
 before the change goes live.
 
-**Open:** O-4 wording of the S7 field and the cart message: Reza proposed it in `ux.md` 3.1a; Jafar
-reviews.
+Closed: O-4, the wording of the S7 field and the cart message (Reza, ux.md 3.1a; Jafar accepted 2026-10-07).
 
 | Reviewer | Result | Date |
 |---|---|---|
@@ -1045,3 +1077,69 @@ reviews.
 | Mojtaba (database-designer) | Signed off the data design (3.8, migration row 16); the migration SQL is signed when written | 2026-10-07 |
 | Hassan (security-tester) | OK; L3 to L5 applied | 2026-10-07 |
 | Reza (ui-ux-designer) | Signed off `ux.md` 3.1a | 2026-10-07 |
+
+## 19. Mini-review 2026-10-07: request S-1 and ADR-0026 (ADR-0013 decision 4)
+**Requested by** (task A) the `certification` domain design, request S-1 (its 18; 2.3 T2 with the
+B1 ruling of Ali and Hassan, 4.2 step 1, 8.5) and ADR-0028 decision 8; (task B) ADR-0026, accepted
+by the owner on 2026-10-07, whose consequences ask for a `sellers` mini-review of 14.1. Drafted by
+Mohammad; Ali and Hassan review, Mojtaba signs the data-design change. Status: **accepted 2026-10-07
+with conditions** (review table below; findings applied as given).
+S-1 must be approved before `certification` slice 1 merges; it is not a blocker of
+`certification`'s G2 (Ali, 2026-10-07).
+
+**Task A: the fixed zone read (request S-1)**
+| # | Decision | Reason |
+|---|---|---|
+| A1 | New facade method `approvedSellerZones(ctx, sellerIds)` (7.1, 7.1a): per distinct id the zone of the approved revision, or `null` | The claim's zone must not depend on the caller (ADR-0028 decision 8); `sellerSummaries` answers differently by actor (Hassan L4) |
+| A2 | `anonymous` and `system` pair over one query function that reads only `MarketContext`; not over HTTP (6.2, 7.1a row 5) | The same answer for every caller, testable by comparing bytes |
+| A3 | At most 100 ids; an empty list answers an empty map without reading (Ali F1); more than 100 entries before or after collapsing duplicates (Hassan L6), or a malformed id, refuses the call whole (`batch.too-large`, `input.invalid`); never truncated (6.5, 7.1a row 4) | Matches `evaluateClaims`' 100 and `sellerSummaries`' cap; refused whole as `catalog`'s L7 |
+| A4 | `null` for unknown, other-Market (byte-identical to unknown), never-approved, purged and Phase-2 sellers; the approved revision's zone while an identity change is pending (7.1a row 2) | Only the approved revision is non-provisional; AC 1, AC 20 |
+| A5 | A suspended seller gets its approved zone; the read never calls `identity` (7.1a row 3) | Suspension is may-sell (ADR-0022 decision 6), kept apart from the claim (CERT-12); no cross-module call or flip without an event |
+| A6 | Errors fail the whole call (`sellers.unavailable`); no cache, no event, no audit (7.1a rows 6 to 8) | `certification` turns it into "no zone", which is "not allowed" |
+| A7 | `sellerSummaries` unchanged; still used by `certification`'s guards and job (7.1a) | B1 ruling: the provisional zone is allowed there |
+| A8 | Built in slice 2 (contract, answers `null`), completed in slice 5 (reads the approved revision); 7a-decide adds the end-to-end case (11.1) | `certification` slice 1 already needs `sellers` slices 1 and 2; there are no approved revisions before slice 5, so `null` is the true answer |
+| A9 | Data design: no table, column, index or grant; one access path A18 and one line in its 4.3 (data design 17) | Served by existing full indexes, one probe per id (data design A18, Mojtaba F1) |
+
+**Task B: ADR-0026 alignment.** Changes in this document:
+| Section | Change |
+|---|---|
+| 1 Scope, 1.1, 1.2 | "Waits for the ADR of 14.1" replaced by ADR-0026, accepted 2026-10-07 |
+| 2.2 | "Approval required" lives in the ADR-0026 platform store, seeded from configuration |
+| 4.1 `approvalRequired` | The checked-in value is only the seed; the store is then the source of truth; the safe value `true` is in code |
+| 6.1 `sellers.market-settings.edit` | Protected per ADR-0026 decision 7; the step-up on a change to `false` (Hassan L8) is how the second factor applies; senior-admin mail through `identity` |
+| 6.2 `market-settings.*` | One `market-settings.change` with the setting code as input (Ali F5); expected version, refused in acting-as, one unit with value, history, audit and the platform event |
+| 7.3 unit 1 (automatic approval), 7.5 `sellers.create-file` | The setting is read in the deciding unit; a missing row gives `true`; a read error aborts the unit (Hassan L7) |
+| 7.4 | `sellers.market-settings-changed.v1` removed: the change publishes `platform.market-setting.changed.v1` (no value, no actor) |
+| 7.6 `SellerMarketPolicy` | "Approval required" from the platform reader (setting `sellers.approval-required`); every other value stays configuration |
+| 10 | The senior-admin mail is `identity`'s; `sellers` sends none |
+| 11.1 slice 15 (merge condition, Ali F4) | Slice 15 depends on identity's ADR-0026 alignment (`IdentityMarketPolicy` on the platform reader with code `sellers.approval-required`, the decision-10 subscriber for the senior-admin mail), merged in the same release or earlier; the settings change use case is not exposed before it |
+| 11.1 slice 15, 11.2 | Slice 15 builds on the ADR-0026 store, which it pulls unless `catalog` or `platform/ai` lands it first; its Hassan checks listed |
+| 14.1 | Rewritten: points at the accepted ADR; a table of what each decision means for `sellers` (safe value `true`, protected key, history table, seeding, senior-admin mail, never-a-setting list) |
+| 16.2 item 5 | ServiceArea activation is never an editable setting (ADR-0026 decision 6) |
+| 17 | The ADR of 14.1 row marked done |
+| Data design (Mojtaba's sign-off) | 3.1 `approval_required_at_registration` note and 5 "never stored" row point at the ADR-0026 store (data design 17) |
+
+One narrowing is recorded, not a contradiction: on a read error a deciding unit aborts instead of continuing with `true` (14.1 row 5, Hassan L7, Bagher QC 1). Otherwise nothing in this document contradicted ADR-0026 except: "fail closed to the configured value"
+(14.1; now the safe value in code), the `sellers.market-settings-changed.v1` event carrying the
+value (7.4; now the platform event without a value) and "Market configuration until the ADR"
+(2.2, 4.1, 7.6). The brief's rules (s5 SEL-15 per Market; s7 switch-off affects only later
+sign-ups; AC 19) already match ADR-0026 decisions 3 and 6 and need no change.
+
+**Points raised in review (all closed)**
+| # | Point | Proposal | Closed by |
+|---|---|---|---|
+| O-1 | A zone correction of an **approved** seller (`seller.correct-timezone`) | **Closed (Ali F3, Hassan's O-1 condition):** refused for a seller with an approved revision (`seller.use-identity-edit`); the admin uses `seller.edit-approved-identity` (H1 fast path), so the corrected zone reaches the read at once and is reviewed (6.2, 7.1a row 9, slice 10 test) | Ali; Hassan |
+| O-2 | Suspended sellers (A5) | **Closed: option A (Ali).** Hassan's condition applied: no consumer shows a badge from `evaluateClaims` alone (7.1a row 3) | Ali; Hassan |
+| O-3 | The setting code `sellers.approval-required` | **Closed.** O-3 closed by Mojtaba 2026-10-07: code `sellers.approval-required` accepted; format `<owner>.<kebab-name>` (pattern `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*(-[a-z0-9]+)*)+$`, max 100 ASCII chars, enforced in the platform store design; the registry checks at boot that the prefix equals the declaring module); a stable key never renamed or reused; the config default path `sellers.approvalRequired` is a separate identifier. Agreed by Ali | Mojtaba; Ali |
+
+**Follow-ups (not done here)**
+| # | Follow-up | Owner | When |
+|---|---|---|---|
+| FU-1 | `identity` mini-review for ADR-0026 (Ali F4): `IdentityMarketPolicy` on the platform reader with code `sellers.approval-required` and no fallback of its own (Hassan L9: a test shows `true` on a missing row); the decision-10 subscriber for the senior-admin mail; and the point in `docs/design/domain/identity.md` 3.3 ("starts `approved` when the Market policy is off"), which must read the policy through that port with the safe value `true`; and Ali's confirmation that "abort the unit" on a read error (14.1 row 5) is a permitted narrowing of ADR-0026 decision 5, for both modules | Mohammad drafts; identity owner, Ali, Hassan review | Merges in the same release as `sellers` slice 15 or earlier |
+| FU-2 | `certification` (Hassan L10): state the two-read zone exception in its 4.2 rule 2, and add the L1 sentence of 7.1a row 4 to its 4.2 step 1. Not edited here | `certification` design owner (Mohammad) | Before `certification` slice 1 merges |
+
+| Reviewer | Result | Date |
+|---|---|---|
+| Ali (cto) | Approve with conditions. O-1 accepted with the row 9 refusal; O-2 A; O-3 `<module>.<kebab-case>`; F4 is a merge condition on slice 15. F1 to F7 applied (F1: 7.1a row 4, 6.5; F2: 7.1a row 2, slice 5; F3: 7.1a row 9, 6.2, slice 10; F4: slice 15, Task B; F5: 6.2, 14.1 row 3; F6: 14.1 row 4; F7: 18, O-4 closed) | 2026-10-07 |
+| Hassan (security-tester) | Accept with changes, L1-L8 applied; L9-L10 are follow-ups (FU-1, FU-2; L9's text is also in 14.1 row 2) | 2026-10-07 |
+| Mojtaba (database-designer) | Approved with F1 applied (data design A18; F2 to F4 applied in its 10.4, 5, 12 and 17) | 2026-10-07 |

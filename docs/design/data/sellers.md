@@ -105,7 +105,7 @@ encrypted column under S4.
 |---|---|---|---|---|
 | `seller_id` | `uuid` | no | 1 | PK (S3). Minted by `identity` (ADR-0022 decision 1); also the subject id of the seller's key (D 8.1) |
 | `origin` | `text` | no | 1 | CHECK `self`, `invitation` (from `identity.seller-registered.v1`, or from R-6 for a file the backfill creates; D 14.3 Q-M4) |
-| `approval_required_at_registration` | `boolean` | no | 1 | The Market policy at creation (D 7.5, AC 19); for a backfilled file, the Market's value at backfill time (D 14.3 Q-M4). The automatic approval also reads the current policy, and the stricter wins (D 7.3, Hassan M1); the current policy is configuration, not a column |
+| `approval_required_at_registration` | `boolean` | no | 1 | The Market policy at creation (D 7.5, AC 19); for a backfilled file, the Market's value at backfill time (D 14.3 Q-M4). The automatic approval also reads the current policy, and the stricter wins (D 7.3, Hassan M1); the current policy is the ADR-0026 setting in the platform store, read in the deciding unit, not a column (D 14.1; mini-review D 19). A missing row gives `true`. A read error aborts the unit: `sellers.create-file` is retried by the inbox and never records a value it did not read; unit 1 of the automatic approval ends without approving and the file goes to a person. The read is never moved out of the deciding unit to make a fallback possible (Hassan L7) |
 | `draft_complete` | `boolean` | no | 1 | Written by the aggregate on every save: `false` at creation. Serves the "Incomplete" tab only; submission re-checks completeness against the current Market configuration (6) |
 | `last_changed_at` | `timestamptz(6)` | no | 1 | Every change of the file: draft save, submission, withdrawal, decision closure. The sort key of the "Incomplete" tab and the purge anchor (10.1). Equals `created_at` at creation |
 | `store_name` | `text` | yes | 2 | Clear (D 8.1, T2 option B). CHECK S7 with length 1 to the domain limit (Q-M11) |
@@ -498,7 +498,7 @@ bug fails loudly rather than leaking.
 
 | Read | Unwraps | Why |
 |---|---|---|
-| `sellingEligibility`, `sellerSummaries`, `allowedProductTypesOf`, `mayProposeCategories`, AI switch | **0** | Every condition reads clear columns: the approved pointer, `operating_timezone`, `identifier_index IS NOT NULL`, `public_store_name`, booleans (7) |
+| `sellingEligibility`, `sellerSummaries`, `approvedSellerZones` (D 7.1a), `allowedProductTypesOf`, `mayProposeCategories`, AI switch | **0** | Every condition reads clear columns: the approved pointer, `operating_timezone`, `identifier_index IS NOT NULL`, `public_store_name`, booleans (7) |
 | Admin list page (25 rows), under `sellers.seller.view` | **0** | Clear fields only (Hassan M4): store name, slug, state codes, ServiceArea code, time zone, kinds, instants; owner name and sign-in email come from `identity` (D 7.8) |
 | Seller's own form | 1 | One seller per request (PF 4 row 9) |
 | `seller.read-details`, `review.read`, `reviewerBusinessDetails`, under `sellers.business-details.view` | 1 | The only admin reads that decrypt (Hassan M4); each writes the audit row `sellers.business-details.viewed` (D 9) in its unit, so a read-only use case writes one audit row: the read is then a write unit (ADR-0023 decision 1), with the decryption after it, outside the unit |
@@ -531,7 +531,7 @@ additive change.
 | The register's raw answer, its access key, the outbound URL | Outcome, flags, instant; compared values encrypted only if allowed (D 7.7) |
 | A reject reason as text | A reason code (identity changes); onboarding reasons are `identity`'s, encrypted there (ID-data 3.11) |
 | The access state (`pending`, `approved`, `rejected`, `suspended`), even as a read model | Read from `identity` per request (ADR-0022 decision 2) |
-| "Approval required" as an editable value | Market configuration until the ADR of D 14.1 (D 2.2) |
+| "Approval required" as an editable value | The platform settings store of ADR-0026 (`platform` schema; its tables are in `docs/design/data/platform.md` when designed), seeded from Market configuration (D 2.2, D 14.1; mini-review D 19). Key: setting code sellers.approval-required (ruling O-3); no sellers table copies the current value; approval_required_at_registration (3.1) is the per-file snapshot ADR-0026 decision 6 allows |
 | ServiceArea definitions | `config/service-areas/`; only the code is stored (D 4.3) |
 | Personal data in `outbox`, `inbox`, `event_delivery`, `audit_log`, logs | Ids, codes, booleans, instants (D 8.3) |
 | The seller's sign-in email | `identity` (D 10) |
@@ -584,6 +584,7 @@ Markets, and each one has a named query.
 | A15 | Periodic re-check (slice 11): approved sellers whose current result is older than 90 days, at most 50% of the Market budget per window | Claims joined to `register_checks` by primary key, filtered by `checked_at` | `(market_id, checked_at)` on `register_checks`, added in slice 11 |
 | A17 | Bulk request: every id in the request's Market, before any unit (Hassan M2) | `seller_files WHERE market_id = $1 AND seller_id IN (…)` with ≤ 50 ids, count compared | A1 |
 | A16 | Outbox claim; inbox insert | PM1, PM4 | ID-data 3.1, 3.8 |
+| A18 | `approvedSellerZones` for at most 100 ids (D 7.1a; request S-1 of `certification`; mini-review D 19, proposed by Mohammad, signed off by Mojtaba 2026-10-07). Slice 2: no read (answers `null`); from slice 5 | As A1, in one read-only unit (ADR-0025), Prisma only (C10): (1) `seller_files` `findMany` where `{ marketId: $1, sellerId: { in: ids } }` selecting `sellerId`, `approvedRevisionId`; (2) for the non-null pointers, `business_file_revisions` `findMany` where `{ marketId: $1, id: { in: pointers } }` selecting `id`, `operatingTimezone` (or the same as one nested relation select; Prisma may send it as two statements either way). `marketId` is at the top level of both wheres (P 4.1); because `seller_id` is the primary key, the `market_id` predicate is what makes another Market's seller answer like an unknown id (D 7.1a row 2). Ids with no row or a NULL pointer answer `null`. Two snapshots are safe: an approved revision's content never changes (3.2 grants), a superseded revision keeps its row (pointer FK RESTRICT), and the purge (10.1) never deletes a file with a pointer, so (2) always finds the revision (1) named, and the answer is the zone approved at (1). The status partial unique `..._approved_key` is a backstop, never this read's path (D 7.1a row 2; platform 10.9). No key unwrap | Unique `(market_id, seller_id)` on `seller_files` (A1); `business_file_revisions_pkey`, or unique `(market_id, seller_id, id)` if the relation keeps the three-column pointer (spike S2). Full indexes only, one probe per id; no new index, column or grant (`SELECT` is held, 8) |
 
 **Not added, on purpose:**
 - A GIN trigram index for "contains" search on the store name: D 7.8 asks for prefix search only.
@@ -872,6 +873,7 @@ held slug (public trading data, but still about a person for a sole trader), and
 `identifier_index` (`seller_files`, `business_file_revisions`, `register_checks`,
 `identifier_claims`; S5). Everything else of the seller is ciphertext under the destroyed key.
 Revisions that support invoices fall under legal retention first (ADR-0009 decision 6).
+Erasure either clears `approved_revision_id` in the same unit that destroys the key, or leaves the revision's clear `operating_timezone` readable until it does. A18 then answers `null` for an erased seller, by design (D 7.1a row 2, purged file). The purge rule of 10.1 (never deletes a file with a pointer) governs only abandoned files; erasure is this section's rule. Decided with A18 in mind (Mojtaba F2).
 
 ### 10.5 Other retention
 
@@ -927,6 +929,8 @@ Not measured: anything through Prisma (drift with a column collation, overlappin
 a `CONCURRENTLY` migration file, the extension and drift: spikes S1 to S3); PostgreSQL 17; glibc
 `en_US.utf8` (the Compose image's collation; this session only had ICU `en-US`, where the punctuation
 cases happened to agree); plans at real volume (no data yet).
+
+**To measure in slice 5 (A18; Mojtaba F4, mini-review D 19):** Capture EXPLAIN (ANALYZE, BUFFERS) of both A18 statements, with 100 ids on the test data volume, in a generic plan (plan_cache_mode = force_generic_plan). Expected: index scans on seller_files_market_id_seller_id_key and on business_file_revisions_pkey (or the three-column unique). Record the result in 12.
 
 ## 13. Questions to Mohammad
 
@@ -1046,3 +1050,24 @@ Source: `g2-reviews.md` (Ali, Hassan, Jafar) and D 14.3, 16.4 as revised by Moha
 | Ali (cto) | Accept with changes (applied, 16.1) | 2026-10-07 |
 | Hassan (security-tester) | Accept with changes (applied, 16.1); reviews 9.6 in PR P2 | 2026-10-07 |
 | Mohammad (software-architect) | Q-M1 to Q-M24 answered (13.1, 13.2) | 2026-10-07 |
+
+## 17. Mini-review 2026-10-07 (D 19): request S-1 and ADR-0026 (signed off by Mojtaba)
+
+Proposed by Mohammad; **signed off by Mojtaba 2026-10-07** with his F1 applied. No table, column,
+constraint, index, grant or migration changes.
+
+| Change | Where |
+|---|---|
+| Access path A18 for the new facade read `approvedSellerZones` (D 7.1a), served by existing unique keys | 7 |
+| `approvedSellerZones` added to the zero-unwrap reads | 4.3 |
+| "Approval required" lives in the ADR-0026 platform store (accepted 2026-10-07), not in Market configuration only; the current policy is read in the deciding unit; a missing row gives `true`, a read error aborts the unit (Hassan L7) | 3.1 (`approval_required_at_registration` note), 5 |
+| Mojtaba F1: A18 rewritten as two Prisma reads in one read-only unit (no join claim), with the snapshot argument; index cell names the full indexes | 7 (A18) |
+| Mojtaba F2: erasure and A18 | 10.4 |
+| Mojtaba F3: the setting code key (O-3 ruling) | 5 |
+| Mojtaba F4: EXPLAIN of both A18 statements in slice 5 | 12 |
+
+| Reviewer | Result | Date |
+|---|---|---|
+| Ali (cto) | Approve with conditions. O-1 accepted with the row 9 refusal; O-2 A; O-3 `<module>.<kebab-case>`; F4 is a merge condition on slice 15 | 2026-10-07 |
+| Hassan (security-tester) | Accept with changes, L1-L8 applied; L9-L10 are follow-ups | 2026-10-07 |
+| Mojtaba (database-designer) | Approved with F1 applied | 2026-10-07 |
