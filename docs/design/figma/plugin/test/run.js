@@ -324,6 +324,13 @@ function state180(M, opts, label) {
     return set.width > 1440 || r.layoutMode !== (wide ? 'VERTICAL' : 'HORIZONTAL') || (panel && (panel.layoutMode !== (wide ? 'HORIZONTAL' : 'VERTICAL') || Math.round(panel.width) !== (wide ? Math.min(1440, Math.max(Math.round(set.width), 720)) : 360)));
   }).map((r) => r.children[0].name);
   check(blocks.length > 20 && misfit.length === 0, label + ': all ' + blocks.length + ' component blocks fit the 1440 px page' + (misfit.length ? ' (not: ' + misfit.join(', ') + ')' : ''));
+  // Starter layout: no two library sections on a page overlap (owner's file had page 3 sections on top of each other after updates).
+  const secOver = [];
+  M.ROOT.children.filter((pg) => pg.getPluginData('layout') === 'compact').forEach((pg) => {
+    const ss = pg.children.filter((n) => n.type === 'SECTION');
+    ss.forEach((a, i) => ss.slice(i + 1).forEach((b) => { if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) secOver.push(a.name + ' / ' + b.name); }));
+  });
+  check(secOver.length === 0, label + ': no two sections on a Starter page overlap' + (secOver.length ? ' (' + secOver.join(', ') + ')' : ''));
   check(['Input', 'AuthShowcase'].every((n) => setOf(M, n).width <= 1440) && setOf(M, 'Input').children.every((c) => setOf(M, 'Input').children.filter((k) => Math.abs(k.x - c.x) < 0.5).every((k) => k.variantProperties.Type === c.variantProperties.Type)), label + ': Input has one column per Type and AuthShowcase one variant per row (' + Math.round(setOf(M, 'Input').width) + ' and ' + Math.round(setOf(M, 'AuthShowcase').width) + ' px wide)');
   [['size/dialog-sm', 400], ['size/dialog-md', 560]].forEach((d) => {
     const vs = vars(d[0]); const v0 = vs.find((v) => v.variableCollectionId === dc.id);
@@ -806,7 +813,7 @@ async function updateScenario(label, opts, from) {
   const lostV = tcz.children.filter((c) => ['Type=Number, State=Loading', 'Type=Actions, State=Loading'].includes(c.name)); lostV.forEach((c) => c.remove());
   const lostF = ['Shared · Members · Admin · Loading', 'Shared · Members · Seller · Loading'].map((n) => frameNamed(Z, n)[0]); const lostN = lostF.map((f) => f.name); lostF.forEach((f) => f.remove());
   check(tcz.children.length === 14 && lostV.length === 2 && lostN.length === 2, 'removed 2 Loading variants and 2 Loading frames');
-  r = await send(Z, { type: 'update' }); const add10 = r.done ? r.done.added : [];
+  r = await send(Z, { type: 'update' }); const add10 = r.done ? r.done.added.filter((a) => !/^section .* moved /.test(a)) : []; // a section that grew may push the next ones along (restackSections)
   check(!r.err && add10.length === 3 && add10.includes('variants added to TableCell (2): State=Loading') && add10.includes('templates Panel · Admin (1 frames)') && add10.includes('templates Panel · Seller (1 frames)'), 'the update re-adds only those (' + add10.join(', ') + ')' + (r.err ? ': ' + r.err.message : ''));
   check(tcz.children.length === 16 && tcz.children.filter((c) => /State=Loading/.test(c.name)).length === 5 && lostN.every((n) => frameNamed(Z, n).length === 1) && BODIES_180.every((n) => countNamed(Z, 'COMPONENT', n) === 1), 'TableCell has 16 variants again, each Loading frame exists once and no template body was made twice');
   const lx = tcz.children.filter((c) => /State=Loading/.test(c.name)).map((c) => Math.round(c.x));
