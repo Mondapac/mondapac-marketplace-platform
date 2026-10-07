@@ -1,4 +1,5 @@
 import type { LogFn, Logger } from 'pino';
+import { reduceDatabaseError } from '../persistence/database-error';
 
 /**
  * The serializers of every log line, inside a request or outside one (slice 0 item 5,
@@ -28,6 +29,10 @@ export interface LoggedError {
   readonly code?: string;
   /** body-parser's reason (`entity.parse.failed`, `entity.too.large`, ...). */
   readonly kind?: string;
+  /** PostgreSQL's SQLSTATE of a database error (P 12.3), or of a `TransactionConflictError`. */
+  readonly sqlState?: string;
+  /** The constraint a database error names (P 12.3). */
+  readonly constraint?: string;
   /** The `at ...` lines of the stack; the message that heads a stack is left out. */
   readonly stack?: string;
 }
@@ -90,7 +95,9 @@ function framesOf(stack: string | undefined, message: string | undefined): strin
 /**
  * body-parser puts the raw body on its error (`body`) and quotes it in `message`; a
  * database driver error can quote values in `message` and `detail` (identity I15). So an
- * error is logged by its name, its code, body-parser's reason and its stack frames only.
+ * error is logged by its name, its code, body-parser's reason and its stack frames only; a
+ * database error also by its SQLSTATE and constraint name, read by the one reducer of
+ * platform persistence design 12.3.
  * pino-http hands this the output of pino-std-serializers, which keeps the error itself
  * on `raw`; the root logger hands it the error.
  */
@@ -100,10 +107,18 @@ function serializeError(err: unknown): LoggedError {
   const code = tokenField(raw, 'code');
   const kind = tokenField(raw, 'type');
   const frames = framesOf(stringField(raw, 'stack'), stringField(raw, 'message'));
+  const database = reduceDatabaseError(raw);
+  // A TransactionConflictError carries its SQLSTATE as its only field (P 3.1 row 7).
+  const ownSqlState = stringField(raw, 'sqlState');
+  const sqlState =
+    database?.sqlState ??
+    (ownSqlState !== undefined && /^[0-9A-Z]{5}$/.test(ownSqlState) ? ownSqlState : undefined);
   return {
     type: name,
     ...(code === undefined ? {} : { code }),
     ...(kind === undefined ? {} : { kind }),
+    ...(sqlState === undefined ? {} : { sqlState }),
+    ...(database?.constraint === undefined ? {} : { constraint: database.constraint }),
     ...(frames ? { stack: frames } : {}),
   };
 }

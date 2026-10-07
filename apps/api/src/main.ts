@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
-import { databaseRoleAccepted } from './check-database-role';
+import { databaseIsolationAccepted, databaseRoleAccepted } from './check-database-role';
 import { APP_OPTIONS, configureApp } from './configure-app';
 import { loadEnvFile } from './load-env-file';
 import type { AppConfig } from './platform/config/app-config';
@@ -18,8 +18,13 @@ async function bootstrap(): Promise<void> {
   app.useLogger(logger);
   configureApp(app);
 
-  // Before listening, so a mis-wired database secret never serves a request (10.8).
-  if (!(await databaseRoleAccepted(app.get(DatabaseProbe), logger))) {
+  // Before listening, so a mis-wired database secret never serves a request (10.8), and a
+  // database whose default isolation is not READ COMMITTED never runs a unit (ADR-0025).
+  const probe = app.get(DatabaseProbe);
+  if (
+    !(await databaseRoleAccepted(probe, logger)) ||
+    !(await databaseIsolationAccepted(probe, logger))
+  ) {
     await app.close();
     process.exit(1);
   }

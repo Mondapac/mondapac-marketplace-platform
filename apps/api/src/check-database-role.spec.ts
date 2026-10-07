@@ -1,5 +1,5 @@
 import type { LoggerService } from '@nestjs/common';
-import { databaseRoleAccepted } from './check-database-role';
+import { databaseIsolationAccepted, databaseRoleAccepted } from './check-database-role';
 import type { DatabaseProbe } from './platform/persistence/database-probe';
 
 function recordingLogger(): { logger: LoggerService; errors: unknown[][] } {
@@ -45,5 +45,42 @@ describe('databaseRoleAccepted', () => {
     const failing = { roleProblems: () => Promise.reject(new Error('connection refused')) };
 
     await expect(databaseRoleAccepted(failing, logger)).rejects.toThrow('connection refused');
+  });
+});
+
+describe('databaseIsolationAccepted (ADR-0025 decision 2)', () => {
+  const probe = (isolation: string) => ({
+    defaultTransactionIsolation: () => Promise.resolve(isolation),
+  });
+
+  it('accepts read committed and logs nothing', async () => {
+    const { logger, errors } = recordingLogger();
+
+    await expect(databaseIsolationAccepted(probe('read committed'), logger)).resolves.toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it.each(['serializable', 'repeatable read', 'read uncommitted'])(
+    'refuses %s with a logged reason',
+    async (isolation) => {
+      const { logger, errors } = recordingLogger();
+
+      await expect(databaseIsolationAccepted(probe(isolation), logger)).resolves.toBe(false);
+      expect(errors).toEqual([
+        [
+          `The database was refused by the start-up self-check: default_transaction_isolation is "${isolation}", not "read committed" (ADR-0025)`,
+          'DatabaseIsolationCheck',
+        ],
+      ]);
+    },
+  );
+
+  it('does not echo an unexpected value', async () => {
+    const { logger, errors } = recordingLogger();
+
+    await databaseIsolationAccepted(probe('"; DROP TABLE x; --'), logger);
+
+    expect(JSON.stringify(errors)).toContain('unrecognised');
+    expect(JSON.stringify(errors)).not.toContain('DROP');
   });
 });
