@@ -100,7 +100,7 @@ Breadcrumb (panel name, then page); global search with Ctrl/Cmd+K (hidden in the
 
 ## 4. Breakpoints and mobile navigation (D16, decided)
 
-D16 is the open "mobile drawer navigation" item of `docs/design/figma/README.md` section 14 and `claude/design-status.md`; identity ux sections 6 and 8.2 and sellers ux sections 1.3 and 4 list it as blocking phone layouts. It is not one of D1 to D7 in `panels-ux-strategy.md` section 8.
+D16 was the open "mobile drawer navigation" item of `docs/design/figma/README.md` section 14 and `claude/design-status.md`; identity ux sections 6 and 8.2 and sellers ux sections 1.3 and 4 listed it as blocking phone layouts. It is not one of D1 to D7 in `panels-ux-strategy.md` section 8.
 
 | Width | Sidebar | Topbar | Notes |
 |---|---|---|---|
@@ -113,7 +113,7 @@ Decision (owner, 2026-10-07, option 1; Hadi confirmed the bottom bar):
 - **Seller only: a bottom bar** with four tabs (Home, Orders, Catalogue, More). "More" opens the drawer. Reason: a shop owner or staff member on a phone switches between orders and stock many times an hour (V1 and V2 in `panels-ux-strategy.md` 2.2); one thumb tap beats opening a drawer each time. Admin work on a phone is occasional, so admin keeps the drawer only.
 - The bottom bar is shown only when the user may see at least two of Home, Orders and Catalogue; it then shows those items plus More, which is always present. Otherwise only the drawer is used.
 
-The owner chose the drawer for both panels plus the seller bottom bar on 2026-10-07. The bottom bar is new scope beyond `panels-ux-strategy.md` 6.1 (drawer only); Hadi confirmed it the same day. Library impact: new components `NavDrawer` and `BottomTabBar` (touch density), token `size/bottom-bar` (64 px), template frames at 360 px; a MINOR release after 1.4.0.
+The owner chose the drawer for both panels plus the seller bottom bar on 2026-10-07. The bottom bar is new scope beyond `panels-ux-strategy.md` 6.1 (drawer only); Hadi confirmed it the same day. Library impact: new components `NavDrawer` and `BottomTabBar` (touch density), token `size/bottom-bar` (64 px), template frames at 360 px; released as library 1.5.0 (2026-10-07), ahead of the reserved 1.1.0–1.4.0.
 
 ### 4.1 The tablet rail on phones (team review, 2026-10-07)
 
@@ -133,7 +133,7 @@ Edge cases the frontend and the Figma frames must cover:
 4. The Orders badge caps at "9+" and follows the badge rule of section 7.
 5. The bar hides while the on-screen keyboard is open.
 6. More opens the same drawer; while the drawer is open More shows as active, and on a route that is not one of the tabs More is the active tab.
-7. The acting-as banner, when SEL-08 adds it, sits above the bar, never under it.
+7. The acting-as banner, when SEL-08 adds it, is visible in every shell state, drawer open included, and sits above the bar, never under it. No AI entry point appears in the shell during acting-as (ADR-0019 R3).
 8. Test the boundary at 759 px (drawer, bar) and 760 px (rail, no bar).
 
 ## 5. Screen inventory
@@ -216,13 +216,13 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 
 1. **Library 1.1.0 "Auth" and 1.2.0 "Panel"** (identity ux 8.1): unblock every Phase 2 frontend slice.
 2. **Library 1.3.0 "Seller setup" and 1.4.0 "Seller admin"** (sellers ux 8.1).
-3. **Nav release (after 1.4.0):** the nav config of section 3 as `Sidebar` variants (admin, seller full, seller limited), `NavDrawer`, `BottomTabBar` (D16 decided 2026-10-07), and the Review queue tab set.
+3. **Nav release:** `NavDrawer`, `BottomTabBar` and the phone templates were released as 1.5.0 (D16, 2026-10-07). Still to come after 1.4.0: the nav config of section 3 as `Sidebar` variants (admin, seller full, seller limited) and the Review queue tab set.
 4. **Module screens** after each G2: certification and catalog (Phase 3), then inventory, pricing and cart seller parts (Phase 4).
 5. Each release follows `docs/design/figma/update-procedure.md`: sandbox, review, publish, Audit with zero warnings, token export, changelog, `claude/design-status.md`.
 
 ## 7. Hand-off to the frontend track
 
-- Build the sidebar from a typed nav config per panel (`id`, label key, route, group, `anyOf` permission keys, badge source, children), filtered by the caller's effective permission keys from the session. No `if (role === …)` in components.
+- Build the sidebar from a typed nav config per panel (`id`, label key, route, group, `anyOf` permission keys, badge source, children), filtered by the caller's effective permission keys that the server returns for the session. No `if (role === …)` in components. The sidebar, drawer and bottom bar all render this one filtered config. Filtering is presentation only: every route and API call still authorizes in the application layer (ADR-0018).
 - Badge counts come from one lightweight endpoint per panel. The server filters them with the same permission check as the queue; a source the caller may not open is left out, not sent as 0. Counts are scoped to the caller's Market, and to their seller id in the seller panel. The limited shell makes no badge call.
 - Routes in section 5 are paths within each panel's own host (Hassan 7: each panel on its own host); D2's ADR decides the app topology. Each panel host ships only its own nav config and route bundle: the admin config never appears in the seller build.
 - An unknown route and another seller's or Market's record land on B5 "not found", byte-identical. A route the user has no view key for lands on B5 "no access". No session goes to A1, with a return URL only if it is a path of the same panel (identity F2 step 7). The limited shell sends other routes to S1.

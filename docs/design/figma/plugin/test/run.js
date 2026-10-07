@@ -113,6 +113,8 @@ async function updateScenario(label, opts) {
   const dimVars = () => [...M.VARS.values()].filter((v) => v.name === 'size/bottom-bar');
   check(dimVars().length === 0, 'size/bottom-bar is missing before the update');
   const before = allNodes(M); const beforeIds = new Set(before.map((n) => n.id)); const nVars = M.VARS.size;
+  const snap = (n) => JSON.stringify([n.name, n.fills, n.strokes, n.boundVariables, n.type === 'TEXT' ? n.characters : null]);
+  const beforeSnap = new Map(before.map((n) => [n.id, snap(n)]));
   r = await send(M, { type: 'update' });
   check(!r.err, 'Update library finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
   if (r.done) console.log('    ' + r.done.report.join('\n    '));
@@ -132,6 +134,8 @@ async function updateScenario(label, opts) {
   const after = allNodes(M);
   const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
   check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
+  const changed = before.filter((n) => M.byId.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
   const fresh = after.filter((n) => !beforeIds.has(n.id));
   const tops = fresh.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
   const okTops = new Set(NEW_TEMPLATES.concat(NEW_SETS, ['Row']));

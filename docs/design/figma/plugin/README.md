@@ -15,7 +15,7 @@ Process, naming and ownership rules are in [`../README.md`](../README.md) (Persi
 | Button | What it does |
 |---|---|
 | Build library | Creates variables, styles, icons, components, docs and templates in an **empty** file. "Rebuild" deletes what the plugin made and builds again. |
-| Update library | For a file that **already has the library**: adds only what this plugin release brings (new Dimension variables, component sets, template frames, size-table and changelog rows, version) and nothing else. It never deletes, renames or rebuilds, running it twice changes nothing, and it refuses an empty file or a file without the library. Release 1.5.0 adds token `size/bottom-bar`, components `NavDrawer` and `BottomTabBar` and three 360 px phone templates. Afterwards run Audit file and Export tokens. |
+| Update library | For a file that **already has the library**: adds only what this plugin release brings (new Dimension variables, component sets, template frames, size-table and changelog rows, version) and nothing else. It never deletes, renames or rebuilds (only Rebuild deletes, and only what the plugin made), running it twice changes nothing, and it refuses an empty file or a file without the library. Release 1.5.0 adds token `size/bottom-bar`, components `NavDrawer` and `BottomTabBar` and three 360 px phone templates. Afterwards run Audit file and Export tokens. |
 | Dark theme / Light theme | Switches the selected frames between themes. |
 | Touch density / Desktop density | Switches the selected frames between densities. |
 | Export tokens | Writes the 7 token files from the Figma variables and styles. Save them into `docs/design/tokens/`. |
