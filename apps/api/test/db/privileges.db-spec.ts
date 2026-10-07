@@ -55,6 +55,10 @@ const FUNCTIONS = `
 SELECT n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
          AS name,
        p.prorettype = 'trigger'::regtype AS is_trigger, p.prosecdef AS security_definer,
+       n.nspname AS schema,
+       (SELECT e.extname FROM pg_depend d JOIN pg_extension e ON e.oid = d.refobjid
+         WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+           AND d.refclassid = 'pg_extension'::regclass) AS extension,
        coalesce(EXISTS (SELECT 1 FROM unnest(p.proconfig) setting
                          WHERE setting LIKE 'search\\_path=%'), false) AS sets_search_path,
        coalesce((SELECT array_agg(${GRANTEE} ORDER BY 1)
@@ -151,13 +155,21 @@ describe('privileges of the migrated database (docs/design/data/platform.md 10.5
         security_definer: boolean;
         sets_search_path: boolean;
         grantees: string[];
+        schema: string;
+        extension: string | null;
       }>(FUNCTIONS)
     ).rows;
 
+    // A member function of a mapped extension in its mapped, closed schema is the one exception
+    // to "PUBLIC executes triggers only" (10.5 guard 1; the closed-schema tests are below).
+    const mappedExtensionMember = (fn: { extension: string | null; schema: string }): boolean =>
+      fn.extension !== null &&
+      fn.schema !== 'public' &&
+      EXPECTED_PRIVILEGES.extensions[fn.extension] === fn.schema;
     const wrongGrantees = functions.filter(
       (fn) =>
         fn.grantees.some((grantee) => grantee !== 'PUBLIC' && grantee !== APPLICATION_GROUP_ROLE) ||
-        (!fn.is_trigger && fn.grantees.includes('PUBLIC')),
+        (!fn.is_trigger && fn.grantees.includes('PUBLIC') && !mappedExtensionMember(fn)),
     );
     const definers = functions.filter((fn) => fn.security_definer);
 
@@ -166,5 +178,51 @@ describe('privileges of the migrated database (docs/design/data/platform.md 10.5
       Object.keys(EXPECTED_PRIVILEGES.securityDefinerFunctions).sort(),
     );
     expect(definers.filter((fn) => !fn.sets_search_path)).toEqual([]);
+  });
+
+  it('installs exactly the extensions of the map, each in its mapped schema', async () => {
+    const installed = await sql.query<{ extname: string; schema: string }>(
+      `SELECT e.extname, n.nspname AS schema FROM pg_extension e
+         JOIN pg_namespace n ON n.oid = e.extnamespace
+        WHERE e.extname <> 'plpgsql' ORDER BY 1`,
+    );
+
+    expect(Object.fromEntries(installed.rows.map((row) => [row.extname, row.schema]))).toEqual(
+      EXPECTED_PRIVILEGES.extensions,
+    );
+  });
+
+  it('keeps every extension schema closed: no USAGE for the application, CREATE for the owner only, on no search_path', async () => {
+    for (const schema of new Set(Object.values(EXPECTED_PRIVILEGES.extensions))) {
+      expect(schema).not.toBe('public');
+      const usage = await sql.query<{ usage: boolean }>(
+        `SELECT has_schema_privilege($1, $2, 'USAGE') AS usage`,
+        [APPLICATION_GROUP_ROLE, schema],
+      );
+      const holders = await sql.query(
+        `SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
+          WHERE n.nspname = $1 AND a.grantee <> n.nspowner`,
+        [schema],
+      );
+      // The application group, the roles it is a member of, the roles that are members of it (the
+      // login roles) and the database: a setting that names the schema puts it on a search_path.
+      const settings = await sql.query<{ setting: string }>(
+        `SELECT unnest(s.setconfig) AS setting
+           FROM pg_db_role_setting s
+          WHERE (s.setdatabase = 0 OR s.setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database()))
+            AND (s.setrole = 0
+                 OR pg_has_role($1, s.setrole, 'MEMBER')
+                 OR pg_has_role(s.setrole, $1::name, 'MEMBER'))`,
+        [APPLICATION_GROUP_ROLE],
+      );
+
+      expect(usage.rows[0]?.usage).toBe(false);
+      expect(holders.rows).toEqual([]);
+      expect(
+        settings.rows.filter(
+          (row) => row.setting.startsWith('search_path=') && row.setting.includes(schema),
+        ),
+      ).toEqual([]);
+    }
   });
 });

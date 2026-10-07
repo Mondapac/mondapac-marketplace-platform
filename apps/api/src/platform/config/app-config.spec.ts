@@ -21,6 +21,7 @@ describe('loadAppConfig', () => {
       hostedMarkets: ['AU', 'ZZ'],
       apiDocsEnabled: false,
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
+      serviceAreaConfigDirs: [expect.stringMatching(/config[\\/]service-areas$/)],
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
     });
@@ -89,6 +90,12 @@ describe('loadAppConfig', () => {
     const config = loadAppConfig({ HOSTED_MARKETS: 'ZZ', MARKET_CONFIG_DIR: '/etc/markets' });
 
     expect(config.marketConfigDirs).toEqual([path.resolve('/etc/markets')]);
+  });
+
+  it('takes the service-area directory from SERVICE_AREA_CONFIG_DIR', () => {
+    const config = loadAppConfig({ HOSTED_MARKETS: 'ZZ', SERVICE_AREA_CONFIG_DIR: '/etc/areas' });
+
+    expect(config.serviceAreaConfigDirs).toEqual([path.resolve('/etc/areas')]);
   });
 
   it('accepts a single hosted market, whichever market it is', () => {

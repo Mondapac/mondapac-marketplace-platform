@@ -16,5 +16,58 @@
       "maxLength": 128
     },
     "existingAccountNoticeHours": 24
+  },
+  "sellers": {
+    "address": {
+      "fields": [
+        {
+          "key": "line1",
+          "labelKey": "sellers.address.line1",
+          "required": true,
+          "maxLength": 120
+        },
+        {
+          "key": "line2",
+          "labelKey": "sellers.address.line2",
+          "required": false,
+          "maxLength": 120
+        },
+        {
+          "key": "suburb",
+          "labelKey": "sellers.address.suburb",
+          "required": true,
+          "maxLength": 120
+        },
+        {
+          "key": "state",
+          "labelKey": "sellers.address.state",
+          "required": true,
+          "maxLength": 3
+        },
+        {
+          "key": "postcode",
+          "labelKey": "sellers.address.postcode",
+          "required": true,
+          "maxLength": 4
+        }
+      ],
+      "postcodeField": "postcode",
+      "regionField": "state",
+      "postcodePattern": "^[0-9]{4}$",
+      "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
+    },
+    "timezones": {
+      "byRegion": {
+        "ACT": "Australia/Sydney",
+        "NSW": "Australia/Sydney",
+        "NT": "Australia/Darwin",
+        "QLD": "Australia/Brisbane",
+        "SA": "Australia/Adelaide",
+        "TAS": "Australia/Hobart",
+        "VIC": "Australia/Melbourne",
+        "WA": "Australia/Perth"
+      },
+      "postcodeExceptions": []
+    }
   }
 }

@@ -14,12 +14,22 @@ export interface ExpectedPrivileges {
   readonly tables: Readonly<
     Record<string, { readonly table: readonly string[]; readonly columnUpdate: readonly string[] }>
   >;
+  /**
+   * Extensions the migrations install, each with its schema. A member function of a mapped
+   * extension may be executable by PUBLIC (its owner is a superuser, so the migration role
+   * cannot revoke that) only while the schema stays closed to the application: no `USAGE`, no
+   * `CREATE` for anyone but its owner, and on nobody's `search_path` (platform.md 10.5 guard 1,
+   * docs/design/data/sellers.md 9.2 and 9.6). Never `public`.
+   */
+  readonly extensions: Readonly<Record<string, string>>;
   /** Every SECURITY DEFINER function (`schema.name(arguments)`), with why it is one. */
   readonly securityDefinerFunctions: Readonly<Record<string, string>>;
 }
 
 export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
   schemas: {
+    // No privilege for the application on `extensions` (see `extensions` below).
+    extensions: [],
     identity: ['USAGE'],
     platform: ['USAGE'],
   },
@@ -41,6 +51,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['wrapped_key', 'wrapping_key_id', 'rewrapped_at', 'destroyed_at'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
+  },
+  extensions: {
+    // Exclusion constraints on `=` of ids (sellers tax registration periods; V2 records later).
+    btree_gist: 'extensions',
   },
   securityDefinerFunctions: {},
 };

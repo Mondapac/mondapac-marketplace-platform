@@ -16,5 +16,51 @@
       "maxLength": 100
     },
     "existingAccountNoticeHours": 12
+  },
+  "sellers": {
+    "address": {
+      "fields": [
+        {
+          "key": "street",
+          "labelKey": "sellers.address.street",
+          "required": true,
+          "maxLength": 120
+        },
+        {
+          "key": "district",
+          "labelKey": "sellers.address.district",
+          "required": true,
+          "maxLength": 120
+        },
+        {
+          "key": "prefecture",
+          "labelKey": "sellers.address.prefecture",
+          "required": true,
+          "maxLength": 20
+        },
+        {
+          "key": "postalCode",
+          "labelKey": "sellers.address.postal-code",
+          "required": true,
+          "maxLength": 8
+        }
+      ],
+      "postcodeField": "postalCode",
+      "regionField": "prefecture",
+      "postcodePattern": "^[0-9]{7}$",
+      "regions": ["ZA", "ZB"]
+    },
+    "timezones": {
+      "byRegion": {
+        "ZA": "Asia/Tokyo",
+        "ZB": "Pacific/Auckland"
+      },
+      "postcodeExceptions": [
+        {
+          "postcodes": ["9999999"],
+          "timezone": "Pacific/Chatham"
+        }
+      ]
+    }
   }
 }
