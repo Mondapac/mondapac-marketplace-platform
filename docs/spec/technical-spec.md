@@ -181,7 +181,7 @@
 - زیرماژول‌ها: افزودن/حذف آیتم، محاسبه قیمت لحظه‌ای، ادغام سبد مهمان با کاربر ثبت‌نام‌شده
 - وابستگی: Product Catalog, Pricing
 - ورودی/خروجی: ورودی SKU و تعداد، خروجی سبد به‌روزشده
-- ذخیره‌سازی: Redis (TTL-based) *(در MVP: PostgreSQL و Redis فقط cache؛ ADR-0004 تصمیم ۱. جزئیات در G1 سبد)*
+- ذخیره‌سازی: Redis (TTL-based) *(در MVP: PostgreSQL و Redis فقط cache؛ ADR-0004 تصمیم ۱ و G1 برگهٔ cart)*
 
 **۶. ماژول ثبت و مدیریت سفارش (Order Management)**
 - زیرماژول‌ها: Checkout، تاریخچه سفارش، مدیریت وضعیت (Pending/Confirmed/Shipped)
