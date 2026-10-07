@@ -242,10 +242,11 @@ type PriceAnswer =
 ### 6.3 Events published (ids, enums and instants only; PE 5.3)
 | Type | Aggregate | Payload |
 |---|---|---|
-| `pricing.effective-price-changed.v1` | price-series | `offerId`, `variantId`, `cause` (`regular-accepted`, `hold-approved`, `special-started`, `special-ended`, `special-withdrawn`, `series-retired`, `series-rekeyed`), `effectiveFrom`. For `series-rekeyed` the ids are the new key; the old key now answers "no valid price" |
+| `pricing.effective-price-changed.v1` | price-series | `offerId`, `variantId`, `cause` (`regular-accepted`, `hold-approved`, `special-started`, `special-ended`, `special-withdrawn`, `series-retired`, `series-rekeyed`), `effectiveFrom`, and `previousProductId`, `previousVariantId`: required when `cause` is `series-rekeyed`, absent otherwise (Ali). For `series-rekeyed`, `offerId` and `variantId` are the new key and the `previous*` ids the old one; the old key now answers "no valid price" |
 | `pricing.price-hold-opened.v1` | price-series | `offerId`, `variantId`, `recordId`, `kind` (`regular`, `special`), `direction` (`up`, `down`) |
 | `pricing.price-hold-decided.v1` | price-series | `offerId`, `variantId`, `recordId`, `kind`, `outcome` (`approved`, `rejected`, `superseded`) |
 
+- The `cause` list is frozen once the first consumer of `effective-price-changed` is merged: a cause added after that is a new event version (`.v2`), never a new value in `.v1` (Ali).
 - No amount is in any event. The vocabulary has no money kind, and consumers (search in Phase 6, notifications) read the facade. If a consumer later needs amounts, a `money` kind is a kernel change with Hassan's review.
 - Cost changes publish no event.
 - No actor in any payload (ADR-0018 decision 4).
@@ -255,11 +256,20 @@ type PriceAnswer =
 |---|---|---|
 | `catalog.offer-deleted.v1` (CF2) | `pricing.retire-series-for-removed-offer` | Every series of the Offer is retired; pending records → `SUPERSEDED` (cause `offer-removed`); active special → `WITHDRAWN`; events. The Cost series is retired too |
 | `catalog.variant-removed.v1` (CF2) | `pricing.retire-series-for-removed-variant` | The same, for series with that (`productId`, `variantId`). It arrives at a draft save too, so a `proposed` Variant that was priced and then deleted has its series retired (P-1) |
-| `catalog.offer-moved.v1` (CF4; P1, before catalog's CAT-45 slice) | `pricing.rekey-series-for-moved-offer` | For each price and Cost series of the Offer with `productId = fromProductId` that is not retired: when its Variant is the `from` of exactly one pair, that pair's `to` is named once, no series exists for (Offer, `to`) and (`toProductId`, `to`) has no tombstone, the series keeps its id, records, pending holds and specials, and its `variantId` becomes `to` and `productId` becomes `toProductId`; event `effective-price-changed` (`series-rekeyed`); audit. Otherwise (an unmapped Variant, a `to` named twice, a target series already present, a tombstoned target) the series is retired as for a removed Variant (cause `variant-removed`): fail closed, the seller prices the new Variant again. A tombstone (`fromProductId`, `from`) is recorded for every old key of the Offer, so no series is created under an old key afterwards |
+| `catalog.offer-moved.v1` (CF4; P1, before catalog's CAT-45 slice) | `pricing.rekey-series-for-moved-offer` | Validated, then applied whole or not at all (steps below). Each non-retired price and Cost series of the Offer with `productId = fromProductId` keeps its id, records, pending holds and specials, and gets `variantId` = its pair's `to` and `productId` = `toProductId`; event `effective-price-changed` (`series-rekeyed`, with the old key); audit. A series that cannot move is retired as for a removed Variant (cause `variant-removed`): fail closed, the seller prices the new Variant again. A tombstone (`fromProductId`, `from`) is recorded for every old key of the Offer, so no series is created under an old key afterwards |
+
+**The re-key handler, step by step (Ali C1; Hassan, High, fixed).**
+1. **Read before the unit.** `offerSellUnits(system, [offerId])` (CF1). If the call fails or times out, the handler throws and the delivery is retried with the platform back-off (PE 6.4); a transient error never retires anything.
+2. **Refuse the whole event** when the mapping has more than 100 pairs, a `from` or a `to` appears twice, an id is both a `from` and a `to`, `fromProductId = toProductId`, or the Offer is present and not `deleted` and its `productId` ≠ `toProductId`. A refusal applies nothing: one unit writes only the audit row `pricing.series.rekey-refused` (an `ok` outcome, PE PN1; no `runOnce`, so no inbox row), then the handler dead-letters its delivery at once with code `pricing.rekey.mapping-refused` and logs one error-level line marked for alerting (PE 6.4 dead letter; requeue is the operator routine). Prices stay on the old key until an operator acts; the old key is then served by no published Variant, so no wrong price is reachable.
+3. **Offer absent or `deleted`:** every series of the Offer is retired with cause `offer-removed` and the Offer tombstone is recorded, exactly as `pricing.retire-series-for-removed-offer` does.
+4. **Otherwise, one `serializable` unit for the whole mapping** (no chunking; Ali): at most 100 Variants per Product (`catalog.maxVariantsPerProduct` = 100, requested from catalog, the same value inventory relies on, 16), so at most 200 series (price and Cost). A series moves when its Variant is a `from`, the pair's `to` is in the Offer's `sellUnits`, no series exists for (Offer, `to`) and (`toProductId`, `to`) has no tombstone. A `to` outside `sellUnits`, an unmapped Variant, a target series already present or a tombstoned target retires that series only.
+5. **Reviewer queue (Hassan, Low).** A pending hold or special carried over by the re-key shows "re-keyed" with the old and the new Variant in the admin queue; the series keeps the old key it was moved from (pricing-data 3.2.1).
+
+**C1 is closed by catalog G2 4.5:** the `product.match` guard requires a total, injective mapping, every non-retired Variant of the seller's product (`proposed` included) to a distinct published Variant of the target, though not necessarily covering every target Variant. With that guard the "cannot move" branch of step 4 is only a backstop; it stays, fail closed. Step 2 does not trust the guard: the event is input and is checked again here.
 
 **No `variant-removed` for a moved Offer (catalog G2 9.7), and why a stray one is harmless.** Catalog sends none for the matched duplicate's Variants; pricing re-keys on `offer-moved` only. If one arrives anyway: after the re-key, the Variant-removed handler looks up series by (`productId`, `variantId`) = the old pair, which no re-keyed series carries any more (it carries `toProductId`), so it only records a tombstone that already exists. Before the re-key (out-of-order delivery), it retires the old series; the re-key handler leaves a retired series as it is, so no price is carried to the new key and the seller prices again. Neither order serves a wrong price, and a stray event can never retire a re-keyed series.
 
-All three use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4), so a repeat is a no-op. The Market comes from the envelope. Retiring an already retired series is a no-op. The two retirement handlers also record a retirement tombstone (Offer, or Product + Variant: Variant-removed carries no Offer id; M5), even when no series exists yet, so a price written after the event never creates a new, never-retired series (Hassan finding 3; the pattern of inventory's 3.5). Both retirement handlers ship in slice 1, because slice 1 creates series (M5); the re-key handler ships before catalog's CAT-45 slice (14). A tombstone is permanent: a removed Variant id never returns (catalog G2 M-1, answering M5 (c)).
+All three use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4), so a repeat is a no-op; only the re-key's refusal (step 2) writes its audit row outside `runOnce` and dead-letters the delivery. The Market comes from the envelope. Retiring an already retired series is a no-op. The two retirement handlers also record a retirement tombstone (Offer, or Product + Variant: Variant-removed carries no Offer id; M5), even when no series exists yet, so a price written after the event never creates a new, never-retired series (Hassan finding 3; the pattern of inventory's 3.5). Both retirement handlers ship in slice 1, because slice 1 creates series (M5); the re-key handler ships before catalog's CAT-45 slice (14). A tombstone is permanent: a removed Variant id never returns (catalog G2 M-1, answering M5 (c)).
 
 ### 6.5 Keeping Cost inside (brief s5, ADR-0024 decision 2)
 | Layer | Mechanism |
@@ -286,7 +296,7 @@ All three use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4),
 | PD5 | Queue read: pending records by Market, oldest first |
 | PD6 | Boundary markers: unique (special record, boundary) |
 | PD7 | Retirement tombstones (Offer, or Product + Variant; M5), read in the unit that creates a series (6.4; Hassan finding 3) |
-| PD8 | The CF4 re-key (6.4): `variantId` and the `productId` copy of a price or Cost series change together, only while it is not retired; the series id, Offer, seller, currency and every record stay; one series per (Market, Offer, Variant) still holds after the change |
+| PD8 | The CF4 re-key (6.4): `variantId` and the `productId` copy of a price or Cost series change together, only while it is not retired; the series id, Offer, seller, currency and every record stay; one series per (Market, Offer, Variant) still holds after the change; both ids change (never a move inside one product); the series keeps the key it was moved from, for the reviewer queue (6.4 step 5) |
 
 ## 8. Audit (brief s9; IMP-10)
 The audit writer runs in the caller's unit (PE 3.3). It needs its own design and build before slice 1 (13).
@@ -299,6 +309,7 @@ The audit writer runs in the caller's unit (PE 3.3). It needs its own design and
 | `pricing.cost.set`, `.cleared` | cost record | **No amount** (H2); the actor is on the cost record itself (Hassan finding 4) |
 | `pricing.offer-write-refused` | offer id | The cause (`absent`, `not-yours`, `other-market`, `deleted`, `variant-not-priceable`) inside the row only; every `offer-not-found` on a write; at most 1 row per (actor, Offer) per minute (H3, Hassan finding 2) and at most 20 per actor per minute (M7) |
 | `pricing.series.rekeyed` | series | Old and new (`productId`, `variantId`); no amount (system actor, 6.4) |
+| `pricing.series.rekey-refused` | offer id | The event id and the refusal reason (`too-many-pairs`, `duplicate-id`, `from-is-to`, `same-product`, `product-mismatch`); no amount (system actor, 6.4 step 2) |
 | `pricing.offer-write-refused.suppressed` | actor | One summary row per actor per minute once the per-actor cap is reached: the count of refusals not recorded, no Offer ids (M7) |
 
 Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transitions (6.4) record the system actor.
@@ -354,7 +365,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
   - every domain test runs against AU and the second Market `test/fixtures/markets/ZZ.json` (JPY, minor-unit exponent 0, `pricesIncludeTax = false`, different threshold and maximum; Ali);
   - the special-price hold against the anchor (alternating regular and special cuts within W are held; Hassan finding 1);
   - a series is not created after a retirement tombstone (Hassan finding 3); a deleted Offer (present with `status: deleted`) and a Variant outside `sellUnits` answer `pricing.offer-not-found`; a `proposed` Variant can be priced, and its series is retired by a draft-save `variant-removed`; an `offerSellUnits` call never exceeds 200 ids;
-  - the re-key (P1): mapped series keep their records under the new key; unmapped, colliding or tombstoned targets are retired; a `variant-removed` for the old pair, delivered before or after `offer-moved`, never retires a re-keyed series; old keys answer "no valid price"; the decider is never the submitter (H4); acting-as writes and Cost reads are refused (Hassan finding 6);
+  - the re-key (P1): mapped series keep their records under the new key; unmapped, colliding or tombstoned targets and a `to` outside `sellUnits` are retired, that series only; the event carries `previousProductId` and `previousVariantId`; each refusal of 6.4 step 2 (more than 100 pairs, a repeated `from`, a repeated `to`, an id both `from` and `to`, `fromProductId = toProductId`, the Offer's `productId` ≠ `toProductId`) applies nothing, writes one audit row, alerts and dead-letters the delivery; an absent or `deleted` Offer retires every series with `offer-removed` and records the Offer tombstone; an `offerSellUnits` failure or timeout retires nothing and the event is retried; a carried-over hold shows "re-keyed" in the queue; both Market fixtures; a `variant-removed` for the old pair, delivered before or after `offer-moved`, never retires a re-keyed series; old keys answer "no valid price"; the decider is never the submitter (H4); acting-as writes and Cost reads are refused (Hassan finding 6);
   - the Cost log-redaction test and validation `details` without values (Hassan finding 5);
   - the ADR-0005 zone fixtures and DST days for windows;
   - a contracts snapshot of events and the Cost type test; the snapshot test is **mandatory**, as it is the only check of the outbox "no amount" rule (Hassan, pricing-data review);
@@ -372,7 +383,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | CAT-17 customer-group and tiered prices | P2 |
 | Non-fixed `PricingStrategy` (the interface then moves to `contracts/`, A3), sale by actual weight, future-dated regular price | Out of scope (Q3, Q4, Q5) |
 | Import of prices (OFR-10..12) | Later; must call the same use cases |
-| Re-keying series on CAT-45 Variant mapping (`catalog.offer-moved.v1`, designed in 6.4) | P1, merged before catalog's CAT-45 slice (CF4) |
+| Re-keying series on CAT-45 Variant mapping (`catalog.offer-moved.v1`, designed in 6.4; one unit, at most 100 pairs) | P1, merged before catalog's CAT-45 slice (CF4); migration 7 and its trigger test in the same PR (pricing-data 8.1, M8) |
 | INV-06 bulk price edit; promotions and coupons | P2 |
 | Vertical override of `PricingPolicy` | When `catalog` exposes a vertical |
 | Notifications of hold outcomes | Phase 6, from the events of 6.3 |
@@ -387,7 +398,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 **Catalog G2 (condition from Ali, A4)**
 - CF1 to CF4 (6.1) are accepted by catalog's G2 draft (25cbf3a) with the refinements of P-1, applied here; this G2's approval is still recorded only after catalog G2 is approved (A4). If catalog G2 changes any of them again, a mini-review follows.
 - M5 (c). Answered by the draft: a removed Variant id never comes back (catalog G2 M-1); the (Product, Variant) tombstone stays permanent.
-- C1 (Ali, with catalog). Is `variantMapping` one-to-one and complete for the Offer's non-retired Variants? This design does not need it to be: a Variant without exactly one target is retired, fail closed (6.4); if the answer is yes, that branch is only a backstop.
+- C1 (Ali, with catalog). **Closed 2026-10-07:** catalog G2 4.5's `product.match` guard maps every non-retired Variant (`proposed` included) one-to-one to a distinct published target Variant, not necessarily covering every target Variant. The "cannot move" branch of 6.4 stays as a fail-closed backstop.
 
 **Still open in Mojtaba's data design (pricing-data 11.2)**
 - Mojtaba: fold M7's per-actor counter into pricing-data 3.8, 7 and 8.1 (physical shape is his).
@@ -419,6 +430,9 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | H4 | Hassan | `pricing.price-hold.decide` protected; the decider is never the submitter (3.1, 5.1) |
 | H5 | Hassan | Accept for the in-process facade; an HTTP route taking raw ids filters through catalog's published state (5.2, 6.2) |
 | H-D1 | Hassan (pricing-data review) | Option A with three conditions: `pnpm boundaries` enforces the Cost boundary in CI; the worker's access to `cost_records` is revoked in the PR that gives it its own group; move to option B if raw SQL, a reporting replica or an export ever reads the `pricing` schema (6.5) |
+| C1 | Ali | Closed by catalog G2 4.5 (see above). `series-rekeyed` carries `previousProductId` and `previousVariantId`; the `cause` list is frozen from the first merged consumer (6.3). No chunking: one `serializable` unit, at most 100 pairs (`catalog.maxVariantsPerProduct` = 100), a larger mapping refused and parked; an `offerSellUnits` failure is retried, never a retirement (6.4) |
+| H-R1 | Hassan (High, blocked G2; fixed) | The re-key validates the mapping against `offerSellUnits` and refuses the whole event on a malformed mapping or a product mismatch; an absent or deleted Offer is retired; a `to` outside `sellUnits` retires that series only (6.4 steps 1 to 4, 8, 13) |
+| M8 | Hassan | (a) accepted with conditions: the guard requires both columns to change (no move inside one product); only the re-key repository method writes them (`pnpm boundaries`); `down.sql` revokes before dropping triggers; the trigger test, the owner role included, ships in the P1 PR (pricing-data 3.2.1, 8.1) |
 | M7 | Mohammad, security half by Hassan | The H3 counter is the PostgreSQL table of pricing-data 3.8, updated in the same unit as the audit row; plus a per-actor cap of 20 rows a minute, then one `pricing.offer-write-refused.suppressed` row; Redis rejected; the general per-account rate limit covers the write routes (5.2, 8) |
 
 ## 16. Follow-ups (none in this document's PR)
@@ -430,6 +444,8 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - ADR-0019 decision 10: queued for the next ADR that amends ADR-0019; the owner accepts that ADR (A5; no ADR just for this).
 - Catalog G2: CF1 to CF4. Accepted in its draft (25cbf3a) with P-1's refinements, applied here; recorded at catalog's G2 approval.
 - Pricing brief change log: s6 adds the consumed event `catalog.offer-moved.v1` (CF4 re-key), through a mini-review signed by Hadi and Ali (row added in this PR).
+- Catalog G2: `catalog.maxVariantsPerProduct` = 100 (Ali; the value inventory also relies on), so a re-key is one unit of at most 200 series and a mapping of more than 100 pairs is refused and parked, never applied in part (6.4).
+- Platform (PE 6.4): a handler can dead-letter its own delivery at once with an error code (today only the entry adapter does); confirmed or added in the re-key's P1 PR.
 
 ## 17. Review record
 
@@ -458,6 +474,13 @@ Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-test
 - H3: accepted with finding 2 and 1 audit row per (actor, Offer) per minute.
 - H4: `pricing.price-hold.decide` protected; decider never the submitter.
 - H5: accepted for the in-process facade; HTTP routes with raw ids filter through catalog's published state.
+
+**Re-key review (2026-10-07)**
+- Ali (cto), accept with changes: C1 closed by catalog G2 4.5, the "cannot move" branch kept as a backstop (6.4, 15); `previousProductId` and `previousVariantId` on `series-rekeyed`, `cause` list frozen from the first merged consumer (6.3); one `serializable` unit, at most 100 pairs (`catalog.maxVariantsPerProduct` = 100), a larger mapping parked, never partial (6.4, 16); `offerSellUnits` failure or timeout retried, never a retirement (6.4); tests (13).
+- Hassan (security-tester), **High, blocked G2: fixed by these changes**: the mapping is validated against `offerSellUnits` before the unit; malformed mappings and a product mismatch are refused whole with an audit row, an alert and a dead-lettered delivery; an absent or deleted Offer is retired with `offer-removed`; a `to` outside `sellUnits` retires that series only; a test for each (6.4, 8, 13).
+- Hassan, Medium (fixed): the guard trigger requires `NEW.product_id IS DISTINCT FROM OLD.product_id AND NEW.variant_id <> OLD.variant_id`; a `pnpm boundaries` rule lets only the re-key repository method write the two columns; a `test:db` case proves the owner role also gets `23001` (pricing-data 3.2.1).
+- Hassan, Low (fixed): a carried-over pending hold or special shows "re-keyed" with the old and new Variant in the reviewer queue (6.4 step 5).
+- Hassan, M8 (a) accepted on conditions, all met in pricing-data: the High and Medium changes; migration 7's `down.sql` revokes the grant before dropping the triggers; the trigger test ships in the P1 PR (pricing-data 8.1, 11.2).
 
 **Hassan's review of docs/design/data/pricing.md (2026-10-07; approved with conditions, no Critical or High)**, applied by Mohammad:
 - H-D1: option A with its three conditions (6.5, 13, 15).
