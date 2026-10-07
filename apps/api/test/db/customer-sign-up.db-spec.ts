@@ -226,6 +226,41 @@ describe('customer sign-up (database integration)', () => {
       expect((await credentialOf(account!.id))[0]?.password_hash).toBe(credential?.password_hash);
     });
 
+    it('treats the NFC, NFD and mixed-case forms of one address as one account (Sajad G2)', async () => {
+      // Built from code points so no combining mark is hidden in this file.
+      const local = `zo${String.fromCodePoint(0xe9)}-${randomUUID()}`; // composed e-acute
+      const decomposed = local.replace(
+        String.fromCodePoint(0xe9),
+        `e${String.fromCodePoint(0x301)}`,
+      );
+      const nfc = `${local}@example.com`;
+      const nfd = `${decomposed}@example.com`;
+      const mixed = `${decomposed.toUpperCase()}@EXAMPLE.com`;
+      expect(nfd).not.toBe(nfc);
+
+      for (const email of [nfc, nfd, mixed]) {
+        await expect(useCase.execute(context(), { email, password: PASSWORD })).resolves.toEqual({
+          ok: true,
+          value: { code: 'sign-up.accepted' },
+        });
+      }
+
+      const accounts = await accountsOf(code, nfc.normalize('NFC').toLowerCase());
+      expect(accounts).toHaveLength(1);
+      expect(accounts[0]).toMatchObject({ email: nfc, version: 3 });
+      expect((await eventsOf(accounts[0]!.id)).map((e) => [e.type, e.payload])).toEqual([
+        ['identity.customer-account-registered.v1', { accountId: accounts[0]!.id }],
+        [
+          'identity.sign-up-repeated.v1',
+          { accountId: accounts[0]!.id, cause: 'unverified-replaced' },
+        ],
+        [
+          'identity.sign-up-repeated.v1',
+          { accountId: accounts[0]!.id, cause: 'unverified-replaced' },
+        ],
+      ]);
+    });
+
     it('keeps Markets apart: the same address in the other Market is a second account', async () => {
       const email = freshEmail();
       const other = otherMarketOf(code);

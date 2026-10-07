@@ -254,8 +254,68 @@ describe('POST /identity/customer/sign-up (integration)', () => {
     const refused = await signUp('ZZ', { email: 'late@example.com', password: PASSWORD });
 
     expect(refused.status).toBe(429);
-    expect(refused.body).toMatchObject({ statusCode: 429, code: 'request.throttled' });
+    expect(refused.body).toEqual({
+      statusCode: 429,
+      code: 'request.throttled',
+      details: { retryAfterSeconds: expect.any(Number) as number },
+    });
+    const { retryAfterSeconds } = (refused.body as { details: { retryAfterSeconds: number } })
+      .details;
+    expect(retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(retryAfterSeconds).toBeLessThanOrEqual(60);
+    expect(refused.headers['retry-after']).toBe(String(retryAfterSeconds));
     expect(state.hashed).toBe(10);
+  });
+
+  it('refuses a Market this stack does not host before the use case runs', async () => {
+    await boot();
+
+    const response = await signUp('NZ', { email: 'a@example.com', password: PASSWORD });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ statusCode: 400, code: 'market.not-hosted' });
+    expect(state.hashed).toBe(0);
+  });
+
+  // Sajad G1: the length boundaries of each Market over HTTP (AU 15..128, ZZ 16..100), and the
+  // 1024-byte bound of the raw input. The passwords are slices of a passphrase, so none is on
+  // the common list.
+  describe.each([
+    { code: 'AU', min: 15, max: 128 },
+    { code: 'ZZ', min: 16, max: 100 },
+  ])('password length boundaries in $code', ({ code, min, max }) => {
+    const ofLength = (length: number) =>
+      'lantern harbour biscuit quietly folding maps '.repeat(30).slice(0, length);
+    const LENGTH_REFUSED = {
+      statusCode: 400,
+      code: 'password.rejected',
+      details: { rule: 'length' },
+    };
+
+    it.each([14, 15, 16, 100, 101, 128, 129])('%i characters', async (length) => {
+      await boot();
+
+      const response = await signUp(code, { email: 'len@example.com', password: ofLength(length) });
+
+      if (length >= min && length <= max) {
+        expect(response.status).toBe(202);
+        expect(state.hashed).toBe(1);
+      } else {
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual(LENGTH_REFUSED);
+        expect(state.hashed).toBe(0);
+      }
+    });
+
+    it('more than 1024 bytes', async () => {
+      await boot();
+
+      const response = await signUp(code, { email: 'len@example.com', password: 'a'.repeat(1025) });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual(LENGTH_REFUSED);
+      expect(state.hashed).toBe(0);
+    });
   });
 
   it('is in the OpenAPI document with the x-market-id header and its answers', async () => {
