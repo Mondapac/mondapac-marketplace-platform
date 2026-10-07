@@ -40,7 +40,11 @@ const notHosted = { statusCode: 400, code: 'market.not-hosted' };
 function expectNowhere(value: string, response: request.Response, logLines: LogLine[]): void {
   completionLineOf(logLines, response.headers['x-correlation-id'] as string);
   expect(response.text).not.toContain(value);
-  expect(JSON.stringify(response.headers)).not.toContain(value);
+  // The fixed security headers (item 6) are left out: "default-src" contains "au".
+  const headers = Object.entries(response.headers).filter(
+    ([name]) => name !== 'content-security-policy',
+  );
+  expect(JSON.stringify(headers)).not.toContain(value);
   expect(JSON.stringify(logLines)).not.toContain(value);
 }
 

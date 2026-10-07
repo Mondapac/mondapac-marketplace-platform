@@ -100,14 +100,11 @@ describe('request logging before body parsing (integration)', () => {
     expect(line.err).toMatchObject({ type: 'PayloadTooLargeError', kind: 'entity.too.large' });
   });
 
-  it.each([
-    ['JSON', 'application/json', JSON.stringify({ field: 'value' })],
-    ['a form', 'application/x-www-form-urlencoded', 'field=value'],
-  ])('still parses %s body and logs the request as completed', async (_kind, type, body) => {
+  it('still parses a JSON body and logs the request as completed', async () => {
     const response = await request(app.getHttpServer())
       .post('/test/echo')
-      .set('content-type', type)
-      .send(body)
+      .set('content-type', 'application/json')
+      .send(JSON.stringify({ field: 'value' }))
       .expect(200);
 
     expect(response.body).toEqual({ field: 'value' });
@@ -123,7 +120,8 @@ describe('request logging before body parsing (integration)', () => {
     const logger = names.indexOf('result');
 
     expect(names.filter((name) => name === 'jsonParser')).toHaveLength(1);
-    expect(names.filter((name) => name === 'urlencodedParser')).toHaveLength(1);
+    // JSON only since item 6.
+    expect(names.filter((name) => name === 'urlencodedParser')).toHaveLength(0);
     expect(logger).toBeGreaterThanOrEqual(0);
     expect(names.slice(0, logger).filter((name) => name.endsWith('Parser'))).toEqual([]);
   });
