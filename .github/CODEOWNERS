@@ -3,5 +3,5 @@
 /apps/api/src/platform/persistence/raw-reads/ @falahjoon-prog
 /scripts/check-prisma-boundaries.mjs @falahjoon-prog
 /scripts/prisma-schema.mjs @falahjoon-prog
-/scripts/fixtures/raw-read-statements/ @falahjoon-prog
+/apps/api/test/boundary-fixtures/ @falahjoon-prog
 /eslint.config.mjs @falahjoon-prog

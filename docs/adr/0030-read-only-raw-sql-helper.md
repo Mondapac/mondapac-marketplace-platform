@@ -1,12 +1,12 @@
 # ADR-0030: Read-Only Raw SQL Helper with a Checked-In Statement List
 
-**Status:** Accepted — 2026-10-07 (CTO; within CTO authority as for ADR-0025), on the reviews of Hassan (security-tester) and Mojtaba (database-designer) below; the CODEOWNERS entry of decision 2 merges with this acceptance (`.github/CODEOWNERS`). Conditions C1 to C4 are met in `certification` slice 1 before S1 to S3 merge. Drafted by Mohammad (software-architect) on Ali's (cto)
+**Status:** Accepted — 2026-10-07 (CTO; within CTO authority as for ADR-0025), on the reviews of Hassan (security-tester) and Mojtaba (database-designer) below; the CODEOWNERS entry of decision 2 merges with this acceptance (`.github/CODEOWNERS`). Condition C4 (CODEOWNERS and recorded sign-offs) is met by this ADR's own PR; C1 to C3 are met in `certification` slice 1 before S1 to S3 merge. Drafted by Mohammad (software-architect) on Ali's (cto)
 decision O1 (option A, `docs/design/data/certification.md` 7.2) and his conditions for the list;
 reviewed 2026-10-07 (see Reviews). Must be Accepted before `certification` slice 1 merges (its
 slice plan lists it as a dependency, CD 14), and before any later slice that adds a raw
-statement. The CODEOWNERS PR of decision 2 merges before or together with acceptance.
+statement. The CODEOWNERS entry of decision 2 merged together with acceptance.
 **Amends:** ADR-0025 decision 1, condition (b) (read-only units expose model delegates only, so
-raw SQL is refused). The amended ADR is not edited until this one is Accepted.
+raw SQL is refused). ADR-0025 carries the "Amended by ADR-0030" note since this acceptance.
 **Relates to:** ADR-0004 decisions 3 and 5, ADR-0008 decision 6, ADR-0012 decision 5, ADR-0028
 decision 1, `docs/design/domain/platform-persistence-and-events.md` (P 4.2 "Raw SQL", 12.2 rule
 4), `docs/design/data/platform.md` (10.2, 10.9), `docs/design/domain/certification.md` (CD 4.2
@@ -132,8 +132,8 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
 - First entries: S1 to S3 of `certification`, added in its slice 1. `catalog` adds none; if a
   later catalog slice needs one, it adds an entry under this ADR and its reviews before merge.
 - ADR-0025 (b) now reads: `MarketTransaction` exposes model delegates only; a read-only unit may
-  also reach `RawReadPort`, which runs only listed statements. On acceptance, ADR-0025 gets an
-  "Amended by ADR-0030" line.
+  also reach `RawReadPort`, which runs only listed statements. ADR-0025 got its "Amended by
+  ADR-0030" note with this acceptance.
 - The guard still cannot read SQL. Market isolation of a raw statement rests on the text check,
   the helper-bound `$1` and the two-Market test; a missing `market_id` predicate is caught by the
   check, not by the guard. Hassan's forward constraint on row-level security (ADR-0025) applies
@@ -164,5 +164,5 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
 | Reviewer | Verdict | Date |
 |---|---|---|
 | Ali (cto) | Signed, with: function allow-list (decision 3), bound values versus fixed literals (decision 5), grants are not a control (Consequences); rulings (a) helper refused in read-write units, (b) CODEOWNERS PR before or with acceptance | 2026-10-07 |
-| Hassan (security-tester) | Approved with conditions C1 (`BEGIN READ ONLY` case), C2 (Market rule), C3 (repository-wide raw-SQL check), C4 (CODEOWNERS and recorded sign-offs), and the logging conditions; C1 to C4 in place in `certification` slice 1 | 2026-10-07 |
+| Hassan (security-tester) | Approved with conditions C1 (`BEGIN READ ONLY` case), C2 (Market rule), C3 (repository-wide raw-SQL check), C4 (CODEOWNERS and recorded sign-offs), and the logging conditions; C4 met by this ADR's PR, C1 to C3 in place in `certification` slice 1 | 2026-10-07 |
 | Mojtaba (database-designer) | Signed, with: same Prisma adapter, unnamed; boot check a pure parse; catalog check in `test:db` | 2026-10-07 |
