@@ -9,19 +9,36 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
+import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
+import { findRoleProblems } from '../../src/platform/persistence/database-role-check';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
-import { testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 const RESTRICT_VIOLATION = '23001';
 const CHECK_VIOLATION = '23514';
+const INSUFFICIENT_PRIVILEGE = '42501';
+const APPLICATION_GROUP_ROLE = 'mondapac_app';
+
+/** Runs one statement in a transaction that is always rolled back; answers its SQLSTATE. */
+async function sqlStateOf(client: Client, statement: string): Promise<string> {
+  await client.query('BEGIN');
+  try {
+    await client.query(statement);
+    return 'ok';
+  } catch (error) {
+    return (error as { code?: string }).code ?? 'unknown';
+  } finally {
+    await client.query('ROLLBACK');
+  }
+}
 
 function auditRow(marketId: string, overrides: Record<string, unknown> = {}) {
   return {
     // The application generates UUIDv7 ids; any UUID satisfies the column in a test.
     id: randomUUID(),
     marketId,
-    tenantId: 'mondapac',
+    tenantId: PLATFORM_TENANT_ID,
     occurredAt: new Date('2026-10-01T00:00:00.000Z'),
     actorType: 'SYSTEM',
     action: 'platform.skeleton.checked',
@@ -35,7 +52,10 @@ function auditRow(marketId: string, overrides: Record<string, unknown> = {}) {
 describe('platform persistence (database integration)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
+  /** The application login (`mondapac_app`), as `AppModule` connects. */
   let sql: Client;
+  /** The owner of the throwaway database: the migration role. */
+  let owner: Client;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -54,9 +74,12 @@ describe('platform persistence (database integration)', () => {
 
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
+    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    await owner.connect();
   });
 
   afterAll(async () => {
+    await owner.end();
     await sql.end();
     await app.close();
   });
@@ -81,17 +104,19 @@ describe('platform persistence (database integration)', () => {
       });
     });
 
-    it('is append-only: UPDATE, DELETE and TRUNCATE are rejected', async () => {
+    it('is append-only even for its owner: UPDATE, DELETE and TRUNCATE are rejected', async () => {
       const row = auditRow('AU');
       await prisma.auditLog.create({ data: row });
 
+      // The application role is refused earlier, by privileges (42501); the owner reaches
+      // the trigger (docs/design/data/platform.md 10.4).
       await expect(
-        sql.query('UPDATE platform.audit_log SET action = $1 WHERE id = $2', ['x.y.z', row.id]),
+        owner.query('UPDATE platform.audit_log SET action = $1 WHERE id = $2', ['x.y.z', row.id]),
       ).rejects.toMatchObject({ code: RESTRICT_VIOLATION });
       await expect(
-        sql.query('DELETE FROM platform.audit_log WHERE id = $1', [row.id]),
+        owner.query('DELETE FROM platform.audit_log WHERE id = $1', [row.id]),
       ).rejects.toMatchObject({ code: RESTRICT_VIOLATION });
-      await expect(sql.query('TRUNCATE platform.audit_log')).rejects.toMatchObject({
+      await expect(owner.query('TRUNCATE platform.audit_log')).rejects.toMatchObject({
         code: RESTRICT_VIOLATION,
       });
 
@@ -128,6 +153,180 @@ describe('platform persistence (database integration)', () => {
 
       await expect(attempt).rejects.toThrow(CHECK_VIOLATION);
       await expect(attempt).rejects.toThrow(`"${constraint}"`);
+    });
+  });
+  describe('the application role on platform.audit_log', () => {
+    let tableOwner: string;
+    let triggerName: string;
+    let triggerFunction: string;
+
+    beforeAll(async () => {
+      const ownerRow = await sql.query<{ tableowner: string }>(
+        "SELECT tableowner FROM pg_tables WHERE schemaname = 'platform' AND tablename = 'audit_log'",
+      );
+      tableOwner = ownerRow.rows[0]!.tableowner;
+      const trigger = await sql.query<{ tgname: string; tgfoid: string }>(
+        "SELECT tgname, tgfoid::regproc::text AS tgfoid FROM pg_trigger WHERE tgrelid = 'platform.audit_log'::regclass AND NOT tgisinternal ORDER BY tgname LIMIT 1",
+      );
+      triggerName = trigger.rows[0]!.tgname;
+      triggerFunction = trigger.rows[0]!.tgfoid;
+    });
+
+    it('may INSERT and SELECT', async () => {
+      const row = auditRow('ZZ');
+
+      await sql.query(
+        `INSERT INTO platform.audit_log
+           (id, market_id, tenant_id, occurred_at, actor_type, action, target_type, target_id, correlation_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          row.id,
+          row.marketId,
+          row.tenantId,
+          row.occurredAt,
+          row.actorType,
+          row.action,
+          row.targetType,
+          row.targetId,
+          row.correlationId,
+        ],
+      );
+
+      const selected = await sql.query('SELECT id FROM platform.audit_log WHERE id = $1', [row.id]);
+      expect(selected.rows).toEqual([{ id: row.id }]);
+    });
+
+    it('is refused everything else, with 42501, and no row changes', async () => {
+      const before = await sql.query<{ count: string }>('SELECT count(*) FROM platform.audit_log');
+      const statements = [
+        "UPDATE platform.audit_log SET action = 'x.y.z'",
+        'DELETE FROM platform.audit_log',
+        'TRUNCATE platform.audit_log',
+        'TRUNCATE platform.audit_log CASCADE',
+        `ALTER TABLE platform.audit_log DISABLE TRIGGER "${triggerName}"`,
+        'ALTER TABLE platform.audit_log DISABLE TRIGGER ALL',
+        `DROP TRIGGER "${triggerName}" ON platform.audit_log`,
+        `CREATE TRIGGER t_probe BEFORE INSERT ON platform.audit_log FOR EACH ROW EXECUTE FUNCTION ${triggerFunction}()`,
+        'SET session_replication_role = replica',
+        'SET LOCAL session_replication_role = replica',
+        "SELECT set_config('session_replication_role', 'replica', false)",
+        `SET ROLE "${tableOwner}"`,
+        `SET SESSION AUTHORIZATION "${tableOwner}"`,
+        'CREATE TABLE platform.t_probe (id integer)',
+        'CREATE TABLE public.t_probe (id integer)',
+        'CREATE TEMPORARY TABLE t_probe (id integer)',
+        'CREATE SCHEMA s_probe',
+        'DROP TABLE platform.audit_log',
+        'LOCK TABLE platform.audit_log IN ACCESS EXCLUSIVE MODE',
+        'SELECT id FROM platform.audit_log FOR UPDATE',
+        'SELECT * FROM public._prisma_migrations',
+      ];
+
+      const states: Record<string, string> = {};
+      for (const statement of statements) states[statement] = await sqlStateOf(sql, statement);
+
+      expect(states).toEqual(
+        Object.fromEntries(statements.map((statement) => [statement, INSUFFICIENT_PRIVILEGE])),
+      );
+      const after = await sql.query<{ count: string }>('SELECT count(*) FROM platform.audit_log');
+      expect(after.rows[0]!.count).toBe(before.rows[0]!.count);
+    });
+
+    it('gains nothing by granting itself UPDATE', async () => {
+      // Not an error: PostgreSQL answers with warning 01007 and grants nothing.
+      await sql.query('GRANT UPDATE ON platform.audit_log TO CURRENT_USER');
+
+      const granted = await sql.query<{ granted: boolean }>(
+        "SELECT has_table_privilege('platform.audit_log', 'UPDATE') AS granted",
+      );
+      expect(granted.rows[0]!.granted).toBe(false);
+    });
+  });
+
+  describe('the connected application role', () => {
+    it('has no role attribute beyond LOGIN', async () => {
+      const { rows } = await sql.query(
+        `SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+           FROM pg_roles WHERE rolname = current_user`,
+      );
+
+      expect(rows).toEqual([
+        {
+          rolsuper: false,
+          rolcreatedb: false,
+          rolcreaterole: false,
+          rolreplication: false,
+          rolbypassrls: false,
+        },
+      ]);
+    });
+
+    it('is a member of itself and the application group only, and the group of nothing', async () => {
+      const member = await sql.query<{ rolname: string; is_self: boolean }>(
+        `SELECT rolname, rolname = current_user AS is_self FROM pg_roles
+          WHERE pg_has_role(current_user, oid, 'MEMBER') ORDER BY rolname <> current_user, rolname`,
+      );
+      const groupMemberships = await sql.query(
+        `SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.member
+          WHERE r.rolname = $1`,
+        [APPLICATION_GROUP_ROLE],
+      );
+
+      expect(member.rows).toEqual([
+        { rolname: expect.any(String) as string, is_self: true },
+        { rolname: APPLICATION_GROUP_ROLE, is_self: false },
+      ]);
+      expect(groupMemberships.rows).toEqual([]);
+    });
+
+    it('is not, and is no member of, the owner of the database or of the audit log', async () => {
+      const { rows } = await sql.query(
+        `SELECT pg_has_role(current_user, d.datdba, 'MEMBER') AS database_owner,
+                pg_has_role(current_user, c.relowner, 'MEMBER') AS audit_log_owner
+           FROM pg_database d, pg_class c
+          WHERE d.datname = current_database() AND c.oid = 'platform.audit_log'::regclass`,
+      );
+
+      expect(rows).toEqual([{ database_owner: false, audit_log_owner: false }]);
+    });
+
+    it('may create nothing, on the database or on any schema, and PUBLIC holds nothing on the database', async () => {
+      const database = await sql.query(
+        `SELECT has_database_privilege(current_database(), 'CREATE') AS create,
+                has_database_privilege(current_database(), 'TEMPORARY') AS temporary,
+                (SELECT count(*)::int FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a
+                  WHERE d.datname = current_database() AND a.grantee = 0) AS public_privileges`,
+      );
+      const schemas = await sql.query(
+        "SELECT nspname FROM pg_namespace WHERE has_schema_privilege(oid, 'CREATE')",
+      );
+
+      expect(database.rows).toEqual([{ create: false, temporary: false, public_privileges: 0 }]);
+      expect(schemas.rows).toEqual([]);
+    });
+  });
+
+  describe('the start-up self-check (docs/design/data/platform.md 10.8)', () => {
+    const run = (client: Client) =>
+      findRoleProblems(
+        async (text) => (await client.query<{ code: string; subject: string | null }>(text)).rows,
+      );
+
+    it('passes on the application connection', async () => {
+      await expect(run(sql)).resolves.toEqual([]);
+    });
+
+    it('refuses the owner connection under every reason code', async () => {
+      const codes = new Set((await run(owner)).map((problem) => problem.code));
+
+      expect([...codes].sort()).toEqual([
+        'audit_log_privilege',
+        'create_on_database',
+        'create_on_schema',
+        'owner_membership',
+        'role_attribute',
+        'role_membership',
+      ]);
     });
   });
 });

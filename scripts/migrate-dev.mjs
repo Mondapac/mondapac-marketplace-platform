@@ -2,7 +2,9 @@
 // typecheck sees the new models. Arguments go to `prisma migrate dev`:
 //   pnpm db:migrate:dev --name add_identity_users
 // Always pass --name when no terminal is attached (agents, CI): without it Prisma asks for
-// the name interactively. Remember to add the migration's down.sql afterwards.
+// the name interactively. Remember to add the migration's down.sql afterwards. Prisma
+// connects as the migration role (MIGRATION_DATABASE_URL, through prisma.config.ts), which
+// also creates the shadow database.
 import { spawnSync } from 'node:child_process';
 
 function run(args) {

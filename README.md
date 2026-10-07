@@ -24,6 +24,29 @@ Multi-vendor marketplace platform (halal-certified launch market: Australia), bu
    The API listens on http://localhost:3000: `GET /health` (liveness), `GET /health/ready`
    (readiness, checks the database) and Swagger UI at `/docs`.
 
+### Database roles
+
+The API connects as `mondapac_api` (`DATABASE_URL`) and may only insert and read what the
+migrations grant; migrations and database tests run as `mondapac_migrator`
+(`MIGRATION_DATABASE_URL`). `docker compose up -d` creates both on a fresh volume from
+`scripts/db/bootstrap-dev.sql`; `pnpm db:bootstrap` runs it again on an existing volume. See
+`docs/design/data/platform.md` section 10.
+
+**After pulling the change that added these roles**, recreate your local database once (it
+deletes only your empty local database):
+
+```bash
+docker compose down -v
+cp .env.example .env          # both database URLs changed
+docker compose up -d
+pnpm db:migrate
+```
+
+Troubleshooting: `role "mondapac_migrator" does not exist`, `role "postgres" does not exist`
+or a bootstrap error about objects "not owned by mondapac_migrator" means the volume predates
+the roles: run the four commands above. The API exiting with "The database role was refused
+by the start-up self-check" means `DATABASE_URL` names a role other than the application login.
+
 ## Repository layout
 
 ```

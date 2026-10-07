@@ -37,6 +37,9 @@ const envSchema = z.object({
     .regex(/^postgres(ql)?:\/\/\S+$/, 'must be a postgresql:// connection URL'),
 });
 
+/** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
+export const MIGRATION_DATABASE_URL = 'MIGRATION_DATABASE_URL';
+
 export interface AppConfig {
   readonly nodeEnv: 'development' | 'test' | 'production';
   readonly port: number;
@@ -64,11 +67,19 @@ export class InvalidConfigError extends Error {
  */
 export function loadAppConfig(env: Record<string, string | undefined>): AppConfig {
   const parsed = envSchema.safeParse(env);
-  if (!parsed.success) {
-    throw new InvalidConfigError(
-      parsed.error.issues.map((issue) => `${issue.path.join('.') || 'env'}: ${issue.message}`),
+  const issues = parsed.success
+    ? []
+    : parsed.error.issues.map((issue) => `${issue.path.join('.') || 'env'}: ${issue.message}`);
+  // The application never receives the migration role's URL (docs/design/data/platform.md
+  // 10.7): present at all, an empty value included, it refuses to start. The value is never
+  // printed.
+  if (MIGRATION_DATABASE_URL in env) {
+    issues.push(
+      `${MIGRATION_DATABASE_URL}: must not be set for the application; it is for ` +
+        'pnpm db:*, pnpm test:db and pnpm verify only',
     );
   }
+  if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
   return Object.freeze({
     nodeEnv: parsed.data.NODE_ENV,
     port: parsed.data.PORT,
