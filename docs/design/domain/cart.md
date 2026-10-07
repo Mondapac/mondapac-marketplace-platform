@@ -93,7 +93,7 @@ Forbidden: `MERGED` → anything; an account cart → `MERGED`; a guest cart tha
 5. `reduce-quantity` — status `LOW` and `quantity > onlyLeft`; `onlyLeft` is public (INV 5.4), so it may be shown.
 6. `check-unavailable` — a facade call for this line failed or answered outside its contract (for example a currency that is not the Market's). Fail closed: not in totals, blocks checkout.
 
-A failed catalog call or `*.batch.too-large` (an oversized batch is refused whole) → `check-unavailable` for every affected line. `offer-unavailable` only when a key is absent from a successful answer or answered `listed: false` or `variantBelongs: false` (Ali, change 4; K-1).
+A failed catalog call or a batch refusal (`batch.too-large` from catalog, `*.batch.too-large` from the others; an oversized batch is refused whole) → `check-unavailable` for every affected line. `offer-unavailable` only when a key is absent from a successful answer or answered `listed: false` or `variantBelongs: false` (Ali, change 4; K-1).
 
 `listed: true` is never permission to buy (Ali, K-1): `BUYABLE` still needs `variantBelongs: true`, may-sell (2), a price (3) and availability (4, 5), and `ordering` re-checks everything at checkout. Every batch facade read here, `offerListings` included, is advisory (ADR-0025 decision 1).
 
