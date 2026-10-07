@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ESLint } from 'eslint';
 import type { Linter } from 'eslint';
 import * as ts from 'typescript';
@@ -133,6 +134,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'module-public-api-only',
         'no-circular',
         'persistence-internals-are-private',
+        'persistence-root-is-private',
         'platform-does-not-import-modules',
         'prisma-only-in-infrastructure',
         'temporal-only-through-kernel',
@@ -168,6 +170,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'no-circular: src/modules/alpha/domain/circular-a.ts',
         'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-service.ts',
         'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-via-barrel.ts',
+        'persistence-root-is-private: src/modules/alpha/infrastructure/uses-prisma-root.ts',
         'platform-does-not-import-modules: src/platform/imports-module-index.ts',
         'platform-does-not-import-modules: src/platform/reaches-into-module.ts',
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
@@ -202,9 +205,190 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/alpha/presentation/market-controller.ts',
       // identity may import its own files.
       'src/modules/identity/application/uses-own-domain.ts',
+      // A module's infrastructure reaches the database through PrismaService only.
+      'src/modules/alpha/infrastructure/uses-prisma-service.ts',
     ])('accepts the allowed file %s', (file) => {
       expect(cruise.modules.map((module) => module.source)).toContain(file);
       expect(found.filter((violation) => violation.endsWith(`: ${file}`))).toEqual([]);
+    });
+  });
+
+  describe('Prisma boundaries (scripts/check-prisma-boundaries.mjs; platform persistence 9)', () => {
+    const PRISMA_FIXTURES = path.join(FIXTURES, 'prisma');
+
+    /** Runs the real script, as `pnpm boundaries` does; answers its exit code and problems. */
+    function checkPrisma(
+      schemaDir: string,
+      srcDir: string,
+    ): { status: number; problems: string[] } {
+      try {
+        execFileSync(
+          process.execPath,
+          [path.join(REPO_ROOT, 'scripts/check-prisma-boundaries.mjs'), schemaDir, '--src', srcDir],
+          { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        return { status: 0, problems: [] };
+      } catch (error) {
+        const { status, stderr } = error as { status: number; stderr: string };
+        const problems = stderr
+          .split('\n')
+          .filter((line) => line.startsWith('  - '))
+          .map((line) => line.slice(4));
+        return { status, problems };
+      }
+    }
+
+    it('accepts the real schema and the real sources', () => {
+      expect(
+        checkPrisma(path.join(REPO_ROOT, 'prisma/schema'), path.join(API_ROOT, 'src')),
+      ).toEqual({ status: 0, problems: [] });
+    });
+
+    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and the outbox exception', () => {
+      expect(
+        checkPrisma(
+          path.join(PRISMA_FIXTURES, 'passing/schema'),
+          path.join(PRISMA_FIXTURES, 'passing/src'),
+        ),
+      ).toEqual({ status: 0, problems: [] });
+    });
+
+    it('rejects every deliberate violation of the failing fixture, and nothing else', () => {
+      const { status, problems } = checkPrisma(
+        path.join(PRISMA_FIXTURES, 'failing/schema'),
+        path.join(PRISMA_FIXTURES, 'failing/src'),
+      );
+
+      expect(status).toBe(1);
+      expect(problems.sort()).toEqual(
+        [
+          'alpha.prisma: model AlphaWrongSchema is in schema "beta", but this file owns "alpha"',
+          'alpha.prisma: AlphaNeither is neither market-scoped (marketId and tenantId) nor exempt ("/// @market-scope none: <reason>")',
+          'alpha.prisma: AlphaBoth has marketId and tenantId and also an exemption line',
+          'alpha.prisma: AlphaMarketOnly has marketId without tenantId',
+          'alpha.prisma: AlphaBadKeys @unique on ref does not contain marketId',
+          'alpha.prisma: AlphaBadKeys @@id([kind, code]) does not contain marketId',
+          'alpha.prisma: AlphaBadKeys @@unique([kind, ref]) does not contain marketId',
+          'alpha.prisma: AlphaIntId @id on id does not contain marketId',
+          'alpha.prisma: AlphaChildNoMarket.parent relates two market-scoped models without marketId in both fields and references (PM6)',
+          'alpha.prisma: AlphaChildMisaligned.parent pairs marketId with another column (marketId is at different positions in fields and references; PM6)',
+          'beta.prisma: BetaOutbox is an outbox whose fields differ from AlphaOutbox',
+          'modules/alpha/infrastructure/reaches-beta.ts:2: import of "BetaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/reaches-beta.ts:3: import "../../../generated/prisma/models/BetaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/reaches-beta.ts:3: import of "BetaThingModel" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/reaches-beta.ts:7: type "Prisma.BetaThingWhereInput" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/reaches-beta.ts:8: property ["betaThing"] names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/reaches-beta.ts:9: property ".betaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/writes-own-outbox.ts:5: property ".alphaOutbox" names model AlphaOutbox, which is reserved to platform/persistence/outbox/ (write it through OutboxWriter)',
+          'platform/persistence/outbox/reaches-module.ts:6: property ".betaThing" names model BetaThing, which belongs to module "beta"',
+          'platform/persistence/reaches-module.ts:6: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
+        ].sort(),
+      );
+    });
+  });
+
+  describe('the model map generator (scripts/generate-model-map.mjs; platform persistence 9)', () => {
+    const GENERATOR = path.join(REPO_ROOT, 'scripts/generate-model-map.mjs');
+
+    function generate(schemaDir: string): { status: number; output: string } {
+      try {
+        const output = execFileSync(
+          process.execPath,
+          [GENERATOR, '--schema', schemaDir, '--json'],
+          {
+            cwd: REPO_ROOT,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+          },
+        );
+        return { status: 0, output };
+      } catch (error) {
+        const { status, stderr } = error as { status: number; stderr: string };
+        return { status, output: stderr };
+      }
+    }
+
+    it('maps owner, table, scope, relation fields, compound selectors and foreign keys', () => {
+      const { status, output } = generate(path.join(FIXTURES, 'prisma/passing/schema'));
+      const map = JSON.parse(output) as {
+        models: Record<string, Record<string, unknown>>;
+        modules: Record<string, unknown>;
+      };
+
+      expect(status).toBe(0);
+      expect(map.models.AlphaParent).toEqual({
+        module: 'alpha',
+        schema: 'alpha',
+        table: 'parent',
+        clientProperty: 'alphaParent',
+        scope: 'scoped',
+        scalarFields: ['id', 'marketId', 'tenantId', 'code', 'kind'],
+        relationFields: ['children'],
+        idField: 'id',
+        compoundSelectors: [
+          { name: 'marketId_id', fields: ['marketId', 'id'] },
+          { name: 'byCode', fields: ['marketId', 'code'] },
+          { name: 'kind_marketId', fields: ['kind', 'marketId'] },
+        ],
+        foreignKeys: [],
+      });
+      expect(map.models.AlphaChild).toMatchObject({
+        relationFields: ['parent'],
+        foreignKeys: [
+          {
+            field: 'parent',
+            target: 'AlphaParent',
+            targetTable: 'parent',
+            fields: ['marketId', 'parentId'],
+            references: ['marketId', 'id'],
+            columns: ['market_id', 'parent_id'],
+            referencedColumns: ['market_id', 'id'],
+          },
+        ],
+      });
+      expect(map.models.AlphaThrottle).toMatchObject({
+        idField: null,
+        compoundSelectors: [
+          { name: 'marketId_kind_keyHash', fields: ['marketId', 'kind', 'keyHash'] },
+        ],
+      });
+      expect(map.models.AlphaLookup).toMatchObject({ scope: 'exempt' });
+      expect(map.modules).toEqual({
+        alpha: { schema: 'alpha', outboxModel: 'AlphaOutbox', inboxModel: null },
+        beta: { schema: 'beta', outboxModel: 'BetaOutbox', inboxModel: 'BetaInbox' },
+        platform: { schema: 'platform', outboxModel: null, inboxModel: null },
+      });
+    });
+
+    it('fails on a model with neither scope marker, both, or one of the two columns', () => {
+      const { status, output } = generate(path.join(FIXTURES, 'prisma/failing/schema'));
+
+      expect(status).toBe(1);
+      expect(output).toContain('AlphaNeither has neither marketId and tenantId nor');
+      expect(output).toContain('AlphaBoth has marketId and tenantId and an exemption line');
+      expect(output).toContain('AlphaMarketOnly has only one of marketId and tenantId');
+    });
+
+    it("fails when its parse disagrees with Prisma's DMMF", () => {
+      const script = `
+        import { buildModelMap, compareWithDmmf } from ${JSON.stringify(pathToFileURL(GENERATOR).href)};
+        const map = buildModelMap(${JSON.stringify(path.join(FIXTURES, 'prisma/passing/schema'))});
+        const models = Object.keys(map.models).map((name) => ({
+          name,
+          fields: [...map.models[name].scalarFields.map((f) => ({ name: f, kind: 'scalar', isId: f === map.models[name].idField })),
+                   ...map.models[name].relationFields.map((f) => ({ name: f, kind: 'object' }))],
+          primaryKey: null,
+          uniqueIndexes: map.models[name].compoundSelectors,
+        }));
+        models.find((m) => m.name === 'AlphaParent').fields.push({ name: 'hidden', kind: 'object' });
+        try { compareWithDmmf(map, { datamodel: { models } }); console.log('accepted'); }
+        catch (error) { console.log(error.message); }`;
+      const output = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        encoding: 'utf8',
+      });
+
+      expect(output).toContain('The model map parser disagrees with Prisma');
+      expect(output).toContain('AlphaParent: relation fields differ from the DMMF');
     });
   });
 
@@ -231,6 +415,13 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
     it.each([
       ['src/platform/persistence/persistence.module.ts', ['PersistenceModule']],
       ['src/platform/persistence/database-probe.ts', ['DatabaseProbe']],
+      // persistence-root-is-private lets module infrastructure import this file only.
+      ['src/platform/persistence/prisma.service.ts', ['MarketTransaction', 'PrismaService']],
+      // persistence-internals-are-private lets the logger import the error reducer.
+      [
+        'src/platform/persistence/database-error.ts',
+        ['ReducedDatabaseError', 'reduceDatabaseError'],
+      ],
       [
         'src/platform/market-context/market-context.guard.ts',
         ['MarketContextGuard', 'isMarketContextExempt'],

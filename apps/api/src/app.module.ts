@@ -1,11 +1,12 @@
 import { Module, type DynamicModule } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
 import { CORE_MODULES } from './modules';
 import { ClockModule } from './platform/clock/clock.module';
 import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
 import { HealthModule } from './platform/health/health.module';
+import { ConflictFilter } from './platform/http/conflict-filter';
 import { IdsModule } from './platform/ids/ids.module';
 import { LoggingModule } from './platform/logging/logging.module';
 import { MarketConfigModule } from './platform/market-config/market-config.module';
@@ -48,7 +49,11 @@ export class AppModule {
         HealthModule,
         ...CORE_MODULES,
       ],
-      providers: GLOBAL_GUARDS.map((guard) => ({ provide: APP_GUARD, useClass: guard })),
+      providers: [
+        ...GLOBAL_GUARDS.map((guard) => ({ provide: APP_GUARD, useClass: guard })),
+        // 409 for TransactionConflictError and StaleAggregateError (platform persistence 10).
+        { provide: APP_FILTER, useClass: ConflictFilter },
+      ],
     };
   }
 }

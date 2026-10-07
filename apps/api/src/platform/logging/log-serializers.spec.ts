@@ -1,5 +1,7 @@
 import { Writable } from 'node:stream';
 import { pino, type Logger } from 'pino';
+import { Prisma } from '../../generated/prisma/client';
+import { TransactionConflictError } from '../unit-of-work/errors';
 import { LOG_FORMATTERS, LOG_HOOKS, LOG_SERIALIZERS } from './log-serializers';
 
 const SECRET = 'secret-value-0001';
@@ -109,6 +111,56 @@ describe('LOG_SERIALIZERS.err', () => {
       expect(LOG_SERIALIZERS.err(value)).toEqual({ type: 'Error' });
     },
   );
+});
+
+describe('LOG_SERIALIZERS.err on database errors (platform persistence design 12.3)', () => {
+  /** A CHECK violation as Prisma 7 with the pg adapter raises it: the row is in `detail`. */
+  function checkViolation(): Error {
+    const message = `new row for relation "audit_log" violates check constraint "audit_log_action_check"`;
+    return new Prisma.PrismaClientKnownRequestError(`Invalid invocation: { action: "${SECRET}" }`, {
+      code: 'P2039',
+      clientVersion: '7.10.0',
+      meta: {
+        modelName: 'AuditLog',
+        driverAdapterError: {
+          name: 'DriverAdapterError',
+          cause: {
+            originalCode: '23514',
+            originalMessage: message,
+            message,
+            detail: `Failing row contains (0190, AU, mondapac, ${SECRET}).`,
+          },
+        },
+      },
+    });
+  }
+
+  it('logs the name, Prisma code, SQLSTATE and constraint, never the failing row', () => {
+    const { logger, lines } = capturingLogger();
+
+    logger.error({ err: checkViolation() }, 'write failed');
+    logger.error(checkViolation());
+
+    expect(lines[0]).toMatchObject({
+      err: {
+        type: 'PrismaClientKnownRequestError',
+        code: 'P2039',
+        sqlState: '23514',
+        constraint: 'audit_log_action_check',
+      },
+      msg: 'write failed',
+    });
+    expect(lines[1]).toMatchObject({ msg: 'PrismaClientKnownRequestError' });
+    expect(JSON.stringify(lines)).not.toContain(SECRET);
+    expect(JSON.stringify(lines)).not.toContain('Failing row');
+  });
+
+  it('logs the SQLSTATE of a TransactionConflictError', () => {
+    expect(LOG_SERIALIZERS.err(new TransactionConflictError('40001'))).toMatchObject({
+      type: 'TransactionConflictError',
+      sqlState: '40001',
+    });
+  });
 });
 
 describe('LOG_HOOKS.logMethod', () => {
