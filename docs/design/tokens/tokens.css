@@ -1,4 +1,4 @@
-/* MondaPac design tokens v1.5.0. Source of truth: the Figma file 'MondaPac Design System'.
+/* MondaPac design tokens v1.6.0. Source of truth: the Figma file 'MondaPac Design System'.
  * Do not edit by hand. Change the Figma variables, run the plugin command Export tokens and commit these files. */
 :root {
   --mp-color-bg-page: #F5F6F8;
@@ -90,6 +90,7 @@
   --mp-color-board-prep-border: #D6E0F2;
   --mp-color-board-ready-bg: #F1F8F3;
   --mp-color-board-ready-border: #CFE6D7;
+  --mp-color-bg-scrim: #11182780;
   --mp-space-0-5: 2px;
   --mp-space-1: 4px;
   --mp-space-1-5: 6px;
@@ -121,6 +122,7 @@
   --mp-border-width: 1px;
   --mp-border-width-strong: 2px;
   --mp-size-bottom-bar: 64px;
+  --mp-size-topbar-phone: 56px;
   --mp-font-family-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --mp-font-family-mono: 'IBM Plex Mono', ui-monospace, monospace;
   --mp-text-display-hero: 600 30px/38px var(--mp-font-family-sans);
@@ -249,6 +251,7 @@
   --mp-color-board-prep-border: #2B3F6B;
   --mp-color-board-ready-bg: #10221A;
   --mp-color-board-ready-border: #1F4A33;
+  --mp-color-bg-scrim: #00000099;
   --mp-shadow-focus-ring: 0px 0px 0px 2px rgba(22,26,33,1), 0px 0px 0px 4px rgba(143,176,255,1);
   --mp-shadow-ring-urgent: 0px 0px 0px 3px rgba(59,21,18,1);
 }

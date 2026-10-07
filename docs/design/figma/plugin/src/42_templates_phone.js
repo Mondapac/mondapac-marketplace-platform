@@ -1,15 +1,5 @@
-// ---- Phone templates (360 × 780, release 1.5.0, D16): topbar 56 px, bottom tab bar (seller), drawer over a scrim
-function phoneTopbar(ws) {
-  const bell = frame({ name: 'notifications', w: 48, h: 48 }, [inst('IconButton', { Variant: 'Ghost', Size: 'Touch', State: 'Default', Icon: { icon: 'bell' } })]);
-  const badge = inst('CountBadge', { Tone: 'Critical', Count: '4' }, { name: 'unread' }); bell.appendChild(badge); badge.x = 26; badge.y = 4;
-  return frame({ name: 'Topbar · phone', dir: 'H', h: 56, px: 'space/2', gap: 'space/2', align: 'center', fill: 'bg/surface', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [
-    inst('IconButton', { Variant: 'Ghost', Size: 'Touch', State: 'Default', Icon: { icon: 'panel-left' } }, { name: 'menu-button' }),
-    brandMark(28),
-    text(ws === 'Admin' ? 'Admin' : 'Seller Centre', 'Heading/H2', 'text/primary', { name: 'panel-name', sizeH: 'FILL', truncate: true }),
-    bell,
-    frame({ name: 'account-button', dir: 'H', w: 48, h: 48, align: 'center', justify: 'center' }, [inst('IdentityTile', { Tone: 'Blue', Shape: 'Circle', Initials: ws === 'Admin' ? 'LH' : 'YK' }, { name: 'account' })]),
-  ]);
-}
+// ---- Phone templates (360 × 780, release 1.5.0, D16): PhoneTopbar (56 px), bottom tab bar (seller), drawer over a bg/scrim scrim (1.6.0)
+function phoneTopbar(ws) { return inst('PhoneTopbar', { Workspace: ws }, { name: 'PhoneTopbar', sizeH: 'FILL' }); } // release 1.6.0: an instance, no longer a loose frame
 function phoneScreen(name, ws, kids, barActive) {
   const parts = [phoneTopbar(ws), frame({ name: 'Main', dir: 'V', gap: 'space/3', pad: 'space/4', sizeH: 'FILL', sizeV: 'FILL', clip: true }, kids)];
   if (barActive) parts.push(inst('BottomTabBar', { Active: barActive, Tabs: '4' }, { name: 'BottomTabBar', sizeH: 'FILL' }));
@@ -18,7 +8,7 @@ function phoneScreen(name, ws, kids, barActive) {
   return scr;
 }
 function withDrawer(scr, ws) {
-  add(scr, frame({ name: 'scrim', w: 360, h: 780, fill: 'text/primary', fillOpacity: 0.5, abs: [0, 0] }));
+  add(scr, frame({ name: 'scrim', w: 360, h: 780, fill: 'bg/scrim', abs: [0, 0] }));
   add(scr, inst('NavDrawer', { Workspace: ws }, { name: 'NavDrawer', abs: [0, 0] }));
   return scr;
 }

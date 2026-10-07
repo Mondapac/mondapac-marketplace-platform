@@ -7,22 +7,22 @@ function recolor(node, token) {
     if (n.fills && n.fills.length) n.fills = [p];
   });
 }
+// One icon component plus its cell on the Icons page (used by the build and by "Update library").
+function iconCell(n) {
+  const node = figma.createNodeFromSvg(ICONS[n]);
+  node.name = 'Icon/' + n;
+  node.findAll(function () { return true; }).forEach(function (c) { if ('constraints' in c) c.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; });
+  const comp = figma.createComponentFromNode(node);
+  comp.name = 'Icon/' + n; comp.fills = [];
+  comp.description = n.indexOf('product-') === 0 ? 'Product category glyph (placeholder until real product photos).' : 'Line icon, 24px grid drawn at 20px. Colour comes from icon/* or status tokens.';
+  recolor(comp, 'icon/default');
+  S.icons[n] = comp;
+  return frame({ name: n, dir: 'V', gap: 'space/2', align: 'center', pad: 'space/3', w: 120, radius: 'radius/control', fill: 'bg/subtle' }, [comp, text(n, 'Caption/Default', 'text/muted', { align: 'center' })]);
+}
 async function buildIcons(page) {
   const wrap = frame({ name: 'Icons', dir: 'H', wrap: true, gap: 'space/4', rowGap: 'space/4', pad: 'space/6', fill: 'bg/surface', radius: 'radius/card', stroke: 'border/default', w: 1360 });
   const names = Object.keys(ICONS);
-  for (let i = 0; i < names.length; i++) {
-    const n = names[i];
-    const node = figma.createNodeFromSvg(ICONS[n]);
-    node.name = 'Icon/' + n;
-    node.findAll(function () { return true; }).forEach(function (c) { if ('constraints' in c) c.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; });
-    const comp = figma.createComponentFromNode(node);
-    comp.name = 'Icon/' + n; comp.fills = [];
-    comp.description = n.indexOf('product-') === 0 ? 'Product category glyph (placeholder until real product photos).' : 'Line icon, 24px grid drawn at 20px. Colour comes from icon/* or status tokens.';
-    recolor(comp, 'icon/default');
-    S.icons[n] = comp;
-    const cell = frame({ name: n, dir: 'V', gap: 'space/2', align: 'center', pad: 'space/3', w: 120, radius: 'radius/control', fill: 'bg/subtle' }, [comp, text(n, 'Caption/Default', 'text/muted', { align: 'center' })]);
-    add(wrap, cell);
-  }
+  for (let i = 0; i < names.length; i++) add(wrap, iconCell(names[i]));
   S.counts.components += names.length;
   return wrap;
 }

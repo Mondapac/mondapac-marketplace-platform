@@ -92,7 +92,7 @@ async function buildNavigation(page) {
   tag(root);
 }
 
-// ---------------------------------------------------------------- mobile navigation (release 1.5.0, D16)
+// ---------------------------------------------------------------- mobile navigation (release 1.5.0, D16; PhoneTopbar added in 1.6.0)
 // Below 760 px: both panels open the nav config as a drawer; the seller panel also gets a bottom tab bar.
 // Built by "Build library" and added to an existing file by "Update library" (see 50_main.js).
 function drawerRow(it, active) {
@@ -105,6 +105,29 @@ function drawerRow(it, active) {
 const BAR_TABS = [['home', 'Home', 'home'], ['orders', 'Orders', 'clipboard'], ['catalogue', 'Catalogue', 'package'], ['more', 'More', 'more-horizontal']];
 function buildMobileNav(root, have) {
   // have: names of sets that already exist in the file ("Update library" adds only what is missing).
+  if (!have.PhoneTopbar) {
+  const ptb = makeSet('PhoneTopbar', { Workspace: ['Admin', 'Seller'] }, function (c, p) {
+    const admin = p.Workspace === 'Admin';
+    const bell = frame({ name: 'notifications', w: 48, h: 48 }, [inst('IconButton', { Variant: 'Ghost', Size: 'Touch', State: 'Default', Icon: { icon: 'bell' } })]);
+    const badge = inst('CountBadge', { Tone: 'Critical', Count: '4' }, { name: 'unread' }); bell.appendChild(badge); badge.x = 26; badge.y = 4;
+    const mark = brandMark(28); mark.name = 'brand-mark';
+    body(c, { dir: 'H', w: 360, h: 'size/topbar-phone', px: 'space/2', gap: 'space/2', align: 'center', fill: 'bg/surface', stroke: 'border/default', sides: ['bottom'] }, [
+      inst('IconButton', { Variant: 'Ghost', Size: 'Touch', State: 'Default', Icon: { icon: 'menu' } }, { name: 'menu-button' }),
+      mark,
+      text(admin ? 'Admin' : 'Seller Centre', 'Heading/H2', 'text/primary', { name: 'panel-name', sizeH: 'FILL', truncate: true }),
+      bell,
+      frame({ name: 'account-button', dir: 'H', w: 48, h: 48, align: 'center', justify: 'center' }, [inst('IdentityTile', { Tone: 'Blue', Shape: 'Circle', Initials: admin ? 'LH' : 'YK' }, { name: 'account' })]),
+    ]);
+    // Count and Initials are properties of the nested CountBadge and IdentityTile; exposing them shows both on every PhoneTopbar instance.
+    safe('expose count', function () { c.findOne(function (n) { return n.name === 'unread'; }).isExposedInstance = true; });
+    safe('expose initials', function () { c.findOne(function (n) { return n.name === 'account'; }).isExposedInstance = true; });
+  }, { width: 760, gapX: 40, desc: 'Phone top bar (below 760 px, D16) for both panels; the desktop Topbar is unchanged. 56 px high (size/topbar-phone), 360 wide here and fill width in screens. Auto layout, horizontal, 8 px side padding and 8 px gap, centred vertically, bg/surface with a bottom border/default. Workspace picks the panel name: Admin or Seller Centre. Layers in order: menu-button (IconButton Ghost, Touch, icon menu), brand-mark, panel-name (Heading/H2, fills the width, truncates), notifications (48 px frame: bell IconButton plus a Critical CountBadge at x26 y4) and account-button (48 px frame with a Circle IdentityTile). Count (CountBadge) and Initials (IdentityTile) are exposed from the nested instances. Accessibility: the bar is a <header> banner landmark. Menu button: aria-label "Open menu", aria-expanded, aria-controls the drawer id, aria-haspopup="dialog". Bell: label "Notifications, N unread". Account button: label "Account". Focus order is menu, notifications, account; when the drawer closes, focus returns to the menu button. RTL mirrors the layer order (the menu button sits at inline-start, the side the drawer opens from); icons do not mirror. The limited seller shell has no drawer, so it omits the menu-button slot (the brand mark then starts the bar). The acting-as banner sits below the topbar in the layout, never inside it, in every shell state; it is stacked above the scrim, the drawer and the bottom bar.' });
+  componentBlock(root, ptb, { title: 'PhoneTopbar', summary: 'The 56 px bar at the top of every phone screen in both panels. The desktop Topbar (breadcrumb, search, market) is unchanged.',
+    use: ['Below 760 px in the Admin and Seller panels, above the page content.', 'Phone landscape wider than 760 px uses the desktop Topbar and the 72 px rail.'],
+    props: ['Workspace: Admin or Seller', 'Count: unread number on the bell (exposed from the nested CountBadge)', 'Initials: person initials (exposed from the nested IdentityTile)'],
+    a11y: ['<header> banner landmark; the page has one banner.', 'Menu button: aria-label "Open menu", aria-expanded, aria-controls the drawer id, aria-haspopup="dialog".', 'Bell label "Notifications, N unread"; account button label "Account".', 'Focus order: menu, notifications, account. Focus returns to the menu button when the drawer closes.', 'RTL mirrors the layer order; icons do not mirror.'],
+    dont: ['A menu-button slot on the limited seller shell (it has no drawer).', 'The acting-as banner inside the bar: it sits below the topbar in the layout and is stacked above the scrim, the drawer and the bottom bar.', 'panel-left for the menu button: that icon stays for the NavItem collapse.'] });
+  }
   if (!have.NavDrawer) {
   const drawer = makeSet('NavDrawer', { Workspace: ['Admin', 'Seller'] }, function (c, p) {
     const seller = p.Workspace === 'Seller';
@@ -134,7 +157,7 @@ function buildMobileNav(root, have) {
       add(c, frame({ name: 'footer', dir: 'V', pad: 'space/3', stroke: 'border/default', sides: ['top'], sizeH: 'FILL' }, [drawerRow(['nav-help', 'Help & resources', 'help-circle'], false)]));
       touchMode(c);
     });
-  }, { width: 760, desc: 'Phone navigation drawer (below 760 px, D16). Same nav groups and order as the Sidebar, so nothing is phone-only; Workspace picks Admin or Seller items. Opens from the inline-start edge (left in LTR, right in RTL), 304 wide, full height. Rows are 48 px (size/control under touch density). The header has the panel mark and a close icon button: aria-label "Close menu". Show it over a scrim (text/primary at 50%; the scrim belongs to the screen, not to this component): tapping the scrim, Esc or any link closes the drawer and focus returns to the menu button. While open the page behind is inert and the drawer is aria-modal with a focus trap. It renders only the already-filtered nav config. Seller opens it from the menu button or from More on the bottom tab bar.' });
+  }, { width: 760, desc: 'Phone navigation drawer (below 760 px, D16). Same nav groups and order as the Sidebar, so nothing is phone-only; Workspace picks Admin or Seller items. Opens from the inline-start edge (left in LTR, right in RTL), 304 wide, full height. Rows are 48 px (size/control under touch density). The header has the panel mark and a close icon button: aria-label "Close menu". Show it over a scrim (bg/scrim; the scrim belongs to the screen, not to this component): tapping the scrim, Esc or any link closes the drawer and focus returns to the menu button. While open the page behind is inert and the drawer is aria-modal with a focus trap. It renders only the already-filtered nav config. Seller opens it from the menu button or from More on the bottom tab bar.' });
   componentBlock(root, drawer, { title: 'NavDrawer', summary: 'Both panels open the same navigation as a drawer on phones. It is the Sidebar for widths below 760 px, in touch density.',
     use: ['Below 760 px, from the menu button in the 56 px topbar (Admin and Seller) or from More on the BottomTabBar (Seller).', 'Phone landscape wider than 760 px uses the 72 px rail instead; there is no rail below 760 px.'],
     props: ['Workspace: Admin or Seller', 'Close is an IconButton instance (Touch size)'],

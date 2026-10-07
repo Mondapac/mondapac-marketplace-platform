@@ -85,33 +85,74 @@ function compareExport(files, label) {
 }
 
 
-// ---- Update library: simulate a file built by plugin 1.0.0 by taking the 1.5.0 additions out of a fresh build
+// ---- Update library: simulate older files by taking later additions out of a fresh build.
+// 1.0.0 lacks everything from 1.5.0 and 1.6.0; 1.5.0 lacks the 1.6.0 items and still has the old loose phone topbar
+// frame and the text/primary 50% scrim in its phone templates.
 const NEW_TEMPLATES = ['Seller · Home (phone)', 'Seller · Menu open (phone)', 'Admin · Menu open (phone)'];
-const NEW_SETS = ['NavDrawer', 'BottomTabBar'];
+const SETS_150 = ['NavDrawer', 'BottomTabBar'];
+const SETS_160 = ['PhoneTopbar'];
 function allNodes(M) { const out = []; M.ROOT.children.forEach((p) => p.findAll(() => true).forEach((n) => out.push(n))); return out; }
+function removeVars(M, collPrefix, names) { [...M.COLLS.values()].filter((c) => c.name.indexOf(collPrefix) === 0).forEach((c) => { c.variableIds.map((id) => M.VARS.get(id)).filter((v) => names.includes(v.name)).forEach((v) => v.remove()); }); }
+function removeRows(M, texts) { allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && !n.removed && n.findOne((x) => x.type === 'TEXT' && texts.includes(x.characters))).forEach((n) => n.remove()); }
+function removeSets(M, names) { allNodes(M).filter((n) => n.type === 'FRAME' && names.includes(n.name) && n.parent.name === 'Navigation & shell').forEach((n) => n.remove()); }
+function removeMenuIcon(M) { allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'menu' && n.parent && n.parent.name === 'Icons').forEach((n) => n.remove()); }
+function setCover(M, version) { const cover = allNodes(M).filter((n) => n.type === 'FRAME' && (n.name === 'Version' || n.name === 'Updated') && n.children.length === 2); cover.forEach((f) => { f.children[1].characters = f.name === 'Version' ? version : (version === '1.0.0' ? '1 Oct 2026' : f.children[1].characters); }); return cover.length; }
 function downgradeTo10(M) {
-  const all = allNodes(M);
-  all.filter((n) => n.type === 'FRAME' && NEW_TEMPLATES.includes(n.name) && !n.removed).forEach((n) => n.remove());
-  allNodes(M).filter((n) => n.type === 'FRAME' && NEW_SETS.includes(n.name) && n.parent.name === 'Navigation & shell').forEach((n) => n.remove());
-  [...M.COLLS.values()].filter((c) => c.name.indexOf('Dimension') === 0).forEach((c) => { c.variableIds.map((id) => M.VARS.get(id)).filter((v) => v.name === 'size/bottom-bar').forEach((v) => v.remove()); });
-  allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && (x.characters === 'size/bottom-bar' || x.characters === SPEC_VERSION))).forEach((n) => n.remove());
-  const cover = allNodes(M).filter((n) => n.type === 'FRAME' && (n.name === 'Version' || n.name === 'Updated') && n.children.length === 2);
-  cover.forEach((f) => { f.children[1].characters = f.name === 'Version' ? '1.0.0' : '1 Oct 2026'; });
+  allNodes(M).filter((n) => n.type === 'FRAME' && NEW_TEMPLATES.includes(n.name) && !n.removed).forEach((n) => n.remove());
+  removeSets(M, SETS_150.concat(SETS_160));
+  removeVars(M, 'Dimension', ['size/bottom-bar', 'size/topbar-phone']);
+  removeVars(M, 'Color', ['bg/scrim']);
+  removeMenuIcon(M);
+  removeRows(M, ['size/bottom-bar', 'size/topbar-phone', '1.5.0', SPEC_VERSION]);
+  const n = setCover(M, '1.0.0');
   M.ROOT.setPluginData('version', '1.0.0');
-  return cover.length;
+  return n;
+}
+// The 1.5.0 loose topbar: horizontal, 56 high, with the four layers the plugin named.
+function legacyFrame(M) {
+  const old = M.figma.createFrame(); old.name = 'Topbar · phone'; old.layoutMode = 'HORIZONTAL'; old.resize(360, 56);
+  ['menu-button', 'panel-name', 'notifications', 'account-button'].forEach((n) => { const k = M.figma.createRectangle(); k.name = n; old.appendChild(k); });
+  return old;
+}
+// A 1.5.0 file: PhoneTopbar instances become the old loose frame, scrims go back to text/primary at 50%.
+function downgradeTo15(M) {
+  const colorColl = [...M.COLLS.values()].find((c) => c.name === 'Color');
+  const textPrimary = [...M.VARS.values()].find((v) => v.name === 'text/primary' && v.variableCollectionId === colorColl.id);
+  const legacy = { ids: new Set(), frames: 0, scrims: [] };
+  allNodes(M).filter((n) => n.type === 'FRAME' && NEW_TEMPLATES.includes(n.name)).forEach((scr) => {
+    const tb = scr.children.find((c) => c.type === 'INSTANCE' && c.name === 'PhoneTopbar');
+    const old = legacyFrame(M);
+    scr.insertChild(0, old); tb.remove();
+    legacy.ids.add(old.id); old.children.forEach((k) => legacy.ids.add(k.id)); legacy.frames++;
+    const scrim = scr.children.find((c) => c.type === 'FRAME' && c.name === 'scrim');
+    if (scrim) { const p = M.figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', textPrimary); p.opacity = 0.5; scrim.fills = [p]; legacy.scrims.push(scrim.id); }
+  });
+  const nd = allNodes(M).find((n) => n.type === 'COMPONENT_SET' && n.name === 'NavDrawer'); nd.description = nd.description.replace('scrim (bg/scrim; the scrim belongs', 'scrim (text/primary at 50%; the scrim belongs');
+  removeSets(M, SETS_160);
+  removeVars(M, 'Dimension', ['size/topbar-phone']);
+  removeVars(M, 'Color', ['bg/scrim']);
+  removeMenuIcon(M);
+  removeRows(M, ['size/topbar-phone', SPEC_VERSION]);
+  setCover(M, '1.5.0');
+  M.ROOT.setPluginData('version', '1.5.0');
+  return legacy;
 }
 function countNamed(M, type, name) { return allNodes(M).filter((n) => n.type === type && n.name === name).length; }
 function textCount(M, str) { return allNodes(M).filter((n) => n.type === 'TEXT' && n.characters === str).length; }
+const hex8 = (c) => '#' + [c.r, c.g, c.b].concat(c.a === undefined ? [] : [c.a]).map((x) => ('0' + Math.round(x * 255).toString(16)).slice(-2).toUpperCase()).join('');
 
-async function updateScenario(label, opts) {
+async function updateScenario(label, opts, from) {
   console.log('\n■ ' + label);
+  const from10 = from === '1.0.0';
   const M = start(opts);
   let r = await send(M, { type: 'build' });
   check(!r.err, 'build finished' + (r.err ? ': ' + r.err.message : ''));
-  check(downgradeTo10(M) === 2, 'simulated a 1.0.0 library (new sets, templates, token, changelog row and version removed)');
-  check(countNamed(M, 'COMPONENT_SET', 'NavDrawer') === 0 && countNamed(M, 'COMPONENT_SET', 'BottomTabBar') === 0 && !allNodes(M).some((n) => n.name === 'Seller · Home (phone)'), '1.0.0 library has none of the new items');
-  const dimVars = () => [...M.VARS.values()].filter((v) => v.name === 'size/bottom-bar');
-  check(dimVars().length === 0, 'size/bottom-bar is missing before the update');
+  let legacy = null;
+  if (from10) check(downgradeTo10(M) === 2, 'simulated a 1.0.0 library (new sets, templates, tokens, icon, changelog rows and version removed)');
+  else { legacy = downgradeTo15(M); check(legacy.frames === 3 && legacy.scrims.length === 2, 'simulated a 1.5.0 library (3 loose topbar frames, 2 text/primary 50% scrims, no 1.6.0 items)'); }
+  check(countNamed(M, 'COMPONENT_SET', 'PhoneTopbar') === 0 && allNodes(M).filter((n) => n.name === 'Icon/menu').length === 0 && ![...M.VARS.values()].some((v) => v.name === 'bg/scrim' || v.name === 'size/topbar-phone'), 'the file has none of the 1.6.0 items');
+  if (from10) check(countNamed(M, 'COMPONENT_SET', 'NavDrawer') === 0 && countNamed(M, 'COMPONENT_SET', 'BottomTabBar') === 0 && !allNodes(M).some((n) => n.name === 'Seller · Home (phone)'), '1.0.0 library has none of the 1.5.0 items either');
+  const vars = (name) => [...M.VARS.values()].filter((v) => v.name === name);
   const before = allNodes(M); const beforeIds = new Set(before.map((n) => n.id)); const nVars = M.VARS.size;
   const snap = (n) => JSON.stringify([n.name, n.fills, n.strokes, n.boundVariables, n.type === 'TEXT' ? n.characters : null]);
   const beforeSnap = new Map(before.map((n) => [n.id, snap(n)]));
@@ -120,40 +161,76 @@ async function updateScenario(label, opts) {
   if (r.done) console.log('    ' + r.done.report.join('\n    '));
   const warn = (r.done ? r.done.report : []).filter((l) => l.indexOf('⚠') === 0);
   check(warn.length === 0, 'no warnings in the update report');
-  check(countNamed(M, 'COMPONENT_SET', 'NavDrawer') === 1 && countNamed(M, 'COMPONENT_SET', 'BottomTabBar') === 1, 'NavDrawer and BottomTabBar exist once each');
+  const added = r.done ? r.done.added : [];
+  check(countNamed(M, 'COMPONENT_SET', 'NavDrawer') === 1 && countNamed(M, 'COMPONENT_SET', 'BottomTabBar') === 1 && countNamed(M, 'COMPONENT_SET', 'PhoneTopbar') === 1, 'NavDrawer, BottomTabBar and PhoneTopbar exist once each');
   check(NEW_TEMPLATES.every((n) => allNodes(M).filter((x) => x.type === 'FRAME' && x.name === n).length === 1), 'the 3 phone templates exist once each');
-  const bb = dimVars();
-  const wantVars = opts.maxModes > 1 ? 1 : 2;
-  check(bb.length === wantVars && bb.every((v) => v.scopes.join() === 'WIDTH_HEIGHT' && v.codeSyntax.WEB === 'var(--mp-size-bottom-bar)'), 'size/bottom-bar added to ' + wantVars + ' Dimension collection(s) with scope and code syntax');
+  const nColl = opts.maxModes > 1 ? 1 : 2;
+  const dimNames = from10 ? ['size/bottom-bar', 'size/topbar-phone'] : ['size/topbar-phone'];
   const dc = [...M.COLLS.values()].find((c) => c.name === 'Dimension');
-  const v0 = bb.find((v) => v.variableCollectionId === dc.id);
-  check(v0 && dc.modes.every((m) => v0.valuesByMode[m.modeId] === 64 || v0.valuesByMode[m.modeId] === undefined), 'size/bottom-bar is 64 in desktop and touch');
-  check(M.VARS.size === nVars + wantVars, 'exactly ' + wantVars + ' variable(s) added (' + (M.VARS.size - nVars) + ')');
+  [['size/bottom-bar', 64], ['size/topbar-phone', 56]].forEach(function (d) {
+    const vs = vars(d[0]);
+    check(vs.length === nColl && vs.every((v) => v.scopes.join() === 'WIDTH_HEIGHT' && v.codeSyntax.WEB === 'var(--mp-size-' + d[0].slice(5) + ')'), d[0] + ' exists in ' + nColl + ' Dimension collection(s) with scope and code syntax');
+    const v0 = vs.find((v) => v.variableCollectionId === dc.id);
+    check(v0 && dc.modes.every((m) => v0.valuesByMode[m.modeId] === d[1] || v0.valuesByMode[m.modeId] === undefined), d[0] + ' is ' + d[1] + ' in desktop and touch');
+  });
+  const sc = vars('bg/scrim');
+  check(sc.length === nColl && sc.every((v) => v.scopes.join() === 'FRAME_FILL,SHAPE_FILL' && v.codeSyntax.WEB === 'var(--mp-color-bg-scrim)' && v.description.indexOf('Overlay behind drawers and modals; alpha is part of the value') === 0), 'bg/scrim exists in ' + nColl + ' Color collection(s) with scope, code syntax and description');
+  const cc = [...M.COLLS.values()].find((c) => c.name === 'Color'); const cd = [...M.COLLS.values()].find((c) => c.name === 'Color · Dark');
+  const lightV = sc.find((v) => v.variableCollectionId === cc.id); const darkV = cd ? sc.find((v) => v.variableCollectionId === cd.id) : lightV;
+  const lv = lightV.valuesByMode[cc.modes[0].modeId]; const dv = darkV.valuesByMode[(cd || cc).modes[cd ? 0 : 1].modeId];
+  check(lv.type !== 'VARIABLE_ALIAS' && hex8(lv) === '#11182780' && dv.type !== 'VARIABLE_ALIAS' && hex8(dv) === '#00000099', 'bg/scrim holds the hex8 literals #11182780 (light) and #00000099 (dark), not aliases');
+  check(M.VARS.size === nVars + nColl * (dimNames.length + 1), 'exactly ' + (nColl * (dimNames.length + 1)) + ' variable(s) added (' + (M.VARS.size - nVars) + ')');
+  check(allNodes(M).filter((n) => n.type === 'COMPONENT' && n.name === 'Icon/menu').length === 1, 'icon menu added once');
+  const topbars = NEW_TEMPLATES.map((n) => allNodes(M).find((x) => x.type === 'FRAME' && x.name === n).children[0]);
+  check(topbars.every((t) => t.type === 'INSTANCE' && t.name === 'PhoneTopbar') && !allNodes(M).some((n) => n.name === 'Topbar · phone'), 'every phone template starts with a PhoneTopbar instance and no loose topbar frame is left');
+  const scrims = allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'scrim' && n.width === 360);
+  const scrimV = sc.find((v) => v.variableCollectionId === cc.id);
+  check(scrims.length === 2 && scrims.every((n) => n.fills.length === 1 && n.fills[0].boundVariables.color.id === scrimV.id && (n.fills[0].opacity === undefined || n.fills[0].opacity === 1)), 'both drawer scrims are bound to bg/scrim at 100% opacity');
+  if (!from10) {
+    check(added.some((a) => a === 'bind drawer scrim to bg/scrim (2 templates)') && added.some((a) => a === 'swap phone topbar for PhoneTopbar (3 templates)'), 'the report names both in-place fixes');
+    const ndesc = allNodes(M).find((n) => n.type === 'COMPONENT_SET' && n.name === 'NavDrawer').description;
+    check(added.includes('update NavDrawer scrim note') && ndesc.includes('scrim (bg/scrim; the scrim belongs') && !ndesc.includes('text/primary at 50%'), 'NavDrawer description scrim note updated in place and reported');
+  } else check(!added.some((a) => /bind drawer scrim|swap phone topbar|NavDrawer scrim note/.test(a)), '1.0.0 path builds the templates new, so there is nothing to fix in place');
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
+  check(allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === '1.5.0')).length === 1, 'one changelog row for 1.5.0');
+  check(allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === 'size/topbar-phone')).length === 1, 'one size table row for size/topbar-phone');
   check(M.ROOT.getPluginData('version') === SPEC_VERSION, 'file version is ' + SPEC_VERSION);
   const after = allNodes(M);
   const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
-  check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
-  const changed = before.filter((n) => M.byId.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
-  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
+  if (from10) check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
+  else check(gone.length === legacy.ids.size && gone.length === 15 && gone.every((n) => legacy.ids.has(n.id)), 'the only deletions are the 3 old phone topbar frames and their layers (' + gone.length + ')');
+  const scrimIds = new Set(legacy ? legacy.scrims : []);
+  const changed = before.filter((n) => M.byId.has(n.id) && !scrimIds.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date' + (legacy ? ' and the 2 scrims' : '') + ' (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
   const fresh = after.filter((n) => !beforeIds.has(n.id));
   const tops = fresh.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
-  const okTops = new Set(NEW_TEMPLATES.concat(NEW_SETS, ['Row']));
+  const okTops = new Set((from10 ? NEW_TEMPLATES.concat(SETS_150) : []).concat(SETS_160, ['Row', 'menu']));
   const stray = tops.filter((n) => !okTops.has(n));
   check(stray.length === 0, 'new layers sit only in the expected places (' + tops.length + ' roots' + (stray.length ? '; unexpected: ' + stray.join(', ') : '') + ')');
-  check(after.length === before.length + fresh.length, 'existing node count otherwise unchanged (' + before.length + ' + ' + fresh.length + ' = ' + after.length + ')');
+  check(after.length === before.length - gone.length + fresh.length, 'existing node count otherwise unchanged (' + before.length + ' - ' + gone.length + ' + ' + fresh.length + ' = ' + after.length + ')');
   audit(M, label);
   const ar = await send(M, { type: 'audit' });
   const bad = ar.done ? ar.done.report.filter((l) => l.indexOf('⚠') === 0) : ['no audit'];
   check(bad.length === 0, 'Audit file has zero warnings after the update' + (bad.length ? ': ' + bad.join(' | ') : ''));
+  // both themes: switch a phone template to dark and check no paint is left on the light collection
+  const tplDrawer = allNodes(M).find((n) => n.type === 'FRAME' && n.name === 'Seller · Menu open (phone)');
+  const clone = tplDrawer.clone(); clone.name = 'tmp dark';
+  M.figma.currentPage.selection = [];
+  await M.figma.setCurrentPageAsync(clone.page()); M.figma.currentPage.selection = [clone];
+  r = await send(M, { type: 'theme', theme: 'dark' });
+  const lightColl = [...M.COLLS.values()].find((c) => c.name === 'Color');
+  const leaks = [clone].concat(clone.findAll(() => true)).filter((n) => (n._fills || []).concat(n._strokes || []).some((p) => p.boundVariables && !n.instAncestor() && M.VARS.get(p.boundVariables.color.id).variableCollectionId === lightColl.id && !M.COLLS.get(lightColl.id).modes[1]));
+  check(!r.err, 'Dark theme applies to the updated phone template' + (r.err ? ': ' + r.err.message : ''));
+  check(leaks.length === 0 || lightColl.modes.length > 1, 'dark copy of the phone template uses only dark variables (' + leaks.length + ' light leftovers)');
+  clone.remove();
   // second run is a no-op
-  const ids2 = new Set(after.map((n) => n.id)); const vars2 = M.VARS.size;
+  const ids2 = new Set(after.filter((n) => !n.removed).map((n) => n.id)); const vars2 = M.VARS.size; const n2 = allNodes(M).length;
   r = await send(M, { type: 'update' });
   check(!r.err && r.done && r.done.added.length === 0, 'second Update library adds nothing' + (r.err ? ': ' + r.err.message : ''));
   const after2 = allNodes(M);
-  check(after2.length === after.length && after2.every((n) => ids2.has(n.id)) && M.VARS.size === vars2, 'second Update library changes no layer and no variable');
+  check(after2.length === n2 && after2.every((n) => ids2.has(n.id)) && M.VARS.size === vars2, 'second Update library changes no layer and no variable');
   r = await send(M, { type: 'export', version: SPEC_VERSION });
-  if (r.done) compareExport(r.done.files, label + ' export');
+  if (r.done) { compareExport(r.done.files, label + ' export'); check(r.done.files['color.light.json'].includes('"$value": "#11182780"') && r.done.files['color.dark.json'].includes('"$value": "#00000099"') && r.done.files['tokens.css'].includes('--mp-color-bg-scrim: #11182780;') && r.done.files['tokens.css'].includes('--mp-size-topbar-phone: 56px;'), 'export writes bg/scrim as hex8 and size/topbar-phone'); }
   return M;
 }
 
@@ -255,8 +332,10 @@ async function updateScenario(label, opts) {
   check(r.err && /empty/.test(r.err.message), 'build refuses a non-empty file');
 
   // 5 · Update library on a 1.0.0-style file (Starter layout, then modes layout)
-  await updateScenario('Scenario 5 · Update library on a 1.0.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 });
-  await updateScenario('Scenario 6 · Update library on a 1.0.0 file (modes, full page layout)', { maxModes: 4 });
+  await updateScenario('Scenario 5a · Update library on a 1.0.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 }, '1.0.0');
+  await updateScenario('Scenario 5b · Update library on a 1.5.0 file (Starter plan, parallel collections)', { maxModes: 1, maxPages: 3 }, '1.5.0');
+  await updateScenario('Scenario 6a · Update library on a 1.0.0 file (modes, full page layout)', { maxModes: 4 }, '1.0.0');
+  await updateScenario('Scenario 6b · Update library on a 1.5.0 file (modes, full page layout)', { maxModes: 4 }, '1.5.0');
 
   // 7 · Update library refuses files it must not touch
   console.log('\n■ Scenario 7 · Update library guards');
@@ -271,7 +350,7 @@ async function updateScenario(label, opts) {
   r = await send(M, { type: 'build' });
   const n0 = allNodes(M).length;
   r = await send(M, { type: 'update' });
-  check(!r.err && r.done.added.length === 0 && allNodes(M).length === n0, 'Update library on a current 1.5.0 file is a no-op');
+  check(!r.err && r.done.added.length === 0 && allNodes(M).length === n0, 'Update library on a current 1.6.0 file is a no-op');
   const drawerLists = () => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'items' && n.parent && n.parent.type === 'COMPONENT' && n.parent.parent && n.parent.parent.name === 'NavDrawer');
   check(drawerLists().length === 2 && drawerLists().every((l) => l.itemSpacing === 0), 'NavDrawer item lists have no gap (both variants)');
   drawerLists().forEach((l) => { l.itemSpacing = 2; });
@@ -279,6 +358,48 @@ async function updateScenario(label, opts) {
   check(!r.err && r.done.added.some((a) => /fix NavDrawer item spacing \(2 variants\)/.test(a)) && drawerLists().every((l) => l.itemSpacing === 0) && allNodes(M).length === n0, 'Update library fixes the item gap of an earlier 1.5.0 NavDrawer without adding or removing layers');
   r = await send(M, { type: 'update' });
   check(!r.err && r.done.added.length === 0, 'and a second run is again a no-op');
+
+  // 8 · the in-place phone template fixes touch only what the plugin made
+  console.log('\n■ Scenario 8 · In-place fix guards (1.5.0 file)');
+  async function guardFile() {
+    const X = start({ maxModes: 1, maxPages: 3 });
+    await send(X, { type: 'build' });
+    const lg = downgradeTo15(X);
+    const tpl = (n) => allNodes(X).find((x) => x.type === 'FRAME' && x.name === n);
+    const bar = (n) => tpl(n).children.find((c) => c.name === 'Topbar · phone' || c.name === 'PhoneTopbar');
+    return { X, lg, tpl, bar };
+  }
+  let G = await guardFile();
+  let X = G.X;
+  // a. wrong shape in a tagged template; b. matching frame in an untagged screen; c. frame outside templates; d. topbar already gone; e. renamed template
+  const wrong = G.bar('Seller · Home (phone)'); wrong.children[3].remove();
+  G.tpl('Seller · Menu open (phone)').setPluginData('mondapac-ds', '');
+  const sellerHost = G.tpl('Seller · Home (phone)').parent; const outside = legacyFrame(X); sellerHost.appendChild(outside);
+  const gone = G.bar('Admin · Menu open (phone)'); gone.remove();
+  const untaggedOld = G.bar('Seller · Menu open (phone)');
+  r = await send(X, { type: 'update' });
+  check(!r.err && r.done, 'update runs on the guard file without error' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+  const rep = r.done ? r.done.report.concat(r.done.added) : [];
+  check(!wrong.removed && wrong.parent === G.tpl('Seller · Home (phone)') && rep.includes('ℹ skipped Topbar · phone in Seller · Home (phone): not the plugin\'s frame'), 'a Topbar · phone frame with the wrong shape in a plugin template survives and is reported');
+  check(!untaggedOld.removed && !rep.some((l) => /skipped Topbar · phone in Seller · Menu open/.test(l)), 'a matching frame inside an untagged screen survives');
+  check(!outside.removed && outside.parent === sellerHost, 'a matching frame outside the templates survives');
+  check(!G.tpl('Admin · Menu open (phone)').children.some((c) => c.name === 'PhoneTopbar'), 'a template whose old topbar is already gone does not get a PhoneTopbar re-added');
+  check(!rep.some((l) => /swap phone topbar/.test(l)), 'no swap is reported when nothing qualified');
+  check(rep.includes('bind drawer scrim to bg/scrim (1 templates)') || rep.some((l) => /bind drawer scrim to bg\/scrim \(\d templates\)/.test(l)), 'the scrim fix runs only on plugin templates (' + rep.filter((l) => /scrim to/.test(l)).join() + ')');
+  r = await send(X, { type: 'update' });
+  check(!r.err && r.done.added.length === 0, 'second update on the guard file adds nothing');
+  // renamed template: skipped without a crash, its old frame stays
+  G = await guardFile(); X = G.X;
+  const renamed = G.tpl('Seller · Home (phone)'); const renamedBar = G.bar('Seller · Home (phone)'); renamed.name = 'My own home';
+  r = await send(X, { type: 'update' });
+  check(!r.err && !renamedBar.removed && renamedBar.parent === renamed, 'a renamed phone template is skipped without a crash and keeps its topbar frame' + (r.err ? ': ' + r.err.message : ''));
+  check(r.done && r.done.added.includes('swap phone topbar for PhoneTopbar (2 templates)') && r.done.added.includes('bind drawer scrim to bg/scrim (2 templates)'), 'the report counts only the two templates that qualified');
+  // a PhoneTopbar set that is not the plugin's: no swap, clash reported
+  G = await guardFile(); X = G.X;
+  const mine = X.figma.createComponent(); mine.name = 'Workspace=Admin';
+  const theirs = X.figma.combineAsVariants([mine], X.figma.currentPage); theirs.name = 'PhoneTopbar';
+  r = await send(X, { type: 'update' });
+  check(!r.err && r.done && r.done.report.some((l) => /skipped phone topbar swap: a PhoneTopbar component set that is not the plugin's/.test(l)) && !r.done.added.some((l) => /swap phone topbar/.test(l)) && allNodes(X).filter((n) => n.name === 'Topbar · phone').length === 3, 'a PhoneTopbar set that is not the plugin\'s blocks the swap and is reported' + (r.err ? ': ' + r.err.message : ''));
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
   process.exitCode = failures ? 1 : 0;

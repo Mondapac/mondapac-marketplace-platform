@@ -120,6 +120,10 @@
     "bottom-bar": {
       "$type": "dimension",
       "$value": "64px"
+    },
+    "topbar-phone": {
+      "$type": "dimension",
+      "$value": "56px"
     }
   },
   "border": {
