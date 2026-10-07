@@ -425,6 +425,8 @@ function state181(M, label, skipOverlap) {
   check(shell.length === 22 && low.length === 0, label + ': every Panel desktop page is at least 900 high (' + shell.length + ' pages, ' + low.length + ' lower' + (low.length ? ': ' + low.map((f) => f.name + ' ' + f.height).join(', ') : '') + ')');
   const hugging = shell.filter((f) => !FIXED_900.includes(f.name));
   check(hugging.length === 18 && hugging.every((f) => f.minHeight === 900 && f.layoutSizingVertical === 'HUG') && FIXED_900.every((n) => { const f = frameNamed(M, n)[0]; return f.height === 900 && f.layoutSizingVertical === 'FIXED'; }), label + ': the 18 hugging Panel pages have minHeight 900, the 4 fixed pages stay 900 high');
+  const panelNames = SHELL_ADMIN.concat(SHELL_SELLER); const extraMin = topLevel(M).map((e) => e[1]).filter((n) => n.minHeight && !panelNames.includes(n.name));
+  check(extraMin.length === 0, label + ': no top-level frame outside the Panel desktop pages has a minimum height' + (extraMin.length ? ' (' + extraMin.map((n) => n.name).join(', ') + ')' : ''));
   check(shell.every((f) => f.children[0].name === 'Sidebar' && f.children[0].layoutSizingVertical === 'FILL'), label + ': the Sidebar still fills the height of each Panel page');
   const main = phoneMain(M); const phone = main.parent;
   const cards = main.children.filter((c) => c.type === 'FRAME' && ['head', 'role', 'badges'].join() === c.children.map((k) => k.name).join());

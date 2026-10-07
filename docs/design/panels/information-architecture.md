@@ -39,7 +39,7 @@ Every screen in section 5 uses one of these. "In Figma" means a template page al
 | T5 | **Auth** (no shell; phone first) | Sign in, sign up, reset, two-step, invitations | — | 1.1.0 |
 | T6 | **Setup step / Form** (grouped cards, `FormActionBar`, error summary) | Seller setup steps, store profile, product and offer forms, admin edit | — | 1.3.0 (`Seller · Setup step`), 1.4.0 (`Seller · Store profile`) |
 | T7 | **Settings** (two-column sections of `SettingRow`) | Market settings, seller settings, notifications | — | 1.4.0 (`Shared · Settings`) |
-| T8 | **Members and roles** (tabs Members, Roles; role editor) | Admin "Roles & permissions", Seller "Team & roles" | — | 1.8.0 (Members, Roles) / 1.8.2 (Sellers list, role editor, D4-D6) (`Shared · Members`, `Shared · Roles`, `Shared · Role editor`) |
+| T8 | **Members and roles** (tabs Members, Roles; role editor) | Admin "Roles & permissions", Seller "Team & roles" | — | 1.8.0 (Members, Roles) / 1.8.3 (Sellers list, role editor, D4-D6) (`Shared · Members`, `Shared · Roles`, `Shared · Role editor`) |
 | T9 | **System states** (no access, not found, empty, error; plus `Shared · Account security`) | Every panel route | — | 1.8.0 (`Shared · No access`, `EmptyState`) |
 
 ## 3. Navigation config
