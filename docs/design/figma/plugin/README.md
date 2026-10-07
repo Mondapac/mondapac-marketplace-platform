@@ -35,7 +35,7 @@ Process, naming and ownership rules are in [`../README.md`](../README.md) (Persi
 python3 tokens_spec.py   # only when changing the seed spec; writes spec.json, contrast-report.json, ../../tokens/*
 python3 icons.py         # only when changing icons; writes icons.json
 python3 build.py         # bundles src/*.js + spec.json + icons.json + contrast-report.json into code.js
-node test/run.js         # strict Figma API mock: 7 scenarios (5 and 6 each update from 1.0.0 and from 1.5.0), audits and token round-trip
+node test/run.js         # strict Figma API mock: 8 scenarios (5 and 6 each update from 1.0.0 and from 1.5.0; 8 checks the update guards), audits and token round-trip
 ```
 
 - `src/42_templates_phone.js` phone templates (360 px, release 1.5.0; PhoneTopbar instance and `bg/scrim` scrim since 1.6.0) · `src/00_core.js` variables, styles, layout helpers · `10_components_core.js` icons, variant sets, instances, doc helpers
