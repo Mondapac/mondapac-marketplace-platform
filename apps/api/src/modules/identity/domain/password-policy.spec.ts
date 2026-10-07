@@ -88,4 +88,21 @@ describe('checkNewPassword (identity design 6.5)', () => {
       rejected('length'),
     );
   });
+
+  it.each([
+    ['a lone high surrogate', 0xd800],
+    ['a lone low surrogate', 0xdc00],
+  ])('refuses a password holding %s (Hassan L3), with the length rule', (_case, unit) => {
+    const password = `correct horse ${String.fromCharCode(unit)} battery`;
+
+    for (const rules of [AU, ZZ]) {
+      expect(checkNewPassword(password, rules, IDENTITY, NOT_COMMON)).toEqual(rejected('length'));
+    }
+  });
+
+  it('accepts a well-formed surrogate pair', () => {
+    const password = `correct horse ${String.fromCodePoint(0x1f600)} battery`;
+
+    expect(checkNewPassword(password, ZZ, IDENTITY, NOT_COMMON).ok).toBe(true);
+  });
 });

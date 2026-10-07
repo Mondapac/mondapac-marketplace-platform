@@ -27,17 +27,41 @@ import {
 
 const FIELDS = ['email', 'password'] as const;
 
+/** At most this many unknown field names are echoed, then one {@link MORE_FIELDS} marker. */
+export const MAX_ECHOED_UNKNOWN_FIELDS = 10;
+/** The path of the marker that stands for the unknown fields not echoed (U+2026). */
+export const MORE_FIELDS = '\u2026';
+const MAX_ECHOED_NAME_CODE_POINTS = 64;
+/** Control and format characters (bidi overrides, zero-width marks...) and lone surrogates. */
+const UNSAFE_IN_NAME = /[\p{Cc}\p{Cf}\p{Cs}]/gu;
+
+/**
+ * A client-supplied field name made safe to echo (Hassan L2): lone surrogates and control or
+ * format characters become U+FFFD, and the name is cut to 64 code points (never inside a
+ * surrogate pair).
+ */
+export function echoedFieldName(name: string): string {
+  return Array.from(name.replace(UNSAFE_IN_NAME, '\uFFFD'))
+    .slice(0, MAX_ECHOED_NAME_CODE_POINTS)
+    .join('');
+}
+
 /** Checks the shape of the body; values are never echoed (identity design 5.2). */
 export function parseSignUpBody(body: unknown): RegisterCustomerInput | readonly FieldProblem[] {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return [{ path: '', code: 'type' }];
   }
   const record = body as Record<string, unknown>;
-  const problems: FieldProblem[] = Object.keys(record)
+  // An unknown field is refused, never stored: a customer gives no name (`ux.md` A2).
+  const unknown = Object.keys(record)
     .filter((key) => !(FIELDS as readonly string[]).includes(key))
-    .sort()
-    // An unknown field is refused, never stored: a customer gives no name (`ux.md` A2).
-    .map((key) => ({ path: key.slice(0, 64), code: 'unknown-field' }));
+    .sort();
+  const problems: FieldProblem[] = unknown
+    .slice(0, MAX_ECHOED_UNKNOWN_FIELDS)
+    .map((key) => ({ path: echoedFieldName(key), code: 'unknown-field' }));
+  if (unknown.length > MAX_ECHOED_UNKNOWN_FIELDS) {
+    problems.push({ path: MORE_FIELDS, code: 'unknown-field' });
+  }
   for (const field of FIELDS) {
     const value = record[field];
     if (value === undefined) problems.push({ path: field, code: 'required' });

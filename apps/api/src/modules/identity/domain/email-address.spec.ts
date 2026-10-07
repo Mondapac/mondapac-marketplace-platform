@@ -38,4 +38,28 @@ describe('parseEmailAddress (identity design 11.2; data design 3.3)', () => {
   ])('refuses an address %s', (_case, raw) => {
     expect(parseEmailAddress(raw)).toEqual({ ok: false, error: { code: 'email.invalid' } });
   });
+
+  // Hassan L3: format characters, line and paragraph separators, and ill-formed UTF-16.
+  it.each([
+    ['a zero-width space (U+200B)', 0x200b],
+    ['a zero-width non-joiner (U+200C)', 0x200c],
+    ['a zero-width joiner (U+200D)', 0x200d],
+    ['a byte-order mark (U+FEFF)', 0xfeff],
+    ['a soft hyphen (U+00AD)', 0xad],
+    ['a line separator (U+2028)', 0x2028],
+    ['a paragraph separator (U+2029)', 0x2029],
+    ['an Arabic letter mark (U+061C)', 0x61c],
+    ['a lone high surrogate', 0xd800],
+    ['a lone low surrogate', 0xdc00],
+  ])('refuses an address with %s', (_case, codePoint) => {
+    const raw = `cust${String.fromCharCode(codePoint)}omer@example.com`;
+
+    expect(parseEmailAddress(raw)).toEqual({ ok: false, error: { code: 'email.invalid' } });
+  });
+
+  it('accepts a well-formed astral character (a surrogate pair)', () => {
+    const raw = `cust${String.fromCodePoint(0x1f600)}omer@example.com`;
+
+    expect(parseEmailAddress(raw).ok).toBe(true);
+  });
 });

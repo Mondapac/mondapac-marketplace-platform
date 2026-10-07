@@ -1,4 +1,5 @@
 import { err, ok, type Result } from '@mondapac/shared-kernel';
+import { isWellFormedText } from './well-formed-text';
 
 /** The Market's password rules (identity design 6.5; the `identity.password` section). */
 export interface PasswordRules {
@@ -44,7 +45,13 @@ export function checkNewPassword(
   isCommon: (comparable: string) => boolean,
 ): Result<void, PasswordRejected> {
   const refuse = (rule: PasswordRule) => err({ code: 'password.rejected' as const, rule });
-  if (typeof plain !== 'string' || UTF8.encode(plain).length > MAX_PASSWORD_BYTES) {
+  // A lone surrogate cannot be encoded as UTF-8 without loss, so the hash would not be of what
+  // was typed (Hassan L3): refused with the input-size rule, like a non-string.
+  if (
+    typeof plain !== 'string' ||
+    !isWellFormedText(plain) ||
+    UTF8.encode(plain).length > MAX_PASSWORD_BYTES
+  ) {
     return refuse('length');
   }
   const normalized = plain.normalize('NFKC');
