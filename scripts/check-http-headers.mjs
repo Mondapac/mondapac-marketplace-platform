@@ -32,20 +32,31 @@ const probes = [
 
 let failures = 0;
 for (const probe of probes) {
-  const response = await probe.request();
   const problems = [];
-  if (response.status !== probe.status)
-    problems.push(`status ${response.status}, expected ${probe.status}`);
-  for (const [name, value] of Object.entries(EXPECTED)) {
-    const actual = response.headers.get(name);
-    if (actual !== value) problems.push(`${name}: ${actual ?? '(missing)'}, expected ${value}`);
+  let response;
+  try {
+    response = await probe.request();
+  } catch (error) {
+    problems.push(`request failed: ${error.cause?.code ?? error.message}`);
   }
-  for (const name of ABSENT) {
-    if (response.headers.has(name)) problems.push(`${name} must not be sent`);
+  if (response) {
+    if (response.status !== probe.status) {
+      problems.push(`status ${response.status}, expected ${probe.status}`);
+    }
+    for (const [name, value] of Object.entries(EXPECTED)) {
+      const actual = response.headers.get(name);
+      if (actual !== value) problems.push(`${name}: ${actual ?? '(missing)'}, expected ${value}`);
+    }
+    for (const name of ABSENT) {
+      if (response.headers.has(name)) problems.push(`${name} must not be sent`);
+    }
   }
   failures += problems.length;
-  console.log(
-    problems.length === 0 ? `ok   ${probe.name}` : `FAIL ${probe.name}\n  ${problems.join('\n  ')}`,
-  );
+  if (problems.length === 0) {
+    console.log(`ok   ${probe.name}`);
+  } else {
+    // A GitHub Actions annotation, so a failure shows on the pull request.
+    console.log(`::error title=HTTP headers::${probe.name}: ${problems.join('; ')}`);
+  }
 }
 process.exit(failures === 0 ? 0 : 1);
