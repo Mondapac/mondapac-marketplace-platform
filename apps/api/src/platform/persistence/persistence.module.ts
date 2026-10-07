@@ -16,7 +16,8 @@ import { ID_GENERATOR } from '../ids/ids.module';
 import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from '../market-context/market-context.factory';
 import { JOB_LOCK } from '../scheduler/job-lock';
-import { UNIT_OF_WORK } from '../unit-of-work/unit-of-work';
+import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
+import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AdvisoryJobLock } from './advisory-job-lock';
 import { DatabaseProbe } from './database-probe';
 import { createGuardedClient, GUARDED_CLIENT, type GuardedClient } from './guarded-client';
@@ -26,6 +27,7 @@ import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
 import { PrismaService } from './prisma.service';
+import { PrismaSubjectKeyStore } from './prisma-subject-key-store';
 import { PrismaUnitOfWork } from './prisma-unit-of-work';
 
 /** The generated map, checked against the shape the guard reads. */
@@ -106,6 +108,20 @@ export class PersistenceModule {
         new PrismaOutboxWriterFactory(modelMap, prisma, catalogue, ids, permissionKeys).forModule(
           module,
         ),
+    };
+  }
+
+  /**
+   * The key table of the SubjectKeyService (foundations 4, row 13), bound only by
+   * `SubjectKeysModule`: the store is not exported, so no module can read wrapped keys past
+   * the service.
+   */
+  static subjectKeyStore(): FactoryProvider<SubjectKeyStore> {
+    return {
+      provide: SUBJECT_KEY_STORE,
+      inject: [PrismaService, UNIT_OF_WORK],
+      useFactory: (prisma: PrismaService, unitOfWork: UnitOfWork) =>
+        new PrismaSubjectKeyStore(prisma, unitOfWork),
     };
   }
 }

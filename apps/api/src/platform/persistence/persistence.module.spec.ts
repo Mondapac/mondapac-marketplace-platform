@@ -2,6 +2,7 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 import { testAppConfig } from '../../../test/support/test-config';
 import { EVENT_BUS, OUTBOX_RELAY } from '../events/event-bus';
 import { JOB_LOCK } from '../scheduler/job-lock';
+import { SUBJECT_KEY_STORE } from '../subject-keys/subject-key-store';
 import { InvalidUnitOfWorkOptionsError } from '../unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWorkOptions } from '../unit-of-work/unit-of-work';
 import { DatabaseProbe } from './database-probe';
@@ -27,6 +28,11 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
       OUTBOX_RELAY,
       JOB_LOCK,
     ]);
+  });
+
+  it('binds the subject-key store only through its static factory, never as an export (PF 4 row 13)', () => {
+    expect(providerTokens).not.toContain(SUBJECT_KEY_STORE);
+    expect(PersistenceModule.subjectKeyStore().provide).toBe(SUBJECT_KEY_STORE);
   });
 
   it('provides the base client and the guarded client without exporting them', () => {
