@@ -474,7 +474,8 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 
 | عنصر صفحه | کامپوننت موجود در Figma | تغییر لازم | نوع نسخه |
 |---|---|---|---|
-| Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark | MINOR 1.1.0 |
+| Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark; two columns from 1024 px (ux 3.0 rule 1) | MINOR 1.1.0 |
+| Brand panel beside the form (1024 px and wider) | None | New component `AuthShowcase` (`Workspace=Admin`, `Seller`; static illustration cards, decorative); colour tokens `bg/auth-showcase-admin` and `bg/auth-showcase-seller` (dark in both themes), `text/on-showcase` and `text/on-showcase-muted` (brand line only; the cards use the existing text tokens) | MINOR 1.1.0 |
 | Brand mark | Drawn inside `Sidebar`; not a component | New component `BrandMark`; `Sidebar` uses the instance | MINOR 1.1.0 |
 | Account-type tag, statuses, role type | `Badge` (Tone, Leading, Label, Icon swap) | None. `StatusBadge` holds order statuses and is not used | — |
 | Label, helper and error text of a field | `Input` has no label, helper or error message | New component `Field` (Label, Optional mark, Helper, Error with icon, Counter) wrapping Input, Textarea, Select | MINOR 1.1.0 |
@@ -484,7 +485,7 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 | Buttons | `Button`: Primary, Secondary, Destructive, Ghost × Sm, Md, Touch × Default, Hover, Focus, Disabled | New `State=Loading`; new `Variant=Link` for text actions such as "Forgot password?" | MINOR 1.1.0 |
 | Error summary, banners, status banner | `InfoBanner` (Info, Attention, Critical, Success; title, body, action) | None | — |
 | QR code plate | None | Composed in the template; new colour token `bg/qr` (white in both themes) | MINOR 1.1.0 |
-| Auth card width | `size/*` has no card width | New dimension token `size/auth-card` | MINOR 1.1.0 |
+| Auth form column width | `size/*` has no card width | New dimension token `size/auth-card` | MINOR 1.1.0 |
 | Step label, backup-code list, checkbox with label | Text styles, `Checkbox` | Composed in the template; no component | — |
 | Icons | 58, including `eye`, `store`, `shield-check`, `users`, `clock`, `ban`, `check`, `alert-circle`, `download`, `printer`, `send`, `x` | Add 9: `eye-off`, `lock`, `mail`, `key`, `user`, `log-out`, `copy`, `smartphone`, `trash` | MINOR 1.1.0 |
 | Reason shown to the seller | None | New component `ReasonQuote` (label, quoted text, date); used in A10, S1 and D4 | MINOR 1.1.0 |
@@ -543,3 +544,4 @@ Ali و Hassan همین نسخه را در مرور دوم (۲ اکتبر ۲۰۲�
 | ۳ اکتبر ۲۰۲۶ | «تکرار رمز» SEL-01 حذف شد؛ یک فیلد با نمایش/پنهان | Jafar، Ali | تأیید |
 | ۳ اکتبر ۲۰۲۶ | مالکیت وضعیت دسترسی (بخش ۳ و ۶) قطعی شد: `identity`؛ قرارداد «اجازهٔ فروش» در `sellers` (ADR-0022) | Ali، Mohammad، Hassan | تأیید |
 | ۳ اکتبر ۲۰۲۶ | دامنهٔ تست نفوذ مستقل (تصمیم ۲ G1، ADR-0018 تصمیم ۷) سطوح AI روشن در راه‌اندازی را هم می‌گیرد (ADR-0019 تصمیم ۹، که ADR-0018 تصمیم ۷ را اصلاح می‌کند). قیمت هنوز با صاحب پروژه است (صف اقدام، مورد ۱۰). درخواست ۱۱ مورد ۲ تابلو | — (پیامد ADR-0019؛ Ali نوشت، Mohammad، Hassan و Hadi مرور کردند) | ثبت؛ ADR-0019 را صاحب پروژه در ۳ اکتبر ۲۰۲۶ پذیرفت |
+| ۷ اکتبر ۲۰۲۶ | چیدمان صفحه‌های ورود (قالب Auth): دو ستون از ۱۰۲۴ پیکسل، فرم کنار پنل برند ثابت با کارت‌های تصویری نمونه (`AuthShowcase`)، به انتخاب صاحب پروژه (طرح 1A). در `ux.md`: سطر Status، قاعدهٔ ۱ بخش ۳.۰، یک بند در بخش ۶، بخش ۴، ردیف ۲ بخش ۷.۴ و بند ۱ بخش ۸.۱؛ در این برگه: دو ردیف بخش ۱۲. رفتار، متن‌های فرم و قاعده‌های امنیتی تغییر نکرد؛ پنل برند قاعده‌های ایستا بودن و بررسی‌پذیری تازه گرفت | Reza، Jafar، Hassan، Sajad، Bagher: تأیید با تغییرات، تغییرات اعمال شد | تأیید صاحب پروژه (۷ اکتبر ۲۰۲۶) |
