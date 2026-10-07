@@ -186,6 +186,8 @@ D = {
  "radius/chip": (6,6), "radius/control": (8,10), "radius/card": (12,12), "radius/column": (14,14), "radius/pill": (999,999),
  "size/control-sm": (32,44), "size/control": (36,48), "size/control-lg": (44,48), "size/badge": (22,24), "size/icon": (18,20), "size/thumb": (28,32),
  "size/sidebar": (248,248), "size/sidebar-collapsed": (72,72), "size/topbar": (64,64), "border/width": (1,1), "border/width-strong": (2,2),
+ # 1.5.0 (D16): appended last so a library updated in place exports in the same order as a fresh build.
+ "size/bottom-bar": (64,64),
 }
 DSCOPE = {"space": "GAP,WIDTH_HEIGHT", "radius": "CORNER_RADIUS", "size": "WIDTH_HEIGHT", "border": "STROKE_FLOAT"}
 # ---------- typography ----------
@@ -222,7 +224,7 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.0.0", "generated": "2026-10-01",
+ "version": "1.5.0", "generated": "2026-10-07",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
  "color": [{"name": k, "light": prim[v[0].upper()], "dark": prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],

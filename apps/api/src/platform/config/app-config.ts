@@ -35,6 +35,8 @@ const envSchema = z.object({
   DATABASE_URL: z
     .string({ error: 'DATABASE_URL is required' })
     .regex(/^postgres(ql)?:\/\/\S+$/, 'must be a postgresql:// connection URL'),
+  // Kazem, spike 6 decision 2: an explicit pool maximum per process, 10 unless set.
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
 });
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
@@ -52,6 +54,11 @@ export interface AppConfig {
   readonly marketConfigDirs: readonly string[];
   /** PostgreSQL connection URL. Contains credentials: never log it. */
   readonly databaseUrl: string;
+  /**
+   * The most pooled connections this process opens (platform persistence design 3.1 row 8).
+   * `DATABASE_POOL_MAX`, 1 to 100, default 10.
+   */
+  readonly databasePoolMax: number;
 }
 
 export class InvalidConfigError extends Error {
@@ -88,5 +95,6 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     databaseUrl: parsed.data.DATABASE_URL,
+    databasePoolMax: parsed.data.DATABASE_POOL_MAX,
   });
 }

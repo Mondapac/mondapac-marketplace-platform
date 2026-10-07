@@ -176,16 +176,32 @@ module.exports = {
     {
       name: 'persistence-internals-are-private',
       comment:
-        'PrismaService is the Prisma client. Outside modules/<m>/infrastructure/ and ' +
-        'platform/persistence/, code may import only PersistenceModule and DatabaseProbe ' +
-        'from platform/persistence/ (so a re-export cannot leak the client).',
+        'PrismaService is the door to the database. Outside modules/<m>/infrastructure/ and ' +
+        'platform/persistence/, code may import only PersistenceModule, DatabaseProbe and ' +
+        'the error reducer of platform persistence design 12.3 (it imports no Prisma) from ' +
+        'platform/persistence/, so a re-export cannot leak the client.',
       severity: 'error',
       from: {
         pathNot: ['^src/modules/[^/]+/infrastructure/', '^src/platform/persistence/'],
       },
       to: {
         path: '^src/platform/persistence/',
-        pathNot: '^src/platform/persistence/(persistence\\.module|database-probe)\\.ts$',
+        pathNot:
+          '^src/platform/persistence/(persistence\\.module|database-probe|database-error)\\.ts$',
+      },
+    },
+    {
+      // Platform persistence design 12.2, rule 2.
+      name: 'persistence-root-is-private',
+      comment:
+        "A module's infrastructure/ imports nothing of platform/persistence/ but " +
+        'prisma.service.ts: never the base client (PrismaRoot), the guarded client, the ' +
+        'unit store or the guard, so its only door to the database is tx(market).',
+      severity: 'error',
+      from: { path: '^src/modules/[^/]+/infrastructure/' },
+      to: {
+        path: '^src/platform/persistence/',
+        pathNot: '^src/platform/persistence/prisma\\.service\\.ts$',
       },
     },
     {

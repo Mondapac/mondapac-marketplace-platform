@@ -88,7 +88,82 @@ async function buildNavigation(page) {
     const badge = inst('CountBadge', { Tone: 'Critical', Count: '4' }, { name: 'unread' }); bell.appendChild(badge); badge.x = 20; badge.y = 2;
   }, { width: 1260, desc: 'Breadcrumb, command search (Ctrl K), market context, notifications and the user.', text: [{ prop: 'Crumb', node: 'crumb', def: 'Home' }] });
   componentBlock(root, topbar, { title: 'Topbar', summary: 'Market context (AU · AUD · AEST) is always visible because times and money depend on it.' });
+  buildMobileNav(root, {});
   tag(root);
+}
+
+// ---------------------------------------------------------------- mobile navigation (release 1.5.0, D16)
+// Below 760 px: both panels open the nav config as a drawer; the seller panel also gets a bottom tab bar.
+// Built by "Build library" and added to an existing file by "Update library" (see 50_main.js).
+function drawerRow(it, active) {
+  const kids = [icon(it[2], active ? 'text/link' : 'icon/default', 20), text(it[1], active ? 'Touch/Strong' : 'Touch/Body', active ? 'text/link' : 'text/secondary', { name: 'label', sizeH: 'FILL', truncate: true })];
+  if (it[3]) kids.push(inst('CountBadge', { Tone: it[3][0], Count: it[3][1] }, { name: 'count' }));
+  if (it[4]) kids.push(icon('chevron-down', 'icon/muted', 16));
+  const row = frame({ name: it[0], dir: 'H', h: 'size/control', px: 'space/3', gap: 'space/3', align: 'center', fill: active ? 'bg/selected' : null, radius: 'radius/control', sizeH: 'FILL' }, kids);
+  return row;
+}
+const BAR_TABS = [['home', 'Home', 'home'], ['orders', 'Orders', 'clipboard'], ['catalogue', 'Catalogue', 'package'], ['more', 'More', 'more-horizontal']];
+function buildMobileNav(root, have) {
+  // have: names of sets that already exist in the file ("Update library" adds only what is missing).
+  if (!have.NavDrawer) {
+  const drawer = makeSet('NavDrawer', { Workspace: ['Admin', 'Seller'] }, function (c, p) {
+    const seller = p.Workspace === 'Seller';
+    withTouch(true, function () {
+      body(c, { dir: 'V', w: 304, h: 780, fill: 'bg/surface', stroke: 'border/default', sides: ['right'], effect: 'Elevation/Floating' }, []);
+      add(c, frame({ name: 'header', dir: 'H', h: 56, px: 'space/4', gap: 'space/2-5', align: 'center', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [
+        brandMark(30),
+        frame({ name: 'name', dir: 'V', sizeH: 'FILL' }, [text('MondaPac', 'Heading/H2'), text(seller ? 'Seller Centre' : 'Admin', 'Caption/Overline', 'text/muted')]),
+        inst('IconButton', { Variant: 'Ghost', Size: 'Touch', State: 'Default', Icon: { icon: 'x' } }, { name: 'close' }),
+      ]));
+      if (seller) {
+        add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 'size/control', px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
+          inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh Halal Meats', 'Touch/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
+        ])]));
+        const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
+      }
+      const list = frame({ name: 'items', dir: 'V', gap: 'space/0-5', pad: 'space/3', sizeH: 'FILL', sizeV: 'FILL' });
+      NAV[p.Workspace].forEach(function (it, i) {
+        if (it[0] === 'g') { add(list, inst('NavGroupLabel', { Label: it[1] }, { name: 'group-' + it[1].toLowerCase(), sizeH: 'FILL' })); return; }
+        if (it[0] === 'sub') {
+          add(list, frame({ name: it[2], dir: 'H', h: 'size/control', pad: [0, 12, 0, 44], align: 'center', radius: 'radius/control', sizeH: 'FILL' }, [text(it[1], 'Touch/Body', 'text/secondary', { name: 'label', sizeH: 'FILL', truncate: true })]));
+          return;
+        }
+        add(list, drawerRow(it, i === 0));
+      });
+      add(c, list);
+      add(c, frame({ name: 'footer', dir: 'V', pad: 'space/3', stroke: 'border/default', sides: ['top'], sizeH: 'FILL' }, [drawerRow(['nav-help', 'Help & resources', 'help-circle'], false)]));
+      touchMode(c);
+    });
+  }, { width: 760, desc: 'Phone navigation drawer (below 760 px, D16). Same nav groups and order as the Sidebar, so nothing is phone-only; Workspace picks Admin or Seller items. Opens from the inline-start edge (left in LTR, right in RTL), 304 wide, full height. Rows are 48 px (size/control under touch density). The header has the panel mark and a close icon button: aria-label "Close menu". Show it over a scrim (text/primary at 50%; the scrim belongs to the screen, not to this component): tapping the scrim, Esc or any link closes the drawer and focus returns to the menu button. While open the page behind is inert and the drawer is aria-modal with a focus trap. It renders only the already-filtered nav config. Seller opens it from the menu button or from More on the bottom tab bar.' });
+  componentBlock(root, drawer, { title: 'NavDrawer', summary: 'Both panels open the same navigation as a drawer on phones. It is the Sidebar for widths below 760 px, in touch density.',
+    use: ['Below 760 px, from the menu button in the 56 px topbar (Admin and Seller) or from More on the BottomTabBar (Seller).', 'Phone landscape wider than 760 px uses the 72 px rail instead; there is no rail below 760 px.'],
+    props: ['Workspace: Admin or Seller', 'Close is an IconButton instance (Touch size)'],
+    a11y: ['role="dialog" with aria-modal="true" and a label; the page behind is inert.', 'Focus moves into the drawer, is trapped, and returns to the menu button on close.', 'Esc, the scrim and any navigation close it.', 'Targets are 48 px; the active item uses aria-current="page".'],
+    dont: ['Phone-only items: the drawer never has items the Sidebar lacks.', 'A disabled item for a missing permission: hidden items are removed from the config.'] });
+
+  }
+
+  if (!have.BottomTabBar) {
+  const bar = makeSet('BottomTabBar', { Active: ['Home', 'Orders', 'Catalogue', 'More'], Tabs: ['4', '3'] }, function (c, p) {
+    const tabs = BAR_TABS.filter(function (t) { return p.Tabs === '4' || t[0] !== 'orders'; });
+    withTouch(true, function () {
+      body(c, { dir: 'H', w: 360, h: 'size/bottom-bar', px: 'space/2', gap: 'space/1', align: 'center', fill: 'bg/surface', stroke: 'border/default', sides: ['top'] }, tabs.map(function (t) {
+        const on = p.Active.toLowerCase() === t[0];
+        const wrap = frame({ name: 'icon-wrap', w: 28, h: 24 });
+        const ic = icon(t[2], on ? 'action/primary' : 'icon/default', 22); add(wrap, ic); ic.x = 3; ic.y = 1;
+        if (t[0] === 'orders') { const b = inst('CountBadge', { Tone: 'Attention', Count: '9+' }, { name: 'orders-badge' }); add(wrap, b); b.x = 14; b.y = -6; }
+        return frame({ name: 'tab-' + t[0], dir: 'V', h: 56, gap: 'space/0-5', align: 'center', justify: 'center', fill: on ? 'bg/selected' : null, radius: 'radius/control', sizeH: 'FILL' }, [wrap, text(t[1], on ? 'Caption/Strong' : 'Caption/Default', on ? 'text/link' : 'text/secondary', { name: 'label-' + t[0] })]);
+      }));
+      touchMode(c);
+    });
+  }, { width: 760, gapX: 40, skip: function (p) { return p.Tabs === '3' && p.Active === 'Orders'; }, desc: 'Seller phone bottom tab bar (below 760 px, D16): Home, Orders, Catalogue, More. 64 px high (size/bottom-bar), each tab an icon plus a visible label and a target of at least 48 px (56 here). Active picks the highlighted tab; Tabs=3 drops Orders (Home, Catalogue, More) for before Orders ships in phase 5. Orders shows the real count from the server-filtered badge source and caps at "9+" (the variants show the cap). Edge cases: (1) tabs come from the already-filtered nav config, so a missing permission means fewer tabs, never a disabled tab; the bar shows only when the user may see at least two of Home, Orders and Catalogue (before phase 5: Home and Catalogue), otherwise only the drawer is used. (2) The bar hides while the on-screen keyboard is open. (3) It respects the bottom safe area: the inset is added below the 64 px. (4) More opens the NavDrawer and shows as active while the drawer is open, and on any route that is not one of the tabs. (5) The limited seller shell has no bar and no drawer. (6) A future acting-as banner sits above the bar. Admin has no bottom bar. Each tab gets the Focus/Ring effect on keyboard focus.',
+    bool: [{ prop: 'Show orders badge', node: 'orders-badge', def: true }] });
+  componentBlock(root, bar, { title: 'BottomTabBar', summary: 'Seller only. One thumb tap between orders and stock beats opening the drawer each time. Admin keeps the drawer only.',
+    use: ['Below 760 px in the seller panel, when the user may see at least two of Home, Orders and Catalogue.', 'Tabs=3 until the Orders module ships (phase 5): Home, Catalogue, More.'],
+    props: ['Active: Home, Orders, Catalogue or More', 'Tabs: 4 or 3', 'Show orders badge (boolean)'],
+    a11y: ['<nav> with aria-label; the active tab has aria-current="page"; More is a button that opens the drawer (aria-expanded).', 'Every tab has a visible label and a target of at least 48 px.', 'The badge is read as part of the label ("Orders, 9 or more waiting").', 'Hidden while the on-screen keyboard is open; respects the bottom safe area.'],
+    dont: ['A disabled tab for a missing permission.', 'The bar on the limited seller shell, on Admin, or at 760 px and wider (the rail takes over).'] });
+  }
 }
 
 // ---------------------------------------------------------------- review & detail

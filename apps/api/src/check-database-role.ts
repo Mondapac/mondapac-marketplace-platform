@@ -23,3 +23,27 @@ export async function databaseRoleAccepted(
   );
   return false;
 }
+
+/** The only default isolation the UnitOfWork accepts (ADR-0025 decision 2). */
+export const REQUIRED_DEFAULT_ISOLATION = 'read committed';
+
+/**
+ * ADR-0025 decision 2: units pass no isolation level for READ COMMITTED, so the database's
+ * default is a deployment fact. `main.ts` runs this once, as the API login, before the server
+ * listens; anything but `read committed` stops the process with a logged reason. The value
+ * logged is the setting's own (a PostgreSQL keyword), or `unrecognised` for anything else.
+ */
+export async function databaseIsolationAccepted(
+  probe: { defaultTransactionIsolation(): Promise<string> },
+  logger: LoggerService,
+): Promise<boolean> {
+  const isolation = await probe.defaultTransactionIsolation();
+  if (isolation === REQUIRED_DEFAULT_ISOLATION) return true;
+  const shown = /^[a-z ]{1,32}$/.test(isolation) ? isolation : 'unrecognised';
+  logger.error(
+    'The database was refused by the start-up self-check: default_transaction_isolation is ' +
+      `"${shown}", not "${REQUIRED_DEFAULT_ISOLATION}" (ADR-0025)`,
+    'DatabaseIsolationCheck',
+  );
+  return false;
+}

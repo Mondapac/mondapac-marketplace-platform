@@ -47,4 +47,32 @@ export default async function globalSetup(): Promise<void> {
     stdio: ['ignore', 'ignore', 'inherit'],
     shell: process.platform === 'win32',
   });
+
+  await createLockingDatabase(name);
+}
+
+/**
+ * A copy of the migrated run database for the one spec file that takes table locks and
+ * changes triggers on `platform.audit_log` (unit-of-work.db-spec.ts): no other file meets
+ * those locks, whatever the role's lock_timeout. Copied before any test connects, since a
+ * template must have no other session.
+ */
+async function createLockingDatabase(template: string): Promise<void> {
+  const name = `${template}_locking`;
+  const admin = new Client({ connectionString: migrationDatabaseUrl() });
+  await admin.connect();
+  try {
+    await admin.query(`CREATE DATABASE "${name}" TEMPLATE "${template}"`);
+    await admin.query(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
+    await admin.query(`GRANT CONNECT ON DATABASE "${name}" TO "mondapac_app"`);
+  } finally {
+    await admin.end();
+  }
+  const ownerUrl = new URL(migrationDatabaseUrl());
+  ownerUrl.pathname = `/${name}`;
+  const applicationUrl = new URL(applicationDatabaseUrl());
+  applicationUrl.pathname = `/${name}`;
+  process.env.TEST_LOCKING_DATABASE_NAME = name;
+  process.env.TEST_LOCKING_DATABASE_URL = applicationUrl.toString();
+  process.env.TEST_LOCKING_OWNER_DATABASE_URL = ownerUrl.toString();
 }

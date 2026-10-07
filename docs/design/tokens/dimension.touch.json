@@ -116,6 +116,10 @@
     "topbar": {
       "$type": "dimension",
       "$value": "64px"
+    },
+    "bottom-bar": {
+      "$type": "dimension",
+      "$value": "64px"
     }
   },
   "border": {

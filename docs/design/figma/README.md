@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| نسخه | 1.0.0 (۲ اکتبر ۲۰۲۶) |
+| نسخه | 1.5.0 «Mobile navigation» (۷ اکتبر ۲۰۲۶). نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
 | فایل Figma | **MondaPac Design System** (Drafts تیم mondapac، پلن Starter) |
 | مالک کتابخانه | رضا (UI/UX) |
 | هم‌خوان‌ها | جعفر (Product Designer)، مهدی (Frontend)، سجاد (QA)، هادی (Product Owner) |
 | تصمیم | ADR-0017: از این پس هر تغییر UI/UX پنل‌ها اول در Figma انجام می‌شود |
-| ابزار | افزونهٔ توسعهٔ `docs/design/figma/plugin` (ساخت، تم، تراکم، Export، Audit، ارتقا) |
+| ابزار | افزونهٔ توسعهٔ `docs/design/figma/plugin` (ساخت، به‌روزرسانی کتابخانه، تم، تراکم، Export، Audit، ارتقا) |
 
 ---
 
@@ -77,7 +77,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 ## ۵. کامپوننت‌ها
 
-**۴۱ کامپوننت** (۳۰ مجموعهٔ variant با ۲۳۵ variant، و ۱۱ کامپوننت تکی) و **۵۸ آیکن**:
+**۴۳ کامپوننت** (۳۲ مجموعهٔ variant با ۲۴۴ variant، و ۱۱ کامپوننت تکی) و **۵۸ آیکن**:
 
 | صفحه | کامپوننت‌ها |
 |---|---|
@@ -86,7 +86,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 | Status & feedback | Badge، StatusBadge، CountBadge، CertChip، HealthIndicator، Meter، DeadlineBadge، InfoBanner، Tooltip |
 | Data display | IdentityTile، ProductThumb، Sparkline، StatTile، TrendChart، DonutProgress، SplitBar، WeeklyBars، CountdownRing |
 | Tables & collections | TableCell، CardHeader، Pagination، BulkActionBar |
-| Navigation & shell | NavItem، NavSubItem، NavGroupLabel، Sidebar، Topbar |
+| Navigation & shell | NavItem، NavSubItem، NavGroupLabel، Sidebar، Topbar، **NavDrawer** و **BottomTabBar** (از 1.5.0، منوی موبایل D16) |
 | Review & detail | QueueCard، ExtractedField، ChecklistItem، TimelineItem |
 | Board & delivery | OrderCard، DeliveryMap |
 
@@ -102,13 +102,13 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 4. **متنی که بین variantها فرق دارد** به TEXT property وصل نمی‌شود، چون property یک متن را روی همهٔ variantها می‌نشاند. نمونه: وضعیت OrderCard.
 5. **Variantها در شبکه چیده می‌شوند:** ستون‌ها مقدارهای آخرین محور (معمولاً State) و ردیف‌ها ترکیب بقیهٔ محورها.
 6. **هر کامپوننت توضیح دارد** (Description) و کنارش پنل Usage: کِی استفاده شود، propertyها، دسترس‌پذیری و موارد پرهیز.
-7. **چگالی لمسی:** کامپوننت‌های تبلت (OrderCard، Button Touch، IconButton Touch) Touch density دارند: دکمهٔ ۴۸ پیکسلی و متن ۱۴ تا ۱۵ پیکسلی.
+7. **چگالی لمسی:** کامپوننت‌های تبلت و موبایل (OrderCard، Button Touch، IconButton Touch، NavDrawer، BottomTabBar) Touch density دارند: دکمهٔ ۴۸ پیکسلی و متن ۱۴ تا ۱۵ پیکسلی.
 
 ---
 
 ## ۶. قالب‌ها و تم تاریک
 
-- **قالب‌ها** فقط از instanceهای کتابخانه ساخته شده‌اند: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board تبلت).
+- **قالب‌ها** فقط از instanceهای کتابخانه ساخته شده‌اند: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board تبلت). از 1.5.0 سه قالب موبایل ۳۶۰ پیکسلی هم هست: Seller Home با BottomTabBar، Seller با منوی باز روی scrim، Admin با منوی باز. نوار بالای موبایل (۵۶ پیکسل) در قالب‌ها از instanceهای IconButton ساخته شده و هنوز کامپوننت جدا ندارد.
 - برای صفحهٔ جدید، یک قالب را کپی کنید. **پوسته (Sidebar و Topbar) را detach نکنید.** آیتم فعال منو را با property `State` روی NavItem تودرتو عوض کنید.
 - **Dark preview** سه قالب را در تم تاریک نشان می‌دهد.
 - **تعویض تم یا تراکم یک فریم:**
@@ -162,6 +162,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
   - MINOR: کامپوننت، variant یا توکن تازه.
   - PATCH: اصلاح مقدار یا ظاهر بدون تغییر API.
 - نسخه در افزونه (فیلد Version هنگام Export) و صفحهٔ Changelog ثبت می‌شود.
+- نسخه‌های 1.1.0 تا 1.4.0 برای انتشارهای برنامه‌ریزی‌شدهٔ Auth، Panel، Seller setup و Seller admin رزرو شده‌اند. به همین دلیل بعد از 1.0.0 مستقیم 1.5.0 آمد.
 - **کنار گذاشتن:** نام کامپوننت `Deprecated / <Name>` می‌شود. در توضیح می‌نویسیم «Use <Replacement> instead (since vX.Y)» و به Archive منتقل می‌شود. حذف واقعی فقط در نسخهٔ MAJOR بعدی است.
 
 ---
@@ -207,14 +208,15 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 
 | دکمه | کار |
 |---|---|
-| Build library | ساخت کامل در فایل خالی. «Rebuild» هر چه افزونه ساخته پاک می‌کند و از نو می‌سازد. **روی کتابخانه‌ای که دستی ویرایش شده اجرا نشود.** |
+| Build library | ساخت کامل در فایل خالی. «Rebuild» هر چه افزونه ساخته پاک می‌کند و از نو می‌سازد. **روی کتابخانه‌ای که دستی ویرایش شده اجرا نشود؛ برای نسخهٔ تازهٔ افزونه از Update library استفاده کنید.** |
 | Dark theme / Light theme | تعویض تم فریم‌های انتخاب‌شده |
 | Touch density / Desktop density | تعویض تراکم فریم‌های انتخاب‌شده |
+| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. |
 | Export tokens | ۷ فایل توکن از متغیرها و استایل‌های Figma |
-| Audit file | lint کل فایل. روی نسخهٔ فعلی: ۱۱٬۷۲۸ لایه و صفر هشدار |
+| Audit file | lint کل فایل. روی نسخهٔ 1.5.0: ۱۲٬۶۷۴ لایه و صفر هشدار |
 | Upgrade to modes | بعد از ارتقای پلن |
 
-توسعهٔ خود افزونه: [`plugin/README.md`](plugin/README.md). هر تغییر در افزونه باید `node test/run.js` را بدون خطا بگذراند. این تست با شبیه‌ساز سخت‌گیر API فیگما چهار سناریو را اجرا می‌کند و برابری Export با ریپو را می‌سنجد.
+توسعهٔ خود افزونه: [`plugin/README.md`](plugin/README.md). هر تغییر در افزونه باید `node test/run.js` را بدون خطا بگذراند. این تست با شبیه‌ساز سخت‌گیر API فیگما هفت سناریو را اجرا می‌کند (از جمله «Update library» روی کتابخانهٔ هم‌سبک 1.0.0) و برابری Export با ریپو را می‌سنجد.
 
 ---
 
@@ -233,7 +235,7 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 ## ۱۴. موارد باز
 
 - **D5 حالت تاریک در محصول:** توکن‌ها و پیش‌نمایش آماده‌اند. زمان فعال‌کردنش تصمیم محصول است.
-- **D16 منوی موبایل و Board عمودی:** هنوز کامپوننت ندارند.
+- **D16 منوی موبایل:** از 1.5.0 کامپوننت دارد (NavDrawer، BottomTabBar، توکن `size/bottom-bar`، سه قالب ۳۶۰ پیکسلی). باز: توکن scrim (اکنون `text/primary` با ۵۰٪ شفافیت، فقط در تم روشن درست است)، آیکن همبرگر (اکنون `panel-left`) و توکن ارتفاع نوار بالای موبایل (۵۶ پیکسل). **Board عمودی** هنوز کامپوننت ندارد.
 - **حالت‌های Loading و Empty:** برای TableCell، StatTile و کارت‌ها در مرحلهٔ طراحی ماژول‌ها اضافه می‌شوند.
 - **عکس واقعی کالا:** جای ProductThumb را می‌گیرد، با همان اندازه و گوشه.
 - **نسخهٔ RTL:** چیدمان آماده است. آزمون کامل با متن فارسی یا عربی، وقتی زبان دوم برنامه‌ریزی شد.

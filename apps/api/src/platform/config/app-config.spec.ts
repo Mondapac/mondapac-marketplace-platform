@@ -20,7 +20,20 @@ describe('loadAppConfig', () => {
       apiDocsEnabled: false,
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       databaseUrl: DATABASE_URL,
+      databasePoolMax: 10,
     });
+  });
+
+  it('takes the pool maximum from DATABASE_POOL_MAX (platform persistence design 3.1 row 8)', () => {
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU', DATABASE_POOL_MAX: '25' }).databasePoolMax).toBe(
+      25,
+    );
+  });
+
+  it.each(['0', '101', '2.5', 'many', ''])('rejects DATABASE_POOL_MAX=%p', (value) => {
+    expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', DATABASE_POOL_MAX: value })).toThrow(
+      /DATABASE_POOL_MAX/,
+    );
   });
 
   it('serves API docs only when explicitly enabled', () => {
