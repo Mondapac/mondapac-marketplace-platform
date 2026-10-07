@@ -506,6 +506,7 @@ Deferred by the reviews of item 4 (W1 to W6 Hassan, B1 Bagher), each with its tr
 | W4 | Wall-clock forms that rule 4 misses in `domain/` and `application/`: `new globalThis.Date()`, `const D = Date`, `Date['now']()`, `Reflect.construct(Date, [])`, `performance.*`, `new Intl.DateTimeFormat().format()`, `const { Now } = Temporal`; through `no-restricted-properties` and `no-restricted-globals` | Slice 1, the first domain code with an expiry |
 | W5 | `linterOptions.noInlineConfig` for `src/`, so a disable comment cannot switch a boundary rule off | Slice 1 |
 | W6 | The "aliased" exemption of `kernel-only-through-package-entries` trusts `apps/api/tsconfig.json`'s two `paths` entries; review it if `tsconfig.build.json` ever gains `paths` | Any `paths` change in the API's tsconfig files |
+| W7 | The first PR that adds a facade implementation, or an event or job handler, inside a module puts that file in the `use-case-entry-is-the-gate` handle selector's scope (by its folder or a `*.facade.ts` / `*.handler.ts` naming rule) and adds a fixture for it (Ali, review of identity slice 1c) | The first facade implementation, event handler or job handler in a module |
 | B1 | Extend `no-wall-clock` to `src/verticals/` | Slice 1, or earlier when the first code lands in `src/verticals/` |
 
 Note, 2026-10-07 (identity slice 1c, Hossein): the actor constructors (`anonymousActor`,
@@ -530,6 +531,30 @@ registry at boot from slice 8a). The ESLint half of rule 5 for the new construct
 their own; until then the `UseCase` constructor refuses at boot a class that overrides
 `execute`, does not extend `UseCase` directly or has no own declaration, and the CI check
 refuses the same in source.
+
+Changed by the security review of slice 1c (Hassan; H1, M1, M2, L1 to L3):
+- **H1.** At its first construction, a use-case class's prototype `handle` is replaced by
+  one that always throws. Each instance gets an own, non-writable, non-configurable
+  `handle` and `execute`. The body runs only during `execute`'s synchronous call of it, so
+  a public `handle`, a second method that calls it, or a replaced `execute` cannot reach it.
+- **L1.** The declaration is deep-frozen and the static `access` sealed at construction.
+- **M1.** A `UseCaseGate` is built only by `createUseCaseGate`, with a constructor key
+  private to its file, and `UseCase` accepts only a gate that factory built.
+  - `use-case-gate-is-built-by-authz`: only `platform/authz/` imports the gate file.
+  - `modules-reach-authz-through-its-barrel`: a module imports `platform/authz/index.ts`
+    only. The barrel holds the base class, the types, the permission helpers and the
+    `USE_CASE_GATE` token; the gate itself is a type there.
+- **L2.** A module's `index.ts` is an entry point of `use-cases-are-the-only-way-in`. The CI
+  check also refuses an `@Controller` class or a `JobDefinition` literal outside the
+  module's `presentation/`; event handlers join with slice 3.
+- **L3.**
+  - `subject-keys-only-in-infrastructure`: in a module, only `infrastructure/` imports
+    `platform/subject-keys/`.
+  - `subject-keys-only-through-the-port`: a module reaches only `subject-key-service.ts`
+    and `labels.ts`.
+- **M2.** The local key wrapper starts only when `NODE_ENV` was set explicitly to
+  `development` or `test` (`AppConfig.nodeEnvExplicit`), and logs a warning naming the
+  stand-in.
 
 ## 9. Testing
 
