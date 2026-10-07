@@ -129,7 +129,7 @@ Cart and storefront always show this value (brief s5; cart brief s4 flow 3).
 - The first price is never measured (brief s4 flow 2); this is also why the maximum price applies to it (Q10).
 
 ### 4.3 Special price
-- The window is entered as local date-times in the **seller's operating zone** (ADR-0005; the catalog brief s11 team proposal, shown explicitly). It is stored as two UTC instants plus the IANA zone (brief s5). The zone comes from the `sellers` facade (A1), never from input. When the seller's zone is missing, the write is refused with `pricing.seller-zone-unavailable`; it never falls back to the Market timezone. The zone is stored on the record, so a later change of the seller's zone does not move existing windows (Ali).
+- The window is entered as local date-times in the **seller's operating zone** (ADR-0005; the catalog brief s11 team proposal, shown explicitly). It is stored as two UTC instants plus the IANA zone (brief s5). The zone comes from the `sellers` facade (A1): `sellerSummaries(ctx, [sellerId]).operatingTimezone` (sellers 7.1, merged in PR #46), never from input. Only a zone from the seller's approved revision is used; a `provisional` zone (draft revision only) counts as missing, because a seller without an approved revision cannot sell and the draft zone can still change. When the seller's zone is missing, the write is refused with `pricing.seller-zone-unavailable`; it never falls back to the Market timezone. The zone is stored on the record, so a later change of the seller's zone does not move existing windows (Ali).
 - **Discount hold (Q8):** with R the effective regular price at submission and `anchor` the anchor of 2.4, the special is held if `s·D < R·(D−N)` or `s·D < anchor·(D−N)`, with the same T. The anchor test (Hassan finding 1) stops a seller from alternating regular and special cuts to drop the effective price by more than T within W without review. The `up` direction does not apply, because a special is always below R.
 - The boundary tests of AC 14 use the zone fixtures of ADR-0005 decision 8: Brisbane, Sydney (DST), Adelaide (half-hour offset plus DST), Perth, and DST-transition days.
 
@@ -212,7 +212,7 @@ Until the SEL-08 mini-review decides whether acting-as may touch prices, price, 
 | CF2 | `catalog` events | Offer deleted (`offerId`); Variant removed (`productId`, `variantId`). Ids only. Offer created is not needed: creating an Offer creates no price (brief s4 flow 1); this is a brief s6 change-log row |
 | CF3 | `catalog` | The `Offer` and `Variant` id types exported from `contracts/` |
 | CF4 | `catalog` (P1, with CAT-45) | An event carrying the Variant mapping when an Offer moves to a platform product, so `pricing` can re-key its series (14) |
-| — | `sellers` facade | The seller's operating IANA zone (seller summary, sellers brief s6) for special windows (A1, approved by Ali). Missing zone: the write is refused with `pricing.seller-zone-unavailable`, never the Market timezone (4.3). Needs the sellers G2 to put the seller zone in the sellers facade (13) |
+| — | `sellers` facade | The seller's operating IANA zone for special windows (A1, approved by Ali): `sellerSummaries(ctx, sellerIds)` → `operatingTimezone` with a `provisional` flag, `anonymous` for request actors and `system` for handlers, ≤ 100 ids (sellers G2, merged in PR #46, 7.1). Missing or provisional zone: the write is refused with `pricing.seller-zone-unavailable`, never the Market timezone (4.3) |
 | — | `identity` | The gate and `ActorContext` only |
 | — | `platform/` | `MarketRegistry`, `MarketContextFactory`, `Clock`, `IdGenerator`, UnitOfWork, outbox, inbox (`runOnce`), scheduler, audit writer, permission registry |
 
@@ -339,7 +339,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
   - event delivery and inbox (built with identity slice 3);
   - scheduler (slice 5);
   - `catalog` facade CF1 and events CF2 (catalog G2 and slices);
-  - sellers G2: seller zone in the sellers facade (slice 5);
+  - sellers: `sellerSummaries` with the time zone (sellers slices 1 and 2; accepted at sellers G2, PR #46) (slice 5);
   - platform `MarketConfig`: `pricesIncludeTax` (and inventory's `maxLineQuantity`), in a small shared-file PR announced on the board first (slice 1; A2);
   - identity's permission registry and default-role seed change (slices 1, 3, 4).
 - **Order:** as in brief s11. Slices 1, 3, 4 and 5 need Hassan's review before merge.
@@ -415,7 +415,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - Pricing brief change log, through a mini-review signed by Hadi and Ali (A1): `sellers` dependency; no Offer-created subscription; permission keys; the special-price hold also measured against the anchor (Hassan finding 1).
 - Identity: seed the default roles as decided (Q5, 5.3).
 - Platform: a small shared-file PR, announced on the board first: `pricesIncludeTax` (and inventory's `maxLineQuantity`) in `MarketConfig` (A2).
-- Sellers G2: seller zone in the sellers facade (A1, 4.3).
+- Sellers G2: seller zone in the sellers facade (A1, 4.3). Done: sellers G2 merged 2026-10-07 (PR #46) with `operatingTimezone` in `sellerSummaries`.
 - `docs/features`: VER-03 wording (ADR-0024).
 - ADR-0019 decision 10: queued for the next ADR that amends ADR-0019; the owner accepts that ADR (A5; no ADR just for this).
 - Catalog G2: CF1 to CF4.
