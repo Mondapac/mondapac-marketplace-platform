@@ -90,7 +90,7 @@ The shop switch at the top of the sidebar appears only when an account belongs t
 
 ### 3.3 Limited seller shell (not approved yet)
 
-A seller who is not approved signs in to a limited shell (identity decisions 6 and 9). Its items come only from the server allow-list (identity DD 5.2): in Phase 2 that is **Your seller account** (`s_setup`, route `/account-setup`, S1 with the steps S2 to S6 from `sellers`), Account security and Sign out, plus Help. **Certifications** is added only when the certification G2 adds its use case to the allow-list. Any other route goes to S1, not B5 (identity DD 8.5). The Topbar hides search and notifications (`Topbar` booleans, library 1.1.0) and makes no badge call. Below 760 px it uses the compact header with no drawer and no bottom bar (identity ux F5). Store profile, Team and every other item appear on approval.
+A seller who is not approved signs in to a limited shell (identity decisions 6 and 9). Its items come only from the server allow-list (identity DD 5.2): in Phase 2 that is **Your seller account** (`s_setup`, route `/account-setup`, S1 with the steps S2 to S6 from `sellers`), Account security and Sign out, plus Help. **Certifications** is added only when the certification G2 adds its use case to the allow-list. Any other route goes to S1, not B5 (identity DD 8.5). The Topbar hides search and notifications (`Topbar` booleans, library 1.1.0) and makes no badge call. Below 760 px it uses `PhoneTopbar` Workspace=Seller with the menu-button and notifications slots hidden (not a separate component), with no drawer and no bottom bar (identity ux F5). Store profile, Team and every other item appear on approval.
 
 **Acting-as (Login as Seller, SEL-08)** is not in Phase 2 or 3 scope. Its shell is defined by the SEL-08 mini-review; until then it has no nav config. When it comes: a permanent banner naming the admin, read-only identity, team and payout items (sellers DD 6.4), and AI switched off on the server (`actingAs` in `ActorContext`, ADR-0019 R3), not only hidden in the UI.
 
@@ -106,7 +106,7 @@ D16 was the open "mobile drawer navigation" item of `docs/design/figma/README.md
 |---|---|---|---|
 | 1280 px and up | Expanded, 248 px (`size-sidebar`) | Full | Desktop admin work |
 | 760–1279 px | Collapsed to 72 px icons (`size-sidebar-collapsed`); expands as an overlay on demand | Search becomes an icon button | Seller tablet; the order board keeps its own touch layout (T4) |
-| Below 760 px | Hidden; the same config opens as a **drawer** from the inline-start edge | 56 px: menu button, panel mark, notifications, account | Phone |
+| Below 760 px | Hidden; the same config opens as a **drawer** from the inline-start edge | 56 px: menu button, panel mark, notifications, account (limited seller shell: panel mark, account; see 4.1) | Phone |
 
 Decision (owner, 2026-10-07, option 1; Hadi confirmed the bottom bar):
 - **Both panels: drawer.** The drawer renders the same nav config as the desktop sidebar, same groups and order, so nothing is phone-only. While open, the background is `inert` and the drawer is `aria-modal`; focus is trapped; Esc, the scrim and any navigation close it; focus returns to the menu button. It renders only the already-filtered config. Targets are 48 px (`data-density="touch"`, `--mp-size-control`).
@@ -139,7 +139,7 @@ Edge cases the frontend and the Figma frames must cover:
 Three items were left open for Reza when library 1.5.0 shipped; all are decided (2026-10-07) and released as library 1.6.0:
 - Scrim: token `bg/scrim` (`--mp-color-bg-scrim`), `#111827` at 50% in light and black at 60% in dark. The alpha is part of the value, so the drawer scrim frame uses the token at 100%.
 - Menu icon: a new `menu` icon (three lines) for the phone topbar menu button; `panel-left` stays for the NavItem collapse.
-- Topbar height: token `size/topbar-phone` (`--mp-size-topbar-phone`, 56 px) and a `PhoneTopbar` component (Admin and Seller) used by the three phone templates. The menu button is `aria-label` "Open menu" with `aria-expanded`, `aria-controls` and `aria-haspopup="dialog"`; the bell reads "Notifications, N unread" and the account button "Account". Focus order is menu, notifications, account. RTL mirrors the layer order and not the icons. The limited seller shell omits the menu-button slot. The acting-as banner sits below the topbar in the layout, not inside it; it is stacked above the scrim, the drawer and the bottom bar.
+- Topbar height: token `size/topbar-phone` (`--mp-size-topbar-phone`, 56 px) and a `PhoneTopbar` component (Admin and Seller) used by the three phone templates. The menu button is `aria-label` "Open menu" with `aria-expanded`, `aria-controls` and `aria-haspopup="dialog"`; the bell reads "Notifications, N unread" and the account button "Account". Focus order is menu, notifications, account. RTL mirrors the layer order and not the icons. The limited seller shell omits the menu-button and notifications slots (no bell, no badge call), so its bar is brand mark, panel name and account button, and its focus order is account only. This rule governs over the shorter PhoneTopbar description in Figma 1.6.0 (Jafar, 2026-10-07). The acting-as banner sits below the topbar in the layout, not inside it; it is stacked above the scrim, the drawer and the bottom bar.
 
 ## 5. Screen inventory
 
