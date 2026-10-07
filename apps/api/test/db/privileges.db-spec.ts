@@ -204,13 +204,15 @@ describe('privileges of the migrated database (docs/design/data/platform.md 10.5
           WHERE n.nspname = $1 AND a.grantee <> n.nspowner`,
         [schema],
       );
-      // The application role, every role it is a member of and the database: a setting that
-      // names the schema (or is not a plain list) puts it on a search_path.
+      // The application group, the roles it is a member of, the roles that are members of it (the
+      // login roles) and the database: a setting that names the schema puts it on a search_path.
       const settings = await sql.query<{ setting: string }>(
         `SELECT unnest(s.setconfig) AS setting
            FROM pg_db_role_setting s
           WHERE (s.setdatabase = 0 OR s.setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database()))
-            AND (s.setrole = 0 OR pg_has_role($1, s.setrole, 'MEMBER'))`,
+            AND (s.setrole = 0
+                 OR pg_has_role($1, s.setrole, 'MEMBER')
+                 OR pg_has_role(s.setrole, $1::name, 'MEMBER'))`,
         [APPLICATION_GROUP_ROLE],
       );
 
