@@ -9,9 +9,14 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
+import { ok } from '@mondapac/shared-kernel';
+import type { MarketContext } from '@mondapac/shared-kernel';
+import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { findRoleProblems } from '../../src/platform/persistence/database-role-check';
+import { PrismaRoot } from '../../src/platform/persistence/prisma-root';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
 import { EXPECTED_PRIVILEGES } from './expected-privileges';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
@@ -53,6 +58,9 @@ function auditRow(marketId: string, overrides: Record<string, unknown> = {}) {
 describe('platform persistence (database integration)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
+  let unitOfWork: UnitOfWork;
+  /** The base client: reads that check what a unit left behind (platform persistence 13). */
+  let root: PrismaRoot;
   /** The application login (`mondapac_app`), as `AppModule` connects. */
   let sql: Client;
   /** The owner of the throwaway database: the migration role. */
@@ -72,6 +80,8 @@ describe('platform persistence (database integration)', () => {
     await nestApp.init();
     app = nestApp;
     prisma = app.get(PrismaService);
+    unitOfWork = app.get<UnitOfWork>(UNIT_OF_WORK);
+    root = app.get(PrismaRoot);
 
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
@@ -91,13 +101,30 @@ describe('platform persistence (database integration)', () => {
     expect(response.body).toEqual({ status: 'ok' });
   });
 
+  /** Writes one audit row in a read-write unit of its Market, as a platform writer would. */
+  async function insertAudit(market: MarketContext, row: ReturnType<typeof auditRow>) {
+    return unitOfWork.run(market, async () => {
+      await prisma.tx(market).auditLog.create({ data: row });
+      return ok(undefined);
+    });
+  }
+
+  const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
+
   describe('platform.audit_log', () => {
     it.each(TEST_MARKETS)('accepts an audit row for market %s', async (marketId) => {
+      const market = marketOf(marketId);
       const row = auditRow(marketId, { after: { status: 'checked' } });
 
-      await prisma.auditLog.create({ data: row });
+      await insertAudit(market, row);
 
-      await expect(prisma.auditLog.findUnique({ where: { id: row.id } })).resolves.toMatchObject({
+      const read = await unitOfWork.run(
+        market,
+        async () =>
+          ok(await prisma.tx(market).auditLog.findUnique({ where: { id: row.id, marketId } })),
+        { readOnly: true },
+      );
+      expect(read.ok && read.value).toMatchObject({
         marketId,
         actorType: 'SYSTEM',
         actorId: null,
@@ -107,7 +134,7 @@ describe('platform persistence (database integration)', () => {
 
     it('is append-only even for its owner: UPDATE, DELETE and TRUNCATE are rejected', async () => {
       const row = auditRow('AU');
-      await prisma.auditLog.create({ data: row });
+      await insertAudit(marketOf('AU'), row);
 
       // The application role is refused earlier, by privileges (42501); the owner reaches
       // the trigger (docs/design/data/platform.md 10.4).
@@ -121,7 +148,7 @@ describe('platform persistence (database integration)', () => {
         code: RESTRICT_VIOLATION,
       });
 
-      await expect(prisma.auditLog.count({ where: { id: row.id } })).resolves.toBe(1);
+      await expect(root.auditLog.count({ where: { id: row.id } })).resolves.toBe(1);
     });
 
     it.each([
@@ -150,10 +177,17 @@ describe('platform persistence (database integration)', () => {
         'audit_log_correlation_id_check',
       ],
     ])('rejects %s', async (_case, overrides, constraint) => {
-      const attempt = prisma.auditLog.create({ data: auditRow('ZZ', overrides) });
+      const row = auditRow('ZZ', overrides);
+      // The market and tenant cases name an empty value: the guard refuses those first, so
+      // they are written with the unit's own values and checked on the base client.
+      const viaGuard = row.marketId === 'ZZ' && row.tenantId === PLATFORM_TENANT_ID;
+      const attempt = viaGuard
+        ? insertAudit(marketOf('ZZ'), row)
+        : root.auditLog.create({ data: row });
 
       await expect(attempt).rejects.toThrow(CHECK_VIOLATION);
       await expect(attempt).rejects.toThrow(`"${constraint}"`);
+      await expect(root.auditLog.count({ where: { id: row.id } })).resolves.toBe(0);
     });
   });
   describe('the application role on platform.audit_log', () => {
@@ -198,7 +232,17 @@ describe('platform persistence (database integration)', () => {
     });
 
     it('is refused everything else, with 42501, and no row changes', async () => {
-      const before = await sql.query<{ count: string }>('SELECT count(*) FROM platform.audit_log');
+      // Other db-spec files write audit rows in parallel, so the rows that existed before are
+      // compared, not the table's row count.
+      const fingerprint = async (): Promise<Record<string, string>> =>
+        Object.fromEntries(
+          (
+            await sql.query<{ id: string; row: string }>(
+              'SELECT id::text AS id, md5(t::text) AS row FROM platform.audit_log t',
+            )
+          ).rows.map(({ id, row }) => [id, row]),
+        );
+      const before = await fingerprint();
       const statements = [
         "UPDATE platform.audit_log SET action = 'x.y.z'",
         'DELETE FROM platform.audit_log',
@@ -229,8 +273,8 @@ describe('platform persistence (database integration)', () => {
       expect(states).toEqual(
         Object.fromEntries(statements.map((statement) => [statement, INSUFFICIENT_PRIVILEGE])),
       );
-      const after = await sql.query<{ count: string }>('SELECT count(*) FROM platform.audit_log');
-      expect(after.rows[0]!.count).toBe(before.rows[0]!.count);
+      expect(Object.keys(before).length).toBeGreaterThan(0);
+      expect(await fingerprint()).toEqual(expect.objectContaining(before));
     });
 
     it('gains nothing by granting itself UPDATE', async () => {
