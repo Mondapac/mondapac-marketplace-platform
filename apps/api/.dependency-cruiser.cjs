@@ -112,10 +112,64 @@ module.exports = {
       severity: 'error',
       from: { pathNot: 'packages/shared-kernel/' },
       to: {
-        path: ['packages/shared-kernel/(src|dist)/', '^@mondapac/shared-kernel/(?!testing$)'],
+        path: [
+          'packages/shared-kernel/(src|dist)/',
+          '^@mondapac/shared-kernel/(?!(testing|contexts)$)',
+        ],
         // The package names resolve through tsconfig.json's paths, which marks them aliased.
         dependencyTypesNot: ['aliased'],
       },
+    },
+    {
+      // Rule 5 of 8.2 for the slice 1c constructors (identity slice 1c; foundations 3.7, 5.2).
+      // ESLint's rule 5 matches names; this rule closes the entry itself, so no import form,
+      // barrel or alias outside platform/ reaches the constructors.
+      name: 'contexts-are-built-by-platform',
+      comment:
+        'Only the platform entry adapters build actors and call contexts: nothing outside ' +
+        'src/platform/ imports @mondapac/shared-kernel/contexts. A module receives its ' +
+        'CallContext from the adapter that called it; it never mints a system actor.',
+      severity: 'error',
+      from: { pathNot: ['^src/platform/', 'packages/shared-kernel/'] },
+      to: {
+        path: [
+          'packages/shared-kernel/src/contexts\\.ts$',
+          'packages/shared-kernel/dist/contexts\\.(js|d\\.ts)$',
+          '^@mondapac/shared-kernel/contexts$',
+        ],
+      },
+    },
+    {
+      // Rule 9 of 8.2, first half (identity design 5.2; foundations 6.4 row 2).
+      name: 'use-cases-are-the-only-way-in',
+      comment:
+        'An entry point of a module (presentation/, which holds controllers, jobs/ and ' +
+        'subscribers/; contracts/; and every *.facade.ts implementation) imports from its ' +
+        "module's application/ only use-cases/*.use-case.ts, so the UseCaseGate runs for " +
+        'everything an entry point reaches.',
+      severity: 'error',
+      from: { path: '^src/modules/([^/]+)/(?:presentation/|contracts/|.+\\.facade\\.ts$)' },
+      to: {
+        path: '^src/modules/$1/application/',
+        pathNot: '^src/modules/$1/application/use-cases/[^/]+\\.use-case\\.ts$',
+      },
+    },
+    {
+      // Rule 9 of 8.2, second half (identity design 5.2).
+      name: 'repositories-stay-behind-use-cases',
+      comment:
+        'A repository (a *.repository.ts file) is imported only by application/ and ' +
+        "infrastructure/ of a module, and by the module's Nest module, which binds the " +
+        'implementation to its port. Controllers, jobs, subscribers and facades go through a ' +
+        'use case.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/[^/]+/(application|infrastructure)/',
+          '^src/modules/[^/]+/[^/]+\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/[^/]+/.+\\.repository\\.ts$' },
     },
     {
       name: 'module-public-api-only',

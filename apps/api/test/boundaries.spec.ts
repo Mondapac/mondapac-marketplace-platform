@@ -124,6 +124,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'application-does-not-know-delivery',
+        'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
         'database-driver-only-in-infrastructure',
         'domain-is-pure',
@@ -139,7 +140,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'persistence-root-is-private',
         'platform-does-not-import-modules',
         'prisma-only-in-infrastructure',
+        'repositories-stay-behind-use-cases',
         'temporal-only-through-kernel',
+        'use-cases-are-the-only-way-in',
       ]);
       expect(rules.filter((rule) => rule.severity !== 'error')).toEqual([]);
       expect(cruise.summary.violations.filter((v) => v.rule.severity !== 'error')).toEqual([]);
@@ -148,6 +151,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
     it('reports every deliberate violation in the fixtures, and nothing else', () => {
       expect(found).toEqual([
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
+        'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
         'core-does-not-import-verticals: src/platform/uses-vertical.ts',
         'database-driver-only-in-infrastructure: src/platform/uses-database-driver.ts',
         'domain-is-pure: src/modules/alpha/domain/does-io.ts',
@@ -176,8 +180,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'platform-does-not-import-modules: src/platform/imports-module-index.ts',
         'platform-does-not-import-modules: src/platform/reaches-into-module.ts',
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
+        'repositories-stay-behind-use-cases: src/modules/alpha/presentation/jobs/reaches-repository.ts',
         'temporal-only-through-kernel: src/platform/uses-js-temporal-polyfill.ts',
         'temporal-only-through-kernel: src/platform/uses-temporal-polyfill.ts',
+        'use-cases-are-the-only-way-in: src/modules/alpha/infrastructure/alpha.facade.ts',
+        'use-cases-are-the-only-way-in: src/modules/alpha/presentation/reaches-application-service.ts',
       ]);
     });
 
@@ -209,6 +216,14 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/identity/application/uses-own-domain.ts',
       // A module's infrastructure reaches the database through PrismaService only.
       'src/modules/alpha/infrastructure/uses-prisma-service.ts',
+      // A platform entry adapter builds actors and call contexts (identity slice 1c).
+      'src/platform/scheduler/builds-system-context.ts',
+      // Rule 9: an entry point calls a use case; a use case and infrastructure use the
+      // repository; the module's Nest module binds the implementation.
+      'src/modules/alpha/presentation/calls-use-case.ts',
+      'src/modules/alpha/application/use-cases/find-thing.use-case.ts',
+      'src/modules/alpha/infrastructure/prisma-thing.repository.ts',
+      'src/modules/alpha/alpha.module.ts',
     ])('accepts the allowed file %s', (file) => {
       expect(cruise.modules.map((module) => module.source)).toContain(file);
       expect(found.filter((violation) => violation.endsWith(`: ${file}`))).toEqual([]);

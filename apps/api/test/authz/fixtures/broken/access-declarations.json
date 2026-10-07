@@ -1,0 +1,6 @@
+[
+  { "name": "beta.listed-as-deny", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "beta.overrides-execute", "rule": "system" },
+  { "name": "beta.removed", "rule": "system" },
+  { "name": "beta.sign-out", "rule": "own-resources", "whenSellerNotApproved": "deny" }
+]
