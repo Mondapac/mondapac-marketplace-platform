@@ -781,16 +781,17 @@ describe('UnitOfWork (database integration)', () => {
       ]);
     });
 
-    it('sets default_transaction_isolation and _read_only on neither the application roles nor this database', async () => {
+    it('sets default_transaction_isolation and _read_only on no login role, the group, every role or this database', async () => {
       // Only the entries that reach the application login here: this database or every
-      // database (0), and the login, its group or every role (0). Other databases of the
+      // database (0), and the two logins, the group or every role (0). Other databases of the
       // cluster, such as the DatabaseProbe scratch database below, are not looked at.
       const { rows } = await observer.query(
         `SELECT s.setdatabase, s.setrole, s.setconfig FROM pg_db_role_setting s
           CROSS JOIN LATERAL unnest(s.setconfig) AS setting
           WHERE s.setdatabase IN (0, (SELECT oid FROM pg_database WHERE datname = current_database()))
             AND s.setrole IN (0, (SELECT oid FROM pg_roles WHERE rolname = current_user),
-                              (SELECT oid FROM pg_roles WHERE rolname = 'mondapac_app'))
+                              (SELECT oid FROM pg_roles WHERE rolname = 'mondapac_app'),
+                              (SELECT oid FROM pg_roles WHERE rolname = 'mondapac_migrator'))
             AND (setting LIKE 'default\\_transaction\\_isolation=%'
                  OR setting LIKE 'default\\_transaction\\_read\\_only=%')`,
       );
@@ -798,10 +799,38 @@ describe('UnitOfWork (database integration)', () => {
       expect(rows).toEqual([]);
     });
 
-    it.todo(
-      'statement_timeout 30s, lock_timeout 3s and idle_in_transaction_session_timeout 1min on ' +
-        "the login role: set by Kazem's bootstrap change (PK1), asserted when it lands",
-    );
+    it('the login role carries the three timeouts; the migration role and mondapac_app none (K1a, Hassan L5)', async () => {
+      const configOf = async (role: string): Promise<string[]> =>
+        (
+          await observer.query<{ rolconfig: string[] | null }>(
+            'SELECT rolconfig FROM pg_roles WHERE rolname = $1',
+            [role],
+          )
+        ).rows[0]?.rolconfig ?? [];
+      const login = await configOf(
+        (await observer.query<{ name: string }>('SELECT current_user AS name')).rows[0]!.name,
+      );
+      const isTimeout = (entry: string) =>
+        /^(statement_timeout|lock_timeout|idle_in_transaction_session_timeout)=/.test(entry);
+
+      expect(login).toEqual(
+        expect.arrayContaining([
+          'statement_timeout=30s',
+          'lock_timeout=3s',
+          'idle_in_transaction_session_timeout=60s',
+        ]),
+      );
+      expect(login.filter((entry) => entry.startsWith('plan_cache_mode='))).toEqual(
+        login.some((entry) => entry.startsWith('plan_cache_mode=')) ? ['plan_cache_mode=auto'] : [],
+      );
+      expect((await configOf('mondapac_migrator')).filter(isTimeout)).toEqual([]);
+      expect((await configOf('mondapac_app')).filter(isTimeout)).toEqual([]);
+
+      const { rows } = await observer.query<{ default_transaction_read_only: string }>(
+        'SHOW default_transaction_read_only',
+      );
+      expect(rows).toEqual([{ default_transaction_read_only: 'off' }]);
+    });
   });
 
   describe('DatabaseProbe refuses to start on another default isolation (ADR-0025)', () => {

@@ -391,9 +391,7 @@ describe('platform persistence (database integration)', () => {
 
   describe('the start-up self-check (docs/design/data/platform.md 10.8)', () => {
     const run = (client: Client) =>
-      findRoleProblems(
-        async (text) => (await client.query<{ code: string; subject: string | null }>(text)).rows,
-      );
+      findRoleProblems(async (text) => (await client.query<Record<string, unknown>>(text)).rows);
 
     it('passes on the application connection', async () => {
       await expect(run(sql)).resolves.toEqual([]);
@@ -409,7 +407,18 @@ describe('platform persistence (database integration)', () => {
         'owner_membership',
         'role_attribute',
         'role_membership',
+        'role_timeouts',
         'temporary_on_database',
+      ]);
+    });
+
+    it('refuses the migration role for each missing timeout (it is never limited, 10.7)', async () => {
+      const problems = await run(owner);
+
+      expect(problems.filter((problem) => problem.code === 'role_timeouts')).toEqual([
+        { code: 'role_timeouts', subject: 'statement_timeout' },
+        { code: 'role_timeouts', subject: 'lock_timeout' },
+        { code: 'role_timeouts', subject: 'idle_in_transaction_session_timeout' },
       ]);
     });
 

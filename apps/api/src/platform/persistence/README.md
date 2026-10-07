@@ -45,6 +45,15 @@ The guard reads the model map: `apps/api/src/generated/model-map.ts`.
   every `prisma generate`.
 - It is checked against Prisma's DMMF.
 
+## Start-up checks
+`main.ts` refuses to listen when `DatabaseProbe.roleProblems()` returns any problem
+(docs/design/data/platform.md 10.8). One of its reasons is `role_timeouts`: the login role's
+own settings (`pg_roles.rolconfig`) must hold `statement_timeout` (at most 30 s),
+`lock_timeout` (at most 3 s) and `idle_in_transaction_session_timeout` (at most 60 s), each
+above zero. `scripts/db/bootstrap-dev.sql` sets them. A Compose volume created before that
+change does not have them, and the API will not start on it until you run
+`pnpm db:bootstrap` once.
+
 ## Configuration
 - `DATABASE_POOL_MAX`: pool size. Integer from 1 to 100, default 10.
 - The wait for a connection is fixed at 2 s (`connectionTimeoutMillis`).
