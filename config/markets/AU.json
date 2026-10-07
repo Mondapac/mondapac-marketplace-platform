@@ -5,5 +5,15 @@
   "supportedLocales": ["en-AU"],
   "defaultCurrency": "AUD",
   "settlementCurrency": "AUD",
-  "timezone": "Australia/Brisbane"
+  "timezone": "Australia/Brisbane",
+  "requestLimits": {
+    "anonymousIdentityPerMinute": 20,
+    "defaultPerMinute": 300
+  },
+  "identity": {
+    "password": {
+      "minLength": 15,
+      "maxLength": 128
+    }
+  }
 }

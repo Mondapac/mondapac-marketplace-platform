@@ -14,6 +14,7 @@ import { LoggingModule } from './platform/logging/logging.module';
 import { MarketConfigModule } from './platform/market-config/market-config.module';
 import { MarketContextGuard } from './platform/market-context/market-context.guard';
 import { MarketContextModule } from './platform/market-context/market-context.module';
+import { RateLimitGuard } from './platform/rate-limit/rate-limit.guard';
 import { PersistenceModule } from './platform/persistence/persistence.module';
 import { SchedulerModule } from './platform/scheduler/scheduler.module';
 import { SubjectKeysModule } from './platform/subject-keys/subject-keys.module';
@@ -22,10 +23,12 @@ import { WorkerModule } from './platform/worker/worker.module';
 /**
  * Every global guard of the application, in the order they run (platform-foundations 5.1).
  * MarketContextGuard is first, so a request without a valid Market reaches nothing else.
- * No other module declares APP_GUARD, and `main.ts` adds no `useGlobalGuards`; a test
- * asserts this list and its order.
+ * RateLimitGuard is second (identity design 6.3 step 1 and 6.8): the generic per-origin limit
+ * runs before the actor guard and every controller, so no module code, `identity`'s included,
+ * runs for a throttled request. No other module declares APP_GUARD, and `main.ts` adds no
+ * `useGlobalGuards`; a test asserts this list and its order.
  */
-export const GLOBAL_GUARDS = [MarketContextGuard] as const;
+export const GLOBAL_GUARDS = [MarketContextGuard, RateLimitGuard] as const;
 
 export interface AppModuleOptions {
   /** Overrides the configuration read from `process.env` (tests). */

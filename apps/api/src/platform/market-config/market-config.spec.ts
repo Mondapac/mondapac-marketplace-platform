@@ -22,6 +22,8 @@ const VALID = {
   defaultCurrency: 'NZD',
   settlementCurrency: 'NZD',
   timezone: 'Pacific/Auckland',
+  requestLimits: { anonymousIdentityPerMinute: 20, defaultPerMinute: 300 },
+  identity: { password: { minLength: 15, maxLength: 128 } },
 };
 
 function directoryWith(files: Record<string, unknown>): string {
@@ -63,6 +65,24 @@ describe('loadMarketConfigs', () => {
     expect([...markets.keys()]).toEqual(['ZZ']);
   });
 
+  it('freezes every section, so no caller can change a policy value after boot', () => {
+    const market = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).get(
+      testMarketId('AU'),
+    );
+
+    expect(Object.isFrozen(market)).toBe(true);
+    expect(Object.isFrozen(market?.requestLimits)).toBe(true);
+    expect(Object.isFrozen(market?.identity.password)).toBe(true);
+  });
+
+  it('gives the synthetic Market other limits and password rules than the launch Market', () => {
+    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+    const [au, zz] = [markets.get(testMarketId('AU')), markets.get(testMarketId('ZZ'))];
+
+    expect(zz?.requestLimits).not.toEqual(au?.requestLimits);
+    expect(zz?.identity.password).not.toEqual(au?.identity.password);
+  });
+
   it('fails when a hosted market has no configuration file', () => {
     const hosted = ['AU', 'NZ'].map(testMarketId);
 
@@ -83,6 +103,28 @@ describe('loadMarketConfigs', () => {
     ['an unknown status', { status: 'live' }, /status/],
     ['an unknown field', { vatRate: 0.15 }, /vatRate|Unrecognized/],
     ['a code that differs from the file name', { code: 'QX' }, /must match the file name/],
+    ['no request limits', { requestLimits: undefined }, /requestLimits/],
+    [
+      'a zero request limit',
+      { requestLimits: { anonymousIdentityPerMinute: 0, defaultPerMinute: 300 } },
+      /requestLimits\.anonymousIdentityPerMinute/,
+    ],
+    ['no identity section', { identity: undefined }, /identity/],
+    [
+      'a password minimum below 15',
+      { identity: { password: { minLength: 8, maxLength: 128 } } },
+      /identity\.password\.minLength/,
+    ],
+    [
+      'a password maximum above 128',
+      { identity: { password: { minLength: 15, maxLength: 1024 } } },
+      /identity\.password\.maxLength/,
+    ],
+    [
+      'an unknown identity field',
+      { identity: { password: { minLength: 15, maxLength: 128 }, pepper: 'x' } },
+      /identity/,
+    ],
   ])('rejects %s', (_case, overrides, message) => {
     const directory = directoryWith({ 'QQ.json': { ...VALID, ...overrides } });
 
