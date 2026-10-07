@@ -135,6 +135,9 @@ strategy implementation, not in core logic.
 - `pnpm dev` builds the shared kernel first; restart it after a kernel change. `pnpm build`
   ends with `scripts/check-built-kernel.mjs`, which checks that the built API loads one build
   of the shared kernel.
+- `APP_ROLE` (api | worker) is required, no default (P 8; `.env.example` has `api`). `pnpm dev` runs the
+  api role; `pnpm dev:worker` builds once and runs the built app as the worker (no watcher; restart it
+  after a change).
 - `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
   and drops its own throwaway database)
 - `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).

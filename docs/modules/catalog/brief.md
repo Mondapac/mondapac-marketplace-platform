@@ -1,6 +1,6 @@
 # برگهٔ ماژول: catalog
 
-**سطح:** A  **فاز PLAYBOOK:** ۳  **وضعیت:** G1 تأیید (۳ اکتبر ۲۰۲۶)
+**سطح:** A  **فاز PLAYBOOK:** ۳  **وضعیت:** G1 تأیید (۳ اکتبر ۲۰۲۶)؛ G2 تأیید (۷ اکتبر ۲۰۲۶)
 **مالک برگه:** Hadi (product-owner)  **ADRهای مرتبط:** ADR-0001 (تصمیم ۱، ۲ و ۵)، ADR-0003 (تصمیم ۲، ۳، ۵ و ۹)، ADR-0004 (تصمیم ۱ و ۷)، ADR-0005 (تصمیم ۱، ۳ و ۸)، ADR-0006 (تصمیم ۴، ۵ و ۷)، ADR-0007 (تصمیم ۵ و ۸)، ADR-0008 (تصمیم ۲، ۳ و ۶)، ADR-0009 (تصمیم ۲، ۳، ۵، ۶ و ۷)، ADR-0010 (تصمیم ۱ تا ۸)، ADR-0012 (تصمیم ۱، ۳ تا ۶ و ۹)، ADR-0013، ADR-0015 (تصمیم ۳)، ADR-0016 (تصمیم ۳)، ADR-0017، ADR-0018 (تصمیم ۳، ۴، ۶ و ۷)، ADR-0019 (تصمیم ۱، ۳ تا ۱۰ و ۱۲)، ADR-0020 (تصمیم ۱ و ۲)، ADR-0022
 
 > این برگه سند **تصمیم** است، نه طراحی. جدول داده، API، نام رویدادها و نام کلید مجوزها در آن نیست و در G2 می‌آید.
@@ -284,7 +284,7 @@
 - **CAT-36، VER-03، ADR-0009 تصمیم ۳:** با «Approval Required» خاموش، هر Revision فوری منتشر می‌شود؛ CERT-21 و رد ادعا همچنان در ارسال و انتشار اعمال می‌شوند. CAT-36 محصول ساخته‌شده، Offer از کاتالوگ و Import را می‌پوشاند. مقدار راه‌اندازی: سؤال ۲.
 - **CAT-32، ADR-0009 تصمیم ۳:** «Changes needed» بدون دلیلی که فروشنده ببیند پذیرفته نمی‌شود. Revision ردشده رد می‌ماند؛ ویرایش بعدی Revision تازه می‌سازد.
 - **تأیید به همان چیزی وصل است که بازبینی شده (پیشنهاد تیم؛ ADR-0010 تصمیم ۵ برای ارتقا):** تأیید، رد، تطبیق و ارتقا شمارهٔ Revision را نام می‌برند. اگر در این فاصله Revision جایگزین شده باشد، پذیرفته نمی‌شود.
-- **CAT-33:** در تأیید گروهی، محصول فروشنده‌ای که تأیید نشده (یا «نمی‌تواند بفروشد») Skip می‌شود، نه رد.
+- **CAT-33:** در تأیید گروهی، محصول فروشنده‌ای که تأیید نشده (یا «نمی‌تواند بفروشد») Skip می‌شود، نه رد. همچنین ردیفی که بررسی عکسِ نام‌دار (named photo check) لازم دارد در تأیید گروهی Skip می‌شود (CAT-33 به‌علاوهٔ H1؛ پس تأیید اولِ هر محصول گروهی تأیید نمی‌شود). هر ردیفِ Skip‌شده با دلیلش («نیاز به بررسی عکس دارد») در نتیجه فهرست می‌شود، نه فقط شمرده.
 - **CAT-52، ADR-0010 تصمیم ۷:** تأیید دستهٔ فروشنده همیشه لازم است، مستقل از CAT-36.
 - **CAT-45، ADR-0010 تصمیم ۶:** تطبیق فقط در اولین تأیید (محصولی که هرگز منتشر نشده)؛ نوع و خانوادهٔ ویژگی یکسان؛ نگاشت صریح Variantها؛ اگر فروشنده از قبل روی محصول هدف Offer دارد، خطا؛ دستهٔ مالیاتی محصول پلتفرم ملاک است؛ Offer با همان شناسه منتقل و برچسب‌هایش دوباره پرسیده می‌شوند؛ محصول تکراری «MatchedDuplicate» می‌شود و پایانی است. پیشنهاد موارد مشابه فقط راهنماست.
 - **CAT-44، CAT-46، ADR-0010 تصمیم ۵:** ارتقا برگشت‌ناپذیر است، شمارهٔ Revision را نام می‌برد، Revisionهای در انتظار فروشنده را کنار می‌گذارد، برای محصول «برند اختصاصی» همیشه مسدود است، و پیش از انتشار بند مجوز محتوا با تأیید حقوقی می‌خواهد. فروشندهٔ اصلی با Offer خودش ادامه می‌دهد و دیگر محتوا را ویرایش نمی‌کند؛ به او اطلاع داده می‌شود.
@@ -294,7 +294,7 @@
 - **تعریف ویژگی‌ها (مرور G1، Mohammad؛ ADR-0009 تصمیم ۲، ADR-0001 تصمیم ۱):** تعریف ویژگی و خانوادهٔ ویژگی (CAT-02، CAT-03) دادهٔ همین ماژول است و نسخه‌دار. در راه‌اندازی seed است و یک خانوادهٔ پیش‌فرض به‌ازای Market دارد (مرور G1، Ali).
 - **CAT-51، SEL-26، ADR-0010 تصمیم ۷:** فقط فروشنده‌ای که ادمین SEL-26 را برایش روشن کرده (پیش‌فرض خاموش) پیشنهاد می‌دهد؛ `catalog` در هر دستور از facade فروشندگان می‌پرسد. پیشنهاد زیر یک دستهٔ پلتفرم لنگر می‌اندازد. وضعیت: در انتظار، تأیید، رد با دلیل، انصراف. با لغو مجوز، پیشنهادهای در انتظار خودکار انصراف می‌خورند.
 - **CAT-52:** دستهٔ تأییدشدهٔ فروشنده فقط برای همان فروشنده، به‌عنوان قفسه روی Offerهای خودش و بخش‌بندی صفحهٔ فروشگاهش، و فقط در Market او؛ در ناوبری و فیلتر پلتفرم نیست. slug آن به‌ازای (Market، فروشنده) یکتاست. قفسهٔ یک Offer باید مال مالک همان Offer باشد (مرور G1، Hassan).
-- **CAT-53:** ارتقا (همان شناسه؛ slug آزاد پلتفرم لازم است) و ادغام (پایانی؛ قفسهٔ Offerها منتقل می‌شود) فقط با ادمین و در Audit.
+- **CAT-53:** ارتقا (همان شناسه؛ slug آزاد پلتفرم لازم است) و ادغام (پایانی؛ قفسهٔ Offerها پاک می‌شود، منتقل نمی‌شود؛ تاریخچهٔ تغییرات 2026-10-07) فقط با ادمین و در Audit.
 - **CAT-54:** سقف تعداد پیشنهاد در انتظار به‌ازای فروشنده پیکربندی است؛ نام را ادمین بررسی می‌کند.
 
 **مالیات**
@@ -670,7 +670,20 @@
 
 | عنصر صفحه | کامپوننت موجود در Figma | تغییر لازم | نوع نسخه |
 |---|---|---|---|
-| (در G2 پر می‌شود) | | | |
+| Photo grid with main mark and keyboard reorder | `UploadItem`, `UploadArea` | `UploadItem`: Layout Tile, Main, Taken down, Description slot, Move earlier and later | MINOR 1.7.0 |
+| Size rows (variants) | `Select`, `Input`, `Badge` | New `VariantRow` (Row, Card; Live, New, Error) | MINOR 1.7.0 |
+| Claim-word error, changes-needed reason, autosave bar | `Field`, `ReasonQuote`, `FormActionBar` | `Field` Quote and Action link; `ReasonQuote` Field and Next step; `FormActionBar` Autosave | MINOR 1.7.0 |
+| Product, revision, Offer, badge and proposal states | `StatusBadge` | 23 value rows (words in ux.md 3.3); "Live" never "Approved" | MINOR 1.7.0 |
+| Category and product pickers | `PickerList` (certification 1.6.0) | Path labels, Single | MINOR 1.7.0 |
+| Category tree | None | New `CategoryTree`, `TreeNode` (keyboard tree) | MINOR 1.8.0 |
+| Revision compare and photo compare | `DataRow` Compare | State Sensitive; thumbnail strip with Added, Removed, Moved | MINOR 1.8.0 |
+| AI listing suggestion (AIS-03) | `ExtractedField` Mode Suggestion | Context (Listing) state words | MINOR 1.7.0 |
+| Reviewer checks, settings rows, dialogs (DP1 to DP13, including the tax-override dialog), badges, filter | `CheckboxRow`, `SettingRow`, `Dialog`, `CertChip`, `CertDetail`, `FilterGroup` | None (frames only) | n/a |
+| Icons | `icons.json` | Add `image`, `layers`, `folder`, `archive`, `git-merge`, `link`, `tag`, `trash-2` | MINOR 1.7.0 |
+| Templates | Seller and Admin templates of 1.0 to 1.6.0 | New: `Seller · Products`, `Seller · Product form`, `Admin · Products`, `Admin · Revision review`, `Admin · Category tree`; reused: `Shared · Settings`, `Seller · Setup step` | 1.7.0 and 1.8.0 |
+| Mobile navigation (D16) | None | Not part of this module | Open |
+
+Totals (same as ux.md section 4): **3 new components** (`VariantRow`, `CategoryTree`, `TreeNode`), **8 changed components** (`UploadItem`, `Field`, `ReasonQuote`, `FormActionBar`, `StatusBadge`, `PickerList`, `DataRow`, `ExtractedField`), 8 new icons, 5 new templates, no new tokens; releases 1.7.0 (seller) and 1.8.0 (admin).
 
 **صفحه‌ها و حالت‌هایی که این ماژول لازم دارد (برای برنامه‌ریزی طراحان).** منبع: `docs/design/figma/README.md` و `docs/design/research/direction-c.md`؛ **خودِ فایل Figma برای این برگه باز نشده است.** قالب‌های موجود: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board). هیچ قالبی برای فهرست محصول، فرم محصول یا بازبینی محصول نیست. کامپوننت‌های مرتبطِ موجود: `ProductThumb`، `StatusBadge`، `CertChip`، `Badge`، `TableCell`، `Tab`، `FilterChip`، `Pagination`، `BulkActionBar`، `CardHeader`، `Input`، `Checkbox`، `Switch`، `SegmentedControl`، `Button`، `InfoBanner`، `Tooltip`، `TimelineItem`، `ChecklistItem`، `QueueCard`. انتخاب کامپوننت برای هر عنصر پیشنهاد برای G2 است (مرور G1، Mohammad).
 
@@ -692,8 +705,8 @@
 - **نشان:** طبق `direction-c.md` سه نشان جدا دیده می‌شود (گواهی فروشنده، گواهی تولیدکننده، خوداظهاری). واژهٔ «verified» در آن سند پیش از تأیید حقوقی به کار نرود (برگهٔ certification). در پنل‌ها هم نشان فقط از دادهٔ ساختاریافته ساخته می‌شود و هیچ‌جا بدون مبنا نیست.
 - **ایمیل‌ها:** محصول تأیید شد؛ Changes needed با فیلد، دلیل و گام بعدی؛ کالای شما به کالای مشترک وصل شد (CAT-45؛ مرور G1، Jafar)؛ برچسب معلق شد و Offer از فروش بیرون رفت (با علت)؛ برچسب برگشت؛ این نوع کالا دیگر برای شما مجاز نیست؛ محصول شما به پلتفرم ارتقا یافت (CAT-44)؛ متن منتشرشده‌تان حالا واژهٔ ادعا دارد (سؤال ۶)؛ پیشنهاد دسته پذیرفته یا رد شد؛ Import تمام شد. فهرست دقیق، متن و کانال (تا ماژول `notifications`) در G2.
 
-- قالب‌های تازه در Figma: (در G2)
-- نسخهٔ سیستم طراحی بعد از این ماژول: (در G2)
+- قالب‌های تازه در Figma: پنج قالب (جدول بالا؛ جزئیات در `docs/modules/catalog/ux.md` بخش ۴)
+- نسخهٔ سیستم طراحی بعد از این ماژول: 1.8.0 (پس از 1.6.0 ماژول certification؛ شمارهٔ نسخه ممکن است با ماژول‌های فاز ۴ جابه‌جا شود)
 
 ---
 
@@ -701,8 +714,14 @@
 | دروازه | شرکت‌کننده‌ها | نتیجه | تاریخ |
 |---|---|---|---|
 | G1 دامنه و امکانات | مالک، product-owner، cto، product-designer (و مرور software-architect و security-tester در سطح دامنه) | **تأیید** (تصمیم صاحب پروژه). با هفت پاسخ بخش ۷، هر هفت همان پیشنهاد تیم، و پیشنهادهای تیم در همان بخش. مرور Ali (cto)، Mohammad (software-architect)، Hassan (security-tester، در سطح دامنه) و Jafar (product-designer): هر چهار «پذیرش با تغییر»؛ جایی که اختلاف بود رأی Ali اعمال شد؛ تغییرها اعمال شد و مرورکننده‌ها متن نهایی را دوباره نخوانده‌اند | 2026-10-03 |
-| G2 طراحی | software-architect، cto، database-designer، ui-ux-designer، security-tester | | |
+| G2 طراحی | software-architect، cto، database-designer، ui-ux-designer، security-tester (+ product-designer برای بخش ۱۲، product-owner برای پرسش‌های محصول) | **تأیید.** طراحی دامنه `docs/design/domain/catalog.md` (Mohammad)، طراحی داده `docs/design/data/catalog.md` (Mojtaba)، صفحه‌ها `docs/modules/catalog/ux.md` (Reza). Ali (cto): امضای طراحی دامنه (B1 تا B4 اعمال شد) و امضای طراحی داده با B1 و B2 (اعمال شد) و رأی Q-K8. Hassan (security-tester): «پذیرش با شرط» برای طراحی دامنه (H1، M1 تا M3، L1 تا L9، شرط‌های بازبینی دوم و مسیر `requestedTags`) و برای طراحی داده (M1 تا M3، L1 تا L5)، همه اعمال شد جز L4 که دلیلش در طراحی داده آمده است. Mojtaba: امضای طراحی داده (هر migration امضای جدا می‌خواهد). Reza: امضای صفحه‌ها. Jafar (product-designer): «پذیرش با تغییر»، اعمال شد؛ بخش ۱۲ را پذیرفت. Hadi (product-owner): یک SKU برای هر Offer، اصلاح CAT-53، دلیل‌های ردِ پیشنهاد دسته، و تأیید گروهیِ محدودتر. پاسخ‌های صاحب پروژه: زمان بازبینی محصول وعده داده نمی‌شود؛ فقط زبان اصلی بازار اجباری است. درخواست‌های فاز ۴ (V-1، P-1، K-1، سقف `catalog.maxVariantsPerProduct`) در بخش ۹.۷ و ۱۸ طراحی دامنه پاسخ گرفت. Bagher (کنترل کیفیت): بازبینی نهایی. باز و غیرمسدودکننده: ADR-0029 (قاعدهٔ چرخهٔ عمر پوشهٔ دریافت فایل)، ADR-0030 (پیش از اولین برش با SQL خام)، PR پلتفرمی `pg_trgm` | 2026-10-07 |
 
 ## تاریخچهٔ تغییرات بعد از دروازه
 | تاریخ | تغییر | مرور توسط | تصمیم |
 |---|---|---|---|
+| 2026-10-07 | CAT-53: ادغام دستهٔ فروشنده قفسهٔ Offerها را **پاک** می‌کند، منتقل نمی‌کند (تصمیم ۹ تیم، گزینهٔ A؛ دستهٔ پلتفرم هرگز قفسه نیست، CAT-52) | Hadi (product-owner)، Ali (cto) | اصلاح متن طبق تصمیم گرفته‌شده |
+| 2026-10-07 | SKU: یک `sellerSku` برای هر Offer؛ موجودی برای هر `variantId` در `inventory`؛ در فاز ۳ SKU جدا برای هر Variant نیست؛ Import با SKU و مقدار گزینه‌های Variant به‌روز می‌کند | Hadi (product-owner)، Ali (cto) | پذیرفته شد |
+| 2026-10-07 | زبان: برای انتشار فقط زبان اصلی بازار اجباری است؛ زبان‌های دیگر اختیاری‌اند و به زبان اصلی برمی‌گردند (INTL-13)؛ بررسی ادعا روی هر زبانِ پرشده اجرا می‌شود | Hadi (product-owner) | تصمیم صاحب پروژه (2026-10-07) |
+| 2026-10-07 | زمان بازبینی محصول به فروشنده وعده داده نمی‌شود | Jafar (product-designer)، Hadi (product-owner) | تصمیم صاحب پروژه (2026-10-07) |
+| 2026-10-07 | سقف Variant: تنظیم بازار `catalog.maxVariantsPerProduct` (AU ۱۰۰)، به درخواست فاز ۴ برای محدود ماندن جابه‌جایی Offer در `inventory` و `pricing` | Ali (cto)، Mohammad (software-architect) | پذیرفته شد |
+| 2026-10-07 | قانون CAT-33: تأیید گروهی ردیف‌های نیازمند بررسی عکسِ نام‌دار را هم Skip می‌کند (CAT-33 به‌علاوهٔ H1)؛ تأیید اولِ محصول هرگز گروهی نیست؛ ردیف Skip‌شده با دلیل در نتیجه فهرست می‌شود. (ux.md بخش 3.3a و FP6 گام ۶ هم همین را می‌گویند) | Hadi (product-owner)، Jafar (product-designer) | پذیرفته شد (Hadi) |
