@@ -538,6 +538,32 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         syntax('contexts-are-minted-by-platform', 3),
       ],
       ['src/platform/market-context/market-context.factory.ts', []],
+      // Slice 1c, rule 5: the actor and CallContext constructors and types are minted by the
+      // platform, and the `contexts` entry is refused by path name (the entry need not exist).
+      [
+        'src/modules/alpha/application/mints-actor-context.ts',
+        [
+          ...imports('contexts-are-minted-by-platform', 2),
+          ...syntax('contexts-are-minted-by-platform', 5),
+        ],
+      ],
+      [
+        'src/modules/alpha/application/uses-context-types.ts',
+        imports('contexts-are-minted-by-platform'),
+      ],
+      // Slice 1c, use-case-entry-is-the-gate: no execute override and no `.handle(` call on
+      // another object in use-cases/; no `.handle(` call in presentation/.
+      [
+        'src/modules/alpha/application/use-cases/overrides-execute.ts',
+        syntax('use-case-entry-is-the-gate'),
+      ],
+      [
+        'src/modules/alpha/application/use-cases/calls-handle.ts',
+        syntax('use-case-entry-is-the-gate'),
+      ],
+      ['src/modules/alpha/presentation/calls-handle.ts', syntax('use-case-entry-is-the-gate')],
+      ['src/modules/alpha/application/use-cases/allowed-use-case.ts', []],
+      ['src/modules/alpha/application/calls-handler-object.ts', []],
       // Only the guard attaches a MarketContext, in every part of the API.
       [
         'src/platform/attaches-market-context.ts',
@@ -577,6 +603,15 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ]);
       expect(textsIn('src/modules/alpha/domain/converts-date.ts')).toEqual([
         expect.stringMatching(/^no-wall-clock: no Date in domain\/ or application\//),
+      ]);
+    });
+
+    it('names each use-case-entry-is-the-gate message', () => {
+      expect(textsIn('src/modules/alpha/application/use-cases/overrides-execute.ts')).toEqual([
+        'use-case-entry-is-the-gate: a use case never overrides execute.',
+      ]);
+      expect(textsIn('src/modules/alpha/application/use-cases/calls-handle.ts')).toEqual([
+        'use-case-entry-is-the-gate: handle is called only by UseCase.execute.',
       ]);
     });
 

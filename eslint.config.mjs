@@ -90,8 +90,21 @@ function forbidNames(names, message) {
 // run-time control is the kernel's isMinted check. The dependency-cruiser rule
 // market-context-only-through-the-decorator closes the paths to the factory, and
 // contextImportsOfModules closes namespace imports, `export *` and provider discovery.
-const CONTEXT_CONSTRUCTORS = ['mintMarketContext', 'MarketContextFactory'];
-const CONTEXT_TYPES = ['MarketContext'];
+const CONTEXT_CONSTRUCTORS = [
+  'mintMarketContext',
+  'MarketContextFactory',
+  'anonymousActor',
+  'systemActor',
+  'createCallContext',
+];
+const CONTEXT_TYPES = [
+  'MarketContext',
+  'ActorContext',
+  'AnonymousActor',
+  'SystemActor',
+  'AuthenticatedActor',
+  'CallContext',
+];
 const MINTED_BY_PLATFORM =
   'contexts-are-minted-by-platform: a module never mints a context; it receives one from ' +
   'its platform entry adapter.';
@@ -117,6 +130,10 @@ const contextImportsOfModules = [
         importNames: ['mintMarketContext'],
         message: MINTED_BY_PLATFORM,
       },
+      // The actor and CallContext constructors live in the kernel entry `contexts`. A path
+      // name match, so it holds whether or not the entry exists yet; a module imports the
+      // context types from the kernel main entry and never this entry.
+      { name: '@mondapac/shared-kernel/contexts', message: MINTED_BY_PLATFORM },
       {
         name: '@nestjs/core',
         importNames: ['DiscoveryService', 'DiscoveryModule', 'ModulesContainer'],
@@ -207,6 +224,43 @@ const kernelImports = (regex) => [
   },
 ];
 
+// The selector groups of the modules block and of the domain and application block.
+const MODULE_SYNTAX = [
+  ...noMarketOrVerticalLiterals,
+  ...noWallClock,
+  ...onlyTheGuardAttaches,
+  ...contextsAreMintedByPlatform,
+  ...noRawSqlOrTransactionInModules,
+  ...moduleStaticImportsOnly,
+];
+const DOMAIN_APPLICATION_SYNTAX = [
+  ...noMarketOrVerticalLiterals,
+  ...noWallClock,
+  ...noDateConversion,
+  ...onlyTheGuardAttaches,
+  ...contextsAreMintedByPlatform,
+  ...noRawSqlOrTransactionInModules,
+  ...moduleStaticImportsOnly,
+];
+
+// Slice 1c, use-case-entry-is-the-gate (ADR-0018): UseCase.execute is the one entry that
+// checks the access rule; a use case implements the protected `handle` and never overrides
+// `execute`, and nothing calls `handle` on another object. Both selectors are scoped to
+// application/use-cases/ (where use cases live) and, for the call, presentation/ (where a
+// controller could bypass the gate). A `.handle(` elsewhere in a module (a handler object,
+// an event handler) is not flagged. `this.handle(` stays allowed (UseCase.execute is in
+// platform/authz/, outside modules).
+const GATE = 'use-case-entry-is-the-gate';
+const useCaseNeverOverridesExecute = {
+  selector: "ClassBody > MethodDefinition[key.name='execute']",
+  message: `${GATE}: a use case never overrides execute.`,
+};
+const handleIsCalledOnlyByExecute = {
+  selector:
+    "CallExpression[callee.type='MemberExpression'][callee.property.name='handle'][callee.object.type!='ThisExpression']",
+  message: `${GATE}: handle is called only by UseCase.execute.`,
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -224,6 +278,12 @@ export default tseslint.config(
     ],
   },
   eslint.configs.recommended,
+  {
+    // No inline directive can switch a boundary rule off in the API sources (nothing there
+    // uses one today).
+    files: [`apps/api/src/**/*.${TS}`],
+    linterOptions: { noInlineConfig: true },
+  },
   {
     files: [`**/*.${TS}`],
     extends: [...tseslint.configs.recommendedTypeChecked],
@@ -307,15 +367,7 @@ export default tseslint.config(
     files: [`**/src/modules/**/*.${TS}`],
     ignores: SPEC_FILES,
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        ...noMarketOrVerticalLiterals,
-        ...noWallClock,
-        ...onlyTheGuardAttaches,
-        ...contextsAreMintedByPlatform,
-        ...noRawSqlOrTransactionInModules,
-        ...moduleStaticImportsOnly,
-      ],
+      'no-restricted-syntax': ['error', ...MODULE_SYNTAX],
       '@typescript-eslint/no-restricted-imports': contextImportsOfModules,
     },
   },
@@ -346,17 +398,28 @@ export default tseslint.config(
     files: [`**/src/modules/*/domain/**/*.${TS}`, `**/src/modules/*/application/**/*.${TS}`],
     ignores: SPEC_FILES,
     rules: {
+      'no-restricted-syntax': ['error', ...DOMAIN_APPLICATION_SYNTAX],
+    },
+  },
+  {
+    // Use cases: the gate rule joins the domain and application list (a later block replaces
+    // the selectors of an earlier one).
+    files: [`**/src/modules/*/application/use-cases/**/*.${TS}`],
+    ignores: SPEC_FILES,
+    rules: {
       'no-restricted-syntax': [
         'error',
-        ...noMarketOrVerticalLiterals,
-        ...noWallClock,
-        ...noDateConversion,
-        ...onlyTheGuardAttaches,
-        ...contextsAreMintedByPlatform,
-        ...noRawSqlOrTransactionInModules,
-        ...moduleStaticImportsOnly,
+        ...DOMAIN_APPLICATION_SYNTAX,
+        useCaseNeverOverridesExecute,
+        handleIsCalledOnlyByExecute,
       ],
     },
+  },
+  {
+    // Presentation: a controller reaches a use case through execute only.
+    files: [`**/src/modules/*/presentation/**/*.${TS}`],
+    ignores: SPEC_FILES,
+    rules: { 'no-restricted-syntax': ['error', ...MODULE_SYNTAX, handleIsCalledOnlyByExecute] },
   },
   {
     // The shared kernel is framework-free and used by both api and web (ADR-0008), spec
