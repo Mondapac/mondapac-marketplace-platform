@@ -522,6 +522,20 @@ accepted this paragraph with HF14: until then the `Authorization` header is refu
 | A. The link alone verifies | Fewest steps | A click on an unrequested mail activates an account whose password the attacker knows |
 | B (decided; accepted by Hassan, 14.2). The link verifies only with the account's password, typed on the page; a correct password there also completes sign-in (Reza's proposal, 8.6), under full throttling, and the link is consumed only then | The victim cannot complete it; the attacker has no mailbox. With "sign-up again replaces the password, and a seller's name" (3.2) and the 7-day purge, the real owner is never locked out. The new user types the password once, not twice | One more field on the verification page |
 
+**Customer sign-up as built in slice 1d (Hossein, 2026-10-07).** Choices made where this design
+left room, kept to its intent; reviewers may overturn any of them.
+
+| Point | As built |
+|---|---|
+| Order (HF12) | Body shape, email format and password rules first (they depend only on the request); then the hash, outside every unit; then one serializable read-write unit that reads the account and takes one of the three branches of 3.2. A full hash queue answers `request.busy` before any unit |
+| "One write unit, which at least counts the mail" | The `mail.account` and `mail.origin` counters (6.8) and the mail itself arrive with slices 2 and 3. Until then the branch "verified, notice already sent within the interval" opens the same serializable unit, reads and commits **without a write**; the other branches write. The cost of every branch is still one hash and one unit; from the slice that adds the mail counters, that branch increments `mail.account` in the same unit, so every branch writes |
+| Notice interval | Market configuration `identity.existingAccountNoticeHours` (AU 24; the synthetic ZZ 12), not a constant, so a Market can differ (ADR-0002) |
+| Concurrent sign-ups of one new address | They end as if run one after the other. PostgreSQL usually refuses the later insert with a serialisation failure; the unit runs again (P 3.1 row 7) and takes the repeat branch, so the later password stands. If the unique key refuses it instead, it answers the same and changes nothing. Either way one account, one answer |
+| Disabled account | Not special-cased: the branches of 3.2 apply as for an active one, and the status is unchanged. Sign-in still refuses it (slice 2) |
+| Body | A closed schema (as catalog L8): only `email` and `password`; an unknown field, `displayName` included, is refused with `validation.failed` (`unknown-field`, its name cut to 64 characters, never its value) and nothing is stored. JSON only; other media types answer 415 `request.body-unsupported` |
+| A refused constraint | The repository maps the unique key to "taken" (answered as accepted) and the CHECKs of data design 3.3 (N1 included) to `validation.failed`, never a 500 |
+| CSRF and the `Authorization` header | Not in 1d: the origin check of 6.4 (HF14) comes with sessions in slice 2 and covers this route then |
+
 ### 6.8 Throttling and rate limiting (I11)
 Thresholds are Hassan's. Counters live in an `identity` table, in PostgreSQL because the
 decision must survive a restart and be the same on every instance (ADR-0004 decision 1 keeps
