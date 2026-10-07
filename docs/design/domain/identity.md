@@ -808,7 +808,7 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 | Session and link tokens, CSRF token | Yes: random bytes, SHA-256, HMAC, constant-time compare | — | **No package** |
 | Cookie reading and writing | Yes, with the installed HTTP adapter: a strict reader for our own cookie names; `Set-Cookie` through the response | `cookie-parser` | **No package** |
 | Sign-in throttling | Yes: counters in PostgreSQL (6.8) | — | **No package** |
-| Generic rate limiting per origin | No | `@nestjs/throttler`, `rate-limiter-flexible`; criteria: works under NestJS 12 and the test setup, memory and shared stores, no install script | **One package, named after spike 3**; a Redis client only with a second API instance |
+| Generic rate limiting per origin | No | `@nestjs/throttler`, `rate-limiter-flexible`; criteria: works under NestJS 12 and the test setup, memory and shared stores, no install script | **One package, named after spike 3**; a Redis client only with a second API instance. **Approved by the owner on 2026-10-07: `rate-limiter-flexible` 11.2.1** (exact pin; memory store now, its PostgreSQL store when a second API instance exists; no Redis client). Added with its lockfile by the shared-file PR `chore/identity-rate-limiter-dep`, before slice 1d merges |
 | Sending mail | Partly: `fetch` covers an HTTP interface | `nodemailer` if only SMTP is available | **None if spike 4 passes; otherwise `nodemailer`** |
 | Mail templates | Yes: named placeholders | An ICU formatter, with `notifications` | **No package in Phase 2** |
 | Common-password list | A checked-in data file, not a package; its licence is checked | — | **Data file** |
