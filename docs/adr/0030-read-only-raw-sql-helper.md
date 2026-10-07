@@ -118,7 +118,8 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
    array, unequal zipped arrays, a caller-supplied Market, a read-write unit and a closed or
    missing store are refused; a list entry that writes, locks, calls a function off the
    allow-list or reads another schema stops the boot; a log assertion finds no parameter value.
-   The boundary check's fixtures of decision 6 run under `pnpm test`. The controls of C1 to C4
+   The boundary check's fixtures of decision 6 run under `pnpm test`. The controls of C1 to C3 (C4 came
+   with this ADR's PR)
    are in place in `certification` slice 1, before S1 to S3 merge.
 10. **Out of scope.** SQL inside migrations, trigger and other function bodies included: it is
     reviewed under platform.md 10.2 and Ali's Q-K8 ruling (`SECURITY INVOKER`, no dynamic
