@@ -156,6 +156,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(found).toEqual([
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
+        'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
+        'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
         'core-does-not-import-verticals: src/platform/uses-vertical.ts',
         'database-driver-only-in-infrastructure: src/platform/uses-database-driver.ts',
         'domain-is-pure: src/modules/alpha/domain/does-io.ts',
@@ -475,6 +477,12 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
   describe('ESLint', () => {
     let eslint: ESLint;
     const results = new Map<string, Linter.LintMessage[]>();
+    // With noInlineConfig ESLint adds a warning (no rule id) for every directive it ignores.
+    // Those notices are split off here and asserted on their own; every other message must
+    // still be an error.
+    const ignoredDirectives = new Map<string, string[]>();
+    const IGNORED_DIRECTIVE =
+      /^'\/\/ eslint-disable[^']*' has no effect because you have 'noInlineConfig'/;
 
     beforeAll(async () => {
       // One instance and one run over the whole fixture tree: the type-aware parser builds
@@ -485,7 +493,19 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         path.join(FIXTURES, 'packages/**/*.ts'),
       ]);
       for (const result of linted) {
-        results.set(path.relative(FIXTURES, result.filePath), result.messages);
+        const file = path.relative(FIXTURES, result.filePath);
+        const notices = result.messages.filter(
+          (message) => message.ruleId === null && IGNORED_DIRECTIVE.test(message.message),
+        );
+        if (notices.length > 0)
+          ignoredDirectives.set(
+            file,
+            notices.map((m) => m.message),
+          );
+        results.set(
+          file,
+          result.messages.filter((message) => !notices.includes(message)),
+        );
       }
     }, SETUP_TIMEOUT_MS);
 
@@ -497,6 +517,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       return messages;
     }
 
+    const syntaxOf = (file: string): string[] =>
+      textsIn(file).map((text) => text.split(':')[0] ?? text);
     const rulesIn = (file: string): string[] => messagesIn(file).map(label).sort();
     const textsIn = (file: string): string[] => messagesIn(file).map((m) => m.message);
 
@@ -568,6 +590,32 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         syntax('contexts-are-minted-by-platform', 3),
       ],
       ['src/platform/market-context/market-context.factory.ts', []],
+      // Slice 1c, rule 5: the actor and CallContext constructors and types are minted by the
+      // platform, and the `contexts` entry is refused by path name (the entry need not exist).
+      [
+        'src/modules/alpha/application/mints-actor-context.ts',
+        [
+          ...imports('contexts-are-minted-by-platform', 2),
+          ...syntax('contexts-are-minted-by-platform', 5),
+        ],
+      ],
+      [
+        'src/modules/alpha/application/uses-context-types.ts',
+        imports('contexts-are-minted-by-platform'),
+      ],
+      // Slice 1c, use-case-entry-is-the-gate: no execute override and no `.handle(` call on
+      // another object in use-cases/; no `.handle(` call in presentation/.
+      [
+        'src/modules/alpha/application/use-cases/overrides-execute.ts',
+        syntax('use-case-entry-is-the-gate', 3),
+      ],
+      [
+        'src/modules/alpha/application/use-cases/calls-handle.ts',
+        syntax('use-case-entry-is-the-gate', 4),
+      ],
+      ['src/modules/alpha/presentation/calls-handle.ts', syntax('use-case-entry-is-the-gate')],
+      ['src/modules/alpha/application/use-cases/allowed-use-case.ts', []],
+      ['src/modules/alpha/application/calls-handler-object.ts', []],
       // Only the guard attaches a MarketContext, in every part of the API.
       [
         'src/platform/attaches-market-context.ts',
@@ -608,6 +656,25 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(textsIn('src/modules/alpha/domain/converts-date.ts')).toEqual([
         expect.stringMatching(/^no-wall-clock: no Date in domain\/ or application\//),
       ]);
+    });
+
+    it('does not let an inline directive switch a rule off, and reports the ignored directive', () => {
+      const file = 'src/modules/alpha/application/disables-a-rule.ts';
+
+      expect(syntaxOf(file)).toEqual(['no-wall-clock']);
+      expect([...ignoredDirectives.keys()]).toEqual([file]);
+      expect(ignoredDirectives.get(file)).toEqual([
+        expect.stringContaining("'// eslint-disable-next-line no-restricted-syntax' has no effect"),
+      ]);
+    });
+
+    it('names each use-case-entry-is-the-gate message', () => {
+      expect(textsIn('src/modules/alpha/application/use-cases/overrides-execute.ts')).toEqual(
+        Array(3).fill('use-case-entry-is-the-gate: a use case never overrides execute.'),
+      );
+      expect(textsIn('src/modules/alpha/application/use-cases/calls-handle.ts')).toEqual(
+        Array(4).fill('use-case-entry-is-the-gate: handle is called only by UseCase.execute.'),
+      );
     });
 
     it('names each kernel import it refuses', () => {

@@ -157,7 +157,7 @@ stored at approval, with the constraint that a zone change never extends or revi
 | B. Store at approval only; re-compute from a `sellers` zone event | No call in the hot path | `sellers` publishes no zone event today (SL 7.4; an admin correction is audited only); a window exists between a change and its delivery; "no zone" is not observable |
 
 **Ruling (Ali B1 = Hassan M4, 2026-10-07):** A, with the zone source of the claim path independent of
-the caller: only the non-provisional zone, through one fixed read (S-1), never `sellerSummaries`
+the caller: only the non-provisional zone, through one fixed read (S-1, `approvedSellerZones`), never `sellerSummaries`
 under the caller's context (whose answer differs by actor). The submit and approve guards (3.2) and
 the job (8.6) may keep the provisional zone through `sellerSummaries`. ADR-0028 d8 records it.
 
@@ -435,7 +435,7 @@ The application layer loads, then calls the pure rule with `Clock.now()`:
 | Step | Load (outside any write; one read-only unit, ADR-0025) | Rule |
 |---|---|---|
 | 0 | Validate the batch shape (1 to 100; ids parse; enum values); `marketId` from the context only | Any malformed query is `{ allowed: false, reason: 'input-invalid' }`; the other queries still answer |
-| 1 | Seller zones: the fixed, caller-independent read of non-provisional zones (`sellers`, request S-1), distinct seller ids (T2, B1). Never `sellerSummaries` under the caller's context | Missing seller or zone: `seller-zone-missing` for the seller basis |
+| 1 | Seller zones: `sellers.approvedSellerZones`, the fixed, caller-independent read of approved, non-provisional zones (request S-1; `sellers` domain design 7.1a), distinct seller ids (T2, B1). Never `sellerSummaries` under the caller's context. Only ids of queries that passed step 0 are passed; when no seller-basis query remains, no call is made. A refusal is thrown and fails the batch closed (rule 1) | Missing seller or zone (`null`, or a key missing from the answer): `seller-zone-missing` for the seller basis. An unexpected key in the answer is a fault: the batch is `unavailable` |
 | 2 | **One statement** for the seller basis: per (seller, type) the non-terminal certificate, its approved submission, the submission's type revision, the issuer's state | — |
 | 3 | **One statement** for the type and policy: the type's published revision (default basis, mode), the published policy rows matching any category id in the paths or the handling | Unknown type: `type-unknown`. Resolve the basis requirement: the strictest of **all** matching rows, every category id of every path and the handling row together (M1); the type's default when none match. Strictness: `NOT_APPLICABLE` > `SELLER_REQUIRED` > `SELLER_OR_MANUFACTURER`. A handling row is never `SELLER_OR_MANUFACTURER` (2.1), so handling can only tighten. See 19.2 item 12 on the type default |
 | 4 | — | `NOT_APPLICABLE`: deny both bases (`policy-not-applicable`; AC 4) |
@@ -449,7 +449,12 @@ Rules:
    never throws to the caller for a domain reason.
 2. **One snapshot per basis.** Under READ COMMITTED each statement has its own snapshot (ADR-0025
    context), so each basis is decided from one statement and no security decision combines facts
-   read by two statements (PP 3.1 row 9). Mojtaba writes the three statements (16.1).
+   read by two statements (PP 3.1 row 9). Mojtaba writes the three statements (16.1). One
+   named exception: the seller zone of step 1 comes from a separate `sellers` read. It is safe
+   because T2 takes the earlier of the boundary in the zone stored at approval and the boundary in
+   the current zone, so a stale current zone can never move a boundary later than the one stored
+   at approval; the staleness lasts at most the gap between the two reads of one request (Hassan
+   L10, `sellers` mini-review 19).
 3. **No model** on this path (ADR-0019 decision 10; AC 25). The files of this path are not on the
    `platform/ai` allow-list.
 4. **No actor input.** The actor never contributes a seller, a Market or a status; the use case
@@ -781,7 +786,7 @@ this module through facade calls from its own handlers (ADR-0028 d9).
 ### 8.5 Calls to `sellers`
 | Call | Where | Notes |
 |---|---|---|
-| The fixed zone read of request S-1 (name is `sellers`' to choose) | `evaluateClaims` (T2, B1) | Non-provisional zone only, the same answer for every caller; an unapproved seller has none, which is "no zone" and so "not allowed": correct, since such a seller cannot sell |
+| `sellers.approvedSellerZones` (request S-1; `sellers` domain design 7.1a) | `evaluateClaims` (T2, B1) | The zone of the approved revision only (non-provisional), read through `approvedSellerZones`, the same answer for every caller; an unapproved seller has none, which is "no zone" and so "not allowed": correct, since such a seller cannot sell |
 | `sellerSummaries(ctx, ids)` | Submit and approve guards, the job | Zone, provisional allowed here (B1 ruling): these decide a review step or a status record, not the claim |
 | `reviewerBusinessDetails(ctx, sellerId)` | Review page | Personal data; returned only to the reviewer, never logged, audited by `sellers` (SL 7.1) |
 | `sellingEligibility` | Never | CERT-12: the claim and may-sell are separate questions; `catalog` asks both |
@@ -1034,7 +1039,7 @@ now; not edited by this document):
    the wrapped data key is stored for draft documents too.
 7. A per-seller draft storage quota of 200 MiB (5.1) beside the upload counters.
 8. The policy row selector check: `SELLER_OR_MANUFACTURER` only with a category selector (M1).
-9. The fixed zone read of S-1 replaces `sellerSummaries` in the seller-basis statement inputs.
+9. The fixed zone read of S-1 (`approvedSellerZones`) replaces `sellerSummaries` in the seller-basis statement inputs.
 10. `DELETE` of a never-submitted certificate record with its draft and draft documents
     (`own-certificate.delete-draft`, 3.1); refused by a check when any submission exists.
 Answers to data design section 13 (2026-10-07): Q-C1 confirmed (11). Q-C2: no delete use case for
@@ -1102,8 +1107,8 @@ No port, facade or event of another module is changed by this document.
 | I-1 | `identity` (mini-review, board 13 item 4) | Allow-list entries of 7.2 (N = allow) for a seller not yet approved or rejected | 5 |
 | I-2 | `identity` | Reuse R-4 (contact point) and R-11 (admin display names) accepted for `sellers` | 7 |
 | I-3 | `identity` | Seed the default admin role "Certification Reviewer" and map the keys of 7.1 to default roles (R10) | 7 |
-| S-1 | `sellers` | **New (B1):** one fixed read of sellers' non-provisional zones by id, whose answer does not depend on the caller (an `anonymous` and `system` pair returning only the zone of the approved revision, or nothing), for `evaluateClaims`. `sellerSummaries` (provisional to system and authenticated callers) stays for the guards and the job; `reviewerBusinessDetails` as approved | 1, 7 |
-| S-1 note | `sellers` | S-1 changes `sellers`' facade, so it needs its own `sellers` mini-review: Mohammad drafts, Ali and Hassan review, a row in the `sellers` brief change log; approved before `certification` slice 1 merges. Not a blocker of this G2 (Ali, 2026-10-07) | Before 1 merges |
+| S-1 | `sellers` | **New (B1):** one fixed read of sellers' non-provisional zones by id, whose answer does not depend on the caller (an `anonymous` and `system` pair returning only the zone of the approved revision, or nothing), for `evaluateClaims`. Named `approvedSellerZones` and designed in `sellers` 7.1a; merged by PR #62. `sellerSummaries` (provisional to system and authenticated callers) stays for the guards and the job; `reviewerBusinessDetails` as approved | 1, 7 |
+| S-1 note | `sellers` | S-1 changed `sellers`' facade, so it needed its own mini-review (`sellers` mini-review 19; Mohammad drafted, Ali and Hassan reviewed). Closed: PR #62; follow-up FU-2 applied in 4.2 step 1 and rule 2 | Done |
 | S-2 | `sellers` | Replace the claim group of the slug data file by the `ClaimGuard` port once `platform/ai` part 1 declares it (SL 3.5 "later supplied by the port") | After 16 |
 | C-1 | `catalog` | Apply ADR-0028: query from the storable Offer state with the product revision id (M3), every platform path, attestation flag; ask on every entry path of d5 incl. Offer reactivated or unsuspended, variant added, tag re-enabled (M9); refuse the save when `matchClaimTerms` fails (M8); accept a decision only with equal `inputs` under the Offer version; copies restrict only; tag copy keeps certificate, version and issuer ids | Its tag slice |
 | C-2 | `catalog` | Publish `catalog.product-material-content-changed.v1`; its own handler calls `productMaterialContentChanged` (ADR-0028 d6, d9) | Before 15 |
@@ -1203,7 +1208,7 @@ the rule (B2); easing a type or a claim rule needs a second admin (H1).
 | `docs/design/data/certification.md` | New, from 16.1, including its list of review changes | Mojtaba |
 | `docs/modules/certification/ux.md` | New, from 16.2, including its list of review changes | Reza |
 | `docs/adr/0029-…` (object storage and file intake) | New (17) | Ali; spikes by Hossein; Kazem; Hassan reviews |
-| `docs/design/domain/sellers.md` | Request S-1 (fixed zone read), through `sellers`' mini-review | Mohammad, before slice 1 |
+| `docs/design/domain/sellers.md` | Request S-1 (fixed zone read), through `sellers`' mini-review | Done (PR #62) |
 | `docs/design/domain/platform-foundations.md` | P-1, if accepted | Mohammad, with slice 4 |
 | `claude/adr-0019-follow-ups.md` | Note: `evaluateClaims`, approve, decline, revoke, expiry and auto-approval of self-declaration are deterministic paths of ADR-0019 decision 10 | Mohammad, with the G2 record |
 | `config/markets/AU.json`, `test/fixtures/markets/ZZ.json`, schema | 5.1 (shared files: own PR, announced) | Slices 2 to 9; Hossein |
