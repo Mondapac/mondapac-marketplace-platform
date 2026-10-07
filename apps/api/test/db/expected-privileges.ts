@@ -24,6 +24,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     platform: ['USAGE'],
   },
   tables: {
+    // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
+    // (A2, H5); the credential goes with its account by the cascade, so it has no DELETE.
+    'identity.accounts': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'identity.password_credentials': {
+      table: ['INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // docs/design/data/identity.md section 7 (PM2): the envelope is immutable to the application.
     'identity.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

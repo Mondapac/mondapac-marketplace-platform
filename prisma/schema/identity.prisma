@@ -35,3 +35,60 @@ model IdentityOutbox {
   @@map("outbox")
   @@schema("identity")
 }
+
+/// An account of one population in one Market (identity design 2.1; data design 3.3). There is
+/// no global user: the same address may hold a customer, a seller-side and an admin account,
+/// and accounts in other Markets. Email and display name are personal data, kept plain (D 11.2
+/// option A); the account id is also the subject id of its data key (platform.subject_keys).
+/// The CHECKs, the partial index and the grants are hand-written in the migration.
+model IdentityAccount {
+  /// UUIDv7 from the IdGenerator; the subject of the account's data key.
+  id                      String                      @id @db.Uuid
+  /// Market of the account (ADR-0003); never changes.
+  marketId                String                      @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); supplied by the repository, no database default.
+  tenantId                String                      @map("tenant_id")
+  /// customer | seller | admin; never changes.
+  population              String
+  /// Personal. As typed, trimmed.
+  email                   String
+  /// Personal. Trimmed, NFC, lower-cased: the uniqueness and lookup value.
+  emailNormalized         String                      @map("email_normalized")
+  /// Personal. NULL only for a customer (accounts_display_name_required_check; data design 11.5).
+  displayName             String?                     @map("display_name")
+  /// active | disabled.
+  status                  String
+  /// NULL while the email is unverified.
+  emailVerifiedAt         DateTime?                   @map("email_verified_at") @db.Timestamptz(6)
+  /// The last "you already have an account" notice (D 6.7).
+  existingAccountNoticeAt DateTime?                   @map("existing_account_notice_at") @db.Timestamptz(6)
+  /// The latest sign-up: the anchor of the 7-day purge (M5).
+  signedUpAt              DateTime                    @map("signed_up_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate (P 10); 1 at insert.
+  version                 Int
+  createdAt               DateTime                    @map("created_at") @db.Timestamptz(6)
+  passwordCredential      IdentityPasswordCredential?
+
+  /// ADR-0018 decision 3: one account per Market, population and normalised email.
+  @@unique([marketId, population, emailNormalized])
+  /// The target of composite foreign keys (data design C3).
+  @@unique([marketId, id])
+  @@map("accounts")
+  @@schema("identity")
+}
+
+/// The password credential of an account (data design 3.3): a table of its own, so a query on
+/// accounts can never return a hash. One per account; removed only with its account.
+model IdentityPasswordCredential {
+  marketId     String          @map("market_id") @db.VarChar(8)
+  tenantId     String          @map("tenant_id")
+  accountId    String          @map("account_id") @db.Uuid
+  /// A PHC string (argon2id); never the password.
+  passwordHash String          @map("password_hash")
+  changedAt    DateTime        @map("changed_at") @db.Timestamptz(6)
+  account      IdentityAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, accountId])
+  @@map("password_credentials")
+  @@schema("identity")
+}
