@@ -676,7 +676,9 @@ it is a platform migration in its own PR (D 11.1 P2), announced on the board, me
 - `btree_gist` is a trusted extension: the migration role (database owner) can create and drop
   it. Its 188 functions are owned by the bootstrap superuser, not by the migration role, so the
   migration role **cannot** revoke `PUBLIC`'s `EXECUTE` on them (warning "no privileges could be
-  revoked").
+  revoked"). The count is the contrib package of the server version measured (PostgreSQL 16);
+  `CREATE EXTENSION` pins no `VERSION`, and the tests assert the schema and the privileges, not
+  the function count.
 - In its own schema `extensions` with no grant to `mondapac_app`, the application role cannot
   call any of them by name (`has_schema_privilege` false), and still inserts, updates and is
   refused on overlap: index maintenance needs no `USAGE` or `EXECUTE`.
