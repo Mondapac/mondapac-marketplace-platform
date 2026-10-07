@@ -38,7 +38,7 @@ async function pageCover(page) {
     text('Admin and Seller panels', 'Display/Hero'),
     para('One structure for both panels. Differences live in navigation, features and permissions — never in the look. Everything in this file is built from variables, styles and components; change the system here and every screen follows.', 880),
   ]));
-  const meta = [['Version', SPEC.version], ['Updated', '1 Oct 2026'], ['Themes', 'Light · Dark'], ['Density', 'Desktop · Touch'], ['Status', 'Stable foundation']];
+  const meta = [['Version', SPEC.version], ['Updated', RELEASE.date], ['Themes', 'Light · Dark'], ['Density', 'Desktop · Touch'], ['Status', 'Stable foundation']];
   add(f, frame({ name: 'Meta', dir: 'H', gap: 'space/4' }, meta.map(function (m) {
     return frame({ name: m[0], dir: 'V', gap: 'space/1', pad: 'space/4', w: 220, fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, [text(m[0], 'Caption/Default', 'text/muted'), text(m[1], 'Heading/H2')]);
   })));
@@ -89,11 +89,16 @@ async function pageGettingStarted(page) {
   tag(root);
 }
 
+// Release notes shown on the Changelog page, oldest first (new releases are appended in place). 1.1.0 to 1.4.0 are reserved for the planned
+// Auth, Panel, Seller setup and Seller admin releases, so versions skip from 1.0.0 to 1.5.0.
+const CHANGELOG_WIDTHS = [140, 160, 1100];
+const RELEASE = { version: SPEC.version, date: '7 Oct 2026', changes: 'Mobile navigation (D16). New components NavDrawer (phone drawer, Admin and Seller) and BottomTabBar (seller phone bar, 4 or 3 tabs). New token size/bottom-bar (64 px). Three 360 px phone templates: seller home with bottom bar, seller menu open, admin menu open.' };
 async function pageChangelog(page) {
   const root = pageShell(page, 'Changelog', 'Semantic versioning: MAJOR for breaking renames or removals, MINOR for new components or variants, PATCH for fixes.');
   add(root, table(['Version', 'Date', 'Changes'], [
-    [SPEC.version, '1 Oct 2026', 'First release. Foundations (variables light/dark, desktop/touch, text and effect styles, icons), ' + Object.keys(S.sets).length + ' components, Admin and Seller templates, dark preview.'],
-  ], [140, 160, 1100]));
+    ['1.0.0', '1 Oct 2026', 'First release. Foundations (variables light/dark, desktop/touch, text and effect styles, icons), the component library, Admin and Seller templates, dark preview.'],
+    [RELEASE.version, RELEASE.date, RELEASE.changes],
+  ], CHANGELOG_WIDTHS));
   tag(root);
 }
 
@@ -141,6 +146,7 @@ async function pageTypography(page) {
   tag(root);
 }
 
+const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
 async function pageSpacing(page) {
   const root = pageShell(page, 'Spacing, size & radius', 'A 2 px base with 4 px steps for layout. Values switch between Desktop and Touch density; touch makes controls 48 px.');
   let s = docSection(root, 'Spacing');
@@ -153,7 +159,7 @@ async function pageSpacing(page) {
   })));
   s = docSection(root, 'Sizes', 'Desktop and touch values. On the Starter plan touch values are in the "Dimension · Touch" collection.');
   add(s, table(['Token', 'Desktop', 'Touch', 'Use'], SPEC.dimension.filter(function (d) { return d.name.indexOf('size/') === 0 || d.name.indexOf('border/') === 0; }).map(function (d) {
-    const use = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' }[d.name] || '';
+    const use = SIZE_USE[d.name] || '';
     return [d.name, d.desktop + ' px', d.touch + ' px', use];
   }), [260, 160, 160, 600]));
   tag(root);

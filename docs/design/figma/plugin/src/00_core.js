@@ -35,6 +35,21 @@ async function flush() { const p = S.pending; S.pending = []; await Promise.all(
 function newCollection(name) { const c = figma.variables.createVariableCollection(name); S.colls[name] = c; return c; }
 function tryAddMode(coll, name) { try { return coll.addMode(name); } catch (e) { return null; } }
 
+// Adds one Dimension token to the collections described by S.dimModes (used by the build and by "Update library").
+function addDimensionVariable(d) {
+  const M = S.dimModes;
+  const v = figma.variables.createVariable(d.name, M.collection, 'FLOAT');
+  v.setValueForMode(M.desktop, d.desktop);
+  if (M.touch) v.setValueForMode(M.touch, d.touch);
+  v.scopes = d.scopes; v.setVariableCodeSyntax('WEB', cssVar('', d.name));
+  S.dim[d.name] = v;
+  if (M.touchCollection) {
+    const t = figma.variables.createVariable(d.name, M.touchCollection, 'FLOAT');
+    t.setValueForMode(M.touchAlt, d.touch); t.scopes = d.scopes; t.setVariableCodeSyntax('WEB', cssVar('', d.name));
+    S.dimTouch[d.name] = t;
+  }
+}
+
 async function buildVariables() {
   // 1. Primitives (hidden from publishing, no scopes: designers use semantic tokens only)
   const prim = newCollection('Primitives');
@@ -88,18 +103,7 @@ async function buildVariables() {
   let dimT = null; let touchAlt = null;
   if (!touch) { dimT = newCollection('Dimension · Touch'); dimT.renameMode(dimT.modes[0].modeId, 'Touch'); touchAlt = dimT.modes[0].modeId; }
   S.dimModes = { collection: dim, desktop: desk, touch: touch, touchCollection: dimT, touchAlt: touchAlt };
-  SPEC.dimension.forEach(function (d) {
-    const v = figma.variables.createVariable(d.name, dim, 'FLOAT');
-    v.setValueForMode(desk, d.desktop);
-    if (touch) v.setValueForMode(touch, d.touch);
-    v.scopes = d.scopes; v.setVariableCodeSyntax('WEB', cssVar('', d.name));
-    S.dim[d.name] = v;
-    if (dimT) {
-      const t = figma.variables.createVariable(d.name, dimT, 'FLOAT');
-      t.setValueForMode(touchAlt, d.touch); t.scopes = d.scopes; t.setVariableCodeSyntax('WEB', cssVar('', d.name));
-      S.dimTouch[d.name] = t;
-    }
-  });
+  SPEC.dimension.forEach(addDimensionVariable);
 
   // 4. Typography variables (bound into text styles where the plan supports it)
   const ty = newCollection('Typography');

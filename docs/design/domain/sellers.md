@@ -56,6 +56,7 @@ A design, not an implementation: a signature appears only where it is the contra
 | 15 Global settings page ("approval required") | 4.1, 14.1 |
 | 16 Per-seller AI switch | 6.4, 7.6 |
 | 17 Panel screens | 13.2; Reza's document |
+| (mini-review 2026-10-07) 20 Minimum order per seller (SEL-15, SEL-24 Settings; cart CRT-05, SC3) | 2.1, 6.1, 6.2, 7.1, 9, 11.1, 18 |
 | (new) 18 Retention of abandoned and rejected files | 8.4, 14.2, 15 |
 | (new at G2) 19 Business history read (P2-H, AC 26) | 6.2, 11 |
 
@@ -92,7 +93,7 @@ SellerFile (id = sellerId)
 ShopSlug (one per normalised slug per Market; held | retired)       --> sellerId
 IdentifierClaim (one per identifier index per Market)               --> sellerId
 SellerTaxProfile (id = sellerId) --> TaxRegistrationPeriod (V2, 0..n)
-StoreProfile (id = sellerId) --> StoreProfileRevision (V1, 0..n); publishedRevisionId
+StoreProfile (id = sellerId) --> StoreProfileRevision (V1, 0..n); publishedRevisionId; minimumOrder (18)
 SellerAdminSettings (id = sellerId): allowed product types, category proposals, AI switch
 ```
 
@@ -104,7 +105,7 @@ SellerAdminSettings (id = sellerId): allowed product types, category proposals, 
 | `ShopSlug` | Normalised slug, holder seller id, state, whether it was ever public | Unique per Market (SEL-01, ADR-0003); a retired slug is never held again (brief s7); held from the first submission, or when an admin sets it (2.3); only a slug that was ever public is retired, any other is released (3.5, Hassan M6) |
 | `IdentifierClaim` | Identifier index (8.2), holder seller id | Unique per Market among approved and suspended sellers (brief s7, AC 21); taken in the approve step, before `identity` is called (7.3) |
 | `SellerTaxProfile` | `TaxRegistrationPeriod` rows: registered for indirect tax (yes or no), effective from (a local date in the seller's zone and its instant), valid to | No two periods overlap (ADR-0009 V2); not held for review; applied from its date and audited (brief s5, Q4); the platform decides nothing about it (ADR-0007 decision 6) |
-| `StoreProfile` | Revisions of Description, Policies, Meta and Social, per locale of the Market; `publishedRevisionId` | V1 (ADR-0009 decision 2): each save is a new immutable revision and is published at once (Q4: these texts apply immediately); locales only from `supportedLocales` (INTL-10); plain text only; social links https on the allow-listed hosts (brief s5) |
+| `StoreProfile` | Revisions of Description, Policies, Meta and Social, per locale of the Market; `publishedRevisionId`; the SEL-24 "Settings" value `minimumOrder` (`Money` or none; mini-review of 18), with the instant and account id of its last change | V1 (ADR-0009 decision 2): each save is a new immutable revision and is published at once (Q4: these texts apply immediately); locales only from `supportedLocales` (INTL-10); plain text only; social links https on the allow-listed hosts (brief s5). `minimumOrder` is a live value, not revisioned: none (the default, written at creation) or an amount > 0 in integer minor units whose currency equals the Market's currency (18) |
 | `SellerAdminSettings` | Allowed product types (`all`, or a non-empty set of type codes), category proposals allowed (default no), AI switch (default off); per setting, the instant and admin account id of its last change (14.3, Reza 10) | Changed only by an admin use case (SEL-25, AC 16), each change audited in its transaction (AC 14, AC 15); defaults written at creation, so a missing row is a fault, never a default |
 
 ### 2.2 What is deliberately not an aggregate of `sellers`
@@ -289,6 +290,7 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 | `rejectReasons` | Codes and translation keys of the prepared reasons (brief s7) | Its own | Bulk reject, identity change |
 | `approvalRequired` | `true` (until the ADR of 14.1) | `false` | 7.3, AC 12, AC 19 |
 | `fileRetention` | Waits for counsel (16.1 item 3); two values: never-submitted drafts and finally rejected files | A short duration | 8.4 |
+| `minimumOrderMax` | Hadi sets it (18 decision 3) | Its own value, in its own currency | `my-store-settings.save-minimum-order`, `seller.change-minimum-order` |
 
 ### 4.2 Strategies, selected by configuration
 | Port (`modules/sellers/application/ports/`) | Adapters | Contract |
@@ -351,6 +353,7 @@ Declared in `modules/sellers/contracts/permissions.ts` (R7 of the identity brief
 | `sellers.market-settings.edit` | platform | yes | Change "approval required" (slice 15) | Platform Administrator only |
 | `sellers.store-profile.view` | seller | no | Read the store profile (PNL-02) | Store Manager; Customer Service |
 | `sellers.store-profile.edit` | seller | no | Edit Description, Policies, Meta, Social, phone and contact email | Store Manager |
+| `sellers.store-settings.edit` | seller | no | Edit the SEL-24 "Settings" group: the minimum order (18) | Store Manager |
 | `sellers.business-identity.edit` | seller | yes | Complete details, submit and submit again; request a change of business identity | None: Seller Owner (system role) only |
 
 Approve and reject of an onboarding revision use `identity`'s key `identity.seller-access.approve`
@@ -376,6 +379,8 @@ enforces; no work now.
 | `my-business-identity.request-change`, `.cancel-change` | same | deny | The request carries the new values; re-confirmation checked inside (R-2); refused in acting-as (6.4); audited (9) |
 | `my-tax-registration.record` | same | allow | V2 period; audited; refused in acting-as (6.4) |
 | `my-store-profile.read` | `permissions [sellers.store-profile.view]` | deny | |
+| `my-store-settings.save-minimum-order` | `permissions [sellers.store-settings.edit]` | deny | Sets or clears the minimum order; the request names the expected `StoreProfile` version and a stale save is refused (`conflict.stale`; Hassan L5); refused in acting-as (6.4); audited; applies at once (Q4); no notice (18); slice 20 |
+| `seller.change-minimum-order` | `permissions [sellers.seller.edit]` | — | Admin edit screen (SEL-23); same checks and expected version; audited with the admin as actor; mails the Seller Owner (10); slice 20 (18) |
 | `my-store-profile.save`, `my-contact.save` | `permissions [sellers.store-profile.edit]` | deny | `my-contact.save` after approval, with the V4 history: slice 10 (14.3 Q-M10) |
 | `sellers.list`, `seller.read` (clear fields) | `permissions [sellers.seller.view]` | — | No decryption (Hassan M4) |
 | `seller.read-details`, `review.read` | `permissions [sellers.business-details.view]`; holding `identity.seller-access.approve` or `sellers.identity-change.approve` implies it (Hassan M4) | — | Decrypt; audited per read (9); `Cache-Control: no-store` (8.3). `review.read`: no history beyond the current and previous revisions. If the gate of ID 5.2 cannot express "implies", the role mapping grants `business-details.view` with each approve key and a registry test checks it (slice 7a-read) |
@@ -420,6 +425,7 @@ completing details (a seller who cannot read the form cannot complete it).
 |---|---|
 | Every `sellers.business-identity.edit` use case (submit, submit again, request-change, cancel-change, tax registration) is refused in an acting-as session; the admin route (`seller.edit`, `seller.submit-on-behalf`) is the only one | Hassan L6 |
 | `identity.hasRecentConfirmation` is never satisfied in acting-as | Hassan L6, R-2 |
+| The minimum order is read-only in acting-as: `my-store-settings.save-minimum-order` is refused (it blocks checkout for buyers); the admin route `seller.change-minimum-order` is the only one | Hassan L4, Reza (18) |
 | The AI switch reader (7.6) gets no actor, so `platform/ai` evaluates acting-as before it calls the reader (ADR-0019 R3); `sellers.ai-switch.edit` is protected (6.1) | Hassan L6, L8 |
 
 ### 6.5 Rate limits (Hassan's numbers, G2)
@@ -434,7 +440,7 @@ a fixed window from the first reservation; a counter store that cannot answer fa
 | Lookups per origin | 30 per 24 h |
 | Market budget | 1,000 calls per Market per 24 h; alert at 80%; the periodic job uses at most 50% |
 | Slug check | 30 per minute and 300 per 24 h per account |
-| Saves (`my-file.save-*`, `validate-identifier`, profile and contact saves) | 60 per minute and 1,000 per 24 h per account |
+| Saves (`my-file.save-*`, `validate-identifier`, profile, contact and store-settings saves) | 60 per minute and 1,000 per 24 h per account |
 | Submissions (submit, submit again, request-change) | 5 per 24 h per seller file; the reviewer notice coalesced to at most 1 per seller per 6 h (R-3) |
 | Withdraw and cancel | 10 per 24 h per seller file (14.4 Q-M22) |
 | Bulk approve or reject | 50 ids per request; 10 requests per minute per admin |
@@ -457,7 +463,7 @@ it in an event, a log or an audit row.
 
 | Method | Returns | Access rule | Slice |
 |---|---|---|---|
-| `sellerSummaries(ctx, sellerIds)` | Per id: exists, `operatingTimezone` (from the approved revision, otherwise the draft's, with a `provisional` flag), slug if held, the public store name once approved. For a seller with no approved revision, the slug and provisional zone go only to `system` and authenticated callers (Hassan L4). At most 100 ids | `anonymous` for request actors and `system` for handlers (two use cases behind one method, as `identity.sellerAccessOf`); not over HTTP | 1; time zone from 2 |
+| `sellerSummaries(ctx, sellerIds)` | Per id: exists, `operatingTimezone` (from the approved revision, otherwise the draft's, with a `provisional` flag), slug if held, the public store name once approved; since slice 20, `minimumOrder` (`{ set: false }` or `{ set: true, money: Money }`) for a seller with an approved revision only, to every caller (it is public: cart shows it), and absent otherwise, so a caller never reads an absent value as "no minimum" (18). A stored currency that differs from the Market's currency (a fault, for example after a Market currency change) also returns `minimumOrder` absent and writes an error log (ids and codes only), so cart answers `check-unavailable` (CRT-05 fails closed; Mojtaba's re-check). For a seller with no approved revision, the slug and provisional zone go only to `system` and authenticated callers (Hassan L4). At most 100 ids | `anonymous` for request actors and `system` for handlers (two use cases behind one method, as `identity.sellerAccessOf`); not over HTTP | 1; time zone from 2 |
 | `sellingEligibility(ctx, sellerIds)` | The may-sell contract (7.2). At most 100 ids (Hassan L4) | `anonymous` and `system` pair | 9 |
 | `allowedProductTypesOf(ctx, sellerId)` | `all`, or the set of type codes | `anonymous` and `system` pair | 9 (always `all`); 14 |
 | `mayProposeCategories(ctx, sellerId)` | Boolean | `anonymous` and `system` pair | 13 |
@@ -644,6 +650,7 @@ never a name, phone, address, identifier, reason text or register value.
 | `sellers.business-details.viewed` | Every decrypting read under `sellers.business-details.view` (`seller.read-details`, `review.read`, `reviewerBusinessDetails`); `after` holds the read kind (Hassan M4) |
 | `sellers.review-check.recorded`, `sellers.register.manual-check-recorded`, `sellers.register.relookup-requested` | Reviewer, or the editing admin of 3.1 (H1) |
 | `sellers.identity-change.approved`, `.rejected` | Reviewer |
+| `sellers.minimum-order.changed` | Seller or admin, with the actor recorded (18). `before` and `after` hold `{ set, amount (minor units), currency }`: a public commercial value, not personal data, so it is allowed here as an exception to the list above |
 | `sellers.allowed-product-types.changed`, `sellers.category-proposals.changed`, `sellers.ai-switch.changed` | Admin (AC 14, AC 15; "who, when, before and after") |
 | `sellers.market-settings.changed` | Admin (AC 19) |
 | `sellers.tax-registration.recorded` | Seller or admin (brief s5) |
@@ -664,6 +671,7 @@ contact email (brief s5), read from `identity` (R-4).
 | Identity change requested | `business-file-submitted` of kind `identity-change` |
 | Identity change approved, not approved (with the reason code's text) | The two events of 7.4 |
 | Business identity edited by an admin | `business-identity-edited` |
+| Minimum order changed by MondaPac (18) | An admin's `seller.change-minimum-order`, through the same mail path as "Business identity edited by an admin" (ADR-0023 decision 4). A seller's own change sends nothing |
 | AI switched on for your shop (text seen by counsel; board 13 item 3) | `ai-switch-changed` with `enabled` true. Switching off sends nothing in Phase 3 (16.2 item 8) |
 | **Proposal, not decided (Jafar 7; owner or Hadi decides):** "Your area is now open", one line saying the seller can now submit | If accepted: a job per Market after a deploy that switched an area's `sellerOnboardingEnabled` on re-evaluates files in `outside-service-area` and mails each such seller once (a per-file "notified" marker, Mojtaba). Not built unless accepted; recorded in the brief change log (17) |
 
@@ -704,13 +712,14 @@ A). Sizes as in ID 12.1: S, M, L, XL.
 | 17 | Panel screens: one frontend PR per row of `ux.md` 8.2 | XL in all | Figma and F0 (ADR-0017); each after its backend slice | Frontend track; UX Open 4 and 5 |
 | 18 | Retention purge | M | Counsel's period; ADR 14.2; R-9 | Erasure completeness; M7 |
 | 19 | `business-history.read` and page P2-H | S | 10 | AC 26 (each read audited) |
+| 20 | Minimum order per seller (mini-review 2026-10-07, 18): the `StoreProfile` value and its migration, `my-store-settings.save-minimum-order`, the admin use case and its mail, the value in `my-store-profile.read`, `minimumOrder` on `sellerSummaries`, audit; S7 "Settings" card in a slice-17 frontend PR | S | 1; R-8 not needed (`N` = deny); before `cart` slice 4 | AU and ZZ (another currency): wrong currency, zero, negative, non-integer, non-safe-integer, string and above-bound amounts refused; stale version refused; refused in acting-as; absent for a non-approved seller and on a currency mismatch; no value in logs beyond the audit row |
 
 On the path to the first sale: P1, P2, 1 to 6, 7a-read, 7a-decide, 7b, 8, 9, 10 and 12 (the
 storefront needs 12 in Phase 6). Slice 18 is not a sales feature but must merge before seller
-sign-up is open in a deployed environment (Hassan L11). Not on the path: 7a-auto, 11, 14, 15, 16,
+sign-up is open in a deployed environment (Hassan L11). Slice 20 is on it too (CRT-05 is P0, cart brief Q5). Not on the path: 7a-auto, 11, 14, 15, 16,
 19. Estimate: about 23 backend PRs plus the platform PRs; slices with a migration are P2, 1, 2, 3,
 4a, 5, 6, 7a-read and 7a-decide (Mojtaba places 7a's tables between them), 10, 11,
-12, 14, 18 (14.4 Q-M24) (the data
+12, 14, 18, 20 (14.4 Q-M24; 18) (the data
 design's 9.1, 14.3 Q-M16), each needing Mojtaba's sign-off and Hassan's review. No date until Javad
 has the measured pace of identity's slices.
 
@@ -823,7 +832,7 @@ Edits made to the other two documents, only on the affected lines: data design 3
 | Q-M13 | No correction of a started period in Phase 3: a change is a new period from its date, closing the previous one. A future period that has not started may be cancelled (`DELETE` of that row only, audited). The final rule waits for the tax adviser (brief s5); this is reversible |
 | Q-M14 | Confirmed: both get `version`; `shop_slugs` gets a surrogate `id` |
 | Q-M15 | Confirmed: `author_account_id` NOT NULL; no system path creates a business file revision |
-| Q-M16 | Accepted: slices with a migration are 1, 2, 3, 4a, 5, 6, 7a (since G2: 7a-read and 7a-decide), 10, 11, 12, 14, 18. Changed: 11.1 |
+| Q-M16 | Accepted: slices with a migration are 1, 2, 3, 4a, 5, 6, 7a (since G2: 7a-read and 7a-decide), 10, 11, 12, 14, 18, 20 (since D 18). Changed: 11.1 |
 | Q-M17 | Confirmed: no status column until a review state exists |
 | Q-M18 | The approved revision's clear `identifier_index IS NOT NULL` when the Market's current configuration requires an identifier (brief s5 states the rule as a live condition); time zone from the revision's clear column; no decryption. Changed: 7.2 row 2 |
 | Reza 1 | Yes: `my-file.read` returns the code of 3.3, the pending revision's kind and author kind, `reapplyPossible`, the steps `{ state, fieldsLeft, route }` and, on `file.incomplete`, `details.fields`; since G2 also the latest withdrawal (cause, by whom, date; Jafar 4) and the latest rejected identity change (Jafar 5). Changed: 6.2 |
@@ -995,3 +1004,44 @@ H1 closed: Hassan confirmed the applied text (3.1, 6.2, slice 10) in writing on 
 | `docs/modules/sellers/brief.md` (optional) | Clarifying change-log row: SEL-22's "email" is the sign-in email; the contact email is optional (14.4 Q-M19) | Hadi |
 | ADR of 14.1 | Draft | Mohammad, before `catalog`'s G2 is recorded; Hassan reviews |
 | `docs/modules/README.md`, the board | G2 status once the blockers of 16.4.1 close; the ADRs of 14.1 and 14.2 reserved; requests R-1 to R-12 to the backend track; Kazem checks the managed provider's extension allow-list before the first deployed environment (O1) | Orchestrator |
+
+## 18. Mini-review 2026-10-07: minimum order (ADR-0013 decision 4)
+**Requested by** the Phase 4 cart design (`docs/design/domain/cart.md` 6.4 and 7.1 SC3, branch
+`docs/cart-g2-design`). **Source:** the cart brief, owner answer Q5 (2026-10-07): at launch,
+optional per seller; the seller sets a minimum or accepts any amount; default "any amount"; CRT-05
+is P0. The sellers brief already deferred "minimum order amount" (SEL-15, SEL-24 "Settings") to the
+cart phase as "a small slice of this module and a small review". Status: accepted 2026-10-07
+(Ali, Hassan, Mojtaba, Reza; review table below); Hadi confirms O-1 against SEL-23 and sets the AU
+bound.
+
+| # | Decision | Reason |
+|---|---|---|
+| 1 | The value lives on `StoreProfile` as a live field `minimumOrder`: none, or `Money` `{ amount: integer minor units > 0, currency }` | SEL-24 puts it in the profile's "Settings" group; the seller writes it (owner Q5), so not `SellerAdminSettings` (admin-only writer, AC 16); one value per seller with no locale, so not in the text revisions; Q4: changes other than business identity apply at once, with history in the audit log. No new aggregate and no new 1:1 row |
+| 2 | Default none, written at creation; existing rows read none after the migration | Owner Q5 default "any amount". A null column means "none" by design, unlike `SellerAdminSettings`' missing row |
+| 3 | Currency must equal the Market's currency (`MarketConfig`); otherwise `minimum-order.currency`. The amount must be a JSON integer (not a string), a safe integer, > 0 and at most the Market's upper bound; otherwise `minimum-order.amount`. Clearing sets none | Cart 6.4 and SC3; ADR-0007 decision 1 (no currency assumed). The request carries `Money`; the server compares with the actor's Market, never assumes AUD. The bound is a per-Market value in checked-in `config/markets/` (`MarketConfig`), checked in the use case, never a database CHECK (a fixed minor-unit bound breaks multi-currency); Hadi sets the AU value, ZZ has its own (Ali, Hassan: O-2) |
+| 4 | Entered and shown in the Market's price display convention (`MarketConfig.pricesIncludeTax`); `sellers` computes no tax | Ali's cart ruling A-2; ADR-0007 decision 4 |
+| 5 | New seller-scope key `sellers.store-settings.edit` (not protected; default Store Manager; Seller Owner has every seller key); read under `sellers.store-profile.view`; `N` = deny; refused in acting-as (6.4). An admin may set or clear it under the existing `sellers.seller.edit` (admin edit screen, SEL-23), audited with the admin as actor, and the Seller Owner is mailed (10) (Ali, Hassan: O-1; Hadi to confirm against SEL-23). Every save names the expected `StoreProfile` version; a stale one is refused (Hassan L5) | It blocks checkout for that seller, a commercial effect unlike the profile texts, so its own key (least privilege). Approved sellers only, like S7 |
+| 6 | Batch exposure: **extend `sellerSummaries`** with `minimumOrder`, present only for a seller with an approved revision (to anonymous, authenticated and system callers alike), absent otherwise and absent with an error log when the stored currency differs from the Market's; ≤ 100 ids | Same ids, callers and cap as SC2, and cart already calls it in the same round (cart 6.2), so no extra call; the value is public (cart shows it). Absent rather than "none" for a non-approved seller keeps Hassan L4 (no extra field about non-approved sellers to anonymous callers) and lets cart fail closed: absent for a seller of a buyable line → `check-unavailable` (cart 6.4). The may-sell contract stays separate (ADR-0022 decision 6) |
+| 7 | No event; no notice for a seller's own change and none to buyers; it applies to open carts on their next read. Only an admin's change mails the Seller Owner (O-3) | No consumer: cart reads it live and `ordering` re-applies it through the same facade (cart 6.4); ADR-0015 (nothing without a consumer) |
+| 8 | Audit `sellers.minimum-order.changed` with before and after (9); rate limit: the saves row of 6.5 | "Who, when, before and after" as other settings; not personal data |
+| 9 | Slice 20 (S): one migration (four nullable columns on `store_profiles`), the use case, the read, the facade field, audit; tests on AU and ZZ. Before `cart` slice 4; on the path to the first sale | Cart 7.1: SC3 gates cart slice 4 only |
+
+**Rulings (Ali and Hassan, 2026-10-07; none needs the owner):** O-1 admin may set it (decision 5;
+Hadi to confirm against SEL-23); O-2 per-Market upper bound in configuration (decision 3); O-3 no
+notice except the admin-change mail (decision 7); the currency-mismatch read (decision 6); Hassan
+L4 acting-as read-only (6.4) and L5 expected version (decision 5).
+
+**Runbook item (Kazem, with the first deployed environment):** a change of a Market's currency
+leaves stored minimums in the old currency; they read as absent (cart `check-unavailable`) until
+each is cleared or re-entered. The runbook lists them by the error log and has admins re-enter them
+before the change goes live.
+
+**Open:** O-4 wording of the S7 field and the cart message: Reza proposed it in `ux.md` 3.1a; Jafar
+reviews.
+
+| Reviewer | Result | Date |
+|---|---|---|
+| Ali (cto) | OK, with the rulings above | 2026-10-07 |
+| Mojtaba (database-designer) | Signed off the data design (3.8, migration row 16); the migration SQL is signed when written | 2026-10-07 |
+| Hassan (security-tester) | OK; L3 to L5 applied | 2026-10-07 |
+| Reza (ui-ux-designer) | Signed off `ux.md` 3.1a | 2026-10-07 |

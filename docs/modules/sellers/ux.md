@@ -240,7 +240,49 @@ never touches another Market. View-only roles see the row locked with the reason
 | **S4 Business number and tax registration** | Card 1: Business number, labelled `{identifierLabel}` with Market help (AU: "11 digits"). After save, a result under the field (below). Card 2: the Market's tax-registration question as a two-option `SegmentedControl` (Yes, No), with "MondaPac doesn't decide whether you must register." When the answer is Yes, a "Registered from" date field follows (domain design 14.3, Reza 13). Only when the Market's configuration makes the number optional is it marked "(optional)" | Number: required when `businessIdentifier.required`; format and checksum are checked **on save** by the server, with no live lookup. Tax answer required; the "Registered from" date required when the answer is Yes. Number is `dir="ltr"`, `inputmode` from the scheme, `autocomplete="off"` | Result states in `Field` status line: **Checking** ("Checking with the official register…", `role="status"`); **Matched** ("Matched with the official register", Success, `check`); **Not matched** (Critical, `alert-circle`: "We couldn't match this number with the official register. Check it and try again, or contact us."; one message for not found and cancelled); **Could not be checked** (Info: "We couldn't check this right now. You can still submit, and a reviewer will check it."); `lookup.limit` ("You've changed this number too many times. Try again later."); `identifier.format`, `identifier.checksum` (one text: "That doesn't look like a valid {identifierLabel}. Check the number and try again."); register not configured for the Market: no result line, no "could not be checked" message | Any register value (name, address, status text); "verified"; "already registered"; whether another seller holds the number |
 | **S5 Shop web address** | Card: one input with the fixed prefix (the storefront address from Market configuration, `dir="ltr"`) and the slug; help "Lowercase letters, numbers and hyphens. {min} to {max} characters."; a status line under the field; "You can only change this later by asking MondaPac." | Checks on blur and after 600 ms idle, at most one request in flight; no check for an invalid format (the format error is local) | **Idle**; **Checking** (`role="status"`); **Available** (Success: "Available now. It's held for you when you submit."); **Not available** (`slug.taken` and `slug.reserved`: the same text, "That address isn't available. Try another."); `slug.format` (rule named in words); `request.throttled` ("Too many checks. Wait a moment.") | Why a slug is reserved; who holds a slug; a promise that "available" will still be true at submit |
 | **S6 Review and submit** | H1; `InfoBanner` Info "MondaPac reviews these details before you can sell. You'll get an email when there's a decision."; card of `DataRow`s (Layout=Single): every saved value with an "Edit" link to its step; a **Missing** state (Attention, text "Missing") for each empty required value; a **Blocked** state for outside-area, time zone, or a definite register negative; at the bottom `FormActionBar` with "Submit for review" ("Submit again" after changes were needed) | Submit disabled with the reason beside it ("Finish {n} items first", linking to the first). One submit; the button shows Loading | Default; submitting; `file.incomplete`; blocked by area, zone or register; throttled; `file.decision-in-progress`; success moves to S1; `awaiting-review`: no button, "Withdraw submission" instead | Register result values; internal checks |
-| **S7 Store profile** (PNL-02). Approved sellers edit what customers will read | Page title "Store profile". Cards: **General** (Store name, Business name, Business number, shown as read-only `DataRow`s with "Request a change"; Phone; Contact email; sign-in email read-only with "To change it, contact us."; when the API says AI is on for this shop, the read-only line "AI is on for your shop." with no control, Jafar 11); **Address** (read-only `DataRow`s for the operating and, when given, the registered address, both part of business identity, so changed only with "Request a change"; time zone read-only); **Description**; **Policies**; **SEO** (the brief's name; SEL-24 calls it "Meta"; title, keywords and description for search); **Social** (links); **Tax registration** (the Market's question, "from" date, "Record a change"); locale `Tab`s above the text cards only when the Market has more than one locale. `FormActionBar` per card group | Text areas with counters from the API. Social links: `https` only, hosts from an allow-list (facebook.com, instagram.com, youtube.com with `www.` and `m.`, DD 14.3; the helper names them); each URL at most 512 characters; links render with `rel="nofollow noopener noreferrer ugc"`; `link.host-not-allowed`. Phone and contact email apply at once. Staff with edit: same page; the identity cards show "Only the shop owner can change these details." | Default; dirty; saving; saved Toast "Saved."; field errors; **Pending**: the identity card shows `DataRow` (Layout=Compare, kind Change) with Current and Requested values, a "Waiting for review" Badge and "Cancel request" (D3); **Not accepted**: the same row with "Not accepted" and the prepared-reason text, shown until the owner starts a new request (no dismissal); **acting-as**: identity cards and tax card read-only with the acting-as banner (F13 notes); view-only (read-only fields, banner "You can view this page but not change it."); no view: B5; locked while a decision is recorded | The pending value on any public surface; the register's values; a version list; a control for the AI switch |
+| **S7 Store profile** (PNL-02). Approved sellers edit what customers will read | Page title "Store profile". Cards: **General** (Store name, Business name, Business number, shown as read-only `DataRow`s with "Request a change"; Phone; Contact email; sign-in email read-only with "To change it, contact us."; when the API says AI is on for this shop, the read-only line "AI is on for your shop." with no control, Jafar 11); **Address** (read-only `DataRow`s for the operating and, when given, the registered address, both part of business identity, so changed only with "Request a change"; time zone read-only); **Description**; **Policies**; **SEO** (the brief's name; SEL-24 calls it "Meta"; title, keywords and description for search); **Social** (links); **Tax registration** (the Market's question, "from" date, "Record a change"); **Settings** (D 18, slice 20; spec in 3.1a): "Minimum order", one optional amount in the Market's currency, shown in the Market's price convention, default "No minimum"; editable with `sellers.store-settings.edit`, otherwise read-only; locale `Tab`s above the text cards only when the Market has more than one locale. `FormActionBar` per card group | Text areas with counters from the API. Social links: `https` only, hosts from an allow-list (facebook.com, instagram.com, youtube.com with `www.` and `m.`, DD 14.3; the helper names them); each URL at most 512 characters; links render with `rel="nofollow noopener noreferrer ugc"`; `link.host-not-allowed`. Phone and contact email apply at once. Staff with edit: same page; the identity cards show "Only the shop owner can change these details." | Default; dirty; saving; saved Toast "Saved."; field errors; **Pending**: the identity card shows `DataRow` (Layout=Compare, kind Change) with Current and Requested values, a "Waiting for review" Badge and "Cancel request" (D3); **Not accepted**: the same row with "Not accepted" and the prepared-reason text, shown until the owner starts a new request (no dismissal); **acting-as**: identity cards and tax card read-only with the acting-as banner (F13 notes); view-only (read-only fields, banner "You can view this page but not change it."); no view: B5; locked while a decision is recorded | The pending value on any public surface; the register's values; a version list; a control for the AI switch |
+
+**3.1a S7 Settings card: minimum order (D 18, slice 20; Reza).** Built from existing `Card`, `Field`, `Input`
+(with the `Prefix` of row 2 in section 4), `Button` and `FormActionBar`; no new component.
+- **Layout.** Card title "Settings". One `Field` "Minimum order". The `Input` has a fixed prefix showing the
+  Market's ISO currency code (`AUD`, `NZD`, `MYR`; never a bare "$", which is ambiguous across Markets),
+  then the amount. Help line under the label: currency code and price convention from Market configuration
+  ("Amount in {currencyCode}, including GST" is the AU rendering; a Market with no tax convention omits the
+  phrase). Second help line: "Customers can't check out from your shop with less than this. It applies at
+  once, including to carts that are already open." A text action "Remove minimum" shows only while a value is
+  saved. The card has its own `FormActionBar` (Save, status text).
+- **Input behaviour.** `type="text"`, `inputmode="decimal"`, `autocomplete="off"`, `dir="ltr"` (digits stay
+  left-to-right inside an RTL page). No `type="number"` (locale decimals, scroll-wheel edits, Persian
+  digits). Parsing is by the page locale with `Intl`: accepts Latin, Persian and Arabic-Indic digits and the
+  locale's decimal and grouping marks; the number of decimals allowed and the conversion to minor units come
+  from the currency's exponent (`Intl.NumberFormat(...).resolvedOptions()`), never "x100" and never
+  "AUD". A saved value is displayed in the field without grouping and elsewhere with
+  `Intl.NumberFormat(locale, { style: "currency", currency })`. The request carries `Money`
+  `{ amount, currency }` with the currency taken from the Market, not typed by the person.
+- **States.**
+  | State | Behaviour |
+  |---|---|
+  | None (default) | Empty field, no placeholder text. Under the field: "No minimum. Customers can order any amount." "Remove minimum" hidden; Save disabled until a change |
+  | Set | Field holds the saved amount; "Remove minimum" visible; read-back line "Current minimum: {amount}" |
+  | Dirty, saving, saved | As the other S7 cards: "Unsaved changes", Save shows Loading, then Toast "Saved." and the status text. Focus stays on Save |
+  | Empty and saved | Valid: clears to "No minimum" (same as Remove). No error |
+  | Invalid amount | `minimum-order.amount` (also raised locally for text that is not a number, zero, negative, or more decimals than the currency allows): `Field` Error "Enter an amount greater than zero, for example {example}." `{example}` is formatted from the locale and currency by code. Error summary takes focus (3.0); the typed text is kept |
+  | Wrong currency | `minimum-order.currency` cannot come from the screen's own fixed prefix, so it means the Market changed under the page: Attention banner "This amount isn't in {currencyCode}. Reload the page and try again." with a Reload button; typed text kept |
+  | Save conflict | Another session saved first (the save carries the expected version, D 18; a stale save is refused): Attention banner "This setting was changed somewhere else. The latest value is {amountOrNone}. Check it and save again." The field keeps the person's entry, the read-back line shows the latest, Save stays enabled. |
+  | Load error | Card-level error with "Try again", as other S7 cards |
+  | No edit permission | Read-only `DataRow` "Minimum order" with the formatted amount or "No minimum"; banner "You can view this page but not change it." No Save, no Remove |
+  | No view permission | B5, as the whole page |
+  | Acting-as | Read-only with the acting-as banner, because the value blocks checkout for buyers (decided, D 6.4; Hassan L4) |
+- **Money formatting.** Always `Intl.NumberFormat` with the user's locale and the Market currency: en-AU
+  "A$50.00" or "$50.00" (as `Intl` returns), fa-IR Persian digits and the locale's currency pattern. Do not
+  concatenate a symbol and a number; do not store or display a derived amount (`sellers` does no tax).
+- **Accessibility.** Visible label; help and error linked with `aria-describedby`; `aria-invalid` on error;
+  the prefix is part of the accessible name through the help ("Amount in AUD"), not announced twice; "Remove
+  minimum" is named "Remove minimum order"; saved and conflict messages are `role="status"` (the error
+  summary is `role="alert"`); target 48 px (Touch) and one column at 320 px.
+- **Persian.** Label "حداقل سفارش"; the English keys of section 5 are the source and the Persian text is
+  translated from them in the i18n catalogue, with the Market's own currency and tax-convention words.
+  The page is RTL, the amount field stays `dir="ltr"`.
 
 ### 3.2 Admin panel
 | Screen and purpose | Content, top to bottom | Fields, validation, actions | States | Never shown |
@@ -346,7 +388,7 @@ ID 1.1.0 and 1.2.0 first.
 | Screen element | Existing library component or template | Change needed in Figma first | Release |
 |---|---|---|---|
 | Field with a status line (Checking, Available, Matched, Not available) | `Field` (ID 1.1.0): Label, Helper, Error, Counter | New property `Status` (None, Checking, Success, Info, Critical) with icon and text; `Checking` uses a static icon under reduced motion | MINOR 1.3.0 |
-| Slug input with a fixed prefix | `Input` (+ Type=Password and Code, ID 1.1.0) | New BOOLEAN `Show prefix` and TEXT `Prefix` (left-to-right, muted); logical start side | MINOR 1.3.0 |
+| Slug input with a fixed prefix; also the minimum-order amount (currency code as the prefix, S7 3.1a) | `Input` (+ Type=Password and Code, ID 1.1.0) | New BOOLEAN `Show prefix` and TEXT `Prefix` (left-to-right, muted); logical start side. Reused as is for the amount: no money component, no new token. Add a Usage note: amount fields show the ISO currency code, never a bare symbol | MINOR 1.3.0 |
 | Step supporting line ("2 fields left"), route arrow | `ChecklistItem` (+ Waiting and Needs attention, ID 1.1.0) | New TEXT `Detail`; BOOLEAN `Show chevron` for a step that opens a page | MINOR 1.3.0 |
 | Summary, read-only values, register compare, current vs requested | None | New component `DataRow`: Layout Single or Compare; slots Label, Value, Compare value, Flag (`Badge`), Action link; State Default, Missing, Blocked, Changed. Used on S6, S7, P2, P3 | MINOR 1.3.0 |
 | Save bar on forms | Composed in ID-UX B3 | New component `FormActionBar`: Primary, Secondary, status text; State Clean, Dirty, Saving, Error; Sticky layout below 760 px. ID-UX B3 adopts it (additive) | MINOR 1.3.0 |
@@ -423,6 +465,9 @@ withdraw; awaiting review, changes needed, not approved; prepared reason; work t
 | `profile.help.plain-text · toast.saved · help.contact-only` | Plain text only. Web addresses and formatting are shown as typed. · Saved. · To change this, contact us. |
 | `change.status.waiting · .not-accepted · action.cancel · title.cancel · body.cancel` | Waiting for review · Not accepted · Cancel request · Cancel this request? · Your current details stay as they are. |
 | `change.label.current · .requested · help.live` | Current · Requested · Your current details stay in use until MondaPac reviews this. |
+| `store-settings.title · minimum-order.label · .help.unit · .help.applies` | Settings · Minimum order · Amount in {currencyCode}{priceBasis, select, none {} other {, {priceBasis}}} (`priceBasis` is a Market key, for example "including GST") · Customers can't check out from your shop with less than this. It applies at once, including to carts that are already open. |
+| `store-settings.minimum-order.none · .current · .action.remove · .remove-label` | No minimum. Customers can order any amount. · Current minimum: {amount} · Remove minimum · Remove minimum order |
+| `error.minimum-order.amount · .currency · .conflict` | Enter an amount greater than zero, for example {example}. · This amount isn't in {currencyCode}. Reload the page and try again. · This setting was changed somewhere else. The latest value is {amountOrNone}. Check it and save again. |
 | `tax.title · help · action.record` | Tax registration · MondaPac doesn't decide whether you must register. · Record a change |
 | `error.link.host-not-allowed` | Use a link to one of these sites: {hosts}. |
 | `admin.title · search.label · search.help · search.disabled` | Sellers · Search sellers · Store name, shop web address, or the full {identifierLabel}. · Search works on All, Awaiting review and Incomplete. |
@@ -514,7 +559,7 @@ Gate: WCAG 2.2 AA (ID-UX 6; the brief names 2.1 AA as its minimum).
   `dir="auto"`; icons that point (back, chevron) mirror; the address field order is the Market's, not
   the page direction's. Text may grow 40%: buttons wrap, never truncate. No text in images.
 - **Locale and Market.** Nothing is hardcoded to AU or AUD (3.0 rule 4). Dates, numbers and plurals come
-  from the user's locale. There is no money on these screens. A second Market with another identifier,
+  from the user's locale. The one money value is the S7 minimum order (3.1a): `Intl` with the user's locale and the Market's currency, minor units by the currency's exponent, no assumed AUD. A second Market with another identifier,
   address format and tax question must render with no code change; the second-fixture ZZ values are the
   test (ADR-0003 decision 9): a Storybook or Playwright case per Market fixture for S3, S4 and P3.
 - **Certification claims.** No screen or email states or implies a certification. Seller "Approved" is
@@ -577,6 +622,10 @@ remains:
 6. **Daily limits:** `request.throttled` carries `retryAfterSeconds`; for 24-hour windows (5 submissions, 5
    new numbers, 10 withdrawals) confirm the same code is used, or a distinct one, so `error.limit.daily`
    can replace the minutes text.
+7. **Minimum order (3.1a), resolved 2026-10-07:** a stale save is refused (version check); the upper
+   bound is the per-Market `minimumOrderMax` (D 4.1), and above it the field shows
+   `error.minimum-order.amount` with the Market's maximum; acting-as is read-only (D 6.4);
+   `MarketConfig` supplies the `priceBasis` text key. Only the wording (D 18 O-4) waits for Jafar.
 
 ## 8. Hand-off notes
 
@@ -590,7 +639,7 @@ need ID 1.1.0 and 1.2.0 first.
    status, S6 with missing and with blocked rows, "Submit again") and the updated `Seller · Your seller
    account` (all states of 3.3, with and without a reason, with the certificate slot).
 2. **1.4.0 "Seller admin":** `CheckboxRow` Saving; `SettingRow`; templates `Seller · Store profile`
-   (default, pending change, not accepted, Staff read-only, view-only, multi-locale `Tab`),
+   (default, pending change, not accepted, Staff read-only, view-only, multi-locale `Tab`; the Settings card in each state of 3.1a, in en and fa/RTL),
    `Admin · Seller detail` (invited, suspended, edit mode, view-only), `Admin · Seller review`
    (onboarding and change request; every register state of 3.2a; Approve disabled with each reason; a
    Differs row; changed marks; empty and populated "other sellers"), `Shared · Settings` (P4 states, C1
@@ -637,4 +686,5 @@ Every screen also waits for ID-UX D1 and D2 ADRs and slice F0.
 | Hassan (security-tester) | Accept with changes, UX decisions applied | No browser storage and `no-store` (3.1 F13 notes, 3.5); manual register link admin-only on P3, server-built, `noopener noreferrer`, no telemetry (3.2 P3); admin edit of an approved seller needs both permissions and records the checks (F18); acting-as refusals (F13 notes); limits of DD 6.5 (F13, F17); `sellers.business-details.view` (F18, P3); social links (S7) |
 | Ali (cto) | Accept with changes | Slice names in 8.2 (7a-read, 7a-decide, 7a-auto, 19); seller-zone times (3.0 rule 8); no approval by `sellers` alone (`file-check-needed`, F18 step 7) |
 | Mohammad (DD 14.3) | Answered Reza 1 to 14 | API needs closed; six remain (7) |
+| Reza, on D 18 minimum order (2026-10-07) | Accept with changes, applied | S7 Settings card specified in 3.1a (states, money formatting, accessibility, Persian note); copy keys in section 5; no new component, `Input` Prefix reused (section 4). Open 7a points resolved 2026-10-07 (see section 7 item 7) |
 | Owner | Pending | Review time and support contact (7, 1 and 2); the "area opened" email proposal (7, 5) |

@@ -198,15 +198,16 @@ function bullets(items, w) {
     return frame({ name: 'Item', dir: 'H', gap: 'space/2' }, [text('•', 'Body/Default', 'text/muted'), text(s, 'Body/Default', 'text/secondary', { w: (w || 360) - 16 })]);
   }));
 }
+function tableRow(r, widths, last) {
+  return frame({ name: 'Row', dir: 'H', stroke: last ? null : 'border/row', sides: ['bottom'] }, r.map(function (cell, i) {
+    if (cell && cell.type) { return frame({ name: 'Cell', dir: 'H', px: 'space/3', py: 'space/2', w: widths[i], align: 'center' }, [cell]); }
+    return frame({ name: 'Cell', dir: 'H', px: 'space/3', py: 'space/2', w: widths[i] }, [text(String(cell), i === 0 ? 'Body/Medium' : 'Body/Small', i === 0 ? 'text/primary' : 'text/secondary', { w: widths[i] - 24 })]);
+  }));
+}
 function table(cols, rows, widths) {
   const t = frame({ name: 'Table', dir: 'V', stroke: 'border/default', radius: 'radius/control', clip: true, fill: 'bg/surface' });
   add(t, frame({ name: 'Header', dir: 'H', fill: 'bg/subtle', stroke: 'border/default', sides: ['bottom'] }, cols.map(function (c, i) { return frame({ name: c, dir: 'H', px: 'space/3', py: 'space/2', w: widths[i] }, [text(c, 'Body/Small Strong', 'text/muted', { w: widths[i] - 24 })]); })));
-  rows.forEach(function (r, ri) {
-    add(t, frame({ name: 'Row', dir: 'H', stroke: ri < rows.length - 1 ? 'border/row' : null, sides: ['bottom'] }, r.map(function (cell, i) {
-      if (cell && cell.type) { return frame({ name: 'Cell', dir: 'H', px: 'space/3', py: 'space/2', w: widths[i], align: 'center' }, [cell]); }
-      return frame({ name: 'Cell', dir: 'H', px: 'space/3', py: 'space/2', w: widths[i] }, [text(String(cell), i === 0 ? 'Body/Medium' : 'Body/Small', i === 0 ? 'text/primary' : 'text/secondary', { w: widths[i] - 24 })]);
-    })));
-  });
+  rows.forEach(function (r, ri) { add(t, tableRow(r, widths, ri === rows.length - 1)); });
   return t;
 }
 function pageShell(page, title, subtitle) {

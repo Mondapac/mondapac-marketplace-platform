@@ -488,6 +488,16 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ['src/modules/alpha/domain/converts-date.ts', syntax('no-wall-clock')],
       ['src/modules/alpha/application/converts-date.ts', syntax('no-wall-clock')],
       ['src/modules/alpha/infrastructure/converts-date.ts', []],
+      // P 12.2 rule 4: raw SQL and $transaction are platform-only; modules never use them.
+      [
+        'src/modules/alpha/infrastructure/uses-raw-sql.ts',
+        syntax('no-raw-sql-or-transaction-in-modules', 6),
+      ],
+      [
+        'src/modules/alpha/application/uses-transaction.ts',
+        syntax('no-raw-sql-or-transaction-in-modules'),
+      ],
+      ['src/platform/uses-raw-sql.ts', []],
       // Rule 5: the named import and its namespace form, the factory import.
       [
         'src/modules/alpha/application/mints-market-context.ts',

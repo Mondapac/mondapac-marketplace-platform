@@ -1,6 +1,6 @@
 {
- "version": "1.0.0",
- "generated": "2026-10-01",
+ "version": "1.5.0",
+ "generated": "2026-10-07",
  "primitives": [
   {
    "name": "amber/10",
@@ -1854,6 +1854,14 @@
    "touch": 2,
    "scopes": [
     "STROKE_FLOAT"
+   ]
+  },
+  {
+   "name": "size/bottom-bar",
+   "desktop": 64,
+   "touch": 64,
+   "scopes": [
+    "WIDTH_HEIGHT"
    ]
   }
  ],

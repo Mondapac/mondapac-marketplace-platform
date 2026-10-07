@@ -32,7 +32,10 @@ Market (AU) is live at launch.
    by ADR-0018: admin accounts too; every account, of any type, belongs to exactly one
    Market.)*
 5. **Market configuration as code.** `config/markets/<code>` is versioned in the repo,
-   validated at boot and seeded to the database; secrets are per Region Stack.
+   validated at boot and seeded to the database; secrets are per Region Stack. *(Amended by
+   ADR-0026: settings an owning module declares editable are seeded once from here into a
+   platform store, which is then their source of truth; admins change them through the owning
+   module's use case.)*
 6. **Region-portable data.** IDs are globally unique (UUIDv7); timestamps stored in UTC;
    market timezone/locale applied only at the edges. *(Amended by ADR-0005: time zones
    come from each seller, location and address, not from the Market.)*

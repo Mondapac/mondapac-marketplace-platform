@@ -39,7 +39,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | UnitOfWork, outbox relay, event bus, scheduler, `APP_ROLE` *(Amended by ADR-0023: the delivery side of the event bus lands with the first subscription.)* | With the first slice that emits an event or an audit row |
    | `market_id` Prisma query guard | In the same change as the first repository on a market-scoped model (`audit_log` counts) |
    | Per-model "model to owning module" lint rule | In the same change as the first module-owned Prisma model |
-   | Market configuration seeded to the database | When something needs to read Markets from the database; configuration as code stays the source of truth |
+   | Market configuration seeded to the database *(Amended by ADR-0026: pulled for editable Market settings, which are seeded once into a platform store that becomes their source of truth.)* | When something needs to read Markets from the database; configuration as code stays the source of truth |
    | `config/service-areas/` and `config/holidays/` (ADR-0005) | With the first slice that evaluates a ServiceArea or a business-day rule |
    | Extension-point registry and `verticals/<vertical>/` content (ADR-0001) | With the first extension point a module defines |
    | Auth guards | With the identity module (Phase 2), after its gates |

@@ -31,7 +31,7 @@ every seller or customer outside the Market's default zone.
    | Order cut-off, handling time, dispatch SLA, opening hours | fulfilment location |
    | Delivery windows / ETA shown to customer | delivery address |
    | Seller reports, payout schedule, tax invoice date | seller |
-   | Certificate expiry (CERT-14/15) | seller; valid through the end of the expiry date, invalid from 00:00 local on the following day (owner decision) |
+   | Certificate expiry (CERT-14/15) | seller; valid through the end of the expiry date, invalid from 00:00 local on the following day (owner decision) *(Amended by ADR-0028 decision 8: the zone is the seller's confirmed zone, read the same for every caller; manufacturer expiry uses the Market zone.)* |
    | Subscription expiry and reminders (SUB-06) | seller |
    | Notification quiet hours, times inside emails/SMS | recipient |
    | Promotions / campaign start and end | must declare its zone explicitly; no implicit default |
