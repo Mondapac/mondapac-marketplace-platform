@@ -10,6 +10,12 @@ export const TEST_MARKET_CONFIG_DIRS = [
   path.join(REPO_ROOT, 'test/fixtures/markets'),
 ] as const;
 
+/** The real ServiceArea configuration plus the synthetic market's areas. */
+export const TEST_SERVICE_AREA_CONFIG_DIRS = [
+  path.join(REPO_ROOT, 'config/service-areas'),
+  path.join(REPO_ROOT, 'test/fixtures/service-areas'),
+] as const;
+
 /** Both market fixtures (ADR-0003 decision 9): the launch market and a synthetic one. */
 export const TEST_MARKETS = ['AU', 'ZZ'] as const;
 
@@ -38,5 +44,6 @@ export function testAppConfig(overrides: Record<string, string> = {}): AppConfig
       ...overrides,
     }),
     marketConfigDirs: TEST_MARKET_CONFIG_DIRS,
+    serviceAreaConfigDirs: TEST_SERVICE_AREA_CONFIG_DIRS,
   };
 }
