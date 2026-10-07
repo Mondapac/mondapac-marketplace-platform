@@ -26,7 +26,7 @@ what CERT-21 forbids.
    description, certification tags and seller shelf categories. Price belongs to `pricing`
    and stock to `inventory`, both keyed by `offer_id`. At most one active Offer per
    (seller, product). A SELLER product accepts Offers only from its owner.
-3. **Certification claims live on the Offer.** `ProductCertificationTag` becomes
+3. **Certification claims live on the Offer.** *(Amended by ADR-0028: per-Offer attestation, versioned claim inputs and every Offer entry path.)* `ProductCertificationTag` becomes
    `OfferCertificationTag`. CERT-21 keeps its strictness, re-anchored: an Offer can carry
    tag X only if the offering seller holds an approved, unexpired certification of type X.
    It is checked when tags are set (via the `certification` facade) and continuously
@@ -64,7 +64,7 @@ what CERT-21 forbids.
    Admins may promote it (same id, scope PLATFORM, needs a free platform slug) or merge
    it into a platform category (terminal; Offer shelves remapped). Slugs are unique per
    Market for PLATFORM, per (Market, seller) for SELLER.
-8. **Events** (no personal data): `catalog.product-promoted.v1`,
+8. **Events** *(Amended by ADR-0028: material-content and coverage-changed events.)* (no personal data): `catalog.product-promoted.v1`,
    `catalog.product-matched.v1`, `catalog.product-retired.v1`, `catalog.offer-created.v1`,
    `catalog.offer-reassigned.v1`, `catalog.offer-tags-suspended.v1`,
    `catalog.category-proposed/approved/rejected/promoted/merged/archived.v1`. Every admin
