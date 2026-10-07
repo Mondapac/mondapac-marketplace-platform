@@ -1,15 +1,42 @@
-// GENERATED FILE - do not edit by hand. Identity design 6.5 (Hassan): a password is refused
-// when it is on a checked-in list of at least 100,000 common passwords.
+// GENERATED FILE - do not edit by hand; run scripts/generate-common-passwords.mjs.
+// Identity design 6.5 (Hassan): a password is refused when it is on a checked-in list of at
+// least 100,000 common passwords.
 //
-// Sources (SecLists, MIT License, Copyright (c) 2018 Daniel Miessler), fetched 2026-10-07:
-// - Passwords/Common-Credentials/xato-net-10-million-passwords-100000.txt (100,000 entries)
-// - Passwords/Common-Credentials/100k-most-used-passwords-NCSC.txt (99,840 entries)
+// Sources (SecLists, https://github.com/danielmiessler/SecLists, MIT License):
+// - Passwords/Common-Credentials/xato-net-10-million-passwords-100000.txt (99999 entries)
+// - Passwords/Common-Credentials/100k-most-used-passwords-NCSC.txt (99839 entries)
 // 199838 entries in all, 143742 distinct after Unicode NFKC and lower-casing.
 //
-// Kept: the 355 distinct entries of 15 or more code points. Every shorter entry is
-// already refused by the length rule, whose minimum is at least 15 in every Market (the Market
-// configuration schema refuses less), so the check answers exactly as the full list would.
-// Entries are NFKC-normalised and lower-cased; the check compares the same form.
+// Kept: the 352 distinct entries of 15 or more code points that hold no '@'.
+// Every shorter entry is already refused by the length rule, whose minimum is at least
+// 15 in every Market (the Market configuration schema refuses less), so the check
+// answers as the full list would. Entries holding '@' look like e-mail addresses, not
+// passwords, and are dropped. Entries are NFKC-normalised and lower-cased; the check compares
+// the same form.
+//
+// The list is a substantial portion of SecLists and is distributed under its licence:
+//
+// MIT License
+//
+// Copyright (c) 2018 Daniel Miessler
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 export const COMMON_PASSWORDS: readonly string[] = [
   '$hex[687474703a2f2f616473]',
   '$hex[687474703a2f2f777777]',
@@ -80,7 +107,6 @@ export const COMMON_PASSWORDS: readonly string[] = [
   '9121318barssuki',
   '987654321123456789',
   '???????????????',
-  '@elit-centr.com.ua',
   'aaaaaaaaaaaaaaa',
   'aaaaaaaaaaaaaaaa',
   'abuse_123456_abuse',
@@ -139,7 +165,6 @@ export const COMMON_PASSWORDS: readonly string[] = [
   'etravelmoleoptin',
   'evgenii-shenderovich',
   'familiyafamiliya',
-  'fiammalex1@hotmail.it',
   'fjodorova-natashenka',
   'friendofarriane',
   'friendofearning$1',
@@ -365,5 +390,4 @@ export const COMMON_PASSWORDS: readonly string[] = [
   'zqjphsyf6ctifgu',
   'zxcvbnm123456789',
   'zxcvbnmasdfghjkl',
-  'пїѕпїѕпїѕпїѕпїѕпїѕ@mail.ru',
 ];
