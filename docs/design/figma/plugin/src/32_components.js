@@ -121,7 +121,7 @@ function buildMobileNav(root, have) {
         ])]));
         const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
       }
-      const list = frame({ name: 'items', dir: 'V', gap: 'space/0-5', pad: 'space/3', sizeH: 'FILL', sizeV: 'FILL' });
+      const list = frame({ name: 'items', dir: 'V', gap: 0, pad: 'space/3', sizeH: 'FILL', sizeV: 'FILL' });
       NAV[p.Workspace].forEach(function (it, i) {
         if (it[0] === 'g') { add(list, inst('NavGroupLabel', { Label: it[1] }, { name: 'group-' + it[1].toLowerCase(), sizeH: 'FILL' })); return; }
         if (it[0] === 'sub') {

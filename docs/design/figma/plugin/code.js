@@ -1304,7 +1304,7 @@ function buildMobileNav(root, have) {
         ])]));
         const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
       }
-      const list = frame({ name: 'items', dir: 'V', gap: 'space/0-5', pad: 'space/3', sizeH: 'FILL', sizeV: 'FILL' });
+      const list = frame({ name: 'items', dir: 'V', gap: 0, pad: 'space/3', sizeH: 'FILL', sizeV: 'FILL' });
       NAV[p.Workspace].forEach(function (it, i) {
         if (it[0] === 'g') { add(list, inst('NavGroupLabel', { Label: it[1] }, { name: 'group-' + it[1].toLowerCase(), sizeH: 'FILL' })); return; }
         if (it[0] === 'sub') {
@@ -2149,6 +2149,17 @@ async function updateLibrary() {
     });
     if (!have.NavDrawer) added.push('component NavDrawer');
     if (!have.BottomTabBar) added.push('component BottomTabBar');
+  }
+
+  // 2b · fixes to components an earlier 1.5.0 update added (real-Figma Audit, 2026-10-07):
+  // the seller drawer's item list was 3 px taller than the drawer, so its rows lose the 2 px gap.
+  if (have.NavDrawer && S.sets.NavDrawer.set) {
+    const lists = [];
+    S.sets.NavDrawer.set.children.forEach(function (v) { const l = v.findOne(function (n) { return n.type === 'FRAME' && n.name === 'items'; }); if (l && l.itemSpacing !== 0) lists.push(l); });
+    if (lists.length) {
+      await onPage(T.nav, 'NavDrawer item spacing', function () { lists.forEach(function (l) { l.setBoundVariable('itemSpacing', null); l.itemSpacing = 0; }); });
+      added.push('fix NavDrawer item spacing (' + lists.length + ' variants)');
+    }
   }
 
   // 3 · templates
