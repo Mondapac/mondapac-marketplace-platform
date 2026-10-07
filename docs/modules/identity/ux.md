@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Author | Reza (ui-ux-designer) — 2026-10-03 |
-| Status | Approved at G2, 2026-10-03 (Jafar, Ali, Hassan); Figma 1.1.0 and 1.2.0 before any frontend slice. |
+| Status | Approved at G2, 2026-10-03 (Jafar, Ali, Hassan); Figma 1.1.0 and 1.2.0 before any frontend slice. Amended 2026-10-07: Auth layout with a brand panel (owner decision, 7.4 row 2; 3.0 rule 1 and section 4). |
 | Module | `identity`, tier A, Phase 2. G1 approved by the owner on 2026-10-02 |
 | Reviewers | Jafar (product-designer), Ali (cto), Hassan (security-tester). Mohammad (software-architect) writes the domain design in parallel |
 | Review applied | Jafar: changes 1 to 12 and his answers to the first draft's open points. Ali: required changes 8 and 9, his slice names and his owner list. Hassan: findings 2, 3, 6, 7, 13 and 15, the session lifetimes and his answers to the first draft's 7.3 |
@@ -276,12 +276,25 @@ answer. There is no session list (1.3).
 ## 3. Screen specifications
 
 ### 3.0 Rules for every screen
-1. **Auth template (A1 to A11).** Page on `bg/page`; brand mark above one card (`bg/surface`,
-   `border/default`, `radius/card`, width `size/auth-card`; full width less a `space/4` gutter on
-   phones). In the card: account-type `Badge` (icon and words), H1, body, form, one full-width
-   primary action. Secondary links sit under the card. Footer: the Market name from Market
-   configuration, because an account belongs to one Market, and the support contact, always in this
-   place (3.2.6, Jafar 10). Touch density at every width.
+1. **Auth template (A1 to A11).** Two columns from 1024 px (owner decision 2026-10-07, 7.4 row 2):
+   - **Form column**, on `bg/surface`: brand mark at the top; the content in a column of width
+     `size/auth-card`, centred; the footer at the bottom. In the column: account-type `Badge` (icon
+     and words), H1, body, form, one full-width primary action, then the secondary links. Footer:
+     the Market name from Market configuration, because an account belongs to one Market, and the
+     support contact, always in this place (3.2.6, Jafar 10).
+   - **Brand panel**, the component `AuthShowcase` (`Workspace=Admin` on `bg/auth-showcase-admin`,
+     `Workspace=Seller` on `bg/auth-showcase-seller`): a fixed line of brand copy and three
+     overlapping illustration cards of the panel (Admin: a review queue, a sales figure, an approved
+     certificate; Seller: an order ticket, today's orders by state, a verified Halal certificate).
+     It is decoration: `aria-hidden`, no focusable element, no link.
+   - **Below 1024 px** the brand panel is not shown; the form column is the whole page on
+     `bg/page`, with the column full width less a `space/4` gutter on phones.
+   - **The brand panel is static** (Hassan): everything in it is drawn in the design and shipped
+     with the page. It makes no request, shows no real seller, person, order or figure, uses
+     fictional names and numbers marked as an illustration in the design file, and is the same on
+     every state and for every account (rule 5). Its text sits in copy keys
+     `identity.auth-showcase.*` like any other text.
+   - Touch density at every width.
 2. **Account type** (Jafar 4): the Badge (icon and words) and the document title name it on every
    Auth screen, and the H1 as well on A1, A2, A5, A9 and A10; never by colour alone. Document titles
    are the keys `identity.<surface>.page-title.<type>`.
@@ -370,7 +383,8 @@ A10 use (Jafar 8), and **1.2.0 "Panel"**.
 
 | Screen element | Existing library component or template | Change needed in Figma first | Release |
 |---|---|---|---|
-| Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark | MINOR 1.1.0 |
+| Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark; two columns from 1024 px (3.0 rule 1) | MINOR 1.1.0 |
+| Brand panel beside the form (1024 px and wider) | None | New component `AuthShowcase` (`Workspace=Admin`, `Seller`; static illustration cards, decorative); colour tokens `bg/auth-showcase-admin` and `bg/auth-showcase-seller` (dark in both themes) | MINOR 1.1.0 |
 | Brand mark | Drawn inside `Sidebar`; not a component | New component `BrandMark`; `Sidebar` uses the instance | MINOR 1.1.0 |
 | Account-type tag, statuses, role type | `Badge` (Tone, Leading, Label, Icon swap) | None. `StatusBadge` holds order statuses and is not used | — |
 | Label, helper and error text of a field | `Input` has no label, helper or error message | New component `Field` (Label, Optional mark, Helper, Error with icon, Counter) wrapping Input, Textarea, Select | MINOR 1.1.0 |
@@ -380,7 +394,7 @@ A10 use (Jafar 8), and **1.2.0 "Panel"**.
 | Buttons | `Button`: Primary, Secondary, Destructive, Ghost × Sm, Md, Touch × Default, Hover, Focus, Disabled | New `State=Loading`; new `Variant=Link` for text actions such as "Forgot password?" | MINOR 1.1.0 |
 | Error summary, banners, status banner | `InfoBanner` (Info, Attention, Critical, Success; title, body, action) | None | — |
 | QR code plate | None | Composed in the template; new colour token `bg/qr` (white in both themes) | MINOR 1.1.0 |
-| Auth card width | `size/*` has no card width | New dimension token `size/auth-card` | MINOR 1.1.0 |
+| Auth form column width | `size/*` has no card width | New dimension token `size/auth-card` (the width of the form column's content) | MINOR 1.1.0 |
 | Step label, backup-code list, checkbox with label | Text styles, `Checkbox` | Composed in the template; no component | — |
 | Icons | 58, including `eye`, `store`, `shield-check`, `users`, `clock`, `ban`, `check`, `alert-circle`, `download`, `printer`, `send`, `x` | Add 9: `eye-off`, `lock`, `mail`, `key`, `user`, `log-out`, `copy`, `smartphone`, `trash` | MINOR 1.1.0 |
 | Reason shown to the seller | None | New component `ReasonQuote` (label, quoted text, date); used in A10, S1 and D4 | MINOR 1.1.0 |
@@ -401,9 +415,9 @@ A10 use (Jafar 8), and **1.2.0 "Panel"**.
   `Shared · Roles`, `Shared · Role editor`, `Shared · Account security` and `Shared · No access`
   (1.2.0). Shared templates get a Seller frame and an Admin frame. P1 is a **Phase 2 frame of the
   existing `Admin · Sellers`** (1.2.0), not a new template (Jafar 9).
-- **New components (10, plus `MenuItem`):** `BrandMark`, `Field`, `ReasonQuote`, `Menu` (1.1.0);
+- **New components (11, plus `MenuItem`):** `BrandMark`, `Field`, `ReasonQuote`, `Menu`, `AuthShowcase` (1.1.0);
   `Select`, `Textarea`, `Dialog`, `Toast`, `EmptyState`, `CheckboxRow` (1.2.0). Each is used in both
-  panels or in at least two places, as the update procedure requires. New tokens: 5. New icons: 9.
+  panels or in at least two places, as the update procedure requires. New tokens: 7. New icons: 9.
 - **Design-system version after this module:** 1.2.0. Nothing is renamed or removed, so no MAJOR.
 
 ## 5. Copy
@@ -676,6 +690,7 @@ The orchestrator puts this question in the single owner list with DD 14.4.
 | # | Question | Options | Recommendation |
 |---|---|---|---|
 | 1 | Whom does a locked-out shop owner, or one whose application needs changes, contact? S1, A7, the Auth footer (A10 included) and several emails show the contact, and a shop owner's two-step reset starts there. **Asked of the owner** | (a) One support email address per Market, from Market configuration. (b) No contact on screen; the seller replies to the email they received. (c) A contact form, later | (a), with a named person who reads it (Jafar) and a written identity check before a shop owner's two-step reset (Hassan). Needed before the first real account |
+| 2 | How should the sign-in pages look? Three concepts on the canvas "MondaPac Panel Shell", page "Login · three concepts": a split page with a brand panel, a centred card, a mosaic of tiles; then three brand panels for the split page | **Decided by the owner on 2026-10-07: concept 1A**, the split page with illustration cards of the panel in the brand panel | — |
 
 Told, not asked, and shown in the Persian summary: the words a seller reads ("Changes needed", "Not
 approved", "This seller account is suspended"): a design decision set by the `sellers` G1, and
@@ -697,7 +712,8 @@ ready-made roles question of DD 14.4 decides the keys `identity.roles.default.<c
 ### 8.1 Design track: what to build in Figma, in order
 Follow `docs/design/figma/update-procedure.md`: Sandbox, review, publish, Export tokens.
 1. **Release 1.1.0 "Auth"** (unblocks frontend work for slices 2 to 7, S1 and A10; Jafar 8):
-   tokens `bg/qr` and `size/auth-card`; 9 icons; `BrandMark`; `Field`; `Input` variants Password
+   tokens `bg/qr`, `bg/auth-showcase-admin`, `bg/auth-showcase-seller` and `size/auth-card`; 9 icons;
+   `BrandMark`; `AuthShowcase` (3.0 rule 1); `Field`; `Input` variants Password
    and Code; `Button` Loading and Link; `ReasonQuote`; `Menu` and `MenuItem` with the description
    line; the `ChecklistItem` variants; the `Topbar` booleans. Template `Auth` with frames for A1
    (default, error, throttled, two-step paused, banner), A2, A3 (with the admin re-enrolment body),
