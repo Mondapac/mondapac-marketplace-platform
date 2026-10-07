@@ -532,9 +532,21 @@ left room, kept to its intent; reviewers may overturn any of them.
 | Notice interval | Market configuration `identity.existingAccountNoticeHours` (AU 24; the synthetic ZZ 12), not a constant, so a Market can differ (ADR-0002) |
 | Concurrent sign-ups of one new address | They end as if run one after the other. PostgreSQL usually refuses the later insert with a serialisation failure; the unit runs again (P 3.1 row 7) and takes the repeat branch, so the later password stands. If the unique key refuses it instead, it answers the same and changes nothing. Either way one account, one answer |
 | Disabled account | Not special-cased: the branches of 3.2 apply as for an active one, and the status is unchanged. Sign-in still refuses it (slice 2) |
-| Body | A closed schema (as catalog L8): only `email` and `password`; an unknown field, `displayName` included, is refused with `validation.failed` (`unknown-field`, its name cut to 64 characters, never its value) and nothing is stored. JSON only; other media types answer 415 `request.body-unsupported` |
+| Body | A closed schema (as catalog L8): only `email` and `password`; an unknown field, `displayName` included, is refused with `validation.failed` (`unknown-field`, never its value) and nothing is stored. At most 10 unknown names are echoed, sorted, then one marker with path U+2026; each echoed name has control and format characters and lone surrogates replaced by U+FFFD and is cut to 64 code points (Hassan L2). JSON only; other media types answer 415 `request.body-unsupported` |
+| Email and password text (Hassan L3) | The email refuses `\p{Cc}`, `\p{Cf}` (bidi marks, U+200B to U+200D, U+FEFF, the soft hyphen), `\p{Zl}` and `\p{Zp}`: stricter than the CHECK of data design 3.3, which is unchanged and stays the backstop. An email or a password that is not well-formed UTF-16 (a lone surrogate) is refused with the existing codes: `validation.failed` (email `format`) and `password.rejected` (`length`, the input-size rule) |
 | A refused constraint | The repository maps the unique key to "taken" (answered as accepted) and the CHECKs of data design 3.3 (N1 included) to `validation.failed`, never a 500 |
 | CSRF and the `Authorization` header | Not in 1d: the origin check of 6.4 (HF14) comes with sessions in slice 2 and covers this route then |
+
+**Open items from the slice 1d reviews (PR #77), to settle in or before slice 2.**
+
+| From | Item | What slice 2 (or the named point) must do |
+|---|---|---|
+| Hassan L1 | One hash input | Decide the one form of the password that is hashed and verified (proposed: NFKC, as NIST SP 800-63B-4 asks), and use it in `hash` and `verify` alike, before slice 2 merges. 1d hashes the password as typed and checks the rules on its NFKC form; accounts made before the decision need a rule (re-hash at next sign-in, or none exist outside test) |
+| Hassan L4 | Every sign-up branch writes | The branch "verified, notice already sent within the interval" must increment `mail.account` (6.8) in its unit, so every branch writes; add a test that each of the three branches writes |
+| Hassan I4 | Proxy hop count | Decide the trusted proxy hop count (PF 7 item 6) before any deployment behind a proxy; until then the origin is the socket address and `X-Forwarded-For` is ignored |
+| Hassan I5 | Unverified accounts | Password sign-in refuses an unverified account; the only way in for it is the verification link with its password (6.7 option B) |
+| Mojtaba N-a | Retries | Count `conflict.retry` (serialisation retries exhausted) for `identity.register-customer` in the metrics, to see contention on sign-up |
+| Mojtaba N-b | Credential rewrite | `PrismaAccountRepository.save()` rewrites `password_credentials` on every version step, also when only the notice instant changed; write it only when the credential changed |
 
 ### 6.8 Throttling and rate limiting (I11)
 Thresholds are Hassan's. Counters live in an `identity` table, in PostgreSQL because the
