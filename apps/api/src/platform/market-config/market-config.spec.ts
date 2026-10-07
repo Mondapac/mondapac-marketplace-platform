@@ -105,7 +105,7 @@ describe('loadMarketConfigs', () => {
       },
       timezones: {
         byRegion: { N: 'Pacific/Auckland', S: 'Pacific/Auckland' },
-        postcodeExceptions: [{ postcodes: ['90000-90010', 'AB1'], timezone: 'Pacific/Chatham' }],
+        postcodeExceptions: [{ postcodes: ['90000-90010', '90020'], timezone: 'Pacific/Chatham' }],
       },
     };
     const withSellers = (sellers: unknown) => directoryWith({ 'QQ.json': { ...VALID, sellers } });
@@ -184,17 +184,83 @@ describe('loadMarketConfigs', () => {
       [
         'a malformed exception postcode',
         (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['9-!']),
-        /postcode or a same-length digit range/,
+        /not a postcode/,
       ],
       [
         'an exception range with ends of different length',
         (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['999-9999']),
-        /same-length digit range/,
+        /same length, low to high/,
       ],
       [
         'an exception range written high to low',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['2899-2898']),
-        /same-length digit range/,
+        (c: typeof SELLERS) =>
+          void (c.timezones.postcodeExceptions[0]!.postcodes = ['90010-90000']),
+        /same length, low to high/,
+      ],
+      [
+        'an exception postcode the pattern does not accept',
+        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['ABC']),
+        /must match address.postcodePattern/,
+      ],
+      [
+        'two exceptions that claim one postcode',
+        (c: typeof SELLERS) =>
+          void c.timezones.postcodeExceptions.push({
+            postcodes: ['90005'],
+            timezone: 'Pacific/Auckland',
+          }),
+        /only one exception/,
+      ],
+      [
+        'a pattern that backtracks catastrophically',
+        (c: typeof SELLERS) => void (c.address.postcodePattern = '^(a+)+$'),
+        /bounded/,
+      ],
+      [
+        'an unanchored pattern',
+        (c: typeof SELLERS) => void (c.address.postcodePattern = '[0-9]{5}'),
+        /anchored/,
+      ],
+      [
+        'a pattern with a back-reference or lookahead',
+        (c: typeof SELLERS) => void (c.address.postcodePattern = '^(?=[0-9]{5}$)[0-9]+$'),
+        /lookaround/,
+      ],
+      [
+        'a pattern longer than 64 characters',
+        (c: typeof SELLERS) => void (c.address.postcodePattern = `^${'[0-9]'.repeat(20)}$`),
+        /<=64 characters/,
+      ],
+      [
+        'a field key that shadows Object.prototype',
+        (c: typeof SELLERS) => void (c.address.fields[0]!.key = 'constructor'),
+        /Object.prototype/,
+      ],
+      [
+        'a region named like an Object.prototype member',
+        (c: typeof SELLERS) => void (c.address.regions[0] = 'toString'),
+        /Object.prototype/,
+      ],
+      [
+        'the postcode and region in one field',
+        (c: typeof SELLERS) => void (c.address.regionField = c.address.postcodeField),
+        /must differ/,
+      ],
+      [
+        'an optional postcode field',
+        (c: typeof SELLERS) => void (c.address.fields[1]!.required = false),
+        /must be required/,
+      ],
+      [
+        'a region longer than the region field allows',
+        (c: typeof SELLERS) => void (c.address.regions[0] = 'x'.repeat(40)),
+        /fit the maxLength/,
+      ],
+      [
+        'more than 100 regions',
+        (c: typeof SELLERS) =>
+          void (c.address.regions = Array.from({ length: 101 }, (_, i) => `r${i}`)),
+        /100|Too big/i,
       ],
     ])('rejects %s', (_case, change, message) => {
       const directory = withSellers(mutate(change));

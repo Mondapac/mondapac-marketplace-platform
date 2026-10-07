@@ -25,8 +25,15 @@ but cannot take seller addresses. It starts with what slice 2 needs; later slice
   region's. Never an offset (ADR-0005). An entry is an exact postcode (letters and digits, no
   hyphen) or a digit range with ends of equal length, low to high, the same grammar as
   `config/service-areas/`. A Market whose real postcodes contain a hyphen cannot list them yet;
-  the grammar grows when such a Market is added.
+  the grammar grows when such a Market is added. Every exception must also match
+  `postcodePattern`, and no postcode may appear in two exceptions.
 
 The AU `postcodeExceptions` list is empty until the zone table of sellers spike 3 (a source whose
 licence allows a checked-in file) is done: Broken Hill, Lord Howe Island and Eucla are among the
 postcodes it will name. Until then sellers there are outside the open ServiceArea anyway.
+
+`postcodePattern` runs on user input, so it must be anchored with `^` and `$`, at most 64
+characters, with no `*`, `+`, lookaround or back-reference and only bounded `{n}` or `{n,m}`
+repeats. Field keys and region names must not be `Object.prototype` members. The postcode and
+region fields must be required and different, and arrays and strings have size caps. Slice 2
+makes `sellers` mandatory for a `soft_launch` or `active` Market when it adds its first reader.

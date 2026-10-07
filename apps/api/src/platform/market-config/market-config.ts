@@ -3,6 +3,12 @@ import path from 'node:path';
 import { parseMarketId } from '@mondapac/shared-kernel';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
+import {
+  InvalidPostcodeEntryError,
+  parsePostcodeEntries,
+  postcodesClash,
+  type ParsedPostcodes,
+} from './postcode-entry';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
 const TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
@@ -27,15 +33,42 @@ const marketCode = z.string().transform((value, context) => {
 });
 
 const timeZone = z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone');
-const fieldKey = z.string().regex(/^[a-z][A-Za-z0-9]{0,31}$/u, 'must be a camelCase field key');
-const regexSource = z.string().refine((value) => {
-  try {
-    new RegExp(value, 'u');
+/** A name used as an object key must never be an `Object.prototype` member (`constructor`...). */
+const plainName = (schema: z.ZodString) =>
+  schema.refine((value) => !(value in Object.prototype), 'must not be an Object.prototype member');
+const fieldKey = plainName(
+  z.string().regex(/^[a-z][A-Za-z0-9]{0,31}$/u, 'must be a camelCase field key'),
+);
+const regionName = plainName(z.string().min(1).max(64));
+
+/**
+ * A postcode pattern runs on user input, so it is held to a small grammar: anchored, at most 64
+ * characters, no `*` or `+`, no lookaround, named group or back-reference, and every `{}`
+ * repeat bounded. With no unbounded repeat a pattern cannot backtrack catastrophically.
+ */
+const postcodePatternSource = z
+  .string()
+  .max(64)
+  .refine((value) => {
+    try {
+      new RegExp(value, 'u');
+    } catch {
+      return false;
+    }
     return true;
-  } catch {
-    return false;
-  }
-}, 'must be a valid regular expression');
+  }, 'must be a valid regular expression')
+  .refine(
+    (value) => value.startsWith('^') && value.endsWith('$') && !value.endsWith('\\$'),
+    'must be anchored with ^ and $',
+  )
+  .refine(
+    (value) =>
+      !/[*+]/u.test(value.replace(/\\./gu, '')) &&
+      !/\(\?/u.test(value) &&
+      !/\\[1-9k]/u.test(value) &&
+      !/\{\d*(,\d*)?\}/u.test(value.replace(/\{\d{1,2}(,\d{1,2})?\}/gu, '')),
+    'must use only bounded {n} or {n,m} repeats and no lookaround or back-reference',
+  );
 
 /**
  * The `address.format` of the `sellers` section (sellers domain design 4.1 and 4.2): the fields
@@ -48,7 +81,7 @@ const addressFormatSchema = z
       .array(
         z.strictObject({
           key: fieldKey,
-          labelKey: z.string().min(1),
+          labelKey: z.string().min(1).max(64),
           required: z.boolean(),
           /** Plaintext limit after NFC (sellers data design Q-M11: 1 to 120). */
           maxLength: z.number().int().min(1).max(120),
@@ -59,8 +92,8 @@ const addressFormatSchema = z
     postcodeField: fieldKey,
     /** Absent for a Market whose zone does not depend on a region. */
     regionField: fieldKey.optional(),
-    postcodePattern: regexSource,
-    regions: z.array(z.string().min(1)),
+    postcodePattern: postcodePatternSource,
+    regions: z.array(regionName).max(100),
   })
   .superRefine((format, context) => {
     const keys = format.fields.map((field) => field.key);
@@ -83,6 +116,32 @@ const addressFormatSchema = z
     if (new Set(format.regions).size !== format.regions.length) {
       context.addIssue({ code: 'custom', message: 'regions must be unique', path: ['regions'] });
     }
+    const postcode = format.fields.find((field) => field.key === format.postcodeField);
+    const region = format.fields.find((field) => field.key === format.regionField);
+    if (format.regionField === format.postcodeField) {
+      context.addIssue({
+        code: 'custom',
+        message: 'regionField must differ from postcodeField',
+        path: ['regionField'],
+      });
+    }
+    // The zone is derived from these two, so a seller must not be able to leave them out.
+    for (const field of [postcode, region]) {
+      if (field !== undefined && !field.required) {
+        context.addIssue({
+          code: 'custom',
+          message: `the postcode and region fields must be required (${field.key})`,
+          path: ['fields'],
+        });
+      }
+    }
+    if (region !== undefined && format.regions.some((name) => name.length > region.maxLength)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'every region must fit the maxLength of the region field',
+        path: ['regions'],
+      });
+    }
   });
 
 /**
@@ -90,26 +149,16 @@ const addressFormatSchema = z
  * with postcodes whose zone differs from their region's. Never an offset (ADR-0005 decision 1).
  */
 const sellerTimezonesSchema = z.strictObject({
-  byRegion: z.record(z.string().min(1), timeZone),
-  /** Exact postcodes or digit ranges ("2880", "2898-2899"); the zone data file of spike 3. */
-  postcodeExceptions: z.array(
-    z.strictObject({
-      postcodes: z
-        .array(
-          z.string().refine((value) => {
-            const entry = value.replace(/\s+/gu, '').toUpperCase();
-            if (/^[A-Z0-9]{1,10}$/u.test(entry)) return true;
-            // Same grammar as a ServiceArea range: digits only, equal length, low to high.
-            const range = /^(\d{1,10})-(\d{1,10})$/u.exec(entry);
-            return (
-              range !== null && range[1]!.length === range[2]!.length && range[1]! <= range[2]!
-            );
-          }, 'must be a postcode or a same-length digit range, low to high'),
-        )
-        .min(1),
-      timezone: timeZone,
-    }),
-  ),
+  byRegion: z.record(regionName, timeZone),
+  /** Postcode entries of `config/service-areas/` (exact, or a same-length digit range). */
+  postcodeExceptions: z
+    .array(
+      z.strictObject({
+        postcodes: z.array(z.string().max(32)).min(1).max(500),
+        timezone: timeZone,
+      }),
+    )
+    .max(500),
 });
 
 /**
@@ -132,6 +181,46 @@ const sellersSchema = z
         path: ['timezones', 'byRegion'],
       });
     }
+
+    let pattern: RegExp;
+    try {
+      pattern = new RegExp(sellers.address.postcodePattern, 'u');
+    } catch {
+      return; // reported by the postcodePattern check itself
+    }
+    const claimed: ParsedPostcodes[] = [];
+    sellers.timezones.postcodeExceptions.forEach((exception, index) => {
+      const path = ['timezones', 'postcodeExceptions', index, 'postcodes'];
+      let parsed: ParsedPostcodes;
+      try {
+        parsed = parsePostcodeEntries(exception.postcodes);
+      } catch (error) {
+        if (!(error instanceof InvalidPostcodeEntryError)) throw error;
+        context.addIssue({ code: 'custom', message: error.message, path });
+        return;
+      }
+      const samples = [
+        ...parsed.exact,
+        ...parsed.intervals.flatMap(({ length, low, high }) =>
+          [low, high].map((n) => String(n).padStart(length, '0')),
+        ),
+      ];
+      if (samples.some((sample) => !pattern.test(sample))) {
+        context.addIssue({
+          code: 'custom',
+          message: 'every exception postcode must match address.postcodePattern',
+          path,
+        });
+      }
+      if (claimed.some((other) => postcodesClash(parsed, other))) {
+        context.addIssue({
+          code: 'custom',
+          message: 'a postcode may appear in only one exception',
+          path,
+        });
+      }
+      claimed.push(parsed);
+    });
   });
 
 const marketSchema = z

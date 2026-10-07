@@ -36,7 +36,7 @@
       ],
       "postcodeField": "postalCode",
       "regionField": "prefecture",
-      "postcodePattern": "^[0-9]{3}-[0-9]{4}$",
+      "postcodePattern": "^[0-9]{7}$",
       "regions": ["ZA", "ZB"]
     },
     "timezones": {
