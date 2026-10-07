@@ -419,7 +419,15 @@ Guard 1 fails on:
 - any row in `pg_parameter_acl`: since PostgreSQL 15, `GRANT SET ON PARAMETER
   session_replication_role` lets the owner switch the trigger off (measured: the owner's
   `UPDATE` then succeeds; after the `REVOKE` the row is gone, so the rule raises no false alarm);
-- a non-trigger function that `PUBLIC` may execute;
+- a non-trigger function that `PUBLIC` may execute, **except** a member function of an extension
+  (`pg_depend.deptype = 'e'` with `refclassid = 'pg_extension'::regclass`) when all of these hold:
+  (a) the extension is named in the expected map together with its schema; (b) that schema is not
+  `public`; (c) `mondapac_app` has no `USAGE` on that schema and no role but the schema owner has
+  `CREATE` on it (`aclexplode(nspacl)`); (d) no `search_path` setting of `mondapac_app`, of any
+  role it is a member of, or of the database (`pg_db_role_setting`) names that schema. The guard
+  still fails on an extension that is not in the map, on a mapped extension in any other schema,
+  and when (c) or (d) stops holding. Today the map names one: `btree_gist` in `extensions`
+  (`docs/design/data/sellers.md` 9.2; amendment of 2026-10-07, platform PR P2);
 - a function with `prosecdef` (trigger functions included) that the map does not name together
   with its decision, or whose `proconfig` does not set `search_path` (10.2, Function).
 
