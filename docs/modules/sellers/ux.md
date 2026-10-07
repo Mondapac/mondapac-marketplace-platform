@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Author | Reza (ui-ux-designer), 2026-10-07 |
-| Status | Revised 2026-10-07 after the G2 reviews (section 9). Not binding until G2 is recorded in the brief and in `docs/modules/README.md`; G2 blockers that touch this document: Jafar's confirmation of section 4 and the owner's answers (section 7) |
+| Status | **G2 approved 2026-10-07** (recorded in the brief and in `docs/modules/README.md`). Revised after the G2 reviews (section 9). Open points in section 7 that need the owner are not G2 blockers (Ali's ruling) and are tracked there |
 | Module | `sellers`, tier A, Phase 3. G1 approved by the owner on 2026-10-03 |
 | Reviewers | Jafar (product-designer), Ali (cto), Hassan (security-tester). Mohammad's domain design (`docs/design/domain/sellers.md`, "DD") is updated with the G2 reviews and its sections 6.4, 6.5, 7.8, 14.3 and 16.4 are cited here |
 | Used for | Brief section 12 (filled in section 4 here), the Figma work (ADR-0017) and slice 17 (panel screens) |
@@ -543,8 +543,8 @@ sections 3.1 F13 notes and 3.2 P3); "Submitted by MondaPac" on S1 (Jafar accepte
 5. **"Your area is now open" email** (E24, DD 10, Jafar 7): a proposal for the owner or Hadi. If accepted,
    the template and its brief change-log row are added; until then S1 is the only place a waiting seller
    learns it.
-6. **Brief change-log row** for `CheckboxRow` replacing `ChecklistItem` on P3 (section 4). Jafar's
-   acceptance of section 4 is recorded in 9.
+6. ~~Brief change-log row for `CheckboxRow` replacing `ChecklistItem` on P3~~ Done: the row is in the
+   brief's change log (2026-10-07). Jafar's acceptance of section 4 is recorded in 9.
 
 ### For Jafar
 - **Step order, grouping and the phone-versus-tablet priority** are provisional (brief risk 14): five pages
@@ -632,7 +632,7 @@ Every screen also waits for ID-UX D1 and D2 ADRs and slice F0.
 | Reviewer | Result | What was applied |
 |---|---|---|
 | Jafar (product-designer) | Accept with changes | Items 1 and 3 to 11 are applied in sections 1 to 5 and 7 (the codes and "Undo", "Allow one more application" and E23, admin-edit banners and the withdrawal line, no dismissal on S7, "Contact us" links, "Submitted on", suspended and invited banners, the Kind chip, the optional AI line). Item 2 is settled by D 7.8: search works on All, Awaiting review and Incomplete |
-| Jafar, on section 1.4 | Accepted all four changes for design, with conditions (1.4); **the identity owner's acceptance (DD R-12) is pending** | |
+| Jafar, on section 1.4 | Accepted all four changes for design, with conditions (1.4); **the identity owner's acceptance (DD R-12) is pending: planned in identity mini-review 1, needed before slice 5** | |
 | Jafar, on section 4 (brief s12) | **Accepts section 4 and brief s12 with six wording edits, now applied:** `StatusBadge` for seller states, the `CheckboxRow` note, the unchanged-components row, "SEO", the cross-reference to the brief's component list, and the note on the two blanks | |
 | Hassan (security-tester) | Accept with changes, UX decisions applied | No browser storage and `no-store` (3.1 F13 notes, 3.5); manual register link admin-only on P3, server-built, `noopener noreferrer`, no telemetry (3.2 P3); admin edit of an approved seller needs both permissions and records the checks (F18); acting-as refusals (F13 notes); limits of DD 6.5 (F13, F17); `sellers.business-details.view` (F18, P3); social links (S7) |
 | Ali (cto) | Accept with changes | Slice names in 8.2 (7a-read, 7a-decide, 7a-auto, 19); seller-zone times (3.0 rule 8); no approval by `sellers` alone (`file-check-needed`, F18 step 7) |

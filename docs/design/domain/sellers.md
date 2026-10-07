@@ -908,7 +908,7 @@ mail to waiting outside-area sellers (proposal in 10).
 | Hassan (security-tester) | Accept with changes; H1 blocks G2 (applied, 16.4.2) | 2026-10-07 |
 | Jafar (product-designer), on `ux.md` | Accept with changes; items for this document applied (16.4.3) | 2026-10-07 |
 | Mojtaba (database-designer) | O9 closed; Q-M19 to Q-M24 answered (14.4) | 2026-10-07 |
-| Reza (ui-ux-designer) | Author of `ux.md`; Jafar's items 1, 3, 6, 8 to 11 are his | |
+| Reza (ui-ux-designer) | Author of `ux.md`; Jafar's items 1, 3, 6, 8 to 11 and the six section 4 edits applied (`ux.md` 9) | 2026-10-07 |
 
 ### 16.4 G2 review record (2026-10-07)
 How each actionable item was applied in this document. Items for the data design and `ux.md` are
