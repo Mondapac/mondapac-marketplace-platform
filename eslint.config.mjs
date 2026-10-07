@@ -252,12 +252,15 @@ const DOMAIN_APPLICATION_SYNTAX = [
 // platform/authz/, outside modules).
 const GATE = 'use-case-entry-is-the-gate';
 const useCaseNeverOverridesExecute = {
-  selector: "ClassBody > MethodDefinition[key.name='execute']",
+  selector:
+    "ClassBody > :matches(MethodDefinition, PropertyDefinition):matches([key.name='execute'], [key.value='execute'])",
   message: `${GATE}: a use case never overrides execute.`,
 };
 const handleIsCalledOnlyByExecute = {
+  // The member, not the call, so that x['handle'](), x.handle.call(...) and x.handle.bind(...)
+  // are caught too.
   selector:
-    "CallExpression[callee.type='MemberExpression'][callee.property.name='handle'][callee.object.type!='ThisExpression']",
+    "MemberExpression:matches([property.name='handle'], [property.value='handle'])[object.type!='ThisExpression']",
   message: `${GATE}: handle is called only by UseCase.execute.`,
 };
 
@@ -280,8 +283,13 @@ export default tseslint.config(
   eslint.configs.recommended,
   {
     // No inline directive can switch a boundary rule off in the API sources (nothing there
-    // uses one today).
-    files: [`apps/api/src/**/*.${TS}`],
+    // uses one today). The kernel and the fixture trees are covered too.
+    files: [
+      `apps/api/src/**/*.${TS}`,
+      `packages/shared-kernel/src/**/*.${TS}`,
+      `${FIXTURES}/src/**/*.${TS}`,
+      `${FIXTURES}/packages/shared-kernel/src/**/*.${TS}`,
+    ],
     linterOptions: { noInlineConfig: true },
   },
   {

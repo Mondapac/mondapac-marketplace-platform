@@ -445,6 +445,12 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
   describe('ESLint', () => {
     let eslint: ESLint;
     const results = new Map<string, Linter.LintMessage[]>();
+    // With noInlineConfig ESLint adds a warning (no rule id) for every directive it ignores.
+    // Those notices are split off here and asserted on their own; every other message must
+    // still be an error.
+    const ignoredDirectives = new Map<string, string[]>();
+    const IGNORED_DIRECTIVE =
+      /^'\/\/ eslint-disable[^']*' has no effect because you have 'noInlineConfig'/;
 
     beforeAll(async () => {
       // One instance and one run over the whole fixture tree: the type-aware parser builds
@@ -455,7 +461,19 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         path.join(FIXTURES, 'packages/**/*.ts'),
       ]);
       for (const result of linted) {
-        results.set(path.relative(FIXTURES, result.filePath), result.messages);
+        const file = path.relative(FIXTURES, result.filePath);
+        const notices = result.messages.filter(
+          (message) => message.ruleId === null && IGNORED_DIRECTIVE.test(message.message),
+        );
+        if (notices.length > 0)
+          ignoredDirectives.set(
+            file,
+            notices.map((m) => m.message),
+          );
+        results.set(
+          file,
+          result.messages.filter((message) => !notices.includes(message)),
+        );
       }
     }, SETUP_TIMEOUT_MS);
 
@@ -467,6 +485,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       return messages;
     }
 
+    const syntaxOf = (file: string): string[] =>
+      textsIn(file).map((text) => text.split(':')[0] ?? text);
     const rulesIn = (file: string): string[] => messagesIn(file).map(label).sort();
     const textsIn = (file: string): string[] => messagesIn(file).map((m) => m.message);
 
@@ -555,11 +575,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       // another object in use-cases/; no `.handle(` call in presentation/.
       [
         'src/modules/alpha/application/use-cases/overrides-execute.ts',
-        syntax('use-case-entry-is-the-gate'),
+        syntax('use-case-entry-is-the-gate', 3),
       ],
       [
         'src/modules/alpha/application/use-cases/calls-handle.ts',
-        syntax('use-case-entry-is-the-gate'),
+        syntax('use-case-entry-is-the-gate', 4),
       ],
       ['src/modules/alpha/presentation/calls-handle.ts', syntax('use-case-entry-is-the-gate')],
       ['src/modules/alpha/application/use-cases/allowed-use-case.ts', []],
@@ -606,13 +626,23 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ]);
     });
 
+    it('does not let an inline directive switch a rule off, and reports the ignored directive', () => {
+      const file = 'src/modules/alpha/application/disables-a-rule.ts';
+
+      expect(syntaxOf(file)).toEqual(['no-wall-clock']);
+      expect([...ignoredDirectives.keys()]).toEqual([file]);
+      expect(ignoredDirectives.get(file)).toEqual([
+        expect.stringContaining("'// eslint-disable-next-line no-restricted-syntax' has no effect"),
+      ]);
+    });
+
     it('names each use-case-entry-is-the-gate message', () => {
-      expect(textsIn('src/modules/alpha/application/use-cases/overrides-execute.ts')).toEqual([
-        'use-case-entry-is-the-gate: a use case never overrides execute.',
-      ]);
-      expect(textsIn('src/modules/alpha/application/use-cases/calls-handle.ts')).toEqual([
-        'use-case-entry-is-the-gate: handle is called only by UseCase.execute.',
-      ]);
+      expect(textsIn('src/modules/alpha/application/use-cases/overrides-execute.ts')).toEqual(
+        Array(3).fill('use-case-entry-is-the-gate: a use case never overrides execute.'),
+      );
+      expect(textsIn('src/modules/alpha/application/use-cases/calls-handle.ts')).toEqual(
+        Array(4).fill('use-case-entry-is-the-gate: handle is called only by UseCase.execute.'),
+      );
     });
 
     it('names each kernel import it refuses', () => {
