@@ -284,7 +284,7 @@
 - **CAT-36، VER-03، ADR-0009 تصمیم ۳:** با «Approval Required» خاموش، هر Revision فوری منتشر می‌شود؛ CERT-21 و رد ادعا همچنان در ارسال و انتشار اعمال می‌شوند. CAT-36 محصول ساخته‌شده، Offer از کاتالوگ و Import را می‌پوشاند. مقدار راه‌اندازی: سؤال ۲.
 - **CAT-32، ADR-0009 تصمیم ۳:** «Changes needed» بدون دلیلی که فروشنده ببیند پذیرفته نمی‌شود. Revision ردشده رد می‌ماند؛ ویرایش بعدی Revision تازه می‌سازد.
 - **تأیید به همان چیزی وصل است که بازبینی شده (پیشنهاد تیم؛ ADR-0010 تصمیم ۵ برای ارتقا):** تأیید، رد، تطبیق و ارتقا شمارهٔ Revision را نام می‌برند. اگر در این فاصله Revision جایگزین شده باشد، پذیرفته نمی‌شود.
-- **CAT-33:** در تأیید گروهی، محصول فروشنده‌ای که تأیید نشده (یا «نمی‌تواند بفروشد») Skip می‌شود، نه رد.
+- **CAT-33:** در تأیید گروهی، محصول فروشنده‌ای که تأیید نشده (یا «نمی‌تواند بفروشد») Skip می‌شود، نه رد. همچنین ردیفی که بررسی عکسِ نام‌دار (named photo check) لازم دارد در تأیید گروهی Skip می‌شود (CAT-33 به‌علاوهٔ H1؛ پس تأیید اولِ هر محصول گروهی تأیید نمی‌شود). هر ردیفِ Skip‌شده با دلیلش («نیاز به بررسی عکس دارد») در نتیجه فهرست می‌شود، نه فقط شمرده.
 - **CAT-52، ADR-0010 تصمیم ۷:** تأیید دستهٔ فروشنده همیشه لازم است، مستقل از CAT-36.
 - **CAT-45، ADR-0010 تصمیم ۶:** تطبیق فقط در اولین تأیید (محصولی که هرگز منتشر نشده)؛ نوع و خانوادهٔ ویژگی یکسان؛ نگاشت صریح Variantها؛ اگر فروشنده از قبل روی محصول هدف Offer دارد، خطا؛ دستهٔ مالیاتی محصول پلتفرم ملاک است؛ Offer با همان شناسه منتقل و برچسب‌هایش دوباره پرسیده می‌شوند؛ محصول تکراری «MatchedDuplicate» می‌شود و پایانی است. پیشنهاد موارد مشابه فقط راهنماست.
 - **CAT-44، CAT-46، ADR-0010 تصمیم ۵:** ارتقا برگشت‌ناپذیر است، شمارهٔ Revision را نام می‌برد، Revisionهای در انتظار فروشنده را کنار می‌گذارد، برای محصول «برند اختصاصی» همیشه مسدود است، و پیش از انتشار بند مجوز محتوا با تأیید حقوقی می‌خواهد. فروشندهٔ اصلی با Offer خودش ادامه می‌دهد و دیگر محتوا را ویرایش نمی‌کند؛ به او اطلاع داده می‌شود.
@@ -678,10 +678,12 @@
 | Category tree | None | New `CategoryTree`, `TreeNode` (keyboard tree) | MINOR 1.8.0 |
 | Revision compare and photo compare | `DataRow` Compare | State Sensitive; thumbnail strip with Added, Removed, Moved | MINOR 1.8.0 |
 | AI listing suggestion (AIS-03) | `ExtractedField` Mode Suggestion | Context (Listing) state words | MINOR 1.7.0 |
-| Reviewer checks, settings rows, dialogs, badges, filter | `CheckboxRow`, `SettingRow`, `Dialog`, `CertChip`, `CertDetail`, `FilterGroup` | None (frames only) | n/a |
+| Reviewer checks, settings rows, dialogs (DP1 to DP13, including the tax-override dialog), badges, filter | `CheckboxRow`, `SettingRow`, `Dialog`, `CertChip`, `CertDetail`, `FilterGroup` | None (frames only) | n/a |
 | Icons | `icons.json` | Add `image`, `layers`, `folder`, `archive`, `git-merge`, `link`, `tag`, `trash-2` | MINOR 1.7.0 |
 | Templates | Seller and Admin templates of 1.0 to 1.6.0 | New: `Seller · Products`, `Seller · Product form`, `Admin · Products`, `Admin · Revision review`, `Admin · Category tree`; reused: `Shared · Settings`, `Seller · Setup step` | 1.7.0 and 1.8.0 |
 | Mobile navigation (D16) | None | Not part of this module | Open |
+
+Totals (same as ux.md section 4): **3 new components** (`VariantRow`, `CategoryTree`, `TreeNode`), **8 changed components** (`UploadItem`, `Field`, `ReasonQuote`, `FormActionBar`, `StatusBadge`, `PickerList`, `DataRow`, `ExtractedField`), 8 new icons, 5 new templates, no new tokens; releases 1.7.0 (seller) and 1.8.0 (admin).
 
 **صفحه‌ها و حالت‌هایی که این ماژول لازم دارد (برای برنامه‌ریزی طراحان).** منبع: `docs/design/figma/README.md` و `docs/design/research/direction-c.md`؛ **خودِ فایل Figma برای این برگه باز نشده است.** قالب‌های موجود: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board). هیچ قالبی برای فهرست محصول، فرم محصول یا بازبینی محصول نیست. کامپوننت‌های مرتبطِ موجود: `ProductThumb`، `StatusBadge`، `CertChip`، `Badge`، `TableCell`، `Tab`، `FilterChip`، `Pagination`، `BulkActionBar`، `CardHeader`، `Input`، `Checkbox`، `Switch`، `SegmentedControl`، `Button`، `InfoBanner`، `Tooltip`، `TimelineItem`، `ChecklistItem`، `QueueCard`. انتخاب کامپوننت برای هر عنصر پیشنهاد برای G2 است (مرور G1، Mohammad).
 
@@ -717,3 +719,4 @@
 ## تاریخچهٔ تغییرات بعد از دروازه
 | تاریخ | تغییر | مرور توسط | تصمیم |
 |---|---|---|---|
+| 2026-10-07 | قانون CAT-33: تأیید گروهی ردیف‌های نیازمند بررسی عکسِ نام‌دار را هم Skip می‌کند (CAT-33 به‌علاوهٔ H1)؛ تأیید اولِ محصول هرگز گروهی نیست؛ ردیف Skip‌شده با دلیل در نتیجه فهرست می‌شود. (ux.md بخش 3.3a و FP6 گام ۶ هم همین را می‌گویند) | Hadi (product-owner)، Jafar (product-designer) | پذیرفته شد (Hadi) |

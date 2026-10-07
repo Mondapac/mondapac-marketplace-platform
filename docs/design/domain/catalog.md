@@ -277,9 +277,12 @@ Bulk approve (CAT-33, AC 30): the request carries `[{ productId, revisionId }]`,
 (server-side cap; an oversized request is refused whole with `batch.too-large`, Hassan 3b); any id not found
 in the request's Market refuses the whole request byte-identically (the SL 7.3 pattern); each item
 is its own unit; ineligible sellers are skipped, not rejected; a not-current revision is skipped
-with `review.not-current-revision`; a first approval of a never-published SELLER product is
+with `review.not-current-revision`; a row whose revision needs the named photo check (8.3a: an
+image added or replaced, or a first publication) is skipped with `review.checks-missing` (CAT-33
+with Hassan H1; accepted by Hadi); a first approval of a never-published SELLER product is
 **skipped** with `review.first-approval-needs-match-check` unless the request sets
-`firstApprovalsConfirmed: true` (brief s4 c 5; Jafar). Result: counts per outcome.
+`firstApprovalsConfirmed: true` (brief s4 c 5; Jafar). Result: counts per outcome, and **every
+skipped row listed** with its product id, revision id and reason code, so the reviewer can open each.
 
 Working-copy save (`own-product.save-draft`, `platform-product.save-draft`) and revert input
 (Hassan M3, Ali B2): every `variantId` in the input must be an existing, non-retired variant of
@@ -398,6 +401,26 @@ Batches: at most 100 queries per call (CD 4.1); the fan-out splits larger sets.
    reconciliation (5.6). It cannot be shown or used (point 2), and the publish re-ask (point 3) is the
    only way it becomes effective, so there is nothing for them to repair. The alternative ("use the
    pending revision") was rejected: it would let a handler decide on content nobody has approved.
+6. **Badge requests at the first submit (Reza, ux.md 7.10).** Before its first submit a product has
+   no frozen revision, so `own-offer.add-tag` cannot ask for it (point 1). Instead `own-product.submit`
+   and `own-offer.submit` accept `requestedTags: TypeCode[]` (closed schema; at most one per type;
+   each a validated active type code of the Market; nothing about it is stored before the submit).
+   - **When:** at submit, under the claim-bearing commands' rule (8.2 row of `.add-tag`): the server
+     asks `evaluateClaims` for each requested type against the frozen revision being submitted
+     (point 1), before the unit. If every requested type is allowed, the tags are written in the
+     submit unit with copies naming that revision (not listed, no badge, excluded from 5.5 and 5.6,
+     point 5). If any is not allowed, the **whole submit is refused** with
+     `claim.requested-tag-not-allowed` (per type: code and CUX 3.7 reason), the same no-silent-loss
+     rule as T4; `unavailable` refuses with `claim.check-unavailable`.
+   - **Acting-as:** a submit whose `requestedTags` is non-empty is refused with
+     `access.acting-as-refused` (never silently dropped); with an empty list the acting admin may
+     submit content.
+   - **Publish:** yes, re-asked against the revision being published before the pointer moves
+     (point 3); a tag not allowed then is `suspended` with its reason.
+   - For `own-offer.submit` on a PLATFORM product (already published) the field works the same way
+     against the published revision; there `own-offer.add-tag` is also available on the draft.
+   - Allowing tags only after the first publication was rejected: the seller would learn about an
+     unbacked badge only after approval (19.2 item 3), and the Offer would go live first without it.
 
 ### 5.2 Accepting a decision (ADR-0028 d2, d3; AC 7, 9, 10)
 1. The use case asks **outside** its unit (PP 3.1 row 5), then opens one unit that re-reads the
@@ -764,7 +787,9 @@ session (and when the context cannot say, CD M5).
 | `tax-category.override` | `permissions [catalog.tax-category.override]` | — | 4.3 |
 | `platform-category.*` | `permissions [catalog.category-tree.edit]` (create, rename, move, merge, archive); read and `platform-category.impact`: `catalog.product.view` | — | 4.6, 9.2a |
 | `admin-product.offers` | `permissions [catalog.product.view]` | — | 9.2a (Offers tab) |
-| `attribute-definition.*`, `attribute-family.*` | `permissions [catalog.attribute.edit]` | — | Unsetting `material` and removing a family's required field are relaxations recorded in audit. **Two-person rule (Hassan 2; ADR-0028 consequences)** for clearing `material`, archiving or deleting a definition whose current revision is `material`, and removing a `material` definition from a family: one admin requests (`attribute-definition.request-relaxation`, naming the definition id and its version), a **different** account id holding `catalog.attribute.edit` confirms (`.confirm-relaxation`); never in an acting-as session; the request expires after 72 h (proposal) and fails if the definition version changed; both account ids are in the audit row `catalog.attribute-definition.revised` |
+| `attribute-definition.*`, `attribute-family.*` | `permissions [catalog.attribute.edit]` | — | Unsetting `material` and removing a family's required field are relaxations recorded in audit. **Two-person rule (Hassan 2; ADR-0028 consequences)** for clearing `material`, archiving or deleting a definition whose current revision is `material`, and removing a `material` definition from a family: one admin requests (`attribute-definition.request-relaxation`, naming the definition id and its version), a **different** account id holding `catalog.attribute.edit` confirms (`.confirm-relaxation`); never in an acting-as session; the request expires after 72 h (proposal) and fails if the definition version changed; both account ids are in the audit row `catalog.attribute-definition.revised`. Lifecycle of a request: `open` → `confirmed` | `cancelled` (by the requester) | `expired` (job below); confirm after `expiresAt` is refused with `relaxation.expired` by the unit's own `Clock` check, whatever the job has done |
+| `attribute-relaxations.list-open` (PA7 "Waiting for you") | `permissions [catalog.attribute.edit]` | refused | `open` requests of the Market, not expired, oldest first: request id, kind (`clear-material`, `archive`, `delete`, `remove-from-family` with family id), definition id, code, name in the admin's locale and version, requester account id and display name (identity R-11, I-2), `requestedAt`, `expiresAt`, and allowed actions: `confirm` denied with `relaxation.same-admin` on the reader's own requests (shown with `mine: true`; `cancel` allowed there) |
+| `catalog.expire-relaxation-requests` (job) | `system` | — | Worker, per hosted Market, every 15 minutes: each `open` request past `expiresAt` becomes `expired` in its own unit, with audit `catalog.attribute-relaxation.expired` and the event `catalog.material-request-expired.v1` in the outbox; the own handler sends EC14 to the requester |
 | `category-proposal.approve`, `.reject` | `permissions [catalog.category-proposal.decide]` | — | 4.7 |
 | `seller-category.promote`, `.merge` | `permissions [catalog.seller-category.promote-merge]` | — | 4.7 |
 | `market-settings.read`, `.change` | view / edit keys | refused | 7.3 |
@@ -820,7 +845,7 @@ A check is a human's statement; no AI output ticks one (R2), and AIA-03 never pr
 | Submits (product or Offer) | 30 per seller per hour |
 | Photo uploads | 100 per seller per 24 h; 10 MiB per file; 40 megapixels, longest edge ≤ 12,000 px, one frame (Hassan, 19.2 item 7) |
 | OFR-03 search, admin product search | 60 per minute per account |
-| Bulk approve | At most 50 items per request; oversized refused whole (`batch.too-large`; Hassan 3b) |
+| Bulk approve | At most 50 items per request; oversized refused whole (`batch.too-large`; Hassan 3b). Rows needing the named photo check are skipped (`review.checks-missing`); every skipped row is listed with its reason code (4.2) |
 | Import | One running per seller; 5 starts per 24 h; file ≤ 10 MiB, decompressed ≤ 50 MiB, 5,000 rows, 10,000 characters per cell (Hassan) |
 | AIS-03 calls | `platform/ai` budget; plus 50 per seller per 24 h |
 | Facade batches | 200 keys for `offerSellUnits`, `offerListings` (PRC 6.2, INV 7.1, CRT 7.1), `offerTaxCategories`, `productsForOrder`; 100 ids for `CatalogReferences.*`; 100 queries per `evaluateClaims` call; oversized calls refused whole (L7) |
@@ -1000,6 +1025,7 @@ ships in the slice that changes the state (brief s6).
 | `catalog.platform-category-created.v1`, `-moved.v1`, `-merged.v1` (with `targetCategoryId`), `-archived.v1` | `categoryId` | Own handler (4.6); `search` |
 | `catalog.category-proposed.v1`, `-proposal-approved.v1`, `-proposal-rejected.v1`, `-proposal-cancelled.v1`, `catalog.seller-category-promoted.v1`, `-merged.v1` | ids | Own mail; storefront |
 | `catalog.import-finished.v1` | `importJobId`, `sellerId` | Own mail |
+| `catalog.material-request-expired.v1` | `requestId`, `definitionId` (no actor in the payload, PP 5.3; the handler reads the requester from its own row) | Own mail (EC14 to the requester) |
 
 Type codes in payloads: `typeCode` of a tag is an enum of the vocabulary's "code" kind; Hassan
 ruled it fits PP 5.3 provided the value is a validated vocabulary code (19.2 item 10; `sellers` kept type codes out of its payload for the same
@@ -1129,7 +1155,8 @@ admin), `.deleted-draft` is **not** audited (never submitted; 4.1); `catalog.off
 handler-made changes), each with type code, basis, certificate kind, id and version, issuer id and
 policy revision id (brief s5); `catalog.tax-category.overridden`; `catalog.platform-category.created`,
 `.renamed`, `.moved` (C-8), `.merged`, `.archived`; `catalog.attribute-definition.revised` (with
-`materialFlagCleared` and both requester and confirmer account ids when relaxing, 8.2); `catalog.category-proposal.approved`, `.rejected`,
+`materialFlagCleared` and both requester and confirmer account ids when relaxing, 8.2);
+`catalog.attribute-relaxation.requested`, `.cancelled`, `.expired`; `catalog.category-proposal.approved`, `.rejected`,
 `.cancelled`; `catalog.seller-category.promoted`, `.merged`; `catalog.import.started` (file hash,
 row counts); `catalog.image.taken-down`; `catalog.market-settings.changed`; `catalog.ai-claim-flag.
 shown-and-decided` (AIA-03 R12: suggestion reference and hash, decision id). In acting-as, the
@@ -1163,6 +1190,7 @@ escaped; no reason text other than the reviewer's own words to the owning seller
 | Published text now contains a claim word (Q6) | Rescan |
 | Category proposal approved, rejected, cancelled | Proposal events |
 | Import finished | `import-finished` |
+| EC14: your request to relax a material attribute expired without a second admin (to the requester's sign-in address, I-2) | `material-request-expired` |
 | To reviewers: new items in the queue, coalesced to one per Market per hour (proposal) | Submit events |
 
 ## 13. AI uses (ADR-0019; slices 25 and 26, optional for launch)
@@ -1364,7 +1392,9 @@ now; this document does not edit it):
    `rechecking` marking) stay in Prisma.
 8. Rate limits (L6) and Import limits: counters for `claim-text.check` per minute and per 24 h.
 9. Two-person relaxation (Hassan 2): the pending request row carries definition id and version,
-   requester, confirmer (must differ), expiry; covers clearing `material`, archiving or deleting a
+   kind (and family id), requester, confirmer (must differ), status (`open`, `confirmed`,
+   `cancelled`, `expired`), `expires_at`, indexed by (Market, status, `expires_at`) for the expiry job
+   and the "Waiting for you" list; covers clearing `material`, archiving or deleting a
    material definition and removing it from a family.
 10. SKU (Hadi): one `sellerSku` per Offer; no per-variant SKU column in Phase 3; Import's update key
     is (seller, `sellerSku`, variant option values).
@@ -1448,6 +1478,14 @@ now; this document does not edit it):
 23. Variant limit: `variant.limit-reached` (with `max`) on adding a size beyond
     `maxVariantsPerProduct` (AU 100) at save, submit, approve and Import; the panel disables "Add a
     size" at the limit from the product read (`maxVariants`).
+24. Badge requests at the first submit (5.1a point 6): `requestedTags` on `own-product.submit` and
+    `own-offer.submit`; a type not allowed refuses the whole submit with
+    `claim.requested-tag-not-allowed` (per type, CUX 3.7 reason); in acting-as the checkboxes are
+    disabled and a non-empty list is refused with `access.acting-as-refused`; a requested tag shows
+    "checked at submit, confirmed at publish" and no badge until publish.
+25. PA7 "Waiting for you" reads `attribute-relaxations.list-open` (8.2); own requests show
+    `mine: true` with Cancel and no Confirm (`relaxation.same-admin`); EC14 is sent by the handler of
+    `catalog.material-request-expired.v1` (9.4, 12).
 
 ## 18. Requests to other modules
 No port, facade or event of another module is changed by this document.
@@ -1550,6 +1588,8 @@ day one (Q1).
 | Reza ux.md 7.2 items 1, 2 | Per-field refusal on draft saves (no claim word ever stored); `claim-text.found` payload with `typeCode` | 6.1, 17.2 |
 | Reza ux.md 7.6 | Named checks stored on the decision and gating, required set derived by the server; photo check of H1 | 8.3a, 7.1, 17.2 |
 | Final conditions (Hassan 1a, 1b, 2, 3a, 3b; Ali ADR-0030, slice 20; Hadi SKU, locale, CAT-53) | See 19.3 rows | 2.1, 4.2, 4.3, 4.7, 5.4, 6.3, 8.2, 8.4, 11.1, 11.3, 14, 15.1, 16.2, 17.1, 17.2, 19, 20 |
+| Hadi: narrower bulk approve | Rows needing the named photo check are skipped; every skipped row listed with its reason code | 4.2, 8.4 |
+| Reza ux.md 7.10 | `requestedTags` at the first submit (submit-time ask, whole submit refused if not allowed, refused in acting-as, re-asked at publish); `attribute-relaxations.list-open`; expiry job, `catalog.material-request-expired.v1`, EC14 | 5.1a point 6, 8.2, 9.4, 11.3, 12, 17.1, 17.2 |
 | Ali Phase 4: `catalog.maxVariantsPerProduct` | Market configuration (AU 100); checked at save, submit, publish and Import; `variant.limit-reached`; bounds `offer-moved` mapping | 2.1, 4.2, 7.1, 7.3, 9.2a, 9.4, 14, 17.1, 17.2, 18 |
 | Reza ux.md 7.2 items 3, 4, 8, 9, 10; ZWNJ after the helper | Badge options, sensitive fields, queue rows, `platform-category.impact`, Offers tab, allowed actions and throttle codes, setting metadata, photos read and reorder; manual removal at a reported offset | 9.2a, 8.2, 6.3 |
 | Reza ux.md 7.2 items 7, 8; IA additions | `retire.count-changed`; `revision.similar-products`; `matchable` with denial codes; routes `/offers/:id/review`, `/revisions/:id/match`, `/settings/catalogue` confirmed; `offer.review-read` added | 4.1, 9.2, 8.2, 17.2 |
