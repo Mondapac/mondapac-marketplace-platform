@@ -22,9 +22,11 @@
 
 | سطح | دروازه‌ها | ماژول‌ها |
 |---|---|---|
-| **A** | G1 + G2 + بازبینی امنیتی | identity، sellers (مدیریت فروشنده)، certification، catalog (محصول، دسته‌بندی، Offer)، inventory، ordering، payments، commission-payouts، tax |
+| **A** | G1 + G2 + بازبینی امنیتی | identity، sellers (مدیریت فروشنده)، certification، catalog (محصول، دسته‌بندی، Offer)، inventory، ordering، payments، commission-payouts، tax، assistant (گفت‌وگوی خریدار؛ دروازه‌هایش فقط هستهٔ ۳ AI را می‌بندند، ADR-0019) |
 | **B** | یک دروازهٔ ترکیبی | cart، shipping، notifications، search، content (CMS و بلاگ)، legal، promotions |
 | **C** | فقط تأیید PO | reporting و قابلیت‌های P2 به بعد بدون اثر روی پول، اعتماد یا دادهٔ شخصی |
+
+`platform/ai` کد پلتفرم است، نه ماژول: سند طراحی‌اش بخش‌به‌بخش با تأیید CTO و بازبینی security-tester تأیید می‌شود (ADR-0019 تصمیم ۶). ردیف ثبت وضعیت `assistant` با پیش‌نویس برگه‌اش اضافه می‌شود. سطح نهایی `pricing` (B یا A طبق ADR-0024 تصمیم ۳) را CTO با تأیید دروازه‌اش در برگه و ردیف ثبت می‌کند.
 
 **«مدیریت فروش»** یک ماژول واحد نیست: شامل ordering (سفارش)، commission-payouts (کمیسیون و تسویه)، promotions (تخفیف و کوپن) و reporting (گزارش فروش) است و هرکدام با سطح خودش از دروازه عبور می‌کند.
 
