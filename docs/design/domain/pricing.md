@@ -1,9 +1,9 @@
 # Pricing — G2 domain design
 
 **Author:** Mohammad (software-architect) — 2026-10-07
-**Status:** Draft for G2 review; Ali (cto) approve with changes and Hassan (security-tester) accept with changes applied 2026-10-07; approval recorded only after catalog G2 (Ali A4). Mojtaba's data design (docs/design/data/pricing.md) reviewed by Hassan 2026-10-07 (approved with conditions; H-D1 and M7 decided, 15, 17). Revised 2026-10-07 for catalog's G2 draft (branch `docs/catalog-g2-design`, 25cbf3a), which accepts CF1–CF4 with refinements, applied here as Ali's ruling P-1 (6.1, 6.4, 17). Still to review: Reza and Jafar for the screens of brief s12. Open: section 15; review record: section 17.
+**Status:** G2 approved with conditions 2026-10-07 (Ali, cto, final verdict; Bagher, QC, final check; 17). Ali (cto) approve with changes and Hassan (security-tester) accept with changes applied 2026-10-07; catalog G2 is merged (PR #54), so Ali's A4 is met. Mojtaba's data design (docs/design/data/pricing.md) reviewed by Hassan 2026-10-07 (approved with conditions; H-D1 and M7 decided, 15, 17). Revised 2026-10-07 for catalog's G2 (draft 25cbf3a, merged as PR #54), whose 9.7 and 18 accept CF1–CF4 with refinements as ruled, applied here as Ali's ruling P-1 (6.1, 6.4, 17). Follow-up: Reza (ui-ux-designer) pending, UI condition; Jafar for the wording of brief s12's screens (J1). Open: section 15; review record: section 17.
 **Ground truth:** `docs/modules/pricing/brief.md` (G1 approved by the owner 2026-10-07; sections, owner answers and acceptance criteria are cited as "brief s5", "Q8", "AC 10"; the role-review table as "G1 review"); ADR-0024 (pricing is its own module; mandatory security review of price and Cost writes; `catalog` imports neither `pricing` nor `inventory`); ADR-0001, 0002, 0003, 0004, 0005, 0006, 0007 (decisions 1, 2, 4, 8, 10), 0008, 0009 (decision 2, V2), 0013, 0018, 0019, 0020, 0022, 0023; `docs/features/02-catalog-inventory.md` (CAT-16, CAT-17), `docs/features/10-versioning.md` (VER-03, VER-06, VER-09); `docs/modules/catalog/brief.md` (s3, s5, s11 "inputs for the `pricing` brief"); `docs/modules/cart/brief.md` (the first consumer); `docs/modules/inventory/brief.md` (sibling patterns); `docs/design/domain/identity.md` ("ID 5.2"), `platform-foundations.md` ("PF") and `platform-persistence-and-events.md` ("PE"); `apps/api/src/platform/market-config/market-config.ts` (today's `MarketConfig`).
-**Not yet approved:** the `catalog` G2 design (`docs/modules/README.md`: catalog G2 not approved). Its draft (branch `docs/catalog-g2-design`, 25cbf3a; cited "catalog G2 9.1") accepts CF1 to CF4 of 6.1 with the refinements of P-1; this G2's approval is still recorded only after catalog G2 is approved (A4).
+**Catalog G2:** approved and merged (PR #54, 0bad228; `docs/design/domain/catalog.md`, cited "catalog G2 9.1"). Its 9.7 and 18 accept CF1 to CF4 of 6.1 with the refinements of P-1 as ruled; the merged text differs from the draft 25cbf3a only by additions this design already follows, so no mini-review is needed (A4 met).
 
 ## 1. Scope
 
@@ -395,9 +395,9 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 **Jafar**
 - J1. The closed list of rejection reason codes and their wording for the seller (Q4).
 
-**Catalog G2 (condition from Ali, A4)**
-- CF1 to CF4 (6.1) are accepted by catalog's G2 draft (25cbf3a) with the refinements of P-1, applied here; this G2's approval is still recorded only after catalog G2 is approved (A4). If catalog G2 changes any of them again, a mini-review follows.
-- M5 (c). Answered by the draft: a removed Variant id never comes back (catalog G2 M-1); the (Product, Variant) tombstone stays permanent.
+**Catalog G2 (condition from Ali, A4; met)**
+- CF1 to CF4 (6.1) are accepted as ruled by catalog's merged G2 (PR #54, 9.7 and 18) with the refinements of P-1, applied here. A later change to any of them means a mini-review.
+- M5 (c). **Closed:** a removed Variant id never comes back (catalog G2 M-1, merged); the (Product, Variant) tombstone stays permanent.
 - C1 (Ali, with catalog). **Closed 2026-10-07:** catalog G2 4.5's `product.match` guard maps every non-retired Variant (`proposed` included) one-to-one to a distinct published target Variant, not necessarily covering every target Variant. The "cannot move" branch of 6.4 stays as a fail-closed backstop.
 
 **Still open in Mojtaba's data design (pricing-data 11.2)**
@@ -416,14 +416,14 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | Q5 | Owner | Default roles as proposed in 5.3: Store Manager and Catalogue and Stock view and edit prices; Cost only with the Seller Owner; Catalogue Moderator views and decides holds (protected) and views history; Viewer gets the view keys |
 | M1–M3 | Mojtaba | pricing-data 11.1: a stored period end with column-level `UPDATE` grants; three statements and two partial live indexes for the batch read (6.2); two insert-only tombstone tables, with the creating unit and both handlers `serializable` (9) |
 | M4 | Mohammad | (a) PD2 is "one pending special plus no overlap among specials in effect", not "one non-final special" (2.1, 7). (b) A `WITHDRAWN` special is in effect until `withdrawnAt` (3.2, 4.1, 11). (c) Job horizon H = 7 days with a daily alert for older unmarked boundaries (11) |
-| M5 | Mohammad | (a) The Variant tombstone is keyed by (Product, Variant) (2.1, 5.2, 6.4, 7). (b) Both retirement handlers ship in slice 1 (6.4). (c) answered by catalog's G2 draft: a removed Variant id never returns (M-1) |
+| M5 | Mohammad | (a) The Variant tombstone is keyed by (Product, Variant) (2.1, 5.2, 6.4, 7). (b) Both retirement handlers ship in slice 1 (6.4). (c) answered by catalog G2 (merged PR #54): a removed Variant id never returns (M-1) |
 | M6 | Mohammad | Accepted as proposed: `supersede_cause` (`replaced`, `cancelled`, `offer-removed`, `variant-removed`), `withdraw_cause` (`seller`, `replaced`, `offer-removed`, `variant-removed`), `retire_cause` (`offer-removed`, `variant-removed`); `decision_note` 1 to 1,000 characters (Jafar's wording of J1 does not change the limit); `currency` on the series tables (P2) |
 | A1 | Ali | Approved: the one-way dependency on `sellers` (ADR-0005 needs the seller's zone), and dropping the Offer-created subscription. Recorded as a brief change-log row through a mini-review signed by Hadi and Ali (16) |
 | A2 | Ali | Option A made a general rule (4.6): values read by more than one module in `MarketConfig`; values read by one module in its own per-Market policy, checked at boot, no default |
 | A3 | Ali | Declare `PricingStrategy` now in `pricing/domain`, one `fixed` implementation, no registry (2.2) |
-| A4 | Ali | Confirmed: both G2s reviewed now; approval recorded only after catalog G2 accepts CF1–CF4 |
+| A4 | Ali | Confirmed: both G2s reviewed now; approval recorded only after catalog G2 accepts CF1–CF4. Met 2026-10-07: catalog G2 merged (PR #54) with CF1–CF4 accepted as ruled |
 | A5 | Ali | No ADR just for this; queued for the next ADR that amends ADR-0019 (12) |
-| P-1 | Ali | Catalog's G2 draft accepted with refinements: the facade is `offerSellUnits`; priceable = non-retired Variants including `proposed`; a deleted Offer is present with `status: deleted` and no sell units, and a write to it answers `pricing.offer-not-found`; re-key on `catalog.offer-moved.v1`, with no `variant-removed` for a moved Offer's old Variants; `variant-removed` consumed at every retirement, a draft save included; facade reads advisory (ADR-0025 decision 1), ordering re-checks; batches ≤ 200, a larger call refused whole (5.2, 6.1 to 6.4, 9, 13, 14) |
+| P-1 | Ali | Catalog's G2 (draft 25cbf3a; merged unchanged on these points, PR #54) accepted with refinements: the facade is `offerSellUnits`; priceable = non-retired Variants including `proposed`; a deleted Offer is present with `status: deleted` and no sell units, and a write to it answers `pricing.offer-not-found`; re-key on `catalog.offer-moved.v1`, with no `variant-removed` for a moved Offer's old Variants; `variant-removed` consumed at every retirement, a draft save included; facade reads advisory (ADR-0025 decision 1), ordering re-checks; batches ≤ 200, a larger call refused whole (5.2, 6.1 to 6.4, 9, 13, 14) |
 | H1 | Hassan | `allOf(price.edit, cost.view)` (5.2) |
 | H2 | Hassan | Accept, with `submittedBy` and the acting-as account on `CostRecord` (finding 4) |
 | H3 | Hassan | Accept, with finding 2 (every `offer-not-found` recorded, cause inside the row) and at most 1 audit row per (actor, Offer) per minute (5.2, 8) |
@@ -442,14 +442,14 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 - Sellers G2: seller zone in the sellers facade (A1, 4.3). Done: sellers G2 merged 2026-10-07 (PR #46) with `operatingTimezone` in `sellerSummaries`.
 - `docs/features`: VER-03 wording (ADR-0024).
 - ADR-0019 decision 10: queued for the next ADR that amends ADR-0019; the owner accepts that ADR (A5; no ADR just for this).
-- Catalog G2: CF1 to CF4. Accepted in its draft (25cbf3a) with P-1's refinements, applied here; recorded at catalog's G2 approval.
+- Catalog G2: CF1 to CF4. Done: accepted as ruled in catalog's merged G2 (PR #54, 9.7 and 18) with P-1's refinements, applied here.
 - Pricing brief change log: s6 adds the consumed event `catalog.offer-moved.v1` (CF4 re-key), through a mini-review signed by Hadi and Ali (row added in this PR).
-- Catalog G2: `catalog.maxVariantsPerProduct` = 100 (Ali; the value inventory also relies on), so a re-key is one unit of at most 200 series and a mapping of more than 100 pairs is refused and parked, never applied in part (6.4).
+- Catalog G2: `catalog.maxVariantsPerProduct` = 100 (Ali; the value inventory also relies on). Done: set in catalog G2 7.1 (AU 100, ZZ 3; merged PR #54), so a re-key is one unit of at most 200 series and a mapping of more than 100 pairs is refused and parked, never applied in part (6.4).
 - Platform (PE 6.4): a handler can dead-letter its own delivery at once with an error code (today only the entry adapter does); confirmed or added in the re-key's P1 PR.
 
 ## 17. Review record
 
-Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-tester, accept with changes); both sets of changes are applied in sections 2 to 16. The approval is recorded only after catalog's G2 is approved (Ali A4); its draft (25cbf3a) accepts CF1–CF4 with refinements, applied 2026-10-07 under Ali's ruling P-1 (6.1, 6.4). Mojtaba's data design answered M1–M3; his M4–M6 are answered in 15. The screens of brief s12 are still to come.
+Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-tester, accept with changes); both sets of changes are applied in sections 2 to 16. Catalog's G2 is approved and merged (PR #54), meeting Ali's A4; it accepts CF1–CF4 with refinements as ruled (9.7, 18), applied 2026-10-07 under Ali's ruling P-1 (6.1, 6.4). Mojtaba's data design answered M1–M3; his M4–M6 are answered in 15. The screens of brief s12 are still to come (Reza pending, UI condition).
 
 **Ali's decisions**
 - Required changes 1–5: `PricingStrategy` declared (2.2, 14); missing seller zone refused with `pricing.seller-zone-unavailable`, zone stored on the record (4.3, 5.5, 6.1, 13, 16); T2 replaced by the A2 rule (4.6, 16); second Market on `ZZ.json`, JPY, exponent 0, `pricesIncludeTax = false` (4.4, 13); A1 and A5 recorded (15, 16).
@@ -457,9 +457,9 @@ Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-test
 - A1: `sellers` dependency and dropped Offer-created subscription approved; brief change-log row through a Hadi and Ali mini-review.
 - A2: shared values in `MarketConfig`, single-reader values in the module's policy.
 - A3: declare `PricingStrategy` now.
-- A4: approval waits for catalog G2.
+- A4: approval waits for catalog G2. Met: catalog G2 merged (PR #54).
 - A5: no ADR; queued for the next ADR-0019 amendment.
-- P-1 (2026-10-07, on catalog's G2 draft 25cbf3a): `offerSellUnits`; `proposed` Variants priceable; deleted Offer present and refused with `pricing.offer-not-found`; re-key on `offer-moved`; `variant-removed` at every retirement; advisory facade reads; batches ≤ 200, refused whole (5.2, 6.1 to 6.4, 8, 9, 13 to 16).
+- P-1 (2026-10-07, on catalog's G2 draft 25cbf3a, merged as PR #54): `offerSellUnits`; `proposed` Variants priceable; deleted Offer present and refused with `pricing.offer-not-found`; re-key on `offer-moved`; `variant-removed` at every retirement; advisory facade reads; batches ≤ 200, refused whole (5.2, 6.1 to 6.4, 8, 9, 13 to 16).
 - No ADR conflict, no new ADR, no import cycle.
 
 **Hassan's findings and answers**
@@ -488,3 +488,5 @@ Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-test
 - Low: a test that `regular_amount_minor` and `anchor_amount_minor` equal the referenced rows (13).
 - Low: raw SQL banned under `modules/pricing`, confirmed by spike S1 (6.5, 13).
 - Informational: trigger functions stay `SECURITY INVOKER` (platform.md 10.8 self-check); the contract snapshot test is mandatory (13).
+
+**Final G2 verdict, 2026-10-07:** Ali (cto): **approve with conditions** (tier A). Conditions: (1) Hassan reviews every price or Cost write and every facade, event or response that carries Cost before it merges (ADR-0024); (2) Kazem settles pricing-data 8.3 (`btree_gist`, K1); (3) Mojtaba signs off each migration; (4) no UI slice before Reza's `ux.md` and the Figma-first design-system update (ADR-0017, brief s12). Approvers: Mohammad (software-architect), Ali (cto), Mojtaba (database-designer), Hassan (security-tester). **Bagher (qc-release-manager), final check 2026-10-07:** merges cleanly with main, touches only this module's files, no blocking open finding. Follow-up: Reza (ui-ux-designer) pending, UI condition.
