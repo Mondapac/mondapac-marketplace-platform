@@ -412,7 +412,7 @@ Rows record the actor and, once SEL-08 exists, `acting_as_id`. System transition
 | M7 | Mohammad, security half by Hassan | The H3 counter is the PostgreSQL table of pricing-data 3.8, updated in the same unit as the audit row; plus a per-actor cap of 20 rows a minute, then one `pricing.offer-write-refused.suppressed` row; Redis rejected; the general per-account rate limit covers the write routes (5.2, 8) |
 
 ## 16. Follow-ups (none in this document's PR)
-- Pricing brief change log, through a mini-review signed by Hadi and Ali (A1): `sellers` dependency; no Offer-created subscription; permission keys; the special-price hold also measured against the anchor (Hassan finding 1).
+- Pricing brief change log, through a mini-review signed by Hadi and Ali (A1): `sellers` dependency; no Offer-created subscription; permission keys; the special-price hold also measured against the anchor (Hassan finding 1). Done 2026-10-07: five rows and the matching brief edits (flow 1, s6, three acceptance criteria) are in this PR after all; the owner was informed of the anchor rule. Q2 at hold approval: the approval is refused with `pricing.regular-not-above-special`, the record stays `PENDING_REVIEW` and the admin rejects it with a reason code (Jafar adds the code to J1).
 - Identity: seed the default roles as decided (Q5, 5.3).
 - Platform: a small shared-file PR, announced on the board first: `pricesIncludeTax` (and inventory's `maxLineQuantity`) in `MarketConfig` (A2).
 - Sellers G2: seller zone in the sellers facade (A1, 4.3). Done: sellers G2 merged 2026-10-07 (PR #46) with `operatingTimezone` in `sellerSummaries`.
