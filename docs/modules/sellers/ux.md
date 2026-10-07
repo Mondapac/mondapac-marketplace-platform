@@ -244,12 +244,11 @@ never touches another Market. View-only roles see the row locked with the reason
 
 **3.1a S7 Settings card: minimum order (D 18, slice 20; Reza).** Built from existing `Card`, `Field`, `Input`
 (with the `Prefix` of row 2 in section 4), `Button` and `FormActionBar`; no new component.
-- **Layout.** Card title "Settings". One `Field` "Minimum order". The `Input` has a fixed prefix showing the
+- **Layout.** Card title "Settings". One `Field` "Minimum order (optional)"; the default stays "No minimum". The `Input` has a fixed prefix showing the
   Market's ISO currency code (`AUD`, `NZD`, `MYR`; never a bare "$", which is ambiguous across Markets),
   then the amount. Help line under the label: currency code and price convention from Market configuration
   ("Amount in {currencyCode}, including GST" is the AU rendering; a Market with no tax convention omits the
-  phrase). Second help line: "Customers can't check out from your shop with less than this. It applies at
-  once, including to carts that are already open." A text action "Remove minimum" shows only while a value is
+  phrase). Second help line: "Customers can't check out your items with less than this. Shipping isn't counted. A change applies at once, including to open carts." A text action "Remove minimum" shows only while a value is
   saved. The card has its own `FormActionBar` (Save, status text).
 - **Input behaviour.** `type="text"`, `inputmode="decimal"`, `autocomplete="off"`, `dir="ltr"` (digits stay
   left-to-right inside an RTL page). No `type="number"` (locale decimals, scroll-wheel edits, Persian
@@ -265,7 +264,7 @@ never touches another Market. View-only roles see the row locked with the reason
   | None (default) | Empty field, no placeholder text. Under the field: "No minimum. Customers can order any amount." "Remove minimum" hidden; Save disabled until a change |
   | Set | Field holds the saved amount; "Remove minimum" visible; read-back line "Current minimum: {amount}" |
   | Dirty, saving, saved | As the other S7 cards: "Unsaved changes", Save shows Loading, then Toast "Saved." and the status text. Focus stays on Save |
-  | Empty and saved | Valid: clears to "No minimum" (same as Remove). No error |
+  | Empty and saved | Valid: clears to "No minimum" (same as Remove). No error. The Toast is "Minimum removed." (not "Saved.") for both clearing the field and "Remove minimum" |
   | Invalid amount | `minimum-order.amount` (also raised locally for text that is not a number, zero, negative, or more decimals than the currency allows): `Field` Error "Enter an amount greater than zero, for example {example}." `{example}` is formatted from the locale and currency by code. Error summary takes focus (3.0); the typed text is kept |
   | Wrong currency | `minimum-order.currency` cannot come from the screen's own fixed prefix, so it means the Market changed under the page: Attention banner "This amount isn't in {currencyCode}. Reload the page and try again." with a Reload button; typed text kept |
   | Save conflict | Another session saved first (the save carries the expected version, D 18; a stale save is refused): Attention banner "This setting was changed somewhere else. The latest value is {amountOrNone}. Check it and save again." The field keeps the person's entry, the read-back line shows the latest, Save stays enabled. |
@@ -283,6 +282,18 @@ never touches another Market. View-only roles see the row locked with the reason
 - **Persian.** Label "حداقل سفارش"; the English keys of section 5 are the source and the Persian text is
   translated from them in the i18n catalogue, with the Market's own currency and tax-convention words.
   The page is RTL, the amount field stays `dir="ltr"`.
+- **Hand-off to cart (O-4 closed, Jafar, 2026-10-07).** The buyer messages below belong to cart's own ux
+  spec, not to `sellers`; they are recorded here so cart builds the same wording. Money is formatted with
+  `Intl` and the Market currency, never "$" or AUD. Each message is shown per seller group, and shipping is
+  excluded from the amount compared.
+  - **below-minimum:** "{seller} requires at least {minimum} per order. Add {remaining} more to check out."
+    When the Market's convention is known, append "({priceBasis})" to {minimum}.
+  - **check-unavailable:** "We can't check the minimum order for {seller} right now. Try again in a moment."
+    Checkout stays blocked for that group, and the copy never implies "no minimum".
+  - A seller with an explicit "none" gets no message.
+  - **Edge cases.** A cleared minimum releases the cart on its next read. A currency mismatch shows
+    check-unavailable to the buyer; the sellers domain design 18 runbook item covers it. Mixed tax flags are
+    treated as check-unavailable.
 
 ### 3.2 Admin panel
 | Screen and purpose | Content, top to bottom | Fields, validation, actions | States | Never shown |
@@ -465,8 +476,9 @@ withdraw; awaiting review, changes needed, not approved; prepared reason; work t
 | `profile.help.plain-text · toast.saved · help.contact-only` | Plain text only. Web addresses and formatting are shown as typed. · Saved. · To change this, contact us. |
 | `change.status.waiting · .not-accepted · action.cancel · title.cancel · body.cancel` | Waiting for review · Not accepted · Cancel request · Cancel this request? · Your current details stay as they are. |
 | `change.label.current · .requested · help.live` | Current · Requested · Your current details stay in use until MondaPac reviews this. |
-| `store-settings.title · minimum-order.label · .help.unit · .help.applies` | Settings · Minimum order · Amount in {currencyCode}{priceBasis, select, none {} other {, {priceBasis}}} (`priceBasis` is a Market key, for example "including GST") · Customers can't check out from your shop with less than this. It applies at once, including to carts that are already open. |
+| `store-settings.title · minimum-order.label · .help.unit · .help.applies` | Settings · Minimum order (optional) · Amount in {currencyCode}{priceBasis, select, none {} other {, {priceBasis}}} (`priceBasis` is a Market key, for example "including GST") · Customers can't check out your items with less than this. Shipping isn't counted. A change applies at once, including to open carts. |
 | `store-settings.minimum-order.none · .current · .action.remove · .remove-label` | No minimum. Customers can order any amount. · Current minimum: {amount} · Remove minimum · Remove minimum order |
+| `store-settings.minimum-order.toast.removed` | Minimum removed. |
 | `error.minimum-order.amount · .currency · .conflict` | Enter an amount greater than zero, for example {example}. · This amount isn't in {currencyCode}. Reload the page and try again. · This setting was changed somewhere else. The latest value is {amountOrNone}. Check it and save again. |
 | `tax.title · help · action.record` | Tax registration · MondaPac doesn't decide whether you must register. · Record a change |
 | `error.link.host-not-allowed` | Use a link to one of these sites: {hosts}. |
@@ -625,7 +637,7 @@ remains:
 7. **Minimum order (3.1a), resolved 2026-10-07:** a stale save is refused (version check); the upper
    bound is the per-Market `minimumOrderMax` (D 4.1), and above it the field shows
    `error.minimum-order.amount` with the Market's maximum; acting-as is read-only (D 6.4);
-   `MarketConfig` supplies the `priceBasis` text key. Only the wording (D 18 O-4) waits for Jafar.
+   `MarketConfig` supplies the `priceBasis` text key. The wording (D 18 O-4) is closed (Jafar, 2026-10-07).
 
 ## 8. Hand-off notes
 
