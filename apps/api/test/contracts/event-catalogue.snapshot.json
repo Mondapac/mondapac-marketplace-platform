@@ -1,1 +1,17 @@
-[]
+[
+  {
+    "type": "identity.customer-account-registered.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id"
+    }
+  },
+  {
+    "type": "identity.sign-up-repeated.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "cause": "enumOf(unverified-replaced|verified-notice)"
+    }
+  }
+]

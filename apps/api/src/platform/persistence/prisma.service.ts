@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { isMinted } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { MarketMismatchError, NoUnitOfWorkError } from '../unit-of-work/errors';
+import { reduceDatabaseError } from './database-error';
 import type { MarketTransaction } from './guarded-client';
 import { unitStorage } from './unit-store';
 
@@ -29,5 +30,15 @@ export class PrismaService {
       throw new MarketMismatchError();
     }
     return unit.view as MarketTransaction;
+  }
+
+  /**
+   * The constraint an integrity violation (SQLSTATE class 23) named, or null for any other
+   * error (P 10, 12.3): a repository maps a known name to its domain error and rethrows
+   * everything else. Only the identifier is read; no value, row or message.
+   */
+  violatedConstraint(error: unknown): string | null {
+    const reduced = reduceDatabaseError(error);
+    return reduced?.sqlState?.startsWith('23') === true ? (reduced.constraint ?? null) : null;
   }
 }

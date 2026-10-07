@@ -23,7 +23,7 @@ const VALID = {
   settlementCurrency: 'NZD',
   timezone: 'Pacific/Auckland',
   requestLimits: { anonymousIdentityPerMinute: 20, defaultPerMinute: 300 },
-  identity: { password: { minLength: 15, maxLength: 128 } },
+  identity: { password: { minLength: 15, maxLength: 128 }, existingAccountNoticeHours: 24 },
 };
 
 function directoryWith(files: Record<string, unknown>): string {

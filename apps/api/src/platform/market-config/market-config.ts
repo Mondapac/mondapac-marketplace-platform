@@ -58,6 +58,11 @@ const identitySchema = z.strictObject({
       message: 'minLength must not exceed maxLength',
       path: ['minLength'],
     }),
+  /**
+   * The "you already have an account" notice goes to one account at most once in this many
+   * hours (identity design 6.7: 24).
+   */
+  existingAccountNoticeHours: z.number().int().min(1).max(168),
 });
 
 const marketSchema = z

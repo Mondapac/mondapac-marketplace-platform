@@ -26,6 +26,11 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     });
   });
 
+  it('reads each Market its own notice interval', () => {
+    expect(policy.existingAccountNoticeHours(testMarketContext('AU', 'default'))).toBe(24);
+    expect(policy.existingAccountNoticeHours(testMarketContext('ZZ', 'default'))).toBe(12);
+  });
+
   it('refuses a Market this Region Stack does not host, with no fallback', () => {
     const onlyZz = new MarketConfigIdentityPolicy(
       new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, [testMarketId('ZZ')])),

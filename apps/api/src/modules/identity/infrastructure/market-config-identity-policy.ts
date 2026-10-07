@@ -14,4 +14,8 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy {
   passwordRules(market: MarketContext): PasswordRules {
     return this.markets.get(market.marketId).identity.password;
   }
+
+  existingAccountNoticeHours(market: MarketContext): number {
+    return this.markets.get(market.marketId).identity.existingAccountNoticeHours;
+  }
 }
