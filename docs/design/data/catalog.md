@@ -1377,7 +1377,7 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | O3 | Rendition size codes and object key format with ADR-0029 | Ali, Kazem |
 | O4 | The rate-counter key (HKDF split as SL-data 4.4) | Kazem, Hassan |
 | O6 | Closed: Q-K15 confirmed in D 2.1 (Mohammad, 2026-10-07) | — |
-| O7 | Storage lifecycle rule expiring the intake prefix within 24 h, required by ADR-0029 (reserved by Ali): the backstop if both the delete and the sweep of 10.2 fail (Hassan M3) | Ali (ADR-0029), Kazem |
+| O7 | Storage lifecycle rule expiring the intake prefix within 24 h, required by ADR-0029 (Proposed 2026-10-07, decision 3): the backstop if both the delete and the sweep of 10.2 fail (Hassan M3) | Ali (ADR-0029), Kazem |
 
 ## 15. Follow-up changes
 
@@ -1386,5 +1386,5 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | `prisma/schema/base.prisma`, `catalog.prisma`; migrations of 8.1 with `down.sql` | As specified | Per slice; Hossein; my sign-off |
 | Privilege map and catalog tests of `pnpm test:db` | Section 7 lists, the insert-only list of 5.1, the trigger cases, the partial indexes of 8.4, `catalog.outbox` in the outbox test, the "no money or stock column" name test (1) | With each migration |
 | `docs/design/data/platform.md` 10.5 guard 1 | `pg_trgm` in the extension map (with O1) | Platform PR before migration 7 |
-| `docs/adr/0029-*` (reserved by Ali) | Storage lifecycle rule: the intake prefix expires within 24 h (Hassan M3, O7) | With ADR-0029 |
+| `docs/adr/0029-*` (Proposed 2026-10-07) | Storage lifecycle rule: the intake prefix expires within 24 h (Hassan M3, O7) | With ADR-0029 |
 | `docs/design/domain/catalog.md` | Done: Q-K15 confirmed in D 2.1 (Mohammad); Q-K8 ruled (Ali) | Before slice 1 |
