@@ -1,8 +1,9 @@
 # Sellers data design: spikes S1, S2 and S3 (evidence)
 
 **Owner:** Hossein (backend), with Mojtaba (O4 of `docs/design/data/sellers.md` 14.4).
-**Measured:** 2026-10-07, Prisma 7.10.0, Node 24.20.0, PostgreSQL 16.15 (CI and Compose run 17;
-nothing below depends on the minor version), non-superuser migration role `mondapac_migrator`
+**Measured:** 2026-10-07, Prisma 7.10.0, Node 24.20.0, PostgreSQL 16.15 (CI and Compose run 17,
+a different major version: the extension half of S1 is also proven on 17 by the CI of PR #72; the
+collation, S2 and S3 results were **not re-run on 17**), non-superuser migration role `mondapac_migrator`
 that owns the database, scratch database dropped afterwards. The scratch schema was a two-model
 excerpt of the design (`seller_files`, `business_file_revisions`) added to a copy of
 `prisma/schema/`; no repository file changed.
@@ -53,3 +54,10 @@ Notes for the slices that use it (migrations 3, 4, 7, 8, 12 when a deployed envi
   stay invisible to Prisma and are listed for the catalog test (9.5).
 - The file needs `down.sql` like any migration (`DROP INDEX`, without `CONCURRENTLY` since `down.sql`
   runs in one `query` call in `check-migrations-reversible.mjs`).
+
+## Conditions for the slices that use these results
+
+- Slice 2 and slice 5 re-prove, under CI's PostgreSQL 17, the `attcollation` test of S1, the
+  same-seller composite FK of S2 (also once as `mondapac_api`, which holds fewer privileges than
+  the migration role) and the single-statement `CONCURRENTLY` migration of S3, including
+  `indisvalid` and `indisready` of each index built that way.
