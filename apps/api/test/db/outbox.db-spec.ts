@@ -268,17 +268,21 @@ describe('outbox writer (database integration)', () => {
       await expect(writer.append(context, [thing()])).rejects.toBeInstanceOf(NoUnitOfWorkError);
     });
 
-    it('refuses a malformed correlation id or causation id', async () => {
-      const context = { ...eventContext(market), correlationId: 'short' } as never;
+    it('refuses a context that was not minted, and a malformed causation id', async () => {
+      // A copy with another correlation id: the writer takes only the minted CallContext.
+      const forged = { ...eventContext(market), correlationId: 'short' } as never;
+      const copied = { ...eventContext(market) } as never;
       const run = (call: () => Promise<void>) =>
         db.unitOfWork.run(market, async () => {
           await call();
           return ok(undefined);
         });
 
-      await expect(run(() => writer.append(context, [thing()]))).rejects.toMatchObject({
-        reason: 'correlation-id-invalid',
-      });
+      for (const context of [forged, copied]) {
+        await expect(run(() => writer.append(context, [thing()]))).rejects.toMatchObject({
+          reason: 'context-not-minted',
+        });
+      }
       await expect(
         run(() => writer.append(eventContext(market), [thing()], 'nope' as Id)),
       ).rejects.toMatchObject({ reason: 'causation-id-invalid' });

@@ -1,30 +1,20 @@
-import type { CorrelationId, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
-
-/**
- * What the outbox writer reads of the caller's context (platform persistence design, "P",
- * 5.1): the Market and the correlation id, never the aggregate's or the caller's data. It is
- * the part of the kernel's `CallContext` (identity slice 1c) the writer uses, so a
- * `CallContext` is passed to {@link OutboxWriter.append} unchanged once it exists.
- */
-export interface EventContext {
-  readonly market: MarketContext;
-  readonly correlationId: CorrelationId;
-}
+import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 
 /**
  * Writes the events of one module into its own outbox, in the open read-write unit of the
  * state change (P 5.2; ADR-0006 decision 2). The use case calls it inside `work`, after its
- * repository saved the aggregate.
+ * repository saved the aggregate, with the `CallContext` it received (foundations 5.2 rule 2).
  *
  * It stamps the event id (`IdGenerator`), the Market and tenant and the correlation id (the
- * context), and the causation id (`causedBy`, or `null`); see P 5.1. It throws, so that the
- * unit rolls back and an event is never dropped silently, when: no unit is open, or the unit is
- * read-only; the context's Market is not the unit's; a type is not this module's or not in the
- * event catalogue; an aggregate type, id or version (1 to 2^31 - 1) is malformed; the payload
- * does not match its definition.
+ * context, never the aggregate's or the caller's data), and the causation id (`causedBy`, or
+ * `null`); see P 5.1. The actor is not written: an event has no actor field (ADR-0018 decision
+ * 4). It throws, so that the unit rolls back and an event is never dropped silently, when: the
+ * context was not minted; no unit is open, or the unit is read-only; the context's Market is
+ * not the unit's; a type is not this module's or not in the event catalogue; an aggregate type,
+ * id or version (1 to 2^31 - 1) is malformed; the payload does not match its definition.
  */
 export interface OutboxWriter {
-  append(context: EventContext, events: readonly PendingEvent[], causedBy?: Id): Promise<void>;
+  append(context: CallContext, events: readonly PendingEvent[], causedBy?: Id): Promise<void>;
 }
 
 /** Binds an {@link OutboxWriter} to one module's outbox (P 5.2). */
@@ -42,6 +32,7 @@ export const OUTBOX_WRITER = Symbol('OUTBOX_WRITER');
 
 /** Why the outbox writer refused (P 5.2). Codes and, for a payload, the declared field name. */
 export type OutboxRefusal =
+  | 'context-not-minted'
   | 'read-only-unit'
   | 'correlation-id-invalid'
   | 'causation-id-invalid'

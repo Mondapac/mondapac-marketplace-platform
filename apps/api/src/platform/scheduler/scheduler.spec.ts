@@ -80,6 +80,12 @@ describe('Scheduler.runJobOnce (platform persistence design 7)', () => {
 
     expect(seen.map((context) => context.market.marketId)).toEqual(['AU', 'ZZ']);
     expect(seen.every((context) => isMinted(context.market))).toBe(true);
+    // A minted CallContext with that Market's system actor (identity slice 1c; Hassan, 1b I3).
+    expect(seen.every((context) => isMinted(context) && isMinted(context.actor))).toBe(true);
+    expect(seen.map((context) => context.actor)).toEqual([
+      { kind: 'system', marketId: 'AU' },
+      { kind: 'system', marketId: 'ZZ' },
+    ]);
     expect(seen.every((context) => context.market.tenantId === PLATFORM_TENANT_ID)).toBe(true);
     expect(new Set(seen.map((context) => context.correlationId)).size).toBe(2);
     expect(lock.calls).toEqual([{ key: jobLockKey(NAME), maxRunMs: 60_000 }]);

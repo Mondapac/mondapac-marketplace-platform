@@ -1,12 +1,15 @@
-import { defineEvent, eventField, ok, parseCorrelationId, Temporal } from '@mondapac/shared-kernel';
-import type { DomainEvent, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
+import { defineEvent, eventField, ok, Temporal } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  DomainEvent,
+  Id,
+  MarketContext,
+  PendingEvent,
+} from '@mondapac/shared-kernel';
+import { testCallContext } from '@mondapac/shared-kernel/testing';
 import type { EventBus, RelayTransaction } from '../../src/platform/events/event-bus';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
-import {
-  NO_PERMISSION_KEYS,
-  type EventContext,
-  type OutboxWriter,
-} from '../../src/platform/events/outbox-writer';
+import { NO_PERMISSION_KEYS, type OutboxWriter } from '../../src/platform/events/outbox-writer';
 import { SystemClock } from '../../src/platform/clock/system-clock';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
@@ -56,11 +59,9 @@ export function identityWriter(db: Persistence, catalogue = testCatalogue()): Ou
   ).forModule('identity');
 }
 
-/** A context for the writer: the Market and a fresh correlation id. */
-export function eventContext(market: MarketContext): EventContext {
-  const correlationId = parseCorrelationId(`db-test-${ids.next()}`);
-  if (!correlationId.ok) throw new Error('bad correlation id');
-  return { market, correlationId: correlationId.value };
+/** A minted CallContext for the writer: the Market's system actor and a fresh correlation id. */
+export function eventContext(market: MarketContext): CallContext {
+  return testCallContext(market, 'system', `db-test-${ids.next()}`);
 }
 
 /** A valid PendingEvent of {@link thingRecorded} for a new aggregate. */
@@ -92,7 +93,7 @@ export function thing(
 export async function writeEvents(
   db: Persistence,
   writer: OutboxWriter,
-  context: EventContext,
+  context: CallContext,
   events: readonly PendingEvent[],
 ): Promise<void> {
   await db.unitOfWork.run(context.market, async () => {
