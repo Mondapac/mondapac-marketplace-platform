@@ -832,7 +832,7 @@ Edits made to the other two documents, only on the affected lines: data design 3
 | Q-M13 | No correction of a started period in Phase 3: a change is a new period from its date, closing the previous one. A future period that has not started may be cancelled (`DELETE` of that row only, audited). The final rule waits for the tax adviser (brief s5); this is reversible |
 | Q-M14 | Confirmed: both get `version`; `shop_slugs` gets a surrogate `id` |
 | Q-M15 | Confirmed: `author_account_id` NOT NULL; no system path creates a business file revision |
-| Q-M16 | Accepted: slices with a migration are 1, 2, 3, 4a, 5, 6, 7a (since G2: 7a-read and 7a-decide), 10, 11, 12, 14, 18. Changed: 11.1 |
+| Q-M16 | Accepted: slices with a migration are 1, 2, 3, 4a, 5, 6, 7a (since G2: 7a-read and 7a-decide), 10, 11, 12, 14, 18, 20 (since D 18). Changed: 11.1 |
 | Q-M17 | Confirmed: no status column until a review state exists |
 | Q-M18 | The approved revision's clear `identifier_index IS NOT NULL` when the Market's current configuration requires an identifier (brief s5 states the rule as a live condition); time zone from the revision's clear column; no decryption. Changed: 7.2 row 2 |
 | Reza 1 | Yes: `my-file.read` returns the code of 3.3, the pending revision's kind and author kind, `reapplyPossible`, the steps `{ state, fieldsLeft, route }` and, on `file.incomplete`, `details.fields`; since G2 also the latest withdrawal (cause, by whom, date; Jafar 4) and the latest rejected identity change (Jafar 5). Changed: 6.2 |
