@@ -65,7 +65,7 @@ tables included, so the guard of P 4 needs no exemption line in Phase 2. Slices 
 | C7 | Indexes lead with `market_id` (ADR-0004 decision 4). Primary keys on a single `uuid` stay as they are; a table that is 1:1 with its parent uses the primary key `(market_id, <parent>_id)`, which Prisma accepts as the 1:1 relation key with no extra index |
 | C8 | Deleting a parent: `ON DELETE CASCADE` only for rows that have no meaning without it (credential, sessions, challenges, links, second factor, recovery codes, role keys); `ON DELETE RESTRICT` everywhere else, so those rows are removed by a use case, never by accident |
 | C9 | Prisma model names start with `Identity` (`IdentityAccount`, `IdentityOutbox`): PM7 extended to every model, since model names are global; tables are mapped with `@@map` |
-| C10 | **No raw SQL.** The guard refuses it inside a unit and identity has no raw helper in Phase 2 (P 4.2). Every guarded statement here is a Prisma `updateMany` (the condition in `where`; one row changed or none), `upsert` or `deleteMany`, with `market_id` in `where` |
+| C10 | **No raw SQL.** The guard refuses it inside a unit and identity has no raw helper in Phase 2 (P 4.2). Every guarded statement here is a Prisma `updateMany` (the condition in `where`; one row changed or none), `upsert` or `deleteMany`, with `market_id` at the top level of `where`; an `upsert` on a compound key (`marketId_kind_keyHash`) states `marketId` at the top level as well (spike 6: the guard of P 4.1 refuses the compound selector alone; Prisma still sends one native `INSERT … ON CONFLICT`) |
 | C11 | **Isolation.** READ COMMITTED, except every unit that writes `role_assignments`, `seller_memberships.state` or `accounts.status`, inserts and deletes included: those run `serializable` (HF8; D 5.5; P 3.1 row 6). Consequences in 5.1 |
 
 ## 3. Tables
@@ -228,7 +228,7 @@ exactly one (5).
 |---|---|
 | Per-request read of the `Authenticator` (D 6.2): `WHERE market_id = $1 AND token_hash = $2`, then account, membership and seller access by key | Unique `(market_id, token_hash)`; the three follow-up reads use `accounts_pkey`, the active-membership index of 3.9 and `seller_access_pkey` |
 | Revoke every session of an account (password reset, disable, second-factor reset, removal); at a password change or a factor activation every other one, and the current one is rotated | `(market_id, account_id)`; the rotation by primary key |
-| Revoke every session of a seller (reject, suspend: D 3.3) | Partial `(market_id, seller_id) WHERE seller_id IS NOT NULL AND revoked_at IS NULL` |
+| Revoke every session of a seller (reject, suspend: D 3.3); the foreign-key check when a `seller_access` row is deleted | Partial `(market_id, seller_id) WHERE seller_id IS NOT NULL`. Not `AND revoked_at IS NULL`: the check PostgreSQL runs for the foreign key (`market_id = $1 AND seller_id = $2`) cannot prove that predicate and would scan the table. Customer sessions stay out of the index, and a revocation no longer changes a column of an index predicate, so it can be a HOT update |
 | `identity.purge-expired`: `absolute_expires_at < now − 30 days` | `(market_id, absolute_expires_at)` |
 
 No `version` (C5; M1): revocation is a set-based `UPDATE … WHERE revoked_at IS NULL`, and it must
@@ -264,9 +264,7 @@ column added by that mini-review, not now.
   $now + block`. A window restarted in between is left alone.
 - Measured under READ COMMITTED: 20 concurrent reservation units on one key returned 1 to 20, each
   once, from an empty table and from an ended window (one restart); a release in another window
-  changed no row. Spike 6 checks that Prisma sends the `upsert` as one `INSERT … ON CONFLICT DO
-  UPDATE` (its native upsert) and that the guard accepts the compound key; otherwise the repository
-  repeats the upsert once on `P2002`.
+  changed no row. Spike 6 (2026-10-07) measured that Prisma 7.10 sends the `upsert` as one `INSERT … ON CONFLICT DO UPDATE … RETURNING` (its native upsert), also with `marketId` at the top level next to the compound key (C10): 20 concurrent units allowed exactly five, from an empty table, from an ended window and with three counters, in both Markets. No repeat on `P2002` is needed.
 - Clearing at a reset: `deleteMany` by `(market_id, account_key)`, on the index `(market_id,
   account_key)`. A deadlock with a reservation of the same address is retried (`40P01`, P 3.1
   row 7).
@@ -372,7 +370,14 @@ FK to `seller_access`, RESTRICT; `state` CHECK `active`, `removed`; `removed_at`
   account, the Phase 2 rule of ADR-0018 decision 3, and the `Authenticator`'s read. Removed rows
   stay, and a removed member who joins another team gets a new row. Lifting the rule later is
   dropping this one index. Measured.
-- Team list, member count, holders of a seller: `(market_id, seller_id, state)`. The same index
+- Plain `(market_id, account_id)`, `seller_memberships_market_id_account_id_idx`, declared in
+  Prisma. The foreign-key check PostgreSQL runs when an account is deleted (purge, erasure) has no
+  `state` condition and cannot use the partial index. Without this index it reads every membership
+  of the Market, and in a `serializable` unit (C11) it predicate-locks all of them. The index also
+  keeps the `Authenticator`'s membership read an index probe under a generic plan (8.4). Cost: one
+  index on a table of 10² to 10⁴ rows.
+- Team list, member count, holders of a seller: `(market_id, seller_id, state)`, with `market_id` in
+  the predicate of every relation the read touches (spike 6 found a statement without it). The same index
   answers HF5 (a), "this seller never had a member": an `EXISTS` on `(market_id, seller_id)` in
   any state. Removed rows stay, so a seller that once had a member always answers yes.
 
@@ -556,9 +561,7 @@ PostgreSQL's serializable isolation takes predicate locks on the index pages a s
 and on the whole table after a sequential scan, which the planner prefers while these tables are
 small. Two unrelated units, two sign-ups whose addresses share an index page for example, can
 then fail with `40001`, and the UnitOfWork runs the work again, three attempts in all (P 3.1 row
-7). Therefore: the queries of these units are written for the indexes of section 3; the purge
-takes one account per unit (3.3); spike 6 measures the retry rate of concurrent sign-ups and
-acceptances; the test of P 13 asserts each writer's isolation. The reservation unit and the
+7). Therefore: the queries of these units are written for the indexes of section 3, with `market_id` in every relation's predicate; the purge takes one account per unit (3.3); the test of P 13 asserts each writer's isolation. Measured in spike 6 (2026-10-07; 20 concurrent units per wave, three attempts): the last-holder invariant held in every round, while READ COMMITTED broke it in 30 of 30. Unrelated writers conflicted on 2.4 % of attempts with 2 × 10⁴ memberships and on 16 % on a near-empty table. There the planner reads a seller's team through the partial unique index of 3.9 on `market_id` alone, so the predicate lock covers the Market's whole active membership. Five admins disabling each other at once exhausted three attempts in 1 to 5 of 100 units. Decision (Mojtaba): no larger retry budget and no query shaped against the planner. An exhausted unit is `TransactionConflictError`, answered 409 `conflict.retry` with nothing committed, and a P 13 test proves it for both error shapes. The small-table rate falls as the tables grow; it is revisited only if `conflict.retry` appears in production logs. The reservation unit and the
 sign-in's closing unit write none of the three tables and stay READ COMMITTED.
 
 ## 6. `platform.audit_log`: the `ANONYMOUS` actor type
@@ -685,7 +688,7 @@ Tests run it for both fixtures. Nothing else in Phase 2 is seeded.
 ```sql
 CREATE INDEX "outbox_market_id_event_id_unpublished_idx" ON "identity"."outbox" ("market_id", "event_id") WHERE "published_at" IS NULL;
 CREATE INDEX "accounts_market_id_signed_up_at_unverified_idx" ON "identity"."accounts" ("market_id", "signed_up_at") WHERE "email_verified_at" IS NULL;
-CREATE INDEX "sessions_market_id_seller_id_live_idx" ON "identity"."sessions" ("market_id", "seller_id") WHERE "seller_id" IS NOT NULL AND "revoked_at" IS NULL;
+CREATE INDEX "sessions_market_id_seller_id_seller_idx" ON "identity"."sessions" ("market_id", "seller_id") WHERE "seller_id" IS NOT NULL;
 CREATE INDEX "event_delivery_market_id_next_attempt_at_pending_idx" ON "platform"."event_delivery" ("market_id", "next_attempt_at") WHERE "status" = 'pending';
 CREATE UNIQUE INDEX "seller_memberships_market_id_account_id_active_key" ON "identity"."seller_memberships" ("market_id", "account_id") WHERE "state" = 'active';
 CREATE UNIQUE INDEX "roles_market_id_scope_system_key" ON "identity"."roles" ("market_id", "scope") WHERE "kind" = 'system';
@@ -700,6 +703,12 @@ CREATE UNIQUE INDEX "invitations_market_id_seller_id_owner_pending_key" ON "iden
   ignores a partial index it does not know, while it reports any other undeclared index (plain,
   or `NULLS NOT DISTINCT`) as drift. So: every non-partial index is declared in the schema, and
   the eleven above are invisible to Prisma, which neither creates nor checks them.
+- **No named prepared statements** (spike 6; the rule is platform.md 10.9). Prisma sends `state =
+  'active'` as a bind parameter. The adapter's default unnamed statements are planned with the
+  values, so the partial indexes above are used (`seller_memberships`: 3 buffers, 0.05 ms). A named
+  statement may switch to a generic plan, which cannot prove a partial index's predicate: measured
+  325 buffers and 3.2 ms, reading the Market's whole active membership. Every partial index here
+  depends on this rule.
 
 | Option | For | Against |
 |---|---|---|
@@ -731,8 +740,7 @@ measured; at these row counts every table is far below the point where partition
 
 Both delete only what is already invalid and are safe to run twice and at once. Autovacuum
 defaults are enough at this volume; `sessions` and `sign_in_throttles` are the update-heavy
-tables to watch first. A lower fillfactor for `sessions` is not proposed without a measurement
-(spike 6).
+tables to watch first. Spike 6 measured 72.5 % HOT updates for the once-a-minute `last_seen_at` write at the default fillfactor (20,000 updates over 2 × 10⁵ rows, starting from freshly loaded full pages, so a lower bound): no fillfactor change. Revisit if `n_tup_hot_upd / n_tup_upd` on `sessions` stays below 50 % in production.
 
 ## 10. Evidence
 
@@ -751,11 +759,12 @@ repository and in throwaway databases and roles (all dropped): a non-superuser o
 | Drift check and partial indexes; the preview feature; `NULLS NOT DISTINCT` | 8.4 |
 | Prisma Migrate holds the session advisory lock with key `72707369`; the two job keys of P 7 are `6283714585531761361` and `5423381668565611002` | PM8: no clash. A unit test asserts that no job key equals Prisma's |
 | G2 changes, in a throwaway database (dropped): the name CHECK (the cases of 3.3); the two role-name indexes (the cases of 3.9); one pending owner invitation per seller, and a new one after a revocation; the closed `kind` list and the `account_key` CHECK; 20 concurrent reservation units, from an empty table and from an ended window; the release guard | 3.3, 3.5, 3.9, 3.10 |
+| Spike 6 (Hossein with Mojtaba, 2026-10-07; PostgreSQL 16.15, Prisma 7.10 with adapter-pg; synthetic seed of 10⁵ accounts, 2 × 10⁵ sessions, 5 × 10³ sellers, 2 × 10⁴ memberships and 5 × 10⁴ throttle rows in AU and ZZ, analysed, warm cache). Authenticator and permission reads are index probes (10, 14 and 16 buffer hits, at most 0.2 ms), also for an unknown token and a cross-Market token (3 hits, no row). The last-holder count goes by index. Native upsert, with exactly five of 20 concurrent reservations allowed. Challenge: exactly five of 20 concurrent reservations allowed, consumed once. The `40001` rates and both error shapes; the K1 settings; generic plans and partial indexes; 72.5 % HOT. Report and raw output: shared folder `phase-2/spikes/spike6/` | 3.4, 3.5, 3.9, 5.1, 8.4, 9, 11.4 |
 
-Not measured: PostgreSQL 17 (Compose and CI); row sizes and query plans at volume (there is no
-data yet: spike 6 and the first slices give `EXPLAIN (ANALYZE, BUFFERS)` output for the sign-in
-and per-request reads); the reservation through Prisma's `upsert`; the `40001` rate of the
-serializable writers (5.1); anything through the real guard.
+Not measured: PostgreSQL 17 (Compose and CI): spike 6's plans (01, 02, 09) are re-run there before
+migration 6 is signed off. The real guard and UnitOfWork: their slices. The foreign-key check plans
+behind 3.4 and 3.9: reasoned from how PostgreSQL proves a partial index's predicate; their `EXPLAIN`
+goes into migration 6's review.
 
 ## 11. Review record and open points
 
@@ -813,8 +822,9 @@ rule and the backup codes (3.10); session lifetimes and rotation (3.4).
 |---|---|---|
 | M12 | One pending `seller-owner` invitation per seller (3.10), answered `invitation.already-pending`. Decided by Mohammad 2026-10-03: D 3.4 names the rule | Closed |
 | M13 | Device replacement keeps the new secret until its first valid code. Decided by Mohammad 2026-10-03: a nullable `pending_secret_ciphertext` on `second_factors` (3.10), added with the table in slice 7 | Closed |
-| K1 | Format and maximum size of a wrapped key and of the wrapping-key identifier (3.2); where the throttle secret lives (H4); `statement_timeout`, `lock_timeout` and `idle_in_transaction_session_timeout` as role settings of the bootstrap file (PK1 of P): proposed 30 s, 5 s and 60 s | Kazem; values confirmed in spike 6 |
-| S6 | Spike 6: the `upsert` sent as one `INSERT … ON CONFLICT`, and the guard on compound keys (3.5); the `40001` rate (5.1); plans of the sign-in and per-request reads | Hossein, with me |
+| K1 | Format and maximum size of a wrapped key and of the wrapping-key identifier (3.2); where the throttle secret lives (H4) | Kazem |
+| K1a | Role settings (PK1 of P): `statement_timeout` 30 s, `lock_timeout` 3 s, `idle_in_transaction_session_timeout` 60 s. Set with `ALTER ROLE <login> SET` (no `IN DATABASE`) on every application login. Never on `mondapac_app`, whose settings do not reach its members, and never on the migration role. Asserted by the role test of platform.md 10.4. Confirmed in spike 6 (2026-10-07). 3 s because the unit timeout is 5 s (P 3.1 row 8) and equal values race (measured 16 ms apart); order: pool wait 2 s, lock 3 s, unit 5 s, statement 30 s | Closed: Kazem accepted 3 s (2026-10-07); his change goes in platform.md 10.7 and `bootstrap-dev.sql` |
+| S6 | Spike 6 (Hossein with Mojtaba, 2026-10-07): results in 3.4, 3.5, 3.9, 5.1, 8.4, 9 and 10 | Closed by Mojtaba 2026-10-07; PostgreSQL 17 re-run of the plans before migration 6 |
 | D1 | Closed by Hassan 2026-10-03: every enrolment outside an admin's invitation acceptance, a seller's first optional one included, starts from a mailed `enrol-second-factor` link; no table changes | Closed |
 | — | This revision | Final check by Ali and Hassan |
 
@@ -831,3 +841,6 @@ This document changes no other file. After G2:
 | The privilege map and the catalog tests of `pnpm test:db` | Section 7, column lists included (the column-level test of platform.md 10.4 reads them); the partial-index list of 8.4; "every outbox has the same columns" (P 13) | With each migration; Hossein |
 | `docs/design/domain/identity.md` | M12 in 3.4; M13 in 3.6 | Done (Mohammad, 2026-10-03) |
 | `docs/design/domain/platform-persistence-and-events.md` | PM1: the unique key leads with `market_id` (3.1); PM8: no clash, confirmed (10) | With the G2 approval; Mohammad |
+| `docs/design/data/platform.md` | New 10.9 (prepared statements); K1a settings in 10.7; the settings assertions in the role test of 10.4 | 10.9: Done (PR #41). 10.7, 10.8 `role_timeouts` and 10.4 in Kazem's PR |
+| `docs/design/domain/platform-persistence-and-events.md` | Section 13, UnitOfWork row: the exhausted-retry test, at a statement and at COMMIT; the classifier keys on SQLSTATE; 55P03's answer (PN7) | Done (PR #41) |
+| `scripts/db/bootstrap-dev.sql` | `ALTER ROLE mondapac_api SET` the three K1a values | Kazem, in his own PR (shared-file rules) |

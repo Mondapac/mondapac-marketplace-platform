@@ -53,6 +53,8 @@ would each need operating in every Region Stack (ADR-0003).
    read-write unit, after any read-only units its slow work needs; the access gate reads in
    a unit of its own; a short reservation unit may count an attempt before a credential is
    verified.)*
+   *(Amended by ADR-0025, 2026-10-07: a read-only unit opens no transaction; it runs on the
+   guarded client.)*
 6. **Reversible migrations.** Prisma Migrate generates the up migration; every migration
    folder also holds a `down.sql`, generated with `prisma migrate diff --script` and then
    reviewed. CI applies up → down → up on a fresh database, so the Definition of Done

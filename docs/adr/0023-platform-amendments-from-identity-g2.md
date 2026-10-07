@@ -33,6 +33,8 @@ evidence are in the two design documents. The Node minimum (ADR-0014) is ADR-002
    failed or refused attempt keeps its count (Hassan's finding 1). Read-only work still runs
    in a transaction, as decision 5 says; that is revisited with the measurements of identity
    spike 6 (PA5).
+   *(Amended by ADR-0025, 2026-10-07: read-only units open no transaction; READ COMMITTED is a
+   deployment fact checked at start-up.)*
 2. **Event delivery lands with the first subscription (ADR-0006 decision 4).** The publish
    path (outbox writer, relay, `EventBus` port, in-process adapter) lands in identity slice
    1b. The consume side (`platform.event_delivery`, fan-out, dispatcher, back-off, dead

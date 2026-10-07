@@ -24,7 +24,8 @@ platform-foundations design), ADR-0021 (Node.js minimum, now 24.20.0 by its deci
 identity's G2, ADR-0022 and ADR-0023 (seller access state owned by `identity` with one
 may-sell contract in `sellers`; platform amendments). Phase 3 adds ADR-0024
 (from catalog's G1: `pricing` is its own module, tier B or A by its gate's scope, and owns
-the price-jump hold; wider penetration-test scope).
+the price-jump hold; wider penetration-test scope). From identity spike 6, ADR-0025 (read-only
+units open no transaction; READ COMMITTED checked at start-up).
 Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
