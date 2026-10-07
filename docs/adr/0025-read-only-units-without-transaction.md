@@ -44,7 +44,7 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
    Conditions (Ali and Hassan), proven in slice 1a before the path is used:
    - (a) with no open store, or a closed one, the guard fails closed: the store gets a `closed`
      flag in `run`'s `finally`, so a query awaited after `run` returns is refused;
-   - (b) `MarketTransaction` exposes model delegates only (no `$transaction`, `$queryRaw`,
+   - (b) *Amended by ADR-0030 (2026-10-07): a read-only unit may also run a statement from the checked-in raw read list through `RawReadPort`; `MarketTransaction` itself is unchanged.* `MarketTransaction` exposes model delegates only (no `$transaction`, `$queryRaw`,
      `$executeRaw` or other `$` methods), by type (`tsc`) and at run time: in a read-only unit
      `tx(market)` returns a frozen object or proxy with model delegates only;
    - (c) `readOnly` with `timeoutMs` or `isolation` is refused;
