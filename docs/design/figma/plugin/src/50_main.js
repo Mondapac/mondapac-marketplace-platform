@@ -614,6 +614,67 @@ async function updateLibrary() {
     }
   }
 
+  // 3d · release 1.8.1 "Audit fixes for the Panel pages": three named in-place repairs of the frames 1.8.0 made. Each one checks the shape of what it edits;
+  // a node that was changed by hand, or is not the plugin's, is reported and left as it is. Nothing is renamed; the only deletion is a member card that does not fit.
+  const fix181 = { minH: [], cards: [], cb: false };
+  const panelRepair = !blockedBy(['Sidebar', 'Topbar']).length;
+  if (panelRepair) {
+    ['tpl-admin', 'tpl-seller'].forEach(function (key) {
+      const shell = panelShellNames(key);
+      T[key].host.children.forEach(function (scr) {
+        if (scr.type !== 'FRAME' || shell.indexOf(scr.name) < 0 || scr.getPluginData(PLUGIN_TAG) !== '1') return;
+        const sb = scr.children[0], col = scr.children[1];
+        if (scr.layoutMode !== 'HORIZONTAL' || !sb || sb.type !== 'INSTANCE' || sb.name !== 'Sidebar' || !col || col.type !== 'FRAME' || col.name !== 'Column') { log('ℹ skipped minimum height of ' + scr.name + ': it is not the plugin\'s page shape'); return; }
+        const m = scr.minHeight || 0;
+        if (scr.layoutSizingVertical !== 'HUG') { if (scr.height < PANEL_MIN_H - 0.5) log('ℹ skipped minimum height of ' + scr.name + ': its height is fixed at ' + Math.round(scr.height) + ' px (set by hand)'); return; }
+        if (m >= PANEL_MIN_H) return;
+        if (m) { log('ℹ skipped minimum height of ' + scr.name + ': it has its own minimum height (' + m + ' px)'); return; }
+        fix181.minH.push({ key: key, scr: scr, old: scr.height });
+      });
+    });
+    const phone = T['tpl-admin'].host.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Shared · Members · Admin (phone)' && n.getPluginData(PLUGIN_TAG) === '1'; })[0];
+    const main = phone && phone.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Main'; })[0];
+    if (main) ADMIN_MEMBERS.slice(ADMIN_PHONE_CARDS).forEach(function (mem) {
+      const c = main.children.filter(function (n) { return n.name === mem.name; })[0];
+      if (!c) return;
+      const ok = c.type === 'FRAME' && c.layoutMode === 'VERTICAL' && c.children.map(function (k) { return k.name; }).join() === 'head,role,badges' && !!c.findOne(function (k) { return k.type === 'TEXT' && k.characters === mem.name; });
+      if (ok) fix181.cards.push(c); else log('ℹ skipped member card ' + mem.name + ' on Shared · Members · Admin (phone): it is not the plugin\'s card');
+    });
+  }
+  const cbRec = S.sets.CheckboxRow;
+  if (cbRec && cbRec.set && own('CheckboxRow') && cbRec.set.width > CHECKBOXROW_OPTS.width + 0.5) {
+    const cs = cbRec.set, row = cs.parent, doc = row && row.name === 'Component + usage' && row.type === 'FRAME';
+    const names = cs.children.map(function (c) { return c.name; });
+    const ok = doc && names.length === 10 && names.every(function (nm) { return /^Value=(Unchecked|Checked), State=(Default|Hover|Focus|Disabled|Read-only)$/.test(nm); });
+    if (ok) fix181.cb = true; else log('ℹ skipped CheckboxRow layout: the set or its documentation row was changed by hand');
+  }
+  if (fix181.minH.length) {
+    const byHost = {};
+    fix181.minH.forEach(function (f) { (byHost[f.key] = byHost[f.key] || []).push(f); });
+    for (const key of Object.keys(byHost)) {
+      await onPage(T[key], key === 'tpl-admin' ? 'Admin panel page heights' : 'Seller panel page heights', function (host) {
+        byHost[key].forEach(function (f) { f.scr.minHeight = PANEL_MIN_H; });
+        reflowRows(host, byHost[key]);
+        fitSection(host);
+      });
+    }
+    added.push('fix minimum height ' + PANEL_MIN_H + ' px of Panel pages (' + fix181.minH.length + ' frames)');
+  }
+  if (fix181.cards.length) {
+    await onPage(T['tpl-admin'], 'Admin phone members', function (host) { fix181.cards.forEach(function (c) { c.remove(); }); });
+    added.push('fix Shared · Members · Admin (phone): ' + fix181.cards.length + ' member cards that do not fit removed');
+  }
+  if (fix181.cb) {
+    const cs = S.sets.CheckboxRow.set;
+    await onPage(pageOf(cs), 'CheckboxRow layout', function () {
+      gridVariants(cs, CHECKBOXROW_AXES, CHECKBOXROW_OPTS);
+      const usage = cs.parent.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Usage' && n.width > cs.width + 0.5 && n.layoutMode === 'HORIZONTAL'; })[0];
+      if (usage) { usage.resize(cs.width, usage.height); usage.layoutSizingVertical = 'HUG'; }
+      const host = T.forms.host; fitSection(host);
+    });
+    added.push('fix CheckboxRow layout (Value in columns, State in rows)');
+  }
+
   // 3 · templates
   const tplKeys = Object.keys(PHONE_TEMPLATES);
   for (let i = 0; i < tplKeys.length; i++) {
@@ -656,7 +717,7 @@ async function updateLibrary() {
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
   else {
     log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); });
-    const except = [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : '', inputRenamed ? 'the ' + inputRenamed + ' existing Input variants named Type=Text' : '', tcMade ? 'the ' + tcMade + ' State=Loading variants added to the existing TableCell set' : '', prefChanged ? 'the preferred swap values of the Field Control slot' : ''].filter(Boolean);
+    const except = [topbarFix.length ? 'the old phone topbar frame swapped for PhoneTopbar in ' + topbarFix.length + ' phone templates' : '', scrimFix.length ? 'the drawer scrim re-bound to bg/scrim in ' + scrimFix.length + ' templates' : '', inputRenamed ? 'the ' + inputRenamed + ' existing Input variants named Type=Text' : '', tcMade ? 'the ' + tcMade + ' State=Loading variants added to the existing TableCell set' : '', prefChanged ? 'the preferred swap values of the Field Control slot' : '', fix181.minH.length ? 'the minimum height set on ' + fix181.minH.length + ' Panel pages' : '', fix181.cards.length ? 'the ' + fix181.cards.length + ' member cards that do not fit removed from the admin phone members screen' : '', fix181.cb ? 'the CheckboxRow variants re-laid out' : ''].filter(Boolean);
     log('Nothing was deleted or rebuilt' + (except.length ? ', except ' + except.join(' and ') : '') + '. The existing Sidebar keeps its drawn brand mark (a new build uses BrandMark). Next: run Audit file, then Export tokens (the diff shows only the tokens added since this file\'s version, and the version line).');
   }
   post({ type: 'done', report: S.report, added: added });

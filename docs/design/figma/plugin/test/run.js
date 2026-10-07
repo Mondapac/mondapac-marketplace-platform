@@ -395,6 +395,47 @@ function state180(M, opts, label) {
   check(!/Placeholder:/.test(txt) && !/Reject this seller|Reason for the seller|Leave without saving/.test(txt), label + ': no 1.8.1 content (Sellers list, role editor, D4 to D6, unsaved-changes dialog) in the Panel frames');
 }
 
+// ---- Release 1.8.1 "Audit fixes for the Panel pages": what a new build and an updated file must both hold
+// The code.js of release 1.8.0 (test/fixtures/code-1.8.0.js, the plugin as released at 5d2e100): its Panel pages hug their content with no minimum height,
+// the admin phone members screen has 5 cards and the CheckboxRow set is 2960 wide. Update library of 1.8.1 repairs those in place.
+const CODE_180 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.8.0.js'), 'utf8');
+const SHELL_ADMIN = ADMIN_180.filter((n) => !/\(phone\)|^Dialogs/.test(n));
+const SHELL_SELLER = SELLER_180.filter((n) => !/\(phone\)|^Dialogs/.test(n));
+const FIXED_900 = ['Shared · No access · Admin', 'Shared · No access · Seller', 'Shared · Not found', 'Shared · Account security · Seller · Saved']; // built with a fixed 900 height
+const ADMIN_PHONE = 'Shared · Members · Admin (phone)';
+const OVERFLOW_CARDS = ['Noor Hassan', 'Sam Okafor'];
+const lastBottom = (n) => { const kids = (n.children || []).filter((c) => c.visible && c._layoutPositioning !== 'ABSOLUTE'); return kids; };
+// Height a vertical auto-layout frame's relative children ask for (padding, gaps, children), from the mock's sizes.
+const stackHeight = (f) => { const k = lastBottom(f); return f.paddingTop + f.paddingBottom + k.reduce((a, c) => a + c.height, 0) + f.itemSpacing * Math.max(0, k.length - 1); };
+const phoneMain = (M) => frameNamed(M, ADMIN_PHONE)[0].children.find((c) => c.name === 'Main');
+const cbParts = (M) => { const set = setOf(M, 'CheckboxRow'); const row = set.parent; return { set: set, row: row, usage: row.children.find((c) => c.name === 'Usage') }; };
+const shellFrames = (M) => SHELL_ADMIN.concat(SHELL_SELLER).map((n) => frameNamed(M, n)[0]);
+
+// Facts that hold for every 1.8.1 file, built new or repaired.
+function state181(M, label) {
+  const shell = shellFrames(M);
+  const low = shell.filter((f) => f.height < 900 - 0.5);
+  check(shell.length === 22 && low.length === 0, label + ': every Panel desktop page is at least 900 high (' + shell.length + ' pages, ' + low.length + ' lower' + (low.length ? ': ' + low.map((f) => f.name + ' ' + f.height).join(', ') : '') + ')');
+  const hugging = shell.filter((f) => !FIXED_900.includes(f.name));
+  check(hugging.length === 18 && hugging.every((f) => f.minHeight === 900 && f.layoutSizingVertical === 'HUG') && FIXED_900.every((n) => { const f = frameNamed(M, n)[0]; return f.height === 900 && f.layoutSizingVertical === 'FIXED'; }), label + ': the 18 hugging Panel pages have minHeight 900, the 4 fixed pages stay 900 high');
+  check(shell.every((f) => f.children[0].name === 'Sidebar' && f.children[0].layoutSizingVertical === 'FILL'), label + ': the Sidebar still fills the height of each Panel page');
+  const main = phoneMain(M); const phone = main.parent;
+  const cards = main.children.filter((c) => c.type === 'FRAME' && ['head', 'role', 'badges'].join() === c.children.map((k) => k.name).join());
+  check(cards.length === 3 && cards.map((c) => c.name).join() === 'Layla Haddad,Omar Saleh,Amira Said' && !OVERFLOW_CARDS.some((n) => main.children.some((c) => c.name === n)), label + ': the admin phone members screen shows 3 cards (' + cards.map((c) => c.name).join(', ') + ')');
+  const room = phone.height - phone.children.find((c) => c.name === 'PhoneTopbar').height;
+  check(stackHeight(main) <= room + 0.5, label + ': the admin phone members cards fit in the phone Main (' + Math.round(stackHeight(main)) + ' of ' + Math.round(room) + ' px)');
+  const sellerPhone = frameNamed(M, 'Shared · Members · Seller (phone)')[0]; const sm = sellerPhone.children.find((c) => c.name === 'Main');
+  check(sm.children.filter((c) => ['Yusuf Karimi', 'Amina Rahman', 'Tariq Nasser'].includes(c.name)).length === 3, label + ': the seller phone members screen keeps its 3 cards');
+  const cb = cbParts(M);
+  check(cb.set.width <= 1440 && cb.row.width >= cb.set.width - 0.5 && cb.usage.width <= cb.row.width + 0.5 && cb.set.children.every((c) => c.x >= 0 && c.y >= 0 && c.x + c.width <= cb.set.width + 0.5 && c.y + c.height <= cb.set.height + 0.5), label + ': the CheckboxRow set (' + Math.round(cb.set.width) + ' wide) and its Usage panel (' + Math.round(cb.usage.width) + ') fit the documentation row (' + Math.round(cb.row.width) + ')');
+  const col = (n) => Math.round(cb.set.children.find((c) => c.name === n).x);
+  check(col('Value=Unchecked, State=Default') === col('Value=Unchecked, State=Hover') && col('Value=Unchecked, State=Default') < col('Value=Checked, State=Default') && cb.set.children.length === 10, label + ': CheckboxRow has Value in 2 columns and State in 5 rows, still 10 variants');
+  // A size-only check of the same kind the Audit does: no child of a fixed-size vertical frame asks for more height than the frame has.
+  const tooTall = [];
+  [main].concat(shell).forEach((f) => f.findAll((n) => n.type === 'FRAME' && n.layoutMode === 'VERTICAL' && n.layoutSizingVertical === 'FIXED' && !n.instAncestor()).concat([f]).forEach((n) => { if (n.layoutSizingVertical === 'FIXED' && stackHeight(n) > n.height + 1.5 && n.layoutMode === 'VERTICAL') tooTall.push(pathOf(n).split(' › ').slice(-3).join(' › ') + ' +' + Math.round(stackHeight(n) - n.height)); }));
+  check(tooTall.length === 0, label + ': no vertical frame of a Panel page asks for more height than it has (' + tooTall.length + (tooTall.length ? ': ' + tooTall.slice(0, 3).join(' | ') : '') + ')');
+}
+
 // Step 2 of an update scenario: the 1.7.0 file gets 1.8.0 from the current code.
 async function updateTo180(M, label, opts, from) {
   console.log('\n■ ' + label + ' · step 2: 1.7.0 to 1.8.0 with the current plugin');
@@ -416,10 +457,11 @@ async function updateTo180(M, label, opts, from) {
   check(warn.length === 0, 'no warnings or skips in the update report');
   const added = r.done ? r.done.added : [];
   check(NEW_180.every((n) => added.includes('component ' + n)) && added.includes('variants added to TableCell (5): State=Loading') && added.includes('update TableCell description') && added.includes('update Field description') && added.includes('Field Control: preferred values Input, Select, Textarea') && added.includes('templates Panel · Admin (' + ADMIN_180.length + ' frames, 3 template bodies)') && added.includes('templates Panel · Seller (' + SELLER_180.length + ' frames, 2 template bodies)'), 'the report names every addition, including "variants added to TableCell (5)"');
-  check(added.includes('variable size/dialog-sm' + (opts.maxModes > 1 ? ' (Desktop and Touch modes)' : ' (Dimension and Dimension · Touch)')) && added.includes('size table row size/dialog-sm') && added.includes('size table row size/dialog-md') && added.includes('changelog row 1.8.0') && added.includes('file version 1.8.0'), 'the report names the tokens, size table rows, changelog row and the file version');
+  check(added.includes('variable size/dialog-sm' + (opts.maxModes > 1 ? ' (Desktop and Touch modes)' : ' (Dimension and Dimension · Touch)')) && added.includes('size table row size/dialog-sm') && added.includes('size table row size/dialog-md') && added.includes('changelog row 1.8.0') && added.includes('changelog row 1.8.1') && added.includes('file version ' + SPEC_VERSION), 'the report names the tokens, size table rows, changelog row and the file version');
   check(M.VARS.size === nVars + 2 * nColl, 'exactly ' + (2 * nColl) + ' variables added (' + (M.VARS.size - nVars) + ')');
   state180(M, opts, 'updated');
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.0', 'file version is ' + SPEC_VERSION);
+  state181(M, 'updated');
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.1', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -497,6 +539,7 @@ async function updateScenario(label, opts, from) {
   BUILD_COUNTS = { sets: a1.sets.length, comps: a1.comps, variants: a1.variants };
   console.log('  a new build holds ' + BUILD_COUNTS.sets + ' sets, ' + BUILD_COUNTS.comps + ' standalone components and ' + BUILD_COUNTS.variants + ' variants');
   state180(M, { maxModes: 1 }, 'new build (Starter)');
+  state181(M, 'new build (Starter)');
   // dark preview: no paint should still use the light Color collection
   const findHost = (name) => M.ROOT.children.find((p) => p.name === name) || M.ROOT.children.map((p) => p.children.find((n) => n.type === 'SECTION' && n.name === name)).find(Boolean);
   const darkPage = findHost('Templates · Dark preview');
@@ -559,6 +602,7 @@ async function updateScenario(label, opts, from) {
   const a2 = audit(M, 's2');
   check(a2.sets.length === BUILD_COUNTS.sets && a2.comps === BUILD_COUNTS.comps && a2.variants === BUILD_COUNTS.variants, 'the modes layout builds the same components as the Starter layout');
   state180(M, { maxModes: 4 }, 'new build (modes)');
+  state181(M, 'new build (modes)');
   r = await send(M, { type: 'export', version: SPEC_VERSION });
   if (r.done) compareExport(r.done.files, 'modes');
 
@@ -749,6 +793,74 @@ async function updateScenario(label, opts, from) {
   Z = await fileOf(); compOf(Z, 'Field').description = 'My own Field note';
   r = await send(Z, { type: 'update' }); rp = rep10(r);
   check(!r.err && compOf(Z, 'Field').description === 'My own Field note' && !rp.some((l) => /update Field description/.test(l)) && rp.some((l) => /Field Control: preferred values/.test(l)), 'a Field description edited by hand is kept; the preferred values are still added');
+
+  // 11 · release 1.8.1: a 1.8.0 file built the old way is repaired in place
+  console.log('\n■ Scenario 11 · 1.8.1 audit fixes on a 1.8.0 file');
+  for (const opts of [STARTER, { maxModes: 4 }]) {
+    const tag11 = opts.maxModes > 1 ? '(modes)' : '(Starter)';
+    const Q = start(opts, CODE_180);
+    r = await send(Q, { type: 'build' });
+    check(!r.err && Q.ROOT.getPluginData('version') === '1.8.0', 'the 1.8.0 plugin builds the starting file ' + tag11 + (r.err ? ': ' + r.err.message : ''));
+    // the file really has what the Audit found
+    check(shellFrames(Q).length === 22 && shellFrames(Q).every((f) => !f.minHeight), 'the 1.8.0 file has no minimum height on its Panel pages (the mock does not measure real text, so it cannot show how many are short)');
+    check(phoneMain(Q).children.filter((c) => OVERFLOW_CARDS.includes(c.name)).length === 2 && stackHeight(phoneMain(Q)) > 724, 'the 1.8.0 admin phone members screen has 5 cards that ask for ' + Math.round(stackHeight(phoneMain(Q))) + ' px of 724');
+    check(cbParts(Q).set.width > 2900, 'the 1.8.0 CheckboxRow set is ' + Math.round(cbParts(Q).set.width) + ' wide');
+    load(Q, CODE);
+    const ids0 = new Map(allNodes(Q).map((n) => [n.id, n.name])); const cardNodes = new Set(); OVERFLOW_CARDS.forEach((nm) => { const c = phoneMain(Q).children.find((k) => k.name === nm); cardNodes.add(c.id); c.findAll(() => true).forEach((k) => cardNodes.add(k.id)); });
+    const heights0 = new Map(shellFrames(Q).map((f) => [f.id, f.height])); const nCb0 = cbParts(Q).set.children.map((c) => c.id).join();
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done, 'Update library finished on the 1.8.0 file ' + tag11 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+    const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
+    check(r.done && r.done.added.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)', 'changelog row 1.8.1', 'cover version', 'file version 1.8.1'].join('|') && !rp11.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    state181(Q, '1.8.0 file repaired ' + tag11);
+    const gone11 = [...ids0.keys()].filter((id) => !Q.byId.has(id));
+    check(gone11.length === cardNodes.size && gone11.every((id) => cardNodes.has(id)), 'the only deletions are the 2 member cards and their layers (' + gone11.length + ')');
+    check(shellFrames(Q).every((f) => heights0.has(f.id)), 'no Panel page was replaced (same ids)');
+    check(cbParts(Q).set.children.map((c) => c.id).join() === nCb0, 'the 10 CheckboxRow variants keep their ids');
+    // the canvas rows below the pages that grew keep their distance
+    const hostA = hostNamed(Q, 'Templates · Admin'); const rowsA = {}; hostA.children.forEach((n) => { rowsA[Math.round(n.y)] = Math.max(rowsA[Math.round(n.y)] || 0, n.height); });
+    const ysA = Object.keys(rowsA).map(Number).sort((a, b) => a - b); const gapsA = ysA.slice(1).map((y, i) => y - (ysA[i] + rowsA[ysA[i]]));
+    check(gapsA.every((g) => g >= 100), 'the canvas rows of Templates · Admin do not overlap after the pages grew (smallest gap ' + Math.min.apply(null, gapsA) + ')');
+    const n11 = allNodes(Q).length; const idsAfter = new Set(allNodes(Q).map((n) => n.id));
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === n11 && allNodes(Q).every((n) => idsAfter.has(n.id)) && !r.done.report.some((l) => /^ℹ/.test(l)), 'a second run adds nothing, changes no layer and reports nothing to skip');
+    r = await send(Q, { type: 'audit' });
+    check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the repair');
+    r = await send(Q, { type: 'export', version: SPEC_VERSION });
+    if (r.done) compareExport(r.done.files, '1.8.1 repaired ' + tag11 + ' export');
+  }
+  // guards: hand-edited and foreign nodes are skipped and reported, never deleted
+  {
+    const Q = start(STARTER, CODE_180);
+    r = await send(Q, { type: 'build' }); load(Q, CODE);
+    const handMin = frameNamed(Q, 'Shared · Roles · Admin')[0]; handMin.minHeight = 600;
+    const handFixed = frameNamed(Q, 'Shared · Members · Seller · Load error')[0]; handFixed.layoutSizingVertical = 'FIXED'; handFixed.resize(handFixed.width, 500);
+    const wrongShape = frameNamed(Q, 'Shared · Roles · Seller')[0]; wrongShape.children[1].name = 'Content';
+    const untagged = frameNamed(Q, 'Shared · Members · Admin · Loading')[0]; untagged.setPluginData('mondapac-ds', '');
+    const noorCard = phoneMain(Q).children.find((c) => c.name === 'Noor Hassan'); noorCard.findAll((n) => n.type === 'TEXT').forEach((t) => { if (t.characters === 'Noor Hassan') t.characters = 'Noor H.'; });
+    const samCard = phoneMain(Q).children.find((c) => c.name === 'Sam Okafor');
+    const cbSet = cbParts(Q).set; const cbVariant = cbSet.children[3]; cbVariant.name = 'My variant';
+    r = await send(Q, { type: 'update' }); const rg = r.done ? r.done.report.concat(r.done.added) : [];
+    check(!r.err && r.done, 'update runs on the file with hand-edited nodes' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+    check(handMin.minHeight === 600 && rg.some((l) => l === 'ℹ skipped minimum height of Shared · Roles · Admin: it has its own minimum height (600 px)'), 'a page with its own minimum height keeps it and is reported');
+    check(Math.round(handFixed.height) === 500 && !handFixed.minHeight && rg.some((l) => /ℹ skipped minimum height of Shared · Members · Seller · Load error: its height is fixed at 500 px/.test(l)), 'a page fixed by hand keeps its height and is reported');
+    check(!wrongShape.minHeight && rg.some((l) => l === 'ℹ skipped minimum height of Shared · Roles · Seller: it is not the plugin\'s page shape'), 'a page whose Column was renamed is left alone and reported');
+    check(!untagged.minHeight && !rg.some((l) => /Members · Admin · Loading/.test(l)), 'an untagged lookalike frame is left alone, without a report');
+    check(!noorCard.removed && noorCard.parent === phoneMain(Q) && rg.some((l) => l === 'ℹ skipped member card Noor Hassan on Shared · Members · Admin (phone): it is not the plugin\'s card'), 'a member card with changed content survives and is reported');
+    check(samCard.removed && !phoneMain(Q).children.some((c) => c.name === 'Sam Okafor'), 'the plugin\'s own card beyond the ones that fit is still removed');
+    check(cbSet.width > 2900 && cbVariant.x > 0 && rg.some((l) => l === 'ℹ skipped CheckboxRow layout: the set or its documentation row was changed by hand') && !rg.some((l) => /fix CheckboxRow/.test(l)), 'a CheckboxRow set with a renamed variant keeps its layout and is reported');
+    const others = shellFrames(Q).filter((f) => f && ![handMin, handFixed, wrongShape, untagged].includes(f));
+    check(others.every((f) => f.height >= 900 && (FIXED_900.includes(f.name) || f.minHeight === 900)), 'every other Panel page was repaired');
+    const n12 = allNodes(Q).length;
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done.added.length === 0 && allNodes(Q).length === n12, 'a second run adds nothing (the skips are reported again)');
+    // a foreign CheckboxRow (not tagged by the plugin) is not touched
+    const R = start(STARTER, CODE_180);
+    r = await send(R, { type: 'build' }); load(R, CODE);
+    const foreignCb = cbParts(R).set; foreignCb.setPluginData('mondapac-ds', ''); const fx = foreignCb.children.map((c) => c.x).join();
+    r = await send(R, { type: 'update' });
+    check(!r.err && foreignCb.children.map((c) => c.x).join() === fx && foreignCb.width > 2900, 'a CheckboxRow set that is not the plugin\'s is not re-laid out');
+  }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
   process.exitCode = failures ? 1 : 0;

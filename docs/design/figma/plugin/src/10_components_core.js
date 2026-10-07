@@ -88,17 +88,17 @@ function makeSet(name, axes, build, opts) {
   S.counts.components++; S.counts.variants += comps.length;
   return set;
 }
-// Lay variants out as a grid: one column per value of the last axis (usually State), one row per
+// Lay variants out as a grid: one column per value of the last axis (usually State; opts.colAxis picks another, 1.8.1), one row per
 // combination of the other axes. Single-axis sets flow left to right and wrap at opts.width.
 function gridVariants(set, axes, opts) {
-  const keys = Object.keys(axes); const last = keys[keys.length - 1];
+  const keys = Object.keys(axes); const last = opts.colAxis && axes[opts.colAxis] ? opts.colAxis : keys[keys.length - 1];
   const PAD = 32, GX = opts.gapX || 24, GY = opts.gapY || 24, MAXW = opts.width || 1040;
   const kids = set.children.slice();
   const cells = [];
   if (keys.length > 1) {
     const rowIndex = {}; let rows = 0;
     kids.forEach(function (c) {
-      const vp = c.variantProperties; const rk = keys.slice(0, -1).map(function (k) { return vp[k]; }).join('|');
+      const vp = c.variantProperties; const rk = keys.filter(function (k) { return k !== last; }).map(function (k) { return vp[k]; }).join('|');
       if (rowIndex[rk] === undefined) rowIndex[rk] = rows++;
       cells.push({ node: c, row: rowIndex[rk], col: axes[last].indexOf(vp[last]) });
     });

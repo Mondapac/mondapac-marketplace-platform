@@ -50,7 +50,9 @@ function rowMenu(items, abs, w) {
   ['item-1', 'item-2', 'item-3'].forEach(function (n, i) { setNested(m, n, menuItemProps(items[i][0], items[i][1], items[i][2], items[i][3])); });
   return m;
 }
-function shellPage(name, ws, crumb, kids, o) { return screen(name, ws, 'none', crumb, kids, o); }
+// 1.8.1: Panel desktop pages hug their content but are at least this high (the Sidebar is FILL; on a short page its items would stick out).
+const PANEL_MIN_H = 900;
+function shellPage(name, ws, crumb, kids, o) { return screen(name, ws, 'none', crumb, kids, Object.assign({ minH: PANEL_MIN_H }, o)); }
 function primaryHeaderButton(label, state) { return btn(label, 'Primary', 'Md', { State: state || 'Default', 'Leading icon': true, Icon: { icon: 'plus' } }); }
 function fullButton(label, variant, state) { return inst('Button', { Variant: variant || 'Primary', Size: 'Touch', State: state || 'Default', Label: label }, { name: 'primary-action', sizeH: 'FILL' }); }
 
@@ -113,12 +115,14 @@ function memberCard(m, seller) {
     frame({ name: 'badges', dir: 'H', gap: 'space/2', align: 'center' }, badges),
   ]);
 }
+// 1.8.1: the 360 x 780 admin screen (clipped Main, no bottom bar) has room for three member cards; the other two are on the desktop table.
+const ADMIN_PHONE_CARDS = 3;
 function tplMembersPhone(ws) {
   const seller = ws === 'Seller';
   const kids = [text(seller ? 'Team & roles' : 'Roles & permissions', 'Heading/H1', 'text/primary', { sizeH: 'FILL' })];
   if (seller) kids.push(panelBanner('Team members can sign in now.', 'The parts of the panel they can use appear as MondaPac adds features.'));
   kids.push(fullButton(seller ? 'Invite team member' : 'Invite admin'));
-  (seller ? SELLER_MEMBERS : ADMIN_MEMBERS).forEach(function (m) { kids.push(memberCard(m, seller)); });
+  (seller ? SELLER_MEMBERS : ADMIN_MEMBERS.slice(0, ADMIN_PHONE_CARDS)).forEach(function (m) { kids.push(memberCard(m, seller)); });
   const scr = phoneScreen('Shared · Members · ' + ws + ' (phone)', ws, kids, seller ? 'More' : null);
   applyDensity(scr, 'touch');
   return scr;
@@ -387,6 +391,21 @@ function panelDefs() {
       ['phone', 'Dialog sheet · Remove from team (phone)', tplSheetRemove],
     ],
   };
+}
+// The desktop pages built by shellPage (they hug their content, 1.8.1 minimum height): every group except the dialog scenes and the phone frames.
+function panelShellNames(key) { return panelDefs()[key].filter(function (d) { return ['members', 'roles', 'access', 'security'].indexOf(d[0]) >= 0; }).map(function (d) { return d[1]; }); }
+// After pages grew (Update library 1.8.1), push the canvas rows below them down so the 240 px between rows stays. Rows are frames that share a y.
+function reflowRows(host, grown) {
+  const growth = {}; grown.forEach(function (f) { growth[f.scr.id] = f.scr.height - f.old; });
+  const rows = {}; host.children.forEach(function (n) { const k = Math.round(n.y); (rows[k] = rows[k] || []).push(n); });
+  const ys = Object.keys(rows).map(Number).sort(function (a, b) { return a - b; });
+  let shift = 0, prevBottom = null;
+  ys.forEach(function (y) {
+    if (prevBottom !== null) shift = Math.max(shift, prevBottom + 240 - y);
+    let bottom = 0, grew = false;
+    rows[y].forEach(function (n) { n.y = n.y + shift; bottom = Math.max(bottom, n.y + n.height); if (growth[n.id] > 0) grew = true; });
+    prevBottom = grew || shift > 0 ? bottom : null;
+  });
 }
 function panelNames(key) { return panelDefs()[key].map(function (d) { return d[1]; }); }
 // Build the frames in `names` (all when omitted), one canvas row per group below what the host already holds, then the template bodies

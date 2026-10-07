@@ -39,7 +39,7 @@ Every screen in section 5 uses one of these. "In Figma" means a template page al
 | T5 | **Auth** (no shell; phone first) | Sign in, sign up, reset, two-step, invitations | — | 1.1.0 |
 | T6 | **Setup step / Form** (grouped cards, `FormActionBar`, error summary) | Seller setup steps, store profile, product and offer forms, admin edit | — | 1.3.0 (`Seller · Setup step`), 1.4.0 (`Seller · Store profile`) |
 | T7 | **Settings** (two-column sections of `SettingRow`) | Market settings, seller settings, notifications | — | 1.4.0 (`Shared · Settings`) |
-| T8 | **Members and roles** (tabs Members, Roles; role editor) | Admin "Roles & permissions", Seller "Team & roles" | — | 1.8.0 (Members, Roles) / 1.8.1 (Sellers list, role editor, D4-D6) (`Shared · Members`, `Shared · Roles`, `Shared · Role editor`) |
+| T8 | **Members and roles** (tabs Members, Roles; role editor) | Admin "Roles & permissions", Seller "Team & roles" | — | 1.8.0 (Members, Roles) / 1.8.2 (Sellers list, role editor, D4-D6) (`Shared · Members`, `Shared · Roles`, `Shared · Role editor`) |
 | T9 | **System states** (no access, not found, empty, error; plus `Shared · Account security`) | Every panel route | — | 1.8.0 (`Shared · No access`, `EmptyState`) |
 
 ## 3. Navigation config
@@ -164,10 +164,10 @@ Status values: **G2** = approved detailed spec exists (ID refers to that spec); 
 |---|---|---|---|---|---|---|---|
 | Home | `/` | T1 | platform | `F_AdminHome` preview | Preview (content per module) | 1.0 |
 | Review queue | `/review` | T2 | several | this doc 3.1 | G1 (queue tabs land with each module's G2) | after 1.4.0 |
-| Sellers | `/sellers` | T2 | identity, sellers | identity P1; sellers P1 | G2 | 1.8.1, 1.4.0 |
+| Sellers | `/sellers` | T2 | identity, sellers | identity P1; sellers P1 | G2 | 1.8.3, 1.4.0 |
 | Seller page (+ History tab, admin-only card C1) | `/sellers/:id` | T3 | sellers | sellers P2, P2-H, C1 | G2 | 1.4.0 |
 | Review a submission | `/sellers/:id/review` | T3 | sellers | sellers P3 | G2 | 1.4.0 |
-| Add seller; Reject; Suspend; Confirm | dialogs | — | identity | identity D3–D6 | G2 | 1.8.1 |
+| Add seller; Reject; Suspend; Confirm | dialogs | — | identity | identity D3–D6 | G2 | 1.8.3 |
 | Change web address; Correct time zone; Bulk result | dialogs | — | sellers | sellers D7, D8, D10 | G2 | 1.4.0 |
 | Seller settings (Market) | `/settings/sellers` | T7 | sellers | sellers P4 | G2 | 1.4.0 |
 | Admins; Roles; Role editor | `/team...` | T8 | identity | identity B1, B2, B3 | G2 | 1.8.0 |
