@@ -1,4 +1,7 @@
 import type { MarketId } from '@mondapac/shared-kernel';
+import { normalisePostcode, type PostcodeInterval } from './postcode-entry';
+
+export { normalisePostcode, type PostcodeInterval };
 
 /** A ServiceArea as `sellers` and `shipping` read it (ADR-0005 decision 7). */
 export interface ServiceArea {
@@ -7,23 +10,11 @@ export interface ServiceArea {
   readonly deliveryEnabled: boolean;
 }
 
-/** One digits-only postcode interval, both ends the same length so the compare is numeric. */
-export interface PostcodeInterval {
-  readonly length: number;
-  readonly low: number;
-  readonly high: number;
-}
-
 export interface ServiceAreaDefinition extends ServiceArea {
   /** Digits-only postcodes and ranges. */
   readonly intervals: readonly PostcodeInterval[];
   /** Other postcodes, normalised (see `normalisePostcode`). */
   readonly exact: ReadonlySet<string>;
-}
-
-/** Upper-case and without whitespace, so "sw1a 1aa" and "SW1A1AA" are the same postcode. */
-export function normalisePostcode(postcode: string): string {
-  return postcode.replace(/\s+/gu, '').toUpperCase();
 }
 
 /**
@@ -38,8 +29,10 @@ export class ServiceAreaDirectory {
   ) {}
 
   areaFor(marketId: MarketId, postcode: string): ServiceArea | undefined {
+    if (typeof postcode !== 'string') return undefined;
     const normalised = normalisePostcode(postcode);
-    if (normalised === '') return undefined;
+    // Config is ASCII only; case folding must not turn other characters into a match (ß, ſ).
+    if (normalised === '' || /[^\x21-\x7e]/u.test(normalised)) return undefined;
     const digits = /^\d{1,10}$/u.test(normalised) ? Number(normalised) : undefined;
     for (const area of this.areasByMarket.get(marketId) ?? []) {
       const found =

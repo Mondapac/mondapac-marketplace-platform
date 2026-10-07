@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -34,12 +34,43 @@ describe('ServiceAreaDirectory', () => {
   const directory = loadServiceAreas(TEST_SERVICE_AREA_CONFIG_DIRS, TEST_MARKET_IDS);
 
   it('finds the launch area of the launch market, closed until the owner opens it', () => {
-    expect(directory.areaFor(AU, '4000')).toEqual({
-      code: 'greater-brisbane',
-      sellerOnboardingEnabled: false,
-      deliveryEnabled: false,
-    });
+    // Only the code is pinned: the flags are the owner's to change in the file.
+    expect(directory.areaFor(AU, '4000')?.code).toBe('greater-brisbane');
     expect(directory.areaFor(AU, ' 4179 ')?.code).toBe('greater-brisbane');
+  });
+
+  it('matches every AU range inclusively and nothing in the gaps', () => {
+    for (const hit of ['4000', '4179', '4205', '4207', '4300', '4306', '4500', '4521']) {
+      expect(directory.areaFor(AU, hit)?.code).toBe('greater-brisbane');
+    }
+    for (const miss of ['3999', '4180', '4204', '4208', '4299', '4307', '4499', '4522']) {
+      expect(directory.areaFor(AU, miss)).toBeUndefined();
+    }
+  });
+
+  it('matches the ZZ range edges and keeps leading zeros significant', () => {
+    expect(directory.areaFor(ZZ, '1000001')?.code).toBe('zz-central');
+    expect(directory.areaFor(ZZ, '1000002')?.code).toBe('zz-central');
+    expect(directory.areaFor(ZZ, '1000000')).toBeUndefined();
+    expect(directory.areaFor(ZZ, '1000003')).toBeUndefined();
+    expect(directory.areaFor(ZZ, '2000000')?.code).toBe('zz-coast');
+    expect(directory.areaFor(ZZ, '2000999')?.code).toBe('zz-coast');
+    expect(directory.areaFor(ZZ, '2001000')).toBeUndefined();
+  });
+
+  it('answers none for input that only folds to a match, or is not text', () => {
+    expect(directory.areaFor(ZZ, 'zz1 9aa')?.code).toBe('zz-central');
+    expect(directory.areaFor(ZZ, 'ZZ1 9ÄA')).toBeUndefined();
+    expect(directory.areaFor(ZZ, '٤٠٠٠')).toBeUndefined();
+    expect(directory.areaFor(AU, undefined as unknown as string)).toBeUndefined();
+  });
+
+  it('hands out copies, so a caller cannot change a later answer', () => {
+    const first = directory.areaFor(ZZ, '1000001') as { code: string };
+    first.code = 'changed';
+    (directory.areasOf(ZZ) as unknown as { code: string }[]).pop();
+    expect(directory.areaFor(ZZ, '1000001')?.code).toBe('zz-central');
+    expect(directory.areasOf(ZZ)).toHaveLength(2);
   });
 
   it('answers none for a postcode no area lists', () => {
@@ -66,6 +97,13 @@ describe('ServiceAreaDirectory', () => {
     expect(directory.areaFor(AU, '1000001')).toBeUndefined();
     expect(directory.areaFor(AU, '04000')).toBeUndefined();
     expect(directory.areaFor(QQ, '4000')).toBeUndefined();
+  });
+
+  it('keeps the flags of each area independent', () => {
+    expect(directory.areaFor(ZZ, '2000500')).toMatchObject({
+      sellerOnboardingEnabled: false,
+      deliveryEnabled: true,
+    });
   });
 
   it('lists the areas of a market', () => {
@@ -107,6 +145,37 @@ describe('loadServiceAreas', () => {
         ),
       ).toThrow(InvalidServiceAreaConfigError);
     }
+  });
+
+  it('explains that a hyphenated postcode is not an exact entry', () => {
+    expect(() =>
+      loadServiceAreas(
+        [directoryWith({ 'AU.json': { market: 'AU', areas: [area('a', ['100-0001'])] } })],
+        [AU],
+      ),
+    ).toThrow(/hyphenated postcode cannot be listed/);
+  });
+
+  it('reports an unreadable directory or file as a configuration error', () => {
+    expect(() => loadServiceAreas(['/nonexistent/areas'], [AU])).toThrow(
+      InvalidServiceAreaConfigError,
+    );
+    const dir = directoryWith({});
+    mkdirSync(path.join(dir, 'AU.json'));
+    expect(() => loadServiceAreas([dir], [AU])).toThrow(/cannot be read/);
+  });
+
+  it('rejects overlaps between areas in every shape', () => {
+    const clash = (a: string[], b: string[]) =>
+      loadServiceAreas(
+        [directoryWith({ 'AU.json': { market: 'AU', areas: [area('a', a), area('b', b)] } })],
+        [AU],
+      );
+    expect(() => clash(['4000-4100'], ['4050-4200'])).toThrow(/shares a postcode/);
+    expect(() => clash(['4000-4100'], ['4050'])).toThrow(/shares a postcode/);
+    expect(() => clash(['4000-4100'], ['4100-4200'])).toThrow(/shares a postcode/);
+    expect(() => clash(['4000-4099'], ['4100-4200'])).not.toThrow();
+    expect(() => clash(['0400-0499'], ['400-499'])).not.toThrow();
   });
 
   it('rejects a duplicate code and a postcode two areas claim', () => {

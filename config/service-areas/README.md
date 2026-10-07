@@ -20,8 +20,11 @@ Market, validated when the API starts. The directory is read by `ServiceAreaDire
 ```
 
 - `code`: stable text, `^[a-z0-9][a-z0-9-]{0,63}$`. Other modules store only this code.
-- `postcodes`: exact postcodes or digit ranges whose ends have the same length. Spaces and
-  case are ignored.
+- `postcodes`: exact postcodes (ASCII letters and digits) or digit ranges whose ends have the
+  same length, low to high. Spaces and case are ignored. A hyphen always means a range, so a
+  Market whose postcodes contain a hyphen cannot list them yet; the grammar grows with that
+  Market. One area may list overlapping entries; two areas may not. Callers pass `areaFor` a
+  postcode already checked against the Market's `postcodePattern` and field length.
 - The two flags are independent: where sellers may sign up, and where customers may receive
   orders. Switching one is a configuration change, not code. An area does not own a time
   zone: zones come from addresses (ADR-0005).
