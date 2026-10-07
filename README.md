@@ -8,7 +8,7 @@ Multi-vendor marketplace platform (halal-certified launch market: Australia), bu
    ```bash
    git clone https://github.com/Mondapac/mondapac-marketplace-platform.git
    ```
-2. Install Node.js 24.15.0 or later, pnpm 10 and Docker, then:
+2. Install Node.js 24.20.0 or later, pnpm 10 and Docker, then:
    ```bash
    cp .env.example .env        # local settings; never commit .env
    docker compose up -d        # Postgres, Redis, mail catcher

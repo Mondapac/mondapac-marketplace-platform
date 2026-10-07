@@ -30,7 +30,7 @@ jobs:
         # .nvmrc. Raise both together (ADR-0021 decision 3).
         node:
           - label: minimum
-            version: 24.15.0
+            version: 24.20.0
           - label: .nvmrc
             version-file: .nvmrc
 

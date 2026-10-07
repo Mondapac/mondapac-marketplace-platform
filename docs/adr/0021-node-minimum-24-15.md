@@ -29,6 +29,9 @@ decision is changed, so none is asked; the owner is informed in the Phase 2 stat
 1. **The minimum is Node.js 24.15.0**, the lowest version the lockfile installs under
    `engine-strict`. The root `package.json` declares `"node": ">=24.15.0"`. `.nvmrc` stays
    `24`.
+   *(Raised to 24.20.0 on 2026-10-07 through decision 3, decided by the CTO: `crypto.argon2` is documented as stable from 24.19.0 (nodejs/node#63924; "Release candidate" on 24.15.0) and 24.20.0 adds two fixes to it (#64852, validation errors; #64776, FIPS bypass). Identity
+   spike 1 found the 24.15.0 status; evidence on 24.20.0 is in the PR that raised it and in
+   identity design 12.3.)*
 2. **CI tests the minimum.** The verify job gets a Node axis with two values: exactly the
    minimum (24.15.0) and the `.nvmrc` version. Each runs the full job: frozen install,
    `pnpm verify`, `pnpm build` and the boot probe.

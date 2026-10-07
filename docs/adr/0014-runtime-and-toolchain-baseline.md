@@ -17,6 +17,8 @@ The Phase 1 skeleton has to pin concrete versions. Three facts constrain the cho
 1. **Node.js 24 LTS, minimum 24.9** (`engines` in the root `package.json`, `.nvmrc`).
    *(Amended by ADR-0021: the minimum is Node.js 24.15.0, the lowest version the lockfile
    installs under `engine-strict`; CI runs the exact minimum next to the `.nvmrc` version.)*
+   *(Raised to Node.js 24.20.0 on 2026-10-07 under ADR-0021 decision 3, decided by the CTO:
+   `crypto.argon2` is documented as stable from 24.19.0 (nodejs/node#63924; "Release candidate" on 24.15.0) and 24.20.0 adds two fixes to it (#64852, validation errors; #64776, FIPS bypass); identity spike 1.)*
 2. **NestJS 12**, laid out like the official NestJS 12 TypeScript template: compiled to
    CommonJS with `module: nodenext`, tested with Jest 30 + `ts-jest`, run through
    `node --experimental-vm-modules`.
@@ -38,7 +40,7 @@ The Phase 1 skeleton has to pin concrete versions. Three facts constrain the cho
 
 ## Consequences
 - Every developer machine and the CI image need Node 24.9+. Node 22 cannot run the tests.
-  *(Amended by ADR-0021: Node 24.15.0+.)*
+  *(Amended by ADR-0021: Node 24.15.0+; raised to 24.20.0+ on 2026-10-07, ADR-0021 decision 3.)*
 - Tests print Node's "VM Modules is an experimental feature" warning. It is expected.
 - Verified by the build session on Linux. The owner reported a green GitHub Actions run
   and a working setup on Windows on 2026-10-01.
