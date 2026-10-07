@@ -841,6 +841,6 @@ This document changes no other file. After G2:
 | The privilege map and the catalog tests of `pnpm test:db` | Section 7, column lists included (the column-level test of platform.md 10.4 reads them); the partial-index list of 8.4; "every outbox has the same columns" (P 13) | With each migration; Hossein |
 | `docs/design/domain/identity.md` | M12 in 3.4; M13 in 3.6 | Done (Mohammad, 2026-10-03) |
 | `docs/design/domain/platform-persistence-and-events.md` | PM1: the unique key leads with `market_id` (3.1); PM8: no clash, confirmed (10) | With the G2 approval; Mohammad |
-| `docs/design/data/platform.md` | New 10.9 (prepared statements); K1a settings in 10.7; the settings assertions in the role test of 10.4 | 10.9: Done (PR #41). 10.7, 10.8 `role_timeouts` and 10.4: Done (PR #53, Kazem, 2026-10-07) |
+| `docs/design/data/platform.md` | New 10.9 (prepared statements); K1a settings in 10.7; the settings assertions in the role test of 10.4 | 10.9: Done (PR #41). 10.7, 10.8 `role_timeouts` and 10.4: specified (PR #53, Kazem, 2026-10-07); the `role_timeouts` start-up check and the role-settings test are code in identity slice 1a (Hossein) |
 | `docs/design/domain/platform-persistence-and-events.md` | Section 13, UnitOfWork row: the exhausted-retry test, at a statement and at COMMIT; the classifier keys on SQLSTATE; 55P03's answer (PN7) | Done (PR #41) |
 | `scripts/db/bootstrap-dev.sql` | `ALTER ROLE mondapac_api SET` the three K1a values | Done (PR #53, Kazem, 2026-10-07) |
