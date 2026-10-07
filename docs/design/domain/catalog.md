@@ -1,7 +1,7 @@
 # Catalog — G2 domain design
 
 **Author:** Mohammad (software-architect) — 2026-10-07
-**Status:** G2 review revision 2 (Ali's and Hassan's reviews of 2026-10-07 applied; 19.3, 19.4). Reviewers: Ali (cto), Hassan (security-tester), Mojtaba
+**Status:** G2 approved 2026-10-07. Ali (cto) signed; Hassan (security-tester) accepted with conditions, all applied; Mojtaba's data design signed by Ali and accepted by Hassan with conditions, applied; Reza's `ux.md` complete; Jafar accepted with changes, applied; Hadi answered the product questions; owner decisions 2026-10-07: no review-time promise, default locale only required. Reviews recorded in 19.3 and 19.4. Reviewers: Ali (cto), Hassan (security-tester), Mojtaba
 (database-designer), Reza (ui-ux-designer), Jafar (product-designer). Tier A. The owner gets a
 Persian summary with the question of 19.1 only. The approvals of the Phase 4 designs of
 `inventory` (PR #43), `pricing` (PR #44) and `cart` (PR #45) wait for this G2 (Ali A4); section 9.7

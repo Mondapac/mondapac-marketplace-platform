@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Author | Reza (ui-ux-designer), 2026-10-07 |
-| Status | **Draft for G2 review.** Open points that need the owner are in section 7 and are not G2 blockers (the sellers and certification precedent) |
+| Status | **G2 approved 2026-10-07.** Jafar (product-designer) accepted with changes, applied; Hadi (product-owner) confirmed the proposal reasons and the narrower bulk approve; owner decisions 2026-10-07: no review-time promise, default locale only required. Remaining open points in section 7 are not G2 blockers |
 | Module | `catalog`, tier A, Phase 3. G1 approved by the owner on 2026-10-03 |
 | Reviewers | Jafar (product-designer), Ali (cto), Hassan (security-tester), Mohammad (software-architect: the API needs in section 7) |
 | Used for | Brief section 12 (filled in section 4 here and in the brief), the Figma work (ADR-0017) and slice 27 (panel screens, one PR per row of 8.2) |
