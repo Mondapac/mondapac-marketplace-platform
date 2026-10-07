@@ -1,5 +1,5 @@
 {
- "version": "1.5.0",
+ "version": "1.6.0",
  "generated": "2026-10-07",
  "primitives": [
   {
@@ -1599,6 +1599,18 @@
     "STROKE_COLOR"
    ],
    "description": "Ready column border"
+  },
+  {
+   "name": "bg/scrim",
+   "light": null,
+   "dark": null,
+   "lightHex": "#11182780",
+   "darkHex": "#00000099",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "Overlay behind drawers and modals; alpha is part of the value"
   }
  ],
  "dimension": [
@@ -1860,6 +1872,14 @@
    "name": "size/bottom-bar",
    "desktop": 64,
    "touch": 64,
+   "scopes": [
+    "WIDTH_HEIGHT"
+   ]
+  },
+  {
+   "name": "size/topbar-phone",
+   "desktop": 56,
+   "touch": 56,
    "scopes": [
     "WIDTH_HEIGHT"
    ]

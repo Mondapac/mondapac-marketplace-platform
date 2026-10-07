@@ -94,7 +94,11 @@ C = {
  "board/prep-border": ("#D6E0F2", "#2B3F6B", "STROKE_COLOR", "Preparing column border"),
  "board/ready-bg": ("#F1F8F3", "#10221A", "FRAME_FILL", "Ready column"),
  "board/ready-border": ("#CFE6D7", "#1F4A33", "STROKE_COLOR", "Ready column border"),
+ # 1.6.0: appended last so a library updated in place exports in the same order as a fresh build.
+ # Hex8 literals (RRGGBBAA): the alpha is part of the value, so there is no primitive and no alias.
+ "bg/scrim": ("#11182780", "#00000099", "FRAME_FILL,SHAPE_FILL", "Overlay behind drawers and modals; alpha is part of the value"),
 }
+def literal(h): return len(h) == 9
 # family for primitive naming
 FAM = {}
 def fam(name, hexes):
@@ -125,7 +129,7 @@ def cr(a,b):
     la,lb=rel(a),rel(b); return (max(la,lb)+0.05)/(min(la,lb)+0.05)
 
 # ---------- primitives: name = family/step, step = 1000*(1-L) rounded to 5, unique ----------
-allhex = sorted({v[0].upper() for v in C.values()} | {v[1].upper() for v in C.values()})
+allhex = sorted({v[i].upper() for v in C.values() for i in (0, 1) if not literal(v[i])})
 missing = [h for h in allhex if h not in FAM]
 if missing: sys.exit('no family for ' + ', '.join(missing))
 prim = {}   # hex -> name
@@ -188,6 +192,8 @@ D = {
  "size/sidebar": (248,248), "size/sidebar-collapsed": (72,72), "size/topbar": (64,64), "border/width": (1,1), "border/width-strong": (2,2),
  # 1.5.0 (D16): appended last so a library updated in place exports in the same order as a fresh build.
  "size/bottom-bar": (64,64),
+ # 1.6.0: phone top bar height (both panels), appended after bottom-bar for the same reason.
+ "size/topbar-phone": (56,56),
 }
 DSCOPE = {"space": "GAP,WIDTH_HEIGHT", "radius": "CORNER_RADIUS", "size": "WIDTH_HEIGHT", "border": "STROKE_FLOAT"}
 # ---------- typography ----------
@@ -224,9 +230,9 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.5.0", "generated": "2026-10-07",
+ "version": "1.6.0", "generated": "2026-10-07",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
- "color": [{"name": k, "light": prim[v[0].upper()], "dark": prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
+ "color": [{"name": k, "light": None if literal(v[0]) else prim[v[0].upper()], "dark": None if literal(v[1]) else prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],
  "type": [{"name": t[0], "family": t[1], "style": t[2], "size": t[3], "lineHeight": t[4], "letterSpacing": t[5], "case": t[6]} for t in TYPE],
  "effects": [{"name": e[0], "layers": [{"type": l[0], "rgba": l[1], "x": l[2], "y": l[3], "blur": l[4], "spread": l[5], "token": l[6] if len(l) > 6 else None} for l in e[1]], "description": e[2]} for e in EFFECTS],
@@ -250,7 +256,7 @@ def nest(pairs):
 pr = nest([(n, {"$type": "color", "$value": h}) for n, h in primitives])
 json.dump({"$description": "MondaPac primitives. Do not use directly in UI; use semantic tokens.", "color": pr}, open(out + '/primitives.json', 'w'), indent=2)
 for theme, idx in (('light', 'light'), ('dark', 'dark')):
-    body = nest([(c['name'], {"$type": "color", "$value": "{color.%s}" % c[idx].replace('/', '.'), "$description": c['description']}) for c in spec['color']])
+    body = nest([(c['name'], {"$type": "color", "$value": c[idx + 'Hex'] if c[idx] is None else "{color.%s}" % c[idx].replace('/', '.'), "$description": c['description']}) for c in spec['color']])
     json.dump({"$description": "MondaPac semantic colour, %s theme. Aliases point to primitives.json." % theme, "color": body}, open(out + '/color.%s.json' % theme, 'w'), indent=2)
 for dens in ('desktop', 'touch'):
     body = nest([(d['name'], {"$type": "dimension", "$value": "%spx" % (d[dens] if d[dens] != int(d[dens]) else int(d[dens]))}) for d in spec['dimension']])

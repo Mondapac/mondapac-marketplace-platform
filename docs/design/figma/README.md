@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| نسخه | 1.5.0 «Mobile navigation» (۷ اکتبر ۲۰۲۶). نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
+| نسخه | 1.6.0 «Mobile navigation polish» (۷ اکتبر ۲۰۲۶). نسخهٔ 1.5.0 «Mobile navigation» همان روز بود و نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
 | فایل Figma | **MondaPac Design System** (Drafts تیم mondapac، پلن Starter) |
 | مالک کتابخانه | رضا (UI/UX) |
 | هم‌خوان‌ها | جعفر (Product Designer)، مهدی (Frontend)، سجاد (QA)، هادی (Product Owner) |
@@ -50,10 +50,10 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 | Collection | تعداد | حالت‌ها (Modes) | محتوا |
 |---|---|---|---|
 | Primitives | ۱۳۷ | Value | رنگ‌های خام. از Library پنهان‌اند و scope ندارند، پس طراح مستقیم انتخابشان نمی‌کند. |
-| Color | ۸۹ | Light (+ Dark بعد از ارتقا) | توکن‌های معنایی که به Primitives اشاره می‌کنند (alias). |
-| Color · Dark | ۸۹ | Dark | فقط روی Starter. همان نام‌ها با مقدار تاریک. |
-| Dimension | ۳۰ | Desktop (+ Touch بعد از ارتقا) | فاصله، گوشه، اندازهٔ کنترل، عرض منو، ضخامت مرز. |
-| Dimension · Touch | ۳۰ | Touch | فقط روی Starter. اندازه‌های لمسی تبلت. |
+| Color | ۹۰ | Light (+ Dark بعد از ارتقا) | توکن‌های معنایی که به Primitives اشاره می‌کنند (alias). تنها استثنا `bg/scrim` است: مقدار hex8 با شفافیت داخل خود مقدار، بدون alias. |
+| Color · Dark | ۹۰ | Dark | فقط روی Starter. همان نام‌ها با مقدار تاریک. |
+| Dimension | ۳۲ | Desktop (+ Touch بعد از ارتقا) | فاصله، گوشه، اندازهٔ کنترل، عرض منو، ضخامت مرز. |
+| Dimension · Touch | ۳۲ | Touch | فقط روی Starter. اندازه‌های لمسی تبلت. |
 | Typography | ۴۶ | Value | خانوادهٔ فونت، اندازه و ارتفاع خط هر سبک متن. داخل Text styleها bind شده‌اند. |
 | Motion | ۳ | Value | مدت حرکت: 120، 160 و 240 میلی‌ثانیه. |
 
@@ -77,7 +77,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 ## ۵. کامپوننت‌ها
 
-**۴۳ کامپوننت** (۳۲ مجموعهٔ variant با ۲۴۴ variant، و ۱۱ کامپوننت تکی) و **۵۸ آیکن**:
+**۴۴ کامپوننت** (۳۳ مجموعهٔ variant با ۲۴۶ variant، و ۱۱ کامپوننت تکی) و **۵۹ آیکن**:
 
 | صفحه | کامپوننت‌ها |
 |---|---|
@@ -86,7 +86,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 | Status & feedback | Badge، StatusBadge، CountBadge، CertChip، HealthIndicator، Meter، DeadlineBadge، InfoBanner، Tooltip |
 | Data display | IdentityTile، ProductThumb، Sparkline، StatTile، TrendChart، DonutProgress، SplitBar، WeeklyBars، CountdownRing |
 | Tables & collections | TableCell، CardHeader، Pagination، BulkActionBar |
-| Navigation & shell | NavItem، NavSubItem، NavGroupLabel، Sidebar، Topbar، **NavDrawer** و **BottomTabBar** (از 1.5.0، منوی موبایل D16) |
+| Navigation & shell | NavItem، NavSubItem، NavGroupLabel، Sidebar، Topbar، **NavDrawer** و **BottomTabBar** (از 1.5.0، منوی موبایل D16) و **PhoneTopbar** (از 1.6.0، نوار بالای موبایل ۵۶ پیکسلی، Admin و Seller) |
 | Review & detail | QueueCard، ExtractedField، ChecklistItem، TimelineItem |
 | Board & delivery | OrderCard، DeliveryMap |
 
@@ -108,7 +108,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 ## ۶. قالب‌ها و تم تاریک
 
-- **قالب‌ها** فقط از instanceهای کتابخانه ساخته شده‌اند: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board تبلت). از 1.5.0 سه قالب موبایل ۳۶۰ پیکسلی هم هست: Seller Home با BottomTabBar، Seller با منوی باز روی scrim، Admin با منوی باز. نوار بالای موبایل (۵۶ پیکسل) در قالب‌ها از instanceهای IconButton ساخته شده و هنوز کامپوننت جدا ندارد.
+- **قالب‌ها** فقط از instanceهای کتابخانه ساخته شده‌اند: Admin (Home، Sellers، Certificate review) و Seller (Home، Orders، Order board تبلت). از 1.5.0 سه قالب موبایل ۳۶۰ پیکسلی هم هست: Seller Home با BottomTabBar، Seller با منوی باز روی scrim، Admin با منوی باز. از 1.6.0 نوار بالای موبایل (۵۶ پیکسل) کامپوننت PhoneTopbar است و هر سه قالب یک instance از آن دارند. پرده‌ی پشت کشو (scrim) به توکن `bg/scrim` bind شده است.
 - برای صفحهٔ جدید، یک قالب را کپی کنید. **پوسته (Sidebar و Topbar) را detach نکنید.** آیتم فعال منو را با property `State` روی NavItem تودرتو عوض کنید.
 - **Dark preview** سه قالب را در تم تاریک نشان می‌دهد.
 - **تعویض تم یا تراکم یک فریم:**
@@ -162,7 +162,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
   - MINOR: کامپوننت، variant یا توکن تازه.
   - PATCH: اصلاح مقدار یا ظاهر بدون تغییر API.
 - نسخه در افزونه (فیلد Version هنگام Export) و صفحهٔ Changelog ثبت می‌شود.
-- نسخه‌های 1.1.0 تا 1.4.0 برای انتشارهای برنامه‌ریزی‌شدهٔ Auth، Panel، Seller setup و Seller admin رزرو شده‌اند. به همین دلیل بعد از 1.0.0 مستقیم 1.5.0 آمد.
+- نسخه‌های 1.1.0 تا 1.4.0 برای انتشارهای برنامه‌ریزی‌شدهٔ Auth، Panel، Seller setup و Seller admin رزرو شده‌اند. به همین دلیل بعد از 1.0.0 مستقیم 1.5.0 آمد و بعد از آن 1.6.0.
 - **کنار گذاشتن:** نام کامپوننت `Deprecated / <Name>` می‌شود. در توضیح می‌نویسیم «Use <Replacement> instead (since vX.Y)» و به Archive منتقل می‌شود. حذف واقعی فقط در نسخهٔ MAJOR بعدی است.
 
 ---
@@ -211,9 +211,9 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 | Build library | ساخت کامل در فایل خالی. «Rebuild» هر چه افزونه ساخته پاک می‌کند و از نو می‌سازد. **روی کتابخانه‌ای که دستی ویرایش شده اجرا نشود؛ برای نسخهٔ تازهٔ افزونه از Update library استفاده کنید.** |
 | Dark theme / Light theme | تعویض تم فریم‌های انتخاب‌شده |
 | Touch density / Desktop density | تعویض تراکم فریم‌های انتخاب‌شده |
-| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). تنها ویرایش روی چیزهای موجود، اصلاح‌های نام‌برده در همان نسخه است؛ برای 1.5.0: فاصلهٔ ردیف‌های NavDrawer صفر می‌شود اگر به‌روزرسانی قبلی آن را با فاصله ساخته باشد. چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. |
+| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). تنها ویرایش روی چیزهای موجود، اصلاح‌های نام‌برده است و هر کدام در گزارش می‌آید. برای 1.5.0: فاصلهٔ ردیف‌های NavDrawer صفر می‌شود اگر به‌روزرسانی قبلی آن را با فاصله ساخته باشد. برای 1.6.0: پردهٔ پشت کشو در قالب‌های موبایل به `bg/scrim` با ۱۰۰٪ bind می‌شود و فریم قدیمی «Topbar · phone» با instance کامپوننت PhoneTopbar عوض می‌شود. همین فریم قدیمی تنها چیزی است که حذف می‌شود، و فقط داخل قالب موبایلی که خود افزونه ساخته. در بقیه چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. برای 1.6.0: توکن‌های `bg/scrim` و `size/topbar-phone`، آیکن `menu` و کامپوننت PhoneTopbar. فایل 1.0.0 مستقیم به 1.6.0 می‌رسد. |
 | Export tokens | ۷ فایل توکن از متغیرها و استایل‌های Figma |
-| Audit file | lint کل فایل. روی نسخهٔ 1.5.0: ۱۲٬۶۷۴ لایه و صفر هشدار |
+| Audit file | lint کل فایل. روی نسخهٔ 1.6.0: ۱۲٬۷۶۳ لایه و صفر هشدار |
 | Upgrade to modes | بعد از ارتقای پلن |
 
 توسعهٔ خود افزونه: [`plugin/README.md`](plugin/README.md). هر تغییر در افزونه باید `node test/run.js` را بدون خطا بگذراند. این تست با شبیه‌ساز سخت‌گیر API فیگما هفت سناریو را اجرا می‌کند (از جمله «Update library» روی کتابخانهٔ هم‌سبک 1.0.0) و برابری Export با ریپو را می‌سنجد.
@@ -235,7 +235,7 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 ## ۱۴. موارد باز
 
 - **D5 حالت تاریک در محصول:** توکن‌ها و پیش‌نمایش آماده‌اند. زمان فعال‌کردنش تصمیم محصول است.
-- **D16 منوی موبایل:** از 1.5.0 کامپوننت دارد (NavDrawer، BottomTabBar، توکن `size/bottom-bar`، سه قالب ۳۶۰ پیکسلی). باز: توکن scrim (اکنون `text/primary` با ۵۰٪ شفافیت، فقط در تم روشن درست است)، آیکن همبرگر (اکنون `panel-left`) و توکن ارتفاع نوار بالای موبایل (۵۶ پیکسل). **Board عمودی** هنوز کامپوننت ندارد.
+- **D16 منوی موبایل:** بسته شد (۲۰۲۶-۱۰-۰۷). از 1.5.0 NavDrawer، BottomTabBar، توکن `size/bottom-bar` و سه قالب ۳۶۰ پیکسلی را دارد و از 1.6.0 سه مورد باز هم بسته شد: توکن `bg/scrim` (روشن `#111827` با ۵۰٪، تاریک مشکی با ۶۰٪؛ شفافیت داخل مقدار است)، آیکن `menu` برای دکمهٔ منوی نوار بالا (`panel-left` فقط برای جمع‌کردن NavItem می‌ماند) و توکن `size/topbar-phone` (۵۶ پیکسل) همراه کامپوننت PhoneTopbar. **Board عمودی** هنوز کامپوننت ندارد.
 - **حالت‌های Loading و Empty:** برای TableCell، StatTile و کارت‌ها در مرحلهٔ طراحی ماژول‌ها اضافه می‌شوند.
 - **عکس واقعی کالا:** جای ProductThumb را می‌گیرد، با همان اندازه و گوشه.
 - **نسخهٔ RTL:** چیدمان آماده است. آزمون کامل با متن فارسی یا عربی، وقتی زبان دوم برنامه‌ریزی شد.

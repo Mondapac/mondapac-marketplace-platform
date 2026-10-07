@@ -50,6 +50,32 @@ function addDimensionVariable(d) {
   }
 }
 
+// A colour value from #RRGGBB or #RRGGBBAA (the alpha byte becomes the colour's own alpha, e.g. bg/scrim).
+function colorValue(hex) { const c = rgb(hex); if (hex.length > 7) c.a = parseInt(hex.slice(7, 9), 16) / 255; return c; }
+// Adds one semantic colour token to the collections described by S.colorModes (used by the build and by "Update library").
+// A token with a null light/dark primitive is a hex8 literal (alpha is part of the value), not an alias.
+function addColorVariable(c) {
+  const M = S.colorModes;
+  function val(prim, hex) {
+    if (!prim) return colorValue(hex);
+    if (!S.prim[prim]) throw new Error('Primitive ' + prim + ' is missing for ' + c.name);
+    return figma.variables.createVariableAlias(S.prim[prim]);
+  }
+  const v = figma.variables.createVariable(c.name, M.collection, 'COLOR');
+  v.setValueForMode(M.light, val(c.light, c.lightHex));
+  if (M.dark) v.setValueForMode(M.dark, val(c.dark, c.darkHex));
+  v.scopes = c.scopes; v.description = c.description;
+  v.setVariableCodeSyntax('WEB', cssVar('color', c.name));
+  S.color[c.name] = v;
+  if (M.darkCollection) {
+    const d = figma.variables.createVariable(c.name, M.darkCollection, 'COLOR');
+    d.setValueForMode(M.darkAlt, val(c.dark, c.darkHex));
+    d.scopes = c.scopes; d.description = c.description + ' (dark)';
+    d.setVariableCodeSyntax('WEB', cssVar('color', c.name));
+    S.colorDark[c.name] = d;
+  }
+}
+
 async function buildVariables() {
   // 1. Primitives (hidden from publishing, no scopes: designers use semantic tokens only)
   const prim = newCollection('Primitives');
@@ -78,21 +104,7 @@ async function buildVariables() {
     log('ℹ Starter plan: one mode per collection. Dark values live in "Color · Dark". Run "Upgrade to modes" after upgrading the plan.');
   }
   S.colorModes = { collection: color, light: lightMode, dark: darkMode, darkCollection: dark, darkAlt: darkModeAlt };
-  SPEC.color.forEach(function (c) {
-    const v = figma.variables.createVariable(c.name, color, 'COLOR');
-    v.setValueForMode(lightMode, figma.variables.createVariableAlias(S.prim[c.light]));
-    if (darkMode) v.setValueForMode(darkMode, figma.variables.createVariableAlias(S.prim[c.dark]));
-    v.scopes = c.scopes; v.description = c.description;
-    v.setVariableCodeSyntax('WEB', cssVar('color', c.name));
-    S.color[c.name] = v;
-    if (dark) {
-      const d = figma.variables.createVariable(c.name, dark, 'COLOR');
-      d.setValueForMode(darkModeAlt, figma.variables.createVariableAlias(S.prim[c.dark]));
-      d.scopes = c.scopes; d.description = c.description + ' (dark)';
-      d.setVariableCodeSyntax('WEB', cssVar('color', c.name));
-      S.colorDark[c.name] = d;
-    }
-  });
+  SPEC.color.forEach(addColorVariable);
 
   // 3. Dimension: Desktop + Touch density
   const dim = newCollection('Dimension');

@@ -92,13 +92,16 @@ async function pageGettingStarted(page) {
 // Release notes shown on the Changelog page, oldest first (new releases are appended in place). 1.1.0 to 1.4.0 are reserved for the planned
 // Auth, Panel, Seller setup and Seller admin releases, so versions skip from 1.0.0 to 1.5.0.
 const CHANGELOG_WIDTHS = [140, 160, 1100];
-const RELEASE = { version: SPEC.version, date: '7 Oct 2026', changes: 'Mobile navigation (D16). New components NavDrawer (phone drawer, Admin and Seller) and BottomTabBar (seller phone bar, 4 or 3 tabs). New token size/bottom-bar (64 px). Three 360 px phone templates: seller home with bottom bar, seller menu open, admin menu open.' };
+const RELEASES = [
+  { version: '1.5.0', date: '7 Oct 2026', changes: 'Mobile navigation (D16). New components NavDrawer (phone drawer, Admin and Seller) and BottomTabBar (seller phone bar, 4 or 3 tabs). New token size/bottom-bar (64 px). Three 360 px phone templates: seller home with bottom bar, seller menu open, admin menu open.' },
+  { version: '1.6.0', date: '7 Oct 2026', changes: 'Mobile navigation polish (D16 follow-up). New token bg/scrim (overlay colour with alpha in the value: #111827 at 50% light, black at 60% dark), new token size/topbar-phone (56 px), new icon menu, new component PhoneTopbar (Admin and Seller). The three phone templates use PhoneTopbar and the drawer scrim is bound to bg/scrim.' },
+];
+const RELEASE = RELEASES[RELEASES.length - 1];
 async function pageChangelog(page) {
   const root = pageShell(page, 'Changelog', 'Semantic versioning: MAJOR for breaking renames or removals, MINOR for new components or variants, PATCH for fixes.');
   add(root, table(['Version', 'Date', 'Changes'], [
     ['1.0.0', '1 Oct 2026', 'First release. Foundations (variables light/dark, desktop/touch, text and effect styles, icons), the component library, Admin and Seller templates, dark preview.'],
-    [RELEASE.version, RELEASE.date, RELEASE.changes],
-  ], CHANGELOG_WIDTHS));
+  ].concat(RELEASES.map(function (r) { return [r.version, r.date, r.changes]; })), CHANGELOG_WIDTHS));
   tag(root);
 }
 
@@ -146,7 +149,7 @@ async function pageTypography(page) {
   tag(root);
 }
 
-const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
+const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'size/topbar-phone': 'Phone top bar height (Admin and Seller)', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
 async function pageSpacing(page) {
   const root = pageShell(page, 'Spacing, size & radius', 'A 2 px base with 4 px steps for layout. Values switch between Desktop and Touch density; touch makes controls 48 px.');
   let s = docSection(root, 'Spacing');

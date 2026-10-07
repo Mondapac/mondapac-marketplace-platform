@@ -252,7 +252,7 @@ function findTable(host, headers) {
 function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
 async function updateLibrary() {
-  STEP = 0; STEPS = 6; S.report = [];
+  STEP = 0; STEPS = 8; S.report = [];
   await figma.loadAllPagesAsync();
   const state = await fileIsEmpty();
   if (state.empty) { post({ type: 'error', message: 'This file is empty. Update library only adds to an existing MondaPac library; use Build library in a new file.' }); return; }
@@ -260,7 +260,7 @@ async function updateLibrary() {
   await loadState();
   await hydrateLibrary();
   const T = findHosts();
-  const need = ['nav', 'tpl-seller', 'tpl-admin', 'changelog', 'spacing', 'cover'].filter(function (k) { return !T[k]; });
+  const need = ['nav', 'tpl-seller', 'tpl-admin', 'changelog', 'spacing', 'cover', 'icons'].filter(function (k) { return !T[k]; });
   const base = ['CountBadge', 'NavGroupLabel', 'IconButton', 'IdentityTile', 'QueueCard', 'Sidebar'].filter(function (k) { return !S.sets[k]; });
   if (need.length || base.length || !S.ts['Body/Default'] || !S.es['Focus/Ring']) {
     post({ type: 'error', message: 'This library is incomplete, so it cannot be updated safely. Missing: ' + need.concat(base).join(', ') + '. Restore it from version history or rebuild it in a new file.' }); return;
@@ -269,18 +269,35 @@ async function updateLibrary() {
   const added = [];
 
   // 1 · tokens
+  const missingColors = SPEC.color.filter(function (c) { return !S.color[c.name]; });
+  missingColors.forEach(function (c) { addColorVariable(c); added.push('variable ' + c.name + (S.colorModes.darkCollection ? ' (Color and Color · Dark)' : ' (Light and Dark modes)')); });
   const missingVars = SPEC.dimension.filter(function (d) { return !S.dim[d.name]; });
   missingVars.forEach(function (d) { addDimensionVariable(d); added.push('variable ' + d.name + (S.dimModes.touchCollection ? ' (Dimension and Dimension · Touch)' : ' (Desktop and Touch modes)')); });
 
+  // 1b · icons (1.6.0: menu), added to the Icons page
+  const missingIcons = Object.keys(ICONS).filter(function (n) { return !S.icons[n]; });
+  if (missingIcons.length) {
+    await onPage(T.icons, 'Icons', function (host) {
+      const wrap = host.findAll(function (n) { return n.type === 'FRAME' && n.name === 'Icons' && n.layoutWrap === 'WRAP'; })[0];
+      missingIcons.forEach(function (n) {
+        const cell = iconCell(n);
+        if (wrap) add(wrap, cell); else { host.appendChild(cell); cell.x = rightEdge(host) + 160; cell.y = 0; }
+      });
+      fitSection(host);
+    });
+    missingIcons.forEach(function (n) { added.push('icon ' + n); });
+  }
+
   // 2 · components, documented on the Navigation & shell page
-  const have = { NavDrawer: !!S.sets.NavDrawer, BottomTabBar: !!S.sets.BottomTabBar };
-  if (!have.NavDrawer || !have.BottomTabBar) {
+  const have = { NavDrawer: !!S.sets.NavDrawer, BottomTabBar: !!S.sets.BottomTabBar, PhoneTopbar: !!S.sets.PhoneTopbar };
+  if (!have.NavDrawer || !have.BottomTabBar || !have.PhoneTopbar) {
     await onPage(T.nav, 'Navigation components', function (host) {
       let root = host.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Navigation & shell'; })[0];
       if (!root) { const y = host.children.length ? Math.min.apply(null, host.children.map(function (c) { return c.y; })) : 0; const x = rightEdge(host) + 160; root = pageShell(host, 'Navigation & shell', 'One shell for both panels. The Sidebar variant decides the workspace; the menu items come from configuration and permissions.'); root.x = x; root.y = y; tag(root); }
       buildMobileNav(root, have);
       fitSection(host);
     });
+    if (!have.PhoneTopbar) added.push('component PhoneTopbar');
     if (!have.NavDrawer) added.push('component NavDrawer');
     if (!have.BottomTabBar) added.push('component BottomTabBar');
   }
@@ -295,6 +312,45 @@ async function updateLibrary() {
       added.push('fix NavDrawer item spacing (' + lists.length + ' variants)');
     }
   }
+
+  // 2b-2 · the NavDrawer description of a 1.5.0 file still names the old scrim (text/primary at 50%); use the 1.6.0 wording.
+  const OLD_SCRIM_NOTE = 'scrim (text/primary at 50%; the scrim belongs', NEW_SCRIM_NOTE = 'scrim (bg/scrim; the scrim belongs';
+  if (have.NavDrawer && S.sets.NavDrawer.set && S.sets.NavDrawer.set.description.indexOf(OLD_SCRIM_NOTE) >= 0) {
+    const nd = S.sets.NavDrawer.set;
+    await onPage(T.nav, 'NavDrawer scrim note', function () { nd.description = nd.description.split(OLD_SCRIM_NOTE).join(NEW_SCRIM_NOTE); });
+    added.push('update NavDrawer scrim note');
+  }
+
+  // 2c · fixes to the phone templates an earlier 1.5.0 update added (release 1.6.0): the drawer scrim takes bg/scrim
+  // at 100% (it was text/primary at 50%) and the loose "Topbar · phone" frame becomes a PhoneTopbar instance.
+  // The old frame is the only thing this release deletes, and only inside a plugin-made phone template.
+  const phoneTplKeys = Object.keys(PHONE_TEMPLATES); const scrimFix = []; const topbarFix = [];
+  phoneTplKeys.forEach(function (key) {
+    T[key].host.children.forEach(function (scr) {
+      if (scr.type !== 'FRAME' || PHONE_TEMPLATES[key].names.indexOf(scr.name) < 0 || scr.getPluginData(PLUGIN_TAG) !== '1') return;
+      const scrim = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'scrim'; })[0];
+      const bound = S.color['bg/scrim'] ? S.color['bg/scrim'].id : null;
+      if (scrim && bound && !(scrim.fills.length === 1 && scrim.fills[0].boundVariables && scrim.fills[0].boundVariables.color && scrim.fills[0].boundVariables.color.id === bound && (scrim.fills[0].opacity === undefined || scrim.fills[0].opacity === 1))) scrimFix.push({ key: key, scrim: scrim });
+      const old = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Topbar · phone'; })[0];
+      if (old && S.sets.PhoneTopbar) topbarFix.push({ key: key, scr: scr, old: old });
+    });
+  });
+  for (let i = 0; i < phoneTplKeys.length; i++) {
+    const key = phoneTplKeys[i];
+    const sf = scrimFix.filter(function (f) { return f.key === key; }); const tf = topbarFix.filter(function (f) { return f.key === key; });
+    if (!sf.length && !tf.length) continue;
+    await onPage(T[key], 'Phone template fixes', function () {
+      sf.forEach(function (f) { f.scrim.fills = [paint('bg/scrim')]; });
+      tf.forEach(function (f) {
+        const at = f.scr.children.indexOf(f.old);
+        const ptb = phoneTopbar(f.scr.name.indexOf('Admin') === 0 ? 'Admin' : 'Seller');
+        add(f.scr, ptb); f.scr.insertChild(at, ptb);
+        f.old.remove();
+      });
+    });
+  }
+  if (scrimFix.length) added.push('bind drawer scrim to bg/scrim (' + scrimFix.length + ' templates)');
+  if (topbarFix.length) added.push('swap phone topbar for PhoneTopbar (' + topbarFix.length + ' templates)');
 
   // 3 · templates
   const tplKeys = Object.keys(PHONE_TEMPLATES);
@@ -315,15 +371,17 @@ async function updateLibrary() {
 
   // 4 · documentation pages (only edits what the release changed)
   const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
-  const bar = SPEC.dimension.filter(function (d) { return d.name === 'size/bottom-bar'; })[0];
-  if (sizeTable && bar && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === bar.name; })) {
-    await onPage(T.spacing, 'Spacing page', function () { appendTableRow(sizeTable, [bar.name, bar.desktop + ' px', bar.touch + ' px', SIZE_USE[bar.name]], [260, 160, 160, 600]); fitSection(T.spacing.host); });
-    added.push('size table row ' + bar.name);
+  const newSizes = ['size/bottom-bar', 'size/topbar-phone'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
+    .filter(function (d) { return d && sizeTable && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === d.name; }); });
+  if (newSizes.length) {
+    await onPage(T.spacing, 'Spacing page', function () { newSizes.forEach(function (d) { appendTableRow(sizeTable, [d.name, d.desktop + ' px', d.touch + ' px', SIZE_USE[d.name]], [260, 160, 160, 600]); }); fitSection(T.spacing.host); });
+    newSizes.forEach(function (d) { added.push('size table row ' + d.name); });
   }
   const logTable = findTable(T.changelog.host, 'Version|Date|Changes');
-  if (logTable && !logTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === RELEASE.version; })) {
-    await onPage(T.changelog, 'Changelog', function () { appendTableRow(logTable, [RELEASE.version, RELEASE.date, RELEASE.changes], CHANGELOG_WIDTHS); fitSection(T.changelog.host); });
-    added.push('changelog row ' + RELEASE.version);
+  const newReleases = RELEASES.filter(function (r) { return logTable && !logTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === r.version; }); });
+  if (newReleases.length) {
+    await onPage(T.changelog, 'Changelog', function () { newReleases.forEach(function (r) { appendTableRow(logTable, [r.version, r.date, r.changes], CHANGELOG_WIDTHS); }); fitSection(T.changelog.host); });
+    newReleases.forEach(function (r) { added.push('changelog row ' + r.version); });
   }
   const meta = { Version: SPEC.version, Updated: RELEASE.date };
   const coverEdits = [];
@@ -334,7 +392,7 @@ async function updateLibrary() {
   await flush();
   if (semverLess(figma.root.getPluginData('version') || '1.0.0', SPEC.version)) { figma.root.setPluginData('version', SPEC.version); added.push('file version ' + SPEC.version); }
   if (!added.length) log('✓ Library is already at ' + SPEC.version + '. Nothing to add.');
-  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt. Next: run Audit file, then Export tokens (expect a diff only for size/bottom-bar and the version line).'); }
+  else { log('✓ Added to the library (' + SPEC.version + '):'); added.forEach(function (a) { log('    + ' + a); }); log('Nothing was deleted or rebuilt' + (topbarFix.length ? ', except the old phone topbar frame replaced inside ' + topbarFix.length + ' phone templates' : '') + '. Next: run Audit file, then Export tokens (expect a diff only for bg/scrim, size/topbar-phone, size/bottom-bar when coming from 1.0.0, and the version line).'); }
   post({ type: 'done', report: S.report, added: added });
 }
 
@@ -479,7 +537,8 @@ function dumps(v, ind) {
   return String(v);
 }
 function hex2(n) { return ('0' + Math.round(n * 255).toString(16)).slice(-2).toUpperCase(); }
-function toHex(c) { return '#' + hex2(c.r) + hex2(c.g) + hex2(c.b); }
+// Colours with alpha below 1 (bg/scrim) export as #RRGGBBAA; opaque colours keep #RRGGBB.
+function toHex(c) { return '#' + hex2(c.r) + hex2(c.g) + hex2(c.b) + (c.a !== undefined && c.a < 1 ? hex2(c.a) : ''); }
 function num(n) { return String(+(+n).toFixed(3)); }
 function cssName(n) { return '--mp-' + n.replace(/\//g, '-'); }
 const WEIGHT = { Regular: 400, Medium: 500, SemiBold: 600, 'Semi Bold': 600, Bold: 700 };

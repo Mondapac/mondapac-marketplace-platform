@@ -41,6 +41,11 @@
         "$type": "color",
         "$value": "{color.blue.750}",
         "$description": "Info banner"
+      },
+      "scrim": {
+        "$type": "color",
+        "$value": "#00000099",
+        "$description": "Overlay behind drawers and modals; alpha is part of the value"
       }
     },
     "border": {
