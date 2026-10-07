@@ -1,0 +1,7 @@
+# ADR-0030 decision 2: the raw read list, its helper and the checks that guard it need the
+# owner's review. The team sign-offs (Ali, Hassan, Mojtaba) are recorded in the PR.
+/apps/api/src/platform/persistence/raw-reads/ @falahjoon-prog
+/scripts/check-prisma-boundaries.mjs @falahjoon-prog
+/scripts/prisma-schema.mjs @falahjoon-prog
+/apps/api/test/boundary-fixtures/ @falahjoon-prog
+/eslint.config.mjs @falahjoon-prog
