@@ -144,9 +144,15 @@ export abstract class UseCase<Input, Output, Failure = never> {
       configurable: false,
       enumerable: false,
     });
+    // The gate's entry pinned on the instance: it runs the prototype's `execute` on the
+    // receiver of the call, exactly as the prototype method would.
     Object.defineProperty(this, 'execute', {
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- bound by the call on `this`
-      value: UseCase.prototype.execute,
+      value: function execute(
+        this: UseCase<Input, Output, Failure>,
+        ...args: [CallContext, Input]
+      ): Promise<Result<Output, AccessDenied | Failure>> {
+        return UseCase.prototype.execute.apply(this, args);
+      },
       writable: false,
       configurable: false,
       enumerable: false,

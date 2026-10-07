@@ -507,6 +507,7 @@ Deferred by the reviews of item 4 (W1 to W6 Hassan, B1 Bagher), each with its tr
 | W5 | `linterOptions.noInlineConfig` for `src/`, so a disable comment cannot switch a boundary rule off | Slice 1 |
 | W6 | The "aliased" exemption of `kernel-only-through-package-entries` trusts `apps/api/tsconfig.json`'s two `paths` entries; review it if `tsconfig.build.json` ever gains `paths` | Any `paths` change in the API's tsconfig files |
 | W7 | The first PR that adds a facade implementation, or an event or job handler, inside a module puts that file in the `use-case-entry-is-the-gate` handle selector's scope (by its folder or a `*.facade.ts` / `*.handler.ts` naming rule) and adds a fixture for it (Ali, review of identity slice 1c) | The first facade implementation, event handler or job handler in a module |
+| W8 | Widen the `use-case-entry-is-the-gate` `handle` selector to all of `src/modules/**`, and make it also refuse `'handle'` as the property argument of `Reflect.*` and `Object.getOwnPropertyDescriptor(s)`, and `Object.entries` / `Object.values` over a `.prototype` (or any `.prototype` member access on an imported use-case class); or, instead, a discovery check that fails on any `handle` identifier or string outside a use case's own method declaration (Hassan, re-review of slice 1c, N1, Low) | Before the first facade, job or event handler exists (slice 2) |
 | B1 | Extend `no-wall-clock` to `src/verticals/` | Slice 1, or earlier when the first code lands in `src/verticals/` |
 
 Note, 2026-10-07 (identity slice 1c, Hossein): the actor constructors (`anonymousActor`,
@@ -537,6 +538,12 @@ Changed by the security review of slice 1c (Hassan; H1, M1, M2, L1 to L3):
   one that always throws. Each instance gets an own, non-writable, non-configurable
   `handle` and `execute`. The body runs only during `execute`'s synchronous call of it, so
   a public `handle`, a second method that calls it, or a replaced `execute` cannot reach it.
+  The own `execute` is a function that applies the prototype's `execute` to its receiver,
+  so it needs no inline lint directive (W5). Accepted residual (re-review N2): while the
+  body runs synchronously, before its first `await`, `#admitting` is true, so a call of
+  `handle` made from inside that synchronous stretch is admitted. Only code the body
+  itself calls can make it; `handle` is `protected` and the `use-case-entry-is-the-gate`
+  lint rule refuses a call of it, so no action is taken.
 - **L1.** The declaration is deep-frozen and the static `access` sealed at construction.
 - **M1.** A `UseCaseGate` is built only by `createUseCaseGate`, with a constructor key
   private to its file, and `UseCase` accepts only a gate that factory built.

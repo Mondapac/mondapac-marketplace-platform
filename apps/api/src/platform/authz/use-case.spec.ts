@@ -186,9 +186,8 @@ describe.each(TEST_MARKETS)('UseCase keeps handle behind the gate in market %s (
       constructor(gate: UseCaseGate) {
         super(gate);
       }
-      // eslint-disable-next-line @typescript-eslint/require-await -- an async body, as in a module
-      override async handle(context: CallContext): Promise<Result<string, never>> {
-        return ok(`ran as ${context.actor.kind}`);
+      override handle(context: CallContext): Promise<Result<string, never>> {
+        return Promise.resolve(ok(`ran as ${context.actor.kind}`));
       }
     }
     const useCase = new PublicHandle(gate());
