@@ -508,6 +508,29 @@ Deferred by the reviews of item 4 (W1 to W6 Hassan, B1 Bagher), each with its tr
 | W6 | The "aliased" exemption of `kernel-only-through-package-entries` trusts `apps/api/tsconfig.json`'s two `paths` entries; review it if `tsconfig.build.json` ever gains `paths` | Any `paths` change in the API's tsconfig files |
 | B1 | Extend `no-wall-clock` to `src/verticals/` | Slice 1, or earlier when the first code lands in `src/verticals/` |
 
+Note, 2026-10-07 (identity slice 1c, Hossein): the actor constructors (`anonymousActor`,
+`systemActor`) and `createCallContext` are in a third kernel entry,
+`@mondapac/shared-kernel/contexts`; the authenticated constructor stays kernel-internal until
+slice 2. The dependency-cruiser rule `contexts-are-built-by-platform` lets only `src/platform/`
+import that entry (the W2 half that slice 1c needed); `UseCaseGate` checks "hosted" as well as
+"minted". Rule 9 is two dependency-cruiser rules: `use-cases-are-the-only-way-in`
+(`presentation/`, `contracts/` and any `*.facade.ts` of a module import from its
+`application/` only `application/use-cases/*.use-case.ts`) and
+`repositories-stay-behind-use-cases` (a `*.repository.ts` is imported only from
+`application/`, `infrastructure/` and the module's Nest module file). Both rest on file-name
+conventions: repositories are `*.repository.ts`, facade implementations `*.facade.ts`, event
+and job handlers live in `presentation/`. `identity`'s two port implementations in
+`application/access/` (identity design 5.1) are bound by its Nest module, so they need no
+exception. The CI check of identity design 5.2 is `apps/api/test/authz/use-cases.spec.ts`; the
+checked-in list of non-permission and `allow` declarations is
+`apps/api/test/contracts/access-declarations.json`, and the retired-key list is
+`apps/api/src/platform/authz/retired-permission-keys.ts` (refused by the CI check now, by the
+registry at boot from slice 8a). The ESLint half of rule 5 for the new constructors, the
+`execute`/`handle` lint rule and W5 change `eslint.config.mjs` (shared) and follow in a PR of
+their own; until then the `UseCase` constructor refuses at boot a class that overrides
+`execute`, does not extend `UseCase` directly or has no own declaration, and the CI check
+refuses the same in source.
+
 ## 9. Testing
 
 | What | Kind | Notes |
