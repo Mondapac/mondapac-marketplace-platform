@@ -315,6 +315,16 @@ function state180(M, opts, label) {
   const nColl = opts.maxModes > 1 ? 1 : 2;
   const vars = (name) => [...M.VARS.values()].filter((v) => v.name === name);
   const dc = [...M.COLLS.values()].find((c) => c.name === 'Dimension');
+  // Every component block fits the 1440 px page: the set is at most 1440 wide, the row and the Usage panel are laid out
+  // for the set's width (real-Figma Audit after 1.7.0 found Input and AuthShowcase sticking out of their sections).
+  // (The 1.8.0 sets are left to the 1.8.x layout fixes of the Panel release.)
+  const blocks = allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Component + usage' && n.children[0] && n.children[0].type === 'COMPONENT_SET' && NEW_180.indexOf(n.children[0].name) < 0);
+  const misfit = blocks.filter((r) => {
+    const set = r.children[0]; const wide = set.width + 24 + 360 > 1440; const panel = r.children.find((c) => c.name === 'Usage');
+    return set.width > 1440 || r.layoutMode !== (wide ? 'VERTICAL' : 'HORIZONTAL') || (panel && (panel.layoutMode !== (wide ? 'HORIZONTAL' : 'VERTICAL') || Math.round(panel.width) !== (wide ? Math.min(1440, Math.max(Math.round(set.width), 720)) : 360)));
+  }).map((r) => r.children[0].name);
+  check(blocks.length > 20 && misfit.length === 0, label + ': all ' + blocks.length + ' component blocks fit the 1440 px page' + (misfit.length ? ' (not: ' + misfit.join(', ') + ')' : ''));
+  check(['Input', 'AuthShowcase'].every((n) => setOf(M, n).width <= 1440) && setOf(M, 'Input').children.every((c) => setOf(M, 'Input').children.filter((k) => Math.abs(k.x - c.x) < 0.5).every((k) => k.variantProperties.Type === c.variantProperties.Type)), label + ': Input has one column per Type and AuthShowcase one variant per row (' + Math.round(setOf(M, 'Input').width) + ' and ' + Math.round(setOf(M, 'AuthShowcase').width) + ' px wide)');
   [['size/dialog-sm', 400], ['size/dialog-md', 560]].forEach((d) => {
     const vs = vars(d[0]); const v0 = vs.find((v) => v.variableCollectionId === dc.id);
     check(vs.length === nColl && vs.every((v) => v.scopes.join() === 'WIDTH_HEIGHT' && v.codeSyntax.WEB === 'var(--mp-' + d[0].replace('/', '-') + ')') && v0 && dc.modes.every((m) => v0.valuesByMode[m.modeId] === d[1] || v0.valuesByMode[m.modeId] === undefined), label + ': ' + d[0] + ' is ' + d[1] + ' (desktop and touch) with scope WIDTH_HEIGHT and code syntax');
@@ -486,8 +496,10 @@ async function updateTo180(M, label, opts, from) {
   const after = allNodes(M);
   const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
   check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
-  const changed = before.filter((n) => M.byId.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
-  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
+  // The Usage panels beside Input and AuthShowcase are re-fitted to the re-laid-out sets (layout fix for 1.7.0).
+  const refit = new Set(['Input', 'AuthShowcase'].map((k) => setOf(M, k)).filter((x) => x && x.parent && x.parent.name === 'Component + usage').map((x) => (x.parent.children.find((c) => c.name === 'Usage') || {}).id));
+  const changed = before.filter((n) => M.byId.has(n.id) && !refit.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date and the Usage panels of Input and AuthShowcase (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
   const freshNodes = after.filter((n) => !beforeIds.has(n.id));
   const tops = freshNodes.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
   const okTops = new Set(NEW_180.concat(ADMIN_180, SELLER_180, BODIES_180, ['Row', 'Select', 'Dialog', 'DialogBody']));

@@ -236,18 +236,40 @@ function docSection(root, title, desc) {
   return s;
 }
 // A component block: set (left) + doc panel (right)
+const DOC_CONTENT_W = 1440; // page width 1600 less the 80 px side padding of pageShell
+function blockIsWide(set) { return set.width + 24 + 360 > DOC_CONTENT_W; }
+function usagePanelWidth(set, wide) { return wide ? Math.min(DOC_CONTENT_W, Math.max(Math.round(set.width), 720)) : 360; }
 function componentBlock(root, set, doc) {
   const section = docSection(root, doc.title, doc.summary);
   // Usage notes sit to the right of the set; when the set is wide they move below it as columns.
-  const wide = set.width + 24 + 360 > 1440;
+  const wide = blockIsWide(set);
   const groups = [['When to use', doc.use], ['Properties', doc.props], ['Accessibility', doc.a11y], ['Avoid', doc.dont]].filter(function (g) { return g[1]; })
     .map(function (g) { return frame({ name: g[0], dir: 'V', gap: 'space/2', w: 312 }, [text(g[0], 'Heading/H2'), bullets(g[1], 312)]); });
-  const panel = frame({ name: 'Usage', dir: wide ? 'H' : 'V', wrap: wide, gap: wide ? 'space/8' : 'space/4', rowGap: wide ? 'space/4' : undefined, pad: 'space/6', w: wide ? Math.min(1440, Math.max(set.width, 720)) : 360, fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, groups);
+  const panel = frame({ name: 'Usage', dir: wide ? 'H' : 'V', wrap: wide, gap: wide ? 'space/8' : 'space/4', rowGap: wide ? 'space/4' : undefined, pad: 'space/6', w: usagePanelWidth(set, wide), fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, groups);
   const row = frame({ name: 'Component + usage', dir: wide ? 'V' : 'H', gap: 'space/6', align: 'start' });
   row.appendChild(set);
   if (groups.length) add(row, panel); else panel.remove();
   add(section, row);
   return section;
+}
+// Update library: after a set changed size, put its block back the way componentBlock lays it out for that
+// width (row direction, Usage panel direction, wrap and width). Returns true when something changed.
+function fitBlock(set) {
+  const row = set.parent; if (!row || row.type !== 'FRAME' || row.name !== 'Component + usage') return false;
+  const wide = blockIsWide(set); let changed = false;
+  const dir = wide ? 'VERTICAL' : 'HORIZONTAL';
+  if (row.layoutMode !== dir) { row.layoutMode = dir; row.primaryAxisSizingMode = 'AUTO'; row.counterAxisSizingMode = 'AUTO'; changed = true; }
+  const panel = row.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Usage'; })[0];
+  if (panel) {
+    const pdir = wide ? 'HORIZONTAL' : 'VERTICAL'; const w = usagePanelWidth(set, wide);
+    if (panel.layoutMode !== pdir || Math.round(panel.width) !== w) {
+      panel.layoutMode = pdir; panel.layoutWrap = wide ? 'WRAP' : 'NO_WRAP';
+      bindNum(panel, 'itemSpacing', wide ? 'space/8' : 'space/4'); if (wide) bindNum(panel, 'counterAxisSpacing', 'space/4');
+      panel.resize(w, panel.height); panel.layoutSizingHorizontal = 'FIXED'; panel.layoutSizingVertical = 'HUG';
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 // ---------------------------------------------------------------- additions to existing sets (Update library, 1.7.0)
