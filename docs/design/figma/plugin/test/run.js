@@ -911,11 +911,14 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'build' });
     check(!r.err && Q.ROOT.getPluginData('version') === '1.8.1', 'the 1.8.1 plugin builds the starting file ' + tag12 + (r.err ? ': ' + r.err.message : ''));
     check(setOf(Q, 'Input').width > 1440 && setOf(Q, 'AuthShowcase').width > 1440, 'the 1.8.1 file has the sets the Audit found too wide (Input ' + Math.round(setOf(Q, 'Input').width) + ', AuthShowcase ' + Math.round(setOf(Q, 'AuthShowcase').width) + ')');
-    let seller = null, sandbox = null, sandboxAt = '';
+    let seller = null, sandbox = null, sandboxAt = '', forms = null, archive = null, archiveAt = '';
     if (opts.maxModes === 1) {
       // what the owner's page 3 looked like: a section that grew covers the next one; another one was moved aside by hand
       const admin = hostNamed(Q, 'Templates · Admin'); seller = hostNamed(Q, 'Templates · Seller'); sandbox = hostNamed(Q, 'Sandbox');
       seller.y = admin.y + 200; sandbox.x = admin.x + admin.width + 2000; sandbox.y = admin.y; sandboxAt = sandbox.x + ',' + sandbox.y;
+      // page 2 runs left to right: Forms & selection pushed onto Actions; Archive placed beside Dark preview (side by side, no overlap)
+      const actions = hostNamed(Q, 'Actions'); forms = hostNamed(Q, 'Forms & selection'); forms.x = actions.x + 300;
+      const dark = hostNamed(Q, 'Templates · Dark preview'); archive = hostNamed(Q, 'Archive'); archive.x = dark.x + dark.width + 600; archive.y = dark.y; archiveAt = archive.x + ',' + archive.y;
     }
     load(Q, CODE);
     const ids0 = new Set(allNodes(Q).map((n) => n.id)); const inputIds = setOf(Q, 'Input').children.map((c) => c.id + c.name).sort().join();
@@ -927,6 +930,9 @@ async function updateScenario(label, opts, from) {
     check([...ids0].every((id) => Q.byId.has(id)) && setOf(Q, 'Input').children.map((c) => c.id + c.name).sort().join() === inputIds, 'nothing was deleted and the 18 Input variants keep their ids and names');
     if (seller) {
       check(add12.includes('section Templates · Seller moved down so it no longer overlaps the section before it') && sandbox.x + ',' + sandbox.y === sandboxAt, 'the covered section moved down; the section arranged by hand stayed where it was');
+      const act = hostNamed(Q, 'Actions');
+      check(add12.includes('section Forms & selection moved right so it no longer overlaps the section before it') && forms.x >= act.x + act.width + 240 - 0.5, 'on the left-to-right components page the covered section moved right');
+      check(archive.x + ',' + archive.y === archiveAt && !add12.some((l) => /^section Archive /.test(l)), 'a section placed beside another (no overlap) stayed where it was');
     }
     const n12 = allNodes(Q).length;
     r = await send(Q, { type: 'update' });
@@ -943,6 +949,11 @@ async function updateScenario(label, opts, from) {
     const fin = setOf(Q, 'Input'); fin.setPluginData('mondapac-ds', ''); const fx = fin.children.map((c) => c.x).join();
     r = await send(Q, { type: 'update' });
     check(!r.err && fin.children.map((c) => c.x).join() === fx && fin.width > 1440, 'an Input set that is not the plugin\'s is not re-laid out');
+    const Q2 = start(STARTER, CODE_181);
+    r = await send(Q2, { type: 'build' }); load(Q2, CODE);
+    const fas = setOf(Q2, 'AuthShowcase'); fas.setPluginData('mondapac-ds', ''); const fax = fas.children.map((c) => c.x + ',' + c.y).join();
+    r = await send(Q2, { type: 'update' });
+    check(!r.err && fas.children.map((c) => c.x + ',' + c.y).join() === fax && fas.width > 1440 && !r.done.added.some((l) => /^AuthShowcase /.test(l)), 'an AuthShowcase set that is not the plugin\'s is not re-laid out');
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
