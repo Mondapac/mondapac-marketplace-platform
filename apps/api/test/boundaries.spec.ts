@@ -244,7 +244,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ).toEqual({ status: 0, problems: [] });
     });
 
-    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and the outbox exception', () => {
+    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, and the outbox exception', () => {
       expect(
         checkPrisma(
           path.join(PRISMA_FIXTURES, 'passing/schema'),
@@ -272,6 +272,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'alpha.prisma: AlphaIntId @id on id does not contain marketId',
           'alpha.prisma: AlphaChildNoMarket.parent relates two market-scoped models without marketId in both fields and references (PM6)',
           'alpha.prisma: AlphaChildMisaligned.parent pairs marketId with another column (marketId is at different positions in fields and references; PM6)',
+          'alpha.prisma: AlphaScopedChild.parent relates a market-scoped model to the exempt model AlphaExemptParent; exempt and market-scoped models may not relate',
+          'alpha.prisma: AlphaExemptChild.parent relates an exempt model to the market-scoped model AlphaParent; exempt and market-scoped models may not relate',
           'beta.prisma: BetaOutbox is an outbox whose fields differ from AlphaOutbox',
           'modules/alpha/infrastructure/reaches-beta.ts:2: import of "BetaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/reaches-beta.ts:3: import "../../../generated/prisma/models/BetaThing" names model BetaThing, which belongs to module "beta"',

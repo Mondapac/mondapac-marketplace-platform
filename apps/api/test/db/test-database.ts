@@ -31,7 +31,13 @@ export function applicationDatabaseUrl(): string {
   return fromEnvironment('DATABASE_URL', 'the application login');
 }
 
-function exported(name: 'TEST_DATABASE_URL' | 'TEST_OWNER_DATABASE_URL'): string {
+function exported(
+  name:
+    | 'TEST_DATABASE_URL'
+    | 'TEST_OWNER_DATABASE_URL'
+    | 'TEST_LOCKING_DATABASE_URL'
+    | 'TEST_LOCKING_OWNER_DATABASE_URL',
+): string {
   const url = process.env[name];
   if (!url) {
     throw new Error(`${name} is not set: database tests must run via jest.db.config.cjs`);
@@ -47,6 +53,18 @@ export function testDatabaseUrl(): string {
 /** The throwaway database of this run, as its owner (the migration role). */
 export function ownerTestDatabaseUrl(): string {
   return exported('TEST_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy of the run database that unit-of-work.db-spec.ts locks and adds test-only
+ * triggers to (global-setup.ts), as the application login and as its owner.
+ */
+export function lockingTestDatabaseUrl(): string {
+  return exported('TEST_LOCKING_DATABASE_URL');
+}
+
+export function lockingOwnerTestDatabaseUrl(): string {
+  return exported('TEST_LOCKING_OWNER_DATABASE_URL');
 }
 
 export { REPO_ROOT };

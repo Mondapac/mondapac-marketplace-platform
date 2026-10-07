@@ -262,8 +262,9 @@ describe('PM6: a child row cannot name a parent of another Market (database)', (
     });
 
     afterAll(async () => {
-      await app.end();
-      await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);
+      // beforeAll may have failed before connecting; the scratch database is dropped anyway.
+      await (app as Client | undefined)?.end();
+      await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
       await admin.end();
     });
 

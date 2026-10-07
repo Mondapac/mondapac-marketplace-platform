@@ -300,6 +300,58 @@ describe.each(['AU', 'ZZ'] as const)('market guard decision, unit opened for %s'
     });
   });
 
+  describe('cursor: the unit Market, like a where (Hassan, L1)', () => {
+    const read = (cursor: unknown, model = 'AuditLog', operation = 'findMany') =>
+      decide(model, operation, { where: { marketId: M }, cursor, take: 10 });
+
+    it.each(['findMany', 'findFirst', 'findFirstOrThrow'])(
+      '%s: accepts a cursor that names the unit Market',
+      (operation) => {
+        expect(read({ id: 'i', marketId: M }, 'AuditLog', operation)).toBeNull();
+        expect(read({ id: 'i', marketId: { equals: M } }, 'AuditLog', operation)).toBeNull();
+      },
+    );
+
+    it('lets a read without a cursor, or with an undefined one, through', () => {
+      expect(decide('AuditLog', 'findMany', { where: { marketId: M } })).toBeNull();
+      expect(read(undefined)).toBeNull();
+    });
+
+    it('refuses a cursor without marketId, by id alone', () => {
+      expect(read({ id: 'i' })).toBe('cursor-market-missing');
+    });
+
+    it("refuses a cursor that names the other fixture's Market", () => {
+      expect(read({ id: 'i', marketId: other })).toBe('cursor-market-mismatch');
+      expect(read({ id: 'i', marketId: { in: [M, other] } })).toBe('cursor-market-mismatch');
+    });
+
+    it('refuses a cursor that is not an object, or that has an unknown key', () => {
+      expect(read('i')).toBe('cursor-malformed');
+      expect(read(null)).toBe('cursor-malformed');
+      expect(read({ id: 'i', marketId: M, market_id: M })).toBe('cursor-unknown-key');
+    });
+
+    it('reads the compound selectors of a cursor', () => {
+      const selector = { marketId: M, kind: 'sign-in', keyHash: 'h' };
+      expect(read({ marketId: M, marketId_kind_keyHash: selector }, 'Throttle')).toBeNull();
+      expect(read({ marketId_kind_keyHash: selector }, 'Throttle')).toBe('cursor-market-missing');
+      expect(
+        read({ marketId: M, marketId_kind_keyHash: { ...selector, marketId: other } }, 'Throttle'),
+      ).toBe('selector-market-mismatch');
+    });
+
+    it('checks the where before the cursor', () => {
+      expect(
+        decide('AuditLog', 'findMany', { where: { marketId: other }, cursor: { id: 'i' } }),
+      ).toBe('where-market-mismatch');
+    });
+
+    it('lets a cursor on an exempt model through', () => {
+      expect(decide('Lookup', 'findMany', { cursor: { code: 'c' } })).toBeNull();
+    });
+  });
+
   describe('create, createMany, createManyAndReturn (P 4.1 row 4)', () => {
     it.each(['create', 'createMany', 'createManyAndReturn'])('%s: accepts own rows', (op) => {
       const data = op === 'create' ? row() : [row({ id: 'a' }), row({ id: 'b' })];

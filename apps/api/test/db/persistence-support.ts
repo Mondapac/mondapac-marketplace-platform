@@ -36,11 +36,13 @@ export interface PersistenceOptions {
   /** Extra connection-string parameters (`application_name`, test-only `options`). */
   readonly urlParameters?: Record<string, string>;
   readonly pause?: RetryPause;
+  /** The database's application URL; the run database by default. */
+  readonly databaseUrl?: string;
 }
 
 /** A pool of the application role on the run's throwaway database. */
 export function createPersistence(options: PersistenceOptions = {}): Persistence {
-  const url = new URL(testDatabaseUrl());
+  const url = new URL(options.databaseUrl ?? testDatabaseUrl());
   for (const [name, value] of Object.entries(options.urlParameters ?? {})) {
     url.searchParams.set(name, value);
   }

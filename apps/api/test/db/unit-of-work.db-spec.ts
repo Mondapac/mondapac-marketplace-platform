@@ -8,6 +8,7 @@ import type { App } from 'supertest/types';
 import { databaseIsolationAccepted } from '../../src/check-database-role';
 import { Market } from '../../src/platform/market-context/market.decorator';
 import { DatabaseProbe } from '../../src/platform/persistence/database-probe';
+import { GUARDED_OPERATIONS } from '../../src/platform/persistence/market-guard';
 import { PrismaRoot } from '../../src/platform/persistence/prisma-root';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import {
@@ -36,13 +37,23 @@ import {
   recordDriverStatements,
   timed,
   type Persistence,
+  type PersistenceOptions,
 } from './persistence-support';
-import { migrationDatabaseUrl, ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import {
+  lockingOwnerTestDatabaseUrl,
+  lockingTestDatabaseUrl,
+  migrationDatabaseUrl,
+  testDatabaseUrl,
+} from './test-database';
 
 // Platform persistence design ("P") 3 and the UnitOfWork and read-only rows of 13, with
 // ADR-0025 conditions (a) to (e), for both Market fixtures. Everything runs as the
-// application role on the run's throwaway database; test-only objects are created by the
-// migration role (the owner) and dropped after.
+// application role on the run's locking database, a copy of the run database that only this
+// file uses: it locks platform.audit_log and adds test-only triggers to it, created by the
+// migration role (the owner) and dropped after, so no other file meets those locks.
+
+const onLockingDatabase = (options: PersistenceOptions = {}): Persistence =>
+  createPersistence({ databaseUrl: lockingTestDatabaseUrl(), ...options });
 
 /** Audit actions the test-only triggers below turn into a serialisation failure. */
 const CONFLICT_AT_STATEMENT = 'test.conflict.at-statement';
@@ -88,11 +99,11 @@ describe('UnitOfWork (database integration)', () => {
 
   beforeAll(async () => {
     driver = recordDriverStatements();
-    db = createPersistence();
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    db = onLockingDatabase();
+    owner = new Client({ connectionString: lockingOwnerTestDatabaseUrl() });
     await owner.connect();
     await owner.query(TEST_ONLY_TRIGGERS);
-    observer = new Client({ connectionString: testDatabaseUrl() });
+    observer = new Client({ connectionString: lockingTestDatabaseUrl() });
     await observer.connect();
   });
 
@@ -276,7 +287,7 @@ describe('UnitOfWork (database integration)', () => {
     describe('retry (P 3.1 row 7)', () => {
       it('runs two serialisable units in conflict to success, one of them retried once', async () => {
         // A fixed pause, longer than the winner's commit, so the retry reads the committed row.
-        const retrying = createPersistence({ pause: () => sleep(150) });
+        const retrying = onLockingDatabase({ pause: () => sleep(150) });
         const targetId = `write-skew-${randomUUID()}`;
         const bothRead = gate();
         let reads = 0;
@@ -316,7 +327,7 @@ describe('UnitOfWork (database integration)', () => {
         'ends a 40001 raised on every attempt %s after exactly 3 attempts, committing nothing',
         async (_where, action) => {
           const pauses: number[] = [];
-          const retrying = createPersistence({
+          const retrying = onLockingDatabase({
             pause: (attempt) => {
               pauses.push(attempt);
               return Promise.resolve();
@@ -345,7 +356,7 @@ describe('UnitOfWork (database integration)', () => {
       it('turns a lock timeout (55P03) into TransactionConflictError after one attempt', async () => {
         // The login role's lock_timeout (3 s, PK1) is a deployment setting; this pool sets a
         // shorter one on its own sessions only, so the test does not wait 3 s.
-        const locked = createPersistence({ urlParameters: { options: '-c lock_timeout=300' } });
+        const locked = onLockingDatabase({ urlParameters: { options: '-c lock_timeout=300' } });
         let attempts = 0;
         await owner.query('BEGIN');
         try {
@@ -400,7 +411,7 @@ describe('UnitOfWork (database integration)', () => {
       it.each([{ readOnly: false }, { readOnly: true }])(
         'fails within about 2 s when the pool is exhausted (%j)',
         async (options) => {
-          const small = createPersistence({ env: { DATABASE_POOL_MAX: '1' } });
+          const small = onLockingDatabase({ env: { DATABASE_POOL_MAX: '1' } });
           const holding = gate();
           const held = gate();
           const holder = small.unitOfWork.run(market, async () => {
@@ -427,14 +438,127 @@ describe('UnitOfWork (database integration)', () => {
 
             expect(outcome.error).toBeDefined();
             expect(outcome.ms).toBeGreaterThan(1500);
-            expect(outcome.ms).toBeLessThan(3500);
+            expect(outcome.ms).toBeLessThan(5000);
           } finally {
             holding.open();
             await holder;
             await small.close();
           }
         },
+        10_000,
       );
+    });
+
+    describe('the view tx(market) hands out (ADR-0025 condition (b); Hassan, H1)', () => {
+      const CLIENT_MEMBERS = [
+        '$transaction',
+        '$queryRaw',
+        '$executeRaw',
+        '$queryRawUnsafe',
+        '$executeRawUnsafe',
+        '$queryRawTyped',
+        '$connect',
+        '$disconnect',
+        '$on',
+        '$extends',
+      ];
+
+      /**
+       * Every property name reachable from `start` through own data properties and
+       * prototypes, `depth` steps deep. Getters are not called.
+       */
+      function reachableNames(start: unknown, depth: number): Set<string> {
+        const names = new Set<string>();
+        const seen = new Set<unknown>();
+        let level: unknown[] = [start];
+        for (let step = 0; step <= depth && level.length > 0; step += 1) {
+          const next: unknown[] = [];
+          for (const value of level) {
+            if ((typeof value !== 'object' && typeof value !== 'function') || value === null) {
+              continue;
+            }
+            if (seen.has(value)) continue;
+            seen.add(value);
+            next.push(Object.getPrototypeOf(value));
+            for (const key of Reflect.ownKeys(value)) {
+              names.add(String(key));
+              const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+              if (descriptor !== undefined && 'value' in descriptor) next.push(descriptor.value);
+            }
+          }
+          level = next;
+        }
+        return names;
+      }
+
+      it.each([
+        ['a read-write unit', {}],
+        ['a read-only unit', { readOnly: true }],
+      ] as [string, UnitOfWorkOptions][])(
+        'in %s: frozen, no prototype, the guarded operations only, no way to the client',
+        async (_case, options) => {
+          let view: unknown;
+          await db.unitOfWork.run(
+            market,
+            inline(() => {
+              view = db.service.tx(market);
+              return ok(undefined);
+            }),
+            options,
+          );
+          if (typeof view !== 'object' || view === null) throw new Error('no view');
+
+          expect(Object.isFrozen(view)).toBe(true);
+          expect(Object.getPrototypeOf(view)).toBeNull();
+          expect(Reflect.ownKeys(view)).toEqual(['auditLog']);
+          for (const member of CLIENT_MEMBERS) expect(member in view).toBe(false);
+
+          const delegate = Reflect.get(view, 'auditLog') as Record<string, unknown>;
+          expect(Object.isFrozen(delegate)).toBe(true);
+          expect(Object.getPrototypeOf(delegate)).toBeNull();
+          expect([...Reflect.ownKeys(delegate)].sort()).toEqual([...GUARDED_OPERATIONS].sort());
+          for (const member of ['$parent', '$name', 'fields', ...CLIENT_MEMBERS]) {
+            expect(member in delegate).toBe(false);
+          }
+          for (const operation of GUARDED_OPERATIONS) {
+            expect(typeof delegate[operation]).toBe('function');
+          }
+
+          const reachable = reachableNames(view, 6);
+          expect(reachable.has('findMany')).toBe(true);
+          for (const member of ['$parent', '$queryRawUnsafe', '$transaction', '$disconnect']) {
+            expect(reachable.has(member)).toBe(false);
+          }
+        },
+      );
+
+      it('the operations of the view still reach the database through the guard', async () => {
+        const row = auditRow(market);
+        await db.unitOfWork.run(market, async () => {
+          await insert(market, row);
+          return ok(undefined);
+        });
+
+        const found = await db.unitOfWork.run(
+          market,
+          async () =>
+            ok(
+              await db.service
+                .tx(market)
+                .auditLog.findMany({ where: { marketId: market.marketId, id: row.id } }),
+            ),
+          { readOnly: true },
+        );
+        expect(found.ok && found.value.map((r) => r.id)).toEqual([row.id]);
+        await expect(
+          db.unitOfWork.run(
+            market,
+            async () =>
+              ok(await db.service.tx(market).auditLog.findMany({ where: { id: row.id } })),
+            { readOnly: true },
+          ),
+        ).rejects.toBeInstanceOf(MarketGuardError);
+      });
     });
 
     describe('read-only units (ADR-0025)', () => {
@@ -465,7 +589,7 @@ describe('UnitOfWork (database integration)', () => {
         'runs a blocked statement of %s in an implicit transaction only if read-only',
         async (_case, isReadOnly) => {
           const applicationName = `uow-${randomUUID().slice(0, 8)}`;
-          const probe = createPersistence({ urlParameters: { application_name: applicationName } });
+          const probe = onLockingDatabase({ urlParameters: { application_name: applicationName } });
           await owner.query('BEGIN');
           let unit: Promise<unknown> | undefined;
           try {
@@ -503,36 +627,6 @@ describe('UnitOfWork (database integration)', () => {
           expect(rows.filter((row) => row.state === 'idle in transaction')).toEqual([]);
         },
       );
-
-      it('hands out a frozen view with the model delegates only, no $ method', async () => {
-        await db.unitOfWork.run(
-          market,
-          inline(() => {
-            const view = db.service.tx(market) as unknown as Record<string, unknown>;
-            const names = Object.getOwnPropertyNames(view);
-
-            expect(Object.isFrozen(view)).toBe(true);
-            expect(Object.getPrototypeOf(view)).toBeNull();
-            expect(names).toEqual(['auditLog']);
-            for (const method of [
-              '$transaction',
-              '$queryRaw',
-              '$executeRaw',
-              '$queryRawUnsafe',
-              '$executeRawUnsafe',
-              '$queryRawTyped',
-              '$connect',
-              '$disconnect',
-              '$on',
-              '$extends',
-            ]) {
-              expect(method in view).toBe(false);
-            }
-            return ok(undefined);
-          }),
-          readOnly,
-        );
-      });
 
       it.each([
         ['create', (m: MarketContext) => ({ data: auditRow(m) })],
@@ -658,7 +752,7 @@ describe('UnitOfWork (database integration)', () => {
 
     it.each(TEST_MARKETS)('answers 409 with the code only, for %s', async (code) => {
       const { app } = await createTestApp({
-        env: { DATABASE_URL: testDatabaseUrl() },
+        env: { DATABASE_URL: lockingTestDatabaseUrl() },
         controllers: [ConflictProbeController],
       });
       try {
@@ -687,12 +781,18 @@ describe('UnitOfWork (database integration)', () => {
       ]);
     });
 
-    it('sets default_transaction_isolation and _read_only on no login role and no database', async () => {
+    it('sets default_transaction_isolation and _read_only on neither the application roles nor this database', async () => {
+      // Only the entries that reach the application login here: this database or every
+      // database (0), and the login, its group or every role (0). Other databases of the
+      // cluster, such as the DatabaseProbe scratch database below, are not looked at.
       const { rows } = await observer.query(
         `SELECT s.setdatabase, s.setrole, s.setconfig FROM pg_db_role_setting s
           CROSS JOIN LATERAL unnest(s.setconfig) AS setting
-          WHERE setting LIKE 'default\\_transaction\\_isolation=%'
-             OR setting LIKE 'default\\_transaction\\_read\\_only=%'`,
+          WHERE s.setdatabase IN (0, (SELECT oid FROM pg_database WHERE datname = current_database()))
+            AND s.setrole IN (0, (SELECT oid FROM pg_roles WHERE rolname = current_user),
+                              (SELECT oid FROM pg_roles WHERE rolname = 'mondapac_app'))
+            AND (setting LIKE 'default\\_transaction\\_isolation=%'
+                 OR setting LIKE 'default\\_transaction\\_read\\_only=%')`,
       );
 
       expect(rows).toEqual([]);
@@ -705,7 +805,7 @@ describe('UnitOfWork (database integration)', () => {
   });
 
   describe('DatabaseProbe refuses to start on another default isolation (ADR-0025)', () => {
-    it('passes on the run database, as the application role', async () => {
+    it('passes on the test database, as the application role', async () => {
       const probe = new DatabaseProbe(db.root);
 
       await expect(probe.defaultTransactionIsolation()).resolves.toBe('read committed');

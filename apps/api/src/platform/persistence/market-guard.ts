@@ -25,7 +25,7 @@ export interface GuardRequest {
   readonly args: unknown;
 }
 
-const READ_OPERATIONS = new Set([
+const READ_OPERATION_NAMES = [
   'findUnique',
   'findUniqueOrThrow',
   'findFirst',
@@ -34,15 +34,32 @@ const READ_OPERATIONS = new Set([
   'count',
   'aggregate',
   'groupBy',
-]);
-const WHERE_WRITE_OPERATIONS = new Set([
+] as const;
+const WHERE_WRITE_OPERATION_NAMES = [
   'update',
   'updateMany',
   'updateManyAndReturn',
   'delete',
   'deleteMany',
-]);
-const CREATE_OPERATIONS = new Set(['create', 'createMany', 'createManyAndReturn']);
+] as const;
+const CREATE_OPERATION_NAMES = ['create', 'createMany', 'createManyAndReturn'] as const;
+
+const READ_OPERATIONS = new Set<string>(READ_OPERATION_NAMES);
+const WHERE_WRITE_OPERATIONS = new Set<string>(WHERE_WRITE_OPERATION_NAMES);
+const CREATE_OPERATIONS = new Set<string>(CREATE_OPERATION_NAMES);
+
+/**
+ * Every model operation the guard lets through on some arguments, and so every operation a
+ * repository may call: each delegate of the view `PrismaService.tx(market)` hands out holds
+ * these functions and nothing else (Hassan, H1).
+ */
+export const GUARDED_OPERATIONS = Object.freeze([
+  ...READ_OPERATION_NAMES,
+  ...WHERE_WRITE_OPERATION_NAMES,
+  ...CREATE_OPERATION_NAMES,
+  'upsert',
+] as const);
+export type GuardedOperation = (typeof GUARDED_OPERATIONS)[number];
 const UPDATE_OPERATIONS = new Set(['update', 'updateMany', 'updateManyAndReturn']);
 const RAW_OPERATIONS = new Set([
   '$queryRaw',
@@ -115,6 +132,28 @@ function whereRefusal(
   return null;
 }
 
+const CURSOR_REFUSALS: Partial<Record<MarketGuardRefusal, MarketGuardRefusal>> = {
+  'where-missing': 'cursor-malformed',
+  'where-unknown-key': 'cursor-unknown-key',
+  'where-market-missing': 'cursor-market-missing',
+  'where-market-mismatch': 'cursor-market-mismatch',
+};
+
+/**
+ * The `cursor` of a scoped model's read is a unique where of its own: it names the unit's
+ * Market at the top level, and its compound selectors are read as a where's are (Hassan, L1).
+ * A cursor on an exempt model is let through.
+ */
+function cursorRefusal(
+  entry: ModelMapEntry,
+  args: Plain,
+  unit: GuardUnit,
+): MarketGuardRefusal | null {
+  if (args.cursor === undefined || entry.scope !== 'scoped') return null;
+  const refusal = whereRefusal(entry, { where: args.cursor }, unit);
+  return refusal === null ? null : (CURSOR_REFUSALS[refusal] ?? refusal);
+}
+
 /** A relation field among the keys of a write's data (P 4.1 row 8). */
 const nestedWrite = (entry: ModelMapEntry, data: Plain): boolean =>
   Object.keys(data).some((key) => entry.relationFields.includes(key));
@@ -178,7 +217,7 @@ export function marketGuardRefusal(
     return null;
   }
 
-  const where = whereRefusal(entry, args, unit);
+  const where = whereRefusal(entry, args, unit) ?? cursorRefusal(entry, args, unit);
   if (where !== null) return where;
 
   if (isUpsert) {

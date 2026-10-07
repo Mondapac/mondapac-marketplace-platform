@@ -57,6 +57,7 @@ model AlphaParent {
   code       String
   orphans    AlphaChildNoMarket[]
   misaligned AlphaChildMisaligned[]
+  exemptRefs AlphaExemptChild[]
 
   @@unique([marketId, id])
   @@unique([id, marketId])
@@ -104,5 +105,33 @@ model AlphaOutbox {
   payload   Json
 
   @@map("outbox")
+  @@schema("alpha")
+}
+
+/// @market-scope none: allowed on its own; the two relations below are the violations.
+model AlphaExemptParent {
+  code    String             @id
+  scopedChildren AlphaScopedChild[]
+
+  @@schema("alpha")
+}
+
+/// Violation: a market-scoped model related to an exempt model.
+model AlphaScopedChild {
+  id         String            @id @db.Uuid
+  marketId   String            @map("market_id")
+  tenantId   String            @map("tenant_id")
+  parentCode String            @map("parent_code")
+  parent     AlphaExemptParent @relation(fields: [parentCode], references: [code])
+
+  @@schema("alpha")
+}
+
+/// @market-scope none: violation, an exempt model related to a market-scoped model.
+model AlphaExemptChild {
+  code     String      @id
+  parentId String      @map("parent_id") @db.Uuid
+  parent   AlphaParent @relation(fields: [parentId], references: [id])
+
   @@schema("alpha")
 }

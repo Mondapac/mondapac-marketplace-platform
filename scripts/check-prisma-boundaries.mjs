@@ -114,7 +114,19 @@ for (const model of models) {
   // --- A relation between scoped models carries marketId on both sides, aligned (PM6).
   for (const relation of model.relations) {
     const target = byName.get(relation.target);
-    if (!isScoped(model) || !target || !isScoped(target)) continue;
+    if (!target) continue;
+    // An exempt model and a scoped model never relate, in either direction: the guard reads
+    // no Market on the exempt side, so a relation would carry rows across Markets.
+    if (isScoped(model) !== isScoped(target)) {
+      problems.push(
+        `${model.file}: ${model.name}.${relation.field} relates ` +
+          `${isScoped(model) ? 'a market-scoped' : 'an exempt'} model to ` +
+          `${isScoped(target) ? 'the market-scoped' : 'the exempt'} model ${target.name}; ` +
+          'exempt and market-scoped models may not relate',
+      );
+      continue;
+    }
+    if (!isScoped(model)) continue;
     const from = relation.fields.indexOf('marketId');
     const to = relation.references.indexOf('marketId');
     if (from < 0 || to < 0) {

@@ -34,6 +34,16 @@ export const absent = [
   tx.$extends,
 ] as const;
 
+/** A delegate holds its guarded operations only: not the client it came from (Hassan, H1). */
+export const delegateAbsent = [
+  // @ts-expect-error no $parent: it is the unguarded client
+  tx.auditLog.$parent,
+  // @ts-expect-error no $name
+  tx.auditLog.$name,
+  // @ts-expect-error no field references
+  tx.auditLog.fields,
+] as const;
+
 /** The view cannot be written to. */
 export function assign(other: MarketTransaction['auditLog']): void {
   // @ts-expect-error readonly

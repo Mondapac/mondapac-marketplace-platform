@@ -1,5 +1,5 @@
 import type { Prisma } from '../../generated/prisma/client';
-import { marketGuardExtension } from './market-guard';
+import { GUARDED_OPERATIONS, marketGuardExtension, type GuardedOperation } from './market-guard';
 import type { ModelMap } from './model-map';
 import type { PrismaRoot } from './prisma-root';
 import { unitStorage } from './unit-store';
@@ -22,24 +22,44 @@ export const GUARDED_CLIENT = Symbol('GUARDED_CLIENT');
 /** The client property of each model (`auditLog`): the model delegates and nothing else. */
 type ModelProperty = Uncapitalize<Prisma.ModelName>;
 
-/**
- * What `PrismaService.tx(market)` hands a repository: the model delegates of the open unit's
- * client and nothing else. No `$transaction`, no raw SQL, no `$connect`, `$disconnect`, `$on`
- * or `$extends` (ADR-0025 condition (b)); a type test proves each `$` method is absent.
- * `Prisma.TransactionClient` is assignable to it in neither direction (P 3.3).
- */
-export type MarketTransaction = Readonly<Pick<GuardedClient, ModelProperty>>;
+/** One model's part of the view: the guarded operations of its delegate, nothing else. */
+type DelegateView<Delegate> = Readonly<Pick<Delegate, Extract<keyof Delegate, GuardedOperation>>>;
 
 /**
- * The run-time half of condition (b): a frozen object with no prototype that holds the model
- * delegates of `client` under their client properties, read from the model map. The same
- * view type serves read-write units (on the transaction client) and read-only units (on the
- * guarded base client).
+ * What `PrismaService.tx(market)` hands a repository: per model, the guarded operations of
+ * the open unit's client and nothing else. No `$transaction`, no raw SQL, no `$connect`,
+ * `$disconnect`, `$on` or `$extends` (ADR-0025 condition (b)); no `$parent`, `$name` or
+ * `fields` on a delegate either (Hassan, H1). A type test proves each `$` member is absent.
+ * `Prisma.TransactionClient` is assignable to it in neither direction (P 3.3).
+ */
+export type MarketTransaction = {
+  readonly [Property in ModelProperty]: DelegateView<GuardedClient[Property]>;
+};
+
+/**
+ * The run-time half of condition (b), for read-write units (on the transaction client) and
+ * read-only units (on the guarded base client) alike. The view and each of its delegates are
+ * frozen objects with no prototype. A delegate holds only the functions of
+ * {@link GUARDED_OPERATIONS}, each bound to Prisma's delegate: Prisma's delegate itself is
+ * never reachable, because it carries `$parent`, the client it came from (the unguarded
+ * base client, or the unguarded interactive-transaction client).
  */
 export function modelDelegatesOf(client: object, map: ModelMap): MarketTransaction {
   const view: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   for (const entry of Object.values(map.models)) {
-    view[entry.clientProperty] = (client as Record<string, unknown>)[entry.clientProperty];
+    const delegate = (client as Record<string, unknown>)[entry.clientProperty] as Record<
+      string,
+      unknown
+    >;
+    const operations: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const operation of GUARDED_OPERATIONS) {
+      const action = delegate[operation];
+      if (typeof action !== 'function') {
+        throw new Error(`Prisma delegate ${entry.clientProperty} has no ${operation}`);
+      }
+      operations[operation] = (action as (...args: unknown[]) => unknown).bind(delegate);
+    }
+    view[entry.clientProperty] = Object.freeze(operations);
   }
   return Object.freeze(view) as unknown as MarketTransaction;
 }

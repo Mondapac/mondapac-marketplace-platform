@@ -21,3 +21,15 @@ model BetaInbox {
   @@map("inbox")
   @@schema("beta")
 }
+
+/// The delivery record of an event: keyed by the event id, without marketId (P 9).
+model BetaEventDelivery {
+  eventId  String @map("event_id") @db.Uuid
+  consumer String
+  marketId String @map("market_id")
+  tenantId String @map("tenant_id")
+
+  @@id([eventId, consumer])
+  @@map("event_delivery")
+  @@schema("beta")
+}
