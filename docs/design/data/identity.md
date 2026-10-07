@@ -152,7 +152,7 @@ CREATE TRIGGER "subject_keys_one_way"
 | `population` | `text` | no | CHECK `customer`, `seller`, `admin`. Never changes (domain) |
 | `email` | `text` | no | **Personal, plain** (D 11.2 option A). As typed, trimmed. CHECK length 3 to 254 |
 | `email_normalized` | `text` | no | **Personal, plain.** Trimmed, NFC, lower-cased by the application; the uniqueness and lookup value |
-| `display_name` | `text` | no | **Personal, plain.** CHECK below: 1 to 100 characters, no outer spaces, no control or bidi formatting character (M10, HF13). URL-like text is refused by the domain only |
+| `display_name` | `text` | yes | **Personal, plain.** NULL only for a customer (`accounts_display_name_required_check`, N1 in 11.5): customer sign-up asks for email and password only (brief flow «د» item 1, `ux.md` A2). When present, the CHECK below: 1 to 100 characters, no outer spaces, no control or bidi formatting character (M10, HF13). URL-like text is refused by the domain only |
 | `status` | `text` | no | CHECK `active`, `disabled` (D 3.1) |
 | `email_verified_at` | `timestamptz(6)` | yes | NULL = unverified (D 3.2) |
 | `existing_account_notice_at` | `timestamptz(6)` | yes | Last "you already have an account" mail (D 6.7) |
@@ -181,7 +181,15 @@ CONSTRAINT "accounts_display_name_check" CHECK (
   char_length("display_name") BETWEEN 1 AND 100
   AND "display_name" = btrim("display_name")
   AND "display_name" !~ '[\u0001-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]')
+CONSTRAINT "accounts_display_name_required_check" CHECK (
+  "population" = 'customer' OR "display_name" IS NOT NULL)
 ```
+
+`accounts_display_name_check` is unchanged: a CHECK whose expression is NULL passes, so it
+applies only to a name that is present, for every population. The second CHECK carries the
+rule "a seller-side or admin account always has a display name" (D 2.1), at insert and at
+update. A violation is a bug of the caller, never a user's mistake the API lets through: the
+repository maps its name to `validation.failed`, never a 500 (N1).
 
 The class is the C0 and C1 controls and the bidi marks, embeddings, overrides and isolates
 (measured: tab, newline, DEL, NEL, U+202E, U+2066, U+200F, U+061C refused; Arabic script, accents
@@ -681,6 +689,9 @@ Tests run it for both fixtures. Nothing else in Phase 2 is seeded.
   `@db.Timestamptz(6)`), primary and unique keys, plain indexes, and the composite foreign keys
   of C3 with their delete rules (generated SQL checked). Relations exist only inside the module
   file; nested reads work, nested writes are refused by the guard (P 4.1).
+- `accounts.display_name` is `String? @map("display_name")` in Prisma (N1). Prisma cannot
+  express "nullable for one population"; `accounts_display_name_required_check` carries it, in
+  the hand-written block like every CHECK.
 - Hand-written, appended to the generated `migration.sql` under a marked block as in
   `platform.md` section 6: every CHECK; the function and trigger of 3.2; the grants; and the
   partial indexes:
@@ -758,6 +769,7 @@ repository and in throwaway databases and roles (all dropped): a non-superuser o
 | A cascade from `accounts` deletes the credential although the application has no `DELETE` on the child | 7 |
 | Drift check and partial indexes; the preview feature; `NULLS NOT DISTINCT` | 8.4 |
 | Prisma Migrate holds the session advisory lock with key `72707369`; the two job keys of P 7 are `6283714585531761361` and `5423381668565611002` | PM8: no clash. A unit test asserts that no job key equals Prisma's |
+| N1 (2026-10-07, throwaway database, dropped): with `display_name` nullable, a customer row with NULL is accepted; a seller or admin row with NULL is refused at insert and at update (`accounts_display_name_required_check`); `''`, an outer space, U+202E and 101 characters are refused for every population (`accounts_display_name_check`). Repeated for AU and ZZ by the slice 1d `test:db` constraint test | 3.3, 11.5 |
 | G2 changes, in a throwaway database (dropped): the name CHECK (the cases of 3.3); the two role-name indexes (the cases of 3.9); one pending owner invitation per seller, and a new one after a revocation; the closed `kind` list and the `account_key` CHECK; 20 concurrent reservation units, from an empty table and from an ended window; the release guard | 3.3, 3.5, 3.9, 3.10 |
 | Spike 6 (Hossein with Mojtaba, 2026-10-07; PostgreSQL 16.15, Prisma 7.10 with adapter-pg; synthetic seed of 10⁵ accounts, 2 × 10⁵ sessions, 5 × 10³ sellers, 2 × 10⁴ memberships and 5 × 10⁴ throttle rows in AU and ZZ, analysed, warm cache). Authenticator and permission reads are index probes (10, 14 and 16 buffer hits, at most 0.2 ms), also for an unknown token and a cross-Market token (3 hits, no row). The last-holder count goes by index. Native upsert, with exactly five of 20 concurrent reservations allowed. Challenge: exactly five of 20 concurrent reservations allowed, consumed once. The `40001` rates and both error shapes; the K1 settings; generic plans and partial indexes; 72.5 % HOT. Report and raw output: shared folder `phase-2/spikes/spike6/` | 3.4, 3.5, 3.9, 5.1, 8.4, 9, 11.4 |
 
@@ -830,6 +842,20 @@ rule and the backup codes (3.10); session lifetimes and rotation (3.4).
 
 Owner: none. The 90-day retention reaches the owner only if a legal review asks for a longer one.
 
+### 11.5 After G2: the customer display name (N1, 2026-10-07)
+
+D 2.1 and 3.3 required a display name on every account, while customer sign-up asks for email
+and password only (brief flow «د» item 1; `ux.md` A2, F1 step 2). Found by Hossein in slice 1d.
+
+| Option | For | Against |
+|---|---|---|
+| b1 (chosen). `display_name` nullable; `accounts_display_name_required_check`: `population = 'customer' OR display_name IS NOT NULL`; `accounts_display_name_check` unchanged | One column, one extra CHECK; the rule for seller-side and admin accounts stays in the database; no migration later if customers gain an optional name | Prisma types the field as optional for every population; the domain factories carry the rule in code |
+| b2 (rejected). A separate nullable column or table for customer names, or a placeholder value | — | A second place for one fact; a placeholder is fake personal data that would reach mails and lists |
+
+Proceeding on b1 with the owner's card still open (Ali); if the owner chooses otherwise, migration
+`identity_accounts` does not merge and this row is reversed. Mohammad (D 2.1) and Mojtaba
+(this document) agreed; brief change-log row of 2026-10-07.
+
 ## 12. Follow-up changes
 
 This document changes no other file. After G2:
@@ -844,3 +870,6 @@ This document changes no other file. After G2:
 | `docs/design/data/platform.md` | New 10.9 (prepared statements); K1a settings in 10.7; the settings assertions in the role test of 10.4 | 10.9: Done (PR #41). 10.7, 10.8 `role_timeouts` and 10.4: specified (PR #53, Kazem, 2026-10-07); the `role_timeouts` start-up check and the role-settings test are code in identity slice 1a (Hossein) |
 | `docs/design/domain/platform-persistence-and-events.md` | Section 13, UnitOfWork row: the exhausted-retry test, at a statement and at COMMIT; the classifier keys on SQLSTATE; 55P03's answer (PN7) | Done (PR #41) |
 | `scripts/db/bootstrap-dev.sql` | `ALTER ROLE mondapac_api SET` the three K1a values | Done (PR #53, Kazem, 2026-10-07) |
+| `docs/design/domain/identity.md` | N1: 2.1, 3.2, 6.5, 6.7, 8.6, 9, 11.1 and 12.1 say that a customer account may have no display name | Done in identity slice 1d (Mohammad's text, 2026-10-07) |
+| `docs/modules/identity/brief.md` | N1: a change-log row | Done in identity slice 1d (2026-10-07) |
+| Migration `identity_accounts`; its `test:db` constraint test | N1: `display_name` nullable with `accounts_display_name_required_check`; the measured cases of section 10 for AU and ZZ | Identity slice 1d (Hossein); my sign-off |
