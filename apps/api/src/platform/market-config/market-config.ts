@@ -26,6 +26,114 @@ const marketCode = z.string().transform((value, context) => {
   return z.NEVER;
 });
 
+const timeZone = z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone');
+const fieldKey = z.string().regex(/^[a-z][A-Za-z0-9]{0,31}$/u, 'must be a camelCase field key');
+const regexSource = z.string().refine((value) => {
+  try {
+    new RegExp(value, 'u');
+    return true;
+  } catch {
+    return false;
+  }
+}, 'must be a valid regular expression');
+
+/**
+ * The `address.format` of the `sellers` section (sellers domain design 4.1 and 4.2): the fields
+ * of an address in order, which two of them are the postcode and the region, the postcode
+ * pattern and the region list. A Market with other fields needs no migration (data design 3.1).
+ */
+const addressFormatSchema = z
+  .strictObject({
+    fields: z
+      .array(
+        z.strictObject({
+          key: fieldKey,
+          labelKey: z.string().min(1),
+          required: z.boolean(),
+          /** Plaintext limit after NFC (sellers data design Q-M11: 1 to 120). */
+          maxLength: z.number().int().min(1).max(120),
+        }),
+      )
+      .min(1)
+      .max(12),
+    postcodeField: fieldKey,
+    /** Absent for a Market whose zone does not depend on a region. */
+    regionField: fieldKey.optional(),
+    postcodePattern: regexSource,
+    regions: z.array(z.string().min(1)),
+  })
+  .superRefine((format, context) => {
+    const keys = format.fields.map((field) => field.key);
+    if (new Set(keys).size !== keys.length) {
+      context.addIssue({ code: 'custom', message: 'field keys must be unique', path: ['fields'] });
+    }
+    for (const name of ['postcodeField', 'regionField'] as const) {
+      const key = format[name];
+      if (key !== undefined && !keys.includes(key)) {
+        context.addIssue({ code: 'custom', message: `${name} must name a field`, path: [name] });
+      }
+    }
+    if ((format.regionField === undefined) !== (format.regions.length === 0)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'regionField and a non-empty regions list go together',
+        path: ['regions'],
+      });
+    }
+    if (new Set(format.regions).size !== format.regions.length) {
+      context.addIssue({ code: 'custom', message: 'regions must be unique', path: ['regions'] });
+    }
+  });
+
+/**
+ * The `timezones` of the `sellers` section (design 4.1, `TimezoneResolver`): region to IANA zone,
+ * with postcodes whose zone differs from their region's. Never an offset (ADR-0005 decision 1).
+ */
+const sellerTimezonesSchema = z.strictObject({
+  byRegion: z.record(z.string().min(1), timeZone),
+  /** Exact postcodes or digit ranges ("2880", "2898-2899"); the zone data file of spike 3. */
+  postcodeExceptions: z.array(
+    z.strictObject({
+      postcodes: z
+        .array(
+          z
+            .string()
+            .refine(
+              (value) =>
+                /^([A-Z0-9]{1,10}|\d{1,10}-\d{1,10})$/u.test(
+                  value.replace(/\s+/gu, '').toUpperCase(),
+                ),
+              'must be a postcode or a digit range',
+            ),
+        )
+        .min(1),
+      timezone: timeZone,
+    }),
+  ),
+});
+
+/**
+ * The `sellers` section of a Market file. It starts with what slice 2 (complete details) needs;
+ * later slices add the rest of design 4.1 here, each with its own readiness gate (ADR-0013).
+ */
+const sellersSchema = z
+  .strictObject({ address: addressFormatSchema, timezones: sellerTimezonesSchema })
+  .superRefine((sellers, context) => {
+    const regions = sellers.address.regions;
+    const zoned = Object.keys(sellers.timezones.byRegion);
+    const missing = regions.filter((region) => !zoned.includes(region));
+    const extra = zoned.filter((region) => !regions.includes(region));
+    if (missing.length > 0 || extra.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          `timezones.byRegion must name exactly the regions of address.regions ` +
+          `(missing: ${missing.join(', ') || 'none'}; unknown: ${extra.join(', ') || 'none'})`,
+        path: ['timezones', 'byRegion'],
+      });
+    }
+  });
+
 const marketSchema = z
   .strictObject({
     code: marketCode,
@@ -36,6 +144,8 @@ const marketSchema = z
     settlementCurrency: currency,
     /** Fallback only (ADR-0005): sellers, locations and addresses carry their own zone. */
     timezone: z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone'),
+    /** Owned by `sellers`; optional until a Market is configured for sellers. */
+    sellers: sellersSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',
