@@ -17,6 +17,9 @@
 - ماژول **گواهینامه و مجوز (Certification & Compliance)** به فهرست ماژول‌های هسته اضافه شد
 - **تصمیم قطعی:** خرید بین‌مارکتی در نقشهٔ راه نیست — هر Market (کشور) مستقل می‌ماند (کاتالوگ، فروشندگان و مشتریان جدا)؛ این تصمیم چندارزی را به‌شدت ساده می‌کند (بدون نیاز به تبدیل نرخ ارز لحظه‌ای)
 
+### هم‌راستایی با ADRهای پذیرفته‌شده (اکتبر ۲۰۲۶)
+هر جا ADRهای پذیرفته‌شده (`docs/adr/0001..0024`) یا برگه‌های ماژولِ تأییدشده متن این سند را عوض کرده‌اند، یادداشتی کنار همان متن آمده است. ADR و برگه بر این سند مقدم‌اند. هدف بلندمدت (میکروسرویس، Kafka، MongoDB، Elasticsearch) برای مرجع مانده است.
+
 ---
 
 ## بخش ۱ – معماری کلان سیستم (High-Level Architecture)
@@ -74,11 +77,11 @@
 
 | # | نام ماژول | مسئولیت اصلی |
 |---|-----------|----------------|
-| 1 | User Service | مدیریت حساب کاربری، پروفایل، احراز هویت پایه |
-| 2 | Auth & Identity Service | صدور توکن JWT/OAuth2، SSO، مدیریت نقش‌ها |
+| 1 | User Service | مدیریت حساب کاربری، پروفایل، احراز هویت پایه *(در MVP ردیف ۱ و ۲ یک ماژول‌اند: `identity`؛ ADR-0008 تصمیم ۳)* |
+| 2 | Auth & Identity Service | نشست سمت سرور، نه JWT (ADR-0018 تصمیم ۲)؛ نقش و مجوز پویا برای هر دو پنل (ADR-0018 تصمیم ۴)؛ OAuth2 و SSO فقط هدف بلندمدت‌اند (برگهٔ identity بخش ۳) |
 | 3 | Product Catalog Service | مدیریت محصولات، دسته‌بندی، ویژگی‌ها، SEO metadata؛ نوع محصول از طریق `ProductTypeHandler` توسعه‌پذیر |
 | 4 | Inventory Service | مدیریت موجودی، رزرو انبار، هماهنگی چند انبار |
-| 5 | Pricing & Promotion Service | قیمت‌گذاری پویا، تخفیف‌ها، کدهای تخفیف؛ از طریق `PricingStrategy` توسعه‌پذیر به‌ازای Vertical/Market |
+| 5 | Pricing & Promotion Service | قیمت‌گذاری پویا، تخفیف‌ها، کدهای تخفیف؛ از طریق `PricingStrategy` توسعه‌پذیر به‌ازای Vertical/Market *(در MVP ماژول P0 `pricing`: قیمت، قیمت ویژه و Cost به‌ازای (Offer، Variant) و نگه‌داشتن جهش قیمت؛ ADR-0008 تصمیم ۳، ADR-0024 تصمیم ۱ و ۴)* |
 | 6 | Cart Service | مدیریت سبد خرید (Session-based / Persistent)، همیشه محدود به یک Market |
 | 7 | Order Service | ثبت، مدیریت چرخه حیات و وضعیت سفارش؛ زیروضعیت‌های اختصاصی از طریق `OrderWorkflowExtension` |
 | 8 | Payment Service | ارتباط با درگاه‌های پرداخت، تسویه، Refund؛ Provider به‌ازای Market از طریق `PaymentProviderAdapter` |
@@ -88,10 +91,12 @@
 | 12 | Tax Service | محاسبهٔ مالیات به‌ازای Market از طریق `TaxStrategy`؛ برای بازارهای پیچیده (اروپا/آمریکا) Adapter به سرویس شخص‌ثالث |
 | 13 | Review & Rating Service | نظرات و امتیازدهی کاربران |
 | 14 | Notification Service | ارسال ایمیل، SMS، Push Notification؛ قالب‌ها چندزبانه (`INTL-11`) |
-| 15 | Seller/Vendor Management Service | مدیریت فروشندگان شخص ثالث (Marketplace)، ویژگی‌های پویا (`SEL-20`) |
+| 15 | Seller/Vendor Management Service | مدیریت فروشندگان شخص ثالث (Marketplace)، ویژگی‌های پویا (`SEL-20`) *(در MVP ماژول P0 `sellers`؛ ADR-0008 تصمیم ۳)* |
 | 16 | Analytics & Reporting Service | گزارش‌گیری، داشبورد BI |
 
 **نکتهٔ مهم:** `Market` و `Tenant` در این فهرست **سرویس مجزا نیستند** — هر دو داده‌های پیکربندی‌ای‌اند که همهٔ ماژول‌های بالا (به‌ویژه Catalog، Order، Payment، Tax) از طریق `market_id`/`tenant_id` به آن‌ها ارجاع می‌دهند؛ ساختن یک «Market Service» جدا در این مقیاس توجیه ندارد.
+
+**فهرست ماژول‌های MVP:** مرجع ADR-0008 تصمیم ۳ است (با اصلاح ADR-0019: `assistant` در P1). جدول بالا نام‌های هدف بلندمدت را نگه می‌دارد.
 
 ### ۱.۵ ارتباطات بین سرویس‌ها
 
@@ -106,6 +111,8 @@
 - **Outbox Pattern** برای تضمین Consistency بین دیتابیس و انتشار پیام
 - **قاعدهٔ نام‌گذاری رویداد:** نام رویداد هرگز نام یک Vertical یا Market را در خود ندارد (`OrderPlaced`، نه `HalalOrderPlacedAU`)؛ این اطلاعات در Payload/Metadata می‌آید، وگرنه مصرف‌کنندگان رویداد (Notification و...) باید هر نمونه را جدا بشناسند
 
+**در MVP جایگزین شده با ADR-0006 و ADR-0008:** Kafka یا RabbitMQ در MVP نیست. رویدادها با Outbox تراکنشی و یک Event Bus درون‌فرایندی پایدار منتشر می‌شوند (ADR-0006 تصمیم ۲ تا ۴). broker واقعی بعداً فقط با یک ADR تازه، به‌عنوان adapter دیگر، اضافه می‌شود (ADR-0006 تصمیم ۸). ارتباط همزمان بین ماژول‌ها در MVP فراخوانی facade درون‌فرایندی است، نه gRPC (ADR-0008 تصمیم ۵). Kafka و gRPC هدف بلندمدت می‌مانند.
+
 ### ۱.۶ مدیریت داده‌ها
 
 - **در MVP (مونولیت ماژولار):** هر ماژول Schema اختصاصی خودش را دارد (نه لزوماً پایگاه‌دادهٔ فیزیکی جدا)؛ ممنوعیت Join مستقیم بین Schema ماژول‌ها، ارتباط فقط از طریق Interface یا Event. در مهاجرت بعدی به میکروسرویس، این مرز به «Database per Service» فیزیکی تبدیل می‌شود.
@@ -113,7 +120,7 @@
 - **پول:** هر مبلغ `{amount: عدد صحیح واحد خرد ارز, currency: ISO 4217}`؛ چون خرید بین‌مارکتی در نقشهٔ راه نیست (تصمیم قطعی)، هیچ نرخ ارزی هرگز نیازی به تبدیل یا Snapshot ندارد — فقط نرخ کمیسیون (`COM-04`) به همین شکل در لحظهٔ سفارش منجمد می‌شود.
 - **Saga Pattern (Choreography-based)** برای تراکنش‌های توزیع‌شده مانند فرآیند Checkout (Order → Payment → Inventory → Shipping)
 - **CQRS** برای ماژول‌های با حجم خواندن بالا مانند Catalog و Search (جداسازی مدل Write از Read)
-- **Event Sourcing** پیشنهادی برای Order Service جهت حفظ تاریخچه کامل تغییرات وضعیت سفارش
+- **Event Sourcing** پیشنهادی برای Order Service جهت حفظ تاریخچه کامل تغییرات وضعیت سفارش *(در MVP جایگزین شده با ADR-0004 تصمیم ۱: جدول تاریخچهٔ وضعیتِ فقط‌افزودنی به‌علاوهٔ رویدادهای دامنه، نه Event Sourcing)*
 - **Eventual Consistency** به عنوان استراتژی پیش‌فرض بین Bounded Context ها
 
 ### ۱.۷ زیرساخت ابری پیشنهادی
@@ -132,29 +139,35 @@
 | NoSQL Database | MongoDB (Catalog) + Elasticsearch (Search) |
 | Secrets Management | HashiCorp Vault |
 
+**در MVP جایگزین شده با ADR-0004 و ADR-0006:** ذخیره‌سازهای MVP فقط PostgreSQL، Redis و object storage سازگار با S3 هستند (ADR-0004 تصمیم ۱). MongoDB، Elasticsearch و Event Store در MVP نیستند؛ جستجو با full-text خود PostgreSQL شروع می‌شود و Elasticsearch فقط با یک ADR تازه در P1 دوباره بررسی می‌شود. Message Broker در MVP نیست (ADR-0006). ذخیره‌ساز محلی دیگر MinIO نیست و با اولین برشی که فایل ذخیره می‌کند انتخاب می‌شود (ADR-0016). این جدول هدف بلندمدت است.
+
 **استقرار منطقه‌ای (Regional Deployment):** یک کدبیس، ولی استقرار در منطقهٔ ابری متفاوت به‌ازای Market، بسته به الزام اقامت داده/Latency/حجم — نیوزیلند در همان منطقهٔ استرالیا، مالزی در منطقهٔ جنوب‌شرق آسیا، اتحادیهٔ اروپا و آمریکا هرکدام منطقهٔ اختصاصی (اروپا به‌دلیل GDPR الزامی، نه اختیاری). جزئیات کامل در `country-branch-launch-playbook.md`. Kubernetes/Service Mesh در فهرست بالا **معماری هدف پس از اثبات MVP** است؛ راه‌اندازی اولیهٔ استرالیا با Docker Compose/یک سرویس Container ساده (بخش Stack در `CLAUDE.md`) کافی است.
 
 ---
 
 ## بخش ۲ – لیست کامل ماژول‌های عملکردی (Functional Modules)
 
+**یادداشت دربارهٔ خطوط «ذخیره‌سازی» این بخش:** در MVP جایگزین شده با ADR-0004 (تصمیم ۱؛ این ADR انتخاب ذخیره‌ساز در بخش ۲ را برای MVP کنار می‌گذارد). MongoDB، Elasticsearch و Event Store هدف بلندمدت‌اند. هر ماژول در MVP schema خودش را در PostgreSQL دارد (ADR-0004 تصمیم ۲).
+
 ### ۲.۱ ماژول‌های هسته (Core – MVP اجباری)
+
+> **ماژول ۱ و ۲ در MVP یک ماژول‌اند: `identity`** (ADR-0008 تصمیم ۳؛ برگهٔ identity بخش ۸ مورد ۱۰). مالک آدرس‌های مشتری هنوز تعیین نشده است: ADR-0008 آن را نام نبرده و G2 ماژول `identity` آن را بیرون از دامنهٔ خود نگه داشته است (`docs/design/domain/identity.md`)؛ مالک در دروازهٔ cart یا `ordering` مشخص می‌شود (برگهٔ identity بخش ۳).
 
 **۱. ماژول مدیریت کاربران (User Management)**
 - زیرماژول‌ها: ثبت‌نام/ورود، مدیریت پروفایل، آدرس‌های کاربر، مدیریت نقش‌ها
-- وابستگی: Auth Service
-- ورودی/خروجی: ورودی اطلاعات ثبت‌نام، خروجی توکن و پروفایل کاربر
-- ذخیره‌سازی: PostgreSQL (جدول Users, Addresses)
+- وابستگی: Auth Service *(در MVP همان ماژول `identity`)*
+- ورودی/خروجی: ورودی اطلاعات ثبت‌نام، خروجی نشست و پروفایل کاربر *(نشست سمت سرور، نه توکن JWT؛ ADR-0018 تصمیم ۲)*
+- ذخیره‌سازی: PostgreSQL (جدول Users, Addresses) *(مالک Addresses: یادداشت بالا)*
 
 **۲. ماژول احراز هویت و مجوز (Auth & Authorization)**
-- زیرماژول‌ها: JWT Issuance، OAuth2/Social Login، RBAC، Session Management
-- وابستگی: User Service
-- ورودی/خروجی: ورودی Credentials، خروجی Access/Refresh Token
-- ذخیره‌سازی: Redis (Session/Token blacklist)
+- زیرماژول‌ها: نشست سمت سرور (ADR-0018 تصمیم ۲)، RBAC پویا با نقش سیستمی، پیش‌فرض و دلخواه برای هر دو پنل (ADR-0018 تصمیم ۴؛ ADM-05، PNL-05)، عامل دوم (ADR-0018 تصمیم ۵). Social Login بعد از راه‌اندازی (برگهٔ identity تصمیم ۴)
+- وابستگی: User Service *(در MVP همان ماژول `identity`)*
+- ورودی/خروجی: ورودی Credentials، خروجی نشست سمت سرور: توکن مات که فقط hash آن ذخیره می‌شود (ADR-0018 تصمیم ۲؛ جای Access/Refresh Token را گرفت، برگهٔ identity بخش ۸ مورد ۱۳)
+- ذخیره‌سازی: PostgreSQL (نشست‌ها). بدون deny-list توکن؛ در فاز ۲ بدون cache نشست یا مجوز (ADR-0018 تصمیم ۲، اصلاح ADR-0004 تصمیم ۱)
 
 **۳. ماژول کاتالوگ محصول (Product Catalog)**
-- زیرماژول‌ها: مدیریت محصول، دسته‌بندی، ویژگی‌های Variant (رنگ/سایز)، تصاویر محصول
-- وابستگی: Inventory, Pricing
+- زیرماژول‌ها: مدیریت محصول، دسته‌بندی، ویژگی‌های Variant (رنگ/سایز)، تصاویر محصول؛ همهٔ فروش از راه Offer (ADR-0010)
+- وابستگی: هیچ‌کدام از Inventory و Pricing. جهت برعکس است: `pricing` و `inventory` به facade و رویدادهای `catalog` وابسته‌اند و `catalog` قیمت و موجودی را نه نگه می‌دارد و نه می‌خواند (ADR-0024 تصمیم ۵؛ جایگزین خط قبلی «Inventory, Pricing»)
 - ورودی/خروجی: ورودی داده محصول از Admin/Seller، خروجی JSON محصول برای Frontend
 - ذخیره‌سازی: MongoDB (Schema-flexible)
 
@@ -168,7 +181,7 @@
 - زیرماژول‌ها: افزودن/حذف آیتم، محاسبه قیمت لحظه‌ای، ادغام سبد مهمان با کاربر ثبت‌نام‌شده
 - وابستگی: Product Catalog, Pricing
 - ورودی/خروجی: ورودی SKU و تعداد، خروجی سبد به‌روزشده
-- ذخیره‌سازی: Redis (TTL-based)
+- ذخیره‌سازی: Redis (TTL-based) *(در MVP: PostgreSQL و Redis فقط cache؛ ADR-0004 تصمیم ۱. جزئیات در G1 سبد)*
 
 **۶. ماژول ثبت و مدیریت سفارش (Order Management)**
 - زیرماژول‌ها: Checkout، تاریخچه سفارش، مدیریت وضعیت (Pending/Confirmed/Shipped)
@@ -201,11 +214,11 @@
 - ذخیره‌سازی: MongoDB (Log پیام‌ها)
 
 **۱۱. ماژول گواهینامه و مجوز (Certification & Compliance)** *(جدید در نسخهٔ ۲.۰)*
-- زیرماژول‌ها: تعریف نوع گواهی (`CertificationType`)، رجیستری صادرکننده به‌ازای Market، گواهی فروشنده با ماشین وضعیت (Draft→Pending→Approved/Rejected→Expired/Revoked)، برچسب‌گذاری محصول
+- زیرماژول‌ها: تعریف نوع گواهی (`CertificationType`)، رجیستری صادرکننده به‌ازای Market، گواهی فروشنده با ماشین وضعیت (Draft→Pending→Approved/Rejected→Expired/Revoked)، گواهی تولیدکننده و سیاست مبنای ادعا (ADR-0012)، تصمیم ادعا برای برچسب Offer (`evaluateClaim`). خود برچسب روی Offer است و `catalog` آن را نگه می‌دارد (ADR-0010 تصمیم ۲)
 - وابستگی: Seller، Product Catalog
-- ورودی/خروجی: ورودی مدرک/ادعای فروشنده، خروجی برچسب گواهی معتبر روی محصول
+- ورودی/خروجی: ورودی مدرک/ادعای فروشنده، خروجی تصمیم ادعا (`evaluateClaim`) برای برچسب گواهی روی Offer
 - ذخیره‌سازی: PostgreSQL
-- **قانون سخت دامنه:** بدون گواهی معتبر/تأییدشده/منقضی‌نشده از همان نوع، هیچ محصولی برچسب نمی‌گیرد؛ این قانون برای حلال، کوشر، وگان و هر نوع آیندهٔ دیگر یکسان اعمال می‌شود (سند قابلیت‌ها فایل ۰۸)
+- **قانون سخت دامنه:** هیچ Offerی برچسب گواهی نمی‌گیرد، مگر: فروشندهٔ همان Offer گواهی معتبر، تأییدشده و منقضی‌نشده از همان نوع داشته باشد؛ یا سیاست مبنای ادعای دسته مبنای تولیدکننده را مجاز کند، یک گواهی تولیدکنندهٔ تأییدشده و منقضی‌نشده از همان نوع محصول را پوشش دهد، و Offer از نوع SEALED_ORIGINAL با تعهد فروشنده برای همان Offer باشد (ADR-0012). بدون سیاست، گواهی فروشنده لازم است. محتوای محصول هرگز ادعای گواهی ندارد. اجرا فقط از راه `evaluateClaim` است. این قانون برای حلال، کوشر، وگان و هر نوع آیندهٔ دیگر یکسان اعمال می‌شود (سند قابلیت‌ها فایل ۰۸؛ ADR-0010؛ برگهٔ certification بخش ۸ ناسازگاری ۱۹)
 
 ### ۲.۲ ماژول‌های کمکی (Supporting – افزایش کارایی)
 
@@ -220,6 +233,9 @@
 - ذخیره‌سازی: PostgreSQL + Redis Cache
 
 **۱۴. ماژول مدیریت فروشندگان (Vendor/Marketplace)**
+
+> در MVP ماژول P0 `sellers` است، نه ماژول کمکی (ADR-0008 تصمیم ۳). ثبت‌نام حساب مال `identity` و تسویه مال `commission-payouts` است (ADR-0008 تصمیم ۳؛ برگهٔ sellers بخش ۸ ناسازگاری ۱۱). وضعیت دسترسی فروشنده را `identity` نگه می‌دارد و قرارداد «اجازهٔ فروش» در `sellers` است (ADR-0022). شناسهٔ کسب‌وکار (برای AU: ABN) پروفایل مالیاتی با پیکربندی Market است (ADR-0007 تصمیم ۶) و گواهی‌ها مال `certification` (CERT-*) هستند.
+
 - زیرماژول‌ها: ثبت‌نام فروشنده، پنل مدیریت فروشگاه، تسویه‌حساب فروشنده
 - وابستگی: Product Catalog, Order, Payment
 - ذخیره‌سازی: PostgreSQL
@@ -235,6 +251,8 @@
 - ذخیره‌سازی: MongoDB/Headless CMS
 
 ### ۲.۳ ماژول‌های پیشرفته (Advanced – مقیاس‌پذیری و شخصی‌سازی)
+
+> AI در MVP توانایی مقطعی است، نه ماژول جدا در این فهرست: ADR-0019 (هستهٔ راه‌اندازی، قواعد AI و محل کد آن). اولویت ماژول‌های ۱۷، ۲۰ و ۲۱ عوض نمی‌شود و P3 می‌ماند.
 
 **۱۷. ماژول توصیه‌گر هوشمند (Recommendation Engine)**
 - زیرماژول‌ها: Collaborative Filtering، Content-based، Real-time Personalization
@@ -266,8 +284,8 @@
 ## بخش ۳ – امکانات و خصوصیات غیرعملکردی (Non-Functional Requirements)
 
 ### ۳.۱ الزامات امنیتی
-1. احراز هویت چندعاملی (MFA) برای پنل ادمین و کاربران با سطح دسترسی بالا
-2. استفاده از OAuth2/OpenID Connect برای Federation و Social Login
+1. احراز هویت چندعاملی (MFA) برای پنل ادمین و کاربران با سطح دسترسی بالا *(تعریف در MVP: برای ادمین از روز اول الزامی؛ برای فروشنده در راه‌اندازی اختیاری، و برای Seller Owner قبل از فعال شدن تسویه و تغییر حساب تسویه الزامی؛ فقط اپ رمزساز، بدون پیامک — ADR-0018 تصمیم ۵؛ برگهٔ identity بخش ۸ مورد ۱۷)*
+2. استفاده از OAuth2/OpenID Connect برای Federation و Social Login *(هدف بلندمدت؛ در راه‌اندازی فقط ایمیل و رمز برای همه — برگهٔ identity تصمیم ۴)*
 3. رمزنگاری داده در حالت سکون (AES-256) و در حال انتقال (TLS 1.3)
 4. پیاده‌سازی کامل کنترل‌های OWASP Top 10 (SQLi, XSS, CSRF, SSRF, Broken Auth)
 5. Rate Limiting و Bot Protection در API Gateway (WAF)
@@ -277,7 +295,7 @@
 ### ۳.۲ الزامات کارایی
 8. زمان پاسخ API زیر ۲۰۰ میلی‌ثانیه برای ۹۵٪ درخواست‌ها (P95 Latency)
 9. پشتیبانی از حداقل ۵۰,۰۰۰ درخواست همزمان در پیک ترافیک
-10. استراتژی کش چندلایه: CDN (Static Assets)، Redis (Session/Cart)، Application-level Cache (Catalog)
+10. استراتژی کش چندلایه: CDN (Static Assets)، Redis (Session/Cart)، Application-level Cache (Catalog) *(در MVP Redis منبع نشست و سبد نیست: نشست‌ها در PostgreSQL، ADR-0018 تصمیم ۲؛ سبد در PostgreSQL، ADR-0004 تصمیم ۱)*
 11. Lazy Loading و Pagination برای لیست محصولات با حجم بالا
 
 ### ۳.۳ الزامات دسترس‌پذیری
@@ -294,7 +312,7 @@
 ### ۳.۵ الزامات یکپارچه‌سازی
 19. API Gateway مرکزی برای مدیریت نسخه‌بندی، Throttling و Authentication
 20. پشتیبانی از Webhook برای اطلاع‌رسانی به فروشندگان/سرویس‌های شخص ثالث
-21. Event Bus مرکزی (Kafka) برای یکپارچگی رویدادمحور بین دامنه‌ها
+21. Event Bus مرکزی (Kafka) برای یکپارچگی رویدادمحور بین دامنه‌ها *(در MVP جایگزین شده با ADR-0006: Outbox و Event Bus درون‌فرایندی پایدار؛ Kafka هدف بلندمدت)*
 
 ### ۳.۶ الزامات نظارت و لاگ‌گیری
 22. متمرکزسازی لاگ با پشته ELK (Elasticsearch, Logstash, Kibana)
@@ -308,21 +326,22 @@
 
 | اولویت | ماژول/ویژگی | زمان تخمینی (هفته) | وابستگی فنی |
 |--------|--------------|----------------------|----------------|
-| P0 | User Management + Auth | 3 | - |
-| P0 | Product Catalog | 4 | User Management |
+| P0 | User Management + Auth (در MVP یک ماژول: `identity`؛ ADR-0008 تصمیم ۳) | برآورد نشده (۳ هفتهٔ قبلی دیگر معتبر نیست؛ ADR-0018 پیامدها) | - |
+| P0 | Seller Management (`sellers`؛ ADR-0008 تصمیم ۳؛ قبلاً P2 با نام Vendor Management) | برآورد نشده | User Management (`identity` شناسهٔ فروشنده را می‌سازد؛ ADR-0022 تصمیم ۱) |
+| P0 | Product Catalog | برآورد نشده (۴ هفتهٔ قبلی باورپذیر نیست؛ برگهٔ catalog بخش ۸) | User Management |
+| P0 | Pricing (`pricing`؛ ADR-0008 تصمیم ۳، ADR-0024 تصمیم ۱ و ۲؛ فاز ۴ PLAYBOOK) | برآورد نشده | Product Catalog (facade و رویدادها؛ ADR-0024 تصمیم ۵) |
 | P0 | Cart Service | 2 | Product Catalog |
 | P0 | Order Service | 4 | Cart, Inventory |
 | P0 | Payment Service | 4 | Order Service |
 | P0 | Inventory Service | 3 | Product Catalog |
 | P0 | Extension Point Scaffolding (Vertical/Market Seam) | 1 | - (بخشی از فاز ۰، نه یک ماژول کاربری جدا) |
-| P0 | Certification & Compliance | 3 | Seller, Product Catalog |
-| P1 | Shipping & Logistics | 3 | Order Service |
+| P0 | Certification & Compliance | برآورد نشده (برآورد فاز ۳ در G2 می‌آید؛ برگهٔ catalog بخش ۸) | Seller, Product Catalog |
+| P1 | Shipping & Logistics *(در MVP، SHP-01 در P0 است؛ ADR-0008 تصمیم ۳)* | 3 | Order Service |
 | P1 | Search Service | 3 | Product Catalog |
 | P1 | Notification Service | 2 | Event Bus |
 | P1 | API Gateway & Security Hardening | 2 | تمام سرویس‌های P0 |
 | P2 | Review & Rating | 2 | Product, User |
 | P2 | Promotion Engine | 3 | Cart, Pricing |
-| P2 | Vendor Management | 4 | Catalog, Order, Payment |
 | P2 | Customer Support/RMA | 3 | Order Service |
 | P3 | Recommendation Engine | 5 | Search, Analytics |
 | P3 | Behavioral Analytics | 4 | تمام سرویس‌های Frontend |
@@ -332,7 +351,7 @@
 
 ### توضیح اولویت‌بندی P0
 
-ماژول‌های P0 (User Management، Catalog، Cart، Order، Payment، Inventory، Certification) هسته اصلی چرخه درآمدزایی (Revenue Loop) و تمایز برند پلتفرم را تشکیل می‌دهند؛ بدون این‌ها امکان انجام یک تراکنش خرید کامل **و قابل‌اعتماد** (با گواهی معتبر) وجود ندارد. «Extension Point Scaffolding» یک ردیف جدا نیست چون کار مستقلی برای کاربر نهایی نمی‌سازد، بلکه طراحی هفت Interface بخش ۱.۲ است که باید **همان فاز ۰** (قبل از Migration های اولیهٔ دیتابیس) قطعی شود — تعویق آن یعنی بازنویسی Schema بعداً. این ماژول‌ها:
+ماژول‌های P0 (User Management، Catalog، Cart، Order، Payment، Inventory، Certification؛ و طبق ADR-0008 تصمیم ۳ همچنین `sellers`، `pricing`، `commission-payouts`، `tax` و `shipping` (SHP-01)؛ مرجع فهرست کامل P0 همان تصمیم است) هسته اصلی چرخه درآمدزایی (Revenue Loop) و تمایز برند پلتفرم را تشکیل می‌دهند؛ بدون این‌ها امکان انجام یک تراکنش خرید کامل **و قابل‌اعتماد** (با گواهی معتبر) وجود ندارد. «Extension Point Scaffolding» یک ردیف جدا نیست چون کار مستقلی برای کاربر نهایی نمی‌سازد، بلکه طراحی هفت Interface بخش ۱.۲ است که باید **همان فاز ۰** (قبل از Migration های اولیهٔ دیتابیس) قطعی شود — تعویق آن یعنی بازنویسی Schema بعداً. این ماژول‌ها:
 
 - **بالاترین ریسک کسب‌وکار** را در صورت عدم پیاده‌سازی دارند (توقف کامل درآمد)
 - **وابستگی معکوس** بالایی دارند؛ اکثر ماژول‌های P1 تا P3 به آن‌ها متکی هستند
@@ -349,7 +368,7 @@
 | Presentation (Web) | Next.js / React, TypeScript |
 | Presentation (Mobile) | React Native / Flutter |
 | API Gateway | Kong / AWS API Gateway |
-| Application/Backend | Node.js (NestJS) — پیش‌فرض تصمیم‌گرفته‌شده در `CLAUDE.md`، قابل تغییر در ADR-0004 (stack ORM/message-broker decision, to be authored in Phase 0) |
+| Application/Backend | Node.js 24.15.0+ (ADR-0014، ADR-0021)، NestJS، Prisma v7 (ADR-0004) — پیش‌فرض تصمیم‌گرفته‌شده در `CLAUDE.md` |
 | Communication (Sync) | REST, gRPC |
 | Communication (Async) | Apache Kafka |
 | Domain/Business Logic | DDD + Hexagonal Architecture |
@@ -370,6 +389,8 @@
 | Analytics/BI | ClickHouse / BigQuery |
 | Tax/Compliance (EU/US) | سرویس شخص‌ثالث (مثل Avalara/TaxJar) به‌جای منطق داخلی — تصمیم `INTL-32/33` |
 | Payment (Marketplace Payout) | Stripe Connect، به‌ازای Market از طریق `PaymentProviderAdapter` |
+
+**در MVP جایگزین شده:** ردیف‌های Communication (Async)، NoSQL Database و Search Engine با ADR-0004 و ADR-0006 (PostgreSQL، Redis، object storage؛ Outbox و Event Bus درون‌فرایندی). Object Storage محلی دیگر MinIO نیست (ADR-0016). این جدول هدف بلندمدت است.
 
 ---
 
