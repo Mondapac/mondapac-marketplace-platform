@@ -59,3 +59,12 @@ property is wired, and that exporting from Figma reproduces `docs/design/tokens/
 - Dark preview has only Auth · Seller · A1 Sign in, Auth · Admin · A1 Sign in and Seller · Your seller account · Changes needed. The other Auth and S1 frames switch with Dark theme but have no stored dark copy.
 - Customer ("Cus") variants of the Auth screens are not drawn: identity ux.md specifies them as behaviour and copy only until storefront design starts. This release covers the Seller and Admin panels.
 - S1 "Seller · Your seller account" has a phone frame for Awaiting approval only.
+- States drawn as behaviour and copy in identity ux.md but without their own frame yet (the frontend builds them from the drawn frame of the same screen plus the copy keys):
+  - A1: the signed-out, password-changed and account-ready banners, and the `account.disabled` and `membership.none` errors.
+  - A3: "sent again", throttled, and the from-sign-in body.
+  - A4: wrong password, checking and "new link sent". A5: throttled. A6: "link not usable".
+  - A7: "code rejected", "challenge ended", and the Staff help text.
+  - A8: "code rejected", done (toast), "link not usable", and steps 2 to 4 of the admin A8 reached from the E16 link.
+  - A9: the existing seller-side account ("Sign and join") state. A2 and A4: the `no-approval` copy variants.
+  - A11: checking, done and "link not usable".
+  - S1: the Staff variant, and the loading and error ("Try again") states.

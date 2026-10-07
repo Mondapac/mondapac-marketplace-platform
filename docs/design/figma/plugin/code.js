@@ -1725,7 +1725,7 @@ function scSparkline(w, h) {
 }
 function showcaseCards(ws) {
   if (ws === 'Admin') {
-    const rows = [['KF', 'Teal', 'Kuraby Fresh Halal Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['SB', 'Amber', 'Sunnybank Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['LP', 'Neutral', 'Logan Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
+    const rows = [['CL', 'Teal', 'Cedar Lane Halal Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['OG', 'Amber', 'Olive Grove Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['RP', 'Neutral', 'Riverbend Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
     return [
       scCard('Review queue', 360, [frame({ name: 'head', dir: 'H', justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Review queue', 'Body/Strong'), inst('Badge', { Tone: 'Attention', Leading: 'Dot', Label: '3 due today' })])].concat(rows.map(function (r) {
         return frame({ name: r[2], dir: 'H', gap: 'space/2-5', align: 'center', pad: [8, 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [inst('IdentityTile', { Tone: r[1], Shape: 'Rounded', Initials: r[0] }), scLines(r[2], r[3]), inst('Badge', { Tone: r[4], Leading: 'None', Label: r[5] })]);
@@ -1762,7 +1762,7 @@ function showcaseVariant(c, p) {
   body(c, { dir: 'V', w: 704, h: 900, pad: [56, 56, 40, 56], gap: 'auto', fill: d.fill, clip: true }, [
     frame({ name: 'brand-line', dir: 'V', gap: 'space/4' }, [pill, text(d.title, 'Display/Hero', 'text/on-showcase', { name: 'headline', w: 520 }), text(d.lede, 'Body/Default', 'text/on-showcase-muted', { name: 'lede', w: 480 })]),
     stage,
-    frame({ name: 'footer', dir: 'H', sizeH: 'FILL' }, [text('Australia · Brisbane', 'Caption/Default', 'text/on-showcase-muted', { name: 'place' })]),
+    frame({ name: 'footer', dir: 'H', sizeH: 'FILL' }, [text('Illustrative examples, not real stores', 'Caption/Default', 'text/on-showcase-muted', { name: 'place' })]),
   ]);
 }
 function showcaseBlock(root) {
