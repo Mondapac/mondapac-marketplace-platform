@@ -566,3 +566,24 @@ stricter list: Hassan's five checks plus Ali's ownership of the database.
 | `create_on_database`, `create_on_schema` | has `CREATE` on the database or on any schema | `has_database_privilege`; `has_schema_privilege` over `pg_namespace` |
 | `temporary_on_database` | has `TEMPORARY` on the database (added in item 7, Mojtaba and Hassan: closes 10.5 gap 5 in deployed environments too) | `has_database_privilege(…, 'TEMPORARY')` |
 | `audit_log_privilege` | holds `UPDATE`, `DELETE`, `TRUNCATE` or `TRIGGER` on `platform.audit_log`, a column-level `UPDATE` included, or `MAINTAIN` on PostgreSQL 17 and later (it allows `LOCK TABLE`; added in item 7 from Hassan's review) | `has_table_privilege(…, 'UPDATE, DELETE, TRUNCATE, TRIGGER')` or `has_any_column_privilege(…, 'UPDATE')`; `has_table_privilege` alone misses a column-level `UPDATE` (measured) |
+
+### 10.9 Prepared statements and partial indexes (spike 6, 2026-10-07)
+
+The application never uses named prepared statements. The Prisma adapter is built without
+`statementNameGenerator`. No code passes a statement `name` to `pg`. `plan_cache_mode` is never set
+on a role, database or session. A pooler added later (Phase 7) must pass unnamed statements through
+unnamed; PgBouncer in transaction mode does.
+
+Reason: Prisma sends every literal as a bind parameter, `state = 'active'` included. An unnamed
+statement is planned for its values on every execution, so a partial index whose predicate the query
+implies is used. A named statement may switch to a generic plan after five executions. A generic
+plan cannot prove that `state = $1` implies `state = 'active'`, so it skips the partial index.
+
+Measured on `identity.seller_memberships` (2×10⁴ rows): the custom plan used 3 buffers in 0.05 ms.
+The generic plan was a bitmap scan of the Market's active memberships: 325 buffers, 3.2 ms, and
+under serializable it would predicate-lock all of them. Planning each execution costs about 0.5 ms
+on these statements; that is the accepted price.
+
+Tests: a unit test of the PrismaService factory asserts there is no `statementNameGenerator`. The
+role-settings test of 10.4 (K1a, identity data design 11.4) asserts `plan_cache_mode = auto` on the
+application login. A module design that relies on a partial index cites this section.
