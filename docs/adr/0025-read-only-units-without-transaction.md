@@ -21,7 +21,8 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
 - Every read of the access gate is an index probe (0.1 to 0.2 ms in the database).
 - Under load the Node process is the limit: about 2.0 ms of CPU per request and about 600
   requests per second per process with a pool of 10.
-- Of that, `SET TRANSACTION` costs about 0.6 ms and the transaction itself about 0.8 ms.
+- Of that, `SET TRANSACTION` costs about 0.6 ms, and the transaction itself about 0.5 ms more
+  (measured with the `relationJoins` preview on).
 - Under READ COMMITTED every statement takes its own snapshot, inside a transaction or not, so
   a read-only transaction gives no consistency that single statements lack.
 
@@ -62,14 +63,19 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
 
 ## Consequences
 - The gate and other read-only units save two round trips and a pinned connection. Spike 6
-  measured Node CPU per request falling from about 1.42 to 0.59 ms and capacity rising from
-  about 750 to about 1,490 requests per second per process.
+  measured about 750 requests per second per process with no `SET TRANSACTION` (decision 2), and
+  about 1,490 with no transaction as well, but only together with `relationJoins`, which decision
+  3 does not adopt; the gain of decision 1 alone is estimated, not measured. A read-only unit has
+  no unit timeout, only the 30 s statement bound; an application-level deadline for the gate may
+  follow.
 - Statements of one read-only unit may run on different pooled connections. Nothing may rely on
   session state or on one snapshot. A once-a-minute `lastSeenAt` write runs in its own short
   read-write unit, never in the read-only gate unit.
-- Session-level `SET` or `set_config(…, false)` on pooled connections is forbidden everywhere.
-  If row-level security driven by a per-transaction setting is ever adopted, read-only units
-  return to transactions or carry the setting on every statement.
+- Forward constraints (Hassan): (i) if row-level security driven by a per-transaction setting is
+  ever adopted, read-only units return to transactions or carry the setting on every statement;
+  session-level `SET` or `set_config(…, false)` on pooled connections is forbidden everywhere;
+  (ii) no login role sets `default_transaction_isolation` or `default_transaction_read_only`;
+  (iii) the `test:db` role-settings check runs as the login role outside a transaction.
 - Kazem sizes the pool with per-statement connections in mind. Mojtaba sees no plan change.
 - A wrong database or role default stops the API at boot instead of silently weakening every
   unit.
@@ -77,7 +83,7 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
   (identity is P0).
 
 ## Alternatives considered
-- Keep the transaction (PA5 as written): about 0.8 ms of CPU per request for no consistency.
+- Keep the transaction (PA5 as written): about 0.5 ms of CPU per request for no consistency.
 - Exempt only `Authenticator` and `AuthorisationCheck`: two kinds of read-only unit with no
   semantic difference.
 - A transaction with `SET TRANSACTION READ ONLY`: adds cost.
