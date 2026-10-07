@@ -276,24 +276,36 @@ answer. There is no session list (1.3).
 ## 3. Screen specifications
 
 ### 3.0 Rules for every screen
-1. **Auth template (A1 to A11).** Two columns from 1024 px (owner decision 2026-10-07, 7.4 row 2):
-   - **Form column**, on `bg/surface`: brand mark at the top; the content in a column of width
+1. **Auth template (A1 to A11).** Two columns when the viewport is at least 1024 CSS px wide
+   (`min-width: 1024px`; 1023 px is one column). Owner decision 2026-10-07, 7.4 row 2.
+   - **Form column**, on `bg/surface`, at least 480 px wide; it takes 45% of the width and the
+     brand panel the rest. Brand mark at the top; the content in a column of width
      `size/auth-card`, centred; the footer at the bottom. In the column: account-type `Badge` (icon
      and words), H1, body, form, one full-width primary action, then the secondary links. Footer:
      the Market name from Market configuration, because an account belongs to one Market, and the
-     support contact, always in this place (3.2.6, Jafar 10).
-   - **Brand panel**, the component `AuthShowcase` (`Workspace=Admin` on `bg/auth-showcase-admin`,
-     `Workspace=Seller` on `bg/auth-showcase-seller`): a fixed line of brand copy and three
-     overlapping illustration cards of the panel (Admin: a review queue, a sales figure, an approved
-     certificate; Seller: an order ticket, today's orders by state, a verified Halal certificate).
-     It is decoration: `aria-hidden`, no focusable element, no link.
-   - **Below 1024 px** the brand panel is not shown; the form column is the whole page on
-     `bg/page`, with the column full width less a `space/4` gutter on phones.
-   - **The brand panel is static** (Hassan): everything in it is drawn in the design and shipped
-     with the page. It makes no request, shows no real seller, person, order or figure, uses
-     fictional names and numbers marked as an illustration in the design file, and is the same on
-     every state and for every account (rule 5). Its text sits in copy keys
-     `identity.auth-showcase.*` like any other text.
+     support contact, always in this place (3.2.6, Jafar 10). There is no card at any width: the
+     column sits directly on `bg/surface`.
+   - **Brand panel**, the component `AuthShowcase`, which differs between the panels only by
+     `Workspace` (`Admin` on `bg/auth-showcase-admin`, `Seller` on `bg/auth-showcase-seller`): a
+     fixed brand line in `text/on-showcase` and `text/on-showcase-muted`, and three overlapping
+     illustration cards of the panel, drawn as `bg/surface` cards with the usual text tokens
+     (Admin: a review queue, a sales figure, an approved certificate; Seller: an order ticket,
+     today's orders by state, a verified Halal certificate). A visible caption "Example" sits on
+     the card set.
+   - **Below 1024 px** the brand panel is not in the page; the form column is the whole page, with
+     the content column full width less a `space/4` gutter on phones.
+   - **The brand panel is static** (Hassan). Its art and text are bundled same-origin with the page:
+     no third-party asset, font, image or analytics call, and nothing that varies by Market,
+     account, state, return URL or query string. It is the same on every state and for every
+     account (rule 5). Names in it come from a reserved list of fictional names checked against no
+     real store; it names no real certifying body and shows no real body's logo; it shows no real
+     admin column names, permissions or routes beyond what the Badge already shows. Its text and
+     figures are copy keys `identity.auth-showcase.*`, per locale, with no currency symbol fixed in
+     the design.
+   - **Checks** (Sajad): at 1023 px the panel is absent and at 1024 px present; axe finds the panel
+     `aria-hidden` with no focusable element; the network log of A1 to A11 has no request caused by
+     the panel; the panel's DOM is byte-identical across the states of A1 and across known and
+     unknown emails.
    - Touch density at every width.
 2. **Account type** (Jafar 4): the Badge (icon and words) and the document title name it on every
    Auth screen, and the H1 as well on A1, A2, A5, A9 and A10; never by colour alone. Document titles
@@ -318,7 +330,7 @@ answer. There is no session list (1.3).
 | **A1 Sign in.** Authenticate one population | Badge; H1; banner slot; Email; Password with show/hide; "Sign in"; "Forgot password?". Seller only: "New to MondaPac? Create a seller account" and the fixed note "Seller and customer accounts are separate. Each has its own password."; "Keep me signed in on this device", unticked, with its help line (opt-in, sellers only, 14 days idle and 30 days at most; never on the admin panel; Ali and Hassan) | Email: required, format, `autocomplete="username"`. Password: required, `current-password`. No password rules are shown here | `credentials.invalid`: summary; email kept, password cleared. Throttled: summary with the wait; "Sign in" disabled until it passes; the reset link stays active. `account.disabled` and `membership.none`, only after complete authentication: summary. Banners: session ended, signed out, password changed, account ready. Two-step paused (Hassan 2), only after a correct password: summary with "Forgot password?" | Before authentication is complete: which value was wrong; attempts left; that the account is unconfirmed, awaiting approval, suspended or deactivated. Ever: that the email has an account of another type |
 | **A2 Sign up (Seller).** Create the seller account (`identity`'s share of SEL-01) | Badge; H1; one line on what happens next, by whether approval is required (criterion 5, Jafar 11); Your name; Email; Password with show/hide and the policy rule (one field, Jafar answer 4); "Create account"; "Already have a seller account? Sign in"; legal slot (L): the privacy collection notice (Jafar 12) | Name: required, maximum length from the API, no control, bidi or URL-like text (Hassan 13). Email: format. Password: policy (15 to 128 characters, Hassan). Customer variant: email and password only | Field errors; success is A3 | "This email is already registered" |
 | **A3 Check your email.** Send the user to their inbox | Mail icon; H1; "We've sent an email to {email}" (true for E1 and for E12); a hint about delay and spam; "Send it again"; "Wrong address? Sign up again"; "Back to sign in". Reached from sign-in (F2 step 4), the body says the email must be confirmed first. Admin after a two-step reset (F6 step 6): the body says a link to set it up again was sent, with its 60 minutes; no "Wrong address?" | No fields | Sent; sent again (status message); throttled, with the wait | Whether the address already had an account |
-| **A4 Confirm your email.** Finish the confirmation from the link and sign in | Form: Badge; H1; a body that says what happens next, by account type and by whether approval is required (criterion 5, Jafar 11); Password; "Confirm email" (the link works only with the account's password, DD 6.7). Not usable: H1, one explanation covering expired and used, Email, "Send a new link" | Password: required, `current-password`. Email (not-usable state): required, format; "Send a new link" answers `verification-resend.accepted` for any address | Checking (a skeleton card and "Checking your link…", so an error never flashes); form; wrong password (`credentials.invalid`); not usable; new link sent. Success completes sign-in (DD 8.6-3, Jafar 2): a seller lands on S1, or on Home when approval is not required, with the banner "Email confirmed."; a customer is signed in. A later sign-in step that stops it answers as in F2 | Which cause applied; the account's email or name |
+| **A4 Confirm your email.** Finish the confirmation from the link and sign in | Form: Badge; H1; a body that says what happens next, by account type and by whether approval is required (criterion 5, Jafar 11); Password; "Confirm email" (the link works only with the account's password, DD 6.7). Not usable: H1, one explanation covering expired and used, Email, "Send a new link" | Password: required, `current-password`. Email (not-usable state): required, format; "Send a new link" answers `verification-resend.accepted` for any address | Checking (a skeleton block and "Checking your link…", so an error never flashes); form; wrong password (`credentials.invalid`); not usable; new link sent. Success completes sign-in (DD 8.6-3, Jafar 2): a seller lands on S1, or on Home when approval is not required, with the banner "Email confirmed."; a customer is signed in. A later sign-in step that stops it answers as in F2 | Which cause applied; the account's email or name |
 | **A5 Forgot password.** Ask for a reset link | H1 names the account type; Email; "Send reset link"; "Back to sign in" | Email: required, format | Sent: "If a seller account uses {email}, we've sent a link…", with the 60 minutes | Confirmation that the account exists; a different delay for a known email |
 | **A6 Choose a new password.** Complete the reset | Badge; H1; New password with show/hide and the policy rule (one field); the note that this signs the user out everywhere; "Save new password" | New password: policy. The account email sits in a hidden username field for password managers | Link not usable (as A4, leading to A5); success goes to A1 with a banner | The account email; automatic sign-in |
 | **A7 Two-step verification.** Second step of sign-in | Mode 1: H1; code field; "Verify"; "Use a backup code instead". Mode 2: H1; backup-code field; "Verify"; "Use your authenticator app instead". Under both, "Can't use either?" opens help for this population (F7 step 3) | One field per mode (section 6). No auto-submit and no "remember this device" | Code rejected; challenge ended after too many wrong codes (back to A1 with a message); paused after 10 wrong codes in 24 hours (back to A1, which says so; Hassan 2) | The seller's status (it comes after this step); whether the code was wrong or late |
@@ -384,7 +396,7 @@ A10 use (Jafar 8), and **1.2.0 "Panel"**.
 | Screen element | Existing library component or template | Change needed in Figma first | Release |
 |---|---|---|---|
 | Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark; two columns from 1024 px (3.0 rule 1) | MINOR 1.1.0 |
-| Brand panel beside the form (1024 px and wider) | None | New component `AuthShowcase` (`Workspace=Admin`, `Seller`; static illustration cards, decorative); colour tokens `bg/auth-showcase-admin` and `bg/auth-showcase-seller` (dark in both themes) | MINOR 1.1.0 |
+| Brand panel beside the form (1024 px and wider) | None | New component `AuthShowcase` (`Workspace=Admin`, `Seller`; static illustration cards, decorative); colour tokens `bg/auth-showcase-admin` and `bg/auth-showcase-seller` (dark in both themes), `text/on-showcase` and `text/on-showcase-muted` (brand line only; the cards use the existing text tokens) | MINOR 1.1.0 |
 | Brand mark | Drawn inside `Sidebar`; not a component | New component `BrandMark`; `Sidebar` uses the instance | MINOR 1.1.0 |
 | Account-type tag, statuses, role type | `Badge` (Tone, Leading, Label, Icon swap) | None. `StatusBadge` holds order statuses and is not used | — |
 | Label, helper and error text of a field | `Input` has no label, helper or error message | New component `Field` (Label, Optional mark, Helper, Error with icon, Counter) wrapping Input, Textarea, Select | MINOR 1.1.0 |
@@ -415,9 +427,11 @@ A10 use (Jafar 8), and **1.2.0 "Panel"**.
   `Shared · Roles`, `Shared · Role editor`, `Shared · Account security` and `Shared · No access`
   (1.2.0). Shared templates get a Seller frame and an Admin frame. P1 is a **Phase 2 frame of the
   existing `Admin · Sellers`** (1.2.0), not a new template (Jafar 9).
-- **New components (11, plus `MenuItem`):** `BrandMark`, `Field`, `ReasonQuote`, `Menu`, `AuthShowcase` (1.1.0);
+- **New components (11, plus `MenuItem`):** `BrandMark`, `Field`, `ReasonQuote`, `Menu`,
+  `AuthShowcase` (1.1.0);
   `Select`, `Textarea`, `Dialog`, `Toast`, `EmptyState`, `CheckboxRow` (1.2.0). Each is used in both
-  panels or in at least two places, as the update procedure requires. New tokens: 7. New icons: 9.
+  panels or in at least two places, as the update procedure requires. New tokens: 8 (`bg/scrim`,
+  listed for 1.2.0, exists since 1.6.0). New icons: 9.
 - **Design-system version after this module:** 1.2.0. Nothing is renamed or removed, so no MAJOR.
 
 ## 5. Copy
@@ -586,6 +600,10 @@ The 2.2 criteria that shape these screens: 2.4.11 (focus not obscured), 2.5.8 (t
 (consistent help), 3.3.7 (redundant entry) and 3.3.8 (accessible authentication).
 - **Consistent help (3.2.6).** The support contact sits in the same place on every Auth screen (the
   footer, 3.0 rule 1, A10 included) and on S1 (the help card, always last).
+- **Brand panel (3.0 rule 1).** `AuthShowcase` is decorative: `aria-hidden="true"`, no focusable
+  element, live text and not an image, no motion. The brand line meets 4.5:1 on its background
+  (3:1 for text of 24 px and larger). At 200% zoom the viewport is below 1024 CSS px, so only the
+  form shows (1.4.4, 1.4.10).
 - **Focus order.** Auth: error summary when present, fields in visual order, show/hide button after
   its field, primary action, secondary links, footer. When the step changes without a page load (A1
   to A7, the steps of A8) focus moves to the new H1 and the document title changes. In the shell:
@@ -685,12 +703,12 @@ Jafar agrees with items 1 and 2; Hassan confirmed the stance of item 3; item 4 w
    enrolment secret.
 
 ### 7.4 Asked of the owner
-The orchestrator puts this question in the single owner list with DD 14.4.
+The orchestrator puts question 1 in the single owner list with DD 14.4.
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
 | 1 | Whom does a locked-out shop owner, or one whose application needs changes, contact? S1, A7, the Auth footer (A10 included) and several emails show the contact, and a shop owner's two-step reset starts there. **Asked of the owner** | (a) One support email address per Market, from Market configuration. (b) No contact on screen; the seller replies to the email they received. (c) A contact form, later | (a), with a named person who reads it (Jafar) and a written identity check before a shop owner's two-step reset (Hassan). Needed before the first real account |
-| 2 | How should the sign-in pages look? Three concepts on the canvas "MondaPac Panel Shell", page "Login · three concepts": a split page with a brand panel, a centred card, a mosaic of tiles; then three brand panels for the split page | **Decided by the owner on 2026-10-07: concept 1A**, the split page with illustration cards of the panel in the brand panel | — |
+| 2 | How should the sign-in pages look? Three concepts on the canvas "MondaPac Panel Shell", page "Login · three concepts": (1) a split page with a brand panel, (2) a centred card, (3) a mosaic of tiles; then, for concept 1, three brand panels: 1A illustration cards of the panel, 1B a live delivery map, 1C an orbit of categories | **Decided by the owner on 2026-10-07: 1A.** Concepts 2 and 3, 1B and 1C were not chosen | — |
 
 Told, not asked, and shown in the Persian summary: the words a seller reads ("Changes needed", "Not
 approved", "This seller account is suspended"): a design decision set by the `sellers` G1, and
@@ -712,8 +730,9 @@ ready-made roles question of DD 14.4 decides the keys `identity.roles.default.<c
 ### 8.1 Design track: what to build in Figma, in order
 Follow `docs/design/figma/update-procedure.md`: Sandbox, review, publish, Export tokens.
 1. **Release 1.1.0 "Auth"** (unblocks frontend work for slices 2 to 7, S1 and A10; Jafar 8):
-   tokens `bg/qr`, `bg/auth-showcase-admin`, `bg/auth-showcase-seller` and `size/auth-card`; 9 icons;
-   `BrandMark`; `AuthShowcase` (3.0 rule 1); `Field`; `Input` variants Password
+   tokens `bg/qr`, `bg/auth-showcase-admin`, `bg/auth-showcase-seller`, `text/on-showcase`,
+   `text/on-showcase-muted` and `size/auth-card`; 9 icons; `BrandMark`; `AuthShowcase` (3.0 rule
+   1); `Field`; `Input` variants Password
    and Code; `Button` Loading and Link; `ReasonQuote`; `Menu` and `MenuItem` with the description
    line; the `ChecklistItem` variants; the `Topbar` booleans. Template `Auth` with frames for A1
    (default, error, throttled, two-step paused, banner), A2, A3 (with the admin re-enrolment body),
@@ -721,7 +740,7 @@ Follow `docs/design/figma/update-procedure.md`: Sandbox, review, publish, Export
    the password first), A9 (three variants, the admin one with the A8 steps; not usable), A10
    (owner, staff) and A11, for Seller and Admin where each applies. Template
    `Seller · Your seller account` (awaiting approval, changes needed, and the final not approved).
-2. **Release 1.2.0 "Panel"** (slices 8a to 12): tokens `bg/scrim`, `size/dialog-sm`,
+2. **Release 1.2.0 "Panel"** (slices 8a to 12): tokens `size/dialog-sm` (`bg/scrim` exists since 1.6.0),
    `size/dialog-md`; `Dialog` with the sheet layout, `Textarea`, `Select`, `Toast`, `EmptyState`,
    `CheckboxRow`; the `TableCell` loading variant; the Phase 2 frame of `Admin · Sellers`; then the
    five shared templates with their dialogs. The role editor needs frames for custom, default and
@@ -731,7 +750,7 @@ Follow `docs/design/figma/update-procedure.md`: Sandbox, review, publish, Export
    export, changelog, README counts, `claude/design-status.md`.
 4. The table of brief section 12 is filled from section 4: Reza fills it, Jafar approves (Ali 11).
    Owner review: a short Persian summary with screenshots of A1, S1 (changes needed), A10, D4 and
-   B3, which shows the status words instead of asking about them, and the question of 7.4.
+   B3, which shows the status words instead of asking about them, and question 1 of 7.4.
 
 ### 8.2 Frontend track: which screens wait for which backend slice
 Every screen also waits for the D1 and D2 ADRs and slice F0 (brief slice 13).
