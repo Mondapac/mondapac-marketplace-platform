@@ -56,6 +56,7 @@ apps/api/              NestJS modular monolith: src/modules (bounded contexts), 
 packages/shared-kernel Framework-free types shared by api and web
 prisma/                Prisma schema (one file per module) and migrations with down.sql
 config/markets/        Market configuration as code, validated at startup
+config/service-areas/  ServiceArea postcode sets per Market, validated at startup
 test/fixtures/markets/ Synthetic second market used by tests
 scripts/               Migration reversibility and Prisma boundary checks
 docs/spec/             Technical specification (source of truth)
