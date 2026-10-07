@@ -124,6 +124,10 @@
     "topbar-phone": {
       "$type": "dimension",
       "$value": "56px"
+    },
+    "auth-card": {
+      "$type": "dimension",
+      "$value": "400px"
     }
   },
   "border": {

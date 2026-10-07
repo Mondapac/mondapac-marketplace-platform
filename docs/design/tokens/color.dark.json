@@ -46,6 +46,21 @@
         "$type": "color",
         "$value": "#00000099",
         "$description": "Overlay behind drawers and modals; alpha is part of the value"
+      },
+      "qr": {
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+        "$description": "QR code plate; white in both themes"
+      },
+      "auth-showcase-admin": {
+        "$type": "color",
+        "$value": "{color.blue.780}",
+        "$description": "Auth brand panel, Admin; dark in both themes"
+      },
+      "auth-showcase-seller": {
+        "$type": "color",
+        "$value": "{color.teal.705}",
+        "$description": "Auth brand panel, Seller; dark in both themes"
       }
     },
     "border": {
@@ -105,6 +120,16 @@
         "$type": "color",
         "$value": "{color.neutral.0}",
         "$description": "Text and icons on primary"
+      },
+      "on-showcase": {
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+        "$description": "Brand line on the Auth brand panel"
+      },
+      "on-showcase-muted": {
+        "$type": "color",
+        "$value": "#FFFFFFBD",
+        "$description": "Secondary brand line on the Auth brand panel; alpha is part of the value"
       }
     },
     "icon": {

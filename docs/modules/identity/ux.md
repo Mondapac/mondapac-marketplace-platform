@@ -393,6 +393,10 @@ URL path.
 is additive, so both releases are MINOR: **1.1.0 "Auth"**, with everything the Auth screens, S1 and
 A10 use (Jafar 8), and **1.2.0 "Panel"**.
 
+Version numbers as shipped: the library reached 1.5.0 and 1.6.0 (mobile navigation) before these
+releases, so "1.1.0 Auth" shipped as library **1.7.0** (2026-10-07) and "1.2.0 Panel" ships under
+the next free number. In this document 1.1.0 and 1.2.0 name those two releases.
+
 | Screen element | Existing library component or template | Change needed in Figma first | Release |
 |---|---|---|---|
 | Page frame before sign-in (A1 to A11) | None: every template sits inside the shell | New template `Auth`, Seller and Admin frames, 360 and 1280 wide, light and dark; two columns from 1024 px (3.0 rule 1) | MINOR 1.1.0 |

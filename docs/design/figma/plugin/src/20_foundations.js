@@ -62,7 +62,7 @@ async function pageGettingStarted(page) {
     ['Start', 'Cover · Getting started · Changelog', 'What this is, how to use it, what changed'],
     ['Foundations', 'Colour · Typography · Spacing, size & radius · Elevation & motion · Icons · Accessibility', 'Variables, text styles, effect styles, icon components'],
     ['Components', 'Actions · Forms & selection · Status & feedback · Data display · Tables & collections · Navigation & shell · Review & detail · Board & delivery', 'Component sets with variants and properties, each with usage notes'],
-    ['Templates', 'Admin · Seller · Dark preview', 'Full screens assembled from instances; the reference for new screens'],
+    ['Templates', 'Admin · Seller · Auth · Dark preview', 'Full screens assembled from instances; the reference for new screens'],
     ['Workspace', 'Sandbox · Archive', 'Proposals in progress and retired components'],
   ], [180, 560, 600]));
 
@@ -89,12 +89,13 @@ async function pageGettingStarted(page) {
   tag(root);
 }
 
-// Release notes shown on the Changelog page, oldest first (new releases are appended in place). 1.1.0 to 1.4.0 are reserved for the planned
-// Auth, Panel, Seller setup and Seller admin releases, so versions skip from 1.0.0 to 1.5.0.
+// Release notes shown on the Changelog page, oldest first (new releases are appended in place). 1.1.0 to 1.4.0 were reserved for the planned
+// Auth, Panel, Seller setup and Seller admin releases; that content now ships under the next free numbers, starting with 1.7.0 Auth.
 const CHANGELOG_WIDTHS = [140, 160, 1100];
 const RELEASES = [
   { version: '1.5.0', date: '7 Oct 2026', changes: 'Mobile navigation (D16). New components NavDrawer (phone drawer, Admin and Seller) and BottomTabBar (seller phone bar, 4 or 3 tabs). New token size/bottom-bar (64 px). Three 360 px phone templates: seller home with bottom bar, seller menu open, admin menu open.' },
   { version: '1.6.0', date: '7 Oct 2026', changes: 'Mobile navigation polish (D16 follow-up). New token bg/scrim (overlay colour with alpha in the value: #111827 at 50% light, black at 60% dark), new token size/topbar-phone (56 px), new icon menu, new component PhoneTopbar (Admin and Seller). The three phone templates use PhoneTopbar and the drawer scrim is bound to bg/scrim.' },
+  { version: '1.7.0', date: '7 Oct 2026', changes: 'Auth (planned as 1.1.0 in identity ux.md 8.1). Tokens bg/qr, bg/auth-showcase-admin, bg/auth-showcase-seller, text/on-showcase, text/on-showcase-muted (white at 74%, hex8) and size/auth-card (400 px), with primitives blue/780 and teal/705. Icons eye-off, lock, mail, key, user, log-out, copy, smartphone, trash. New components BrandMark (the Sidebar uses it in a new build), Field, ReasonQuote, Menu and MenuItem, AuthShowcase. Input Type=Password and Type=Code; Button Variant=Link and State=Loading; ChecklistItem Waiting and Needs attention with Show actions and Action; Topbar Show search and Show notifications. Templates Auth (A1 to A11, Seller and Admin, 1280 and 360) and Seller · Your seller account (S1), with dark previews.' },
 ];
 const RELEASE = RELEASES[RELEASES.length - 1];
 async function pageChangelog(page) {
@@ -149,7 +150,7 @@ async function pageTypography(page) {
   tag(root);
 }
 
-const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'size/topbar-phone': 'Phone top bar height (Admin and Seller)', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
+const SIZE_USE = { 'size/control-sm': 'Row buttons', 'size/control': 'Buttons and inputs', 'size/control-lg': 'Tablet header controls', 'size/badge': 'Badges', 'size/icon': 'Icons', 'size/thumb': 'Product thumbnail in rows', 'size/sidebar': 'Sidebar width', 'size/sidebar-collapsed': 'Collapsed sidebar', 'size/topbar': 'Top bar height', 'size/bottom-bar': 'Phone bottom tab bar height (seller)', 'size/topbar-phone': 'Phone top bar height (Admin and Seller)', 'size/auth-card': 'Content width of the Auth form column', 'border/width': 'Default border', 'border/width-strong': 'Selected tab, urgent card' };
 async function pageSpacing(page) {
   const root = pageShell(page, 'Spacing, size & radius', 'A 2 px base with 4 px steps for layout. Values switch between Desktop and Touch density; touch makes controls 48 px.');
   let s = docSection(root, 'Spacing');

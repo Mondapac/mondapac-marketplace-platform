@@ -187,13 +187,14 @@ function makeFigma(opts) {
       super(type);
       this._x = 0; this._y = 0; this._w = 100; this._h = 100; this.visible = true; this.locked = false;
       this._fills = []; this._strokes = []; this._effects = []; this._bv = {}; this._refs = null; this._modes = {};
-      this.strokeWeight = 1; this._strokeAlign = 'INSIDE'; this.dashPattern = []; this.opacity = 1; this.constraints = { horizontal: 'MIN', vertical: 'MIN' };
+      this.strokeWeight = 1; this._strokeAlign = 'INSIDE'; this.dashPattern = []; this.opacity = 1; this.constraints = { horizontal: 'MIN', vertical: 'MIN' }; this._rot = 0;
       this._layoutPositioning = 'AUTO'; this._fillH = false; this._fillV = false;
       ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
       if (AUTO.has(type)) Object.assign(this, { _layoutMode: 'NONE', _pAxis: 'FIXED', _cAxis: 'FIXED', paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, itemSpacing: 0, _counterAxisSpacing: 0, _wrap: 'NO_WRAP', _pAlign: 'MIN', _cAlign: 'MIN', clipsContent: true });
     }
     _isAuto() { return AUTO.has(this.type) && this.layoutMode !== 'NONE'; }
     _guardInst(what) { /* structural props cannot change inside instances */ if (this.instAncestor() && ['layoutMode', 'layoutWrap'].indexOf(what) >= 0) fail('Cannot change ' + what + ' of a node inside an instance'); }
+    get rotation() { return this._rot; } set rotation(v) { if (!isNum(v) || v < -180 || v > 180) fail('rotation must be a number from -180 to 180'); this._rot = v; }
     get x() { return this._x; } set x(v) { if (!isNum(v)) fail('x must be a number'); this._x = v; }
     get y() { return this._y; } set y(v) { if (!isNum(v)) fail('y must be a number'); this._y = v; }
     // --- geometry
