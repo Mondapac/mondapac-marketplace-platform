@@ -96,15 +96,15 @@ const sellerTimezonesSchema = z.strictObject({
     z.strictObject({
       postcodes: z
         .array(
-          z
-            .string()
-            .refine(
-              (value) =>
-                /^([A-Z0-9]{1,10}|\d{1,10}-\d{1,10})$/u.test(
-                  value.replace(/\s+/gu, '').toUpperCase(),
-                ),
-              'must be a postcode or a digit range',
-            ),
+          z.string().refine((value) => {
+            const entry = value.replace(/\s+/gu, '').toUpperCase();
+            if (/^[A-Z0-9]{1,10}$/u.test(entry)) return true;
+            // Same grammar as a ServiceArea range: digits only, equal length, low to high.
+            const range = /^(\d{1,10})-(\d{1,10})$/u.exec(entry);
+            return (
+              range !== null && range[1]!.length === range[2]!.length && range[1]! <= range[2]!
+            );
+          }, 'must be a postcode or a same-length digit range, low to high'),
         )
         .min(1),
       timezone: timeZone,

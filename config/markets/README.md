@@ -22,7 +22,10 @@ but cannot take seller addresses. It starts with what slice 2 needs; later slice
   `regions` go together.
 - `timezones`: `byRegion` names an IANA zone for exactly the regions of `address.regions`, and
   `postcodeExceptions` lists postcodes (or same-length digit ranges) whose zone differs from their
-  region's. Never an offset (ADR-0005).
+  region's. Never an offset (ADR-0005). An entry is an exact postcode (letters and digits, no
+  hyphen) or a digit range with ends of equal length, low to high, the same grammar as
+  `config/service-areas/`. A Market whose real postcodes contain a hyphen cannot list them yet;
+  the grammar grows when such a Market is added.
 
 The AU `postcodeExceptions` list is empty until the zone table of sellers spike 3 (a source whose
 licence allows a checked-in file) is done: Broken Hill, Lord Howe Island and Eucla are among the

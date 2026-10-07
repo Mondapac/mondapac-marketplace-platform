@@ -184,7 +184,17 @@ describe('loadMarketConfigs', () => {
       [
         'a malformed exception postcode',
         (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['9-!']),
-        /postcode or a digit range/,
+        /postcode or a same-length digit range/,
+      ],
+      [
+        'an exception range with ends of different length',
+        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['999-9999']),
+        /same-length digit range/,
+      ],
+      [
+        'an exception range written high to low',
+        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['2899-2898']),
+        /same-length digit range/,
       ],
     ])('rejects %s', (_case, change, message) => {
       const directory = withSellers(mutate(change));

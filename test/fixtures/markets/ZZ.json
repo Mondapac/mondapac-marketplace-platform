@@ -46,7 +46,7 @@
       },
       "postcodeExceptions": [
         {
-          "postcodes": ["999-9999"],
+          "postcodes": ["9999999"],
           "timezone": "Pacific/Chatham"
         }
       ]
