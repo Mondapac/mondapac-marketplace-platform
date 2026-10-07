@@ -128,6 +128,40 @@ describe("every module's outbox writer binding names its own folder (P 5.2)", ()
 
     expect(boundNames(identity)).toEqual(['identity']);
   });
+
+  // The provider walk above sees only `provide: OUTBOX_WRITER` on each root Nest module; a
+  // renamed token, a wrapping factory or a submodule would slip past it (security re-review of
+  // slice 1b, NEW-L1). So the source is scanned too: outside persistence.module.ts, the only
+  // allowed use is `PersistenceModule.outboxWriterFor('<m>')`, once, in modules/<m>/<m>.module.ts.
+  it('calls outboxWriterFor only once per module, in its own <m>.module.ts, with its folder name', () => {
+    const SRC = path.join(__dirname, '../../src');
+    const DEFINITION = path.join('platform', 'persistence', 'persistence.module.ts');
+    const offenders: string[] = [];
+
+    for (const entry of readdirSync(SRC, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.ts') || entry.name.endsWith('.spec.ts')) {
+        continue;
+      }
+      const file = path.relative(SRC, path.join(entry.parentPath, entry.name));
+      if (file === DEFINITION) continue;
+      // Comments may name the helper (its own documentation does); code may not.
+      const code = readFileSync(path.join(SRC, file), 'utf8')
+        .replaceAll(/\/\*[\s\S]*?\*\//g, '')
+        .replaceAll(/\/\/.*$/gm, '');
+      const count = code.split('outboxWriterFor').length - 1;
+      if (count === 0) continue;
+
+      const [top, folder, name] = file.split(path.sep);
+      const allowed =
+        top === 'modules' &&
+        name === `${folder}.module.ts` &&
+        count === 1 &&
+        new RegExp(`(?<![.\\w])PersistenceModule\\.outboxWriterFor\\('${folder}'\\),`).test(code);
+      if (!allowed) offenders.push(file);
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe('a module reaches only its own outbox writer (P 5.2; security review of slice 1b, M1)', () => {
