@@ -45,7 +45,7 @@ export function testCatalogue(): EventCatalogue {
   return catalogue;
 }
 
-/** The identity writer of one test process, as `outboxWriterFor('identity')` binds it. */
+/** The identity writer of one test process, as `PersistenceModule.outboxWriterFor('identity')` binds it. */
 export function identityWriter(db: Persistence, catalogue = testCatalogue()): OutboxWriter {
   return new PrismaOutboxWriterFactory(
     modelMap,

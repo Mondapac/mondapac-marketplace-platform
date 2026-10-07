@@ -267,7 +267,11 @@ export function defineEvent<const T extends string, const F extends PayloadField
 // ---------------------------------------------------------------------------------------------
 // Validation and the jsonb form
 
-/** Why a payload was refused: the field's declared name and a code, never the value. */
+/**
+ * Why a payload was refused: a code and, for a declared field, its name; never a value.
+ * `field` is `null` for `not-an-object` and `undeclared`: an undeclared key is caller data,
+ * so it is never echoed (security review of slice 1b, L2).
+ */
 export interface EventPayloadError {
   readonly code: 'event-payload.invalid';
   readonly field: string | null;
@@ -338,7 +342,8 @@ export function encodePayload(
   if (!isPlainObject(payload)) return refuse(null, 'not-an-object');
 
   for (const name of Object.keys(payload)) {
-    if (!Object.hasOwn(fields, name)) return refuse(name, 'undeclared');
+    // The key is not declared, so it is caller data: name no field.
+    if (!Object.hasOwn(fields, name)) return refuse(null, 'undeclared');
   }
   const encoded: Record<string, JsonValue> = {};
   for (const [name, kind] of Object.entries(fields)) {

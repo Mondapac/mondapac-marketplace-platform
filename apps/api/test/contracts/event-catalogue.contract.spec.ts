@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { devNull } from 'node:os';
 import path from 'node:path';
-import type { INestApplicationContext, Provider } from '@nestjs/common';
+import { Module, type INestApplicationContext, type Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import type { EventDescription } from '@mondapac/shared-kernel';
@@ -9,7 +9,8 @@ import pino from 'pino';
 import { AppModule } from '../../src/app.module';
 import { CORE_MODULES } from '../../src/modules';
 import { compareWithSnapshot, EventCatalogue } from '../../src/platform/events/event-catalogue';
-import { OUTBOX_WRITER, type OutboxWriterFactory } from '../../src/platform/events/outbox-writer';
+import { OUTBOX_WRITER } from '../../src/platform/events/outbox-writer';
+import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { JobRegistry } from '../../src/platform/scheduler/job-registry';
 import { WorkerRuntime } from '../../src/platform/worker/worker-runtime';
 import { testAppConfig } from '../support/test-config';
@@ -86,20 +87,25 @@ describe("every module's outbox writer binding names its own folder (P 5.2)", ()
   function boundNames(module: object): string[] {
     const providers = (Reflect.getMetadata(MODULE_METADATA.PROVIDERS, module) ?? []) as Provider[];
     const names: string[] = [];
-    const factory: OutboxWriterFactory = {
-      forModule: (name) => {
+    const forModule = jest
+      .spyOn(PrismaOutboxWriterFactory.prototype, 'forModule')
+      .mockImplementation((name) => {
         names.push(name);
         return { append: () => Promise.resolve() };
-      },
-    };
-    for (const provider of providers) {
-      if (
-        typeof provider === 'object' &&
-        'provide' in provider &&
-        provider.provide === OUTBOX_WRITER
-      ) {
-        (provider as { useFactory: (factory: OutboxWriterFactory) => unknown }).useFactory(factory);
+      });
+    try {
+      for (const provider of providers) {
+        if (
+          typeof provider === 'object' &&
+          'provide' in provider &&
+          provider.provide === OUTBOX_WRITER
+        ) {
+          // The dependencies are not used until append; the spy records the name.
+          (provider as { useFactory: (...deps: never[]) => unknown }).useFactory();
+        }
       }
+    } finally {
+      forModule.mockRestore();
     }
     return names;
   }
@@ -121,5 +127,83 @@ describe("every module's outbox writer binding names its own folder (P 5.2)", ()
     const identity = CORE_MODULES.find((module) => module.name === 'IdentityModule')!;
 
     expect(boundNames(identity)).toEqual(['identity']);
+  });
+});
+
+describe('a module reaches only its own outbox writer (P 5.2; security review of slice 1b, M1)', () => {
+  /** Compiles the application graph plus one module whose provider injects `token`. */
+  function compileWith(token: unknown): Promise<unknown> {
+    @Module({ providers: [{ provide: 'ROGUE', inject: [token as symbol], useFactory: () => 1 }] })
+    class RogueModule {}
+    return Test.createTestingModule({
+      imports: [
+        AppModule.register({
+          config: testAppConfig({ APP_ROLE: 'api' }),
+          logDestination: pino.destination(devNull),
+        }),
+        RogueModule,
+      ],
+    }).compile();
+  }
+
+  it('cannot resolve the outbox writer factory: it is not a provider', async () => {
+    await expect(compileWith(PrismaOutboxWriterFactory)).rejects.toThrow(
+      /can't resolve dependencies/i,
+    );
+  });
+
+  it("cannot resolve another module's writer (identity's OUTBOX_WRITER is not exported)", async () => {
+    await expect(compileWith(OUTBOX_WRITER)).rejects.toThrow(/can't resolve dependencies/i);
+  });
+
+  it('exports, from no module of the graph, anything that hands out a writer by module name', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        AppModule.register({
+          config: testAppConfig({ APP_ROLE: 'api' }),
+          logDestination: pino.destination(devNull),
+        }),
+      ],
+    }).compile();
+    const container = (
+      moduleRef as unknown as {
+        container: { getModules(): Map<string, { metatype: object; exports: Set<unknown> }> };
+      }
+    ).container;
+    const offenders: string[] = [];
+    for (const nestModule of container.getModules().values()) {
+      for (const token of nestModule.exports) {
+        let instance: unknown;
+        try {
+          instance = moduleRef.get(token as symbol, { strict: false });
+        } catch {
+          continue; // A re-exported module, not a provider.
+        }
+        if (
+          instance instanceof PrismaOutboxWriterFactory ||
+          (typeof instance === 'object' && instance !== null && 'forModule' in instance)
+        ) {
+          offenders.push(`${(nestModule.metatype as { name: string }).name}:${String(token)}`);
+        }
+      }
+    }
+    await moduleRef.close();
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('identity resolves its own writer inside its module', async () => {
+    const identity = CORE_MODULES.find((module) => module.name === 'IdentityModule')!;
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        AppModule.register({
+          config: testAppConfig({ APP_ROLE: 'api' }),
+          logDestination: pino.destination(devNull),
+        }),
+      ],
+    }).compile();
+
+    expect(moduleRef.select(identity).get(OUTBOX_WRITER)).toHaveProperty('append');
+    await moduleRef.close();
   });
 });

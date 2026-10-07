@@ -167,9 +167,10 @@ export class PrismaOutboxRelay implements OutboxRelay {
         await this.bus.publish(events, transaction as unknown as RelayTransaction);
         await transaction.$executeRawUnsafe(
           `UPDATE "${schema}"."${table}" SET published_at = $1
-            WHERE market_id = $2 AND event_id = ANY($3::uuid[])`,
+            WHERE market_id = $2 AND tenant_id = $3 AND event_id = ANY($4::uuid[])`,
           new Date(now.epochMilliseconds),
           market.marketId,
+          market.tenantId,
           events.map((event) => event.eventId),
         );
         for (const event of events) {

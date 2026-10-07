@@ -165,7 +165,7 @@ describe('outbox writer (database integration)', () => {
         'an undeclared payload field',
         (id) => ({ ...thing(1, id), payload: { ...thing(1, id).payload, reason: 'free text' } }),
         'payload-invalid',
-        'reason',
+        null,
       ],
       [
         'a field of the wrong kind',
@@ -225,6 +225,8 @@ describe('outbox writer (database integration)', () => {
 
         await expect(run).rejects.toBeInstanceOf(OutboxWriteRefusedError);
         await expect(run).rejects.toMatchObject({ reason, field });
+        // An undeclared key is caller data: neither the field nor the message echoes it (L2).
+        await expect(run).rejects.not.toHaveProperty('message', expect.stringContaining('reason)'));
         const count = await sql.query('SELECT 1 FROM identity.outbox WHERE correlation_id = $1', [
           context.correlationId,
         ]);

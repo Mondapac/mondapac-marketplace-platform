@@ -30,6 +30,8 @@ export default async function globalSetup(): Promise<void> {
       );
     }
     await admin.query(`CREATE DATABASE "${name}"`);
+    // Recorded at once, so that the teardown drops it even if a statement below fails.
+    process.env.TEST_DATABASE_NAME = name;
     // A new database gets the default ACL, not its template's (10.7).
     await admin.query(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
     await admin.query(`GRANT CONNECT ON DATABASE "${name}" TO "mondapac_app"`);
@@ -37,7 +39,6 @@ export default async function globalSetup(): Promise<void> {
     await admin.end();
   }
 
-  process.env.TEST_DATABASE_NAME = name;
   process.env.TEST_DATABASE_URL = applicationUrl.toString();
   process.env.TEST_OWNER_DATABASE_URL = ownerUrl.toString();
 
@@ -66,6 +67,8 @@ async function createCopy(template: string, kind: 'LOCKING' | 'RELAY'): Promise<
   await admin.connect();
   try {
     await admin.query(`CREATE DATABASE "${name}" TEMPLATE "${template}"`);
+    // Recorded at once, so that the teardown drops the copy even if a statement below fails.
+    process.env[`TEST_${kind}_DATABASE_NAME`] = name;
     await admin.query(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
     await admin.query(`GRANT CONNECT ON DATABASE "${name}" TO "mondapac_app"`);
   } finally {
@@ -75,7 +78,6 @@ async function createCopy(template: string, kind: 'LOCKING' | 'RELAY'): Promise<
   ownerUrl.pathname = `/${name}`;
   const applicationUrl = new URL(applicationDatabaseUrl());
   applicationUrl.pathname = `/${name}`;
-  process.env[`TEST_${kind}_DATABASE_NAME`] = name;
   process.env[`TEST_${kind}_DATABASE_URL`] = applicationUrl.toString();
   process.env[`TEST_${kind}_OWNER_DATABASE_URL`] = ownerUrl.toString();
 }

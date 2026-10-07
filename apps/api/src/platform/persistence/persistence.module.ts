@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, type FactoryProvider } from '@nestjs/common';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { MODEL_MAP } from '../../generated/model-map';
 import { CLOCK } from '../clock/clock.module';
@@ -7,8 +7,9 @@ import { APP_CONFIG } from '../config/config.module';
 import { EVENT_BUS, OUTBOX_RELAY, type EventBus } from '../events/event-bus';
 import { EventCatalogue } from '../events/event-catalogue';
 import {
-  OUTBOX_WRITER_FACTORY,
+  OUTBOX_WRITER,
   PERMISSION_KEY_LOOKUP,
+  type OutboxWriter,
   type PermissionKeyLookup,
 } from '../events/outbox-writer';
 import { ID_GENERATOR } from '../ids/ids.module';
@@ -33,8 +34,11 @@ const modelMap: ModelMap = MODEL_MAP;
 /**
  * Persistence (platform persistence design, "P", 3.3, 5 to 7). Exports the guarded door for
  * modules (`PrismaService`), the `UnitOfWork` port, `DatabaseProbe`, and the implementations
- * of the event and scheduler ports (outbox writer factory, relay, bus, job lock); never the
- * base client (`PrismaRoot`) or the guarded client, so Nest cannot inject them elsewhere.
+ * of the event and scheduler ports (relay, bus, job lock); never the base client
+ * (`PrismaRoot`) or the guarded client, so Nest cannot inject them elsewhere. The outbox writer
+ * factory is not a provider at all: a module reaches only its own writer, through
+ * {@link PersistenceModule.outboxWriterFor}. A static method, not a named export, so this file
+ * still exports only `PersistenceModule` (boundaries.spec.ts).
  */
 @Global()
 @Module({
@@ -60,16 +64,6 @@ const modelMap: ModelMap = MODEL_MAP;
       inject: [PrismaRoot],
       useFactory: (root: PrismaRoot) => new DatabaseProbe(root),
     },
-    {
-      provide: OUTBOX_WRITER_FACTORY,
-      inject: [PrismaService, EventCatalogue, ID_GENERATOR, PERMISSION_KEY_LOOKUP],
-      useFactory: (
-        prisma: PrismaService,
-        catalogue: EventCatalogue,
-        ids: IdGenerator,
-        permissionKeys: PermissionKeyLookup,
-      ) => new PrismaOutboxWriterFactory(modelMap, prisma, catalogue, ids, permissionKeys),
-    },
     { provide: EVENT_BUS, useClass: InProcessEventBus },
     {
       provide: OUTBOX_RELAY,
@@ -88,14 +82,30 @@ const modelMap: ModelMap = MODEL_MAP;
       useFactory: (root: PrismaRoot) => new AdvisoryJobLock(root),
     },
   ],
-  exports: [
-    PrismaService,
-    UNIT_OF_WORK,
-    DatabaseProbe,
-    OUTBOX_WRITER_FACTORY,
-    EVENT_BUS,
-    OUTBOX_RELAY,
-    JOB_LOCK,
-  ],
+  exports: [PrismaService, UNIT_OF_WORK, DatabaseProbe, EVENT_BUS, OUTBOX_RELAY, JOB_LOCK],
 })
-export class PersistenceModule {}
+export class PersistenceModule {
+  /**
+   * The one line of a module's Nest module that binds its own outbox writer (P 5.2):
+   * `providers: [PersistenceModule.outboxWriterFor('identity')]`. The name is the module's
+   * folder; the contracts test checks it for every module. The writer is built here from the exported door
+   * (`PrismaService`) and the global catalogue, id generator and permission-key lookup, so no
+   * module-to-writer factory is ever injectable: a module cannot resolve the factory or another
+   * module's writer (security review of slice 1b, M1). A module never exports `OUTBOX_WRITER`.
+   */
+  static outboxWriterFor(module: string): FactoryProvider<OutboxWriter> {
+    return {
+      provide: OUTBOX_WRITER,
+      inject: [PrismaService, EventCatalogue, ID_GENERATOR, PERMISSION_KEY_LOOKUP],
+      useFactory: (
+        prisma: PrismaService,
+        catalogue: EventCatalogue,
+        ids: IdGenerator,
+        permissionKeys: PermissionKeyLookup,
+      ) =>
+        new PrismaOutboxWriterFactory(modelMap, prisma, catalogue, ids, permissionKeys).forModule(
+          module,
+        ),
+    };
+  }
+}

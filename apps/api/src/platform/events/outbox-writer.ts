@@ -1,4 +1,3 @@
-import type { Provider } from '@nestjs/common';
 import type { CorrelationId, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
 
 /**
@@ -33,23 +32,13 @@ export interface OutboxWriterFactory {
   forModule(module: string): OutboxWriter;
 }
 
-/** Nest token of the {@link OutboxWriterFactory}, provided by the persistence layer. */
-export const OUTBOX_WRITER_FACTORY = Symbol('OUTBOX_WRITER_FACTORY');
-
-/** Nest token of a module's own {@link OutboxWriter}; each module binds it with {@link outboxWriterFor}. */
-export const OUTBOX_WRITER = Symbol('OUTBOX_WRITER');
-
 /**
- * The one line of a module's Nest module that binds its writer (P 5.2):
- * `providers: [outboxWriterFor('identity')]`. The name is the module's folder; a test checks it.
+ * Nest token of a module's own {@link OutboxWriter}. A module binds it with
+ * `PersistenceModule.outboxWriterFor` and never exports it. There is deliberately
+ * no token of the {@link OutboxWriterFactory}: an injectable factory would let any module ask
+ * for another module's writer (security review of slice 1b, M1).
  */
-export function outboxWriterFor(module: string): Provider {
-  return {
-    provide: OUTBOX_WRITER,
-    inject: [OUTBOX_WRITER_FACTORY],
-    useFactory: (factory: OutboxWriterFactory) => factory.forModule(module),
-  };
-}
+export const OUTBOX_WRITER = Symbol('OUTBOX_WRITER');
 
 /** Why the outbox writer refused (P 5.2). Codes and, for a payload, the declared field name. */
 export type OutboxRefusal =

@@ -24,8 +24,16 @@ export interface JobDefinition {
   readonly name: string;
   /** A fixed interval; no cron, no wall-clock time. */
   readonly every: Temporal.Duration;
-  /** Default {@link DEFAULT_MAX_RUN_MS}, at most {@link MAX_RUN_MS}. */
+  /**
+   * Default {@link DEFAULT_MAX_RUN_MS}, at most {@link MAX_RUN_MS}. It bounds the lock, not
+   * the work: at `maxRunMs` the lock transaction ends and the lock is released, but `run` is
+   * not cancelled (there is no AbortSignal yet) and may keep running while the next tick, on
+   * this or another process, takes the lock and starts the job again. So every job must be
+   * idempotent and safe to overlap with a late run of itself (P 7): each batch in its own
+   * unit, conditional updates, no step that assumes it still holds the lock.
+   */
   readonly maxRunMs?: number;
+  /** May outlive the lock after `maxRunMs` (see there); must be idempotent (P 7). */
   run(context: JobContext): Promise<void>;
 }
 

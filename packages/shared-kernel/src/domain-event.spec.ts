@@ -217,8 +217,8 @@ describe('encodePayload: the run-time check and the jsonb form (5.3)', () => {
     });
   });
 
-  it.each<[string, Record<string, unknown>, string, string]>([
-    ['an undeclared field', { reason: 'free text' }, 'reason', 'undeclared'],
+  it.each<[string, Record<string, unknown>, string | null, string]>([
+    ['an undeclared field, without echoing its key', { reason: 'free text' }, null, 'undeclared'],
     ['a missing field', { accountId: undefined }, 'accountId', 'missing'],
     ['a malformed id', { accountId: 'not-a-uuid' }, 'accountId', 'invalid'],
     [
@@ -235,14 +235,17 @@ describe('encodePayload: the run-time check and the jsonb form (5.3)', () => {
     ['an unknown permission key', { granted: ['catalog.product.delete'] }, 'granted', 'invalid'],
     ['a list that is not an array', { granted: 'catalog.product.edit' }, 'granted', 'invalid'],
     ['null for a required field', { verified: null }, 'verified', 'missing'],
-  ])('refuses %s, naming the field and never the value', (_case, change, field, problem) => {
-    const result = encodePayload(accountChanged.fields, { ...validPayload, ...change }, known);
+  ])(
+    'refuses %s, naming only a declared field and never the value',
+    (_case, change, field, problem) => {
+      const result = encodePayload(accountChanged.fields, { ...validPayload, ...change }, known);
 
-    expect(result).toEqual({
-      ok: false,
-      error: { code: 'event-payload.invalid', field, problem },
-    });
-  });
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'event-payload.invalid', field, problem },
+      });
+    },
+  );
 
   it('refuses a payload that is not a plain object', () => {
     for (const payload of [null, [], 'text', new Map()]) {
