@@ -85,9 +85,22 @@ SELECT 'audit_log_privilege', NULL
                 ELSE false END)
 ORDER BY 1, 2`;
 
+/** One row of the start-up queries, as any client returns it. */
+type QueryRow = Readonly<Record<string, unknown>>;
+
 /** The connected role's own settings (`ALTER ROLE ... SET`), as `name=value` entries. */
 export const ROLE_CONFIG_SQL = `
 SELECT r.rolconfig FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
+
+/**
+ * The timeouts in force on this connection: connection options (`?options=-c ...` in the
+ * URL) and `SET` override the role's settings, so the role alone is not enough (Hassan).
+ */
+export const SESSION_TIMEOUTS_SQL = `
+SELECT pg_catalog.current_setting('statement_timeout') AS statement_timeout,
+       pg_catalog.current_setting('lock_timeout') AS lock_timeout,
+       pg_catalog.current_setting('idle_in_transaction_session_timeout')
+         AS idle_in_transaction_session_timeout`;
 
 /**
  * The ceiling of each timeout every application login must carry in its own settings
@@ -113,8 +126,10 @@ const TIME_UNITS_MS: Readonly<Record<string, number>> = Object.freeze({
 export function settingMilliseconds(value: string): number | null {
   const match = /^\s*(\d+(?:\.\d+)?)\s*([a-z]*)\s*$/.exec(value);
   if (match === null) return null;
-  const factor = match[2] === '' ? 1 : TIME_UNITS_MS[match[2]!];
-  return factor === undefined ? null : Number(match[1]) * factor;
+  const unit = match[2]!;
+  if (unit !== '' && !Object.hasOwn(TIME_UNITS_MS, unit)) return null;
+  const ms = Number(match[1]) * (unit === '' ? 1 : TIME_UNITS_MS[unit]!);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /**
@@ -128,20 +143,38 @@ export function roleTimeoutProblems(rolconfig: readonly string[] | null): RolePr
     const separator = entry.indexOf('=');
     if (separator > 0) settings.set(entry.slice(0, separator), entry.slice(separator + 1));
   }
+  return timeoutProblems(settings, (name) => name);
+}
+
+/**
+ * The same bounds on the values in force on the connection ({@link SESSION_TIMEOUTS_SQL});
+ * the subject is `session.<name>`.
+ */
+export function sessionTimeoutProblems(row: QueryRow | undefined): RoleProblem[] {
+  const settings = new Map<string, string>();
+  for (const name of Object.keys(ROLE_TIMEOUT_CEILINGS_MS)) {
+    const value = row?.[name];
+    if (typeof value === 'string') settings.set(name, value);
+  }
+  return timeoutProblems(settings, (name) => `session.${name}`);
+}
+
+function timeoutProblems(
+  settings: ReadonlyMap<string, string>,
+  subjectOf: (name: string) => string,
+): RoleProblem[] {
   return Object.entries(ROLE_TIMEOUT_CEILINGS_MS)
     .filter(([name, ceiling]) => {
       const value = settings.get(name);
       const ms = value === undefined ? null : settingMilliseconds(value);
       return ms === null || ms <= 0 || ms > ceiling;
     })
-    .map(([name]) => ({ code: 'role_timeouts' as const, subject: name }));
+    .map(([name]) => ({ code: 'role_timeouts' as const, subject: subjectOf(name) }));
 }
 
-/** One row of the start-up queries, as any client returns it. */
-type QueryRow = Readonly<Record<string, unknown>>;
-
 /**
- * Runs {@link ROLE_PROBLEMS_SQL} and {@link ROLE_CONFIG_SQL} through any client; an error
+ * Runs {@link ROLE_PROBLEMS_SQL}, {@link ROLE_CONFIG_SQL} and {@link SESSION_TIMEOUTS_SQL}
+ * through any client, on one of the pool's connections; an error
  * while running them propagates. The `role_timeouts` problems come last.
  */
 export async function findRoleProblems(
@@ -154,5 +187,6 @@ export async function findRoleProblems(
   }));
   const config = await query(ROLE_CONFIG_SQL);
   const rolconfig = (config[0]?.rolconfig as readonly string[] | null | undefined) ?? null;
-  return [...problems, ...roleTimeoutProblems(rolconfig)];
+  const session = await query(SESSION_TIMEOUTS_SQL);
+  return [...problems, ...roleTimeoutProblems(rolconfig), ...sessionTimeoutProblems(session[0])];
 }

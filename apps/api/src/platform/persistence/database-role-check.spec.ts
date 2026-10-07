@@ -3,6 +3,8 @@ import {
   ROLE_CONFIG_SQL,
   ROLE_PROBLEMS_SQL,
   roleTimeoutProblems,
+  SESSION_TIMEOUTS_SQL,
+  sessionTimeoutProblems,
   settingMilliseconds,
 } from './database-role-check';
 
@@ -25,8 +27,40 @@ describe('settingMilliseconds', () => {
     expect(settingMilliseconds(value)).toBe(ms);
   });
 
-  it.each(['', 's', '3 seconds', '-1s', '3x', 'off'])('cannot read %j', (value) => {
-    expect(settingMilliseconds(value)).toBeNull();
+  it.each(['', 's', '3 seconds', '-1s', '3x', 'off', '1constructor', '1toString', '1__proto__'])(
+    'cannot read %j',
+    (value) => {
+      expect(settingMilliseconds(value)).toBeNull();
+    },
+  );
+
+  it('cannot read a value too large to be finite', () => {
+    expect(settingMilliseconds(`${'9'.repeat(400)}d`)).toBeNull();
+  });
+});
+
+describe('sessionTimeoutProblems (the values in force on the connection)', () => {
+  const inForce = {
+    statement_timeout: '30s',
+    lock_timeout: '3s',
+    idle_in_transaction_session_timeout: '1min',
+  };
+
+  it('accepts the K1a values as current_setting shows them', () => {
+    expect(sessionTimeoutProblems(inForce)).toEqual([]);
+  });
+
+  it('refuses a timeout a connection option set to 0, or one above its ceiling', () => {
+    expect(sessionTimeoutProblems({ ...inForce, statement_timeout: '0' })).toEqual([
+      { code: 'role_timeouts', subject: 'session.statement_timeout' },
+    ]);
+    expect(sessionTimeoutProblems({ ...inForce, lock_timeout: '10s' })).toEqual([
+      { code: 'role_timeouts', subject: 'session.lock_timeout' },
+    ]);
+  });
+
+  it('refuses every timeout when the row is missing', () => {
+    expect(sessionTimeoutProblems(undefined)).toHaveLength(3);
   });
 });
 
@@ -77,31 +111,35 @@ describe('roleTimeoutProblems (10.8 role_timeouts)', () => {
 });
 
 describe('findRoleProblems', () => {
-  it('runs both queries and appends the role_timeouts problems', async () => {
+  it('runs the three queries and appends the role_timeouts problems', async () => {
     const asked: string[] = [];
+    const answers: Record<string, Record<string, unknown>[]> = {
+      [ROLE_PROBLEMS_SQL]: [{ code: 'create_on_database', subject: null }],
+      [ROLE_CONFIG_SQL]: [{ rolconfig: SET.filter((s) => !s.startsWith('statement_timeout')) }],
+      [SESSION_TIMEOUTS_SQL]: [
+        {
+          statement_timeout: '30s',
+          lock_timeout: '0',
+          idle_in_transaction_session_timeout: '1min',
+        },
+      ],
+    };
     const problems = await findRoleProblems((sql) => {
       asked.push(sql);
-      return Promise.resolve(
-        sql === ROLE_PROBLEMS_SQL
-          ? [{ code: 'create_on_database', subject: null }]
-          : [{ rolconfig: SET.filter((s) => !s.startsWith('statement_timeout')) }],
-      );
+      return Promise.resolve(answers[sql] ?? []);
     });
 
-    expect(asked).toEqual([ROLE_PROBLEMS_SQL, ROLE_CONFIG_SQL]);
+    expect(asked).toEqual([ROLE_PROBLEMS_SQL, ROLE_CONFIG_SQL, SESSION_TIMEOUTS_SQL]);
     expect(problems).toEqual([
       { code: 'create_on_database', subject: null },
       { code: 'role_timeouts', subject: 'statement_timeout' },
+      { code: 'role_timeouts', subject: 'session.lock_timeout' },
     ]);
   });
 
   it('refuses when the role row is missing', async () => {
     const problems = await findRoleProblems(() => Promise.resolve([]));
 
-    expect(problems.map((p) => p.code)).toEqual([
-      'role_timeouts',
-      'role_timeouts',
-      'role_timeouts',
-    ]);
+    expect(problems.map((p) => p.code)).toEqual(Array(6).fill('role_timeouts'));
   });
 });

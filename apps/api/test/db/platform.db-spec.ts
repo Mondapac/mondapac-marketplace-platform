@@ -13,6 +13,7 @@ import { ok } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
+import { DatabaseProbe } from '../../src/platform/persistence/database-probe';
 import { findRoleProblems } from '../../src/platform/persistence/database-role-check';
 import { PrismaRoot } from '../../src/platform/persistence/prisma-root';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
@@ -419,7 +420,32 @@ describe('platform persistence (database integration)', () => {
         { code: 'role_timeouts', subject: 'statement_timeout' },
         { code: 'role_timeouts', subject: 'lock_timeout' },
         { code: 'role_timeouts', subject: 'idle_in_transaction_session_timeout' },
+        { code: 'role_timeouts', subject: 'session.statement_timeout' },
+        { code: 'role_timeouts', subject: 'session.lock_timeout' },
+        { code: 'role_timeouts', subject: 'session.idle_in_transaction_session_timeout' },
       ]);
+    });
+
+    it('refuses an API pool whose connection options switch a timeout off (Hassan)', async () => {
+      const url = new URL(testDatabaseUrl());
+      url.searchParams.set('options', '-c statement_timeout=0');
+      const root = new PrismaRoot(testAppConfig({ DATABASE_URL: url.toString() }));
+      try {
+        await expect(new DatabaseProbe(root).roleProblems()).resolves.toEqual([
+          { code: 'role_timeouts', subject: 'session.statement_timeout' },
+        ]);
+      } finally {
+        await root.$disconnect();
+      }
+    });
+
+    it('passes the API pool built from the plain application URL', async () => {
+      const root = new PrismaRoot(testAppConfig({ DATABASE_URL: testDatabaseUrl() }));
+      try {
+        await expect(new DatabaseProbe(root).roleProblems()).resolves.toEqual([]);
+      } finally {
+        await root.$disconnect();
+      }
     });
 
     it('refuses a session whose login switched to another role (Hassan, item 7)', async () => {
