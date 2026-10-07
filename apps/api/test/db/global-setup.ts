@@ -48,17 +48,20 @@ export default async function globalSetup(): Promise<void> {
     shell: process.platform === 'win32',
   });
 
-  await createLockingDatabase(name);
+  await createCopy(name, 'LOCKING');
+  await createCopy(name, 'RELAY');
 }
 
 /**
- * A copy of the migrated run database for the one spec file that takes table locks and
- * changes triggers on `platform.audit_log` (unit-of-work.db-spec.ts): no other file meets
- * those locks, whatever the role's lock_timeout. Copied before any test connects, since a
- * template must have no other session.
+ * A copy of the migrated run database for one spec file that must not meet the others:
+ * - `locking`: unit-of-work.db-spec.ts takes table locks and changes triggers on
+ *   `platform.audit_log`, so no other file meets those locks, whatever the role's lock_timeout;
+ * - `relay`: relay.db-spec.ts claims and marks every unpublished outbox row and starts a worker,
+ *   so it never publishes a row another file wrote and still reads as unpublished.
+ * Copied before any test connects, since a template must have no other session.
  */
-async function createLockingDatabase(template: string): Promise<void> {
-  const name = `${template}_locking`;
+async function createCopy(template: string, kind: 'LOCKING' | 'RELAY'): Promise<void> {
+  const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
   await admin.connect();
   try {
@@ -72,7 +75,7 @@ async function createLockingDatabase(template: string): Promise<void> {
   ownerUrl.pathname = `/${name}`;
   const applicationUrl = new URL(applicationDatabaseUrl());
   applicationUrl.pathname = `/${name}`;
-  process.env.TEST_LOCKING_DATABASE_NAME = name;
-  process.env.TEST_LOCKING_DATABASE_URL = applicationUrl.toString();
-  process.env.TEST_LOCKING_OWNER_DATABASE_URL = ownerUrl.toString();
+  process.env[`TEST_${kind}_DATABASE_NAME`] = name;
+  process.env[`TEST_${kind}_DATABASE_URL`] = applicationUrl.toString();
+  process.env[`TEST_${kind}_OWNER_DATABASE_URL`] = ownerUrl.toString();
 }

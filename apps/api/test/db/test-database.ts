@@ -36,7 +36,8 @@ function exported(
     | 'TEST_DATABASE_URL'
     | 'TEST_OWNER_DATABASE_URL'
     | 'TEST_LOCKING_DATABASE_URL'
-    | 'TEST_LOCKING_OWNER_DATABASE_URL',
+    | 'TEST_LOCKING_OWNER_DATABASE_URL'
+    | 'TEST_RELAY_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -65,6 +66,14 @@ export function lockingTestDatabaseUrl(): string {
 
 export function lockingOwnerTestDatabaseUrl(): string {
   return exported('TEST_LOCKING_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy of the run database that relay.db-spec.ts relays and starts a worker on
+ * (global-setup.ts), as the application login: no other file's outbox rows live there.
+ */
+export function relayTestDatabaseUrl(): string {
+  return exported('TEST_RELAY_DATABASE_URL');
 }
 
 export { REPO_ROOT };
