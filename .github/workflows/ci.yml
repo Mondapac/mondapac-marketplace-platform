@@ -56,6 +56,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
       HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
+      # The local subject-key wrapper starts only on an explicit development or test NODE_ENV
+      # (identity slice 1c, security review M2).
+      NODE_ENV: test
 
     steps:
       - uses: actions/checkout@v4
