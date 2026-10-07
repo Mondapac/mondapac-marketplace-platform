@@ -37,7 +37,7 @@
 | ماژول | سطح | فاز PLAYBOOK | برگه | G1 | G2 |
 |---|---|---|---|---|---|
 | identity | A | ۲ | [`identity/brief.md`](identity/brief.md) | تأیید (2026-10-02) | تأیید (2026-10-03) |
-| sellers | A | ۳ | [`sellers/brief.md`](sellers/brief.md) | تأیید (2026-10-03) | — |
+| sellers | A | ۳ | [`sellers/brief.md`](sellers/brief.md) | تأیید (2026-10-03) | تأیید (2026-10-07) |
 | certification | A | ۳ | [`certification/brief.md`](certification/brief.md) | تأیید (2026-10-03) | — |
 | catalog | A | ۳ | [`catalog/brief.md`](catalog/brief.md) | تأیید (2026-10-03) | — |
 | inventory | A | ۴ | [`inventory/brief.md`](inventory/brief.md) | تأیید (2026-10-07) | — |
