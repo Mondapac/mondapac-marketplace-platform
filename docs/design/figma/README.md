@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| نسخه | 1.7.0 «Auth» (۷ اکتبر ۲۰۲۶). نسخه‌های 1.6.0 «Mobile navigation polish» و 1.5.0 «Mobile navigation» همان روز بودند و نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
+| نسخه | 1.8.0 «Panel» (۷ اکتبر ۲۰۲۶). نسخهٔ 1.7.0 «Auth» همان روز بود. نسخه‌های 1.6.0 «Mobile navigation polish» و 1.5.0 «Mobile navigation» همان روز بودند و نسخهٔ 1.0.0 در ۲ اکتبر ۲۰۲۶ ساخته شد. |
 | فایل Figma | **MondaPac Design System** (Drafts تیم mondapac، پلن Starter) |
 | مالک کتابخانه | رضا (UI/UX) |
 | هم‌خوان‌ها | جعفر (Product Designer)، مهدی (Frontend)، سجاد (QA)، هادی (Product Owner) |
@@ -52,8 +52,8 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 | Primitives | ۱۳۹ | Value | رنگ‌های خام. از Library پنهان‌اند و scope ندارند، پس طراح مستقیم انتخابشان نمی‌کند. |
 | Color | ۹۵ | Light (+ Dark بعد از ارتقا) | توکن‌های معنایی که به Primitives اشاره می‌کنند (alias). دو استثنا `bg/scrim` و `text/on-showcase-muted` (از 1.7.0، `#FFFFFFBD`) هستند: مقدار hex8 با شفافیت داخل خود مقدار، بدون alias. |
 | Color · Dark | ۹۵ | Dark | فقط روی Starter. همان نام‌ها با مقدار تاریک. |
-| Dimension | ۳۳ | Desktop (+ Touch بعد از ارتقا) | فاصله، گوشه، اندازهٔ کنترل، عرض منو، عرض کارت ورود (`size/auth-card`)، ضخامت مرز. |
-| Dimension · Touch | ۳۳ | Touch | فقط روی Starter. اندازه‌های لمسی تبلت. |
+| Dimension | ۳۵ | Desktop (+ Touch بعد از ارتقا) | فاصله، گوشه، اندازهٔ کنترل، عرض منو، عرض کارت ورود (`size/auth-card`)، عرض دیالوگ (`size/dialog-sm`، `size/dialog-md`)، ضخامت مرز. |
+| Dimension · Touch | ۳۵ | Touch | فقط روی Starter. اندازه‌های لمسی تبلت. |
 | Typography | ۴۶ | Value | خانوادهٔ فونت، اندازه و ارتفاع خط هر سبک متن. داخل Text styleها bind شده‌اند. |
 | Motion | ۳ | Value | مدت حرکت: 120، 160 و 240 میلی‌ثانیه. |
 
@@ -77,7 +77,7 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
 
 ## ۵. کامپوننت‌ها
 
-**۵۰ کامپوننت** (۳۵ مجموعهٔ variant با ۲۹۵ variant، و ۱۵ کامپوننت تکی) و **۶۸ آیکن**:
+**۴۱ مجموعهٔ variant با ۳۳۴ variant و ۸۹ کامپوننت تکی** (از 1.8.0: Select، Textarea، CheckboxRow، Toast، Dialog، DialogBody و EmptyState تازه‌اند، و TableCell حالت Loading گرفته است) و **۶۸ آیکن**:
 
 | صفحه | کامپوننت‌ها |
 |---|---|
@@ -162,8 +162,10 @@ packages/ui (کد React)                   ← فقط از توکن‌ها می�
   - MAJOR: تغییر نام یا حذف (توکن، کامپوننت، property).
   - MINOR: کامپوننت، variant یا توکن تازه.
   - PATCH: اصلاح مقدار یا ظاهر بدون تغییر API.
+  - فقط فریم‌های قالب (Template frames only): PATCH.
 - نسخه در افزونه (فیلد Version هنگام Export) و صفحهٔ Changelog ثبت می‌شود.
 - نسخه‌های 1.1.0 تا 1.4.0 برای انتشارهای برنامه‌ریزی‌شدهٔ Auth، Panel، Seller setup و Seller admin رزرو شده بودند. به همین دلیل بعد از 1.0.0 مستقیم 1.5.0 آمد و بعد از آن 1.6.0. چون 1.5.0 و 1.6.0 زودتر منتشر شدند، محتوای 1.1.0 تا 1.4.0 حالا با شماره‌های آزاد بعدی منتشر می‌شود و از **1.7.0 Auth** شروع شد (در بخش 8.1 فایل ux.md ماژول identity با نام 1.1.0 برنامه‌ریزی شده بود). شماره‌های 1.1.0 تا 1.4.0 استفاده نمی‌شوند.
+- **1.8.0 Panel (۷ اکتبر ۲۰۲۶):** توکن‌های `size/dialog-sm` (۴۰۰) و `size/dialog-md` (۵۶۰)، کامپوننت‌های Select، Textarea، CheckboxRow، Toast، Dialog، DialogBody و EmptyState، حالت Loading برای TableCell، مقدارهای ترجیحی Field (Input، Select، Textarea)، و قالب‌های Members، Roles، No access، Not found، Account security و دیالوگ‌های D1 تا D3 برای Admin (۱۵ فریم) و Seller (۱۸ فریم). Update library فقط روی فایل 1.7.0 به بالا کار می‌کند و پیام «Run 1.7.0 first» می‌دهد. نقش‌های نمونه جانگهدارند. Sellers list، role editor، دیالوگ‌های D4 تا D6 و unsaved-changes برای 1.8.1 مانده‌اند.
 - **1.7.0 Auth (۷ اکتبر ۲۰۲۶):** توکن‌های `bg/qr` (در هر دو تم سفید)، `bg/auth-showcase-admin` (`#0B1D2E`)، `bg/auth-showcase-seller` (`#06352E`)، `text/on-showcase`، `text/on-showcase-muted` (hex8، کنتراست دست‌کم 4.5:1 روی هر دو پنل) و `size/auth-card` (۴۰۰)، دو Primitive تازه، ۹ آیکن، کامپوننت‌های BrandMark، Field، ReasonQuote، Menu، MenuItem و AuthShowcase، variantها و propertyهای تازهٔ Button، Input، ChecklistItem و Topbar، و قالب‌های Auth و S1. فریم‌هایی که هنوز ساخته نشده‌اند (TODO) در [`plugin/README.md`](plugin/README.md) فهرست شده‌اند.
 - **کنار گذاشتن:** نام کامپوننت `Deprecated / <Name>` می‌شود. در توضیح می‌نویسیم «Use <Replacement> instead (since vX.Y)» و به Archive منتقل می‌شود. حذف واقعی فقط در نسخهٔ MAJOR بعدی است.
 
@@ -213,7 +215,7 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 | Build library | ساخت کامل در فایل خالی. «Rebuild» هر چه افزونه ساخته پاک می‌کند و از نو می‌سازد. **روی کتابخانه‌ای که دستی ویرایش شده اجرا نشود؛ برای نسخهٔ تازهٔ افزونه از Update library استفاده کنید.** |
 | Dark theme / Light theme | تعویض تم فریم‌های انتخاب‌شده |
 | Touch density / Desktop density | تعویض تراکم فریم‌های انتخاب‌شده |
-| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). تنها ویرایش روی چیزهای موجود، اصلاح‌های نام‌برده است و هر کدام در گزارش می‌آید. برای 1.5.0: فاصلهٔ ردیف‌های NavDrawer صفر می‌شود اگر به‌روزرسانی قبلی آن را با فاصله ساخته باشد. برای 1.6.0: پردهٔ پشت کشو در قالب‌های موبایل به `bg/scrim` با ۱۰۰٪ bind می‌شود و فریم قدیمی «Topbar · phone» با instance کامپوننت PhoneTopbar عوض می‌شود. همین فریم قدیمی تنها چیزی است که حذف می‌شود، و فقط داخل قالب موبایلی که خود افزونه ساخته. در بقیه چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. برای 1.6.0: توکن‌های `bg/scrim` و `size/topbar-phone`، آیکن `menu` و کامپوننت PhoneTopbar. برای 1.7.0: توکن‌ها، آیکن‌ها و کامپوننت‌های Auth، variantها و propertyهای تازهٔ Button، Input، ChecklistItem و Topbar، صفحهٔ Templates · Auth، قالب‌های S1 و سه پیش‌نمایش تاریک. variantهای موجود Input فقط نام `Type=Text, State=…` می‌گیرند تا محور Type اضافه شود. به مجموعه‌ای که افزونه نساخته (برچسب افزونه ندارد) چیزی اضافه نمی‌شود؛ رد شدنش و قالب‌هایی که به آن وابسته‌اند در گزارش می‌آید. **Sidebar موجود از نو ساخته نمی‌شود:** نشان برند کشیده‌شده‌اش می‌ماند و فقط ساخت تازه در Sidebar از BrandMark استفاده می‌کند. فایل 1.0.0، 1.5.0 یا 1.6.0 مستقیم به 1.7.0 می‌رسد. |
+| Update library | روی فایلی که کتابخانه دارد، **فقط اضافه می‌کند** آنچه نسخهٔ جدید افزونه می‌آورد (متغیر، کامپوننت، قالب، ردیف Changelog، نسخه). تنها ویرایش روی چیزهای موجود، اصلاح‌های نام‌برده است و هر کدام در گزارش می‌آید. برای 1.5.0: فاصلهٔ ردیف‌های NavDrawer صفر می‌شود اگر به‌روزرسانی قبلی آن را با فاصله ساخته باشد. برای 1.6.0: پردهٔ پشت کشو در قالب‌های موبایل به `bg/scrim` با ۱۰۰٪ bind می‌شود و فریم قدیمی «Topbar · phone» با instance کامپوننت PhoneTopbar عوض می‌شود. همین فریم قدیمی تنها چیزی است که حذف می‌شود، و فقط داخل قالب موبایلی که خود افزونه ساخته. در بقیه چیزی حذف یا از نو ساخته نمی‌شود، چند بار اجرا شود اثری ندارد و روی فایل خالی اجرا نمی‌شود. برای 1.5.0: توکن `size/bottom-bar`، کامپوننت‌های NavDrawer و BottomTabBar و سه قالب موبایل. برای 1.6.0: توکن‌های `bg/scrim` و `size/topbar-phone`، آیکن `menu` و کامپوننت PhoneTopbar. برای 1.7.0: توکن‌ها، آیکن‌ها و کامپوننت‌های Auth، variantها و propertyهای تازهٔ Button، Input، ChecklistItem و Topbar، صفحهٔ Templates · Auth، قالب‌های S1 و سه پیش‌نمایش تاریک. variantهای موجود Input فقط نام `Type=Text, State=…` می‌گیرند تا محور Type اضافه شود. به مجموعه‌ای که افزونه نساخته (برچسب افزونه ندارد) چیزی اضافه نمی‌شود؛ رد شدنش و قالب‌هایی که به آن وابسته‌اند در گزارش می‌آید. **Sidebar موجود از نو ساخته نمی‌شود:** نشان برند کشیده‌شده‌اش می‌ماند و فقط ساخت تازه در Sidebar از BrandMark استفاده می‌کند. فایل 1.0.0، 1.5.0 یا 1.6.0 مستقیم به 1.7.0 می‌رسد. **از 1.8.0:** Update library فایل زیر 1.7.0 را رد می‌کند («Run 1.7.0 first»). افزوده‌ها: دو توکن `size/dialog-*`، Select، Textarea، CheckboxRow، Toast، Dialog، DialogBody، EmptyState، قالب‌های Panel. دو ویرایش روی چیزهای موجود، هر دو در گزارش: حالت `State=Loading` به TableCell و مقدارهای ترجیحی و توضیح Field. |
 | Export tokens | ۷ فایل توکن از متغیرها و استایل‌های Figma |
 | Audit file | lint کل فایل. روی نسخهٔ 1.6.0 در Figma واقعی (2026-10-07): ۱۲٬۷۷۰ لایه و صفر هشدار |
 | Upgrade to modes | بعد از ارتقای پلن |

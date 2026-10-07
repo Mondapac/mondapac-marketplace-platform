@@ -3,7 +3,8 @@ function prop(setName, propName, value) { const o = {}; o[S.sets[setName].keys[p
 function setNested(root, name, props) { const n = root.findOne(function (x) { return x.name === name; }); if (n) n.setProperties(props); return n; }
 function sidebarFor(ws, active, collapsed) {
   const sb = inst('Sidebar', { Workspace: ws, Collapsed: collapsed ? 'True' : 'False' }, { name: 'Sidebar', sizeV: 'FILL' });
-  if (active && active !== 'nav-home') { setNested(sb, 'nav-home', { State: 'Default' }); setNested(sb, active, { State: 'Active' }); }
+  if (active === 'none') setNested(sb, 'nav-home', { State: 'Default' }); // 1.8.0: a page with no Sidebar item of its own (Team & roles until the nav-config release): nothing is active
+  else if (active && active !== 'nav-home') { setNested(sb, 'nav-home', { State: 'Default' }); setNested(sb, active, { State: 'Active' }); }
   return sb;
 }
 function screen(name, ws, active, crumb, contentKids, o) {

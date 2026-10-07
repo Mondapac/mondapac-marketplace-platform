@@ -189,7 +189,7 @@ function makeFigma(opts) {
       this._fills = []; this._strokes = []; this._effects = []; this._bv = {}; this._refs = null; this._modes = {};
       this.strokeWeight = 1; this._strokeAlign = 'INSIDE'; this.dashPattern = []; this.opacity = 1; this.constraints = { horizontal: 'MIN', vertical: 'MIN' }; this._rot = 0;
       this._layoutPositioning = 'AUTO'; this._fillH = false; this._fillV = false;
-      ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
+      ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_minH', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
       if (AUTO.has(type)) Object.assign(this, { _layoutMode: 'NONE', _pAxis: 'FIXED', _cAxis: 'FIXED', paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, itemSpacing: 0, _counterAxisSpacing: 0, _wrap: 'NO_WRAP', _pAlign: 'MIN', _cAlign: 'MIN', clipsContent: true });
     }
     _isAuto() { return AUTO.has(this.type) && this.layoutMode !== 'NONE'; }
@@ -279,6 +279,8 @@ function makeFigma(opts) {
     }
     get minWidth() { return this._minW || null; }
     set minWidth(v) { if (!this._isAuto() && !(this.parent && this.parent._isAuto && this.parent._isAuto())) fail('minWidth needs an auto-layout frame or a child of one'); this._minW = v; }
+    get minHeight() { return this._minH || null; }
+    set minHeight(v) { if (!this._isAuto() && !(this.parent && this.parent._isAuto && this.parent._isAuto())) fail('minHeight needs an auto-layout frame or a child of one'); if (!isNum(v) || v < 0) fail('minHeight'); this._minH = v; }
     // --- variables
     get boundVariables() { const o = deep(this._bv); if (this._fills.some((p) => p.boundVariables)) o.fills = this._fills.map((p) => (p.boundVariables || {}).color).filter(Boolean); if (this._strokes.some((p) => p.boundVariables)) o.strokes = this._strokes.map((p) => (p.boundVariables || {}).color).filter(Boolean); return o; }
     setBoundVariable(field, v) {
@@ -395,11 +397,31 @@ function makeFigma(opts) {
     get variantProperties() { if (!this.parent || this.parent.type !== 'COMPONENT_SET') return null; const o = {}; this.name.split(',').forEach((kv) => { const p = kv.split('='); o[p[0].trim()] = (p[1] || '').trim(); }); return o; }
     get componentPropertyDefinitions() { if (this.parent && this.parent.type === 'COMPONENT_SET') fail('Can not get component property definitions of a component set child'); return deep(this._defs); }
     addComponentProperty(name, type, def) { if (this.parent && this.parent.type === 'COMPONENT_SET') fail('Cannot add component properties to a variant. Add them to the component set.'); return addProp(this, name, type, def); }
+    get key() { return 'key:' + this.id; }
+    editComponentProperty(name, nv) { if (this.parent && this.parent.type === 'COMPONENT_SET') fail('Cannot edit component properties of a variant. Edit the component set.'); return editProp(this, name, nv); }
     createInstance() {
       this._checkLive();
       if (this.instAncestor()) fail('createInstance on a node inside an instance');
       const i = seal(new InstanceNode(this)); currentPage.children.push(i); i.parent = currentPage; return i;
     }
+  }
+  // editComponentProperty: only preferredValues of an INSTANCE_SWAP property is emulated (the strict mock rejects anything else).
+  function editProp(owner, name, nv) {
+    const k = Object.keys(owner._defs).filter((x) => x === name || x.split('#')[0] === name)[0];
+    if (!k) fail('Could not find a component property with name: ' + name + ' on ' + owner.name);
+    Object.keys(nv || {}).forEach((f) => { if (f !== 'preferredValues') fail('editComponentProperty: the mock emulates preferredValues only, got ' + f); });
+    const d = owner._defs[k];
+    if (nv.preferredValues !== undefined) {
+      if (d.type !== 'INSTANCE_SWAP') fail('preferredValues only apply to INSTANCE_SWAP properties');
+      if (!Array.isArray(nv.preferredValues)) fail('preferredValues must be an array');
+      nv.preferredValues.forEach((pv) => {
+        if (!pv || (pv.type !== 'COMPONENT' && pv.type !== 'COMPONENT_SET') || typeof pv.key !== 'string') fail('Bad preferred value ' + JSON.stringify(pv));
+        const n = [...byId.values()].find((x) => (x.type === 'COMPONENT' || x.type === 'COMPONENT_SET') && !x.removed && x.key === pv.key);
+        if (!n || n.type !== pv.type) fail('Preferred value ' + pv.key + ' is not a ' + pv.type + ' in this file');
+      });
+      d.preferredValues = deep(nv.preferredValues);
+    }
+    return k;
   }
   function addProp(owner, name, type, def) {
     if (['TEXT', 'BOOLEAN', 'INSTANCE_SWAP', 'VARIANT'].indexOf(type) < 0) fail('Bad property type ' + type);
@@ -422,6 +444,8 @@ function makeFigma(opts) {
     }
     get defaultVariant() { return this.children[0]; }
     addComponentProperty(name, type, def) { return addProp(this, name, type, def); }
+    get key() { return 'key:' + this.id; }
+    editComponentProperty(name, nv) { return editProp(this, name, nv); }
   }
   class InstanceNode extends SceneNode {
     constructor(main) {
