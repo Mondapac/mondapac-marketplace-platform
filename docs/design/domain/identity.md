@@ -8,7 +8,7 @@ this design). The owner gets a Persian summary with the questions of 14.4 only.
 **Ground truth:** `docs/modules/identity/brief.md` (G1 approved 2026-10-02; sections, decisions,
 rules R1 to R12 and acceptance criteria are cited as "brief s5", "decision 6", "R3", "AC 14");
 ADR-0018 and ADR-0020; ADR-0003 to ADR-0006, ADR-0008, ADR-0009, ADR-0013 to ADR-0015; ADR-0021
-(Node minimum 24.15), ADR-0022 (seller access, 8.4) and ADR-0023 (platform amendments), reserved
+(Node minimum 24.15; 24.20.0 since 2026-10-07), ADR-0022 (seller access, 8.4) and ADR-0023 (platform amendments), reserved
 on the board and written by Ali in parallel;
 `docs/design/domain/platform-foundations.md` (cited as "PF 6.2"); `docs/design/data/platform.md`;
 `docs/features/` (SEL-01..07, SEL-13, CUS-01, CUS-03, ADM-05, PNL-05, IMP-10, VER-10..14, INTL-11,
@@ -496,7 +496,7 @@ accepted this paragraph with HF14: until then the `Authorization` header is refu
 | Topic | Design |
 |---|---|
 | Port | `PasswordHasher` in `identity/application/ports`: `hash(plain)` returns a PHC string; `verify(plain, stored)` returns match and "needs re-hash". One adapter: argon2id through Node's built-in `crypto.argon2`; the PHC encoding is a small function of ours |
-| Evidence | On Node 24.9.0, run alone in a scratch folder with `engine-strict` off: the RFC 9106 test vectors for argon2id, argon2i and argon2d match, and no experimental warning is printed. Hassan's run on 24.21: the vectors pass, and 64 MiB with t=3 takes 170 ms. Decided by Ali (14.1-13): the minimum becomes 24.15.0 through ADR-0021; the vectors are re-run there, and if `crypto.argon2` is not stable on 24.15 the fallback package of 13 is used |
+| Evidence | On Node 24.9.0, run alone in a scratch folder with `engine-strict` off: the RFC 9106 test vectors for argon2id, argon2i and argon2d match, and no experimental warning is printed. Hassan's run on 24.21: the vectors pass, and 64 MiB with t=3 takes 170 ms. Decided by Ali (14.1-13): the minimum becomes 24.15.0 through ADR-0021; the vectors are re-run there, and if `crypto.argon2` is not stable on 24.15 the fallback package of 13 is used. **Note, 2026-10-07 (spike 1):** it is "Release candidate" on 24.15.0 and stable from 24.19.0; Ali decided to raise the minimum to 24.20.0 (ADR-0021 decision 3), which also carries two fixes to it, so no package is used |
 | Parameters (Hassan) | argon2id, 64 MiB, t=3, p=1, a 16-byte salt and a 32-byte tag: above OWASP's floor (19 MiB, t=2) and RFC 9106's 64 MiB option. Target median when deployed: 100 to 300 ms; if slower, lower t, never below the floor. Hashing runs on the libuv pool, so at most two hashes run at once per process, with a queue of 16, then `request.busy` (503); sign-in reserves its counters before hashing (6.3). A hash with older parameters is replaced at the next successful sign-in |
 | Pepper | None (Hassan). If a second secret is ever wanted, the PHC string is encrypted under a stack key rather than keying argon2 with it: decrypting restores a portable hash (ADR-0018 decisions 1 and 9) |
 | Rules (Hassan) | 15 to 128 code points after Unicode NFKC (NIST SP 800-63B-4); the raw input at most 1024 bytes; no composition rules, no forced rotation; refused when equal to the email or the name, or found on a checked-in list of at least 100,000 common passwords; never truncated, logged or echoed. A breached-password service is backlog (ADR-0018, consequences) |
@@ -792,18 +792,18 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 ### 12.3 Spikes still needed (run, not merged)
 | # | Spike | Status |
 |---|---|---|
-| 1 | Built-in argon2 | RFC 9106 vectors (argon2id, argon2i, argon2d) pass on 24.9.0 (this design), 24.21 (Hassan) and the ADR-0021 minimum 24.15.0, with no experimental warning (ADR-0021 evidence, 2026-10-03). Left: the API's documented stability index on 24.15, with the fallback package if it is not stable (6.5); PHC strings checked against a reference implementation; the pool under load with at most two hashes at once |
-| 2 | TOTP on `node:crypto` | RFC 6238 SHA-1 vectors pass on 24.9.0, 24.21 and 24.15.0 (ADR-0021 evidence, 2026-10-03). Left: enrolment with three common apps (URI and base32) |
-| 3 | Rate-limiter package under NestJS 12, ES modules and the Jest flag; its store | Open |
-| 4 | Mail catcher: HTTP send interface of the pinned image, or SMTP | Open; decides whether an SMTP client is needed |
+| 1 | Built-in argon2 | **Done 2026-10-07.** Node's docs mark `crypto.argon2` "Release candidate" on 24.15.0 and stable from 24.19.0 (#63924); 24.20.0 fixes its validation errors (#64852) and a FIPS bypass (#64776). Decided by Ali: the minimum becomes 24.20.0 (ADR-0021 decision 3), no package. Our PHC strings (argon2id, m=65536, t=3, p=1, 16-byte salt, 32-byte tag) and those of the reference argon2-cffi 25.1.0 verify each other, wrong passwords refused. 4-core container: one hash about 200 to 300 ms on 24.21 (about 400 ms on 24.15); 20 requests with at most two at once: p50 1.05 s, p95 2.1 s on 24.21, event loop responsive. Parameters and the queue of 16 unchanged; the hasher slice tests that the 17th waiting request gets `request.busy`, and the median is re-measured on the deployed hardware. Before: RFC 9106 vectors (argon2id, argon2i, argon2d) pass on 24.9.0 (this design), 24.21 (Hassan) and the ADR-0021 minimum 24.15.0, with no experimental warning (ADR-0021 evidence, 2026-10-03). Left: the API's documented stability index on 24.15, with the fallback package if it is not stable (6.5); PHC strings checked against a reference implementation; the pool under load with at most two hashes at once |
+| 2 | TOTP on `node:crypto` | RFC 6238 SHA-1 vectors pass on 24.9.0, 24.21 and 24.15.0 (ADR-0021 evidence, 2026-10-03). Left: enrolment with three common apps (URI and base32). **2026-10-07:** our `otpauth://totp/` URI (issuer and label percent-encoded, 160-bit secret in unpadded base32, SHA1, 6 digits, 30 s) is parsed by the reference pyotp, which derives the same key and the same codes at -30, 0 and +30 s. Scanning with three real apps needs a phone: done with the owner in slice 7 |
+| 3 | Rate-limiter package under NestJS 12, ES modules and the Jest flag; its store | **Done 2026-10-07** on 24.15 and 24.21 under `--experimental-vm-modules`: `@nestjs/throttler` 6.7.1 (peer range includes NestJS 12) as a global guard answers 429 after the limit, keyed by the socket address (a forged `X-Forwarded-For` changes nothing); its default answer text must be replaced by our fixed code. `rate-limiter-flexible` 11.2.1: memory store, and a PostgreSQL store that needs no Redis. Both MIT or ISC, no dependencies, no install script |
+| 4 | Mail catcher: HTTP send interface of the pinned image, or SMTP | **Done 2026-10-07** with Mailpit v1.27.11 (what the `v1.27` tag points to): `POST /api/v1/send` (JSON from, to, subject, text, HTML, headers) accepts a mail through `fetch`, and tests read it back through `/api/v1/messages`. No SMTP client is needed. The deployed provider's transport is chosen with the first environment |
 | 5 | `__Host-` cookie through the front tier on local `http`, Safari included | Open; needs D2 (separate hosts, HF7) |
 | 6 | Cost of the two per-request reads; single-use consumption, the attempt reservation (HF1) and a serialisable retry through Prisma under the guard | Open; with Mojtaba |
 
 ## 13. Dependencies (the one list for the owner, ADR-0018 decision 8)
 
-| Need | Node 24 standard library (minimum 24.15, ADR-0021)? | Candidates and criteria | Recommendation |
+| Need | Node 24 standard library (minimum 24.20.0 since 2026-10-07, ADR-0021)? | Candidates and criteria | Recommendation |
 |---|---|---|---|
-| Password hashing | Yes: `crypto.argon2` (spike 1) | Fallbacks if the spike fails: `@node-rs/argon2`, `argon2`, `hash-wasm`; criteria: no install script (ADR-0014 decision 5), PHC output, maintained | **No package**; a fallback only if spike 1 fails on 24.15 |
+| Password hashing | Yes: `crypto.argon2` (spike 1) | Fallbacks if the spike fails: `@node-rs/argon2`, `argon2`, `hash-wasm`; criteria: no install script (ADR-0014 decision 5), PHC output, maintained | **No package (final, 2026-10-07):** the minimum is 24.20.0, where it is stable (spike 1) |
 | TOTP, base32, recovery codes | Yes: HMAC and random bytes (spike 2) | `otplib` | **No package** |
 | Session and link tokens, CSRF token | Yes: random bytes, SHA-256, HMAC, constant-time compare | — | **No package** |
 | Cookie reading and writing | Yes, with the installed HTTP adapter: a strict reader for our own cookie names; `Set-Cookie` through the response | `cookie-parser` | **No package** |
@@ -855,7 +855,7 @@ carries A2 (11.3), A3 (10.1), A4 (2.1) and A6 (6.8).
 | 10 | The error body of 5.2 for every module (I12) | Accept; binding through PF 5.1, with no ADR |
 | 11 | The three G1 wordings: R9 "in seller scope", R10, R12 "approved seller" for Staff only | Confirmed: they follow G1's intent (AC 31) |
 | 12 | Three mini-reviews of the identity brief in the `sellers` slices (8.4, 8.5) | Accept; Hadi puts them on the board (15.2) |
-| 13 | ADR-0014's minimum, Node 24.9, where `pnpm install` fails under `engine-strict` | Raised to 24.15, the lowest version the lockfile installs under `engine-strict`: ADR-0021 amends ADR-0014 decision 1, and `engines` and `CLAUDE.md` change in the same PR. The argon2 and TOTP vectors are re-run on 24.15; if `crypto.argon2` is not stable there, the fallback package is used (6.5, 12.3) |
+| 13 | ADR-0014's minimum, Node 24.9, where `pnpm install` fails under `engine-strict` | Raised to 24.15, the lowest version the lockfile installs under `engine-strict`: ADR-0021 amends ADR-0014 decision 1, and `engines` and `CLAUDE.md` change in the same PR. The argon2 and TOTP vectors are re-run on 24.15; if `crypto.argon2` is not stable there, the fallback package is used (6.5, 12.3). **2026-10-07:** it is not stable on 24.15; the minimum is raised to 24.20.0 instead (ADR-0021 decision 3, Ali), no package |
 | 14 | ADR-0019 R3: an acting-as session switches AI off | Nothing now; `actingAs` joins `ActorContext` with SEL-08 (4) |
 
 **Scope (Ali).** Nothing from G1 is dropped and every owner answer is honoured. Re-enabling a

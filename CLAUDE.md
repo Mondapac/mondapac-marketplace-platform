@@ -20,7 +20,7 @@ scope; deferred platform foundations and the trigger that forces each one - chec
 before starting a slice). Phase 2 adds ADR-0018 (identity: in-house build, server-side
 sessions, Market-scoped accounts, authorization model), ADR-0019 (AI as a cross-cutting
 capability: launch core, AI rules, where AI code lives), ADR-0020 (amendments from the
-platform-foundations design), ADR-0021 (Node.js minimum 24.15.0, amends ADR-0014) and, from
+platform-foundations design), ADR-0021 (Node.js minimum, now 24.20.0 by its decision 3; amends ADR-0014) and, from
 identity's G2, ADR-0022 and ADR-0023 (seller access state owned by `identity` with one
 may-sell contract in `sellers`; platform amendments). Phase 3 adds ADR-0024
 (from catalog's G1: `pricing` is its own module, tier B or A by its gate's scope, and owns
@@ -126,8 +126,8 @@ strategy implementation, not in core logic.
   merged, never blocks a P0 or launch-required slice, and only one runs at a time.
 
 ## Commands
-- Requires Node.js 24.15.0+ and pnpm 10 (ADR-0014, minimum raised by ADR-0021; CI also
-  runs the exact minimum).
+- Requires Node.js 24.20.0+ and pnpm 10 (ADR-0014, minimum raised by ADR-0021 and its
+  decision 3; CI also runs the exact minimum).
 - `docker compose up -d` starts Postgres, Redis, mail catcher (no object storage yet, ADR-0016). Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`

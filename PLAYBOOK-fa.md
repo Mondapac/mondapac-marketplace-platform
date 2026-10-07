@@ -16,7 +16,7 @@
 ## ۱. پیش‌نیازها
 
 1. **نصب Claude Code:** طبق مستندات رسمی (بستهٔ npm با نام `@anthropic-ai/claude-code`) و دستور `claude` در ترمینال. روش نصب به‌روز: https://docs.claude.com/en/docs/claude-code/overview
-2. **ابزارها:** Git، Node.js (حداقل 24.15.0؛ ADR-0014 و ADR-0021)، pnpm 10 (ADR-0014)، Docker Desktop
+2. **ابزارها:** Git، Node.js (حداقل 24.20.0؛ ADR-0014 و ADR-0021)، pnpm 10 (ADR-0014)، Docker Desktop
 3. **یک ریپوی خالی** در GitHub و کلون آن روی سیستم
 4. **کل محتوای این بستهٔ `claude-code-kit`** (که ساختارش دقیقاً مطابق ریشهٔ یک ریپوی واقعی است: `CLAUDE.md`, `.claude/agents/`, `docs/spec/`, `docs/features/`, `docs/architecture/`, `docs/adr/`) را مستقیم در ریشهٔ ریپوی خالی کپی کنید. جزئیات کامل نصب و ترتیب کار در `MIGRATION-fa.md` همین بسته آمده است.
 

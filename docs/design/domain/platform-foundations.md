@@ -535,6 +535,7 @@ the repository; nothing was installed in the repository.
 Note, 2026-10-03: ADR-0021 raises the minimum Node version to 24.15. The runs at 24.9.0 in this
 document had `engine-strict` off, because `pnpm install` fails there under it; what depends on the
 version is re-run on 24.15 (identity design 12.3).
+Note, 2026-10-07: the minimum is now 24.20.0 (ADR-0021 decision 3; identity spike 1, 12.3).
 
 | Need | Covered by | Evidence |
 |---|---|---|
