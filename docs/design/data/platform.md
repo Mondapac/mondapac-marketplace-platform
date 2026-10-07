@@ -581,8 +581,8 @@ plan cannot prove that `state = $1` implies `state = 'active'`, so it skips the 
 
 Measured on `identity.seller_memberships` (2×10⁴ rows): the custom plan used 3 buffers in 0.05 ms.
 The generic plan was a bitmap scan of the Market's active memberships: 325 buffers, 3.2 ms, and
-under serializable it would predicate-lock all of them. Planning each execution costs about 0.5 ms
-on these statements; that is the accepted price.
+under serializable it would predicate-lock all of them. Planning each execution costs up to about 0.5 ms
+warm on these statements (1.3 ms for a connection's first plan); that is the accepted price.
 
 Tests: a unit test of the PrismaService factory asserts there is no `statementNameGenerator`. The
 role-settings test of 10.4 (K1a, identity data design 11.4) asserts `plan_cache_mode = auto` on the

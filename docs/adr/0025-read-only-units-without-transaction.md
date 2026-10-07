@@ -23,8 +23,9 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
 - Every read of the access gate is an index probe (0.1 to 0.2 ms in the database).
 - Under load the Node process is the limit: about 2.0 ms of CPU per request and about 600
   requests per second per process with a pool of 10.
-- Of that, `SET TRANSACTION` costs about 0.6 ms, and the transaction itself about 0.5 ms more
-  (measured with the `relationJoins` preview on).
+- Of that, `SET TRANSACTION` costs about 0.6 ms (2.03 to 1.42 ms; 596 to 749 requests per second)
+  and the transaction itself about 0.16 ms more (1.42 to 1.27 ms; 749 to 814 requests per second).
+  With the `relationJoins` preview on, the transaction costs about 0.46 ms (1.05 to 0.59 ms).
 - Under READ COMMITTED every statement takes its own snapshot, inside a transaction or not, so
   a read-only transaction gives no consistency that single statements lack.
 
@@ -65,9 +66,9 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
 
 ## Consequences
 - The gate and other read-only units save two round trips and a pinned connection. Spike 6
-  measured about 750 requests per second per process with no `SET TRANSACTION` (decision 2), and
-  about 1,490 with no transaction as well, but only together with `relationJoins`, which decision
-  3 does not adopt; the gain of decision 1 alone is estimated, not measured. A read-only unit has
+  measured about 750 requests per second per process with no `SET TRANSACTION` (decision 2) and
+  about 814 with no transaction as well (decision 1), both without `relationJoins`; about 1,490
+  only together with `relationJoins`, which decision 3 does not adopt. A read-only unit has
   no unit timeout, only the 30 s statement bound; an application-level deadline for the gate may
   follow.
 - Statements of one read-only unit may run on different pooled connections. Nothing may rely on
@@ -88,7 +89,8 @@ PA5 kept that and deferred the question to identity spike 6. Spike 6 (2026-10-07
   (identity is P0).
 
 ## Alternatives considered
-- Keep the transaction (PA5 as written): about 0.5 ms of CPU per request for no consistency.
+- Keep the transaction (PA5 as written): about 0.16 ms of Node CPU per request and a pinned connection, for no
+  consistency.
 - Exempt only `Authenticator` and `AuthorisationCheck`: two kinds of read-only unit with no
   semantic difference.
 - A transaction with `SET TRANSACTION READ ONLY`: adds cost.
