@@ -9,8 +9,12 @@ Spike code is not merged. The `ObjectStore` adapter of decision 2 is certificati
 not written; the calls below are the calls it will make.
 
 ## Result in one paragraph
-Versioning, Object Lock in COMPLIANCE mode and per-principal least privilege all work, and the
-lock holds against the administrator as well. Four gaps in the stand-in for the ADR to record, none
+**Status: passed with recorded gaps, pending the ruling of Ali and Hassan; not an unconditional
+pass.** Versioning, Object Lock in COMPLIANCE mode and per-principal least privilege work, and
+the lock holds against the administrator **at the S3 API only** (the filer port, the volume
+server and `weed shell` can bypass it), so it is evidence for the adapter's behaviour, not for
+compliance-mode guarantees. The run used a build from source (commit 56fbc3d), not the
+digest-pinned image of decision 1. Four gaps in the stand-in for the ADR to record, none
 of them in the lock path: no `PutPublicAccessBlock`, lifecycle expiry run by a separate component and
 not observable in minutes, simple identities too coarse for least privilege (use policy documents),
 and no bucket region. Recommendation: **accept SeaweedFS for development and CI** with those gaps
@@ -75,3 +79,29 @@ Re-run on the digest-pinned image; lifecycle expiry observed over a day; server 
 method and header rules, purge); the `ObjectStore` adapter and its start-up checks; Ceph RGW and
 Zenko (not needed if Ali accepts the recommendation). Hassan reviews this report before ADR-0029 is
 Accepted.
+
+## Conditions before ADR-0029 is Accepted (Hassan and Bagher, 2026-10-07)
+
+1. Re-run on the digest-pinned image, and on the production provider for everything in "Not done".
+2. **Copy path (decision 5).** `CopyObject` from `cert-draft` to `cert-evidence` sets mode and
+   `retain-until` in the request and `HEAD` returns them (the spike used `PutObject` with lock
+   headers); a versioned read by the recorded `VersionId` with a SHA-256 check; a conditional
+   write (`If-None-Match: *` or equivalent) that refuses an overwrite of a content-addressed key.
+3. **Retention.** The `api` principal needs `PutObjectRetention` to set a lock, and extending a
+   retention was allowed in the spike: a compromised API could push any object to year 9999.
+   Limit the permission to `cert-evidence` and, where the provider allows, bound the maximum; where
+   it cannot, the ADR records the risk and the alert is an additional control.
+4. **Start-up checks (decisions 2 and 4).** Show the exact read permissions the checks need and
+   that the same principal still cannot write them; test a public-read ACL on `PutObject` and
+   `PutBucketAcl`, `DeleteObjects` with a version id on a locked object, and `DeleteBucket` on a
+   locked bucket. Hassan reviews the public-access gap: the anonymous-read finding (a `*` bucket
+   policy opened an object) is held only by process controls.
+5. **Lifecycle.** Expiry observed on the production provider; "about 48 h" stays unproven until
+   then, the 2 h alarm is a hard requirement of certification slice 3 and is tested with an aged
+   object; the `cert-draft` row of the ADR table drops the non-current wording while versioning is
+   off. Expiry needs a separate component, which contradicts "single container" in decision 1.
+6. Encryption at rest is not claimed for the stand-in unless an object is shown encrypted; the
+   dev bypass of the region check (decision 11) is allowed only for a `local` Market and cannot be
+   switched on in a production Region Stack.
+7. Spike scripts are kept for re-runs (`docs/reviews/spikes/` or an attachment), and slice 3
+   turns each measured property into a CI test.
