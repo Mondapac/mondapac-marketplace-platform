@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { devNull } from 'node:os';
 import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
 import pino from 'pino';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { APP_OPTIONS, configureApp } from '../../src/configure-app';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
 import { testDatabaseUrl } from './test-database';
@@ -44,8 +46,10 @@ describe('platform persistence (database integration)', () => {
         }),
       ],
     }).compile();
-    app = moduleRef.createNestApplication();
-    await app.init();
+    const nestApp = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
+    configureApp(nestApp);
+    await nestApp.init();
+    app = nestApp;
     prisma = app.get(PrismaService);
 
     sql = new Client({ connectionString: testDatabaseUrl() });

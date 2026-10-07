@@ -7,7 +7,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from '../../src/app.module';
-import { configureApp } from '../../src/configure-app';
+import { APP_OPTIONS, configureApp } from '../../src/configure-app';
 import { testAppConfig } from './test-config';
 
 // nestjs-pino builds its pino-http instance once per module registry, so in one Jest test
@@ -57,7 +57,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     imports: [AppModule.register({ config: testAppConfig(options.env), logDestination })],
     controllers: [...(options.controllers ?? [])],
   }).compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true });
+  const app = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
   app.useLogger(app.get(Logger));
   configureApp(app);
   await app.init();
