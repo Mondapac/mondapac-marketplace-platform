@@ -15,6 +15,7 @@ describe('loadAppConfig', () => {
     expect(config).toEqual({
       appRole: 'api',
       nodeEnv: 'development',
+      nodeEnvExplicit: false,
       port: 3000,
       logLevel: 'info',
       hostedMarkets: ['AU', 'ZZ'],
@@ -22,6 +23,17 @@ describe('loadAppConfig', () => {
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
+    });
+  });
+
+  it('records whether NODE_ENV was set or defaulted (M2)', () => {
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' })).toMatchObject({
+      nodeEnv: 'development',
+      nodeEnvExplicit: true,
+    });
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU' })).toMatchObject({
+      nodeEnv: 'development',
+      nodeEnvExplicit: false,
     });
   });
 

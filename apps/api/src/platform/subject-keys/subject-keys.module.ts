@@ -24,7 +24,7 @@ import { SUBJECT_KEY_STORE, type SubjectKeyStore } from './subject-key-store';
     {
       provide: KEY_WRAPPER,
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig) => new LocalKeyWrapper(config.nodeEnv),
+      useFactory: (config: AppConfig) => new LocalKeyWrapper(config),
     },
     {
       provide: SUBJECT_KEY_SERVICE,

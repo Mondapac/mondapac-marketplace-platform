@@ -1,4 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { Logger } from '@nestjs/common';
+import type { AppConfig } from '../config/app-config';
 import { lengthPrefixed } from './envelope';
 import type { KeyBinding, KeyWrapper, WrappedKey } from './key-wrapper';
 import { SubjectKeyIntegrityError } from './subject-key-service';
@@ -18,19 +20,37 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
  */
 export const LOCAL_WRAPPING_KEY_ID = 'local-stand-in-1';
 
-/** The stand-in was asked to start in production. */
+/** The stand-in was asked to start outside an explicit development or test environment. */
 export class LocalKeyWrapperRefusedError extends Error {
   override readonly name = 'LocalKeyWrapperRefusedError';
   constructor() {
-    super('The local key wrapper is a stand-in and refuses to start in production');
+    super(
+      'The local key wrapper is a stand-in: it starts only when NODE_ENV is explicitly ' +
+        '"development" or "test"',
+    );
   }
 }
 
+/**
+ * Starts only when `NODE_ENV` was explicitly set to `development` or `test` (security review
+ * of slice 1c, M2): the configuration's default (`development`) is not enough, so a deployment
+ * that forgets `NODE_ENV` refuses to start instead of protecting keys with a public constant.
+ * It logs a warning that names the stand-in at start.
+ */
 export class LocalKeyWrapper implements KeyWrapper {
   readonly #key = createHash('sha256').update('mondapac.local-key-wrapper.stand-in.v1').digest();
 
-  constructor(nodeEnv: 'development' | 'test' | 'production') {
-    if (nodeEnv !== 'development' && nodeEnv !== 'test') throw new LocalKeyWrapperRefusedError();
+  constructor(environment: Pick<AppConfig, 'nodeEnv' | 'nodeEnvExplicit'>) {
+    const { nodeEnv, nodeEnvExplicit } = environment;
+    if (nodeEnvExplicit !== true || (nodeEnv !== 'development' && nodeEnv !== 'test')) {
+      throw new LocalKeyWrapperRefusedError();
+    }
+    new Logger('LocalKeyWrapper').warn({
+      msg: 'subject-keys.local-stand-in',
+      wrappingKeyId: LOCAL_WRAPPING_KEY_ID,
+      nodeEnv,
+      note: 'subject keys are wrapped by the local stand-in, which protects nothing',
+    });
   }
 
   wrap(binding: KeyBinding, dataKey: Uint8Array): Promise<WrappedKey> {

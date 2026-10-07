@@ -69,7 +69,10 @@ export class PrismaSubjectKeyStore implements SubjectKeyStore {
       async () => ok(await this.read(this.prisma.tx(market), market, subjectId)),
       { readOnly: true },
     );
-    return result.ok ? result.value : null;
+    // The work never answers err; if a unit ever did, "no key" would be a wrong answer, so it
+    // throws rather than return null (Mojtaba's review of slice 1c, note 5).
+    if (!result.ok) throw new Error('The read-only unit of the subject-key store answered err');
+    return result.value;
   }
 
   async destroy(

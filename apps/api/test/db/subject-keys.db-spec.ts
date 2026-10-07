@@ -50,7 +50,11 @@ describe('subject keys (database integration)', () => {
   beforeAll(async () => {
     db = createPersistence();
     const store = new PrismaSubjectKeyStore(db.service, db.unitOfWork);
-    service = new NodeSubjectKeyService(store, new LocalKeyWrapper('test'), clock);
+    service = new NodeSubjectKeyService(
+      store,
+      new LocalKeyWrapper({ nodeEnv: 'test', nodeEnvExplicit: true }),
+      clock,
+    );
     app = new Client({ connectionString: testDatabaseUrl() });
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
     await app.connect();

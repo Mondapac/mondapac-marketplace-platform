@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import {
@@ -6,6 +7,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { TEST_MARKETS } from '../../../test/support/test-config';
+import { loadAppConfig } from '../config/app-config';
 import { PLATFORM_TENANT_ID } from '../market-context/tenant';
 import type { KeyBinding, KeyWrapper } from './key-wrapper';
 import { fieldLabel, hashPurpose } from './labels';
@@ -46,6 +48,7 @@ class MemoryStore implements SubjectKeyStore {
   }
 }
 
+const TEST_ENVIRONMENT = { nodeEnv: 'test', nodeEnvExplicit: true } as const;
 const FIELD = fieldLabel('identity.second-factor.secret');
 const OTHER_FIELD = fieldLabel('identity.account.display-name');
 const PURPOSE = hashPurpose('identity.recovery-code');
@@ -62,7 +65,7 @@ describe.each(TEST_MARKETS)('NodeSubjectKeyService in market %s', (code) => {
 
   beforeEach(async () => {
     store = new MemoryStore();
-    service = new NodeSubjectKeyService(store, new LocalKeyWrapper('test'), clock);
+    service = new NodeSubjectKeyService(store, new LocalKeyWrapper(TEST_ENVIRONMENT), clock);
     subject = ids.next();
     await service.createKey(market, subject);
   });
@@ -139,7 +142,7 @@ describe.each(TEST_MARKETS)('NodeSubjectKeyService in market %s', (code) => {
   it('throws on a wrapper failure; it is never reported as destroyed (PF 4 row 7)', async () => {
     const failing: KeyWrapper = {
       wrap: (binding: KeyBinding, key: Uint8Array) =>
-        new LocalKeyWrapper('test').wrap(binding, key),
+        new LocalKeyWrapper(TEST_ENVIRONMENT).wrap(binding, key),
       unwrap: () => Promise.reject(new Error('key service unavailable')),
     };
     const broken = new NodeSubjectKeyService(store, failing, clock);
@@ -212,8 +215,45 @@ describe.each(TEST_MARKETS)('NodeSubjectKeyService in market %s', (code) => {
 });
 
 describe('LocalKeyWrapper', () => {
-  it('refuses to start in production (PF 4 row 10)', () => {
-    expect(() => new LocalKeyWrapper('production')).toThrow(LocalKeyWrapperRefusedError);
-    expect(() => new LocalKeyWrapper('development')).not.toThrow();
+  let warnings: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   });
+
+  afterEach(() => {
+    warnings.mockRestore();
+  });
+
+  it('refuses to start in production (PF 4 row 10)', () => {
+    expect(() => new LocalKeyWrapper({ nodeEnv: 'production', nodeEnvExplicit: true })).toThrow(
+      LocalKeyWrapperRefusedError,
+    );
+  });
+
+  it('refuses to start when NODE_ENV was not set, though the configuration defaults it (M2)', () => {
+    const defaulted = loadAppConfig({
+      APP_ROLE: 'api',
+      HOSTED_MARKETS: 'AU',
+      DATABASE_URL: 'postgresql://user:secret@localhost:5432/db',
+    });
+
+    expect(defaulted.nodeEnv).toBe('development');
+    expect(() => new LocalKeyWrapper(defaulted)).toThrow(LocalKeyWrapperRefusedError);
+    expect(warnings).not.toHaveBeenCalled();
+  });
+
+  it.each(['development', 'test'] as const)(
+    'starts when NODE_ENV is explicitly %s, with a warning that names the stand-in',
+    (nodeEnv) => {
+      expect(() => new LocalKeyWrapper({ nodeEnv, nodeEnvExplicit: true })).not.toThrow();
+      expect(warnings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'subject-keys.local-stand-in',
+          wrappingKeyId: 'local-stand-in-1',
+          nodeEnv,
+        }),
+      );
+    },
+  );
 });
