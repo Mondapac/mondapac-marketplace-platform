@@ -239,19 +239,23 @@ validate(schema: AttributeSchema, values: AttributeValues, locales: readonly Loc
 
 ## 4. State machines
 
-Every transition is one use case with one read-write unit (PP 3.1), time from `Clock`, one version
-step, and its events in the same unit. Facade calls (`sellers`, `certification`) run before the
+Every transition is one use case with one read-write unit (PP 3.1), time from `Clock`, and its
+events in the same unit. **Versions and events (Q-K3):** the outbox keeps its unique
+`(aggregate_id, aggregate_version)`; a unit that writes n events for one root (a publish with
+`revision-published`, several `variant-added`/`-removed` and `material-content-changed`; a settle
+with several tag events and `offer-listing-changed`) raises the root's version by n, one version per
+event, in a fixed order. No amendment for an event sequence number is needed. Facade calls (`sellers`, `certification`) run before the
 unit (PP 3.1 row 5; ADR-0019 decision 6 for models). A transition not listed is forbidden.
 
 ### 4.1 Product lifecycle
 `draft` → `unpublished` → `published`; `unpublished` → `matched` (terminal);
 `unpublished` | `published` → `withdrawn` (terminal, SELLER); `published` → `retired` (terminal,
-PLATFORM); `draft` → (removed).
+PLATFORM); `draft` → `discarded` (terminal).
 
 | From → to | Trigger and guard | Effects | Serves |
 |---|---|---|---|
 | (none) → `draft` | `own-product.create` (seller) or `platform-product.create` (admin). Seller guards: `sellingEligibility` yes (SL 7.2), setting `catalog.seller-can-create-product` on (7.3), type in the Market's list and in `allowedProductTypesOf` (SEL-12), family from the Market's seed. Admin guard: key `catalog.platform-product.edit` | Product with type, family, `productCode` (minted by the server from a Market sequence, never from input), a Simple product's single variant | CAT-10, OFR-01, CAT-41 |
-| `draft` → (removed) | `own-product.delete` of a product never submitted | Product, working copy, its Offer (draft) and draft images removed; no event, no audit row (nothing was ever submitted; the certification precedent CD 3.1) | OFR-06, AC 32 |
+| `draft` → `discarded` | `own-product.delete` of a product never submitted, or the prune job `catalog.prune-abandoned-drafts` after **180 days** without a working-copy save (ADR-0009 d7; system actor; the seller list shows the removal date from day 166) | **No physical delete of Offers or variants, ever (Q-K2).** In one unit: the product becomes `discarded` (the row stays; it leaves every list and read), its working copy and draft image masters are deleted; its draft Offer becomes `deleted` with `catalog.offer-deleted.v1` (consumers saw `offer-created`); each non-retired variant is retired with `catalog.variant-removed.v1` (a `proposed` variant may be priced); history rows stay (insert-only). No audit row (nothing was ever submitted; CD 3.1 precedent) | OFR-06, AC 32 |
 | `draft` → `unpublished` | First submit (4.2 row 1) | — | CAT-30 |
 | `unpublished` → `published` | First revision published (4.2 rows 3, 4) | Event `catalog.product-revision-published.v1` | CAT-30 |
 | `unpublished` → `matched` | `product.match` in the first approval (4.5) | Terminal; the Offer moves; mail | CAT-45 |
@@ -343,7 +347,7 @@ Neither changes an Offer's seller. Match requires approval on in practice (brief
 |---|---|---|
 | Seed (system, deploy) | Versioned seed per Market (7.2); **only ever creates** missing categories; never edits, moves, merges or archives one (Ali B4). Every later tree change goes through the use cases below (slice 21), so `assertCategoriesRetirable` and the re-ask always run | — |
 | `platform-category.create`, `.rename` (key `catalog.category-tree.edit`, protected) | Slug unique per Market; claim-text check on names (6.2) | Revision; event `catalog.platform-category-created.v1` |
-| `platform-category.move`, `.merge`, `.archive` (same key) | Before the unit: `certification.assertCategoriesRetirable(ctx, ids)` for merge and archive and for **move** (ADR-0028 d5; C-4); a refusal or an error refuses the use case (`category.referenced-by-policy` with the type codes, or `category.check-unavailable`). In the unit: no cycle; archive or merge refused when a published revision would be left without a platform category (AC 4) Audit (always, C-8: a move under a parent named by a `SELLER_OR_MANUFACTURER` row eases the rule, so every move is an audited entry path); in the same unit, every tag of every Offer under the affected subtree is marked `rechecking` (rule M1, 5.4); events `catalog.platform-category-moved.v1`, `-merged.v1`, `-archived.v1`. The own handler of these events then (a) calls `certification.platformCategoriesRetired` (system; backstop, C-4) for merge and archive, and (b) re-asks every tag of every Offer whose product's published revision is under the affected subtree, in idempotent batches (5.5) |
+| `platform-category.move`, `.merge`, `.archive` (same key) | **Bound (Q-K4):** the M1 marking stays in one unit; the use case is refused with `category.impact-too-large` when the tags to mark exceed the Market's `catalog.maxCategoryChangeTags` (7.1; AU 50,000, about 8 s in Mojtaba's estimate); `platform-category.impact` (9.2a) shows the count first, and the admin moves child categories in parts. Before the unit: `certification.assertCategoriesRetirable(ctx, ids)` for merge and archive and for **move** (ADR-0028 d5; C-4); a refusal or an error refuses the use case (`category.referenced-by-policy` with the type codes, or `category.check-unavailable`). In the unit: no cycle; archive or merge refused when a published revision would be left without a platform category (AC 4) Audit (always, C-8: a move under a parent named by a `SELLER_OR_MANUFACTURER` row eases the rule, so every move is an audited entry path); in the same unit, every tag of every Offer under the affected subtree is marked `rechecking` (rule M1, 5.4); events `catalog.platform-category-moved.v1`, `-merged.v1`, `-archived.v1`. The own handler of these events then (a) calls `certification.platformCategoriesRetired` (system; backstop, C-4) for merge and archive, and (b) re-asks every tag of every Offer whose product's published revision is under the affected subtree, in idempotent batches (5.5) |
 
 A merge rewrites no published revision (V1 is immutable): `categoryPath` resolution maps a merged
 id to its target when building the query (the tree keeps `merged-into`), so published revisions keep
@@ -402,6 +406,11 @@ Batches: at most 100 queries per call (CD 4.1); the fan-out splits larger sets.
    reconciliation (5.6). It cannot be shown or used (point 2), and the publish re-ask (point 3) is the
    only way it becomes effective, so there is nothing for them to repair. The alternative ("use the
    pending revision") was rejected: it would let a handler decide on content nobody has approved.
+   **Scope (Q-K12):** only revisions that were **never published** are excluded. A tag whose copy
+   names a revision that was the published one when the tag was decided and has since been superseded
+   (for example while a PLATFORM fan-out is settling) stays selectable by 5.5 and 5.6; it was
+   effective, and the re-ask builds its query from the current published revision (5.1). Mojtaba's
+   flag `copy_revision_published` ("was the published revision at decision time") implements this.
 6. **Badge requests at the first submit (Reza, ux.md 7.10).** Before its first submit a product has
    no frozen revision, so `own-offer.add-tag` cannot ask for it (point 1). Instead `own-product.submit`
    and `own-offer.submit` accept `requestedTags: TypeCode[]` (closed schema; at most one per type;
@@ -683,6 +692,7 @@ path (SL 4 pattern).
 | `importLimits` | File ≤ 10 MiB, decompressed ≤ 50 MiB, 5,000 rows, 10,000 characters per cell (Hassan) | Small | 14 |
 | `promotionEnabled` | `false` until counsel approves the content-licence clause (ADR-0010 d5) | `true` | 4.5 |
 | `reconcileAtLocalTime` | `03:00` | `04:00` | 5.6 |
+| `maxCategoryChangeTags` | `50000` (Q-K4) | `10` | 4.6, 9.2a |
 | `maxVariantsPerProduct` | `100` (Ali, Phase 4 ruling) | `3` (so tests reach the limit) | 2.1, 4.2, 9.4 (`offer-moved`), 14 |
 | `reviewChecks` | The four check codes and their label keys of 8.3a | Two codes | 8.3a |
 
@@ -1289,7 +1299,7 @@ claim-text refusal or an AI surface). Sizes as ID 12.1: S, M, L, XL.
 | 1 | `Product` (PLATFORM/SELLER, Market, code, variant registry), `simple` and `configurable` handlers, outbox and inbox | M | P1; identity 8a (registry) | AC 1, 5; type immutability; CC2 invariant |
 | 2 | Platform category tree seed per Market | S | 1 | Seed claim-text check (after 5, re-run) |
 | 3 | Attribute definitions with `material`, default family seed; schema builder | M | 1 | `material` flag only from seed or protected key |
-| 4 | Working copy, autosave, revisions with base and schema ref, tax category, `ProductRevisionPolicy` (approval setting from Market configuration until 7.3's store exists) | L | 2, 3; `Revision<T>` and `ContentHash` (SL 2.4) | AC 26, 29, 36 (first half) |
+| 4 | Working copy, autosave, revisions with base and schema ref, tax category, `ProductRevisionPolicy` (approval setting from Market configuration until 7.3's store exists); the "≥ 1 clean image" completeness rule is switched on only when slice 13 merges (until then no revision has images; slice 13 is on the first-sale path, so no product is sold without a photo; Q-K13) | L | 2, 3; `Revision<T>` and `ContentHash` (SL 2.4) | AC 26, 29, 36 (first half) |
 | 5 | Claim-text refusal: `ClaimCheckedFields` registry and schema test (attribute-definition names, option labels and proposal texts included, every locale's terms; L5), `matchClaimTerms` call fail-closed, `claim-text.check` with L6 limits; ZWNJ/ZWJ joining-script rule | M | 4; certification slice 2 (`matchClaimTerms`) | AC 20 to 24; M8 cases through the matcher; no override; L5, L6 |
 | 6 | Platform product by admin; CAT-43 in the aggregate | M | 5 | AC 3 incl. AI-accept and Import variants |
 | 7 | Own product and Offer: identity, SKU, condition, description; separate `set-handling` and `record-attestation` commands refused in acting-as (B1); shelf field; `sellingEligibility`, SEL-12, OFR-01; one-Offer rule; `offer-created`; `offerSellUnits` (≤ 200, refused whole); closed input schemas and the forbidden-field list; ids in the actor's scope; variant-id rule and `variant-removed` at a draft save (B2) | L | 6; `sellers` slice 9 | AC 2, 17, 19 (handling, attestation), 37, 38; B1, B2, M3, L7, L8 |
@@ -1318,8 +1328,8 @@ claim-text refusal or an AI surface). Sizes as ID 12.1: S, M, L, XL.
 first sale:** 16 (CAT-45, Q5), 18 (Q6 behaviour), 20 (CAT-48 is the safety valve for a bad shared
 product), 21 as soon as an existing category must move, merge or be archived (B4: never a seed PR; seeds only
 create). **Optional or later:**
-15, 19, 22, 23, 24, 25, 26. Slices with a migration: 1, 2, 3, 4, 7, 8, 10, 11, 12, 13, 18, 21, 23,
-24, 25, 26 (Mojtaba places them). About 28 backend PRs plus P1; no date until Javad has the measured
+15, 19, 22, 23, 24, 25, 26. Slices with a migration: 1, 2, 3, 4, 7, 8, 10, 11, 12, 13, 18, 21, 22
+(`product_url_keys`, Q-K9), 23, 24, 25, 26 (Mojtaba places them). About 28 backend PRs plus P1; no date until Javad has the measured
 pace of `identity` and `sellers` (brief s8: "4 weeks" is not credible).
 
 ### 15.2 Platform triggers (ADR-0015 decision 3) pulled by `catalog`

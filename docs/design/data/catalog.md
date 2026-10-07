@@ -419,12 +419,12 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
 | `id` | `uuid` | no | PK. A removed tag keeps its row; re-adding is a new row (D 5.3) |
 | `offer_id`, `seller_id` | `uuid` | no | FK `(market_id, offer_id, seller_id)` → `offers (market_id, id, seller_id)`: the copy of the seller is the Offer's (CE4), so selection by (seller, type) needs no join. Never updated |
 | `type_code` | `text` | no | CA4. Never updated |
-| `status` | `text` | no | CHECK `active`, `rechecking`, `suspended`, `removed` (D 5.3) |
+| `status` | `text` | no | CHECK `pending-publish`, `active`, `rechecking`, `suspended`, `removed` (D 5.3, D 17.1 item 12a). `pending-publish`: requested at the first submit of a never-published product, re-asked at publish into `active`, `suspended` or `removed` |
 | `basis` | `text` | yes | CHECK `SELLER`, `MANUFACTURER` (CD 4.1 `ClaimDecision.basis`) |
 | `certificate_kind` | `text` | yes | CHECK `seller`, `manufacturer` |
 | `certificate_id`, `certificate_version_id`, `issuer_id`, `type_revision_id`, `policy_revision_id` | `uuid` | yes | The copy (D 5.4, ADR-0028 d2, d11); C4, no FK. `policy_revision_id` NULL = the type default |
 | `valid_until` | `timestamptz(6)` | yes | |
-| `badge_data` | `jsonb` | yes | CD 4.5 `BadgeData`, object. **CHECK `offer_tags_badge_data_check`: `badge_data IS NULL OR status = 'active'`** (D 5.3: no badge while `rechecking` or `suspended`; measured) |
+| `badge_data` | `jsonb` | yes | CD 4.5 `BadgeData`, object. **CHECK `offer_tags_badge_data_check`: `badge_data IS NULL OR status = 'active'`** (D 5.3: no badge while `pending-publish`, `rechecking` or `suspended`; measured) |
 | `copy_revision_id` | `uuid` | yes | The product revision the decision named (D 17.1 item 3; B3). FK `(market_id, copy_revision_id)` → `product_revisions` |
 | `copy_revision_published` | `boolean` | no | True when that revision was the product's published revision at the decision (D 5.1a point 5). The handler indexes below carry it in their predicate, so tags on a never-published product's frozen revision are excluded without a join |
 | `inputs_hash` | `bytea` | yes | SHA-256 of the canonical inputs it was decided on (D 5.4); CHECK `octet_length = 32`. Not keyed: no personal input |
@@ -438,6 +438,12 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
 - **CHECK `offer_tags_active_copy_check`**: `status <> 'active' OR (basis, certificate_kind,
   certificate_id, certificate_version_id, type_revision_id, copy_revision_id, inputs_hash, badge_data)
   all NOT NULL`. An `active` row without a full copy cannot exist (measured shape).
+- **CHECK `offer_tags_pending_publish_check`** (D 17.1 item 12a): `status <> 'pending-publish' OR
+  (copy_revision_id IS NOT NULL AND NOT copy_revision_published AND badge_data IS NULL)`. A
+  `pending-publish` tag names the frozen submitted revision, which is never the published one; so
+  every selection index below (predicate `copy_revision_published`) excludes it **structurally**, and
+  the D 5.5 handlers cannot reach it. The publish unit moves it to `active` (badge data and
+  `copy_revision_published = true` set in the same `UPDATE`), `suspended` or `removed`.
 - **Partial unique `(market_id, offer_id, type_code) WHERE status <> 'removed'`**: one non-removed
   tag per (Offer, type) (D 17.1). Also the "tags of these Offers" path of `offerListings`, M1 marking
   and settling (A2, A7).
@@ -453,8 +459,9 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
     'removed'` (the same index without the status narrowing: one index
     `offer_tags_market_id_type_code_open_idx`, the suspended subset is a filter over it at the
     measured volumes; Q-K5 if suspended tags grow).
-  - Reconciliation (D 5.6): `(market_id, evaluated_at, id) WHERE status <> 'removed'`. The daily run
-    reads every non-removed tag; it **joins** `product_revision_decisions` for `copy_revision_id` with
+  - Reconciliation (D 5.6): `(market_id, evaluated_at, id) WHERE status NOT IN ('removed',
+    'pending-publish')` (D 17.1 item 12a: reconciliation skips `pending-publish`; the query repeats
+    the predicate literally so the partial index matches). The daily run reads every other tag; it **joins** `product_revision_decisions` for `copy_revision_id` with
     `outcome = 'published'` instead of trusting `copy_revision_published`, so a wrong flag is repaired
     within a day (5).
 - Column grant `UPDATE` excludes `id`, `offer_id`, `seller_id`, `type_code`, `created_at` (7).
@@ -573,7 +580,7 @@ history is the row plus the audit rows (`catalog.attribute-relaxation.requested`
 | `expires_at` | `timestamptz(6)` | no | `requested_at + 72 h` (D 8.2 proposal) computed by the application from Market configuration. CHECK `expires_at > requested_at AND expires_at <= requested_at + interval '7 days'` (a backstop against a misconfigured period, not the 72 h itself) |
 | `confirmed_by_account_id` | `uuid` | yes | |
 | `closed_at` | `timestamptz(6)` | yes | When `status` left `open` (confirm, cancel or the job) |
-| `version` | `integer` | no | Optimistic lock: confirm, cancel and the job race on the same row |
+| `version` | `integer` | no | Default 1, CHECK `> 0` (D 17.1 item 12a). Confirm, cancel and the expiry job each run one conditional update `… SET status = $to, version = version + 1 WHERE market_id = $m AND id = $id AND status = 'open' AND version = $v` (Prisma `updateMany`, count checked): 0 rows means another of the three won, and the unit is refused or (job) skipped |
 
 CHECKs (the database backstop for Hassan 2):
 - `attribute_relaxation_requests_two_people_check`: `confirmed_by_account_id IS NULL OR
@@ -590,8 +597,8 @@ Indexes:
   id)`: the expiry job (`status = 'open' AND expires_at < $now`, keyset by `(expires_at, id)`) and
   the PA7 list (`status = 'open' AND expires_at > $now ORDER BY expires_at, id`; with a fixed
   period, `expires_at` order is `requested_at` order, so "oldest first" needs no second index). A full
-  index, not a partial `WHERE status = 'open'`: the status is a bound parameter in Prisma's queries
-  (platform.md 10.9), and the table is tiny (tens of rows a year), so the closed rows cost nothing.
+  index as D 17.1 item 9 names it, not a partial `WHERE status = 'open'`: the table is tiny (tens of
+  rows a year), so the closed rows cost nothing and one index serves any future status filter.
 - **Partial unique** `attribute_relaxation_requests_open_definition_key` `(market_id, definition_id)
   WHERE status = 'open'`: at most one open request per definition. A uniqueness constraint does not
   depend on the plan, so the 10.9 caveat does not apply. The request unit first closes a stale `open`
@@ -683,7 +690,7 @@ limits are request validation: **no storage**.
 |---|---|
 | A price, special price, Cost, stock, quantity or "sellable now" | `pricing`, `inventory`; composed at read time (ADR-0024 d5). Column-name test (1) |
 | A `ClaimDecision` as an authorisation; an "allowed" flag | The tag copy restricts only (ADR-0028 d3); `active` needs a fresh decision (D 5.2) |
-| Badge data on a `rechecking` or `suspended` tag | CHECK of 3.15 |
+| Badge data on a `pending-publish`, `rechecking` or `suspended` tag; a `pending-publish` tag selectable by a handler | CHECKs of 3.15 |
 | The raw upload after intake; an original with metadata; the client's file name | Master only (3.19, M2) |
 | A seller's access state, may-sell, allowed types, store name | Read live from `sellers` (D 9.6) |
 | A per-variant SKU | One `sellerSku` per Offer (3.13) |
@@ -761,7 +768,7 @@ Measured on these numbers (11).
 | A12 | Offers tab of a product, page 50 by `first_published_at` (D 9.2a) | A7's index range, sorted in memory (at most ~10³ Offers per product today) | A7's index; a `(…, first_published_at, id)` index only when a product passes 10⁴ Offers |
 | A13 | OFR-03 search, admin search, similar products (≥ 3 characters; D 9.2) | `product_revision_texts.name ILIKE $q` joined to `products` (published, scope, not retired) | **GIN trigram on `name`** (Option A of 6.2) |
 | A14 | Rescan (D 6.4) | Keyset over `products` with `published_revision_id IS NOT NULL` by id, texts by PK | PKs; the published-revision partial unique |
-| A15 | Reconciliation (D 5.6) | `offer_tags WHERE market_id AND status <> 'removed' ORDER BY evaluated_at, id` keyset 100 | `(market_id, evaluated_at, id)` partial |
+| A15 | Reconciliation (D 5.6) | `offer_tags WHERE market_id AND status NOT IN ('removed', 'pending-publish') ORDER BY evaluated_at, id` keyset 100 | `(market_id, evaluated_at, id)` partial |
 | A16 | Variant limit count (D 4.2) | `count(*) FROM product_variants WHERE market_id AND product_id = $p AND state <> 'retired'` | Unique `(market_id, product_id, id)`: a range of ≤ 100 + retired rows (0.06 ms). No new index |
 | A17 | Offer history, tag history, revision list of a product | `(market_id, offer_id, occurred_at)`; unique `(market_id, product_id, revision_no)` | As listed |
 | A18 | Takedown, master retention: revisions using an image | `product_revision_images (market_id, image_id)` | 3.11 |
@@ -842,7 +849,8 @@ the row is unchanged afterwards, and `TRUNCATE` fails with `23001`; driven by th
 expected map. Also against real rows: the variant guard (`retired → published`, `published →
 proposed`, `DELETE` of a published row: `23001`; a v4 id: `23514`), the not-retired revision trigger
 (`23514`), the no-cycle trigger (`23514`), `offers_listed_check`, `offer_tags_badge_data_check`,
-`product_revision_decisions_checks_check`, the four relaxation CHECKs of 3.21 and its guard (`UPDATE`
+`product_revision_decisions_checks_check`, `offer_tags_pending_publish_check` (a `pending-publish` row
+with badge data or with `copy_revision_published = true`: `23514`), the four relaxation CHECKs of 3.21 and its guard (`UPDATE`
 of a `confirmed` row, of `requested_by_account_id` on an `open` row, `DELETE`: `23001`), a second
 `open` request for one definition (`23505`), the shelf FK with another
 seller's category (`23503`), and a child row in the other Market (PM6, `23503`). Column-level
@@ -1043,6 +1051,7 @@ load.
 | 10 One `sellerSku` per Offer; Import key SKU + option values; no variant SKU | 3.13, 3.10 `option_key` |
 | 11 Bulk approve cap 50: no storage | 3.26 |
 | 12 `maxVariantsPerProduct`: index or check | 5 and A16: no CHECK or trigger (Market value; product version serialises); no new index |
+| 12a `pending-publish` tag status (no badge data; skipped by handlers and reconciliation); relaxation `version` for conditional confirm, cancel and expiry | 3.15 (status list, `offer_tags_pending_publish_check`, reconciliation predicate), A15; 3.21 `version` |
 | D 8.3a named checks on the decision | 3.12, 3.17 (`required ⊆ confirmed` CHECK) |
 | D 5.4 tax-override suspension in the override unit | 3.7 `revision_kind = 'tax-override'`, 3.12 `admin-authored`, 3.16 entry path `tax-category-override`; `unavailable` → `rechecking` is a status write of 3.15 in the same unit |
 | D 9.2a panel reads | A6 (queue rows with kind), A10 (impact counts), A12 (Offers tab), `sensitive_reasons` codes in 3.7 |
