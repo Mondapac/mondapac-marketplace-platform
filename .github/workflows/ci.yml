@@ -103,11 +103,15 @@ jobs:
 
       # Job environment only: this process has no migration URL, and its start-up self-check
       # refuses any role but the application login.
-      - name: Boot the API for this region and probe readiness
+      - name: Boot the API for this region, probe readiness and the security headers
         run: |
           PORT=3000 node apps/api/dist/main &
           for attempt in $(seq 1 30); do
-            if curl --silent --fail http://localhost:3000/health/ready; then exit 0; fi
+            if curl --silent --fail http://localhost:3000/health/ready; then
+              # The security headers on a 200, a 404 and a 400 (slice 0 item 6).
+              node scripts/check-http-headers.mjs http://localhost:3000
+              exit $?
+            fi
             sleep 1
           done
           echo "API did not become ready" >&2

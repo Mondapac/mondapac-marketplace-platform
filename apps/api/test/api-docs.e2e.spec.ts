@@ -25,6 +25,25 @@ describe('API docs (integration)', () => {
     expect(response.body).toHaveProperty(['paths', '/health/ready']);
   });
 
+  it('relaxes the CSP for the Swagger UI page only (slice 0 item 6)', async () => {
+    const page = await request(app.getHttpServer()).get('/docs').expect(200);
+    const json = await request(app.getHttpServer()).get('/docs-json').expect(200);
+
+    expect(page.headers['content-security-policy']).toBe(
+      "default-src 'none';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data:;connect-src 'self';frame-ancestors 'none'",
+    );
+    expect(json.headers['content-security-policy']).toBe(
+      "default-src 'none';frame-ancestors 'none'",
+    );
+    expect(page.headers['cache-control']).toBe('no-store');
+  });
+
+  it('gives the Swagger UI assets under /docs/ the same relaxed CSP', async () => {
+    const asset = await request(app.getHttpServer()).get('/docs/swagger-ui-init.js').expect(200);
+
+    expect(asset.headers['content-security-policy']).toContain("script-src 'self'");
+  });
+
   it('documents x-market-id on market-scoped operations and not on /health', async () => {
     const response = await request(app.getHttpServer()).get('/docs-json').expect(200);
 

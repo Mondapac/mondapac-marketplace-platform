@@ -1,4 +1,3 @@
-import type { NextFunction, Request, Response } from 'express';
 import type { NestApplicationOptions } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -6,6 +5,8 @@ import type { HttpLogger } from 'pino-http';
 import { buildOpenApiDocument } from './openapi';
 import type { AppConfig } from './platform/config/app-config';
 import { APP_CONFIG } from './platform/config/config.module';
+import { answerBodyError } from './platform/http/body-errors';
+import { securityHeaders } from './platform/http/security-headers';
 import { HTTP_LOGGER } from './platform/logging/logging.module';
 
 /**
@@ -19,33 +20,30 @@ export const APP_OPTIONS = {
 } as const satisfies NestApplicationOptions;
 
 /**
- * Hands a parser error to the request logger, so the request's one completion line names
- * the error's type. Express calls it only for an error raised before it (the parser's).
- */
-function tagParserError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
-  if (error instanceof Error) res.err = error;
-  next(error);
-}
-
-/**
  * HTTP-level setup shared by the real server (main.ts) and the HTTP tests, so what is
  * tested is what runs. The application must be created with {@link APP_OPTIONS}.
  *
- * Order: the request logger, then the body parser, then Nest's routes and guards. A request
- * the parser rejects (malformed JSON, too large) is therefore logged with its correlation
- * id, and the answer carries the `x-correlation-id` header (Security L4).
+ * Order: the request logger, the security headers, the body parser, then Nest's routes and
+ * guards. A request the parser rejects (malformed JSON, too large) is therefore logged with
+ * its correlation id, and its answer carries the `x-correlation-id` header (Security L4) and
+ * the security headers (item 6).
  */
 export function configureApp(app: NestExpressApplication): void {
+  const config = app.get<AppConfig>(APP_CONFIG);
   app.disable('x-powered-by');
+  // No proxy is trusted: `req.ip` is the socket's address. A hop count comes with the front
+  // tier, never `true` (slice 0 item 6).
+  app.set('trust proxy', false);
   app.enableShutdownHooks();
 
   app.use(app.get<HttpLogger>(HTTP_LOGGER));
-  // The parsers Nest mounts by default, unchanged; item 6 narrows them.
-  app.useBodyParser('json');
-  app.useBodyParser('urlencoded', { extended: true });
-  app.use(tagParserError);
+  app.use(securityHeaders({ docsEnabled: config.apiDocsEnabled }));
+  // JSON only, at most 64 KiB, objects and arrays only. No CORS middleware until origins exist.
+  // inflate: false - a compressed body is refused with 415, never decompressed (Hassan L1).
+  app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });
+  app.use(answerBodyError);
 
-  if (app.get<AppConfig>(APP_CONFIG).apiDocsEnabled) {
+  if (config.apiDocsEnabled) {
     SwaggerModule.setup('docs', app, buildOpenApiDocument(app));
   }
 }
