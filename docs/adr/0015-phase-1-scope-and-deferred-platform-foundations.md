@@ -43,7 +43,7 @@ the skeleton contains, what is deferred, and the event that forces each deferred
    | `config/service-areas/` and `config/holidays/` (ADR-0005) | With the first slice that evaluates a ServiceArea or a business-day rule |
    | Extension-point registry and `verticals/<vertical>/` content (ADR-0001) | With the first extension point a module defines |
    | Auth guards | With the identity module (Phase 2), after its gates |
-   | Baseline HTTP hardening beyond removing `X-Powered-By` (security headers, explicit body limits, logging before body parsing, CORS, trust proxy, rate limiting) | Before the first authenticated endpoint. The owner approved adding `helmet` for the security headers (owner decision 2026-10-01) |
+   | Baseline HTTP hardening beyond removing `X-Powered-By` (security headers, explicit body limits, logging before body parsing, CORS, trust proxy, rate limiting) | Before the first authenticated endpoint. The owner approved adding `helmet` for the security headers (owner decision 2026-10-01). *(Amended by ADR-0037: `trust proxy` stays off on the API; behind a BFF the client address comes from the BFF's signed `x-client-address` header, accepted only from pinned BFF networks; a hop count applies only to the BFF's own edge, set in the deployment slice.)* |
    | `infra/` infrastructure as code | Phase 7 |
    | Redis and object-storage clients | When code first uses them; no environment variables before that. The local object-storage server is chosen then (ADR-0016) |
    | `SubjectKeyService` (ADR-0009 decision 8) *(Amended by ADR-0018: row added.)* | In the same change as the first migration whose data design declares a personal-data column |
