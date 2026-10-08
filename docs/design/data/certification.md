@@ -660,6 +660,27 @@ human-versus-AI record of brief s5 (R12) is the submission's `field_provenance` 
 | Review page (`review-read`) | 1 (+1 per document streamed) | Audited per read (D 7.2) |
 | Manufacturer certificate page | 1 (platform key) | Admin only |
 
+### 4.4 Ciphertext bounds (CHECK backstop)
+
+Every ciphertext column holds the `v<N>.` envelope in base64url: CHECK `~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'`
+and `char_length BETWEEN 41 AND <bound>`. The lower bound 41 is the v1 envelope of an empty
+plaintext. The upper bound follows sellers.md 4.5: for N plaintext characters at most
+`3 + ceil((4N + 28) * 4 / 3)` characters (4 bytes per character, 28 bytes of nonce and tag),
+rounded up to a power of two. The plaintext limit itself is checked in the domain value object
+(Mohammad); the database bound only stops an unbounded or non-envelope value.
+
+| Column | Plaintext limit (chars) | Computed max | CHECK bound | Migration |
+|---|---|---|---|---|
+| `seller_certification_submissions.certificate_number_ciphertext` (and the draft copy) | 64 | 382 | 512 | 1 (draft: 4) |
+| `seller_certification_submissions.self_declaration_note_ciphertext` (and the draft copy) | 1,000 | 5,374 | 8192 | 1 (draft: 4) |
+| `seller_submission_decisions.reason_text_ciphertext` | 1,000 | 5,374 | 8192 | 1 |
+| `issuers.expert_reference_ciphertext` | 500 | 2,707 | 4096 | 1 |
+| `change_reason_ciphertext` (type revisions, policy revisions, reactivation proposals; CE8) | 500 | 2,707 | 4096 | 2, 7 |
+
+Columns added later take their row here in the same PR as their migration. The boundary test
+(40 refused, 41 and the bound accepted, bound + 1 refused) is written once per bound value, not
+per column.
+
 ## 5. What is never stored
 
 | Never | Instead |

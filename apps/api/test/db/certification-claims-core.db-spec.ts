@@ -569,12 +569,18 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
   it('refuses a submission and an issuer that name rows of another Market', async () => {
     const { typeId, revisionId } = await type();
     const cert = await certificate(typeId);
+    const certSeller = (
+      await sql.query<{ seller_id: string }>(
+        `SELECT seller_id FROM certification.seller_certifications WHERE id = $1`,
+        [cert],
+      )
+    ).rows[0]!.seller_id;
     expect(
       await insertState('seller_certification_submissions', {
         id: uuid7(),
         ...base(other.marketId, other.tenantId),
         seller_certification_id: cert,
-        seller_id: uuid7(),
+        seller_id: certSeller,
         type_id: typeId,
         type_revision_id: revisionId,
         submission_no: 1,
