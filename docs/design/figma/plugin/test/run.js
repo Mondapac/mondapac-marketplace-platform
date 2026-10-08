@@ -472,7 +472,7 @@ function state181(M, label, skipOverlap) {
   check(shell.length === 22 && low.length === 0, label + ': every Panel desktop page is at least 900 high (' + shell.length + ' pages, ' + low.length + ' lower' + (low.length ? ': ' + low.map((f) => f.name + ' ' + f.height).join(', ') : '') + ')');
   const hugging = shell.filter((f) => !FIXED_900.includes(f.name));
   check(hugging.length === 18 && hugging.every((f) => f.minHeight === 900 && f.layoutSizingVertical === 'HUG') && FIXED_900.every((n) => { const f = frameNamed(M, n)[0]; return f.height === 900 && f.layoutSizingVertical === 'FIXED'; }), label + ': the 18 hugging Panel pages have minHeight 900, the 4 fixed pages stay 900 high');
-  const panelNames = SHELL_ADMIN.concat(SHELL_SELLER, SHELL_183, [EDITOR_PHONE]); const extraMin = topLevel(M).map((e) => e[1]).filter((n) => n.minHeight && !panelNames.includes(n.name));
+  const panelNames = SHELL_ADMIN.concat(SHELL_SELLER, SHELL_183, [EDITOR_PHONE]); const extraMin = topLevel(M).map((e) => e[1]).filter((n) => n.minHeight && !panelNames.includes(n.name) && !(n.name.indexOf(SETUP_PREFIX) === 0 && !/\(phone\)$/.test(n.name)));
   check(extraMin.length === 0, label + ': no top-level frame outside the Panel desktop pages has a minimum height' + (extraMin.length ? ' (' + extraMin.map((n) => n.name).join(', ') + ')' : ''));
   check(shell.every((f) => f.children[0].name === 'Sidebar' && f.children[0].layoutSizingVertical === 'FILL'), label + ': the Sidebar still fills the height of each Panel page');
   const main = phoneMain(M); const phone = main.parent;
@@ -633,6 +633,115 @@ function state183(M, label) {
 }
 
 // Step 2 of an update scenario: the 1.7.0 file gets 1.8.0 from the current code.
+// ---- Release 1.9.0 "Seller setup": FieldStatus, DataRow, FormActionBar, the new properties of Input, ChecklistItem and Field, size/form-max and the
+// Seller · Setup frames (S1 in each seller state, S2 to S6, two state boards and three phone frames). What a new build and an updated file must both hold.
+const CODE_184 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.8.4.js'), 'utf8'); // the released 1.8.4 plugin (code.js of main at 9b3f816)
+const NEW_190 = ['FieldStatus', 'DataRow', 'FormActionBar'];
+const VARIANTS_190 = { FieldStatus: 4, DataRow: 10, FormActionBar: 8 };
+const ICONS_190 = ['pencil', 'refresh-cw', 'globe'];
+const PROPS_190 = { Input: ['Prefix', 'Show prefix'], ChecklistItem: ['Detail', 'Show detail', 'Show chevron'], Field: ['Show status'] };
+const SETUP_PREFIX = 'Seller · Setup · ';
+const SETUP_COUNT = 32; // 27 desktop frames, 2 state boards and 3 phone frames
+const SETUP_SOME = ['Seller · Setup · S1 Your seller account · Details needed', 'Seller · Setup · S1 Your seller account · Not approved', 'Seller · Setup · S2 Business details · Awaiting review',
+  'Seller · Setup · S3 Address and area · Outside area', 'Seller · Setup · S4 Business number · Result states', 'Seller · Setup · S5 Shop web address · Statuses', 'Seller · Setup · S6 Review and submit · Missing',
+  'Seller · Setup · S6 Review and submit · Empty', 'Seller · Setup · S2 Business details (phone)', 'Seller · Setup · S6 Review and submit (phone)', 'Seller · Setup · S2 Business details · Saved',
+  'Seller · Setup · S3 Address and area · Saved', 'Seller · Setup · S4 Business number · Saved'];
+const DARK_190 = ['Seller · Setup · S4 Business number · Saved · Dark', 'Seller · Setup · S6 Review and submit · Missing · Dark', 'Seller · Setup · S6 Review and submit · Blocked · Dark'];
+const SEG_NOTE_190 = ['As a period switcher: role="group" with aria-pressed on each segment.', 'As a question (Yes or No, All types or Only selected types): role="radiogroup" named by the question, role="radio" with aria-checked on each segment; arrow keys move the choice and Tab leaves the group.'];
+const refName = (n, k) => { const r = n && n.componentPropertyReferences; return r && r[k] ? r[k].split('#')[0] : ''; };
+const setupFrames = (M) => topLevel(M).map((e) => e[1]).filter((n) => n.type === 'FRAME' && n.getPluginData('mondapac-ds') === '1' && n.name.indexOf(SETUP_PREFIX) === 0 && !/ · Dark$/.test(n.name));
+const segUsage = (M) => { const sc = compOf(M, 'SegmentedControl'); const row = sc.parent.parent; const acc = row.children.find((c) => c.name === 'Usage').children.find((c) => c.name === 'Accessibility'); return acc.children.find((c) => c.name === 'List').children.map((it) => it.children[1].characters); };
+// In-place edits of 1.9.0 on an existing file: the Input, ChecklistItem, Field and SegmentedControl components, the instances whose properties
+// they give new keys to, and the size table and Usage list that get a row. Older scenarios set these aside; scenario 15 checks them.
+function explained190(n) {
+  for (let p = n; p; p = p.parent) {
+    if ((p.type === 'COMPONENT_SET' && ['Input', 'ChecklistItem'].includes(p.name)) || (p.type === 'COMPONENT' && p.name === 'Field' && p.parent.type !== 'COMPONENT_SET')) return true;
+    if (p.type === 'FRAME' && p.name === 'Component + usage' && p.children.some((c) => c.name === 'SegmentedControl')) return true;
+    if (p.type === 'INSTANCE' && p._main && (p._main.name === 'Field' || (p._main.parent && p._main.parent.type === 'COMPONENT_SET' && ['Input', 'ChecklistItem'].includes(p._main.parent.name)))) return true;
+  }
+  return false;
+}
+// What Update library reports for 1.9.0 on a 1.8.x file, in report order: tokens and icons first, then the components and the in-place
+// properties, then the templates (after the 1.8.3 ones), then the size table row (before the changelog rows).
+const ADDED_190_HEAD = (opts) => ['variable size/form-max ' + (opts.maxModes > 1 ? '(Desktop and Touch modes)' : '(Dimension and Dimension · Touch)'), 'icon pencil', 'icon refresh-cw', 'icon globe'];
+const ADDED_190_MID = ['component FieldStatus', 'component FormActionBar', 'component DataRow', 'Input properties Show prefix and Prefix', 'Input prefix layer (6 Type=Text variants)', 'update Input description',
+  'ChecklistItem properties Show detail, Detail and Show chevron', 'ChecklistItem detail line and chevron (4 variants)', 'update ChecklistItem description', 'Field status line (an exposed FieldStatus)', 'Field property Show status', 'update Field description',
+  'SegmentedControl Usage: radio-group semantics', 'update SegmentedControl description'];
+const ADDED_190_TPL = ['templates Seller setup (32 frames)'].concat(DARK_190.map((n) => 'dark preview ' + n));
+const ADDED_190_TAIL = ['size table row size/form-max'];
+// a new layer that 1.9.0 adds under an existing parent
+const isNew190Top = (n) => ICONS_190.includes(n) || NEW_190.includes(n) || ['prefix', 'detail', 'chevron', 'status', 'Item'].includes(n) || n.indexOf(SETUP_PREFIX) === 0;
+// An existing layer that changed only because 1.9.0 edited it in place (explained190), or grew because 1.9.0 added something inside it
+// (a frame or section whose size or place changed and nothing else; the row above a new size-table row, which gets its divider).
+function grown190(M, n, ids0, snap0) {
+  if (explained190(n)) return true;
+  const fresh = (k) => !ids0.has(k.id);
+  const sameBut = (keys) => { const a = JSON.parse(snap0.get(n.id)), b = JSON.parse(fullSnap(n)); return SNAP_KEYS.every((k) => keys.includes(k) || JSON.stringify(a[k]) === JSON.stringify(b[k])); };
+  if (n.children && n.findAll((k) => fresh(k)).length && sameBut(['x', 'y', 'width', 'height', 'index'])) return true;
+  if (n.type === 'FRAME' && n.name === 'Row' && n.parent && n.parent.children.some((k) => k.name === 'Row' && fresh(k)) && sameBut(['strokes', 'boundVariables'])) return true;
+  // a sibling that moved down or right because a new block was put before it in an auto-layout frame
+  if (n.parent && n.parent.children.some((k) => fresh(k)) && sameBut(['x', 'y', 'index'])) return true;
+  return false;
+}
+function state190(M, opts, label) {
+  check(NEW_190.every((n) => setOf(M, n) && countNamed(M, 'COMPONENT_SET', n) === 1 && setOf(M, n).children.length === VARIANTS_190[n] && setOf(M, n).getPluginData('mondapac-ds') === '1'), label + ': FieldStatus (4), DataRow (6) and FormActionBar (8) exist once each, with their variants');
+  const dk = keysOf(setOf(M, 'DataRow')); const fk = keysOf(setOf(M, 'FormActionBar'));
+  check(['Label', 'Value', 'Compare value', 'Value label', 'Compare label', 'Note', 'Show note', 'Show flag', 'Show action', 'Show second action'].every((k) => dk.includes(k)) && !dk.includes('Action') && ['Show status', 'Show secondary'].every((k) => fk.includes(k)) && keysOf(setOf(M, 'FieldStatus')).includes('Text'), label + ': DataRow, FormActionBar and FieldStatus have their properties');
+  check(setOf(M, 'FormActionBar').children.every((v) => { const kids = v.children.map((c) => c.name).filter((n) => n !== 'spacer'); return kids.join() === 'status,secondary,primary' && ['primary', 'secondary'].every((nm) => { const b = v.findOne((x) => x.name === nm); return b && b.isExposedInstance && instMain(b).indexOf('Variant=') === 0; }); }) && setOf(M, 'DataRow').children.every((v) => { const f = v.findOne((x) => x.name === 'flag'); const a = v.findOne((x) => x.name === 'action'); const b = v.findOne((x) => x.name === 'second-action'); return f && f.isExposedInstance && f.visible === false && [a, b].every((x) => x && x.isExposedInstance && /^Variant=Link/.test(instMain(x))) && b.visible === false; }), label + ': FormActionBar exposes its two Buttons in one order (status, secondary, primary) in both layouts; DataRow exposes its hidden flag Badge and two link Buttons, the second hidden');
+  const dr = setOf(M, 'DataRow').children; const blk = dr.filter((v) => v.variantProperties.State === 'Blocked');
+  check(dr.filter((v) => v.variantProperties.Width === 'Narrow').every((v) => v.layoutMode === 'VERTICAL' && v.width === 360 && v.children[0].name === 'label') && dr.filter((v) => v.variantProperties.Width === 'Wide').every((v) => v.layoutMode === 'HORIZONTAL') && blk.length === 2 && blk.every((v) => { const m = v.findOne((x) => x.name === 'marker'); return m && m.findOne((x) => x.type === 'INSTANCE' && /alert-triangle/.test(instMain(x))) && M.VARS.get(m.findOne((x) => x.name === 'marker-text').fills[0].boundVariables.color.id).name === 'status/attention/fg'; }), label + ': DataRow Width=Narrow puts the label above the value; Blocked is Attention with alert-triangle');
+  const defOf = (node, name) => { const k = Object.keys(node.componentPropertyDefinitions).find((x) => x.split('#')[0] === name); return k ? node.componentPropertyDefinitions[k] : null; };
+  const wantDefs = [['Input', 'Show prefix', 'BOOLEAN', false], ['Input', 'Prefix', 'TEXT', 'mondapac.com.au/shop/'], ['ChecklistItem', 'Show detail', 'BOOLEAN', false], ['ChecklistItem', 'Detail', 'TEXT', '2 fields left'], ['ChecklistItem', 'Show chevron', 'BOOLEAN', false], ['Field', 'Show status', 'BOOLEAN', false]];
+  check(wantDefs.every((w) => { const d = defOf(w[0] === 'Field' ? compOf(M, w[0]) : setOf(M, w[0]), w[1]); return d && d.type === w[2] && d.defaultValue === w[3]; }), label + ': the new properties default to off (Show prefix, Show detail, Show chevron, Show status) and to their sample text (Prefix, Detail)');
+  check(Object.keys(PROPS_190).every((n) => keysOf(n === 'Field' ? compOf(M, n) : setOf(M, n)).filter((k) => PROPS_190[n].includes(k)).length === PROPS_190[n].length), label + ': Input has Prefix and Show prefix, ChecklistItem Detail, Show detail and Show chevron, Field Show status');
+  const textVars = setOf(M, 'Input').children.filter((v) => v.variantProperties.Type === 'Text');
+  check(textVars.length === 6 && textVars.every((v) => { const x = v.children[1]; return x && x.name === 'prefix' && x.type === 'TEXT' && x.visible === false && refName(x, 'visible') === 'Show prefix' && refName(x, 'characters') === 'Prefix' && x.characters === 'mondapac.com.au/shop/'; }), label + ': each of the 6 Type=Text Input variants has a hidden prefix after the leading icon, wired to Show prefix and Prefix');
+  check(setOf(M, 'ChecklistItem').children.every((v) => { const c = v.children.find((k) => k.name === 'content'); const by = c && c.children.findIndex((k) => k.name === 'by'); const d = c && c.children[by + 1]; const ch = v.children[v.children.length - 1]; return d && d.name === 'detail' && d.visible === false && refName(d, 'visible') === 'Show detail' && refName(d, 'characters') === 'Detail' && ch.name === 'chevron' && ch.visible === false && refName(ch, 'visible') === 'Show chevron'; }), label + ': every ChecklistItem variant has a hidden detail line after By and a hidden chevron at the end, wired');
+  const fld = compOf(M, 'Field'); const ci = fld.children.findIndex((k) => k.name === 'control'); const st = fld.children[ci + 1];
+  check(st && st.name === 'status' && st.type === 'INSTANCE' && st._main.parent.name === 'FieldStatus' && st.isExposedInstance && st.visible === false && refName(st, 'visible') === 'Show status', label + ': Field has a hidden, exposed FieldStatus line after its control, wired to Show status');
+  check(setOf(M, 'Input').description.indexOf('Show prefix and Prefix (1.9.0') > 0 && setOf(M, 'ChecklistItem').description.indexOf('Show detail and Detail (1.9.0)') > 0 && fld.description.indexOf('Show status (1.9.0)') > 0 && compOf(M, 'SegmentedControl').description.indexOf('radio group') > 0, label + ': the descriptions of Input, ChecklistItem, Field and SegmentedControl explain the 1.9.0 additions');
+  check(segUsage(M).join('|') === SEG_NOTE_190.join('|'), label + ': the SegmentedControl Usage panel documents the radio-group use');
+  const nColl = opts.maxModes > 1 ? 1 : 2; const fm = [...M.VARS.values()].filter((v) => v.name === 'size/form-max');
+  check(fm.length === nColl && fm.every((v) => Object.values(v.valuesByMode).every((x) => x === 640)), label + ': size/form-max is 640 in ' + nColl + ' Dimension collection(s)');
+  check(ICONS_190.every((n) => countNamed(M, 'COMPONENT', 'Icon/' + n) === 1), label + ': the icons pencil, refresh-cw and globe exist once each');
+  // the frames
+  const fr = setupFrames(M); const host = hostNamed(M, 'Templates · Seller');
+  const phone = fr.filter((f) => /\(phone\)$/.test(f.name)); const boards = fr.filter((f) => / · (Result states|Statuses)$/.test(f.name)); const desk = fr.filter((f) => phone.indexOf(f) < 0 && boards.indexOf(f) < 0);
+  check(fr.length === SETUP_COUNT && new Set(fr.map((f) => f.name)).size === SETUP_COUNT && SETUP_SOME.every((n) => frameNamed(M, n).length === 1) && fr.every((f) => f.parent === host || f.parent.parent === host), label + ': the ' + SETUP_COUNT + ' Seller · Setup frames exist once each on Templates · Seller (' + fr.length + ')');
+  check(desk.length === 27 && desk.every((f) => f.width === 1440 && f.minHeight === 900 && f.layoutSizingVertical === 'HUG' && f.children[0].name === 'Sidebar') && boards.length === 2 && boards.every((f) => f.width === 720 && f.children[0].name === 'board-header') && phone.length === 3 && phone.every((f) => f.width === 360 && f.children.find((c) => c.name === 'Main').overflowDirection === 'VERTICAL'), label + ': 27 desktop frames in the limited seller shell (1440 wide, at least 900 high), 2 state boards 720 wide and 3 phone frames whose Main scrolls');
+  const mainOf = (f) => f.findOne((x) => x.name === 'Main');
+  check(desk.every((f) => (mainOf(f).getPluginData('density') === 'touch') === (f.name.indexOf('Seller · Setup · S1 ') !== 0)), label + ': the step pages S2 to S6 have a Touch-density Main (48 px targets); S1 keeps Desktop density');
+  if (host.type === 'SECTION') check(fr.every((f) => f.parent !== host || (f.x >= 0 && f.y >= 0 && f.x + f.width <= host.width && f.y + f.height <= host.height)), label + ': the Setup frames sit inside the Templates · Seller section');
+  const words = fr.map((f) => textsOf(f).join(' ')).join(' ');
+  check(!/verified|already registered|halal/i.test(words), label + ': no Setup frame says "verified", "already registered" or a certification word such as Halal');
+  const s2a = frameNamed(M, 'Seller · Setup · S2 Business details · Awaiting review')[0]; const bar = s2a.findOne((x) => x.type === 'INSTANCE' && x.name === 'FormActionBar');
+  check(bar && propOf(bar.findOne((x) => x.name === 'primary'), 'Label') === 'Save and continue' && textsOf(s2a).some((t) => /^Your application is waiting for review\./.test(t)), label + ': S2 while awaiting review warns in a banner and keeps "Save and continue" (D3 says "Save and withdraw")');
+  const board = frameNamed(M, 'Seller · Setup · S4 Business number · Result states')[0];
+  const tones = new Set(board.findAll((x) => x.type === 'INSTANCE' && x._main.parent && x._main.parent.name === 'FieldStatus' && !hiddenAbove(x, board)).map((x) => x._main.variantProperties.Tone));
+  check(['Checking', 'Success', 'Info', 'Critical'].every((t) => tones.has(t)) && textsOf(board).includes('Matched with the official register'), label + ': the S4 state board shows FieldStatus in all four tones');
+  const s5 = frameNamed(M, 'Seller · Setup · S5 Shop web address')[0];
+  check(s5.findAll((x) => x.type === 'INSTANCE' && /^Type=Text/.test(instMain(x)) && propOf(x, 'Show prefix') === true && propOf(x, 'Prefix') === 'mondapac.com.au/shop/').length === 1, label + ': S5 shows the storefront address as the Input prefix');
+  const s6 = frameNamed(M, 'Seller · Setup · S6 Review and submit · Missing')[0];
+  check(s6.findAll((x) => x.type === 'INSTANCE' && x._main.parent && x._main.parent.name === 'DataRow' && x._main.variantProperties.State === 'Missing').length >= 1, label + ': S6 Missing shows DataRow rows with State=Missing');
+  const s1 = frameNamed(M, 'Seller · Setup · S1 Your seller account · Details needed')[0];
+  check(s1.findAll((x) => x.type === 'INSTANCE' && x._main.parent && x._main.parent.name === 'ChecklistItem' && propOf(x, 'Show chevron') === true).length >= 4, label + ': S1 lists the steps as ChecklistItems with a chevron');
+  const reviewBy = (st) => { const f = frameNamed(M, 'Seller · Setup · S1 Your seller account · ' + st)[0]; const i = f.findAll((x) => x.type === 'INSTANCE' && propOf(x, 'Title') === 'MondaPac reviews your application')[0]; return i && propOf(i, 'By'); };
+  check(reviewBy('Awaiting review') === 'In progress' && reviewBy('Changes needed') === 'Needs changes' && reviewBy('Not approved') === 'Not approved', label + ': the review step says In progress, Needs changes or Not approved, with the identity and sellers keys');
+  const barOf = (n) => frameNamed(M, n)[0].findOne((x) => x.type === 'INSTANCE' && x.name === 'FormActionBar');
+  check(['Seller · Setup · S2 Business details', 'Seller · Setup · S3 Address and area', 'Seller · Setup · S4 Business number', 'Seller · Setup · S5 Shop web address'].every((n) => propOf(barOf(n), 'Show status') === false) && ['Seller · Setup · S2 Business details · Saved', 'Seller · Setup · S3 Address and area · Saved', 'Seller · Setup · S4 Business number · Saved'].every((n) => propOf(barOf(n), 'Show status') !== false), label + ': a step never saved shows no "Saved" in its bar; a saved one does');
+  const s4 = frameNamed(M, 'Seller · Setup · S4 Business number')[0]; const s4s = frameNamed(M, 'Seller · Setup · S4 Business number · Saved')[0];
+  const seg1 = (f) => f.findOne((x) => x.name === 'tax-answer').findOne((x) => x.name === 'segment-1');
+  check(seg1(s4).fills.length === 0 && !textsOf(s4).includes('Registered from') && !textsOf(s4).some((t) => /official register/.test(t)) && seg1(s4s).fills.length === 1 && textsOf(s4s).includes('Registered from') && textsOf(s4s).includes('Matched with the official register'), label + ': S4 on a first visit has no answer selected, no date field and no result line; saved, it shows Yes, the date and the match');
+  check(textsOf(s5).includes('Suggested from your store name. You can change it.'), label + ': S5 marks the prefilled web address as a suggestion');
+  const s6b = frameNamed(M, 'Seller · Setup · S6 Review and submit · Blocked')[0];
+  const blocked = s6b.findAll((x) => x.type === 'INSTANCE' && x._main.parent && x._main.parent.name === 'DataRow' && x._main.variantProperties.State === 'Blocked');
+  check(blocked.length === 2 && blocked.every((x) => propOf(x, 'Show second action') === true && propOf(x, 'Show note') === true) && s6b.findOne((x) => x.name === 'blocked-reason'), label + ': S6 Blocked marks the area and number rows Blocked with their reason and Contact us, and gives the reason beside the disabled submit');
+  const s6p = frameNamed(M, 'Seller · Setup · S6 Review and submit (phone)')[0];
+  check(s6p.findAll((x) => x.type === 'INSTANCE' && x._main.parent && x._main.parent.name === 'DataRow').every((x) => x._main.variantProperties.Width === 'Narrow'), label + ': the S6 phone frame uses Narrow rows');
+  const dark = DARK_190.map((n) => frameNamed(M, n)[0]);
+  check(dark.every((d) => d && d.getPluginData('theme') === 'dark' && d.parent === hostNamed(M, 'Templates · Dark preview')), label + ': the dark preview has ' + DARK_190.join(', '));
+}
+
 async function updateTo180(M, label, opts, from) {
   console.log('\n■ ' + label + ' · step 2: 1.7.0 to 1.8.0 with the current plugin');
   load(M, CODE);
@@ -654,13 +763,14 @@ async function updateTo180(M, label, opts, from) {
   const added = r.done ? r.done.added : [];
   check(NEW_180.every((n) => added.includes('component ' + n)) && added.includes('variants added to TableCell (5): State=Loading') && added.includes('update TableCell description') && added.includes('update Field description') && added.includes('Field Control: preferred values Input, Select, Textarea') && added.includes('templates Panel · Admin (' + ADMIN_180.length + ' frames, 3 template bodies)') && added.includes('templates Panel · Seller (' + SELLER_180.length + ' frames, 2 template bodies)') && added.includes(ADDED_183[0]) && added.includes(ADDED_183[1]), 'the report names every addition, including "variants added to TableCell (5)" and the 1.8.3 frames');
   check(added.includes('variable size/dialog-sm' + (opts.maxModes > 1 ? ' (Desktop and Touch modes)' : ' (Dimension and Dimension · Touch)')) && added.includes('size table row size/dialog-sm') && added.includes('size table row size/dialog-md') && added.includes('changelog row 1.8.0') && added.includes('changelog row 1.8.1') && added.includes('changelog row 1.8.3') && added.includes('file version ' + SPEC_VERSION), 'the report names the tokens, size table rows, changelog row and the file version');
-  check(M.VARS.size === nVars + 2 * nColl, 'exactly ' + (2 * nColl) + ' variables added (' + (M.VARS.size - nVars) + ')');
+  check(M.VARS.size === nVars + 3 * nColl, 'exactly ' + (3 * nColl) + ' variables added: size/dialog-sm, size/dialog-md and size/form-max (' + (M.VARS.size - nVars) + ')');
   state180(M, opts, 'updated');
   state181(M, 'updated', true); // overlaps of the update path are checked just below: reported, not absent
   state183(M, 'updated');
+  state190(M, opts, 'updated');
   { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
     check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.4', 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.9.0', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -676,12 +786,12 @@ async function updateTo180(M, label, opts, from) {
   check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
   // The Usage panels beside Input and AuthShowcase are re-fitted to the re-laid-out sets (layout fix for 1.7.0).
   const refit = new Set(['Input', 'AuthShowcase'].map((k) => setOf(M, k)).filter((x) => x && x.parent && x.parent.name === 'Component + usage').map((x) => (x.parent.children.find((c) => c.name === 'Usage') || {}).id));
-  const changed = before.filter((n) => M.byId.has(n.id) && !refit.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  const changed = before.filter((n) => M.byId.has(n.id) && !refit.has(n.id) && !explained190(n) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
   check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date and the Usage panels of Input and AuthShowcase (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
   const freshNodes = after.filter((n) => !beforeIds.has(n.id));
   const tops = freshNodes.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
   const okTops = new Set(NEW_180.concat(ADMIN_180, SELLER_180, BODIES_180, ADMIN_183, SELLER_183, BODIES_183, ['Row', 'Select', 'Dialog', 'DialogBody']));
-  const stray = tops.filter((n) => !okTops.has(n) && !/^(Variant|Type|State|Size)=/.test(n));
+  const stray = tops.filter((n) => !okTops.has(n) && !isNew190Top(n) && !/^(Variant|Type|State|Size)=/.test(n));
   check(stray.length === 0, 'new layers sit only in the expected places (' + tops.length + ' roots' + (stray.length ? '; unexpected: ' + stray.join(', ') : '') + ')');
   const a = audit(M, label);
   check(BUILD_COUNTS && a.sets.length === BUILD_COUNTS.sets && a.comps === BUILD_COUNTS.comps && a.variants === BUILD_COUNTS.variants, 'the updated file has the same components as a new 1.8.0 build (' + a.sets.length + ' sets, ' + a.comps + ' standalone components, ' + a.variants + ' variants)');
@@ -742,6 +852,7 @@ async function updateScenario(label, opts, from) {
   state180(M, { maxModes: 1 }, 'new build (Starter)');
   state181(M, 'new build (Starter)');
   state183(M, 'new build (Starter)');
+  state190(M, { maxModes: 1 }, 'new build (Starter)');
   // dark preview: no paint should still use the light Color collection
   const findHost = (name) => M.ROOT.children.find((p) => p.name === name) || M.ROOT.children.map((p) => p.children.find((n) => n.type === 'SECTION' && n.name === name)).find(Boolean);
   const darkPage = findHost('Templates · Dark preview');
@@ -753,7 +864,7 @@ async function updateScenario(label, opts, from) {
   const lightBound = darkPage.findAll((n) => n.type !== 'TEXT' || true).filter((n) => n.y >= 0 && n.parent !== darkPage ? true : n.parent === darkPage && n.type === 'FRAME' && n.height > 400)
     .filter((n) => (n._fills || []).concat(n._strokes || []).some((p) => p.boundVariables && M.VARS.get(p.boundVariables.color.id).variableCollectionId === lightColl.id));
   const screens = darkPage.children.filter((n) => n.type === 'FRAME' && n.getPluginData('theme') === 'dark');
-  check(screens.length === 6, 'dark preview has 6 themed screens');
+  check(screens.length === 9, 'dark preview has 9 themed screens (' + screens.length + ')');
   const darkArea = darkPage.findAll((n) => n.name === 'service-area')[0];
   check(darkArea && darkArea._fills[0].opacity === 0.04, 'theme switching keeps paint opacity (dark service-area 4%)');
   const leaks = []; screens.forEach((s) => [s].concat(s.findAll(() => true)).forEach((n) => (n._fills || []).concat(n._strokes || []).forEach((p) => { if (p.boundVariables && M.VARS.get(p.boundVariables.color.id).variableCollectionId === lightColl.id) leaks.push(pathOf(n)); })));
@@ -806,6 +917,7 @@ async function updateScenario(label, opts, from) {
   state180(M, { maxModes: 4 }, 'new build (modes)');
   state181(M, 'new build (modes)');
   state183(M, 'new build (modes)');
+  state190(M, { maxModes: 4 }, 'new build (modes)');
   r = await send(M, { type: 'export', version: SPEC_VERSION });
   if (r.done) compareExport(r.done.files, 'modes');
 
@@ -1024,9 +1136,10 @@ async function updateScenario(label, opts, from) {
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
     // The 1.8.2 layout fixes (Input, AuthShowcase, Starter sections) run in the same update; scenario 12 checks them.
     const own181 = r.done ? r.done.added.filter((l) => !/^(Input|AuthShowcase) (variants laid out|documentation block)|^section .* moved /.test(l)) : [];
-    check(r.done && own181.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'].concat(ADDED_183, FIXED_184(ph11), ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    check(r.done && own181.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
     state181(Q, '1.8.0 file repaired ' + tag11, true);
     state183(Q, '1.8.0 file updated ' + tag11);
+    state190(Q, opts, '1.8.0 file updated ' + tag11);
     const gone11 = [...ids0.keys()].filter((id) => !Q.byId.has(id));
     check(gone11.length === cardNodes.size && gone11.every((id) => cardNodes.has(id)), 'the only deletions are the 2 member cards and their layers (' + gone11.length + ')');
     check(shellFrames(Q).every((f) => heights0.has(f.id)), 'no Panel page was replaced (same ids)');
@@ -1102,6 +1215,7 @@ async function updateScenario(label, opts, from) {
     const add12 = r.done ? r.done.added : []; console.log('    ' + add12.join('\n    '));
     check(['Input variants laid out to fit the page', 'AuthShowcase variants laid out to fit the page'].every((t) => add12.some((l) => l.indexOf(t) === 0)) && add12.includes('changelog row 1.8.2') && add12.includes('file version ' + SPEC_VERSION) && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the Input and AuthShowcase fixes, the changelog row and the version, with no warning or skip');
     state180(Q, opts, '1.8.1 file updated ' + tag12);
+    state190(Q, opts, '1.8.1 file updated ' + tag12);
     check([...ids0].every((id) => Q.byId.has(id)) && setOf(Q, 'Input').children.map((c) => c.id + c.name).sort().join() === inputIds, 'nothing was deleted and the 18 Input variants keep their ids and names');
     if (seller) {
       check(add12.includes('section Templates · Seller moved down so it no longer overlaps the section before it') && sandbox.x + ',' + sandbox.y === sandboxAt, 'the covered section moved down; the section arranged by hand stayed where it was');
@@ -1151,14 +1265,15 @@ async function updateScenario(label, opts, from) {
     check(!r.err && r.done, 'Update library finished on the 1.8.2 file ' + tag13 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add13 = r.done ? r.done.added : []; console.log('    ' + add13.join('\n    '));
     const own13 = add13.filter((l) => !/^section .* moved /.test(l));
-    check(own13.join('|') === ADDED_183.concat(FIXED_184(ph13), ['changelog row 1.8.3', 'changelog row 1.8.4', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
+    check(own13.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_183, ADDED_190_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
     state180(Q, opts, '1.8.2 file updated ' + tag13);
     state181(Q, '1.8.2 file updated ' + tag13);
     state183(Q, '1.8.2 file updated ' + tag13);
+    state190(Q, opts, '1.8.2 file updated ' + tag13);
     const gone = [...ids0].filter((id) => !Q.byId.has(id));
     check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
     // Every property that matters, on every existing layer: only the cover version and date, and the size and place of a Starter section, may change.
-    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n));
+    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n) && !grown190(Q, n, ids0, snap0));
     check(changed.length === 0, 'no existing layer changed (type, name, parent, order, place, size, visibility, paints, bindings, sizing, properties, text), apart from the cover version and date, the changelog table and Starter section bounds (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
     const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
     check(moved.every((n) => n.type === 'SECTION' && add13.some((l) => l.indexOf('section ' + n.name + ' moved ') === 0)) && mover.x + ',' + mover.y === moverAt, 'no existing frame moved (the hand-placed one included); only Starter sections that the growth pushed are moved, and reported (' + moved.length + ')');
@@ -1166,7 +1281,7 @@ async function updateScenario(label, opts, from) {
     check(fresh.every((f) => f.parent === mover.parent && f.y >= mover.y + mover.height + 240 - 0.5), 'the new Admin frames and template bodies sit in rows below the frame the owner placed lowest');
     const freshTops = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id)).map((n) => n.name);
     const okTops = new Set(ADMIN_183.concat(SELLER_183, BODIES_183, ['Row']));
-    check(freshTops.every((n) => okTops.has(n)), 'new layers are only the 1.8.3 frames, their template bodies and the changelog row (' + freshTops.length + ')');
+    check(freshTops.every((n) => okTops.has(n) || isNew190Top(n)), 'new layers are only the 1.8.3 frames, their template bodies, the changelog row and the 1.9.0 additions (' + freshTops.length + ')');
     const all13 = allNodes(Q); const snap13 = new Map(all13.map((n) => [n.id, fullSnap(n)]));
     r = await send(Q, { type: 'update' });
     const again = allNodes(Q).filter((n) => !snap13.has(n.id) || fullSnap(n) !== snap13.get(n.id));
@@ -1244,26 +1359,27 @@ async function updateScenario(label, opts, from) {
     const pos0 = posOf(Q);
     r = await send(Q, { type: 'update' });
     const add14 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    const want14 = ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)', 'changelog row 1.8.4', 'cover version', 'file version ' + SPEC_VERSION];
+    const want14 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_190_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'cover version', 'file version ' + SPEC_VERSION]);
     check(!r.err && add14.join('|') === want14.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the two ring styles, the phone screens, the changelog row and the version, with no warning or skip (' + (r.err ? r.err.message : add14.join(', ')) + ')');
+    state190(Q, opts, '1.8.3 file updated ' + tag14);
     check(ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join()), 'the ring styles have the spec spread again (Focus/Ring 2 and 4 px, Ring/Urgent 3 px)');
     const colourVar = (name) => [...Q.VARS.values()].find((v) => v.name === name && Q.COLLS.get(v.variableCollectionId).name === 'Color');
     check(ringStyles(Q).every((st) => st.effects.every((e, i) => e.boundVariables && e.boundVariables.color && e.boundVariables.color.id === colourVar(RING_TOKENS[st.name][i]).id)), 'their colours stay bound to bg/surface, focus/ring and status/critical/bg');
     const focusId = ringStyles(Q).find((st) => st.name === 'Focus/Ring').id;
     const focusNodes = allNodes(Q).filter((n) => n._effectStyle === focusId);
     check(focusNodes.length >= 30 && focusNodes.every((n) => n.effects.map((e) => e.spread).join() === '2,4'), 'every layer that uses Focus/Ring now shows the 2 + 2 px ring (' + focusNodes.length + ' layers)');
-    check(phoneMains(Q).length === ph0 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'the Main of every phone screen scrolls vertically (' + ph0 + ')');
+    check(phoneMains(Q).length === ph0 + 3 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'the Main of every phone screen scrolls vertically (' + ph0 + ' repaired and the 3 new Seller · Setup ones)');
     const F = start(opts); const rf = await send(F, { type: 'build' });
     const sp = scrollPaths(Q);
     check(!rf.err && sp.join('|') === phoneMains(Q).map(pathOf).sort().join('|') && sp.join('|') === scrollPaths(F).join('|'), 'only those Mains scroll, and at the same places as in a new 1.8.4 build (' + sp.length + ' and ' + scrollPaths(F).length + ')');
     const gone = [...ids0].filter((id) => !Q.byId.has(id));
     check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
-    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n));
+    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n) && !grown190(Q, n, ids0, snap0));
     check(changed.length === 0, 'no existing layer changed otherwise (type, name, parent, order, place, size, visibility, paints, bindings, sizing, properties, text), apart from the cover version and date, the changelog table and Starter section bounds (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
     const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
     check(moved.every((n) => n.type === 'SECTION'), 'no existing frame moved (' + moved.length + ' Starter sections)');
     const freshTops = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id)).map((n) => n.name);
-    check(freshTops.every((n) => n === 'Row'), 'the only new layer is the changelog row (' + freshTops.join(', ') + ')');
+    check(freshTops.every((n) => n === 'Row' || isNew190Top(n)), 'the only new layers are the changelog row and the 1.9.0 additions (' + freshTops.filter((n) => !isNew190Top(n)).join(', ') + ')');
     r = await send(Q, { type: 'audit' }); rep = r.done ? r.done.report : [];
     check(!r.err && rep.filter((l) => l.indexOf('⚠') === 0).length === 0 && rep.includes('✓ Effect styles that differ from the library spec: 0'), 'Audit file has zero warnings after the update: the cards below the fold of a scrolling Main are not counted' + (rep.length ? ': ' + rep.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
     const all14 = allNodes(Q); const snap14 = new Map(all14.map((n) => [n.id, fullSnap(n) + n.overflowDirection])); const st14 = ringStyles(Q).map(spreads).join('|');
@@ -1278,7 +1394,7 @@ async function updateScenario(label, opts, from) {
     const Q = start(STARTER);
     r = await send(Q, { type: 'build' });
     const styles = [...Q.STYLES.values()].filter((st) => !st.removed && (st.type === 'TEXT' || st.type === 'EFFECT'));
-    check(!r.err && ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join() && st.effects.every((e) => e.boundVariables && e.boundVariables.color)) && phoneMains(Q).length === 11 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL') && !r.done.report.some((l) => /^⚠/.test(l)), 'a new 1.8.4 build has the ring spreads, bound ring colours and 11 scrolling phone screens, with no warning (' + phoneMains(Q).length + ')');
+    check(!r.err && ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join() && st.effects.every((e) => e.boundVariables && e.boundVariables.color)) && phoneMains(Q).length === 14 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL') && !r.done.report.some((l) => /^⚠/.test(l)), 'a new build has the ring spreads, bound ring colours and 14 scrolling phone screens (3 of them Seller · Setup), with no warning (' + phoneMains(Q).length + ')');
     check(styles.length > 20 && styles.every((st) => st.getPluginData('mondapac-ds') === '1'), 'its text and effect styles carry the plugin tag (' + styles.length + ')');
     // Audit: an entry past the 25th is announced, and a layer sticking out sideways from a scrolling Main is still counted
     const wide = Q.figma.createFrame(); wide.name = 'too wide'; wide.fills = []; wide.resize(500, 20); sellerPhoneMain(Q).appendChild(wide);
@@ -1346,6 +1462,141 @@ async function updateScenario(label, opts, from) {
     Object.defineProperty(wu, 'effects', { configurable: true, get() { return real.get.call(this); }, set(a) { real.set.call(this, a.map((e) => { const c = Object.assign({}, e); delete c.boundVariables; return c; })); } });
     r = await send(W, { type: 'update' }); rp = r.done ? r.done.report : []; ad = r.done ? r.done.added : [];
     check(!r.err && rp.includes('⚠ repair effect style Focus/Ring: Figma refused the effects') && spreads(wf) === '0,0' && rp.includes('⚠ effect style Ring/Urgent still differs from the spec after the repair (layer 1 colour not bound, spec status/critical/bg): fix it in the style editor by hand') && !ad.some((l) => /effect style/.test(l)) && ad.some((l) => /^fix phone screens/.test(l)) && ad.includes('changelog row 1.8.4'), 'a repair Figma refuses and one that loses the colour binding are warnings, not fixes, and the update still finishes' + (r.err ? ': ' + r.err.message : ' (' + rp.filter((l) => /^⚠/.test(l)).join(' | ') + ')'));
+  }
+
+
+  // 15 · release 1.9.0 "Seller setup": a 1.8.4 file gets size/form-max, three icons, FieldStatus, DataRow and FormActionBar, the new properties of
+  // Input, ChecklistItem and Field (their layers added hidden, in place), the SegmentedControl radio-group note and the Seller · Setup frames, in rows
+  // below what Templates · Seller holds. The fixture is the code.js of release 1.8.4 (test/fixtures/code-1.8.4.js, main at 9b3f816).
+  console.log('\n■ Scenario 15 · 1.9.0 Seller setup on a 1.8.4 file');
+  for (const opts of [STARTER, { maxModes: 4 }]) {
+    const tag15 = opts.maxModes > 1 ? '(modes)' : '(Starter)';
+    const Q = start(opts, CODE_184);
+    r = await send(Q, { type: 'build' });
+    check(!r.err && Q.ROOT.getPluginData('version') === '1.8.4' && NEW_190.every((n) => !setOf(Q, n)) && setupFrames(Q).length === 0 && !keysOf(setOf(Q, 'Input')).includes('Prefix') && !keysOf(compOf(Q, 'Field')).includes('Show status') && ![...Q.VARS.values()].some((v) => v.name === 'size/form-max'), 'the 1.8.4 plugin builds the starting file, without any 1.9.0 item ' + tag15 + (r.err ? ': ' + r.err.message : ''));
+    // the owner placed a frame by hand below everything on Templates · Seller
+    const sellerHost = hostNamed(Q, 'Templates · Seller');
+    const mover = frameNamed(Q, 'Shared · Role editor · Seller (phone)')[0];
+    mover.y = Math.max.apply(null, sellerHost.children.map((c) => c.y + c.height)) + 400; const moverAt = mover.x + ',' + mover.y;
+    if (sellerHost.type === 'SECTION') sellerHost.resizeWithoutConstraints(sellerHost.width, mover.y + mover.height + 240);
+    load(Q, CODE);
+    const before = allNodes(Q); const ids0 = new Set(before.map((n) => n.id)); const nVars = Q.VARS.size;
+    const snap0 = new Map(before.map((n) => [n.id, fullSnap(n)])); const pos0 = posOf(Q);
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done, 'Update library finished on the 1.8.4 file ' + tag15 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
+    const add15 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add15.join('\n    '));
+    const want15 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_190_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'cover version', 'file version ' + SPEC_VERSION]);
+    check(add15.join('|') === want15.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the token, icons, components, properties, templates, size table row, changelog row and version, with no warning, skip or overlap (' + add15.join(', ') + ')');
+    state180(Q, opts, '1.8.4 file updated ' + tag15);
+    state181(Q, '1.8.4 file updated ' + tag15);
+    state183(Q, '1.8.4 file updated ' + tag15);
+    state190(Q, opts, '1.8.4 file updated ' + tag15);
+    const nColl = opts.maxModes > 1 ? 1 : 2;
+    check(Q.VARS.size === nVars + nColl, 'exactly ' + nColl + ' variable(s) added: size/form-max (' + (Q.VARS.size - nVars) + ')');
+    const gone = [...ids0].filter((id) => !Q.byId.has(id));
+    check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
+    // Outside the four components 1.9.0 edits in place, no existing layer changed, apart from the cover, the changelog, Starter section bounds and
+    // frames that grew or shifted because something was added inside them.
+    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n) && !grown190(Q, n, ids0, snap0));
+    check(changed.length === 0, 'no other existing layer changed (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
+    // Inside them: an existing layer keeps its name, paints, bindings, visibility and text; only its order and size move for the added layers, and an
+    // instance gains the new properties at their defaults while every value it had stays. The one text that changes is the SegmentedControl note.
+    const diffKeys = (n) => { const a = JSON.parse(snap0.get(n.id)), b = JSON.parse(fullSnap(n)); return SNAP_KEYS.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])); };
+    const inside = before.filter((n) => Q.byId.has(n.id) && explained190(n) && fullSnap(n) !== snap0.get(n.id));
+    const badInside = inside.filter((n) => { const d = diffKeys(n).filter((k) => !['index', 'x', 'y', 'width', 'height'].includes(k)); if (!d.length) return false;
+      if (d.join() === 'props') { const a = JSON.parse(snap0.get(n.id)).props, b = n.componentProperties; const newKeys = [].concat(...Object.values(PROPS_190)); return !Object.keys(a).every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k])) || !Object.keys(b).filter((k) => !(k in a)).every((k) => newKeys.includes(k.split('#')[0])); }
+      return !(['characters', 'name,characters', 'characters,name'].includes(d.join()) && n.characters === SEG_NOTE_190[0] && n.name === SEG_NOTE_190[0].slice(0, 40)); });
+    check(inside.length > 0 && badInside.length === 0, 'inside Input, ChecklistItem, Field and the SegmentedControl block, existing layers only moved or grew, instances only gained the new properties, and the one text changed is the SegmentedControl note (' + inside.length + ' touched' + (badInside.length ? '; not so: ' + snapDiff(badInside, snap0) : '') + ')');
+    const shown = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id) && ['prefix', 'detail', 'chevron', 'status'].includes(n.name));
+    check(shown.length === 6 + 2 * setOf(Q, 'ChecklistItem').children.length + 1 && shown.every((n) => n.visible === false), 'the ' + shown.length + ' layers added inside existing components are hidden, so no existing instance shows anything new');
+    const oldInsts = before.filter((n) => n.type === 'INSTANCE' && Q.byId.has(n.id) && n._main && (n._main.name === 'Field' || (n._main.parent && ['Input', 'ChecklistItem'].includes(n._main.parent.name))));
+    const offKeys = { Input: ['Show prefix'], ChecklistItem: ['Show detail', 'Show chevron'], Field: ['Show status'] };
+    check(oldInsts.length > 0 && oldInsts.every((n) => offKeys[n._main.name === 'Field' ? 'Field' : n._main.parent.name].every((k) => propOf(n, k) === false)), 'every existing Input, ChecklistItem and Field instance reads the new booleans as off (' + oldInsts.length + ' instances)');
+    const sections = allNodes(Q).filter((n) => n.type === 'SECTION'); const spill = sections.filter((sec) => sec.children.some((c) => c.x < -0.5 || c.y < -0.5 || c.x + c.width > sec.width + 0.5 || c.y + c.height > sec.height + 0.5));
+    check(spill.length === 0, 'every section still holds what is in it (' + spill.map((sec) => sec.name).join(', ') + ')');
+    const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
+    check(moved.every((n) => n.type === 'SECTION' && r.done.added.some((l) => l.indexOf('section ' + n.name + ' moved ') === 0)) && mover.x + ',' + mover.y === moverAt, 'no existing frame moved (the hand-placed one included); only Starter sections that the growth pushed are moved, and reported (' + moved.length + ')');
+    const fresh = setupFrames(Q);
+    check(fresh.length === SETUP_COUNT && fresh.every((f) => !ids0.has(f.id) && f.parent === mover.parent && f.y >= mover.y + mover.height + 240 - 0.5), 'the ' + SETUP_COUNT + ' Seller · Setup frames sit in rows below the frame the owner placed lowest');
+    const freshTops = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id)).map((n) => n.name);
+    check(freshTops.every((n) => n === 'Row' || isNew190Top(n) || DARK_190.includes(n)), 'new layers are only the 1.9.0 additions, the size table row and the changelog row (' + freshTops.filter((n) => !(n === 'Row' || isNew190Top(n) || DARK_190.includes(n))).join(', ') + ')');
+    const a = audit(Q, '1.8.4 file updated ' + tag15);
+    check(BUILD_COUNTS && a.sets.length === BUILD_COUNTS.sets && a.comps === BUILD_COUNTS.comps && a.variants === BUILD_COUNTS.variants, 'the updated file has the same components as a new build (' + a.sets.length + ' sets, ' + a.comps + ' standalone components, ' + a.variants + ' variants)');
+    const all15 = allNodes(Q); const snap15 = new Map(all15.map((n) => [n.id, fullSnap(n)]));
+    r = await send(Q, { type: 'update' });
+    const again = allNodes(Q).filter((n) => !snap15.has(n.id) || fullSnap(n) !== snap15.get(n.id));
+    check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === all15.length && again.length === 0 && !r.done.report.some((l) => /^ℹ/.test(l)), 'a second run adds, changes and moves nothing (' + again.length + (again.length ? ': ' + snapDiff(again, snap15) : '') + ')');
+    r = await send(Q, { type: 'audit' });
+    check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update' + (r.done ? ': ' + r.done.report.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
+    r = await send(Q, { type: 'export', version: SPEC_VERSION });
+    if (r.done) { compareExport(r.done.files, '1.9.0 updated ' + tag15 + ' export'); check(r.done.files['tokens.css'].includes('--mp-size-form-max: 640px;'), 'export writes size/form-max'); }
+  }
+  {
+    const fresh184 = async () => { const G = start(STARTER, CODE_184); const res = await send(G, { type: 'build' }); load(G, CODE); return G; };
+    const rep15 = (res) => (res.done ? res.done.report.concat(res.done.added) : []);
+    const noOp15 = async (G, what) => { const n = allNodes(G).length; const res = await send(G, { type: 'update' }); check(!res.err && res.done && res.done.added.length === 0 && allNodes(G).length === n, what + ': a second run is a no-op' + (res.done && res.done.added.length ? ' (' + res.done.added.join(', ') + ')' : '')); };
+    // a. a FieldStatus set that is not the plugin's: no FieldStatus, no Field status line, no Seller setup frames; the rest arrives
+    let G = await fresh184();
+    const mine = G.figma.createComponent(); mine.name = 'Tone=Checking'; const theirs = G.figma.combineAsVariants([mine], G.figma.currentPage); theirs.name = 'FieldStatus';
+    r = await send(G, { type: 'update' }); let rp = rep15(r);
+    check(!r.err && theirs.children.length === 1 && countNamed(G, 'COMPONENT_SET', 'FieldStatus') === 1 && rp.some((l) => l === 'ℹ skipped component FieldStatus: a component named FieldStatus that is not the plugin\'s already exists in this file') && rp.some((l) => l === 'ℹ skipped Field property Show status: it needs the plugin\'s FieldStatus') && rp.some((l) => /^ℹ skipped Seller setup templates: they need the plugin's FieldStatus, Field Show status, Field status line$/.test(l)), 'a FieldStatus set that is not the plugin\'s is left as it is; Field Show status and the Seller setup frames wait, and the report says why' + (r.err ? ': ' + r.err.message : ''));
+    check(setupFrames(G).length === 0 && setOf(G, 'DataRow') && setOf(G, 'FormActionBar') && keysOf(setOf(G, 'Input')).includes('Prefix') && keysOf(setOf(G, 'ChecklistItem')).includes('Show chevron') && !keysOf(compOf(G, 'Field')).includes('Show status'), 'DataRow, FormActionBar and the Input and ChecklistItem properties still arrive');
+    await noOp15(G, 'foreign FieldStatus');
+    // b. an Input variant whose layers were changed by hand: it is reported and left; the frames wait for it
+    G = await fresh184();
+    const odd = setOf(G, 'Input').children.find((v) => v.variantProperties.Type === 'Text' && v.variantProperties.State === 'Default'); odd.children[0].name = 'my icon';
+    r = await send(G, { type: 'update' }); rp = rep15(r);
+    check(!r.err && !odd.children.some((k) => k.name === 'prefix') && rp.some((l) => l === 'ℹ skipped the Input prefix in ' + odd.name + ': its layers were changed by hand') && rp.includes('Input prefix layer (5 Type=Text variants)') && rp.some((l) => /^ℹ skipped Seller setup templates: they need the plugin's Input prefix layer \(1 Type=Text variants without it\)$/.test(l)) && setupFrames(G).length === 0, 'an Input variant changed by hand gets no prefix and is reported; the other 5 get it; the Seller setup frames wait' + (r.err ? ': ' + r.err.message : ''));
+    await noOp15(G, 'hand-changed Input variant');
+    // c. descriptions and the SegmentedControl note changed by hand are kept
+    G = await fresh184();
+    setOf(G, 'Input').description = 'Our Input note'; compOf(G, 'Field').description = 'Our Field note'; compOf(G, 'SegmentedControl').description = 'Our segments';
+    const segText = segUsage(G); const segItem = (() => { const sc = compOf(G, 'SegmentedControl'); const acc = sc.parent.parent.children.find((c) => c.name === 'Usage').children.find((c) => c.name === 'Accessibility'); return acc.children.find((c) => c.name === 'List').children[0].children[1]; })(); segItem.characters = 'Our own note';
+    r = await send(G, { type: 'update' }); rp = rep15(r);
+    check(!r.err && setOf(G, 'Input').description === 'Our Input note' && compOf(G, 'Field').description === 'Our Field note' && compOf(G, 'SegmentedControl').description === 'Our segments' && !rp.some((l) => /^update (Input|Field|SegmentedControl) description$/.test(l)) && rp.includes('update ChecklistItem description') && segText.length === 1, 'descriptions edited by hand are kept; the plugin\'s own ChecklistItem description is updated' + (r.err ? ': ' + r.err.message : ''));
+    check(segUsage(G).join('|') === 'Our own note' && rp.includes('ℹ skipped SegmentedControl radio-group note in its Usage panel: the panel was changed by hand') && keysOf(compOf(G, 'Field')).includes('Show status') && setupFrames(G).length === SETUP_COUNT, 'a SegmentedControl note edited by hand is kept and reported; the properties and frames still arrive');
+    // d. partly updated: two Setup frames and the dark copy are gone; only they come back
+    G = await fresh184();
+    r = await send(G, { type: 'update' });
+    const lost = ['Seller · Setup · S3 Address and area · Outside area', 'Seller · Setup · S6 Review and submit (phone)'];
+    lost.concat(DARK_190).forEach((n) => frameNamed(G, n)[0].remove());
+    const keep = new Set(allNodes(G).map((n) => n.id));
+    r = await send(G, { type: 'update' });
+    const add = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
+    check(!r.err && add.join('|') === ['templates Seller setup (2 frames)'].concat(DARK_190.map((n) => 'dark preview ' + n)).join('|') && setupFrames(G).length === SETUP_COUNT && lost.concat(DARK_190).every((n) => frameNamed(G, n).length === 1) && [...keep].every((id) => G.byId.has(id)), 'Update library puts back exactly the 2 lost frames and the dark copy (' + (r.err ? r.err.message : add.join(', ')) + ')');
+    // e. one component the frames need is not the plugin's: its 1.9.0 additions are skipped and reported, the frames wait, the rest arrives
+    const SETUP_WAIT = 'ℹ skipped Seller setup templates: they need the plugin\'s ';
+    const foreign = [
+      ['Input', (X) => setOf(X, 'Input'), ['ℹ skipped Input properties Show prefix and Prefix: the Input set is not the plugin\'s', SETUP_WAIT + 'Input, Input Prefix, Input Show prefix, Input prefix layer (6 Type=Text variants without it)']],
+      ['ChecklistItem', (X) => setOf(X, 'ChecklistItem'), ['ℹ skipped ChecklistItem properties Show detail, Detail and Show chevron: the ChecklistItem set is not the plugin\'s', SETUP_WAIT + 'ChecklistItem, ChecklistItem Detail, ChecklistItem Show detail, ChecklistItem Show chevron, ChecklistItem detail and chevron (4 variants without them)']],
+      ['Field', (X) => compOf(X, 'Field'), ['ℹ skipped Field property Show status: the Field component is not the plugin\'s', SETUP_WAIT + 'Field, Field Show status, Field status line']],
+      ['SegmentedControl', (X) => compOf(X, 'SegmentedControl'), ['ℹ skipped SegmentedControl radio-group note: the component is not the plugin\'s', SETUP_WAIT + 'SegmentedControl']],
+      ['Button', (X) => setOf(X, 'Button'), ['ℹ skipped component FormActionBar: it needs the plugin\'s Button', SETUP_WAIT + 'Button, FormActionBar']],
+      ['Badge', (X) => setOf(X, 'Badge'), ['ℹ skipped component DataRow: it needs the plugin\'s Badge', SETUP_WAIT + 'Badge, DataRow']],
+    ];
+    for (const f of foreign) {
+      G = await fresh184(); f[1](G).setPluginData('mondapac-ds', '');
+      r = await send(G, { type: 'update' }); rp = rep15(r);
+      check(!r.err && f[2].every((l) => rp.includes(l)) && setupFrames(G).length === 0 && setOf(G, 'FieldStatus') && (f[0] === 'Badge' || setOf(G, 'DataRow')) && (f[0] === 'Button' || setOf(G, 'FormActionBar')), 'a ' + f[0] + ' that is not the plugin\'s gets no 1.9.0 change; the report says so and the Seller setup frames wait (' + (r.err ? r.err.message : rp.filter((l) => /^ℹ skipped (Seller setup|component|Input|ChecklistItem|Field|SegmentedControl)/.test(l)).join(' | ')) + ')');
+    }
+    // f. a ChecklistItem variant and the Field whose layers were changed by hand are reported and left; the frames wait for them
+    G = await fresh184();
+    const oddCk = setOf(G, 'ChecklistItem').children.find((v) => v.variantProperties.State === 'To do'); oddCk.findOne((k) => k.name === 'by').name = 'my by';
+    r = await send(G, { type: 'update' }); rp = rep15(r);
+    check(!r.err && rp.includes('ℹ skipped the ChecklistItem detail and chevron in ' + oddCk.name + ': its layers were changed by hand') && rp.includes('ChecklistItem detail line and chevron (3 variants)') && rp.includes(SETUP_WAIT + 'ChecklistItem detail and chevron (1 variants without them)') && !oddCk.findOne((k) => k.name === 'detail') && setupFrames(G).length === 0, 'a ChecklistItem variant changed by hand gets no detail line or chevron and is reported; the other 3 get them; the frames wait' + (r.err ? ': ' + r.err.message : ''));
+    await noOp15(G, 'hand-changed ChecklistItem variant');
+    G = await fresh184();
+    compOf(G, 'Field').children.find((k) => k.name === 'control').name = 'my control';
+    r = await send(G, { type: 'update' }); rp = rep15(r);
+    check(!r.err && rp.includes('ℹ skipped Field property Show status: its layers were changed by hand') && rp.includes(SETUP_WAIT + 'Field Show status, Field status line') && !compOf(G, 'Field').children.some((k) => k.name === 'status') && setupFrames(G).length === 0, 'a Field whose control was renamed gets no status line and is reported; the frames wait' + (r.err ? ': ' + r.err.message : ''));
+    // g. after the update, a variant of a new set is removed by hand and a frame is lost: the run reports why the frame waits, without an error
+    for (const d of [['DataRow', (v) => v.name === 'Layout=Single, Width=Wide, State=Blocked'], ['FieldStatus', (v) => v.name === 'Tone=Info']]) {
+      G = await fresh184(); await send(G, { type: 'update' });
+      const gone = setOf(G, d[0]).children.find(d[1]); const vName = gone.name; gone.remove();
+      frameNamed(G, 'Seller · Setup · S6 Review and submit · Blocked')[0].remove();
+      r = await send(G, { type: 'update' }); rp = rep15(r);
+      check(!r.err && rp.includes(SETUP_WAIT + d[0] + ' variants (' + vName + ')') && setupFrames(G).length === SETUP_COUNT - 1, 'a ' + d[0] + ' variant removed by hand holds the Seller setup frames back with a report, not an error (' + (r.err ? r.err.message : rp.filter((l) => /^ℹ skipped Seller setup/.test(l)).join(' | ')) + ')');
+    }
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));

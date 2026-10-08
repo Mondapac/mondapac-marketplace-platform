@@ -136,6 +136,10 @@
     "dialog-md": {
       "$type": "dimension",
       "$value": "560px"
+    },
+    "form-max": {
+      "$type": "dimension",
+      "$value": "640px"
     }
   },
   "border": {
