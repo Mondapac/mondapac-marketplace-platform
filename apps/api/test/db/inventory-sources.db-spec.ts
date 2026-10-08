@@ -168,16 +168,36 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
   });
 
   it.each(['pending', 'rejected', 'suspended'] as const)(
-    'writes nothing for a seller that is %s',
+    'settles the delivery and writes no inventory for a seller that is %s',
     async (state) => {
       const sellerId = newSeller();
+      const handledBefore = await handledInventoryEvents(code);
 
       await registered(code, sellerId, state);
 
       expect(await inventoryOf(code, sellerId)).toHaveLength(0);
       expect(await sourcesOf(code, sellerId)).toHaveLength(0);
+      // The handler ran: one inbox row, and the delivery is delivered, not backed off for a retry.
+      expect(await handledInventoryEvents(code)).toBe(handledBefore + 1);
+      const delivery = await sql.query(
+        `SELECT status, error_code FROM platform.event_delivery
+          WHERE subscriber = 'inventory.ensure-seller-inventory' AND market_id = $1
+            AND aggregate_id = $2`,
+        [code, sellerId],
+      );
+      expect(delivery.rows).toEqual([{ status: 'delivered', error_code: null }]);
     },
   );
+
+  it('creates the inventory when the approved event follows a pending one for the same seller', async () => {
+    const sellerId = newSeller();
+
+    await registered(code, sellerId, 'pending', 1);
+    await registered(code, sellerId, 'approved', 2);
+
+    expect(await inventoryOf(code, sellerId)).toHaveLength(1);
+    expect(await sourcesOf(code, sellerId)).toHaveLength(1);
+  });
 
   it('keeps a separate inventory per Market for the same seller id', async () => {
     const sellerId = newSeller();
@@ -260,10 +280,31 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
       // The foreign key leads with market_id: a source of this seller in another Market has no parent.
       await expect(insertSource(sellerId, { marketId: other })).rejects.toMatchObject({
         code: '23503',
+        constraint: 'sources_market_id_seller_id_fkey',
       });
       // A second, non-Default source at the next position is fine.
       await insertSource(sellerId, { name: 'Warehouse', priority: 2 });
       expect(await sourcesOf(code, sellerId)).toHaveLength(2);
+    });
+
+    it('a bad time zone or address, and the widest accepted time zone form', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const update = (set: string) =>
+        sql.query(`UPDATE inventory.sources SET ${set} WHERE seller_id = $1`, [sellerId]);
+
+      for (const zone of ['Australia/', '1bad']) {
+        await expect(update(`time_zone = '${zone}'`)).rejects.toMatchObject({
+          code: '23514',
+          constraint: 'sources_time_zone_check',
+        });
+      }
+      await expect(update(`address = '[]'::jsonb`)).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'sources_address_check',
+      });
+      await update(`time_zone = 'America/Argentina/Buenos_Aires'`);
+      await update(`name = '${'x'.repeat(80)}'`);
     });
 
     it('a threshold outside 0 to 99, a version below 1, and a handler of another module', async () => {
@@ -273,6 +314,15 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
       await expect(
         sql.query(
           'UPDATE inventory.seller_inventories SET low_stock_threshold = 100 WHERE seller_id = $1',
+          [sellerId],
+        ),
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'seller_inventories_low_stock_threshold_check',
+      });
+      await expect(
+        sql.query(
+          'UPDATE inventory.seller_inventories SET low_stock_threshold = -1 WHERE seller_id = $1',
           [sellerId],
         ),
       ).rejects.toMatchObject({

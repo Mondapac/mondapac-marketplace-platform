@@ -70,11 +70,10 @@ export class EnsureSellerInventory extends UseCase<
     const { market } = context;
     const { unitOfWork, inventories, ids, clock } = this.deps;
 
-    if (input.accessState !== 'approved') {
-      return ok({ code: 'seller-inventory.not-approved' });
-    }
-
+    // The state check sits inside `runOnce`: a delivery that creates nothing is still settled
+    // (inbox row, delivery delivered), or the dispatcher would retry it into a dead letter.
     const handled = await unitOfWork.runOnce(market, input.delivery, async () => {
+      if (input.accessState !== 'approved') return ok('not-approved' as const);
       const inventory = SellerInventory.createWithDefaultSource({
         id: ids.next<'SellerInventory'>(),
         defaultSourceId: ids.next<'InventorySource'>(),
@@ -82,15 +81,15 @@ export class EnsureSellerInventory extends UseCase<
         marketId: market.marketId,
         now: clock.now(),
       });
-      return ok(await inventories.add(market, inventory));
+      return ok(
+        (await inventories.add(market, inventory)) ? ('created' as const) : ('exists' as const),
+      );
     });
     if (!handled.ok) throw new Error('ensure-seller-inventory: the unit failed');
 
     const output: EnsureSellerInventoryOutput = !handled.value.handled
       ? { code: 'seller-inventory.already-handled' }
-      : handled.value.value
-        ? { code: 'seller-inventory.created' }
-        : { code: 'seller-inventory.exists' };
+      : { code: `seller-inventory.${handled.value.value}` };
     this.#logger.log({
       msg: `inventory.${output.code}`,
       sellerId: input.sellerId,

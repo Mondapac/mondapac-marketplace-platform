@@ -86,7 +86,7 @@ start-up that every hosted Market has it; the schema keeps it optional so a Mark
 host inventory yet still loads. It starts with what slice 1 needs; later slices add the
 reservation duration, the default low-stock threshold and the default per-customer cap.
 
-- `maxSourcesPerSeller` (required, 1 to 5; 4 for AU): the most sources a seller may have, the
-  Default included (inventory design 3.4). The ceiling of 5 keeps the re-key of a moved Offer
-  (design 3.6) under the lock helper's 1,000-item cap with 100 variants per product; raising the
-  limit past it is a design change.
+- `maxSourcesPerSeller` (required, 1 to 4; 4 for AU): the most sources a seller may have, the
+  Default included (inventory design 3.4). The ceiling of 4 keeps the re-key of a moved Offer
+  (design 3.6) under the lock helper's 1,000-item cap with 100 variants per product (800 items
+  plus held ones); raising it is a design change with a re-check.

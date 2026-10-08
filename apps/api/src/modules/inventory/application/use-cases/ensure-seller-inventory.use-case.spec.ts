@@ -40,15 +40,16 @@ class FakeInventories implements SellerInventoryRepository {
 }
 
 function setUp() {
+  const handledEvents = new Set<string>();
   const inventories = new FakeInventories();
   const clock = new FixedClock(START);
   const ids = new SequenceIdGenerator(clock);
   const unitOfWork: UnitOfWork = {
     run: <T, E>(_market: MarketContext, work: () => Promise<Result<T, E>>) => work(),
-    runOnce: fakeRunOnce(),
+    runOnce: fakeRunOnce(handledEvents),
   };
   const ensure = new EnsureSellerInventory(gate, { unitOfWork, inventories, ids, clock });
-  return { inventories, ids, ensure };
+  return { inventories, ids, ensure, handledEvents };
 }
 
 type Setup = ReturnType<typeof setUp>;
@@ -88,7 +89,7 @@ describe.each(['AU', 'ZZ'])('inventory.ensure-seller-inventory in market %s', (c
     });
   });
 
-  it('does nothing for a seller that is not approved yet, and records no handled event', async () => {
+  it('settles the delivery without creating anything for a seller that is not approved yet', async () => {
     const t = setUp();
     const sellerId = t.ids.next<'Seller'>();
 
@@ -97,6 +98,11 @@ describe.each(['AU', 'ZZ'])('inventory.ensure-seller-inventory in market %s', (c
       expect(result).toEqual({ ok: true, value: { code: 'seller-inventory.not-approved' } });
     }
     expect(t.inventories.stored.size).toBe(0);
+    // Each pending delivery is recorded as handled, so it is never retried into a dead letter.
+    expect(t.handledEvents.size).toBe(3);
+
+    const approved = await t.ensure.execute(system(code), input(t, sellerId));
+    expect(approved.ok && approved.value.code).toBe('seller-inventory.created');
   });
 
   it('is idempotent by the inbox: a redelivery of the same event does nothing', async () => {
