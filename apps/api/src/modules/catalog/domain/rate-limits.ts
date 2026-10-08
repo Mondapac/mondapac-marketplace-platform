@@ -39,6 +39,12 @@ export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'submit.seller.hour', limit: 30, windowMinutes: 60 },
 ]);
 
+/** Claim-text checks per account (D 6.6, L6): 30 per minute and 1,000 per 24 h. */
+export const CLAIM_TEXT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'claim-text-check.account.minute', limit: 30, windowMinutes: 1 },
+  { kind: 'claim-text-check.account.day', limit: 1000, windowMinutes: DAY },
+]);
+
 /** A counter as the reservation unit left it: this attempt is already counted. */
 export interface RateReservation {
   readonly kind: RateCounterKind;
