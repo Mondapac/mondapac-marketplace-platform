@@ -984,7 +984,7 @@ const catalogSchema = z
      * not listed here is refused at product creation. At least one; no code repeated.
      */
     productTypes: z
-      .array(z.string().regex(/^[a-z][a-z0-9_-]{1,31}$/))
+      .array(z.string().regex(/^[a-z][a-z0-9-]{1,31}$/))
       .min(1)
       .max(20),
     /** The attribute family a new product starts in (catalog design 4.1): a seeded family code. */

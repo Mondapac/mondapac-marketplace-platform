@@ -49,7 +49,13 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.create in market %s', (co
       }),
     );
 
-  function rig(options: { familySeeded?: boolean } = {}) {
+  function rig(
+    options: {
+      familySeeded?: boolean;
+      registered?: readonly string[];
+      policy?: ConfigCatalogMarketPolicy;
+    } = {},
+  ) {
     const stored: Product[] = [];
     const events: unknown[] = [];
     const families: string[] = [];
@@ -82,8 +88,11 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.create in market %s', (co
       unitOfWork,
       products,
       attributes,
-      policy,
-      productTypes: (typeCode) => handlers[typeCode as keyof typeof handlers],
+      policy: options.policy ?? policy,
+      productTypes: (typeCode) =>
+        (options.registered ?? Object.keys(handlers)).includes(typeCode)
+          ? handlers[typeCode as keyof typeof handlers]
+          : undefined,
       outbox,
       clock,
       ids,
@@ -108,6 +117,58 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.create in market %s', (co
     });
     expect(r.families).toEqual(['default']);
     expect(r.events.length).toBeGreaterThan(0);
+    expect(state.productCode).toMatch(/^P\d{8}$/);
+    expect(state.variants).toHaveLength(1);
+    expect(state.variants[0]!.id).toBe(created.value.variantIds[0]);
+    expect(state.variants[0]!.state).toBe('proposed');
+  });
+
+  it('ignores every field of the request except the type', async () => {
+    const r = rig();
+    const request = {
+      typeCode: 'simple',
+      scope: 'SELLER',
+      sellerId: 'sel_x',
+      familyCode: 'other',
+      marketId: 'XX',
+      productCode: 'HACK',
+      status: 'published',
+    };
+    const created = await r.useCase.execute(contextOf('admin'), request);
+    expect(created.ok).toBe(true);
+    expect(r.stored[0]!.state).toMatchObject({
+      scope: 'PLATFORM',
+      ownerSellerId: null,
+      familyCode: 'default',
+      marketId: code,
+      status: 'draft',
+    });
+    expect(r.stored[0]!.state.productCode).not.toBe('HACK');
+  });
+
+  it('answers type-unknown for a listed type nobody registered, storing nothing', async () => {
+    const r = rig({ registered: [] });
+    expect(await r.useCase.execute(contextOf('admin'), { typeCode: 'simple' })).toEqual({
+      ok: false,
+      error: { code: 'product.type-unknown' },
+    });
+    expect(r.stored).toHaveLength(0);
+    expect(r.events).toHaveLength(0);
+  });
+
+  it('answers access.unavailable when the Market policy fails, storing nothing', async () => {
+    const broken = {
+      productTypes: () => {
+        throw new Error('no catalog section');
+      },
+      defaultFamily: () => 'default',
+    } as unknown as ConfigCatalogMarketPolicy;
+    const r = rig({ policy: broken });
+    expect(await r.useCase.execute(contextOf('admin'), { typeCode: 'simple' })).toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+    expect(r.stored).toHaveLength(0);
   });
 
   it('offers Configurable only in a Market that lists it', async () => {
@@ -141,11 +202,45 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.create in market %s', (co
     expect(r.events).toHaveLength(0);
   });
 
-  it('refuses a malformed request', async () => {
+  it.each([[{ typeCode: 5 }], [{}], [null], [undefined]])(
+    'refuses the malformed request %j',
+    async (input) => {
+      const r = rig();
+      const bad = await r.useCase.execute(contextOf('admin'), input as { typeCode: string });
+      expect(!bad.ok && bad.error.code).toBe('validation.failed');
+      expect(r.stored).toHaveLength(0);
+    },
+  );
+
+  it('refuses a system and an anonymous actor', async () => {
     const r = rig();
-    const bad = await r.useCase.execute(contextOf('admin'), {
-      typeCode: 5 as unknown as string,
+    for (const actor of [{ kind: 'anonymous' }, { kind: 'system' }] as const) {
+      const denied = await r.useCase.execute(
+        { ...contextOf('admin'), actor } as unknown as CallContext,
+        { typeCode: 'simple' },
+      );
+      expect(denied.ok).toBe(false);
+    }
+    expect(r.stored).toHaveLength(0);
+  });
+
+  it('is refused by the gate when the actor lacks the key', async () => {
+    const denyAll: AuthorisationCheck = {
+      check: () => Promise.resolve({ allowed: false, reason: 'missing' } as never),
+    };
+    const r = rig();
+    const guarded = new PlatformProductCreate(createUseCaseGate(markets, denyAll), {
+      unitOfWork: { run: () => Promise.reject(new Error('must not run')) } as unknown as UnitOfWork,
+      products: {} as ProductRepository,
+      attributes: {} as AttributeRepository,
+      policy,
+      productTypes: () => simpleProductType,
+      outbox: { append: () => Promise.reject(new Error('must not run')) },
+      clock,
+      ids,
     });
-    expect(!bad.ok && bad.error.code).toBe('validation.failed');
+    const denied = await guarded.execute(contextOf('admin'), { typeCode: 'simple' });
+    expect(denied.ok).toBe(false);
+    expect(r.stored).toHaveLength(0);
   });
 });

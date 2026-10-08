@@ -694,7 +694,7 @@ path (SL 4 pattern).
 ### 7.1 The `catalog` section of `config/markets/<code>.json`
 | Field | AU (launch) | ZZ (test fixture) | Used by |
 |---|---|---|---|
-| `productTypes` | `simple`, `configurable` | `simple` only plus a fixture Vertical type from `verticals/test-fixture/` | 3.1 rule 4 |
+| `productTypes` | `simple`, `configurable` | `simple` only for now (a fixture Vertical type joins with the first Vertical test) | 3.1 rule 4 |
 | `defaultFamily` | The seeded default family code | Its own | 4.1 |
 | `taxCategories` | `taxable`, `gst_free`, each with a label key and the official guide link (ADR-0007 d5; values wait for the tax adviser) | Three different codes | 4.2 completeness, 4.3 |
 | `sensitiveChanges` | `platformCategories`, `taxCategory`, `name`, `primaryImage`, `anyImage`, `variantRemoved` | `name`, `taxCategory` only | 4.3 |

@@ -79,12 +79,33 @@ export class PlatformProductCreate extends UseCase<
     context: CallContext,
     input: PlatformProductCreateInput,
   ): Promise<Result<PlatformProductCreateOutput, PlatformProductCreateFailure>> {
+    const outcome = await this.#create(context, input);
+    // One exit logs every outcome with fixed fields only: never the input, never an error message.
+    this.#logger.log({
+      msg: 'catalog.platform-product-create',
+      code: outcome.result.ok ? 'created' : outcome.result.error.code,
+      ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return outcome.result;
+  }
+
+  async #create(
+    context: CallContext,
+    input: PlatformProductCreateInput,
+  ): Promise<{
+    readonly result: Result<PlatformProductCreateOutput, PlatformProductCreateFailure>;
+    readonly reason?: string;
+  }> {
     const { actor, market } = context;
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
-      return err({ code: 'access.denied' });
+      return { result: err({ code: 'access.denied' }) };
     }
     if (typeof input !== 'object' || input === null || typeof input.typeCode !== 'string') {
-      return err({ code: 'validation.failed', fields: [{ path: 'typeCode', code: 'type' }] });
+      return {
+        result: err({ code: 'validation.failed', fields: [{ path: 'typeCode', code: 'type' }] }),
+      };
     }
     const { typeCode } = input;
     const { policy, attributes, products, outbox, clock, ids } = this.deps;
@@ -94,12 +115,15 @@ export class PlatformProductCreate extends UseCase<
     try {
       offered = policy.productTypes(market);
       familyCode = policy.defaultFamily(market);
-    } catch {
-      return err({ code: 'access.unavailable' });
+    } catch (error) {
+      return {
+        result: err({ code: 'access.unavailable' }),
+        reason: error instanceof Error ? error.name : 'unknown',
+      };
     }
-    if (!offered.includes(typeCode)) return err({ code: 'product.type-not-offered' });
+    if (!offered.includes(typeCode)) return { result: err({ code: 'product.type-not-offered' }) };
     const handler = this.deps.productTypes(typeCode);
-    if (handler === undefined) return err({ code: 'product.type-unknown' });
+    if (handler === undefined) return { result: err({ code: 'product.type-unknown' }) };
 
     const created = await this.deps.unitOfWork.run<
       PlatformProductCreateOutput,
@@ -129,12 +153,6 @@ export class PlatformProductCreate extends UseCase<
         variantIds: product.value.state.variants.map((variant) => variant.id),
       });
     });
-    this.#logger.log({
-      msg: 'catalog.platform-product-create',
-      code: created.ok ? 'created' : created.error.code,
-      marketId: market.marketId,
-      correlationId: context.correlationId,
-    });
-    return created;
+    return { result: created };
   }
 }

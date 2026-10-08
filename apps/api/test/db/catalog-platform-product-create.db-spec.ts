@@ -39,6 +39,17 @@ describe.each(TEST_MARKETS)(
     let app: Client;
     let useCase: PlatformProductCreate;
     let appended: string[];
+    let failOutbox = false;
+    const adminContext = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: uuid7() as Id<'Account'>,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: null,
+        }),
+      );
 
     beforeAll(async () => {
       persistence = createPersistence();
@@ -68,6 +79,7 @@ describe.each(TEST_MARKETS)(
         productTypes: (typeCode) => handlers[typeCode as keyof typeof handlers],
         outbox: {
           append: (_context, events) => {
+            if (failOutbox) return Promise.reject(new Error('outbox down'));
             appended.push(...events.map((event) => event.type));
             return Promise.resolve();
           },
@@ -115,6 +127,51 @@ describe.each(TEST_MARKETS)(
       );
       expect(variants.rows).toEqual([{ state: 'proposed' }]);
       expect(appended).toContain('catalog.variant-added.v1');
+    });
+
+    it('keeps the version, Market and tenant, and gives a second create another code', async () => {
+      const first = await useCase.execute(adminContext(), { typeCode: 'simple' });
+      const second = await useCase.execute(adminContext(), { typeCode: 'simple' });
+      if (!first.ok || !second.ok) throw new Error('create failed');
+      expect(second.value.productCode).not.toBe(first.value.productCode);
+      const { rows } = await app.query(
+        `SELECT version, market_id, tenant_id FROM catalog.products WHERE id = $1`,
+        [first.value.productId],
+      );
+      expect(rows[0]).toMatchObject({ market_id: code, tenant_id: market.tenantId });
+      expect(Number((rows[0] as { version: unknown }).version)).toBeGreaterThanOrEqual(1);
+    });
+
+    it('creates a Configurable product without variants where the Market lists it, else refuses', async () => {
+      const result = await useCase.execute(adminContext(), { typeCode: 'configurable' });
+      if (code === 'ZZ') {
+        expect(result).toEqual({ ok: false, error: { code: 'product.type-not-offered' } });
+        return;
+      }
+      if (!result.ok) throw new Error(result.error.code);
+      const variants = await app.query(
+        `SELECT 1 FROM catalog.product_variants WHERE product_id = $1`,
+        [result.value.productId],
+      );
+      expect(variants.rows).toHaveLength(0);
+    });
+
+    it('stores nothing when the events cannot be written', async () => {
+      failOutbox = true;
+      try {
+        const before = await app.query(
+          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1`,
+          [code],
+        );
+        await expect(useCase.execute(adminContext(), { typeCode: 'simple' })).rejects.toThrow();
+        const after = await app.query(
+          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1`,
+          [code],
+        );
+        expect((after.rows[0] as { n: number }).n).toBe((before.rows[0] as { n: number }).n);
+      } finally {
+        failOutbox = false;
+      }
     });
   },
 );

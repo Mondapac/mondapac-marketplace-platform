@@ -1864,6 +1864,15 @@ describe('loadMarketConfigs', () => {
       ['an empty product type list', { ...VALID_CATALOG, productTypes: [] }],
       ['a repeated product type', { ...VALID_CATALOG, productTypes: ['simple', 'simple'] }],
       ['a malformed product type', { ...VALID_CATALOG, productTypes: ['Simple!'] }],
+      ['an underscore in a product type', { ...VALID_CATALOG, productTypes: ['foo_bar'] }],
+      [
+        'more than 20 product types',
+        {
+          ...VALID_CATALOG,
+          productTypes: Array.from({ length: 21 }, (_, i) => `type-${String.fromCharCode(97 + i)}`),
+        },
+      ],
+      ['a 65-character default family', { ...VALID_CATALOG, defaultFamily: 'a'.repeat(65) }],
       ['no default family', without('defaultFamily')],
       ['a malformed default family', { ...VALID_CATALOG, defaultFamily: 'Default Family' }],
       ['an unknown key', { ...VALID_CATALOG, photoLimits: {} }],
