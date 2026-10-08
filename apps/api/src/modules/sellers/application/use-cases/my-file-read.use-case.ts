@@ -1,9 +1,10 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SELLERS_BUSINESS_IDENTITY_EDIT } from '../../contracts/permissions';
 import { addressFromJson, type AddressFormatSpec } from '../../domain/address';
+import type { SellerRegisterResult } from '../../domain/register-check';
 import type { Sealed, SealedField } from '../../domain/sealed';
 import type { DraftPart, DraftRequirements, SellerFile } from '../../domain/seller-file';
 import type { ZoneState } from '../../domain/zone';
@@ -15,6 +16,9 @@ import {
   type SellersUnavailable,
 } from '../draft/draft-support';
 import { zoneOptionsOf, type FileNotFound } from '../draft/draft-view';
+import type { RegisterCheckRepository } from '../ports/register-check.repository';
+import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
+import { sellerResultOf } from '../register/register-lookup';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import type { SellerMarketPolicy } from '../ports/seller-market-policy';
@@ -58,6 +62,13 @@ export interface MyFileView {
    * uses (it does not count as saved, AC 3).
    */
   readonly identifier: { readonly value: string; readonly display: string } | null;
+  /**
+   * What the register said about the saved identifier, as the seller may see it (design 7.7,
+   * brief s5): `matched`, `not-matched` or `could-not-be-checked`. Null when the Market has no
+   * register lookup, no identifier is saved, or the file holds no current result. Never a
+   * register value or a mismatch flag.
+   */
+  readonly registerResult: SellerRegisterResult | null;
   /** The zones of the saved address's region, the default first; empty without an address. */
   readonly zoneOptions: readonly string[];
 }
@@ -73,6 +84,9 @@ export interface MyFileReadDependencies {
   readonly addressFormats: AddressFormats;
   readonly zones: TimezoneResolver;
   readonly areas: ServiceAreas;
+  readonly registerChecks: RegisterCheckRepository;
+  readonly registerPolicy: RegisterLookupPolicy;
+  readonly clock: Clock;
 }
 
 /**
@@ -115,18 +129,31 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     const { market } = context;
     const { unitOfWork, files, addressFormats } = this.deps;
 
+    const lookup = this.deps.registerPolicy.settingsOf(market);
     const read = await unitOfWork.run(
       market,
-      async () => ok(await files.findById(market, owner.sellerId)),
+      async () => {
+        const found = await files.findById(market, owner.sellerId);
+        const index = found?.state.draft.identifier?.index ?? null;
+        const check =
+          lookup.kind === 'configured' && index !== null
+            ? await this.deps.registerChecks.find(market, owner.sellerId, index)
+            : null;
+        return ok({ found, check });
+      },
       { readOnly: true },
     );
-    if (!read.ok || read.value === null) return err({ code: 'file.not-found' });
-    const file = read.value;
+    if (!read.ok || read.value.found === null) return err({ code: 'file.not-found' });
+    const file = read.value.found;
+    const registerResult =
+      lookup.kind === 'configured'
+        ? sellerResultOf(read.value.check, this.deps.clock.now(), lookup)
+        : null;
     const format = addressFormats.formatOf(market);
     const requirements = draftRequirementsOf(this.deps.policy, market);
     if (format === null || requirements === null) return err({ code: 'sellers.unavailable' });
     try {
-      return await this.view(market, owner.sellerId, file, format, requirements);
+      return await this.view(market, owner.sellerId, file, format, requirements, registerResult);
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
@@ -138,6 +165,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     file: SellerFile,
     format: AddressFormatSpec,
     requirements: DraftRequirements,
+    registerResult: SellerRegisterResult | null,
   ): Promise<Result<MyFileView, SellersUnavailable>> {
     const { cipher, zones, areas, identifierSchemes } = this.deps;
     let destroyed = false;
@@ -187,6 +215,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
         identifierValue === null || scheme === null
           ? null
           : { value: identifierValue, display: scheme.display(identifierValue) },
+      registerResult: identifierValue === null ? null : registerResult,
       zoneOptions: zoneOptionsOf(regionZones),
     });
   }

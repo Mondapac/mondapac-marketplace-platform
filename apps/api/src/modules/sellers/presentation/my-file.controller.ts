@@ -18,6 +18,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
+import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
 import { FormDescriptorsRead } from '../application/use-cases/form-descriptors-read.use-case';
 import { MyFileCheckSlug } from '../application/use-cases/my-file-check-slug.use-case';
@@ -43,6 +44,7 @@ import {
   DraftSavedBody,
   FormDescriptorsBody,
   IdentifierCheckBody,
+  IdentifierSavedBody,
   MyFileBody,
   SaveAddressRequest,
   SaveGeneralRequest,
@@ -318,13 +320,17 @@ export class MyFileController {
     summary: 'Save the business identifier of the draft',
     description:
       "The business number in the Market's scheme (the scheme is the Market's, never sent). " +
-      'Format and checksum are checked; there is no register lookup yet. An absent, null or ' +
-      'blank value clears it. Saving the same number again changes nothing. Refused on a file ' +
-      'with an approved revision. Counted against the save limit. The body is never logged.',
+      'Format and checksum are checked. In a Market with a register lookup, a number that is new ' +
+      'to the file (or whose result is older than the maximum age) is also asked of the official ' +
+      'register, and the answer says matched, not-matched or could-not-be-checked (never a ' +
+      'register value). A reached daily limit of new numbers refuses the save (lookup.limit). An ' +
+      'absent, null or blank value clears it. Saving the same number again changes nothing. ' +
+      'Refused on a file with an approved revision. Counted against the save limit. The body is ' +
+      'never logged.',
   })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
   @ApiBody({ type: SaveIdentifierRequest })
-  @ApiOkResponse({ type: DraftSavedBody })
+  @ApiOkResponse({ type: IdentifierSavedBody })
   @ApiBadRequestResponse({
     type: SellersErrorBody,
     description:
@@ -343,7 +349,9 @@ export class MyFileController {
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
     type: SellersErrorBody,
-    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+    description:
+      'request.throttled or lookup.limit (details.retryAfterSeconds, Retry-After): too many new ' +
+      'numbers today',
   })
   @ApiServiceUnavailableResponse({
     type: SellersErrorBody,
@@ -354,15 +362,17 @@ export class MyFileController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
-  ): Promise<DraftSavedBody> {
+  ): Promise<IdentifierSavedBody> {
     response.setHeader('Cache-Control', NO_STORE);
-    const input = this.shapeOf(
+    const shaped = this.shapeOf(
       'sellers.my-file-save-identifier',
       context,
       request,
       body,
       parseIdentifierSaveBody,
     );
+    // The origin comes from the socket only, never from the body or a header (identity HF3).
+    const input = { ...shaped, origin: clientOriginOf(request.socket.remoteAddress) };
     const result = await this.saveIdentifier.execute(context, input);
     return this.settle('sellers.my-file-save-identifier', context, response, result, 'saved');
   }

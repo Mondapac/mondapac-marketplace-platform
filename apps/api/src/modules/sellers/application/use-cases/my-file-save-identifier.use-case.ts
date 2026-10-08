@@ -10,9 +10,9 @@ import {
   type IdentifierInvalid,
 } from '../../domain/business-identifier';
 import { SAVE_LIMITS } from '../../domain/rate-limits';
+import type { RegisterCheck, SellerRegisterResult } from '../../domain/register-check';
 import {
   draftRequirementsOf,
-  fileExists,
   logDraftOutcome,
   reserveRateLimits,
   sellerActorOf,
@@ -30,8 +30,17 @@ import {
 } from '../draft/draft-view';
 import type { BusinessIdentifierSchemes } from '../ports/business-identifier-scheme';
 import type { IdentifierIndex } from '../ports/identifier-index';
-import type { RateCounterKeys } from '../ports/rate-counter-keys';
-import type { RateCounterRepository } from '../ports/rate-counter.repository';
+import {
+  lookupDue,
+  lookupPlanOf,
+  reserveLookupQuota,
+  runLookup,
+  sellerResultOf,
+  type LookupLimitReached,
+  type LookupPlan,
+  type QuotaVerdict,
+  type RegisterLookupDependencies,
+} from '../register/register-lookup';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import type { SellerMarketPolicy } from '../ports/seller-market-policy';
@@ -42,11 +51,28 @@ import type { SellerMarketPolicy } from '../ports/seller-market-policy';
  */
 export interface MyFileSaveIdentifierInput {
   readonly identifier?: unknown;
+  /**
+   * The network origin of the request (IPv4 address or IPv6 /64, cut by the controller from the
+   * socket; never from the body), for the per-origin lookup quota. Null or absent when it cannot
+   * be read: a save that would call the register then fails closed (`access.unavailable`).
+   */
+  readonly origin?: string | null;
+}
+
+/**
+ * A saved identifier and what the register said about it, as the seller may see it (design 7.7,
+ * brief s5): `matched`, `not-matched` (one message for not found and cancelled) or
+ * `could-not-be-checked`; null when the Market has no register lookup, the value was cleared, or
+ * the file holds no result. Never a register value or a mismatch flag.
+ */
+export interface IdentifierSaved extends DraftSaved {
+  readonly registerResult: SellerRegisterResult | null;
 }
 
 export type MyFileSaveIdentifierFailure =
   | { readonly code: IdentifierInvalid }
   | { readonly code: 'file.change-request-required' }
+  | LookupLimitReached
   | DraftAccessDenied
   | AccessUnavailable
   | RequestThrottled
@@ -54,15 +80,13 @@ export type MyFileSaveIdentifierFailure =
   | FileNotFound
   | DraftConflict;
 
-export interface MyFileSaveIdentifierDependencies {
+export interface MyFileSaveIdentifierDependencies extends RegisterLookupDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
   readonly policy: SellerMarketPolicy;
   readonly identifierSchemes: BusinessIdentifierSchemes;
   readonly identifierIndex: IdentifierIndex;
   readonly cipher: SellerFileCipher;
-  readonly counters: RateCounterRepository;
-  readonly counterKeys: RateCounterKeys;
   readonly clock: Clock;
 }
 
@@ -83,14 +107,22 @@ export interface MyFileSaveIdentifierDependencies {
  *    the version it read (`conflict.stale` on a lost race). Saving the same value again is a
  *    no-op: no write, no new version.
  *
- * No lookup in this slice (4a). Uniqueness is not decided here: a draft gives no right to a
- * number (brief s7); the claim is taken when a reviewer approves (7a-decide). The seller never
- * learns whether another seller holds the value. The value never reaches a log, an error or an
- * event.
+ * The register lookup (slice 4a, design 7.7) follows the save of a value that is new to the
+ * file, or whose result has aged out, in a Market whose adapter reaches a register. Its quotas
+ * (the account's new values, the origin's calls, the Market's budget) are reserved before the
+ * save and before the call; the account limit refuses the save (`lookup.limit`) and creates no
+ * result; the call is made outside any unit; the answer is kept per file and value, and the
+ * seller sees only `matched`, `not-matched` or `could-not-be-checked`. A Market with the `none`
+ * adapter reserves nothing and calls nothing. A seller-side write is not offered in acting-as;
+ * the session has no acting-as flag yet (see the slice 4a note in the data design).
+ *
+ * Uniqueness is not decided here: a draft gives no right to a number (brief s7); the claim is
+ * taken when a reviewer approves (7a-decide). The seller never learns whether another seller
+ * holds the value. The value never reaches a log, an error or an event.
  */
 export class MyFileSaveIdentifier extends UseCase<
   MyFileSaveIdentifierInput,
-  DraftSaved,
+  IdentifierSaved,
   MyFileSaveIdentifierFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -111,7 +143,7 @@ export class MyFileSaveIdentifier extends UseCase<
   protected async handle(
     context: CallContext,
     input: MyFileSaveIdentifierInput,
-  ): Promise<Result<DraftSaved, MyFileSaveIdentifierFailure>> {
+  ): Promise<Result<IdentifierSaved, MyFileSaveIdentifierFailure>> {
     const result = await this.save(context, input ?? {});
     logDraftOutcome(
       'my-file-save-identifier',
@@ -125,7 +157,7 @@ export class MyFileSaveIdentifier extends UseCase<
   private async save(
     context: CallContext,
     input: MyFileSaveIdentifierInput,
-  ): Promise<Result<DraftSaved, MyFileSaveIdentifierFailure>> {
+  ): Promise<Result<IdentifierSaved, MyFileSaveIdentifierFailure>> {
     const owner = sellerActorOf(context);
     if (owner === null) return err({ code: 'access.denied' });
     const { market } = context;
@@ -144,21 +176,56 @@ export class MyFileSaveIdentifier extends UseCase<
       : parseBusinessIdentifier(input.identifier, scheme);
     if (parsed !== null && !parsed.ok) return err({ code: parsed.error });
 
-    if (!(await fileExists(this.deps, context, owner.sellerId))) {
-      return err({ code: 'file.not-found' });
+    let plan: LookupPlan | null;
+    try {
+      plan = lookupPlanOf(this.deps, market);
+    } catch (error) {
+      this.#logger.error({
+        msg: 'sellers.my-file-save-identifier.lookup-unavailable',
+        error: error instanceof Error ? error.name : 'unknown',
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'sellers.unavailable' });
     }
 
+    // The keyed index is pure, so it is known before the file is read; the read unit then loads
+    // the file and the stored result of this value together (ADR-0025: a read-only unit, before
+    // any key is used). A seller of another Market has no file: the same answer as an unknown id.
+    const index =
+      parsed === null ? null : identifierIndex.of(market, parsed.value.scheme, parsed.value.value);
+    let loaded;
+    try {
+      loaded = await unitOfWork.run(
+        market,
+        async () => {
+          const file = await files.findById(market, owner.sellerId);
+          if (file === null) return ok(null);
+          const existing =
+            plan !== null && index !== null
+              ? await this.deps.registerChecks.find(market, owner.sellerId, index)
+              : null;
+          return ok({ file, existing });
+        },
+        { readOnly: true },
+      );
+    } catch (error) {
+      this.#logger.error({
+        msg: 'sellers.my-file-save-identifier.read-failed',
+        error: error instanceof Error ? error.name : 'unknown',
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'sellers.unavailable' });
+    }
+    if (!loaded.ok || loaded.value === null) return err({ code: 'file.not-found' });
+    const { file: current, existing } = loaded.value;
+
     let identifier: DraftIdentifier | null = null;
-    if (parsed !== null) {
+    if (parsed !== null && index !== null) {
       const { value, scheme: code } = parsed.value;
       try {
         const sealed = await cipher.seal(market, owner.sellerId, 'identifier', value);
         if (!sealed.ok) return err({ code: 'sellers.unavailable' });
-        identifier = {
-          scheme: code,
-          sealed: sealed.value,
-          index: identifierIndex.of(market, code, value),
-        };
+        identifier = { scheme: code, sealed: sealed.value, index };
       } catch (error) {
         // Name and correlation id only: never the message or the value (Hassan L2).
         this.#logger.error({
@@ -170,14 +237,70 @@ export class MyFileSaveIdentifier extends UseCase<
       }
     }
 
-    return unitOfWork.run<DraftSaved, MyFileSaveIdentifierFailure>(market, async () => {
-      const file = await files.findById(market, owner.sellerId);
-      if (file === null) return err({ code: 'file.not-found' });
-      const applied = file.saveIdentifier(identifier, clock.now(), requirements);
-      if (!applied.ok) return applied;
-      if (file.state.version === file.persistedVersion) return ok(draftSaved(file, requirements));
-      if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
-      return ok(draftSaved(file, requirements));
+    // A dry run on the copy just read: a file the aggregate refuses (approved) spends no quota.
+    const dryRun = current.saveIdentifier(identifier, clock.now(), requirements);
+    if (!dryRun.ok) return dryRun;
+
+    // Reserve before the work (design 7.7, ADR-0023 decision 1): a reached account limit refuses
+    // the save of a new value and creates no result; a spent Market budget writes no result.
+    const due: LookupPlan | null =
+      plan !== null && parsed !== null && lookupDue(existing, clock.now(), plan.settings)
+        ? plan
+        : null;
+    let verdict: QuotaVerdict = 'go';
+    if (due !== null) {
+      const quota = await reserveLookupQuota(
+        this.deps,
+        context,
+        { accountId: owner.accountId, origin: input.origin ?? null },
+        due.settings,
+      );
+      if (!quota.ok) return quota;
+      verdict = quota.value;
+    }
+
+    const saved = await unitOfWork.run<DraftSaved, MyFileSaveIdentifierFailure>(
+      market,
+      async () => {
+        const file = await files.findById(market, owner.sellerId);
+        if (file === null) return err({ code: 'file.not-found' });
+        const applied = file.saveIdentifier(identifier, clock.now(), requirements);
+        if (!applied.ok) return applied;
+        if (file.state.version === file.persistedVersion) {
+          return ok(draftSaved(file, requirements));
+        }
+        if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
+        return ok(draftSaved(file, requirements));
+      },
+    );
+    if (!saved.ok) return saved;
+
+    if (plan === null || parsed === null || index === null) {
+      return ok({ ...saved.value, registerResult: null });
+    }
+    let check: RegisterCheck | null = existing;
+    if (due !== null) {
+      const by = { kind: 'seller', accountId: owner.accountId } as const;
+      check =
+        verdict === 'go'
+          ? await runLookup(this.deps, context, due, {
+              sellerId: owner.sellerId,
+              scheme: parsed.value.scheme,
+              identifier: parsed.value.value,
+              index,
+              file: current,
+              by,
+            })
+          : // A spent Market budget writes no result row: the state stays as it was and the
+            // next save tries again (counted and logged by the quota reservation).
+            existing;
+      // A result that could not be stored is not claimed: the file stays "not performed" and a
+      // reviewer checks the number (AC 32); the seller is told it could not be checked.
+      if (check === null) return ok({ ...saved.value, registerResult: 'could-not-be-checked' });
+    }
+    return ok({
+      ...saved.value,
+      registerResult: sellerResultOf(check, clock.now(), plan.settings),
     });
   }
 }

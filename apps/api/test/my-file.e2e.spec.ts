@@ -11,6 +11,7 @@ import { MyFileRead } from '../src/modules/sellers/application/use-cases/my-file
 import { MyFileSaveAddress } from '../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
 import { MyFileSaveIdentifier } from '../src/modules/sellers/application/use-cases/my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from '../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
+import { ReviewRegisterCheckRead } from '../src/modules/sellers/application/use-cases/review-register-check-read.use-case';
 import { MyFileValidateIdentifier } from '../src/modules/sellers/application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from '../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
 import { IdentityFakes } from './support/identity-fakes';
@@ -31,6 +32,8 @@ const PASSWORD = 'correct horse battery staple';
 const EMAIL = 'Owner@Example.com';
 const NAME = 'Amina Rahman';
 const CANARY = 'CANARY-PHONE-0412345678';
+/** The origin the controller reads from the socket of a local test request. */
+const ORIGIN = '127.0.0.1';
 const fakes = new IdentityFakes();
 
 type Failure = { code: string; [key: string]: unknown };
@@ -71,6 +74,7 @@ describe('the seller draft over HTTP (integration)', () => {
     saveIdentifier: new Stub(),
     validateIdentifier: new Stub(),
     descriptors: new Stub(),
+    review: new Stub(),
   };
   const http = () => request(app.getHttpServer());
 
@@ -97,6 +101,8 @@ describe('the seller draft over HTTP (integration)', () => {
               .useValue(stubs.validateIdentifier)
               .overrideProvider(FormDescriptorsRead)
               .useValue(stubs.descriptors)
+              .overrideProvider(ReviewRegisterCheckRead)
+              .useValue(stubs.review)
           : faked;
       },
     }));
@@ -648,7 +654,10 @@ describe('the seller draft over HTTP (integration)', () => {
     it('saves an identifier from a PUT body: only the number, no scheme, seller or Market', async () => {
       await boot(true);
       const session = await signedIn(code);
-      stubs.saveIdentifier.next = { ok: true, value: { ...SAVED, missing: ['slug'] } };
+      stubs.saveIdentifier.next = {
+        ok: true,
+        value: { ...SAVED, missing: ['slug'], registerResult: 'matched' },
+      };
 
       const saved = await http()
         .put('/sellers/my-file/identifier')
@@ -662,20 +671,24 @@ describe('the seller draft over HTTP (integration)', () => {
 
       expect(saved.status).toBe(200);
       expect(saved.headers['cache-control']).toBe('no-store');
-      expect(saved.body).toEqual({ ...SAVED, missing: ['slug'] });
+      expect(saved.body).toEqual({ ...SAVED, missing: ['slug'], registerResult: 'matched' });
       expect(stubs.saveIdentifier.calls.map((call) => call.input)).toEqual([
-        { identifier: '51 824 753 556' },
-        { identifier: null },
-        {},
+        { identifier: '51 824 753 556', origin: ORIGIN },
+        { identifier: null, origin: ORIGIN },
+        { origin: ORIGIN },
       ]);
       expect([cleared.status, absent.status]).toEqual([200, 200]);
       expect(stubs.saveIdentifier.calls[0]!.context.market.marketId).toBe(code);
 
       const calls = stubs.saveIdentifier.calls.length;
-      const extra = await http()
-        .put('/sellers/my-file/identifier')
-        .set(session.headers)
-        .send({ identifier: '1', scheme: 'zz-corp-no', sellerId: 'x', marketId: 'ZZ' });
+      const extra = await http().put('/sellers/my-file/identifier').set(session.headers).send({
+        identifier: '1',
+        scheme: 'zz-corp-no',
+        sellerId: 'x',
+        marketId: 'ZZ',
+        // The origin of the lookup quota is read from the socket, never from the body.
+        origin: '198.51.100.9',
+      });
       const wrongType = await http()
         .put('/sellers/my-file/identifier')
         .set(session.headers)
@@ -687,6 +700,7 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(detailsOf(extra)).toEqual({
         fields: [
           { path: 'marketId', code: 'unknown-field' },
+          { path: 'origin', code: 'unknown-field' },
           { path: 'scheme', code: 'unknown-field' },
           { path: 'sellerId', code: 'unknown-field' },
         ],
@@ -695,6 +709,47 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(detailsOf(tooLong)).toEqual({ fields: [{ path: 'identifier', code: 'length' }] });
       expect(JSON.stringify([extra.body, wrongType.body, tooLong.body])).not.toContain('9999');
       expect(stubs.saveIdentifier.calls).toHaveLength(calls);
+    });
+
+    it('keeps the reviewer register route behind an admin session: a visitor and a seller session are refused by the real gate', async () => {
+      await boot(false);
+      const session = await signedIn(code);
+      const path = '/sellers/admin/01928a3c-0000-7000-8000-000000000001/register-check';
+
+      const visitor = await http().get(path).set('x-market-id', code);
+      const seller = await http().get(path).set(session.headers);
+
+      expect(visitor.status).toBe(401);
+      expect(visitor.body).toEqual({
+        statusCode: 401,
+        code: expect.stringMatching(/^(access\.unauthenticated|session\.invalid)$/) as unknown,
+      });
+      // A seller's cookie is not read on a route of the admin population (identity design 6.4).
+      expect(seller.status).toBe(401);
+    });
+
+    it('answers lookup.limit as 429 with Retry-After, and a refusal never carries the number', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.saveIdentifier.next = {
+        ok: false,
+        error: { code: 'lookup.limit', retryAfterSeconds: 3600 },
+      };
+
+      const refused = await http()
+        .put('/sellers/my-file/identifier')
+        .set(session.headers)
+        .send({ identifier: '51 824 753 556' });
+
+      expect(refused.status).toBe(429);
+      expect(refused.headers['retry-after']).toBe('3600');
+      expect(refused.headers['cache-control']).toBe('no-store');
+      expect(refused.body).toEqual({
+        statusCode: 429,
+        code: 'lookup.limit',
+        details: { retryAfterSeconds: 3600 },
+      });
+      expect(JSON.stringify(refused.body)).not.toContain('824');
     });
 
     it('checks an identifier from a POST body and answers the display form', async () => {
