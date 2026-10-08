@@ -10,6 +10,10 @@ import type { AuditRowRecord } from './audit-hash';
  * `AuditModule`; never exported, so no module reads the chain (PA 2).
  */
 export interface AuditChainStore {
+  // Every read returns only rows whose time columns lie in AUDIT_TIME_RANGE (audit-chain-policy):
+  // a value outside cannot be held by a JavaScript Date. The `...OutOfRange` reads name those
+  // rows by id for the verifier (Hassan M1; Mojtaba's sign-off).
+
   /** The seals of `epoch` with the highest `chain_seq`, newest first, at most `count` (11.7). */
   lastSeals(market: MarketContext, epoch: number, count: number): Promise<SealRecord[]>;
 
@@ -48,11 +52,14 @@ export interface AuditChainStore {
   /** Inserts the seals in one statement. Throws {@link SealInsertConflictError} on a conflict. */
   insertSeals(market: MarketContext, seals: readonly SealRecord[]): Promise<void>;
 
-  /** The seals of `epoch` of the given audit rows (the duplicate-row log, PA 7.1). */
+  /**
+   * The seals of `epoch` of the audit rows at the given keys (the duplicate-row log, PA 7.1),
+   * read through the seal's unique key within the keys' time range (Mojtaba C2).
+   */
   sealsOfRows(
     market: MarketContext,
     epoch: number,
-    auditLogIds: readonly string[],
+    keys: readonly SealKey[],
   ): Promise<SealRecord[]>;
 
   /**
@@ -65,9 +72,14 @@ export interface AuditChainStore {
     atOrBelow?: bigint,
   ): Promise<CheckpointRecord | null>;
 
+  /** Inserts a checkpoint. Throws {@link CheckpointConflictError} when its position is taken. */
   insertCheckpoint(market: MarketContext, checkpoint: CheckpointRecord): Promise<void>;
 
-  /** The seals of `epoch` with `chain_seq` from `fromSeq` to `toSeq`, ascending, with their rows. */
+  /**
+   * The seals of `epoch` with `chain_seq` from `fromSeq` to `toSeq`, ascending, each with its
+   * audit row read by `(market_id, id)`: null when the row is gone or its time is out of range
+   * (Mohammad E1; the seal is read without the relation, so a missing row is a finding).
+   */
   sealsBetween(
     market: MarketContext,
     epoch: number,
@@ -84,12 +96,11 @@ export interface AuditChainStore {
     toSeq: bigint,
   ): Promise<CheckpointRecord[]>;
 
-  /** Up to `limit` seals of the Market in an epoch not in `known`, by epoch and `chain_seq`. */
-  sealsOutsideEpochs(
-    market: MarketContext,
-    known: readonly number[],
-    limit: number,
-  ): Promise<SealRecord[]>;
+  /**
+   * Up to `limit` seals of the Market in an epoch above `maxKnown`, by epoch and `chain_seq`:
+   * a range on the primary key (Mojtaba C1). Epochs below 1 the CHECK refuses.
+   */
+  sealsAboveEpoch(market: MarketContext, maxKnown: number, limit: number): Promise<SealRecord[]>;
 
   /** Up to `limit` audit rows with `occurred_at` after `after`, oldest first (PA 8 (j)). */
   rowsAfter(
@@ -100,6 +111,28 @@ export interface AuditChainStore {
 
   /** The `occurred_at` of the Market's oldest audit row, or null when it has none. */
   earliestRowTime(market: MarketContext): Promise<Temporal.Instant | null>;
+
+  /** The `occurred_at` of the Market's first audit row at or after `atOrAfter`, or null. */
+  nextRowTime(market: MarketContext, atOrAfter: Temporal.Instant): Promise<Temporal.Instant | null>;
+
+  /** Up to `limit` ids of audit rows whose `occurred_at` is outside the range. */
+  rowsOutOfRange(market: MarketContext, limit: number): Promise<string[]>;
+
+  /** Up to `limit` seals whose `sealed_at` or `audit_occurred_at` is outside the range. */
+  sealsOutOfRange(market: MarketContext, limit: number): Promise<SealPosition[]>;
+
+  /** Up to `limit` checkpoints whose `created_at` is outside the range. */
+  checkpointsOutOfRange(
+    market: MarketContext,
+    limit: number,
+  ): Promise<{ readonly epoch: number; readonly chainSeq: bigint }[]>;
+}
+
+/** Where a seal is, without its times. */
+export interface SealPosition {
+  readonly epoch: number;
+  readonly chainSeq: bigint;
+  readonly auditLogId: string;
 }
 
 /** Nest token of the {@link AuditChainStore}; bound by `AuditModule` only. */
@@ -158,6 +191,18 @@ export class SealInsertConflictError extends Error {
   override readonly name = 'SealInsertConflictError';
   constructor(readonly conflict: SealConflict) {
     super(`The seal insert met a conflict: ${conflict}`);
+  }
+}
+
+/**
+ * A checkpoint insert met `23505` on `audit_chain_checkpoint_pkey`: a checkpoint already holds
+ * the position of a head this unit just sealed, which only a write past the sealer can cause.
+ * An integrity alert, `audit.checkpoint.conflict` (Mojtaba L2).
+ */
+export class CheckpointConflictError extends Error {
+  override readonly name = 'CheckpointConflictError';
+  constructor() {
+    super('A checkpoint already holds this position');
   }
 }
 

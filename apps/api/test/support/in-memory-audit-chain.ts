@@ -1,9 +1,12 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { ContentHash, MarketContext, Result } from '@mondapac/shared-kernel';
+import { inAuditTimeRange } from '../../src/platform/audit/audit-chain-policy';
 import {
+  CheckpointConflictError,
   compareKeys,
   keyOf,
   SealInsertConflictError,
+  type SealPosition,
   type AuditChainStore,
   type CheckpointRecord,
   type SealKey,
@@ -42,6 +45,10 @@ export class InMemoryAuditChainStore implements AuditChainStore {
   afterSealsBetween: (() => void) | null = null;
   /** Makes the next insert of seals fail with this error, once. */
   failNextInsert: Error | null = null;
+  /** Makes every read of the last seals throw, until reset: a database gone. */
+  failReads: Error | null = null;
+  /** How many reads of some kinds ran: the cost of check (d) in a test. */
+  readonly reads = { unsealedRows: 0, nextRowTime: 0, earliestRowTime: 0 };
 
   /** The Market of every row ever added, so a seal keeps its Market when a test deletes its row. */
   private readonly marketOfRow = new Map<string, string>();
@@ -58,15 +65,27 @@ export class InMemoryAuditChainStore implements AuditChainStore {
         .map(([id]) => id),
     );
     return this.seals.filter(
-      (seal) => ids.has(seal.auditLogId) && (epoch === undefined || seal.epoch === epoch),
+      (seal) =>
+        ids.has(seal.auditLogId) &&
+        (epoch === undefined || seal.epoch === epoch) &&
+        inAuditTimeRange(seal.sealedAt) &&
+        inAuditTimeRange(seal.auditOccurredAt),
     );
   }
 
+  /** Every seal of a Market, out-of-range times included. */
+  private allSealsOf(market: MarketContext): SealRecord[] {
+    return this.seals.filter((seal) => this.marketOfRow.get(seal.auditLogId) === market.marketId);
+  }
+
   private rowsOf(market: MarketContext): AuditRowRecord[] {
-    return this.rows.filter((row) => row.marketId === market.marketId).sort(byKey);
+    return this.rows
+      .filter((row) => row.marketId === market.marketId && inAuditTimeRange(row.occurredAt))
+      .sort(byKey);
   }
 
   lastSeals(market: MarketContext, epoch: number, count: number): Promise<SealRecord[]> {
+    if (this.failReads !== null) return Promise.reject(this.failReads);
     const seals = this.sealsOf(market, epoch).sort((a, b) =>
       a.chainSeq < b.chainSeq ? 1 : a.chainSeq > b.chainSeq ? -1 : 0,
     );
@@ -120,6 +139,7 @@ export class InMemoryAuditChainStore implements AuditChainStore {
     limit: number,
     after?: SealKey,
   ): Promise<AuditRowRecord[]> {
+    this.reads.unsealedRows += 1;
     const sealed = new Set(this.sealsOf(market, epoch).map((seal) => seal.auditLogId));
     return Promise.resolve(
       this.rowsOf(market)
@@ -161,14 +181,25 @@ export class InMemoryAuditChainStore implements AuditChainStore {
     return Promise.resolve();
   }
 
-  sealsOfRows(market: MarketContext, epoch: number, ids: readonly string[]): Promise<SealRecord[]> {
-    return Promise.resolve(this.sealsOf(market, epoch).filter((s) => ids.includes(s.auditLogId)));
+  sealsOfRows(
+    market: MarketContext,
+    epoch: number,
+    keys: readonly SealKey[],
+  ): Promise<SealRecord[]> {
+    return Promise.resolve(
+      this.sealsOf(market, epoch).filter((s) =>
+        keys.some(
+          (key) =>
+            compareKeys(key, { occurredAt: s.auditOccurredAt, auditLogId: s.auditLogId }) === 0,
+        ),
+      ),
+    );
   }
 
   private checkpointsOf(market: MarketContext, epoch: number): CheckpointRecord[] {
     return this.checkpoints
       .filter((c) => (c as CheckpointRecord & { marketId?: string }).marketId === market.marketId)
-      .filter((c) => c.epoch === epoch)
+      .filter((c) => c.epoch === epoch && inAuditTimeRange(c.createdAt))
       .sort((a, b) => (a.chainSeq < b.chainSeq ? -1 : a.chainSeq > b.chainSeq ? 1 : 0));
   }
 
@@ -184,6 +215,13 @@ export class InMemoryAuditChainStore implements AuditChainStore {
   }
 
   insertCheckpoint(market: MarketContext, checkpoint: CheckpointRecord): Promise<void> {
+    const taken = this.checkpoints.some(
+      (c) =>
+        (c as CheckpointRecord & { marketId?: string }).marketId === market.marketId &&
+        c.epoch === checkpoint.epoch &&
+        c.chainSeq === checkpoint.chainSeq,
+    );
+    if (taken) return Promise.reject(new CheckpointConflictError());
     this.checkpoints.push({ ...checkpoint, marketId: market.marketId } as CheckpointRecord);
     return Promise.resolve();
   }
@@ -201,7 +239,8 @@ export class InMemoryAuditChainStore implements AuditChainStore {
       .slice(0, limit)
       .map((seal) => ({
         seal,
-        row: this.rows.find((r) => r.id === seal.auditLogId) ?? null,
+        row:
+          this.rows.find((r) => r.id === seal.auditLogId && inAuditTimeRange(r.occurredAt)) ?? null,
       }));
     this.afterSealsBetween?.();
     return Promise.resolve(found);
@@ -218,14 +257,10 @@ export class InMemoryAuditChainStore implements AuditChainStore {
     );
   }
 
-  sealsOutsideEpochs(
-    market: MarketContext,
-    known: readonly number[],
-    limit: number,
-  ): Promise<SealRecord[]> {
+  sealsAboveEpoch(market: MarketContext, maxKnown: number, limit: number): Promise<SealRecord[]> {
     return Promise.resolve(
       this.sealsOf(market)
-        .filter((s) => !known.includes(s.epoch))
+        .filter((s) => s.epoch > maxKnown)
         .slice(0, limit),
     );
   }
@@ -243,7 +278,54 @@ export class InMemoryAuditChainStore implements AuditChainStore {
   }
 
   earliestRowTime(market: MarketContext): Promise<Temporal.Instant | null> {
+    this.reads.earliestRowTime += 1;
     return Promise.resolve(this.rowsOf(market)[0]?.occurredAt ?? null);
+  }
+
+  nextRowTime(
+    market: MarketContext,
+    atOrAfter: Temporal.Instant,
+  ): Promise<Temporal.Instant | null> {
+    this.reads.nextRowTime += 1;
+    return Promise.resolve(
+      this.rowsOf(market).find((row) => Temporal.Instant.compare(row.occurredAt, atOrAfter) >= 0)
+        ?.occurredAt ?? null,
+    );
+  }
+
+  rowsOutOfRange(market: MarketContext, limit: number): Promise<string[]> {
+    return Promise.resolve(
+      this.rows
+        .filter((row) => row.marketId === market.marketId && !inAuditTimeRange(row.occurredAt))
+        .map((row) => row.id)
+        .sort()
+        .slice(0, limit),
+    );
+  }
+
+  sealsOutOfRange(market: MarketContext, limit: number): Promise<SealPosition[]> {
+    return Promise.resolve(
+      this.allSealsOf(market)
+        .filter((s) => !inAuditTimeRange(s.sealedAt) || !inAuditTimeRange(s.auditOccurredAt))
+        .map(({ epoch, chainSeq, auditLogId }) => ({ epoch, chainSeq, auditLogId }))
+        .slice(0, limit),
+    );
+  }
+
+  checkpointsOutOfRange(
+    market: MarketContext,
+    limit: number,
+  ): Promise<{ epoch: number; chainSeq: bigint }[]> {
+    return Promise.resolve(
+      this.checkpoints
+        .filter(
+          (c) =>
+            (c as CheckpointRecord & { marketId?: string }).marketId === market.marketId &&
+            !inAuditTimeRange(c.createdAt),
+        )
+        .map(({ epoch, chainSeq }) => ({ epoch, chainSeq }))
+        .slice(0, limit),
+    );
   }
 
   /** Replaces one stored seal (tampering, in a test). */

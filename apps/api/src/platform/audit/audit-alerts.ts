@@ -15,6 +15,8 @@ export type AuditAlertCode =
   | 'audit.seal.stalled'
   | 'audit.seal.duplicate-row'
   | 'audit.anchor.failed'
+  | 'audit.seal.failed'
+  | 'audit.checkpoint.conflict'
   // Sealer and verifier (PA 6.2, 8 (k)).
   | 'audit.row.noncanonical'
   // Verifier (PA 8 (a) to (j)).
@@ -28,7 +30,11 @@ export type AuditAlertCode =
   | 'audit.seal.time-mismatch'
   | 'audit.seal.out-of-order'
   | 'audit.seal.hash-version'
-  | 'audit.row.future';
+  | 'audit.row.future'
+  | 'audit.row.out-of-range'
+  | 'audit.seal.out-of-range'
+  | 'audit.checkpoint.out-of-range'
+  | 'audit.verify.incomplete';
 
 /** What one alert line names: ids and positions only. */
 export interface AuditAlertSubject {

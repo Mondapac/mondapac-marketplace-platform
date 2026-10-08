@@ -18,6 +18,8 @@ import {
   STALL_RUNS,
 } from './audit-chain-policy';
 import {
+  CheckpointConflictError,
+  keyOf,
   SealInsertConflictError,
   type AuditChainStore,
   type CheckpointRecord,
@@ -51,7 +53,13 @@ export interface SealRun {
   readonly late: number;
   /** Why the run ended. */
   readonly ended:
-    'idle' | 'time-spent' | 'chain-broken' | 'watermark-future' | 'lost-race' | 'duplicate-row';
+    | 'idle'
+    | 'time-spent'
+    | 'chain-broken'
+    | 'watermark-future'
+    | 'lost-race'
+    | 'duplicate-row'
+    | 'checkpoint-conflict';
   /** Whether settled rows were waiting for a seal this run (PA 7.1 step 8). */
   readonly pending: boolean;
   /** Consecutive runs with waiting rows and a head that did not move. */
@@ -135,11 +143,39 @@ export class AuditSealer {
     private readonly clock: Clock,
   ) {}
 
-  /** One run for the context's Market. Safe to run twice and at once (PA 7.2). */
+  /**
+   * One run for the context's Market. Safe to run twice and at once (PA 7.2). A run that throws
+   * (the database gone, an unknown error) alerts `audit.seal.failed` with the Market and epoch
+   * only, counts toward `audit.seal.stalled` as a run with waiting rows and an unmoved head, and
+   * rethrows to the scheduler (Hassan, 6b review M2).
+   */
   async run(context: CallContext): Promise<SealRun> {
+    const marketId = context.market.marketId;
+    const state = this.stateOf(marketId);
+    try {
+      return await this.runOnce(context, state);
+    } catch (error) {
+      state.stalledRuns += 1;
+      logAuditAlert(this.logger, 'audit.seal.failed', { marketId, epoch: CURRENT_EPOCH });
+      this.alertStalled(marketId, state, state.lastHeadSeq ?? null);
+      throw error;
+    }
+  }
+
+  private alertStalled(marketId: string, state: MarketState, headSeq: bigint | null): void {
+    if (state.stalledRuns >= STALL_RUNS) {
+      logAuditAlert(
+        this.logger,
+        'audit.seal.stalled',
+        { marketId, epoch: CURRENT_EPOCH, chainSeq: headSeq },
+        { runs: state.stalledRuns },
+      );
+    }
+  }
+
+  private async runOnce(context: CallContext, state: MarketState): Promise<SealRun> {
     const market = context.market;
     const marketId = market.marketId;
-    const state = this.stateOf(marketId);
     const started = this.clock.now();
     const deadline = started.add({ milliseconds: RUN_BUDGET_MS });
 
@@ -252,14 +288,7 @@ export class AuditSealer {
       (sealed > 0 || (state.lastHeadSeq !== undefined && state.lastHeadSeq !== headSeq));
     state.lastHeadSeq = headSeq;
     state.stalledRuns = pending && !moved ? state.stalledRuns + 1 : 0;
-    if (state.stalledRuns >= STALL_RUNS) {
-      logAuditAlert(
-        this.logger,
-        'audit.seal.stalled',
-        { marketId, epoch: CURRENT_EPOCH, chainSeq: headSeq },
-        { runs: state.stalledRuns },
-      );
-    }
+    this.alertStalled(marketId, state, headSeq);
 
     // Step 6: the daily heartbeat, never for a Market whose sealing stopped.
     if (
@@ -418,12 +447,26 @@ export class AuditSealer {
     market: MarketContext,
     before: SealRecord | null,
     selected: readonly AuditRowRecord[],
-  ): Promise<{ ended: 'lost-race' | 'duplicate-row'; head: SealRecord | null } | null> {
+  ): Promise<{
+    ended: 'lost-race' | 'duplicate-row' | 'checkpoint-conflict';
+    head: SealRecord | null;
+  } | null> {
+    if (error instanceof CheckpointConflictError) {
+      // An integrity alert: the batch rolled back; the next run meets it again and stalls.
+      logAuditAlert(this.logger, 'audit.checkpoint.conflict', {
+        marketId: market.marketId,
+        epoch: CURRENT_EPOCH,
+        chainSeq: before === null ? null : before.chainSeq,
+      });
+      return { ended: 'checkpoint-conflict', head: before };
+    }
     const lostRace =
       error instanceof TransactionConflictError ||
       (error instanceof SealInsertConflictError && error.conflict === 'position-taken');
     const rowSealed = error instanceof SealInsertConflictError && error.conflict === 'row-sealed';
     if (!lostRace && !rowSealed) return null;
+    // Which conflict, by SQLSTATE: `23505` on the primary key, or `55P03` / `40P01`.
+    const sqlState = error instanceof TransactionConflictError ? error.sqlState : '23505';
 
     // Read the head again, in a unit of its own.
     const reread = await this.unitOfWork.run(
@@ -431,11 +474,7 @@ export class AuditSealer {
       async () => {
         const [head] = await this.store.lastSeals(market, CURRENT_EPOCH, 1);
         const already = rowSealed
-          ? await this.store.sealsOfRows(
-              market,
-              CURRENT_EPOCH,
-              selected.map((row) => row.id),
-            )
+          ? await this.store.sealsOfRows(market, CURRENT_EPOCH, selected.map(keyOf))
           : [];
         return ok({ head: head ?? null, already });
       },
@@ -448,6 +487,12 @@ export class AuditSealer {
         msg: 'audit.seal.lost-race',
         marketId: market.marketId,
         epoch: CURRENT_EPOCH,
+        sqlState,
+        constraint: rowSealed
+          ? 'row-sealed'
+          : lostRace && sqlState === '23505'
+            ? 'position-taken'
+            : null,
       });
       return { ended: 'lost-race', head };
     }
@@ -470,25 +515,29 @@ export class AuditSealer {
 
   /**
    * Whether settled rows wait for a seal while this Market's sealing is stopped (step 8,
-   * Hassan N1 a): an unsealed row of the current epoch in the last 24 hours up to `now - S`,
-   * on either side of the watermark.
+   * Hassan N1 a), on either side of the watermark: first one settled row above it (the keyset
+   * read of every batch), and only when there is none an unsealed row of the current epoch in
+   * the last 24 hours up to `now - S` (Mojtaba L1).
    */
   private async rowsWait(market: MarketContext, settledUntil: Temporal.Instant): Promise<boolean> {
     const result = await this.unitOfWork.run(
       market,
-      async () =>
-        ok(
-          await this.store.unsealedRows(
-            market,
-            CURRENT_EPOCH,
-            settledUntil.subtract(LATE_SCAN_WINDOW),
-            { occurredAt: settledUntil, auditLogId: MAX_UUID },
-            1,
-          ),
-        ),
+      async () => {
+        const watermark = await this.store.watermark(market, CURRENT_EPOCH);
+        const above = await this.store.rowsAbove(market, watermark, settledUntil, 1);
+        if (above.length > 0) return ok(true);
+        const below = await this.store.unsealedRows(
+          market,
+          CURRENT_EPOCH,
+          settledUntil.subtract(LATE_SCAN_WINDOW),
+          { occurredAt: settledUntil, auditLogId: MAX_UUID },
+          1,
+        );
+        return ok(below.length > 0);
+      },
       { readOnly: true },
     );
-    return result.ok && result.value.length > 0;
+    return result.ok && result.value;
   }
 
   /** Sends one anchor; a failure alerts `audit.anchor.failed` and the sealer continues. */

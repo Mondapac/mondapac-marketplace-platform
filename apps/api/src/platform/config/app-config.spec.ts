@@ -140,6 +140,37 @@ describe('loadAppConfig', () => {
     expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', PORT: port })).toThrow(/PORT/);
   });
 
+  it('refuses a worker that would drop info lines, the audit anchors among them', () => {
+    for (const level of ['fatal', 'error', 'warn', 'silent']) {
+      expect(() =>
+        loadAppConfig({
+          APP_ROLE: 'worker',
+          HOSTED_MARKETS: 'AU',
+          DATABASE_URL: 'postgresql://u:p@h/d',
+          LOG_LEVEL: level,
+        }),
+      ).toThrow(/LOG_LEVEL: the worker logs at info/);
+    }
+    for (const level of ['info', 'debug', 'trace']) {
+      expect(
+        loadAppConfig({
+          APP_ROLE: 'worker',
+          HOSTED_MARKETS: 'AU',
+          DATABASE_URL: 'postgresql://u:p@h/d',
+          LOG_LEVEL: level,
+        }).logLevel,
+      ).toBe(level);
+    }
+    expect(
+      loadAppConfig({
+        APP_ROLE: 'api',
+        HOSTED_MARKETS: 'AU',
+        DATABASE_URL: 'postgresql://u:p@h/d',
+        LOG_LEVEL: 'warn',
+      }).logLevel,
+    ).toBe('warn');
+  });
+
   it('rejects an unknown NODE_ENV and LOG_LEVEL', () => {
     expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
     expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', LOG_LEVEL: 'loud' })).toThrow(/LOG_LEVEL/);

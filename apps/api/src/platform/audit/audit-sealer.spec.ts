@@ -432,8 +432,13 @@ describe.each(TEST_MARKETS)('AuditSealer (PA 7) for market %s', (code) => {
       s.store.failNextInsert = error();
 
       await expect(s.sealer.run(context)).resolves.toMatchObject({ ended: 'lost-race', sealed: 0 });
+      // The line names the SQLSTATE that lost (Sajad L2).
       expect(infos).toHaveBeenCalledWith(
-        expect.objectContaining({ msg: 'audit.seal.lost-race', marketId: code }),
+        expect.objectContaining({
+          msg: 'audit.seal.lost-race',
+          marketId: code,
+          sqlState: _case.startsWith('23505') ? '23505' : _case,
+        }),
       );
       expect(alertsOf(errors, 'audit.chain.broken')).toEqual([]);
       // The next tick continues from the head.
@@ -522,6 +527,73 @@ describe.each(TEST_MARKETS)('AuditSealer (PA 7) for market %s', (code) => {
         'chain-broken',
         'chain-broken',
       ]);
+      expect(alertsOf(errors, 'audit.seal.stalled')).toHaveLength(1);
+    });
+  });
+
+  describe('a run that throws (Hassan M2)', () => {
+    it('alerts audit.seal.failed with the Market and epoch only, and three such runs stall', async () => {
+      const s = setUp();
+      s.store.addRow(rowAt(market, START.subtract({ minutes: 10 })));
+      s.store.failReads = new Error('connection terminated: password=hunter2');
+
+      for (let index = 0; index < 3; index += 1) {
+        await expect(s.sealer.run(context)).rejects.toThrow('connection terminated');
+      }
+
+      const failed = alertsOf(errors, 'audit.seal.failed');
+      expect(failed).toHaveLength(3);
+      expect(failed[0]).toEqual({
+        msg: 'audit.seal.failed',
+        alert: true,
+        marketId: code,
+        epoch: 1,
+        chainSeq: null,
+        auditLogId: null,
+      });
+      expect(alertsOf(errors, 'audit.seal.stalled')).toHaveLength(1);
+      expect(JSON.stringify(errors.mock.calls)).not.toContain('hunter2');
+
+      // The database comes back: the run seals and the count resets.
+      s.store.failReads = null;
+      await expect(s.sealer.run(context)).resolves.toMatchObject({ sealed: 1, stalledRuns: 0 });
+    });
+  });
+
+  describe('a checkpoint position already taken (Mojtaba L2)', () => {
+    it('alerts audit.checkpoint.conflict, rolls the batch back and stalls on repeat', async () => {
+      const s = setUp();
+      s.store.addRow(rowAt(market, START.subtract({ minutes: 10 })));
+      s.store.addRow(rowAt(market, START.subtract({ minutes: 9 })));
+      // The in-memory store has no transaction: the test removes what a rollback would.
+      s.store.beforeInsert = (_market, seals) => {
+        queueMicrotask(() => {
+          s.store.seals = s.store.seals.filter((seal) => !seals.includes(seal));
+        });
+      };
+      // A checkpoint no sealer wrote, at the head the batch reaches, old enough that one is due.
+      s.store.checkpoints.push({
+        epoch: 1,
+        chainSeq: 2n,
+        chainHash: new Uint8Array(32).fill(6),
+        hashVersion: 1,
+        createdAt: START.subtract({ hours: 2 }),
+        marketId: code,
+      } as never);
+
+      const runs = [];
+      for (let index = 0; index < 3; index += 1) runs.push(await s.sealer.run(context));
+
+      expect(runs.map((run) => run.ended)).toEqual([
+        'checkpoint-conflict',
+        'checkpoint-conflict',
+        'checkpoint-conflict',
+      ]);
+      expect(alertsOf(errors, 'audit.checkpoint.conflict')[0]).toMatchObject({
+        alert: true,
+        marketId: code,
+        epoch: 1,
+      });
       expect(alertsOf(errors, 'audit.seal.stalled')).toHaveLength(1);
     });
   });

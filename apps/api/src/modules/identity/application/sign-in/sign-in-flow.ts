@@ -186,7 +186,8 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  *    are checked before a link is consumed, so a refused link stays unused. A link that
  *    verifies a self-registered owner records `identity.seller-registered.v1` on the seller
  *    (8.2, M4) and, in the same unit, the three founding audit rows of 5.5 as `ANONYMOUS`
- *    (slice 6b): the seller access founded, the owner's membership, the owner's assignment. Then a hash with older parameters is replaced and a session with a new token is
+ *    (slice 6b): the seller access founded, the owner's membership, the owner's assignment.
+ *    Then a hash with older parameters is replaced and a session with a new token is
  *    created; a seller session carries its seller and the answer its access state (`pending`
  *    and `rejected` sign in to a limited session, 3.3). Every attempt writes one sign-in record
  *    (never the email).

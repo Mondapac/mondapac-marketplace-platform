@@ -104,6 +104,9 @@ export interface AppConfig {
   readonly mailCatcherUrl: string | null;
 }
 
+/** The log levels a worker may run at: every one that still writes info lines. */
+const WORKER_LOG_LEVELS: ReadonlySet<string> = new Set(['info', 'debug', 'trace']);
+
 export class InvalidConfigError extends Error {
   constructor(readonly issues: readonly string[]) {
     super(`Invalid configuration:\n${issues.map((issue) => `  - ${issue}`).join('\n')}`);
@@ -127,6 +130,17 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     issues.push(
       `${MIGRATION_DATABASE_URL}: must not be set for the application; it is for ` +
         'pnpm db:*, pnpm test:db and pnpm verify only',
+    );
+  }
+  // The worker writes the audit chain's anchors as info lines (LogAnchorSink, PA 8): a level
+  // above info would drop them silently, so the worker refuses one (Hassan, 6b review L1).
+  if (
+    parsed.success &&
+    parsed.data.APP_ROLE === 'worker' &&
+    !WORKER_LOG_LEVELS.has(parsed.data.LOG_LEVEL)
+  ) {
+    issues.push(
+      'LOG_LEVEL: the worker logs at info, debug or trace (audit anchors are info lines)',
     );
   }
   if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);

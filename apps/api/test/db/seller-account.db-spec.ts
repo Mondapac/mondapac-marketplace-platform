@@ -12,6 +12,12 @@ import {
   SELLER_ACCESS_CONTRACT,
   type SellerAccessContract,
 } from '../../src/modules/identity/contracts/seller-access.contract';
+import { IdentityModule } from '../../src/modules/identity/identity.module';
+import {
+  AUDIT_WRITER,
+  AuditWriteRefusedError,
+  type AuditWriter,
+} from '../../src/platform/audit/audit-writer';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -359,6 +365,53 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     expect(mails).toHaveLength(2);
     expect(mails[1]!.text).not.toContain('ml1_');
     expect(mails[1]!.text).toContain(identity().links.targets.seller!['sign-in']);
+  });
+
+  it('a refused founding row rolls back the whole verification: no registration, session, event or row (Sajad L5)', async () => {
+    const email = newAddress();
+    expect((await signUp(email)).status).toBe(202);
+    await settle();
+    const token = tokenOf(transport.to(email)[0]!);
+    // The writer refuses the second founding row: the first one must roll back with it.
+    const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+    const record = writer.record.bind(writer);
+    const refusing = jest
+      .spyOn(writer, 'record')
+      .mockImplementation(
+        (
+          context: Parameters<AuditWriter['record']>[0],
+          entry: Parameters<AuditWriter['record']>[1],
+        ) => {
+          if (entry.action === 'identity.seller-member.added') {
+            return Promise.reject(new AuditWriteRefusedError('entry-invalid', 'after'));
+          }
+          return record(context, entry);
+        },
+      );
+
+    const refused = await post('confirm-email', { token, password: PASSWORD });
+
+    expect(refused.status).not.toBe(200);
+    const rows = (await rowsOf(email))!;
+    expect(rows.account.email_verified_at).toBeNull();
+    expect(rows.access!.registered_at).toBeNull();
+    expect(await auditRowsOf(rows.sellerId!)).toEqual([]);
+    const { rows: sessions } = await sql.query(
+      'SELECT 1 FROM identity.sessions WHERE market_id = $1 AND account_id = $2',
+      [code, rows.account.id],
+    );
+    expect(sessions).toEqual([]);
+    const { rows: events } = await sql.query(
+      `SELECT 1 FROM identity.outbox WHERE market_id = $1 AND aggregate_id = $2
+        AND type = 'identity.seller-registered.v1'`,
+      [code, rows.sellerId],
+    );
+    expect(events).toEqual([]);
+
+    // With the writer back, the same link verifies and founds once.
+    refusing.mockRestore();
+    expect((await post('confirm-email', { token, password: PASSWORD })).status).toBe(200);
+    expect(await auditRowsOf(rows.sellerId!)).toHaveLength(3);
   });
 
   it('signs in with "keep me signed in", reads the session and status, then the facade answers', async () => {

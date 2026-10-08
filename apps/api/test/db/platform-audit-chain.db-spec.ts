@@ -11,6 +11,7 @@ import { AppModule } from '../../src/app.module';
 import {
   AUDIT_CHAIN_STORE,
   SealInsertConflictError,
+  keyOf,
   type AuditChainStore,
   type SealRecord,
 } from '../../src/platform/audit/audit-chain-store';
@@ -21,6 +22,13 @@ import {
   AUDIT_VERIFY_EXIT,
   runAuditVerifyCommand,
 } from '../../src/platform/audit/audit-verify-command';
+import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { IdentityModule } from '../../src/modules/identity/identity.module';
+import {
+  AUDIT_WRITER,
+  AuditWriteRefusedError,
+  type AuditWriter,
+} from '../../src/platform/audit/audit-writer';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
@@ -36,6 +44,8 @@ import { auditOwnerTestDatabaseUrl, auditTestDatabaseUrl } from './test-database
 
 const START = Temporal.Instant.from('2026-10-08T06:00:00Z');
 const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
+/** The seal's foreign key to its row (DP 11.3), dropped and restored by the E1 cases. */
+const SEAL_FOREIGN_KEY = 'audit_log_seal_market_id_audit_occurred_at_audit_log_id_fkey';
 const CHAIN_TABLES = [
   'platform.audit_log_seal',
   'platform.audit_chain_checkpoint',
@@ -49,6 +59,8 @@ describe('the audit chain on the database (slice 6b)', () => {
   let store: AuditChainStore;
   /** The owner of the copy: the migration role. */
   let owner: Client;
+  /** The application login, which may INSERT into the chain tables (DP 11.6). */
+  let sql: Client;
   let errors: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -68,9 +80,12 @@ describe('the audit chain on the database (slice 6b)', () => {
     store = app.get<AuditChainStore>(AUDIT_CHAIN_STORE);
     owner = new Client({ connectionString: auditOwnerTestDatabaseUrl() });
     await owner.connect();
+    sql = new Client({ connectionString: auditTestDatabaseUrl() });
+    await sql.connect();
   });
 
   afterAll(async () => {
+    await sql.end();
     await owner.end();
     await app.close();
   });
@@ -87,16 +102,33 @@ describe('the audit chain on the database (slice 6b)', () => {
     jest.restoreAllMocks();
   });
 
-  /** Runs `work` as the owner with the append-only triggers off, then turns them on again. */
+  /**
+   * Runs `work` as the owner with the append-only triggers off, in one transaction that turns
+   * them on again before it commits, so no other session ever sees them off (Mojtaba L3).
+   */
   async function asOwnerWithoutTriggers(work: () => Promise<void>): Promise<void> {
-    for (const table of CHAIN_TABLES)
-      await owner.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+    await owner.query('BEGIN');
     try {
+      for (const table of CHAIN_TABLES) {
+        await owner.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+      }
       await work();
-    } finally {
-      for (const table of CHAIN_TABLES)
+      for (const table of CHAIN_TABLES) {
         await owner.query(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+      }
+      await owner.query('COMMIT');
+    } catch (error) {
+      await owner.query('ROLLBACK');
+      throw error;
     }
+  }
+
+  /** Empties the chain tables, then runs `ddl` as the owner: the restore of a dropped constraint. */
+  async function resetThen(ddl: string): Promise<void> {
+    await asOwnerWithoutTriggers(async () => {
+      for (const table of CHAIN_TABLES) await owner.query(`DELETE FROM ${table}`);
+    });
+    await owner.query(ddl);
   }
 
   /** An audit row at `at`, inserted as the owner; `after` is raw jsonb text. */
@@ -198,16 +230,25 @@ describe('the audit chain on the database (slice 6b)', () => {
 
     it('lets two sealers race without a fork: every row is sealed once and the chain verifies', async () => {
       await rows(market, 1200);
-
-      const outcomes = await Promise.all([sealerOf().run(context), sealerOf().run(context)]);
+      const infos = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      // Both sealers read the head before either inserts: a barrier at the first insert forces
+      // the contention (Sajad L2).
+      const racing = barrierStore(2);
+      const outcomes = await Promise.all([
+        new AuditSealer(unitOfWork, racing, new RecordingAnchor(), clock).run(context),
+        new AuditSealer(unitOfWork, racing, new RecordingAnchor(), clock).run(context),
+      ]);
       for (;;) {
         const run = await sealerOf().run(context);
         if (run.sealed === 0) break;
       }
 
-      expect(
-        outcomes.map((run) => run.ended).every((ended) => ['idle', 'lost-race'].includes(ended)),
-      ).toBe(true);
+      expect(outcomes.map((run) => run.ended).sort()).toEqual(['idle', 'lost-race']);
+      const lost = infos.mock.calls
+        .map(([line]) => line as { msg?: string; sqlState?: string })
+        .filter((line) => line.msg === 'audit.seal.lost-race');
+      expect(lost).toHaveLength(1);
+      expect(['23505', '55P03', '40P01']).toContain(lost[0]!.sqlState);
       expect(alertsOf('audit.chain.broken')).toEqual([]);
       expect(alertsOf('audit.seal.duplicate-row')).toEqual([]);
       expect(await sealCount(market)).toBe(1200);
@@ -239,9 +280,10 @@ describe('the audit chain on the database (slice 6b)', () => {
       expect((position as SealInsertConflictError).conflict).toBe('position-taken');
 
       // The unique key: the row is already sealed in the epoch.
+      const firstKey = keyOf(await rowRecord(market, first!));
       const firstSeal = (await unitOfWork.run(
         market,
-        async () => ok(await store.sealsOfRows(market, 1, [first!])),
+        async () => ok(await store.sealsOfRows(market, 1, [firstKey])),
         {
           readOnly: true,
         },
@@ -297,9 +339,10 @@ describe('the audit chain on the database (slice 6b)', () => {
         auditLogId: forged,
       });
       expect(alertsOf('audit.seal.stalled')).toHaveLength(1);
-      // The verifier reports the waiting row (below the forged watermark) and the row in the
-      // future; the other Market seals and verifies.
+      // The verifier reports the forged watermark, the waiting row (check (d) stops at now - S)
+      // and the row in the future; the other Market seals and verifies.
       expect(codesOf((await verifierOf().verify(context, 'full')).findings)).toEqual([
+        ['audit.seal.watermark-future', 2n],
         ['audit.row.unsealed', null],
         ['audit.row.future', null],
       ]);
@@ -350,7 +393,25 @@ describe('the audit chain on the database (slice 6b)', () => {
 
       await expect(sealer.run(context)).resolves.toMatchObject({ sealed: 1, late: 1 });
       expect(alertsOf('audit.seal.late-row')).toHaveLength(1);
-      await expect(verifierOf().verify(context, 'full')).resolves.toMatchObject({ findings: [] });
+      await expect(verifierOf().verify(context, 'full')).resolves.toMatchObject({
+        lateSeals: 1,
+        findings: [],
+      });
+
+      // The next normal run seals new rows on top: the chain grows, no conflict (Sajad L3).
+      await rowAt(market, clock.now().subtract({ minutes: 6 }));
+      await rowAt(market, clock.now().subtract({ minutes: 5, seconds: 30 }));
+      await expect(sealer.run(context)).resolves.toMatchObject({
+        sealed: 2,
+        late: 0,
+        ended: 'idle',
+      });
+      expect((await headOf(market)).chainSeq).toBe(6n);
+      expect(alertsOf('audit.seal.duplicate-row')).toEqual([]);
+      await expect(verifierOf().verify(context, 'full')).resolves.toMatchObject({
+        sealsChecked: 6,
+        findings: [],
+      });
     });
 
     it('seals a jsonb number beyond the double range with the fallback hash and flags it (Hassan M2)', async () => {
@@ -392,7 +453,12 @@ describe('the audit chain on the database (slice 6b)', () => {
         const ids = await sealedChain(3);
         const lines: string[] = [];
         await expect(
-          runAuditVerifyCommand(app, ['--market', code, '--full'], (l) => lines.push(l)),
+          runAuditVerifyCommand(
+            app,
+            ['--market', code, '--full'],
+            (l) => lines.push(l),
+            (l) => lines.push(l),
+          ),
         ).resolves.toBe(AUDIT_VERIFY_EXIT.clean);
 
         await tamper(`UPDATE platform.audit_log SET after = '{"n": 2}'::jsonb WHERE id = $1`, [
@@ -403,7 +469,12 @@ describe('the audit chain on the database (slice 6b)', () => {
           ['audit.row.mismatch', 2n],
         ]);
         await expect(
-          runAuditVerifyCommand(app, ['--market', code, '--full'], (l) => lines.push(l)),
+          runAuditVerifyCommand(
+            app,
+            ['--market', code, '--full'],
+            (l) => lines.push(l),
+            (l) => lines.push(l),
+          ),
         ).resolves.toBe(AUDIT_VERIFY_EXIT.findings);
         expect(lines.join('\n')).not.toContain('"n"');
       });
@@ -442,8 +513,298 @@ describe('the audit chain on the database (slice 6b)', () => {
           ['audit.chain.broken', 3n],
         ]);
       });
+
+      it('a raised hash_version past a dropped CHECK: audit.seal.hash-version and a broken link (Mohammad 12)', async () => {
+        await sealedChain(3);
+        await owner.query(
+          'ALTER TABLE platform.audit_log_seal DROP CONSTRAINT audit_log_seal_hash_version_check',
+        );
+        try {
+          await tamper(
+            'UPDATE platform.audit_log_seal SET hash_version = 2 WHERE market_id = $1 AND epoch = 1 AND chain_seq = 2',
+            [code],
+          );
+
+          // Seal 3 keeps version 1, below the 2 before it: the version went down.
+          expect(codesOf((await verifierOf().verify(context, 'full')).findings)).toEqual([
+            ['audit.seal.hash-version', 2n],
+            ['audit.chain.broken', 2n],
+            ['audit.seal.hash-version', 3n],
+          ]);
+        } finally {
+          await resetThen(
+            'ALTER TABLE platform.audit_log_seal ADD CONSTRAINT audit_log_seal_hash_version_check CHECK ("hash_version" IN (1))',
+          );
+        }
+      });
+
+      describe('with the seal foreign key dropped (Mohammad E1)', () => {
+        beforeEach(async () => {
+          await owner.query(
+            `ALTER TABLE platform.audit_log_seal DROP CONSTRAINT ${SEAL_FOREIGN_KEY}`,
+          );
+        });
+        afterEach(async () => {
+          await resetThen(
+            `ALTER TABLE platform.audit_log_seal ADD CONSTRAINT ${SEAL_FOREIGN_KEY}
+               FOREIGN KEY (market_id, audit_occurred_at, audit_log_id)
+               REFERENCES platform.audit_log (market_id, occurred_at, id)
+               ON DELETE RESTRICT ON UPDATE RESTRICT`,
+          );
+        });
+
+        it('a sealed row deleted: audit.row.missing, and the verification completes', async () => {
+          const ids = await sealedChain(3);
+          await tamper('DELETE FROM platform.audit_log WHERE id = $1', [ids[1]]);
+
+          const report = await verifierOf().verify(context, 'full');
+
+          expect(report.complete).toBe(true);
+          expect(codesOf(report.findings)).toEqual([['audit.row.missing', 2n]]);
+        });
+
+        it("a seal's audit_occurred_at changed: audit.seal.time-mismatch", async () => {
+          const ids = await sealedChain(3);
+          await tamper(
+            `UPDATE platform.audit_log_seal SET audit_occurred_at = audit_occurred_at + interval '1 millisecond'
+              WHERE audit_log_id = $1`,
+            [ids[1]],
+          );
+
+          const codes = codesOf((await verifierOf().verify(context, 'full')).findings);
+          expect(codes).toContainEqual(['audit.seal.time-mismatch', 2n]);
+          // The anti-join of (d) follows the key, so the row also reads as unsealed.
+          expect(codes).toEqual(expect.arrayContaining([['audit.row.unsealed', null]]));
+        });
+      });
+
+      it('a selected row sealed by another session at a gap: audit.seal.duplicate-row through the sealer (Sajad L4)', async () => {
+        const ids = await sealedChain(5);
+        // A gap below the head's predecessor, so the head still links.
+        await tamper('DELETE FROM platform.audit_log_seal WHERE audit_log_id = $1', [ids[1]]);
+        const fresh = await rowAt(market, START.subtract({ minutes: 8 }));
+        const freshAt = START.subtract({ minutes: 8 });
+
+        // Another session seals the fresh row at the gap and commits while the sealer waits.
+        await owner.query('BEGIN');
+        await owner.query(
+          `INSERT INTO platform.audit_log_seal
+             (market_id, tenant_id, epoch, chain_seq, audit_log_id, audit_occurred_at, row_hash,
+              chain_hash, late, hash_version, sealed_at)
+           VALUES ($1, $2, 1, 2, $3, $4, $5, $5, false, 1, $6)`,
+          [
+            code,
+            market.tenantId,
+            fresh,
+            new Date(freshAt.epochMilliseconds),
+            Buffer.alloc(32, 1),
+            new Date(START.epochMilliseconds),
+          ],
+        );
+        const run = sealerOf().run(context);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await owner.query('COMMIT');
+
+        await expect(run).resolves.toMatchObject({ ended: 'duplicate-row', sealed: 0 });
+        expect(alertsOf('audit.seal.duplicate-row')).toEqual([
+          expect.objectContaining({ marketId: code, chainSeq: '2', auditLogId: fresh }),
+        ]);
+      });
+    });
+
+    describe('times out of range written by the application login (Hassan M1, Mojtaba)', () => {
+      afterEach(async () => {
+        await expect(verifierOf().verify(otherContext, 'full')).resolves.toMatchObject({
+          findings: [],
+        });
+      });
+
+      async function rowAtText(occurredAt: string): Promise<string> {
+        const id = uuidV7(Date.now(), randomBytes(10));
+        await sql.query(
+          `INSERT INTO platform.audit_log
+             (id, market_id, tenant_id, occurred_at, actor_type, action, target_type, target_id, correlation_id)
+           VALUES ($1::uuid, $2, $3, $4::timestamptz, 'SYSTEM', 'identity.role.seeded', 'identity.role', $1::text, 'chain-range')`,
+          [id, code, market.tenantId, occurredAt],
+        );
+        return id;
+      }
+
+      it('rows at infinity, -infinity and year 280000: the sealer seals the rest, the verifier names them, the command exits 2', async () => {
+        const odd = [
+          await rowAtText('infinity'),
+          await rowAtText('-infinity'),
+          await rowAtText('280000-01-01 00:00:00+00'),
+          await rowAtText('1999-12-31 23:59:59.999+00'),
+        ];
+        await rows(market, 2);
+        await rows(other, 1);
+        await sealerOf().run(otherContext);
+
+        await expect(sealerOf().run(context)).resolves.toMatchObject({ sealed: 2, ended: 'idle' });
+        const report = await verifierOf().verify(context, 'full');
+        expect(report.complete).toBe(true);
+        expect(report.findings.map((f) => [f.code, f.auditLogId]).sort()).toEqual(
+          odd.map((id) => ['audit.row.out-of-range', id]).sort(),
+        );
+        const lines: string[] = [];
+        await expect(
+          runAuditVerifyCommand(
+            app,
+            ['--market', code, '--full'],
+            (l) => lines.push(l),
+            (l) => lines.push(l),
+          ),
+        ).resolves.toBe(AUDIT_VERIFY_EXIT.findings);
+      });
+
+      it('a seal with sealed_at = infinity: no crash, audit.seal.out-of-range by position', async () => {
+        await rows(market, 2);
+        await rows(other, 1);
+        await sealerOf().run(context);
+        await sealerOf().run(otherContext);
+        const head = await headOf(market);
+        const third = await rowAt(market, START.subtract({ minutes: 9 }));
+        const rowHash = hashAuditRow(await rowRecord(market, third)).hash;
+        const chainHash = chainHashOf({
+          hashVersion: 1,
+          epoch: 1,
+          prev: head.chainHash,
+          chainSeq: 3n,
+          late: false,
+          rowHash,
+        });
+        await sql.query(
+          `INSERT INTO platform.audit_log_seal
+             (market_id, tenant_id, epoch, chain_seq, audit_log_id, audit_occurred_at, row_hash,
+              chain_hash, late, hash_version, sealed_at)
+           VALUES ($1, $2, 1, 3, $3, $4, $5, $6, false, 1, 'infinity')`,
+          [
+            code,
+            market.tenantId,
+            third,
+            new Date(START.subtract({ minutes: 9 }).epochMilliseconds),
+            Buffer.from(rowHash),
+            Buffer.from(chainHash),
+          ],
+        );
+
+        const run = await sealerOf().run(context);
+        expect(['lost-race', 'duplicate-row']).toContain(run.ended);
+        const report = await verifierOf().verify(context, 'full');
+        expect(report.complete).toBe(true);
+        expect(codesOf(report.findings)).toEqual([['audit.seal.out-of-range', 3n]]);
+      });
+
+      it('a checkpoint with created_at = infinity: the sealer goes on, audit.checkpoint.out-of-range', async () => {
+        await rows(market, 2);
+        await rows(other, 1);
+        await sealerOf().run(otherContext);
+        await sql.query(
+          `INSERT INTO platform.audit_chain_checkpoint
+             (market_id, tenant_id, epoch, chain_seq, chain_hash, hash_version, created_at)
+           VALUES ($1, $2, 1, 50, $3, 1, 'infinity')`,
+          [code, market.tenantId, Buffer.alloc(32, 3)],
+        );
+
+        await expect(sealerOf().run(context)).resolves.toMatchObject({ sealed: 2, ended: 'idle' });
+        const report = await verifierOf().verify(context, 'full');
+        expect(codesOf(report.findings)).toEqual([['audit.checkpoint.out-of-range', 50n]]);
+      });
+
+      it('a checkpoint at the position the batch reaches: audit.checkpoint.conflict, the batch rolls back (Mojtaba L2)', async () => {
+        await rows(market, 2);
+        await rows(other, 1);
+        await sealerOf().run(otherContext);
+        await sql.query(
+          `INSERT INTO platform.audit_chain_checkpoint
+             (market_id, tenant_id, epoch, chain_seq, chain_hash, hash_version, created_at)
+           VALUES ($1, $2, 1, 2, $3, 1, $4)`,
+          [
+            code,
+            market.tenantId,
+            Buffer.alloc(32, 3),
+            new Date(START.subtract({ hours: 2 }).epochMilliseconds),
+          ],
+        );
+
+        await expect(sealerOf().run(context)).resolves.toMatchObject({
+          ended: 'checkpoint-conflict',
+          sealed: 0,
+        });
+        expect(alertsOf('audit.checkpoint.conflict')).toEqual([
+          expect.objectContaining({ marketId: code }),
+        ]);
+        expect(await sealCount(market)).toBe(0);
+      });
     });
   });
+
+  // Identity's seed on the one copy where no Market has its roles yet (Sajad L5): a refused
+  // audit row rolls the role back with it. The only test of this file that seeds roles.
+  it('a refused identity.role.seeded rolls the role back; the next run creates it with its row', async () => {
+    for (const code of TEST_MARKETS) {
+      const market = marketOf(code);
+      const system = testCallContext(market, 'system', `seed-refused-${code.toLowerCase()}`);
+      const countRoles = async () =>
+        Number(
+          (
+            await owner.query<{ count: string }>(
+              `SELECT count(*) FROM identity.roles WHERE market_id = $1 AND kind = 'system'`,
+              [code],
+            )
+          ).rows[0]!.count,
+        );
+      expect(await countRoles()).toBe(0);
+      const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+      const refusing = jest
+        .spyOn(writer, 'record')
+        .mockRejectedValue(new AuditWriteRefusedError('entry-invalid', 'after'));
+
+      await app
+        .get(SeedSystemRoles)
+        .execute(system, {})
+        .catch((error: unknown) => error);
+
+      expect(await countRoles()).toBe(0);
+      refusing.mockRestore();
+      await app.get(SeedSystemRoles).execute(system, {});
+      expect(await countRoles()).toBe(2);
+      const { rows: seeded } = await owner.query(
+        `SELECT 1 FROM platform.audit_log WHERE market_id = $1 AND action = 'identity.role.seeded'`,
+        [code],
+      );
+      expect(seeded).toHaveLength(2);
+    }
+  });
+
+  /**
+   * The real store with a barrier at the first insert of seals: no insert proceeds until
+   * `parties` sealers have reached one, so they all read the same head first.
+   */
+  function barrierStore(parties: number): AuditChainStore {
+    let arrived = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return new Proxy(store, {
+      get(target, property, receiver) {
+        if (property === 'insertSeals') {
+          return async (market: MarketContext, seals: readonly SealRecord[]) => {
+            arrived += 1;
+            if (arrived >= parties) release();
+            await gate;
+            return target.insertSeals(market, seals);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function'
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      },
+    });
+  }
 
   /** An audit row read back through the store's mapping, as the sealer hashes it. */
   async function rowRecord(market: MarketContext, id: string) {

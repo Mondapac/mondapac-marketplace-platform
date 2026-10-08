@@ -82,18 +82,28 @@ function sealsOf(store: InMemoryAuditChainStore, market: MarketContext): SealRec
     .sort((a, b) => (a.chainSeq < b.chainSeq ? -1 : 1));
 }
 
-/** Seals `rows` in the given order with correct links: a chain only order can be wrong in. */
-function sealInOrder(store: InMemoryAuditChainStore, rows: readonly AuditRowRecord[]): void {
+/**
+ * Seals `rows` in the given order with correct links: a chain only order can be wrong in.
+ * `late` flags seals late; `hashEpoch` hashes the links of positions in `hashEpochFrom..` with
+ * another epoch than the stored one (a segment of another epoch's chain, spliced in).
+ */
+function sealInOrder(
+  store: InMemoryAuditChainStore,
+  rows: readonly AuditRowRecord[],
+  options: { late?: readonly boolean[]; hashEpoch?: number; hashEpochFrom?: number } = {},
+): void {
   let prev = genesisPrev();
   rows.forEach((row, index) => {
     const chainSeq = BigInt(index + 1);
     const rowHash = hashAuditRow(row).hash;
+    const late = options.late?.[index] ?? false;
+    const spliced = options.hashEpoch !== undefined && index + 1 >= (options.hashEpochFrom ?? 1);
     const chainHash = chainHashOf({
       hashVersion: 1,
-      epoch: 1,
+      epoch: spliced ? options.hashEpoch! : 1,
       prev,
       chainSeq,
-      late: false,
+      late,
       rowHash,
     });
     store.seals.push({
@@ -103,7 +113,7 @@ function sealInOrder(store: InMemoryAuditChainStore, rows: readonly AuditRowReco
       auditOccurredAt: row.occurredAt,
       rowHash,
       chainHash,
-      late: false,
+      late,
       hashVersion: 1,
       sealedAt: START,
     });
@@ -470,6 +480,181 @@ describe.each(TEST_MARKETS)('AuditVerifier (PA 8) for market %s', (code) => {
       pinnedHead: 3n,
       sealsChecked: 3,
       findings: [],
+    });
+  });
+
+  describe('review fixes (PR #113)', () => {
+    /** A bare chain store and verifier with rows a second apart, sealed in order. */
+    function bareChain(count: number, endingAt = START.subtract({ minutes: 10 })) {
+      const clock = new FixedClock(START);
+      const store = new InMemoryAuditChainStore();
+      const units = new FakeUnitOfWork();
+      const rows = Array.from({ length: count }, (_, index) =>
+        rowAt(market, endingAt.subtract({ seconds: count - index })),
+      );
+      for (const row of rows) store.addRow(row);
+      sealInOrder(store, rows);
+      return { clock, store, units, rows, verifier: new AuditVerifier(units, store, clock, null) };
+    }
+
+    it('lists 1000 findings of a code, counts them all and logs the number suppressed (Mohammad 3, Hassan L2)', async () => {
+      const s = bareChain(1005);
+      s.store.rows.splice(
+        0,
+        s.store.rows.length,
+        ...s.rows.map((row) => ({ ...row, after: { n: 2 } })),
+      );
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(report.findings).toHaveLength(1000);
+      expect(report.findingTotals).toEqual({ 'audit.row.mismatch': 1005 });
+      expect(report.totalsAtLeast).toEqual([]);
+      const lines = errors.mock.calls.map(([line]) => line as { msg: string; suppressed?: number });
+      expect(lines.filter((line) => line.suppressed !== undefined)).toEqual([
+        expect.objectContaining({ msg: 'audit.row.mismatch', suppressed: 5, alert: true }),
+      ]);
+    });
+
+    it('marks a total that stopped at the read limit as a lower bound', async () => {
+      const s = bareChain(1);
+      for (let index = 0; index < 1000; index += 1) {
+        s.store.addRow(rowAt(market, START.add({ hours: 1, seconds: index })));
+      }
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(report.findingTotals['audit.row.future']).toBe(1000);
+      expect(report.totalsAtLeast).toEqual(['audit.row.future']);
+    });
+
+    it('skips empty days in check (d): a row 25 years old costs a few reads, not 9000 (Hassan M3)', async () => {
+      const s = bareChain(3);
+      const old = rowAt(market, Temporal.Instant.from('2001-06-01T00:00:00Z'));
+      s.store.addRow(old);
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(report.findings).toEqual([
+        expect.objectContaining({ code: 'audit.row.unsealed', auditLogId: old.id }),
+      ]);
+      expect(s.store.reads.unsealedRows).toBeLessThanOrEqual(3);
+      expect(s.store.reads.nextRowTime).toBeLessThanOrEqual(3);
+    });
+
+    it('stops check (d) at now - S and reports a watermark in the future (Hassan M3)', async () => {
+      const s = bareChain(2);
+      const forged = rowAt(market, Temporal.Instant.from('9000-01-01T00:00:00Z'));
+      s.store.addRow(forged);
+      s.store.seals = [];
+      sealInOrder(s.store, [...s.rows, forged]);
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(codesOf(report)).toEqual([
+        ['audit.seal.watermark-future', 3n],
+        ['audit.row.future', null],
+      ]);
+      expect(s.store.reads.unsealedRows).toBeLessThanOrEqual(2);
+      expect(report.complete).toBe(true);
+    });
+
+    it('ends a run past its budget with audit.verify.incomplete and no false findings (Hassan M3)', async () => {
+      const s = bareChain(1500);
+      s.store.afterSealsBetween = () => s.clock.advance(Temporal.Duration.from({ minutes: 10 }));
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(report).toMatchObject({ complete: false, sealsChecked: 1000, findings: [] });
+      expect(errors).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: 'audit.verify.incomplete', alert: true, marketId: code }),
+      );
+    });
+
+    it('reports every late seal each run, and a late seal above the non-late one before it is out of order (Hassan L3)', async () => {
+      const s = bareChain(0);
+      const [a, b, c] = [30, 20, 25].map((minutes) => rowAt(market, START.subtract({ minutes })));
+      for (const row of [a!, b!, c!]) s.store.addRow(row);
+      // c lies between a and b in time: sealed after b as late, it is below b. Fine.
+      sealInOrder(s.store, [a!, b!, c!], { late: [false, false, true] });
+      const infos = jest.spyOn(Logger.prototype, 'log');
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(report).toMatchObject({ lateSeals: 1, findings: [] });
+      expect(infos).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'audit.verify.late-seal',
+          chainSeq: '3',
+          auditLogId: c!.id,
+        }),
+      );
+
+      // A late seal above the non-late seal before it was not a late row.
+      const t = bareChain(0);
+      const [d, e, f] = [30, 20, 15].map((minutes) => rowAt(market, START.subtract({ minutes })));
+      for (const row of [d!, e!, f!]) t.store.addRow(row);
+      sealInOrder(t.store, [d!, e!, f!], { late: [false, false, true] });
+      expect(codesOf(await t.verifier.verify(context, 'full'))).toEqual([
+        ['audit.seal.out-of-order', 3n],
+      ]);
+    });
+
+    it('a segment of another epoch spliced in breaks every link of it (Sajad M2)', async () => {
+      const s = bareChain(0);
+      const rows = [40, 30, 20, 10].map((minutes) => rowAt(market, START.subtract({ minutes })));
+      for (const row of rows) s.store.addRow(row);
+      sealInOrder(s.store, rows, { hashEpoch: 2, hashEpochFrom: 2 });
+
+      expect(codesOf(await s.verifier.verify(context, 'full'))).toEqual([
+        ['audit.chain.broken', 2n],
+        ['audit.chain.broken', 3n],
+        ['audit.chain.broken', 4n],
+      ]);
+    });
+
+    it('a hash_version lower than the chain so far is audit.seal.hash-version (Sajad L1)', async () => {
+      const s = bareChain(3);
+      s.store.replaceSeal(1, 3n, { hashVersion: 0 }, code);
+
+      const codes = codesOf(await s.verifier.verify(context, 'full'));
+      expect(codes).toContainEqual(['audit.seal.hash-version', 3n]);
+      expect(codes.every(([, seq]) => seq === 3n)).toBe(true);
+    });
+
+    it('names rows, seals and checkpoints with a time outside the range by id (Hassan M1)', async () => {
+      const s = bareChain(3);
+      const early = rowAt(market, Temporal.Instant.from('1999-12-31T23:59:59.999Z'));
+      const late = rowAt(market, Temporal.Instant.from('+010000-01-01T00:00:00Z'));
+      s.store.addRow(early);
+      s.store.addRow(late);
+      s.store.replaceSeal(
+        1,
+        3n,
+        { sealedAt: Temporal.Instant.from('+010000-01-01T00:00:00Z') },
+        code,
+      );
+      await s.store.insertCheckpoint(market, {
+        epoch: 1,
+        chainSeq: 2n,
+        chainHash: s.store.seals[1]!.chainHash,
+        hashVersion: 1,
+        createdAt: Temporal.Instant.from('1990-01-01T00:00:00Z'),
+      });
+
+      const report = await s.verifier.verify(context, 'full');
+
+      expect(report.complete).toBe(true);
+      expect(report.pinnedHead).toBe(2n);
+      expect(report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'audit.row.out-of-range', auditLogId: early.id }),
+          expect.objectContaining({ code: 'audit.row.out-of-range', auditLogId: late.id }),
+          expect.objectContaining({ code: 'audit.seal.out-of-range', chainSeq: 3n }),
+          expect.objectContaining({ code: 'audit.checkpoint.out-of-range', chainSeq: 2n }),
+        ]),
+      );
+      expect(report.findings).toHaveLength(4);
     });
   });
 });

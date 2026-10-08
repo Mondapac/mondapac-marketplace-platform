@@ -61,6 +61,33 @@ export const UNSEALED_SLICE = Temporal.Duration.from({ hours: 24 });
 /** The most findings of one kind one verification lists before it stops listing them. */
 export const MAX_FINDINGS_PER_CODE = 1000;
 
+/**
+ * The part of a verification's run time in which a new batch or slice may still start; past
+ * it the run ends with `audit.verify.incomplete` (Hassan, 6b review M3).
+ */
+export const VERIFY_RUN_BUDGET_MS = VERIFY_JOB_MAX_RUN_MS - 60_000;
+
+/**
+ * The range every time column of the chain tables must lie in: `audit_log.occurred_at`,
+ * `audit_log_seal.sealed_at` and `audit_occurred_at`, `audit_chain_checkpoint.created_at`.
+ * From (inclusive) 2000-01-01T00:00:00Z until (exclusive) 10000-01-01T00:00:00Z: the range of
+ * the CHECKs Mojtaba tracks as DP 11.15, so the code and the database agree. The chain store
+ * reads only values in it (a JavaScript Date cannot hold `infinity` or year 280000); a value
+ * outside is a finding of the verifier, by id, never a crash (Hassan M1, Mojtaba's sign-off).
+ */
+export const AUDIT_TIME_RANGE = Object.freeze({
+  from: Temporal.Instant.from('2000-01-01T00:00:00Z'),
+  until: Temporal.Instant.from('+010000-01-01T00:00:00Z'),
+});
+
+/** Whether an instant lies in {@link AUDIT_TIME_RANGE}. */
+export function inAuditTimeRange(instant: Temporal.Instant): boolean {
+  return (
+    Temporal.Instant.compare(instant, AUDIT_TIME_RANGE.from) >= 0 &&
+    Temporal.Instant.compare(instant, AUDIT_TIME_RANGE.until) < 0
+  );
+}
+
 /** The settle window in milliseconds. */
 export function settleWindowMs(): number {
   return SETTLE_WINDOW.total({ unit: 'milliseconds' });

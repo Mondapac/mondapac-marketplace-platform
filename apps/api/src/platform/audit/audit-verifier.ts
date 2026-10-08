@@ -6,10 +6,12 @@ import { logAuditAlert, type AuditAlertCode } from './audit-alerts';
 import {
   CURRENT_EPOCH,
   KNOWN_EPOCHS,
+  LATE_SCAN_WINDOW,
   MAX_FINDINGS_PER_CODE,
   SETTLE_WINDOW,
   UNSEALED_SLICE,
   VERIFY_BATCH_SIZE,
+  VERIFY_RUN_BUDGET_MS,
 } from './audit-chain-policy';
 import {
   compareKeys,
@@ -18,7 +20,6 @@ import {
   type CheckpointRecord,
   type SealKey,
   type SealRecord,
-  type Watermark,
 } from './audit-chain-store';
 import {
   chainHashOf,
@@ -29,6 +30,9 @@ import {
   sameHash,
 } from './audit-hash';
 import type { AnchorSource, StoredAnchor } from './anchor-sink';
+
+/** The far end of the uuid order: a key above every id at one instant. */
+const MAX_UUID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
 /** `full` from the start of the chain; `incremental` from the last checkpoint (PA 8). */
 export type VerifyMode = 'full' | 'incremental';
@@ -51,7 +55,16 @@ export interface VerifyReport {
   /** The first `chain_seq` the walk verified (1 for a full run). */
   readonly fromSeq: bigint | null;
   readonly sealsChecked: number;
+  /** Late seals met on the walk, each also an info line `audit.verify.late-seal` (Hassan L3). */
+  readonly lateSeals: number;
+  /** The findings listed: at most {@link MAX_FINDINGS_PER_CODE} of each code. */
   readonly findings: readonly AuditFinding[];
+  /** Every finding counted per code, the ones not listed included (Mohammad 3, Hassan L2). */
+  readonly findingTotals: Readonly<Partial<Record<AuditAlertCode, number>>>;
+  /** Codes whose total is a lower bound: their read stopped at its limit. */
+  readonly totalsAtLeast: readonly AuditAlertCode[];
+  /** False when the run budget ran out (`audit.verify.incomplete`); the rest was not checked. */
+  readonly complete: boolean;
 }
 
 /** The state of the walk along one epoch's chain. */
@@ -62,6 +75,13 @@ interface Walk {
   hashVersion: number;
   lastNonLate: SealKey | null;
 }
+
+type Find = (
+  code: AuditAlertCode,
+  chainSeq: bigint | null,
+  auditLogId: string | null,
+  findingEpoch?: number | null,
+) => void;
 
 /**
  * The verifier of docs/design/domain/platform-audit.md 8 (`platform.audit-verify`, and the
@@ -79,19 +99,28 @@ interface Walk {
  * - (c) every `row_hash` matches its row as read (`audit.row.mismatch`); the fallback form is
  *   chosen only by whether `canonicalJson` refuses the row (Hassan N1 c), so a row that
  *   canonicalises but carries a fallback-style hash is a mismatch.
- * - (d) every row at or below the watermark has a seal in the epoch (`audit.row.unsealed`), in
- *   one-day slices; the foreign key gives every seal its row (`audit.row.missing` otherwise).
+ * - (d) every row at or below `min(watermark, now - S)` has a seal in the epoch
+ *   (`audit.row.unsealed`), in one-day slices that skip empty days; a seal whose row is gone is
+ *   `audit.row.missing` (rows are read by id, Mohammad E1). A watermark later than `now - S`
+ *   is `audit.seal.watermark-future` here too (Hassan M3).
  * - (e) every checkpoint matches the chain at its `chain_seq` (`audit.checkpoint.mismatch`).
- * - (f) with an `AnchorSource`: the head is at or past every anchor, the chain hash at each
- *   anchor equals it, and every version of an anchor key is identical (`audit.anchor.mismatch`).
+ * - (f) with a bound `AnchorSource`: the head is at or past every anchor, the chain hash at
+ *   each anchor equals it, and every version of an anchor key is identical
+ *   (`audit.anchor.mismatch`).
  * - (g) `audit_occurred_at` equals the row's `occurred_at` (`audit.seal.time-mismatch`).
- * - (h) non-late seals strictly ascend in `(occurred_at, id)` (`audit.seal.out-of-order`).
+ * - (h) non-late seals strictly ascend in `(occurred_at, id)`, and every late seal lies below
+ *   the non-late seal before it (`audit.seal.out-of-order`); every late seal is reported each
+ *   run as an info line (Hassan L3).
  * - (i) `hash_version` is known and never goes down (`audit.seal.hash-version`).
- * - (j) no row is later than `now + S` (`audit.row.future`).
+ * - (j) no row is later than `now + S` (`audit.row.future`); no time column of the chain
+ *   tables is outside AUDIT_TIME_RANGE (`audit.row.out-of-range`, `audit.seal.out-of-range`,
+ *   `audit.checkpoint.out-of-range`; Hassan M1).
  * - (k) numbers in `before` and `after` are safe integers (`audit.row.noncanonical`, also for
  *   every row hashed with the fallback).
  *
- * Each finding is one error-level line marked for alerting; it changes nothing.
+ * Each finding is one error-level line marked for alerting; it changes nothing. At most
+ * {@link MAX_FINDINGS_PER_CODE} lines per code, then one line with the number suppressed; the
+ * report counts them all. Past its budget the run stops with `audit.verify.incomplete`.
  */
 export class AuditVerifier {
   private readonly logger = new Logger('AuditVerifier');
@@ -107,27 +136,33 @@ export class AuditVerifier {
     const market = context.market;
     const marketId = market.marketId;
     const epoch = CURRENT_EPOCH;
+    const deadline = this.clock.now().add({ milliseconds: VERIFY_RUN_BUDGET_MS });
+    const overBudget = () => Temporal.Instant.compare(this.clock.now(), deadline) >= 0;
     const findings: AuditFinding[] = [];
-    const counts = new Map<AuditAlertCode, number>();
-    const find = (
-      code: AuditAlertCode,
-      chainSeq: bigint | null,
-      auditLogId: string | null,
-      findingEpoch: number | null = epoch,
-    ): void => {
-      const count = (counts.get(code) ?? 0) + 1;
-      counts.set(code, count);
+    const totals = new Map<AuditAlertCode, number>();
+    const atLeast = new Set<AuditAlertCode>();
+    const find: Find = (code, chainSeq, auditLogId, findingEpoch = epoch) => {
+      const count = (totals.get(code) ?? 0) + 1;
+      totals.set(code, count);
       if (count > MAX_FINDINGS_PER_CODE) return;
       const finding = { code, marketId, epoch: findingEpoch, chainSeq, auditLogId };
       findings.push(finding);
       logAuditAlert(this.logger, code, finding);
     };
+    /** Reports a bounded read's results; a full read means the total is a lower bound. */
+    const findAll = <T>(code: AuditAlertCode, items: readonly T[], each: (item: T) => void) => {
+      for (const item of items) each(item);
+      if (items.length >= MAX_FINDINGS_PER_CODE) atLeast.add(code);
+    };
+    let complete = true;
+    let lateSeals = 0;
 
     // The anchors first, then the head: an anchor is written only after its seal committed,
     // so every anchor read before the head is at or below it unless the tail was cut.
     const anchors =
       this.anchorSource === null ? null : await this.anchorSource.anchors(marketId, epoch);
     const now = this.clock.now();
+    const settledUntil = now.subtract(SETTLE_WINDOW);
     const pinned = await this.read(market, async () => {
       const [head] = await this.store.lastSeals(market, epoch, 1);
       return head ?? null;
@@ -136,10 +171,15 @@ export class AuditVerifier {
 
     // (a) Seals of an epoch nobody opened.
     const foreign = await this.read(market, () =>
-      this.store.sealsOutsideEpochs(market, KNOWN_EPOCHS, MAX_FINDINGS_PER_CODE),
+      this.store.sealsAboveEpoch(market, Math.max(...KNOWN_EPOCHS), MAX_FINDINGS_PER_CODE),
     );
-    for (const seal of foreign) {
-      find('audit.seal.unknown-epoch', seal.chainSeq, seal.auditLogId, seal.epoch);
+    findAll('audit.seal.unknown-epoch', foreign, (seal) =>
+      find('audit.seal.unknown-epoch', seal.chainSeq, seal.auditLogId, seal.epoch),
+    );
+
+    // A watermark the sealer would stop at (PA 7.1 step 2): (d) never looks above now - S.
+    if (watermark !== null && Temporal.Instant.compare(watermark.occurredAt, settledUntil) > 0) {
+      find('audit.seal.watermark-future', watermark.chainSeq, watermark.auditLogId);
     }
 
     // The starting point of the walk.
@@ -173,9 +213,7 @@ export class AuditVerifier {
           walk.prev = checkpoint.chainHash;
           walk.expectedSeq = checkpoint.chainSeq + 1n;
           walk.hashVersion = start.hashVersion;
-          walk.lastNonLate = start.late
-            ? null
-            : { occurredAt: start.auditOccurredAt, auditLogId: start.auditLogId };
+          walk.lastNonLate = start.late ? null : keyOfSeal(start);
           fromSeq = walk.expectedSeq;
         }
       }
@@ -194,6 +232,8 @@ export class AuditVerifier {
       }
     }
     let sealsChecked = 0;
+    /** The highest `chain_seq` the walk covered; checkpoints and anchors above it were not. */
+    let walkedTo = walk.expectedSeq - 1n;
     if (pinned !== null && walk.expectedSeq <= pinned.chainSeq) {
       const checkpoints = new Map<bigint, CheckpointRecord>();
       for (const checkpoint of await this.read(market, () =>
@@ -203,6 +243,10 @@ export class AuditVerifier {
       }
       let next = walk.expectedSeq;
       while (next <= pinned.chainSeq) {
+        if (overBudget()) {
+          complete = false;
+          break;
+        }
         const to =
           next + BigInt(VERIFY_BATCH_SIZE) - 1n < pinned.chainSeq
             ? next + BigInt(VERIFY_BATCH_SIZE) - 1n
@@ -249,29 +293,41 @@ export class AuditVerifier {
 
           // (b) the link, from the predecessor's chain hash and the recomputed row hash.
           let expected: Uint8Array | null = null;
-          if (walk.prev !== null) {
-            expected = this.link(seal, walk.prev, rowHash);
+          const prev = walk.prev;
+          if (prev !== null) {
+            expected = this.link(seal, prev, rowHash);
             if (expected === null || !sameHash(expected, seal.chainHash)) {
               // A row already reported as edited is not reported twice when its stored row
               // hash still links: the stored chain is intact, the row is not.
-              const storedLinks =
-                rowMismatch &&
-                (() => {
-                  const viaStored = this.link(seal, walk.prev, seal.rowHash);
-                  return viaStored !== null && sameHash(viaStored, seal.chainHash);
-                })();
+              const viaStored = rowMismatch ? this.link(seal, prev, seal.rowHash) : null;
+              const storedLinks = viaStored !== null && sameHash(viaStored, seal.chainHash);
               if (!storedLinks) find('audit.chain.broken', seal.chainSeq, seal.auditLogId);
             }
           }
           if (seal.chainSeq === 1n && seal.late) {
             find('audit.chain.broken', seal.chainSeq, seal.auditLogId);
           }
-          // Re-synchronise on the stored hash, so one break is one finding.
+          // Re-synchronise on the stored hash, so a break is reported where it is.
           walk.prev = seal.chainHash;
 
-          // (h) non-late seals strictly ascend in (occurred_at, id).
-          if (!seal.late) {
-            const key = { occurredAt: seal.auditOccurredAt, auditLogId: seal.auditLogId };
+          // (h) non-late seals strictly ascend in (occurred_at, id); a late seal lies below the
+          // non-late seal before it, since the sealer seals late rows below its watermark.
+          const key = keyOfSeal(seal);
+          if (seal.late) {
+            lateSeals += 1;
+            if (lateSeals <= MAX_FINDINGS_PER_CODE) {
+              this.logger.log({
+                msg: 'audit.verify.late-seal',
+                marketId,
+                epoch: seal.epoch,
+                chainSeq: String(seal.chainSeq),
+                auditLogId: seal.auditLogId,
+              });
+            }
+            if (walk.lastNonLate !== null && compareKeys(key, walk.lastNonLate) >= 0) {
+              find('audit.seal.out-of-order', seal.chainSeq, seal.auditLogId);
+            }
+          } else {
             if (walk.lastNonLate !== null && compareKeys(key, walk.lastNonLate) <= 0) {
               find('audit.seal.out-of-order', seal.chainSeq, seal.auditLogId);
             }
@@ -290,8 +346,8 @@ export class AuditVerifier {
             find('audit.checkpoint.mismatch', seal.chainSeq, seal.auditLogId);
           }
           checkpoints.delete(seal.chainSeq);
-          const anchor = anchorsBySeq.get(seal.chainSeq);
           // Differing versions of one key were reported above; here the first is compared.
+          const anchor = anchorsBySeq.get(seal.chainSeq);
           if (
             anchor !== undefined &&
             (atSeq === null || anchor.versions[0] !== chainHashText(atSeq))
@@ -300,46 +356,96 @@ export class AuditVerifier {
           }
           anchorsBySeq.delete(seal.chainSeq);
         }
-        if (batch.length === 0 || walk.expectedSeq <= to) {
+        if (walk.expectedSeq <= to) {
           // The range ended early: the seals up to `to` are missing.
-          if (walk.expectedSeq <= to) {
-            find('audit.chain.gap', walk.expectedSeq, null);
-            walk.prev = null;
-            walk.expectedSeq = to + 1n;
-          }
+          find('audit.chain.gap', walk.expectedSeq, null);
+          walk.prev = null;
+          walk.expectedSeq = to + 1n;
         }
+        walkedTo = to;
         next = to + 1n;
       }
-      // Checkpoints and anchors at positions with no seal (a gap) do not match the chain.
+      // Checkpoints at walked positions with no seal (a gap) do not match the chain.
       for (const checkpoint of checkpoints.values()) {
-        find('audit.checkpoint.mismatch', checkpoint.chainSeq, null);
+        if (checkpoint.chainSeq <= walkedTo) {
+          find('audit.checkpoint.mismatch', checkpoint.chainSeq, null);
+        }
       }
     }
     for (const anchor of anchorsBySeq.values()) {
       const below = fromSeq === null || anchor.chainSeq < fromSeq;
       const beyond = pinned === null || anchor.chainSeq > pinned.chainSeq;
+      const unwalked = anchor.chainSeq > walkedTo;
       // Below the walk (an incremental run) is the full run's to check; beyond was reported.
-      if (!below && !beyond) find('audit.anchor.mismatch', anchor.chainSeq, null);
+      if (!below && !beyond && !unwalked) find('audit.anchor.mismatch', anchor.chainSeq, null);
     }
 
-    // (d) every row at or below the watermark has a seal in this epoch, a day at a time.
-    if (watermark !== null) {
-      await this.unsealed(market, mode, start, watermark, find);
+    // (d) every settled row at or below the watermark has a seal in this epoch.
+    if (complete && watermark !== null) {
+      const upTo: SealKey =
+        Temporal.Instant.compare(watermark.occurredAt, settledUntil) <= 0
+          ? watermark
+          : { occurredAt: settledUntil, auditLogId: MAX_UUID };
+      complete = await this.unsealed(market, mode, start, upTo, find, overBudget);
     }
 
-    // (j) no row later than now + S: (d) would never judge it.
+    // (j) no row later than now + S, and no time out of range: (d) would never judge them.
     const future = await this.read(market, () =>
       this.store.rowsAfter(market, now.add(SETTLE_WINDOW), MAX_FINDINGS_PER_CODE),
     );
-    for (const row of future) find('audit.row.future', null, row.id, null);
+    findAll('audit.row.future', future, (row) => find('audit.row.future', null, row.id, null));
+    const rowsOut = await this.read(market, () =>
+      this.store.rowsOutOfRange(market, MAX_FINDINGS_PER_CODE),
+    );
+    findAll('audit.row.out-of-range', rowsOut, (id) =>
+      find('audit.row.out-of-range', null, id, null),
+    );
+    const sealsOut = await this.read(market, () =>
+      this.store.sealsOutOfRange(market, MAX_FINDINGS_PER_CODE),
+    );
+    findAll('audit.seal.out-of-range', sealsOut, (seal) =>
+      find('audit.seal.out-of-range', seal.chainSeq, seal.auditLogId, seal.epoch),
+    );
+    const checkpointsOut = await this.read(market, () =>
+      this.store.checkpointsOutOfRange(market, MAX_FINDINGS_PER_CODE),
+    );
+    findAll('audit.checkpoint.out-of-range', checkpointsOut, (checkpoint) =>
+      find('audit.checkpoint.out-of-range', checkpoint.chainSeq, null, checkpoint.epoch),
+    );
 
+    // One line per code whose findings were not all listed.
+    for (const [code, total] of totals) {
+      if (total > MAX_FINDINGS_PER_CODE) {
+        logAuditAlert(
+          this.logger,
+          code,
+          { marketId, epoch },
+          {
+            suppressed: total - MAX_FINDINGS_PER_CODE,
+          },
+        );
+      }
+    }
+    if (!complete) {
+      logAuditAlert(this.logger, 'audit.verify.incomplete', {
+        marketId,
+        epoch,
+        chainSeq: walkedTo > 0n ? walkedTo : null,
+      });
+    }
+
+    const findingTotals = Object.fromEntries(totals) as Partial<Record<AuditAlertCode, number>>;
     const report: VerifyReport = {
       marketId,
       mode,
       pinnedHead: pinned?.chainSeq ?? null,
       fromSeq,
       sealsChecked,
+      lateSeals,
       findings,
+      findingTotals,
+      totalsAtLeast: [...atLeast],
+      complete,
     };
     this.logger.log({
       msg: 'audit.verify.done',
@@ -347,7 +453,11 @@ export class AuditVerifier {
       mode,
       pinnedHead: report.pinnedHead === null ? null : String(report.pinnedHead),
       sealsChecked,
+      lateSeals,
       findings: findings.length,
+      findingTotals,
+      totalsAtLeast: report.totalsAtLeast,
+      complete,
       correlationId: context.correlationId,
     });
     return report;
@@ -369,44 +479,55 @@ export class AuditVerifier {
     }
   }
 
-  /** Check (d), in one-day slices from the oldest row (full) or the start checkpoint (incremental). */
+  /**
+   * Check (d), in one-day slices up to `upTo`: from the oldest row (full), or from
+   * `LATE_SCAN_WINDOW` below the start checkpoint's seal (incremental), so a row the late-row
+   * scan could still seal is judged (Mohammad 5). After each slice the next starts at the
+   * next row's day, so empty days cost nothing (Hassan M3). False when the budget ran out.
+   */
   private async unsealed(
     market: MarketContext,
     mode: VerifyMode,
     start: SealRecord | null,
-    watermark: Watermark,
-    find: (code: AuditAlertCode, chainSeq: bigint | null, auditLogId: string | null) => void,
-  ): Promise<void> {
+    upTo: SealKey,
+    find: Find,
+    overBudget: () => boolean,
+  ): Promise<boolean> {
     let from: Temporal.Instant | null;
     if (mode === 'incremental' && start !== null) {
-      // The window of the late-row scan below the start, so a late row is still judged.
-      from = start.auditOccurredAt.subtract(UNSEALED_SLICE);
+      from = start.auditOccurredAt.subtract(LATE_SCAN_WINDOW);
     } else {
       from = await this.read(market, () => this.store.earliestRowTime(market));
     }
-    if (from === null) return;
-    while (Temporal.Instant.compare(from, watermark.occurredAt) <= 0) {
+    while (from !== null && Temporal.Instant.compare(from, upTo.occurredAt) <= 0) {
+      if (overBudget()) return false;
       const sliceEnd = from.add(UNSEALED_SLICE);
-      const upTo: SealKey =
-        Temporal.Instant.compare(sliceEnd, watermark.occurredAt) >= 0
-          ? watermark
+      const sliceUpTo: SealKey =
+        Temporal.Instant.compare(sliceEnd, upTo.occurredAt) > 0
+          ? upTo
           : // The slice's end, just before the next slice's first instant.
-            {
-              occurredAt: sliceEnd.subtract({ milliseconds: 1 }),
-              auditLogId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-            };
+            { occurredAt: sliceEnd.subtract({ milliseconds: 1 }), auditLogId: MAX_UUID };
       const sliceFrom = from;
       let after: SealKey | undefined;
       for (;;) {
         const rows = await this.read(market, () =>
-          this.store.unsealedRows(market, CURRENT_EPOCH, sliceFrom, upTo, VERIFY_BATCH_SIZE, after),
+          this.store.unsealedRows(
+            market,
+            CURRENT_EPOCH,
+            sliceFrom,
+            sliceUpTo,
+            VERIFY_BATCH_SIZE,
+            after,
+          ),
         );
         for (const row of rows) find('audit.row.unsealed', null, row.id);
         if (rows.length < VERIFY_BATCH_SIZE) break;
         after = keyOf(rows[rows.length - 1]!);
       }
-      from = sliceEnd;
+      // The next slice starts at the next row at or after this slice's end.
+      from = await this.read(market, () => this.store.nextRowTime(market, sliceEnd));
     }
+    return true;
   }
 
   /** One read-only unit (ADR-0025): no transaction, never retried. */
@@ -419,4 +540,8 @@ export class AuditVerifier {
     if (!result.ok) throw new Error('AuditVerifier: a read unit returned err');
     return result.value;
   }
+}
+
+function keyOfSeal(seal: SealRecord): SealKey {
+  return { occurredAt: seal.auditOccurredAt, auditLogId: seal.auditLogId };
 }
