@@ -88,16 +88,20 @@
       "regions": ["ZA", "ZB"]
     },
     "timezones": {
+      "countries": ["JP", "NZ"],
       "byRegion": {
-        "ZA": "Asia/Tokyo",
-        "ZB": "Pacific/Auckland"
-      },
-      "postcodeExceptions": [
-        {
-          "postcodes": ["9999999"],
-          "timezone": "Pacific/Chatham"
+        "ZA": {
+          "default": "Asia/Tokyo",
+          "selectable": ["Asia/Tokyo"]
+        },
+        "ZB": {
+          "default": "Pacific/Auckland",
+          "selectable": ["Pacific/Auckland", "Pacific/Chatham"]
         }
-      ]
+      }
     }
+  },
+  "inventory": {
+    "maxSourcesPerSeller": 2
   }
 }

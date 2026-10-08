@@ -42,7 +42,9 @@ function exported(
     | 'TEST_MAIL_DATABASE_URL'
     | 'TEST_SELLER_DATABASE_URL'
     | 'TEST_SELLER_FILES_DATABASE_URL'
-    | 'TEST_SELLER_FILES_OWNER_DATABASE_URL',
+    | 'TEST_SELLER_FILES_OWNER_DATABASE_URL'
+    | 'TEST_INVENTORY_DATABASE_URL'
+    | 'TEST_INVENTORY_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -109,6 +111,18 @@ export function sellerFilesTestDatabaseUrl(): string {
 
 export function sellerFilesOwnerTestDatabaseUrl(): string {
   return exported('TEST_SELLER_FILES_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that inventory-sources.db-spec.ts relays and dispatches on, likewise, as the
+ * application login and as its owner (the owner writes the identity event under test).
+ */
+export function inventoryTestDatabaseUrl(): string {
+  return exported('TEST_INVENTORY_DATABASE_URL');
+}
+
+export function inventoryOwnerTestDatabaseUrl(): string {
+  return exported('TEST_INVENTORY_OWNER_DATABASE_URL');
 }
 
 export { REPO_ROOT };

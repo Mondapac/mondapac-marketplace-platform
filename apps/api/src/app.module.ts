@@ -9,6 +9,7 @@ import { ClockModule } from './platform/clock/clock.module';
 import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
 import { EventsModule } from './platform/events/events.module';
+import { ExtensionsModule } from './platform/extensions/extensions.module';
 import { HealthModule } from './platform/health/health.module';
 import { I18nModule } from './platform/i18n/i18n.module';
 import { ConflictFilter } from './platform/http/conflict-filter';
@@ -66,6 +67,7 @@ export class AppModule {
         PersistenceModule,
         SubjectKeysModule,
         EventsModule,
+        ExtensionsModule,
         MailModule,
         SchedulerModule,
         WorkerModule,

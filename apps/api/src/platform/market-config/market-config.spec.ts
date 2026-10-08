@@ -332,8 +332,11 @@ describe('loadMarketConfigs', () => {
         regions: ['N', 'S'],
       },
       timezones: {
-        byRegion: { N: 'Pacific/Auckland', S: 'Pacific/Auckland' },
-        postcodeExceptions: [{ postcodes: ['90000-90010', '90020'], timezone: 'Pacific/Chatham' }],
+        countries: ['NZ'],
+        byRegion: {
+          N: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland', 'Pacific/Chatham'] },
+          S: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland'] },
+        },
       },
     };
     const withSellers = (sellers: unknown) => directoryWith({ 'QQ.json': { ...VALID, sellers } });
@@ -367,6 +370,22 @@ describe('loadMarketConfigs', () => {
       );
     });
 
+    it('lists, in every region of both fixtures, a default inside selectable; one ZZ region has two zones', () => {
+      const fixtures = [...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values()];
+      const regions = fixtures.flatMap((market) =>
+        Object.values(market.sellers?.timezones.byRegion ?? {}),
+      );
+
+      expect(regions.length).toBeGreaterThan(0);
+      for (const zones of regions) expect(zones.selectable).toContain(zones.default);
+      const synthetic = fixtures.find((market) => market.code !== 'AU');
+      expect(
+        Object.values(synthetic?.sellers?.timezones.byRegion ?? {}).some(
+          (zones) => zones.selectable.length > 1,
+        ),
+      ).toBe(true);
+    });
+
     it.each([
       [
         'no approval policy: a Market never defaults it',
@@ -375,18 +394,79 @@ describe('loadMarketConfigs', () => {
       ],
       [
         'an unknown time zone',
-        (c: typeof SELLERS) => void (c.timezones.byRegion.N = 'Mars/Olympus'),
-        /byRegion/,
+        (c: typeof SELLERS) => void (c.timezones.byRegion.N.selectable[1] = 'Mars/Olympus'),
+        /IANA time zone/,
+      ],
+      [
+        'a default that is not in the selectable list',
+        (c: typeof SELLERS) => void (c.timezones.byRegion.S.default = 'Pacific/Chatham'),
+        /default must be one of selectable/,
+      ],
+      [
+        'a selectable list that repeats a zone',
+        (c: typeof SELLERS) => void c.timezones.byRegion.S.selectable.push('Pacific/Auckland'),
+        /must not repeat/,
+      ],
+      [
+        'an empty selectable list',
+        (c: typeof SELLERS) => void (c.timezones.byRegion.S.selectable = []),
+        /expected array to have >=1 items/,
+      ],
+      [
+        'a backward link instead of the canonical zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Australia/NSW';
+          c.timezones.byRegion.S.selectable = ['Australia/NSW'];
+        },
+        /IANA time zone/,
+      ],
+      [
+        'a zone of another country than timezones.countries',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Asia/Tokyo';
+          c.timezones.byRegion.S.selectable = ['Asia/Tokyo'];
+        },
+        /does not belong to any of timezones.countries/,
+      ],
+      [
+        'a country with no zones',
+        (c: typeof SELLERS) => void (c.timezones.countries = ['NZ', 'XX']),
+        /no time zones in the runtime/,
+      ],
+      ['no countries', (c: typeof SELLERS) => void (c.timezones.countries = []), /timezones/],
+      [
+        'a country that is not an ISO code',
+        (c: typeof SELLERS) => void (c.timezones.countries = ['nz']),
+        /ISO 3166-1/,
+      ],
+      [
+        'an Etc zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Etc/GMT+5';
+          c.timezones.byRegion.S.selectable = ['Etc/GMT+5'];
+        },
+        /IANA time zone/,
+      ],
+      [
+        'an offset instead of a zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = '+10:00';
+          c.timezones.byRegion.S.selectable = ['+10:00'];
+        },
+        /IANA time zone/,
       ],
       [
         'a region without a zone',
-        (c: typeof SELLERS) => void delete (c.timezones.byRegion as Record<string, string>).S,
+        (c: typeof SELLERS) => void delete (c.timezones.byRegion as Record<string, unknown>).S,
         /exactly the regions/,
       ],
       [
         'a zone for an unknown region',
         (c: typeof SELLERS) =>
-          void ((c.timezones.byRegion as Record<string, string>).X = 'Asia/Tokyo'),
+          void ((c.timezones.byRegion as Record<string, unknown>).X = {
+            default: 'Asia/Tokyo',
+            selectable: ['Asia/Tokyo'],
+          }),
         /exactly the regions/,
       ],
       [
@@ -413,36 +493,6 @@ describe('loadMarketConfigs', () => {
         'a region field without regions',
         (c: typeof SELLERS) => void (c.address.regions = []),
         /regionField/,
-      ],
-      [
-        'a malformed exception postcode',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['9-!']),
-        /not a postcode/,
-      ],
-      [
-        'an exception range with ends of different length',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['999-9999']),
-        /same length, low to high/,
-      ],
-      [
-        'an exception range written high to low',
-        (c: typeof SELLERS) =>
-          void (c.timezones.postcodeExceptions[0]!.postcodes = ['90010-90000']),
-        /same length, low to high/,
-      ],
-      [
-        'an exception postcode the pattern does not accept',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['ABC']),
-        /must match address.postcodePattern/,
-      ],
-      [
-        'two exceptions that claim one postcode',
-        (c: typeof SELLERS) =>
-          void c.timezones.postcodeExceptions.push({
-            postcodes: ['90005'],
-            timezone: 'Pacific/Auckland',
-          }),
-        /only one exception/,
       ],
       [
         'a pattern that backtracks catastrophically',
@@ -504,6 +554,50 @@ describe('loadMarketConfigs', () => {
 
     it('rejects an unknown key', () => {
       expect(() => loadMarketConfigs([withSellers({ ...SELLERS, vatRate: 1 })], [QQ])).toThrow(
+        InvalidMarketConfigError,
+      );
+    });
+  });
+
+  describe('the inventory section', () => {
+    const withInventory = (inventory: unknown) =>
+      directoryWith({ 'QQ.json': { ...VALID, inventory } });
+
+    it('is optional for a Market that does not host inventory', () => {
+      expect(
+        loadMarketConfigs([directoryWith({ 'QQ.json': VALID })], [QQ]).get(QQ)?.inventory,
+      ).toBeUndefined();
+    });
+
+    it.each([1, 4])('carries the source limit %i', (limit) => {
+      const loaded = loadMarketConfigs([withInventory({ maxSourcesPerSeller: limit })], [QQ]).get(
+        QQ,
+      );
+
+      expect(loaded?.inventory?.maxSourcesPerSeller).toBe(limit);
+    });
+
+    it('gives the two Market fixtures different limits (AC 13)', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const limits = TEST_MARKET_IDS.map((id) => configs.get(id)?.inventory?.maxSourcesPerSeller);
+
+      expect(Object.fromEntries(TEST_MARKET_IDS.map((id, i) => [id, limits[i]]))).toEqual({
+        AU: 4,
+        ZZ: 2,
+      });
+    });
+
+    it.each([
+      ['a missing limit', {}],
+      ['zero sources', { maxSourcesPerSeller: 0 }],
+      ['more sources than the re-key lock set allows', { maxSourcesPerSeller: 5 }],
+      ['a negative limit', { maxSourcesPerSeller: -1 }],
+      ['a null limit', { maxSourcesPerSeller: null }],
+      ['a string limit', { maxSourcesPerSeller: '4' }],
+      ['a fractional limit', { maxSourcesPerSeller: 2.5 }],
+      ['an unknown key', { maxSourcesPerSeller: 4, reservationMinutes: 15 }],
+    ])('rejects %s', (_case, inventory) => {
+      expect(() => loadMarketConfigs([withInventory(inventory)], [QQ])).toThrow(
         InvalidMarketConfigError,
       );
     });

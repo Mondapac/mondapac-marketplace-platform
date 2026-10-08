@@ -3,12 +3,6 @@ import path from 'node:path';
 import { parseMarketId } from '@mondapac/shared-kernel';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
-import {
-  InvalidPostcodeEntryError,
-  parsePostcodeEntries,
-  postcodesClash,
-  type ParsedPostcodes,
-} from './postcode-entry';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
 const TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
@@ -306,21 +300,55 @@ const addressFormatSchema = z
   });
 
 /**
- * The `timezones` of the `sellers` section (design 4.1, `TimezoneResolver`): region to IANA zone,
- * with postcodes whose zone differs from their region's. Never an offset (ADR-0005 decision 1).
+ * One region's zones (sellers design 4.1; spike 3 record, mini-review 2026-10-08): the zone a
+ * saved address starts with and the closed list the seller may choose from. `default` is a
+ * member of `selectable`. A zone must be in the runtime's `Intl` zone list: IANA IDs in the form
+ * ICU holds them, so `Etc/*`, offsets, abbreviations and most `backward` links (`Australia/NSW`)
+ * are refused. That form is ICU's (CLDR's), not always tzdb's `zone1970.tab` spelling
+ * (`Asia/Calcutta` is listed, `Asia/Kolkata` is not on Node 24), so a Market whose zones differ
+ * between the two needs a look when the runtime moves. Never an offset (ADR-0005 decision 1).
  */
+const regionZonesSchema = z
+  .strictObject({
+    default: timeZone,
+    selectable: z.array(timeZone).min(1).max(20),
+  })
+  .superRefine((zones, context) => {
+    if (!zones.selectable.includes(zones.default)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'default must be one of selectable',
+        path: ['default'],
+      });
+    }
+    if (new Set(zones.selectable).size !== zones.selectable.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'selectable must not repeat a zone',
+        path: ['selectable'],
+      });
+    }
+  });
+
+/** The `timezones` of the `sellers` section (design 4.1): region to its zones. */
 const sellerTimezonesSchema = z.strictObject({
-  byRegion: z.record(regionName, timeZone),
-  /** Postcode entries of `config/service-areas/` (exact, or a same-length digit range). */
-  postcodeExceptions: z
-    .array(
-      z.strictObject({
-        postcodes: z.array(z.string().max(32)).min(1).max(500),
-        timezone: timeZone,
-      }),
-    )
-    .max(500),
+  /**
+   * ISO 3166-1 countries whose zones this Market may list (the Market code is not always a
+   * country): boot fails when a listed zone belongs to none of them (guardrail 1).
+   */
+  countries: z
+    .array(z.string().regex(/^[A-Z]{2}$/, 'must be an ISO 3166-1 alpha-2 code'))
+    .min(1)
+    .max(10),
+  byRegion: z.record(regionName, regionZonesSchema),
 });
+
+/** The zones the runtime assigns to a country, or none for an unknown code. */
+function zonesOfCountry(country: string): readonly string[] {
+  // `getTimeZones` is in Node 24's V8 but not in the TypeScript lib this project targets.
+  const locale = new Intl.Locale(`und-${country}`) as { getTimeZones?: () => string[] | undefined };
+  return locale.getTimeZones?.() ?? [];
+}
 
 /**
  * The `sellers` section of a Market file. It starts with what slice 2 (complete details) needs;
@@ -339,6 +367,29 @@ const sellersSchema = z
     approvalRequired: z.boolean(),
   })
   .superRefine((sellers, context) => {
+    const known = new Set<string>();
+    sellers.timezones.countries.forEach((country, index) => {
+      const zones = zonesOfCountry(country);
+      if (zones.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          message: `${country} has no time zones in the runtime zone database`,
+          path: ['timezones', 'countries', index],
+        });
+      }
+      zones.forEach((zone) => known.add(zone));
+    });
+    for (const [region, zones] of Object.entries(sellers.timezones.byRegion)) {
+      for (const zone of zones.selectable) {
+        if (!known.has(zone)) {
+          context.addIssue({
+            code: 'custom',
+            message: `${zone} does not belong to any of timezones.countries`,
+            path: ['timezones', 'byRegion', region, 'selectable'],
+          });
+        }
+      }
+    }
     const regions = sellers.address.regions;
     const zoned = Object.keys(sellers.timezones.byRegion);
     const missing = regions.filter((region) => !zoned.includes(region));
@@ -352,47 +403,23 @@ const sellersSchema = z
         path: ['timezones', 'byRegion'],
       });
     }
-
-    let pattern: RegExp;
-    try {
-      pattern = new RegExp(sellers.address.postcodePattern, 'u');
-    } catch {
-      return; // reported by the postcodePattern check itself
-    }
-    const claimed: ParsedPostcodes[] = [];
-    sellers.timezones.postcodeExceptions.forEach((exception, index) => {
-      const path = ['timezones', 'postcodeExceptions', index, 'postcodes'];
-      let parsed: ParsedPostcodes;
-      try {
-        parsed = parsePostcodeEntries(exception.postcodes);
-      } catch (error) {
-        if (!(error instanceof InvalidPostcodeEntryError)) throw error;
-        context.addIssue({ code: 'custom', message: error.message, path });
-        return;
-      }
-      const samples = [
-        ...parsed.exact,
-        ...parsed.intervals.flatMap(({ length, low, high }) =>
-          [low, high].map((n) => String(n).padStart(length, '0')),
-        ),
-      ];
-      if (samples.some((sample) => !pattern.test(sample))) {
-        context.addIssue({
-          code: 'custom',
-          message: 'every exception postcode must match address.postcodePattern',
-          path,
-        });
-      }
-      if (claimed.some((other) => postcodesClash(parsed, other))) {
-        context.addIssue({
-          code: 'custom',
-          message: 'a postcode may appear in only one exception',
-          path,
-        });
-      }
-      claimed.push(parsed);
-    });
   });
+
+/**
+ * The `inventory` section of a Market file (inventory design 8; docs/design/data/inventory.md
+ * 8.3). It starts with what slice 1 needs; later slices add the reservation duration, the
+ * default low-stock threshold and the default per-customer cap here.
+ */
+const inventorySchema = z.strictObject({
+  /**
+   * The most sources (stock locations) one seller may have, the Default included (design 3.4;
+   * AU 4). Required: a Market never defaults it. At most 4, because the re-key of a moved Offer
+   * locks every stock item of up to `catalog.maxVariantsPerProduct` (AU 100) variants, in every
+   * source, on both keys in one statement capped at 1,000 items (design 3.6 step 2, 4.4):
+   * 100 x 4 x 2 = 800 plus held items. Raising the limit is a design change with a re-check.
+   */
+  maxSourcesPerSeller: z.number().int().min(1).max(4),
+});
 
 const marketSchema = z
   .strictObject({
@@ -409,6 +436,8 @@ const marketSchema = z
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */
     sellers: sellersSchema.optional(),
+    /** Owned by `inventory`; optional here, checked for every hosted Market at start-up by it. */
+    inventory: inventorySchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',
