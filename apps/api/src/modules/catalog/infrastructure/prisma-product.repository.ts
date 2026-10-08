@@ -51,6 +51,8 @@ export class PrismaProductRepository implements ProductRepository {
 
   async add(market: MarketContext, product: Product): Promise<void> {
     const state = product.state;
+    if (state.marketId !== market.marketId)
+      throw new Error('add: the product is of another Market');
     const tx = this.prisma.tx(market);
     await tx.catalogProduct.create({
       data: {
@@ -125,6 +127,8 @@ export class PrismaProductRepository implements ProductRepository {
     const state = product.state;
     const expected = product.persistedVersion;
     if (expected === null) throw new Error('save: the product was never stored; use add');
+    if (state.marketId !== market.marketId)
+      throw new Error('save: the product is of another Market');
     if (state.version === expected) return;
     const tx = this.prisma.tx(market);
     // The product first: the variant guard reads the product's status when a Simple product's
@@ -168,7 +172,7 @@ export class PrismaProductRepository implements ProductRepository {
       if (stored.get(variant.id) === undefined || stored.get(variant.id) === variant.state)
         continue;
       await tx.catalogProductVariant.updateMany({
-        where: { marketId: market.marketId, id: variant.id },
+        where: { marketId: market.marketId, productId: state.id, id: variant.id },
         data: {
           state: variant.state,
           publishedAt: variant.publishedAt === null ? null : toDate(variant.publishedAt),

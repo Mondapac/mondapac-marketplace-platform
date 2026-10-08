@@ -1,7 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
 import { VariantAdded, VariantRemoved } from './events';
-import type { ProductTypeCode, VariantModel } from './product-type-handler';
+import type { ProductTypeCode, ProductTypeHandler, VariantModel } from './product-type-handler';
 
 export const PRODUCT_SCOPES = ['PLATFORM', 'SELLER'] as const;
 export type ProductScope = (typeof PRODUCT_SCOPES)[number];
@@ -58,6 +58,7 @@ export type ProductRefusal =
   | { readonly code: 'product.not-a-draft' }
   | { readonly code: 'variant.fixed' }
   | { readonly code: 'variant.limit-reached' }
+  | { readonly code: 'variant.id-taken' }
   | { readonly code: 'variant.not-found' }
   | { readonly code: 'variant.not-proposed' };
 
@@ -98,8 +99,8 @@ export class Product {
     readonly marketId: MarketId;
     readonly scope: ProductScope;
     readonly sellerId: Id<'Seller'> | null;
-    readonly typeCode: ProductTypeCode;
-    readonly variantModel: VariantModel;
+    /** The registered handler of the type: its code and variant model travel together. */
+    readonly handler: Pick<ProductTypeHandler, 'typeCode' | 'variantModel'>;
     readonly familyCode: string;
     readonly productCode: string;
     readonly variantId: Id<'Variant'> | null;
@@ -108,7 +109,7 @@ export class Product {
     if ((input.scope === 'SELLER') !== (input.sellerId !== null)) {
       return err({ code: 'product.scope-owner-mismatch' });
     }
-    const single = input.variantModel === 'single';
+    const single = input.handler.variantModel === 'single';
     if (single && input.variantId === null) {
       throw new TypeError('Product.create: a Simple product needs its variant id');
     }
@@ -131,8 +132,8 @@ export class Product {
         scope: input.scope,
         ownerSellerId: input.sellerId,
         createdBySellerId: input.sellerId,
-        typeCode: input.typeCode,
-        variantModel: input.variantModel,
+        typeCode: input.handler.typeCode,
+        variantModel: input.handler.variantModel,
         familyCode: input.familyCode,
         productCode: input.productCode,
         status: 'draft',
@@ -182,7 +183,11 @@ export class Product {
     maxVariants: number,
     now: Temporal.Instant,
   ): Result<void, ProductRefusal> {
+    if (this.#state.status !== 'draft') return err({ code: 'product.not-a-draft' });
     if (this.#state.variantModel === 'single') return err({ code: 'variant.fixed' });
+    if (this.#state.variants.some((existing) => existing.id === variantId)) {
+      return err({ code: 'variant.id-taken' });
+    }
     if (this.liveVariants.length >= maxVariants) return err({ code: 'variant.limit-reached' });
     const variant: VariantRecord = {
       id: variantId,
@@ -206,6 +211,7 @@ export class Product {
     variantId: Id<'Variant'>,
     now: Temporal.Instant,
   ): Result<void, ProductRefusal> {
+    if (this.#state.status !== 'draft') return err({ code: 'product.not-a-draft' });
     if (this.#state.variantModel === 'single') return err({ code: 'variant.fixed' });
     const variant = this.#state.variants.find((candidate) => candidate.id === variantId);
     if (variant === undefined) return err({ code: 'variant.not-found' });

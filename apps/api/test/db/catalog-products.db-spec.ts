@@ -5,6 +5,8 @@ import { uuidV7 } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { Product } from '../../src/modules/catalog/domain/product';
+import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
+import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -35,8 +37,7 @@ function newProduct(
     marketId: marketId as MarketId,
     scope,
     sellerId: scope === 'SELLER' ? (uuid7() as Id<'Seller'>) : null,
-    typeCode: overrides.configurable ? 'configurable' : 'simple',
-    variantModel: overrides.configurable ? 'options' : 'single',
+    handler: overrides.configurable ? configurableProductType : simpleProductType,
     familyCode: 'default',
     productCode: overrides.code,
     variantId: overrides.configurable ? null : (uuid7() as Id<'Variant'>),

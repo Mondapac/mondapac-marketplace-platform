@@ -133,7 +133,7 @@ migration in 8. "Privileges" lines are in 7.
 | `pending_submitted_at` | `timestamptz(6)` | yes | 4 | Queue sort key, written with the pointer in the same statement. CHECK `(pending_revision_id IS NULL) = (pending_submitted_at IS NULL)` |
 | `claim_text_flagged_at` | `timestamptz(6)` | yes | 18 | D 6.4 |
 | `photo_taken_down_at` | `timestamptz(6)` | yes | 13 | D 10.5 |
-| `last_changed_at` | `timestamptz(6)` | no | 1 | Every save of the root; the working-copy inactivity anchor (10.2) |
+| `last_changed_at` | `timestamptz(6)` | no | 1 | Every save of the root; the working-copy inactivity anchor (10.2). CHECK `last_changed_at >= created_at` (`products_last_changed_at_check`) |
 | `version`, `created_at` | | no | 1 | CA1 |
 
 - Unique `(market_id, id)` (C3) and `(market_id, id, variant_model)` (target of 3.2).

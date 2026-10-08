@@ -1,6 +1,8 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
 import { Product, formatProductCode } from './product';
+import { configurableProductType } from './product-types/configurable';
+import { simpleProductType } from './product-types/simple';
 
 // Set per fixture Market by the describe.each below; the domain is Market-agnostic and the
 // variant limit is an input from Market configuration.
@@ -21,8 +23,7 @@ function simple(scope: 'SELLER' | 'PLATFORM' = 'SELLER'): Product {
     marketId: MARKET,
     scope,
     sellerId: scope === 'SELLER' ? seller : null,
-    typeCode: 'simple',
-    variantModel: 'single',
+    handler: simpleProductType,
     familyCode: 'default',
     productCode: 'P00000001',
     variantId: variant(1),
@@ -38,8 +39,7 @@ function configurable(): Product {
     marketId: MARKET,
     scope: 'SELLER',
     sellerId: seller,
-    typeCode: 'configurable',
-    variantModel: 'options',
+    handler: configurableProductType,
     familyCode: 'default',
     productCode: 'P00000002',
     variantId: null,
@@ -109,8 +109,7 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
           marketId: MARKET,
           scope,
           sellerId,
-          typeCode: 'configurable',
-          variantModel: 'options',
+          handler: configurableProductType,
           familyCode: 'default',
           productCode: 'P00000003',
           variantId: null,
@@ -127,8 +126,7 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
           marketId: MARKET,
           scope: 'PLATFORM',
           sellerId: null,
-          typeCode: 'simple',
-          variantModel: 'single',
+          handler: simpleProductType,
           familyCode: 'default',
           productCode: 'P00000004',
           variantId: null,
@@ -271,6 +269,32 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
       expect(again.discard(T1)).toEqual({ ok: false, error: { code: 'product.not-a-draft' } });
       expect(again.pendingEvents).toEqual([]);
+    });
+  });
+
+  it('refuses to add or remove a variant once the product is discarded', () => {
+    const product = reloaded(configurable());
+    product.addVariant(variant(1), 5, T1);
+    product.discard(T1);
+
+    expect(product.addVariant(variant(2), 5, T1)).toEqual({
+      ok: false,
+      error: { code: 'product.not-a-draft' },
+    });
+    expect(product.removeProposedVariant(variant(1), T1)).toEqual({
+      ok: false,
+      error: { code: 'product.not-a-draft' },
+    });
+  });
+
+  it('refuses a variant id that is already in the registry, retired or not', () => {
+    const product = reloaded(configurable());
+    product.addVariant(variant(1), 5, T1);
+    product.removeProposedVariant(variant(1), T1);
+
+    expect(product.addVariant(variant(1), 5, T1)).toEqual({
+      ok: false,
+      error: { code: 'variant.id-taken' },
     });
   });
 
