@@ -1,0 +1,151 @@
+{
+  "panel": {
+    "name": "Seller",
+    "market": "MondaPac {marketName}",
+    "support": "Need help? Email {supportEmail}."
+  },
+  "nav": { "home": "Home" },
+  "home": {
+    "title": "Home",
+    "empty": "Your seller workspace is being set up.",
+    "signed-in-as": "Signed in as {name}",
+    "sign-out": "Sign out",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
+    "user-menu": "Account"
+  },
+  "showcase": {
+    "title": "Sell to neighbours who care where their food comes from.",
+    "cards": {
+      "one": { "name": "Cedar Lane Halal Meats", "detail": "Certificate verified" },
+      "two": { "name": "Olive Grove Bakehouse", "detail": "Same-day delivery in Brisbane" },
+      "three": { "name": "Riverbend Poultry Co.", "detail": "Family-run since 1998" }
+    }
+  },
+  "identity": {
+    "common": {
+      "account-type": { "seller": "Seller account" },
+      "label": {
+        "email": "Email",
+        "password": "Password",
+        "new-password": "New password",
+        "name": "Your name"
+      },
+      "help": { "password": "Use {min} to {max} characters. A short sentence works well." },
+      "action": {
+        "show-password": "Show password",
+        "hide-password": "Hide password",
+        "back-to-sign-in": "Back to sign in"
+      }
+    },
+    "error": {
+      "credentials": { "invalid": "Email or password is incorrect. Check both and try again." },
+      "request": {
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "csrf": "Refresh the page and try again."
+      },
+      "password": {
+        "rejected": {
+          "length": "Use {min} to {max} characters.",
+          "common": "That password is too easy to guess. Choose a different one.",
+          "contains-identity": "Don't use your email or name in your password."
+        }
+      },
+      "account": {
+        "disabled": {
+          "seller": "This seller account has been deactivated. Contact us if you think this is a mistake."
+        }
+      },
+      "membership": {
+        "none": "This account isn't part of a seller team any more. Ask the shop owner to invite you again."
+      },
+      "seller-access": { "suspended": "This seller account is suspended. Contact us for details." },
+      "validation": {
+        "email": {
+          "required": "Enter your email.",
+          "format": "Enter an email address like name@example.com."
+        },
+        "password": { "required": "Enter your password." },
+        "name": {
+          "required": "Enter your name.",
+          "characters": "Remove web addresses and special formatting characters from the name."
+        }
+      },
+      "second-factor": {
+        "unsupported": "This account uses two-step verification, which this panel can't ask for yet. Contact us to continue."
+      },
+      "unknown": "Something went wrong on our side. Try again.",
+      "network": "You're offline or the connection dropped. Check it and try again.",
+      "market": "This page isn't available."
+    },
+    "sign-in": {
+      "page-title": "Sign in – Seller account – MondaPac",
+      "title": "Sign in to your seller account",
+      "note": {
+        "separate": "Seller and customer accounts are separate. Each has its own password."
+      },
+      "action": {
+        "submit": "Sign in",
+        "forgot": "Forgot password?",
+        "sign-up": "New to MondaPac? Create a seller account"
+      },
+      "label": { "keep-signed-in": "Keep me signed in on this device" },
+      "help": {
+        "keep-signed-in": "Only on a device you don't share. You stay signed in for up to 30 days.",
+        "throttled": "You can still reset your password."
+      },
+      "banner": {
+        "session-ended": "Your session has ended. Sign in again to continue.",
+        "signed-out": "You're signed out.",
+        "password-changed": "Password changed. Sign in with your new password."
+      }
+    },
+    "sign-up": {
+      "page-title": "Create account – Seller account – MondaPac",
+      "title": "Create a seller account",
+      "body": "First confirm your email. Then MondaPac reviews your application before you can sell.",
+      "action": { "submit": "Create account", "sign-in": "Already have a seller account? Sign in" }
+    },
+    "check-email": {
+      "page-title": "Check your email – Seller account – MondaPac",
+      "title": "Check your email",
+      "body": "We've sent an email to {email}. Open it and follow the link to continue.",
+      "body-no-address": "We've sent you an email. Open it and follow the link to continue.",
+      "body-from-sign-in": "Confirm your email before you sign in. Use the link we sent to {email}, or send a new one.",
+      "help": "It can take a few minutes. Check your spam folder too.",
+      "action": { "resend": "Send it again", "wrong-address": "Wrong address? Sign up again" },
+      "status": { "resent": "Sent again." }
+    },
+    "confirm-email": {
+      "page-title": "Confirm your email – Seller account – MondaPac",
+      "title": "Confirm your email",
+      "body": "Enter your password to confirm your email. Then you'll see the status of your application.",
+      "action": { "submit": "Confirm email" },
+      "status": { "checking": "Checking your link…" }
+    },
+    "link": {
+      "title": { "rejected": "This link can't be used" },
+      "body": {
+        "rejected": "It may have expired or already been used. Enter your email and we'll send a new one."
+      },
+      "action": { "send-new": "Send a new link" },
+      "status": {
+        "sent": "If that address has an account waiting to be confirmed, we've sent a new link."
+      }
+    },
+    "forgot-password": {
+      "page-title": "Reset your password – Seller account – MondaPac",
+      "title": "Reset your seller account password",
+      "action": { "submit": "Send reset link" },
+      "sent": {
+        "title": "Check your email",
+        "body": "If a seller account uses {email}, we've sent a link to reset its password. The link works for 60 minutes."
+      }
+    },
+    "reset-password": {
+      "page-title": "Choose a new password – Seller account – MondaPac",
+      "title": "Choose a new password",
+      "body": "Changing your password signs you out everywhere.",
+      "action": { "submit": "Save new password" }
+    }
+  }
+}
