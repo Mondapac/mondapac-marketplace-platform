@@ -3,6 +3,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
+import type { TeamMembershipOf } from '../application/use-cases/team-membership-of.use-case';
 import type {
   ActorDescription,
   IdentityFacade,
@@ -13,6 +14,7 @@ import type {
 export interface IdentityFacadeUseCases {
   readonly describeActor: DescribeActor;
   readonly membershipOf: MembershipOf;
+  readonly teamMembershipOf: TeamMembershipOf;
 }
 
 /**
@@ -39,10 +41,18 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     });
   }
 
+  /**
+   * Two use cases behind one method (as `sellerAccessOf`): the actor's own id goes to
+   * `identity.membership-of` (`own-resources`, allowed when not approved); any other id to
+   * `identity.team-membership-of` (`identity.team-member.view`, slice 8a-1). Each runs the gate.
+   */
   membershipOf(
     context: CallContext,
     accountId: Id<'Account'>,
   ): Promise<Result<SellerMembershipSummary, AccessDenied>> {
-    return this.useCases.membershipOf.execute(context, { accountId });
+    const own = context.actor.kind === 'authenticated' && context.actor.accountId === accountId;
+    return own
+      ? this.useCases.membershipOf.execute(context, { accountId })
+      : this.useCases.teamMembershipOf.execute(context, { accountId });
   }
 }

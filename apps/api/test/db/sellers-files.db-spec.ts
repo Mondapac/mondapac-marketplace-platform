@@ -11,7 +11,7 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import request from 'supertest';
-import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SELLERS_FACADE, type SellersFacade } from '../../src/modules/sellers';
 import { BackfillSellerFiles } from '../../src/modules/sellers/application/use-cases/backfill-seller-files.use-case';
 import { MyFileSaveSlug } from '../../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
@@ -75,10 +75,12 @@ const tokenOf = (mail: MailMessage): string => {
 };
 
 /**
- * Stands in for identity slice 8a (the permission registry and role keys): until then identity's
- * check refuses every `permissions` rule. The Seller Owner system role holds every seller key, so
- * this admits an authenticated seller actor under a `permissions` rule and nothing else; the
- * sellers use cases still check ownership and the access state themselves.
+ * Isolates the sellers use cases from identity's gate, so that this file exercises sellers' own
+ * ownership and state logic, including for actors the real gate refuses first (a session of
+ * another Market, a suspended seller). It admits an authenticated seller actor under a
+ * `permissions` rule and nothing else. Since identity slice 8a-1 the real check admits the
+ * Seller Owner under every seller key; that path is covered by test/db/role-seed.db-spec.ts and
+ * the end-to-end tests of the sellers routes.
  */
 const sellerOwnerCheck: AuthorisationCheck = {
   check: (context, declaration) =>
@@ -135,7 +137,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
-    await app.get(SeedSystemRoles).execute(systemContext(market.marketId), {});
+    await app.get(SeedRoles).execute(systemContext(market.marketId), {});
   });
   afterEach(async () => {
     await app.close();
@@ -322,7 +324,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
 
   it('answers sellerSummaries alike to the anonymous and the system caller, never across Markets', async () => {
     const sellerId = await registerSeller(code);
-    await app.get(SeedSystemRoles).execute(systemContext(other), {});
+    await app.get(SeedRoles).execute(systemContext(other), {});
     const elsewhere = await registerSeller(other);
     const never = new SequenceIdGenerator(clock).next<'Seller'>();
     const ids = [never, sellerId, elsewhere, sellerId];

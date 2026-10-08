@@ -3,7 +3,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
-import { SeedSystemRoles } from '../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
 import { FormDescriptorsRead } from '../src/modules/sellers/application/use-cases/form-descriptors-read.use-case';
 import { MyFileCheckSlug } from '../src/modules/sellers/application/use-cases/my-file-check-slug.use-case';
@@ -19,8 +19,9 @@ import { TEST_MARKETS } from './support/test-config';
 // real controller and a real seller session (identity's database ports as in-memory fakes). The
 // five use cases are replaced by recording stubs for the mapping tests: their own behaviour is
 // covered by their specs. Two tests keep the real use cases to prove the wiring and the gate:
-// until identity slice 8a no seller holds `sellers.business-identity.edit`, so every route
-// answers access.denied to a signed-in seller and access.unauthenticated to a visitor.
+// since identity slice 8a-1 the Seller Owner holds `sellers.business-identity.edit` and passes
+// the gate; a seller account without a role answers access.denied, a visitor
+// access.unauthenticated.
 // nestjs-pino captures the log lines of a file's first application only, so the logging test
 // comes first.
 
@@ -98,7 +99,7 @@ describe('the seller draft over HTTP (integration)', () => {
 
   /** Signs a seller up, confirms the email, and answers the session cookie and CSRF token. */
   async function signedIn(code: string) {
-    await app.get(SeedSystemRoles).execute(systemOf(code), {});
+    await app.get(SeedRoles).execute(systemOf(code), {});
     const headers = { 'x-market-id': code };
     await http()
       .post('/identity/seller/sign-up')
@@ -214,20 +215,31 @@ describe('the seller draft over HTTP (integration)', () => {
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
-    it('refuses a visitor and a signed-in seller without the permission (real use cases, real gate)', async () => {
+    it('refuses a visitor and a seller account without the permission (real use cases, real gate)', async () => {
       await boot(false);
       const session = await signedIn(code);
-
-      // A well-shaped body per route: the shape is checked before the gate, so a malformed body
-      // would answer 400 to anyone who is signed in.
-      for (const [method, path, body] of [
+      const routes = [
         ['get', '/sellers/my-file', {}],
         ['get', '/sellers/my-file/form-descriptors', {}],
         ['put', '/sellers/my-file/general', { phone: '0400' }],
         ['put', '/sellers/my-file/address', { address: { line1: 'x' } }],
         ['put', '/sellers/my-file/slug', { slug: 'a-shop' }],
         ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
-      ] as const) {
+      ] as const;
+
+      // The Seller Owner holds `sellers.business-identity.edit` through the seller system role
+      // (identity slice 8a-1), so the real gate admits it: the use case then runs, and its
+      // database is not reachable in this suite (the full path is test/db/sellers-files).
+      for (const [method, path, body] of routes) {
+        const owner = await http()[method](path).set(session.headers).send(body);
+        expect([method, path, [401, 403].includes(owner.status)]).toEqual([method, path, false]);
+      }
+
+      // Without its role assignment the same session holds no key: access.denied.
+      fakes.assignments.clear();
+      // A well-shaped body per route: the shape is checked before the gate, so a malformed body
+      // would answer 400 to anyone who is signed in.
+      for (const [method, path, body] of routes) {
         const visitor = await http()[method](path).set('x-market-id', code).send(body);
         expect([method, path, visitor.status, visitor.body]).toEqual([
           method,

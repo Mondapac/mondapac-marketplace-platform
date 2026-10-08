@@ -4,11 +4,12 @@ import type { Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
-import { SeedSystemRoles } from '../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { RandomLinkTokens } from '../src/modules/identity/infrastructure/links/random-link-tokens';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { realPermissionRegistry } from './support/permission-registry';
 import { createTestApp, type LogLine } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
 
@@ -109,7 +110,7 @@ describe('seller accounts over HTTP (integration)', () => {
     testCallContext(testMarketContext(code, PLATFORM_TENANT_ID), 'system', 'seller-e2e-0001');
 
   async function seedRoles(code: string) {
-    await app.get(SeedSystemRoles).execute(systemOf(code), {});
+    await app.get(SeedRoles).execute(systemOf(code), {});
   }
 
   /** Runs the link-mail handler for the latest link request; answers the mailed token. */
@@ -209,7 +210,9 @@ describe('seller accounts over HTTP (integration)', () => {
       const cookie = cookieOf(setCookie);
       const csrfToken = (confirmed.body as { csrfToken: string }).csrfToken;
       const [seller] = [...fakes.sellerAccess.values()];
-      const [role] = [...fakes.roles.values()].filter((r) => r.scope === 'seller');
+      const [role] = [...fakes.roles.values()].filter(
+        (r) => r.scope === 'seller' && r.kind === 'system',
+      );
 
       const session = await http()
         .get('/identity/seller/session')
@@ -222,7 +225,12 @@ describe('seller accounts over HTTP (integration)', () => {
         sellerAccessState: NUMBERS[code]!.state,
         email: EMAIL,
         displayName: NAME,
-        permissionKeys: [],
+        // The Seller Owner holds every seller key of the registry, sorted (slice 8a-1). The
+        // summary is a hint: while the seller is pending, the gate still refuses what is not on
+        // the allow-list.
+        permissionKeys: realPermissionRegistry()
+          .list('seller')
+          .map((d) => d.key),
         csrfToken,
       });
 

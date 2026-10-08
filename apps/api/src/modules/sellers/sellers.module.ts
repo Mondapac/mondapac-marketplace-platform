@@ -1,5 +1,5 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
@@ -34,6 +34,7 @@ import { SellerSummariesSystem } from './application/use-cases/seller-summaries-
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
 import { SellingEligibility } from './application/use-cases/selling-eligibility.use-case';
+import { SELLERS_PERMISSIONS } from './contracts/permissions';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
@@ -100,6 +101,8 @@ function useCaseProvider<D, U>(
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
+    // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
+    registerPermissions('sellers', SELLERS_PERMISSIONS),
     ...sellerProviders,
     useCaseProvider(CreateSellerFile, {
       unitOfWork: true,

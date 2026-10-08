@@ -23,6 +23,11 @@ import {
   type PasswordHasherBusy,
   type PasswordVerification,
 } from '../../src/modules/identity/application/ports/password-hasher';
+import type { RoleGrant } from '../../src/modules/identity/application/access/effective-keys';
+import {
+  ROLE_GRANT_READER,
+  type RoleGrantReader,
+} from '../../src/modules/identity/application/ports/role-grant-reader';
 import {
   SESSION_REPOSITORY,
   type SessionForAuthentication,
@@ -170,6 +175,11 @@ export class IdentityFakes {
   /** Stores a role directly, as a test fixture. */
   seedRole(state: RoleState): void {
     this.roles.set(state.id, state);
+  }
+
+  /** Stores an assignment directly, as a test fixture (admin fixture accounts: tests only). */
+  seedAssignment(state: RoleAssignmentState): void {
+    this.assignments.set(state.id, state);
   }
 
   /** The inbox of identity's handlers: `(Market, eventId, subscriber)` keys. */
@@ -384,6 +394,12 @@ export class IdentityFakes {
         state === undefined || state.marketId !== market.marketId ? null : Role.restore(state),
       );
     },
+    findBySeedCode: (market, scope, seedCode) => {
+      const state = [...this.roles.values()].find(
+        (r) => r.marketId === market.marketId && r.scope === scope && r.seedCode === seedCode,
+      );
+      return Promise.resolve(state === undefined ? null : Role.restore(state));
+    },
     addSeeded: (_market, role) => {
       const state = role.state;
       const exists = [...this.roles.values()].some(
@@ -395,6 +411,40 @@ export class IdentityFakes {
       if (exists) return Promise.resolve(false);
       this.roles.set(state.id, state);
       return Promise.resolve(true);
+    },
+    applySeed: (_market, upgrade) => {
+      const state = upgrade.role.state;
+      const stored = this.roles.get(state.id);
+      if (stored === undefined || stored.version !== upgrade.role.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('role', state.id));
+      }
+      this.roles.set(state.id, state);
+      return Promise.resolve();
+    },
+  };
+
+  /**
+   * The grant read over the fake roles and assignments, as `PrismaRoleGrantReader` answers it:
+   * each account's assigned role with its scope, kind, seller and stored keys.
+   */
+  readonly grantReader: RoleGrantReader = {
+    grantsOf: (market, accountIds) => {
+      const grants = new Map<Id<'Account'>, RoleGrant>();
+      for (const accountId of accountIds) {
+        const assignment = [...this.assignments.values()].find(
+          (a) => a.marketId === market.marketId && a.accountId === accountId,
+        );
+        const role = assignment === undefined ? undefined : this.roles.get(assignment.roleId);
+        if (role === undefined || role.marketId !== market.marketId) continue;
+        grants.set(accountId, {
+          roleId: role.id,
+          kind: role.kind,
+          scope: role.scope,
+          sellerId: role.sellerId,
+          storedKeys: role.kind === 'system' ? [] : role.permissionKeys,
+        });
+      }
+      return Promise.resolve(grants);
     },
   };
 
@@ -755,6 +805,8 @@ export class IdentityFakes {
       .useValue(this.roleRepository)
       .overrideProvider(ROLE_ASSIGNMENT_REPOSITORY)
       .useValue(this.assignmentRepository)
+      .overrideProvider(ROLE_GRANT_READER)
+      .useValue(this.grantReader)
       .overrideProvider(MAIL_TRANSPORT)
       .useValue(this.mailTransport)
       .overrideProvider(PASSWORD_HASHER)

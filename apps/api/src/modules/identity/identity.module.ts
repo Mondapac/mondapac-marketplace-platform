@@ -3,6 +3,8 @@ import type { Clock } from '@mondapac/shared-kernel';
 import {
   AUTHENTICATOR,
   AUTHORISATION_CHECK,
+  PermissionRegistry,
+  registerPermissions,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
@@ -19,6 +21,10 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { AccountAuthorisationCheck } from './application/access/account-authorisation-check';
+import {
+  EFFECTIVE_KEY_RESOLVER,
+  type EffectiveKeyResolver,
+} from './application/access/effective-keys';
 import { SessionAuthenticator } from './application/access/session-authenticator';
 import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
 import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
@@ -28,6 +34,7 @@ import { IDENTITY_MARKET_POLICY } from './application/ports/identity-market-poli
 import { LINK_TARGETS, LINK_TOKENS } from './application/ports/link-secrets';
 import { ONE_TIME_LINK_REPOSITORY } from './application/ports/one-time-link.repository';
 import { PASSWORD_HASHER } from './application/ports/password-hasher';
+import { ROLE_GRANT_READER, type RoleGrantReader } from './application/ports/role-grant-reader';
 import { ROLE_SEED } from './application/ports/role-seed';
 import {
   SELLER_ACCESS_REPOSITORY,
@@ -63,7 +70,7 @@ import { RequestCustomerVerification } from './application/use-cases/request-cus
 import { RequestPasswordReset } from './application/use-cases/request-password-reset.use-case';
 import { RequestSellerVerification } from './application/use-cases/request-seller-verification.use-case';
 import { ResetPassword } from './application/use-cases/reset-password.use-case';
-import { SeedSystemRoles } from './application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from './application/use-cases/seed-roles.use-case';
 import { SellerAccessOf } from './application/use-cases/seller-access-of.use-case';
 import { SellerAccessOfSystem } from './application/use-cases/seller-access-of-system.use-case';
 import { SendExistingAccountMail } from './application/use-cases/send-existing-account-mail.use-case';
@@ -73,7 +80,9 @@ import { SendWelcomeMail } from './application/use-cases/send-welcome-mail.use-c
 import { SignInCustomer } from './application/use-cases/sign-in-customer.use-case';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
+import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
+import { IDENTITY_PERMISSIONS } from './contracts/permissions';
 import { SELLER_ACCESS_CONTRACT } from './contracts/seller-access.contract';
 import { IDENTITY_AUDIT_ACTIONS } from './domain/audit';
 import { IDENTITY_EVENTS } from './domain/events';
@@ -83,6 +92,7 @@ import { MarketConfigIdentityPolicy } from './infrastructure/market-config-ident
 import { Argon2idPasswordHasher } from './infrastructure/passwords/argon2id-password-hasher';
 import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-common-passwords';
 import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
+import { roleProviders } from './infrastructure/roles/role-providers';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
@@ -93,7 +103,7 @@ import { IdentityFacadeImplementation } from './presentation/identity.facade';
 import { SellerAccessContractImplementation } from './presentation/seller-access.contract';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified-accounts.job';
-import { seedSystemRolesJob } from './presentation/jobs/seed-system-roles.job';
+import { seedRolesJob } from './presentation/jobs/seed-roles.job';
 import { SellerPasswordController } from './presentation/seller-password.controller';
 import { SellerSessionController } from './presentation/seller-session.controller';
 import { SellerSignUpController } from './presentation/seller-sign-up.controller';
@@ -116,6 +126,9 @@ const PORT = {
   memberships: SELLER_MEMBERSHIP_REPOSITORY,
   roles: ROLE_REPOSITORY,
   assignments: ROLE_ASSIGNMENT_REPOSITORY,
+  grants: ROLE_GRANT_READER,
+  effectiveKeys: EFFECTIVE_KEY_RESOLVER,
+  permissions: PermissionRegistry,
   seed: ROLE_SEED,
   hasher: PASSWORD_HASHER,
   commonPasswords: COMMON_PASSWORD_LIST,
@@ -184,6 +197,12 @@ function useCaseProvider<D, U>(
  * Slice 6b registers identity's audited actions and binds its own audit writer
  * (docs/design/domain/platform-audit.md 2, 5): the seed writes `identity.role.seeded`, and the
  * Seller Owner's email confirmation writes the three founding rows. No other module binds one.
+ *
+ * Slice 8a-1 pushes identity's permission catalogue into the registry; binds the grant read and
+ * the one effective-key resolver (`EFFECTIVE_KEY_RESOLVER`, R-3 review N-1), injected by the
+ * `AuthorisationCheck`, the reviewer read and the actor summary alike; checks the seed's keys at
+ * boot; seeds the default roles and applies newer seed versions (`SeedRoles`); and binds
+ * `membershipOf` for other accounts (`TeamMembershipOf`, `identity.team-member.view`).
  */
 @Module({
   controllers: [
@@ -200,6 +219,7 @@ function useCaseProvider<D, U>(
     registerEvents('identity', IDENTITY_EVENTS),
     PersistenceModule.auditWriterFor('identity'),
     registerAuditActions('identity', IDENTITY_AUDIT_ACTIONS),
+    registerPermissions('identity', IDENTITY_PERMISSIONS),
     { provide: PASSWORD_HASHER, useFactory: () => new Argon2idPasswordHasher() },
     { provide: COMMON_PASSWORD_LIST, useFactory: () => new CheckedInCommonPasswords() },
     {
@@ -212,6 +232,7 @@ function useCaseProvider<D, U>(
     ...linkProviders,
     ...sellerProviders,
     ...reviewerProviders,
+    ...roleProviders,
     {
       provide: AUTHENTICATOR,
       inject: [UNIT_OF_WORK, SESSION_REPOSITORY, SESSION_TOKENS, CLOCK],
@@ -229,13 +250,25 @@ function useCaseProvider<D, U>(
         ACCOUNT_REPOSITORY,
         SELLER_MEMBERSHIP_REPOSITORY,
         SELLER_ACCESS_REPOSITORY,
+        ROLE_GRANT_READER,
+        EFFECTIVE_KEY_RESOLVER,
       ],
       useFactory: (
         unitOfWork: UnitOfWork,
         accounts: AccountRepository,
         memberships: SellerMembershipRepository,
         sellerAccess: SellerAccessRepository,
-      ) => new AccountAuthorisationCheck({ unitOfWork, accounts, memberships, sellerAccess }),
+        grants: RoleGrantReader,
+        effectiveKeys: EffectiveKeyResolver,
+      ) =>
+        new AccountAuthorisationCheck({
+          unitOfWork,
+          accounts,
+          memberships,
+          sellerAccess,
+          grants,
+          effectiveKeys,
+        }),
     },
     useCaseProvider(RegisterCustomer, {
       unitOfWork: true,
@@ -270,6 +303,8 @@ function useCaseProvider<D, U>(
       sessions: true,
       assignments: true,
       sellerAccess: true,
+      grants: true,
+      effectiveKeys: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,
@@ -400,6 +435,7 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(DescribeSellerStatus, { unitOfWork: true, accounts: true, sellerAccess: true }),
     useCaseProvider(MembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
+    useCaseProvider(TeamMembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(SellerAccessOfSystem, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(ListRegisteredSellers, { unitOfWork: true, sellerAccess: true }),
@@ -412,10 +448,11 @@ function useCaseProvider<D, U>(
       transport: true,
       policy: true,
     }),
-    useCaseProvider(SeedSystemRoles, {
+    useCaseProvider(SeedRoles, {
       unitOfWork: true,
       roles: true,
       seed: true,
+      permissions: true,
       clock: true,
       ids: true,
       audit: true,
@@ -480,9 +517,12 @@ function useCaseProvider<D, U>(
     }),
     {
       provide: IDENTITY_FACADE,
-      inject: [DescribeActor, MembershipOf],
-      useFactory: (describeActor: DescribeActor, membershipOf: MembershipOf) =>
-        new IdentityFacadeImplementation({ describeActor, membershipOf }),
+      inject: [DescribeActor, MembershipOf, TeamMembershipOf],
+      useFactory: (
+        describeActor: DescribeActor,
+        membershipOf: MembershipOf,
+        teamMembershipOf: TeamMembershipOf,
+      ) => new IdentityFacadeImplementation({ describeActor, membershipOf, teamMembershipOf }),
     },
     {
       // The calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
@@ -505,15 +545,11 @@ function useCaseProvider<D, U>(
     },
     registerJobsFrom(
       'identity',
-      [PurgeExpired, PurgeUnverifiedAccounts, SeedSystemRoles],
-      (
-        purge: PurgeExpired,
-        purgeUnverified: PurgeUnverifiedAccounts,
-        seedRoles: SeedSystemRoles,
-      ) => [
+      [PurgeExpired, PurgeUnverifiedAccounts, SeedRoles],
+      (purge: PurgeExpired, purgeUnverified: PurgeUnverifiedAccounts, seedRoles: SeedRoles) => [
         purgeExpiredJob(purge),
         purgeUnverifiedAccountsJob(purgeUnverified),
-        seedSystemRolesJob(seedRoles),
+        seedRolesJob(seedRoles),
       ],
     ),
     registerSubscriptionsFrom(

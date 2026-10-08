@@ -119,7 +119,11 @@ export class SellerSessionSummary {
   })
   roleId!: string | null;
 
-  @ApiProperty({ type: [String], description: 'Empty until slice 8a.' })
+  @ApiProperty({
+    type: [String],
+    description:
+      "The keys the account's role grants now, sorted: every seller key for the Seller Owner, the role's stored keys that are still declared for another role.",
+  })
   permissionKeys!: string[];
 
   @ApiProperty({ enum: ['pending', 'approved', 'rejected'] })

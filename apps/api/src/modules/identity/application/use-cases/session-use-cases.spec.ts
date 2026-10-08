@@ -9,6 +9,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import { realEffectiveKeys } from '../../../../../test/support/permission-registry';
 import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
@@ -138,12 +139,15 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         sessions: fakes.sessionRepository,
         assignments: fakes.assignmentRepository,
         sellerAccess: fakes.sellerAccessRepository,
+        grants: fakes.grantReader,
+        effectiveKeys: realEffectiveKeys(),
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>
       new IdentityFacadeImplementation({
         describeActor: describe,
         membershipOf: undefined as never,
+        teamMembershipOf: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

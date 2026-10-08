@@ -3,6 +3,8 @@ import { Client } from 'pg';
 import { AccountAccessReviewers } from '../../src/modules/identity/application/access/account-access-reviewers';
 import type { AccessReviewer } from '../../src/modules/identity/application/ports/access-reviewers';
 import { PrismaReviewerCandidateReader } from '../../src/modules/identity/infrastructure/reviewers/prisma-reviewer-candidate-reader';
+import { PrismaRoleGrantReader } from '../../src/modules/identity/infrastructure/roles/prisma-role-grant-reader';
+import { realEffectiveKeys } from '../support/permission-registry';
 import { ok } from '@mondapac/shared-kernel';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -17,8 +19,8 @@ import { testDatabaseUrl } from './test-database';
 // The recipient read of the reviewer notice on PostgreSQL (identity design 8.7; request R-3;
 // Hassan M2), as the application role, for both Market fixtures: the SQL narrows to the active,
 // verified admins of the context's Market by account id, in a read-only unit with no
-// transaction (ADR-0025); who may review is decided in code, so the answer is empty until
-// slices 7 and 8a-1.
+// transaction (ADR-0025); who may review is decided in code. Since slice 8a-1 the grant read and
+// the registry are bound; there is no factor store before slice 7, so the answer stays empty.
 
 const CREATED = '2026-10-08T00:00:00Z';
 
@@ -131,14 +133,33 @@ describe.each(TEST_MARKETS)(
       }
     });
 
-    it('answers no reviewer while admins exist: no active factor, no keys until slices 7 and 8a-1', async () => {
+    it('answers no reviewer while admins exist: no active factor until slice 7', async () => {
       await insertAccount(code);
       const reviewers = new AccountAccessReviewers({
         unitOfWork: db.unitOfWork,
         candidates: reader,
+        grants: new PrismaRoleGrantReader(db.service),
+        effectiveKeys: realEffectiveKeys(),
       });
 
       await expect(reviewers.reviewersOf(market)).resolves.toEqual([]);
+    });
+
+    it('reads the candidates and their roles in one read-only unit, with SELECTs only', async () => {
+      await insertAccount(code);
+      const reviewers = new AccountAccessReviewers({
+        unitOfWork: db.unitOfWork,
+        candidates: reader,
+        grants: new PrismaRoleGrantReader(db.service),
+        effectiveKeys: realEffectiveKeys(),
+      });
+
+      await driver.during(() => reviewers.reviewersOf(market));
+
+      expect(driver.statements.some((st) => /identity"?\."?role_assignments/.test(st))).toBe(true);
+      for (const statement of driver.statements) {
+        expect(statement.trim()).toMatch(/^SELECT/i);
+      }
     });
   },
 );
