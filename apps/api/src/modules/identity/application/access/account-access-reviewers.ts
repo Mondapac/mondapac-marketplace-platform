@@ -9,6 +9,7 @@ import {
   type ReviewerCandidateReader,
 } from '../ports/access-reviewers';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
+import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import { holdsEvery, type EffectiveKeyResolver, type RoleGrant } from './effective-keys';
 
 /**
@@ -28,16 +29,16 @@ export interface ActiveSecondFactors {
   hasActiveFactor(accountId: Id<'Account'>): boolean;
 }
 
-const NO_ACTIVE_FACTORS: ReadonlySet<string> = Object.freeze(new Set<string>());
-
 /**
- * The factor lookup until slice 7: there is no factor store, so no admin has an active factor
- * and the reviewer rule fails closed. Slice 7, which first creates admin accounts, replaces it
- * with the factor read in the same slice (identity design 12.1).
+ * The factor read of the reviewer rule (slice 7; Hassan M2, L-B): which candidates have an
+ * active factor, read from the factor store in the same read-only unit as the candidates.
  */
-export const NO_SECOND_FACTOR_STORE: ActiveSecondFactors = Object.freeze({
-  hasActiveFactor: (accountId: Id<'Account'>) => NO_ACTIVE_FACTORS.has(accountId),
-});
+export type ActiveSecondFactorReader = Pick<SecondFactorRepository, 'activeAmong'>;
+
+/** {@link ActiveSecondFactors} over a set the factor read answered. */
+export function activeFactorsIn(accounts: ReadonlySet<Id<'Account'>>): ActiveSecondFactors {
+  return Object.freeze({ hasActiveFactor: (accountId: Id<'Account'>) => accounts.has(accountId) });
+}
 
 /** The two lookups the reviewer rule needs, as ports (Sajad F1). */
 export interface ReviewerRule {
@@ -76,16 +77,16 @@ export interface AccountAccessReviewersDependencies {
   readonly grants: RoleGrantReader;
   /** The shared key resolver (N-1). */
   readonly effectiveKeys: EffectiveKeyResolver;
-  /** {@link NO_SECOND_FACTOR_STORE} until slice 7 binds the factor store. */
-  readonly factors?: ActiveSecondFactors;
+  /** The factor store (slice 7): its active factors among the candidates. */
+  readonly factors: ActiveSecondFactorReader;
 }
 
 /**
  * {@link AccessReviewers} over identity's own accounts (identity design 8.7). One read-only unit
  * (ADR-0025: no transaction) narrows by Market, population `admin`, `active` and a verified
- * email, and reads the candidates' roles; who may review is then evaluated in code. Since slice
- * 8a-1 the grant read and the registry are bound; until slice 7 binds the factor store no admin
- * has an active factor, so the answer is still an explicit empty set (`recipients.none`).
+ * email, and reads the candidates' roles and active factors; who may review is then evaluated in
+ * code. Since slice 8a-1 the grant read and the registry are bound, and since slice 7 the factor
+ * store: an admin without an active factor is never a recipient.
  */
 export class AccountAccessReviewers implements AccessReviewers {
   constructor(private readonly deps: AccountAccessReviewersDependencies) {}
@@ -98,20 +99,23 @@ export class AccountAccessReviewers implements AccessReviewers {
           market,
           MAX_REVIEWER_CANDIDATES,
         );
-        const grants =
-          candidates.length === 0
-            ? new Map<Id<'Account'>, RoleGrant>()
-            : await this.deps.grants.grantsOf(
-                market,
-                candidates.map((c) => c.accountId),
-              );
-        return ok({ candidates, grants });
+        if (candidates.length === 0) {
+          return ok({
+            candidates,
+            grants: new Map<Id<'Account'>, RoleGrant>(),
+            withFactor: new Set<Id<'Account'>>(),
+          });
+        }
+        const ids = candidates.map((c) => c.accountId);
+        const grants = await this.deps.grants.grantsOf(market, ids);
+        const withFactor = await this.deps.factors.activeAmong(market, ids);
+        return ok({ candidates, grants, withFactor });
       },
       { readOnly: true },
     );
     if (!read.ok) throw new AccessReviewersUnavailableError();
     const rule: ReviewerRule = {
-      factors: this.deps.factors ?? NO_SECOND_FACTOR_STORE,
+      factors: activeFactorsIn(read.value.withFactor),
       keys: this.deps.effectiveKeys,
     };
     const { candidates, grants } = read.value;

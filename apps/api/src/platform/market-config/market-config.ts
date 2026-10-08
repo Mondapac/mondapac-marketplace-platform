@@ -545,6 +545,37 @@ const inventorySchema = z.strictObject({
 });
 
 /**
+ * The `pricing` section of a Market file (pricing design 4.6, 15; Ali A2: a value only pricing
+ * reads lives in pricing's own section). `createPricingPolicy` re-validates every value at
+ * start-up for every hosted Market; the shapes here only reject what cannot be a policy.
+ * No value has a default.
+ */
+const pricingSchema = z.strictObject({
+  /** The most one unit may cost, in minor units of the Market currency (brief Q10; AU 500000). */
+  maxUnitPriceMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  /**
+   * The jump-hold threshold T = numerator / denominator, an exact fraction (ADR-0007 decision 2;
+   * AU 1/2). A change of more than T against the anchor goes to review.
+   */
+  jumpThreshold: z
+    .strictObject({
+      numerator: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      denominator: z
+        .number()
+        .int()
+        .min(1)
+        .max(2 ** 31),
+    })
+    .refine((fraction) => fraction.numerator <= fraction.denominator, {
+      message: 'the threshold must not exceed 1',
+    }),
+  /** Which moves the hold applies to (Q9; AU both). */
+  jumpDirections: z.enum(['up', 'down', 'both']),
+  /** The jump window W, an ISO 8601 duration of days, hours and minutes (Q1; AU P7D). */
+  jumpWindow: z.string().regex(/^P(?!$)(?!T$)(\d{1,3}D)?(T(\d{1,4}H)?(\d{1,5}M)?)?$/u),
+});
+
+/**
  * The `catalog` section of a Market file (catalog design 7.1). It starts with what slice 4 needs;
  * later slices add the conditions, review reasons, photo limits and the rest of 7.1.
  */
@@ -633,6 +664,8 @@ const marketSchema = z
     inventory: inventorySchema.optional(),
     /** Owned by `catalog`; optional here, checked for every hosted Market at start-up by it. */
     catalog: catalogSchema.optional(),
+    /** Owned by `pricing`; optional here, checked for every hosted Market at start-up by it. */
+    pricing: pricingSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

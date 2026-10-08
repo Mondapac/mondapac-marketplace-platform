@@ -273,7 +273,7 @@ column added by that mini-review, not now.
 |---|---|---|---|
 | `kind` | `text` | no | Closed CHECK list, the counters of D 6.8: `sign-in.account-origin`, `sign-in.account`, `sign-in.origin` (HF3), `second-factor.account` (HF2), `mail.account`, `mail.origin`. A new kind is a migration |
 | `key_hash` | `bytea` | no | HMAC-SHA-256 under the throttle secret of what the kind counts: Market, population, normalised email, the account id for `second-factor.account`, the origin. The origin is the IPv4 address or the IPv6 /64 (HF3), cut by the application before hashing. CHECK `octet_length = 32`. PK `(market_id, kind, key_hash)` |
-| `account_key` | `bytea` | yes | The keyed hash of (Market, population, normalised email) alone. CHECK `(account_key IS NULL) = (kind IN ('sign-in.origin', 'mail.origin'))` and length 32: every counter of an address carries it, so a password reset clears them all, the HF2 lock included (AC 13; D 3.7) |
+| `account_key` | `bytea` | yes | The keyed hash of (Market, population, normalised email) alone. CHECK `(account_key IS NULL) = (kind IN ('sign-in.origin', 'mail.origin'))` and length 32: every counter of an address carries it; a password reset clears only `sign-in.account` and `sign-in.account-origin` (AC 13; D 3.7). `second-factor.account` is never cleared early (D 6.8, Ali 2026-10-08) |
 | `window_started_at` | `timestamptz(6)` | no | Fixed windows with a block instant (M11) |
 | `attempts` | `integer` | no | CHECK `>= 0`. Reserved and failed attempts in the window |
 | `blocked_until` | `timestamptz(6)` | yes | Set by a failure that reaches the threshold |
@@ -478,6 +478,9 @@ last HF2 lock, written through the root so that its event sends the alert (the l
   'active'` and `last_accepted_step IS NULL OR last_accepted_step < $step`, setting the step and
   raising `version` (C5). One row or none, so a code works once under concurrency, and a save of
   the root loaded earlier fails as stale instead of writing an older step back.
+- `second_factors_pending_secret_check`: CHECK `pending_secret_ciphertext IS NULL OR state =
+  'active'`, so a replacement secret waits only beside an active factor (M13). Added in slice 7a,
+  signed off by Mojtaba 2026-10-08.
 
 **`identity.recovery_codes`**: primary key `(market_id, second_factor_id, position)` with CHECK
 `position BETWEEN 1 AND 10`, so "at most ten" is a constraint; FK to `second_factors`, cascade;
@@ -500,6 +503,8 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
   seller suspended: the use case deletes the open challenges of the account, or of the seller's
   active members, in the unit of that change, on the index `(market_id, account_id)`, which also
   serves the cascade from `accounts`.
+- `sign_in_challenges_expires_at_check`: CHECK `expires_at > created_at`, as
+  `sessions_absolute_expires_at_check`. Added in slice 7a, signed off by Mojtaba 2026-10-08.
 
 **`identity.invitations`**
 
@@ -527,8 +532,14 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
   owner invitations to two addresses for one new seller both pass the issue guard and both can be
   accepted. Measured: the second refused; a new one after a revocation accepted (11.4 M12).
 - Unique `(market_id, token_hash)` for acceptance and the preview (D 8.6 row 5).
+- Plain `(market_id, seller_id)`, `invitations_market_id_seller_id_idx`, declared in Prisma: the
+  RESTRICT check PostgreSQL runs when the serializable purge deletes a `seller_access` row;
+  without it a seq scan and a relation-level predicate lock (measured 70 vs 2 buffers at 3,000
+  rows).
 - An expired pending row still holds its keys until the hourly job deletes it, so the issue use
-  case replaces such a row in its own unit (M7, confirmed). A new `seller-owner` invitation may
+  case replaces such a row in its own unit (M7, confirmed). So does a pending row never
+  dispatched (`token_hash IS NULL`) whose `created_at` is older than its kind's lifetime (Ali
+  2026-10-08); from slice 7b the hourly job deletes those too (9). A new `seller-owner` invitation may
   name a seller that never had a member (3.9).
 - Acceptance writes `accounts`, `seller_memberships` and `role_assignments`, so it runs
   `serializable` (C11): two concurrent first-admin acceptances cannot both see "no administrator".
@@ -776,7 +787,7 @@ measured; at these row counts every table is far below the point where partition
 | `sign_in_records` | 10³ to 10⁴ a day, so at most about 10⁶ at 90 days | Daily-slice deletes. Revisit at 5 × 10⁷ rows: monthly range partitions on `occurred_at`, dropped whole |
 | `sign_in_throttles` | One row per key and window: hundreds normally; under attack one per address or IPv6 /64 tried, for 48 hours | Hourly purge; an index `(market_id, window_started_at)` once it passes 10⁶ rows |
 | `sign_in_challenges` | Hundreds, short-lived | Hourly purge |
-| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows |
+| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows, and of never-dispatched invitations older than their kind's lifetime |
 | `outbox` | A few events per account plus admin actions: 10⁵ to 10⁶ a year | Kept (P 6.5); pruning or partitioning is decided at 10⁶ rows |
 | `event_delivery`, `inbox` | The mail-causing events times their subscribers | The platform prune job, before the first deployed environment (P 7) |
 | `subject_keys` | Accounts plus sellers plus one tombstone per purged sign-up | None in Phase 2 (A7; revisited before the first deployed environment); sign-up is rate-limited per origin |
@@ -784,7 +795,7 @@ measured; at these row counts every table is far below the point where partition
 
 | Job (PN4) | Per hosted Market, each statement with `market_id` at the top level |
 |---|---|
-| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days |
+| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days. From slice 7b, which passes the per-kind lifetimes from Market config: pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
 | `identity.purge-unverified-accounts`, daily, slice 3 | Accounts of the partial index of 3.3 whose latest sign-up is older than 7 days: destroy the key, delete the account, one `serializable` unit per account (C11); from slice 5 also its assignment, membership and the `seller_access` whose `registered_at` is NULL |
 
 Both delete only what is already invalid and are safe to run twice and at once. Autovacuum

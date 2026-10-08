@@ -19,6 +19,7 @@ import type { LinkTokens } from '../ports/link-secrets';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { SessionRepository } from '../ports/session.repository';
+import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
@@ -51,6 +52,8 @@ export interface ResetPasswordDependencies {
   readonly accounts: AccountRepository;
   readonly links: OneTimeLinkRepository;
   readonly sessions: SessionRepository;
+  /** HF11: the closing unit voids the account's open sign-in challenges. */
+  readonly challenges: SignInChallengeRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
   readonly keys: ThrottleKeys;
@@ -97,8 +100,9 @@ type Closed =
  *    with the new password, so a second factor is never skipped (`ux.md` F3 step 4).
  *
  * A closing unit that throws gives the origin reservation back before the error goes on
- * (Mojtaba, slice 4). Open challenges and a second factor do not exist before slice 7, which
- * voids the former here.
+ * (Mojtaba, slice 4). The closing unit also voids every open sign-in challenge of the account
+ * (HF11; Hassan I2 (d)), and a reset never touches the second factor (Hassan I2 (a)): the next
+ * sign-in still asks for a code.
  * The token and the passwords are never logged, stored or echoed.
  */
 export class ResetPassword extends UseCase<
@@ -223,6 +227,8 @@ export class ResetPassword extends UseCase<
           return ok({ kind: 'refused' });
         }
         await accounts.save(market, current);
+        // HF11, Hassan I2 (d): a challenge opened with the old password can never complete.
+        await this.deps.challenges.voidAllOf(market, accountId);
         const revokedSessions = await this.deps.sessions.revokeAllOf(
           market,
           accountId,

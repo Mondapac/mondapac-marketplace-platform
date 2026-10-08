@@ -79,6 +79,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // docs/design/data/identity.md section 7 (slice 7): ordinary tables; recovery codes are
+    // replaced at regeneration (DELETE), voided challenges and a reset factor are deleted.
+    'identity.second_factors': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.recovery_codes': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.sign_in_challenges': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.invitations': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/platform.md 11.6 (identity slice 6a): append-only like the audit log;
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).

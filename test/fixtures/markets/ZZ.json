@@ -136,5 +136,14 @@
     },
     "maxVariantsPerProduct": 3,
     "approvalRequired": false
+  },
+  "pricing": {
+    "maxUnitPriceMinor": 2000000,
+    "jumpThreshold": {
+      "numerator": 1,
+      "denominator": 4
+    },
+    "jumpDirections": "up",
+    "jumpWindow": "P3D"
   }
 }

@@ -31,6 +31,7 @@ import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/
 import { COMMON_PASSWORD_LIST } from './application/ports/common-password-list';
 import { IDENTITY_MAIL_COMPOSER } from './application/ports/identity-mails';
 import { IDENTITY_MARKET_POLICY } from './application/ports/identity-market-policy';
+import { INVITATION_REPOSITORY } from './application/ports/invitation.repository';
 import { LINK_TARGETS, LINK_TOKENS } from './application/ports/link-secrets';
 import { ONE_TIME_LINK_REPOSITORY } from './application/ports/one-time-link.repository';
 import { PASSWORD_HASHER } from './application/ports/password-hasher';
@@ -52,6 +53,7 @@ import {
   THROTTLE_KEYS,
   type SessionTokens,
 } from './application/ports/session-secrets';
+import { SIGN_IN_CHALLENGE_REPOSITORY } from './application/ports/sign-in-challenge.repository';
 import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.repository';
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
@@ -93,6 +95,7 @@ import { Argon2idPasswordHasher } from './infrastructure/passwords/argon2id-pass
 import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-common-passwords';
 import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
 import { roleProviders } from './infrastructure/roles/role-providers';
+import { secondFactorProviders } from './infrastructure/second-factor/second-factor-providers';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
@@ -121,6 +124,8 @@ const PORT = {
   throttles: THROTTLE_REPOSITORY,
   records: SIGN_IN_RECORD_REPOSITORY,
   links: ONE_TIME_LINK_REPOSITORY,
+  challenges: SIGN_IN_CHALLENGE_REPOSITORY,
+  invitations: INVITATION_REPOSITORY,
   sellerAccess: SELLER_ACCESS_REPOSITORY,
   reviewers: ACCESS_REVIEWERS,
   memberships: SELLER_MEMBERSHIP_REPOSITORY,
@@ -233,6 +238,7 @@ function useCaseProvider<D, U>(
     ...sellerProviders,
     ...reviewerProviders,
     ...roleProviders,
+    ...secondFactorProviders,
     {
       provide: AUTHENTICATOR,
       inject: [UNIT_OF_WORK, SESSION_REPOSITORY, SESSION_TOKENS, CLOCK],
@@ -308,6 +314,8 @@ function useCaseProvider<D, U>(
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,
       sessions: true,
+      challenges: true,
+      invitations: true,
       throttles: true,
       records: true,
       links: true,
@@ -478,6 +486,7 @@ function useCaseProvider<D, U>(
     useCaseProvider(ResetPassword, {
       unitOfWork: true,
       accounts: true,
+      challenges: true,
       links: true,
       sessions: true,
       throttles: true,
@@ -494,6 +503,7 @@ function useCaseProvider<D, U>(
     useCaseProvider(ChangePassword, {
       unitOfWork: true,
       accounts: true,
+      challenges: true,
       sessions: true,
       links: true,
       throttles: true,
