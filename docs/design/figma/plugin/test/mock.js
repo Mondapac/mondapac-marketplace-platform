@@ -486,7 +486,7 @@ function makeFigma(opts) {
         const set = this._main.parent; const want = Object.assign({}, this._main.variantProperties, variant);
         const next = set.children.find((c) => Object.keys(want).every((k) => c.variantProperties[k] === want[k]));
         if (!next) fail('No variant of ' + set.name + ' matches ' + JSON.stringify(want));
-        this._main = next; this._adopt(next); Object.assign(other, this._propVals);
+        this._main = next; this._adopt(next); Object.keys(this._propVals).forEach((k) => { if (!(k in other)) other[k] = this._propVals[k]; }); // overrides carry over to the new variant; values set in this call win
       }
       Object.keys(other).forEach((k) => {
         this._propVals[k] = other[k]; const t = d[k].type;
