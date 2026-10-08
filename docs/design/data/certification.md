@@ -941,8 +941,12 @@ is polymorphic (a type, a claim policy or an issuer; the revision itself is `pro
 update only `state`, `decided_by_account_id`, `decided_at` and `version` there, and only `retired_at`
 on a contact channel. Guards added after review (Hassan M1, M2, L1): a before-update trigger freezes a decided
 proposal for every role and moves the version by one; a trigger lets a channel be retired once and never
-revived; a before-insert trigger refuses texts and claim terms for a revision that is a type's published
-revision or a proposal's proposed revision (a change is a new revision). The CHECK on
+revived; a before-insert trigger refuses texts and claim terms unless the revision row was inserted by the same
+transaction (its `xmin` is the current transaction id; the revision insert must therefore not sit inside a
+savepoint), and also for a revision that is a type's published revision or a proposal's proposed revision (a
+change is a new revision; Hassan M2 and its superseded-revision and race residuals). Accepted (Hassan I-a, I-b,
+I-c): the owner role may change other columns in the single decision update; an application insert may create
+a proposal already decided (part of L2); a first retirement may carry any time at or after creation. The CHECK on
 `certification_type_revisions.change_reason_ciphertext` is added plain on an existing table (not NOT VALID):
 the column is new and all NULL, and no environment is deployed. Accepted risk (Hassan L2): the database does
 not tie `proposer_account_id` to the revision author, nor publication to an approved proposal; the domain

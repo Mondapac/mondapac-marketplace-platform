@@ -1148,6 +1148,7 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     const sub = await submission(cert, typeId, revisionId);
     await insert('seller_submission_decisions', decision(sub));
     // A row in each table of migration 2 that the trigger guards.
+    await sql.query('BEGIN');
     const draftRevision = await revision(typeId, 'THIRD_PARTY_DOCUMENT', uuid7(), {
       revision_no: 2,
     });
@@ -1164,6 +1165,7 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
       locale: 'en',
       phrase: 'halal',
     });
+    await sql.query('COMMIT');
     const tables = insertOnlyTables();
     expect(tables).toEqual(
       expect.arrayContaining([

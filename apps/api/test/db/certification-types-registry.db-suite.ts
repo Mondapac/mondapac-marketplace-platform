@@ -37,16 +37,55 @@ export function registerTypesRegistrySuite(): void {
       await owner.end();
     });
 
+    /** True while a test body runs in its transaction on the application connection. */
+    let inTx = false;
+    /**
+     * Runs a test body in one transaction on the application connection and rolls it back: the
+     * guards of texts and claim terms accept them only in the transaction that saved the revision
+     * (Hassan M2). A failing statement is wrapped in a savepoint so the body can go on.
+     */
+    const rolled =
+      <A extends unknown[]>(fn: (...args: A) => Promise<void>) =>
+      async (...args: A): Promise<void> => {
+        await sql.query('BEGIN');
+        inTx = true;
+        try {
+          await fn(...args);
+        } finally {
+          inTx = false;
+          await sql.query('ROLLBACK');
+        }
+      };
+    /** Commits what `fn` writes in one transaction (a revision saved with its content). */
+    async function committed<T>(fn: () => Promise<T>): Promise<T> {
+      await sql.query('BEGIN');
+      inTx = true;
+      try {
+        const result = await fn();
+        inTx = false;
+        await sql.query('COMMIT');
+        return result;
+      } catch (error) {
+        inTx = false;
+        await sql.query('ROLLBACK');
+        throw error;
+      }
+    }
+
     /** The failure of a statement that must fail ({ code, constraint }), or null when it succeeded. */
     async function failure(
       client: Client,
       text: string,
       values: unknown[] = [],
     ): Promise<{ code: string; constraint?: string } | null> {
+      const guarded = inTx && client === sql;
       try {
+        if (guarded) await client.query('SAVEPOINT f');
         await client.query(text, values);
+        if (guarded) await client.query('RELEASE f');
         return null;
       } catch (error) {
+        if (guarded) await client.query('ROLLBACK TO f; RELEASE f');
         const e = error as { code?: string; constraint?: string };
         return { code: e.code ?? 'unknown', ...(e.constraint ? { constraint: e.constraint } : {}) };
       }
@@ -149,77 +188,108 @@ export function registerTypesRegistrySuite(): void {
             'customer_description_check',
           ],
         ]),
-      ])('names the violated check: %s', async (_label, overrides, name) => {
-        const { revisionId } = await type();
-        expect(await insertFailure('type_revision_texts', text(revisionId, overrides))).toEqual({
-          code: '23514',
-          constraint: `type_revision_texts_${name}`,
-        });
-      });
+      ])(
+        'names the violated check: %s',
+        rolled(async (_label, overrides, name) => {
+          const { revisionId } = await type();
+          expect(await insertFailure('type_revision_texts', text(revisionId, overrides))).toEqual({
+            code: '23514',
+            constraint: `type_revision_texts_${name}`,
+          });
+        }),
+      );
 
-      it('accepts the usual locales, one text per revision and locale', async () => {
-        const { revisionId } = await type();
-        for (const locale of ['en', 'en-AU', 'ar', 'zh-Hant-TW', 'es-419']) {
-          expect(
-            await insertFailure('type_revision_texts', text(revisionId, { locale })),
-          ).toBeNull();
-        }
-        expect(await insertFailure('type_revision_texts', text(revisionId))).toEqual({
-          code: '23505',
-          constraint: 'type_revision_texts_pkey',
-        });
-      });
+      it(
+        'accepts the usual locales, one text per revision and locale',
+        rolled(async () => {
+          const { revisionId } = await type();
+          for (const locale of ['en', 'en-AU', 'ar', 'zh-Hant-TW', 'es-419']) {
+            expect(
+              await insertFailure('type_revision_texts', text(revisionId, { locale })),
+            ).toBeNull();
+          }
+          expect(await insertFailure('type_revision_texts', text(revisionId))).toEqual({
+            code: '23505',
+            constraint: 'type_revision_texts_pkey',
+          });
+        }),
+      );
 
-      it('is bound to a revision of the same Market (CE4)', async () => {
-        const { revisionId } = await type();
-        const result = await insertFailure(
-          'type_revision_texts',
-          text(revisionId, { ...base(other.marketId, other.tenantId) }),
-        );
-        expect(result?.code).toBe('23503');
-        expect(result?.constraint).toBe('type_revision_texts_market_id_type_revision_id_fkey');
-      });
-
-      it('refuses a text once the revision is published or proposed: a change is a new revision (Hassan M2)', async () => {
-        const published = await type();
-        await insert('type_revision_texts', text(published.revisionId));
-        await sql.query(
-          `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
-          [published.revisionId, published.typeId],
-        );
-        for (const locale of ['en-AU', 'ar']) {
+      it(
+        'is bound to a revision of the same Market (CE4)',
+        rolled(async () => {
+          const { revisionId } = await type();
           const result = await insertFailure(
             'type_revision_texts',
-            text(published.revisionId, { locale }),
+            text(revisionId, { ...base(other.marketId, other.tenantId) }),
+          );
+          expect(result?.code).toBe('23503');
+          expect(result?.constraint).toBe('type_revision_texts_market_id_type_revision_id_fkey');
+        }),
+      );
+
+      it('refuses a text once the revision is published, proposed or saved in an earlier transaction: a change is a new revision (Hassan M2)', async () => {
+        // Same transaction as the pointer: the pointer check refuses.
+        await rolled(async () => {
+          const published = await type();
+          await insert('type_revision_texts', text(published.revisionId));
+          await sql.query(
+            `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
+            [published.revisionId, published.typeId],
+          );
+          const result = await insertFailure(
+            'type_revision_texts',
+            text(published.revisionId, { locale: 'ar' }),
           );
           expect(result?.code).toBe('23001');
-        }
-        const proposed = await type();
-        await insert('type_revision_texts', text(proposed.revisionId));
-        await insert('relaxation_proposals', {
-          id: uuid7(),
-          ...base(),
-          subject_kind: 'type-revision',
-          subject_id: proposed.typeId,
-          based_on_revision_id: null,
-          proposed_revision_id: proposed.revisionId,
-          proposed_expert_reference_ciphertext: null,
-          state: 'pending',
-          proposer_account_id: uuid7(),
-          proposed_at: T0,
-          decided_by_account_id: null,
-          decided_at: null,
-          change_reason_ciphertext: null,
-          version: 1,
-          created_at: T0,
+          const proposed = await type();
+          await insert('relaxation_proposals', {
+            id: uuid7(),
+            ...base(),
+            subject_kind: 'type-revision',
+            subject_id: proposed.typeId,
+            based_on_revision_id: null,
+            proposed_revision_id: proposed.revisionId,
+            proposed_expert_reference_ciphertext: null,
+            state: 'pending',
+            proposer_account_id: uuid7(),
+            proposed_at: T0,
+            decided_by_account_id: null,
+            decided_at: null,
+            change_reason_ciphertext: null,
+            version: 1,
+            created_at: T0,
+          });
+          expect(
+            (await insertFailure('type_revision_texts', text(proposed.revisionId)))?.code,
+          ).toBe('23001');
+          // A revision of this very transaction, never pointed at, stays open.
+          const open = await type();
+          expect(await insertFailure('type_revision_texts', text(open.revisionId))).toBeNull();
+        })();
+        // A revision committed earlier, then pointed at and replaced: still sealed (the
+        // superseded-revision gap). The pointer moves away and back; the texts stay refused.
+        const first = await committed(async () => {
+          const saved = await type();
+          await insert('type_revision_texts', text(saved.revisionId));
+          return saved;
         });
         expect(
-          (await insertFailure('type_revision_texts', text(proposed.revisionId, { locale: 'ar' })))
+          (await insertFailure('type_revision_texts', text(first.revisionId, { locale: 'ar' })))
             ?.code,
         ).toBe('23001');
-        // A revision saved in this Market but never pointed at stays open.
-        const open = await type();
-        expect(await insertFailure('type_revision_texts', text(open.revisionId))).toBeNull();
+        await sql.query(
+          `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
+          [first.revisionId, first.typeId],
+        );
+        await sql.query(
+          `UPDATE certification.certification_types SET published_revision_id = NULL WHERE id = $1`,
+          [first.typeId],
+        );
+        expect(
+          (await insertFailure('type_revision_texts', text(first.revisionId, { locale: 'ar' })))
+            ?.code,
+        ).toBe('23001');
       });
 
       it('guards truncation by its own trigger, not only through the cascade', async () => {
@@ -241,8 +311,11 @@ export function registerTypesRegistrySuite(): void {
       });
 
       it('is insert-only for the application and the owner alike (CE3)', async () => {
-        const { revisionId } = await type();
-        await insert('type_revision_texts', text(revisionId));
+        const { revisionId } = await committed(async () => {
+          const saved = await type();
+          await insert('type_revision_texts', text(saved.revisionId));
+          return saved;
+        });
         for (const client of [sql, owner]) {
           for (const statement of [
             `UPDATE certification.type_revision_texts SET name = 'X' WHERE type_revision_id = $1`,
@@ -277,52 +350,60 @@ export function registerTypesRegistrySuite(): void {
         ]),
         ['a bad market id', { market_id: 'au' }],
         ['a bad tenant id', { tenant_id: 'Default' }],
-      ])('names the violated check: %s', async (_label, overrides) => {
-        const { revisionId } = await type();
-        await insert('type_revision_texts', text(revisionId));
-        const name =
-          'market_id' in overrides
-            ? 'market_id'
-            : 'tenant_id' in overrides
-              ? 'tenant_id'
-              : 'phrase';
-        const result = await insertFailure('claim_terms', term(revisionId, overrides));
-        // A bad market or tenant id also breaks the foreign key; the check is evaluated first.
-        expect(result).toEqual({ code: '23514', constraint: `claim_terms_${name}_check` });
-      });
+      ])(
+        'names the violated check: %s',
+        rolled(async (_label, overrides) => {
+          const { revisionId } = await type();
+          await insert('type_revision_texts', text(revisionId));
+          const name =
+            'market_id' in overrides
+              ? 'market_id'
+              : 'tenant_id' in overrides
+                ? 'tenant_id'
+                : 'phrase';
+          const result = await insertFailure('claim_terms', term(revisionId, overrides));
+          // A bad market or tenant id also breaks the foreign key; the check is evaluated first.
+          expect(result).toEqual({ code: '23514', constraint: `claim_terms_${name}_check` });
+        }),
+      );
 
-      it('needs the text of its own locale, and holds each phrase once', async () => {
-        const { revisionId } = await type();
-        expect((await insertFailure('claim_terms', term(revisionId)))?.code).toBe('23503');
-        await insert('type_revision_texts', text(revisionId));
-        expect(await insertFailure('claim_terms', term(revisionId))).toBeNull();
-        expect(await insertFailure('claim_terms', term(revisionId))).toEqual({
-          code: '23505',
-          constraint: 'claim_terms_pkey',
+      it(
+        'needs the text of its own locale, and holds each phrase once',
+        rolled(async () => {
+          const { revisionId } = await type();
+          expect((await insertFailure('claim_terms', term(revisionId)))?.code).toBe('23503');
+          await insert('type_revision_texts', text(revisionId));
+          expect(await insertFailure('claim_terms', term(revisionId))).toBeNull();
+          expect(await insertFailure('claim_terms', term(revisionId))).toEqual({
+            code: '23505',
+            constraint: 'claim_terms_pkey',
+          });
+          // The same phrase in another locale needs that locale's text.
+          expect(
+            (await insertFailure('claim_terms', term(revisionId, { locale: 'ar' })))?.code,
+          ).toBe('23503');
+        }),
+      );
+
+      it('refuses a term in any later transaction than the one that saved the revision (Hassan M2)', async () => {
+        const { revisionId } = await committed(async () => {
+          const saved = await type();
+          await insert('type_revision_texts', text(saved.revisionId));
+          expect(await insertFailure('claim_terms', term(saved.revisionId))).toBeNull();
+          return saved;
         });
-        // The same phrase in another locale needs that locale's text.
-        expect((await insertFailure('claim_terms', term(revisionId, { locale: 'ar' })))?.code).toBe(
-          '23503',
-        );
-      });
-
-      it('refuses a term once the revision is published or proposed (Hassan M2)', async () => {
-        const { typeId, revisionId } = await type();
-        await insert('type_revision_texts', text(revisionId));
-        expect(await insertFailure('claim_terms', term(revisionId))).toBeNull();
-        await sql.query(
-          `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
-          [revisionId, typeId],
-        );
         expect(
           (await insertFailure('claim_terms', term(revisionId, { phrase: 'tayyib' })))?.code,
         ).toBe('23001');
       });
 
       it('is insert-only for the application and the owner alike (CE3)', async () => {
-        const { revisionId } = await type();
-        await insert('type_revision_texts', text(revisionId));
-        await insert('claim_terms', term(revisionId));
+        const { revisionId } = await committed(async () => {
+          const saved = await type();
+          await insert('type_revision_texts', text(saved.revisionId));
+          await insert('claim_terms', term(saved.revisionId));
+          return saved;
+        });
         for (const client of [sql, owner]) {
           const state = client === sql ? '42501' : '23001';
           expect(

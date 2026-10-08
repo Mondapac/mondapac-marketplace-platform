@@ -187,8 +187,8 @@ CREATE TRIGGER "claim_terms_no_truncate"
 -- Hand-written guards (Hassan M1, M2, L1; database-designer). A proposal is decided once and a
 -- decided row is frozen for every role, the owner included; the version moves by one. A
 -- channel is retired once, never revived or back-dated. Texts and claim terms join a revision
--- only before it is pointed at: the published pointer of a type or the proposed revision of a
--- proposal (3.20: a save is a new revision).
+-- in the transaction that inserted the revision and before it is pointed at: the published pointer
+-- of a type or the proposed revision of a proposal (3.20: a save is a new revision).
 CREATE FUNCTION "certification"."relaxation_proposals_guard_update"() RETURNS trigger
   LANGUAGE plpgsql
 AS $$
@@ -229,7 +229,14 @@ CREATE FUNCTION "certification"."revision_content_guard_insert"() RETURNS trigge
   LANGUAGE plpgsql
 AS $$
 BEGIN
+  -- The revision row must be the one this transaction inserted (a save is a new revision, 3.20):
+  -- a row of an earlier transaction, published once and replaced or never, takes no content.
+  -- A missing revision falls through to the foreign key.
   IF EXISTS (
+       SELECT 1 FROM "certification"."certification_type_revisions" r
+        WHERE r."market_id" = NEW."market_id" AND r."id" = NEW."type_revision_id"
+          AND r.xmin <> pg_current_xact_id()::xid)
+     OR EXISTS (
        SELECT 1 FROM "certification"."certification_types" t
         WHERE t."market_id" = NEW."market_id" AND t."published_revision_id" = NEW."type_revision_id")
      OR EXISTS (
