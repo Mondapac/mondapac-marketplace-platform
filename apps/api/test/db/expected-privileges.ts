@@ -167,7 +167,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.platform_category_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_revision_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
-    // code, type and the flags live in insert-only revisions.
+    // code, type and the localizable flag stay on the root, fixed by the column grant; the
+    // material and variant-option flags live in insert-only revisions.
     'catalog.attribute_definitions': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['published_revision_id', 'status', 'version'],

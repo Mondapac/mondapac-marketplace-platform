@@ -124,7 +124,7 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     expect(await insert({ code })).toBe('23505');
   });
 
-  it('keeps revisions and options insert-only for the application and the owner', async () => {
+  it('keeps every revision table insert-only: 42501 for the application, 23001 for the owner', async () => {
     const definition = await insertDefinition({ data_type: 'select' });
     const revision = await insertRevision(definition);
     await sql.query(
@@ -133,31 +133,50 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
        VALUES ($1, $2, $3, 'red', '{"xx":"Red"}', true, 0)`,
       [market.marketId, market.tenantId, revision],
     );
-    for (const client of [sql, owner]) {
-      expect(
-        await sqlState(
-          client,
-          'UPDATE catalog.attribute_definition_revisions SET material = true WHERE id = $1',
-          [revision],
-        ),
-      ).not.toBeNull();
-      expect(
-        await sqlState(client, 'DELETE FROM catalog.attribute_definition_revisions WHERE id = $1', [
-          revision,
-        ]),
-      ).not.toBeNull();
-      expect(
-        await sqlState(
-          client,
-          'UPDATE catalog.attribute_definition_revision_options SET active = false WHERE revision_id = $1',
-          [revision],
-        ),
-      ).not.toBeNull();
-    }
-    expect(await sqlState(owner, 'TRUNCATE catalog.attribute_definition_revisions')).not.toBeNull();
-    expect(await sqlState(owner, 'TRUNCATE catalog.attribute_definition_revision_options')).toBe(
-      '23001',
+    const familyId = uuid7();
+    await sql.query(
+      `INSERT INTO catalog.attribute_families
+        (id, market_id, tenant_id, code, status, created_by_kind, version, created_at)
+       VALUES ($1, $2, $3, $4, 'active', 'seed', 1, $5)`,
+      [familyId, market.marketId, market.tenantId, `f-${randomUUID().slice(0, 10)}`, T0],
     );
+    const familyRevision = uuid7();
+    await sql.query(
+      `INSERT INTO catalog.attribute_family_revisions
+        (id, market_id, tenant_id, family_id, revision_no, groups, author_kind, created_at)
+       VALUES ($1, $2, $3, $4, 1, '[]', 'seed', $5)`,
+      [familyRevision, market.marketId, market.tenantId, familyId, T0],
+    );
+    const cases = [
+      ['attribute_definition_revisions', 'material = true', 'id', revision],
+      ['attribute_definition_revision_options', 'active = false', 'revision_id', revision],
+      ['attribute_family_revisions', "groups = '[{}]'", 'id', familyRevision],
+    ] as const;
+    for (const [table, set, key, value] of cases) {
+      // The application holds no UPDATE or DELETE privilege on these tables at all.
+      expect(
+        await sqlState(sql, `UPDATE catalog.${table} SET ${set} WHERE ${key} = $1`, [value]),
+      ).toBe('42501');
+      expect(await sqlState(sql, `DELETE FROM catalog.${table} WHERE ${key} = $1`, [value])).toBe(
+        '42501',
+      );
+      expect(await sqlState(sql, `TRUNCATE catalog.${table}`)).toBe('42501');
+      // The owner is stopped by the trigger.
+      expect(
+        await sqlState(owner, `UPDATE catalog.${table} SET ${set} WHERE ${key} = $1`, [value]),
+      ).toBe('23001');
+      expect(await sqlState(owner, `DELETE FROM catalog.${table} WHERE ${key} = $1`, [value])).toBe(
+        '23001',
+      );
+      expect(await sqlState(owner, `TRUNCATE catalog.${table} CASCADE`)).toBe('23001');
+    }
+    const unchanged = await sql.query<{ material: boolean; active: boolean }>(
+      `SELECT r.material, o.active FROM catalog.attribute_definition_revisions r
+         JOIN catalog.attribute_definition_revision_options o ON o.revision_id = r.id
+        WHERE r.id = $1`,
+      [revision],
+    );
+    expect(unchanged.rows).toEqual([{ material: false, active: true }]);
   });
 
   it('checks revision author, names, bounds and option shape', async () => {
