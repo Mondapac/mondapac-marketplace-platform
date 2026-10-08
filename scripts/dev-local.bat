@@ -3,11 +3,11 @@ rem Starts MondaPac locally on Windows: Docker services, database, API, worker a
 rem Run from anywhere: double-click this file or run scripts\dev-local.bat.
 rem Needs: Docker Desktop (running), Node.js 24.20+ and pnpm 10 (npm i -g pnpm@10).
 rem Then open http://seller.localhost:3001 . Mail arrives in Mailpit at http://localhost:8025 .
-rem The market is AU, the first Market. Pass another code as the first argument to change it.
+rem The Market is AU, the first Market (HOSTED_MARKETS in .env.example and PANEL_HOSTS in
+rem apps\seller\.env.example name it too; change all three together for another Market).
 setlocal
 cd /d "%~dp0.."
-set "MARKET=%~1"
-if "%MARKET%"=="" set "MARKET=AU"
+set "MARKET=AU"
 
 where node >nul 2>nul || (echo Node.js is not installed. Install Node 24.20 or newer from https://nodejs.org & goto :fail)
 where pnpm >nul 2>nul || (echo pnpm is not installed. Run: npm i -g pnpm@10 & goto :fail)
@@ -31,22 +31,24 @@ docker compose up -d --wait || goto :fail
 
 echo [3/5] Preparing the database and the local Market configuration
 call pnpm db:migrate || goto :fail
-node scripts\dev-panels-market.mjs %MARKET% || goto :fail
+node scripts\dev-panels-market.mjs "%MARKET%" || goto :fail
 
 echo [4/5] Starting the API and the worker in their own windows
 set "MARKET_CONFIG_DIR=%CD%\.local\markets"
-start "MondaPac API" cmd /k "cd /d %CD% && set MARKET_CONFIG_DIR=%MARKET_CONFIG_DIR% && pnpm dev"
+start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"
 rem The worker builds the API once; wait so it does not race the API watcher that cleans dist.
-start "MondaPac worker" cmd /k "cd /d %CD% && timeout /t 60 /nobreak && set MARKET_CONFIG_DIR=%MARKET_CONFIG_DIR% && pnpm dev:worker"
+start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:worker"
 
 echo [5/5] Starting the seller panel in its own window
-start "MondaPac seller panel" cmd /k "cd /d %CD% && pnpm dev:seller"
+start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
 
 echo.
 echo Started. Wait about a minute for the first build, then open:
 echo   Seller panel : http://seller.localhost:3001
 echo   Mail (Mailpit): http://localhost:8025
 echo To stop: close the three windows, then run "docker compose down".
+echo (The three windows inherit MARKET_CONFIG_DIR from this one.)
+pause
 endlocal
 exit /b 0
 
