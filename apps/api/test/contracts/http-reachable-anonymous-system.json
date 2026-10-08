@@ -17,7 +17,7 @@
   {
     "name": "identity.confirm-second-factor-enrolment",
     "rule": "anonymous",
-    "reason": "Second-factor enrolment confirmation during admin sign-in or invitation: no session exists yet."
+    "reason": "Admin second-factor enrolment confirmation with the enrolment challenge token and the first code: no session exists yet."
   },
   {
     "name": "identity.confirm-seller-email",
@@ -77,6 +77,6 @@
   {
     "name": "identity.start-second-factor-enrolment",
     "rule": "anonymous",
-    "reason": "Second-factor enrolment start during admin sign-in or invitation: no session exists yet."
+    "reason": "Admin second-factor enrolment start with the mailed enrolment link's token and the password: the admin has no session yet."
   }
 ]
