@@ -10,6 +10,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import { adminMarketPolicy } from '../../../../../test/support/admin-market-fixture';
 import {
   TEST_LOCALE_CONFIG_DIRS,
   TEST_MARKET_CONFIG_DIRS,
@@ -28,7 +29,6 @@ import type { SecondFactorState } from '../../domain/second-factor';
 import { openSession } from '../../domain/session';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer, formatDuration } from '../../infrastructure/mail/mail-catalogue';
-import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { RandomSessionTokens } from '../../infrastructure/sessions/random-session-tokens';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import { ChangePassword } from './change-password.use-case';
@@ -59,7 +59,8 @@ const CUSTOMER_ID = id<'Account'>('01990000-0000-7000-8000-000000000001');
 const SELLER_ACCOUNT_ID = id<'Account'>('01990000-0000-7000-8000-000000000002');
 const SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-0000000000f1');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-const policy = new MarketConfigIdentityPolicy(markets);
+// Slice 7b's admin keys are not in the Market configuration yet: AU and ZZ values from the tests.
+const policy = adminMarketPolicy(markets);
 const composer = new CatalogueMailComposer(markets, loadLocaleCatalogues(TEST_LOCALE_CONFIG_DIRS));
 const allow: AuthorisationCheck = {
   check: (): Promise<AccessDecision> => Promise.resolve({ allowed: true }),
@@ -164,6 +165,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         links: fakes.linkRepository,
         sessions: fakes.sessionRepository,
         challenges: fakes.challengeRepository,
+        factors: fakes.factorRepository,
         records: fakes.recordRepository,
         ids,
         linkTokens,
@@ -178,6 +180,8 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         records: fakes.recordRepository,
         ids,
         tokens: sessionTokens,
+        factors: fakes.factorRepository,
+        secrets: fakes.secrets,
         hasher: fakes.hasher,
         commonPasswords,
       }),
@@ -462,7 +466,12 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       activatedAt: clock.now(),
       lockedAt: null,
       createdAt: clock.now(),
-      recoveryCodes: [],
+      // An active factor holds all ten codes (data design 3.10).
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
       version: 1,
     };
     fakes.factors.set(accountId, factor);
@@ -629,6 +638,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
           links: fakes.linkRepository,
           sessions: fakes.sessionRepository,
           challenges: fakes.challengeRepository,
+          factors: fakes.factorRepository,
           throttles: fakes.throttleRepository,
           records: fakes.recordRepository,
           keys,
@@ -1074,10 +1084,24 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         sessionId: id<'Session'>('01990000-0000-7000-8000-00000000a009'),
         sellerId: null,
       });
+      // An admin's change always carries a code (Hassan I2 (b)): without one it is refused as input.
       await expect(
         u.change.execute(testCallContext(market, admin), {
           currentPassword: OLD_PASSWORD,
           newPassword: NEW_PASSWORD,
+          client: CLIENT,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] },
+      });
+      // With a code but no active factor, the admin is refused before any password is compared.
+      seed('customer');
+      await expect(
+        u.change.execute(testCallContext(market, admin), {
+          currentPassword: OLD_PASSWORD,
+          newPassword: NEW_PASSWORD,
+          code: '123456',
           client: CLIENT,
         }),
       ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });

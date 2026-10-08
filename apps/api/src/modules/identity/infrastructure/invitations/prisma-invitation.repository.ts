@@ -104,6 +104,19 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return restore(row);
   }
 
+  async findPendingFor(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    emailNormalized: string,
+  ): Promise<Invitation | null> {
+    // On the partial unique keys of data design 8.4 (pending, by scope and address).
+    const row = await this.prisma.tx(market).identityInvitation.findFirst({
+      where: { marketId: market.marketId, sellerId, emailNormalized, state: 'pending' },
+      select: SELECTED,
+    });
+    return row === null ? null : restore(row);
+  }
+
   async add(market: MarketContext, invitation: Invitation): Promise<void> {
     const state = invitation.state;
     if (invitation.persistedVersion !== null) {

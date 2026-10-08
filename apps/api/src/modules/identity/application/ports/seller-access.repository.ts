@@ -38,6 +38,17 @@ export interface SellerAccessRepository {
   ): Promise<RegisteredSeller[]>;
 
   /**
+   * Takes the seller access row's write lock for the rest of the caller's read-write unit (one
+   * statement that changes no value, `version = version + 0`, as `lockCredential`); false when
+   * the seller does not exist. Item H of slice 7b (Mojtaba, tracked items of slice 4): the unit
+   * that opens a seller session takes it before it reads the seller's state, and a unit that
+   * suspends or rejects a seller updates the same row before it revokes the seller's sessions.
+   * At READ COMMITTED the two serialise: either the session commits first and the revocation
+   * ends it, or the sign-in reads the new state and refuses.
+   */
+  lockForSession(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean>;
+
+  /**
    * Stores a new seller access and creates the seller's data key in the same unit (identity
    * design 11.3: a seller id is a subject).
    */

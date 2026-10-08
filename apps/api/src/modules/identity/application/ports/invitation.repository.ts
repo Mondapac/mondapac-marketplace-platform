@@ -13,6 +13,17 @@ export interface InvitationRepository {
   findByTokenHash(market: MarketContext, tokenHash: Uint8Array): Promise<Invitation | null>;
 
   /**
+   * The pending invitation for this address in this scope (a seller, or the platform when
+   * `sellerId` is null), or null: the row the partial unique keys of data design 8.4 allow at
+   * most one of. An issue reads it to replace it when stale (M7; item G).
+   */
+  findPendingFor(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    emailNormalized: string,
+  ): Promise<Invitation | null>;
+
+  /**
    * Stores a new invitation. A pending invitation for the same address and scope, or a second
    * pending seller-owner invitation for the seller (the partial unique indexes of data design
    * 3.10, M12), throws {@link InvitationAlreadyPendingError}.

@@ -1,6 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition, AuditEntry, Id } from '@mondapac/shared-kernel';
-import { SELLER_ACCESS_STATES, SELLER_ORIGINS } from '../events';
+import { INVITATION_KINDS, SELLER_ACCESS_STATES, SELLER_ORIGINS } from '../events';
 import { ROLE_KINDS, ROLE_SCOPES } from '../role';
 
 // The audited actions of identity (docs/design/domain/platform-audit.md 5; identity design
@@ -149,6 +149,104 @@ export function accountRoleAssigned(
   return AccountRoleAssigned.entry(accountId, { after });
 }
 
+/** The states a second factor can be in when it is reset (3.6): `none` is no row. */
+const FACTOR_STATES = ['pending', 'active'] as const;
+
+/**
+ * An invitation was issued (identity design 3.4, 7.4; PA 5 row 7). Target: the invitation. In
+ * slice 7b only the first-admin operator routine issues one, as `SYSTEM`; its accountability is
+ * the operator log written before it acts (PA 9.2, Hassan L6), linked by the correlation id.
+ * Never the invited address (R5).
+ */
+export const InvitationIssuedAudit = defineAuditAction({
+  action: 'identity.invitation.issued',
+  targetType: 'identity.invitation',
+  actors: ['system'],
+  after: {
+    kind: auditField.enumOf(INVITATION_KINDS),
+    roleId: auditField.id(),
+  },
+});
+
+/**
+ * An invitation was accepted (identity design 3.4; PA 5 row 7). Target: the invitation. The
+ * actor is `ANONYMOUS`: the invitation's token binds the request, so `boundSubjectId` names the
+ * invitation (W4a); `accountId` is the account created by it.
+ */
+export const InvitationAcceptedAudit = defineAuditAction({
+  action: 'identity.invitation.accepted',
+  targetType: 'identity.invitation',
+  actors: ['anonymous'],
+  after: {
+    kind: auditField.enumOf(INVITATION_KINDS),
+    roleId: auditField.id(),
+    accountId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
+ * A second factor became active (identity design 3.4, 3.6; PA 5 row 7): inside an admin
+ * invitation's acceptance (`boundSubjectId` = the invitation) or from an enrolment link with the
+ * password (`boundSubjectId` = the account). Target: the factor.
+ */
+export const SecondFactorActivatedAudit = defineAuditAction({
+  action: 'identity.second-factor.activated',
+  targetType: 'identity.second-factor',
+  actors: ['anonymous'],
+  after: {
+    accountId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
+ * A new device replaced the admin's factor (identity design 3.6, M13; PA 5 row 7). Target: the
+ * factor. The signed-in holder acted.
+ */
+export const SecondFactorReplacedAudit = defineAuditAction({
+  action: 'identity.second-factor.replaced',
+  targetType: 'identity.second-factor',
+  actors: ['authenticated'],
+  after: { accountId: auditField.id() },
+});
+
+/** The holder regenerated the recovery codes; the old ones stopped working (3.6; PA 5 row 7). */
+export const RecoveryCodesRegeneratedAudit = defineAuditAction({
+  action: 'identity.second-factor.recovery-codes-regenerated',
+  targetType: 'identity.second-factor',
+  actors: ['authenticated'],
+  after: { accountId: auditField.id() },
+});
+
+/**
+ * A second factor was reset to `none` (identity design 3.6, 7.3, 7.4; PA 5 rows 7 and 8b).
+ * Target: the removed factor. In slice 7b only the operator's break-glass routine resets one, as
+ * `SYSTEM`, after the operator log (PA 9.2); slice 8b adds the authenticated admin path.
+ */
+export const SecondFactorResetAudit = defineAuditAction({
+  action: 'identity.second-factor.reset',
+  targetType: 'identity.second-factor',
+  actors: ['system'],
+  before: { state: auditField.enumOf(FACTOR_STATES) },
+  after: { accountId: auditField.id() },
+});
+
+/**
+ * A successful admin sign-in (identity design 10.2; PA 5 row 7): bounded volume, no personal
+ * data. Target: the account. `ANONYMOUS`: the password and the factor bound the account, named
+ * in `boundSubjectId`; every attempt is also a sign-in record.
+ */
+export const AdminSessionOpenedAudit = defineAuditAction({
+  action: 'identity.admin-session.opened',
+  targetType: 'identity.account',
+  actors: ['anonymous'],
+  after: {
+    sessionId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
 /** Every audited action of identity, for its module's registration. */
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
@@ -156,4 +254,11 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerAccessFounded,
   SellerMemberAdded,
   AccountRoleAssigned,
+  InvitationIssuedAudit,
+  InvitationAcceptedAudit,
+  SecondFactorActivatedAudit,
+  SecondFactorReplacedAudit,
+  RecoveryCodesRegeneratedAudit,
+  SecondFactorResetAudit,
+  AdminSessionOpenedAudit,
 ]);

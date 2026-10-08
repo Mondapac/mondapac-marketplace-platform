@@ -382,7 +382,7 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       const { factor } = await enrol(account);
       const loaded = (await unit(() => factors.findByAccount(market, account)))!;
       const fresh = Array.from({ length: 10 }, () => HASH());
-      expect(loaded.regenerateRecoveryCodes(fresh).ok).toBe(true);
+      expect(loaded.regenerateRecoveryCodes(fresh, NOW).ok).toBe(true);
 
       await unit(() => factors.save(market, loaded));
 
@@ -403,9 +403,12 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       ).resolves.toBe(true);
 
       // Saving the older copy would bring the spent code back as unused: refused as stale.
-      expect(before.regenerateRecoveryCodes(Array.from({ length: 10 }, () => HASH())).ok).toBe(
-        true,
-      );
+      expect(
+        before.regenerateRecoveryCodes(
+          Array.from({ length: 10 }, () => HASH()),
+          NOW,
+        ).ok,
+      ).toBe(true);
       await expect(unit(() => factors.save(market, before))).rejects.toBeInstanceOf(
         StaleAggregateError,
       );
@@ -424,7 +427,7 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
         for (const c of fresh) out.push(await secrets.recoveryCodeHash(market, account, c));
         return out;
       });
-      expect(loaded.regenerateRecoveryCodes(freshHashes).ok).toBe(true);
+      expect(loaded.regenerateRecoveryCodes(freshHashes, NOW).ok).toBe(true);
       await unit(() => factors.save(market, loaded));
 
       await expect(

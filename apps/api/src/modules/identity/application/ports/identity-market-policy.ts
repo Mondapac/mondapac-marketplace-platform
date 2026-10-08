@@ -1,5 +1,7 @@
 import type { MarketContext, Population } from '@mondapac/shared-kernel';
+import type { InvitationKind } from '../../domain/invitation';
 import type { LinkPurpose } from '../../domain/one-time-link';
+import type { ChallengePolicy } from '../../domain/sign-in-challenge';
 import type { PasswordRules } from '../../domain/password-policy';
 import type { SessionLifetime } from '../../domain/session';
 import type { ThrottleRule } from '../../domain/throttle';
@@ -56,6 +58,30 @@ export interface IdentityMarketPolicy {
   unverifiedAccountRetentionDays(market: MarketContext): number;
   /** The sender of the Market's mail (identity design 9). */
   mailSender(market: MarketContext): MailSender;
+
+  // Slice 7b. These values come from Market configuration keys that the Market-config PR adds
+  // (identity design 6.7, the 7a note "Needed for 7b"); this branch edits no config file. Until
+  // a Market configures them, each read answers null and the flow that needs it fails closed
+  // (`access.unavailable`, or the operator routine refuses). The admin session lifetime is
+  // `sessionLifetime(market, 'admin')`, the enrolment link's `linkLifetimeMinutes(market,
+  // 'enrol-second-factor')`, and the admin pages `LinkTargets.target(market, 'admin', page)`.
+
+  /**
+   * An invitation's lifetime from its dispatch, by kind (identity design 3.4, 6.6; HF15: admin
+   * 72 hours, otherwise 7 days); also the cut-off after which a never-dispatched pending
+   * invitation is replaced or purged (item G). Null: not configured for this kind.
+   */
+  invitationLifetimeMinutes(market: MarketContext, kind: InvitationKind): number | null;
+
+  /** The challenge policy (identity design 2.1, 6.8: 5 attempts, 5 minutes), or null. */
+  challengePolicy(market: MarketContext): ChallengePolicy | null;
+
+  /**
+   * The `second-factor.account` counter (identity design 6.8, HF2: 10 failed codes or recovery
+   * codes in 24 hours, then the factor step is refused for 24 hours), or null. Nothing lifts its
+   * block early (Ali 2026-10-08, Hassan I-4).
+   */
+  secondFactorThrottle(market: MarketContext): ThrottleRule | null;
 }
 
 /** The `From` of a Market's mail. */

@@ -54,6 +54,33 @@ export type IdentityMail =
       readonly population: 'admin';
       /** The admin panel's "Awaiting review" queue, from configuration: no seller id. */
       readonly url: string;
+    }
+  | {
+      /** The enrolment link of 3.6 (HF6; slice 7b): start a second factor again. */
+      readonly template: 'enrol-second-factor';
+      readonly population: Population;
+      /** The enrolment page, with the token in the fragment. */
+      readonly url: string;
+      readonly lifetimeMinutes: number;
+    }
+  | {
+      /** An invitation (identity design 3.4; slice 7b: the admin kind). No inviter's name. */
+      readonly template: 'invitation';
+      readonly population: Population;
+      /** The acceptance page, with the token in the fragment. */
+      readonly url: string;
+      readonly lifetimeMinutes: number;
+    }
+  | {
+      /**
+       * A notice that the second factor changed (identity design 3.6, 6.8; slice 7b item C):
+       * replaced, reset, or locked after too many wrong codes (HF2). No button; "not you?".
+       */
+      readonly template: 'second-factor-changed';
+      readonly population: Population;
+      readonly change: 'replaced' | 'reset' | 'locked';
+      /** When it changed: written in the Market's time zone and locale. */
+      readonly changedAt: Temporal.Instant;
     };
 
 /** A rendered mail: plain text only (identity design 9; HF13). */

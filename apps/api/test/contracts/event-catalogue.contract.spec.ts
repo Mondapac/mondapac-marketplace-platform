@@ -78,8 +78,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
 
     expect(subscriptions.names()).toEqual([
       'identity.existing-account-mail',
+      'identity.invitation-mail',
       'identity.link-mail',
       'identity.password-changed-mail',
+      'identity.second-factor-mail',
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
       'sellers.create-file',
@@ -98,6 +100,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.ensure-seller-inventory',
       'sellers.create-file',
     ]);
+    expect(subscriptions.subscribersOf('identity.invitation-issued.v1')).toEqual([
+      'identity.invitation-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.second-factor-changed.v1')).toEqual([
+      'identity.second-factor-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.invitation-accepted.v1')).toEqual([]);
     expect(subscriptions.sealed).toBe(true);
   });
 

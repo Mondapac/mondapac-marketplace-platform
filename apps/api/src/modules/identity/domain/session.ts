@@ -107,6 +107,14 @@ export function lastSeenIsDue(session: Session, now: Temporal.Instant): boolean 
 
 /**
  * The code of a revocation (data design 3.4: a code, checked by the table's pattern): sign-out;
- * a password reset (every session of the account); a password change (every other session).
+ * a password reset (every session of the account); a password change (every other session);
+ * slice 7b: a second factor activated or replaced (every other session, D), or reset (every
+ * session, 3.6).
  */
-export type SessionRevokedReason = 'sign-out' | 'password-reset' | 'password-changed';
+export type SessionRevokedReason =
+  | 'sign-out'
+  | 'password-reset'
+  | 'password-changed'
+  | 'second-factor-activated'
+  | 'second-factor-replaced'
+  | 'second-factor-reset';

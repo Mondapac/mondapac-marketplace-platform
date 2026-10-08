@@ -6,6 +6,7 @@ import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
+import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
 import type { SessionRepository } from '../ports/session.repository';
 
@@ -14,7 +15,7 @@ import type { SessionRepository } from '../ports/session.repository';
  * codes are what the facade returns; `email` and `displayName` are personal data for the HTTP
  * summary only and never go into an event, a log or an audit row. The role and the seller's
  * access state are read from slice 5; the effective permission keys from slice 8a-1, by the
- * gate's own resolver; the second factor arrives with slice 7, until then false.
+ * gate's own resolver; whether the second factor is active from slice 7b.
  */
 export interface ActorSummary {
   readonly accountId: Id<'Account'>;
@@ -48,6 +49,8 @@ export interface DescribeActorDependencies {
   readonly grants: RoleGrantReader;
   /** The resolver of `EFFECTIVE_KEY_RESOLVER`, the gate's (N-1). */
   readonly effectiveKeys: EffectiveKeyResolver;
+  /** Slice 7b: whether the account's factor is active (8.1, 8.6). */
+  readonly factors: SecondFactorRepository;
 }
 
 /**
@@ -93,11 +96,14 @@ export class DescribeActor extends UseCase<
             actor.sellerId === null
               ? null
               : await this.deps.sellerAccess.findById(market, actor.sellerId),
+          factorActive: (await this.deps.factors.activeAmong(market, [actor.accountId])).has(
+            actor.accountId,
+          ),
         }),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
-    const { account, session, seller, grant } = read.value;
+    const { account, session, seller, grant, factorActive } = read.value;
     if (account === null || session === null || session.accountId !== actor.accountId) {
       return err({ code: 'access.denied' });
     }
@@ -115,7 +121,7 @@ export class DescribeActor extends UseCase<
         }),
       ].sort(),
       sellerAccessState: seller?.state.state ?? null,
-      secondFactorActive: false,
+      secondFactorActive: factorActive,
       email: account.state.email.typed,
       displayName: account.state.displayName,
       session: {

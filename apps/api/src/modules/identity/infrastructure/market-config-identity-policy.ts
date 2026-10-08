@@ -7,9 +7,13 @@ import type {
   SignInThrottleRules,
 } from '../application/ports/identity-market-policy';
 import type { LinkPage, LinkTargets } from '../application/ports/link-secrets';
+import type { InvitationKind } from '../domain/invitation';
 import type { LinkPurpose } from '../domain/one-time-link';
 import type { PasswordRules } from '../domain/password-policy';
 import type { SessionLifetime } from '../domain/session';
+import type { ChallengePolicy } from '../domain/sign-in-challenge';
+import type { ThrottleRule } from '../domain/throttle';
+import { pendingKeys } from './pending-market-keys';
 
 /**
  * The Phase 2 adapter of {@link IdentityMarketPolicy} (identity design 8.5): the `identity`
@@ -78,6 +82,22 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
   mailSender(market: MarketContext): MailSender {
     const { fromAddress, fromName } = this.markets.get(market.marketId).identity.mail;
     return { address: fromAddress, name: fromName };
+  }
+
+  invitationLifetimeMinutes(market: MarketContext, kind: InvitationKind): number | null {
+    return pendingKeys(this.identityOf(market)).invitationLifetimeMinutes(kind);
+  }
+
+  challengePolicy(market: MarketContext): ChallengePolicy | null {
+    return pendingKeys(this.identityOf(market)).challengePolicy();
+  }
+
+  secondFactorThrottle(market: MarketContext): ThrottleRule | null {
+    return pendingKeys(this.identityOf(market)).secondFactorThrottle();
+  }
+
+  private identityOf(market: MarketContext): unknown {
+    return this.markets.get(market.marketId).identity;
   }
 
   /** `LinkTargets` (identity design 9): the page per population and page, or null. */
