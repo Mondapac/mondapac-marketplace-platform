@@ -41,6 +41,19 @@ import {
   rateVerdict,
 } from '../../src/modules/sellers/domain/rate-limits';
 import type { RateCounter } from '../../src/modules/sellers/application/ports/rate-counter.repository';
+import { BUSINESS_REGISTER_LOOKUPS } from '../../src/modules/sellers/application/ports/business-register-lookup';
+import { REGISTER_LOOKUP_POLICY } from '../../src/modules/sellers/application/ports/register-lookup-policy';
+import { ReviewRegisterCheckRead } from '../../src/modules/sellers/application/use-cases/review-register-check-read.use-case';
+import { identifierIndexKeyOf } from '../../src/modules/sellers/domain/business-identifier';
+import { abnScheme } from '../../src/modules/sellers/infrastructure/identifier-schemes/abn';
+import { zzCorpNoScheme } from '../../src/modules/sellers/infrastructure/identifier-schemes/zz-corp-no';
+import { PrismaRegisterCheckRepository } from '../../src/modules/sellers/infrastructure/prisma-register-check.repository';
+import { MarketConfigRegisterLookups } from '../../src/modules/sellers/infrastructure/register-lookups';
+import {
+  FAKE_REGISTER_ADAPTER,
+  FakeRegisterLookup,
+} from '../../src/modules/sellers/infrastructure/register-lookups/fake';
+import { FixedRegisterLookupPolicy, validIdentifiers } from '../support/sellers-register-fakes';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { ok } from '@mondapac/shared-kernel';
@@ -97,8 +110,10 @@ const sellerOwnerCheck: AuthorisationCheck = {
   check: (context, declaration) =>
     Promise.resolve(
       context.actor.kind === 'authenticated' &&
-        context.actor.population === 'seller' &&
-        context.actor.sellerId !== null &&
+        // An admin is admitted under a permission rule as well: the reviewer's read of slice 4a
+        // (its real gate rule is checked by the use-case gate suites and the role seed).
+        ((context.actor.population === 'seller' && context.actor.sellerId !== null) ||
+          context.actor.population === 'admin') &&
         declaration.rule.kind === 'permissions'
         ? { allowed: true }
         : { allowed: false, denial: { code: 'access.denied' } },
@@ -116,6 +131,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
   let relay: OutboxRelay;
   let dispatcher: EventDispatcher;
   let logs: jest.SpyInstance[];
+  // The register lookup of slice 4a: no Market has a register until a test gives it one.
+  const registerPolicy = new FixedRegisterLookupPolicy();
+  let fakeRegister: FakeRegisterLookup;
 
   beforeAll(async () => {
     sql = new Client({ connectionString: sellerFilesTestDatabaseUrl() });
@@ -131,6 +149,8 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
   beforeEach(async () => {
     // A new application and a new day per test: the rate limits and the mail and sign-in
     // counters of an earlier test do not carry over.
+    fakeRegister = new FakeRegisterLookup();
+    registerPolicy.set(code, { kind: 'none' });
     clock.advance(Temporal.Duration.from({ hours: 25 }));
     logs = (['log', 'warn', 'error', 'debug'] as const).map((level) =>
       jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined),
@@ -144,7 +164,16 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           .overrideProvider(MAIL_TRANSPORT)
           .useValue(transport)
           .overrideProvider(AUTHORISATION_CHECK)
-          .useValue(sellerOwnerCheck),
+          .useValue(sellerOwnerCheck)
+          .overrideProvider(REGISTER_LOOKUP_POLICY)
+          .useValue(registerPolicy)
+          .overrideProvider(BUSINESS_REGISTER_LOOKUPS)
+          .useValue(
+            new MarketConfigRegisterLookups(
+              registerPolicy,
+              new Map([[FAKE_REGISTER_ADAPTER, fakeRegister]]),
+            ),
+          ),
     }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
@@ -1660,6 +1689,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
             version: 2,
             draftComplete: false,
             missing: parts('storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'),
+            registerResult: null,
           },
         });
         const stored = await identifierRow(sellerId);
@@ -2162,6 +2192,435 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           const committed = results.filter((r) => r.ok && r.value).length;
           expect(committed).toBe(1);
           expect(await periodsOf(sellerId)).toHaveLength(1);
+        });
+      });
+    });
+
+    describe('slice 4a: register checks and the register lookup', () => {
+      const ACCOUNT = '01928a3c-0000-7000-8000-0000000000a1';
+      const rules = code === 'AU' ? abnScheme : zzCorpNoScheme;
+      const length = code === 'AU' ? 11 : 9;
+      const scheme = rules.scheme;
+      const ORIGIN = '203.0.113.5';
+      const SETTINGS = {
+        kind: 'configured',
+        adapter: FAKE_REGISTER_ADAPTER,
+        maxResultAgeDays: 30,
+        perAccountLimit: 2,
+        perOriginLimit: 5,
+        marketDailyBudget: 50,
+        legalSuffixes: ['pty ltd'],
+      } as const;
+      const active = (count: number, skip = 0) =>
+        validIdentifiers(rules, length, count, ['3', '4', '5', '6', '7', '8', '9'], skip);
+      const indexOf = (marketCode: string, text: string) =>
+        identifierIndexKeyOf(
+          app
+            .get<IdentifierIndex>(IDENTIFIER_INDEX)
+            .of(marketOf(marketCode), scheme, text as NormalisedIdentifier),
+        );
+      const repository = () => new PrismaRegisterCheckRepository(app.get(PrismaService));
+      const inUnit = async <T>(marketCode: string, work: () => Promise<T>): Promise<T> => {
+        const result = await app
+          .get<UnitOfWork>(UNIT_OF_WORK)
+          .run(marketOf(marketCode), async () => ok(await work()));
+        if (!result.ok) throw new Error('the unit failed');
+        return result.value;
+      };
+      const checkRows = async (sellerId: string) =>
+        (
+          await sql.query<Record<string, unknown>>(
+            `SELECT outcome, mismatches, definite_negative_at, compared_values_ciphertext,
+                    checked_by_kind, checked_by_account_id, encode(identifier_index, 'hex') AS idx
+               FROM sellers.register_checks WHERE market_id = $1 AND seller_id = $2
+              ORDER BY checked_at, idx`,
+            [code, sellerId],
+          )
+        ).rows;
+      const counterRows = async (kind: string) =>
+        Number(
+          (
+            await sql.query<{ n: string }>(
+              'SELECT count(*) AS n FROM sellers.rate_counters WHERE market_id = $1 AND kind = $2',
+              [code, kind],
+            )
+          ).rows[0]!.n,
+        );
+      const at = '2026-10-08T00:00:00Z';
+      /** A fresh 32-byte index. */
+      const withIndex = (): Buffer =>
+        Buffer.from(randomUUID().replaceAll('-', '').repeat(2), 'hex');
+      const insert = (sellerId: string, overrides: Record<string, unknown> = {}) =>
+        sql.query(
+          `INSERT INTO sellers.register_checks
+             (market_id, tenant_id, seller_id, identifier_index, outcome, mismatches,
+              definite_negative_at, compared_values_ciphertext, checked_at, checked_by_kind,
+              checked_by_account_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            overrides.market ?? code,
+            overrides.tenant ?? 'default',
+            sellerId,
+            overrides.index ?? withIndex(),
+            overrides.outcome ?? 'active',
+            'mismatches' in overrides ? overrides.mismatches : [],
+            overrides.mark ?? null,
+            overrides.ciphertext ?? null,
+            at,
+            overrides.kind ?? 'seller',
+            'account' in overrides ? overrides.account : ACCOUNT,
+          ],
+        );
+      const refuses = (promise: Promise<unknown>, constraint: string) =>
+        expect(promise).rejects.toMatchObject({ code: '23514', constraint });
+      const ciphertext = (n: number) => `v1.${'A'.repeat(n - 3)}`;
+
+      it('holds the CHECKs of data design 3.4: accepted and refused rows', async () => {
+        const sellerId = await registerSeller(code);
+        const row = (overrides: Record<string, unknown> = {}) => insert(sellerId, overrides);
+        // Accepted.
+        await row({ outcome: 'active', mismatches: ['postcode', 'business-name'] });
+        await row({ outcome: 'not-found', mark: at });
+        await row({ outcome: 'cancelled', mark: at });
+        await row({ outcome: 'unavailable' });
+        await row({ outcome: 'unavailable', mark: at });
+        await row({ kind: 'job', account: null });
+        await row({ kind: 'reviewer' });
+        await row({ ciphertext: ciphertext(41) });
+        await row({ ciphertext: ciphertext(2048) });
+        // Refused.
+        await refuses(row({ outcome: 'verified' }), 'register_checks_outcome_check');
+        await refuses(row({ mismatches: ['name'] }), 'register_checks_mismatches_check');
+        for (const outcome of ['not-found', 'cancelled', 'unavailable']) {
+          await refuses(
+            row({ outcome, mark: at, mismatches: ['postcode'] }),
+            'register_checks_mismatches_check',
+          );
+        }
+        for (const outcome of ['not-found', 'cancelled']) {
+          await refuses(row({ outcome }), 'register_checks_definite_negative_check');
+        }
+        await refuses(
+          row({ outcome: 'active', mark: at }),
+          'register_checks_definite_negative_check',
+        );
+        await refuses(
+          row({ kind: 'job', account: ACCOUNT }),
+          'register_checks_checked_by_account_id_check',
+        );
+        for (const kind of ['seller', 'reviewer']) {
+          await refuses(
+            row({ kind, account: null }),
+            'register_checks_checked_by_account_id_check',
+          );
+        }
+        await refuses(row({ kind: 'bot' }), 'register_checks_checked_by_kind_check');
+        for (const bytes of [0, 16, 31, 33]) {
+          await refuses(
+            row({ index: Buffer.alloc(bytes, 1) }),
+            'register_checks_identifier_index_check',
+          );
+        }
+        for (const bad of [ciphertext(40), ciphertext(2049), '51824753556'.padEnd(41, '0')]) {
+          await refuses(
+            row({ ciphertext: bad }),
+            'register_checks_compared_values_ciphertext_check',
+          );
+        }
+        await refuses(row({ market: 'au' }), 'register_checks_market_id_check');
+        await refuses(row({ tenant: 'Default' }), 'register_checks_tenant_id_check');
+        // A NULL mismatch list is refused by the NOT NULL the migration adds.
+        await expect(row({ mismatches: null })).rejects.toMatchObject({ code: '23502' });
+      });
+
+      it('keys a row by Market, file and value; the file and the Market are foreign keys; sellers do not share', async () => {
+        const first = await registerSeller(code);
+        const second = await registerSeller(code);
+        const shared = withIndex();
+        await insert(first, { index: shared });
+        await expect(insert(first, { index: shared })).rejects.toMatchObject({
+          code: '23505',
+          constraint: 'register_checks_pkey',
+        });
+        // Another seller may hold a result for the same value: results are per file.
+        await insert(second, { index: shared });
+        // A file that does not exist, and the right file under another Market, are refused.
+        await expect(insert(randomUUID())).rejects.toMatchObject({
+          code: '23503',
+          constraint: 'register_checks_market_id_seller_id_fkey',
+        });
+        await expect(insert(first, { market: other })).rejects.toMatchObject({ code: '23503' });
+        // RESTRICT: a file with a result is not deleted from under it.
+        await expect(
+          owner.query('DELETE FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2', [
+            code,
+            first,
+          ]),
+        ).rejects.toMatchObject({ code: '23503' });
+      });
+
+      it('grants the application role select, insert and update, and no delete', async () => {
+        const sellerId = await registerSeller(code);
+        const index = withIndex();
+        await insert(sellerId, { index });
+        await sql.query(
+          `UPDATE sellers.register_checks SET outcome = 'unavailable'
+            WHERE market_id = $1 AND seller_id = $2 AND identifier_index = $3`,
+          [code, sellerId, index],
+        );
+        await expect(
+          sql.query('DELETE FROM sellers.register_checks WHERE seller_id = $1', [sellerId]),
+        ).rejects.toMatchObject({ code: '42501' });
+      });
+
+      describe('PrismaRegisterCheckRepository', () => {
+        const T0 = Temporal.Instant.from('2026-10-08T12:00:00Z');
+        const seller = { kind: 'seller', accountId: ACCOUNT as Id<'Account'> } as const;
+        const write = (
+          outcome: 'active' | 'not-found' | 'cancelled' | 'unavailable',
+          when: Temporal.Instant = T0,
+          mismatches: ('postcode' | 'business-name')[] = [],
+        ) => ({ outcome, mismatches, checkedAt: when, checkedBy: seller });
+
+        it('records and finds the latest result of a value, with the sticky negative of AC 31', async () => {
+          const sellerId = await registerSeller(code);
+          const [number] = active(1);
+          const index = indexOf(code, number!);
+          const m = marketOf(code);
+          expect(await inUnit(code, () => repository().find(m, sellerId, index))).toBeNull();
+
+          const first = await inUnit(code, () =>
+            repository().record(m, sellerId, index, write('not-found')),
+          );
+          expect(first).toEqual({
+            outcome: 'not-found',
+            mismatches: [],
+            definiteNegativeAt: T0,
+            checkedAt: T0,
+            checkedBy: seller,
+          });
+          // A later unavailable keeps the mark and the first instant; the latest outcome is kept.
+          const later = T0.add({ hours: 1 });
+          const after = await inUnit(code, () =>
+            repository().record(m, sellerId, index, write('unavailable', later)),
+          );
+          expect(after).toMatchObject({
+            outcome: 'unavailable',
+            definiteNegativeAt: T0,
+            checkedAt: later,
+          });
+          // Another negative keeps the first mark.
+          const third = await inUnit(code, () =>
+            repository().record(m, sellerId, index, write('cancelled', later.add({ hours: 1 }))),
+          );
+          expect(third).toMatchObject({ outcome: 'cancelled', definiteNegativeAt: T0 });
+          // An active answer replaces the negative and carries its flags.
+          const answered = await inUnit(code, () =>
+            repository().record(
+              m,
+              sellerId,
+              index,
+              write('active', later.add({ hours: 2 }), ['postcode']),
+            ),
+          );
+          expect(answered).toEqual({
+            outcome: 'active',
+            mismatches: ['postcode'],
+            definiteNegativeAt: null,
+            checkedAt: later.add({ hours: 2 }),
+            checkedBy: seller,
+          });
+          expect(await inUnit(code, () => repository().find(m, sellerId, index))).toEqual(answered);
+          expect(await checkRows(sellerId)).toHaveLength(1);
+        });
+
+        it('keeps a definite negative when an unavailable answer races it', async () => {
+          const sellerId = await registerSeller(code);
+          const m = marketOf(code);
+          const numbers = active(4);
+          for (const [position, number] of numbers.entries()) {
+            const index = indexOf(code, number);
+            // Some rounds start from an existing row, others from none.
+            if (position % 2 === 1) {
+              await inUnit(code, () =>
+                repository().record(m, sellerId, index, write('unavailable')),
+              );
+            }
+            await Promise.all([
+              inUnit(code, () => repository().record(m, sellerId, index, write('not-found'))),
+              inUnit(code, () => repository().record(m, sellerId, index, write('unavailable'))),
+              inUnit(code, () => repository().record(m, sellerId, index, write('unavailable'))),
+            ]);
+            const stored = await inUnit(code, () => repository().find(m, sellerId, index));
+            expect(stored?.definiteNegativeAt).toEqual(T0);
+          }
+        });
+
+        it('never reads or writes a seller of another Market', async () => {
+          const sellerId = await registerSeller(code);
+          const index = indexOf(code, active(1)[0]!);
+          await inUnit(code, () =>
+            repository().record(marketOf(code), sellerId, index, write('active')),
+          );
+          expect(
+            await inUnit(other, () => repository().find(marketOf(other), sellerId, index)),
+          ).toBeNull();
+          await expect(
+            inUnit(other, () =>
+              repository().record(marketOf(other), sellerId, index, write('active')),
+            ),
+          ).rejects.toThrow();
+          expect(await checkRows(sellerId)).toHaveLength(1);
+        });
+      });
+
+      describe('the use cases against PostgreSQL (fake register, no network)', () => {
+        const adminContext = (marketCode: string) =>
+          testCallContext(
+            marketOf(marketCode),
+            testAuthenticatedActor(marketOf(marketCode), {
+              population: 'admin',
+              accountId: ids.next<'Account'>(),
+              sessionId: ids.next<'Session'>(),
+              sellerId: null,
+            }),
+            `db-sellers-${randomUUID()}`,
+          );
+        const save = (context: CallContext, identifier: unknown, origin: string | null = ORIGIN) =>
+          app.get(MyFileSaveIdentifier).execute(context, { identifier, origin });
+        const QUOTA_KINDS = ['lookup.account', 'lookup.origin', 'lookup.market'];
+
+        it('asks the register, keeps only outcome, flags and instant, and shows each side its view', async () => {
+          registerPolicy.set(code, SETTINGS);
+          const { sellerId, context } = await draftSeller();
+          const [number] = active(1);
+
+          const saved = await save(context, number);
+
+          expect(saved.ok && saved.value.registerResult).toBe('matched');
+          expect(fakeRegister.calls).toHaveLength(1);
+          expect(await checkRows(sellerId)).toEqual([
+            {
+              outcome: 'active',
+              mismatches: [],
+              definite_negative_at: null,
+              compared_values_ciphertext: null,
+              checked_by_kind: 'seller',
+              checked_by_account_id:
+                context.actor.kind === 'authenticated' ? context.actor.accountId : null,
+              idx: Buffer.from(indexOf(code, number!)).toString('hex'),
+            },
+          ]);
+          // The three quotas were reserved before the call.
+          for (const kind of QUOTA_KINDS) expect(await counterRows(kind)).toBeGreaterThan(0);
+          // Neither the number nor a register value is in the row.
+          const dump = JSON.stringify(
+            (
+              await sql.query('SELECT r.* FROM sellers.register_checks r WHERE seller_id = $1', [
+                sellerId,
+              ])
+            ).rows,
+          );
+          expect(dump).not.toContain(number);
+          expect(dump).not.toContain('Fake Trading');
+
+          const read = await app.get(MyFileRead).execute(context, {});
+          expect(read.ok && read.value.registerResult).toBe('matched');
+          const review = await app
+            .get(ReviewRegisterCheckRead)
+            .execute(adminContext(code), { sellerId });
+          expect(review).toEqual({
+            ok: true,
+            value: {
+              lookup: 'configured',
+              identifierSaved: true,
+              state: 'active',
+              mismatches: [],
+              checkedAt: clock.now().toString(),
+              checkedBy: 'seller',
+              blocksSubmit: false,
+              blocksApproval: false,
+            },
+          });
+          // A reviewer of another Market does not find this seller (AC 1).
+          expect(
+            await app.get(ReviewRegisterCheckRead).execute(adminContext(other), { sellerId }),
+          ).toEqual({ ok: false, error: { code: 'file.not-found' } });
+        });
+
+        it('stores a definite negative and shows the seller one message', async () => {
+          registerPolicy.set(code, SETTINGS);
+          const { sellerId, context } = await draftSeller();
+          const [number] = validIdentifiers(rules, length, 1, ['0']);
+
+          const saved = await save(context, number);
+
+          expect(saved.ok && saved.value.registerResult).toBe('not-matched');
+          const [row] = await checkRows(sellerId);
+          expect(row).toMatchObject({ outcome: 'not-found' });
+          expect(row!.definite_negative_at).toBeInstanceOf(Date);
+          const review = await app
+            .get(ReviewRegisterCheckRead)
+            .execute(adminContext(code), { sellerId });
+          expect(review.ok && review.value).toMatchObject({
+            state: 'negative',
+            blocksSubmit: true,
+            blocksApproval: true,
+          });
+        });
+
+        it('refuses the third new number of an account with lookup.limit and writes nothing for it', async () => {
+          registerPolicy.set(code, SETTINGS);
+          const { sellerId, context } = await draftSeller();
+          const numbers = active(3);
+          expect((await save(context, numbers[0])).ok).toBe(true);
+          expect((await save(context, numbers[1])).ok).toBe(true);
+
+          const refused = await save(context, numbers[2]);
+
+          expect(refused).toEqual({
+            ok: false,
+            error: { code: 'lookup.limit', retryAfterSeconds: expect.any(Number) as unknown },
+          });
+          expect(fakeRegister.calls).toHaveLength(2);
+          expect(await checkRows(sellerId)).toHaveLength(2);
+          const read = await app.get(MyFileRead).execute(context, {});
+          expect(read.ok && read.value.identifier?.value).toBe(numbers[1]);
+          // A number already checked is not new.
+          expect((await save(context, numbers[0])).ok).toBe(true);
+          expect(fakeRegister.calls).toHaveLength(2);
+        });
+
+        it('reserves nothing and writes nothing in a Market with no register (`none`)', async () => {
+          const { sellerId, context } = await draftSeller();
+          const before = await Promise.all(QUOTA_KINDS.map(counterRows));
+
+          const saved = await save(context, active(1)[0], null);
+
+          expect(saved.ok && saved.value.registerResult).toBeNull();
+          expect(fakeRegister.calls).toHaveLength(0);
+          expect(await checkRows(sellerId)).toEqual([]);
+          expect(await Promise.all(QUOTA_KINDS.map(counterRows))).toEqual(before);
+          const review = await app
+            .get(ReviewRegisterCheckRead)
+            .execute(adminContext(code), { sellerId });
+          expect(review.ok && review.value).toMatchObject({
+            lookup: 'none',
+            state: 'not-performed',
+          });
+        });
+
+        it('records a failing adapter as an unavailable register', async () => {
+          registerPolicy.set(code, SETTINGS);
+          const { sellerId, context } = await draftSeller();
+          fakeRegister.failWith = new Error('connection reset');
+
+          const saved = await save(context, active(1)[0]);
+
+          expect(saved.ok && saved.value.registerResult).toBe('could-not-be-checked');
+          expect(await checkRows(sellerId)).toEqual([
+            expect.objectContaining({ outcome: 'unavailable', definite_negative_at: null }),
+          ]);
         });
       });
     });

@@ -251,6 +251,68 @@ describe.each(TEST_MARKETS)(
       ).toBe(true);
     });
 
+    it('a Market seeded at onboarding-compliance version 1 gets sellers.seller-file.review on the next run; custom roles are untouched', async () => {
+      const REVIEW = 'sellers.seller-file.review';
+      await seedRoles();
+      const compliance = await roleRow('platform', 'onboarding-compliance');
+      const viewer = await roleRow('platform', 'viewer');
+      expect(compliance.seed_version).toBeGreaterThanOrEqual(2);
+      expect(await keysOf(compliance.id)).toContain(REVIEW);
+
+      // Put the Market back as the previous build left it: version 1, without the key.
+      await sql.query(
+        `UPDATE identity.roles SET seed_version = 1 WHERE market_id = $1 AND id = $2`,
+        [code, compliance.id],
+      );
+      await sql.query(
+        `DELETE FROM identity.role_permissions WHERE market_id = $1 AND role_id = $2 AND permission_key = $3`,
+        [code, compliance.id, REVIEW],
+      );
+      // A custom platform role (kind custom, no seed code) that holds the same key and another.
+      const customId = newId<'Role'>();
+      await sql.query(
+        `INSERT INTO identity.roles (id, market_id, tenant_id, scope, kind, name, name_normalized, version, created_at)
+         VALUES ($1, $2, 'default', 'platform', 'custom', $3, $3, 1, now())`,
+        [customId, code, `custom-${randomBytes(4).toString('hex')}`],
+      );
+      await sql.query(
+        `INSERT INTO identity.role_permissions (market_id, tenant_id, role_id, permission_key)
+         VALUES ($1, 'default', $2, $3), ($1, 'default', $2, $4)`,
+        [code, customId, SELLER_ACCESS_VIEW.key, 'identity.platform-role.view'],
+      );
+      const customBefore = await sql.query(`SELECT * FROM identity.roles WHERE id = $1`, [
+        customId,
+      ]);
+      const expectedKeys = [
+        ...checkedIn.find((r) => r.seedCode === 'onboarding-compliance')!.permissionKeys,
+      ].sort();
+      const viewerKeys = await keysOf(viewer.id);
+
+      await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 1 } });
+
+      const upgraded = await roleRow('platform', 'onboarding-compliance');
+      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 2]);
+      expect(await keysOf(compliance.id)).toEqual(expectedKeys);
+      expect(await keysOf(compliance.id)).toContain(REVIEW);
+      const applied = (await auditRowsOf(compliance.id)).filter(
+        (r) => r.action === 'identity.role.seed-applied',
+      );
+      expect(applied.at(-1)).toMatchObject({
+        before: { seedVersion: 1 },
+        after: { seedVersion: 2, addedKeys: [REVIEW], removedKeys: [] },
+      });
+      // Custom roles and the other defaults are untouched.
+      expect(
+        (await sql.query(`SELECT * FROM identity.roles WHERE id = $1`, [customId])).rows,
+      ).toEqual(customBefore.rows);
+      expect(await keysOf(customId)).toEqual(
+        ['identity.platform-role.view', SELLER_ACCESS_VIEW.key].sort(),
+      );
+      expect(await keysOf(viewer.id)).toEqual(viewerKeys);
+      // Applied once.
+      await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 0 } });
+    });
+
     it('upgrades a newer seed version: the key rows change and one audited seed-applied row names them', async () => {
       const seedCode = `db-upgrade-${randomBytes(4).toString('hex')}`;
       const role = (seedVersion: number, permissionKeys: string[]): SeededRole => ({

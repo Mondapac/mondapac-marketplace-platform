@@ -10,6 +10,11 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { noRunOnce } from '../../../../../test/support/fake-run-once';
 import {
+  FixedRegisterLookupPolicy,
+  InMemoryRegisterChecks,
+  InMemoryTaxProfiles,
+} from '../../../../../test/support/sellers-register-fakes';
+import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
   TEST_SERVICE_AREA_CONFIG_DIRS,
@@ -32,6 +37,7 @@ import {
 import { MarketConfigSellerPolicy } from '../../infrastructure/market-config-seller-policy';
 import { HmacIdentifierIndex } from '../../infrastructure/hmac-identifier-index';
 import { MarketConfigIdentifierSchemes } from '../../infrastructure/identifier-schemes';
+import { MarketConfigRegisterLookups } from '../../infrastructure/register-lookups';
 import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SealedFieldValues, SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -213,6 +219,9 @@ function setUp() {
   const identifierSchemes = new MarketConfigIdentifierSchemes(markets);
   const identifierIndex = new HmacIdentifierIndex(new Uint8Array(32).fill(9));
   const counterKeys = new HmacRateCounterKeys(new Uint8Array(32).fill(7));
+  // These tests run in Markets with no register (`none`); the lookup has its own spec.
+  const registerChecks = new InMemoryRegisterChecks();
+  const registerPolicy = new FixedRegisterLookupPolicy();
   const common = { unitOfWork, counters, counterKeys, clock };
   // What the position gives; a test sets `locationAnswer` and reads `positions` (rounded values).
   const locationState: {
@@ -247,6 +256,9 @@ function setUp() {
       addressFormats: formats,
       zones: formats,
       areas: new DirectoryServiceAreas(directory),
+      registerChecks,
+      registerPolicy,
+      clock,
     }),
     saveGeneral: new MyFileSaveGeneral(gate, { ...common, files, policy, cipher }),
     saveAddress: new MyFileSaveAddress(gate, {
@@ -275,6 +287,11 @@ function setUp() {
       identifierSchemes,
       identifierIndex,
       cipher,
+      registerChecks,
+      registerLookups: new MarketConfigRegisterLookups(registerPolicy, new Map()),
+      registerPolicy,
+      taxProfiles: new InMemoryTaxProfiles(),
+      addressFormats: formats,
     }),
     validateIdentifier: new MyFileValidateIdentifier(gate, {
       ...common,
@@ -1034,6 +1051,8 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
             'identifier',
             'slug',
           ).filter((part) => part !== 'identifier'),
+          // A Market with no register lookup says nothing about the number (AC 34).
+          registerResult: null,
         },
       });
       const { identifier } = storedOf(t, sellerId).draft;

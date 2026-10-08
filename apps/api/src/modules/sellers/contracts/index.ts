@@ -3,7 +3,11 @@
 // definitions are declared in domain/events/ and re-exported here (ADR-0006 decision 6).
 export { SELLERS_EVENTS, SellerFileCreated } from '../domain/events';
 export type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
-export { SELLERS_BUSINESS_IDENTITY_EDIT, SELLERS_PERMISSIONS } from './permissions';
+export {
+  SELLERS_BUSINESS_IDENTITY_EDIT,
+  SELLERS_PERMISSIONS,
+  SELLERS_SELLER_FILE_REVIEW,
+} from './permissions';
 export {
   SELLERS_FACADE,
   type ApprovedSellerZonesMap,

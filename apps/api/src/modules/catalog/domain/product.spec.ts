@@ -172,7 +172,7 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
       expect(product.addVariant(variant(3), 2, T1, 'seller')).toEqual({
         ok: false,
-        error: { code: 'variant.limit-reached' },
+        error: { code: 'variant.limit-reached', max: 2 },
       });
       expect(product.removeProposedVariant(variant(1), T1, 'seller').ok).toBe(true);
       expect(product.addVariant(variant(3), 2, T1, 'seller').ok).toBe(true);
@@ -336,7 +336,7 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
     }
     expect(product.addVariant(variant(maxVariants + 1), maxVariants, T1, 'seller')).toEqual({
       ok: false,
-      error: { code: 'variant.limit-reached' },
+      error: { code: 'variant.limit-reached', max: maxVariants },
     });
   });
 });

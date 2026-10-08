@@ -25,13 +25,17 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     scope: 'platform',
     kind: 'default',
     seedCode: 'onboarding-compliance',
-    seedVersion: 1,
+    // Version 2 adds `sellers.seller-file.review` (sellers design 6.1: record review checks, run a
+    // re-lookup, record a manual register check); a Market seeded at version 1 gets it on its
+    // next SeedRoles run.
+    seedVersion: 2,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
       'identity.seller-access.approve',
       'identity.seller-access.suspend',
       'identity.seller-account.create',
+      'sellers.seller-file.review',
     ],
   },
   {

@@ -43,6 +43,33 @@ export const SAVE_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'save.account.day', limit: 1000, windowMinutes: DAY },
 ]);
 
+function dailyLimit(kind: RateCounterKind, limit: number): readonly RateLimit[] {
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new RangeError(`The limit of ${kind} is a positive whole number`);
+  }
+  return Object.freeze([{ kind, limit, windowMinutes: DAY }]);
+}
+
+/**
+ * The register-lookup quotas (design 6.5, 7.7; data design 3.11). Their numbers are Market
+ * configuration (`registerLookup.perAccountLimit`, `perOriginLimit`, `marketDailyBudget`), so
+ * they are built from the configured value, never a constant here. Each counts a call that is
+ * going to be made: a new identifier value per account, a call per origin, a call per Market.
+ */
+export const lookupAccountLimits = (perAccount: number): readonly RateLimit[] =>
+  dailyLimit('lookup.account', perAccount);
+export const lookupOriginLimits = (perOrigin: number): readonly RateLimit[] =>
+  dailyLimit('lookup.origin', perOrigin);
+export const lookupMarketLimits = (dailyBudget: number): readonly RateLimit[] =>
+  dailyLimit('lookup.market', dailyBudget);
+
+/** The share of the Market budget at which an alert is logged (design 6.5: 80%). */
+export const MARKET_BUDGET_ALERT_SHARE = 0.8;
+
+/** The count at which the budget alert fires: the first call that reaches 80% of the budget. */
+export const budgetAlertCount = (dailyBudget: number): number =>
+  Math.ceil(dailyBudget * MARKET_BUDGET_ALERT_SHARE);
+
 /** A counter as the reservation unit left it: this attempt is already counted. */
 export interface RateReservation {
   readonly kind: RateCounterKind;

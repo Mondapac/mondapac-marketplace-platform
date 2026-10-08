@@ -20,12 +20,25 @@ import {
   BUSINESS_IDENTIFIER_SCHEMES,
   type BusinessIdentifierSchemes,
 } from '../application/ports/business-identifier-scheme';
+import {
+  BUSINESS_REGISTER_LOOKUPS,
+  type BusinessRegisterLookup,
+  type BusinessRegisterLookups,
+} from '../application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX, type IdentifierIndex } from '../application/ports/identifier-index';
 import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
 import {
   RATE_COUNTER_REPOSITORY,
   type RateCounterRepository,
 } from '../application/ports/rate-counter.repository';
+import {
+  REGISTER_CHECK_REPOSITORY,
+  type RegisterCheckRepository,
+} from '../application/ports/register-check.repository';
+import {
+  REGISTER_LOOKUP_POLICY,
+  type RegisterLookupPolicy,
+} from '../application/ports/register-lookup-policy';
 import {
   REGISTERED_SELLER_SOURCE,
   type RegisteredSellerSource,
@@ -59,6 +72,14 @@ import { HmacIdentifierIndex } from './hmac-identifier-index';
 import { HmacRateCounterKeys, localSellersSecret } from './hmac-rate-counter-keys';
 import { MarketConfigIdentifierSchemes } from './identifier-schemes';
 import { NoneLocationTimezoneResolver } from './location-timezone-resolvers';
+import { NoRegisterLookupPolicy } from './none-register-lookup-policy';
+import { PrismaRegisterCheckRepository } from './prisma-register-check.repository';
+import {
+  fakeRegisterLookupAllowed,
+  FAKE_REGISTER_ADAPTER,
+  FakeRegisterLookup,
+} from './register-lookups/fake';
+import { MarketConfigRegisterLookups } from './register-lookups';
 import { IdentityRegisteredSellers } from './identity-registered-sellers';
 import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-config-seller-formats';
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
@@ -164,6 +185,32 @@ export const sellerProviders: readonly FactoryProvider[] = [
     // (`sellers.locationTimezone.adapter`, spike 3 record; a shared-file change).
     provide: LOCATION_TIMEZONE_RESOLVER,
     useFactory: (): LocationTimezoneResolver => new NoneLocationTimezoneResolver(),
+  },
+  {
+    provide: REGISTER_CHECK_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): RegisterCheckRepository =>
+      new PrismaRegisterCheckRepository(prisma),
+  },
+  {
+    // `none` for every Market until Market configuration carries `sellers.registerLookup`
+    // (design 4.1; a shared-file change, slice 4a note in the data design).
+    provide: REGISTER_LOOKUP_POLICY,
+    useFactory: (): RegisterLookupPolicy => new NoRegisterLookupPolicy(),
+  },
+  {
+    // The adapters of this environment: the `fake` only where a development or test start is
+    // explicit (it answers from a table and refuses production); the register's own adapter
+    // joins in slice 4b.
+    provide: BUSINESS_REGISTER_LOOKUPS,
+    inject: [REGISTER_LOOKUP_POLICY, APP_CONFIG],
+    useFactory: (policy: RegisterLookupPolicy, config: AppConfig): BusinessRegisterLookups => {
+      const adapters = new Map<string, BusinessRegisterLookup>();
+      if (fakeRegisterLookupAllowed(config)) {
+        adapters.set(FAKE_REGISTER_ADAPTER, new FakeRegisterLookup());
+      }
+      return new MarketConfigRegisterLookups(policy, adapters);
+    },
   },
   {
     provide: REGISTERED_SELLER_SOURCE,

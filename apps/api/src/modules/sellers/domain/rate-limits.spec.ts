@@ -1,6 +1,10 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import {
   RATE_COUNTER_KINDS,
+  budgetAlertCount,
+  lookupAccountLimits,
+  lookupMarketLimits,
+  lookupOriginLimits,
   SAVE_LIMITS,
   SLUG_CHECK_LIMITS,
   rateVerdict,
@@ -66,5 +70,44 @@ describe('sellers rate limits', () => {
     expect(windowRestartBefore(SAVE_LIMITS[0]!, NOW)).toEqual(
       Temporal.Instant.from('2026-10-08T09:59:30Z'),
     );
+  });
+
+  describe('the register-lookup quotas (design 6.5, 7.7)', () => {
+    it('are built from the configured numbers, one 24 h window each', () => {
+      expect(lookupAccountLimits(5)).toEqual([
+        { kind: 'lookup.account', limit: 5, windowMinutes: 1440 },
+      ]);
+      expect(lookupOriginLimits(30)).toEqual([
+        { kind: 'lookup.origin', limit: 30, windowMinutes: 1440 },
+      ]);
+      expect(lookupMarketLimits(1000)).toEqual([
+        { kind: 'lookup.market', limit: 1000, windowMinutes: 1440 },
+      ]);
+      expect(lookupAccountLimits(2)[0]!.limit).toBe(2);
+    });
+
+    it('refuse a limit that is not a positive whole number', () => {
+      for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => lookupAccountLimits(bad)).toThrow(RangeError);
+        expect(() => lookupMarketLimits(bad)).toThrow(RangeError);
+      }
+    });
+
+    it('refuse the call above the limit, and not at it', () => {
+      const limits = lookupAccountLimits(5);
+      expect(rateVerdict(limits, [reservation('lookup.account', 5)], NOW)).toEqual({
+        allowed: true,
+      });
+      expect(rateVerdict(limits, [reservation('lookup.account', 6)], NOW)).toEqual({
+        allowed: false,
+        retryAfterSeconds: 24 * 3600 - 30,
+      });
+    });
+
+    it('alert at the first call that reaches 80% of the budget', () => {
+      expect(budgetAlertCount(1000)).toBe(800);
+      expect(budgetAlertCount(10)).toBe(8);
+      expect(budgetAlertCount(3)).toBe(3);
+    });
   });
 });

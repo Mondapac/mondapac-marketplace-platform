@@ -15,4 +15,18 @@ export const SELLERS_BUSINESS_IDENTITY_EDIT = definePermission('sellers', {
   protected: true,
 });
 
-export const SELLERS_PERMISSIONS = declarePermissions('sellers', [SELLERS_BUSINESS_IDENTITY_EDIT]);
+/**
+ * Record review checks, run a re-lookup, record a manual register check (design 6.1); slice 4a
+ * uses it to read the register state of a file. Platform scope, not protected; the default role
+ * mapping (Onboarding and Compliance) is `identity`'s seed and is not changed here.
+ */
+export const SELLERS_SELLER_FILE_REVIEW = definePermission('sellers', {
+  key: 'sellers.seller-file.review',
+  scope: 'platform',
+  protected: false,
+});
+
+export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
+  SELLERS_BUSINESS_IDENTITY_EDIT,
+  SELLERS_SELLER_FILE_REVIEW,
+]);
