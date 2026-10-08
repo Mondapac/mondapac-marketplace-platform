@@ -711,9 +711,19 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         constraint: 'shop_slugs_ever_public_check',
       });
       await insert(code, `${slug}r`, randomUUID(), 'retired', true);
-      await expect(
-        sql.query('DELETE FROM sellers.shop_slugs WHERE slug = $1', [slug]),
-      ).rejects.toMatchObject({ code: '42501' });
+      // Since slice 5 (Q-M21) the application may delete a row: a never-public held slug is
+      // released before approval. Which rows is the application's rule (data design 22, open
+      // point 1); the grant itself is checked on a row of its own.
+      const released = `${slug}d`;
+      await insert(code, released, randomUUID());
+      expect(
+        (
+          await sql.query('DELETE FROM sellers.shop_slugs WHERE market_id = $1 AND slug = $2', [
+            code,
+            released,
+          ])
+        ).rowCount,
+      ).toBe(1);
       await expect(
         sql.query('UPDATE sellers.shop_slugs SET slug = $2 WHERE slug = $1', [slug, 'other']),
       ).rejects.toMatchObject({ code: '42501' });
@@ -2599,8 +2609,16 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           expect(await checkRows(sellerId)).toHaveLength(2);
           const read = await app.get(MyFileRead).execute(context, {});
           expect(read.ok && read.value.identifier?.value).toBe(numbers[1]);
-          // A number already checked is not new.
-          expect((await save(context, numbers[0])).ok).toBe(true);
+          // The number the file holds, saved again, changes nothing: no quota, no call.
+          expect((await save(context, numbers[1])).ok).toBe(true);
+          expect(fakeRegister.calls).toHaveLength(2);
+          // A number that comes back was compared against an older version of the draft (slice 5,
+          // Hassan M1 residual): its result is stale, so it is due again and counts.
+          const back = await save(context, numbers[0]);
+          expect(back).toEqual({
+            ok: false,
+            error: { code: 'lookup.limit', retryAfterSeconds: expect.any(Number) as unknown },
+          });
           expect(fakeRegister.calls).toHaveLength(2);
         });
 
