@@ -519,6 +519,9 @@ model IdentityInvitation {
 
   /// Acceptance and the preview (D 8.6 row 5); NULLs do not collide.
   @@unique([marketId, tokenHash])
+  /// The RESTRICT check PostgreSQL runs when the serializable purge deletes a seller_access row
+  /// (Mojtaba R1, data design 3.10): without it a seq scan and a relation-level predicate lock.
+  @@index([marketId, sellerId])
   @@map("invitations")
   @@schema("identity")
 }

@@ -81,6 +81,9 @@ CREATE INDEX "sign_in_challenges_market_id_account_id_idx" ON "identity"."sign_i
 CREATE UNIQUE INDEX "sign_in_challenges_market_id_token_hash_key" ON "identity"."sign_in_challenges"("market_id", "token_hash");
 
 -- CreateIndex
+CREATE INDEX "invitations_market_id_seller_id_idx" ON "identity"."invitations"("market_id", "seller_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "invitations_market_id_token_hash_key" ON "identity"."invitations"("market_id", "token_hash");
 
 -- AddForeignKey
@@ -157,7 +160,7 @@ ALTER TABLE "identity"."invitations"
   ADD CONSTRAINT "invitations_display_name_check" CHECK (
     char_length("display_name") BETWEEN 1 AND 100
     AND "display_name" = btrim("display_name")
-    AND "display_name" !~ '[\u0001-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]'),
+    AND "display_name" !~ '[\u0001-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]'),
   ADD CONSTRAINT "invitations_seller_id_check" CHECK (("kind" = 'admin') = ("seller_id" IS NULL)),
   ADD CONSTRAINT "invitations_token_check" CHECK (("token_hash" IS NULL) = ("expires_at" IS NULL)),
   ADD CONSTRAINT "invitations_token_hash_check" CHECK (octet_length("token_hash") = 32),
