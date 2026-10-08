@@ -28,6 +28,10 @@ if not exist "apps\seller\.env.local" (
   echo Creating apps\seller\.env.local from apps\seller\.env.example
   copy /y "apps\seller\.env.example" "apps\seller\.env.local" >nul
 )
+findstr /b /c:"CLIENT_ADDRESS_SOURCE=" "apps\seller\.env.local" >nul 2>nul || (
+  echo apps\seller\.env.local has no CLIENT_ADDRESS_SOURCE: adding CLIENT_ADDRESS_SOURCE=socket
+  echo CLIENT_ADDRESS_SOURCE=socket>>"apps\seller\.env.local"
+)
 
 echo [1/5] Installing packages
 call pnpm install || goto :fail
