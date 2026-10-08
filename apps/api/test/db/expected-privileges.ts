@@ -33,6 +33,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     identity: ['USAGE'],
     inventory: ['USAGE'],
     platform: ['USAGE'],
+    catalog: ['USAGE'],
     sellers: ['USAGE'],
   },
   tables: {
@@ -110,6 +111,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // docs/design/data/sellers.md section 8 (slice 2): a slug and its holder never change, only
+    // its state (DELETE arrives in slice 5, Q-M21); rate counters are reserved, released (the
+    // two reviewer-notice kinds, 3.11) and purged after 48 hours.
+    'sellers.shop_slugs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
+    },
+    'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
     // the key columns and the Default flag are immutable, so UPDATE is by column.
@@ -122,6 +131,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['address', 'name', 'priority', 'time_zone'],
     },
+    // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
+    // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
+    // status and a retired variant). The identity columns of a product and a variant never change.
+    'catalog.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'catalog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.products': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'discarded_at',
+        'last_changed_at',
+        'matched_into_product_id',
+        'owner_seller_id',
+        'own_brand',
+        'promoted_at',
+        'retired_at',
+        'scope',
+        'status',
+        'version',
+        'withdrawn_at',
+      ],
+    },
+    'catalog.product_variants': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_at', 'retired_at', 'state'],
+    },
+    'catalog.product_code_counters': { table: ['INSERT', 'SELECT'], columnUpdate: ['next_value'] },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {
