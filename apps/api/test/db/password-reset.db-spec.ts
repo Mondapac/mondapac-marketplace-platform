@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Temporal } from '@mondapac/shared-kernel';
+import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
@@ -208,6 +208,39 @@ describe.each(TEST_MARKETS)(
           [code, accountId],
         )
       ).rows.map((r) => r.id);
+
+    /**
+     * An open sign-in challenge and an active second factor of the account, stored as slice 7
+     * stores them, so a test sees what a reset or a change voids (HF11; Hassan I2 (d)) and what
+     * it keeps (Hassan I2 (a)).
+     */
+    async function openChallengeAndFactor(accountId: string): Promise<void> {
+      const now = new Date(clock.now().epochMilliseconds);
+      const expires = new Date(clock.now().add({ minutes: 5 }).epochMilliseconds);
+      await sql.query(
+        `INSERT INTO identity.sign_in_challenges (id, market_id, tenant_id, account_id, purpose,
+           token_hash, attempts, credential_changed_at, expires_at, consumed_at, created_at)
+         VALUES ($1, $2, 'default', $3, 'second-factor', $4, 0, $5, $6, NULL, $5)`,
+        [uuidV7(Date.now(), randomBytes(10)), code, accountId, randomBytes(32), now, expires],
+      );
+      await sql.query(
+        `INSERT INTO identity.second_factors (id, market_id, tenant_id, account_id, state,
+           secret_ciphertext, last_accepted_step, activated_at, created_at, version)
+         VALUES ($1, $2, 'default', $3, 'active', 'ciphertext', NULL, $4, $4, 1)`,
+        [uuidV7(Date.now(), randomBytes(10)), code, accountId, now],
+      );
+    }
+
+    const challengesAndFactors = async (accountId: string) =>
+      (
+        await sql.query<{ challenges: number; factors: number }>(
+          `SELECT (SELECT count(*)::int FROM identity.sign_in_challenges
+                    WHERE market_id = $1 AND account_id = $2) AS challenges,
+                  (SELECT count(*)::int FROM identity.second_factors
+                    WHERE market_id = $1 AND account_id = $2 AND state = 'active') AS factors`,
+          [code, accountId],
+        )
+      ).rows[0]!;
 
     /**
      * Waits until a statement of this database waits for a lock, or `pending` settles first.
@@ -492,6 +525,35 @@ describe.each(TEST_MARKETS)(
         expect((await post(population, 'sign-in', { email, password: NEW_PASSWORD })).status).toBe(
           200,
         );
+      });
+
+      it('a reset voids the open challenges, keeps the second factor and opens no session (HF11; Hassan I2 (a), (d))', async () => {
+        const { email, accountId } = await verified(population);
+        const token = await resetToken(population, email);
+        await openChallengeAndFactor(accountId);
+        expect(await challengesAndFactors(accountId)).toEqual({ challenges: 1, factors: 1 });
+
+        const reset = await post(population, 'reset-password', { token, password: NEW_PASSWORD });
+
+        expect(reset.status).toBe(200);
+        expect(reset.headers['set-cookie']).toBeUndefined();
+        expect(await challengesAndFactors(accountId)).toEqual({ challenges: 0, factors: 1 });
+        expect(await liveSessions(accountId)).toEqual([]);
+      });
+
+      it('a change voids the open challenges and keeps the second factor (HF11; Hassan I2 (d))', async () => {
+        const { accountId, cookie, csrfToken } = await verified(population);
+        await openChallengeAndFactor(accountId);
+
+        const changed = await post(
+          population,
+          'change-password',
+          { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+          { cookie, 'x-csrf-token': csrfToken },
+        );
+
+        expect(changed.status).toBe(200);
+        expect(await challengesAndFactors(accountId)).toEqual({ challenges: 0, factors: 1 });
       });
 
       it('refuses an expired link over HTTP (SEL-05, ACC-04; Sajad Q3)', async () => {

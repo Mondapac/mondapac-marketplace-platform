@@ -26,6 +26,8 @@ import { PrismaSessionRepository } from '../../src/modules/identity/infrastructu
 import { PrismaSignInRecordRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-sign-in-record.repository';
 import { PrismaOneTimeLinkRepository } from '../../src/modules/identity/infrastructure/links/prisma-one-time-link.repository';
 import { PrismaThrottleRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-throttle.repository';
+import { PrismaSignInChallengeRepository } from '../../src/modules/identity/infrastructure/second-factor/prisma-sign-in-challenge.repository';
+import { PrismaInvitationRepository } from '../../src/modules/identity/infrastructure/invitations/prisma-invitation.repository';
 import { RandomSessionTokens } from '../../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import type { AccessDecision, AuthorisationCheck } from '../../src/platform/authz';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -156,6 +158,8 @@ describe('customer sign-in (database integration)', () => {
       throttles,
       records,
       links,
+      challenges: new PrismaSignInChallengeRepository(db.service),
+      invitations: new PrismaInvitationRepository(db.service),
       policy,
       clock,
     });
