@@ -726,7 +726,7 @@ async function updateLibrary() {
       if (!missing.length) continue;
       let made = null;
       await onPage(T[key], key === 'tpl-admin' ? 'Admin panel templates' : 'Seller panel templates', function (host) { made = addPanelTemplates(host, key, missing); fitSection(host); });
-      added.push('templates Panel · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + ' frames' + (made.bodies ? ', ' + made.bodies + ' template bodies' : '') + ')');
+      added.push('templates Panel · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + (made.frames === 1 ? ' frame' : ' frames') + (made.bodies ? ', ' + made.bodies + (made.bodies === 1 ? ' template body' : ' template bodies') : '') + ')');
     }
   }
 
@@ -810,7 +810,7 @@ async function updateLibrary() {
       if (!missing.length) continue;
       let made = null;
       await onPage(T[key], key === 'tpl-admin' ? 'Admin panel templates 1.8.3' : 'Seller panel templates 1.8.3', function (host) { made = addPanelTemplates(host, key, missing, panel183Defs, PANEL183_ROWS); fitSection(host); });
-      added.push('templates Panel 1.8.3 · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + ' frames' + (made.bodies ? ', ' + made.bodies + ' template bodies' : '') + ')');
+      added.push('templates Panel 1.8.3 · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + (made.frames === 1 ? ' frame' : ' frames') + (made.bodies ? ', ' + made.bodies + (made.bodies === 1 ? ' template body' : ' template bodies') : '') + ')');
     }
   }
 
