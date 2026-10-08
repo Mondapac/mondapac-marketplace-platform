@@ -30,6 +30,7 @@ import {
 import { CustomerSignedIn } from './customer-session.dto';
 import { fail, parseStringFields } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
+import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 
 /**
  * The HTTP status of each confirmation outcome. The design names the codes (8.6 row 1); the
@@ -65,6 +66,7 @@ const outcomeOf = (outcome: { code: string } | HttpException): string =>
  */
 @ApiTags('identity')
 @RateLimit('anonymous-identity')
+@RoutePopulation('customer')
 @Controller('identity/customer')
 export class CustomerEmailVerificationController {
   readonly #logger = new Logger('CustomerEmailVerificationController');

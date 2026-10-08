@@ -3,15 +3,18 @@ import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { NoMarketContext } from '../src/platform/market-context/no-market-context.decorator';
+import { RoutePopulation } from '../src/platform/call-context/route-population.decorator';
 import { MarketEchoController } from './support/market-test.controllers';
 import { createTestApp, type LogLine } from './support/test-app';
 
 const SECRET = 'hunter2-hardening-secret';
 const ONE_KIB = 1024;
 
-/** Test-only: echoes the parsed body. */
-@NoMarketContext()
+/**
+ * Test-only: echoes the parsed body. Market-scoped: an unsafe route on a market-exempt controller
+ * fails the start-up check (identity design 6.4).
+ */
+@RoutePopulation('customer')
 @Controller('test/hardening-echo')
 class EchoController {
   @Post()
@@ -46,7 +49,11 @@ describe('HTTP hardening (integration, slice 0 item 6)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
   const post = (body: string, type = 'application/json') =>
-    request(app.getHttpServer()).post('/test/hardening-echo').set('content-type', type).send(body);
+    request(app.getHttpServer())
+      .post('/test/hardening-echo')
+      .set('x-market-id', 'AU')
+      .set('content-type', type)
+      .send(body);
 
   beforeAll(async () => {
     ({ app, logLines } = await createTestApp({
@@ -127,6 +134,7 @@ describe('HTTP hardening (integration, slice 0 item 6)', () => {
     ])('refuses a %s-encoded body with 415 and never decompresses it', async (encoding, body) => {
       const response = await request(app.getHttpServer())
         .post('/test/hardening-echo')
+        .set('x-market-id', 'AU')
         .set('content-type', 'application/json')
         .set('content-encoding', encoding)
         .send(body)
@@ -152,6 +160,7 @@ describe('HTTP hardening (integration, slice 0 item 6)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/test/hardening-echo/ip')
+      .set('x-market-id', 'AU')
       .set('x-forwarded-for', '1.2.3.4')
       .expect(200);
 

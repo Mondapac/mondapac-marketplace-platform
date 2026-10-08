@@ -6,6 +6,7 @@ import { IdentityModule } from './modules/identity';
 import { AuditModule } from './platform/audit/audit.module';
 import { AuthzModule } from './platform/authz/authz.module';
 import { ActorGuard } from './platform/call-context/actor.guard';
+import { CallContextModule } from './platform/call-context/call-context.module';
 import { ClockModule } from './platform/clock/clock.module';
 import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
@@ -63,6 +64,8 @@ export class AppModule {
         MarketConfigModule,
         I18nModule,
         MarketContextModule,
+        // The start-up check that every controller declares its route population (6.4).
+        CallContextModule,
         // The gate is built with identity's AuthorisationCheck (identity slice 2).
         AuthzModule.register(IdentityModule),
         PersistenceModule,

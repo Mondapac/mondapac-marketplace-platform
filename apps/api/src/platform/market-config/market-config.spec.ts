@@ -25,7 +25,11 @@ const VALID = {
   maxLineQuantity: 99,
   timezone: 'Pacific/Auckland',
   requestLimits: { anonymousIdentityPerMinute: 20, defaultPerMinute: 300 },
-  allowedOrigins: ['https://shop.qq.test'],
+  allowedOrigins: {
+    admin: ['https://admin.qq.test'],
+    seller: ['https://seller.qq.test'],
+    customer: ['https://shop.qq.test'],
+  },
   identity: {
     password: { minLength: 15, maxLength: 128 },
     existingAccountNoticeHours: 24,
@@ -333,13 +337,13 @@ describe('loadMarketConfigs', () => {
     ['no allowed origins', { allowedOrigins: undefined }, /allowedOrigins/],
     [
       'an allowed origin with a path',
-      { allowedOrigins: ['https://shop.qq.test/'] },
-      /allowedOrigins\.0/,
+      { allowedOrigins: { ...VALID.allowedOrigins, customer: ['https://shop.qq.test/'] } },
+      /allowedOrigins\.customer\.0/,
     ],
     [
       'an allowed origin that is not http(s)',
-      { allowedOrigins: ['ftp://shop.qq.test'] },
-      /allowedOrigins/,
+      { allowedOrigins: { ...VALID.allowedOrigins, customer: ['ftp://shop.qq.test'] } },
+      /allowedOrigins\.customer/,
     ],
   ])('rejects %s', (_case, overrides, message) => {
     const directory = directoryWith({ 'QQ.json': { ...VALID, ...overrides } });
@@ -362,9 +366,222 @@ describe('loadMarketConfigs', () => {
         targets: { customer: { ...IDENTITY.links.targets.customer, 'verify-email': page } },
       },
     };
-    const directory = directoryWith({ 'QQ.json': { ...VALID, identity } });
+    // A non-empty customer list holds the origin of every customer link page.
+    const customer = [...new Set(['https://shop.qq.test', new URL(page).origin])];
+    const allowedOrigins = { ...VALID.allowedOrigins, customer };
+    const directory = directoryWith({ 'QQ.json': { ...VALID, allowedOrigins, identity } });
 
     expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links).toEqual(identity.links);
+  });
+
+  describe('allowedOrigins per population (identity design 6.4, HF14; Ali 2026-10-08)', () => {
+    const WITH_PANELS = {
+      ...VALID,
+      identity: {
+        ...IDENTITY,
+        links: {
+          ...IDENTITY.links,
+          targets: {
+            ...IDENTITY.links.targets,
+            seller: {
+              'verify-email': 'https://seller.qq.test/confirm-email',
+              'sign-in': 'https://seller.qq.test/sign-in',
+              'reset-password': 'https://seller.qq.test/reset-password',
+            },
+            admin: { 'seller-review-queue': 'https://admin.qq.test/sellers/awaiting-review' },
+          },
+        },
+      },
+    };
+    const ORIGINS = WITH_PANELS.allowedOrigins;
+    const load = (config: object) =>
+      loadMarketConfigs([directoryWith({ 'QQ.json': config })], [QQ]).get(QQ)!;
+    const withOrigins = (allowedOrigins: unknown) => ({ ...WITH_PANELS, allowedOrigins });
+
+    it('accepts one list per population, matching the link pages', () => {
+      expect(load(WITH_PANELS).allowedOrigins).toEqual(ORIGINS);
+    });
+
+    it('accepts three empty lists (fail closed, AU until D2)', () => {
+      const empty = { admin: [], seller: [], customer: [] };
+
+      expect(load(withOrigins(empty)).allowedOrigins).toEqual(empty);
+    });
+
+    it('configures both test Markets: AU fails closed, ZZ lists its link-page hosts', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+
+      expect(markets.get(testMarketId('AU'))!.allowedOrigins).toEqual({
+        admin: [],
+        seller: [],
+        customer: [],
+      });
+      expect(markets.get(testMarketId('ZZ'))!.allowedOrigins).toEqual({
+        admin: ['https://admin.zz.test'],
+        seller: ['https://seller.zz.test'],
+        customer: ['https://storefront.zz.test'],
+      });
+      for (const market of markets.values()) {
+        for (const population of ['admin', 'seller', 'customer'] as const) {
+          const list = market.allowedOrigins[population];
+          if (list.length === 0) continue;
+          const pages = Object.values<string>(market.identity.links.targets[population] ?? {});
+          for (const page of pages) expect(list).toContain(new URL(page).origin);
+        }
+      }
+    });
+
+    it.each([
+      'http://localhost:3001',
+      'http://seller.localhost:3001',
+      'http://127.0.0.1:3001',
+      'http://[::1]:3001',
+    ])('accepts the loopback origin %s on plain http', (origin) => {
+      const config = withOrigins({ ...ORIGINS, customer: [...ORIGINS.customer, origin] });
+
+      expect(load(config).allowedOrigins.customer).toContain(origin);
+    });
+
+    it.each([
+      ['a flat list (the old shape)', ['https://shop.qq.test'], /allowedOrigins/],
+      ['a missing population', { admin: [], seller: [] }, /allowedOrigins\.customer/],
+      ['an unknown population', { ...ORIGINS, staff: [] }, /allowedOrigins.*(staff|Unrecognized)/],
+      [
+        'a duplicate within a list',
+        { ...ORIGINS, customer: ['https://shop.qq.test', 'https://shop.qq.test'] },
+        /allowedOrigins\.customer\.1: an origin must not repeat/,
+      ],
+      [
+        'more than 20 origins in a list',
+        {
+          ...ORIGINS,
+          customer: [
+            'https://shop.qq.test',
+            ...Array.from({ length: 20 }, (_, n) => `https://shop${n}.qq.test`),
+          ],
+        },
+        /allowedOrigins\.customer/,
+      ],
+      [
+        'plain http to a non-loopback host',
+        { ...ORIGINS, customer: ['https://shop.qq.test', 'http://shop2.qq.test'] },
+        /allowedOrigins\.customer\.1/,
+      ],
+      [
+        'an origin with credentials',
+        { ...ORIGINS, customer: ['https://shop.qq.test', 'https://a:b@shop2.qq.test'] },
+        /allowedOrigins\.customer\.1/,
+      ],
+      [
+        'an admin origin equal to a seller origin',
+        { ...ORIGINS, seller: ['https://seller.qq.test', 'https://admin.qq.test'] },
+        /allowedOrigins\.admin\.0: an origin must not share its host name with another population's origin/,
+      ],
+      [
+        'an admin origin equal to a customer origin',
+        { ...ORIGINS, customer: ['https://shop.qq.test', 'https://admin.qq.test'] },
+        /allowedOrigins\.admin\.0: an origin must not share its host name with another population's origin/,
+      ],
+      [
+        'an admin host equal to a seller host on another port',
+        { ...ORIGINS, admin: ['https://admin.qq.test', 'https://seller.qq.test:8443'] },
+        /allowedOrigins\.admin\.1: an origin must not share its host name with another population's origin/,
+      ],
+      [
+        'an admin host equal to a customer host on another scheme and port (loopback)',
+        {
+          admin: ['https://admin.qq.test', 'http://localhost:3002'],
+          seller: ORIGINS.seller,
+          customer: ['https://shop.qq.test', 'http://localhost:3000'],
+        },
+        /allowedOrigins\.admin\.1: an origin must not share its host name/,
+      ],
+      [
+        'a seller host equal to a customer host on another port (Ali ruling 1)',
+        { ...ORIGINS, customer: ['https://shop.qq.test', 'https://seller.qq.test:8443'] },
+        /allowedOrigins\.seller\.0: an origin must not share its host name with another population's origin/,
+      ],
+    ])('rejects %s', (_case, allowedOrigins, message) => {
+      expect(() => load(withOrigins(allowedOrigins))).toThrow(InvalidMarketConfigError);
+      expect(() => load(withOrigins(allowedOrigins))).toThrow(message);
+    });
+
+    it.each([
+      ['admin', { ...ORIGINS, admin: ['https://ops.qq.test'] }, 'https://admin.qq.test'],
+      ['seller', { ...ORIGINS, seller: ['https://panel.qq.test'] }, 'https://seller.qq.test'],
+      ['customer', { ...ORIGINS, customer: ['https://www.qq.test'] }, 'https://shop.qq.test'],
+    ] as const)(
+      'rejects a non-empty %s list without the origin of its link pages',
+      (population, allowedOrigins, missing) => {
+        expect(() => load(withOrigins(allowedOrigins))).toThrow(
+          `allowedOrigins.${population}: must hold the origin of every ${population} link page (${missing})`,
+        );
+      },
+    );
+
+    it.each([
+      [
+        'an admin origin on a seller link host',
+        { admin: ['https://admin.qq.test', 'https://seller.qq.test:9443'] },
+        'admin.1',
+      ],
+      [
+        'an admin origin on a customer link host',
+        { admin: ['https://admin.qq.test', 'https://shop.qq.test:9443'] },
+        'admin.1',
+      ],
+      [
+        'a seller origin on the admin link host',
+        { seller: ['https://seller.qq.test', 'https://admin.qq.test:9443'] },
+        'seller.1',
+      ],
+      [
+        'a customer origin on a seller link host',
+        { customer: ['https://shop.qq.test', 'https://seller.qq.test:9443'] },
+        'customer.1',
+      ],
+    ])('rejects %s (Hassan Low 2)', (_case, lists, path) => {
+      const allowedOrigins = { ...ORIGINS, ...lists };
+
+      expect(() => load(withOrigins(allowedOrigins))).toThrow(
+        `allowedOrigins.${path}: an origin must not share its host name with another population's link page`,
+      );
+    });
+
+    it.each([
+      ['seller', 'customer'],
+      ['admin', 'customer'],
+      ['admin', 'seller'],
+    ] as const)(
+      'rejects a %s host equal to a %s host on another port, without any link page on it',
+      (later, earlier) => {
+        // VALID has customer link pages only, so only the lists themselves are compared here.
+        const allowedOrigins = {
+          admin: [] as string[],
+          seller: [] as string[],
+          customer: [] as string[],
+          [earlier]: ['https://shared.qq.test'],
+          [later]: ['https://shared.qq.test:8443'],
+        };
+        if (earlier === 'customer') allowedOrigins.customer.push('https://shop.qq.test');
+
+        expect(() => load({ ...VALID, allowedOrigins })).toThrow(
+          `allowedOrigins.${later}.0: an origin must not share its host name with another population's origin`,
+        );
+      },
+    );
+
+    it("rejects an empty list's neighbour sharing a link host even when the own list is empty", () => {
+      const allowedOrigins = {
+        admin: [],
+        seller: [],
+        customer: ['https://shop.qq.test', 'https://admin.qq.test'],
+      };
+
+      expect(() => load(withOrigins(allowedOrigins))).toThrow(
+        "allowedOrigins.customer.1: an origin must not share its host name with another population's link page",
+      );
+    });
   });
 
   describe('the admin link targets (identity design 8.7, the reviewer notice)', () => {

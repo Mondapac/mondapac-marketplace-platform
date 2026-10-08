@@ -68,7 +68,7 @@ import {
 } from '../../src/platform/mail/mail-transport';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { createTestApp } from '../support/test-app';
-import { TEST_MARKETS } from '../support/test-config';
+import { panelHeaders, TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
 import { sellerFilesOwnerTestDatabaseUrl, sellerFilesTestDatabaseUrl } from './test-database';
 
@@ -157,6 +157,8 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     );
     ({ app } = await createTestApp({
       env: { DATABASE_URL: sellerFilesTestDatabaseUrl() },
+      // Seller routes need the seller panel's origin on the list (identity design 6.4).
+      panelOrigins: true,
       override: (builder) =>
         builder
           .overrideProvider(CLOCK)
@@ -211,7 +213,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     const post = (path: string, body: object) =>
       request(app.getHttpServer())
         .post(`/identity/seller/${path}`)
-        .set({ 'x-market-id': marketCode })
+        .set({ 'x-market-id': marketCode, ...panelHeaders(marketCode, 'seller') })
         .send(body);
     const signedUp = await post('sign-up', {
       displayName: 'Amina Rahman',
@@ -235,6 +237,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       sellerId: rows[0]!.seller_id as Id<'Seller'>,
       headers: {
         'x-market-id': marketCode,
+        ...panelHeaders(marketCode, 'seller'),
         cookie: cookie!,
         'x-csrf-token': (confirmed.body as { csrfToken: string }).csrfToken,
       },
