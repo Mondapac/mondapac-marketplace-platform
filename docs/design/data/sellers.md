@@ -1540,3 +1540,21 @@ races of Hassan's condition at repository level); the four rate-counter kinds.
 there). 5b and 7a update revision status with `WHERE status = <from>` and check the row count.
 5b makes `register_checks` writes version-monotonic (`WHERE compared_file_version <= :new`; a
 lower version never clears `definite_negative_at`), with a db test for the out-of-order case.
+
+**Slice 5b implementation notes (no migration).** `SellerFileRepository.recordChange` is a
+compare-and-set of `version` and `last_changed_at` over the version read (it takes the row lock
+and changes no draft column); `my-file.submit` and `my-file.withdraw` use it as the serialisation
+point, so a save, a withdrawal or another submission that committed first makes the next one
+`conflict.stale`, and a save that starts after waits for the commit and then withdraws the new
+pending revision itself (`withdrawPendingOnEdit`, `UPDATE … WHERE status = 'pending'`, row count
+checked). `register_checks.record` is `INSERT … ON CONFLICT DO NOTHING` then
+`UPDATE … WHERE compared_file_version <= :new` (a negative outcome is two statements partitioned
+on `definite_negative_at`), so out-of-order writers end on the newest version and a lower version
+never clears the mark. `ShopSlugRepository.hold` is `createMany skipDuplicates` (a lost race is
+`taken`, the unit stays usable) and `releaseUnpublished` deletes the seller's held, never-public
+row when the draft slug changes. `RateCounterRepository.release` is the guarded decrement of the
+two `reviewer-notice` kinds only. `BusinessFileRevisionRepository.approvedZones` reads the pointer
+on `seller_files`, then the revisions it names (no join across the two reads in one statement;
+at most 100 ids). Tests: `test/db/sellers-business-file-revisions.db-spec.ts` (repository level, the
+out-of-order case of Hassan L1) and `test/db/sellers-submit.db-spec.ts` (use cases, the races, the
+reviewer notice, the zone read; its own copy of the run database).
