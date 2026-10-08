@@ -30,7 +30,33 @@ import {
   ONE_TIME_LINK_REPOSITORY,
   type OneTimeLinkRepository,
 } from '../../src/modules/identity/application/ports/one-time-link.repository';
+import {
+  SELLER_ACCESS_REPOSITORY,
+  type SellerAccessRepository,
+} from '../../src/modules/identity/application/ports/seller-access.repository';
+import {
+  ROLE_ASSIGNMENT_REPOSITORY,
+  ROLE_REPOSITORY,
+  SELLER_MEMBERSHIP_REPOSITORY,
+  type RoleAssignmentRepository,
+  type RoleRepository,
+  type SellerMembershipRepository,
+} from '../../src/modules/identity/application/ports/seller-team.repository';
 import { Account, type AccountState } from '../../src/modules/identity/domain/account';
+import {
+  Role,
+  RoleAssignment,
+  type RoleAssignmentState,
+  type RoleState,
+} from '../../src/modules/identity/domain/role';
+import {
+  SellerAccess,
+  type SellerAccessState,
+} from '../../src/modules/identity/domain/seller-access';
+import {
+  SellerMembership,
+  type SellerMembershipState,
+} from '../../src/modules/identity/domain/seller-membership';
 import {
   OneTimeLink,
   type OneTimeLinkState,
@@ -67,6 +93,12 @@ export class IdentityFakes {
   readonly records: (SignInRecord & { marketId: string })[] = [];
   readonly events: PendingEvent[] = [];
   readonly links = new Map<string, OneTimeLinkState>();
+  readonly sellerAccess = new Map<string, SellerAccessState>();
+  readonly memberships = new Map<string, SellerMembershipState>();
+  readonly roles = new Map<string, RoleState>();
+  readonly assignments = new Map<string, RoleAssignmentState>();
+  /** Subject keys created and destroyed, by subject id (accounts and sellers). */
+  readonly subjectKeys = new Map<string, 'live' | 'destroyed'>();
   /** Mails the fake transport accepted, in order. */
   readonly mails: MailMessage[] = [];
   /** Makes the fake transport refuse every send. */
@@ -86,6 +118,11 @@ export class IdentityFakes {
     this.records.length = 0;
     this.events.length = 0;
     this.links.clear();
+    this.sellerAccess.clear();
+    this.memberships.clear();
+    this.roles.clear();
+    this.assignments.clear();
+    this.subjectKeys.clear();
     this.mails.length = 0;
     this.mailDown = false;
     this.inbox.clear();
@@ -99,6 +136,21 @@ export class IdentityFakes {
   /** Stores an account directly, as a test fixture. */
   seedAccount(state: AccountState): void {
     this.accounts.set(state.id, state);
+  }
+
+  /** Stores a seller access directly, as a test fixture. */
+  seedSellerAccess(state: SellerAccessState): void {
+    this.sellerAccess.set(state.sellerId, state);
+  }
+
+  /** Stores a membership directly, as a test fixture. */
+  seedMembership(state: SellerMembershipState): void {
+    this.memberships.set(state.id, state);
+  }
+
+  /** Stores a role directly, as a test fixture. */
+  seedRole(state: RoleState): void {
+    this.roles.set(state.id, state);
   }
 
   /** The inbox of identity's handlers: `(Market, eventId, subscriber)` keys. */
@@ -126,6 +178,7 @@ export class IdentityFakes {
       );
     },
     add: (_market: MarketContext, account: Account) => {
+      this.subjectKeys.set(account.state.id, 'live');
       this.accounts.set(account.state.id, account.state);
       return Promise.resolve(ok(undefined));
     },
@@ -153,10 +206,181 @@ export class IdentityFakes {
           .map((a) => a.id),
       ),
     remove: (_market: MarketContext, account: Account) => {
-      this.accounts.delete(account.state.id);
+      const id = account.state.id;
+      // As the RESTRICT foreign keys: the caller removed the membership and assignment first.
+      if (
+        [...this.memberships.values()].some((m) => m.accountId === id) ||
+        [...this.assignments.values()].some((a) => a.accountId === id)
+      ) {
+        return Promise.reject(new Error('a membership or an assignment still refers to it'));
+      }
+      this.subjectKeys.set(id, 'destroyed');
+      this.accounts.delete(id);
+      for (const [sessionId, s] of this.sessions) {
+        if (s.session.accountId === id) this.sessions.delete(sessionId);
+      }
       for (const [id, link] of this.links) {
         if (link.accountId === account.state.id) this.links.delete(id);
       }
+      return Promise.resolve();
+    },
+  };
+
+  readonly sellerAccessRepository: SellerAccessRepository = {
+    findById: (market, sellerId) => {
+      const state = this.sellerAccess.get(sellerId);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId
+          ? null
+          : SellerAccess.restore(state),
+      );
+    },
+    findRegistered: (market, sellerIds) =>
+      Promise.resolve(
+        sellerIds.flatMap((id) => {
+          const state = this.sellerAccess.get(id);
+          return state === undefined ||
+            state.marketId !== market.marketId ||
+            state.registeredAt === null
+            ? []
+            : [SellerAccess.restore(state)];
+        }),
+      ),
+    listRegistered: (market, after, limit) =>
+      Promise.resolve(
+        [...this.sellerAccess.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.registeredAt !== null &&
+              (after === null || a.sellerId > after),
+          )
+          .sort((a, b) => (a.sellerId < b.sellerId ? -1 : 1))
+          .slice(0, limit)
+          .map((a) => ({ sellerId: a.sellerId, origin: a.origin })),
+      ),
+    add: (_market, access) => {
+      this.subjectKeys.set(access.state.sellerId, 'live');
+      this.sellerAccess.set(access.state.sellerId, access.state);
+      return Promise.resolve();
+    },
+    save: (_market, access) => {
+      if (access.state.version === access.persistedVersion) return Promise.resolve();
+      const stored = this.sellerAccess.get(access.state.sellerId);
+      if (stored === undefined || stored.version !== access.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('seller-access', access.state.sellerId));
+      }
+      this.sellerAccess.set(access.state.sellerId, access.state);
+      return Promise.resolve();
+    },
+    removeUnregistered: (_market, access) => {
+      const stored = this.sellerAccess.get(access.state.sellerId);
+      if (
+        stored === undefined ||
+        stored.version !== access.persistedVersion ||
+        stored.registeredAt !== null
+      ) {
+        return Promise.reject(new StaleAggregateError('seller-access', access.state.sellerId));
+      }
+      this.subjectKeys.set(access.state.sellerId, 'destroyed');
+      this.sellerAccess.delete(access.state.sellerId);
+      return Promise.resolve();
+    },
+  };
+
+  readonly membershipRepository: SellerMembershipRepository = {
+    findActiveByAccount: (market, accountId) => {
+      const state = [...this.memberships.values()].find(
+        (m) => m.marketId === market.marketId && m.accountId === accountId && m.state === 'active',
+      );
+      return Promise.resolve(state === undefined ? null : SellerMembership.restore(state));
+    },
+    findAllByAccount: (market, accountId) =>
+      Promise.resolve(
+        [...this.memberships.values()]
+          .filter((m) => m.marketId === market.marketId && m.accountId === accountId)
+          .map((m) => SellerMembership.restore(m)),
+      ),
+    sellerHasMembers: (market, sellerId) =>
+      Promise.resolve(
+        [...this.memberships.values()].some(
+          (m) => m.marketId === market.marketId && m.sellerId === sellerId,
+        ),
+      ),
+    add: (_market, membership) => {
+      const state = membership.state;
+      const active = [...this.memberships.values()].some(
+        (m) =>
+          m.marketId === state.marketId && m.accountId === state.accountId && m.state === 'active',
+      );
+      if (active && state.state === 'active') {
+        return Promise.reject(new Error('seller_memberships_market_id_account_id_active_key'));
+      }
+      this.memberships.set(state.id, state);
+      return Promise.resolve();
+    },
+    remove: (_market, membership) => {
+      const stored = this.memberships.get(membership.state.id);
+      if (stored === undefined || stored.version !== membership.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('seller-membership', membership.state.id));
+      }
+      this.memberships.delete(membership.state.id);
+      return Promise.resolve();
+    },
+  };
+
+  readonly roleRepository: RoleRepository = {
+    findSystemRole: (market, scope) => {
+      const state = [...this.roles.values()].find(
+        (r) => r.marketId === market.marketId && r.scope === scope && r.kind === 'system',
+      );
+      return Promise.resolve(state === undefined ? null : Role.restore(state));
+    },
+    findById: (market, id) => {
+      const state = this.roles.get(id);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId ? null : Role.restore(state),
+      );
+    },
+    addSeeded: (_market, role) => {
+      const state = role.state;
+      const exists = [...this.roles.values()].some(
+        (r) =>
+          r.marketId === state.marketId &&
+          r.scope === state.scope &&
+          (r.seedCode === state.seedCode || (r.kind === 'system' && state.kind === 'system')),
+      );
+      if (exists) return Promise.resolve(false);
+      this.roles.set(state.id, state);
+      return Promise.resolve(true);
+    },
+  };
+
+  readonly assignmentRepository: RoleAssignmentRepository = {
+    findByAccount: (market, accountId) => {
+      const state = [...this.assignments.values()].find(
+        (a) => a.marketId === market.marketId && a.accountId === accountId,
+      );
+      return Promise.resolve(state === undefined ? null : RoleAssignment.restore(state));
+    },
+    add: (_market, assignment) => {
+      const state = assignment.state;
+      if (
+        [...this.assignments.values()].some(
+          (a) => a.marketId === state.marketId && a.accountId === state.accountId,
+        )
+      ) {
+        return Promise.reject(new Error('role_assignments_market_id_account_id_key'));
+      }
+      this.assignments.set(state.id, state);
+      return Promise.resolve();
+    },
+    remove: (_market, assignment) => {
+      const stored = this.assignments.get(assignment.state.id);
+      if (stored === undefined || stored.version !== assignment.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('role-assignment', assignment.state.id));
+      }
+      this.assignments.delete(assignment.state.id);
       return Promise.resolve();
     },
   };
@@ -234,9 +458,20 @@ export class IdentityFakes {
       );
       if (found === undefined) return Promise.resolve(null);
       const account = this.accounts.get(found.session.accountId)!;
+      const membership = [...this.memberships.values()].find(
+        (m) =>
+          m.marketId === market.marketId &&
+          m.accountId === found.session.accountId &&
+          m.state === 'active',
+      );
+      const sellerId = found.session.sellerId;
+      const access = sellerId === null ? undefined : this.sellerAccess.get(sellerId);
       const answer: SessionForAuthentication = {
         session: found.session,
         accountStatus: account.status,
+        activeMembershipSellerId: membership?.sellerId ?? null,
+        sellerAccessState:
+          access === undefined || access.marketId !== market.marketId ? null : access.state,
       };
       return Promise.resolve(answer);
     },
@@ -390,6 +625,14 @@ export class IdentityFakes {
       .useValue(this.outbox)
       .overrideProvider(ONE_TIME_LINK_REPOSITORY)
       .useValue(this.linkRepository)
+      .overrideProvider(SELLER_ACCESS_REPOSITORY)
+      .useValue(this.sellerAccessRepository)
+      .overrideProvider(SELLER_MEMBERSHIP_REPOSITORY)
+      .useValue(this.membershipRepository)
+      .overrideProvider(ROLE_REPOSITORY)
+      .useValue(this.roleRepository)
+      .overrideProvider(ROLE_ASSIGNMENT_REPOSITORY)
+      .useValue(this.assignmentRepository)
       .overrideProvider(MAIL_TRANSPORT)
       .useValue(this.mailTransport)
       .overrideProvider(PASSWORD_HASHER)

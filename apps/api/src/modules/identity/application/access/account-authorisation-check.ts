@@ -7,6 +7,8 @@ import type {
   AuthorisationCheck,
 } from '../../../../platform/authz';
 import type { AccountRepository } from '../ports/account.repository';
+import type { SellerAccessRepository } from '../ports/seller-access.repository';
+import type { SellerMembershipRepository } from '../ports/seller-team.repository';
 
 const ALLOWED: AccessDecision = Object.freeze({ allowed: true });
 const DENIED: AccessDecision = Object.freeze({
@@ -14,40 +16,59 @@ const DENIED: AccessDecision = Object.freeze({
   denial: Object.freeze({ code: 'access.denied' }),
 });
 
+export interface AccountAuthorisationCheckDependencies {
+  readonly unitOfWork: UnitOfWork;
+  readonly accounts: AccountRepository;
+  readonly memberships: SellerMembershipRepository;
+  readonly sellerAccess: SellerAccessRepository;
+}
+
 /**
  * identity's {@link AuthorisationCheck} (identity design 5.2; platform-foundations 6.3), as far
- * as slice 2 goes. The gate calls it for an authenticated actor under `own-resources` or
+ * as slice 5 goes. The gate calls it for an authenticated actor under `own-resources` or
  * `permissions`. It reads committed state on each call, in a read-only unit of its own and never
  * inside the caller's (PN3), and caches nothing:
  *
  * - the account exists in the actor's Market, has the actor's population and is active;
- * - `own-resources`: allowed for the customer and admin populations. The seller population is
- *   denied until slice 5, which brings the membership, the seller's state and the allow-list
- *   (`whenSellerNotApproved`);
- * - `permissions`: denied until slice 8a, which brings the registry, roles and assignments
- *   (R7: a key no role grants is never held).
+ * - for the seller population (slice 5): the account's active membership is of the actor's
+ *   seller, and that seller exists and is not `suspended`; a `pending` or `rejected` seller is
+ *   `access.seller-not-approved` with its state, unless the declaration says
+ *   `whenSellerNotApproved: 'allow'` (the allow-list of 5.2; decision 6, AC 4);
+ * - `own-resources`: then allowed;
+ * - `permissions`: denied until slice 8a, which brings the registry and role keys (R7: a key no
+ *   role grants is never held). For the seller population the seller's state is decided first,
+ *   so a seller that is not approved learns why.
  *
  * An exception propagates; the gate turns it into `access.unavailable` (fail closed).
  */
 export class AccountAuthorisationCheck implements AuthorisationCheck {
-  constructor(
-    private readonly deps: {
-      readonly unitOfWork: UnitOfWork;
-      readonly accounts: AccountRepository;
-    },
-  ) {}
+  constructor(private readonly deps: AccountAuthorisationCheckDependencies) {}
 
   async check(context: CallContext, declaration: AccessDeclaration): Promise<AccessDecision> {
     const { actor, market } = context;
     if (actor.kind !== 'authenticated') return DENIED;
     const rule = declaration.rule.kind;
-    if (rule !== 'own-resources' || actor.population === 'seller') return DENIED;
+    if (rule !== 'own-resources' && rule !== 'permissions') return DENIED;
+    const seller = actor.population === 'seller';
+    if (rule === 'permissions' && !seller) return DENIED;
+    if (seller && actor.sellerId === null) return DENIED;
     const read = await this.deps.unitOfWork.run(
       market,
-      async () => ok(await this.deps.accounts.findById(market, actor.accountId)),
+      async () =>
+        ok({
+          account: await this.deps.accounts.findById(market, actor.accountId),
+          membership: seller
+            ? await this.deps.memberships.findActiveByAccount(market, actor.accountId)
+            : null,
+          access:
+            seller && actor.sellerId !== null
+              ? await this.deps.sellerAccess.findById(market, actor.sellerId)
+              : null,
+        }),
       { readOnly: true },
     );
-    const account = read.ok ? read.value : null;
+    if (!read.ok) return DENIED;
+    const { account, membership, access } = read.value;
     if (
       account === null ||
       account.state.marketId !== market.marketId ||
@@ -56,6 +77,26 @@ export class AccountAuthorisationCheck implements AuthorisationCheck {
     ) {
       return DENIED;
     }
-    return ALLOWED;
+    if (seller) {
+      if (
+        membership === null ||
+        membership.state.sellerId !== actor.sellerId ||
+        access === null ||
+        !access.allowsSignIn
+      ) {
+        return DENIED;
+      }
+      const state = access.state.state;
+      if (
+        (state === 'pending' || state === 'rejected') &&
+        declaration.whenSellerNotApproved !== 'allow'
+      ) {
+        return {
+          allowed: false,
+          denial: { code: 'access.seller-not-approved', details: { state } },
+        };
+      }
+    }
+    return rule === 'own-resources' ? ALLOWED : DENIED;
   }
 }

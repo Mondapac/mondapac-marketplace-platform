@@ -1,10 +1,18 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Session, SessionRevokedReason } from '../../domain/session';
+import type { SellerAccessStateCode } from '../../domain/seller-access';
 
 /** What the `Authenticator` reads per request, in one call (identity design 6.2). */
 export interface SessionForAuthentication {
   readonly session: Session;
   readonly accountStatus: 'active' | 'disabled';
+  /**
+   * For a seller session (slice 5), read in the same call: the seller of the account's active
+   * membership (null when it has none), and the access state of the session's seller (null
+   * when it has none). Both null for every other population.
+   */
+  readonly activeMembershipSellerId: Id<'Seller'> | null;
+  readonly sellerAccessState: SellerAccessStateCode | null;
 }
 
 /**

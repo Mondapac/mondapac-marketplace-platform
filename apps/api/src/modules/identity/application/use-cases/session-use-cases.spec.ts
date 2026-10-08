@@ -136,6 +136,17 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         unitOfWork: fakes.unitOfWork,
         accounts: fakes.accountRepository,
         sessions: fakes.sessionRepository,
+        assignments: fakes.assignmentRepository,
+        sellerAccess: fakes.sellerAccessRepository,
+      });
+    // Only describeActor is called here; the other methods have their own suites.
+    const facadeOf = (describe: DescribeActor) =>
+      new IdentityFacadeImplementation({
+        describeActor: describe,
+        membershipOf: undefined as never,
+        sellerAccessOf: undefined as never,
+        sellerAccessOfSystem: undefined as never,
+        listRegisteredSellers: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {
@@ -160,7 +171,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           },
         },
       });
-      const facade = await new IdentityFacadeImplementation(describeActor()).describeActor(context);
+      const facade = await facadeOf(describeActor()).describeActor(context);
       expect(facade).toEqual({
         ok: true,
         value: {
@@ -178,9 +189,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
 
     it('is refused to an anonymous caller through the facade too (the gate runs)', async () => {
       await expect(
-        new IdentityFacadeImplementation(describeActor()).describeActor(
-          testCallContext(market, 'anonymous'),
-        ),
+        facadeOf(describeActor()).describeActor(testCallContext(market, 'anonymous')),
       ).resolves.toEqual({ ok: false, error: { code: 'access.unauthenticated' } });
     });
   });

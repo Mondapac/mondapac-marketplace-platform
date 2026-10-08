@@ -3,13 +3,15 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { LinkTokens } from '../ports/link-secrets';
 import {
-  CustomerSignInFlow,
-  type CustomerSignInDependencies,
+  SELLER_ONLY_REFUSALS,
+  SignInFlow,
+  type SellerOnlyRefusal,
+  type SignInDependencies,
   type LinkSignInDependencies,
   type SignedIn,
   type SignInClient,
   type SignInRefusal,
-} from '../sign-in/customer-sign-in-flow';
+} from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
 import { MAX_PASSWORD_BYTES } from './sign-in-customer.use-case';
 
@@ -24,17 +26,17 @@ export type ConfirmCustomerEmailOutput = SignedIn;
 
 export type ConfirmCustomerEmailFailure =
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldProblem[] }
-  | Exclude<SignInRefusal, { readonly code: 'email-verification-required' }>;
+  | Exclude<SignInRefusal, { readonly code: 'email-verification-required' } | SellerOnlyRefusal>;
 
 export interface ConfirmCustomerEmailDependencies
-  extends CustomerSignInDependencies, LinkSignInDependencies {
+  extends SignInDependencies, LinkSignInDependencies {
   readonly linkTokens: LinkTokens;
 }
 
 /**
  * Confirming a customer's email (identity design 3.2, 6.3, 6.7 option B, 8.6 row 3; AC 16, AC 19;
  * slice 3). Rule `anonymous`. It is the sign-in sequence with the link's token in place of the
- * typed email, under the same throttling ({@link CustomerSignInFlow}): the link verifies only
+ * typed email, under the same throttling ({@link SignInFlow}): the link verifies only
  * with the account's password, is consumed only when the password is correct, and a correct
  * password also completes sign-in, so the customer types it once (Reza's proposal; accepted by
  * Hassan, 14.2). This is what lets an unverified account in after slice 2's
@@ -54,14 +56,14 @@ export class ConfirmCustomerEmail extends UseCase<
     rule: { kind: 'anonymous' },
   };
 
-  readonly #flow: CustomerSignInFlow;
+  readonly #flow: SignInFlow;
 
   constructor(
     gate: UseCaseGate,
     private readonly deps: ConfirmCustomerEmailDependencies,
   ) {
     super(gate);
-    this.#flow = new CustomerSignInFlow(deps, deps);
+    this.#flow = new SignInFlow('customer', deps, deps);
   }
 
   protected async handle(
@@ -77,9 +79,13 @@ export class ConfirmCustomerEmail extends UseCase<
       input.password,
       input.client,
     );
-    if (!outcome.ok && outcome.error.code === 'email-verification-required') {
-      // The link variant verifies the email before that step.
-      throw new Error('ConfirmCustomerEmail: email-verification-required after a consumed link');
+    if (
+      !outcome.ok &&
+      (outcome.error.code === 'email-verification-required' ||
+        SELLER_ONLY_REFUSALS.has(outcome.error.code))
+    ) {
+      // The link variant verifies the email before that step; a customer has no seller.
+      throw new Error(`ConfirmCustomerEmail: ${outcome.error.code} for a customer link`);
     }
     return outcome as Result<ConfirmCustomerEmailOutput, ConfirmCustomerEmailFailure>;
   }

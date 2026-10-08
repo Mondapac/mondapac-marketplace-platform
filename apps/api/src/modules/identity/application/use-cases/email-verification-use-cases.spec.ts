@@ -108,6 +108,9 @@ function setUp() {
     purge: new PurgeUnverifiedAccounts(gate, {
       unitOfWork: fakes.unitOfWork,
       accounts: fakes.accountRepository,
+      memberships: fakes.membershipRepository,
+      assignments: fakes.assignmentRepository,
+      sellerAccess: fakes.sellerAccessRepository,
       policy,
       clock,
     }),
@@ -227,6 +230,8 @@ describe.each(TEST_MARKETS)('email verification in market %s (identity slice 3)'
           token: expect.stringMatching(/^ms1_/) as unknown,
           absoluteLifetimeSeconds: policy.sessionLifetime(market, 'customer')!
             .absoluteLifetimeSeconds,
+          persistent: true,
+          sellerAccess: null,
         },
       });
       expect(account(s)).toMatchObject({ emailVerifiedAt: s.clock.now() });

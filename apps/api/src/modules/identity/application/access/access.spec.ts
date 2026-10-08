@@ -212,7 +212,12 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
 
   describe('AccountAuthorisationCheck', () => {
     const check = () =>
-      new AccountAuthorisationCheck({ unitOfWork, accounts: fakes.accountRepository });
+      new AccountAuthorisationCheck({
+        unitOfWork,
+        accounts: fakes.accountRepository,
+        memberships: fakes.membershipRepository,
+        sellerAccess: fakes.sellerAccessRepository,
+      });
     const actorContext = (population: 'customer' | 'admin' = 'customer') =>
       testCallContext(
         market,

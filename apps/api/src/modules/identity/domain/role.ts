@@ -36,14 +36,7 @@ export class RoleInvariantError extends Error {
   override readonly name = 'RoleInvariantError';
   constructor(
     readonly invariant:
-      | 'scope'
-      | 'kind'
-      | 'seed'
-      | 'seller'
-      | 'version'
-      | 'population'
-      | 'market'
-      | 'founding-role',
+      'scope' | 'kind' | 'seed' | 'seller' | 'version' | 'population' | 'market' | 'founding-role',
   ) {
     super(`Role invariant broken: ${invariant}`);
   }

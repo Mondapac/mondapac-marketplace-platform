@@ -13,6 +13,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import type { Account } from '../../domain/account';
 import type { EmailAddress } from '../../domain/email-address';
 import type { OneTimeLink } from '../../domain/one-time-link';
+import type { SellerAccess, SellerAccessStateCode } from '../../domain/seller-access';
 import { openSession, type Session } from '../../domain/session';
 import {
   blockAfterFailure,
@@ -24,6 +25,8 @@ import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
+import type { SellerAccessRepository } from '../ports/seller-access.repository';
+import type { SellerMembershipRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
@@ -46,23 +49,42 @@ export type SignInIdentifier =
   /** `tokenHash` null: the presented token does not have a token's shape; it still counts. */
   | { readonly kind: 'link'; readonly tokenHash: Uint8Array | null };
 
+/** The populations that sign in with a password alone in Phase 2 (admins need a factor, slice 7). */
+export type SignInPopulation = 'customer' | 'seller';
+
 /** A new session. The token goes into the cookie only, never a body or a log. */
 export interface SignedIn {
   readonly code: 'signed-in';
   readonly token: string;
   readonly absoluteLifetimeSeconds: number;
+  /**
+   * Whether the cookie outlives the browser (`Max-Age` = the absolute lifetime): always for a
+   * customer; for a seller only with "keep me signed in" (identity design 6.1).
+   */
+  readonly persistent: boolean;
+  /** The seller's access state for a seller session (F2 step 8: a limited session); else null. */
+  readonly sellerAccess: SellerAccessStateCode | null;
 }
 
 export type SignInRefusal =
   | { readonly code: 'credentials.invalid' }
   | { readonly code: 'email-verification-required' }
   | { readonly code: 'account.disabled' }
+  | { readonly code: 'membership.none' }
+  | { readonly code: 'seller-access.suspended' }
   | { readonly code: 'link.rejected' }
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | PasswordHasherBusy
   | { readonly code: 'access.unavailable' };
 
-export interface CustomerSignInDependencies {
+/** Refusals only the seller population can meet (3.3, 6.3 step 6). */
+export const SELLER_ONLY_REFUSALS: ReadonlySet<string> = new Set([
+  'membership.none',
+  'seller-access.suspended',
+]);
+export type SellerOnlyRefusal = { readonly code: 'membership.none' | 'seller-access.suspended' };
+
+export interface SignInDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
@@ -82,23 +104,46 @@ export interface LinkSignInDependencies {
   readonly outbox: OutboxWriter;
 }
 
+/** What the seller population needs on top: its membership and its seller's access (slice 5). */
+export interface SellerSignInDependencies {
+  readonly memberships: SellerMembershipRepository;
+  readonly sellerAccess: SellerAccessRepository;
+}
+
+/** Options of one attempt. */
+export interface SignInOptions {
+  /** "Keep me signed in" (identity design 6.1): seller side only; ignored for a customer. */
+  readonly keepSignedIn?: boolean;
+}
+
 type Reserved = { readonly reservation: ThrottleReservation; readonly rule: ThrottleRule };
 
 type Refused =
-  'credentials.invalid' | 'email-verification-required' | 'account.disabled' | 'link.rejected';
+  | 'credentials.invalid'
+  | 'email-verification-required'
+  | 'account.disabled'
+  | 'membership.none'
+  | 'seller-access.suspended'
+  | 'link.rejected';
 
 /** What the closing unit decided. */
 type Closed =
-  | { readonly kind: 'signed-in'; readonly session: Session }
+  | {
+      readonly kind: 'signed-in';
+      readonly session: Session;
+      readonly sellerAccess: SellerAccessStateCode | null;
+    }
   | { readonly kind: 'refused'; readonly code: Refused };
 
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
 /**
- * The customer sign-in sequence of identity design 6.3 (CUS-02; slices 2 and 3), shared by the
- * two use cases that run it: `SignInCustomer` with the typed email, and `ConfirmCustomerEmail`
- * with the link's token in its place (3.2, 6.7 option B; 8.6 row 3). Not a use case itself:
- * each use case declares its own access rule and calls {@link run} from its `handle`.
+ * The sign-in sequence of identity design 6.3 (CUS-02, SEL-04; slices 2, 3 and 5) for one
+ * population, shared by the use cases that run it: `SignInCustomer` and `SignInSeller` with the
+ * typed email, `ConfirmCustomerEmail` and `ConfirmSellerEmail` with the link's token in its place
+ * (3.2, 6.7 option B; 8.6 row 3). Not a use case itself: each use case declares its own access
+ * rule and calls {@link run} from its `handle`. The population is fixed per instance: the
+ * account is looked up within it, so the other population answers `credentials.invalid` (AC 3).
  *
  * 1. The generic per-origin limit ran before any identity code (the platform's rate limiter).
  * 2. **Reservation unit** (HF1): one short read-write unit counts the attempt and reads the
@@ -118,33 +163,53 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  *    a new request or the expiry since step 2 answers `link.rejected`), the email is verified
  *    (`identity.account-email-verified.v1`) and sign-in continues. With an email: an
  *    unverified email is `email-verification-required` (Hassan I5) and a disabled account
- *    `account.disabled`. Then a hash with older parameters is replaced and a session with a
- *    new token is created. Every attempt writes one sign-in record (never the email).
+ *    `account.disabled`. A seller-side account (slice 5) then needs an active membership
+ *    (`membership.none`) and a seller that is not suspended (`seller-access.suspended`); both
+ *    are checked before a link is consumed, so a refused link stays unused. A link that
+ *    verifies a self-registered owner records `identity.seller-registered.v1` on the seller
+ *    (8.2, M4). Then a hash with older parameters is replaced and a session with a new token is
+ *    created; a seller session carries its seller and the answer its access state (`pending`
+ *    and `rejected` sign in to a limited session, 3.3). Every attempt writes one sign-in record
+ *    (never the email).
  *
  * Refusals are `ok` outcomes of their units, so the counters, the record and the block commit
  * (PN1).
  */
-export class CustomerSignInFlow {
-  readonly #logger = new Logger('CustomerSignIn');
+export class SignInFlow {
+  readonly #logger = new Logger('SignIn');
 
   constructor(
-    private readonly deps: CustomerSignInDependencies,
+    private readonly population: SignInPopulation,
+    private readonly deps: SignInDependencies,
     private readonly linkDeps: LinkSignInDependencies | null = null,
-  ) {}
+    private readonly sellerDeps: SellerSignInDependencies | null = null,
+  ) {
+    if (population === 'seller' && sellerDeps === null) {
+      throw new Error('SignInFlow: the seller population needs the seller dependencies');
+    }
+  }
 
   async run(
     context: CallContext,
     identifier: SignInIdentifier,
     password: string,
     client: SignInClient,
+    options: SignInOptions = {},
   ): Promise<Result<SignedIn, SignInRefusal>> {
     const { market } = context;
     const { policy, keys, unitOfWork, throttles, accounts, hasher } = this.deps;
+    const population = this.population;
     if (identifier.kind === 'link' && this.linkDeps === null) {
-      throw new Error('CustomerSignInFlow: the link variant needs the link dependencies');
+      throw new Error('SignInFlow: the link variant needs the link dependencies');
     }
-    const lifetime = policy.sessionLifetime(market, 'customer');
+    // 6.1: "keep me signed in" is seller side only, and only where the Market offers it.
+    const kept =
+      population === 'seller' && options.keepSignedIn === true
+        ? policy.sessionLifetime(market, population, true)
+        : null;
+    const lifetime = kept ?? policy.sessionLifetime(market, population);
     if (lifetime === null) return err(UNAVAILABLE);
+    const persistent = population === 'customer' || kept !== null;
     const rules = policy.signInThrottles(market);
     const originCounter: ThrottleCounter = {
       kind: 'sign-in.origin',
@@ -153,11 +218,11 @@ export class CustomerSignInFlow {
       rule: rules.origin,
     };
     const countersFor = (emailNormalized: string): readonly ThrottleCounter[] => {
-      const accountKey = keys.account(market, 'customer', emailNormalized);
+      const accountKey = keys.account(market, population, emailNormalized);
       return [
         {
           kind: 'sign-in.account-origin',
-          keyHash: keys.accountOrigin(market, 'customer', emailNormalized, client.origin),
+          keyHash: keys.accountOrigin(market, population, emailNormalized, client.origin),
           accountKey,
           rule: rules.accountOrigin,
         },
@@ -186,7 +251,7 @@ export class CustomerSignInFlow {
         if (identifier.kind === 'email') {
           counters = countersFor(identifier.email.normalized);
           reservations = await throttles.reserve(market, counters, now);
-          account = await accounts.findByEmail(market, 'customer', identifier.email.normalized);
+          account = await accounts.findByEmail(market, population, identifier.email.normalized);
         } else {
           link =
             identifier.tokenHash === null
@@ -196,7 +261,7 @@ export class CustomerSignInFlow {
             link !== null && link.usableFor('verify-email', now)
               ? await accounts.findById(market, link.state.accountId)
               : null;
-          if (account !== null && account.state.population !== 'customer') account = null;
+          if (account !== null && account.state.population !== population) account = null;
           counters =
             account === null ? [originCounter] : countersFor(account.state.email.normalized);
           reservations = await throttles.reserve(market, counters, now);
@@ -298,9 +363,26 @@ export class CustomerSignInFlow {
           await this.record(context, client, accountId, code, null, now);
           return ok({ kind: 'refused', code });
         };
+        // 3.1: no link is used for a disabled account; it stays unused.
+        if (link !== null && current.state.status !== 'active') return refuse('account.disabled');
+        if (link === null && !current.isEmailVerified) {
+          return refuse('email-verification-required');
+        }
+        if (current.state.status !== 'active') return refuse('account.disabled');
+        // Step 6 for the seller side (3.3): an active membership and a seller not suspended.
+        // Read before a link is consumed, so a refused link stays unused.
+        let seller: SellerAccess | null = null;
+        if (population === 'seller') {
+          const { memberships, sellerAccess } = this.sellerDeps!;
+          const membership = await memberships.findActiveByAccount(market, accountId);
+          seller =
+            membership === null
+              ? null
+              : await sellerAccess.findById(market, membership.state.sellerId);
+          if (seller === null) return refuse('membership.none');
+          if (!seller.allowsSignIn) return refuse('seller-access.suspended');
+        }
         if (link !== null) {
-          // 3.1: no link is used for a disabled account; it stays unused.
-          if (current.state.status !== 'active') return refuse('account.disabled');
           // Bound to the link read in the reservation unit: a link re-issued (or consumed)
           // since then has another version, and this use is refused (Hassan L1).
           const consumed = await this.linkDeps!.links.consume(
@@ -310,31 +392,35 @@ export class CustomerSignInFlow {
             now,
           );
           if (!consumed) return refuse('link.rejected');
-          current.verifyEmail(now);
+          // 8.2, M4: the owner's verification publishes a self-registered seller, once.
+          if (current.verifyEmail(now) && seller !== null && seller.state.origin === 'self') {
+            seller.recordRegistered(accountId, now);
+          }
         }
-        if (!current.isEmailVerified) return refuse('email-verification-required');
-        if (current.state.status !== 'active') return refuse('account.disabled');
         if (rehashed !== null && rehashed.ok) current.rehashPassword(rehashed.value);
         // One save for every change of this unit (Hassan L2): the verified email and a re-hash
         // step the version twice, and a second save of the same object would be stale.
         if (current.state.version !== current.persistedVersion) {
           await accounts.save(market, current);
-          if (current.pendingEvents.length > 0) {
-            await this.linkDeps!.outbox.append(context, current.pendingEvents);
-          }
         }
+        if (seller !== null && seller.state.version !== seller.persistedVersion) {
+          await this.sellerDeps!.sellerAccess.save(market, seller);
+        }
+        const events = [...current.pendingEvents, ...(seller?.pendingEvents ?? [])];
+        if (events.length > 0) await this.linkDeps!.outbox.append(context, events);
         const session = openSession({
           id: this.deps.ids.next<'Session'>(),
           marketId: market.marketId,
           accountId,
-          population: 'customer',
+          population,
+          sellerId: seller?.state.sellerId ?? null,
           transport: 'cookie',
           lifetime,
           now,
         });
         await this.deps.sessions.add(market, session, issued.tokenHash);
         await this.record(context, client, accountId, 'signed-in', session.id, now);
-        return ok({ kind: 'signed-in', session });
+        return ok({ kind: 'signed-in', session, sellerAccess: seller?.state.state ?? null });
       }),
     );
     if (!closed.ok) return err(UNAVAILABLE);
@@ -344,6 +430,8 @@ export class CustomerSignInFlow {
       code: 'signed-in',
       token: issued!.token,
       absoluteLifetimeSeconds: lifetime.absoluteLifetimeSeconds,
+      persistent,
+      sellerAccess: outcome.sellerAccess,
     });
   }
 
@@ -380,7 +468,7 @@ export class CustomerSignInFlow {
   ): Promise<void> {
     await this.deps.records.add(context.market, {
       id: this.deps.ids.next<'SignInRecord'>(),
-      population: 'customer',
+      population: this.population,
       accountId,
       outcome,
       occurredAt: now,
