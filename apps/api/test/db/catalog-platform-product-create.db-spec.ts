@@ -109,9 +109,10 @@ describe.each(TEST_MARKETS)(
         family_code: 'default',
         owner_seller_id: null,
       });
-      const variants = await app.query(`SELECT state FROM catalog.product_variants WHERE product_id = $1`, [
-        result.value.productId,
-      ]);
+      const variants = await app.query(
+        `SELECT state FROM catalog.product_variants WHERE product_id = $1`,
+        [result.value.productId],
+      );
       expect(variants.rows).toEqual([{ state: 'proposed' }]);
       expect(appended).toContain('catalog.variant-added.v1');
     });
