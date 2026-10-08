@@ -205,9 +205,11 @@ never touches another Market. View-only roles see the row locked with the reason
 2. **Step pages** (`Seller · Setup step`): back link "Back to your seller account"; H1; "Step {n} of {total}"
    as words; one card per group; a `FormActionBar` at the bottom (sticky below 760 px) with the primary
    "Save and continue", a secondary "Back to checklist", and a status text (Saved, Unsaved changes).
-   Form column at most `size/form-max`.
+   Form column at most `size/form-max`. *Proposal (finding 7e, awaiting owner approval; the text above stays
+   until then):* rename the secondary "Back to checklist" to "Back to your seller account", the label of the
+   back link at the top of the page.
 3. **Validation, loading, errors** follow ID-UX 3.0 rules 3 and 4: error summary (Critical `InfoBanner`)
-   takes focus; field errors are icon plus text under the field; the primary button shows
+   takes focus; field errors are icon plus text under the field (a field shows its error or its status line, never both); the primary button shows
    `State=Loading` at the same width; lists load as 8 skeleton rows; no page spinner.
 4. **Market-driven fields.** The address fields and their order, the postcode pattern, the region list,
    the phone pattern, the business-number label and help, the tax-registration question and the prepared
@@ -344,6 +346,18 @@ the Critical tone and differ by icon and word (ID-UX 6). "Rejected" is never sho
 admin sees the same words; the P1 tabs use "Changes needed" and "Not approved" for the two cases.
 No review time is promised (Open 1).
 
+**Proposed S1 states, missing from the table above (finding 7b; pending Jafar/owner approval).** The 1.9.0
+frames show a time zone that cannot be resolved (S3, S6 Blocked) and a negative register result (S4, S6
+Blocked) but S1 has no matching state. The status codes belong to the domain design and are for Mohammad
+to name; the copy keys are proposed here and nothing in the table above changes.
+
+| Case | S1 banner (title; body) | Steps card | Proposed keys |
+|---|---|---|---|
+| Time zone cannot be resolved | Attention: "We couldn't work out your time zone"; "Check your address, or contact us." with "Contact us" | Address and area "Needs attention" (detail "Check your address"); Review and submit "Waiting" | `status.timezone-unresolved.title · .body`, `steps.detail.address-check` |
+| Business number not matched | None of its own: the banner stays "Finish your details" or "Your details are ready" per the table above | Business number "Needs attention" (detail "Not matched"); Review and submit "Waiting" while the S6 row is Blocked | `steps.detail.number-not-matched` |
+
+Neither case shows a register value. "Not matched" is the one message for not found and cancelled (3.1 S4).
+
 ### 3.4 Dialogs
 Rules of ID-UX 3.3 apply (title names the action and object; destructive confirm opens with focus on
 Cancel; sheet layout below 480 px; focus trap and return; no outside-click close while text is typed).
@@ -398,7 +412,7 @@ ID 1.1.0 and 1.2.0 first.
 
 | Screen element | Existing library component or template | Change needed in Figma first | Release |
 |---|---|---|---|
-| Field with a status line (Checking, Available, Matched, Not available) | `Field` (ID 1.1.0): Label, Helper, Error, Counter | New property `Status` (None, Checking, Success, Info, Critical) with icon and text; `Checking` uses a static icon under reduced motion | MINOR 1.3.0 |
+| Field with a status line (Checking, Available, Matched, Not available) | `Field` (ID 1.1.0): Label, Helper, Error, Counter | New component `FieldStatus` (axis `Tone`: Checking, Success, Info, Critical; icon and text; `Checking` uses a static icon under reduced motion), shown in `Field` through a BOOLEAN `Show status`; "Status None" is `Show status` off. A field shows its error **or** its status, never both (accepted deviation from "property `Status`", brief s12 and the 1.9.0 record in `docs/design/figma/README.md`) | MINOR 1.3.0 (built in 1.9.0) |
 | Slug input with a fixed prefix; also the minimum-order amount (currency code as the prefix, S7 3.1a) | `Input` (+ Type=Password and Code, ID 1.1.0) | New BOOLEAN `Show prefix` and TEXT `Prefix` (left-to-right, muted); logical start side. Reused as is for the amount: no money component, no new token. Add a Usage note: amount fields show the ISO currency code, never a bare symbol | MINOR 1.3.0 |
 | Step supporting line ("2 fields left"), route arrow | `ChecklistItem` (+ Waiting and Needs attention, ID 1.1.0) | New TEXT `Detail`; BOOLEAN `Show chevron` for a step that opens a page | MINOR 1.3.0 |
 | Summary, read-only values, register compare, current vs requested | None | New component `DataRow`: Layout Single or Compare; slots Label, Value, Compare value, Flag (`Badge`), Action link; State Default, Missing, Blocked, Changed. Used on S6, S7, P2, P3 | MINOR 1.3.0 |
@@ -422,15 +436,16 @@ ID 1.1.0 and 1.2.0 first.
 - **P3 checks use `CheckboxRow`, not brief s12's `ChecklistItem`,** on purpose: checks are ticked and saved
   one at a time (Saving state, Undo). The brief's change log needs a row for this.
 - **Brief s12's "components not in README" list** is covered as follows: Select, Textarea, Dialog, Toast
-  (ID 1.2.0); multi-select (a `CheckboxRow` list in C1, ID 1.2.0); slug field states (`Field` Status, row 1
+  (ID 1.2.0); multi-select (a `CheckboxRow` list in C1, ID 1.2.0); slug field states (`FieldStatus` in `Field`, row 1
   above); form states (error summary and focus, unsaved change, session end mid-form, save failure: 3.0,
   3.5 and `FormActionBar`); touch density (3.0 rule 2, 6); no-permission page (B5, ID-UX); D16 mobile
   navigation (still open, last row above).
 - **Brief s12's two "(در G2)" blanks** (new templates; design-system version) are filled at the G2 record:
   five templates plus two updated frames, and version 1.4.0.
-- **New components (3):** `DataRow`, `FormActionBar`, `SettingRow`. Each is used on at least two screens
-  and in both panels, as the update procedure requires.
-- **Changed components (4):** `Field`, `Input`, `ChecklistItem`, `CheckboxRow`. **New tokens (1):**
+- **New components (4):** `FieldStatus`, `DataRow`, `FormActionBar`, `SettingRow`. Each is used on at least two screens
+  and in both panels, as the update procedure requires (`FieldStatus` is used on S4, S5 and the later
+  status lines).
+- **Changed components (4):** `Field` (`Show status`), `Input`, `ChecklistItem`, `CheckboxRow`. **New tokens (1):**
   `size/form-max`. **New icons (3).** **New templates (5)**, plus two updated frames.
 - **Design-system version after this module:** 1.4.0, on top of ID-UX's 1.2.0. Nothing is renamed or
   removed, so no MAJOR. Light and dark both; the Audit plugin file must be clean (ADR-0017).
@@ -452,7 +467,7 @@ withdraw; awaiting review, changes needed, not approved; prepared reason; work t
 | `steps.detail.fields-left` | {count, plural, one {# field left} other {# fields left}} |
 | `steps.optional-cert` | (not needed to submit) |
 | `step.counter · step.back · action.save-continue · status.saved · status.dirty` | Step {current} of {total} · Back to your seller account · Save and continue · Saved · Unsaved changes |
-| `unsaved.title · body` | Leave without saving? · You have unsaved changes on this page. |
+| `unsaved.title · body` | Leave without saving? · You have unsaved changes on this page. (**Finding 7c:** the owner-approved text of 8 Oct 2026 is "You have unsaved changes. They'll be lost if you leave."; the Figma frames use it; this row is to be corrected, not the frames) |
 | `business.label.store-name · help.store-name (L)` | Store name · Customers see this name. Don't use words that claim a certification, and don't copy another brand. |
 | `business.label.business-name · help.business-name · label.phone · label.contact-email · help.contact-email · label.sign-in-email` | Business name · The legal name of your business. · Phone · Contact email · For customers and MondaPac to reach your business. You still sign in with {signInEmail}. · Sign-in email |
 | `address.title · help.zone · result.zone · action.contact` | Where your shop works from · We use this to work out your local time for cut-offs and certificate dates. Only MondaPac can change it. · Your work time zone is {zoneName} ({zoneId}). · Contact us |
@@ -462,7 +477,15 @@ withdraw; awaiting review, changes needed, not approved; prepared reason; work t
 | `number.status.checking · .matched · .not-matched · .unavailable` | Checking with the official register… · Matched with the official register · We couldn't match this number with the official register. Check it and try again, or contact us. · We couldn't check this right now. You can still submit, and a reviewer will check it. |
 | `error.identifier.format · .checksum · lookup.limit` | That doesn't look like a valid {identifierLabel}. Check the number and try again. (both codes) · You've changed this number too many times. Try again later. |
 | `slug.label · help · help.later` | Shop web address · Lowercase letters, numbers and hyphens. {min} to {max} characters. · You can only change this later by asking MondaPac. |
-| `slug.status.checking · .available` | Checking… · Available now. It's held for you when you submit. |
+| `slug.status.checking · .available` | Checking… · Available now. It's held for you when you submit. (**Finding 7a:** reads as a promise; proposed replacement below, owner-approved text not changed) |
+| `error-summary.title` (proposed, pending Jafar/owner approval) | Check the details below |
+| `error.phone.required · .format` (proposed, pending Jafar/owner approval; `.required` is the text the S2 Errors frame uses, `.format` has no frame string yet) | Enter a phone number. · Enter a phone number in the format {phoneExample}. |
+| `address.result.local-time` (proposed, pending Jafar/owner approval) | Local time now: {time} |
+| `submit.banner.title` (proposed, pending Jafar/owner approval) | Before you submit |
+| `slug.suggested` (proposed, pending Jafar/owner approval) | Suggested from your store name. You can change it. |
+| `number.label.tax-from` (proposed, pending Jafar/owner approval) | Registered from |
+| `steps.by.done · .to-do · .waiting · .needs-attention` (proposed, pending Jafar/owner approval; the by-line of a `ChecklistItem` on S1) | Done · To do · Waiting · Needs attention |
+| `action.back-to-checklist` (proposed key for the current secondary label; the rename is finding 7e) | Back to checklist |
 | `error.slug.taken · .reserved · .format · request.throttled` | That address isn't available. Try another. (taken and reserved) · Use {min} to {max} lowercase letters, numbers and hyphens, with no hyphen at the start, end or in a row. · Too many checks. Wait a moment. |
 | `submit.title · banner · action.submit · action.again · help.blocked` | Review and submit · MondaPac reviews these details before you can sell. You'll get an email when there's a decision. · Submit for review · Submit again · Finish {count, plural, one {# item} other {# items}} first. |
 | `submit.row.missing · row.blocked · row.edit` | Missing · Blocked · Edit |
@@ -603,6 +626,28 @@ sections 3.1 F13 notes and 3.2 P3); "Submitted by MondaPac" on S1 (Jafar accepte
 6. ~~Brief change-log row for `CheckboxRow` replacing `ChecklistItem` on P3~~ Done: the row is in the
    brief's change log (2026-10-07). Jafar's acceptance of section 4 is recorded in 9.
 
+### Findings from the 1.9.0 frames (Jafar's copy notes, 2026-10-08)
+Recorded as open findings; owner-approved text is not rewritten here. Each needs Jafar or the owner.
+- **7a. `slug.status.available` reads as a promise.** "Available now. It's held for you when you submit."
+  contradicts S5's "never a promise that 'available' will still be true at submit". Proposed resolution:
+  "Available at the moment. We check again when you submit." The row in section 5 keeps the current text
+  until the owner approves.
+- **7b. S1 has no state for an unresolved time zone or a negative register result.** Proposed rows and keys
+  are in 3.3 (after the table). Resolution: Jafar approves the copy; Mohammad names the status codes.
+- **7c. `unsaved.body` conflicts with the owner-approved text.** The owner approved on 8 Oct 2026 "You have
+  unsaved changes. They'll be lost if you leave." (title "Leave without saving?", actions Leave and Keep
+  editing; replaces `role.body.unsaved`). The Figma frames use it. The text is kept; the key
+  `sellers.unsaved.body` in section 5 ("You have unsaved changes on this page.") is flagged for correction
+  to match, or to reuse the shared key.
+- **7d. Copy keys the frames use with no key yet.** Proposed in section 5, marked pending approval:
+  `error-summary.title`, `error.phone.required · .format`, `address.result.local-time`,
+  `submit.banner.title`, `slug.suggested`, `number.label.tax-from`, `steps.by.*`, `action.back-to-checklist`.
+  Also unkeyed in the frames: the S3 region placeholder "Select a state" (Market-owned) and the sample
+  reasons on S1.
+- **7e. Proposal: rename "Back to checklist" to "Back to your seller account".** The secondary button and
+  the back link then read the same and match `step.back`. Awaiting owner approval; 3.0 rule 2 keeps the
+  current text.
+
 ### For Jafar
 - **Step order, grouping and the phone-versus-tablet priority** are provisional (brief risk 14): five pages
   (details, address, number, slug, submit) are my reading. Research should test phone and address on one
@@ -644,7 +689,7 @@ remains:
 ### 8.1 Design track: what to build in Figma, in order
 Follow `docs/design/figma/update-procedure.md` (Sandbox, review, publish, Export tokens). Both releases
 need ID 1.1.0 and 1.2.0 first.
-1. **1.3.0 "Seller setup":** `size/form-max`; icons `pencil`, `refresh-cw`, `globe`; `Field` Status;
+1. **1.3.0 "Seller setup":** `size/form-max`; icons `pencil`, `refresh-cw`, `globe`; `FieldStatus` and the `Field` property `Show status`;
    `Input` prefix; `ChecklistItem` Detail and chevron; `DataRow` (Single and Compare, all states);
    `FormActionBar`. Templates `Seller · Setup step` (frames for S2 to S6 including: the withdrawal
    banner, `file.decision-in-progress`, outside area, time zone unresolved, each S4 result state, each S5
