@@ -23,6 +23,7 @@ import { EXPECTED_PRIVILEGES } from './expected-privileges';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 const RESTRICT_VIOLATION = '23001';
+const FEATURE_NOT_SUPPORTED = '0A000';
 const CHECK_VIOLATION = '23514';
 const INSUFFICIENT_PRIVILEGE = '42501';
 const APPLICATION_GROUP_ROLE = 'mondapac_app';
@@ -145,7 +146,13 @@ describe('platform persistence (database integration)', () => {
       await expect(
         owner.query('DELETE FROM platform.audit_log WHERE id = $1', [row.id]),
       ).rejects.toMatchObject({ code: RESTRICT_VIOLATION });
+      // Since the seal's foreign key (docs/design/data/platform.md 11.3), a plain TRUNCATE is
+      // refused before the trigger runs (0A000: the table is referenced); with CASCADE it
+      // reaches the triggers of audit_log and of the seal, which refuse it.
       await expect(owner.query('TRUNCATE platform.audit_log')).rejects.toMatchObject({
+        code: FEATURE_NOT_SUPPORTED,
+      });
+      await expect(owner.query('TRUNCATE platform.audit_log CASCADE')).rejects.toMatchObject({
         code: RESTRICT_VIOLATION,
       });
 
@@ -410,6 +417,16 @@ describe('platform persistence (database integration)', () => {
         'role_membership',
         'role_timeouts',
         'temporary_on_database',
+      ]);
+    });
+
+    it('names each of the three audit tables the owner may change (11.6)', async () => {
+      const problems = await run(owner);
+
+      expect(problems.filter((problem) => problem.code === 'audit_log_privilege')).toEqual([
+        { code: 'audit_log_privilege', subject: 'platform.audit_chain_checkpoint' },
+        { code: 'audit_log_privilege', subject: 'platform.audit_log' },
+        { code: 'audit_log_privilege', subject: 'platform.audit_log_seal' },
       ]);
     });
 

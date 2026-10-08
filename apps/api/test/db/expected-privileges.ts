@@ -78,6 +78,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/platform.md 11.6 (identity slice 6a): append-only like the audit log;
+    // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).
+    'platform.audit_log_seal': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'platform.audit_chain_checkpoint': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.
     'platform.event_delivery': {

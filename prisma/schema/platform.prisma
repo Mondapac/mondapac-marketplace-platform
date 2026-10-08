@@ -15,9 +15,12 @@ model AuditLog {
   marketId      String   @map("market_id") @db.VarChar(8)
   /// Tenant seam (ADR-0001). Supplied by the writer; deliberately no database default.
   tenantId      String   @map("tenant_id")
-  /// Instant of the audited action, from the injected Clock (ADR-0005), UTC.
+  /// Instant of the audited action, from the injected Clock (ADR-0005), UTC, in whole
+  /// milliseconds (CHECK audit_log_occurred_at_check; docs/design/data/platform.md 11.2).
   occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
-  /// USER = an authenticated principal (actor_id required); SYSTEM = job, worker or relay.
+  /// USER = an authenticated principal (actor_id required); SYSTEM = job, worker or relay;
+  /// ANONYMOUS = a request with no session whose credential binds one account or invitation,
+  /// named in target_id or after.boundSubjectId (docs/design/domain/platform-audit.md W4a).
   actorType     String   @map("actor_type")
   /// identity user id of the real actor. Plain id, no FK across schemas.
   actorId       String?  @map("actor_id") @db.Uuid
@@ -35,14 +38,75 @@ model AuditLog {
   after         Json?    @db.JsonB
   /// Correlation id of the request, job run or event that caused the action.
   correlationId String   @map("correlation_id")
+  /// Seals of this row, at most one per chain epoch (docs/design/data/platform.md 11.3).
+  seals         AuditLogSeal[]
 
   /// Audit history of one entity (CERT-32: a certification's decisions), newest first.
   @@index([marketId, targetType, targetId, occurredAt], map: "audit_log_market_id_target_type_target_id_occurred_at_idx")
   /// What one actor did (IMP-06: review of an admin's actions and impersonation sessions).
   @@index([marketId, actorId, occurredAt], map: "audit_log_market_id_actor_id_occurred_at_idx")
-  /// Admin audit list by time range with keyset pagination on (occurred_at, id).
-  @@index([marketId, occurredAt, id], map: "audit_log_market_id_occurred_at_id_idx")
+  /// Admin audit list and the sealer's keyset on (occurred_at, id); referenced by the seal's foreign key.
+  @@unique([marketId, occurredAt, id], map: "audit_log_market_id_occurred_at_id_key")
   @@map("audit_log")
+  @@schema("platform")
+}
+
+/// One seal of one audit row in one chain epoch: the hash chain of the audit log (ADR-0009
+/// V4; docs/design/domain/platform-audit.md 6; physical design docs/design/data/platform.md
+/// 11.3). Append-only: a database trigger rejects UPDATE, DELETE and TRUNCATE for every role,
+/// and the application holds SELECT and INSERT only. Written only by the sealer in
+/// platform/persistence/audit/ (identity slice 6b). The CHECKs and the triggers are
+/// hand-written in the migration. No personal data: ids, times and hashes only.
+model AuditLogSeal {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001), from the sealer's context; no database default.
+  tenantId        String   @map("tenant_id")
+  /// Chain epoch, 1 from the first seal; a new epoch only through the recovery command (11.13). No default.
+  epoch           Int
+  /// 1, 2, 3, ... per Market and epoch.
+  chainSeq        BigInt   @map("chain_seq")
+  /// The sealed audit row.
+  auditLogId      String   @map("audit_log_id") @db.Uuid
+  /// Copy of the row's occurred_at, kept equal by the foreign key (11.3).
+  auditOccurredAt DateTime @map("audit_occurred_at") @db.Timestamptz(6)
+  /// 32 bytes: SHA-256 of the canonical row (platform-audit.md 6.2).
+  rowHash         Bytes    @map("row_hash")
+  /// 32 bytes: SHA-256 of the link, with hash_version and epoch in its input (6.2).
+  chainHash       Bytes    @map("chain_hash")
+  /// Sealed below the watermark (6.1 option A); part of the chain hash.
+  late            Boolean
+  /// 1 today (6.2).
+  hashVersion     Int      @map("hash_version") @db.SmallInt
+  /// From the sealer's Clock; not part of any hash.
+  sealedAt        DateTime @map("sealed_at") @db.Timestamptz(6)
+  auditLog        AuditLog @relation(fields: [marketId, auditOccurredAt, auditLogId], references: [marketId, occurredAt, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, epoch, chainSeq], map: "audit_log_seal_pkey")
+  @@unique([marketId, epoch, auditOccurredAt, auditLogId], map: "audit_log_seal_market_id_epoch_occurred_at_id_key")
+  @@map("audit_log_seal")
+  @@schema("platform")
+}
+
+/// A chain head at checkpoint time, also sent to the anchor (docs/design/domain/platform-audit.md
+/// 7.1 step 5 and 8; docs/design/data/platform.md 11.4). Append-only like the seal; no foreign
+/// key to the seal, because checkpoints outlive dropped seals. The CHECKs and the triggers are
+/// hand-written in the migration. No personal data.
+model AuditChainCheckpoint {
+  marketId    String   @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); no database default.
+  tenantId    String   @map("tenant_id")
+  /// The epoch of the checkpointed seal.
+  epoch       Int
+  /// The head at checkpoint time.
+  chainSeq    BigInt   @map("chain_seq")
+  /// 32 bytes: the chain_hash of that seal.
+  chainHash   Bytes    @map("chain_hash")
+  hashVersion Int      @map("hash_version") @db.SmallInt
+  /// From the sealer's Clock.
+  createdAt   DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@id([marketId, epoch, chainSeq], map: "audit_chain_checkpoint_pkey")
+  @@map("audit_chain_checkpoint")
   @@schema("platform")
 }
 
