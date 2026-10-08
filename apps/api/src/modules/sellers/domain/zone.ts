@@ -31,6 +31,12 @@ export interface ZoneChoice {
   readonly chosen: unknown;
   /** The browser's own zone: applied only under the rules below, otherwise dropped silently. */
   readonly hint: unknown;
+  /**
+   * The zone a `LocationTimezoneResolver` suggested for the device's position (spike 3 record),
+   * or null/absent for none. Same rules as `hint`; it comes first because a position is closer
+   * to the premises than the browser's zone. Never an input of a request.
+   */
+  readonly suggestedZone?: unknown;
 }
 
 /** Hints never come from a person, so a later hint may replace them. */
@@ -50,8 +56,10 @@ const onList = (zones: RegionZones, zone: unknown): zone is string =>
  *    `timezone.not-selectable` and nothing changes.
  * 2. Without a choice, a current zone that is still on the list is kept (a default zone moves to
  *    the new default); a zone that is not on the new list resets to the default.
- * 3. A hint applies only to a draft whose zone no seller or admin set, and only if it is on the
- *    list (the address wins); otherwise it is dropped without an error.
+ * 3. A hint (the suggested zone of a position, else the browser's zone) applies only to a draft
+ *    whose zone no seller or admin set, and only if it is on the list (the address wins);
+ *    otherwise it is dropped without an error. A suggested zone off the list does not hide a
+ *    browser zone that is on it. The order is: region default, then the hint.
  *
  * `addressTimezone` is always the region's default.
  */
@@ -69,6 +77,13 @@ export function zoneAfterAddressSave(
     return ok({ operatingTimezone: choice.chosen, timezoneSource: 'seller', addressTimezone });
   }
   const nobodySet = current === null || NOBODY_SET.has(current.timezoneSource);
+  if (nobodySet && onList(zones, choice.suggestedZone)) {
+    return ok({
+      operatingTimezone: choice.suggestedZone,
+      timezoneSource: 'location',
+      addressTimezone,
+    });
+  }
   if (nobodySet && onList(zones, choice.hint)) {
     return ok({ operatingTimezone: choice.hint, timezoneSource: 'browser', addressTimezone });
   }

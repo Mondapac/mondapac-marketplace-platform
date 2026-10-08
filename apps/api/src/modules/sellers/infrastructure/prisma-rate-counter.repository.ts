@@ -83,4 +83,14 @@ export class PrismaRateCounterRepository implements RateCounterRepository {
     }
     return counters.map((counter) => reserved.get(counter)!);
   }
+
+  async purgeStartedBefore(
+    market: MarketContext,
+    startedBefore: Temporal.Instant,
+  ): Promise<number> {
+    const { count } = await this.prisma.tx(market).sellersRateCounter.deleteMany({
+      where: { marketId: market.marketId, windowStartedAt: { lt: toDate(startedBefore) } },
+    });
+    return count;
+  }
 }

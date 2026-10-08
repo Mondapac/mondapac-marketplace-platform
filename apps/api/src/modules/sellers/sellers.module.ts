@@ -8,6 +8,7 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { LOCATION_TIMEZONE_RESOLVER } from './application/ports/location-timezone-resolver';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
 import { REGISTERED_SELLER_SOURCE } from './application/ports/registered-seller-source';
@@ -28,6 +29,7 @@ import { MyFileRead } from './application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from './application/use-cases/my-file-save-address.use-case';
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
+import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
@@ -35,6 +37,7 @@ import { SellingEligibility } from './application/use-cases/selling-eligibility.
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
+import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-files.job';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
 import { MyFileController } from './presentation/my-file.controller';
@@ -57,6 +60,7 @@ const PORT = {
   addressFormats: ADDRESS_FORMATS,
   zones: TIMEZONE_RESOLVER,
   areas: SERVICE_AREAS,
+  locationZones: LOCATION_TIMEZONE_RESOLVER,
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -141,6 +145,7 @@ function useCaseProvider<D, U>(
       addressFormats: true,
       zones: true,
       areas: true,
+      locationZones: true,
       clock: true,
     }),
     useCaseProvider(MyFileSaveSlug, {
@@ -190,9 +195,15 @@ function useCaseProvider<D, U>(
           sellingEligibilitySystem,
         }),
     },
-    registerJobsFrom('sellers', [BackfillSellerFiles], (backfill: BackfillSellerFiles) => [
-      backfillSellerFilesJob(backfill),
-    ]),
+    useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
+    registerJobsFrom(
+      'sellers',
+      [BackfillSellerFiles, PurgeExpired],
+      (backfill: BackfillSellerFiles, purge: PurgeExpired) => [
+        backfillSellerFilesJob(backfill),
+        purgeExpiredJob(purge),
+      ],
+    ),
     registerSubscriptionsFrom('sellers', [CreateSellerFile], (createFile: CreateSellerFile) =>
       sellerFileSubscriptions(createFile),
     ),
