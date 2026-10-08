@@ -295,13 +295,81 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
       expect(set(fixture.base)).toEqual({ ok: false, error: { code: 'pricing.series-retired' } });
     });
 
-    it('is a no-op the second time', () => {
+    it('is a no-op the second time: no version step and no event', () => {
       const { series } = setup();
       series.retire('variant-removed', clock.now());
       const version = series.state.version;
+      const events = series.pendingEvents.length;
       expect(series.retire('offer-removed', clock.now())).toEqual([]);
       expect(series.state.retireCause).toBe('variant-removed');
       expect(series.state.version).toBe(version);
+      expect(series.pendingEvents).toHaveLength(events);
+    });
+
+    it.each(['offer-removed', 'variant-removed'] as const)(
+      'records price-hold-decided (superseded) for the pending record, then effective-price-changed (series-retired), one version each (%s)',
+      (cause) => {
+        const { series, set } = setup();
+        set(fixture.base);
+        advance(1000);
+        const held = (outcomeOf(set(heldUp(fixture.base))) as { record: RegularPriceRecord })
+          .record;
+        advance(1000);
+        const before = series.state.version;
+        const eventsBefore = series.pendingEvents.length;
+        series.retire(cause, clock.now());
+
+        const recorded = series.pendingEvents.slice(eventsBefore);
+        expect(
+          recorded.map((event) => ({
+            type: event.type,
+            version: event.aggregateVersion,
+            payload: event.payload,
+          })),
+        ).toEqual([
+          {
+            type: 'pricing.price-hold-decided.v1',
+            version: before + 1,
+            payload: {
+              offerId: series.state.offerId,
+              variantId: series.state.variantId,
+              recordId: held.id,
+              kind: 'regular',
+              outcome: 'superseded',
+            },
+          },
+          {
+            type: 'pricing.effective-price-changed.v1',
+            version: before + 2,
+            payload: {
+              offerId: series.state.offerId,
+              variantId: series.state.variantId,
+              cause: 'series-retired',
+              effectiveFrom: clock.now(),
+              previousProductId: null,
+              previousVariantId: null,
+            },
+          },
+        ]);
+        expect(series.state.version).toBe(before + 2);
+        expect(recorded.every((event) => event.occurredAt.equals(clock.now()))).toBe(true);
+      },
+    );
+
+    it('records only effective-price-changed (series-retired) when nothing is pending', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      const before = series.state.version;
+      const eventsBefore = series.pendingEvents.length;
+      series.retire('offer-removed', clock.now());
+
+      const recorded = series.pendingEvents.slice(eventsBefore);
+      expect(recorded.map((event) => [event.type, event.aggregateVersion])).toEqual([
+        ['pricing.effective-price-changed.v1', before + 1],
+      ]);
+      expect(recorded[0]?.payload).toMatchObject({ cause: 'series-retired' });
+      expect(series.state.version).toBe(before + 1);
     });
   });
 

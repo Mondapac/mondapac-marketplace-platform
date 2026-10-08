@@ -39,8 +39,17 @@ const gate = createUseCaseGate(markets, admitAll);
 const policies = new ConfigPricingPolicyProvider(markets);
 
 const FIXTURES = {
-  AU: { currency: 'AUD', other: 'JPY', base: 10_000n, max: 500_000n, held: 15_001n },
-  ZZ: { currency: 'JPY', other: 'AUD', base: 1_000n, max: 2_000_000n, held: 1_251n },
+  // `dropped`: a fall from `base` beyond the threshold. AU checks both directions (held down);
+  // ZZ checks upward moves only, so the same kind of fall is accepted.
+  AU: {
+    currency: 'AUD',
+    other: 'JPY',
+    base: 10_000n,
+    max: 500_000n,
+    held: 15_001n,
+    dropped: 4_999n,
+  },
+  ZZ: { currency: 'JPY', other: 'AUD', base: 1_000n, max: 2_000_000n, held: 1_251n, dropped: 1n },
 } as const;
 
 describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (code) => {
@@ -283,6 +292,36 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       );
     });
 
+    it('measures a large drop by the Market policy: AU holds it (direction down), ZZ accepts it', async () => {
+      const { t, first } = await priced();
+      const output = valueOf(
+        await t.useCase.execute(t.context, t.input(fixture.dropped, first.seriesVersion)),
+      );
+
+      if (code === 'AU') {
+        expect(output).toMatchObject({ status: 'pending-review', effectiveFrom: null });
+        expect(t.audit.rows.map((r) => [r.action, r.after])).toEqual([
+          [
+            'pricing.regular-price.held',
+            {
+              offerId: t.offerId,
+              variantId: t.variantId,
+              recordId: output.recordId,
+              anchorRecordId: first.recordId,
+              direction: 'down',
+            },
+          ],
+        ]);
+        expect(t.outbox.events.map((e) => [e.type, e.payload])).toEqual([
+          ['pricing.price-hold-opened.v1', expect.objectContaining({ direction: 'down' })],
+        ]);
+      } else {
+        expect(output).toMatchObject({ status: 'accepted', effectiveFrom: t.clock.now() });
+        expect(t.audit.rows.map((r) => r.action)).toEqual(['pricing.regular-price.accepted']);
+        expect(t.outbox.events.map((e) => e.type)).toEqual(['pricing.effective-price-changed.v1']);
+      }
+    });
+
     it('supersedes a pending record with a new write: one row and one event per transition, in order', async () => {
       const { t, first } = await priced();
       const held = valueOf(
@@ -367,6 +406,58 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       ).toEqual({ ok: false, error: { code: 'conflict.stale' } });
       expect(t.series.stored(market, t)).toBe(before);
       expect(t.audit.rows).toEqual([]);
+    });
+
+    it('answers conflict.stale, not unchanged, for a write equal to the price in force over an old version', async () => {
+      const { t, first } = await priced();
+      const second = valueOf(
+        await t.useCase.execute(t.context, t.input(fixture.base + 1n, first.seriesVersion)),
+      );
+      t.audit.rows.length = 0;
+      t.outbox.events.length = 0;
+      const before = t.series.stored(market, t);
+
+      expect(
+        await t.useCase.execute(t.context, t.input(fixture.base + 1n, first.seriesVersion)),
+      ).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(second.seriesVersion).not.toBe(first.seriesVersion);
+      expect(t.series.stored(market, t)).toBe(before);
+      expect(t.audit.rows).toEqual([]);
+      expect(t.outbox.events).toEqual([]);
+    });
+
+    it("refuses a series whose seller copy is not the Offer's seller: offer-not-found, cause not-yours, nothing written (Hassan L3)", async () => {
+      const { t, first } = await priced();
+      // Catalog now names another seller for the Offer, and that seller's member writes.
+      const newSeller = t.ids.next<'Seller'>();
+      const newAccount = t.ids.next<'Account'>();
+      t.offers.put(market, t.offerId, {
+        sellerId: newSeller,
+        productId: t.productId,
+        deleted: false,
+        priceableVariantIds: [t.variantId],
+      });
+      const before = t.series.stored(market, t);
+      const saves = t.series.saves;
+
+      const result = await t.useCase.execute(
+        sellerContext(newSeller, newAccount, t.ids),
+        t.input(fixture.base + 1n, first.seriesVersion),
+      );
+
+      expect(JSON.stringify(result)).toBe(
+        JSON.stringify({ ok: false, error: { code: 'pricing.offer-not-found' } }),
+      );
+      expect(t.series.stored(market, t)).toBe(before);
+      expect(t.series.saves).toBe(saves);
+      expect(t.outbox.events).toEqual([]);
+      expect(t.audit.rows).toEqual([
+        expect.objectContaining({
+          action: 'pricing.offer-write.refused',
+          targetId: t.offerId,
+          after: { variantId: t.variantId, cause: 'not-yours' },
+        }),
+      ]);
     });
 
     it('answers pricing.series-retired for a retired series', async () => {
@@ -483,7 +574,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
         REFUSAL_ROWS_PER_ACTOR,
       );
       const summaries = t.audit.rows.filter(
-        (r) => r.action === 'pricing.offer-write-refused.suppressed',
+        (r) => r.action === 'pricing.offer-write.refusals-suppressed',
       );
       expect(summaries).toEqual([
         expect.objectContaining({

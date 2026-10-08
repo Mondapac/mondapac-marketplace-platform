@@ -3,7 +3,7 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 /**
  * What one refusal may write (pricing design 5.2, 8; H3 and M7): `record` its
  * `pricing.offer-write.refused` row; `summarise`, the first refusal past the per-actor cap in
- * the actor's window, writes the one `pricing.offer-write-refused.suppressed` row for the window
+ * the actor's window, writes the one `pricing.offer-write.refusals-suppressed` row for the window
  * starting at `windowStartedAt`; `none` writes nothing (the pair already has a row this minute,
  * or the actor is suppressed).
  */

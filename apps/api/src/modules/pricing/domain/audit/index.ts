@@ -114,10 +114,12 @@ export const OfferWriteRefused = defineAuditAction({
  * The actor reached the per-actor cap of refusal rows in its window (M7): written once, at the
  * first suppressed refusal. It says only that suppression started for the window starting at
  * `windowStartedAt`: no count and no Offer ids (design 19 condition (g); pricing-data 3.8,
- * 12.1). Target: the actor's account.
+ * 12.1). Target: the actor's account. Design 8 names it `pricing.offer-write-refused.suppressed`;
+ * an audit action has three segments (PA 3.2), so it is `pricing.offer-write.refusals-suppressed`
+ * (Mohammad, part 3b review C2).
  */
 export const OfferWriteRefusalsSuppressed = defineAuditAction({
-  action: 'pricing.offer-write-refused.suppressed',
+  action: 'pricing.offer-write.refusals-suppressed',
   targetType: 'pricing.write-refusal-actor',
   actors: ['authenticated'],
   after: {

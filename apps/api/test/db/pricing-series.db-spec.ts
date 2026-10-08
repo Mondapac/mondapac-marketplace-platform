@@ -187,8 +187,9 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
       { status: 'superseded', supersede_cause: 'cancelled' },
       { status: 'superseded', supersede_cause: 'offer-removed' },
     ]);
-    // One version per event (P 10, part 3b): the replacing hold records two (superseded, opened).
-    expect(expected).toMatchObject({ retireCause: 'offer-removed', version: 9 });
+    // One version per event (P 10, part 3b): the replacing hold records two (superseded, opened)
+    // and the retirement two (the pending record superseded, then series-retired).
+    expect(expected).toMatchObject({ retireCause: 'offer-removed', version: 10 });
   });
 
   it('keeps the anchor copies equal to the records they name (Hassan, pricing-data review, Low)', async () => {

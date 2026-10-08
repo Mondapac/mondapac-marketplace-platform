@@ -92,7 +92,8 @@ const STALE = Object.freeze({ code: 'conflict.stale' as const });
 type Written =
   | { readonly kind: 'written'; readonly output: SetRegularPriceOutput }
   | { readonly kind: 'no-series' }
-  | { readonly kind: 'key-retired' };
+  /** Refused inside the unit, which then commits nothing; answered through the refusal unit. */
+  | { readonly kind: 'refused'; readonly cause: 'key-retired' | 'not-yours' };
 
 interface Checked {
   readonly offerId: Id<'Offer'>;
@@ -119,7 +120,8 @@ interface Checked {
  *    a concurrent write is stale); for a first price, a `serializable` unit through
  *    `runSerializable`, the only one in which `PriceSeriesRepository.add` runs (Hassan M1). The
  *    audit rows and the events go in the same unit. A tombstone found there answers
- *    `pricing.offer-not-found` through the refusal unit, cause `key-retired`.
+ *    `pricing.offer-not-found` through the refusal unit, cause `key-retired`; so does a stored
+ *    series whose seller copy is not the seller catalog names, cause `not-yours` (Hassan L3).
  *
  * The series' `productId` and `sellerId` copies come only from catalog's answer, never from
  * the request (design 2.3; Hassan L4). Not in this part: the Q2 guard against a running or
@@ -185,9 +187,11 @@ export class SetRegularPrice extends UseCase<
       return written;
     }
     const outcome = written.value;
+    if (outcome.kind === 'refused') {
+      return this.refuse(context, actor.accountId, offerId, variantId, outcome.cause);
+    }
     if (outcome.kind !== 'written') {
-      // A tombstone stopped the creation (no-series cannot come back from a creating unit).
-      return this.refuse(context, actor.accountId, offerId, variantId, 'key-retired');
+      throw new Error('pricing.set-regular-price: no series after the creating unit');
     }
     this.log('pricing.set-regular-price.done', context, {
       offerId,
@@ -252,6 +256,12 @@ export class SetRegularPrice extends UseCase<
     const now = clock.now();
     const found = await repository.findByKey(market, key);
     if (found === null && mode === 'existing') return ok({ kind: 'no-series' });
+    // The series' seller copy must be the seller catalog names (design 2.3, 5.2; Hassan L3): a
+    // series of another seller is answered as `pricing.offer-not-found` with cause `not-yours`,
+    // the cause of an Offer whose seller is not the actor's, before the version is compared.
+    if (found !== null && found.state.sellerId !== offer.sellerId) {
+      return ok({ kind: 'refused', cause: 'not-yours' });
+    }
     // The screen's version must be the stored one; a first price is written over "no price".
     if ((found?.persistedVersion ?? null) !== input.expectedVersion) return err(STALE);
 
@@ -291,7 +301,7 @@ export class SetRegularPrice extends UseCase<
 
     if (found === null) {
       if ((await repository.add(market, series)) === 'key-retired') {
-        return ok({ kind: 'key-retired' });
+        return ok({ kind: 'refused', cause: 'key-retired' });
       }
     } else {
       await repository.save(market, series);

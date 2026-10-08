@@ -69,7 +69,7 @@
     }
   },
   {
-    "action": "pricing.offer-write-refused.suppressed",
+    "action": "pricing.offer-write.refusals-suppressed",
     "targetType": "pricing.write-refusal-actor",
     "targetId": "id",
     "actors": ["authenticated"],

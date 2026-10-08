@@ -33,7 +33,16 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
-import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
+import type { PriceSeriesRepository } from '../../src/modules/pricing/application/ports/price-series.repository';
+import { runSerializable } from '../../src/modules/pricing/application/serializable-unit';
+import {
+  createPersistence,
+  gate as openable,
+  marketOf,
+  modelMap,
+  otherMarketOf,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // `pricing.set-regular-price` on PostgreSQL (pricing design 5.2, 8, 9; pricing-data 3.8, 5.1;
@@ -94,13 +103,18 @@ describe.each(TEST_MARKETS)(
       clock.set(Temporal.Instant.from('2026-10-08T10:00:00Z'));
     });
 
-    function useCase(auditWriter: AuditWriter = audit): SetRegularPrice {
+    function useCase(
+      auditWriter: AuditWriter = audit,
+      seriesRepository: PriceSeriesRepository = new PrismaPriceSeriesRepository(
+        persistence.service,
+      ),
+    ): SetRegularPrice {
       const events = new EventCatalogue();
       events.register('pricing', PRICING_EVENTS);
       events.seal();
       return new SetRegularPrice(gate, {
         unitOfWork: persistence.unitOfWork,
-        series: new PrismaPriceSeriesRepository(persistence.service),
+        series: seriesRepository,
         throttles,
         offers,
         policies,
@@ -291,7 +305,7 @@ describe.each(TEST_MARKETS)(
       expect(rows.filter((r) => r.action === 'pricing.offer-write.refused')).toHaveLength(
         REFUSAL_ROWS_PER_ACTOR,
       );
-      expect(rows.filter((r) => r.action === 'pricing.offer-write-refused.suppressed')).toEqual([
+      expect(rows.filter((r) => r.action === 'pricing.offer-write.refusals-suppressed')).toEqual([
         expect.objectContaining({
           target_id: s.accountId,
           after: { windowStartedAt: start.toString({ fractionalSecondDigits: 3 }) },
@@ -381,14 +395,150 @@ describe.each(TEST_MARKETS)(
       expect(rows).toEqual([{ n: 1 }]);
     });
 
-    it("never creates a series under the other Market for this Market's Offer", async () => {
+    it('refuses an Offer that catalog knows only in the other Market: offer-not-found, cause absent, no series in either Market (Hassan I2)', async () => {
       const s = seller();
-      await useCase().execute(s.context, s.input(base, null));
+      const other = marketOf(otherMarketOf(code));
+      // catalog answers per Market: this Offer exists only under the other Market.
+      offers = new FakeOfferSellUnits();
+      offers.put(other, s.offerId, {
+        sellerId: s.sellerId,
+        productId: s.productId,
+        deleted: false,
+        priceableVariantIds: [s.variantId],
+      });
+
+      expect(await useCase().execute(s.context, s.input(base, null))).toEqual({
+        ok: false,
+        error: { code: 'pricing.offer-not-found' },
+      });
       const { rows } = await sql.query(
         'SELECT market_id FROM pricing.price_series WHERE offer_id = $1',
         [s.offerId],
       );
-      expect(rows).toEqual([{ market_id: code }]);
+      expect(rows).toEqual([]);
+      expect(
+        (await auditRows(s.correlationId)).map((r) => [r.action, r.target_id, r.after]),
+      ).toEqual([
+        ['pricing.offer-write.refused', s.offerId, { variantId: s.variantId, cause: 'absent' }],
+      ]);
+    });
+
+    it('answers key-retired when a first price races the Variant-removed tombstone: the retried creator finds it, no live series (Sajad M3)', async () => {
+      const s = seller();
+      const inner = new PrismaPriceSeriesRepository(persistence.service);
+      const creatorWrote = openable();
+      const handlerDone = openable();
+      let adds = 0;
+      // The real repository; the first creating attempt waits, after its tombstone read and its
+      // insert, until the handler's unit has committed (the interleaving of design 5.1).
+      const racing: PriceSeriesRepository = {
+        findByKey: (m, key) => inner.findByKey(m, key),
+        findByOffer: (m, offerId) => inner.findByOffer(m, offerId),
+        findByProductVariant: (m, productId, variantId) =>
+          inner.findByProductVariant(m, productId, variantId),
+        save: (m, series) => inner.save(m, series),
+        add: async (m, series) => {
+          adds += 1;
+          const outcome = await inner.add(m, series);
+          if (adds === 1) {
+            creatorWrote.open();
+            await handlerDone.opened;
+          }
+          return outcome;
+        },
+      };
+      retries = 0;
+      const writing = useCase(audit, racing).execute(s.context, s.input(base, null));
+      await creatorWrote.opened;
+      // The Variant-removed handler's unit: the (product, Variant) tombstone, then its live series.
+      await runSerializable(persistence.unitOfWork, market, async () => {
+        await tombstones.recordRetiredVariant(market, {
+          productId: s.productId,
+          variantId: s.variantId,
+          retiredAt: clock.now(),
+          causeEventId: ids.next<'Event'>(),
+        });
+        for (const found of await inner.findByProductVariant(market, s.productId, s.variantId)) {
+          found.retire('variant-removed', clock.now());
+          await inner.save(market, found);
+        }
+        return ok(undefined);
+      }).finally(() => handlerDone.open());
+      const result = await writing;
+
+      expect(result).toEqual({ ok: false, error: { code: 'pricing.offer-not-found' } });
+      expect(adds).toBe(2);
+      expect(retries).toBeGreaterThanOrEqual(1);
+      const { rows } = await sql.query(
+        `SELECT 1 FROM pricing.price_series
+          WHERE market_id = $1 AND product_id = $2 AND variant_id = $3 AND retired_at IS NULL`,
+        [code, s.productId, s.variantId],
+      );
+      expect(rows).toEqual([]);
+      expect(
+        (await auditRows(s.correlationId)).map((r) => [r.action, r.target_id, r.after]),
+      ).toEqual([
+        [
+          'pricing.offer-write.refused',
+          s.offerId,
+          { variantId: s.variantId, cause: 'key-retired' },
+        ],
+      ]);
+    });
+
+    it('takes the actor row before the (actor, Offer) row: a refusal waiting on a held pair row already holds its actor row (Sajad M2)', async () => {
+      const s = seller();
+      const foreign = ids.next<'Offer'>();
+      // A first refusal creates both rows; two minutes later both windows have expired, so the
+      // next refusal updates (and locks) each row instead of skipping it.
+      await useCase().execute(s.context, { ...s.input(base, null), offerId: foreign });
+      clock.set(clock.now().add({ minutes: 2 }));
+
+      const holder = new Client({ connectionString: testDatabaseUrl() });
+      const prober = new Client({ connectionString: testDatabaseUrl() });
+      await holder.connect();
+      await prober.connect();
+      try {
+        await holder.query('BEGIN');
+        const { rows: held } = await holder.query(
+          `SELECT 1 FROM pricing.write_refusal_throttles
+            WHERE market_id = $1 AND actor_account_id = $2 AND offer_id = $3 FOR UPDATE`,
+          [code, s.accountId, foreign],
+        );
+        expect(held).toHaveLength(1);
+        const { rows: xid } = await holder.query<{ xid: string }>(
+          'SELECT pg_current_xact_id()::text AS xid',
+        );
+
+        const refusing = useCase().execute(s.context, { ...s.input(base, null), offerId: foreign });
+        // Wait until the refusal is queued behind the holder's transaction (the pair row).
+        let waiting = false;
+        for (let i = 0; i < 500 && !waiting; i += 1) {
+          const { rows } = await prober.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM pg_locks
+              WHERE locktype = 'transactionid' AND NOT granted AND transactionid::text = $1`,
+            [xid[0]!.xid],
+          );
+          waiting = rows[0]!.n > 0;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true);
+        // The waiting refusal holds the actor row: it was taken first.
+        await expect(
+          prober.query(
+            `SELECT 1 FROM pricing.write_refusal_actor_throttles
+              WHERE market_id = $1 AND actor_account_id = $2 FOR UPDATE NOWAIT`,
+            [code, s.accountId],
+          ),
+        ).rejects.toMatchObject({ code: '55P03' });
+
+        await holder.query('COMMIT');
+        expect(await refusing).toEqual({ ok: false, error: { code: 'pricing.offer-not-found' } });
+      } finally {
+        await holder.query('ROLLBACK').catch(() => undefined);
+        await holder.end();
+        await prober.end();
+      }
     });
   },
 );

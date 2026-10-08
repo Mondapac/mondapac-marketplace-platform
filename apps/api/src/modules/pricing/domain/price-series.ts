@@ -298,7 +298,7 @@ export class PriceSeries {
       const superseded = pending.map((r) => supersede(r, 'cancelled', null, input.now));
       if (superseded.length > 0) {
         this.#commit(
-          replace(state.regular, superseded),
+          { regular: replace(state.regular, superseded) },
           this.#holdsSuperseded(superseded, input.now),
         );
       }
@@ -334,25 +334,22 @@ export class PriceSeries {
       });
       const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
       const direction = verdict.direction;
-      this.#commit(
-        [...replace(state.regular, superseded), record],
-        [
-          ...this.#holdsSuperseded(superseded, input.now),
-          (version) =>
-            PriceHoldOpened.record({
-              aggregateId: state.id,
-              aggregateVersion: version,
-              occurredAt: input.now,
-              payload: {
-                offerId: state.offerId,
-                variantId: state.variantId,
-                recordId: record.id,
-                kind: 'regular',
-                direction,
-              },
-            }),
-        ],
-      );
+      this.#commit({ regular: [...replace(state.regular, superseded), record] }, [
+        ...this.#holdsSuperseded(superseded, input.now),
+        (version) =>
+          PriceHoldOpened.record({
+            aggregateId: state.id,
+            aggregateVersion: version,
+            occurredAt: input.now,
+            payload: {
+              offerId: state.offerId,
+              variantId: state.variantId,
+              recordId: record.id,
+              kind: 'regular',
+              direction,
+            },
+          }),
+      ]);
       return ok({ kind: 'held', record, superseded });
     }
 
@@ -375,33 +372,32 @@ export class PriceSeries {
     const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
     const closed = latest === null ? null : Object.freeze({ ...latest, effectiveTo: start });
     const next = replace(replace(state.regular, superseded), closed === null ? [] : [closed]);
-    this.#commit(
-      [...next, record],
-      [
-        ...this.#holdsSuperseded(superseded, input.now),
-        (version) =>
-          EffectivePriceChanged.record({
-            aggregateId: state.id,
-            aggregateVersion: version,
-            occurredAt: input.now,
-            payload: {
-              offerId: state.offerId,
-              variantId: state.variantId,
-              cause: 'regular-accepted',
-              effectiveFrom: start,
-              previousProductId: null,
-              previousVariantId: null,
-            },
-          }),
-      ],
-    );
+    this.#commit({ regular: [...next, record] }, [
+      ...this.#holdsSuperseded(superseded, input.now),
+      (version) =>
+        EffectivePriceChanged.record({
+          aggregateId: state.id,
+          aggregateVersion: version,
+          occurredAt: input.now,
+          payload: {
+            offerId: state.offerId,
+            variantId: state.variantId,
+            cause: 'regular-accepted',
+            effectiveFrom: start,
+            previousProductId: null,
+            previousVariantId: null,
+          },
+        }),
+    ]);
     return ok({ kind: 'accepted', record, previous: closed, superseded });
   }
 
   /**
    * Stops the series (pricing design 6.4): the Offer was deleted or the Variant removed. A
-   * pending record is superseded by the system; priced records stay as history. Retiring a
-   * retired series changes nothing.
+   * pending record is superseded by the system; priced records stay as history. Events (design
+   * 3.1 row 5 (c), 6.3): one `price-hold-decided` (superseded) per pending record, then one
+   * `effective-price-changed` with cause `series-retired` (the key now has no valid price), one
+   * version step each. Retiring a retired series changes nothing and records nothing.
    */
   retire(cause: RetireCause, now: Temporal.Instant): readonly RegularPriceRecord[] {
     const state = this.#state;
@@ -409,17 +405,30 @@ export class PriceSeries {
     const superseded = state.regular
       .filter((r) => r.status === 'PENDING_REVIEW')
       .map((r) => supersede(r, cause, null, now));
-    this.#state = freezeState({
-      ...state,
-      regular: replace(state.regular, superseded),
-      retiredAt: now,
-      retireCause: cause,
-      version: state.version + 1,
-    });
+    this.#commit(
+      { regular: replace(state.regular, superseded), retiredAt: now, retireCause: cause },
+      [
+        ...this.#holdsSuperseded(superseded, now),
+        (version) =>
+          EffectivePriceChanged.record({
+            aggregateId: state.id,
+            aggregateVersion: version,
+            occurredAt: now,
+            payload: {
+              offerId: state.offerId,
+              variantId: state.variantId,
+              cause: 'series-retired',
+              effectiveFrom: now,
+              previousProductId: null,
+              previousVariantId: null,
+            },
+          }),
+      ],
+    );
     return superseded;
   }
 
-  /** `price-hold-decided` (superseded) for each pending record a seller write superseded. */
+  /** `price-hold-decided` (superseded) for each pending record a write or a retirement superseded. */
   #holdsSuperseded(superseded: readonly RegularPriceRecord[], now: Temporal.Instant): EventAt[] {
     const { id, offerId, variantId } = this.#state;
     return superseded.map(
@@ -439,14 +448,23 @@ export class PriceSeries {
     );
   }
 
-  /** Applies a change and its events: one version step per event (at least one). */
-  #commit(regular: readonly RegularPriceRecord[], events: readonly EventAt[]): void {
+  /**
+   * Applies a change and its events: one version step per event. A change without an event is a
+   * bug (P 10: the version moves only with an event), so it throws rather than step silently.
+   */
+  #commit(
+    change: Partial<Pick<PriceSeriesState, 'regular' | 'retiredAt' | 'retireCause'>>,
+    events: readonly EventAt[],
+  ): void {
+    if (events.length === 0) {
+      throw new Error('PriceSeries: a change must record at least one event');
+    }
     const from = this.#state.version;
     const recorded = events.map((at, index) => at(from + 1 + index));
     this.#state = freezeState({
       ...this.#state,
-      regular,
-      version: from + Math.max(1, events.length),
+      ...change,
+      version: from + events.length,
     });
     this.#events.push(...recorded);
   }
