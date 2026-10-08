@@ -75,6 +75,54 @@ describe('CatalogueMailComposer (identity design 9; ux.md E1, E12)', () => {
     expect(mail.text).not.toContain('ml1_');
   });
 
+  it('writes the seller confirmation and notice with the seller account line (slice 5)', () => {
+    const confirm = composer.compose(testMarketContext('AU', 'default'), {
+      template: 'confirm-email',
+      population: 'seller',
+      url: 'https://seller.au.mondapac.test/confirm-email#ml1_TOKEN',
+      lifetimeMinutes: 1440,
+    });
+    const notice = composer.compose(testMarketContext('ZZ', 'default'), {
+      template: 'existing-account',
+      population: 'seller',
+      url: 'https://seller.zz.test/konto/anmelden',
+    });
+
+    expect(confirm.subject).toBe('Confirm your email for your MondaPac seller account');
+    expect(confirm.text).toContain('This email is about your seller account.');
+    expect(notice.subject).toBe('出品者アカウントはすでにあります');
+    expect(notice.text).toContain('このメールは出品者アカウントについてです。');
+  });
+
+  it.each([
+    [true, "We're reviewing your application"],
+    [false, 'Sign in to go to your seller panel.'],
+  ])('writes the seller welcome (E2) with its body by approval: required %s', (required, body) => {
+    const mail = composer.compose(testMarketContext('AU', 'default'), {
+      template: 'welcome',
+      population: 'seller',
+      url: 'https://seller.au.mondapac.test/sign-in',
+      approvalRequired: required,
+    });
+
+    expect(mail.subject).toBe('Welcome to MondaPac: your seller account');
+    expect(mail.text).toContain(body);
+    expect(mail.text).toContain('View your account: https://seller.au.mondapac.test/sign-in');
+    expect(mail.text).not.toMatch(/\{[a-z]+\}/);
+  });
+
+  it('writes the welcome in the synthetic Market locale too', () => {
+    const mail = composer.compose(testMarketContext('ZZ', 'default'), {
+      template: 'welcome',
+      population: 'seller',
+      url: 'https://seller.zz.test/konto/anmelden',
+      approvalRequired: false,
+    });
+
+    expect(mail.subject).toBe('ようこそ：出品者アカウント');
+    expect(mail.text).toContain('出品者パネル');
+  });
+
   it('refuses a population without a mail', () => {
     expect(() =>
       composer.compose(testMarketContext('AU', 'default'), {

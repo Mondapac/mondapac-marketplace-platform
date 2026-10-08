@@ -158,6 +158,8 @@ describe.each(TEST_MARKETS)('SignInCustomer in market %s', (code) => {
         code: 'signed-in',
         token: expect.stringMatching(/^ms1_/) as unknown,
         absoluteLifetimeSeconds: lifetime.absoluteLifetimeSeconds,
+        persistent: true,
+        sellerAccess: null,
       },
     });
     const [stored] = [...fakes.sessions.values()];

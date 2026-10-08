@@ -27,9 +27,11 @@ export interface SessionAuthenticatorDependencies {
  * (dependency-cruiser `authenticated-actor-is-built-by-the-authenticator`).
  *
  * Per request, in a read-only unit of its own (P 3.1 row 9; ADR-0025), one call reads the
- * session by the SHA-256 of the token and the status of its account. The session must be of
+ * session by the SHA-256 of the token, the status of its account and, for a seller session, the
+ * account's active membership and the state of the session's seller. The session must be of
  * the request's Market and the presented transport, not revoked, inside both lifetimes (6.1),
- * and its account active. Seller sessions are refused until slice 5 brings memberships. Every
+ * and its account active; a seller session's membership must be of its seller, and that seller
+ * not suspended (slice 5). The actor carries the session's seller. Every
  * cause is the same `credential.rejected`; nothing is cached; the token is never logged.
  *
  * The once-a-minute `lastSeenAt` write runs afterwards in its own short read-write unit; a
@@ -53,12 +55,21 @@ export class SessionAuthenticator implements Authenticator {
       { readOnly: true },
     );
     if (!found.ok || found.value === null) return err(REJECTED);
-    const { session, accountStatus } = found.value;
+    const { session, accountStatus, activeMembershipSellerId, sellerAccessState } = found.value;
+    // 6.2, slice 5: a seller session needs the account's active membership of the session's
+    // seller, and that seller not suspended; any other session carries no seller.
+    const sellerHolds =
+      session.population === 'seller'
+        ? session.sellerId !== null &&
+          activeMembershipSellerId === session.sellerId &&
+          sellerAccessState !== null &&
+          sellerAccessState !== 'suspended'
+        : session.sellerId === null;
     if (
       session.marketId !== market.marketId ||
       session.transport !== credential.transport ||
       accountStatus !== 'active' ||
-      session.population === 'seller' ||
+      !sellerHolds ||
       !sessionIsLive(session, now)
     ) {
       return err(REJECTED);
@@ -67,7 +78,7 @@ export class SessionAuthenticator implements Authenticator {
       population: session.population,
       accountId: session.accountId,
       sessionId: session.id,
-      sellerId: null,
+      sellerId: session.sellerId,
     });
     if (lastSeenIsDue(session, now)) {
       try {

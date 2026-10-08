@@ -29,7 +29,15 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   `unverifiedAccountRetentionDays` (1 to 30; 7 for AU: an account never verified is deleted
   after this; identity design 3.1, 12.2) and `mail` (`fromAddress` and `fromName`, the sender of
   identity's mail; identity design 9). The mail text itself is in `config/locales/`, in the
-  Market's `defaultLocale`. Later identity slices add their values here.
+  Market's `defaultLocale`. Slice 5 adds `sessions.seller` (the seller side's default session,
+  12 hours idle and 24 absolute for AU; identity design 6.1), `keepSignedInSessions.seller`
+  ("keep me signed in", opt-in at seller sign-in: 14 days idle and 30 absolute for AU; a
+  population absent here is never offered it), `sellerApprovalRequired` (required: `true` makes
+  a self-registered seller start `pending` until an admin approves it, `false` makes it start
+  `approved`; true for AU; identity design 3.3, SEL-03) and `links.targets.seller` (the seller
+  panel's pages, as for the customer). A Market without `sessions.seller` or
+  `links.targets.seller` offers no seller sign-up: it answers `access.unavailable`. Later
+  identity slices add their values here.
 - `allowedOrigins`: the browser origins (`scheme://host[:port]`, no path) that may send a
   request with an unsafe method to this Market (identity design 6.4, HF14). A request whose
   `Origin` header is not listed, or whose `Sec-Fetch-Site` is not `same-origin`, is refused with

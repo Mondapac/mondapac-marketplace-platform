@@ -1,8 +1,8 @@
 import type { MarketContext, Population } from '@mondapac/shared-kernel';
 
 /**
- * The mails of `identity` in slice 3 (identity design 9; `ux.md` 5, E1 and E12). What varies is
- * data; the words come from the module's locale files, in the Market's default locale.
+ * The mails of `identity` in slices 3 and 5 (identity design 9; `ux.md` 5, E1, E2 and E12). What
+ * varies is data; the words come from the module's locale files, in the Market's default locale.
  */
 export type IdentityMail =
   | {
@@ -17,6 +17,15 @@ export type IdentityMail =
       readonly population: Population;
       /** The sign-in page. */
       readonly url: string;
+    }
+  | {
+      /** E2, to a self-registered seller's owner after the email is confirmed (slice 5). */
+      readonly template: 'welcome';
+      readonly population: 'seller';
+      /** The sign-in page ("View your account"). */
+      readonly url: string;
+      /** Whether the seller waits for approval: the body differs (`ux.md` 3.4). */
+      readonly approvalRequired: boolean;
     };
 
 /** A rendered mail: plain text only (identity design 9; HF13). */

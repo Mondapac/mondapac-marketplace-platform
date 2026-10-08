@@ -13,6 +13,7 @@ import { TEST_MARKETS } from '../../../../../test/support/test-config';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AccountState } from '../../domain/account';
+import type { SellerAccessStateCode } from '../../domain/seller-access';
 import { openSession, type Session } from '../../domain/session';
 import type { SessionTokens } from '../ports/session-secrets';
 import { AccountAuthorisationCheck } from './account-authorisation-check';
@@ -32,6 +33,8 @@ const id = <T extends string>(text: string): Id<T> => {
 };
 const ACCOUNT_ID = id<'Account'>('01990000-0000-7000-8000-000000000001');
 const SESSION_ID = id<'Session'>('01990000-0000-7000-8000-00000000a001');
+const SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-00000000b001');
+const OTHER_SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-00000000b002');
 
 const tokens: SessionTokens = {
   issue: () => {
@@ -57,6 +60,40 @@ function account(code: string, overrides: Partial<AccountState> = {}): AccountSt
     credential: { passwordHash: fakeHashOf('x'), changedAt: START },
     ...overrides,
   };
+}
+
+/** A seller-side account working for {@link SELLER_ID}, in the given access state. */
+function seedSeller(
+  fakes: IdentityFakes,
+  code: string,
+  state: SellerAccessStateCode,
+  membership: 'active' | 'none' | 'other-seller' = 'active',
+): void {
+  const marketId = code as AccountState['marketId'];
+  fakes.seedAccount(account(code, { population: 'seller', displayName: 'Amina' }));
+  fakes.seedSellerAccess({
+    sellerId: SELLER_ID,
+    marketId,
+    origin: 'self',
+    state,
+    stateChangedAt: START,
+    reapplyCount: 0,
+    registeredAt: START,
+    version: 1,
+    createdAt: START,
+  });
+  fakes.memberships.clear();
+  if (membership === 'none') return;
+  fakes.seedMembership({
+    id: id<'SellerMembership'>('01990000-0000-7000-8000-00000000c001'),
+    marketId,
+    accountId: ACCOUNT_ID,
+    sellerId: membership === 'active' ? SELLER_ID : OTHER_SELLER_ID,
+    state: 'active',
+    removedAt: null,
+    version: 1,
+    createdAt: START,
+  });
 }
 
 describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
@@ -107,6 +144,56 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
   describe('SessionAuthenticator', () => {
     const authenticator = () =>
       new SessionAuthenticator({ unitOfWork, sessions: fakes.sessionRepository, tokens, clock });
+
+    function seedSellerSession(): void {
+      void fakes.sessionRepository.add(
+        market,
+        openSession({
+          id: SESSION_ID,
+          marketId: market.marketId,
+          accountId: ACCOUNT_ID,
+          population: 'seller',
+          sellerId: SELLER_ID,
+          transport: 'cookie',
+          lifetime: LIFETIME,
+          now: START,
+        }),
+        tokens.hashOf(TOKEN)!,
+      );
+    }
+
+    it.each<SellerAccessStateCode>(['pending', 'approved', 'rejected'])(
+      'builds a seller actor carrying the session seller (%s seller; slice 5)',
+      async (state) => {
+        seedSeller(fakes, code, state);
+        seedSellerSession();
+
+        const result = await authenticator().authenticate(market, {
+          token: TOKEN,
+          transport: 'cookie',
+        });
+
+        expect(result.ok && result.value).toMatchObject({
+          kind: 'authenticated',
+          population: 'seller',
+          accountId: ACCOUNT_ID,
+          sellerId: SELLER_ID,
+        });
+      },
+    );
+
+    it.each<[string, SellerAccessStateCode, 'none' | 'other-seller' | 'active']>([
+      ['a seller session without an active membership', 'approved', 'none'],
+      ['a seller session whose membership is of another seller', 'approved', 'other-seller'],
+      ['a seller session of a suspended seller', 'suspended', 'active'],
+    ])('rejects %s with the one credential.rejected', async (_case, state, membership) => {
+      seedSeller(fakes, code, state, membership);
+      seedSellerSession();
+
+      await expect(
+        authenticator().authenticate(market, { token: TOKEN, transport: 'cookie' }),
+      ).resolves.toEqual({ ok: false, error: { code: 'credential.rejected' } });
+    });
 
     it('builds a minted customer actor from a live session, in a read-only unit', async () => {
       seedSession();
@@ -212,7 +299,12 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
 
   describe('AccountAuthorisationCheck', () => {
     const check = () =>
-      new AccountAuthorisationCheck({ unitOfWork, accounts: fakes.accountRepository });
+      new AccountAuthorisationCheck({
+        unitOfWork,
+        accounts: fakes.accountRepository,
+        memberships: fakes.membershipRepository,
+        sellerAccess: fakes.sellerAccessRepository,
+      });
     const actorContext = (population: 'customer' | 'admin' = 'customer') =>
       testCallContext(
         market,
@@ -256,18 +348,85 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
       expect(units).toEqual([]);
     });
 
-    it('denies the seller population until slice 5', async () => {
-      const seller = testCallContext(
-        market,
-        testAuthenticatedActor(market, {
-          population: 'seller',
-          accountId: ACCOUNT_ID,
-          sessionId: SESSION_ID,
-          sellerId: id<'Seller'>('01990000-0000-7000-8000-00000000b001'),
-        }),
+    describe('for the seller population (slice 5)', () => {
+      const sellerContext = (sellerId: Id<'Seller'> = SELLER_ID) =>
+        testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population: 'seller',
+            accountId: ACCOUNT_ID,
+            sessionId: SESSION_ID,
+            sellerId,
+          }),
+        );
+      const notAllowListed = {
+        name: 'identity.anything',
+        rule: { kind: 'own-resources' as const },
+      };
+
+      it('allows an approved seller, reading account, membership and seller in one read-only unit', async () => {
+        seedSeller(fakes, code, 'approved');
+
+        await expect(check().check(sellerContext(), notAllowListed)).resolves.toEqual({
+          allowed: true,
+        });
+        expect(units).toEqual([{ readOnly: true }]);
+      });
+
+      it.each<'pending' | 'rejected'>(['pending', 'rejected'])(
+        'answers access.seller-not-approved with the state to a %s seller off the allow-list',
+        async (state) => {
+          seedSeller(fakes, code, state);
+
+          await expect(check().check(sellerContext(), notAllowListed)).resolves.toEqual({
+            allowed: false,
+            denial: { code: 'access.seller-not-approved', details: { state } },
+          });
+          await expect(check().check(sellerContext(), ownResources)).resolves.toEqual({
+            allowed: true,
+          });
+        },
       );
 
-      await expect(check().check(seller, ownResources)).resolves.toMatchObject({ allowed: false });
+      it('denies a suspended seller even on the allow-list', async () => {
+        seedSeller(fakes, code, 'suspended');
+
+        await expect(check().check(sellerContext(), ownResources)).resolves.toEqual({
+          allowed: false,
+          denial: { code: 'access.denied' },
+        });
+      });
+
+      it('denies without a membership, or with a membership of another seller than the actor', async () => {
+        seedSeller(fakes, code, 'approved', 'none');
+        await expect(check().check(sellerContext(), ownResources)).resolves.toMatchObject({
+          allowed: false,
+        });
+        seedSeller(fakes, code, 'approved', 'other-seller');
+        await expect(check().check(sellerContext(), ownResources)).resolves.toMatchObject({
+          allowed: false,
+        });
+        seedSeller(fakes, code, 'approved');
+        await expect(
+          check().check(sellerContext(OTHER_SELLER_ID), ownResources),
+        ).resolves.toMatchObject({ allowed: false });
+      });
+
+      it('decides the seller state first under a permissions rule, then denies until slice 8a', async () => {
+        const permissions = {
+          name: 'identity.anything',
+          rule: { kind: 'permissions' as const, allOf: ['identity.role.view'] as never },
+        };
+        seedSeller(fakes, code, 'pending');
+        await expect(check().check(sellerContext(), permissions)).resolves.toMatchObject({
+          denial: { code: 'access.seller-not-approved' },
+        });
+        seedSeller(fakes, code, 'approved');
+        await expect(check().check(sellerContext(), permissions)).resolves.toEqual({
+          allowed: false,
+          denial: { code: 'access.denied' },
+        });
+      });
     });
   });
 });

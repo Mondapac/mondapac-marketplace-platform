@@ -285,6 +285,7 @@ const policy: IdentityMarketPolicy = {
   passwordRules: (market) => RULES[market.marketId]!,
   existingAccountNoticeHours: (market) => NOTICE_HOURS[market.marketId]!,
   sessionLifetime: () => null,
+  sellerApprovalRequired: () => true,
   signInThrottles: () => {
     throw new Error('sign-up reads no sign-in throttle');
   },

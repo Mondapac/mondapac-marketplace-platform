@@ -2,23 +2,28 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Population, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { AccountRepository } from '../ports/account.repository';
+import type { SellerAccessRepository } from '../ports/seller-access.repository';
+import type { RoleAssignmentRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 
 /**
  * The actor's own summary (identity design 8.1 `describeActor`, 8.6 rows 2 and 9). The ids and
  * codes are what the facade returns; `email` and `displayName` are personal data for the HTTP
- * summary only and never go into an event, a log or an audit row. Roles, permission keys, the
- * seller's access state and the second factor arrive with slices 5, 7 and 8a; until then they
- * are null, empty or false.
+ * summary only and never go into an event, a log or an audit row. The role and the seller's
+ * access state are read from slice 5; permission keys and the second factor arrive with slices
+ * 8a and 7, until then empty and false.
  */
 export interface ActorSummary {
   readonly accountId: Id<'Account'>;
   readonly population: Population;
   readonly sellerId: Id<'Seller'> | null;
+  /** The account's one role (Phase 2); null for a customer, who never has one (R2). */
   readonly roleId: string | null;
   readonly permissionKeys: readonly string[];
-  readonly sellerAccessState: string | null;
+  /** The seller's access state for a seller-side actor (3.3); null otherwise. */
+  readonly sellerAccessState: SellerAccessStateCode | null;
   readonly secondFactorActive: boolean;
   readonly email: string;
   /** Null for a customer (identity design 2.1). */
@@ -37,11 +42,14 @@ export interface DescribeActorDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
+  readonly assignments: RoleAssignmentRepository;
+  readonly sellerAccess: SellerAccessRepository;
 }
 
 /**
  * Describes the calling actor (identity design 8.1, 8.6). Rule `own-resources`, allowed for a
- * seller that is not approved (5.2). Reads the account and the session in one read-only unit;
+ * seller that is not approved (5.2). Reads the account, the session, the account's role
+ * assignment and, for a seller-side actor, its seller's access state, in one read-only unit;
  * the actor's ids come from the context, never from input.
  */
 export class DescribeActor extends UseCase<
@@ -73,11 +81,16 @@ export class DescribeActor extends UseCase<
         ok({
           account: await this.deps.accounts.findById(market, actor.accountId),
           session: await this.deps.sessions.findById(market, actor.sessionId),
+          assignment: await this.deps.assignments.findByAccount(market, actor.accountId),
+          seller:
+            actor.sellerId === null
+              ? null
+              : await this.deps.sellerAccess.findById(market, actor.sellerId),
         }),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
-    const { account, session } = read.value;
+    const { account, session, assignment, seller } = read.value;
     if (account === null || session === null || session.accountId !== actor.accountId) {
       return err({ code: 'access.denied' });
     }
@@ -85,9 +98,9 @@ export class DescribeActor extends UseCase<
       accountId: actor.accountId,
       population: actor.population,
       sellerId: actor.sellerId,
-      roleId: null,
+      roleId: assignment?.state.roleId ?? null,
       permissionKeys: [],
-      sellerAccessState: null,
+      sellerAccessState: seller?.state.state ?? null,
       secondFactorActive: false,
       email: account.state.email.typed,
       displayName: account.state.displayName,

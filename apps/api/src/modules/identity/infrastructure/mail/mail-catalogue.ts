@@ -17,7 +17,21 @@ export const MAIL_KEYS = [
   'identity.mail.existing-account.customer.heading',
   'identity.mail.existing-account.customer.body',
   'identity.mail.existing-account.customer.action',
+  'identity.mail.confirm-email.seller.subject',
+  'identity.mail.confirm-email.seller.heading',
+  'identity.mail.confirm-email.seller.body',
+  'identity.mail.confirm-email.seller.action',
+  'identity.mail.existing-account.seller.subject',
+  'identity.mail.existing-account.seller.heading',
+  'identity.mail.existing-account.seller.body',
+  'identity.mail.existing-account.seller.action',
+  'identity.mail.welcome.seller.subject',
+  'identity.mail.welcome.seller.heading',
+  'identity.mail.welcome.seller.body',
+  'identity.mail.welcome.seller.body.no-approval',
+  'identity.mail.welcome.seller.action',
   'identity.mail.common.account-line.customer',
+  'identity.mail.common.account-line.seller',
   'identity.mail.common.ignore',
   'identity.mail.common.footer',
 ] as const;
@@ -92,9 +106,12 @@ export class CatalogueMailComposer implements IdentityMailComposer {
     if (!(MAIL_KEYS as readonly string[]).includes(accountLine)) {
       throw new Error(`identity has no account line for the ${mail.population} population`);
     }
+    // E2 has two bodies, by whether the seller waits for approval (`ux.md` 3.4).
+    const body =
+      mail.template === 'welcome' && !mail.approvalRequired ? 'body.no-approval' : 'body';
     const text = [
       line(key('heading')),
-      line(key('body')),
+      line(key(body)),
       `${line(key('action'))}: ${mail.url}`,
       line(accountLine as MailKey),
       line('identity.mail.common.ignore'),

@@ -53,6 +53,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'RELAY');
   await createCopy(name, 'DELIVERY');
   await createCopy(name, 'MAIL');
+  await createCopy(name, 'SELLER');
 }
 
 /**
@@ -64,12 +65,14 @@ export default async function globalSetup(): Promise<void> {
  * - `delivery`: event-delivery.db-spec.ts relays and dispatches every pending row of a Market
  *   with test subscriptions, so it never claims a row another file wrote;
  * - `mail`: email-verification.db-spec.ts relays and dispatches identity's own events to its
- *   mail handlers, for the same reason.
+ *   mail handlers, for the same reason;
+ * - `seller`: seller-account.db-spec.ts relays and dispatches identity's seller events to the
+ *   link and welcome mail handlers, for the same reason.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
   template: string,
-  kind: 'LOCKING' | 'RELAY' | 'DELIVERY' | 'MAIL',
+  kind: 'LOCKING' | 'RELAY' | 'DELIVERY' | 'MAIL' | 'SELLER',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

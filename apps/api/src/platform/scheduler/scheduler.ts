@@ -30,7 +30,8 @@ export type Jitter = () => number;
 
 /**
  * The scheduler runner of platform persistence design, "P", 7, for the `worker` role. Each job
- * ticks every `every`, the first time after a random part of the interval. A run takes the
+ * ticks every `every`, the first time after a random part of the interval, or at once for a
+ * job declared `runAtStart`. A run takes the
  * job's lock (one runner across processes, skipped when taken) and then, for each hosted
  * Market in turn: the Market's context from the factory, a newly generated correlation id, and
  * `run(context)`. One Market's failure is logged with job, Market and correlation id, and the
@@ -111,7 +112,7 @@ export class Scheduler {
           const every = setInterval(() => this.tick(name), interval);
           this.timers.add(every);
         },
-        Math.floor(this.jitter() * interval),
+        job.runAtStart === true ? 0 : Math.floor(this.jitter() * interval),
       );
       this.timers.add(first);
     }

@@ -27,16 +27,25 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     return this.markets.get(market.marketId).identity.existingAccountNoticeHours;
   }
 
-  sessionLifetime(market: MarketContext, population: Population): SessionLifetime | null {
+  sessionLifetime(
+    market: MarketContext,
+    population: Population,
+    keepSignedIn = false,
+  ): SessionLifetime | null {
+    const identity = this.markets.get(market.marketId).identity;
     const sessions: Partial<
       Record<Population, { idleTimeoutMinutes: number; absoluteLifetimeMinutes: number }>
-    > = this.markets.get(market.marketId).identity.sessions;
+    > = keepSignedIn ? identity.keepSignedInSessions : identity.sessions;
     const lifetime = Object.hasOwn(sessions, population) ? sessions[population] : undefined;
     if (lifetime === undefined) return null;
     return {
       idleTimeoutSeconds: lifetime.idleTimeoutMinutes * 60,
       absoluteLifetimeSeconds: lifetime.absoluteLifetimeMinutes * 60,
     };
+  }
+
+  sellerApprovalRequired(market: MarketContext): boolean {
+    return this.markets.get(market.marketId).identity.sellerApprovalRequired;
   }
 
   signInThrottles(market: MarketContext): SignInThrottleRules {

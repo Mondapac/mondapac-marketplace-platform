@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Client, DatabaseError } from 'pg';
+import { parseDisplayName } from '../../src/modules/identity/domain/display-name';
 import { TEST_MARKETS } from '../support/test-config';
 import { testDatabaseUrl } from './test-database';
 
@@ -25,6 +26,52 @@ interface AccountRow {
 }
 
 const CREATED = '2026-10-07T00:00:00Z';
+
+/**
+ * Candidate display names: the edges (length 100 in code points, astral characters, joiners,
+ * combining marks, non-ASCII spaces at the ends and inside) and 300 pseudo-random strings from a
+ * mixed alphabet, from a fixed seed so every run checks the same names.
+ */
+function displayNameCorpus(): string[] {
+  const alphabet = [
+    ..."abcXYZ019 -'",
+    '\u00e9',
+    '\u0301',
+    '\u0639',
+    '\u05e9',
+    '\u5c71',
+    '\u30a2',
+    '\u00a0',
+    '\u3000',
+    '\u2009',
+    '\u200d',
+    '\u200b',
+    '\ufeff',
+    '\u2028',
+    '\u{1f469}',
+    '\u{1f3fd}',
+    '\u{1d400}',
+  ];
+  let seed = 0x5eed;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31;
+    return seed;
+  };
+  const random = Array.from({ length: 300 }, () =>
+    Array.from({ length: 1 + (next() % 100) }, () => alphabet[next() % alphabet.length]).join(''),
+  );
+  return [
+    'n'.repeat(100),
+    '\u{1f469}'.repeat(100),
+    '\u{1f469}\u200d\u{1f4bb}',
+    'e\u0301'.repeat(50),
+    `\u00a0${'a'.repeat(100)}\u3000`,
+    '\ufeffAmina\ufeff',
+    'Amina\u00a0Rahman',
+    '\u2028Amina\u2029',
+    ...random,
+  ];
+}
 
 describe('identity.accounts and password_credentials (database constraints)', () => {
   let sql: Client;
@@ -119,6 +166,22 @@ describe('identity.accounts and password_credentials (database constraints)', ()
             'accounts_display_name_check',
           );
         });
+      });
+
+      it('stores every name parseDisplayName accepts (Hassan I3, slice 5)', async () => {
+        // The domain trims with JavaScript's whitespace set and counts code points; the CHECK
+        // trims spaces only (btrim) and counts characters. Every accepted name must still fit.
+        const names = displayNameCorpus().flatMap((raw) => {
+          const parsed = parseDisplayName(raw);
+          return parsed.ok ? [parsed.value] : [];
+        });
+        expect(names.length).toBeGreaterThan(250);
+
+        for (const displayName of names) {
+          await expect(
+            insertAccount(market, { population: 'seller', displayName }),
+          ).resolves.toEqual(expect.any(String));
+        }
       });
     });
 

@@ -300,4 +300,77 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
       );
     });
   });
+
+  describe('registerSeller (identity design 2.1, 3.1; slice 5)', () => {
+    const registerSeller = (displayName = 'Amina Rahman') =>
+      Account.registerSeller({
+        id: ACCOUNT_ID,
+        marketId,
+        email: EMAIL,
+        displayName,
+        passwordHash: HASH,
+        now: NOW,
+      });
+
+    it('creates an active, unverified seller account with its display name, version 1', () => {
+      expect(registerSeller().state).toEqual<AccountState>({
+        id: ACCOUNT_ID,
+        marketId,
+        population: 'seller',
+        email: EMAIL,
+        displayName: 'Amina Rahman',
+        status: 'active',
+        emailVerifiedAt: null,
+        existingAccountNoticeAt: null,
+        signedUpAt: NOW,
+        createdAt: NOW,
+        version: 1,
+        credential: { passwordHash: HASH, changedAt: NOW },
+      });
+    });
+
+    it('records no event: 8.2 has none for a seller account, the seller is published later', () => {
+      expect(registerSeller().pendingEvents).toEqual([]);
+    });
+
+    it('refuses an empty display name', () => {
+      expect(() => registerSeller('')).toThrow(AccountInvariantError);
+    });
+
+    it('replaces the name with the password on an unverified repeated sign-up (6.7)', () => {
+      const account = Account.restore(registerSeller().state);
+
+      account.signUpAgain({
+        passwordHash: NEW_HASH,
+        displayName: 'Amina R.',
+        now: NOW.add({ hours: 1 }),
+        noticeHours: 24,
+        mailAllowed: true,
+      });
+
+      expect(account.state).toMatchObject({ displayName: 'Amina R.', version: 2 });
+    });
+
+    it('keeps the name of a verified account, and never sets one on a customer', () => {
+      const verified = Account.restore({ ...registerSeller().state, emailVerifiedAt: NOW });
+      verified.signUpAgain({
+        passwordHash: NEW_HASH,
+        displayName: 'Someone Else',
+        now: NOW.add({ hours: 48 }),
+        noticeHours: 24,
+        mailAllowed: true,
+      });
+      expect(verified.state.displayName).toBe('Amina Rahman');
+
+      const customer = Account.restore(register().state);
+      customer.signUpAgain({
+        passwordHash: NEW_HASH,
+        displayName: 'Injected',
+        now: NOW.add({ hours: 1 }),
+        noticeHours: 24,
+        mailAllowed: true,
+      });
+      expect(customer.state.displayName).toBeNull();
+    });
+  });
 });

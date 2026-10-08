@@ -5,6 +5,8 @@ import type {
   SessionForAuthentication,
   SessionRepository,
 } from '../../application/ports/session.repository';
+import { SELLER_ACCESS_STATES } from '../../domain/events';
+import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { Session, SessionRevokedReason } from '../../domain/session';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -101,16 +103,41 @@ export class PrismaSessionRepository implements SessionRepository {
     market: MarketContext,
     tokenHash: Uint8Array,
   ): Promise<SessionForAuthentication | null> {
+    // One call (6.2): the session, its account's status, the account's active membership (at
+    // most one: the partial unique key) and the state of the session's seller. The nested
+    // reads follow composite foreign keys, so they stay in the session's Market (C3).
     const row = await this.prisma.tx(market).identitySession.findFirst({
       where: { marketId: market.marketId, tokenHash: Uint8Array.from(tokenHash) },
-      select: { ...SELECTED, account: { select: { status: true } } },
+      select: {
+        ...SELECTED,
+        account: {
+          select: {
+            status: true,
+            sellerMemberships: { where: { state: 'active' }, select: { sellerId: true }, take: 1 },
+          },
+        },
+        sellerAccess: { select: { state: true } },
+      },
     });
     if (row === null) return null;
     const status = row.account.status;
     if (status !== 'active' && status !== 'disabled') {
       throw new Error('identity.accounts: a stored account status is malformed');
     }
-    return { session: restore(row), accountStatus: status };
+    const sellerState = row.sellerAccess?.state ?? null;
+    if (
+      sellerState !== null &&
+      !(SELLER_ACCESS_STATES as readonly string[]).includes(sellerState)
+    ) {
+      throw new Error('identity.seller_access: a stored state is malformed');
+    }
+    return {
+      session: restore(row),
+      accountStatus: status,
+      activeMembershipSellerId:
+        (row.account.sellerMemberships[0]?.sellerId as Id<'Seller'> | undefined) ?? null,
+      sellerAccessState: sellerState as SellerAccessStateCode | null,
+    };
   }
 
   async findById(market: MarketContext, id: Id<'Session'>): Promise<Session | null> {

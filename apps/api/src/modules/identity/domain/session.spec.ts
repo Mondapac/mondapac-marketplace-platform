@@ -109,13 +109,35 @@ describe('openSession refuses', () => {
     }
   });
 
-  it('a seller session before slice 5', () => {
+  it('a seller session without its seller, or a seller on another population (slice 5)', () => {
+    const lifetime = { idleTimeoutSeconds: 1, absoluteLifetimeSeconds: 2 };
+    expect(() => openSession({ ...base, population: 'seller', lifetime })).toThrow(TypeError);
     expect(() =>
-      openSession({
-        ...base,
-        population: 'seller',
-        lifetime: { idleTimeoutSeconds: 1, absoluteLifetimeSeconds: 2 },
-      }),
-    ).toThrow(/slice 5/);
+      openSession({ ...base, population: 'customer', lifetime, sellerId: SELLER }),
+    ).toThrow(TypeError);
+  });
+});
+
+const SELLER = id<'Seller'>('01990000-0000-7000-8000-0000000000a1');
+
+describe.each(['AU', 'ZZ'])('a seller session in %s (identity design 3.5; slice 5)', (code) => {
+  it('carries its seller (sessions_seller_id_check) and the lifetime it was given (M2)', () => {
+    const session = openSession({
+      id: id<'Session'>('01990000-0000-7000-8000-00000000a001'),
+      marketId: market(code),
+      accountId: id<'Account'>('01990000-0000-7000-8000-000000000001'),
+      population: 'seller',
+      sellerId: SELLER,
+      transport: 'cookie',
+      lifetime: { idleTimeoutSeconds: 12 * 3600, absoluteLifetimeSeconds: 24 * 3600 },
+      now: NOW,
+    });
+
+    expect(session).toMatchObject({
+      population: 'seller',
+      sellerId: SELLER,
+      idleTimeoutSeconds: 12 * 3600,
+      absoluteExpiresAt: NOW.add({ hours: 24 }),
+    });
   });
 });

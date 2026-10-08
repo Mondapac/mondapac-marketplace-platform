@@ -47,6 +47,12 @@ class ErrorDetailsBody {
 
   @ApiPropertyOptional({ description: 'request.busy and request.throttled' })
   retryAfterSeconds?: number;
+
+  @ApiPropertyOptional({
+    enum: ['pending', 'rejected'],
+    description: "access.seller-not-approved: the seller's state",
+  })
+  state?: string;
 }
 
 /** The error format of identity design 5.2: `{ statusCode, code, details? }`, codes only. */
@@ -66,9 +72,12 @@ export class ApiErrorBody {
       'credentials.invalid',
       'email-verification-required',
       'account.disabled',
+      'membership.none',
+      'seller-access.suspended',
       'link.rejected',
       'access.unauthenticated',
       'access.denied',
+      'access.seller-not-approved',
       'access.unavailable',
       'conflict.retry',
     ],

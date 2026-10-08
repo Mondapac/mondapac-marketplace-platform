@@ -182,4 +182,18 @@ describe('Scheduler.start and stop', () => {
     await jest.advanceTimersByTimeAsync(10 * 3_600_000);
     expect(run).toHaveBeenCalledTimes(4);
   });
+
+  it('ticks a job declared runAtStart at once, whatever the jitter, then every interval', async () => {
+    const run = jest.fn(() => Promise.resolve());
+    const { scheduler } = setup(run, { runAtStart: true });
+    const instance = scheduler(() => 0.75);
+
+    instance.start();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(run).toHaveBeenCalledTimes(2); // AU and ZZ
+    await jest.advanceTimersByTimeAsync(3_600_000);
+    expect(run).toHaveBeenCalledTimes(4);
+
+    await instance.stop(10_000);
+  });
 });

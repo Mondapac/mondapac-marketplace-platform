@@ -28,6 +28,8 @@ const VALID = {
     password: { minLength: 15, maxLength: 128 },
     existingAccountNoticeHours: 24,
     sessions: { customer: { idleTimeoutMinutes: 60, absoluteLifetimeMinutes: 120 } },
+    keepSignedInSessions: {},
+    sellerApprovalRequired: true,
     signInThrottles: {
       accountOrigin: { limit: 5, windowMinutes: 15, blockMinutes: 15 },
       account: { limit: 20, windowMinutes: 60, blockMinutes: 60 },
@@ -240,6 +242,36 @@ describe('loadMarketConfigs', () => {
         },
       },
       /identity\.sessions\.customer\.idleTimeoutMinutes/,
+    ],
+    [
+      'no seller approval policy: a Market never defaults it (slice 5)',
+      { identity: { ...IDENTITY, sellerApprovalRequired: undefined } },
+      /identity\.sellerApprovalRequired/,
+    ],
+    [
+      'a seller session idle longer than its absolute lifetime',
+      {
+        identity: {
+          ...IDENTITY,
+          sessions: {
+            ...IDENTITY.sessions,
+            seller: { idleTimeoutMinutes: 1441, absoluteLifetimeMinutes: 1440 },
+          },
+        },
+      },
+      /identity\.sessions\.seller\.idleTimeoutMinutes/,
+    ],
+    [
+      '"keep me signed in" for the customer population (seller side only, 6.1)',
+      {
+        identity: {
+          ...IDENTITY,
+          keepSignedInSessions: {
+            customer: { idleTimeoutMinutes: 60, absoluteLifetimeMinutes: 120 },
+          },
+        },
+      },
+      /identity\.keepSignedInSessions/,
     ],
     [
       'a throttle limit of zero',

@@ -18,8 +18,13 @@
     },
     "existingAccountNoticeHours": 12,
     "sessions": {
-      "customer": { "idleTimeoutMinutes": 10080, "absoluteLifetimeMinutes": 20160 }
+      "customer": { "idleTimeoutMinutes": 10080, "absoluteLifetimeMinutes": 20160 },
+      "seller": { "idleTimeoutMinutes": 600, "absoluteLifetimeMinutes": 1200 }
     },
+    "keepSignedInSessions": {
+      "seller": { "idleTimeoutMinutes": 10080, "absoluteLifetimeMinutes": 20160 }
+    },
+    "sellerApprovalRequired": false,
     "signInThrottles": {
       "accountOrigin": { "limit": 4, "windowMinutes": 10, "blockMinutes": 20 },
       "account": { "limit": 15, "windowMinutes": 60, "blockMinutes": 30 },
@@ -36,6 +41,10 @@
         "customer": {
           "verify-email": "https://storefront.zz.test/konto/bestaetigen?ref=mail",
           "sign-in": "https://storefront.zz.test/konto/anmelden"
+        },
+        "seller": {
+          "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
+          "sign-in": "https://seller.zz.test/konto/anmelden"
         }
       }
     },

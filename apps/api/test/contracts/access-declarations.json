@@ -1,12 +1,27 @@
 [
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },
+  { "name": "identity.confirm-seller-email", "rule": "anonymous" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
+  {
+    "name": "identity.describe-seller-status",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "identity.list-registered-sellers", "rule": "system" },
+  { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.purge-expired", "rule": "system" },
   { "name": "identity.purge-unverified-accounts", "rule": "system" },
   { "name": "identity.register-customer", "rule": "anonymous" },
+  { "name": "identity.register-seller", "rule": "anonymous" },
   { "name": "identity.request-customer-verification", "rule": "anonymous" },
+  { "name": "identity.request-seller-verification", "rule": "anonymous" },
+  { "name": "identity.seed-system-roles", "rule": "system" },
+  { "name": "identity.seller-access-of", "rule": "anonymous" },
+  { "name": "identity.seller-access-of-system", "rule": "system" },
   { "name": "identity.send-existing-account-mail", "rule": "system" },
   { "name": "identity.send-link-mail", "rule": "system" },
+  { "name": "identity.send-welcome-mail", "rule": "system" },
   { "name": "identity.sign-in-customer", "rule": "anonymous" },
+  { "name": "identity.sign-in-seller", "rule": "anonymous" },
   { "name": "identity.sign-out", "rule": "own-resources", "whenSellerNotApproved": "allow" }
 ]

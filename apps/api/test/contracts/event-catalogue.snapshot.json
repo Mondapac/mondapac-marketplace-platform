@@ -24,6 +24,16 @@
     }
   },
   {
+    "type": "identity.seller-registered.v1",
+    "aggregateType": "seller-access",
+    "fields": {
+      "sellerId": "id",
+      "ownerAccountId": "optional(id)",
+      "origin": "enumOf(self|invitation)",
+      "accessState": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
     "type": "identity.sign-up-repeated.v1",
     "aggregateType": "account",
     "fields": {

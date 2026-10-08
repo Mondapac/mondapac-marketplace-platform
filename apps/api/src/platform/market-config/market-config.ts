@@ -125,7 +125,21 @@ const identitySchema = z.strictObject({
    */
   existingAccountNoticeHours: z.number().int().min(1).max(168),
   /** Per population; a population without a lifetime here cannot open a session. */
-  sessions: z.strictObject({ customer: sessionLifetimeSchema }),
+  sessions: z.strictObject({
+    customer: sessionLifetimeSchema,
+    /** Seller side, default (6.1: 12 hours idle, 24 absolute; a cookie without Max-Age). */
+    seller: sessionLifetimeSchema.optional(),
+  }),
+  /**
+   * "Keep me signed in" (identity design 6.1, 14.4): per population that offers it, opt-in at
+   * sign-in. Seller side only (14 days idle, 30 absolute); a population absent here never gets it.
+   */
+  keepSignedInSessions: z.strictObject({ seller: sessionLifetimeSchema.optional() }),
+  /**
+   * Whether a new seller starts `pending` (true) or `approved` (false) (identity design 3.3 and
+   * 15, SEL-03, AC 5). Required: a Market never defaults it.
+   */
+  sellerApprovalRequired: z.boolean(),
   /** The sign-in counters of 6.8, per Market (A6). */
   signInThrottles: z.strictObject({
     /** `sign-in.account-origin`: failed sign-ins per address and origin (AC 13). */
@@ -149,6 +163,8 @@ const identitySchema = z.strictObject({
     lifetimeMinutes: z.strictObject({ 'verify-email': z.number().int().min(1).max(1440) }),
     targets: z.strictObject({
       customer: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }),
+      /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
+      seller: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }).optional(),
     }),
   }),
   /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */

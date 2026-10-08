@@ -9,6 +9,11 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { SellerAccessRepository } from '../ports/seller-access.repository';
+import type {
+  RoleAssignmentRepository,
+  SellerMembershipRepository,
+} from '../ports/seller-team.repository';
 
 /** Accounts read per batch; each is deleted in its own unit (C11). */
 export const PURGE_BATCH_SIZE = 100;
@@ -26,6 +31,9 @@ export type PurgeUnverifiedAccountsFailure = { readonly code: 'access.denied' };
 export interface PurgeUnverifiedAccountsDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
+  readonly memberships: SellerMembershipRepository;
+  readonly assignments: RoleAssignmentRepository;
+  readonly sellerAccess: SellerAccessRepository;
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
 }
@@ -38,6 +46,11 @@ export interface PurgeUnverifiedAccountsDependencies {
  * (C11), so the real owner of the address can always sign up again. Each unit re-reads the
  * account and deletes it only if it is still unverified and still old enough, at the version it
  * read: a sign-up or a confirmation in between wins, and the account is left alone.
+ *
+ * From slice 5 (data design 9), in the same unit and before the account (the foreign keys are
+ * RESTRICT): its role assignment and its memberships; then, after the account, each seller of
+ * those memberships that was never registered (`seller-registered` not recorded) and has no
+ * member left, with its data key destroyed. A registered seller is never deleted here.
  *
  * Deletes only what is already invalid; safe to run twice and concurrently (PN4). Logs ids and
  * counts only.
@@ -96,7 +109,25 @@ export class PurgeUnverifiedAccounts extends UseCase<
               ) {
                 return ok(false);
               }
+              const { memberships, assignments, sellerAccess } = this.deps;
+              const assignment = await assignments.findByAccount(market, id);
+              if (assignment !== null) await assignments.remove(market, assignment);
+              const sellerIds = [];
+              for (const membership of await memberships.findAllByAccount(market, id)) {
+                await memberships.remove(market, membership);
+                sellerIds.push(membership.state.sellerId);
+              }
               await accounts.remove(market, account);
+              for (const sellerId of sellerIds) {
+                const access = await sellerAccess.findById(market, sellerId);
+                if (
+                  access !== null &&
+                  !access.isRegistered &&
+                  !(await memberships.sellerHasMembers(market, sellerId))
+                ) {
+                  await sellerAccess.removeUnregistered(market, access);
+                }
+              }
               return ok(true);
             },
             { isolation: 'serializable' },

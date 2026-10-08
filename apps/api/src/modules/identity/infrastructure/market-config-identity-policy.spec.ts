@@ -40,8 +40,32 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
       idleTimeoutSeconds: 7 * 86_400,
       absoluteLifetimeSeconds: 14 * 86_400,
     });
-    expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'seller')).toBeNull();
     expect(policy.sessionLifetime(testMarketContext('ZZ', 'default'), 'admin')).toBeNull();
+    expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'customer', true)).toBeNull();
+  });
+
+  it('reads each Market its seller lifetimes, "keep me signed in" and approval (slice 5)', () => {
+    const au = testMarketContext('AU', 'default');
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(policy.sessionLifetime(au, 'seller')).toEqual({
+      idleTimeoutSeconds: 12 * 3600,
+      absoluteLifetimeSeconds: 24 * 3600,
+    });
+    expect(policy.sessionLifetime(au, 'seller', true)).toEqual({
+      idleTimeoutSeconds: 14 * 86_400,
+      absoluteLifetimeSeconds: 30 * 86_400,
+    });
+    expect(policy.sessionLifetime(zz, 'seller')).toEqual({
+      idleTimeoutSeconds: 10 * 3600,
+      absoluteLifetimeSeconds: 20 * 3600,
+    });
+    expect(policy.sellerApprovalRequired(au)).toBe(true);
+    expect(policy.sellerApprovalRequired(zz)).toBe(false);
+    expect(policy.target(au, 'seller', 'verify-email')).toBe(
+      'https://seller.au.mondapac.test/confirm-email',
+    );
+    expect(policy.target(zz, 'seller', 'sign-in')).toBe('https://seller.zz.test/konto/anmelden');
   });
 
   it('reads each Market its own throttles and retention (identity design 6.8, H3)', () => {
@@ -84,7 +108,7 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     expect(policy.target(zz, 'customer', 'sign-in')).toBe(
       'https://storefront.zz.test/konto/anmelden',
     );
-    expect(policy.target(au, 'seller', 'verify-email')).toBeNull();
+    expect(policy.target(au, 'admin', 'verify-email')).toBeNull();
   });
 
   it('refuses a Market this Region Stack does not host, with no fallback', () => {
