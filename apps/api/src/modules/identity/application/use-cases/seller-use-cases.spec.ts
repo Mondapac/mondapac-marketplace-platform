@@ -252,7 +252,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 4],
+      ['platform', 'default', 'onboarding-compliance', 5],
       ['platform', 'default', 'catalogue-moderator', 1],
       ['platform', 'default', 'operations-support', 4],
       ['platform', 'default', 'finance', 1],
@@ -286,6 +286,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'identity.seller-access.suspend',
       'identity.seller-access.view',
       'identity.seller-account.create',
+      'sellers.seller-file.review',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual(['identity.seller-access.view']);
     expect(keysOf('operations-support')).toEqual([
