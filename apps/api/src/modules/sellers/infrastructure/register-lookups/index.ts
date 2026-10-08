@@ -4,7 +4,19 @@ import type {
   BusinessRegisterLookups,
 } from '../../application/ports/business-register-lookup';
 import type { RegisterLookupPolicy } from '../../application/ports/register-lookup-policy';
+import type { AppConfig } from '../../../../platform/config/app-config';
+import { FAKE_REGISTER_ADAPTER, fakeRegisterLookupAllowed } from './fake';
 import { NoneRegisterLookup } from './none';
+
+/**
+ * The adapter codes this environment has besides `none`: the `fake` only on an explicit
+ * development or test start. The one gate both the policy's start-up check and the adapter map use.
+ */
+export function availableRegisterAdapterCodes(
+  environment: Pick<AppConfig, 'nodeEnv' | 'nodeEnvExplicit'>,
+): ReadonlySet<string> {
+  return new Set(fakeRegisterLookupAllowed(environment) ? [FAKE_REGISTER_ADAPTER] : []);
+}
 
 /** Market configuration names an adapter that no file implements: refused, never replaced. */
 export class UnknownRegisterLookupAdapterError extends Error {

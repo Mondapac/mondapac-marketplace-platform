@@ -112,7 +112,19 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   32 characters, and `sellers` refuses a scheme without an adapter at start-up. `required` says
   whether a seller must give an identifier before submitting (true for AU, SEL/Q3); `labelKey` is
   the translation key of the label ("ABN" for AU). A value valid in one scheme is not accepted for
-  another (enforced by `sellers`, not by this schema). The `registerLookup` keys of design 4.1 join in slice 4a.
+  another (enforced by `sellers`, not by this schema). 
+- `registerLookup` (required; sellers slice 4a): the business register the Market checks a seller
+  against. `adapter` is the lower-case code of a file in `sellers/infrastructure/register-lookups/`
+  (`none` for a Market with no register, which is the launch state of AU until the vendor review
+  passes; `fake` only where a development or test start is explicit). `sellers` refuses an adapter
+  it does not have at start-up (Hassan L3), the schema cannot. `manualLinkTemplate` is the
+  register's public search page: https, no credentials, `{identifier}` exactly once and never in
+  the host. `maxResultAgeDays` (1 to 365), `perAccountLimit` (new identifier values per account per
+  24 h), `perOriginLimit` (lookups per client address per 24 h) and `marketDailyBudget` (lookups
+  per Market per 24 h) are whole numbers; `legalSuffixes` are dropped from business names before
+  they are compared (the list may be empty). With `none` the numbers are unused but still
+  validated. The reviewer limit and the re-check interval of design 4.1 join with the slices that
+  use them.
 - `reservedWords` (required; sellers slice 2b): `slugs` are whole shop slugs that are never held (site
   routes, platform names) and `claimWords` are the words a seller may not claim (certification
   words and the platform's own name). A `slugs` entry is lower-case letters, digits and single
