@@ -9,6 +9,7 @@ import { FormDescriptorsRead } from '../src/modules/sellers/application/use-case
 import { MyFileCheckSlug } from '../src/modules/sellers/application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../src/modules/sellers/application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveSlug } from '../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
 import { MyFileSaveGeneral } from '../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
 import { IdentityFakes } from './support/identity-fakes';
 import { completionLineOf, createTestApp, type LogLine } from './support/test-app';
@@ -49,7 +50,11 @@ const cookieOf = (setCookie: unknown): string => {
 const detailsOf = (response: { body: unknown }): unknown =>
   (response.body as { details?: unknown }).details;
 
-const SAVED = { version: 2, draftComplete: false, missing: ['address', 'timezone'] };
+const SAVED = {
+  version: 2,
+  draftComplete: false,
+  missing: ['address', 'timezone', 'slug'],
+};
 
 describe('the seller draft over HTTP (integration)', () => {
   let app: NestExpressApplication;
@@ -59,6 +64,7 @@ describe('the seller draft over HTTP (integration)', () => {
     general: new Stub(),
     address: new Stub(),
     slug: new Stub(),
+    saveSlug: new Stub(),
     descriptors: new Stub(),
   };
   const http = () => request(app.getHttpServer());
@@ -76,6 +82,8 @@ describe('the seller draft over HTTP (integration)', () => {
               .useValue(stubs.general)
               .overrideProvider(MyFileSaveAddress)
               .useValue(stubs.address)
+              .overrideProvider(MyFileSaveSlug)
+              .useValue(stubs.saveSlug)
               .overrideProvider(MyFileCheckSlug)
               .useValue(stubs.slug)
               .overrideProvider(FormDescriptorsRead)
@@ -217,6 +225,7 @@ describe('the seller draft over HTTP (integration)', () => {
         ['get', '/sellers/my-file/form-descriptors', {}],
         ['put', '/sellers/my-file/general', { phone: '0400' }],
         ['put', '/sellers/my-file/address', { address: { line1: 'x' } }],
+        ['put', '/sellers/my-file/slug', { slug: 'a-shop' }],
         ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
       ] as const) {
         const visitor = await http()[method](path).set('x-market-id', code).send(body);
@@ -401,6 +410,61 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(detailsOf(missing)).toEqual({ fields: [{ path: 'slug', code: 'required' }] });
     });
 
+    it('saves a slug from a PUT body with only the slug, and answers the draft-saved shape', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.saveSlug.next = { ok: true, value: { ...SAVED, missing: ['address'] } };
+
+      const saved = await http()
+        .put('/sellers/my-file/slug')
+        .set(session.headers)
+        .send({ slug: 'A-Shop' });
+
+      expect(saved.status).toBe(200);
+      expect(saved.headers['cache-control']).toBe('no-store');
+      expect(saved.body).toEqual({ ...SAVED, missing: ['address'] });
+      expect(stubs.saveSlug.calls[0]!.input).toEqual({ slug: 'A-Shop' });
+      expect(stubs.saveSlug.calls[0]!.context.market.marketId).toBe(code);
+
+      // Extra fields (a seller or a Market from the client) are refused before the use case.
+      const calls = stubs.saveSlug.calls.length;
+      const extra = await http()
+        .put('/sellers/my-file/slug')
+        .set(session.headers)
+        .send({ slug: 'a-shop', sellerId: 'x', marketId: 'ZZ' });
+      const missing = await http().put('/sellers/my-file/slug').set(session.headers).send({});
+      expect(extra.status).toBe(400);
+      expect(detailsOf(extra)).toEqual({
+        fields: [
+          { path: 'marketId', code: 'unknown-field' },
+          { path: 'sellerId', code: 'unknown-field' },
+        ],
+      });
+      expect(detailsOf(missing)).toEqual({ fields: [{ path: 'slug', code: 'required' }] });
+      expect(stubs.saveSlug.calls).toHaveLength(calls);
+    });
+
+    it.each([
+      ['slug.format', 400],
+      ['slug.reserved', 400],
+      ['slug.taken', 409],
+      ['file.change-request-required', 409],
+      ['conflict.stale', 409],
+    ] as const)('maps the slug save failure %s to %i', async (failure, status) => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.saveSlug.next = { ok: false, error: { code: failure } };
+
+      const response = await http()
+        .put('/sellers/my-file/slug')
+        .set(session.headers)
+        .send({ slug: 'a-shop' });
+
+      expect(response.status).toBe(status);
+      expect(response.body).toEqual({ statusCode: status, code: failure });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
     it.each([
       ['validation.failed', 400, { fields: [{ path: 'phone', code: 'length' }] }],
       ['phone.required', 400, undefined],
@@ -455,6 +519,7 @@ describe('the seller draft over HTTP (integration)', () => {
     it.each([
       ['put', '/sellers/my-file/general', { phone: '0400' }],
       ['put', '/sellers/my-file/address', { address: { line1: 'x' } }],
+      ['put', '/sellers/my-file/slug', { slug: 'a-shop' }],
       ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
     ] as const)(
       '%s %s: a missing or invalid CSRF token answers 403 request.csrf, no-store, without a call',
@@ -483,6 +548,7 @@ describe('the seller draft over HTTP (integration)', () => {
     it.each([
       ['put', '/sellers/my-file/general', { phone: '0400' }, 'general'],
       ['put', '/sellers/my-file/address', { address: { line1: 'x' } }, 'address'],
+      ['put', '/sellers/my-file/slug', { slug: 'a-shop' }, 'saveSlug'],
     ] as const)(
       '%s %s: request.throttled answers 429 with Retry-After',
       async (method, path, body, stub) => {
@@ -529,7 +595,7 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(stubs.general.calls).toHaveLength(calls);
     });
 
-    it('is in the OpenAPI document with its five routes, the CSRF header, 415 and 429', async () => {
+    it('is in the OpenAPI document with its six routes, the CSRF header, 415 and 429', async () => {
       await boot(true, { API_DOCS_ENABLED: 'true' });
 
       const response = await http().get('/docs-json').expect(200);
@@ -544,6 +610,7 @@ describe('the seller draft over HTTP (integration)', () => {
         ['get', '/sellers/my-file/form-descriptors'],
         ['put', '/sellers/my-file/general'],
         ['put', '/sellers/my-file/address'],
+        ['put', '/sellers/my-file/slug'],
         ['post', '/sellers/my-file/slug-check'],
       ] as const;
       for (const [method, path] of routes) expect(paths[path]?.[method]).toBeDefined();

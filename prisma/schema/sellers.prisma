@@ -101,6 +101,10 @@ model SellersSellerFile {
   /// Slice 2. Clear IANA zone the operating address gives (the region's default), stored so no
   /// read decrypts the address to derive it (zero-unwrap rule; guardrail 3 of spike 3).
   addressTimezone                  String?                   @map("address_timezone")
+  /// Q-M25. The draft's chosen shop slug (normalised). Clear, not public while a draft; `COLLATE "C"`
+  /// and the CHECK `seller_files_draft_slug_check` are hand-written in the migration. No unique key
+  /// and no index: uniqueness is decided when the first submission holds the slug in shop_slugs (T1).
+  draftSlug                        String?                   @map("draft_slug")
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                          Int
   createdAt                        DateTime                  @map("created_at") @db.Timestamptz(6)

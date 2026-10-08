@@ -47,6 +47,8 @@ export interface MyFileView {
   /** Null while no address is saved. */
   readonly outsideServiceArea: boolean | null;
   readonly timezone: ZoneState | null;
+  /** The chosen shop slug (clear, Q-M25), or null. */
+  readonly slug: string | null;
   /** The zones of the saved address's region, the default first; empty without an address. */
   readonly zoneOptions: readonly string[];
 }
@@ -67,8 +69,8 @@ export interface MyFileReadDependencies {
  * `permissions [sellers.business-identity.edit]`, allowed while not approved (a seller who cannot
  * read the form cannot complete it). The file is the actor's (AC 18), read in one read-only unit
  * (ADR-0025); the personal fields are decrypted after it, one field per key unwrap. The statuses
- * of 3.3, the withdrawal and the identity-change rows join with slice 5; the slug with its
- * column (see the slice notes). A destroyed key or a failed decryption is `sellers.unavailable`,
+ * of 3.3, the withdrawal and the identity-change rows join with slice 5; the slug is the draft's
+ * `draft_slug` (Q-M25). A destroyed key or a failed decryption is `sellers.unavailable`,
  * never an empty value.
  */
 export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFileReadFailure> {
@@ -162,6 +164,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
       serviceArea: area,
       outsideServiceArea: address === null ? null : area?.sellerOnboardingEnabled !== true,
       timezone: draft.zone,
+      slug: draft.slug,
       zoneOptions: zoneOptionsOf(regionZones),
     });
   }

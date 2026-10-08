@@ -39,6 +39,7 @@ import { MyFileCheckSlug } from './my-file-check-slug.use-case';
 import { MyFileRead } from './my-file-read.use-case';
 import { MyFileSaveAddress } from './my-file-save-address.use-case';
 import { MyFileSaveGeneral } from './my-file-save-general.use-case';
+import { MyFileSaveSlug } from './my-file-save-slug.use-case';
 
 // The seller's draft in memory (sellers design 3.1, 3.5, 4.2, 4.3, 6.2, 6.5, 8.1; spike 3
 // record): the four `my-file.*` use cases and `form-descriptors.read`, on both Market fixtures.
@@ -221,6 +222,12 @@ function setUp() {
       zones: formats,
       areas: new DirectoryServiceAreas(directory),
     }),
+    saveSlug: new MyFileSaveSlug(gate, {
+      ...common,
+      files,
+      slugs,
+      policy: new MarketConfigSellerPolicy(markets),
+    }),
     checkSlug: new MyFileCheckSlug(gate, {
       ...common,
       slugs,
@@ -290,7 +297,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
 
       expect(await t.saveGeneral.execute(context, GENERAL)).toEqual({
         ok: true,
-        value: { version: 2, draftComplete: false, missing: ['address', 'timezone'] },
+        value: { version: 2, draftComplete: false, missing: ['address', 'timezone', 'slug'] },
       });
       const stored = t.files.stored.get(`${code}|${sellerId}`)!.draft;
       expect(stored.storeName).toEqual({ name: 'Al Noor Grocer', key: 'al noor grocer' });
@@ -521,8 +528,8 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         ok: true,
         value: {
           version: 3,
-          draftComplete: true,
-          missing: [],
+          draftComplete: false,
+          missing: ['slug'],
           serviceArea: fixture.area,
           outsideServiceArea: !fixture.area.sellerOnboardingEnabled,
           timezone: {
@@ -536,7 +543,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       const stored = t.files.stored.get(`${code}|${sellerId}`)!;
       expect(stored.draft.address).toMatch(/^v1\./);
       expect(stored.draft.serviceAreaCode).toBe(fixture.area.code);
-      expect(stored.draftComplete).toBe(true);
+      expect(stored.draftComplete).toBe(false);
 
       const read = await t.read.execute(context, {});
       expect(read.ok && read.value.address).toEqual(fixture.address);
@@ -806,6 +813,206 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         expect(answer).toEqual({ ok: false, error: { code: 'access.unavailable' } });
       }
       expect(t.files.stored.get(`${code}|${sellerId}`)!.version).toBe(1);
+    });
+  });
+
+  describe('my-file.save-slug (Q-M25)', () => {
+    // Different reserved words per Market: `shop` is reserved in AU only, `zz-staff` in ZZ only.
+    const reserved = code === 'AU' ? 'shop' : 'zz-staff';
+    const freeHere = code === 'AU' ? 'zz-staff' : 'shop';
+    const storedOf = (t: Setup, sellerId: Id<'Seller'>) =>
+      t.files.stored.get(`${code}|${sellerId}`)!;
+
+    it('saves an available slug and completes the sixth part', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      await t.saveGeneral.execute(context, GENERAL);
+      await t.saveAddress.execute(context, { address: fixture.address });
+      expect(await t.saveSlug.execute(context, { slug: ' Al-Noor ' })).toEqual({
+        ok: true,
+        value: { version: 4, draftComplete: true, missing: [] },
+      });
+      expect(storedOf(t, sellerId).draft.slug).toBe('al-noor');
+      expect(storedOf(t, sellerId).draftComplete).toBe(true);
+      const read = await t.read.execute(context, {});
+      expect(read.ok && read.value.slug).toBe('al-noor');
+      expect(read.ok && read.value.missing).toEqual([]);
+    });
+
+    it('reads the slug as null before one is saved', async () => {
+      const t = setUp();
+      const { context } = seller(t, code);
+      const read = await t.read.execute(context, {});
+      expect(read.ok && read.value.slug).toBeNull();
+      expect(read.ok && read.value.missing).toContain('slug');
+    });
+
+    it('refuses format and reserved slugs per Market, writing nothing', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      expect(await t.saveSlug.execute(context, { slug: 'a--b' })).toEqual({
+        ok: false,
+        error: { code: 'slug.format' },
+      });
+      expect(await t.saveSlug.execute(context, { slug: undefined })).toEqual({
+        ok: false,
+        error: { code: 'slug.format' },
+      });
+      expect(await t.saveSlug.execute(context, { slug: reserved })).toEqual({
+        ok: false,
+        error: { code: 'slug.reserved' },
+      });
+      expect(
+        await t.saveSlug.execute(context, { slug: code === 'AU' ? 'halal-mart' : 'blessed-mart' }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'slug.reserved' },
+      });
+      expect((await t.saveSlug.execute(context, { slug: freeHere })).ok).toBe(true);
+      expect(storedOf(t, sellerId).draft.slug).toBe(freeHere);
+      expect(storedOf(t, sellerId).version).toBe(2);
+    });
+
+    it('refuses a slug another seller holds and any retired slug as taken', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const other = t.ids.next<'Seller'>();
+      t.slugRows.set(`${code}|taken-shop`, { sellerId: other, state: 'held' });
+      t.slugRows.set(`${code}|old-mine`, { sellerId, state: 'retired' });
+      t.slugRows.set(`${code}|old-other`, { sellerId: other, state: 'retired' });
+      for (const slug of ['taken-shop', 'old-mine', 'old-other']) {
+        expect(await t.saveSlug.execute(context, { slug })).toEqual({
+          ok: false,
+          error: { code: 'slug.taken' },
+        });
+      }
+      expect(storedOf(t, sellerId).draft.slug).toBeNull();
+      expect(storedOf(t, sellerId).version).toBe(1);
+    });
+
+    it('accepts the slug the seller itself holds', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      t.slugRows.set(`${code}|mine`, { sellerId, state: 'held' });
+      expect((await t.saveSlug.execute(context, { slug: 'mine' })).ok).toBe(true);
+      expect(storedOf(t, sellerId).draft.slug).toBe('mine');
+    });
+
+    it('is a no-op for the slug already saved: no write, the current answer', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const first = await t.saveSlug.execute(context, { slug: 'al-noor' });
+      let writes = 0;
+      t.files.beforeWrite = () => (writes += 1);
+      const second = await t.saveSlug.execute(context, { slug: 'AL-NOOR' });
+      expect(second).toEqual(first);
+      expect(writes).toBe(0);
+      expect(storedOf(t, sellerId).version).toBe(2);
+    });
+
+    it('answers file.not-found and conflict.stale', async () => {
+      const t = setUp();
+      const ghost = ownerContext(t, code, t.ids.next<'Seller'>());
+      expect(await t.saveSlug.execute(ghost, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      const { sellerId, context } = seller(t, code);
+      const key = `${code}|${sellerId}`;
+      t.files.beforeWrite = () => {
+        t.files.beforeWrite = null;
+        const file = SellerFile.restore(t.files.stored.get(key)!);
+        file.saveSlug('winner-shop' as ShopSlug, START);
+        t.files.stored.set(key, file.state);
+      };
+      expect(await t.saveSlug.execute(context, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      expect(t.files.stored.get(key)!.draft.slug).toBe('winner-shop');
+    });
+
+    it('refuses a file with an approved revision', async () => {
+      const t = setUp();
+      const { context } = seller(t, code, true);
+      expect(await t.saveSlug.execute(context, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'file.change-request-required' },
+      });
+    });
+
+    it('is refused for a non-seller actor and an anonymous caller', async () => {
+      const t = setUp();
+      expect(
+        await t.saveSlug.execute(testCallContext(market(code), 'anonymous'), { slug: 'al-noor' }),
+      ).toEqual({ ok: false, error: { code: 'access.unauthenticated' } });
+      expect(
+        await t.saveSlug.execute(testCallContext(market(code), 'system'), { slug: 'al-noor' }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('counts against both limits and writes nothing when either is reached', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      // 30 slug checks a minute exhaust the check limit; the save then throttles on it.
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await t.checkSlug.execute(context, { slug: 'al-noor' });
+      }
+      expect(await t.saveSlug.execute(context, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+      expect(storedOf(t, sellerId).draft.slug).toBeNull();
+      // A save consumes both counters.
+      const u = setUp();
+      const second = seller(u, code);
+      await u.saveSlug.execute(second.context, { slug: 'al-noor' });
+      const kinds = [...u.counters.rows].map(([key]) => key.split('|')[1]);
+      expect(kinds).toEqual(
+        expect.arrayContaining(['save.account.minute', 'slug-check.account.minute']),
+      );
+      // 60 saves a minute exhaust the save limit; the slug save throttles on it.
+      const v = setUp();
+      const third = seller(v, code);
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await v.saveGeneral.execute(third.context, { phone: '0730000000' });
+      }
+      expect(await v.saveSlug.execute(third.context, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+      expect(storedOf(v, third.sellerId).draft.slug).toBeNull();
+    });
+
+    it('fails closed when the counter store errors', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      t.counters.failing = true;
+      expect(await t.saveSlug.execute(context, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+      expect(storedOf(t, sellerId).version).toBe(1);
+    });
+
+    it('leaves the draft slug unchanged when the slug is only checked', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      await t.saveSlug.execute(context, { slug: 'al-noor' });
+      await t.checkSlug.execute(context, { slug: 'other-shop' });
+      expect(storedOf(t, sellerId).draft.slug).toBe('al-noor');
+      expect(storedOf(t, sellerId).version).toBe(2);
+    });
+
+    it('keeps the slug out of the log', async () => {
+      const t = setUp();
+      const { context } = seller(t, code);
+      const log = jest.spyOn(Logger.prototype, 'log');
+      await t.saveSlug.execute(context, { slug: 'secret-slug-xyz' });
+      await t.saveSlug.execute(context, { slug: 'a--b' });
+      expect(JSON.stringify(log.mock.calls)).not.toContain('secret-slug-xyz');
+      expect(JSON.stringify(log.mock.calls)).toContain('my-file-save-slug');
+      log.mockClear();
     });
   });
 
