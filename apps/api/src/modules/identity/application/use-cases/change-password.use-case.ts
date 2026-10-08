@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Result, Temporal } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -20,9 +20,11 @@ import {
 import type { AccountRepository } from '../ports/account.repository';
 import type { CommonPasswordList } from '../ports/common-password-list';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
+import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
@@ -59,7 +61,9 @@ export interface ChangePasswordDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
+  readonly links: OneTimeLinkRepository;
   readonly throttles: ThrottleRepository;
+  readonly records: SignInRecordRepository;
   readonly keys: ThrottleKeys;
   readonly tokens: SessionTokens;
   readonly outbox: OutboxWriter;
@@ -67,6 +71,7 @@ export interface ChangePasswordDependencies {
   readonly commonPasswords: CommonPasswordList;
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
+  readonly ids: IdGenerator;
 }
 
 type Reserved = { readonly reservation: ThrottleReservation; readonly rule: ThrottleRule };
@@ -101,7 +106,13 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  * the stored one (a concurrent reset or change won). Then the current session is rotated (if it
  * was revoked meanwhile: `session.invalid`, nothing changes), the new hash saved, the other
  * sessions revoked, the reservation given back and `identity.account-password-changed.v1`
- * (`change`) recorded, which sends the "password changed" mail (E13).
+ * (`change`) recorded, which sends the "password changed" mail (E13). The same unit cancels the
+ * account's unused reset link (Hassan L2), so a link requested before the change stops working.
+ *
+ * Every attempt that reaches the current password leaves a sign-in record (identity design 10.2;
+ * Hassan L3) in the unit that decides it: `password.current-incorrect` or `password-changed`,
+ * with the client's address, the session and the correlation id. A closing unit that throws gives
+ * the reservation back before the error goes on (Mojtaba, slice 4).
  */
 export class ChangePassword extends UseCase<
   ChangePasswordInput,
@@ -224,6 +235,7 @@ export class ChangePassword extends UseCase<
             return until === null ? [] : [{ reservation, until }];
           });
           if (blocks.length > 0) await throttles.block(market, blocks);
+          await this.record(context, input.client, 'password.current-incorrect', now);
           return ok(undefined);
         }),
       );
@@ -237,42 +249,48 @@ export class ChangePassword extends UseCase<
     const verifiedHash = account.state.credential.passwordHash;
 
     // 3. The closing unit.
-    const closed = await unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
-      const now = this.deps.clock.now();
-      const locked = await accounts.lockCredential(market, actor.accountId);
-      const current = locked ? await accounts.findById(market, actor.accountId) : null;
-      if (current === null) return ok({ kind: 'refused', code: 'session.invalid' });
-      if (current.state.credential.passwordHash !== verifiedHash) {
-        // A reset or another change committed since the current password was verified.
+    const closed = await this.closing(context, reservations, () =>
+      unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
+        const now = this.deps.clock.now();
+        const locked = await accounts.lockCredential(market, actor.accountId);
+        const current = locked ? await accounts.findById(market, actor.accountId) : null;
+        if (current === null) return ok({ kind: 'refused', code: 'session.invalid' });
+        if (current.state.credential.passwordHash !== verifiedHash) {
+          // A reset or another change committed since the current password was verified.
+          await throttles.release(market, reservations);
+          await this.record(context, input.client, 'password.current-incorrect', now);
+          return ok({ kind: 'refused', code: 'password.current-incorrect' });
+        }
+        const replaced = current.replacePassword({
+          passwordHash: hashed.value,
+          now,
+          cause: 'change',
+        });
+        if (!replaced.ok) return ok({ kind: 'refused', code: 'session.invalid' });
+        const { sessions } = this.deps;
+        // 6.2: the current session continues with a new token; revoked meanwhile, nothing changes.
+        if (!(await sessions.rotate(market, actor.sessionId, actor.accountId, issued.tokenHash))) {
+          await throttles.release(market, reservations);
+          return ok({ kind: 'refused', code: 'session.invalid' });
+        }
+        const session = await sessions.findById(market, actor.sessionId);
+        if (session === null) return ok({ kind: 'refused', code: 'session.invalid' });
+        await accounts.save(market, current);
+        // Hassan L2: a reset link requested before the change stops working with it.
+        await this.deps.links.cancelUnused(market, actor.accountId, 'reset-password');
+        const revokedSessions = await sessions.revokeAllOf(
+          market,
+          actor.accountId,
+          'password-changed',
+          now,
+          actor.sessionId,
+        );
         await throttles.release(market, reservations);
-        return ok({ kind: 'refused', code: 'password.current-incorrect' });
-      }
-      const replaced = current.replacePassword({
-        passwordHash: hashed.value,
-        now,
-        cause: 'change',
-      });
-      if (!replaced.ok) return ok({ kind: 'refused', code: 'session.invalid' });
-      const { sessions } = this.deps;
-      // 6.2: the current session continues with a new token; revoked meanwhile, nothing changes.
-      if (!(await sessions.rotate(market, actor.sessionId, actor.accountId, issued.tokenHash))) {
-        await throttles.release(market, reservations);
-        return ok({ kind: 'refused', code: 'session.invalid' });
-      }
-      const session = await sessions.findById(market, actor.sessionId);
-      if (session === null) return ok({ kind: 'refused', code: 'session.invalid' });
-      await accounts.save(market, current);
-      const revokedSessions = await sessions.revokeAllOf(
-        market,
-        actor.accountId,
-        'password-changed',
-        now,
-        actor.sessionId,
-      );
-      await throttles.release(market, reservations);
-      await this.deps.outbox.append(context, current.pendingEvents);
-      return ok({ kind: 'changed', session, revokedSessions });
-    });
+        await this.record(context, input.client, 'password-changed', now);
+        await this.deps.outbox.append(context, current.pendingEvents);
+        return ok({ kind: 'changed', session, revokedSessions });
+      }),
+    );
     if (!closed.ok) return err(UNAVAILABLE);
     const outcome = closed.value;
     if (outcome.kind === 'refused') {
@@ -304,6 +322,54 @@ export class ChangePassword extends UseCase<
     if (!persistent) return null;
     const left = this.deps.clock.now().until(session.absoluteExpiresAt).total({ unit: 'seconds' });
     return Math.max(1, Math.floor(left));
+  }
+
+  /**
+   * Runs the closing unit. When it throws (a lock timeout, exhausted retries, a lost connection)
+   * nothing of it was kept, so the reservation is given back, best effort, before the error goes
+   * on to its usual answer (Mojtaba, slice 4).
+   */
+  private async closing<T>(
+    context: CallContext,
+    reservations: readonly ThrottleReservation[],
+    run: () => Promise<Result<T, never>>,
+  ): Promise<Result<T, never>> {
+    try {
+      return await run();
+    } catch (error) {
+      this.log('identity.change-password.closing-failed', context, {});
+      await this.failClosed(context, () =>
+        this.deps.unitOfWork.run(context.market, async () => {
+          await this.deps.throttles.release(context.market, reservations);
+          return ok(undefined);
+        }),
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * One sign-in record of the password change (identity design 10.2; Hassan L3): the actor's
+   * account and session, the client's address and the correlation id; never a password.
+   */
+  private async record(
+    context: CallContext,
+    client: SignInClient,
+    outcome: 'password.current-incorrect' | 'password-changed',
+    now: Temporal.Instant,
+  ): Promise<void> {
+    const actor = context.actor;
+    if (actor.kind !== 'authenticated' || actor.population === 'admin') return;
+    await this.deps.records.add(context.market, {
+      id: this.deps.ids.next<'SignInRecord'>(),
+      population: actor.population,
+      accountId: actor.accountId,
+      outcome,
+      occurredAt: now,
+      address: client.address,
+      sessionId: actor.sessionId,
+      correlationId: context.correlationId,
+    });
   }
 
   /** Gives the reservation back (nothing was guessed) and answers `failure`. */

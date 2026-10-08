@@ -158,6 +158,8 @@ export class SellerPasswordController {
   @Post('change-password')
   @HttpCode(200)
   @SessionPopulation('seller')
+  // Hassan L4: each change mails a notice, so the route is under the stricter per-origin class.
+  @RateLimit('anonymous-identity')
   @ApiOperation({
     summary: 'Change the password of the signed-in seller-side account',
     description:

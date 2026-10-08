@@ -38,9 +38,11 @@ export interface ThrottleRepository {
   block(market: MarketContext, blocks: readonly ThrottleBlock[]): Promise<void>;
 
   /**
-   * Deletes every counter of one address (identity design 3.7: a reset clears the account's
-   * counters, which also lifts a block; AC 13), by its `account_key` (data design 3.5). Origin
-   * counters carry no address and stay. Answers how many rows went.
+   * Deletes the sign-in counters of one address, `sign-in.account` and `sign-in.account-origin`
+   * (identity design 3.7: a reset lifts a sign-in block; AC 13), by its `account_key` (data
+   * design 3.5). `mail.account` stays, so a reset cannot refill the address's mail budget, and so
+   * does `second-factor.account` (slice 7 decides how a reset treats it; Mojtaba, slice 4).
+   * Origin counters carry no address and stay. Answers how many rows went.
    */
   clearAccount(market: MarketContext, accountKey: Uint8Array): Promise<number>;
 

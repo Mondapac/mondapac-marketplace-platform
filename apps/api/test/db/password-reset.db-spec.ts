@@ -16,6 +16,7 @@ import {
 } from '../../src/modules/identity/application/ports/session.repository';
 import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
 import { CLOCK } from '../../src/platform/clock/clock.module';
+import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
 import {
@@ -108,7 +109,7 @@ describe.each(TEST_MARKETS)(
     // One application per test: the per-origin request limiter counts in its memory.
     beforeEach(async () => {
       ({ app } = await createTestApp({
-        env: { DATABASE_URL: passwordTestDatabaseUrl() },
+        env: { DATABASE_URL: passwordTestDatabaseUrl(), API_DOCS_ENABLED: 'true' },
         override: (builder) =>
           builder
             .overrideProvider(CLOCK)
@@ -315,6 +316,29 @@ describe.each(TEST_MARKETS)(
           [code, new Date(clock.now().epochMilliseconds)],
         );
         expect(counters.rows).toEqual([]);
+        // The address's mail budget is not refilled by a reset (Mojtaba, slice 4).
+        const mailCounters = await sql.query(
+          `SELECT 1 FROM identity.sign_in_throttles WHERE market_id = $1 AND kind = 'mail.account'
+          AND window_started_at >= $2`,
+          [code, new Date(clock.now().epochMilliseconds)],
+        );
+        expect(mailCounters.rows.length).toBeGreaterThanOrEqual(1);
+        // A sign-in record keeps where the reset came from, with the request's correlation id,
+        // which the route's log line carries too (Hassan L3; Sajad Q4).
+        const correlationId = reset.headers['x-correlation-id'] as string;
+        const records = await sql.query<{ outcome: string; session_id: string | null }>(
+          `SELECT outcome, session_id FROM identity.sign_in_records WHERE market_id = $1
+          AND account_id = $2 AND correlation_id = $3`,
+          [code, accountId, correlationId],
+        );
+        expect(records.rows).toEqual([{ outcome: 'password-reset', session_id: null }]);
+        expect(logs[0]!.mock.calls).toContainEqual([
+          expect.objectContaining({
+            msg: `identity.${population}-reset-password`,
+            outcome: 'password-changed',
+            correlationId,
+          }),
+        ]);
         const consumed = await sql.query<{ consumed_at: Date | null }>(
           `SELECT consumed_at FROM identity.one_time_links WHERE market_id = $1 AND account_id = $2
           AND purpose = 'reset-password'`,
@@ -425,6 +449,18 @@ describe.each(TEST_MARKETS)(
           [code, accountId],
         );
         expect(reasons.rows).toEqual([{ revoked_reason: 'password-changed' }]);
+        // Hassan L3: the wrong guess and the change are sign-in records of the session.
+        const records = await sql.query<{ outcome: string; session_id: string }>(
+          `SELECT r.outcome, r.session_id FROM identity.sign_in_records r WHERE r.market_id = $1
+          AND r.account_id = $2 AND r.outcome IN ('password.current-incorrect', 'password-changed')
+          ORDER BY r.outcome DESC`,
+          [code, accountId],
+        );
+        expect(records.rows.map((r) => r.outcome)).toEqual([
+          'password.current-incorrect',
+          'password-changed',
+        ]);
+        expect(new Set(records.rows.map((r) => r.session_id)).size).toBe(1);
         expect((await post(population, 'sign-in', { email, password: PASSWORD })).status).toBe(401);
 
         await settle();
@@ -434,6 +470,113 @@ describe.each(TEST_MARKETS)(
           expect(notice.subject).toBe(
             `The password for your MondaPac ${population} account was changed`,
           );
+        }
+      });
+
+      it('a change cancels a reset link requested before it (Hassan L2)', async () => {
+        const { email, cookie, csrfToken } = await verified(population);
+        const token = await resetToken(population, email);
+
+        const changed = await post(
+          population,
+          'change-password',
+          { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+          { cookie, 'x-csrf-token': csrfToken },
+        );
+        expect(changed.status).toBe(200);
+        const reset = await post(population, 'reset-password', {
+          token,
+          password: 'another long passphrase',
+        });
+        expect(reset.body).toEqual({ statusCode: 400, code: 'link.rejected' });
+        expect((await post(population, 'sign-in', { email, password: NEW_PASSWORD })).status).toBe(
+          200,
+        );
+      });
+
+      it('refuses an expired link over HTTP (SEL-05, ACC-04; Sajad Q3)', async () => {
+        const { email } = await verified(population);
+        const token = await resetToken(population, email);
+        clock.advance(Temporal.Duration.from({ minutes: 60 }));
+
+        const reset = await post(population, 'reset-password', { token, password: NEW_PASSWORD });
+
+        expect(reset.body).toEqual({ statusCode: 400, code: 'link.rejected' });
+        expect((await post(population, 'sign-in', { email, password: PASSWORD })).status).toBe(200);
+      });
+
+      it('two uses of one link at once: exactly one succeeds (3.7; Sajad Q1)', async () => {
+        const { email, accountId } = await verified(population);
+        const token = await resetToken(population, email);
+
+        const answers = await Promise.all([
+          post(population, 'reset-password', { token, password: NEW_PASSWORD }),
+          post(population, 'reset-password', { token, password: 'another long passphrase' }),
+        ]);
+
+        const statuses = answers.map((a) => a.status).sort();
+        expect(statuses).toEqual([200, 400]);
+        expect(answers.find((a) => a.status === 400)!.body).toEqual({
+          statusCode: 400,
+          code: 'link.rejected',
+        });
+        const events = await sql.query(
+          `SELECT 1 FROM identity.outbox WHERE market_id = $1 AND aggregate_id = $2
+          AND type = 'identity.account-password-changed.v1'`,
+          [code, accountId],
+        );
+        expect(events.rows).toHaveLength(1);
+      });
+
+      it('two changes from one session at once: exactly one succeeds (Sajad Q1)', async () => {
+        const { accountId, cookie, csrfToken } = await verified(population);
+        const change = (newPassword: string) =>
+          post(
+            population,
+            'change-password',
+            { currentPassword: PASSWORD, newPassword },
+            { cookie, 'x-csrf-token': csrfToken },
+          );
+
+        const answers = await Promise.all([
+          change(NEW_PASSWORD),
+          change('another long passphrase'),
+        ]);
+
+        expect(answers.map((a) => a.status).sort()).toEqual([200, 400]);
+        expect(answers.find((a) => a.status === 400)!.body).toEqual({
+          statusCode: 400,
+          code: 'password.current-incorrect',
+        });
+        const winner = answers.find((a) => a.status === 200)!;
+        expect((await sessionOf(population, cookieOf(winner))).status).toBe(200);
+        expect(await liveSessions(accountId)).toHaveLength(1);
+      });
+
+      it('limits the three routes per origin with the anonymous identity class (Hassan L4; Sajad Q6)', async () => {
+        const limit = app.get(MarketRegistry).get(market.marketId)
+          .requestLimits.anonymousIdentityPerMinute;
+        for (let i = 0; i < limit; i += 1) {
+          const path = i % 2 === 0 ? 'password-reset-email' : 'reset-password';
+          const body =
+            i % 2 === 0
+              ? { email: `Nobody+${randomUUID()}@Example.com` }
+              : { token: 'ml1_unknown', password: NEW_PASSWORD };
+          expect([202, 400]).toContain((await post(population, path, body)).status);
+        }
+
+        for (const path of ['password-reset-email', 'reset-password', 'change-password']) {
+          const over = await post(population, path, { email: 'someone@example.com' });
+          expect(over.status).toBe(429);
+          expect(over.body).toMatchObject({ code: 'request.throttled' });
+        }
+      });
+
+      it('documents the three routes in the OpenAPI document (Sajad Q5)', async () => {
+        const docs = await http().get('/docs-json').expect(200);
+        const paths = (docs.body as { paths: Record<string, { post?: unknown }> }).paths;
+        for (const path of ['password-reset-email', 'reset-password', 'change-password']) {
+          expect(paths[`/identity/${population}/${path}`]?.post).toBeDefined();
         }
       });
 

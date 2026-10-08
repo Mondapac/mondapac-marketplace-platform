@@ -162,6 +162,8 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         ...common,
         links: fakes.linkRepository,
         sessions: fakes.sessionRepository,
+        records: fakes.recordRepository,
+        ids,
         linkTokens,
         hasher: fakes.hasher,
         commonPasswords,
@@ -169,6 +171,9 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       change: new ChangePassword(gate, {
         ...common,
         sessions: fakes.sessionRepository,
+        links: fakes.linkRepository,
+        records: fakes.recordRepository,
+        ids,
         tokens: sessionTokens,
         hasher: fakes.hasher,
         commonPasswords,
@@ -459,8 +464,22 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
           ['password-reset', clock.now()],
           ['password-reset', clock.now()],
         ]);
-        expect([...fakes.throttles.values()].filter((t) => t.accountKey !== null)).toEqual([]);
+        // The sign-in counters of the address go; its mail budget stays (Mojtaba, slice 4).
+        expect(
+          [...fakes.throttles.values()].filter((t) => t.accountKey !== null).map((t) => t.kind),
+        ).toEqual(['mail.account']);
         expect(fakes.credentialLocks).toEqual([accountIdOf(population)]);
+        // A sign-in record keeps where the reset came from (10.2; Hassan L3).
+        expect(fakes.records.filter((r) => r.outcome === 'password-reset')).toEqual([
+          expect.objectContaining({
+            marketId: market.marketId,
+            population,
+            accountId: accountIdOf(population),
+            address: ORIGIN,
+            sessionId: null,
+            correlationId: anonymous.correlationId,
+          }),
+        ]);
         expect(eventsOf('identity.account-password-changed.v1')).toEqual([
           expect.objectContaining({
             aggregateId: accountIdOf(population),
@@ -502,25 +521,83 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       ).resolves.toMatchObject({ ok: true, value: { code: 'signed-in' } });
     });
 
-    it('refuses a link at 60 minutes and changes nothing (SEL-05, AC 8)', async () => {
-      seed('customer');
-      const u = useCases();
-      const token = await mailedResetToken(u, 'customer');
-      clock.advance(Temporal.Duration.from({ minutes: 60 }));
+    it.each(['customer', 'seller'] as const)(
+      'refuses a %s link at 60 minutes and changes nothing (SEL-05, ACC-04, AC 8)',
+      async (population) => {
+        seed(population);
+        const u = useCases();
+        const token = await mailedResetToken(u, population);
+        clock.advance(Temporal.Duration.from({ minutes: 60 }));
 
-      await expect(
-        u.reset.execute(anonymous, {
-          population: 'customer',
-          token,
-          password: NEW_PASSWORD,
-          client: CLIENT,
-        }),
-      ).resolves.toEqual({ ok: false, error: { code: 'link.rejected' } });
-      expect(fakes.accounts.get(CUSTOMER_ID)!.credential.passwordHash).toBe(
-        fakeHashOf(OLD_PASSWORD),
-      );
-      expect(fakes.hashed).toBe(0);
-    });
+        await expect(
+          u.reset.execute(anonymous, {
+            population,
+            token,
+            password: NEW_PASSWORD,
+            client: CLIENT,
+          }),
+        ).resolves.toEqual({ ok: false, error: { code: 'link.rejected' } });
+        expect(fakes.accounts.get(accountIdOf(population))!.credential.passwordHash).toBe(
+          fakeHashOf(OLD_PASSWORD),
+        );
+        expect(fakes.hashed).toBe(0);
+      },
+    );
+
+    it.each([
+      ['disabled', { status: 'disabled' as const }],
+      ['unverified', { emailVerifiedAt: null }],
+    ])(
+      'refuses an account %s between the reservation and the closing unit, and changes nothing (Sajad Q2)',
+      async (_, change) => {
+        seed('customer');
+        const live = sessionOf('customer', 1);
+        const base = useCases();
+        const token = await mailedResetToken(base, 'customer');
+        const linkBefore = [...fakes.links.values()].find((l) => l.purpose === 'reset-password')!;
+        // The account changes while the new password is being hashed (after the reservation).
+        const reset = new ResetPassword(gate, {
+          unitOfWork: fakes.unitOfWork,
+          accounts: fakes.accountRepository,
+          links: fakes.linkRepository,
+          sessions: fakes.sessionRepository,
+          throttles: fakes.throttleRepository,
+          records: fakes.recordRepository,
+          keys,
+          linkTokens: new RandomLinkTokens(),
+          outbox: fakes.outbox,
+          hasher: {
+            hash: async (plain) => {
+              fakes.accounts.set(CUSTOMER_ID, { ...fakes.accounts.get(CUSTOMER_ID)!, ...change });
+              return fakes.hasher.hash(plain);
+            },
+            verify: (plain, stored) => fakes.hasher.verify(plain, stored),
+          },
+          commonPasswords: { isCommon: () => false },
+          policy,
+          clock,
+          ids: new SequenceIdGenerator(clock),
+        });
+
+        await expect(
+          reset.execute(anonymous, {
+            population: 'customer',
+            token,
+            password: NEW_PASSWORD,
+            client: CLIENT,
+          }),
+        ).resolves.toEqual({ ok: false, error: { code: 'link.rejected' } });
+        expect(fakes.accounts.get(CUSTOMER_ID)!.credential.passwordHash).toBe(
+          fakeHashOf(OLD_PASSWORD),
+        );
+        const linkAfter = fakes.links.get(linkBefore.id)!;
+        expect(linkAfter.consumedAt).toBeNull();
+        expect(linkAfter.version).toBe(linkBefore.version);
+        expect(fakes.sessions.get(live.session.id)!.session.revokedAt).toBeNull();
+        expect(eventsOf('identity.account-password-changed.v1')).toEqual([]);
+        expect(fakes.records.filter((r) => r.outcome === 'password-reset')).toEqual([]);
+      },
+    );
 
     it('refuses a link on the other population, in another Market and after a newer request (AC 19)', async () => {
       seed('customer');
@@ -740,6 +817,72 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       },
     );
 
+    it.each(['customer', 'seller'] as const)(
+      'for a %s: cancels a reset link requested before the change (Hassan L2)',
+      async (population) => {
+        seed(population);
+        const u = useCases();
+        const token = await mailedResetToken(u, population);
+        const current = sessionOf(population, 1);
+
+        await expect(
+          u.change.execute(testCallContext(market, actorOf(population, current.session.id)), {
+            currentPassword: OLD_PASSWORD,
+            newPassword: NEW_PASSWORD,
+            client: CLIENT,
+          }),
+        ).resolves.toMatchObject({ ok: true });
+        await expect(
+          u.reset.execute(anonymous, {
+            population,
+            token,
+            password: 'yet another long passphrase',
+            client: CLIENT,
+          }),
+        ).resolves.toEqual({ ok: false, error: { code: 'link.rejected' } });
+        expect(fakes.accounts.get(accountIdOf(population))!.credential.passwordHash).toBe(
+          fakeHashOf(NEW_PASSWORD),
+        );
+      },
+    );
+
+    it('records a wrong current password and the change, with session, address and correlation id (Hassan L3)', async () => {
+      seed('customer');
+      const u = useCases();
+      const current = sessionOf('customer', 1);
+      const context = testCallContext(
+        market,
+        actorOf('customer', current.session.id),
+        'password-change-0001',
+      );
+
+      await u.change.execute(context, {
+        currentPassword: 'not the password',
+        newPassword: NEW_PASSWORD,
+        client: CLIENT,
+      });
+      await u.change.execute(context, {
+        currentPassword: OLD_PASSWORD,
+        newPassword: NEW_PASSWORD,
+        client: CLIENT,
+      });
+
+      const expected = (outcome: string) =>
+        expect.objectContaining({
+          marketId: market.marketId,
+          population: 'customer',
+          accountId: CUSTOMER_ID,
+          outcome,
+          address: ORIGIN,
+          sessionId: current.session.id,
+          correlationId: 'password-change-0001',
+        }) as unknown;
+      expect(fakes.records).toEqual([
+        expected('password.current-incorrect'),
+        expected('password-changed'),
+      ]);
+    });
+
     it('keeps a seller\'s "keep me signed in" cookie persistent, for what is left of it', async () => {
       seed('seller');
       const u = useCases();
@@ -908,6 +1051,9 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         if (code === 'AU') {
           expect(mail.subject).toBe(
             `The password for your MondaPac ${population} account was changed`,
+          );
+          expect(mail.text).toContain(
+            "If this wasn't you, reset your password from the sign-in page straight away.",
           );
           // 10:00 UTC is 20:00 in Brisbane (the Market's zone, ADR-0005 fallback).
           expect(mail.text).toContain('8 October 2026');

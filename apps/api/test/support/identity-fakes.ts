@@ -444,6 +444,24 @@ export class IdentityFakes {
       this.links.set(id, { ...stored, consumedAt: now, version: stored.version + 1 });
       return Promise.resolve(true);
     },
+    cancelUnused: (market, accountId, purpose) => {
+      const state = [...this.links.values()].find(
+        (l) =>
+          l.marketId === market.marketId &&
+          l.accountId === accountId &&
+          l.purpose === purpose &&
+          l.consumedAt === null,
+      );
+      if (state === undefined) return Promise.resolve(false);
+      this.links.set(state.id, {
+        ...state,
+        tokenHash: null,
+        issuedAt: null,
+        expiresAt: null,
+        version: state.version + 1,
+      });
+      return Promise.resolve(true);
+    },
     purgeSpent: () => Promise.resolve(0),
   };
 
@@ -608,7 +626,11 @@ export class IdentityFakes {
     clearAccount: (market, accountKey) => {
       let count = 0;
       for (const [key, row] of this.throttles) {
-        if (key.startsWith(`${market.marketId}|`) && row.accountKey === hex(accountKey)) {
+        if (
+          key.startsWith(`${market.marketId}|`) &&
+          row.accountKey === hex(accountKey) &&
+          (row.kind === 'sign-in.account' || row.kind === 'sign-in.account-origin')
+        ) {
           this.throttles.delete(key);
           count += 1;
         }

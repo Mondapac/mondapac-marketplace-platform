@@ -201,6 +201,10 @@ class FakeLinks implements OneTimeLinkRepository {
     throw new Error('sign-up consumes no link');
   }
 
+  cancelUnused(): never {
+    throw new Error('sign-up cancels no link');
+  }
+
   purgeSpent(): never {
     throw new Error('sign-up purges no link');
   }

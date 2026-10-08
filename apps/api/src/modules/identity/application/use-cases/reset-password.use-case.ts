@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -20,6 +20,7 @@ import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { SessionRepository } from '../ports/session.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
+import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SignInClient, SignInPopulation } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
@@ -51,6 +52,7 @@ export interface ResetPasswordDependencies {
   readonly links: OneTimeLinkRepository;
   readonly sessions: SessionRepository;
   readonly throttles: ThrottleRepository;
+  readonly records: SignInRecordRepository;
   readonly keys: ThrottleKeys;
   readonly linkTokens: LinkTokens;
   readonly outbox: OutboxWriter;
@@ -58,6 +60,7 @@ export interface ResetPasswordDependencies {
   readonly commonPasswords: CommonPasswordList;
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
+  readonly ids: IdGenerator;
 }
 
 const REJECTED = Object.freeze({ code: 'link.rejected' as const });
@@ -86,12 +89,16 @@ type Closed =
  *    disabled or unverified account (`Account.replacePassword`); the link is consumed by its
  *    conditional statement at the version read with the token (single use under concurrency;
  *    Hassan L1); the new hash is saved (one save, L2); **every** session of the account is
- *    revoked (`password-reset`); every counter of the address is cleared, which lifts a sign-in
- *    block (AC 13); the origin reservation is given back; `identity.account-password-changed.v1`
+ *    revoked (`password-reset`); the sign-in counters of the address are cleared, which lifts a
+ *    sign-in block (AC 13; `mail.account` stays); the origin reservation is given back; a sign-in
+ *    record `password-reset` keeps the client's address and the correlation id (10.2, Hassan
+ *    L3); `identity.account-password-changed.v1`
  *    (`reset`) drives the "password changed" mail (E13). No session is opened: the user signs in
  *    with the new password, so a second factor is never skipped (`ux.md` F3 step 4).
  *
- * Open challenges and a second factor do not exist before slice 7, which voids the former here.
+ * A closing unit that throws gives the origin reservation back before the error goes on
+ * (Mojtaba, slice 4). Open challenges and a second factor do not exist before slice 7, which
+ * voids the former here.
  * The token and the passwords are never logged, stored or echoed.
  */
 export class ResetPassword extends UseCase<
@@ -195,41 +202,53 @@ export class ResetPassword extends UseCase<
 
     // 3. The closing unit.
     const accountId = account.state.id;
-    const closed = await unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
-      const now = this.deps.clock.now();
-      const locked = await accounts.lockCredential(market, accountId);
-      const current = locked ? await accounts.findById(market, accountId) : null;
-      if (current === null || current.state.population !== population) {
-        return ok({ kind: 'refused' });
-      }
-      // In memory first: an account disabled meanwhile leaves the link unused.
-      const replaced = current.replacePassword({
-        passwordHash: hashed.value,
-        now,
-        cause: 'reset',
-      });
-      if (!replaced.ok) return ok({ kind: 'refused' });
-      // Bound to the link read with the token: a link requested again (or used) since then
-      // has another version, and this use is refused (Hassan L1).
-      if (!(await links.consume(market, link.state.id, link.state.version, now))) {
-        return ok({ kind: 'refused' });
-      }
-      await accounts.save(market, current);
-      const revokedSessions = await this.deps.sessions.revokeAllOf(
-        market,
-        accountId,
-        'password-reset',
-        now,
-        null,
-      );
-      await throttles.clearAccount(
-        market,
-        keys.account(market, population, current.state.email.normalized),
-      );
-      await throttles.release(market, reservations);
-      await this.deps.outbox.append(context, current.pendingEvents);
-      return ok({ kind: 'reset', revokedSessions });
-    });
+    const closed = await this.closing(context, reservations, () =>
+      unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
+        const now = this.deps.clock.now();
+        const locked = await accounts.lockCredential(market, accountId);
+        const current = locked ? await accounts.findById(market, accountId) : null;
+        if (current === null || current.state.population !== population) {
+          return ok({ kind: 'refused' });
+        }
+        // In memory first: an account disabled meanwhile leaves the link unused.
+        const replaced = current.replacePassword({
+          passwordHash: hashed.value,
+          now,
+          cause: 'reset',
+        });
+        if (!replaced.ok) return ok({ kind: 'refused' });
+        // Bound to the link read with the token: a link requested again (or used) since then
+        // has another version, and this use is refused (Hassan L1).
+        if (!(await links.consume(market, link.state.id, link.state.version, now))) {
+          return ok({ kind: 'refused' });
+        }
+        await accounts.save(market, current);
+        const revokedSessions = await this.deps.sessions.revokeAllOf(
+          market,
+          accountId,
+          'password-reset',
+          now,
+          null,
+        );
+        await throttles.clearAccount(
+          market,
+          keys.account(market, population, current.state.email.normalized),
+        );
+        await throttles.release(market, reservations);
+        await this.deps.records.add(market, {
+          id: this.deps.ids.next<'SignInRecord'>(),
+          population,
+          accountId,
+          outcome: 'password-reset',
+          occurredAt: now,
+          address: input.client.address,
+          sessionId: null,
+          correlationId: context.correlationId,
+        });
+        await this.deps.outbox.append(context, current.pendingEvents);
+        return ok({ kind: 'reset', revokedSessions });
+      }),
+    );
     if (!closed.ok) return err(UNAVAILABLE);
     if (closed.value.kind === 'refused') {
       this.log('identity.reset-password.link-rejected', context, population, {});
@@ -240,6 +259,25 @@ export class ResetPassword extends UseCase<
       revokedSessions: closed.value.revokedSessions,
     });
     return ok({ code: 'password-changed' });
+  }
+
+  /**
+   * Runs the closing unit. When it throws (a lock timeout, exhausted retries, a lost connection)
+   * nothing of it was kept, so the origin reservation is given back, best effort, before the
+   * error goes on to its usual answer (Mojtaba, slice 4).
+   */
+  private async closing<T>(
+    context: CallContext,
+    reservations: readonly ThrottleReservation[],
+    run: () => Promise<Result<T, never>>,
+  ): Promise<Result<T, never>> {
+    try {
+      return await run();
+    } catch (error) {
+      this.log('identity.reset-password.closing-failed', context, null, {});
+      await this.release(context, reservations);
+      throw error;
+    }
   }
 
   /** Gives the reservation back (nothing was tried); false when its unit failed. */

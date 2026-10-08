@@ -29,6 +29,9 @@ function inLockOrder(a: ThrottleCounter, b: ThrottleCounter): number {
  * 20 concurrent units allowed exactly the limit). Release and block touch only the reserved
  * window: a window restarted in between is left alone.
  */
+/** The counters of an address that a password reset clears (identity design 3.7, AC 13). */
+const SIGN_IN_ACCOUNT_KINDS = ['sign-in.account', 'sign-in.account-origin'] as const;
+
 export class PrismaThrottleRepository implements ThrottleRepository {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -113,7 +116,11 @@ export class PrismaThrottleRepository implements ThrottleRepository {
     // On the index (market_id, account_key) (data design 3.5). A deadlock with a concurrent
     // reservation of the same address is retried by the unit of work (40P01, P 3.1 row 7).
     const { count } = await this.prisma.tx(market).identitySignInThrottle.deleteMany({
-      where: { marketId: market.marketId, accountKey: Uint8Array.from(accountKey) },
+      where: {
+        marketId: market.marketId,
+        accountKey: Uint8Array.from(accountKey),
+        kind: { in: [...SIGN_IN_ACCOUNT_KINDS] },
+      },
     });
     return count;
   }
