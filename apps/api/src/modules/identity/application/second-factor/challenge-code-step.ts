@@ -302,10 +302,13 @@ export class ChallengeCodeStep<T> {
           await this.record(context, client, accountId, refusal.code, now);
           return ok({ kind: 'refused', refusal });
         }
+        // The attempt is given back before the challenge row is touched: the reservation unit
+        // takes the throttle, then the challenge, so this unit keeps the same order (Mojtaba,
+        // PR #162; data design 3.3). A lost consume rolls the release back with the unit.
+        await this.deps.throttles.release(market, [attempt.reservation]);
         // The single use, in the unit that spent the code (I-1); lost to a concurrent use:
         // nothing of this unit is kept.
         if (!(await this.deps.challenges.consume(market, challenge.id, now))) return err('lost');
-        await this.deps.throttles.release(market, [attempt.reservation]);
         const outcome = await this.spec.succeed({
           account: current,
           factor: currentFactor,
@@ -320,8 +323,10 @@ export class ChallengeCodeStep<T> {
       });
     } catch (error) {
       this.warn('identity.second-factor-step.closing-failed', context);
-      // Nothing of the unit was kept: the reserved attempt is given back, best effort.
-      await this.releaseQuietly(context, attempt);
+      // Nothing of the unit was kept. A code that matched gets its attempt back, best effort; a
+      // wrong code keeps it counted, so a failing unit never refunds a guess (HF2; Mojtaba and
+      // Hassan, PR #162).
+      if (check.kind !== 'no-match') await this.releaseQuietly(context, attempt);
       throw error;
     }
     if (!closed.ok) {

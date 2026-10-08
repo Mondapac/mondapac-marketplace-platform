@@ -345,6 +345,10 @@ export class AcceptAdminInvitation extends UseCase<
           if (role === null || !role.isSystem || role.state.scope !== 'platform') return refuse();
           // HF5: the first-admin path closes once the Market has an active administrator.
           if (await this.deps.assignments.hasActiveHolder(market, role.state.id)) return refuse();
+          // Hassan L3 (PR #162): an invitation without an inviter is the first-admin path only;
+          // once the Market has any admin account (in any state, as the issue rule of 7.4), every
+          // other pending first-admin invitation is refused, never a second first admin.
+          if (await this.deps.accounts.existsInPopulation(market, 'admin')) return refuse();
           const account = Account.acceptInvitation({
             id: this.deps.ids.next<'Account'>(),
             marketId: market.marketId,

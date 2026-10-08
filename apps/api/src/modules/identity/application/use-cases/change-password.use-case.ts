@@ -386,6 +386,8 @@ export class ChangePassword extends UseCase<
         await accounts.save(market, current);
         // Hassan L2: a reset link requested before the change stops working with it.
         await this.deps.links.cancelUnused(market, actor.accountId, 'reset-password');
+        // Throttle rows before challenge rows (data design 3.3; Mojtaba, PR #162).
+        await throttles.release(market, reservations);
         // HF11, Hassan I2 (d): a challenge opened with the old password can never complete.
         await this.deps.challenges.voidAllOf(market, actor.accountId);
         // Slice 7b item B (3.6): a waiting replacement secret is dropped; the factor stays.
@@ -400,7 +402,6 @@ export class ChangePassword extends UseCase<
           now,
           actor.sessionId,
         );
-        await throttles.release(market, reservations);
         await this.record(context, input.client, 'password-changed', now);
         await this.deps.outbox.append(context, current.pendingEvents);
         return ok({ kind: 'changed', session, revokedSessions });
@@ -435,6 +436,9 @@ export class ChangePassword extends UseCase<
    * it never outlives the session's absolute expiry, which never moves (3.5).
    */
   private cookieMaxAge(context: CallContext, session: Session): number | null {
+    // An admin session is never persistent (6.1; Hassan L1, PR #162): no inference from a
+    // lifetime, which a later change of `sessions.admin` could make look "kept".
+    if (session.population === 'admin') return null;
     const standard = this.deps.policy.sessionLifetime(context.market, session.population);
     const lifetime = session.createdAt.until(session.absoluteExpiresAt).total({ unit: 'seconds' });
     const persistent =

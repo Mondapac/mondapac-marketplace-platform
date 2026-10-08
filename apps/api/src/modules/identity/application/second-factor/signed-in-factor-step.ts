@@ -199,7 +199,8 @@ export class SignedInFactorStep {
       );
     } catch (error) {
       this.warn('identity.signed-in-factor.closing-failed', context);
-      await this.release(context, attempt);
+      // A wrong code keeps its attempt counted even when the unit fails (HF2; PR #162).
+      if (check.kind !== 'no-match') await this.release(context, attempt);
       throw error;
     }
     if (!closed.ok) {

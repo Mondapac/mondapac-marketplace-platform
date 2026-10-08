@@ -232,6 +232,12 @@ export class ResetPassword extends UseCase<
           return ok({ kind: 'refused' });
         }
         await accounts.save(market, current);
+        // Throttle rows before challenge rows (data design 3.3; Mojtaba, PR #162).
+        await throttles.clearAccount(
+          market,
+          keys.account(market, population, current.state.email.normalized),
+        );
+        await throttles.release(market, reservations);
         // HF11, Hassan I2 (d): a challenge opened with the old password can never complete.
         await this.deps.challenges.voidAllOf(market, accountId);
         // Slice 7b item B (3.6): a waiting replacement secret is dropped; the factor stays.
@@ -246,11 +252,6 @@ export class ResetPassword extends UseCase<
           now,
           null,
         );
-        await throttles.clearAccount(
-          market,
-          keys.account(market, population, current.state.email.normalized),
-        );
-        await throttles.release(market, reservations);
         await this.deps.records.add(market, {
           id: this.deps.ids.next<'SignInRecord'>(),
           population,
