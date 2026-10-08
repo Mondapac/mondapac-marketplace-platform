@@ -92,7 +92,7 @@ export class SubmitProduct {
       return err({ code: 'access.denied' });
     }
     const { market } = context;
-    const { unitOfWork, products, workingCopies, revisions, freeze, check, policy } = this.deps;
+    const { unitOfWork, products, revisions, freeze, check, policy } = this.deps;
 
     let locales: { readonly default: string; readonly supported: readonly string[] };
     let maxVariants: number;

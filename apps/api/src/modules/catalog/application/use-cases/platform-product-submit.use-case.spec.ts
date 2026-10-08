@@ -21,7 +21,6 @@ import { SubmitProduct } from '../revisions/submit-product.service';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import { Product } from '../../domain/product';
-import type { RateReservation } from '../../domain/rate-limits';
 import type { WorkingCopy } from '../../domain/working-copy';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
 import { UnavailableClaimTextMatcher } from '../../infrastructure/placeholders/unavailable-claim-text-matcher';
@@ -29,7 +28,7 @@ import { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-matcher';
 import type { ProductRepository } from '../ports/product.repository';
-import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.repository';
+import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import {
   PlatformProductSubmit,
