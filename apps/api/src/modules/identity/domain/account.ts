@@ -26,6 +26,24 @@ export type AccountStatusRefused =
   | { readonly code: 'account.already-disabled' }
   | { readonly code: 'account.already-active' };
 
+/**
+ * Why a change of an account's status to `to` would be refused, or null when it would not
+ * (identity design 3.1; slices 8b and 8c): a seller-side account never changes status by this
+ * path, and an account already in `to` changes nothing. The one rule of `Account.disable` and
+ * `Account.enable`, and of the admin team list's hints, which read it without loading the account.
+ */
+export function statusChangeRefusal(
+  population: Population,
+  status: 'active' | 'disabled',
+  to: 'active' | 'disabled',
+): AccountStatusRefused | null {
+  if (population === 'seller') return { code: 'account.not-eligible' };
+  if (status !== to) return null;
+  return to === 'disabled'
+    ? { code: 'account.already-disabled' }
+    : { code: 'account.already-active' };
+}
+
 /** The password credential, an entity of the account: a PHC string and when it was set. */
 export interface PasswordCredential {
   readonly passwordHash: string;
@@ -363,16 +381,16 @@ export class Account {
    * belong to the use case.
    */
   disable(now: Temporal.Instant): Result<void, AccountStatusRefused> {
-    if (this.#state.population === 'seller') return err({ code: 'account.not-eligible' });
-    if (this.#state.status === 'disabled') return err({ code: 'account.already-disabled' });
+    const refused = statusChangeRefusal(this.#state.population, this.#state.status, 'disabled');
+    if (refused !== null) return err(refused);
     this.changeStatus('disabled', now);
     return ok(undefined);
   }
 
   /** `disabled` → `active` (identity design 3.1; decided by Ali, 14.1-8): as {@link disable}. */
   enable(now: Temporal.Instant): Result<void, AccountStatusRefused> {
-    if (this.#state.population === 'seller') return err({ code: 'account.not-eligible' });
-    if (this.#state.status === 'active') return err({ code: 'account.already-active' });
+    const refused = statusChangeRefusal(this.#state.population, this.#state.status, 'active');
+    if (refused !== null) return err(refused);
     this.changeStatus('active', now);
     return ok(undefined);
   }

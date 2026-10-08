@@ -58,6 +58,16 @@ export interface SecondFactorRepository {
     market: MarketContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlySet<Id<'Account'>>>;
+
+  /**
+   * Which of these accounts have a factor in any state: the condition under which
+   * `findByAccount` answers one (the admin team list's reset hint, slice 8c). Ids only, never a
+   * secret or a recovery code.
+   */
+  presentAmong(
+    market: MarketContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlySet<Id<'Account'>>>;
 }
 
 /** Nest token of the {@link SecondFactorRepository}. */

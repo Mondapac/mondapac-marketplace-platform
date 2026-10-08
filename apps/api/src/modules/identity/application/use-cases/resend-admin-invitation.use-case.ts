@@ -12,21 +12,14 @@ import {
 } from '../../../../platform/authz';
 import { ADMIN_ACCOUNT_INVITE } from '../../contracts/permissions';
 import { InvitationReissuedAudit } from '../../domain/audit';
-import { GrantPolicy } from '../../domain/grant-policy';
+import { adminInvitationResendVerdict } from '../accounts/admin-verdicts';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleRepository } from '../ports/seller-team.repository';
-import {
-  grantedRoleOf,
-  inviterMayStillGrant,
-  protectedKeysOf,
-  readActingGrants,
-  roleIsInActorsReach,
-  type GrantSubject,
-} from '../roles/granting';
+import { readActingGrants, type GrantSubject } from '../roles/granting';
 
 const RULE_KEYS = [ADMIN_ACCOUNT_INVITE.key];
 
@@ -124,30 +117,25 @@ export class ResendAdminInvitation extends UseCase<
         if (invitation === null || invitation.state.kind !== 'admin') {
           return err({ code: 'invitation.unknown' });
         }
-        const inviterId = invitation.state.invitedByAccountId;
-        // Mohammad Q4: the first-admin invitation is found (revoke finds it) but never re-sent.
-        if (inviterId === null || invitation.state.state !== 'pending') {
-          return err({ code: 'invitation.rejected' });
-        }
-        const role = await this.deps.roles.findById(market, invitation.state.roleId);
-        if (role === null || !roleIsInActorsReach(role, self)) {
-          return err({ code: 'invitation.rejected' });
-        }
-        const granted = GrantPolicy.canGrant(
-          reading.actor,
-          grantedRoleOf(role, this.deps.effectiveKeys),
-          protectedKeysOf(this.deps.permissions),
+        // The one verdict of the command and of the admin team list's hint (slice 8c).
+        const verdict = await adminInvitationResendVerdict(
+          this.deps,
+          market,
+          { self, view: reading.actor },
+          invitation.state,
+          now,
+          lifetime,
         );
-        if (!granted.ok) return err({ code: 'role.not-grantable' });
-        // Hassan L3: an invitation its inviter could no longer issue can never be accepted.
-        const inviter = await inviterMayStillGrant(this.deps, market, inviterId, role);
-        if (!inviter.ok) {
-          this.log('identity.resend-admin-invitation.inviter-refused', context, {
-            reason: inviter.error,
-          });
-          return err({ code: 'invitation.rejected' });
+        if (!verdict.ok) {
+          if (verdict.error.code === 'invitation.rejected' && verdict.error.inviterRefusal) {
+            this.log('identity.resend-admin-invitation.inviter-refused', context, {
+              reason: verdict.error.inviterRefusal,
+            });
+          }
+          return err({ code: verdict.error.code });
         }
-        // Mohammad C2: refused at and after createdAt plus the lifetime.
+        const role = verdict.value;
+        // Checked by the verdict at this `now`; the aggregate checks again.
         if (!invitation.reissue(now, lifetime).ok) return err({ code: 'invitation.rejected' });
         await this.deps.invitations.save(market, invitation);
         await this.deps.outbox.append(context, invitation.pendingEvents);

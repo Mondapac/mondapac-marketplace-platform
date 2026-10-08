@@ -1,24 +1,29 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpException,
   Logger,
   Param,
   Post,
+  Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -26,7 +31,7 @@ import {
 } from '@nestjs/swagger';
 import { err, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
@@ -40,6 +45,11 @@ import { DisableCustomerAccount } from '../application/use-cases/disable-custome
 import { EnableAdminAccount } from '../application/use-cases/enable-admin-account.use-case';
 import { EnableCustomerAccount } from '../application/use-cases/enable-customer-account.use-case';
 import { InviteAdmin } from '../application/use-cases/invite-admin.use-case';
+import {
+  ListAdminTeam,
+  MAX_ADMIN_TEAM_PAGE,
+  type AdminTeamPage,
+} from '../application/use-cases/list-admin-team.use-case';
 import { ResendAdminInvitation } from '../application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from '../application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from '../application/use-cases/revoke-admin-invitation.use-case';
@@ -53,6 +63,9 @@ import {
   AdminInviteRequest,
   AdminRoleAssigned,
   AdminSecondFactorReset,
+  AdminTeamAccountRowView,
+  AdminTeamInvitationRowView,
+  AdminTeamPageView,
 } from './admin-team.dto';
 import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
@@ -99,15 +112,60 @@ function pathId<K extends string>(raw: string, unknown: string): Id<K> | HttpExc
   return parsed.ok ? parsed.value : refusal({ code: unknown });
 }
 
+/** The default page of the team list. */
+const DEFAULT_TEAM_PAGE = 50;
+const TEAM_QUERY_KEYS: ReadonlySet<string> = new Set(['after', 'limit']);
+
+/**
+ * The team list's query: only `after` and `limit`, each at most once (a repeated parameter is
+ * an array and refused); `limit` digits only. The use case checks the range and the id.
+ */
+function teamQuery(
+  query: Record<string, unknown>,
+): { after: string | null; limit: number } | HttpException {
+  const fields: { path: string; code: string }[] = [];
+  for (const key of Object.keys(query)) {
+    if (!TEAM_QUERY_KEYS.has(key)) fields.push({ path: key, code: 'unknown' });
+  }
+  const { after, limit } = query;
+  if (after !== undefined && typeof after !== 'string')
+    fields.push({ path: 'after', code: 'format' });
+  if (limit !== undefined && (typeof limit !== 'string' || !/^[0-9]{1,4}$/.test(limit))) {
+    fields.push({ path: 'limit', code: 'format' });
+  }
+  if (fields.length > 0) return refusal({ code: 'validation.failed', fields });
+  return {
+    after: typeof after === 'string' ? after : null,
+    limit: typeof limit === 'string' ? Number(limit) : DEFAULT_TEAM_PAGE,
+  };
+}
+
+/** The page as JSON: instants as ISO strings; nothing else is added or dropped. */
+function teamPageView(page: AdminTeamPage): AdminTeamPageView {
+  return {
+    items: page.items.map((row) =>
+      row.type === 'account'
+        ? row
+        : {
+            ...row,
+            createdAt: row.createdAt.toString(),
+            expiresAt: row.expiresAt === null ? null : row.expiresAt.toString(),
+          },
+    ),
+    next: page.next,
+  };
+}
+
 const ACCOUNT_PARAM = { name: 'accountId', description: 'The account. A UUID v7.' };
 const INVITATION_PARAM = { name: 'invitationId', description: 'The invitation. A UUID v7.' };
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 
 /**
- * Admin team management over HTTP (identity design 3.1, 3.4, 3.6, 5.3 to 5.5, 7.3; slices 8a-2
- * and 8b): an admin's role, admin invitations with their inviter, disabling and enabling admin
- * and customer accounts, and resetting another admin's second factor. Every route reads the
+ * Admin team management over HTTP (identity design 3.1, 3.4, 3.6, 5.3 to 5.5, 7.3, 8.6; slices
+ * 8a-2, 8b and 8c): the team list (accounts, open invitations and per-row action hints), an
+ * admin's role, admin invitations with their inviter, disabling and enabling admin and customer
+ * accounts, and resetting another admin's second factor. Every route reads the
  * admin session of the request's Market (`@ReadsSession`), so its unsafe method needs the CSRF
  * token and the admin panel's origin (6.4); JSON only, with a closed body (`{}` where there is
  * no field). Thin adapters: the `CallContext` comes from `@Call()`, each route calls one use case
@@ -115,6 +173,7 @@ const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthen
  * of 5.2. Every route logs its outcome code with the correlation id; never an address or a name.
  */
 @ApiTags('identity')
+@ApiExtraModels(AdminTeamAccountRowView, AdminTeamInvitationRowView)
 @RoutePopulation('admin')
 @Controller('identity/admin')
 export class AdminTeamController {
@@ -130,7 +189,51 @@ export class AdminTeamController {
     private readonly disableCustomerAccount: DisableCustomerAccount,
     private readonly enableCustomerAccount: EnableCustomerAccount,
     private readonly resetOtherAdminSecondFactor: ResetOtherAdminSecondFactor,
+    private readonly listAdminTeam: ListAdminTeam,
   ) {}
+
+  @Get('team')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'List the admin team: admin accounts with their roles and open invitations',
+    description:
+      'Needs identity.admin-account.view. Admin accounts and pending admin invitations of the ' +
+      'Market, merged by id (creation order), paged with `after` and `limit`. Each row carries, ' +
+      'per action, `allowed` and the code the command would answer now (access.denied for an ' +
+      'action whose permission the actor lacks). Hints only: every command checks again. Not ' +
+      'cached.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: `Rows per page, 1 to ${MAX_ADMIN_TEAM_PAGE}; default ${DEFAULT_TEAM_PAGE}.`,
+  })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    description: '`next` of the previous page (a UUID v7); absent for the first page.',
+  })
+  @ApiOkResponse({ type: AdminTeamPageView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async team(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AdminTeamPageView> {
+    const input = teamQuery(query);
+    let outcome: AdminTeamPageView | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.listAdminTeam.execute(context, input);
+      outcome = result.ok ? teamPageView(result.value) : refusal(result.error);
+    }
+    // Personal data of the team: never stored by a cache.
+    response.setHeader('Cache-Control', 'no-store');
+    return this.settle('identity.admin-list-team', context, outcome);
+  }
 
   @Post('accounts/:accountId/role')
   @HttpCode(200)

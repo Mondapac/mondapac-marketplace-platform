@@ -7,7 +7,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ADMIN_ACCOUNT_RESET_SECOND_FACTOR } from '../../contracts/permissions';
 import { SecondFactorResetAudit } from '../../domain/audit';
-import { GrantPolicy } from '../../domain/grant-policy';
+import type { SecondFactor } from '../../domain/second-factor';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
@@ -15,6 +15,7 @@ import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
+import { secondFactorResetVerdict } from '../accounts/admin-verdicts';
 import { readActingGrants, type GrantSubject } from '../roles/granting';
 
 const RULE_KEYS = [ADMIN_ACCOUNT_RESET_SECOND_FACTOR.key];
@@ -125,19 +126,22 @@ export class ResetOtherAdminSecondFactor extends UseCase<
           return err({ code: 'account.unknown' });
         }
         const accountId = account.state.id;
-        const acted = GrantPolicy.canActOn(reading.actor, reading.targets.get(accountId)!);
-        if (!acted.ok) return err(acted.error);
         const system = await this.deps.roles.findSystemRole(market, 'platform');
         const assignment = await this.deps.assignments.findByAccount(market, accountId);
-        if (
-          system !== null &&
-          assignment?.state.roleId === system.state.id &&
-          !(reading.actor.holdsSystemRole && reading.actor.roleId === system.state.id)
-        ) {
-          return err({ code: 'member.outranks-actor' });
-        }
-        const factor = await this.deps.factors.findByAccount(market, accountId);
-        if (factor === null) return err({ code: 'second-factor.none' });
+        const loaded: { factor: SecondFactor | null } = { factor: null };
+        // The one verdict of the command and of the admin team list's hint (slice 8c).
+        const verdict = await secondFactorResetVerdict({
+          actor: reading.actor,
+          target: reading.targets.get(accountId)!,
+          targetRoleId: assignment?.state.roleId ?? null,
+          systemRoleId: system?.state.id ?? null,
+          factorExists: async () => {
+            loaded.factor = await this.deps.factors.findByAccount(market, accountId);
+            return loaded.factor !== null;
+          },
+        });
+        if (!verdict.ok) return err(verdict.error);
+        const factor = loaded.factor!;
         const before = factor.state.state;
         factor.recordReset(now);
         await this.deps.factors.removeOf(market, accountId);
