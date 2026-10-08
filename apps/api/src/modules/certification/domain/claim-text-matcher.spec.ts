@@ -82,6 +82,19 @@ describe('claim text matcher', () => {
       expect(run(AU, 'kоsher')).toEqual(['kosher:token']);
     });
 
+    it('sees through capital Greek and Cyrillic, small capitals, barred letters (Hassan)', () => {
+      expect(run(AU, 'ΗALAL')).toEqual(['halal:token']);
+      expect(run(AU, 'VEGAΝ')).toEqual(['vegan:token']);
+      expect(run(AU, 'ʜᴀʟᴀʟ')).toEqual(['halal:token']);
+      expect(run(AU, 'hałal')).toEqual(['halal:token']);
+      expect(run(AU, 'ΗΑLΑL')).toEqual(['halal:token']);
+    });
+
+    it('maps other-script digits and regional indicators', () => {
+      expect(run(AU, 'ha१al')).toEqual(['halal:compact']); // Devanagari 1
+      expect(run(AU, '🇭🇦🇱🇦🇱')).toEqual(['halal:token']);
+    });
+
     it('treats Arabic and Persian letter variants as one', () => {
       expect(run([{ typeCode: code('t'), terms: ['حلالی'] }], 'حلالي')).toEqual(['t:token']);
     });
@@ -109,6 +122,26 @@ describe('claim text matcher', () => {
 
     it('catches Arabic-Indic digits in a mixed text', () => {
       expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
+    });
+
+    it('catches symbol, emoji, enclosing-mark and modifier separators (Hassan)', () => {
+      for (const text of [
+        'h★a★l★a★l',
+        'h~a~l~a~l',
+        'h+a+l+a+l',
+        'h`a`l`a`l',
+        'h🍖a🍖l🍖a🍖l',
+        'h\u20ddalal',
+        'ha\u02bblal',
+      ]) {
+        expect([text, run(AU, text).length > 0]).toEqual([text, true]);
+      }
+    });
+
+    it('catches the extra leet digits and the exclamation mark', () => {
+      expect(run(AU, 've9an')).toEqual(['vegan:compact']);
+      expect(run(AU, 've6an')).toEqual(['vegan:compact']);
+      expect(run(AU, 'ha!a!')).toEqual(['halal:compact']);
     });
 
     it('prefers the token pass when both would match', () => {
@@ -143,6 +176,16 @@ describe('claim text matcher', () => {
       expect(() => matchClaimTerms(['a'.repeat(20_001)], prepareVocabulary(AU))).toThrow(
         RangeError,
       );
+    });
+
+    it('throws when NFKC growth exceeds the cap, and for too many texts', () => {
+      expect(() => matchClaimTerms(['ﷺ'.repeat(5_000)], prepareVocabulary(AU))).toThrow(RangeError);
+      expect(() =>
+        matchClaimTerms(
+          Array.from({ length: 101 }, () => 'x'),
+          prepareVocabulary(AU),
+        ),
+      ).toThrow(RangeError);
     });
 
     it('throws for a term with no matchable content', () => {
