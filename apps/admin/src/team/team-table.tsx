@@ -29,7 +29,7 @@ function Person({ t, row }: { readonly t: Translate; readonly row: AccountRow | 
   const name = row.type === 'account' ? row.displayName : null;
   return (
     <div className="min-w-0">
-      <div className="truncate font-medium text-fg">
+      <div className="break-words font-medium text-fg">
         {name ?? row.email}
         {row.type === 'account' && row.self ? (
           <span className="ms-2 text-xs font-normal text-fg-muted">
@@ -37,7 +37,7 @@ function Person({ t, row }: { readonly t: Translate; readonly row: AccountRow | 
           </span>
         ) : null}
       </div>
-      {name === null ? null : <div className="truncate text-sm text-fg-muted">{row.email}</div>}
+      {name === null ? null : <div className="break-words text-sm text-fg-muted">{row.email}</div>}
     </div>
   );
 }
@@ -58,6 +58,9 @@ export async function TeamTable({
         <p className="mt-1 text-fg-muted">{t('identity.members.empty.body')}</p>
       </div>
     );
+  }
+  if (page.items.length === 0) {
+    return <p className="text-fg-muted">{t('identity.members.empty.page')}</p>;
   }
   return (
     <div className="overflow-x-auto rounded-lg border border-border">

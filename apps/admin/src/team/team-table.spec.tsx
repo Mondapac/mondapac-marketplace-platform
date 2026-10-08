@@ -68,6 +68,13 @@ describe('admin team table', () => {
     });
     const rows = screen.getAllByRole('row');
     expect(rows).toHaveLength(5);
+    expect(screen.getByRole('table', { name: 'Admins and pending invitations' })).toBeTruthy();
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Person',
+      'Role',
+      'Status',
+    ]);
+    expect(within(rows[1]!).getByText('(system role)')).toBeTruthy();
     expect(within(rows[1]!).getByText('You')).toBeTruthy();
     expect(within(rows[1]!).getByText('Platform Administrator')).toBeTruthy();
     expect(within(rows[1]!).getByText('Active')).toBeTruthy();
@@ -86,5 +93,7 @@ describe('admin team table', () => {
     cleanup();
     await show({ items: [], next: null }, '0190a000-0000-7000-8000-000000000009');
     expect(screen.queryByText("It's just you so far")).toBeNull();
+    expect(screen.getByText('There is nobody on this page.')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 });

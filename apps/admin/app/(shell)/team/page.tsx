@@ -33,6 +33,11 @@ export default async function TeamPageRoute({
       >
         <h1 className="mb-2 text-2xl font-semibold">{t('identity.members.no-access.title')}</h1>
         <p className="text-fg-muted">{t('identity.members.no-access.body')}</p>
+        <p className="mt-4">
+          <a className="font-medium text-link underline" href="/">
+            {t('identity.members.no-access.action')}
+          </a>
+        </p>
       </AdminShell>
     );
   }
@@ -49,7 +54,7 @@ export default async function TeamPageRoute({
       {result.kind === 'ok' ? (
         <>
           <TeamTable page={result.body} after={after} />
-          {result.body.next === null ? null : (
+          {result.body.next === null || !UUID.test(result.body.next) ? null : (
             <p className="mt-4">
               <a
                 className="font-medium text-link underline"

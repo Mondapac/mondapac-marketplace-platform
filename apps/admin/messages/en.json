@@ -151,12 +151,14 @@
       },
       "empty": {
         "title": "It's just you so far",
-        "body": "Invite the people who help run the platform. Each person gets their own sign-in."
+        "body": "Invite the people who help run the platform. Each person gets their own sign-in.",
+        "page": "There is nobody on this page."
       },
       "next-page": "Next page",
       "no-access": {
         "title": "You don't have access to this page",
-        "body": "Your role doesn't include it. Ask an admin who manages roles."
+        "body": "Your role doesn't include it. Ask an admin who manages roles.",
+        "action": "Go to Home"
       }
     },
     "role": {
