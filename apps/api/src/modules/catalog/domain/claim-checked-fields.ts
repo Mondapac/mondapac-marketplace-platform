@@ -144,6 +144,14 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
 export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Record<string, { readonly table: string } | { readonly noCustomerText: string }>
 > = {
+  AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
+  AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
+  LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
+  OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
+  PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
+  Product: { noCustomerText: 'aggregate class around ProductState' },
+  RateVerdict: { noCustomerText: 'numbers' },
+  VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
   AttributeFamilyState: { noCustomerText: 'internal codes only; no name or label' },

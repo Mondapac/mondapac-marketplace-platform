@@ -74,12 +74,14 @@ describe('ClaimCheckedFields', () => {
   describe('default-deny over the content types (AC 21, design 6.2)', () => {
     const root = join(__dirname, '..');
     const exported = (dir: string): string[] =>
-      readdirSync(join(root, dir))
+      (readdirSync(join(root, dir), { recursive: true }) as string[])
         .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
         .flatMap((file) =>
           [
-            ...readFileSync(join(root, dir, file), 'utf8').matchAll(/^export interface (\w+)/gm),
-          ].map((match) => match[1]!),
+            ...readFileSync(join(root, dir, file), 'utf8').matchAll(
+              /^export (?:interface (\w+)|type (\w+)\s*=\s*\{|(?:abstract )?class (\w+))/gm,
+            ),
+          ].map((match) => match[1] ?? match[2] ?? match[3]!),
         );
     const found = [...exported('domain'), ...exported('contracts')];
 
