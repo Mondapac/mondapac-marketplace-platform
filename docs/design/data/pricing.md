@@ -158,7 +158,7 @@ The two tables of ID-data 3.1 and 3.8, under this schema, with these changes onl
 
 "Strictly increasing starts" (D 2.1): the database guarantees non-empty, non-overlapping periods. That the newest record has the latest start follows from P7 and `effective_from = max(now, previous + 1 ms)` (D 9), which is the domain's job (5).
 
-The hold-direction CHECK as built (migration `20261008173358_pricing_series_regular`, with R1, commit a14de32). The last line is R1: without it a held row with a NULL anchor passed, because `amount_minor > NULL` is NULL and a CHECK accepts NULL. `regular_price_records_anchor_check` already makes `anchor_record_id` and `anchor_amount_minor` NULL together:
+The hold-direction CHECK as built (migration `20261008183000_pricing_series_regular`, with R1, commit a14de32). The last line is R1: without it a held row with a NULL anchor passed, because `amount_minor > NULL` is NULL and a CHECK accepts NULL. `regular_price_records_anchor_check` already makes `anchor_record_id` and `anchor_amount_minor` NULL together:
 
 ```sql
 ADD CONSTRAINT "regular_price_records_hold_direction_check" CHECK (
@@ -289,7 +289,7 @@ The job writes the marker **first** in its unit, with `createMany({ skipDuplicat
 
 ### 3.8 `pricing.write_refusal_throttles` and `pricing.write_refusal_actor_throttles` (slice 1; adopted; 11.2 M7)
 
-D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, Offer) per minute and, because the Offer id comes from the caller, at 20 per actor per minute across Offers, followed by one `pricing.offer-write-refused.suppressed` summary row for that window (M7, Hassan). Both counters are PostgreSQL tables updated in the refusal's own unit, next to the audit row, so a counter never advances without its row (M7, decided 2026-10-07). Pattern of identity's `sign_in_throttles` (ID-data 3.5). Both tables are in migration `20261008173358_pricing_series_regular`.
+D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, Offer) per minute and, because the Offer id comes from the caller, at 20 per actor per minute across Offers, followed by one `pricing.offer-write-refused.suppressed` summary row for that window (M7, Hassan). Both counters are PostgreSQL tables updated in the refusal's own unit, next to the audit row, so a counter never advances without its row (M7, decided 2026-10-07). Pattern of identity's `sign_in_throttles` (ID-data 3.5). Both tables are in migration `20261008183000_pricing_series_regular`.
 
 **`write_refusal_throttles`** (per actor and Offer)
 
@@ -453,7 +453,7 @@ Column-level `UPDATE` follows the four conditions of platform.md 10.2: it replac
 | # | Slice | Migration | Contains |
 |---|---|---|---|
 | 1 | — | `20261007220000_platform_btree_gist` (exists; created by sellers) | `CREATE SCHEMA "extensions"; CREATE EXTENSION "btree_gist" SCHEMA "extensions";` (sellers 9.2, Ali's O1 ruling). Pricing creates nothing here (8.3; 12.1 row 1) |
-| 2 | 1 | `20261008173358_pricing_series_regular` (signed off 2026-10-08, 12.1) | `CREATE SCHEMA "pricing"`, schema `USAGE`; `outbox`, `inbox`, `price_series`, `regular_price_records` (with its `EXCLUDE`, the pending key, the two triggers and their functions), `retired_offers`, `retired_variants`, `write_refusal_throttles`, `write_refusal_actor_throttles`; grants |
+| 2 | 1 | `20261008183000_pricing_series_regular` (signed off 2026-10-08, 12.1) | `CREATE SCHEMA "pricing"`, schema `USAGE`; `outbox`, `inbox`, `price_series`, `regular_price_records` (with its `EXCLUDE`, the pending key, the two triggers and their functions), `retired_offers`, `retired_variants`, `write_refusal_throttles`, `write_refusal_actor_throttles`; grants |
 | 3 | 2 | `pricing_effective_read_index` | `regular_price_records_market_id_series_id_effective_to_live_idx` (it arrives with its reader) |
 | 4 | 3 | `pricing_cost` | `cost_series`, `cost_records`, triggers, grants |
 | 5 | 4 | `pricing_price_hold_indexes` | The regular queue index and the "latest approved" index |
@@ -582,7 +582,7 @@ This document changes no other file. After G2:
 
 ### 12.1 Follow-up from slice 1, part 2 (as built; Hossein, 2026-10-08, for Mojtaba's sign-off)
 
-Migration `20261008173358_pricing_series_regular` follows sections 3.1 to 3.3, 3.6, 3.8 and 7, with these differences and results:
+Migration `20261008183000_pricing_series_regular` follows sections 3.1 to 3.3, 3.6, 3.8 and 7, with these differences and results:
 
 | # | Point | As built |
 |---|---|---|
@@ -599,7 +599,7 @@ Migration `20261008173358_pricing_series_regular` follows sections 3.1 to 3.3, 3
 
 **Summary-row decision (Mojtaba, 2026-10-08; row 3's open question).** The `pricing.offer-write-refused.suppressed` row says only that suppression started for the actor's window starting at `window_started_at` (X). It carries **no count** and no Offer ids. Reason: it is written at the first suppressed refusal, when the count is 1, and audit rows are never updated, so a count would always be 1 and misleading. `suppressed_count` stays in the throttle table only to elect the one summary row (3.8). D 8's audit table still says "the count of refusals not recorded"; it is superseded by this decision, recorded as condition (g) of D 19 (Mohammad aligns the D 8 row in his next revision).
 
-**Sign-off of `20261008173358_pricing_series_regular` (Mojtaba, database-designer, 2026-10-08): signed off**, at PR #139 head b5ceebe, including R1 (a14de32) and the per-actor table (row 3, adopted). Checked against platform.md 8, the five review points of platform.md 10.2 and 8.2 of this document: names as section 3 and row 5; every CHECK, the `EXCLUDE`, the partial unique key, both triggers and their `SECURITY INVOKER` functions with a pinned `search_path`; grants equal section 7 and `down.sql` revokes before it drops; no extension created or dropped (row 1); Hossein's drift check reported clean (row 2). Conditions for part 3, on the first use case that writes a refusal:
+**Sign-off of `20261008183000_pricing_series_regular` (Mojtaba, database-designer, 2026-10-08): signed off**, at PR #139 head b5ceebe, including R1 (a14de32) and the per-actor table (row 3, adopted). Checked against platform.md 8, the five review points of platform.md 10.2 and 8.2 of this document: names as section 3 and row 5; every CHECK, the `EXCLUDE`, the partial unique key, both triggers and their `SECURITY INVOKER` functions with a pinned `search_path`; grants equal section 7 and `down.sql` revokes before it drops; no extension created or dropped (row 1); Hossein's drift check reported clean (row 2). Conditions for part 3, on the first use case that writes a refusal:
 - The summary row follows the summary-row decision above: actor and the window start X, no count, no Offer ids.
 - One lock order for the two counter rows, used by every caller and by the purge (3.8): D 19 conditions (b) and (e) disagree on it and part 3 settles it (Mohammad, with Hassan) before the first caller merges; a `test:db` case runs concurrent mixed callers and the purge.
 

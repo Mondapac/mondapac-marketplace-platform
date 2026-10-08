@@ -1,4 +1,4 @@
--- Reverses 20261008173358_pricing_series_regular (docs/design/data/pricing.md 8.2): the grants
+-- Reverses 20261008183000_pricing_series_regular (docs/design/data/pricing.md 8.2): the grants
 -- first, in reverse order, then the triggers, then the tables, children before parents (CHECKs,
 -- the EXCLUDE, indexes and foreign keys go with their tables), then the functions, then the schema
 -- USAGE. The empty schema "pricing" stays, without its USAGE grant, as the leftover check of
