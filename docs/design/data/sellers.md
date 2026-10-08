@@ -235,7 +235,7 @@ aggregate's (6). The approval guard reads the checks of revision N by the primar
 | `identifier_index` | `bytea` | no | **Personal (pseudonymous)**, S5. PK `(market_id, seller_id, identifier_index)`: one row per file and value (D 2.1, "0..1 per identifier value"). Results are per file, never shared across sellers (D 7.7) |
 | `outcome` | `text` | no | CHECK `active`, `not-found`, `cancelled`, `unavailable`. `not-performed` is the absence of a row |
 | `mismatches` | `text[]` | no | The CHECKs of `register_mismatches` (3.2) |
-| `definite_negative_at` | `timestamptz(6)` | yes | The first definite negative for this value. CHECK `outcome NOT IN ('not-found','cancelled') OR definite_negative_at IS NOT NULL`. The sticky rule (D 3.4: a later `unavailable` does not clear it) reads this column, so the latest outcome can be written as it is and the history of the value stays readable |
+| `definite_negative_at` | `timestamptz(6)` | yes | The first definite negative for this value. CHECK `outcome NOT IN ('not-found','cancelled') OR definite_negative_at IS NOT NULL`, and (slice 4a, section 21) `outcome <> 'active' OR definite_negative_at IS NULL`. The sticky rule (D 3.4: a later `unavailable` does not clear it) reads this column, so the latest outcome can be written as it is and the history of the value stays readable |
 | `compared_values_ciphertext` | `text` | yes | **Personal**, Enc, `sellers.register-check.compared-values`. Written only if the register's agreement allows it (D 7.7; vendor review). Never the raw answer |
 | `checked_at` | `timestamptz(6)` | no | Bound to the maximum age of D 7.7 at read time, against `Clock` |
 | `checked_by_kind` | `text` | no | CHECK `seller`, `reviewer`, `job` |
@@ -1267,7 +1267,7 @@ parallel recordings exactly one commits.
 
 | Reviewer | Verdict | Date |
 |---|---|---|
-| Mojtaba (database-designer) | Pending: sign-off requested with this PR | |
+| Mojtaba (database-designer) | Approved, with the notes below | 2026-10-08 |
 
 Written by Hossein from 3.4, 3.11, 4.5 and 8 (the table by `prisma migrate diff`, the rest by hand;
 `pnpm db:check-reversible` runs up, down, up and the drift check, and passes on PostgreSQL 16). It
@@ -1316,6 +1316,30 @@ seller's save, read and the reviewer's read against PostgreSQL with the `fake` a
 and instants only in the row, the three quota counters, `lookup.limit` writing nothing, the `none`
 Market reserving and writing nothing). No partial index and no exclusion constraint are added, so
 `outbox-catalog.db-spec.ts` needed no change.
+
+**Mojtaba's review (2026-10-08).** Reviewed the migration, `down.sql`, Prisma model, privilege map and the
+register block of `sellers-files.db-spec.ts` against 3.4, 3.11, 4.5, 8 and 10.2. `pnpm db:check-reversible`
+passes and `sellers-files` plus `privileges` db specs pass (107 tests, PostgreSQL 16). No edit to the SQL was needed.
+
+- **(a) Stricter `definite_negative` CHECK: accepted.** It backs the rule "only a successful re-lookup clears a
+  negative" and the repository's three-statement write satisfies it after every statement. Under READ COMMITTED
+  one interleaving (writer A clears the mark with `active` between writer B's mark-set and B's outcome update)
+  makes B's last statement violate the CHECK (`23514`): the unit rolls back and the answer is an error, never a
+  corrupt row. That is fail-closed and rare (the row lock is held from the first `UPDATE`); the caller must treat
+  `23514` from `record` as a failed store (file stays as before), not retry blindly.
+- **(b) Three single-counter units: accepted** for the lookup kinds. No unit holds two counter locks, so the
+  fixed-order rule has nothing to violate, and a refused account does not spend the Market budget. Cost: an
+  origin refusal has already spent one account attempt (consistent with "an attempt that was made counts"). Section
+  3.11 describes one unit for the lookup kinds; read it as superseded here for `lookup.*` (the order account,
+  origin, Market stays).
+- **(c) No seller retry after `unavailable` until the result ages out: accepted for 4a only.** It is a functional
+  rule, not a schema fault (the row is replaceable at any time). It must not reach production Markets with a real
+  register: the `recheckInterval` key (short, minutes to an hour) has to make an `unavailable` row due again before the
+  first non-`none` adapter ships, without a schema change. Owner: product-owner / Hossein, tracked with the open question in the brief.
+- **Erasure:** the purge (slice 18) must delete `register_checks` before `seller_files` (FK `RESTRICT`) and grants
+  `DELETE` then; `identifier_index` is pseudonymous personal data and goes with the file (10.2).
+- **Indexes:** none beyond the PK is right (A9 is a PK probe; the table has 1 to a few rows per seller). The unique
+  `(market_id, seller_id, identifier_index)` leads on `market_id`.
 
 **Not built in slice 4a (waits for a shared-file change):** the `sellers.registerLookup` keys of
 Market configuration (D 4.1) are not in the schema of `platform/market-config` yet. The lookup is
