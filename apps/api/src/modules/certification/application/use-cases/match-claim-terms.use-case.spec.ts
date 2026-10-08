@@ -86,6 +86,8 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
   const anonymous = () => testCallContext(market(), 'anonymous');
   const system = () => testCallContext(market(), 'system');
   const facade = new CertificationFacadeImplementation({
+    evaluateClaims: undefined as never,
+    evaluateClaimsSystem: undefined as never,
     matchClaimTerms: new MatchClaimTerms(gate, reader),
     matchClaimTermsSystem: new MatchClaimTermsSystem(gate, reader),
     certificationTypes: new CertificationTypes(gate, reader),

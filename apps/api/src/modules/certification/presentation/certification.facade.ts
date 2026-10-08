@@ -1,5 +1,7 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { EvaluateClaims } from '../application/use-cases/evaluate-claims.use-case';
+import type { EvaluateClaimsSystem } from '../application/use-cases/evaluate-claims-system.use-case';
 import type { CertificationTypes } from '../application/use-cases/certification-types.use-case';
 import type { CertificationTypesSystem } from '../application/use-cases/certification-types-system.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
@@ -12,9 +14,12 @@ import type {
   ClaimTextInput,
 } from '../contracts/certification.facade';
 import type { ClaimTermMatch } from '../domain/claim-text-matcher';
+import type { ClaimDecision, ClaimQuery } from '../domain/claim-types';
 
 /** The use cases behind the facade, two per method (the `anonymous` and `system` pair). */
 export interface CertificationFacadeUseCases {
+  readonly evaluateClaims: EvaluateClaims;
+  readonly evaluateClaimsSystem: EvaluateClaimsSystem;
   readonly matchClaimTerms: MatchClaimTerms;
   readonly matchClaimTermsSystem: MatchClaimTermsSystem;
   readonly certificationTypes: CertificationTypes;
@@ -30,6 +35,17 @@ type Failure = AccessDenied | CertificationValidationFailed | CertificationUnava
  */
 export class CertificationFacadeImplementation implements CertificationFacade {
   constructor(private readonly useCases: CertificationFacadeUseCases) {}
+
+  evaluateClaims(
+    context: CallContext,
+    queries: readonly ClaimQuery[],
+  ): Promise<Result<readonly ClaimDecision[], AccessDenied | CertificationValidationFailed>> {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.evaluateClaimsSystem
+        : this.useCases.evaluateClaims;
+    return useCase.execute(context, { queries });
+  }
 
   matchClaimTerms(
     context: CallContext,
