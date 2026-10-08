@@ -106,5 +106,8 @@
       },
       "postcodeExceptions": []
     }
+  },
+  "inventory": {
+    "maxSourcesPerSeller": 4
   }
 }
