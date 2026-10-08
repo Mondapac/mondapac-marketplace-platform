@@ -1,4 +1,4 @@
-import type { DraftPart, SellerFile } from '../../domain/seller-file';
+import type { DraftPart, DraftRequirements, SellerFile } from '../../domain/seller-file';
 import type { RegionZones } from '../../domain/zone';
 
 /** The answer of a draft save: what the seller's form needs to move on (sellers design 6.2). */
@@ -10,11 +10,11 @@ export interface DraftSaved {
   readonly missing: readonly DraftPart[];
 }
 
-export function draftSaved(file: SellerFile): DraftSaved {
+export function draftSaved(file: SellerFile, requirements: DraftRequirements): DraftSaved {
   return {
     version: file.state.version,
     draftComplete: file.state.draftComplete,
-    missing: file.missing(),
+    missing: file.missing(requirements),
   };
 }
 

@@ -13,4 +13,5 @@ export const SELLER_FILE_LABELS: Readonly<Record<SealedField, FieldLabel>> = Obj
   'contact-email': fieldLabel('sellers.seller-file.contact-email'),
   address: fieldLabel('sellers.seller-file.address'),
   'registered-address': fieldLabel('sellers.seller-file.registered-address'),
+  identifier: fieldLabel('sellers.seller-file.identifier'),
 });

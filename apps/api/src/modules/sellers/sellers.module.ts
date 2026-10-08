@@ -8,6 +8,8 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { BUSINESS_IDENTIFIER_SCHEMES } from './application/ports/business-identifier-scheme';
+import { IDENTIFIER_INDEX } from './application/ports/identifier-index';
 import { LOCATION_TIMEZONE_RESOLVER } from './application/ports/location-timezone-resolver';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
@@ -27,7 +29,9 @@ import { FormDescriptorsRead } from './application/use-cases/form-descriptors-re
 import { MyFileCheckSlug } from './application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from './application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from './application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveIdentifier } from './application/use-cases/my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
+import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
@@ -62,6 +66,8 @@ const PORT = {
   zones: TIMEZONE_RESOLVER,
   areas: SERVICE_AREAS,
   locationZones: LOCATION_TIMEZONE_RESOLVER,
+  identifierSchemes: BUSINESS_IDENTIFIER_SCHEMES,
+  identifierIndex: IDENTIFIER_INDEX,
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -93,7 +99,10 @@ function useCaseProvider<D, U>(
  * `identity.seller-registered.v1`; the deploy-time backfill job `sellers.backfill-files`; and the
  * facade with `sellerSummaries` (its two use cases). Slice 2 binds the seller's draft use cases
  * (`my-file.*`, `form-descriptors.read`) with the field cipher, the slug store, the rate
- * counters, the Market formats and the ServiceArea directory.
+ * counters, the Market formats and the ServiceArea directory. Slice 3 adds the business
+ * identifier (scheme adapters chosen by Market configuration, the keyed `IdentifierIndex`, the
+ * validate and save use cases) and the tax-registration store (aggregate and repository; its use
+ * case waits for the audit writer and the acting-as flag, see the slice 3 note in the data design).
  */
 @Module({
   imports: [IdentityModule],
@@ -127,6 +136,8 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileRead, {
       unitOfWork: true,
       files: true,
+      policy: true,
+      identifierSchemes: true,
       cipher: true,
       addressFormats: true,
       zones: true,
@@ -135,6 +146,7 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileSaveGeneral, {
       unitOfWork: true,
       files: true,
+      policy: true,
       cipher: true,
       counters: true,
       counterKeys: true,
@@ -143,6 +155,7 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileSaveAddress, {
       unitOfWork: true,
       files: true,
+      policy: true,
       cipher: true,
       counters: true,
       counterKeys: true,
@@ -170,7 +183,26 @@ function useCaseProvider<D, U>(
       counterKeys: true,
       clock: true,
     }),
-    useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true }),
+    // Slice 3, the business identifier (design 4.2, 6.2): validate (format and checksum only) and save.
+    useCaseProvider(MyFileValidateIdentifier, {
+      unitOfWork: true,
+      identifierSchemes: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileSaveIdentifier, {
+      unitOfWork: true,
+      files: true,
+      policy: true,
+      identifierSchemes: true,
+      identifierIndex: true,
+      cipher: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
     // The fail-closed stand-in of slice 9 (design 7.2): it reads nothing, so only the gate.
     ...[SellingEligibility, SellingEligibilitySystem].map((type): FactoryProvider => ({

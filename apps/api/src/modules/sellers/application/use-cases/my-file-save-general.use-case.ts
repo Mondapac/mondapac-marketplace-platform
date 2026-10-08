@@ -16,6 +16,7 @@ import type { DraftRefused, GeneralDraftInput } from '../../domain/seller-file';
 import { parseStoreName, type StoreName } from '../../domain/store-name';
 import { SAVE_LIMITS } from '../../domain/rate-limits';
 import {
+  draftRequirementsOf,
   fileExists,
   logDraftOutcome,
   reserveRateLimits,
@@ -37,6 +38,7 @@ import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
+import type { SellerMarketPolicy } from '../ports/seller-market-policy';
 
 /**
  * The General group as the seller sends it (SEL-22, SEL-11; UX S2). The request has no seller id,
@@ -62,6 +64,7 @@ export type MyFileSaveGeneralFailure =
 export interface MyFileSaveGeneralDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
+  readonly policy: SellerMarketPolicy;
   readonly cipher: SellerFileCipher;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
@@ -158,13 +161,15 @@ export class MyFileSaveGeneral extends UseCase<
     const owner = sellerActorOf(context);
     if (owner === null) return err({ code: 'access.denied' });
     const { market } = context;
-    const { unitOfWork, files, clock } = this.deps;
+    const { unitOfWork, files, policy, clock } = this.deps;
 
     const reserved = await reserveRateLimits(this.deps, context, SAVE_LIMITS, owner.accountId);
     if (!reserved.ok) return reserved;
 
     const parsed = parseGeneral(input ?? {});
     if (!parsed.ok) return parsed;
+    const requirements = draftRequirementsOf(policy, market);
+    if (requirements === null) return err({ code: 'sellers.unavailable' });
 
     if (!(await fileExists(this.deps, context, owner.sellerId))) {
       return err({ code: 'file.not-found' });
@@ -175,10 +180,10 @@ export class MyFileSaveGeneral extends UseCase<
     return unitOfWork.run<DraftSaved, MyFileSaveGeneralFailure>(market, async () => {
       const file = await files.findById(market, owner.sellerId);
       if (file === null) return err({ code: 'file.not-found' });
-      const applied = file.saveGeneral(sealed.value, clock.now());
+      const applied = file.saveGeneral(sealed.value, clock.now(), requirements);
       if (!applied.ok) return applied;
       if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
-      return ok(draftSaved(file));
+      return ok(draftSaved(file, requirements));
     });
   }
 

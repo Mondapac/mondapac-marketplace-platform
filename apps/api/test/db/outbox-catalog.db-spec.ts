@@ -41,6 +41,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'sellers.seller_files_market_id_identifier_index_idx':
+    'CREATE INDEX seller_files_market_id_identifier_index_idx ON sellers.seller_files USING btree (market_id, identifier_index) WHERE (identifier_index IS NOT NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
     "CREATE UNIQUE INDEX shop_slugs_market_id_seller_id_held_key ON sellers.shop_slugs USING btree (market_id, seller_id) WHERE (state = 'held'::text)",
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':
@@ -117,5 +119,22 @@ describe('outbox tables and partial indexes (database catalog)', () => {
     expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual(
       PARTIAL_INDEXES,
     );
+  });
+
+  it('has exactly the checked-in exclusion constraints (Prisma does not model them)', async () => {
+    const { rows } = await sql.query<{ name: string; definition: string }>(
+      `SELECT n.nspname || '.' || c.conname AS name, pg_get_constraintdef(c.oid) AS definition
+         FROM pg_constraint c
+         JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE c.contype = 'x' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg\\_%'
+        ORDER BY 1`,
+    );
+
+    // docs/design/data/sellers.md 3.7 and 9.5: no two periods of one seller overlap.
+    expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual({
+      'sellers.tax_registration_periods_no_overlap_excl':
+        "EXCLUDE USING gist (market_id WITH =, seller_id WITH =, tstzrange(valid_from, valid_to, '[)'::text) WITH &&)",
+    });
   });
 });

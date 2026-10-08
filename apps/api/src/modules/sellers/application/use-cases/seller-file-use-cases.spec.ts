@@ -280,6 +280,7 @@ describe('the Market policy of sellers (design 14.1)', () => {
           throw new Error('policy unreadable');
         },
         reservedWords: () => null,
+        businessIdentifier: () => null,
       },
       outbox: { append: () => Promise.resolve() },
       clock: new FixedClock(START),

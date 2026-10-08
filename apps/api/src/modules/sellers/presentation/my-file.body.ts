@@ -29,6 +29,7 @@ export function echoedFieldName(name: string): string {
 export const BODY_LIMITS = {
   text: 512,
   slug: 100,
+  identifier: 128,
   timezone: 64,
   addressFields: 20,
   addressKey: 64,
@@ -182,4 +183,29 @@ export function parseSlugBody(body: unknown): { readonly slug: string } | readon
   else if (typeof slug !== 'string') problems.push({ path: 'slug', code: 'type' });
   else if (length(slug) > BODY_LIMITS.slug) problems.push({ path: 'slug', code: 'length' });
   return problems.length > 0 ? problems : { slug: slug as string };
+}
+
+/** The body of `PUT my-file/identifier`: the number, or null / absent to clear it. */
+export function parseIdentifierSaveBody(
+  body: unknown,
+): { readonly identifier?: string | null } | readonly FieldProblem[] {
+  if (!isRecord(body)) return [{ path: '', code: 'type' }];
+  const problems = unknownFields(body, ['identifier']);
+  const identifier = optionalText(body, 'identifier', BODY_LIMITS.identifier, problems);
+  return problems.length > 0 ? problems : identifier === undefined ? {} : { identifier };
+}
+
+/** The body of `POST my-file/identifier-check`: the number to check, nothing else. */
+export function parseIdentifierCheckBody(
+  body: unknown,
+): { readonly identifier: string } | readonly FieldProblem[] {
+  if (!isRecord(body)) return [{ path: '', code: 'type' }];
+  const problems = unknownFields(body, ['identifier']);
+  const identifier = valueOf(body, 'identifier');
+  if (identifier === undefined) problems.push({ path: 'identifier', code: 'required' });
+  else if (typeof identifier !== 'string') problems.push({ path: 'identifier', code: 'type' });
+  else if (length(identifier) > BODY_LIMITS.identifier) {
+    problems.push({ path: 'identifier', code: 'length' });
+  }
+  return problems.length > 0 ? problems : { identifier: identifier as string };
 }

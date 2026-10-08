@@ -92,6 +92,31 @@ export class SaveSlugRequest {
   slug!: string;
 }
 
+export class SaveIdentifierRequest {
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 128,
+    description:
+      "The business number in the Market's scheme, as typed (spaces and hyphens allowed). Absent, " +
+      'null or blank clears the saved one. Sent in the body, never in a URL (personal data).',
+  })
+  identifier?: string | null;
+}
+
+export class CheckIdentifierRequest {
+  @ApiProperty({
+    maxLength: 128,
+    description: 'The business number to check. Sent in the body, never in a URL.',
+  })
+  identifier!: string;
+}
+
+export class IdentifierCheckBody {
+  @ApiProperty({ description: "How people write the number in the Market's scheme." })
+  display!: string;
+}
+
 export class DraftSavedBody {
   @ApiProperty({ description: "The file's version after the save." })
   version!: number;
@@ -101,7 +126,7 @@ export class DraftSavedBody {
 
   @ApiProperty({
     type: [String],
-    enum: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'],
+    enum: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'identifier', 'slug'],
     description: 'The mandatory parts still missing, in the order of the form.',
   })
   missing!: readonly string[];
@@ -145,6 +170,14 @@ export class AddressSavedBody extends DraftSavedBody {
   zoneOptions!: readonly string[];
 }
 
+class IdentifierView {
+  @ApiProperty({ description: 'The normalised value.' })
+  value!: string;
+
+  @ApiProperty({ description: 'How people write it in the scheme.' })
+  display!: string;
+}
+
 class GeneralView {
   @ApiProperty({ type: String, nullable: true })
   storeName!: string | null;
@@ -168,7 +201,7 @@ export class MyFileBody {
 
   @ApiProperty({
     type: [String],
-    enum: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'],
+    enum: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'identifier', 'slug'],
   })
   missing!: readonly string[];
 
@@ -201,6 +234,15 @@ export class MyFileBody {
     description: 'The shop slug chosen in the draft (clear, not public while a draft).',
   })
   slug!: string | null;
+
+  @ApiProperty({
+    type: () => IdentifierView,
+    nullable: true,
+    description:
+      "The saved business number of the Market's scheme (personal data), or null. A number of " +
+      'a scheme the Market no longer uses is not shown and does not count.',
+  })
+  identifier!: IdentifierView | null;
 
   @ApiProperty({ type: [String] })
   zoneOptions!: readonly string[];
@@ -252,6 +294,20 @@ class PhoneDescriptor {
   maxLength!: number;
 }
 
+class IdentifierDescriptor {
+  @ApiProperty({ description: "The scheme code of the Market's configuration." })
+  scheme!: string;
+
+  @ApiProperty({ description: 'Translation key of the field label.' })
+  labelKey!: string;
+
+  @ApiProperty({ description: 'Whether a complete draft needs the number in this Market.' })
+  required!: boolean;
+
+  @ApiProperty({ description: 'The most a person may type; the server checks the scheme.' })
+  maxLength!: number;
+}
+
 export class FormDescriptorsBody {
   @ApiProperty({ type: AddressDescriptor })
   address!: AddressDescriptor;
@@ -265,6 +321,9 @@ export class FormDescriptorsBody {
 
   @ApiProperty({ type: PhoneDescriptor })
   phone!: PhoneDescriptor;
+
+  @ApiProperty({ type: IdentifierDescriptor })
+  identifier!: IdentifierDescriptor;
 }
 
 /** The error body of identity design 5.2: a code, never message text or a value. */

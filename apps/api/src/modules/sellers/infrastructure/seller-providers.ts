@@ -16,6 +16,11 @@ import {
   LOCATION_TIMEZONE_RESOLVER,
   type LocationTimezoneResolver,
 } from '../application/ports/location-timezone-resolver';
+import {
+  BUSINESS_IDENTIFIER_SCHEMES,
+  type BusinessIdentifierSchemes,
+} from '../application/ports/business-identifier-scheme';
+import { IDENTIFIER_INDEX, type IdentifierIndex } from '../application/ports/identifier-index';
 import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
 import {
   RATE_COUNTER_REPOSITORY,
@@ -46,7 +51,13 @@ import {
   SHOP_SLUG_REPOSITORY,
   type ShopSlugRepository,
 } from '../application/ports/shop-slug.repository';
+import {
+  TAX_PROFILE_REPOSITORY,
+  type TaxProfileRepository,
+} from '../application/ports/tax-profile.repository';
+import { HmacIdentifierIndex } from './hmac-identifier-index';
 import { HmacRateCounterKeys, localSellersSecret } from './hmac-rate-counter-keys';
+import { MarketConfigIdentifierSchemes } from './identifier-schemes';
 import { NoneLocationTimezoneResolver } from './location-timezone-resolvers';
 import { IdentityRegisteredSellers } from './identity-registered-sellers';
 import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-config-seller-formats';
@@ -54,10 +65,14 @@ import { MarketConfigSellerPolicy } from './market-config-seller-policy';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSellerFileRepository } from './prisma-seller-file.repository';
 import { PrismaShopSlugRepository } from './prisma-shop-slug.repository';
+import { PrismaTaxProfileRepository } from './prisma-tax-profile.repository';
 import { SubjectKeySellerFileCipher } from './subject-key-seller-file-cipher';
 
 /** One adapter serves both Market-format ports; a token of its own lets them share it. */
 const SELLER_FORMATS = Symbol('SELLER_FORMATS');
+
+/** The sellers stack secret (data design 4.4): one secret, an HKDF label per keyed hash. */
+const SELLERS_SECRET = Symbol('SELLERS_SECRET');
 
 /**
  * Binds the ports of sellers. They live in `infrastructure/` because only this layer may reach
@@ -85,10 +100,32 @@ export const sellerProviders: readonly FactoryProvider[] = [
   },
   {
     // The local stand-in of the sellers stack secret refuses production (data design 4.4; K1).
-    provide: RATE_COUNTER_KEYS,
+    provide: SELLERS_SECRET,
     inject: [APP_CONFIG],
-    useFactory: (config: AppConfig): RateCounterKeys =>
-      new HmacRateCounterKeys(localSellersSecret(config)),
+    useFactory: (config: AppConfig): Uint8Array => localSellersSecret(config),
+  },
+  {
+    provide: RATE_COUNTER_KEYS,
+    inject: [SELLERS_SECRET],
+    useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
+  },
+  {
+    provide: IDENTIFIER_INDEX,
+    inject: [SELLERS_SECRET],
+    useFactory: (secret: Uint8Array): IdentifierIndex => new HmacIdentifierIndex(secret),
+  },
+  {
+    // The start-up check of design 4.2: a hosted Market naming a scheme with no adapter throws here.
+    provide: BUSINESS_IDENTIFIER_SCHEMES,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): BusinessIdentifierSchemes =>
+      new MarketConfigIdentifierSchemes(markets),
+  },
+  {
+    provide: TAX_PROFILE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TaxProfileRepository =>
+      new PrismaTaxProfileRepository(prisma),
   },
   {
     provide: SELLER_FILE_CIPHER,

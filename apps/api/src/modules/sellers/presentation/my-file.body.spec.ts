@@ -4,6 +4,8 @@ import {
   MORE_FIELDS,
   parseAddressBody,
   parseGeneralBody,
+  parseIdentifierCheckBody,
+  parseIdentifierSaveBody,
   parseSlugBody,
 } from './my-file.body';
 
@@ -86,6 +88,45 @@ describe('parseSlugBody', () => {
     expect(parseSlugBody({})).toEqual([{ path: 'slug', code: 'required' }]);
     expect(parseSlugBody({ slug: 1 })).toEqual([{ path: 'slug', code: 'type' }]);
     expect(parseSlugBody({ slug: 'a'.repeat(101) })).toEqual([{ path: 'slug', code: 'length' }]);
+  });
+});
+
+describe('parseIdentifierSaveBody', () => {
+  it('keeps the number, null and absent apart, and refuses other fields', () => {
+    expect(parseIdentifierSaveBody({ identifier: '51 824 753 556' })).toEqual({
+      identifier: '51 824 753 556',
+    });
+    expect(parseIdentifierSaveBody({ identifier: null })).toEqual({ identifier: null });
+    expect(parseIdentifierSaveBody({})).toEqual({});
+    expect(parseIdentifierSaveBody({ identifier: '1', scheme: 'x' })).toEqual([
+      { path: 'scheme', code: 'unknown-field' },
+    ]);
+    expect(parseIdentifierSaveBody([])).toEqual([{ path: '', code: 'type' }]);
+  });
+
+  it('bounds the type and the length, naming no value', () => {
+    expect(parseIdentifierSaveBody({ identifier: 5 })).toEqual([
+      { path: 'identifier', code: 'type' },
+    ]);
+    expect(parseIdentifierSaveBody({ identifier: '9'.repeat(129) })).toEqual([
+      { path: 'identifier', code: 'length' },
+    ]);
+    expect(Array.isArray(parseIdentifierSaveBody({ identifier: '9'.repeat(128) }))).toBe(false);
+  });
+});
+
+describe('parseIdentifierCheckBody', () => {
+  it('requires a string number within the bound', () => {
+    expect(parseIdentifierCheckBody({ identifier: '51824753556' })).toEqual({
+      identifier: '51824753556',
+    });
+    expect(parseIdentifierCheckBody({})).toEqual([{ path: 'identifier', code: 'required' }]);
+    expect(parseIdentifierCheckBody({ identifier: null })).toEqual([
+      { path: 'identifier', code: 'type' },
+    ]);
+    expect(parseIdentifierCheckBody({ identifier: 'x'.repeat(129) })).toEqual([
+      { path: 'identifier', code: 'length' },
+    ]);
   });
 });
 
