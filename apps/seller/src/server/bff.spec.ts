@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { relay } from './bff.ts';
+import { relay, upstreamHeaders } from './bff.ts';
 import type { PanelConfig } from './config.ts';
 
 const config: PanelConfig = {
@@ -11,6 +11,7 @@ const config: PanelConfig = {
   passwordMaxLength: 128,
   marketName: 'Australia',
   supportEmail: 'support@example.com',
+  clientAddressKey: null,
 };
 
 const sameOrigin = {
@@ -234,5 +235,62 @@ describe('relay', () => {
       () => Promise.reject(new Error('down')),
     );
     expect(response.status).toBe(503);
+  });
+});
+
+describe('signed client address (ADR-0037)', () => {
+  const key = {
+    keyId: 'panel',
+    secret: Buffer.from('AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=', 'base64'),
+  };
+  const signing: PanelConfig = { ...config, clientAddressKey: key };
+  const host = config.hosts[0]!;
+  const at = () => 1791417600_000;
+  const signed =
+    'v1;k=panel;t=1791417600;a=203.0.113.7;s=VBHNrLXY_bKDvCMXHp-hfnqKb98sQZ90DnvOVDTYIj8';
+
+  it('sends no header when no key is set', () => {
+    const request = new Request('http://seller.localhost:3001/', {
+      headers: { 'x-mp-client-address': '203.0.113.7', 'x-client-address': 'forged' },
+    });
+    expect(upstreamHeaders(request, host, config, at).has('x-client-address')).toBe(false);
+  });
+
+  it('signs the address set by the panel server and overwrites a browser-sent header', () => {
+    const request = new Request('http://seller.localhost:3001/', {
+      headers: { 'x-mp-client-address': '203.0.113.7', 'x-client-address': 'forged' },
+    });
+    const headers = upstreamHeaders(request, host, signing, at);
+    expect(headers.get('x-client-address')).toBe(signed);
+    expect(headers.has('x-mp-client-address')).toBe(false);
+  });
+
+  it('refuses to relay without x-mp-client-address, and the API is never called', async () => {
+    const upstream = upstreamOk();
+    const log = vi.fn();
+    const response = await relay(
+      signing,
+      post('identity/seller/sign-in', { ...sameOrigin, 'x-client-address': 'forged' }),
+      ['identity', 'seller', 'sign-in'],
+      upstream,
+      log,
+    );
+    expect(response.status).toBe(503);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('sends the signed header on a relayed request', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      signing,
+      post('identity/seller/sign-in', { ...sameOrigin, 'x-mp-client-address': '203.0.113.7' }),
+      ['identity', 'seller', 'sign-in'],
+      upstream,
+      vi.fn(),
+    );
+    expect(response.status).toBe(200);
+    // The vectors fix t, so only the shape is checked here; the signature has its own vectors.
+    const sent = new Headers(upstream.mock.calls[0]?.[1]?.headers);
+    expect(sent.get('x-client-address')).toMatch(/^v1;k=panel;t=\d+;a=203\.0\.113\.7;s=/);
   });
 });

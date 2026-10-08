@@ -5,5 +5,8 @@ export {
   CLIENT_ADDRESS_HEADER,
   parseClientAddressKey,
   signClientAddress,
+  signForRequest,
+  MissingClientAddressError,
   type ClientAddressKey,
 } from './client-address.ts';
+export { INTERNAL_ADDRESS_HEADER } from './client-address-source.ts';

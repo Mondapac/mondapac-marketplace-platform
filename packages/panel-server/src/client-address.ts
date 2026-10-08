@@ -23,19 +23,19 @@ export interface ClientAddressKey {
 export function parseClientAddressKey(
   env: Readonly<Record<string, string | undefined>>,
 ): ClientAddressKey | null {
-  const keyId = env['CLIENT_ADDRESS_KEY_ID']?.trim() ?? '';
-  const encoded = env['CLIENT_ADDRESS_KEY']?.trim() ?? '';
+  const keyId = env['BFF_CLIENT_ADDRESS_KEY_ID']?.trim() ?? '';
+  const encoded = env['BFF_CLIENT_ADDRESS_SECRET']?.trim() ?? '';
   if (keyId === '' && encoded === '') return null;
   if (keyId === '' || encoded === '') {
-    throw new Error('CLIENT_ADDRESS_KEY_ID and CLIENT_ADDRESS_KEY must be set together');
+    throw new Error('BFF_CLIENT_ADDRESS_KEY_ID and BFF_CLIENT_ADDRESS_SECRET must be set together');
   }
-  if (!KEY_ID.test(keyId)) throw new Error('CLIENT_ADDRESS_KEY_ID must match [a-z0-9-]{1,32}');
+  if (!KEY_ID.test(keyId)) throw new Error('BFF_CLIENT_ADDRESS_KEY_ID must match [a-z0-9-]{1,32}');
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 !== 0) {
-    throw new Error('CLIENT_ADDRESS_KEY must be standard base64');
+    throw new Error('BFF_CLIENT_ADDRESS_SECRET must be standard base64');
   }
   const secret = Buffer.from(encoded, 'base64');
   if (secret.length < MIN_SECRET_BYTES) {
-    throw new Error(`CLIENT_ADDRESS_KEY must decode to at least ${MIN_SECRET_BYTES} bytes`);
+    throw new Error(`BFF_CLIENT_ADDRESS_SECRET must decode to at least ${MIN_SECRET_BYTES} bytes`);
   }
   return { keyId, secret };
 }
@@ -63,4 +63,31 @@ export function signClientAddress({ key, marketId, address, nowSeconds }: SignIn
   const message = `v1\n${key.keyId}\n${nowSeconds}\n${address}\n${marketId}`;
   const signature = createHmac('sha256', key.secret).update(message, 'utf8').digest('base64url');
   return `v1;k=${key.keyId};t=${nowSeconds};a=${address};s=${signature}`;
+}
+
+/** Thrown when a key is configured but the panel server did not set `x-mp-client-address`. */
+export class MissingClientAddressError extends Error {
+  constructor() {
+    super('x-mp-client-address is missing: the request did not come through the panel server');
+  }
+}
+
+/**
+ * Signs the address `server.mjs` set on this request. Never reads a browser-sent header: the
+ * wrapper has already removed those, and the only name read here is the internal one.
+ */
+export function signForRequest(input: {
+  readonly key: ClientAddressKey;
+  readonly marketId: string;
+  readonly headers: { get(name: string): string | null };
+  readonly nowSeconds: number;
+}): string {
+  const address = input.headers.get('x-mp-client-address');
+  if (address === null || address === '') throw new MissingClientAddressError();
+  return signClientAddress({
+    key: input.key,
+    marketId: input.marketId,
+    address,
+    nowSeconds: input.nowSeconds,
+  });
 }

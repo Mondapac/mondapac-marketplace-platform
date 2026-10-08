@@ -1,5 +1,6 @@
 // Server-side configuration of the seller panel (ADR-0034 decision 3). Nothing here has a
 // default Market: a host that is not listed is unknown and answers 404 (ADR-0020 decision 3).
+import { parseClientAddressKey, type ClientAddressKey } from '@mondapac/panel-server/signer';
 
 export interface PanelHost {
   /** `scheme://host[:port]`, exactly what a browser sends in `Origin`. */
@@ -17,6 +18,8 @@ export interface PanelConfig {
   /** Shown beside the brand, for example "Australia" (a Market display name). */
   readonly marketName: string;
   readonly supportEmail: string;
+  /** This panel's key for the signed client address (ADR-0037); null when it is not set. */
+  readonly clientAddressKey: ClientAddressKey | null;
 }
 
 const MARKET_ID = /^[A-Z]{2}$/;
@@ -91,22 +94,22 @@ export function parsePanelConfig(env: Readonly<Record<string, string | undefined
     passwordMaxLength,
     marketName: required(env, 'PANEL_MARKET_NAME'),
     supportEmail: required(env, 'PANEL_SUPPORT_EMAIL'),
+    clientAddressKey: parseClientAddressKey(env),
   };
 }
 
 /**
- * Start-up tripwire (ADR-0034 decision 3, Hassan's gate on the sign-in slice): the panel does not
- * yet forward the browser's address to the API, so every user would share one per-origin throttle
- * bucket. Until the identity client-address slice lands, a start is refused, whatever NODE_ENV says,
- * unless every host is a `*.localhost` development host. Remove it in the PR that adopts the ADR-0037
- * signer, together with a test that the signed header is sent.
+ * Start-up tripwire (ADR-0034 decision 3, ADR-0037): without the signed client address every user
+ * shares one per-origin throttle bucket at the API. A host that is not `*.localhost` therefore
+ * needs a signing key (BFF_CLIENT_ADDRESS_KEY_ID and BFF_CLIENT_ADDRESS_SECRET); the signer
+ * itself refuses a request that did not come through `server.mjs`.
  */
 export function assertClientAddressForwarding(config: PanelConfig): void {
   const local = config.hosts.every((host) => /^[a-z0-9-]+\.localhost(:\d+)?$/.test(host.host));
-  if (local) return;
+  if (local || config.clientAddressKey !== null) return;
   throw new Error(
-    'The panel cannot run in production yet: client-address forwarding to the API is not ' +
-      'implemented (ADR-0034 decision 3). Do not deploy until the identity client-address slice merges.',
+    'A panel on a real host must sign the client address: set BFF_CLIENT_ADDRESS_KEY_ID and ' +
+      'BFF_CLIENT_ADDRESS_SECRET (ADR-0037).',
   );
 }
 

@@ -15,7 +15,7 @@ export async function GET(request: Request): Promise<Response> {
   headers.set('cache-control', 'private, no-store');
   try {
     const upstream = await fetch(`${config.apiBaseUrl}/identity/seller/session`, {
-      headers: upstreamHeaders(request, host),
+      headers: upstreamHeaders(request, host, config),
       cache: 'no-store',
       redirect: 'manual',
     });

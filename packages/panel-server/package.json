@@ -6,7 +6,9 @@
   "license": "UNLICENSED",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./signer": "./src/client-address.ts",
+    "./wrapper": "./src/wrapper.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

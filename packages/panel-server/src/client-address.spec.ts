@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseClientAddressKey, signClientAddress } from './client-address.ts';
+import {
+  MissingClientAddressError,
+  parseClientAddressKey,
+  signClientAddress,
+  signForRequest,
+} from './client-address.ts';
 
 // The vectors of ADR-0037 ("Test vectors"): the API verifier reproduces the same values.
 const PANEL_SECRET = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
@@ -8,8 +13,8 @@ const T = 1791417600;
 
 const key = (keyId: string, secret: string) => {
   const parsed = parseClientAddressKey({
-    CLIENT_ADDRESS_KEY_ID: keyId,
-    CLIENT_ADDRESS_KEY: secret,
+    BFF_CLIENT_ADDRESS_KEY_ID: keyId,
+    BFF_CLIENT_ADDRESS_SECRET: secret,
   });
   if (parsed === null) throw new Error('key expected');
   return parsed;
@@ -85,12 +90,15 @@ describe('parseClientAddressKey', () => {
   });
 
   it.each([
-    [{ CLIENT_ADDRESS_KEY_ID: 'panel' }, 'together'],
-    [{ CLIENT_ADDRESS_KEY: PANEL_SECRET }, 'together'],
-    [{ CLIENT_ADDRESS_KEY_ID: 'Panel', CLIENT_ADDRESS_KEY: PANEL_SECRET }, 'CLIENT_ADDRESS_KEY_ID'],
-    [{ CLIENT_ADDRESS_KEY_ID: 'panel', CLIENT_ADDRESS_KEY: 'not base64!' }, 'base64'],
+    [{ BFF_CLIENT_ADDRESS_KEY_ID: 'panel' }, 'together'],
+    [{ BFF_CLIENT_ADDRESS_SECRET: PANEL_SECRET }, 'together'],
     [
-      { CLIENT_ADDRESS_KEY_ID: 'panel', CLIENT_ADDRESS_KEY: 'AAECAwQFBgcICQoLDA0ODw==' },
+      { BFF_CLIENT_ADDRESS_KEY_ID: 'Panel', BFF_CLIENT_ADDRESS_SECRET: PANEL_SECRET },
+      'BFF_CLIENT_ADDRESS_KEY_ID',
+    ],
+    [{ BFF_CLIENT_ADDRESS_KEY_ID: 'panel', BFF_CLIENT_ADDRESS_SECRET: 'not base64!' }, 'base64'],
+    [
+      { BFF_CLIENT_ADDRESS_KEY_ID: 'panel', BFF_CLIENT_ADDRESS_SECRET: 'AAECAwQFBgcICQoLDA0ODw==' },
       '32 bytes',
     ],
   ])('fails start-up for %j', (env, message) => {
@@ -100,11 +108,29 @@ describe('parseClientAddressKey', () => {
   it('never puts the secret in an error message', () => {
     try {
       parseClientAddressKey({
-        CLIENT_ADDRESS_KEY_ID: 'panel',
-        CLIENT_ADDRESS_KEY: 'AAECAwQFBgcICQoLDA0ODw==',
+        BFF_CLIENT_ADDRESS_KEY_ID: 'panel',
+        BFF_CLIENT_ADDRESS_SECRET: 'AAECAwQFBgcICQoLDA0ODw==',
       });
     } catch (error) {
       expect(String(error)).not.toContain('AAECAwQFBgcICQoLDA0ODw');
     }
+  });
+});
+
+describe('signForRequest', () => {
+  const key = { keyId: 'panel', secret: Buffer.from(PANEL_SECRET, 'base64') };
+
+  it('signs the address the panel server set', () => {
+    const headers = new Headers({ 'x-mp-client-address': '203.0.113.7' });
+    expect(signForRequest({ key, marketId: 'AU', headers, nowSeconds: 1791417600 })).toContain(
+      's=VBHNrLXY_bKDvCMXHp-hfnqKb98sQZ90DnvOVDTYIj8',
+    );
+  });
+
+  it('ignores a browser-sent x-client-address and refuses without the internal header', () => {
+    const headers = new Headers({ 'x-client-address': 'v1;k=panel;t=1;a=5.5.5.5;s=x' });
+    expect(() => signForRequest({ key, marketId: 'AU', headers, nowSeconds: 1 })).toThrow(
+      MissingClientAddressError,
+    );
   });
 });

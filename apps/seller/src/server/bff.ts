@@ -3,6 +3,11 @@
 // headers, sets `x-market-id` from the request host, and refuses an unsafe request that is not
 // same-origin, because the API's own origin check is fail-open when the headers are absent.
 
+import {
+  CLIENT_ADDRESS_HEADER,
+  MissingClientAddressError,
+  signForRequest,
+} from '@mondapac/panel-server/signer';
 import type { PanelConfig, PanelHost } from './config.ts';
 
 /** The paths this panel may reach, by method (its own population's identity routes). */
@@ -64,14 +69,35 @@ const jsonError = (status: number, code: string): Response =>
 const notFound = (): Response =>
   new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
 
-/** Headers for a request to the API: the allowlist plus the Market of the host. */
-export function upstreamHeaders(request: Request, host: PanelHost): Headers {
+/**
+ * Headers for a request to the API: the allowlist plus the Market of the host, and, when this
+ * panel has a signing key, the signed client address (ADR-0037). The browser's own
+ * `x-client-address` is never forwarded; the signer reads only `x-mp-client-address`, which
+ * `server.mjs` sets, and throws `MissingClientAddressError` when it is absent.
+ */
+export function upstreamHeaders(
+  request: Request,
+  host: PanelHost,
+  config: PanelConfig,
+  nowMilliseconds: () => number = Date.now,
+): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
   headers.set('x-market-id', host.marketId);
+  if (config.clientAddressKey !== null) {
+    headers.set(
+      CLIENT_ADDRESS_HEADER,
+      signForRequest({
+        key: config.clientAddressKey,
+        marketId: host.marketId,
+        headers: request.headers,
+        nowSeconds: Math.floor(nowMilliseconds() / 1000),
+      }),
+    );
+  }
   return headers;
 }
 
@@ -126,11 +152,19 @@ export async function relay(
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
   }
+  let outgoing: Headers;
+  try {
+    outgoing = upstreamHeaders(request, host, config);
+  } catch (error) {
+    if (!(error instanceof MissingClientAddressError)) throw error;
+    log({ msg: 'panel.relay.client-address-missing', method: request.method, path: target });
+    return jsonError(503, 'access.unavailable');
+  }
   let upstream: Response;
   try {
     upstream = await fetchImpl(`${config.apiBaseUrl}/${target}`, {
       method: request.method,
-      headers: upstreamHeaders(request, host),
+      headers: outgoing,
       ...(body === undefined ? {} : { body }),
       redirect: 'manual',
       cache: 'no-store',
