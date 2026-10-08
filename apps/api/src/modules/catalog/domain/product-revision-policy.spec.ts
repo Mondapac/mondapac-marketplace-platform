@@ -38,10 +38,23 @@ const change = (patch: Partial<RevisionSummary>): RevisionSummary => ({ ...publi
 
 describe('classify', () => {
   it('treats a product never published as sensitive', () => {
-    expect(classify(null, published, AU)).toEqual({
+    expect(classify(null, change({ imageIds: [] }), AU)).toEqual({
       sensitive: true,
       reasons: ['never-published'],
     });
+  });
+
+  it('sends the images of a first revision to review too, in every Market (H1)', () => {
+    for (const policy of [AU, SYNTHETIC]) {
+      expect(classify(null, published, policy)).toEqual({
+        sensitive: true,
+        reasons: ['never-published', 'image-added-or-replaced'],
+      });
+    }
+  });
+
+  it('flags a removed primary image', () => {
+    expect(classify(published, change({ imageIds: [] }), AU).reasons).toContain('primary-image');
   });
 
   it('finds no change in an identical revision, whatever the order of ids', () => {
@@ -127,6 +140,33 @@ describe('decideOutcome', () => {
   it('publishes everything but images at once when approval is off', () => {
     expect(seller(sensitive, false)).toMatchObject({ outcome: 'published', publishKind: 'auto' });
     expect(seller(neverPublished, false)).toMatchObject({ outcome: 'published' });
+  });
+
+  it('never publishes a first revision with images at once, even with approval off (H1)', () => {
+    const first = classify(null, published, AU);
+    expect(seller(first, false)).toMatchObject({ outcome: 'pending', publishKind: null });
+    expect(seller(first, true)).toMatchObject({ outcome: 'pending' });
+  });
+
+  it('publishes an admin revision at once, images or not (CAT-41)', () => {
+    for (const author of ['admin-platform', 'tax-override'] as const) {
+      expect(
+        decideOutcome({
+          classification: classify(null, published, AU),
+          approvalRequired: true,
+          sensitiveRevisionPending: true,
+          author,
+        }),
+      ).toMatchObject({ outcome: 'published', publishKind: 'admin-authored' });
+    }
+  });
+
+  it('decides the same change differently in the two Markets (AU reviews a category change)', () => {
+    const moved = change({ categoryIds: ['c9'] });
+    expect(seller(classify(published, moved, AU), true)).toMatchObject({ outcome: 'pending' });
+    expect(seller(classify(published, moved, SYNTHETIC), true)).toMatchObject({
+      outcome: 'published',
+    });
   });
 
   it('always sends a revision that adds or replaces an image to review (H1)', () => {

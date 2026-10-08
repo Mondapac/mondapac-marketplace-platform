@@ -57,4 +57,27 @@ describe('revisionContentHash', () => {
   ] as const)('changes with %s', (_name, patch) => {
     expect(revisionContentHash({ ...content, ...patch })).not.toBe(revisionContentHash(content));
   });
+
+  // The hash is persisted and recomputed by anyone: a change here is a format change.
+  it('keeps a pinned value for the sample content', () => {
+    expect(revisionContentHash(content)).toBe(
+      'sha256:ac402a3e46bb628a077afc6155f0e7573e09f685fa6fecee71a415ac5690e82f',
+    );
+  });
+
+  it('refuses content that has no canonical form', () => {
+    expect(() =>
+      revisionContentHash({ ...content, attributeValues: { weight: Number.NaN } }),
+    ).toThrow();
+  });
+
+  it('changes with a variant label and a nested locale value', () => {
+    const variant = content.variants[0]!;
+    expect(
+      revisionContentHash({ ...content, variants: [{ ...variant, labels: { en: 'XL' } }] }),
+    ).not.toBe(revisionContentHash(content));
+    expect(
+      revisionContentHash({ ...content, attributeValues: { brand: { en: 'Acme', fr: 'Acme' } } }),
+    ).not.toBe(revisionContentHash(content));
+  });
 });

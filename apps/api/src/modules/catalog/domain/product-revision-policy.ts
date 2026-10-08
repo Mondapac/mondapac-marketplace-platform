@@ -24,7 +24,7 @@ export interface SensitiveChangesPolicy {
   readonly taxCategory: boolean;
   readonly name: boolean;
   readonly primaryImage: boolean;
-  /** Any image added or replaced (Hassan, G1). Images always go to review anyway (H1). */
+  /** Kept for the Market config shape (7.1); ignored by `classify`, as images always go to review (H1). */
   readonly anyImage: boolean;
   readonly variantRemoved: boolean;
 }
@@ -61,7 +61,7 @@ function sameNames(
 
 /**
  * Classifies `candidate` against the `published` revision (null for a product never published).
- * A never-published product is always sensitive. Otherwise the reasons are the Market's
+ * A never-published product is always sensitive, and with images it also adds `image-added-or-replaced`. Otherwise the reasons are the Market's
  * sensitive fields that changed, plus `image-added-or-replaced` whenever the image set changed,
  * whatever the Market says (Hassan H1: text is machine-checked, photos are not).
  */
@@ -70,7 +70,12 @@ export function classify(
   candidate: RevisionSummary,
   policy: SensitiveChangesPolicy,
 ): Classification {
-  if (published === null) return { sensitive: true, reasons: ['never-published'] };
+  if (published === null) {
+    // Every first revision carries its images, so it goes to review even with approval off (H1).
+    const reasons: SensitiveReason[] = ['never-published'];
+    if (candidate.imageIds.length > 0) reasons.push('image-added-or-replaced');
+    return { sensitive: true, reasons };
+  }
   const reasons: SensitiveReason[] = [];
   if (policy.platformCategories && !sameSet(published.categoryIds, candidate.categoryIds)) {
     reasons.push('platform-categories');
