@@ -75,17 +75,14 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   Google-derived data. The lists are reviewed like any config change.
 - `reservedWords` (required; sellers slice 2b): `slugs` are whole shop slugs that are never held (site
   routes, platform names) and `claimWords` are the words a seller may not claim (certification
-  words such as the names of certification types). Each entry is lower-case letters, digits and
-  single hyphens, at most 50 characters. A claim word is matched per token (split on hyphens
-  and spaces): it makes a slug `slug.reserved`, and in a store name it is a reviewer flag that also
+  words and the platform's own name). A `slugs` entry is lower-case letters, digits and single
+  hyphens; a `claimWords` entry is lower-case letters and digits only (no hyphen, because it is
+  compared with one token), at least one entry, none repeated, each at most 50 characters. In a
+  slug a claim word as a hyphen-separated token makes it `slug.reserved`. In a store name the
+  name is split on anything that is not a letter or digit and each token is folded (accents,
+  look-alike letters and digits) before the comparison; a hit is a reviewer flag that also
   blocks the automatic approval. The lists are Market data, not literals in `sellers`' code
   (sellers design 3.5, Ali change 3); the claim group moves to a `certification` port later.
-
-`postcodePattern` runs on user input, so it must be anchored with `^` and `$`, at most 64
-characters, with no `*`, `+`, lookaround or back-reference and only bounded `{n}` or `{n,m}`
-repeats. Field keys and region names must not be `Object.prototype` members. The postcode and
-region fields must be required and different, and arrays and strings have size caps. Slice 2
-makes `sellers` mandatory for a `soft_launch` or `active` Market when it adds its first reader.
 
 ## `inventory` section (optional)
 

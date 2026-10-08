@@ -57,3 +57,22 @@ describe('parseShopSlug', () => {
     expect(parseShopSlug('halal-shop', words).ok).toBe(true);
   });
 });
+
+describe('parseShopSlug: normalisation edges (Hassan I1, Sajad)', () => {
+  it('refuses non-ASCII input instead of repairing it (Kelvin sign, full-width, dotted I)', () => {
+    for (const slug of ['shop-\u212a', '\uff41\uff42\uff43', '\u0130stanbul']) {
+      expect(parseShopSlug(slug, RESERVED_WORDS)).toEqual({
+        ok: false,
+        error: { code: 'slug.format' },
+      });
+    }
+  });
+
+  it('trims Unicode spaces before the length check, and checks the format before reserved', () => {
+    expect(parseShopSlug('\u2003' + 'a'.repeat(50) + '\u00a0', RESERVED_WORDS).ok).toBe(true);
+    expect(parseShopSlug('admin'.padEnd(51, 'x'), RESERVED_WORDS)).toEqual({
+      ok: false,
+      error: { code: 'slug.format' },
+    });
+  });
+});

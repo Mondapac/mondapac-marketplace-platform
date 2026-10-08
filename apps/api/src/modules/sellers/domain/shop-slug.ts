@@ -23,6 +23,8 @@ export function parseShopSlug(
   reserved: ReservedWords,
 ): Result<ShopSlug, SlugInvalid> {
   if (typeof raw !== 'string') return err({ code: 'slug.format' });
+  // ASCII only, checked before lower-casing: U+212A (Kelvin sign) would otherwise become `k`.
+  if (/[^\p{ASCII}]/u.test(raw.trim())) return err({ code: 'slug.format' });
   const slug = raw.trim().toLowerCase();
   if (slug.length < SLUG_MIN_LENGTH || slug.length > SLUG_MAX_LENGTH || !SLUG_PATTERN.test(slug)) {
     return err({ code: 'slug.format' });

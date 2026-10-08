@@ -89,7 +89,7 @@
     },
     "reservedWords": {
       "slugs": ["admin", "api", "zz-staff", "zzmart"],
-      "claimWords": ["blessed", "genuine", "pure"]
+      "claimWords": ["zzmart", "blessed", "genuine", "pure"]
     },
     "timezones": {
       "countries": ["JP", "NZ"],

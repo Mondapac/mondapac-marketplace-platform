@@ -405,9 +405,44 @@ describe('loadMarketConfigs', () => {
         /reservedWords/,
       ],
       [
+        'a hyphenated claim word, which could never match a token',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('non-gmo'),
+        /lower-case letters and digits, no hyphen/,
+      ],
+      [
+        'an empty claim word list, which would switch the claim check off',
+        (c: typeof SELLERS) => void (c.reservedWords.claimWords = []),
+        /expected array to have >=1 items/,
+      ],
+      [
+        'a repeated claim word',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('gold'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a repeated reserved slug',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('admin'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a reserved slug longer than 50 characters',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('a'.repeat(51)),
+        /too big|<=50/,
+      ],
+      [
+        'an unknown key in reservedWords',
+        (c: typeof SELLERS) => void ((c.reservedWords as Record<string, unknown>).extra = []),
+        /unrecognized/i,
+      ],
+      [
         'a reserved word that is not a slug token',
-        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('Not A Token'),
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('Not A Token'),
         /lower-case letters, digits and single hyphens/,
+      ],
+      [
+        'a claim word with upper case',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('Gold2'),
+        /lower-case letters and digits, no hyphen/,
       ],
       [
         'no approval policy: a Market never defaults it',
