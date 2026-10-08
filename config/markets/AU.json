@@ -94,17 +94,41 @@
       "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
     },
     "timezones": {
+      "countries": ["AU"],
       "byRegion": {
-        "ACT": "Australia/Sydney",
-        "NSW": "Australia/Sydney",
-        "NT": "Australia/Darwin",
-        "QLD": "Australia/Brisbane",
-        "SA": "Australia/Adelaide",
-        "TAS": "Australia/Hobart",
-        "VIC": "Australia/Melbourne",
-        "WA": "Australia/Perth"
-      },
-      "postcodeExceptions": []
+        "ACT": {
+          "default": "Australia/Sydney",
+          "selectable": ["Australia/Sydney"]
+        },
+        "NSW": {
+          "default": "Australia/Sydney",
+          "selectable": ["Australia/Sydney", "Australia/Broken_Hill", "Australia/Lord_Howe"]
+        },
+        "NT": {
+          "default": "Australia/Darwin",
+          "selectable": ["Australia/Darwin"]
+        },
+        "QLD": {
+          "default": "Australia/Brisbane",
+          "selectable": ["Australia/Brisbane", "Australia/Lindeman"]
+        },
+        "SA": {
+          "default": "Australia/Adelaide",
+          "selectable": ["Australia/Adelaide"]
+        },
+        "TAS": {
+          "default": "Australia/Hobart",
+          "selectable": ["Australia/Hobart"]
+        },
+        "VIC": {
+          "default": "Australia/Melbourne",
+          "selectable": ["Australia/Melbourne"]
+        },
+        "WA": {
+          "default": "Australia/Perth",
+          "selectable": ["Australia/Perth", "Australia/Eucla"]
+        }
+      }
     }
   },
   "inventory": {

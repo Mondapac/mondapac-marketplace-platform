@@ -61,17 +61,18 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   120), which of them is the `postcodeField` and the optional `regionField`, the
   `postcodePattern` (a regular expression) and the `regions` list. `regionField` and a non-empty
   `regions` go together.
-- `timezones`: `byRegion` names an IANA zone for exactly the regions of `address.regions`, and
-  `postcodeExceptions` lists postcodes (or same-length digit ranges) whose zone differs from their
-  region's. Never an offset (ADR-0005). An entry is an exact postcode (letters and digits, no
-  hyphen) or a digit range with ends of equal length, low to high, the same grammar as
-  `config/service-areas/`. A Market whose real postcodes contain a hyphen cannot list them yet;
-  the grammar grows when such a Market is added. Every exception must also match
-  `postcodePattern`, and no postcode may appear in two exceptions.
-
-The AU `postcodeExceptions` list is empty until the zone table of sellers spike 3 (a source whose
-licence allows a checked-in file) is done: Broken Hill, Lord Howe Island and Eucla are among the
-postcodes it will name. Until then sellers there are outside the open ServiceArea anyway.
+- `timezones`: `countries` lists the ISO 3166-1 countries whose zones the Market may use (the
+  Market code is not always a country); `byRegion` names, for exactly the regions of
+  `address.regions`, a `default` IANA zone (the zone a saved address starts with) and the closed
+  `selectable` list the seller may choose from; `default` is one of `selectable`. Boot fails when a
+  zone is not in the runtime's `Intl` zone list (which refuses `Etc/*`, offsets, abbreviations and
+  most `backward` links such as `Australia/NSW`), when it belongs to none of `countries`
+  (`Intl.Locale.getTimeZones`, so `Asia/Tokyo` cannot be listed for an Australian region), or when
+  a list repeats a zone. The list is in ICU's spelling, which is not always tzdb's (`Asia/Calcutta`
+  rather than `Asia/Kolkata` on Node 24): a Market whose zones differ between the two needs a look
+  when the runtime moves. Never an offset (ADR-0005). The seller chooses within the list (sellers
+  spike 3 record, mini-review 2026-10-08); there is no postcode-exception table and no
+  Google-derived data. The lists are reviewed like any config change.
 
 `postcodePattern` runs on user input, so it must be anchored with `^` and `$`, at most 64
 characters, with no `*`, `+`, lookaround or back-reference and only bounded `{n}` or `{n,m}`

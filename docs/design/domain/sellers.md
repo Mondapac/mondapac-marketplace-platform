@@ -288,7 +288,7 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 | `registerLookup.maxResultAge`, `perAccountLimit`, `reviewerLimit`, `perOriginLimit`, `marketDailyBudget`, `recheckInterval` | 30 days; 5 new values per account per 24 h; 30 per admin per 24 h; 30 per origin per 24 h; 1,000 per Market per 24 h; 90 days (Hassan, 6.5) | Small values | 7.7 |
 | `taxRegistration.questionKey` | "Registered for GST" key | Its own | Draft, `SellerTaxProfile` |
 | `address.format` | Fields and their order; postcode pattern; region list | Different fields | `AddressFormat` |
-| `timezones` | Region → IANA zone, with postcode exceptions (data file) | Its own | `TimezoneResolver` |
+| `timezones` | Region → `{ default, selectable[] }` IANA zones: the zone a saved address starts with and the closed list the seller chooses from; no postcode exceptions (amended 2026-10-08, spike 3 record, PR #96) | Its own (one region with two zones) | `TimezoneResolver` |
 | `reviewChecks` | Codes and translation keys of the reviewer's named checks, which are required, and `manual-register-check` | A smaller list | 3.1, 7.3 |
 | `rejectReasons` | Codes and translation keys of the prepared reasons (brief s7) | Its own | Bulk reject, identity change |
 | `approvalRequired` | `true`: the checked-in default that seeds the ADR-0026 store; once seeded, the store is the source of truth and a change here no longer changes a live Market (14.1) | `false` | 7.3, AC 12, AC 19. The safe value (`true`) is in `sellers`' code, not here (ADR-0026 decision 5) |
@@ -300,7 +300,7 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 |---|---|---|
 | `BusinessIdentifierScheme` | One file per scheme in `infrastructure/identifier-schemes/` (`abn`, `zz-corp-no`) | `normalise(text)`, `validate(normalised)` → `ok` or `identifier.format` / `identifier.checksum`; `display(normalised)`. Pure; no I/O. A value valid in ZZ is refused in AU (AC 3) |
 | `AddressFormat` | One per Market format | Validates the fields of `address.format`; returns the postcode and region for the next two ports |
-| `TimezoneResolver` | One adapter reading `timezones` | Region and postcode → IANA zone, or `timezone.unresolved` (then the seller cannot submit and the reviewer is told). Never an offset (ADR-0005 decision 1). The seller sees the zone; only an admin corrects it, audited (16.2 item 4). AC 8 runs on the Brisbane, Sydney, Adelaide and Perth fixtures |
+| `TimezoneResolver` | One adapter reading `timezones` | Region → its `default` zone and `selectable` list; the seller chooses within the list and the domain refuses any other zone, free text, an offset or `Etc/*`. Never an offset (ADR-0005 decision 1). Amended 2026-10-08 (spike 3 record, PR #96): the postcode input, `timezone.unresolved` and the admin-only correction (16.2 item 4) are replaced by the seller's choice; AC 8 runs on the Brisbane, Sydney, Adelaide and Perth fixtures and a ZZ region with two zones. The rest of the amendment (6.2, 7.1a, AC 8) is applied by Mohammad with the certification amendment |
 | `BusinessRegisterLookup` | `none`, `fake`, `abr` (named after the register, no Market code inside) | 7.7 |
 
 These are module-internal strategies chosen by a configuration value, like `identity`'s policy
