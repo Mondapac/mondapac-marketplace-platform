@@ -217,7 +217,7 @@ prefix `(market_id, type_revision_id)`. Tens of rows per type.
 | `self_declaration_note_ciphertext` | `text` | yes | **Personal**, Enc |
 | `field_provenance` | `jsonb` | yes | Slice 16; as 3.4 |
 | `content_schema_version` | `smallint` | no | CHECK `>= 1` |
-| `content_hash` | `text` | no | `SubjectKeyService.hmac` (D 10.2); CHECK length 1 to 128 until `ContentHash` is fixed (SL-data 3.2) |
+| `content_hash` | `text` | no | `SubjectKeyService.hmac` (D 10.2); CHECK `content_hash ~ '^hmac-sha256:[0-9a-f]{64}$'` (`ContentHash`, `docs/design/domain/platform-audit.md` 6.3; replaces the length 1 to 128 placeholder; signed off by Mojtaba 2026-10-08) |
 | `submitted_zone` | `text` | no | The seller's zone at submission (D 2.1), CHECK CE6 |
 | `submitted_at` | `timestamptz(6)` | no | |
 | `submitted_by_account_id` | `uuid` | no | C4 |
@@ -458,7 +458,8 @@ product_certification_id, type_id)` → root (CE4); `type_id`; `revision_no` uni
 `issuer_id`, FK `(market_id, issuer_id, type_id)` → `issuers`; `manufacturer_name`;
 `certificate_number_ciphertext text NOT NULL` (Enc, platform key; ruling: confidential);
 `issue_date`, `expiry_date`; `author_account_id uuid NOT NULL` (the record's creator); `content_hash`
-(over ciphertext or an HMAC under the platform key, ADR-0009 decision 6); `submitted_by_account_id`;
+(over ciphertext or an HMAC under the platform key, ADR-0009 decision 6; CHECK `^(sha256|hmac-sha256):[0-9a-f]{64}$`,
+`ContentHash`, signed off by Mojtaba 2026-10-08: both kinds until the design picks one, then the one kind); `submitted_by_account_id`;
 `submitted_at`. Unique `(market_id, id)`, `(market_id, product_certification_id, id)` (pointer
 target), `(market_id, id, type_id)`, `(market_id, id, issuer_id)`, `(market_id, id,
 author_account_id)`. Insert-only (CE3).
@@ -551,9 +552,15 @@ published_at IS NULL`. Aggregate types: `certification-type`, `issuer`, `issuer-
 codes and enums only (D 8.3). Added to the "every outbox has the same columns" test.
 
 `platform.audit_log` and `platform.event_delivery` are unchanged: the actions of D 11 fit
-`audit_log_action_check`, and `certification.<handler>` fits the `subscriber` CHECK. The change
-reason of a policy or type revision is the one free-text value in a `certification` audit row (D
-3.7): admin-written, at most 500 characters, plain text.
+`audit_log_action_check`, and `certification.<handler>` fits the `subscriber` CHECK. No
+`certification` audit row holds free text (amended 2026-10-08, Q3 of
+`docs/design/domain/platform-audit.md`, Ali; D 3.7): the change reason is stored only on the
+revision (3.2) or on the relaxation proposal (3.20), and the audit row carries that revision or
+proposal id and `reasonGiven` (boolean). The stored reason is still insert-only text that cannot be
+erased (Hassan L5): before slice 2, the first slice that writes a reason, merges, either the column
+becomes a ciphertext under a destroyable key or the owner accepts the residual risk through counsel
+(D 3.7). If it becomes a ciphertext, `change_reason` turns into `change_reason_ciphertext` in 3.2
+and 3.20 with the S7 checks on the plaintext in the domain layer.
 
 ### 3.20 `relaxation_proposals` (slice 2; subjects added in 12 and 13; D 7.6, 16.1 items 3 and 11)
 
