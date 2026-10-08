@@ -1,9 +1,9 @@
 # ADR-0037: Trusted Client Address from the BFF Servers
 
-**Status:** Proposed — 2026-10-08. For Ali (cto); Hassan (security-tester) reviewed the design
-(APPROVE-WITH-CONDITIONS, conditions 1 to 8 written in below) and must confirm the
-implementation before it merges; Kazem (devops-engineer) decides the values of decision 4 and
-decision 9 and the secret store.
+**Status:** Accepted — 2026-10-08 (Ali, cto), on the design review of Hassan (security-tester,
+APPROVE-WITH-CONDITIONS 1 to 8, written in). Hassan must still confirm the implementation (PR c)
+before it merges. Kazem (devops-engineer) sets the values of decisions 4 and 9 and the secret
+store in the deployment slice.
 **Amends:** ADR-0034 decision 3 (the "Client address" rule), ADR-0015 decision 3 (the
 trust-proxy part of the "Baseline HTTP hardening" row).
 **Relates to:** ADR-0003 (Region Stack), ADR-0005 (Clock), ADR-0018, ADR-0020 decisions 3 and 8
@@ -129,8 +129,8 @@ that reaches the API could send one, and a hop count needs deployment facts that
     this ADR (an HMAC proof plus a pinned network, not a trust-proxy hop count on the API).
     ADR-0015 decision 3, "Baseline HTTP hardening" row: `trust proxy` stays off on the API; the
     client address behind a BFF comes from this ADR, and a hop count applies only to the BFF's own
-    edge (decision 9). Identity 6.8's "socket only" rule now reads "the socket, or the address
-    proven by a BFF under this ADR".
+    edge (decision 9). Identity 6.8's Origin row now says the client address is "the socket
+    address, or the address a BFF proves under ADR-0037".
 
 ### Test vectors
 The signer and the verifier must both reproduce these (computed with Node's
@@ -149,6 +149,9 @@ Vector 1 as a header: `x-client-address: v1;k=panel;t=1791417600;a=203.0.113.7;s
 Vectors 1 and 2 differ only in the Market: vector 1's header sent with `x-market-id: ZZ` is refused.
 
 ## Consequences
+- Delivered as (a) this ADR; (b) shared files `.env.example` and the ESLint rule, announced on
+  the board; (c) one atomic backend slice (config, middleware, rate limiter, six identity
+  controllers, sellers reader, tests). Hassan's review and QC are mandatory on (c).
 - Two browsers behind one BFF get separate origin buckets; ADR-0034's sign-in gate is met on the
   API side (Hassan's N5 and the API side of I4). The edge-to-BFF hop stays open until the
   deployment slice (decision 9).

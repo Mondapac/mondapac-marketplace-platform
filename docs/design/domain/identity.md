@@ -708,7 +708,7 @@ at boot and never logged (Hassan, H4), also for unknown addresses.
 |---|---|
 | Reserve before verifying (HF1) | A short write unit increases every counter that applies (`attempts + 1 … RETURNING`) and refuses at the threshold without hashing; the unit after the check releases the reservation on success. N parallel requests therefore get no more guesses than the threshold. Challenges: `UPDATE … WHERE attempts < 5` before the code is checked |
 | Fail closed | If the counter table cannot be reached, the attempt is refused (`access.unavailable`) and nothing is hashed |
-| Origin | The client address once the trust-proxy setting of PF 7 item 6 is fixed: the IPv4 address, or the IPv6 /64 (HF3). *(Amended by ADR-0037: "socket only" now reads "the socket, or the address a BFF proves with a signed `x-client-address` header from a pinned network"; `X-Forwarded-For` stays ignored. One function of `platform/http/client-address.ts` resolves it for every reader.)* |
+| Origin | The client address once the trust-proxy setting of PF 7 item 6 is fixed: the IPv4 address, or the IPv6 /64 (HF3). *(Amended by ADR-0037: the client address is "the socket address, or the address a BFF proves under ADR-0037", the latter a signed `x-client-address` header from a pinned network; `X-Forwarded-For` stays ignored. One function of `platform/http/client-address.ts` resolves it for every reader.)* |
 | Per Market | Every counter, origin counters included, is kept per Market (decided by Ali, A6); the generic limiter is the cross-Market control |
 | Windows | Fixed windows with a block instant (M11); no row per attempt |
 | Uniform | A throttled attempt answers alike for an unknown address |
