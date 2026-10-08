@@ -1,5 +1,11 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import {
+  INVENTORY_POLICY_PROVIDER,
+  type InventoryPolicyProvider,
+} from '../application/ports/inventory-policy-provider';
+import { ConfigInventoryPolicyProvider } from './config-inventory-policy-provider';
 import {
   SELLER_INVENTORY_REPOSITORY,
   type SellerInventoryRepository,
@@ -16,5 +22,11 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerInventoryRepository =>
       new PrismaSellerInventoryRepository(prisma),
+  },
+  {
+    provide: INVENTORY_POLICY_PROVIDER,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): InventoryPolicyProvider =>
+      new ConfigInventoryPolicyProvider(markets),
   },
 ];

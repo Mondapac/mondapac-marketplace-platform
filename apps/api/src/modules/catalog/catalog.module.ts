@@ -1,5 +1,5 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -11,6 +11,17 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { ATTRIBUTE_REPOSITORY } from './application/ports/attribute.repository';
 import { ATTRIBUTE_SEED } from './application/ports/attribute-seed';
+import { CATALOG_MARKET_POLICY } from './application/ports/catalog-market-policy';
+import { CLAIM_TEXT_MATCHER } from './application/ports/claim-text-matcher';
+import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
+import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
+import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
+import { WORKING_COPY_REPOSITORY } from './application/ports/working-copy.repository';
+import { CheckClaimText } from './application/claim-text/check-claim-text.service';
+import { SaveDraft } from './application/working-copy/save-draft.service';
+import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
+import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
+import { CATALOG_PERMISSIONS } from './contracts/permissions';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
 import { SeedAttributes } from './application/use-cases/seed-attributes.use-case';
@@ -45,6 +56,15 @@ const PORT = {
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
   ids: ID_GENERATOR,
+  products: PRODUCT_REPOSITORY,
+  workingCopies: WORKING_COPY_REPOSITORY,
+  counters: RATE_COUNTER_REPOSITORY,
+  counterKeys: RATE_COUNTER_KEYS,
+  policy: CATALOG_MARKET_POLICY,
+  matcher: CLAIM_TEXT_MATCHER,
+  check: CheckClaimText,
+  save: SaveWorkingCopy,
+  saveDraft: SaveDraft,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -64,6 +84,20 @@ function useCaseProvider<D, U>(
     inject: [USE_CASE_GATE, ...names.map((name) => PORT[name])],
     useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
       new type(gate, Object.fromEntries(names.map((name, index) => [name, values[index]])) as D),
+  };
+}
+
+/** The provider of an internal service (no gate, no access declaration): its named ports. */
+function serviceProvider<D, U>(
+  type: new (deps: D) => U,
+  ports: { readonly [K in keyof D]-?: K extends PortName ? true : never },
+): FactoryProvider<U> {
+  const names = Object.keys(ports) as PortName[];
+  return {
+    provide: type,
+    inject: names.map((name) => PORT[name]),
+    useFactory: (...values: unknown[]) =>
+      new type(Object.fromEntries(names.map((name, index) => [name, values[index]])) as D),
   };
 }
 
@@ -104,7 +138,36 @@ const productTypeProvider: FactoryProvider<string> = {
         return true;
       },
     },
+    // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
+    registerPermissions('catalog', CATALOG_PERMISSIONS),
     ...catalogProviders,
+    serviceProvider(CheckClaimText, {
+      unitOfWork: true,
+      matcher: true,
+      counters: true,
+      counterKeys: true,
+      policy: true,
+      clock: true,
+    }),
+    serviceProvider(SaveWorkingCopy, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      counters: true,
+      counterKeys: true,
+      policy: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    serviceProvider(SaveDraft, {
+      unitOfWork: true,
+      check: true,
+      save: true,
+      workingCopies: true,
+      policy: true,
+    }),
+    useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,

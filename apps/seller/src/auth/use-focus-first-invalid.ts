@@ -12,6 +12,10 @@ export function useFocusFirstInvalid(
 ): void {
   useEffect(() => {
     if (Object.keys(errors).length === 0) return;
-    form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    const root = form.current;
+    (
+      root?.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+      root?.querySelector<HTMLElement>('[data-form-problem]')
+    )?.focus();
   }, [form, errors]);
 }

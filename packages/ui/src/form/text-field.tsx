@@ -11,6 +11,12 @@ export interface TextFieldProps extends Omit<
   readonly help?: ReactNode;
   /** Error text; setting it marks the field invalid. */
   readonly error?: string | undefined;
+  /** Fixed text before the value, shown inside the control (a storefront address). Left-to-right. */
+  readonly prefix?: string;
+  /** A status line under the control (a `FieldStatus`); it is part of the field's description. */
+  readonly status?: ReactNode;
+  /** Marks the label "(optional)"; the text is the Market-neutral word from the caller. */
+  readonly optionalLabel?: string;
   /** Password fields get a show/hide toggle; these are its labels. */
   readonly showLabel?: string;
   readonly hideLabel?: string;
@@ -23,6 +29,9 @@ export function TextField({
   error,
   showLabel,
   hideLabel,
+  prefix,
+  status,
+  optionalLabel,
   type = 'text',
   className,
   ...rest
@@ -30,22 +39,37 @@ export function TextField({
   const id = useId();
   const helpId = `${id}-help`;
   const errorId = `${id}-error`;
+  const statusId = `${id}-status`;
   const [revealed, setRevealed] = useState(false);
   const isPassword = type === 'password' && showLabel !== undefined && hideLabel !== undefined;
-  const describedBy = [help ? helpId : null, error ? errorId : null].filter(Boolean).join(' ');
+  const describedBy = [help ? helpId : null, status ? statusId : null, error ? errorId : null]
+    .filter(Boolean)
+    .join(' ');
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-fg">
         {label}
+        {optionalLabel ? (
+          <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
+        ) : null}
       </label>
-      <div className="relative">
+      <div className="relative flex items-center">
+        {prefix ? (
+          <span
+            dir="ltr"
+            className="flex h-(--mp-size-control) items-center rounded-s-md border border-e-0 border-line-input bg-subtle px-3 text-fg-muted"
+          >
+            {prefix}
+          </span>
+        ) : null}
         <input
           id={id}
           type={isPassword && revealed ? 'text' : type}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
           className={[
-            'h-(--mp-size-control) w-full rounded-md border bg-surface px-3 text-fg',
+            'h-(--mp-size-control) w-full border bg-surface px-3 text-fg',
+            prefix ? 'rounded-e-md' : 'rounded-md',
             error ? 'border-critical-solid' : 'border-line-input',
             isPassword ? 'pe-20' : '',
             className ?? '',
@@ -70,6 +94,7 @@ export function TextField({
           {help}
         </p>
       ) : null}
+      {status ? <div id={statusId}>{status}</div> : null}
       {error ? (
         <p id={errorId} className="text-sm text-critical-fg">
           {error}

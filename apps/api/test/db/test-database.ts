@@ -48,7 +48,9 @@ function exported(
     | 'TEST_INVENTORY_OWNER_DATABASE_URL'
     | 'TEST_AUDIT_DATABASE_URL'
     | 'TEST_AUDIT_OWNER_DATABASE_URL'
-    | 'TEST_ADMIN_TEAM_DATABASE_URL',
+    | 'TEST_ADMIN_TEAM_DATABASE_URL'
+    | 'TEST_CERTIFICATION_DATABASE_URL'
+    | 'TEST_CERTIFICATION_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -155,3 +157,15 @@ export function adminTeamTestDatabaseUrl(): string {
 }
 
 export { REPO_ROOT };
+
+/**
+ * The copy that certification-published-types-reader.db-spec.ts reads whole Markets on, as the
+ * application login and as its owner.
+ */
+export function certificationTestDatabaseUrl(): string {
+  return exported('TEST_CERTIFICATION_DATABASE_URL');
+}
+
+export function certificationOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CERTIFICATION_OWNER_DATABASE_URL');
+}
