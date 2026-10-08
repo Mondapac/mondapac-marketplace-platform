@@ -1,4 +1,4 @@
--- Reverses 20261008120933_platform_audit_seal (docs/design/data/platform.md 11.10): grants first, then the
+-- Reverses 20261008140000_platform_audit_seal (docs/design/data/platform.md 11.10): grants first, then the
 -- triggers and tables, the function, the audit_log CHECKs, and last the index swap (the unique index
 -- can go only after the foreign key that depends on it). Fails once an ANONYMOUS row exists, which is
 -- correct (identity data 8.2).
