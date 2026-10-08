@@ -5,6 +5,7 @@ import { applyClientAddress, parseClientAddressSource } from './client-address-s
 import { createPanelServer } from './server.ts';
 
 interface Seen {
+  socket: unknown;
   headers: Record<string, string | string[] | undefined>;
   rawHeaders: string[];
 }
@@ -23,7 +24,11 @@ async function start(env: Record<string, string>, host = '127.0.0.1') {
     source: parseClientAddressSource(env),
     warn: (line) => warnings.push(line),
     handle: (req: IncomingMessage, res) => {
-      seen.push({ headers: { ...req.headers }, rawHeaders: [...req.rawHeaders] });
+      seen.push({
+        socket: req.socket,
+        headers: { ...req.headers },
+        rawHeaders: [...req.rawHeaders],
+      });
       res.end('ok');
     },
   });
@@ -56,6 +61,10 @@ function send(
 }
 
 const SPOOFS = [
+  'X-Real-IP',
+  '3.3.3.3',
+  'x-REAL-ip',
+  '2.2.2.2',
   'X-Forwarded-For',
   '9.9.9.9',
   'x-forwarded-for',
@@ -83,8 +92,9 @@ describe('socket mode', () => {
       .filter((_, index) => index % 2 === 0)
       .map((n) => n.toLowerCase());
     expect(names.filter((name) => name === 'x-mp-client-address')).toHaveLength(1);
-    expect(names).not.toContain('x-forwarded-for');
-    expect(names).not.toContain('forwarded');
+    for (const name of ['x-forwarded-for', 'forwarded', 'x-real-ip', 'x-client-address']) {
+      expect(names).not.toContain(name);
+    }
   });
 });
 
@@ -112,6 +122,50 @@ describe('an IPv6 peer', () => {
     expect(inside.headers['x-mp-client-address']).toBe('203.0.113.50');
     expect(applyClientAddress(fake('2001:db8:1::5'), source)).toBe(false);
   });
+});
+
+describe('edge peers on a dual-stack listener and unknown peers', () => {
+  const fake = (remoteAddress: string | undefined, rawHeaders: string[] = []) =>
+    ({ socket: { remoteAddress }, headers: {}, rawHeaders }) as unknown as IncomingMessage;
+  const source = parseClientAddressSource({
+    CLIENT_ADDRESS_SOURCE: 'edge',
+    EDGE_CIDRS: '127.0.0.0/16',
+    EDGE_CLIENT_ADDRESS_HEADER: 'x-edge',
+  });
+
+  it('treats an IPv4-mapped peer inside the IPv4 range as the edge', () => {
+    const inside = fake('::ffff:127.0.0.5', ['X-Edge', '203.0.113.50']);
+    expect(applyClientAddress(inside, source)).toBe(true);
+    expect(inside.headers['x-mp-client-address']).toBe('203.0.113.50');
+    expect(applyClientAddress(fake('::ffff:127.0.0.5'), source)).toBe(false);
+  });
+
+  it('uses an IPv4-mapped peer outside the range as plain IPv4 and ignores the edge header', () => {
+    const outside = fake('::ffff:127.1.0.1', ['X-Edge', '9.9.9.9']);
+    expect(applyClientAddress(outside, source)).toBe(true);
+    expect(outside.headers['x-mp-client-address']).toBe('127.1.0.1');
+    expect(outside.headers['x-edge']).toBeUndefined();
+  });
+
+  it('puts the range boundary at the last and first address', () => {
+    const last = fake('127.0.255.255', ['x-edge', '203.0.113.1']);
+    applyClientAddress(last, source);
+    expect(last.headers['x-mp-client-address']).toBe('203.0.113.1');
+    const first = fake('127.1.0.0', ['x-edge', '203.0.113.1']);
+    applyClientAddress(first, source);
+    expect(first.headers['x-mp-client-address']).toBe('127.1.0.0');
+  });
+
+  it.each([undefined, '', 'unix:/tmp/s', 'fe80::1%eth0'])(
+    'refuses peer %j and reports it',
+    (peer) => {
+      const reasons: string[] = [];
+      const request = fake(peer, ['x-edge', '203.0.113.1']);
+      expect(applyClientAddress(request, source, (reason) => reasons.push(reason))).toBe(false);
+      expect(reasons).toEqual(['peer-unknown']);
+      expect(request.headers['x-mp-client-address']).toBeUndefined();
+    },
+  );
 });
 
 describe('edge mode', () => {
@@ -169,10 +223,71 @@ describe('edge mode', () => {
     await send(target, ['cf-connecting-ip', '203.0.113.2'], agent);
     await send(target, ['cf-connecting-ip', '203.0.113.3'], agent);
     agent.destroy();
+    // One socket served all three, so the edge value is read per request, not per connection.
+    expect(new Set(target.seen.map((entry) => entry.socket)).size).toBe(1);
     expect(target.seen.map((entry) => entry.headers['x-mp-client-address'])).toEqual([
       '203.0.113.1',
       '203.0.113.2',
       '203.0.113.3',
     ]);
+  });
+
+  it('serves a good request on a new connection after a refusal', async () => {
+    const target = await start(edge);
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+    expect(await send(target, [], agent)).toBe(400);
+    expect(await send(target, ['cf-connecting-ip', '203.0.113.9'], agent)).toBe(200);
+    agent.destroy();
+    expect(target.seen[0]?.headers['x-mp-client-address']).toBe('203.0.113.9');
+  });
+});
+
+describe('the upgrade handler (dev hot reload)', () => {
+  const upgradeRequest = (remoteAddress: string, rawHeaders: string[]) =>
+    ({ socket: { remoteAddress }, headers: {}, rawHeaders }) as unknown as IncomingMessage;
+
+  function bare(env: Record<string, string>) {
+    const upgraded: IncomingMessage[] = [];
+    const warnings: string[] = [];
+    const created = createPanelServer({
+      source: parseClientAddressSource(env),
+      warn: (line) => warnings.push(line.reason),
+      handle: () => undefined,
+      handleUpgrade: (req) => upgraded.push(req),
+    });
+    return { created, upgraded, warnings };
+  }
+
+  it('scrubs and sets the internal header before the upgrade is handled', () => {
+    const { created, upgraded } = bare({ CLIENT_ADDRESS_SOURCE: 'socket' });
+    const request = upgradeRequest('203.0.113.4', [
+      'X-Forwarded-For',
+      '9.9.9.9',
+      'X-MP-Client-Address',
+      '8.8.8.8',
+    ]);
+    request.headers['x-forwarded-for'] = '9.9.9.9';
+    created.emit('upgrade', request, { destroy: () => undefined }, Buffer.alloc(0));
+    expect(upgraded).toHaveLength(1);
+    expect(upgraded[0]?.headers['x-forwarded-for']).toBeUndefined();
+    expect(upgraded[0]?.headers['x-mp-client-address']).toBe('203.0.113.4');
+  });
+
+  it('destroys the socket without handling the upgrade when an edge peer sends no address', () => {
+    const { created, upgraded, warnings } = bare({
+      CLIENT_ADDRESS_SOURCE: 'edge',
+      EDGE_CIDRS: '127.0.0.0/16',
+      EDGE_CLIENT_ADDRESS_HEADER: 'x-edge',
+    });
+    let destroyed = false;
+    created.emit(
+      'upgrade',
+      upgradeRequest('127.0.0.1', []),
+      { destroy: () => (destroyed = true) },
+      Buffer.alloc(0),
+    );
+    expect(destroyed).toBe(true);
+    expect(upgraded).toHaveLength(0);
+    expect(warnings).toEqual(['edge-header-missing']);
   });
 });
