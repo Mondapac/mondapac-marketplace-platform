@@ -70,7 +70,7 @@ Rejected alternative: writing audit through the outbox, with a consumer writing 
   - `targetType` (`<module>.<type>`);
   - `actors` (a non-empty subset of `authenticated`, `system`, `anonymous`);
   - optional `before` and `after` field maps.
-- Field kinds come only from the closed payload vocabulary of P 5.3: `id`, `enumOf`, `boolean`, `integer`, `instant`, `permissionKey`, `listOf`, `optional`. No kind accepts free text.
+- Field kinds come only from the closed payload vocabulary of P 5.3: `id`, `enumOf`, `boolean`, `integer`, `instant`, `permissionKey`, `listOf`, `optional`, plus `money` (audit rows only, below). No kind accepts free text.
 - `listOf` takes a required maximum length in the definition (Hassan L3). A definition without one fails at boot.
 - `targetId` is an `Id`, or a value of a declared `enumOf` (a natural key).
 - `AuditActionCatalogue` works like `EventCatalogue`:
@@ -78,7 +78,17 @@ Rejected alternative: writing audit through the outbox, with a consumer writing 
   - a platform component binds its own writer under `platform.<component>.*`, and that prefix counts as its own first segment (for example `platform.ai.market-settings.changed`, ADR-0026; `platform.audit-log.viewed`, Q4; Ali);
   - it is sealed after boot, and the same in both roles;
   - a contracts test compares it with a checked-in snapshot, so Hassan reads every new action in the diff.
-- `money` joins the vocabulary when `Money` lands (sellers 9 `minimum-order.changed`). The design of the vocabulary does not change for it.
+- `money` has joined the vocabulary (`auditField.money()`; pricing design 21, condition (h)). The design of the vocabulary did not change for it.
+  - The value is a kernel `Money`: an amount above zero, in a known ISO 4217 currency. Its jsonb form is `{"amount": "<minor units as a digit string>", "currency": "<code>"}`.
+  - The amount follows the `parseMinorUnits` rules: digits only, no sign, no leading zero, at most 16 digits. The row and its hash never hold a float or a bigint, so the canonical JSON and the hash chain are deterministic.
+  - Zero, a negative amount, 17 or more digits, a number or a string amount, and an unknown or lower-case currency are refused as `invalid` (W4). Each property is read once; nothing else of the value is written.
+  - `money` may be wrapped by `optional` and `listOf`, and is never a `targetId`. The snapshot describes it as `money`.
+  - Own properties only: an `amount` or `currency` inherited from a prototype is refused (Hassan L1).
+  - The catalogue contracts test keeps Cost out of the audit log (ADR-0024; Hassan H2, M1). It checks, over every action of every module, `before` and `after`, with `optional` and `listOf` unwrapped:
+    1. a `money` field must be on a checked-in allow-list of `<action>.<side>.<field>` entries (empty today); a new money field fails the test until a reviewed change adds it;
+    2. no `money` or `integer` field on a `pricing.` action with a name segment (split on `.` and `-`) that starts with `cost`;
+    3. no `money` or `integer` field whose name contains `cost` (case-insensitive), in any module.
+    A negative test proves each rule catches a violation. The test reads declared kinds, so it cannot see a value smuggled into another kind; no kind accepts free text (above).
 - `anonymous` in `actors` is allowed only where the use case's credential binds exactly one account or invitation (data identity 6), and only with `boundSubjectId` (W4a). Hassan reviews each such action in the snapshot diff.
 - **No free-text exception.** certification.md 11 no longer stores a change reason in an audit row: the reason stays on the revision and the row carries the revision id and `reasonGiven` (Q3, decided by Ali).
 

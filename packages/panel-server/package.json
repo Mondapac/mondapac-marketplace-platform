@@ -1,26 +1,24 @@
 {
-  "name": "@mondapac/ui",
+  "name": "@mondapac/panel-server",
   "version": "0.0.0",
   "private": true,
-  "description": "Panel components and the token mapping for the admin and seller panels (ADR-0033, ADR-0034). Consumed as source by the Next.js apps.",
+  "description": "Server-only helpers shared by the panel BFFs and the storefront: the signed client-address header of ADR-0037. Consumed as source by the Next.js apps.",
   "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./styles.css": "./src/styles.css"
+    "./signer": "./src/client-address.ts",
+    "./wrapper": "./src/wrapper.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "tailwindcss": "4.3.3"
+    "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
+    "@types/node": "^24.19.0",
     "eslint": "^10.11.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0",

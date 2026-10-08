@@ -1,5 +1,6 @@
 import 'server-only';
 import { headers } from 'next/headers';
+import { INTERNAL_ADDRESS_HEADER, MissingClientAddressError } from '@mondapac/panel-server';
 import { panelConfig } from './config.ts';
 import { panelHostFor, upstreamHeaders } from './bff.ts';
 
@@ -29,11 +30,18 @@ export async function readSession(): Promise<SessionRead> {
   const host = panelHostFor(config, incoming.get('host'));
   if (host === undefined) return { kind: 'unavailable' };
   const request = new Request(`${host.origin}/`, {
-    headers: { cookie: incoming.get('cookie') ?? '', accept: 'application/json' },
+    headers: {
+      cookie: incoming.get('cookie') ?? '',
+      accept: 'application/json',
+      // Set by server.mjs on every request; the signer reads only this name (ADR-0037).
+      ...(incoming.has(INTERNAL_ADDRESS_HEADER)
+        ? { [INTERNAL_ADDRESS_HEADER]: incoming.get(INTERNAL_ADDRESS_HEADER) ?? '' }
+        : {}),
+    },
   });
   try {
     const response = await fetch(`${config.apiBaseUrl}/identity/seller/session`, {
-      headers: upstreamHeaders(request, host),
+      headers: upstreamHeaders(request, host, config),
       cache: 'no-store',
       redirect: 'manual',
     });
@@ -41,7 +49,10 @@ export async function readSession(): Promise<SessionRead> {
     if (!response.ok) return { kind: 'unavailable' };
     const body = (await response.json()) as SellerSession;
     return { kind: 'signed-in', session: body };
-  } catch {
+  } catch (error) {
+    if (error instanceof MissingClientAddressError) {
+      console.log(JSON.stringify({ msg: 'panel.session.client-address-missing' }));
+    }
     return { kind: 'unavailable' };
   }
 }

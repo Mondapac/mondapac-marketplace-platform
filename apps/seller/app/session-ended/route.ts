@@ -1,3 +1,4 @@
+import { MissingClientAddressError } from '@mondapac/panel-server';
 import { panelConfig } from '../../src/server/config.ts';
 import { panelHostFor, upstreamHeaders } from '../../src/server/bff.ts';
 
@@ -15,7 +16,7 @@ export async function GET(request: Request): Promise<Response> {
   headers.set('cache-control', 'private, no-store');
   try {
     const upstream = await fetch(`${config.apiBaseUrl}/identity/seller/session`, {
-      headers: upstreamHeaders(request, host),
+      headers: upstreamHeaders(request, host, config),
       cache: 'no-store',
       redirect: 'manual',
     });
@@ -28,7 +29,10 @@ export async function GET(request: Request): Promise<Response> {
       });
     }
     for (const cookie of cookies) headers.append('set-cookie', cookie);
-  } catch {
+  } catch (error) {
+    if (error instanceof MissingClientAddressError) {
+      console.log(JSON.stringify({ msg: 'panel.session-ended.client-address-missing' }));
+    }
     // The API is unreachable: the notice still tells the truth about the page the user left.
   }
   return new Response(null, { status: 303, headers });

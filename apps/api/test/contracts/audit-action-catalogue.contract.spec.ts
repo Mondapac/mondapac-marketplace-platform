@@ -4,7 +4,12 @@ import path from 'node:path';
 import { Module, type INestApplicationContext, type Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
-import type { AuditActionDescription } from '@mondapac/shared-kernel';
+import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
+import type {
+  AuditActionDefinition,
+  AuditActionDescription,
+  AuditFieldKind,
+} from '@mondapac/shared-kernel';
 import pino from 'pino';
 import { AppModule } from '../../src/app.module';
 import { CORE_MODULES } from '../../src/modules';
@@ -26,7 +31,11 @@ import { testAppConfig } from '../support/test-config';
 //   folder it is declared in: `<m>` only in src/modules/<m>/<m>.module.ts, and
 //   `platform.<component>` only in src/platform/<component>/. Checked in the source and in the
 //   booted graph, for `registerAuditActions` and `auditWriterFor` alike;
-// - a module can reach neither another module's writer nor a writer factory (PA 2).
+// - a module can reach neither another module's writer nor a writer factory (PA 2);
+// - Cost never enters the audit log (ADR-0024; pricing design 21, condition (h); Hassan H2, M1):
+//   a `money` field must be on a checked-in allow-list; no `money` or `integer` field (bare,
+//   optional or listOf, before or after) on a `pricing.` action with a `cost` name segment; no
+//   `money` or `integer` field named like a cost (`/cost/i`) in any module.
 
 const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 
@@ -102,6 +111,69 @@ function nestModulesOf(moduleRef: unknown): NestModuleView[] {
   return [...container.getModules().values()];
 }
 
+/** The kind a `listOf` or `optional` wraps, or the kind itself. */
+const plainKindOf = (kind: AuditFieldKind): AuditFieldKind['kind'] =>
+  kind.kind === 'listOf' || kind.kind === 'optional' ? kind.of.kind : kind.kind;
+
+/** True for a `money` kind, or a `listOf` or `optional` of one. */
+const isMoneyKind = (kind: AuditFieldKind): boolean => plainKindOf(kind) === 'money';
+
+/** True for a number-carrying kind: `money` or `integer`, bare or wrapped. */
+const isAmountKind = (kind: AuditFieldKind): boolean =>
+  isMoneyKind(kind) || plainKindOf(kind) === 'integer';
+
+/**
+ * The (action, field) pairs that may declare `money`, as `<action>.<side>.<field>`. A new money
+ * field anywhere fails the contract until it is added here in a reviewed change (Hassan M1;
+ * platform-audit 3.2). Empty today: no action declares one.
+ */
+const MONEY_FIELD_ALLOW_LIST: readonly string[] = [];
+
+/** Every field of every action, as `<action>.<side>.<field>` with its kind. */
+function auditFieldsOf(definitions: readonly AuditActionDefinition[]) {
+  return definitions.flatMap((definition) =>
+    (['before', 'after'] as const).flatMap((side) =>
+      Object.entries(definition[side] ?? {}).map(([name, kind]) => ({
+        action: definition.action,
+        path: `${definition.action}.${side}.${name}`,
+        name,
+        kind,
+      })),
+    ),
+  );
+}
+
+/**
+ * The breaches of the Cost-leak contract (ADR-0024; Hassan H2, M1):
+ * 1. a `money` field that is not on the allow-list;
+ * 2. a `money` or `integer` field (bare, optional or listOf, before or after) on a `pricing.`
+ *    action with a name segment starting `cost`;
+ * 3. a `money` or `integer` field whose name contains `cost`, in any module.
+ */
+function costLeakProblems(
+  definitions: readonly AuditActionDefinition[],
+  allowList: readonly string[],
+): string[] {
+  return auditFieldsOf(definitions).flatMap((field) => {
+    const problems: string[] = [];
+    if (isMoneyKind(field.kind) && !allowList.includes(field.path)) {
+      problems.push(`${field.path}: money field not on the allow-list`);
+    }
+    const segments = field.action.split(/[.-]/);
+    if (
+      field.action.startsWith('pricing.') &&
+      segments.some((segment) => /^cost/.test(segment)) &&
+      isAmountKind(field.kind)
+    ) {
+      problems.push(`${field.path}: amount field on a cost action`);
+    }
+    if (/cost/i.test(field.name) && isAmountKind(field.kind)) {
+      problems.push(`${field.path}: amount field named like a cost`);
+    }
+    return problems;
+  });
+}
+
 /** The owner a bound writer was built for (the writer keeps it to check each entry). */
 const ownerOfWriter = (writer: unknown) => (writer as { owner?: unknown }).owner;
 
@@ -157,6 +229,96 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.seller-access.founded',
       'identity.seller-member.added',
     ]);
+  });
+
+  it('declares no money field off the allow-list, and no amount on a cost action or field (ADR-0024, H2, M1)', () => {
+    const catalogue = graphs.get('api')!.get(AuditActionCatalogue);
+    const definitions = catalogue.snapshot().map((entry) => catalogue.get(entry.action)!);
+
+    expect(definitions.length).toBeGreaterThan(0);
+    expect(costLeakProblems(definitions, MONEY_FIELD_ALLOW_LIST)).toEqual([]);
+  });
+
+  it('would catch each rule: allow-list, cost-named action, cost-named field, in every wrapping', () => {
+    const define = (action: string, targetType: string, after: Record<string, AuditFieldKind>) =>
+      defineAuditAction({ action, targetType, actors: ['authenticated'], after });
+    const money = auditField.money();
+    const integer = auditField.integer();
+    const wrapped = (kind: typeof money | typeof integer) => ({
+      bare: kind,
+      maybe: auditField.optional(kind),
+      many: auditField.listOf(kind, 4),
+    });
+    const costChanged = (after: Record<string, AuditFieldKind>) =>
+      define('pricing.cost.changed', 'pricing.cost-record', after);
+
+    // Rule 2: money and integer on a pricing action with a cost segment, before or after.
+    expect(
+      costLeakProblems(
+        [costChanged(wrapped(money))],
+        [
+          'pricing.cost.changed.after.bare',
+          'pricing.cost.changed.after.maybe',
+          'pricing.cost.changed.after.many',
+        ],
+      ),
+    ).toEqual([
+      'pricing.cost.changed.after.bare: amount field on a cost action',
+      'pricing.cost.changed.after.maybe: amount field on a cost action',
+      'pricing.cost.changed.after.many: amount field on a cost action',
+    ]);
+    expect(costLeakProblems([costChanged(wrapped(integer))], [])).toEqual([
+      'pricing.cost.changed.after.bare: amount field on a cost action',
+      'pricing.cost.changed.after.maybe: amount field on a cost action',
+      'pricing.cost.changed.after.many: amount field on a cost action',
+    ]);
+    expect(
+      costLeakProblems(
+        [
+          defineAuditAction({
+            action: 'pricing.margin.cost-updated',
+            targetType: 'pricing.margin',
+            actors: ['authenticated'],
+            before: { steps: auditField.listOf(integer, 2) },
+          }),
+        ],
+        [],
+      ),
+    ).toEqual(['pricing.margin.cost-updated.before.steps: amount field on a cost action']);
+
+    // Rule 1: any money field outside the allow-list, until it is listed.
+    const price = define('pricing.regular-price.accepted', 'pricing.price-record', {
+      amount: money,
+    });
+    expect(costLeakProblems([price], [])).toEqual([
+      'pricing.regular-price.accepted.after.amount: money field not on the allow-list',
+    ]);
+    expect(costLeakProblems([price], ['pricing.regular-price.accepted.after.amount'])).toEqual([]);
+
+    // Rule 3: a field named like a cost, in any module, money or integer.
+    const elsewhere = define('catalog.product.priced', 'catalog.product', {
+      unitCost: integer,
+      costBasis: auditField.optional(integer),
+      total: integer,
+    });
+    expect(costLeakProblems([elsewhere], [])).toEqual([
+      'catalog.product.priced.after.unitCost: amount field named like a cost',
+      'catalog.product.priced.after.costBasis: amount field named like a cost',
+    ]);
+    const elsewhereMoney = define('catalog.product.repriced', 'catalog.product', {
+      landedCostAmount: auditField.listOf(money, 2),
+    });
+    expect(
+      costLeakProblems([elsewhereMoney], ['catalog.product.repriced.after.landedCostAmount']),
+    ).toEqual(['catalog.product.repriced.after.landedCostAmount: amount field named like a cost']);
+
+    // Fields that are not amounts, and ordinary integers, pass.
+    expect(
+      costLeakProblems(
+        [costChanged({ recordId: auditField.id(), seen: auditField.boolean() })],
+        [],
+      ),
+    ).toEqual([]);
   });
 
   it('names, for every action, an owner whose folder exists (Hassan L4)', () => {

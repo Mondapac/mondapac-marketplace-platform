@@ -108,11 +108,11 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
 
 ## Known interim deviations
 Each has the trigger that closes it.
-- **Client address.** The panel does not yet forward the browser's address, so every user would share
-  one per-origin throttle bucket on the API. A start-up tripwire (`assertClientAddressForwarding`,
-  `apps/seller/src/server/config.ts`) refuses any host that is not `*.localhost`, whatever
-  `NODE_ENV` says. It is removed only in the PR that adopts the ADR-0037 signed client-address
-  header, together with a test that the header is sent.
+- **Client address (closed by the signer PR).** The seller panel now runs through `server.mjs`
+  and signs the browser's address (`packages/panel-server`, ADR-0037 decision 9). The tripwire
+  (`assertClientAddressForwarding`, `apps/seller/src/server/config.ts`) stays as a guard: a host
+  that is not `*.localhost` needs a signing key, and the signer refuses a request that did not
+  come through `server.mjs`. `apps/admin` adopts the same wrapper in its first real slice.
 - **Host map.** `PANEL_HOSTS` is a hand-kept `origin=MARKET` list. It must be derived from Market
   configuration and checked against `HOSTED_MARKETS` and `allowedOrigins` before the tripwire is removed.
 - **Per-population `allowedOrigins`.** The API supports one list per Market. The BFF's exact Origin
@@ -129,4 +129,4 @@ Each has the trigger that closes it.
   panels; an admin-only dependency would ship to sellers.
 
 ## Reviews
-Ali (cto), Mohammad (software-architect) and Hassan (security-tester) reviewed on 2026-10-08; their should-fix items are applied above. Hassan: no blockers; would sign off on Accepted with the Origin, per-population `allowedOrigins` and trusted-hop rules written in (done). Sajad (QA) and Bagher (QC) checked consistency on 2026-10-08. On PR #160 Hassan approved the sign-in slice with the start-up tripwire as the interim client-address control; Ali accepted this ADR on 2026-10-08 and made spike 5 a deployment gate. No non-local panel environment until spike 5 has passed and the ADR-0037 signer has replaced the tripwire (Kazem).
+Ali (cto), Mohammad (software-architect) and Hassan (security-tester) reviewed on 2026-10-08; their should-fix items are applied above. Hassan: no blockers; would sign off on Accepted with the Origin, per-population `allowedOrigins` and trusted-hop rules written in (done). Sajad (QA) and Bagher (QC) checked consistency on 2026-10-08. On PR #160 Hassan approved the sign-in slice with the start-up tripwire as the interim client-address control; Ali accepted this ADR on 2026-10-08 and made spike 5 a deployment gate. No non-local panel environment until spike 5 has passed (Kazem); the ADR-0037 signer has since replaced the unconditional tripwire.
