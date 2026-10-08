@@ -585,6 +585,13 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ],
       ['src/main.ts', []],
       ['src/platform/worker/starts-worker.ts', []],
+      // ADR-0037 decision 8: only platform/http/client-address.ts reads the socket's address.
+      ['src/platform/reads-remote-address.ts', properties('client-address-is-resolved-once', 3)],
+      [
+        'src/modules/alpha/presentation/reads-remote-address.ts',
+        properties('client-address-is-resolved-once'),
+      ],
+      ['src/platform/http/client-address.ts', []],
       // Rule 5: the named import and its namespace form, the factory import.
       [
         'src/modules/alpha/application/mints-market-context.ts',
