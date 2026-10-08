@@ -661,7 +661,14 @@ overturn any of them.
 - **G.** Never-dispatched pending invitations (Ali 2026-10-08, Mohammad's option): issue replaces a pending invitation with `token_hash` NULL once `created_at` is older than its kind's lifetime (7 days, admin 72 hours); the purge clause is in data design 9 and built in the repository (7a); 7b passes the cut-offs from Market config.
 - **H.** The seller-suspension race at sign-in (Mojtaba, tracked items of slice 4): take the `seller_access` lock in the unit that opens the session, or record an explicit deferral.
 - **I.** Audit rows and events in full: `identity.invitation.issued` (system actor), `identity.invitation.accepted`, `identity.account-role.assigned` (founding, platform scope), `identity.second-factor.activated`; the operator's external log written before it acts (7.4, L6); OpenAPI.
-- **Hassan's 7b bindings** from the 7a round-1 review: I-1, I-2, I-3, I-4 (as A above), I-6 and I-7. I-5 is done in 7a (the comment on zeroing). The text of I-1 to I-3, I-6 and I-7 is in Hassan's review and is copied here at the start of 7b.
+- **Hassan's 7b bindings** (7a round-1 review, 2026-10-08):
+  - **I-1.** The closing unit compares `credentialChangedAt` after `lockCredential`; consuming the challenge and `acceptStep` happen in the same unit.
+  - **I-2.** Steps always come from `candidateSteps(clock.now())`.
+  - **I-3.** A destroyed, integrity-failed or unavailable secret gives the same refusal, counts the attempt, and logs an integrity alarm.
+  - **I-4.** No reset or change ever clears `second-factor.account` (item A).
+  - **I-5.** Reword the zeroing comment: done in 7a.
+  - **I-6.** Acceptance re-reads the role in the context Market.
+  - **I-7.** Restrict `AccountRoleAssigned.entry` to the builder `accountRoleAssigned` (a lint rule or a test).
 - Hassan I2 (b): the admin password change needs the current password and a code.
 
 **Password reset and change as built in slice 4 (Hossein, 2026-10-08).** Choices made where this
