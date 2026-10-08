@@ -148,6 +148,8 @@ export class AssignAdminRole extends UseCase<
         const systemRoleId = system?.state.id ?? null;
         // canActOn, then R3 on the target: the one check of the command and of the list's hint
         // (slice 8c). Without an assignment R3 cannot apply, so the order of 8a-2 is kept.
+        // Mirror: `changeRoleHint` in list-admin-team.use-case.ts (the target-dependent steps
+        // here, through `LastHolderPolicy` below); change both together (Mohammad, PR #196).
         const acted = mayActOnAdmin(
           reading.actor,
           reading.targets.get(subject.accountId)!,

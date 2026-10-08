@@ -8,7 +8,7 @@ import {
   type CannotActOn,
   type GrantingActor,
 } from '../../domain/grant-policy';
-import type { Invitation } from '../../domain/invitation';
+import { invitationReissuableAt, type InvitationState } from '../../domain/invitation';
 import { LastHolderPolicy, type LastHolder } from '../../domain/last-holder-policy';
 import type { Role } from '../../domain/role';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
@@ -129,21 +129,23 @@ export type ResendVerdictRefusal =
  * PR #187 round 1): never a first-admin invitation or a decided one (Mohammad Q4); its role still
  * a platform role in the actor's reach (R12); `GrantPolicy.canGrant` for the actor
  * (`role.not-grantable`); its inviter could still issue it (Hassan L3; `inviterRefusal` is for
- * the log only); and before `createdAt` plus the kind's lifetime (Mohammad C2). Answers the role.
+ * the log only); and before `createdAt` plus the kind's lifetime (Mohammad C2). It reads only the
+ * fields named, so a summary without the token hash serves as well as the aggregate's state.
+ * Answers the role.
  */
 export async function adminInvitationResendVerdict(
   deps: ResendVerdictDependencies,
   market: MarketContext,
   actor: { readonly self: GrantSubject; readonly view: GrantingActor },
-  invitation: Invitation,
+  invitation: Pick<InvitationState, 'invitedByAccountId' | 'state' | 'roleId' | 'createdAt'>,
   now: Temporal.Instant,
   lifetimeMinutes: number,
 ): Promise<Result<Role, ResendVerdictRefusal>> {
-  const inviterId = invitation.state.invitedByAccountId;
-  if (inviterId === null || invitation.state.state !== 'pending') {
+  const inviterId = invitation.invitedByAccountId;
+  if (inviterId === null || invitation.state !== 'pending') {
     return err({ code: 'invitation.rejected' });
   }
-  const role = await deps.roles.findById(market, invitation.state.roleId);
+  const role = await deps.roles.findById(market, invitation.roleId);
   if (role === null || !roleIsInActorsReach(role, actor.self)) {
     return err({ code: 'invitation.rejected' });
   }
@@ -155,6 +157,8 @@ export async function adminInvitationResendVerdict(
   if (!granted.ok) return err({ code: 'role.not-grantable' });
   const inviter = await inviterMayStillGrant(deps, market, inviterId, role);
   if (!inviter.ok) return err({ code: 'invitation.rejected', inviterRefusal: inviter.error });
-  if (!invitation.reissuableAt(now, lifetimeMinutes)) return err({ code: 'invitation.rejected' });
+  if (!invitationReissuableAt(invitation, now, lifetimeMinutes)) {
+    return err({ code: 'invitation.rejected' });
+  }
   return ok(role);
 }

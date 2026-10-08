@@ -16,7 +16,7 @@ import {
   PLATFORM_ROLE_ASSIGN,
 } from '../../contracts/permissions';
 import type { ActedOnAccount, GrantingActor } from '../../domain/grant-policy';
-import type { Invitation } from '../../domain/invitation';
+import { invitationStatusAt } from '../../domain/invitation';
 import { LastHolderPolicy } from '../../domain/last-holder-policy';
 import type { Role, RoleKind } from '../../domain/role';
 import {
@@ -30,11 +30,16 @@ import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { AdminAccountReader, AdminAccountSummary } from '../ports/admin-account-reader';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
-import type { InvitationRepository } from '../ports/invitation.repository';
+import type { InvitationRepository, PendingAdminInvitation } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
-import { readActingGrants, roleIsInActorsReach, type GrantSubject } from '../roles/granting';
+import {
+  readActingGrants,
+  readGrants,
+  roleIsInActorsReach,
+  type GrantSubject,
+} from '../roles/granting';
 
 /** The largest page of the admin team list; the default page of the route is smaller. */
 export const MAX_ADMIN_TEAM_PAGE = 100;
@@ -212,6 +217,17 @@ export class ListAdminTeam extends UseCase<
       market,
       async (): Promise<Result<AdminTeamPage, ListAdminTeamFailure>> => {
         const now = this.deps.clock.now();
+        // The actor first, read in this unit as the commands read it (C1): an active, verified
+        // admin holding the view key, else the whole list is refused before any row, and so any
+        // personal data, is read (Mohammad on PR #196). Its keys decide every hint.
+        const acting = await readActingGrants(
+          this.deps,
+          market,
+          self,
+          [],
+          [ADMIN_ACCOUNT_VIEW.key],
+        );
+        if (acting === null) return err({ code: 'access.denied' });
         // One row more of each than the page tells whether another page exists.
         const accounts = await this.deps.adminAccounts.adminAccounts(
           market,
@@ -225,7 +241,7 @@ export class ListAdminTeam extends UseCase<
         );
         const merged: PageEntry[] = [
           ...accounts.map((row) => ({ id: row.accountId, account: row })),
-          ...invitations.map((row) => ({ id: row.state.id, invitation: row })),
+          ...invitations.map((row) => ({ id: row.id, invitation: row })),
         ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
         const page = merged.slice(0, limit);
         const pageAccounts = page.flatMap((row) => ('account' in row ? [row.account] : []));
@@ -234,12 +250,11 @@ export class ListAdminTeam extends UseCase<
           population: 'admin',
           sellerId: null,
         }));
-        // The actor read in this unit, as the commands read it (C1): an active, verified admin
-        // holding the view key, else the whole list is refused. Its keys decide every hint.
-        const reading = await readActingGrants(this.deps, market, self, subjects, [
-          ADMIN_ACCOUNT_VIEW.key,
-        ]);
-        if (reading === null) return err({ code: 'access.denied' });
+        // The effective keys of the page's accounts, by the one resolver (`canActOn` reads them).
+        const targets =
+          (await readGrants(this.deps.grants, this.deps.effectiveKeys, market, self, subjects))
+            ?.targets ?? new Map<Id<'Account'>, ActedOnAccount>();
+        const reading = { actor: acting.actor, targets };
         const rows = await new RowBuilder(
           this.deps,
           context,
@@ -259,7 +274,7 @@ export class ListAdminTeam extends UseCase<
 
 type PageEntry =
   | { readonly id: string; readonly account: AdminAccountSummary }
-  | { readonly id: string; readonly invitation: Invitation };
+  | { readonly id: string; readonly invitation: PendingAdminInvitation };
 
 /** Builds the rows of one page and their hints, reading what a hint needs once per page. */
 class RowBuilder {
@@ -382,7 +397,9 @@ class RowBuilder {
   /**
    * The row part of `AssignAdminRole`: `mayActOnAdmin`, an assignment must exist, and a holder
    * of the Platform Administrator role who is its last holder loses it with any other role
-   * (`LastHolderPolicy`). Whether a given role is grantable is not a row hint.
+   * (`LastHolderPolicy`). Whether a given role is grantable is not a row hint (`role.unknown`,
+   * `canGrant` for the chosen role: the slice 10 role read's `grantable`; Hassan L2). Mirror of
+   * `AssignAdminRole`'s target steps; change both together.
    */
   private async changeRoleHint(
     target: ActedOnAccount,
@@ -397,19 +414,17 @@ class RowBuilder {
     return hintOf(LastHolderPolicy.allowsLosing(await holders(), target.accountId));
   }
 
-  private async invitationRow(invitation: Invitation): Promise<AdminTeamInvitationRow> {
-    const { state } = invitation;
-    const role = await this.role(state.roleId);
+  private async invitationRow(invitation: PendingAdminInvitation): Promise<AdminTeamInvitationRow> {
+    const role = await this.role(invitation.roleId);
     return {
       type: 'invitation',
-      invitationId: state.id,
-      // A pending invitation always holds its address (data design 4).
-      email: state.email?.typed ?? '',
+      invitationId: invitation.id,
+      email: invitation.email,
       role: this.shown(role),
-      invitedByAccountId: state.invitedByAccountId,
-      status: invitation.statusAt(this.now) === 'expired' ? 'expired' : 'pending',
-      createdAt: state.createdAt,
-      expiresAt: state.expiresAt,
+      invitedByAccountId: invitation.invitedByAccountId,
+      status: invitationStatusAt(invitation, this.now) === 'expired' ? 'expired' : 'pending',
+      createdAt: invitation.createdAt,
+      expiresAt: invitation.expiresAt,
       actions: {
         resend: await this.resendHint(invitation),
         revoke: this.holds(ADMIN_ACCOUNT_INVITE.key) ? ALLOWED : denied('access.denied'),
@@ -417,7 +432,7 @@ class RowBuilder {
     };
   }
 
-  private async resendHint(invitation: Invitation): Promise<ActionHint> {
+  private async resendHint(invitation: PendingAdminInvitation): Promise<ActionHint> {
     if (!this.holds(ADMIN_ACCOUNT_INVITE.key)) return denied('access.denied');
     if (this.lifetime === null) return denied('access.unavailable');
     const verdict = await adminInvitationResendVerdict(

@@ -7,6 +7,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
@@ -135,6 +136,13 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
       issued.tokenHash,
     );
     return `__Host-session-${population}-${code}=${issued.token}`;
+  }
+
+  /** An admin session's cookie and CSRF token, for a command after the list. */
+  function sessionHeaders(code: string, account: Id<'Account'>, n: number) {
+    const cookie = cookieOf(code, account, n);
+    const token = cookie.slice(cookie.indexOf('=') + 1);
+    return { cookie, 'x-csrf-token': csrfTokenFor(token) };
   }
 
   const team = (code: string, cookie: string | null, query = '') => {
@@ -291,6 +299,63 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
       expect((await team(code, forged)).status).toBe(401);
     });
 
+    it('takes a default page of 50 without limit, and accepts limit=100', async () => {
+      await boot();
+      await seeded(code);
+      const cookie = cookieOf(code, ROOT, 1);
+
+      const defaulted = await team(code, cookie);
+      expect(defaulted.status).toBe(200);
+      expect((defaulted.body as { items: unknown[]; next: unknown }).items).toHaveLength(5);
+      // 51 admins in all: the default page holds 50 and answers a next.
+      for (let n = 10; n < 56; n += 1) {
+        fakes.seedAccount({ ...fakes.accounts.get(VIEWER)!, id: accountId(n) });
+      }
+      const full = await team(code, cookie);
+      expect((full.body as { items: unknown[] }).items).toHaveLength(50);
+      expect((full.body as { next: string | null }).next).not.toBeNull();
+      const largest = await team(code, cookie, '?limit=100');
+      expect(largest.status).toBe(200);
+      expect((largest.body as { items: unknown[]; next: unknown }).items).toHaveLength(51);
+      expect((largest.body as { next: unknown }).next).toBeNull();
+    });
+
+    it('lists an expired invitation as expired, with resend and revoke hints the commands keep', async () => {
+      await boot();
+      await seeded(code);
+      // Its mail expired an hour ago; it is still within the admin invitation lifetime.
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      const root = sessionHeaders(code, ROOT, 7);
+
+      const listed = await team(code, root.cookie);
+      const row = (listed.body as { items: Record<string, unknown>[] }).items.find(
+        (r) => r.invitationId === INVITATION,
+      );
+      expect(row).toMatchObject({
+        status: 'expired',
+        actions: {
+          resend: { allowed: true, code: null },
+          revoke: { allowed: true, code: null },
+        },
+      });
+
+      const post = (path: string) =>
+        http()
+          .post(`/identity/admin/invitations/${INVITATION}/${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...root })
+          .send({});
+      const resent = await post('resend');
+      expect([resent.status, resent.body]).toEqual([
+        200,
+        { code: 'invitation.reissued', invitationId: INVITATION },
+      ]);
+      const revoked = await post('revoke');
+      expect([revoked.status, revoked.body]).toEqual([
+        200,
+        { code: 'invitation.revoked', invitationId: INVITATION },
+      ]);
+    });
+
     it('pages with after and limit, and validates the query', async () => {
       await boot();
       await seeded(code);
@@ -313,6 +378,8 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
         ['?limit=1&limit=2', 'limit'],
         ['?after=nope', 'after'],
         ['?page=2', 'page'],
+        [`?after=${ROOT}&after=${ROOT2}`, 'after'],
+        ['?after=', 'after'],
       ] as const) {
         const refused = await team(code, cookie, query);
         expect(refused.status).toBe(400);

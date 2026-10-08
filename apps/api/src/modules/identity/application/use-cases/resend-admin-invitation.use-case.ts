@@ -122,7 +122,7 @@ export class ResendAdminInvitation extends UseCase<
           this.deps,
           market,
           { self, view: reading.actor },
-          invitation,
+          invitation.state,
           now,
           lifetime,
         );

@@ -289,8 +289,8 @@ describe.each(TEST_MARKETS)('the admin team list in market %s (database, slice 8
       expect(statement.trim()).not.toMatch(/^(BEGIN|COMMIT|ROLLBACK|SET TRANSACTION)/i);
       expect(statement.trim()).toMatch(/^SELECT/i);
     }
-    // The factor read selects the account id only; no secret column is read by the list.
-    expect(driver.statements.join('\n')).not.toMatch(/secret_ciphertext|code_hash/);
+    // No secret column is read by the list: no factor secret, recovery code or token hash.
+    expect(driver.statements.join('\n')).not.toMatch(/secret_ciphertext|code_hash|token_hash/);
   });
 
   it('reads pending admin invitations and factors by the Market, after an id, by id', async () => {
@@ -313,11 +313,19 @@ describe.each(TEST_MARKETS)('the admin team list in market %s (database, slice 8
     }));
 
     if (!read.ok) throw new Error('read failed');
-    const allIds = read.value.all.map((i) => i.state.id as string);
+    const allIds = read.value.all.map((i) => i.id as string);
     expect(allIds).toEqual([...allIds].sort());
     expect(allIds).toEqual(expect.arrayContaining([first, second]));
-    expect(read.value.all.every((i) => i.state.marketId === code)).toBe(true);
-    expect(read.value.after.every((i) => i.state.id > first)).toBe(true);
+    const { rows: markets } = await sql.query<{ market_id: string }>(
+      'SELECT DISTINCT market_id FROM identity.invitations WHERE id = ANY($1::uuid[])',
+      [allIds],
+    );
+    expect(markets.map((m) => m.market_id)).toEqual([code]);
+    expect(read.value.after.every((i) => i.id > first)).toBe(true);
+    // A summary: no token hash (Hassan L1 on PR #196).
+    expect(Object.keys(read.value.all[0]!).sort()).toEqual(
+      ['createdAt', 'email', 'expiresAt', 'id', 'invitedByAccountId', 'roleId', 'state'].sort(),
+    );
     expect([...read.value.factors]).toEqual([withFactor]);
     const admins = read.value.admins.map((a) => a.accountId as string);
     expect(admins).toEqual([...admins].sort());

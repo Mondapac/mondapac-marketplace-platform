@@ -1026,7 +1026,15 @@ export class IdentityFakes {
           )
           .sort((a, b) => (a.id < b.id ? -1 : 1))
           .slice(0, limit)
-          .map((state) => Invitation.restore(state)),
+          .map((state) => ({
+            id: state.id,
+            state: 'pending' as const,
+            email: state.email?.typed ?? '',
+            roleId: state.roleId,
+            invitedByAccountId: state.invitedByAccountId,
+            expiresAt: state.expiresAt,
+            createdAt: state.createdAt,
+          })),
       ),
     findPendingFor: (market, sellerId, emailNormalized) => {
       const state = [...this.invitations.values()].find(

@@ -46,6 +46,40 @@ export interface InvitationState {
   readonly version: number;
 }
 
+/**
+ * Where an invitation stands at `now` (3.4): its stored state, or `expired` for a pending one at
+ * or past the expiry of its last mail. The one rule of `Invitation.statusAt` and of a read that
+ * holds only these fields, never the token hash (the admin team list, slice 8c).
+ */
+export function invitationStatusAt(
+  invitation: Pick<InvitationState, 'state' | 'expiresAt'>,
+  now: Temporal.Instant,
+): InvitationStatus {
+  const { state, expiresAt } = invitation;
+  if (state !== 'pending') return state;
+  return expiresAt !== null && Temporal.Instant.compare(now, expiresAt) >= 0
+    ? 'expired'
+    : 'pending';
+}
+
+/**
+ * Whether a re-send is accepted at `now` (Mohammad C2): pending, and `now` before `createdAt`
+ * plus the kind's lifetime. The one rule of `Invitation.reissuableAt` and `reissue`, and of the
+ * admin team list's re-send hint (slice 8c).
+ */
+export function invitationReissuableAt(
+  invitation: Pick<InvitationState, 'state' | 'createdAt'>,
+  now: Temporal.Instant,
+  lifetimeMinutes: number,
+): boolean {
+  if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
+    throw new RangeError('reissue: a positive whole lifetime in minutes is required');
+  }
+  if (invitation.state !== 'pending') return false;
+  const cutoff = invitation.createdAt.add({ minutes: lifetimeMinutes });
+  return Temporal.Instant.compare(now, cutoff) < 0;
+}
+
 /** An invitation that cannot be used now: one answer for every cause (8.6 row 1). */
 export type InvitationRejected = { readonly code: 'invitation.rejected' };
 const REJECTED: InvitationRejected = Object.freeze({ code: 'invitation.rejected' });
@@ -166,11 +200,7 @@ export class Invitation {
   }
 
   statusAt(now: Temporal.Instant): InvitationStatus {
-    const { state, expiresAt } = this.#state;
-    if (state !== 'pending') return state;
-    return expiresAt !== null && Temporal.Instant.compare(now, expiresAt) >= 0
-      ? 'expired'
-      : 'pending';
+    return invitationStatusAt(this.#state, now);
   }
 
   /** Whether the invitation may be accepted at `now`: dispatched, pending and unexpired. */
@@ -230,12 +260,7 @@ export class Invitation {
    * kind's lifetime (Mohammad C2). Changes nothing; the admin team list's hint reads it (slice 8c).
    */
   reissuableAt(now: Temporal.Instant, lifetimeMinutes: number): boolean {
-    if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
-      throw new RangeError('reissue: a positive whole lifetime in minutes is required');
-    }
-    if (this.#state.state !== 'pending') return false;
-    const cutoff = this.#state.createdAt.add({ minutes: lifetimeMinutes });
-    return Temporal.Instant.compare(now, cutoff) < 0;
+    return invitationReissuableAt(this.#state, now, lifetimeMinutes);
   }
 
   /**

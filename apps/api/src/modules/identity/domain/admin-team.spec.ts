@@ -2,7 +2,7 @@ import { parseId, parseMarketId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, Population } from '@mondapac/shared-kernel';
 import { Account, statusChangeRefusal } from './account';
 import { parseEmailAddress } from './email-address';
-import { Invitation } from './invitation';
+import { Invitation, invitationReissuableAt, invitationStatusAt } from './invitation';
 import { Role, RoleAssignment, RoleInvariantError } from './role';
 
 // Slice 8a-2 and 8b in the domain (identity design 3.1, 3.4, 5.5, 8.2): disabling and enabling an
@@ -409,6 +409,21 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       revoked.revoke(LATER);
       expect(Invitation.restore(revoked.state).reissuableAt(LATER, LIFETIME)).toBe(false);
       expect(() => invitation.reissuableAt(NOW, 0)).toThrow(RangeError);
+    });
+
+    it('the pure rules answer what the aggregate answers, from the summary fields (slice 8c)', () => {
+      const at = [NOW, NOW.add({ minutes: 61 }), NOW.add({ minutes: LIFETIME })];
+      const revoked = dispatched();
+      revoked.revoke(LATER);
+      for (const invitation of [dispatched(), issued(), Invitation.restore(revoked.state)]) {
+        const { state, expiresAt, createdAt } = invitation.state;
+        for (const now of at) {
+          expect(invitationStatusAt({ state, expiresAt }, now)).toBe(invitation.statusAt(now));
+          expect(invitationReissuableAt({ state, createdAt }, now, LIFETIME)).toBe(
+            invitation.reissuableAt(now, LIFETIME),
+          );
+        }
+      }
     });
 
     it('revokes: the address cleared, version +1 and invitation-revoked', () => {

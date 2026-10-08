@@ -71,6 +71,8 @@ const SUPPORT = accountId(5);
 const CUSTOMER = accountId(6);
 const SELLER_ACCOUNT = accountId(7);
 const OFF = accountId(8);
+const PARTIAL = accountId(9);
+const PARTIAL_ROLE = id<'Role'>('01990000-0000-7000-8000-00000000c0dd');
 
 /** A platform custom role with protected keys but not the system role (as in 8a-2's spec). */
 const LEAD_KEYS = [
@@ -610,8 +612,129 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
     expect(listed.items.every((row) => row.type === 'account')).toBe(true);
   });
 
+  /**
+   * An admin with some of the team keys only (Sajad on PR #196): the view key, the reset and the
+   * invite keys and `seller-access.view`, in a custom role without the system role. SUPPORT holds
+   * no `admin-account.view` and so never lists at all (tested above).
+   */
+  function seedPartial() {
+    fakes.seedRole({
+      id: PARTIAL_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      permissionKeys: [
+        'identity.admin-account.invite',
+        'identity.admin-account.reset-second-factor',
+        'identity.admin-account.view',
+        'identity.seller-access.view',
+      ],
+      version: 1,
+      createdAt: START,
+    });
+    fakes.seedAccount({
+      ...fakes.accounts.get(VIEWER)!,
+      id: PARTIAL,
+      email: { typed: 'A9@Example.com', normalized: 'a9@example.com' },
+    });
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe100 + 9)}`),
+      marketId,
+      accountId: PARTIAL,
+      roleId: PARTIAL_ROLE,
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
+  }
+
+  it("answers member.self on the actor's own row, as each command does (Sajad on PR #196)", async () => {
+    const { list, commands } = setUp();
+
+    const own = accountRow(await page(list, ROOT), ROOT)!;
+
+    const answers = {
+      changeRole: await commands.changeRole.execute(as(ROOT), {
+        accountId: ROOT,
+        roleId: roleOf('viewer'),
+      }),
+      disable: await commands.disable.execute(as(ROOT), { accountId: ROOT }),
+      enable: await commands.enable.execute(as(ROOT), { accountId: ROOT }),
+      resetSecondFactor: await commands.resetSecondFactor.execute(as(ROOT), { accountId: ROOT }),
+    };
+    for (const [action, result] of Object.entries(answers)) {
+      expect(result).toEqual({ ok: false, error: { code: 'member.self' } });
+      expect(own.actions[action as AccountAction]).toEqual(no('member.self'));
+    }
+  });
+
+  it('answers the actor alone, then an empty page past the last id', async () => {
+    const { list } = setUp();
+    for (const other of [ROOT2, LEAD, VIEWER, SUPPORT, OFF]) fakes.accounts.delete(other);
+
+    const alone = await page(list, ROOT, { limit: 100 });
+    expect(alone.items.map((row) => row.type === 'account' && row.accountId)).toEqual([ROOT]);
+    expect(alone.next).toBeNull();
+    for (const after of [ROOT, '01990000-0000-7000-8000-ffffffffffff']) {
+      expect(await page(list, ROOT, { after, limit: 10 })).toEqual({ items: [], next: null });
+    }
+  });
+
+  it('pages one row at a time, and accepts the largest page', async () => {
+    const { list } = setUp();
+    const invited = seedInvitation(1);
+
+    const first = await page(list, ROOT, { limit: 1 });
+    expect(first.items.map((row) => row.type === 'account' && row.accountId)).toEqual([ROOT]);
+    expect(first.next).toBe(ROOT);
+    const seen: string[] = [];
+    let after: string | null = null;
+    do {
+      const current: AdminTeamPage = await page(list, ROOT, { after, limit: 1 });
+      expect(current.items).toHaveLength(1);
+      seen.push(
+        ...current.items.map((row) => (row.type === 'account' ? row.accountId : row.invitationId)),
+      );
+      after = current.next;
+    } while (after !== null);
+    expect(seen).toEqual([ROOT, ROOT2, LEAD, VIEWER, SUPPORT, OFF, invited]);
+    expect((await page(list, ROOT, { limit: 100 })).items).toHaveLength(7);
+  });
+
+  it('answers a next with exactly limit + 1 rows, also when the extra row is an invitation', async () => {
+    const { list } = setUp();
+
+    // Six admins, no invitation: the extra row is an account.
+    const accounts = await page(list, ROOT, { limit: 5 });
+    expect(accounts.items).toHaveLength(5);
+    expect(accounts.next).toBe(SUPPORT);
+    expect(await page(list, ROOT, { after: SUPPORT, limit: 5 })).toMatchObject({ next: null });
+
+    // Six admins and one invitation after them: the extra row is the invitation.
+    const invited = seedInvitation(1);
+    const withInvitation = await page(list, ROOT, { limit: 6 });
+    expect(withInvitation.items).toHaveLength(6);
+    expect(withInvitation.items.every((row) => row.type === 'account')).toBe(true);
+    expect(withInvitation.next).toBe(OFF);
+    const last = await page(list, ROOT, { after: OFF, limit: 6 });
+    expect(last.items.map((row) => row.type === 'invitation' && row.invitationId)).toEqual([
+      invited,
+    ]);
+    expect(last.next).toBeNull();
+  });
+
   describe('every hint is the answer of its command (no second implementation)', () => {
-    const actors = [ROOT, LEAD, VIEWER] as const;
+    const actors = [
+      [ROOT, 'with'],
+      [LEAD, 'with'],
+      [VIEWER, 'with'],
+      [PARTIAL, 'with'],
+      [ROOT, 'without'],
+      [PARTIAL, 'without'],
+    ] as const;
     const accountActions: readonly AccountAction[] = [
       'changeRole',
       'disable',
@@ -621,22 +744,25 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
     const invitationActions: readonly InvitationAction[] = ['resend', 'revoke'];
 
     /** A fresh store with the scenario's state, so each command runs on unchanged data. */
-    function scenario() {
-      const built = setUp();
+    function scenario(lifetime: 'with' | 'without') {
+      const built = setUp({ withoutInvitationLifetime: lifetime === 'without' });
       const seeded = seedInvitations();
+      seedPartial();
       seedFactor(ROOT2, 2);
       seedFactor(LEAD, 3);
+      seedFactor(OFF, 8);
       return { ...built, seeded };
     }
 
-    it.each(actors)('for actor %s', async (actor) => {
-      const listed = await page(scenario().list, actor);
+    it.each(actors)('for actor %s, %s an invitation lifetime', async (actor, lifetime) => {
+      const listed = await page(scenario(lifetime).list, actor);
+      const codes = new Set<string>();
       let compared = 0;
       for (const row of listed.items) {
         const actions =
           row.type === 'account' ? accountActions : (invitationActions as readonly string[]);
         for (const action of actions) {
-          const { commands } = scenario();
+          const { commands } = scenario(lifetime);
           let result: Result<unknown, { code: string }>;
           if (row.type === 'account') {
             const input = { accountId: row.accountId };
@@ -667,10 +793,17 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
             action,
             answer: hint,
           });
+          codes.add(answer.code ?? 'allowed');
           compared += 1;
         }
       }
-      expect(compared).toBe(6 * 4 + 7 * 2);
+      expect(compared).toBe(7 * 4 + 7 * 2);
+      if (lifetime === 'without') expect(codes).toContain('access.unavailable');
+      if (actor === PARTIAL) {
+        // A partial-key actor gets both kinds of answer.
+        expect(codes).toContain('access.denied');
+        expect([...codes].some((c) => c !== 'access.denied')).toBe(true);
+      }
     });
   });
 });
