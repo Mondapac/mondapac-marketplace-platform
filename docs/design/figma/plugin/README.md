@@ -53,7 +53,7 @@ Releases: 1.0.0 first build; **1.5.0 Mobile navigation** (D16); **1.6.0 Mobile n
 uses a text style, every paint is bound to a variable, every variable scope covers its uses, every component
 property is wired, and that exporting from Figma reproduces `docs/design/tokens/` byte for byte.
 
-### 1.8.0 Panel: left for 1.8.1 (TODO)
+### 1.8.0 Panel: left for 1.8.3 (TODO)
 
 - Sellers list (P1), role editor (B3), dialogs D4-D6 (the D6 label is undecided) and the unsaved-changes dialog.
 - Role names in the samples are placeholders. Dialog `Primary` and `Secondary` are nested Button instances (a component TEXT property cannot set a nested label). Dialog content is an INSTANCE_SWAP of template-body components because the API used here has no native Slot. Sheet max height 90% is not drawn.

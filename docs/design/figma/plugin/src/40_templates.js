@@ -14,6 +14,7 @@ function screen(name, ws, active, crumb, contentKids, o) {
     frame({ name: 'Main', dir: 'V', gap: o.gap || 'space/6', pad: o.pad || [28, 32, 40, 32], sizeH: 'FILL', sizeV: o.fixedH ? 'FILL' : null }, contentKids),
   ]);
   const scr = frame({ name: name, dir: 'H', w: o.w || 1440, h: o.fixedH, fill: 'bg/page', clip: true }, [sidebarFor(ws, active, o.collapsed), col]);
+  if (o.minH && !o.fixedH) scr.minHeight = o.minH; // 1.8.1: a page that hugs its content is never shorter than this, so the FILL Sidebar holds its own items
   tag(scr);
   return scr;
 }

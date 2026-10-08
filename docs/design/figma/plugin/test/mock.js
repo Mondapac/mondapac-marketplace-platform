@@ -229,7 +229,7 @@ function makeFigma(opts) {
         const primary = this._layoutMode === 'HORIZONTAL' ? 'w' : 'h';
         const hug = axis === primary ? this._pAxis === 'AUTO' : this._cAxis === 'AUTO';
         const fill = axis === 'w' ? this._fillH : this._fillV;
-        if (hug && !fill) return this._hug(axis, primary);
+        if (hug && !fill) { const h = this._hug(axis, primary); const mn = axis === 'w' ? this._minW : this._minH; return mn ? Math.max(h, mn) : h; } // minWidth / minHeight hold a hugging frame open
       }
       return axis === 'w' ? this._w : this._h;
     }
