@@ -125,9 +125,15 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
 /**
  * The (action, field) pairs that may declare `money`, as `<action>.<side>.<field>`. A new money
  * field anywhere fails the contract until it is added here in a reviewed change (Hassan M1;
- * platform-audit 3.2). Empty today: no action declares one.
+ * platform-audit 3.2). Pricing's regular-price rows carry the seller's own regular amounts; Cost
+ * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
-const MONEY_FIELD_ALLOW_LIST: readonly string[] = [];
+const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
+  'pricing.regular-price.accepted.after.amount',
+  'pricing.regular-price.accepted.after.anchorAmount',
+  'pricing.regular-price.held.after.amount',
+  'pricing.regular-price.held.after.anchorAmount',
+];
 
 /** Every field of every action, as `<action>.<side>.<field>` with its kind. */
 function auditFieldsOf(definitions: readonly AuditActionDefinition[]) {
