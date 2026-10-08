@@ -91,7 +91,7 @@ depends on `certification`, so `certification` cannot import `catalog` without a
    caller:** it comes from one fixed read that returns the same answer to every actor; status
    records and review guards may use the provisional zone, the claim never does. Validity is computed at the instant of the
    question and never waits for the expiry job. Amends ADR-0005 decision 3.
-   *Note (2026-10-08): tightening within decision 8; no decision changed. With a seller-chosen zone the seller boundary is the earliest of the boundary stored at approval and the boundaries in the chosen zone and the address zone, and the fixed read returns both; see `docs/design/domain/certification.md` 2.3 T2, 2.4 and 4.2.*
+   *Note (2026-10-08): tightening within decision 8; no decision changed. With a seller-chosen zone the seller boundary is the earliest of the boundary stored at approval and the boundaries in the chosen zone and the address zone, and the fixed read returns both; a missing address zone is also "not allowed"; see `docs/design/domain/certification.md` 2.3 T2, 2.4 and 4.2.*
 9. **Dependency direction.** `catalog` and `ordering` depend on `certification`, never the
    reverse. `certification` reads product, variant and platform category existence through a port
    it declares and `catalog` implements (`CatalogReferences`, `MarketContext` only). `catalog`'s

@@ -168,10 +168,10 @@ the seller now chooses the zone from a per-region list, so the zone the seller p
 the zone the address implies (a Sydney address with `Australia/Broken_Hill`, 30 minutes behind).
 An override must never extend a certificate. The fixed read therefore returns both zones,
 `{ zone, addressZone }` (the chosen zone of the approved revision and the zone the approved address
-gives, kept in a clear column; the address itself is never decrypted for this), and the seller
-boundary is the **earliest of three**: the boundary stored at approval (in the chosen zone then in
-force), the boundary in the current chosen zone, and the boundary in the current address zone. A
-missing `zone` or a missing `addressZone` is "no zone" (`seller-zone-missing`). The stored boundary
+gives, kept in a clear column; the address itself is never decrypted for this; `addressZone` is derived by the server from the approved address only, is never accepted from a client or an admin, and a `zone-change` revision never changes it), and the seller
+boundary is the **earliest of three**: the boundary stored at approval (in the zone read at approval,
+3.2, provisional allowed), the boundary in the current chosen zone, and the boundary in the current address zone. A
+missing `zone` or `addressZone`, or one that Temporal cannot resolve, is "no zone" (`seller-zone-missing`). A chosen zone can only bring the boundary forward: a certificate is never valid past the earlier of the stored boundary and the address-zone boundary, so switching zone cannot gain time. The stored boundary
 stays one instant per submission, so the data design is unchanged. Residual risk (Ali): the stored boundary uses the chosen zone at approval, not the earlier of the two zones; only a reviewed address change could exploit that, and the evaluation-time address zone covers it. This is a change to the fixed
 contract and merges before any seller-chosen zone can reach an approved revision (before `sellers`
 slice 2).
@@ -458,7 +458,7 @@ The application layer loads, then calls the pure rule with `Clock.now()`:
 | Step | Load (outside any write; one read-only unit, ADR-0025) | Rule |
 |---|---|---|
 | 0 | Validate the batch shape (1 to 100; ids parse; enum values); `marketId` from the context only | Any malformed query is `{ allowed: false, reason: 'input-invalid' }`; the other queries still answer |
-| 1 | Seller zones: `sellers.approvedSellerZones`, the fixed, caller-independent read of approved, non-provisional zones, `{ zone, addressZone }` per seller (request S-1; `sellers` domain design 7.1a), distinct seller ids (T2, B1). Never `sellerSummaries` under the caller's context. Only ids of queries that passed step 0 are passed; when no seller-basis query remains, no call is made. A refusal is thrown and fails the batch closed (rule 1) | Missing seller, `zone: null` or `addressZone: null` (or a key missing from the answer): `seller-zone-missing` for the seller basis. An unexpected key in the answer is a fault: the batch is `unavailable` |
+| 1 | Seller zones: `sellers.approvedSellerZones`, the fixed, caller-independent read of approved, non-provisional zones, `{ zone, addressZone }` per seller (request S-1; `sellers` domain design 7.1a), distinct seller ids (T2, B1). Never `sellerSummaries` under the caller's context. Only ids of queries that passed step 0 are passed; when no seller-basis query remains, no call is made. A refusal is thrown and fails the batch closed (rule 1) | Missing seller, `zone: null`, `addressZone: null` or a zone Temporal cannot resolve (or a key missing from the answer): `seller-zone-missing` for the seller basis. An unexpected key in the answer is a fault: the batch is `unavailable` |
 | 2 | **One statement** for the seller basis: per (seller, type) the non-terminal certificate, its approved submission, the submission's type revision, the issuer's state | — |
 | 3 | **One statement** for the type and policy: the type's published revision (default basis, mode), the published policy rows matching any category id in the paths or the handling | Unknown type: `type-unknown`. Resolve the basis requirement: the strictest of **all** matching rows, every category id of every path and the handling row together (M1); the type's default when none match. Strictness: `NOT_APPLICABLE` > `SELLER_REQUIRED` > `SELLER_OR_MANUFACTURER`. A handling row is never `SELLER_OR_MANUFACTURER` (2.1), so handling can only tighten. See 19.2 item 12 on the type default |
 | 4 | — | `NOT_APPLICABLE`: deny both bases (`policy-not-applicable`; AC 4) |
@@ -527,7 +527,7 @@ interface BadgeData {
   readonly sellerClaim: boolean;          // true for SELF_DECLARATION ("seller claim")
   readonly issuer: { id: Id; displayName: string } | null; // public registry name
   readonly validUntilLocalDate: Temporal.PlainDate | null; // the expiry date as written, with
-  readonly validUntilZone: TimeZoneId | null;              // the zone it is measured in (ADR-0005)
+  readonly validUntilZone: TimeZoneId | null;              // the zone that gave the earliest boundary (ADR-0005; 2.4 rule 2)
   readonly verifiedWithIssuer: boolean;   // from the submission or revision the decision names; never for sellerClaim
   readonly reviewedByPlatform: true;      // "the platform reviewed the document" (Q7)
 }
@@ -821,7 +821,7 @@ this module through facade calls from its own handlers (ADR-0028 d9).
 | `certification.purge-drafts` | Daily | Drafts never submitted and refused files older than the retention value (5.1); waits for counsel; deletes draft objects |
 
 The job reads zones through `sellers.sellerSummaries` in batches of 100 (system actor gets provisional
-zones; allowed by the B1 ruling). Concurrency per PP 7: safe to run twice.
+zones; allowed by the B1 ruling) and also through `approvedSellerZones` (the `system` pair); its boundary is the earliest of the stored boundary, the `sellerSummaries` zone, `zone` and `addressZone`, so the `expired` status does not lag the claim. When the job gets no approved zones for a seller it writes `expired`. Concurrency per PP 7: safe to run twice.
 
 ## 9. Documents and storage
 
@@ -977,7 +977,7 @@ AI surface). Sizes as ID 12.1.
 | # | Slice | Size | Needs first | Hassan checks |
 |---|---|---|---|---|
 | 0 | ADR-0028 accepted (7.4 confirmed by Ali 2026-10-07) | — | This G2 | — |
-| 1 | `CertificationType` (minimal), `SellerCertification` with a test-only path to an approved submission, `validity.ts`, `ClaimRule`, `evaluateClaims` (seller basis, default, `NOT_APPLICABLE`), outbox and inbox | M | `sellers` slices 1 and 2; the fixed zone read of S-1 (its `sellers` mini-review); identity 8a (registry); ADR-0030 accepted (raw read helper, data design 7.2) | Fail-closed matrix; AC 1 to 4, 8; the earliest-of-three boundary (a Sydney-address seller choosing `Australia/Broken_Hill` never gains 30 minutes; AU and ZZ); a missing `zone` or `addressZone` is `seller-zone-missing`; no actor read; same answer under every caller (B1); CI check that the anonymous and system pairs are not reachable over HTTP (L3) |
+| 1 | `CertificationType` (minimal), `SellerCertification` with a test-only path to an approved submission, `validity.ts`, `ClaimRule`, `evaluateClaims` (seller basis, default, `NOT_APPLICABLE`), outbox and inbox | M | `sellers` slices 1 and 2; the fixed zone read of S-1 (its `sellers` mini-review); identity 8a (registry); ADR-0030 accepted (raw read helper, data design 7.2) | Fail-closed matrix; AC 1 to 4, 8; the earliest-of-three boundary (a Sydney-address seller choosing `Australia/Broken_Hill` never gains 30 minutes; AU and ZZ); a missing or unresolvable `zone` or `addressZone` is `seller-zone-missing`; no actor read; same answer under every caller (B1); CI check that the anonymous and system pairs are not reachable over HTTP (L3) |
 | 2 | Type revisions with form settings, default basis, claim terms; seeds (AU, ZZ); `Issuer` with expert reference; `certificationTypes`; `matchClaimTerms` | M | 1 | Matcher normalisation and corpus, incl. separator-removed, digit-to-letter and cross-locale cases (M8); seed path exemption; type relaxation pending a second admin, `verificationMode` immutable (H1) |
 | 3 | `ObjectStore` port and adapter; local server in compose; draft and evidence buckets | M | ADR-0029 accepted (storage parts); spike 1; the dependency approvals of 15 | Bucket policy; no public access; draft bucket lifecycle (M7); promote checks the clean hash (M7); no fake lock (S5) |
 | 4 | Intake: inspection, scanner, sandbox, previews, preview and download use cases, `document.view` | L | 3; ADR-0029 intake parts; spike 2; P-1 | The whole of 9.3 and 9.4 incl. the sandbox caps and polyglot refusal (L5) and draft encryption (M7); joins the penetration-test scope (ADR-0018 decision 7) |
