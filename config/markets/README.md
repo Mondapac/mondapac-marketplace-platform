@@ -132,8 +132,8 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   digits and `_`) and `labelKey`. The AU values wait for the tax adviser (ADR-0007 decision 5).
 - `sensitiveChanges` (required, every flag required): `platformCategories`, `taxCategory`,
   `name`, `primaryImage`, `anyImage`, `variantRemoved`. A change in a field marked `true` sends
-  the revision to review (design 4.3). `anyImage` is kept for the shape: an added or replaced
-  image always goes to review (Hassan H1).
+  the revision to review (design 4.3). `anyImage` must be `true`: an added or replaced
+  image always goes to review (Hassan H1), so a Market cannot switch it off.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
   product may hold. The ceiling of 100 keeps the re-key of a moved Offer (inventory design 3.6)
   under the lock helper's 1,000-item cap with 4 sources.

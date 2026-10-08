@@ -131,7 +131,7 @@
       "taxCategory": true,
       "name": true,
       "primaryImage": false,
-      "anyImage": false,
+      "anyImage": true,
       "variantRemoved": false
     },
     "maxVariantsPerProduct": 3,

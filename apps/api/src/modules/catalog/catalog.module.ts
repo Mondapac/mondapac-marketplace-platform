@@ -5,6 +5,7 @@ import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { ExtensionPointRegistry } from '../../platform/extensions';
+import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
@@ -26,6 +27,7 @@ import {
 import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { catalogProviders } from './infrastructure/catalog-providers';
+import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
 import { CatalogFacadeImplementation } from './presentation/catalog.facade';
 import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job';
@@ -94,6 +96,14 @@ const productTypeProvider: FactoryProvider<string> = {
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),
     productTypeProvider,
+    {
+      provide: 'CATALOG_MARKET_CONFIG_CHECK',
+      inject: [MarketRegistry],
+      useFactory: (markets: MarketRegistry) => {
+        assertCatalogConfigured(markets);
+        return true;
+      },
+    },
     ...catalogProviders,
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,

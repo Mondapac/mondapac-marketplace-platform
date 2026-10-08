@@ -1036,6 +1036,13 @@ describe('loadMarketConfigs', () => {
           sensitiveChanges: { ...VALID_CATALOG.sensitiveChanges, name: 'yes' },
         },
       ],
+      [
+        'anyImage switched off (an added image always goes to review)',
+        {
+          ...VALID_CATALOG,
+          sensitiveChanges: { ...VALID_CATALOG.sensitiveChanges, anyImage: false },
+        },
+      ],
       ['no variant limit', without('maxVariantsPerProduct')],
       ['a zero variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: 0 }],
       ['a variant limit above the lock set', { ...VALID_CATALOG, maxVariantsPerProduct: 101 }],

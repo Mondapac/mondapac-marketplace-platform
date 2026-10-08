@@ -565,15 +565,15 @@ const catalogSchema = z
       .max(20),
     /**
      * Which changes to a published product go to review (catalog design 4.3). Every flag is
-     * required: a Market never defaults one. `anyImage` is kept for the shape; an added or
-     * replaced image always goes to review (Hassan H1).
+     * required: a Market never defaults one. `anyImage` must be `true`: an added or
+     * replaced image always goes to review (Hassan H1), so the file cannot claim otherwise.
      */
     sensitiveChanges: z.strictObject({
       platformCategories: z.boolean(),
       taxCategory: z.boolean(),
       name: z.boolean(),
       primaryImage: z.boolean(),
-      anyImage: z.boolean(),
+      anyImage: z.literal(true),
       variantRemoved: z.boolean(),
     }),
     /**
