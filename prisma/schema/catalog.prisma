@@ -229,3 +229,131 @@ model CatalogPlatformCategoryRevisionName {
   @@map("platform_category_revision_names")
   @@schema("catalog")
 }
+
+/// An attribute a product can carry (catalog design 3.3; data design 3.5): the code, data type and
+/// localizable flag never change; name, bounds, options and the `material` flag live in
+/// insert-only revisions. The CHECKs and the grants are hand-written in the migration. The
+/// archive request column and its two-person triggers arrive with slice 21.
+model CatalogAttributeDefinition {
+  id                  String                               @id @db.Uuid
+  marketId            String                               @map("market_id") @db.VarChar(8)
+  tenantId            String                               @map("tenant_id")
+  /// Unique per Market, never updated (CA4).
+  code                String
+  /// text | long-text | integer | decimal | boolean | select | multi-select | date.
+  dataType            String                               @map("data_type")
+  localizable         Boolean
+  /// active | archived.
+  status              String
+  /// The current revision; null only inside the creating unit (Q-K10).
+  publishedRevisionId String?                              @map("published_revision_id") @db.Uuid
+  /// seed | admin; never updated.
+  createdByKind       String                               @map("created_by_kind")
+  version             Int
+  createdAt           DateTime                             @map("created_at") @db.Timestamptz(6)
+  revisions           CatalogAttributeDefinitionRevision[] @relation("DefinitionRevisions")
+  publishedRevision   CatalogAttributeDefinitionRevision?  @relation("DefinitionPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  @@unique([marketId, code])
+  @@map("attribute_definitions")
+  @@schema("catalog")
+}
+
+/// A revision of a definition (V1, insert-only: CA3). `material` is set by people or the seed,
+/// never by a machine (ADR-0012 decision 3).
+model CatalogAttributeDefinitionRevision {
+  id                  String                                     @id @db.Uuid
+  marketId            String                                     @map("market_id") @db.VarChar(8)
+  tenantId            String                                     @map("tenant_id")
+  definitionId        String                                     @map("definition_id") @db.Uuid
+  revisionNo          Int                                        @map("revision_no")
+  material            Boolean
+  isVariantOption     Boolean                                    @map("is_variant_option")
+  /// Object with maxLength, min, max.
+  bounds              Json                                       @db.JsonB
+  /// Locale to name (CA6).
+  names               Json                                       @db.JsonB
+  /// seed | admin.
+  authorKind          String                                     @map("author_kind")
+  /// Null exactly when the author is the seed.
+  authorAccountId     String?                                    @map("author_account_id") @db.Uuid
+  /// Slice 21: the confirmed request that allowed clearing `material`; its foreign key arrives there.
+  relaxationRequestId String?                                    @map("relaxation_request_id") @db.Uuid
+  createdAt           DateTime                                   @map("created_at") @db.Timestamptz(6)
+  definition          CatalogAttributeDefinition                 @relation("DefinitionRevisions", fields: [marketId, definitionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  published           CatalogAttributeDefinition[]               @relation("DefinitionPublished")
+  options             CatalogAttributeDefinitionRevisionOption[]
+
+  @@unique([marketId, definitionId, revisionNo])
+  /// The target of the definition's published-revision pointer.
+  @@unique([marketId, definitionId, id])
+  @@unique([marketId, id])
+  @@map("attribute_definition_revisions")
+  @@schema("catalog")
+}
+
+/// An option of a select definition at one revision; deactivated, never deleted (insert-only).
+model CatalogAttributeDefinitionRevisionOption {
+  marketId   String                             @map("market_id") @db.VarChar(8)
+  tenantId   String                             @map("tenant_id")
+  revisionId String                             @map("revision_id") @db.Uuid
+  optionCode String                             @map("option_code")
+  /// Locale to label (CA6).
+  labels     Json                               @db.JsonB
+  active     Boolean
+  position   Int                                @db.SmallInt
+  revision   CatalogAttributeDefinitionRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, optionCode])
+  @@map("attribute_definition_revision_options")
+  @@schema("catalog")
+}
+
+/// A family: the groups of attributes a product type offers (catalog design 2.1; data design 3.5).
+model CatalogAttributeFamily {
+  id                  String                           @id @db.Uuid
+  marketId            String                           @map("market_id") @db.VarChar(8)
+  tenantId            String                           @map("tenant_id")
+  code                String
+  /// active | archived.
+  status              String
+  publishedRevisionId String?                          @map("published_revision_id") @db.Uuid
+  /// seed | admin; never updated.
+  createdByKind       String                           @map("created_by_kind")
+  version             Int
+  createdAt           DateTime                         @map("created_at") @db.Timestamptz(6)
+  revisions           CatalogAttributeFamilyRevision[] @relation("FamilyRevisions")
+  publishedRevision   CatalogAttributeFamilyRevision?  @relation("FamilyPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, familyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  @@unique([marketId, code])
+  @@map("attribute_families")
+  @@schema("catalog")
+}
+
+/// A revision of a family (V1, insert-only): the groups as a document, because a revision is
+/// read whole and never queried inside.
+model CatalogAttributeFamilyRevision {
+  id                  String                   @id @db.Uuid
+  marketId            String                   @map("market_id") @db.VarChar(8)
+  tenantId            String                   @map("tenant_id")
+  familyId            String                   @map("family_id") @db.Uuid
+  revisionNo          Int                      @map("revision_no")
+  /// Array of { groupCode, attributes: [{ code, required, isVariantOption }] }.
+  groups              Json                     @db.JsonB
+  /// seed | admin.
+  authorKind          String                   @map("author_kind")
+  authorAccountId     String?                  @map("author_account_id") @db.Uuid
+  /// Slice 21: the confirmed request that allowed removing a material attribute.
+  relaxationRequestId String?                  @map("relaxation_request_id") @db.Uuid
+  createdAt           DateTime                 @map("created_at") @db.Timestamptz(6)
+  family              CatalogAttributeFamily   @relation("FamilyRevisions", fields: [marketId, familyId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  published           CatalogAttributeFamily[] @relation("FamilyPublished")
+
+  @@unique([marketId, familyId, revisionNo])
+  @@unique([marketId, familyId, id])
+  @@unique([marketId, id])
+  @@map("attribute_family_revisions")
+  @@schema("catalog")
+}

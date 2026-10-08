@@ -8,8 +8,11 @@ import { ExtensionPointRegistry } from '../../platform/extensions';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { ATTRIBUTE_REPOSITORY } from './application/ports/attribute.repository';
+import { ATTRIBUTE_SEED } from './application/ports/attribute-seed';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
+import { SeedAttributes } from './application/use-cases/seed-attributes.use-case';
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
 import { CATALOG_EVENTS } from './domain/events';
 import {
@@ -20,6 +23,7 @@ import {
 import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { catalogProviders } from './infrastructure/catalog-providers';
+import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
 import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job';
 
 /**
@@ -30,6 +34,8 @@ const PORT = {
   unitOfWork: UNIT_OF_WORK,
   categories: PLATFORM_CATEGORY_REPOSITORY,
   seed: CATEGORY_SEED,
+  attributes: ATTRIBUTE_REPOSITORY,
+  attributeSeed: ATTRIBUTE_SEED,
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
   ids: ID_GENERATOR,
@@ -93,9 +99,21 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
     }),
-    registerJobsFrom('catalog', [SeedCategoryTree], (seed: SeedCategoryTree) => [
-      seedCategoryTreeJob(seed),
-    ]),
+    useCaseProvider(SeedAttributes, {
+      unitOfWork: true,
+      attributes: true,
+      attributeSeed: true,
+      clock: true,
+      ids: true,
+    }),
+    registerJobsFrom(
+      'catalog',
+      [SeedCategoryTree, SeedAttributes],
+      (categories: SeedCategoryTree, attributes: SeedAttributes) => [
+        seedCategoryTreeJob(categories),
+        seedAttributesJob(attributes),
+      ],
+    ),
   ],
 })
 export class CatalogModule {}
