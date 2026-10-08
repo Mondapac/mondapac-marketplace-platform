@@ -44,6 +44,7 @@ import {
 } from './application/ports/session-secrets';
 import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.repository';
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
+import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { ConfirmCustomerEmail } from './application/use-cases/confirm-customer-email.use-case';
 import { ConfirmSellerEmail } from './application/use-cases/confirm-seller-email.use-case';
 import { DescribeActor } from './application/use-cases/describe-actor.use-case';
@@ -55,12 +56,15 @@ import { PurgeUnverifiedAccounts } from './application/use-cases/purge-unverifie
 import { RegisterCustomer } from './application/use-cases/register-customer.use-case';
 import { RegisterSeller } from './application/use-cases/register-seller.use-case';
 import { RequestCustomerVerification } from './application/use-cases/request-customer-verification.use-case';
+import { RequestPasswordReset } from './application/use-cases/request-password-reset.use-case';
 import { RequestSellerVerification } from './application/use-cases/request-seller-verification.use-case';
+import { ResetPassword } from './application/use-cases/reset-password.use-case';
 import { SeedSystemRoles } from './application/use-cases/seed-system-roles.use-case';
 import { SellerAccessOf } from './application/use-cases/seller-access-of.use-case';
 import { SellerAccessOfSystem } from './application/use-cases/seller-access-of-system.use-case';
 import { SendExistingAccountMail } from './application/use-cases/send-existing-account-mail.use-case';
 import { SendLinkMail } from './application/use-cases/send-link-mail.use-case';
+import { SendPasswordChangedMail } from './application/use-cases/send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './application/use-cases/send-welcome-mail.use-case';
 import { SignInCustomer } from './application/use-cases/sign-in-customer.use-case';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
@@ -76,6 +80,7 @@ import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
+import { CustomerPasswordController } from './presentation/customer-password.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
 import { CustomerSignUpController } from './presentation/customer-sign-up.controller';
 import { IdentityFacadeImplementation } from './presentation/identity.facade';
@@ -83,6 +88,7 @@ import { SellerAccessContractImplementation } from './presentation/seller-access
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified-accounts.job';
 import { seedSystemRolesJob } from './presentation/jobs/seed-system-roles.job';
+import { SellerPasswordController } from './presentation/seller-password.controller';
 import { SellerSessionController } from './presentation/seller-session.controller';
 import { SellerSignUpController } from './presentation/seller-sign-up.controller';
 import { identityMailSubscriptions } from './presentation/subscribers/mail.subscriptions';
@@ -160,6 +166,9 @@ function useCaseProvider<D, U>(
  * seller self-registration, sign-in, email confirmation, "send it again" and status, with their
  * two controllers; `membershipOf`, `sellerAccessOf` (its two use cases) and the registered
  * seller paging behind the facade; the welcome mail handler; and the `identity.seed-roles` job.
+ *
+ * Slice 4 binds the password reset request, the reset with a link and the signed-in change, with
+ * one controller per population, and the "password changed" mail handler.
  */
 @Module({
   controllers: [
@@ -168,6 +177,8 @@ function useCaseProvider<D, U>(
     CustomerEmailVerificationController,
     SellerSignUpController,
     SellerSessionController,
+    CustomerPasswordController,
+    SellerPasswordController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('identity'),
@@ -387,6 +398,56 @@ function useCaseProvider<D, U>(
       transport: true,
       policy: true,
     }),
+    useCaseProvider(RequestPasswordReset, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ResetPassword, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      sessions: true,
+      throttles: true,
+      records: true,
+      ids: true,
+      keys: true,
+      linkTokens: true,
+      outbox: true,
+      hasher: true,
+      commonPasswords: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(ChangePassword, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      links: true,
+      throttles: true,
+      records: true,
+      ids: true,
+      keys: true,
+      tokens: true,
+      outbox: true,
+      hasher: true,
+      commonPasswords: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(SendPasswordChangedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
     {
       provide: IDENTITY_FACADE,
       inject: [DescribeActor, MembershipOf],
@@ -425,12 +486,19 @@ function useCaseProvider<D, U>(
     ),
     registerSubscriptionsFrom(
       'identity',
-      [SendLinkMail, SendExistingAccountMail, SendWelcomeMail],
+      [SendLinkMail, SendExistingAccountMail, SendWelcomeMail, SendPasswordChangedMail],
       (
         sendLinkMail: SendLinkMail,
         sendExistingAccountMail: SendExistingAccountMail,
         sendWelcomeMail: SendWelcomeMail,
-      ) => identityMailSubscriptions(sendLinkMail, sendExistingAccountMail, sendWelcomeMail),
+        sendPasswordChangedMail: SendPasswordChangedMail,
+      ) =>
+        identityMailSubscriptions(
+          sendLinkMail,
+          sendExistingAccountMail,
+          sendWelcomeMail,
+          sendPasswordChangedMail,
+        ),
     ),
   ],
   exports: [AUTHENTICATOR, AUTHORISATION_CHECK, IDENTITY_FACADE, SELLER_ACCESS_CONTRACT],

@@ -25,7 +25,12 @@ export interface SendLinkMailInput {
 
 /** Why no mail went: a code, for the log line. */
 export type LinkMailSkipped =
-  'link.gone' | 'link.superseded' | 'account.gone' | 'account.disabled' | 'account.verified';
+  | 'link.gone'
+  | 'link.superseded'
+  | 'account.gone'
+  | 'account.disabled'
+  | 'account.verified'
+  | 'account.unverified';
 
 export type SendLinkMailOutput =
   | { readonly code: 'link-mail.sent'; readonly issued: boolean }
@@ -46,9 +51,12 @@ export interface SendLinkMailDependencies {
   readonly clock: Clock;
 }
 
-/** Each purpose's mail and page. Slice 3 has the verification mail; slice 4 adds the reset. */
-const MAIL_OF: Partial<Record<LinkPurpose, { template: 'confirm-email'; page: LinkPage }>> = {
+/** Each purpose's mail and page: slice 3 the verification mail (E1), slice 4 the reset (E8). */
+const MAIL_OF: Partial<
+  Record<LinkPurpose, { template: 'confirm-email' | 'reset-password'; page: LinkPage }>
+> = {
   'verify-email': { template: 'confirm-email', page: 'verify-email' },
+  'reset-password': { template: 'reset-password', page: 'reset-password' },
 };
 
 /**
@@ -58,8 +66,8 @@ const MAIL_OF: Partial<Record<LinkPurpose, { template: 'confirm-email'; page: Li
  *
  * 1. A read-only unit loads the link and its account. Nothing is sent, and the delivery is only
  *    marked handled, when the link is gone, no longer the request the event announced (a newer
- *    request, an issue or a use since: its version differs), or the account is gone, disabled
- *    or, for verification, already verified.
+ *    request, an issue or a use since: its version differs), or the account is gone, disabled,
+ *    for verification already verified, or for a reset (slice 4) not verified.
  * 2. Outside any unit: the token is minted, the mail rendered in the Market's locale and sent.
  *    A failed send throws; the delivery comes due again after its back-off (P 6.4).
  * 3. `runOnce`: the inbox row, then the hash is stored if the link is still the one announced
@@ -191,6 +199,10 @@ export class SendLinkMail extends UseCase<
     if (account === null) return 'account.gone';
     if (account.state.status !== 'active') return 'account.disabled';
     if (input.purpose === 'verify-email' && account.isEmailVerified) return 'account.verified';
+    // 3.7: no reset link for an unverified account (it signs up again, 3.2).
+    if (input.purpose === 'reset-password' && !account.isEmailVerified) {
+      return 'account.unverified';
+    }
     return null;
   }
 

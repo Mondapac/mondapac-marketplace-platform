@@ -89,6 +89,19 @@ export class PrismaAccountRepository implements AccountRepository {
     return row === null ? null : this.restore(row);
   }
 
+  async lockCredential(market: MarketContext, id: Id<'Account'>): Promise<boolean> {
+    // An UPDATE that changes no value takes the row's write lock (FOR NO KEY UPDATE strength)
+    // until the unit ends; a concurrent holder makes this statement wait, under the login
+    // role's lock_timeout (55P03 is a TransactionConflictError at once, P 3.1 row 7). It writes
+    // a new row version and touches no index column, so it is HOT-eligible (measured 97.7 % in
+    // steady state; data design 3.3).
+    const { count } = await this.prisma.tx(market).identityAccount.updateMany({
+      where: { marketId: market.marketId, id },
+      data: { version: { increment: 0 } },
+    });
+    return count === 1;
+  }
+
   private restore(row: SelectedRow): Account {
     const credential = row.passwordCredential;
     const marketId = parseMarketId(row.marketId);

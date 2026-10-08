@@ -22,6 +22,9 @@ function inLockOrder(a: ThrottleCounter, b: ThrottleCounter): number {
   return Buffer.compare(a.keyHash, b.keyHash);
 }
 
+/** The counters of an address that a password reset clears (identity design 3.7, AC 13). */
+const SIGN_IN_ACCOUNT_KINDS = ['sign-in.account', 'sign-in.account-origin'] as const;
+
 /**
  * {@link ThrottleRepository} on `identity.sign_in_throttles` (data design 3.5). Per counter, two
  * statements (C10): an `updateMany` that restarts an ended window, then an `upsert` on the
@@ -107,6 +110,19 @@ export class PrismaThrottleRepository implements ThrottleRepository {
         data: { blockedUntil: toDate(until) },
       });
     }
+  }
+
+  async clearAccount(market: MarketContext, accountKey: Uint8Array): Promise<number> {
+    // On the index (market_id, account_key) (data design 3.5). A deadlock with a concurrent
+    // reservation of the same address is retried by the unit of work (40P01, P 3.1 row 7).
+    const { count } = await this.prisma.tx(market).identitySignInThrottle.deleteMany({
+      where: {
+        marketId: market.marketId,
+        accountKey: Uint8Array.from(accountKey),
+        kind: { in: [...SIGN_IN_ACCOUNT_KINDS] },
+      },
+    });
+    return count;
   }
 
   async purge(

@@ -155,7 +155,10 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  *    at its threshold refuses the attempt without hashing. Counters unreachable: fail closed.
  * 3. **The password is verified outside any unit**, against a dummy hash when there is no
  *    account, so both paths cost one hash (HF12).
- * 4. **Closing unit** (HF11): re-reads the account. A wrong password, an unknown address or a
+ * 4. **Closing unit** (HF11): after a correct password, takes the account's credential lock
+ *    (`AccountRepository.lockCredential`; Hassan slice-2 N1) and re-reads the account, so a
+ *    password reset or change that commits meanwhile is either seen here or revokes the session
+ *    this unit opens (slice 4). A wrong password, an unknown address or a
  *    credential that changed since it was verified is `credentials.invalid`; the failure stays
  *    counted and a counter that reached its limit is blocked. A correct password releases the
  *    reservation. With a link: a disabled account is `account.disabled` and the link stays
@@ -331,7 +334,17 @@ export class SignInFlow {
     const closed = await this.#failClosed(context, 'closing', () =>
       unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
         const now = this.deps.clock.now();
-        const current = account === null ? null : await accounts.findById(market, account.state.id);
+        // Hassan slice-2 N1: before the stored hash is compared, the account's credential lock
+        // is taken (one statement that changes no value), and the account is read after it. A
+        // password reset or change takes the same lock before it replaces the hash and revokes
+        // the sessions, so the two serialise at READ COMMITTED: either this unit commits its
+        // session first and the change revokes it, or this unit reads the new hash and refuses.
+        // A failed attempt takes no lock.
+        let current: Account | null = null;
+        if (matches && account !== null && issued !== null) {
+          const locked = await accounts.lockCredential(market, account.state.id);
+          current = locked ? await accounts.findById(market, account.state.id) : null;
+        }
         if (
           !matches ||
           account === null ||
