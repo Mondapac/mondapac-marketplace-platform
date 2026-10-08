@@ -97,10 +97,14 @@ needs a licence check before it merges (timezone-boundary-builder is ODbL).
   A later small slice ("location hint", tier A, Hassan reviews) adds the real adapter and dataset, the
   optional `location` field on `save-address` and the frontend step (Figma first), once the GPS
   finder exists. Not on the first-sale path.
-- **Decided first hint (owner, 2026-10-08, accepting the coordinator's recommendation of Mohammad's
-  option).** The browser's own time zone (`Intl` `resolvedOptions().timeZone`) is the first hint: no
-  location permission, no dataset, no location data, same allow-list rule and the same address-wins
-  rule. GPS comes later only if still wanted, through the port above.
+- **Hint sources by client (owner, 2026-10-08).** The phone apps will use GPS, through the
+  `LocationTimezoneResolver` port above, when they are built. On a computer the hint comes from the
+  browser: first its own time zone (`Intl` `resolvedOptions().timeZone`: no permission, no dataset, no
+  location data, same allow-list and address-wins rules). The owner also named the computer's IP as an
+  alternative; an IP lookup is server-side, needs a licensed database (its licence checked like the
+  GPS dataset) and a privacy review by Hassan (an IP is personal data; it must not be stored or logged
+  for this purpose, and proxies and VPNs make it unreliable). It is therefore not built until the
+  browser zone proves insufficient, and the browser zone is the default.
 
 **Amendments needed (Mohammad).** `sellers.md` 1.1, 2.1, 3.1, 4.1, 4.2, 6.2 (row `correct-timezone`),
 6.3, 6.4, 6.5, 7.1a row 9, 7.4, 9, 10, 13.1, 13.2, 16.2 item 4 and the AC 8 and change log; the data
