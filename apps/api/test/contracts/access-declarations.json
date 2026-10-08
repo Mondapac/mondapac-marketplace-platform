@@ -1,4 +1,5 @@
 [
+  { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },

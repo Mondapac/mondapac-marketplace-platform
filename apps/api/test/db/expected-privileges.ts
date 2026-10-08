@@ -166,6 +166,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'catalog.platform_category_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_revision_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
+    // code, type and the flags live in insert-only revisions.
+    'catalog.attribute_definitions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'status', 'version'],
+    },
+    'catalog.attribute_definition_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.attribute_definition_revision_options': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'catalog.attribute_families': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'status', 'version'],
+    },
+    'catalog.attribute_family_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {
