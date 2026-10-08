@@ -476,7 +476,7 @@ describe.each(TEST_MARKETS)('certification types registry in market %s (database
   });
 
   describe('platform subject keys', () => {
-    it('holds one subject per Market, unique across Markets, never changed', async () => {
+    it('holds one subject per Market, never changed', async () => {
       const subjectId = uuid7();
       const row = { ...base(), subject_id: subjectId, created_at: T0 };
       // Another test file or run may already hold the Market's row; use a throwaway Market code.
@@ -489,12 +489,6 @@ describe.each(TEST_MARKETS)('certification types registry in market %s (database
         code: '23505',
         constraint: 'platform_subjects_pkey',
       });
-      expect(
-        await insertFailure('platform_subjects', {
-          ...throwaway,
-          market_id: `U${Date.now().toString(36).toUpperCase().slice(-6)}`,
-        }),
-      ).toEqual({ code: '23505', constraint: 'platform_subjects_subject_id_key' });
       expect(
         (
           await failure(

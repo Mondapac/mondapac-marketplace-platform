@@ -82,9 +82,6 @@ CREATE UNIQUE INDEX "issuer_contact_channels_market_id_issuer_id_id_key" ON "cer
 -- CreateIndex
 CREATE UNIQUE INDEX "relaxation_proposals_market_id_id_key" ON "certification"."relaxation_proposals"("market_id", "id");
 
--- CreateIndex
-CREATE UNIQUE INDEX "platform_subjects_subject_id_key" ON "certification"."platform_subjects"("subject_id");
-
 -- AddForeignKey
 ALTER TABLE "certification"."type_revision_texts" ADD CONSTRAINT "type_revision_texts_market_id_type_revision_id_fkey" FOREIGN KEY ("market_id", "type_revision_id") REFERENCES "certification"."certification_type_revisions"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 

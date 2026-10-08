@@ -938,7 +938,7 @@ SQL file. The partial unique of one pending proposal per subject (D 7.6) is hand
 the partial-index catalog test; `relaxation_proposals` carries no foreign key because its subject id
 is polymorphic (a type revision, a claim policy revision, an issuer or a type). The application may
 update only `state`, `decided_by_account_id`, `decided_at` and `version` there, and only `retired_at`
-on a contact channel. `platform_subjects` is insert-only by grant but has no trigger (the seed owns it;
+on a contact channel. `platform_subjects` has no extra unique on `subject_id` (the Market is its primary key; the Prisma boundary check refuses a unique key without `market_id`; the id is an opaque random UUIDv7). It is insert-only by grant but has no trigger (the seed owns it;
 the owner may delete it in tests).
 
 No migration: slices 3, 8, 10, 11, 12, 15. This matches D 14.1 (1, 2, 4, 5, 6, 7, 9, 13, 14) plus

@@ -360,7 +360,7 @@ model CertificationRelaxationProposal {
 model CertificationPlatformSubject {
   marketId  String   @id @map("market_id") @db.VarChar(8)
   tenantId  String   @map("tenant_id")
-  subjectId String   @unique @map("subject_id") @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
   createdAt DateTime @map("created_at") @db.Timestamptz(6)
 
   @@map("platform_subjects")
