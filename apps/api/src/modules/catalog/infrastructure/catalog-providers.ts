@@ -23,6 +23,10 @@ import {
 } from '../application/ports/catalog-market-policy';
 import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
 import {
+  PRODUCT_REVISION_REPOSITORY,
+  type ProductRevisionRepository,
+} from '../application/ports/product-revision.repository';
+import {
   RATE_COUNTER_REPOSITORY,
   type RateCounterRepository,
 } from '../application/ports/rate-counter.repository';
@@ -33,6 +37,7 @@ import {
 import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
+import { PrismaProductRevisionRepository } from './prisma-product-revision.repository';
 import { PrismaWorkingCopyRepository } from './prisma-working-copy.repository';
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
@@ -83,6 +88,12 @@ export const catalogProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): WorkingCopyRepository =>
       new PrismaWorkingCopyRepository(prisma),
+  },
+  {
+    provide: PRODUCT_REVISION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductRevisionRepository =>
+      new PrismaProductRevisionRepository(prisma),
   },
   {
     provide: RATE_COUNTER_REPOSITORY,
