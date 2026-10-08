@@ -6,6 +6,8 @@ import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
 import { EVENT_BUS, OUTBOX_RELAY, type EventBus } from '../events/event-bus';
 import { EventCatalogue } from '../events/event-catalogue';
+import { EVENT_DISPATCHER } from '../events/event-delivery';
+import { SubscriptionRegistry } from '../events/event-subscriptions';
 import {
   OUTBOX_WRITER,
   PERMISSION_KEY_LOOKUP,
@@ -23,6 +25,7 @@ import { DatabaseProbe } from './database-probe';
 import { createGuardedClient, GUARDED_CLIENT, type GuardedClient } from './guarded-client';
 import type { ModelMap } from './model-map';
 import { InProcessEventBus } from './outbox/in-process-event-bus';
+import { PrismaEventDispatcher } from './outbox/prisma-event-dispatcher';
 import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
@@ -66,7 +69,23 @@ const modelMap: ModelMap = MODEL_MAP;
       inject: [PrismaRoot],
       useFactory: (root: PrismaRoot) => new DatabaseProbe(root),
     },
-    { provide: EVENT_BUS, useClass: InProcessEventBus },
+    {
+      provide: EVENT_BUS,
+      inject: [SubscriptionRegistry, CLOCK],
+      useFactory: (subscriptions: SubscriptionRegistry, clock: Clock) =>
+        new InProcessEventBus(subscriptions, clock),
+    },
+    {
+      provide: EVENT_DISPATCHER,
+      inject: [PrismaRoot, MarketRegistry, MarketContextFactory, SubscriptionRegistry, CLOCK],
+      useFactory: (
+        root: PrismaRoot,
+        markets: MarketRegistry,
+        contexts: MarketContextFactory,
+        subscriptions: SubscriptionRegistry,
+        clock: Clock,
+      ) => new PrismaEventDispatcher(root, markets, contexts, subscriptions, clock),
+    },
     {
       provide: OUTBOX_RELAY,
       inject: [PrismaRoot, MarketRegistry, MarketContextFactory, EVENT_BUS, CLOCK],
@@ -84,7 +103,15 @@ const modelMap: ModelMap = MODEL_MAP;
       useFactory: (root: PrismaRoot) => new AdvisoryJobLock(root),
     },
   ],
-  exports: [PrismaService, UNIT_OF_WORK, DatabaseProbe, EVENT_BUS, OUTBOX_RELAY, JOB_LOCK],
+  exports: [
+    PrismaService,
+    UNIT_OF_WORK,
+    DatabaseProbe,
+    EVENT_BUS,
+    OUTBOX_RELAY,
+    EVENT_DISPATCHER,
+    JOB_LOCK,
+  ],
 })
 export class PersistenceModule {
   /**

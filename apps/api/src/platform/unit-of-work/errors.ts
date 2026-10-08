@@ -48,6 +48,7 @@ export class InvalidUnitOfWorkOptionsError extends Error {
 export type InvalidUnitOfWorkOptionsReason =
   | 'read-only-with-isolation'
   | 'read-only-with-timeout'
+  | 'read-only-run-once'
   | 'unknown-isolation'
   | 'timeout-out-of-range';
 

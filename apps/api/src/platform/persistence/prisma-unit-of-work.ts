@@ -1,7 +1,8 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { isMinted } from '@mondapac/shared-kernel';
+import { isMinted, ok } from '@mondapac/shared-kernel';
 import type { MarketContext, Result } from '@mondapac/shared-kernel';
 import { Prisma } from '../../generated/prisma/client';
+import type { EventDelivery } from '../events/event-delivery';
 import {
   InvalidUnitOfWorkOptionsError,
   NestedUnitOfWorkError,
@@ -13,12 +14,19 @@ import {
   DEFAULT_UNIT_TIMEOUT_MS,
   MAX_UNIT_TIMEOUT_MS,
   UNIT_ATTEMPTS,
+  type HandledOnce,
   type UnitOfWork,
   type UnitOfWorkOptions,
 } from '../unit-of-work/unit-of-work';
 import { classifyConflict } from './conflict-classifier';
 import { modelDelegatesOf, type GuardedClient, type MarketTransaction } from './guarded-client';
 import type { ModelMap } from './model-map';
+import {
+  issuedDeliveryFor,
+  markDelivered,
+  recordInInbox,
+  settleDelivery,
+} from './outbox/delivery-ledger';
 import { OpenUnit, unitStorage } from './unit-store';
 
 /** Carries an `err` result out of the transaction callback, so that nothing commits (P 3.1 row 3). */
@@ -87,6 +95,41 @@ export class PrismaUnitOfWork implements UnitOfWork {
     return options.readOnly === true
       ? this.runReadOnly(market, work)
       : this.runReadWrite(market, work, options);
+  }
+
+  /**
+   * P 6.4 (ADR-0006 decision 5): the inbox row, the work when the row is new, and the mark of
+   * the delivery, in one read-write unit; on a retry of the unit all three run again. The
+   * delivery is settled only after the commit, so the dispatcher sees a failed handler.
+   */
+  async runOnce<T, E>(
+    market: MarketContext,
+    delivery: EventDelivery,
+    work: () => Promise<Result<T, E>>,
+    options: Omit<UnitOfWorkOptions, 'readOnly'> = {},
+  ): Promise<Result<HandledOnce<T>, E>> {
+    if ((options as UnitOfWorkOptions).readOnly === true) {
+      throw new InvalidUnitOfWorkOptionsError('read-only-run-once');
+    }
+    if (!isMinted(market)) throw new UnmintedMarketContextError();
+    const record = issuedDeliveryFor(delivery, market);
+    const result = await this.run(
+      market,
+      async (): Promise<Result<HandledOnce<T>, E>> => {
+        const view = unitStorage.getStore()!.view as MarketTransaction;
+        let outcome: HandledOnce<T> = { handled: false };
+        if (await recordInInbox(view, this.map, delivery, record)) {
+          const done = await work();
+          if (!done.ok) return done;
+          outcome = { handled: true, value: done.value };
+        }
+        await markDelivered(view, delivery, record);
+        return ok(outcome);
+      },
+      options,
+    );
+    if (result.ok) settleDelivery(delivery);
+    return result;
   }
 
   private async runReadOnly<T, E>(

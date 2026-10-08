@@ -77,3 +77,46 @@ model SubjectKey {
   @@map("subject_keys")
   @@schema("platform")
 }
+
+/// One delivery of one event to one subscriber (ADR-0006 decisions 4 and 5; platform persistence
+/// design 6.4, PM3; docs/design/data/identity.md 3.8): the work queue of the in-process event
+/// bus, its retries and its dead letters. The relay's bus inserts a row per event and
+/// subscriber in the relay's transaction, ignoring a repeated key; the dispatcher claims due
+/// rows with FOR UPDATE SKIP LOCKED; the subscriber's unit marks its row delivered (runOnce).
+/// The envelope is a copy of the outbox row, so the dispatcher never reads a module schema, and
+/// it is never updated. Ids, codes and permission keys only: no personal data in any column.
+/// The CHECKs, the partial claim index and the column-level grants are hand-written in the
+/// migration.
+model EventDelivery {
+  /// The event's id (the outbox row's event_id).
+  eventId          String    @map("event_id") @db.Uuid
+  /// "<module>.<handler>": the subscription that receives the event.
+  subscriber       String
+  marketId         String    @map("market_id") @db.VarChar(8)
+  tenantId         String    @map("tenant_id")
+  /// pending | delivered | dead.
+  status           String
+  /// Claims so far; each claim counts one.
+  attempts         Int
+  /// When the row is next due; moved forward by the back-off at every claim.
+  nextAttemptAt    DateTime  @map("next_attempt_at") @db.Timestamptz(6)
+  /// The envelope copy (data design 3.1); never updated.
+  type             String
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// The last failure, as a code; never a message or a row value (P 12.3).
+  errorCode        String?   @map("error_code")
+  createdAt        DateTime  @map("created_at") @db.Timestamptz(6)
+  deliveredAt      DateTime? @map("delivered_at") @db.Timestamptz(6)
+  deadAt           DateTime? @map("dead_at") @db.Timestamptz(6)
+
+  /// ADR-0006 decision 4: one row per event and subscriber.
+  @@id([eventId, subscriber])
+  @@map("event_delivery")
+  @@schema("platform")
+}
