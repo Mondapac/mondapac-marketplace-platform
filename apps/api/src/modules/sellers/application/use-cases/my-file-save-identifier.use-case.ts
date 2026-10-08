@@ -244,7 +244,9 @@ export class MyFileSaveIdentifier extends UseCase<
     // Reserve before the work (design 7.7, ADR-0023 decision 1): a reached account limit refuses
     // the save of a new value and creates no result; a spent Market budget writes no result.
     const due: LookupPlan | null =
-      plan !== null && parsed !== null && lookupDue(existing, clock.now(), plan.settings)
+      plan !== null &&
+      parsed !== null &&
+      lookupDue(existing, clock.now(), plan.settings, current.state.lastChangedAt)
         ? plan
         : null;
     let verdict: QuotaVerdict = 'go';
@@ -259,6 +261,8 @@ export class MyFileSaveIdentifier extends UseCase<
       verdict = quota.value;
     }
 
+    // The file's last change as this save leaves it: a result is current only if made after it.
+    let changedAt = current.state.lastChangedAt;
     const saved = await unitOfWork.run<DraftSaved, MyFileSaveIdentifierFailure>(
       market,
       async () => {
@@ -266,6 +270,7 @@ export class MyFileSaveIdentifier extends UseCase<
         if (file === null) return err({ code: 'file.not-found' });
         const applied = file.saveIdentifier(identifier, clock.now(), requirements);
         if (!applied.ok) return applied;
+        changedAt = file.state.lastChangedAt;
         if (file.state.version === file.persistedVersion) {
           return ok(draftSaved(file, requirements));
         }
@@ -300,7 +305,7 @@ export class MyFileSaveIdentifier extends UseCase<
     }
     return ok({
       ...saved.value,
-      registerResult: sellerResultOf(check, clock.now(), plan.settings),
+      registerResult: sellerResultOf(check, clock.now(), plan.settings, changedAt),
     });
   }
 }

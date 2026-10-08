@@ -6,6 +6,7 @@ import {
   blocksApproval,
   blocksSubmit,
   isFresh,
+  staleReasonOf,
   registerCheckAfter,
   registerStateOf,
   sellerRegisterResultOf,
@@ -70,14 +71,14 @@ describe('registerCheckAfter (the row written after one lookup)', () => {
     const after = registerCheckAfter(negative, 'unavailable', [], later(1), SELLER);
     expect(after.outcome).toBe('unavailable');
     expect(after.definiteNegativeAt).toEqual(T0);
-    expect(registerStateOf(after, later(1), 30)).toBe('negative');
+    expect(registerStateOf(after, later(1), 30, T0)).toBe('negative');
   });
 
   it('lets a later definite active answer supersede a negative (the register is the authority)', () => {
     const negative = registerCheckAfter(null, 'cancelled', [], T0, SELLER);
     const after = registerCheckAfter(negative, 'active', [], later(1), REVIEWER);
     expect(after.definiteNegativeAt).toBeNull();
-    expect(registerStateOf(after, later(1), 30)).toBe('active');
+    expect(registerStateOf(after, later(1), 30, T0)).toBe('active');
   });
 
   it('writes unavailable with no negative mark when nothing negative came before', () => {
@@ -118,24 +119,44 @@ describe.each(FIXTURES)(
   'registerStateOf in $marketId (maximum age $maxResultAgeDays days)',
   ({ maxResultAgeDays: max }) => {
     it('is not-performed when there is no row', () => {
-      expect(registerStateOf(null, T0, max)).toBe('not-performed');
+      expect(registerStateOf(null, T0, max, T0)).toBe('not-performed');
     });
 
     it('is active while the result is within its maximum age, and stale after it', () => {
       const check = registerCheckAfter(null, 'active', [], T0, SELLER);
-      expect(registerStateOf(check, T0, max)).toBe('active');
-      expect(registerStateOf(check, later(max), max)).toBe('active');
-      expect(registerStateOf(check, later(max, 1), max)).toBe('stale');
+      expect(registerStateOf(check, T0, max, T0)).toBe('active');
+      expect(registerStateOf(check, later(max), max, T0)).toBe('active');
+      expect(registerStateOf(check, later(max, 1), max, T0)).toBe('stale');
     });
 
     it('never ages a definite negative (it stays until a successful lookup replaces it)', () => {
       const check = registerCheckAfter(null, 'not-found', [], T0, SELLER);
-      expect(registerStateOf(check, later(max * 10), max)).toBe('negative');
+      expect(registerStateOf(check, later(max * 10), max, T0)).toBe('negative');
     });
 
     it('is unavailable for an unavailable answer', () => {
       const check = registerCheckAfter(null, 'unavailable', [], T0, SELLER);
-      expect(registerStateOf(check, T0, max)).toBe('unavailable');
+      expect(registerStateOf(check, T0, max, T0)).toBe('unavailable');
+    });
+
+    it('is stale, not active, when the draft changed after the check (Hassan M1)', () => {
+      const check = registerCheckAfter(null, 'active', [], T0, SELLER);
+      const edited = T0.add({ seconds: 1 });
+      expect(registerStateOf(check, T0, max, T0)).toBe('active');
+      expect(registerStateOf(check, edited, max, edited)).toBe('stale');
+      expect(staleReasonOf(check, edited, max, edited)).toBe('draft-changed');
+      expect(staleReasonOf(check, later(max, 1), max, T0)).toBe('aged');
+      expect(blocksApproval('stale', false)).toBe(true);
+      expect(sellerRegisterResultOf('stale')).toBeNull();
+    });
+
+    it('does not let an edit move a negative or an unavailable result', () => {
+      const edited = T0.add({ seconds: 1 });
+      const negative = registerCheckAfter(null, 'not-found', [], T0, SELLER);
+      const unavailable = registerCheckAfter(null, 'unavailable', [], T0, SELLER);
+      expect(registerStateOf(negative, edited, max, edited)).toBe('negative');
+      expect(registerStateOf(unavailable, edited, max, edited)).toBe('unavailable');
+      expect(staleReasonOf(negative, edited, max, edited)).toBeNull();
     });
 
     it('judges freshness by the same rule', () => {
@@ -147,7 +168,7 @@ describe.each(FIXTURES)(
     it('refuses a maximum age that is not a positive whole number of days', () => {
       const check = registerCheckAfter(null, 'active', [], T0, SELLER);
       for (const bad of [0, -1, 1.5, Number.NaN]) {
-        expect(() => registerStateOf(check, T0, bad)).toThrow(RangeError);
+        expect(() => registerStateOf(check, T0, bad, T0)).toThrow(RangeError);
       }
     });
   },

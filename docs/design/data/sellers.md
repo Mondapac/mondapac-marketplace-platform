@@ -1351,3 +1351,14 @@ perOriginLimit, marketDailyBudget, reviewerLimit, recheckInterval, legalSuffixes
 (`legalSuffixes` is not in the D 4.1 table: the name comparison of D 7.7 says "legal suffix list from
 configuration").
 
+**Staleness of an `active` result (Hassan M1, 2026-10-08; no migration).** The comparison skips a field
+that is empty in the draft, and `register_checks` keeps no record of which fields were compared. The
+result is therefore trusted only for the draft as it was: the state is `stale` when
+`seller_files.last_changed_at` is later than `register_checks.checked_at` (both existing clear
+columns), in addition to the age rule. `blocksApproval` is then true, `mismatches` are not shown, and
+the reviewer view carries `staleReason` (`aged` or `draft-changed`); the seller still sees only
+matched / not-matched / could-not-be-checked / nothing. Any saved change of the draft counts (the
+conservative reading), so an edit of the phone also asks the register again on the next identifier save.
+The seller save asks again when the stored `active` result is older than `last_changed_at`, within the
+same three quotas; a definite negative and an `unavailable` result are unchanged. Residual: an edit
+saved between the draft read of a lookup and the write of its result is not seen (a window of one call).
