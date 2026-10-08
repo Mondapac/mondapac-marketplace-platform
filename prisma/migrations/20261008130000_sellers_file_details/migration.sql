@@ -59,12 +59,13 @@ CREATE INDEX "seller_files_market_id_store_name_key_idx" ON "sellers"."seller_fi
 -- plaintext limit at 4 UTF-8 bytes per character, rounded up to the next power of two:
 -- business name 200 -> 1,107 -> 2048; phone 32 -> 211 -> 512; contact email 254 -> 1,395 ->
 -- 2048; address JSON, at most 12 fields of 120 characters (address.format) -> about 8,400 ->
--- 16384.
+-- 16384. Shape backstop (Hassan L2): "v<N>." and base64url, at least 41 characters, the v1
+-- envelope of an empty plaintext (3 + base64url of 12 + 0 + 16 bytes; measured with sealField).
 ALTER TABLE "sellers"."seller_files"
   ADD CONSTRAINT "seller_files_store_name_check" CHECK (
     char_length("store_name") BETWEEN 1 AND 100
     AND "store_name" = btrim("store_name")
-    AND "store_name" !~ '[\u0001-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]'),
+    AND "store_name" !~ '[\u0001-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]'),
   ADD CONSTRAINT "seller_files_store_name_key_pair_check" CHECK (
     ("store_name" IS NULL) = ("store_name_key" IS NULL)),
   ADD CONSTRAINT "seller_files_store_name_key_check" CHECK (
@@ -73,15 +74,20 @@ ALTER TABLE "sellers"."seller_files"
     AND "store_name_key" IS NFKC NORMALIZED
     AND "store_name_key" = lower("store_name_key" COLLATE "C")),
   ADD CONSTRAINT "seller_files_business_name_ciphertext_check" CHECK (
-    char_length("business_name_ciphertext") BETWEEN 1 AND 2048),
+    "business_name_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
+    AND char_length("business_name_ciphertext") BETWEEN 41 AND 2048),
   ADD CONSTRAINT "seller_files_phone_ciphertext_check" CHECK (
-    char_length("phone_ciphertext") BETWEEN 1 AND 512),
+    "phone_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
+    AND char_length("phone_ciphertext") BETWEEN 41 AND 512),
   ADD CONSTRAINT "seller_files_contact_email_ciphertext_check" CHECK (
-    char_length("contact_email_ciphertext") BETWEEN 1 AND 2048),
+    "contact_email_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
+    AND char_length("contact_email_ciphertext") BETWEEN 41 AND 2048),
   ADD CONSTRAINT "seller_files_address_ciphertext_check" CHECK (
-    char_length("address_ciphertext") BETWEEN 1 AND 16384),
+    "address_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
+    AND char_length("address_ciphertext") BETWEEN 41 AND 16384),
   ADD CONSTRAINT "seller_files_registered_address_ciphertext_check" CHECK (
-    char_length("registered_address_ciphertext") BETWEEN 1 AND 16384),
+    "registered_address_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
+    AND char_length("registered_address_ciphertext") BETWEEN 41 AND 16384),
   ADD CONSTRAINT "seller_files_service_area_code_check" CHECK (
     "service_area_code" ~ '^[a-z0-9][a-z0-9-]{0,63}$'),
   ADD CONSTRAINT "seller_files_operating_timezone_check" CHECK (
@@ -125,6 +131,30 @@ ALTER TABLE "sellers"."rate_counters"
     'reviewer-notice.seller', 'reviewer-notice.market')),
   ADD CONSTRAINT "rate_counters_key_hash_check" CHECK (octet_length("key_hash") = 32),
   ADD CONSTRAINT "rate_counters_count_check" CHECK ("count" >= 0);
+
+-- Hand-written (database-designer): docs/design/data/sellers.md 3.5 (Hassan L1). ever_public is
+-- never set back and a retired slug never returns to held, for every role, the owner included.
+-- The slug, its holder and the key columns are already frozen for the application by the
+-- column-level UPDATE grant (section 8).
+CREATE FUNCTION "sellers"."shop_slugs_guard_update"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."ever_public" AND NOT NEW."ever_public" THEN
+    RAISE EXCEPTION 'sellers.shop_slugs: ever_public is never set back'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD."state" = 'retired' AND NEW."state" <> 'retired' THEN
+    RAISE EXCEPTION 'sellers.shop_slugs: a retired slug is never held again'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "shop_slugs_one_way"
+  BEFORE UPDATE ON "sellers"."shop_slugs"
+  FOR EACH ROW EXECUTE FUNCTION "sellers"."shop_slugs_guard_update"();
 
 -- Hand-written (database-designer): docs/design/data/sellers.md sections 3.5 and 9.5, one held
 -- slug per seller. Invisible to Prisma; checked by the partial-index catalog test.

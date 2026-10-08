@@ -1,6 +1,7 @@
 -- Reverses 20261008130000_sellers_file_details (docs/design/data/sellers.md 9.4): the grants
 -- first, in reverse order; then the index and the constraints added to the existing table
--- seller_files; then the new tables (their CHECKs, keys and the partial unique go with them);
+-- seller_files; then the new tables (their CHECKs, keys and the partial unique go with them;
+-- the shop_slugs trigger and its function are dropped explicitly first);
 -- then the columns added to seller_files. For an empty or development database only: it drops
 -- the columns and their data.
 REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE "sellers"."rate_counters" FROM "mondapac_app";
@@ -23,6 +24,8 @@ ALTER TABLE "sellers"."seller_files"
   DROP CONSTRAINT "seller_files_store_name_key_pair_check",
   DROP CONSTRAINT "seller_files_store_name_check";
 DROP TABLE "sellers"."rate_counters";
+DROP TRIGGER "shop_slugs_one_way" ON "sellers"."shop_slugs";
+DROP FUNCTION "sellers"."shop_slugs_guard_update"();
 DROP TABLE "sellers"."shop_slugs";
 ALTER TABLE "sellers"."seller_files"
   DROP COLUMN "timezone_source",

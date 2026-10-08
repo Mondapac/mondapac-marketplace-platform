@@ -87,7 +87,7 @@ hashes are `bytea` with `octet_length = 32` (C6); indexes lead with `market_id` 
 | S1 | **Version (C5, P 10).** Every aggregate root of D 2.1 has `version integer NOT NULL` with CHECK `>= 1`; the insert writes 1. D 2.1 says every root carries a version, so `shop_slugs` and `identifier_claims` have one too, although they change by single statements. A child row change goes through its root and raises the root's version |
 | S2 | **Model names start with `Sellers`** (C9): `SellersSellerFile`, `SellersOutbox`, … mapped with `@@map`. Database names stay stable if model names change |
 | S3 | **Primary keys of the four roots that share the seller id** (`seller_files`, `seller_admin_settings`, `seller_tax_profiles`, `store_profiles`): `seller_id uuid` as the primary key, plus unique `(market_id, seller_id)` as the C3 target and the batch-read key. Same shape as `identity.seller_access` |
-| S4 | **Encrypted columns.** `<field>_ciphertext text`, written only by `SubjectKeyService.encrypt` under the **seller's** subject key (D 8.1) with the field label `sellers.<record>.<field>` (PF 4 row 3). Ciphertext is randomised and bound to Market, subject and label (PF 4 row 2), so it is never indexed, compared, sorted or unique. CHECK `char_length BETWEEN 1 AND <bound>`; the bounds in section 3 are backstops sized from the plaintext limits of 13 (Q-M11) and the envelope format, which is still open (ID-data 11.4, K1). A NULL means "not entered", never "erased": after key destruction the ciphertext stays and decrypts to `subject-key.destroyed` (PF 4 row 6) |
+| S4 | **Encrypted columns.** `<field>_ciphertext text`, written only by `SubjectKeyService.encrypt` under the **seller's** subject key (D 8.1) with the field label `sellers.<record>.<field>` (PF 4 row 3). Ciphertext is randomised and bound to Market, subject and label (PF 4 row 2), so it is never indexed, compared, sorted or unique. CHECK `char_length BETWEEN 1 AND <bound>` (from slice 2b: the envelope shape and `BETWEEN 41 AND <bound>`, 4.5); the bounds in section 3 are backstops sized from the plaintext limits of 13 (Q-M11) and the envelope format, which is still open (ID-data 11.4, K1). A NULL means "not entered", never "erased": after key destruction the ciphertext stays and decrypts to `subject-key.destroyed` (PF 4 row 6) |
 | S5 | **Keyed identifier index.** `identifier_index bytea` (C6) = `IdentifierIndex.of(market, scheme, normalised)`, HMAC-SHA-256 under a stack secret (D 8.2). It is the only column that can back uniqueness and exact search on the identifier across sellers. It is **pseudonymous personal data**: whoever holds the secret can test a guessed identifier against it, and destroying the seller's key does not make it unlinkable. Erasure therefore deletes or clears every copy (10.4) |
 | S6 | **Search keys in `COLLATE "C"`.** `store_name_key` and `shop_slugs.slug` are queried by prefix as a range, `key >= $p AND key < $p || U+10FFFF`, which Prisma expresses as `gte`/`lt` and which a btree serves in a generic plan (measured, 12). `LIKE $1` (Prisma `startsWith`) cannot use the index in a generic plan: measured 73 ms and 60,000 buffers against 0.1 ms and 29 buffers on 100,000 rows. `C` makes the range exact for any key: the database collation of the Compose image is glibc `en_US.utf8`, which ignores punctuation at the first level, so a range in it is not guaranteed to equal the prefix set |
 | S7 | **Clear free text.** The only clear free-text column is the store name (public once approved, D 8.1). It gets the CHECK class of `identity.accounts.display_name` (no outer spaces, no C0/C1 control or bidi formatting character; ID-data 3.3, HF13) |
@@ -111,11 +111,11 @@ encrypted column under S4.
 | `last_changed_at` | `timestamptz(6)` | no | 1 | Every change of the file: draft save, submission, withdrawal, decision closure. The sort key of the "Incomplete" tab and the purge anchor (10.1). Equals `created_at` at creation |
 | `store_name` | `text` | yes | 2 | Clear (D 8.1, T2 option B). CHECK S7 with length 1 to the domain limit (Q-M11) |
 | `store_name_key` | `text COLLATE "C"` | yes | 2 | The search key: NFKC, case-folded, inner whitespace collapsed, by the application. CHECK `(store_name IS NULL) = (store_name_key IS NULL)`; CHECK `char_length BETWEEN 1 AND 400` (the application's key limit, Hassan L2: a key stays well under a btree entry) `AND store_name_key = btrim(store_name_key) AND store_name_key IS NFKC NORMALIZED AND store_name_key = lower(store_name_key COLLATE "C")` (an ASCII backstop, as `accounts_email_normalized_check`) |
-| `business_name_ciphertext` | `text` | yes | 2 | **Personal**, Enc, label `sellers.seller-file.business-name`. CHECK length 1 to 2048 (4.5) |
-| `phone_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.phone`. Live after approval (D 2.3). CHECK length 1 to 512 (4.5) |
-| `contact_email_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.contact-email`. Never the sign-in address (D 10). Optional at onboarding (D 14.3 Reza 13; SEL-22's email is the sign-in email, D 14.4 Q-M19). CHECK length 1 to 2048 (4.5) |
-| `address_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.address`: one JSON object with the fields of the Market's `address.format` (D 4.1), so a Market with other fields needs no migration. This is the **operating** address: the only one that drives `service_area_code`, `address_timezone` and `operating_timezone` (brief s7). CHECK length 1 to 16384 (4.5) |
-| `registered_address_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.registered-address`: the registered business address in the same JSON shape, captured only when it differs from the operating address (brief s7; D 14.4 Q-M23, corrected). NULL means "same as the operating address". Never used for ServiceArea or time zone. Changed after approval only through an identity change (Q4). CHECK length 1 to 16384 (4.5) |
+| `business_name_ciphertext` | `text` | yes | 2 | **Personal**, Enc, label `sellers.seller-file.business-name`. CHECK envelope shape, length 41 to 2048 (4.5) |
+| `phone_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.phone`. Live after approval (D 2.3). CHECK envelope shape, length 41 to 512 (4.5) |
+| `contact_email_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.contact-email`. Never the sign-in address (D 10). Optional at onboarding (D 14.3 Reza 13; SEL-22's email is the sign-in email, D 14.4 Q-M19). CHECK envelope shape, length 41 to 2048 (4.5) |
+| `address_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.address`: one JSON object with the fields of the Market's `address.format` (D 4.1), so a Market with other fields needs no migration. This is the **operating** address: the only one that drives `service_area_code`, `address_timezone` and `operating_timezone` (brief s7). CHECK envelope shape, length 41 to 16384 (4.5) |
+| `registered_address_ciphertext` | `text` | yes | 2 | **Personal**, Enc, `sellers.seller-file.registered-address`: the registered business address in the same JSON shape, captured only when it differs from the operating address (brief s7; D 14.4 Q-M23, corrected). NULL means "same as the operating address". Never used for ServiceArea or time zone. Changed after approval only through an identity change (Q4). CHECK envelope shape, length 41 to 16384 (4.5) |
 | `service_area_code` | `text` | yes | 2 | Clear. The ServiceArea the address fell in at the last save (D 4.3). CHECK `^[a-z0-9][a-z0-9-]{0,63}$` (S8) |
 | `operating_timezone` | `text` | yes | 2 | Clear. IANA zone ID (ADR-0005 decision 1), never an offset: the zone of the address's region, a hint, or a zone the seller or an admin chose from the region's closed list (spike 3 record, `docs/reviews/sellers-spike-3-zone-source.md`). CHECK `^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,2}$` and length at most 64; validity against the zone database and the region list is the application's (`TimezoneResolver`, `chooseZone`) |
 | `timezone_source` | `text` | yes | 2 | Clear. Who set `operating_timezone` (spike 3 record, data design changes): CHECK `default`, `browser`, `location`, `seller`, `admin` (closed, S8). `location` is written only once the later location-hint slice exists; it is in the list now so that slice alters no CHECK |
@@ -271,6 +271,13 @@ bounds them.
 - **Implemented in slice 2b** (migration `20261008130000_sellers_file_details`, 2026-10-08), with
   `slug` created `COLLATE "C"` by hand in the generated `CREATE TABLE` (spike S1: Prisma does not
   see it, so a catalog test reads `pg_attribute.attcollation` for `slug` and `store_name_key`).
+- **One-way columns, for every role (Hassan L1, PR #105 review).** The `BEFORE UPDATE` trigger
+  `shop_slugs_one_way` (function `sellers.shop_slugs_guard_update()`, owned by the migration role
+  like `platform.subject_keys_guard_update`) raises `restrict_violation` (`23001`) when
+  `OLD.ever_public AND NOT NEW.ever_public` or when `OLD.state = 'retired' AND NEW.state <>
+  'retired'`. The column-level grant (8) already freezes the slug and its holder for the
+  application; the trigger also holds against the owner and a manual script. It does not fire on
+  `DELETE` (release before approval, the purge).
 
 ### 3.6 `sellers.identifier_claims` (slice 7a-decide)
 
@@ -565,10 +572,14 @@ The envelope is now the `v1` format of `apps/api/src/platform/subject-keys/envel
 plus base64url (no padding) of a 12-byte nonce, the AES-256-GCM body and a 16-byte tag, so a
 plaintext of N UTF-8 bytes gives `3 + ceil((N + 28) × 4 / 3)` characters. Each bound below takes the
 Q-M11 limit at 4 bytes per character, then rounds up to the next power of two, which leaves room for
-a JSON wrapper and a somewhat larger future envelope version. A bound is a backstop against a bug
+a JSON wrapper and a somewhat larger future envelope version. Every `*_ciphertext` CHECK also holds
+the envelope shape (Hassan L2): `~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'` and a minimum of **41**
+characters, the v1 envelope of an empty plaintext (`3 + ceil(28 × 4 / 3)`; measured with `sealField`
+on 2026-10-08: 0, 1, 15 and 200 four-byte characters gave 41, 42, 61 and 1,107). So a CHECK reads
+`x_ciphertext ~ '…' AND char_length(x_ciphertext) BETWEEN 41 AND <bound>`. A bound is a backstop against a bug
 writing an unbounded value, not the field limit (the application checks that before encrypting).
 
-| Column | Plaintext limit (Q-M11) | v1 maximum | CHECK `char_length BETWEEN 1 AND` |
+| Column | Plaintext limit (Q-M11) | v1 maximum | CHECK `char_length BETWEEN 41 AND` |
 |---|---|---|---|
 | `business_name_ciphertext` | 200 characters | 1,107 | 2048 |
 | `phone_ciphertext` | 32 characters | 211 | 512 |
@@ -1146,11 +1157,20 @@ accented, full-width, Greek, Arabic, ligature and compatibility-letter names pas
 | Table | Constraints and indexes added |
 |---|---|
 | `seller_files` (existing; not `NOT VALID`: new all-NULL columns, no deployed environment, 9.3) | `seller_files_store_name_check`, `_store_name_key_pair_check`, `_store_name_key_check`, `_business_name_ciphertext_check`, `_phone_ciphertext_check`, `_contact_email_ciphertext_check`, `_address_ciphertext_check`, `_registered_address_ciphertext_check`, `_service_area_code_check`, `_operating_timezone_check`, `_address_timezone_check`, `_timezone_source_check`, `_timezone_set_check`, `_timezone_address_check`, `_timezone_default_check`; index `seller_files_market_id_store_name_key_idx` (plain, not `CONCURRENTLY`: 9.3) |
-| `shop_slugs` | `shop_slugs_pkey`; unique `shop_slugs_market_id_slug_key`; partial unique `shop_slugs_market_id_seller_id_held_key` (9.5); `shop_slugs_market_id_check`, `_tenant_id_check`, `_slug_check`, `_state_check`, `_ever_public_check`, `_retired_at_check`, `_version_check` |
+| `shop_slugs` | `shop_slugs_pkey`; unique `shop_slugs_market_id_slug_key`; partial unique `shop_slugs_market_id_seller_id_held_key` (9.5); `shop_slugs_market_id_check`, `_tenant_id_check`, `_slug_check`, `_state_check`, `_ever_public_check`, `_retired_at_check`, `_version_check`; trigger `shop_slugs_one_way` with function `sellers.shop_slugs_guard_update()` (3.5, Hassan L1) |
 | `rate_counters` | `rate_counters_pkey (market_id, kind, key_hash)`; `rate_counters_market_id_check`, `_tenant_id_check`, `_kind_check` (13 kinds), `_key_hash_check`, `_count_check` |
 
 Grants: `shop_slugs` `SELECT, INSERT, UPDATE (state, retired_at, ever_public, version)`;
 `rate_counters` `SELECT, INSERT, UPDATE, DELETE`; `seller_files` unchanged. The privilege map and
-the partial-index list of `pnpm test:db` are updated in the same PR. Still to add with the slice's
-tests (Hossein): the `attcollation` catalog test of spike S1 for `store_name_key` and `slug`, under
-CI's PostgreSQL 17.
+the partial-index list of `pnpm test:db` are updated in the same PR.
+
+**PR #105 review (Hassan L1, L2, I1, I4; Sajad's gaps), applied in place before merge, same
+timestamp:** the one-way trigger on `shop_slugs` (3.5); the envelope-shape backstop and the minimum
+of 41 on every ciphertext CHECK (4.5); the `store_name` CHECK written with `\u` escapes only (the
+bidi and Arabic-letter-mark characters had been stored as literal, invisible characters; same
+semantics, but a reviewer could not see them). Tests in `apps/api/test/db/sellers-files.db-spec.ts`
+(both Market fixtures): the `attcollation` catalog check of spike S1 for `store_name_key` and
+`slug` (in place since the first commit of this PR); every CHECK above with an accepted and a
+refused case (all five ciphertext bounds and shapes, store name C1 and bidi characters, key NFKC,
+every zone case); the trigger (`23001`); the guarded release with its `window_started_at` guard (a
+stale window changes 0 rows); `seller_files_market_id_store_name_key_idx` in `pg_indexes`.
