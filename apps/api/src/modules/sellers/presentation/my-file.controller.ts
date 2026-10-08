@@ -23,6 +23,7 @@ import { FormDescriptorsRead } from '../application/use-cases/form-descriptors-r
 import { MyFileCheckSlug } from '../application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveSlug } from '../application/use-cases/my-file-save-slug.use-case';
 import { MyFileSaveGeneral } from '../application/use-cases/my-file-save-general.use-case';
 import { errorOf, fail, type MyFileError } from './my-file.answer';
 import {
@@ -39,6 +40,7 @@ import {
   MyFileBody,
   SaveAddressRequest,
   SaveGeneralRequest,
+  SaveSlugRequest,
   SellersErrorBody,
   SlugCheckBody,
 } from './my-file.dto';
@@ -70,6 +72,7 @@ export class MyFileController {
     private readonly myFileRead: MyFileRead,
     private readonly saveGeneral: MyFileSaveGeneral,
     private readonly saveAddress: MyFileSaveAddress,
+    private readonly saveSlug: MyFileSaveSlug,
     private readonly checkSlug: MyFileCheckSlug,
     private readonly formDescriptors: FormDescriptorsRead,
   ) {}
@@ -205,6 +208,55 @@ export class MyFileController {
     );
     const result = await this.saveAddress.execute(context, input);
     return this.settle('sellers.my-file-save-address', context, response, result, 'saved');
+  }
+
+  @Put('slug')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Save the shop slug of the draft',
+    description:
+      'Saves the chosen slug in the draft; it is not held until the first submission. ' +
+      'slug.taken is advisory (submission decides). Counted against the save and the ' +
+      'slug-check limits of the account. Refused on a file with an approved revision. ' +
+      'The body is never logged.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiBody({ type: SaveSlugRequest })
+  @ApiOkResponse({ type: DraftSavedBody })
+  @ApiBadRequestResponse({
+    type: SellersErrorBody,
+    description: 'validation.failed (details.fields), slug.format or slug.reserved',
+  })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiConflictResponse({
+    type: SellersErrorBody,
+    description:
+      'slug.taken, file.change-request-required or conflict.stale (read again and retry)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async putSlug(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<DraftSavedBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    const input = this.shapeOf('sellers.my-file-save-slug', context, request, body, parseSlugBody);
+    const result = await this.saveSlug.execute(context, input);
+    return this.settle('sellers.my-file-save-slug', context, response, result, 'saved');
   }
 
   @Post('slug-check')

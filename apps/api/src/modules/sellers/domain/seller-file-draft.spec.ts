@@ -2,6 +2,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
 import type { Sealed, SealedField } from './sealed';
 import { SellerFile, type GeneralDraftInput } from './seller-file';
+import type { ShopSlug } from './shop-slug';
 import { parseStoreName } from './store-name';
 import type { RegionZones } from './zone';
 
@@ -14,6 +15,7 @@ const T1 = T0.add({ minutes: 5 });
 const SELLER = '01928a3c-0000-7000-8000-000000000001' as Id<'Seller'>;
 
 const sealed = <F extends SealedField>(field: F, n = 1) => `v1.${field}-${n}` as Sealed<F>;
+const slugOf = (raw: string) => raw as ShopSlug;
 const storeName = (raw: string) => {
   const parsed = parseStoreName(raw);
   if (!parsed.ok) throw new Error('fixture store name refused');
@@ -68,7 +70,14 @@ describe.each(FIXTURES)('SellerFile draft in $marketId', ({ marketId, zones, are
   it('starts empty and incomplete, with every mandatory part missing', () => {
     const file = newFile();
     expect(file.state.draftComplete).toBe(false);
-    expect(file.missing()).toEqual(['storeName', 'businessName', 'phone', 'address', 'timezone']);
+    expect(file.missing()).toEqual([
+      'storeName',
+      'businessName',
+      'phone',
+      'address',
+      'timezone',
+      'slug',
+    ]);
     expect(file.state.draft.zone).toBeNull();
   });
 
@@ -80,19 +89,23 @@ describe.each(FIXTURES)('SellerFile draft in $marketId', ({ marketId, zones, are
     expect(file.state.lastChangedAt).toEqual(T1);
     expect(file.state.draft.storeName?.key).toBe('al noor');
     expect(file.state.draftComplete).toBe(false);
-    expect(file.missing()).toEqual(['address', 'timezone']);
+    expect(file.missing()).toEqual(['address', 'timezone', 'slug']);
   });
 
   it('becomes complete once the address and its zone are saved, in either order', () => {
     const first = newFile();
     first.saveGeneral(general(), T1);
     expect(address(first).ok).toBe(true);
+    expect(first.state.draftComplete).toBe(false);
+    expect(first.missing()).toEqual(['slug']);
+    first.saveSlug(slugOf('al-noor'), T1);
     expect(first.state.draftComplete).toBe(true);
     expect(first.missing()).toEqual([]);
-    expect(first.state.version).toBe(3);
+    expect(first.state.version).toBe(4);
 
     const second = newFile();
     address(second);
+    second.saveSlug(slugOf('al-noor'), T1);
     expect(second.state.draftComplete).toBe(false);
     second.saveGeneral(general(), T1);
     expect(second.state.draftComplete).toBe(true);
@@ -106,7 +119,7 @@ describe.each(FIXTURES)('SellerFile draft in $marketId', ({ marketId, zones, are
     });
     expect(file.state.version).toBe(1);
     expect(file.saveGeneral(general({ storeName: null, businessName: null }), T1).ok).toBe(true);
-    expect(file.missing()).toEqual(['storeName', 'businessName', 'address', 'timezone']);
+    expect(file.missing()).toEqual(['storeName', 'businessName', 'address', 'timezone', 'slug']);
     // A later save cannot clear the phone either.
     expect(file.saveGeneral(general({ phone: null }), T1).ok).toBe(false);
   });
@@ -129,6 +142,11 @@ describe.each(FIXTURES)('SellerFile draft in $marketId', ({ marketId, zones, are
       error: { code: 'file.change-request-required' },
     });
     expect(address(file)).toEqual({ ok: false, error: { code: 'file.change-request-required' } });
+    expect(file.saveSlug(slugOf('al-noor'), T1)).toEqual({
+      ok: false,
+      error: { code: 'file.change-request-required' },
+    });
+    expect(file.state.draft.slug).toBeNull();
     expect(file.state.version).toBe(1);
     expect(file.state.lastChangedAt).toEqual(T0);
   });
@@ -159,6 +177,39 @@ describe.each(FIXTURES)('SellerFile draft in $marketId', ({ marketId, zones, are
     });
     expect(file.state.version).toBe(version);
     expect(file.state.draft.zone?.operatingTimezone).toBe(other);
+  });
+
+  it('saves the slug: version +1, stamped, completeness recomputed (Q-M25)', () => {
+    const file = newFile();
+    expect(file.state.draft.slug).toBeNull();
+    expect(file.saveSlug(slugOf('al-noor'), T1)).toEqual({ ok: true, value: undefined });
+    expect(file.state.draft.slug).toBe('al-noor');
+    expect(file.state.version).toBe(2);
+    expect(file.persistedVersion).toBe(1);
+    expect(file.state.lastChangedAt).toEqual(T1);
+    expect(file.missing()).not.toContain('slug');
+    expect(file.state.draftComplete).toBe(false);
+    // A different slug replaces it.
+    file.saveSlug(slugOf('noor-shop'), T1);
+    expect(file.state.draft.slug).toBe('noor-shop');
+    expect(file.state.version).toBe(3);
+  });
+
+  it('treats the slug the draft already has as a no-op: no new version, no stamp', () => {
+    const file = newFile();
+    file.saveSlug(slugOf('al-noor'), T0.add({ minutes: 1 }));
+    const before = file.state;
+    expect(file.saveSlug(slugOf('al-noor'), T1)).toEqual({ ok: true, value: undefined });
+    expect(file.state).toBe(before);
+  });
+
+  it('keeps the slug through a general or an address save', () => {
+    const file = newFile();
+    file.saveSlug(slugOf('al-noor'), T1);
+    file.saveGeneral(general(), T1);
+    expect(file.state.draft.slug).toBe('al-noor');
+    address(file);
+    expect(file.state.draft.slug).toBe('al-noor');
   });
 
   it('restores a stored file with the stored version as the expected version', () => {

@@ -84,6 +84,14 @@ export class CheckSlugRequest {
   slug!: string;
 }
 
+export class SaveSlugRequest {
+  @ApiProperty({
+    maxLength: 100,
+    description: 'The shop slug to save in the draft. Sent in the body, never in a URL.',
+  })
+  slug!: string;
+}
+
 export class DraftSavedBody {
   @ApiProperty({ description: "The file's version after the save." })
   version!: number;
@@ -93,6 +101,7 @@ export class DraftSavedBody {
 
   @ApiProperty({
     type: [String],
+    enum: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'],
     description: 'The mandatory parts still missing, in the order of the form.',
   })
   missing!: readonly string[];
@@ -157,7 +166,10 @@ export class MyFileBody {
   @ApiProperty()
   draftComplete!: boolean;
 
-  @ApiProperty({ type: [String] })
+  @ApiProperty({
+    type: [String],
+    enum: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'],
+  })
   missing!: readonly string[];
 
   @ApiProperty({ type: GeneralView })
@@ -182,6 +194,13 @@ export class MyFileBody {
 
   @ApiProperty({ type: ZoneStateBody, nullable: true })
   timezone!: ZoneStateBody | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The shop slug chosen in the draft (clear, not public while a draft).',
+  })
+  slug!: string | null;
 
   @ApiProperty({ type: [String] })
   zoneOptions!: readonly string[];
