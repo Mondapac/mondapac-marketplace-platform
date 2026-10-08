@@ -413,7 +413,7 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       insertState('product_revision_texts', {
         ...base(),
         revision_id: r,
-        locale: `x${'x'.repeat(Math.floor(Math.random() * 2))}`,
+        locale: 'aa',
         name: 'A name',
         ...overrides,
       });
@@ -425,8 +425,25 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     expect(await text({ name: 'bidi‮override' })).toBe('23514');
     expect(await text({ short_description: 'y'.repeat(501) })).toBe('23514');
     expect(await text({ description: 'z'.repeat(10001) })).toBe('23514');
+    expect(await text({ name: 'LRM‎mark' })).toBe('23514');
+    expect(await text({ name: 'isolate⁦x' })).toBe('23514');
+    expect(await text({ name: 'del\u007fx' })).toBe('23514');
+    expect(await text({ description: '' })).toBe('23514');
+    expect(await text({ short_description: '' })).toBe('23514');
     expect(await text({ locale: 'yy', description: 'two\nlines\tand tab' })).toBeNull();
     expect(await text({ locale: 'yy' })).toBe('23505');
+    // Persian-first: ZWNJ and ZWJ stay allowed; the bounds are inclusive; real locale forms.
+    for (const locale of ['fa', 'ar', 'zh-Hans-CN', 'en-AU', 'es-419']) {
+      expect(await text({ locale, name: 'می\u200cخواهم\u200dX' })).toBeNull();
+    }
+    expect(
+      await text({
+        locale: 'bb',
+        name: 'x'.repeat(200),
+        short_description: 'y'.repeat(500),
+        description: 'z'.repeat(10000),
+      }),
+    ).toBeNull();
 
     const cat = (overrides: Record<string, unknown>) =>
       insertState('product_revision_categories', {
@@ -513,6 +530,62 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       await decision({ outcome: 'superseded', reason_code: null, superseded_cause: null }),
     ).toBe('23514');
     expect(await decision({ product_version: 0 })).toBe('23514');
+    // R2 backstop (security M1): the actor fits the outcome.
+    expect(await decision({ ...published, decided_by_kind: 'seller' })).toBe('23514');
+    expect(await decision({ decided_by_kind: 'seller' })).toBe('23514');
+    expect(
+      await decision({
+        ...published,
+        publish_kind: 'auto',
+        approval_required_read: false,
+        decided_by_kind: 'admin',
+      }),
+    ).toBe('23514');
+    expect(
+      await decision({
+        ...published,
+        publish_kind: 'admin-authored',
+        decided_by_kind: 'system',
+        decided_by_account_id: null,
+      }),
+    ).toBe('23514');
+    expect(await decision({ ...published, publish_kind: 'admin-authored' })).toBeNull();
+    // One terminal outcome per revision, and a decision names a revision of its own Market.
+    const once = await revision(p, f, { revision_no: 9000 + ++sequence });
+    const row = {
+      ...base(),
+      revision_id: once,
+      outcome: 'superseded',
+      superseded_cause: 'withdrawn',
+      required_checks: [],
+      confirmed_checks: [],
+      decided_by_kind: 'seller',
+      decided_by_account_id: uuid7(),
+      product_version: 1,
+      decided_at: T0,
+    };
+    expect(await insertState('product_revision_decisions', row)).toBeNull();
+    expect(await insertState('product_revision_decisions', row)).toBe('23505');
+    expect(
+      await insertState('product_revision_decisions', {
+        ...row,
+        ...base(other.marketId, other.tenantId),
+      }),
+    ).toBe('23503');
+    for (const cause of ['promoted', 'matched']) {
+      const r2 = await revision(p, f, { revision_no: 9000 + ++sequence });
+      expect(
+        await insertState('product_revision_decisions', {
+          ...row,
+          revision_id: r2,
+          superseded_cause: cause,
+          decided_by_kind: 'admin',
+        }),
+      ).toBeNull();
+    }
+    expect(await decision({ reason_text: 'x'.repeat(2001) })).toBe('23514');
+    expect(await decision({ reason_text: 'bell\u0007' })).toBe('23514');
+    expect(await decision({ required_checks: ['a', null] })).toBe('23514');
     // NULL lists must not slip past the checks rule (R2, H1): B1.
     expect(await decision({ ...published, required_checks: ['a'], confirmed_checks: null })).toBe(
       '23514',
@@ -552,6 +625,15 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     expect(
       await insertState('product_working_copies', { ...copy, base_revision_id: uuid7() }),
     ).toBe('23503');
+    // The base revision must belong to the same product (3.6), not merely exist.
+    const otherProduct = await product();
+    const foreign = await revision(otherProduct, f);
+    expect(
+      await insertState('product_working_copies', { ...copy, base_revision_id: foreign }),
+    ).toBe('23503');
+    expect(await insertState('product_working_copies', { ...copy, product_id: uuid7() })).toBe(
+      '23503',
+    );
     expect(await insertState('product_working_copies', copy)).toBeNull();
     expect(await insertState('product_working_copies', copy)).toBe('23505');
     expect(
@@ -578,7 +660,7 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       insertState('rate_counters', {
         ...base(),
         kind: 'draft-save.account.minute',
-        key_hash: Buffer.alloc(32, Math.floor(Math.random() * 255)),
+        key_hash: Buffer.from((randomUUID() + randomUUID()).replaceAll('-', ''), 'hex'),
         window_started_at: T0,
         count: 1,
         ...overrides,
@@ -588,12 +670,29 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     expect(await counter({ count: -1 })).toBe('23514');
     const hash = Buffer.alloc(32, 7);
     for (const kind of [
+      'draft-save.account.minute',
       'draft-save.account.day',
       'claim-text-check.account.minute',
+      'claim-text-check.account.day',
       'submit.seller.hour',
+      'photo-upload.seller.day',
+      'search.account.minute',
+      'import-start.seller.day',
+      'ai-suggest.seller.day',
+      'reviewer-mail.market.hour',
     ]) {
-      expect(await counter({ kind, key_hash: hash })).toBeNull();
+      expect(await counter({ kind, key_hash: hash, count: 0 })).toBeNull();
     }
+    expect(await counter({ kind: 'submit.seller.hour', key_hash: hash })).toBe('23505');
+    expect(await counter({ key_hash: Buffer.alloc(33) })).toBe('23514');
+    // Reserve-and-increment (3.26) is an UPDATE by the application.
+    expect(
+      await sqlState(
+        sql,
+        `UPDATE catalog.rate_counters SET count = count + 1, window_started_at = $3 WHERE market_id = $1 AND key_hash = $2`,
+        [market.marketId, hash, '2026-10-08T01:00:00Z'],
+      ),
+    ).toBeNull();
     expect(
       await sqlState(
         sql,

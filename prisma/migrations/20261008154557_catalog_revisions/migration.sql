@@ -327,6 +327,13 @@ ALTER TABLE "catalog"."product_revision_decisions"
     "decided_by_kind" IN ('admin', 'seller', 'system')),
   ADD CONSTRAINT "product_revision_decisions_decided_by_pair_check" CHECK (
     ("decided_by_kind" = 'system') = ("decided_by_account_id" IS NULL)),
+  -- R2 backstop (security review M1): who may record which outcome. A seller only supersedes
+  -- (resubmit or withdraw); only the system auto-publishes; a review decision is an admin's.
+  ADD CONSTRAINT "product_revision_decisions_actor_outcome_check" CHECK (
+    ("decided_by_kind" <> 'seller' OR "outcome" = 'superseded')
+    AND ("publish_kind" IS DISTINCT FROM 'auto' OR "decided_by_kind" = 'system')
+    AND ("publish_kind" IS NULL OR "publish_kind" = 'auto' OR "decided_by_kind" = 'admin')
+    AND ("outcome" <> 'changes-requested' OR "decided_by_kind" = 'admin')),
   ADD CONSTRAINT "product_revision_decisions_product_version_check" CHECK ("product_version" >= 1);
 
 -- Data design 3.26: the sellers shape, with the catalog kinds of D 8.4.
