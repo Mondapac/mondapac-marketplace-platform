@@ -274,12 +274,12 @@ const handleIsReachedOnlyByExecute = [
   {
     selector:
       'CallExpression:matches([callee.name=/^(getPrototypeOf|getOwnPropertyDescriptors?)$/], [callee.property.name=/^(getPrototypeOf|getOwnPropertyDescriptors?)$/])',
-    message: `${GATE}: no reflection over a class's methods in a module (it reaches handle).`,
+    message: `${GATE}: no reflection over a class's methods in a module (it reaches handle). Use Object.hasOwn, or a platform helper for plain-object checks; interceptors (CallHandler.handle) live in platform/.`,
   },
   {
     selector:
       'MemberExpression:matches([property.name=/^(prototype|__proto__)$/], [property.value=/^(prototype|__proto__)$/])',
-    message: `${GATE}: no reflection over a class's methods in a module (it reaches handle).`,
+    message: `${GATE}: no reflection over a class's methods in a module (it reaches handle). Use Object.hasOwn, or a platform helper for plain-object checks; interceptors (CallHandler.handle) live in platform/.`,
   },
 ];
 
