@@ -962,6 +962,102 @@ describe('loadMarketConfigs', () => {
     });
   });
 
+  describe('the catalog section', () => {
+    const VALID_CATALOG = {
+      taxCategories: [{ code: 'standard', labelKey: 'catalog.tax.standard' }],
+      sensitiveChanges: {
+        platformCategories: true,
+        taxCategory: true,
+        name: true,
+        primaryImage: true,
+        anyImage: true,
+        variantRemoved: true,
+      },
+      maxVariantsPerProduct: 100,
+      approvalRequired: true,
+    };
+    const withCatalog = (catalog: unknown) => directoryWith({ 'QQ.json': { ...VALID, catalog } });
+
+    it('is optional for a Market that does not host the catalog', () => {
+      expect(
+        loadMarketConfigs([directoryWith({ 'QQ.json': VALID })], [QQ]).get(QQ)?.catalog,
+      ).toBeUndefined();
+    });
+
+    it('carries the section as written', () => {
+      expect(loadMarketConfigs([withCatalog(VALID_CATALOG)], [QQ]).get(QQ)?.catalog).toEqual(
+        VALID_CATALOG,
+      );
+    });
+
+    it('gives the two Market fixtures different catalog settings', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const [au, zz] = TEST_MARKET_IDS.map((id) => configs.get(id)?.catalog);
+
+      expect(au?.maxVariantsPerProduct).toBe(100);
+      expect(zz?.maxVariantsPerProduct).toBe(3);
+      expect(au?.approvalRequired).toBe(true);
+      expect(zz?.approvalRequired).toBe(false);
+      expect(au?.taxCategories.map((c) => c.code)).not.toEqual(
+        zz?.taxCategories.map((c) => c.code),
+      );
+      expect(au?.sensitiveChanges.platformCategories).toBe(true);
+      expect(zz?.sensitiveChanges.platformCategories).toBe(false);
+    });
+
+    const without = (key: string) => {
+      const copy: Record<string, unknown> = { ...VALID_CATALOG };
+      delete copy[key];
+      return copy;
+    };
+    it.each([
+      ['no tax category list', without('taxCategories')],
+      ['an empty tax category list', { ...VALID_CATALOG, taxCategories: [] }],
+      [
+        'a repeated tax category code',
+        {
+          ...VALID_CATALOG,
+          taxCategories: [
+            { code: 'standard', labelKey: 'a' },
+            { code: 'standard', labelKey: 'b' },
+          ],
+        },
+      ],
+      [
+        'a tax category code with a capital',
+        { ...VALID_CATALOG, taxCategories: [{ code: 'Standard', labelKey: 'a' }] },
+      ],
+      ['no sensitive changes', without('sensitiveChanges')],
+      ['a missing sensitive flag', { ...VALID_CATALOG, sensitiveChanges: { name: true } }],
+      [
+        'a non-boolean sensitive flag',
+        {
+          ...VALID_CATALOG,
+          sensitiveChanges: { ...VALID_CATALOG.sensitiveChanges, name: 'yes' },
+        },
+      ],
+      [
+        'anyImage switched off (an added image always goes to review)',
+        {
+          ...VALID_CATALOG,
+          sensitiveChanges: { ...VALID_CATALOG.sensitiveChanges, anyImage: false },
+        },
+      ],
+      ['no variant limit', without('maxVariantsPerProduct')],
+      ['a zero variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: 0 }],
+      ['a variant limit above the lock set', { ...VALID_CATALOG, maxVariantsPerProduct: 101 }],
+      ['a fractional variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: 2.5 }],
+      ['a string variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: '100' }],
+      ['no approval setting', without('approvalRequired')],
+      ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
+      ['an unknown key', { ...VALID_CATALOG, photoLimits: {} }],
+    ])('rejects %s', (_case, catalog) => {
+      expect(() => loadMarketConfigs([withCatalog(catalog)], [QQ])).toThrow(
+        InvalidMarketConfigError,
+      );
+    });
+  });
+
   it('rejects a file that is not JSON', () => {
     const directory = directoryWith({ 'QQ.json': '{ not json' });
 
