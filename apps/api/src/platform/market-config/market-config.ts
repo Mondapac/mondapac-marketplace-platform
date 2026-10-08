@@ -445,12 +445,12 @@ const sellersSchema = z
 const inventorySchema = z.strictObject({
   /**
    * The most sources (stock locations) one seller may have, the Default included (design 3.4;
-   * AU 4). Required: a Market never defaults it. At most 5, because the re-key of a moved Offer
+   * AU 4). Required: a Market never defaults it. At most 4, because the re-key of a moved Offer
    * locks every stock item of up to `catalog.maxVariantsPerProduct` (AU 100) variants, in every
    * source, on both keys in one statement capped at 1,000 items (design 3.6 step 2, 4.4):
-   * 100 x 5 x 2 = 1,000. Raising the limit past what the cap allows is a design change.
+   * 100 x 4 x 2 = 800 plus held items. Raising the limit is a design change with a re-check.
    */
-  maxSourcesPerSeller: z.number().int().min(1).max(5),
+  maxSourcesPerSeller: z.number().int().min(1).max(4),
 });
 
 const marketSchema = z
