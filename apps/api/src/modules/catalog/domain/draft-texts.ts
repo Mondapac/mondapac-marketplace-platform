@@ -130,12 +130,16 @@ export function draftTextsOf(
   const variants = content['variants'];
   if (variants !== undefined) {
     if (!Array.isArray(variants) || variants.length > MAX_LIST) return invalid;
+    const seenIds = new Set<string>();
     for (const variant of variants as unknown[]) {
       if (!isObject(variant) || !closedKeys(variant, ['variantId', 'optionValues', 'labels'])) {
         return invalid;
       }
       const variantId = variant['variantId'];
       if (typeof variantId !== 'string' || !KEY.test(variantId)) return invalid;
+      // A path names a variant by id, so a repeated id would hide the second one's texts from the check.
+      if (seenIds.has(variantId)) return invalid;
+      seenIds.add(variantId);
       const options = variant['optionValues'];
       if (options !== undefined) {
         if (!isObject(options)) return invalid;

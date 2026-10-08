@@ -46,6 +46,16 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     ]);
   });
 
+  it('refuses a draft that repeats a variant id, so no label escapes the check', () => {
+    const variants = [
+      { variantId: 'v1', labels: { [defaultLocale]: 'Large' } },
+      { variantId: 'v1', labels: { [defaultLocale]: 'halal' } },
+    ];
+    const result = read({ variants });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('working-copy.invalid-content');
+  });
+
   it('accepts an empty draft', () => {
     expect(read({})).toEqual({ ok: true, value: [] });
   });
