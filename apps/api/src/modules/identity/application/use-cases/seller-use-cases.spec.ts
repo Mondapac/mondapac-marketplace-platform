@@ -60,6 +60,9 @@ import { SendExistingAccountMail } from './send-existing-account-mail.use-case';
 import { SendLinkMail } from './send-link-mail.use-case';
 import { SendPasswordChangedMail } from './send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './send-welcome-mail.use-case';
+import { SendInvitationMail } from './send-invitation-mail.use-case';
+import { SendSecondFactorMail } from './send-second-factor-mail.use-case';
+import { RandomPrefixedTokens } from '../../infrastructure/second-factor/second-factor-tokens';
 import { SignInSeller } from './sign-in-seller.use-case';
 
 // Identity slice 5 in memory (identity design 3.1, 3.3, 5.2, 5.5, 5.6, 6.1, 6.3, 6.7, 8.1, 8.2;
@@ -158,6 +161,13 @@ function setUp() {
       new SendExistingAccountMail(gate, mailDeps),
       welcome,
       new SendPasswordChangedMail(gate, mailDeps),
+      new SendInvitationMail(gate, {
+        ...mailDeps,
+        invitations: fakes.invitationRepository,
+        invitationTokens: new RandomPrefixedTokens('mi1_'),
+        clock,
+      }),
+      new SendSecondFactorMail(gate, mailDeps),
     ),
     seed: new SeedRoles(gate, {
       unitOfWork,
@@ -1117,6 +1127,8 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
         ['identity.link-mail', 'identity.one-time-link-requested.v1'],
         ['identity.existing-account-mail', 'identity.sign-up-repeated.v1'],
         ['identity.welcome-mail', 'identity.seller-registered.v1'],
+        ['identity.invitation-mail', 'identity.invitation-issued.v1'],
+        ['identity.second-factor-mail', 'identity.second-factor-changed.v1'],
         ['identity.password-changed-mail', 'identity.account-password-changed.v1'],
       ]);
       expect(s.subscriptions.map((x) => x.event.type)).not.toContain(

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Population, Result } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -18,17 +18,18 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { LinkTokens } from '../ports/link-secrets';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
+import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
-import type { SignInClient, SignInPopulation } from '../sign-in/sign-in-flow';
+import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
 
 export interface ResetPasswordInput {
   /** The population of the route: a link of the other population is refused (AC 19). */
-  readonly population: SignInPopulation;
+  readonly population: Population;
   /** The token from the link's fragment, posted in the JSON body (identity design 6.6, I15). */
   readonly token: string;
   /** The new password. */
@@ -54,6 +55,8 @@ export interface ResetPasswordDependencies {
   readonly sessions: SessionRepository;
   /** HF11: the closing unit voids the account's open sign-in challenges. */
   readonly challenges: SignInChallengeRepository;
+  /** Slice 7b item B: the closing unit clears a waiting replacement secret. */
+  readonly factors: SecondFactorRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
   readonly keys: ThrottleKeys;
@@ -101,8 +104,10 @@ type Closed =
  *
  * A closing unit that throws gives the origin reservation back before the error goes on
  * (Mojtaba, slice 4). The closing unit also voids every open sign-in challenge of the account
- * (HF11; Hassan I2 (d)), and a reset never touches the second factor (Hassan I2 (a)): the next
- * sign-in still asks for a code.
+ * (HF11; Hassan I2 (d)), and a reset never removes or bypasses the second factor (Hassan I2 (a)):
+ * the next sign-in still asks for a code. It only drops a waiting replacement secret (slice 7b
+ * item B). Slice 7b (item A) opens it to admins: the same sequence, and it clears only the two
+ * sign-in counters, never `second-factor.account` (6.8; Hassan I-4).
  * The token and the passwords are never logged, stored or echoed.
  */
 export class ResetPassword extends UseCase<
@@ -227,8 +232,19 @@ export class ResetPassword extends UseCase<
           return ok({ kind: 'refused' });
         }
         await accounts.save(market, current);
+        // Throttle rows before challenge rows (data design 3.3; Mojtaba, PR #162).
+        await throttles.clearAccount(
+          market,
+          keys.account(market, population, current.state.email.normalized),
+        );
+        await throttles.release(market, reservations);
         // HF11, Hassan I2 (d): a challenge opened with the old password can never complete.
         await this.deps.challenges.voidAllOf(market, accountId);
+        // Slice 7b item B (3.6): a waiting replacement secret is dropped; the factor stays.
+        const factor = await this.deps.factors.findByAccount(market, accountId);
+        if (factor !== null && factor.clearReplacement()) {
+          await this.deps.factors.save(market, factor);
+        }
         const revokedSessions = await this.deps.sessions.revokeAllOf(
           market,
           accountId,
@@ -236,11 +252,6 @@ export class ResetPassword extends UseCase<
           now,
           null,
         );
-        await throttles.clearAccount(
-          market,
-          keys.account(market, population, current.state.email.normalized),
-        );
-        await throttles.release(market, reservations);
         await this.deps.records.add(market, {
           id: this.deps.ids.next<'SignInRecord'>(),
           population,
@@ -307,7 +318,7 @@ export class ResetPassword extends UseCase<
   private log(
     msg: string,
     context: CallContext,
-    population: SignInPopulation | null,
+    population: Population | null,
     fields: Record<string, string | number>,
   ): void {
     this.#logger.log({

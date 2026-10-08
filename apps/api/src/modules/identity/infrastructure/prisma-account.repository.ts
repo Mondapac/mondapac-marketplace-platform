@@ -102,6 +102,14 @@ export class PrismaAccountRepository implements AccountRepository {
     return count === 1;
   }
 
+  async existsInPopulation(market: MarketContext, population: Population): Promise<boolean> {
+    const row = await this.prisma.tx(market).identityAccount.findFirst({
+      where: { marketId: market.marketId, population },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   private restore(row: SelectedRow): Account {
     const credential = row.passwordCredential;
     const marketId = parseMarketId(row.marketId);

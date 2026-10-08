@@ -51,12 +51,19 @@ export interface SendLinkMailDependencies {
   readonly clock: Clock;
 }
 
-/** Each purpose's mail and page: slice 3 the verification mail (E1), slice 4 the reset (E8). */
+/**
+ * Each purpose's mail and page: slice 3 the verification mail (E1), slice 4 the reset (E8),
+ * slice 7b the enrolment link of 3.6 (HF6; admin only until the seller side's "Account security").
+ */
 const MAIL_OF: Partial<
-  Record<LinkPurpose, { template: 'confirm-email' | 'reset-password'; page: LinkPage }>
+  Record<
+    LinkPurpose,
+    { template: 'confirm-email' | 'reset-password' | 'enrol-second-factor'; page: LinkPage }
+  >
 > = {
   'verify-email': { template: 'confirm-email', page: 'verify-email' },
   'reset-password': { template: 'reset-password', page: 'reset-password' },
+  'enrol-second-factor': { template: 'enrol-second-factor', page: 'enrol-second-factor' },
 };
 
 /**

@@ -43,6 +43,13 @@ export interface AccountRepository {
   lockCredential(market: MarketContext, id: Id<'Account'>): Promise<boolean>;
 
   /**
+   * Whether the Market has any account of this population, in any state (identity design 7.4:
+   * the first-admin routine is refused once the Market has an admin account). One probe of the
+   * `(market_id, population, email_normalized)` key.
+   */
+  existsInPopulation(market: MarketContext, population: Population): Promise<boolean>;
+
+  /**
    * Stores a new account, its credential and its data key (identity design 11.3: the key is
    * created with the account, in the same unit).
    */
