@@ -32,4 +32,6 @@ config.allowedOrigins = [sellerOrigin, adminOrigin];
 const directory = resolve('.local/markets');
 await mkdir(directory, { recursive: true });
 await writeFile(resolve(directory, `${code}.json`), `${JSON.stringify(config, null, 2)}\n`);
-console.log(`wrote .local/markets/${code}.json; start the API with MARKET_CONFIG_DIR=.local/markets`);
+console.log(
+  `wrote .local/markets/${code}.json; start the API with MARKET_CONFIG_DIR=.local/markets`,
+);
