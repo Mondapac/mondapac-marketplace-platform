@@ -1221,20 +1221,22 @@ seller's, read as `taken` through the Prisma `findBySlug` mapping.
 
 ## 20. Slice 3 migration `20261008160000_sellers_identifier_tax` (2026-10-08)
 
-Signed off by Mojtaba 2026-10-08.
+| Reviewer | Verdict | Date |
+|---|---|---|
+| Mojtaba (database-designer) | Approved with D1 to D3 applied | 2026-10-08 |
 
 Written by Hossein from 3.1, 3.7, 4.5, 8 and 9 (the Prisma part by hand, because the schema change is
 two columns' worth of model and one table; `pnpm db:check-reversible` runs up, down, up and the drift
-check, and passes on PostgreSQL 16); for Mojtaba's sign-off. It depends on the P2 migration
+check, and passes on PostgreSQL 16). It depends on the P2 migration
 (`btree_gist` in schema `extensions`).
 
 | Object | What it adds |
 |---|---|
-| `seller_files` (existing; columns nullable, no default: a catalog change, 9.3) | `identifier_scheme`, `identifier_ciphertext`, `identifier_index` (`bytea`). `seller_files_identifier_scheme_check` (pattern of 3.1), `_identifier_ciphertext_check` (envelope shape and `BETWEEN 41 AND 512`), `_identifier_index_check` (`octet_length = 32`), `_identifier_set_check` (all three NULL or all set). Each CHECK is added `NOT VALID` and then `VALIDATE`d in the same file (9.3). Partial index `seller_files_market_id_identifier_index_idx (market_id, identifier_index) WHERE identifier_index IS NOT NULL` (plain `CREATE INDEX`: no deployed environment holds rows, 9.3) |
+| `seller_files` (existing; columns nullable, no default: a catalog change, 9.3) | `identifier_scheme`, `identifier_ciphertext`, `identifier_index` (`bytea`). `seller_files_identifier_scheme_check` (pattern of 3.1), `_identifier_ciphertext_check` (envelope shape and `BETWEEN 41 AND 512`), `_identifier_index_check` (`octet_length = 32`), `_identifier_set_check` (all three NULL or all set). Each CHECK is added `NOT VALID` and then `VALIDATE`d in the same file (9.3; the file is one implicit transaction, so this gives no lock benefit, which is acceptable because no deployed environment holds rows). Partial index `seller_files_market_id_identifier_index_idx (market_id, identifier_index) WHERE identifier_index IS NOT NULL` (plain `CREATE INDEX`: no deployed environment holds rows, 9.3) |
 | `tax_registration_periods` (new) | The columns of 3.7 plus `market_id` and `tenant_id` (C1). Primary key `id`; composite FK `(market_id, seller_id)` to `seller_tax_profiles`, `RESTRICT`; index `(market_id, seller_id, valid_from)`; CHECKs `_market_id_check`, `_tenant_id_check`, `_effective_zone_check` (the `operating_timezone` pattern, at most 64), `_valid_to_check` (`valid_to IS NULL OR valid_to > valid_from`), `_recorded_by_kind_check` (`seller`, `admin`); exclusion constraint `tax_registration_periods_no_overlap_excl` exactly as 3.7 |
 | Grants | `tax_registration_periods`: `SELECT, INSERT, UPDATE (valid_to), DELETE` to `mondapac_app` (section 8; `DELETE` is granted here because the repository's cancellation path for a period that has not started ships in slice 3, Q-M13; the cancel use case comes later). Nothing else changes |
 
-Decisions taken here, for Mojtaba to confirm or change:
+Decisions taken here (confirmed by Mojtaba in his review: DELETE grant now, bound 41 to 512, the gist exclusion, no FK for `identifier_scheme`):
 
 - **Ciphertext bound 512** for `identifier_ciphertext`. A normalised identifier is at most 64
   characters (the application's input bound, `IDENTIFIER_INPUT_MAX_LENGTH`; the real schemes are 9 to
