@@ -45,6 +45,14 @@ export const MAX_DELIVERY_ATTEMPTS = 10;
 export const BACK_OFF_BASE_SECONDS = 30;
 export const BACK_OFF_MAX_SECONDS = 3600;
 
+/**
+ * The longest one handler may take (Mojtaba F1): a read unit, an external call bounded by its
+ * own timeout (mail: 5 s) and a `runOnce` unit, each at most the 5 s unit timeout. A claimed row
+ * is handed to its handler only while this much of its lease (its back-off) is left, so it is
+ * never claimed again by another dispatcher while its handler still runs.
+ */
+export const HANDLER_BUDGET_MS = 15_000;
+
 /** P 6.4: `min(30 s × 2^(attempts − 1), 1 h)` after the claim that counted `attempts`. */
 export function backOffSeconds(attempts: number): number {
   if (!Number.isInteger(attempts) || attempts < 1) throw new RangeError('attempts starts at 1');

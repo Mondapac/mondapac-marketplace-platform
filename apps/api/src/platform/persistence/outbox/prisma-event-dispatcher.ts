@@ -7,7 +7,9 @@ import {
   BACK_OFF_BASE_SECONDS,
   BACK_OFF_MAX_SECONDS,
   DISPATCH_BATCH_SIZE,
+  HANDLER_BUDGET_MS,
   MAX_DELIVERY_ATTEMPTS,
+  backOffSeconds,
   type DispatchPass,
   type EventDispatcher,
 } from '../../events/event-delivery';
@@ -65,6 +67,17 @@ UPDATE "platform"."event_delivery"
    SET "status" = 'dead', "dead_at" = $4::timestamptz, "error_code" = $5
  WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'`;
 
+/**
+ * Gives back a claimed row whose handler did not start (Mojtaba F1): the claim's attempt is
+ * undone and the row is due now, unless another claim counted it since (then it is that
+ * claim's).
+ */
+const RELEASE = `
+UPDATE "platform"."event_delivery"
+   SET "attempts" = "attempts" - 1, "next_attempt_at" = $4::timestamptz
+ WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'
+   AND "attempts" = $5`;
+
 const FAILED = `
 UPDATE "platform"."event_delivery" SET "error_code" = $4
  WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'`;
@@ -119,11 +132,48 @@ export class PrismaEventDispatcher implements EventDispatcher {
       const context = this.contexts.forMarket(marketId);
       if (!context.ok) throw new Error(`The hosted Market ${marketId} has no context`);
       const rows = await this.claim(context.value);
+      const claimedAt = this.clock.now();
       claimed += rows.length;
       if (rows.length === DISPATCH_BATCH_SIZE) fullBatch = true;
-      for (const row of rows) await this.deliver(row, context.value);
+      for (const [index, row] of rows.entries()) {
+        if (!this.leaseCovers(row, claimedAt)) {
+          await this.release(rows.slice(index));
+          break;
+        }
+        await this.deliver(row, context.value);
+      }
     }
     return { claimed, fullBatch };
+  }
+
+  /**
+   * Whether the row's lease (the back-off its claim set) still has room for a whole handler
+   * (Mojtaba F1): handlers of a batch run one after the other, so a late row of a slow batch
+   * would otherwise run while another dispatcher claims it again.
+   */
+  private leaseCovers(row: DeliveryRecord, claimedAt: Temporal.Instant): boolean {
+    const elapsedMs = this.clock.now().epochMilliseconds - claimedAt.epochMilliseconds;
+    return elapsedMs + HANDLER_BUDGET_MS <= backOffSeconds(row.attempts) * 1000;
+  }
+
+  /** Gives back the rest of a batch whose lease ran short, without spending an attempt. */
+  private async release(rows: readonly DeliveryRecord[]): Promise<void> {
+    const now = new Date(this.clock.now().epochMilliseconds);
+    for (const row of rows) {
+      await this.root.$executeRawUnsafe(
+        RELEASE,
+        row.market_id,
+        row.event_id,
+        row.subscriber,
+        now,
+        row.attempts,
+      );
+    }
+    this.logger.warn({
+      msg: 'event-delivery.lease-short',
+      marketId: rows[0]!.market_id,
+      released: rows.length,
+    });
   }
 
   private claim(market: MarketContext): Promise<DeliveryRecord[]> {

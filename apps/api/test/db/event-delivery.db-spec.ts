@@ -92,7 +92,11 @@ describe('event delivery (database integration)', () => {
   /** A handler whose behaviour the test sets; it records what it was handed. */
   function recordingHandler(name: string) {
     const handled: Handled[] = [];
-    const state = { behaviour: 'consume' as Behaviour };
+    const state = {
+      behaviour: 'consume' as Behaviour,
+      /** A slow handler: the work moves this clock on by this much. */
+      slow: null as { clock: FixedClock; by: Temporal.Duration } | null,
+    };
     const entry = subscription({
       name,
       event: thingRecorded,
@@ -132,6 +136,7 @@ describe('event delivery (database integration)', () => {
             return;
           case 'consume': {
             let ran = false;
+            if (state.slow !== null) state.slow.clock.advance(state.slow.by);
             await db.unitOfWork.runOnce(context.market, delivery, async () => {
               ran = true;
               // The work of the use case: a state change in the same unit as the inbox row.
@@ -479,6 +484,50 @@ describe('event delivery (database integration)', () => {
     expect(await deadCode(moved.entry.name)).toEqual([['dead', 'delivery.type-mismatch']]);
     expect(await deadCode(reshaped.entry.name)).toEqual([['dead', 'delivery.payload-undecodable']]);
   });
+
+  it.each(TEST_MARKETS)(
+    '%s: gives back the rest of a batch whose lease ran short, without spending an attempt (Mojtaba F1)',
+    async (code) => {
+      const clock = startClock();
+      const handler = recordingHandler(uniqueName('lease'));
+      const { relay, dispatcher } = stackOf([handler.entry], clock);
+      await writeThings(code, 3);
+      await relayAll(relay);
+      // Each handler takes 20 s: after one, the 30 s lease has no room for another 15 s budget.
+      handler.state.slow = { clock, by: seconds(20) };
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect((await dispatcher.runOnce()).claimed).toBe(3);
+
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            msg: 'event-delivery.lease-short',
+            marketId: code,
+            released: 2,
+          }),
+        );
+        const rows = await deliveriesOf(handler.entry.name);
+        expect(rows.map((row) => [row.status, row.attempts]).sort()).toEqual([
+          ['delivered', 1],
+          ['pending', 0],
+          ['pending', 0],
+        ]);
+        // Given back as due now, so the next pass (here or elsewhere) takes them at once.
+        for (const row of rows.filter((r) => r.status === 'pending')) {
+          expect(row.next_attempt_at.getTime()).toBe(clock.now().epochMilliseconds);
+        }
+
+        await dispatcher.runOnce();
+        await dispatcher.runOnce();
+      } finally {
+        warn.mockRestore();
+      }
+
+      const rows = await deliveriesOf(handler.entry.name);
+      expect(rows.every((row) => row.status === 'delivered' && row.attempts === 1)).toBe(true);
+      expect(handler.handled.map((seen) => seen.attempt)).toEqual([1, 1, 1]);
+    },
+  );
 
   it('claims only rows of the Markets this stack hosts', async () => {
     const clock = startClock();
