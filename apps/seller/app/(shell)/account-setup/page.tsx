@@ -16,7 +16,6 @@ export default async function AccountSetupPage() {
   }
   return (
     <SellerShell session={page.session} activeId="s_setup" title={t('sellers.account.title')}>
-      <h1 className="mb-4 text-2xl font-semibold text-fg">{t('sellers.account.title')}</h1>
       <SetupHub file={page.file} />
     </SellerShell>
   );

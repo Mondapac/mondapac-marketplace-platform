@@ -209,7 +209,32 @@
       "open": "Open",
       "outside-area": "We're not in your area yet. We've saved your details. You can submit once we open there.",
       "submit-later": "Review and submit opens when every step is done.",
-      "status-waiting": "Waiting"
+      "status-waiting": "Waiting",
+      "account-created": "Account created",
+      "email-confirmed": "Email confirmed",
+      "review": "MondaPac reviews your application",
+      "detail-fields-left": "{count, plural, one {# field left} other {# fields left}}",
+      "detail-not-in-area": "Not in your area yet",
+      "badge": {
+        "details-incomplete": "Details needed",
+        "ready": "Ready to submit",
+        "outside-area": "Not in your area yet"
+      },
+      "banner": {
+        "details-incomplete": {
+          "title": "Finish your details",
+          "body": "Complete the steps below, then submit them for review."
+        },
+        "ready": {
+          "title": "Your details are ready",
+          "body": "Submit them for review when you're ready."
+        },
+        "outside-area": {
+          "title": "We're not in your area yet",
+          "body": "Your details are saved. You can submit once we open there."
+        }
+      },
+      "steps": "Steps"
     },
     "step": {
       "counter": "Step {current} of {total}",
@@ -219,7 +244,8 @@
       "save-continue": "Save and continue",
       "continue": "Continue",
       "saving": "Saving…",
-      "save": "Save"
+      "save": "Save",
+      "back-to-checklist": "Back to checklist"
     },
     "status": {
       "saved": "Saved",
@@ -232,7 +258,7 @@
         "business-name": "Business name",
         "phone": "Phone",
         "contact-email": "Contact email",
-        "sign-in-email": "You sign in with"
+        "sign-in-email": "Sign-in email"
       },
       "help": {
         "store-name": "Customers see this name. Don't use words that claim a certification, and don't copy another brand.",
@@ -262,7 +288,11 @@
       "label": {
         "zone": "Time zone"
       },
-      "choose-zone": "Choose…"
+      "choose-zone": "Choose…",
+      "outside-title": "We're not in your area yet.",
+      "outside-body": "We've saved your details. You can submit once we open there.",
+      "unresolved-title": "We couldn't work out your time zone from this address.",
+      "unresolved-body": "Check the address, or contact us."
     },
     "number": {
       "title": "Business number",

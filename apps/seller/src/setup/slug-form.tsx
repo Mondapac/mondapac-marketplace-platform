@@ -2,13 +2,13 @@
 
 import { Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import { SLUG_MAX, SLUG_MIN, slugFormatOk, suggestSlug } from './slug.ts';
-import { nextHref } from './steps.ts';
+import { nextHref, SETUP_ROOT } from './steps.ts';
 import type { DraftSaved, MyFile, SlugCheck } from './types.ts';
+import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
@@ -138,13 +138,7 @@ export function SlugForm({
     !localInvalid &&
     checkedCode !== 'slug.taken' &&
     checkedCode !== 'slug.reserved';
-  const help = [
-    t('sellers.slug.help', limits),
-    suggested ? t('sellers.slug.suggested') : null,
-    t('sellers.slug.help-later'),
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const help = `${t('sellers.slug.help', limits)} ${t('sellers.slug.help-later')}`;
 
   return (
     <form
@@ -171,8 +165,12 @@ export function SlugForm({
           spellCheck={false}
           dir="ltr"
         />
+        {suggested ? <p className="text-sm text-fg-muted">{t('sellers.slug.suggested')}</p> : null}
       </Card>
       <FormActionBar status={savedOnce && !problem && !pending ? t('sellers.status.saved') : null}>
+        <ButtonLink href={SETUP_ROOT} variant="secondary">
+          {t('sellers.action.back-to-checklist')}
+        </ButtonLink>
         <Button
           type="submit"
           variant={savedOnce ? 'secondary' : 'primary'}
@@ -188,12 +186,9 @@ export function SlugForm({
           )}
         </Button>
         {savedOnce ? (
-          <Link
-            href={nextHref('slug')}
-            className="inline-flex h-(--mp-size-control) items-center rounded-md bg-accent px-4 font-medium text-on-accent hover:bg-accent-hover"
-          >
+          <ButtonLink href={nextHref('slug')} variant="primary">
             {t('sellers.action.continue')}
-          </Link>
+          </ButtonLink>
         ) : null}
       </FormActionBar>
     </form>
