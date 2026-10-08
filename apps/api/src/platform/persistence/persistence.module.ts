@@ -154,14 +154,13 @@ export class PersistenceModule {
     }
     return {
       provide: AUDIT_WRITER,
-      inject: [PrismaService, AuditActionCatalogue, ID_GENERATOR, CLOCK, PERMISSION_KEY_LOOKUP],
+      inject: [AuditActionCatalogue, ID_GENERATOR, CLOCK, PERMISSION_KEY_LOOKUP],
       useFactory: (
-        prisma: PrismaService,
         catalogue: AuditActionCatalogue,
         ids: IdGenerator,
         clock: Clock,
         permissionKeys: PermissionKeyLookup,
-      ) => createAuditWriter(owner, { prisma, catalogue, ids, clock, permissionKeys }),
+      ) => createAuditWriter(owner, { catalogue, ids, clock, permissionKeys }),
     };
   }
 

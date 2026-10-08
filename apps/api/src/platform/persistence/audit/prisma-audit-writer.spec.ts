@@ -16,7 +16,6 @@ import {
 } from '../../audit/audit-writer';
 import { NO_PERMISSION_KEYS, type PermissionKeyLookup } from '../../events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../../market-context/tenant';
-import { PrismaService } from '../prisma.service';
 import { OpenUnit, unitStorage } from '../unit-store';
 import { createAuditWriter } from './prisma-audit-writer';
 
@@ -121,6 +120,12 @@ function harness(
 ): Harness {
   const clock = options.clock ?? new FixedClock(START);
   const rows: Record<string, unknown>[] = [];
+  // The module view (what `PrismaService.tx` hands out) must never be used by the writer.
+  const moduleView = {
+    auditLog: {
+      create: () => Promise.reject(new Error('the writer used the module view')),
+    },
+  };
   const view = {
     auditLog: {
       create: ({ data }: { data: Record<string, unknown> }) => {
@@ -130,7 +135,6 @@ function harness(
     },
   };
   const writer = createAuditWriter(options.owner ?? 'identity', {
-    prisma: new PrismaService(),
     catalogue: options.catalogue ?? sealedCatalogue(),
     ids: new SequenceIdGenerator(clock),
     clock,
@@ -140,7 +144,7 @@ function harness(
     writer,
     rows,
     inUnit: (market, work, readOnly = false) =>
-      unitStorage.run(new OpenUnit(market, readOnly, view), work),
+      unitStorage.run(new OpenUnit(market, readOnly, moduleView, view), work),
   };
 }
 

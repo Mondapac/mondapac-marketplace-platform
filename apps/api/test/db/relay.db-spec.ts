@@ -12,6 +12,7 @@ import type { MarketConfig } from '../../src/platform/market-config/market-confi
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { MarketContextFactory } from '../../src/platform/market-context/market-context.factory';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
 import { PrismaOutboxRelay } from '../../src/platform/persistence/outbox/prisma-outbox-relay';
 import { startApi } from '../../src/start-api';
 import { startWorker } from '../../src/start-worker';
@@ -174,7 +175,7 @@ describe('relay (database integration)', () => {
       const context = eventContext(marketOf(code));
       const event = thing();
       await db.unitOfWork.run(context.market, async () => {
-        await db.service.tx(context.market).auditLog.create({ data: auditRow(context.market) });
+        await auditTx(context.market).auditLog.create({ data: auditRow(context.market) });
         await writer.append(context, [event]);
         return ok(undefined);
       });

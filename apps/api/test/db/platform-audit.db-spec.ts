@@ -21,9 +21,9 @@ import {
 } from '../../src/platform/audit/audit-writer';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
 import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import { PrismaRoot } from '../../src/platform/persistence/prisma-root';
-import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
@@ -100,7 +100,6 @@ describe('platform audit writer and seal tables (database integration, slice 6a)
   let app: INestApplicationContext;
   let writer: AuditWriter;
   let unitOfWork: UnitOfWork;
-  let prisma: PrismaService;
   let root: PrismaRoot;
   /** The application login. */
   let sql: Client;
@@ -123,7 +122,6 @@ describe('platform audit writer and seal tables (database integration, slice 6a)
     app = await moduleRef.init();
     writer = app.select(AlphaAuditTestModule).get<AuditWriter>(AUDIT_WRITER);
     unitOfWork = app.get<UnitOfWork>(UNIT_OF_WORK);
-    prisma = app.get(PrismaService);
     root = app.get(PrismaRoot);
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
@@ -704,7 +702,7 @@ describe('platform audit writer and seal tables (database integration, slice 6a)
     const read = await unitOfWork.run(
       market,
       async () =>
-        ok(await prisma.tx(market).auditLog.findMany({ where: { marketId: 'ZZ', correlationId } })),
+        ok(await auditTx(market).auditLog.findMany({ where: { marketId: 'ZZ', correlationId } })),
       { readOnly: true },
     );
     expect(read.ok && read.value.map((row) => row.actorType)).toEqual(['SYSTEM']);

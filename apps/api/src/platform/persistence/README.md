@@ -16,6 +16,7 @@ Implements platform persistence design sections 3 to 9 and 12.3
 - `PrismaService.tx(market)` returns the open unit's `MarketTransaction`.
   - It is a frozen view of the model delegates only: no `$transaction` and no raw SQL.
   - It is refused outside a unit, and refused for another Market.
+  - It has no audit models: see "Audit writer" below.
 - Only `prisma.service.ts` may be imported from `modules/*/infrastructure`
   (dependency-cruiser rule `persistence-root-is-private`).
 - A module touches only the models of its own `prisma/schema/<module>.prisma`. The check is
@@ -118,6 +119,10 @@ Rows, values and SQL are never logged.
   - `permissionKey` values are refused until the permission registry exists (slice 8a-1).
 - `audit/` holds the writer; no module imports it (`pnpm boundaries`). Slice 6a binds the
   writer into no module; 6b binds it into identity and adds the sealer.
+- The audit models (`auditLog`, `auditLogSeal`, `auditChainCheckpoint`) are not in the view
+  `PrismaService.tx(market)` returns. The writer reaches them through `auditTx(market)`,
+  which has the same checks as `tx`. `pnpm boundaries` reserves them to `audit/`, and also
+  refuses a destructured model name or a computed key on a `tx(...)` result.
 - Migration `platform_audit_seal` (docs/design/data/platform.md 11) adds:
   - `ANONYMOUS` actors, whole milliseconds on `occurred_at`, and an 8 192-byte text cap on
     `before` and `after`;

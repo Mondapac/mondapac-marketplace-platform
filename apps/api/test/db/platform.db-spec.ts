@@ -13,10 +13,10 @@ import { ok } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
 import { DatabaseProbe } from '../../src/platform/persistence/database-probe';
 import { findRoleProblems } from '../../src/platform/persistence/database-role-check';
 import { PrismaRoot } from '../../src/platform/persistence/prisma-root';
-import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
 import { EXPECTED_PRIVILEGES } from './expected-privileges';
@@ -59,7 +59,6 @@ function auditRow(marketId: string, overrides: Record<string, unknown> = {}) {
 
 describe('platform persistence (database integration)', () => {
   let app: INestApplication<App>;
-  let prisma: PrismaService;
   let unitOfWork: UnitOfWork;
   /** The base client: reads that check what a unit left behind (platform persistence 13). */
   let root: PrismaRoot;
@@ -81,7 +80,6 @@ describe('platform persistence (database integration)', () => {
     configureApp(nestApp);
     await nestApp.init();
     app = nestApp;
-    prisma = app.get(PrismaService);
     unitOfWork = app.get<UnitOfWork>(UNIT_OF_WORK);
     root = app.get(PrismaRoot);
 
@@ -106,7 +104,7 @@ describe('platform persistence (database integration)', () => {
   /** Writes one audit row in a read-write unit of its Market, as a platform writer would. */
   async function insertAudit(market: MarketContext, row: ReturnType<typeof auditRow>) {
     return unitOfWork.run(market, async () => {
-      await prisma.tx(market).auditLog.create({ data: row });
+      await auditTx(market).auditLog.create({ data: row });
       return ok(undefined);
     });
   }
@@ -123,7 +121,7 @@ describe('platform persistence (database integration)', () => {
       const read = await unitOfWork.run(
         market,
         async () =>
-          ok(await prisma.tx(market).auditLog.findUnique({ where: { id: row.id, marketId } })),
+          ok(await auditTx(market).auditLog.findUnique({ where: { id: row.id, marketId } })),
         { readOnly: true },
       );
       expect(read.ok && read.value).toMatchObject({

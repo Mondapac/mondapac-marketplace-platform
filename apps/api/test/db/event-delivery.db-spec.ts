@@ -19,6 +19,7 @@ import type { MarketConfig } from '../../src/platform/market-config/market-confi
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { MarketContextFactory } from '../../src/platform/market-context/market-context.factory';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
 import { UnknownDeliveryError } from '../../src/platform/persistence/outbox/delivery-ledger';
 import { InProcessEventBus } from '../../src/platform/persistence/outbox/in-process-event-bus';
 import { PrismaEventDispatcher } from '../../src/platform/persistence/outbox/prisma-event-dispatcher';
@@ -143,7 +144,7 @@ describe('event delivery (database integration)', () => {
             await db.unitOfWork.runOnce(context.market, delivery, async () => {
               ran = true;
               // The work of the use case: a state change in the same unit as the inbox row.
-              await db.service.tx(context.market).auditLog.create({
+              await auditTx(context.market).auditLog.create({
                 data: auditRow(context.market, {
                   targetId: String(event.payload.thingId),
                   correlationId: context.correlationId,

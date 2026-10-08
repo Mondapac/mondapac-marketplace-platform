@@ -22,7 +22,7 @@ import {
   type AuditWriter,
 } from '../../audit/audit-writer';
 import type { PermissionKeyLookup } from '../../events/outbox-writer';
-import type { PrismaService } from '../prisma.service';
+import { auditTx } from './audit-transaction';
 import { unitStorage } from '../unit-store';
 
 /** One row of `platform.audit_log` (docs/design/data/platform.md 2), as the guarded delegate takes it. */
@@ -57,13 +57,13 @@ function actorColumns(actor: ActorContext): Pick<AuditRow, 'actorType' | 'actorI
 /**
  * The audit writer of docs/design/domain/platform-audit.md 3.1, bound to one owner (a module,
  * or `platform.<component>`). It writes through `platform.audit_log`'s model of the open unit
- * (`PrismaService.tx`), so the market guard checks the row's Market and tenant like any other
+ * (`auditTx`, the unit's internal audit view, which `PrismaService.tx` does not expose), so
+ * the market guard checks the row's Market and tenant like any other
  * write (P 4), and the unit's commit or rollback decides the row with the audited change.
  */
 class PrismaAuditWriter implements AuditWriter {
   constructor(
     private readonly owner: string,
-    private readonly prisma: PrismaService,
     private readonly catalogue: AuditActionCatalogue,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
@@ -91,7 +91,7 @@ class PrismaAuditWriter implements AuditWriter {
     if (!this.catalogue.sealed) throw new AuditWriteRefusedError('catalogue-not-sealed');
 
     const row = this.rowOf(context, entry);
-    await this.prisma.tx(market).auditLog.create({ data: row });
+    await auditTx(market).auditLog.create({ data: row });
   }
 
   private rowOf(context: CallContext, entry: unknown): AuditRow {
@@ -186,7 +186,6 @@ class PrismaAuditWriter implements AuditWriter {
 
 /** What {@link createAuditWriter} needs; all of it comes from the global platform providers. */
 export interface AuditWriterDependencies {
-  readonly prisma: PrismaService;
   readonly catalogue: AuditActionCatalogue;
   readonly ids: IdGenerator;
   readonly clock: Clock;
@@ -201,6 +200,6 @@ export function createAuditWriter(
   owner: string,
   dependencies: AuditWriterDependencies,
 ): AuditWriter {
-  const { prisma, catalogue, ids, clock, permissionKeys } = dependencies;
-  return new PrismaAuditWriter(owner, prisma, catalogue, ids, clock, permissionKeys);
+  const { catalogue, ids, clock, permissionKeys } = dependencies;
+  return new PrismaAuditWriter(owner, catalogue, ids, clock, permissionKeys);
 }
