@@ -21,16 +21,23 @@ import {
   SELLER_ROLE_VIEW,
   TEAM_MEMBER_VIEW,
 } from '../../src/modules/identity/contracts/permissions';
+import { IdentityModule } from '../../src/modules/identity/identity.module';
 import { CheckedInRoleSeed } from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
 import {
+  AUDIT_WRITER,
+  AuditWriteRefusedError,
+  type AuditWriter,
+} from '../../src/platform/audit/audit-writer';
+import {
   AUTHORISATION_CHECK,
+  PermissionRegistry,
   type AccessDeclaration,
   type AuthorisationCheck,
 } from '../../src/platform/authz';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { marketOf } from './persistence-support';
+import { marketOf, otherMarketOf } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // The role seed and the permission path of slice 8a-1 on PostgreSQL (identity design 5.5, 5.6,
@@ -54,7 +61,18 @@ describe.each(TEST_MARKETS)(
     const checkedIn = new CheckedInRoleSeed().roles();
     /** Roles a test adds to the checked-in seed, under seed codes of its own. */
     let extra: SeededRole[] = [];
-    const seed: RoleSeed = { roles: () => [...checkedIn, ...extra] };
+    /** A seed version for the checked-in seller-owner, as a later build would ship it. */
+    let ownerSeedVersion: number | null = null;
+    const seed: RoleSeed = {
+      roles: () => [
+        ...checkedIn.map((role) =>
+          role.seedCode === 'seller-owner' && ownerSeedVersion !== null
+            ? { ...role, seedVersion: ownerSeedVersion }
+            : role,
+        ),
+        ...extra,
+      ],
+    };
     let app: NestExpressApplication;
     let sql: Client;
     let logs: jest.SpyInstance[];
@@ -125,6 +143,112 @@ describe.each(TEST_MARKETS)(
         ]);
       }
       await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 0 } });
+    });
+
+    /** A default seller-scope role under a seed code of this test's own. */
+    const ownRole = (
+      seedCode: string,
+      seedVersion: number,
+      permissionKeys: string[],
+    ): SeededRole => ({
+      scope: 'seller',
+      kind: 'default',
+      seedCode,
+      seedVersion,
+      nameKey: 'identity.role.store-manager',
+      permissionKeys,
+    });
+    const newSeedCode = (prefix: string) => `${prefix}-${randomBytes(4).toString('hex')}`;
+
+    async function auditRowsOf(roleId: string) {
+      const { rows } = await sql.query<{ action: string; before: unknown; after: unknown }>(
+        `SELECT action, before, after FROM platform.audit_log
+          WHERE market_id = $1 AND target_id = $2 ORDER BY occurred_at, action`,
+        [code, roleId],
+      );
+      return rows;
+    }
+
+    /** Identity's audit writer refuses every row while `work` runs. */
+    async function whileAuditRefuses<T>(work: () => Promise<T>): Promise<T> {
+      const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+      const refusing = jest
+        .spyOn(writer, 'record')
+        .mockRejectedValue(new AuditWriteRefusedError('entry-invalid', 'after'));
+      try {
+        return await work();
+      } finally {
+        refusing.mockRestore();
+      }
+    }
+
+    it('a refused audit row rolls back the creation and the upgrade: role and key rows unchanged (PA W5; Sajad G2)', async () => {
+      await seedRoles();
+      const seedCode = newSeedCode('db-refused');
+
+      // The creation: no role row, no key row.
+      extra = [ownRole(seedCode, 1, [TEAM_MEMBER_VIEW.key])];
+      await expect(whileAuditRefuses(seedRoles)).resolves.toEqual({
+        ok: false,
+        error: { code: 'seed.incomplete', failed: 1 },
+      });
+      const { rows: none } = await sql.query(
+        `SELECT 1 FROM identity.roles WHERE market_id = $1 AND seed_code = $2`,
+        [code, seedCode],
+      );
+      expect(none).toEqual([]);
+
+      // Created for real, then an upgrade that is refused: version, seed version and keys stay.
+      await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 1, upgraded: 0 } });
+      const before = await roleRow('seller', seedCode);
+      extra = [ownRole(seedCode, 2, [SELLER_ROLE_VIEW.key])];
+      await expect(whileAuditRefuses(seedRoles)).resolves.toEqual({
+        ok: false,
+        error: { code: 'seed.incomplete', failed: 1 },
+      });
+      expect(await roleRow('seller', seedCode)).toEqual(before);
+      expect(await keysOf(before.id)).toEqual([TEAM_MEMBER_VIEW.key]);
+      expect((await auditRowsOf(before.id)).map((r) => r.action)).toEqual(['identity.role.seeded']);
+    });
+
+    it('two concurrent upgrades of one role: one applies, one seed-applied row (Sajad G5)', async () => {
+      const seedCode = newSeedCode('db-race');
+      extra = [ownRole(seedCode, 1, [TEAM_MEMBER_VIEW.key])];
+      await seedRoles();
+      const role = await roleRow('seller', seedCode);
+      extra = [ownRole(seedCode, 2, [SELLER_ROLE_VIEW.key])];
+
+      const results = await Promise.all([seedRoles(), seedRoles()]);
+
+      expect(results.every((r) => r.ok)).toBe(true);
+      expect(results.map((r) => (r.ok ? r.value.upgraded : -1)).reduce((a, b) => a + b, 0)).toBe(1);
+      expect(await roleRow('seller', seedCode)).toMatchObject({ seed_version: 2, version: 2 });
+      expect(await keysOf(role.id)).toEqual([SELLER_ROLE_VIEW.key]);
+      expect(
+        (await auditRowsOf(role.id)).filter((r) => r.action === 'identity.role.seed-applied'),
+      ).toHaveLength(1);
+    });
+
+    it('never changes a stored role whose kind differs from the seed (Sajad G5)', async () => {
+      const seedCode = newSeedCode('db-kind');
+      extra = [ownRole(seedCode, 1, [TEAM_MEMBER_VIEW.key])];
+      await seedRoles();
+      const before = await roleRow('seller', seedCode);
+
+      // A later build ships the same code as a system role at a newer version.
+      extra = [{ ...ownRole(seedCode, 2, []), kind: 'system' }];
+      await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 0 } });
+
+      expect(await roleRow('seller', seedCode)).toEqual(before);
+      expect(await keysOf(before.id)).toEqual([TEAM_MEMBER_VIEW.key]);
+      expect((await auditRowsOf(before.id)).map((r) => r.action)).toEqual(['identity.role.seeded']);
+      expect(
+        logs
+          .flatMap((spy) => spy.mock.calls as unknown[][])
+          .some(
+            (call) => (call[0] as { msg?: string }).msg === 'identity.seed-roles.kind-mismatch',
+          ),
+      ).toBe(true);
     });
 
     it('upgrades a newer seed version: the key rows change and one audited seed-applied row names them', async () => {
@@ -322,13 +446,88 @@ describe.each(TEST_MARKETS)(
         );
         const check = app.get<AuthorisationCheck>(AUTHORISATION_CHECK);
 
-        for (const key of [TEAM_MEMBER_VIEW.key, SELLER_ROLE_VIEW.key]) {
-          await expect(check.check(context, needs(key))).resolves.toEqual({ allowed: true });
+        // Every seller key the sealed registry declares, sellers.business-identity.edit included.
+        const sellerKeys = [...app.get(PermissionRegistry).keysOf('seller')];
+        expect(sellerKeys).toContain('sellers.business-identity.edit');
+        for (const key of sellerKeys) {
+          expect([key, await check.check(context, needs(key))]).toEqual([key, { allowed: true }]);
         }
         await expect(check.check(context, needs(SELLER_ACCESS_VIEW.key))).resolves.toMatchObject({
           allowed: false,
         });
       });
+
+      it("a Platform Administrator of this Market holds nothing under the other Market's context (canary)", async () => {
+        await seedRoles();
+        const administrator = await adminWith('platform-administrator');
+        const elsewhere = marketOf(otherMarketOf(code));
+
+        const read = await app
+          .get<UnitOfWork>(UNIT_OF_WORK)
+          .run(
+            elsewhere,
+            async () =>
+              ok(
+                await app
+                  .get<RoleGrantReader>(ROLE_GRANT_READER)
+                  .grantsOf(elsewhere, [administrator]),
+              ),
+            { readOnly: true },
+          );
+        if (!read.ok) throw new Error('the grant read failed');
+        expect(read.value.size).toBe(0);
+
+        const context = testCallContext(
+          elsewhere,
+          testAuthenticatedActor(elsewhere, {
+            population: 'admin',
+            accountId: administrator,
+            sessionId: newId<'Session'>(),
+            sellerId: null,
+          }),
+        );
+        const check = app.get<AuthorisationCheck>(AUTHORISATION_CHECK);
+        for (const key of [SELLER_ACCESS_VIEW.key, SELLER_ACCESS_APPROVE.key]) {
+          await expect(check.check(context, needs(key))).resolves.toMatchObject({
+            allowed: false,
+          });
+        }
+      });
+    });
+
+    // Last in the file for this Market: it raises a checked-in system role's seed version, a
+    // shared row (one system role per scope, so a test cannot bring its own).
+    it('upgrades a system role: no key rows, one seed-applied row with empty key lists (Sajad G5)', async () => {
+      await seedRoles();
+      const owner = await roleRow('seller', 'seller-owner');
+      const from = owner.seed_version;
+      extra = [];
+      ownerSeedVersion = from + 1;
+      try {
+        await expect(seedRoles()).resolves.toEqual({
+          ok: true,
+          value: { created: 0, upgraded: 1 },
+        });
+      } finally {
+        ownerSeedVersion = null;
+      }
+
+      expect(await roleRow('seller', 'seller-owner')).toMatchObject({
+        id: owner.id,
+        kind: 'system',
+        seed_version: from + 1,
+        version: owner.version + 1,
+      });
+      expect(await keysOf(owner.id)).toEqual([]);
+      expect(
+        (await auditRowsOf(owner.id)).filter((r) => r.action === 'identity.role.seed-applied'),
+      ).toEqual([
+        {
+          action: 'identity.role.seed-applied',
+          before: { seedVersion: from },
+          after: { seedVersion: from + 1, addedKeys: [], removedKeys: [] },
+        },
+      ]);
     });
   },
 );
