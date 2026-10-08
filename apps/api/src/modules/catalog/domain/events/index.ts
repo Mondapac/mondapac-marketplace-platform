@@ -41,8 +41,9 @@ export const OfferDeleted = defineEvent({
 /**
  * An Offer moved to a PLATFORM product on a match (catalog design 9.4; PRC CF4, INV V-1). The
  * variant mapping is two lists of the same length read pairwise: `fromVariantIds[i]` becomes
- * `toVariantIds[i]` (the event field kinds hold no list of objects). At most
- * `maxVariantsPerProduct` entries. Ids only.
+ * `toVariantIds[i]` (the event field kinds hold no list of objects). Built only by
+ * `buildOfferMovedMapping`, which enforces equal length, no duplicates and the
+ * `maxVariantsPerProduct` cap. Ids only.
  */
 export const OfferMoved = defineEvent({
   type: 'catalog.offer-moved.v1',

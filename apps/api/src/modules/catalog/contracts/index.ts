@@ -8,3 +8,5 @@ export {
   VariantAdded,
   VariantRemoved,
 } from '../domain/events';
+export { buildOfferMovedMapping } from '../domain/events/offer-moved-payload';
+export type { OfferMovedPayloadRefused } from '../domain/events/offer-moved-payload';
