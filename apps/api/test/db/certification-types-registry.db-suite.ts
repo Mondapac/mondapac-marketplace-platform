@@ -292,6 +292,17 @@ export function registerTypesRegistrySuite(): void {
         ).toBe('23001');
       });
 
+      it('refuses content for a revision inserted under a savepoint: its xmin is the subtransaction (fail closed)', async () => {
+        await rolled(async () => {
+          await sql.query('SAVEPOINT s');
+          const { revisionId } = await type();
+          await sql.query('RELEASE s');
+          expect((await insertFailure('type_revision_texts', text(revisionId)))?.code).toBe(
+            '23001',
+          );
+        })();
+      });
+
       it('guards truncation by its own trigger, not only through the cascade', async () => {
         // With the terms table's trigger off (inside a rolled-back transaction), the cascade reaches
         // it silently and only the texts trigger can refuse.
@@ -384,6 +395,44 @@ export function registerTypesRegistrySuite(): void {
           ).toBe('23503');
         }),
       );
+
+      it('refuses a term for a revision published or proposed in the same transaction (Hassan M2)', async () => {
+        await rolled(async () => {
+          const published = await type();
+          await insert('type_revision_texts', text(published.revisionId));
+          await sql.query(
+            `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
+            [published.revisionId, published.typeId],
+          );
+          expect((await insertFailure('claim_terms', term(published.revisionId)))?.code).toBe(
+            '23001',
+          );
+          const proposed = await type();
+          await insert('type_revision_texts', text(proposed.revisionId));
+          expect(await insertFailure('claim_terms', term(proposed.revisionId))).toBeNull();
+          await insert('relaxation_proposals', {
+            id: uuid7(),
+            ...base(),
+            subject_kind: 'type-revision',
+            subject_id: proposed.typeId,
+            based_on_revision_id: null,
+            proposed_revision_id: proposed.revisionId,
+            proposed_expert_reference_ciphertext: null,
+            state: 'pending',
+            proposer_account_id: uuid7(),
+            proposed_at: T0,
+            decided_by_account_id: null,
+            decided_at: null,
+            change_reason_ciphertext: null,
+            version: 1,
+            created_at: T0,
+          });
+          expect(
+            (await insertFailure('claim_terms', term(proposed.revisionId, { phrase: 'tayyib' })))
+              ?.code,
+          ).toBe('23001');
+        })();
+      });
 
       it('refuses a term in any later transaction than the one that saved the revision (Hassan M2)', async () => {
         const { revisionId } = await committed(async () => {
