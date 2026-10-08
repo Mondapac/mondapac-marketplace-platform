@@ -121,6 +121,9 @@ export class AttributeDefinition {
       ((min === undefined && max === undefined) || numeric) &&
       (min === undefined || Number.isFinite(min)) &&
       (max === undefined || Number.isFinite(max)) &&
+      (dataType !== 'integer' ||
+        ((min === undefined || Number.isSafeInteger(min)) &&
+          (max === undefined || Number.isSafeInteger(max)))) &&
       (min === undefined || max === undefined || min <= max);
     if (!boundsOk) return err({ code: 'attribute-definition.bounds-invalid' });
 

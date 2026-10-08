@@ -98,6 +98,11 @@ describe('AttributeDefinition.create', () => {
       'attribute-definition.bounds-invalid',
     ],
     [
+      'a fractional bound on an integer',
+      { ...bad, dataType: 'integer', bounds: { min: 1.5 } },
+      'attribute-definition.bounds-invalid',
+    ],
+    [
       'min above max',
       { ...bad, dataType: 'integer', bounds: { min: 5, max: 1 } },
       'attribute-definition.bounds-invalid',

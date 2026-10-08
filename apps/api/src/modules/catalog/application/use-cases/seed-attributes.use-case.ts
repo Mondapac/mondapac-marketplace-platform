@@ -68,10 +68,10 @@ export class SeedAttributes extends UseCase<
       const done = await unitOfWork.run(market, async () => {
         if ((await attributes.definitionIdByCode(market, seeded.code)) !== null) return ok(false);
         const definition = AttributeDefinition.create({
+          ...seeded,
           id: ids.next<'AttributeDefinition'>(),
           revisionId: ids.next<'AttributeDefinitionRevision'>(),
           marketId: market.marketId,
-          ...seeded,
           createdByKind: 'seed',
           now: clock.now(),
         });
