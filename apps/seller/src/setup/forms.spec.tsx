@@ -198,9 +198,18 @@ describe('AddressForm', () => {
 });
 
 describe('SetupHub', () => {
+  it('says the seller is outside the service area and marks the address step', () => {
+    render(wrap(<SetupHub file={{ ...emptyFile, missing: [], outsideServiceArea: true }} />));
+    expect(screen.getAllByText("We're not in your area yet").length).toBeGreaterThan(0);
+    expect(screen.getByText('Needs attention')).toBeTruthy();
+  });
+
   it('marks a step done when none of its parts is missing', () => {
     render(wrap(<SetupHub file={{ ...emptyFile, missing: ['slug'] }} />));
-    expect(screen.getAllByText('Done')).toHaveLength(3);
-    expect(screen.getAllByText('To do')).toHaveLength(1);
+    // Account created, Email confirmed and three finished steps.
+    expect(screen.getAllByText('Done')).toHaveLength(5);
+    // The shop web address, Review and submit and MondaPac reviews.
+    expect(screen.getAllByText('To do')).toHaveLength(3);
+    expect(screen.getByText('1 field left')).toBeTruthy();
   });
 });

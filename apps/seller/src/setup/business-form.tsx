@@ -5,8 +5,9 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
-import { nextHref } from './steps.ts';
+import { nextHref, SETUP_ROOT } from './steps.ts';
 import type { DraftSaved, MyFile } from './types.ts';
+import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
@@ -102,8 +103,19 @@ export function BusinessForm({
           autoComplete="email"
           dir="ltr"
         />
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-fg">
+            {t('sellers.business.label.sign-in-email')}
+          </span>
+          <span dir="ltr" className="text-fg">
+            {signInEmail}
+          </span>
+        </div>
       </Card>
       <FormActionBar>
+        <ButtonLink href={SETUP_ROOT} variant="secondary">
+          {t('sellers.action.back-to-checklist')}
+        </ButtonLink>
         <Button type="submit" loading={pending}>
           {t(pending ? 'sellers.action.saving' : 'sellers.action.save-continue')}
         </Button>
