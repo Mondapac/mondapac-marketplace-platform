@@ -932,6 +932,15 @@ created complete in migration 1 (all its columns and rules), because the submiss
 arrives in migration 2 as designed. The partial index of the pending queue and the approved-pointer
 unique (A5, A8) wait for migration 6, as listed; migration 1 carries T1 and A9 only.
 
+Applied choices of the second migration (Hossein, 2026-10-08; Mojtaba signs): the free-text CHECKs use
+the `\uXXXX` regular-expression escapes of the sellers migrations, never literal bidi characters in the
+SQL file. The partial unique of one pending proposal per subject (D 7.6) is hand-written and listed in
+the partial-index catalog test; `relaxation_proposals` carries no foreign key because its subject id
+is polymorphic (a type revision, a claim policy revision, an issuer or a type). The application may
+update only `state`, `decided_by_account_id`, `decided_at` and `version` there, and only `retired_at`
+on a contact channel. `platform_subjects` is insert-only by grant but has no trigger (the seed owns it;
+the owner may delete it in tests).
+
 No migration: slices 3, 8, 10, 11, 12, 15. This matches D 14.1 (1, 2, 4, 5, 6, 7, 9, 13, 14) plus
 16 and 17. The status-history table moves from slice 7 to slice 5, so the first submission already
 writes its history row; no deployed environment exists in between.

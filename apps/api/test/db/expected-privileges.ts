@@ -159,6 +159,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'certification.seller_submission_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration 2 (types registry): texts and terms are insert-only (6.1 triggers); a channel is
+    // only retired; a relaxation proposal only decided; platform subject keys never change.
+    'certification.type_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.claim_terms': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.issuer_contact_channels': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['retired_at'],
+    },
+    'certification.relaxation_proposals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['decided_at', 'decided_by_account_id', 'state', 'version'],
+    },
+    'certification.platform_subjects': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
