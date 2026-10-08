@@ -1,0 +1,122 @@
+// The panel server's relay to the API (ADR-0034 decision 3). Pure functions over `Request` and
+// `Response`, so they are tested without a server. The relay forwards an allowlist of paths and
+// headers, sets `x-market-id` from the request host, and refuses an unsafe request that is not
+// same-origin, because the API's own origin check is fail-open when the headers are absent.
+
+import type { PanelConfig, PanelHost } from './config.ts';
+
+/** The paths this panel may reach, by method (its own population's identity routes). */
+const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
+  GET: new Set(['identity/seller/session', 'identity/seller/status']),
+  POST: new Set([
+    'identity/seller/sign-up',
+    'identity/seller/confirm-email',
+    'identity/seller/verification-email',
+    'identity/seller/sign-in',
+    'identity/seller/sign-out',
+    'identity/seller/password-reset-email',
+    'identity/seller/reset-password',
+    'identity/seller/change-password',
+  ]),
+};
+
+/** Request headers that cross to the API. Everything else is dropped. */
+const FORWARDED_REQUEST_HEADERS = [
+  'cookie',
+  'content-type',
+  'accept',
+  'origin',
+  'sec-fetch-site',
+  'x-csrf-token',
+] as const;
+
+/** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
+const FORWARDED_RESPONSE_HEADERS = ['content-type', 'retry-after'] as const;
+
+const MAX_BODY_BYTES = 16 * 1024;
+
+/** Lower case, no trailing dot on the host name; the port stays. */
+export function normaliseHost(raw: string | null): string | null {
+  if (raw === null) return null;
+  const host = raw.trim().toLowerCase();
+  if (host === '') return null;
+  return host.replace(/\.(?=$|:)/, '');
+}
+
+export function panelHostFor(config: PanelConfig, rawHost: string | null): PanelHost | undefined {
+  const host = normaliseHost(rawHost);
+  return host === null ? undefined : config.hosts.find((entry) => entry.host === host);
+}
+
+const jsonError = (status: number, code: string): Response =>
+  new Response(JSON.stringify({ statusCode: status, code }), {
+    status,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
+
+const notFound = (): Response =>
+  new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
+
+/** Headers for a request to the API: the allowlist plus the Market of the host. */
+export function upstreamHeaders(request: Request, host: PanelHost): Headers {
+  const headers = new Headers();
+  for (const name of FORWARDED_REQUEST_HEADERS) {
+    const value = request.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  headers.set('x-market-id', host.marketId);
+  return headers;
+}
+
+/**
+ * Relays one browser request to the API. `fetchImpl` is injected for tests; the route handler
+ * passes the global `fetch`.
+ */
+export async function relay(
+  config: PanelConfig,
+  request: Request,
+  path: readonly string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<Response> {
+  const host = panelHostFor(config, request.headers.get('host'));
+  if (host === undefined) return notFound();
+  const target = path.join('/');
+  if (!ALLOWED[request.method]?.has(target)) return notFound();
+  if (request.headers.has('authorization')) return jsonError(401, 'session.invalid');
+  if (request.method !== 'GET') {
+    // Unsafe method: same-origin only, whatever the API would do with a missing header.
+    if (request.headers.get('sec-fetch-site') !== 'same-origin')
+      return jsonError(403, 'request.csrf');
+    if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
+  }
+  let body: string | undefined;
+  if (request.method !== 'GET') {
+    body = await request.text();
+    if (new TextEncoder().encode(body).length > MAX_BODY_BYTES)
+      return jsonError(413, 'request.too-large');
+  }
+  let upstream: Response;
+  try {
+    upstream = await fetchImpl(`${config.apiBaseUrl}/${target}`, {
+      method: request.method,
+      headers: upstreamHeaders(request, host),
+      ...(body === undefined ? {} : { body }),
+      redirect: 'manual',
+      cache: 'no-store',
+    });
+  } catch {
+    return jsonError(503, 'access.unavailable');
+  }
+  const headers = new Headers();
+  for (const name of FORWARDED_RESPONSE_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  // Session answers must never be cached; the API sets no-store itself, this is the default.
+  headers.set('cache-control', upstream.headers.get('cache-control') ?? 'private, no-store');
+  for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);
+  return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
+    status: upstream.status,
+    headers,
+  });
+}
