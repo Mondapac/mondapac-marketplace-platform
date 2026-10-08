@@ -302,15 +302,16 @@ const addressFormatSchema = z
 /**
  * One region's zones (sellers design 4.1; spike 3 record, mini-review 2026-10-08): the zone a
  * saved address starts with and the closed list the seller may choose from. `default` is a
- * member of `selectable`. A zone is a canonical IANA ID of the runtime zone database (the
- * `Intl` list holds no `backward` link such as `Australia/NSW`); `Etc/*` is refused. Never an
- * offset (ADR-0005 decision 1).
+ * member of `selectable`. A zone must be in the runtime's `Intl` zone list: IANA IDs in the form
+ * ICU holds them, so `Etc/*`, offsets, abbreviations and most `backward` links (`Australia/NSW`)
+ * are refused. That form is ICU's (CLDR's), not always tzdb's `zone1970.tab` spelling
+ * (`Asia/Calcutta` is listed, `Asia/Kolkata` is not on Node 24), so a Market whose zones differ
+ * between the two needs a look when the runtime moves. Never an offset (ADR-0005 decision 1).
  */
-const selectableZone = timeZone.refine((value) => !value.startsWith('Etc/'), 'must not be Etc/*');
 const regionZonesSchema = z
   .strictObject({
-    default: selectableZone,
-    selectable: z.array(selectableZone).min(1).max(20),
+    default: timeZone,
+    selectable: z.array(timeZone).min(1).max(20),
   })
   .superRefine((zones, context) => {
     if (!zones.selectable.includes(zones.default)) {
@@ -331,8 +332,23 @@ const regionZonesSchema = z
 
 /** The `timezones` of the `sellers` section (design 4.1): region to its zones. */
 const sellerTimezonesSchema = z.strictObject({
+  /**
+   * ISO 3166-1 countries whose zones this Market may list (the Market code is not always a
+   * country): boot fails when a listed zone belongs to none of them (guardrail 1).
+   */
+  countries: z
+    .array(z.string().regex(/^[A-Z]{2}$/, 'must be an ISO 3166-1 alpha-2 code'))
+    .min(1)
+    .max(10),
   byRegion: z.record(regionName, regionZonesSchema),
 });
+
+/** The zones the runtime assigns to a country, or none for an unknown code. */
+function zonesOfCountry(country: string): readonly string[] {
+  // `getTimeZones` is in Node 24's V8 but not in the TypeScript lib this project targets.
+  const locale = new Intl.Locale(`und-${country}`) as { getTimeZones?: () => string[] | undefined };
+  return locale.getTimeZones?.() ?? [];
+}
 
 /**
  * The `sellers` section of a Market file. It starts with what slice 2 (complete details) needs;
@@ -351,6 +367,29 @@ const sellersSchema = z
     approvalRequired: z.boolean(),
   })
   .superRefine((sellers, context) => {
+    const known = new Set<string>();
+    sellers.timezones.countries.forEach((country, index) => {
+      const zones = zonesOfCountry(country);
+      if (zones.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          message: `${country} has no time zones in the runtime zone database`,
+          path: ['timezones', 'countries', index],
+        });
+      }
+      zones.forEach((zone) => known.add(zone));
+    });
+    for (const [region, zones] of Object.entries(sellers.timezones.byRegion)) {
+      for (const zone of zones.selectable) {
+        if (!known.has(zone)) {
+          context.addIssue({
+            code: 'custom',
+            message: `${zone} does not belong to any of timezones.countries`,
+            path: ['timezones', 'byRegion', region, 'selectable'],
+          });
+        }
+      }
+    }
     const regions = sellers.address.regions;
     const zoned = Object.keys(sellers.timezones.byRegion);
     const missing = regions.filter((region) => !zoned.includes(region));

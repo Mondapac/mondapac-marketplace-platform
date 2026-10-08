@@ -88,6 +88,7 @@
       "regions": ["ZA", "ZB"]
     },
     "timezones": {
+      "countries": ["JP", "NZ"],
       "byRegion": {
         "ZA": {
           "default": "Asia/Tokyo",

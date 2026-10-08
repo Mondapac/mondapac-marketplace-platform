@@ -94,6 +94,7 @@
       "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
     },
     "timezones": {
+      "countries": ["AU"],
       "byRegion": {
         "ACT": {
           "default": "Australia/Sydney",

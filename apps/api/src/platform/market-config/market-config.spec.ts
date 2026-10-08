@@ -332,6 +332,7 @@ describe('loadMarketConfigs', () => {
         regions: ['N', 'S'],
       },
       timezones: {
+        countries: ['NZ'],
         byRegion: {
           N: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland', 'Pacific/Chatham'] },
           S: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland'] },
@@ -369,6 +370,22 @@ describe('loadMarketConfigs', () => {
       );
     });
 
+    it('lists, in every region of both fixtures, a default inside selectable; one ZZ region has two zones', () => {
+      const fixtures = [...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values()];
+      const regions = fixtures.flatMap((market) =>
+        Object.values(market.sellers?.timezones.byRegion ?? {}),
+      );
+
+      expect(regions.length).toBeGreaterThan(0);
+      for (const zones of regions) expect(zones.selectable).toContain(zones.default);
+      const synthetic = fixtures.find((market) => market.code !== 'AU');
+      expect(
+        Object.values(synthetic?.sellers?.timezones.byRegion ?? {}).some(
+          (zones) => zones.selectable.length > 1,
+        ),
+      ).toBe(true);
+    });
+
     it.each([
       [
         'no approval policy: a Market never defaults it',
@@ -393,7 +410,7 @@ describe('loadMarketConfigs', () => {
       [
         'an empty selectable list',
         (c: typeof SELLERS) => void (c.timezones.byRegion.S.selectable = []),
-        /selectable/,
+        /too small|at least 1/i,
       ],
       [
         'a backward link instead of the canonical zone',
@@ -404,12 +421,31 @@ describe('loadMarketConfigs', () => {
         /IANA time zone/,
       ],
       [
+        'a zone of another country than timezones.countries',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Asia/Tokyo';
+          c.timezones.byRegion.S.selectable = ['Asia/Tokyo'];
+        },
+        /does not belong to any of timezones.countries/,
+      ],
+      [
+        'a country with no zones',
+        (c: typeof SELLERS) => void (c.timezones.countries = ['NZ', 'XX']),
+        /no time zones in the runtime/,
+      ],
+      ['no countries', (c: typeof SELLERS) => void (c.timezones.countries = []), /timezones/],
+      [
+        'a country that is not an ISO code',
+        (c: typeof SELLERS) => void (c.timezones.countries = ['nz']),
+        /ISO 3166-1/,
+      ],
+      [
         'an Etc zone',
         (c: typeof SELLERS) => {
           c.timezones.byRegion.S.default = 'Etc/GMT+5';
           c.timezones.byRegion.S.selectable = ['Etc/GMT+5'];
         },
-        /IANA time zone|Etc/,
+        /IANA time zone/,
       ],
       [
         'an offset instead of a zone',
