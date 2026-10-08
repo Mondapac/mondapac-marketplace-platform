@@ -20,24 +20,61 @@
     },
     "existingAccountNoticeHours": 24,
     "sessions": {
-      "customer": { "idleTimeoutMinutes": 20160, "absoluteLifetimeMinutes": 43200 },
-      "seller": { "idleTimeoutMinutes": 720, "absoluteLifetimeMinutes": 1440 }
+      "customer": {
+        "idleTimeoutMinutes": 20160,
+        "absoluteLifetimeMinutes": 43200
+      },
+      "seller": {
+        "idleTimeoutMinutes": 720,
+        "absoluteLifetimeMinutes": 1440
+      },
+      "admin": {
+        "idleTimeoutMinutes": 30,
+        "absoluteLifetimeMinutes": 720
+      }
     },
     "keepSignedInSessions": {
-      "seller": { "idleTimeoutMinutes": 20160, "absoluteLifetimeMinutes": 43200 }
+      "seller": {
+        "idleTimeoutMinutes": 20160,
+        "absoluteLifetimeMinutes": 43200
+      }
     },
     "signInThrottles": {
-      "accountOrigin": { "limit": 5, "windowMinutes": 15, "blockMinutes": 15 },
-      "account": { "limit": 20, "windowMinutes": 60, "blockMinutes": 60 },
-      "origin": { "limit": 30, "windowMinutes": 15, "blockMinutes": 15 }
+      "accountOrigin": {
+        "limit": 5,
+        "windowMinutes": 15,
+        "blockMinutes": 15
+      },
+      "account": {
+        "limit": 20,
+        "windowMinutes": 60,
+        "blockMinutes": 60
+      },
+      "origin": {
+        "limit": 30,
+        "windowMinutes": 15,
+        "blockMinutes": 15
+      }
     },
     "mailThrottles": {
-      "account": { "limit": 3, "windowMinutes": 60, "blockMinutes": 0 },
-      "origin": { "limit": 10, "windowMinutes": 60, "blockMinutes": 0 }
+      "account": {
+        "limit": 3,
+        "windowMinutes": 60,
+        "blockMinutes": 0
+      },
+      "origin": {
+        "limit": 10,
+        "windowMinutes": 60,
+        "blockMinutes": 0
+      }
     },
     "signInRecordRetentionDays": 90,
     "links": {
-      "lifetimeMinutes": { "verify-email": 1440, "reset-password": 60 },
+      "lifetimeMinutes": {
+        "verify-email": 1440,
+        "reset-password": 60,
+        "enrol-second-factor": 60
+      },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
@@ -50,8 +87,30 @@
           "reset-password": "https://seller.au.mondapac.test/reset-password"
         },
         "admin": {
-          "seller-review-queue": "https://admin.au.mondapac.test/sellers/awaiting-review"
+          "seller-review-queue": "https://admin.au.mondapac.test/sellers/awaiting-review",
+          "sign-in": "https://admin.au.mondapac.test/sign-in",
+          "accept-invitation": "https://admin.au.mondapac.test/accept-invitation",
+          "enrol-second-factor": "https://admin.au.mondapac.test/second-factor/enrol",
+          "reset-password": "https://admin.au.mondapac.test/reset-password"
         }
+      }
+    },
+    "invitations": {
+      "lifetimeMinutes": {
+        "admin": 4320,
+        "seller-owner": 10080,
+        "staff": 10080
+      }
+    },
+    "challenges": {
+      "maxAttempts": 5,
+      "lifetimeSeconds": 300
+    },
+    "secondFactorThrottles": {
+      "account": {
+        "limit": 10,
+        "windowMinutes": 1440,
+        "blockMinutes": 1440
       }
     },
     "unverifiedAccountRetentionDays": 7,
@@ -199,8 +258,14 @@
   },
   "catalog": {
     "taxCategories": [
-      { "code": "taxable", "labelKey": "catalog.tax.taxable" },
-      { "code": "gst_free", "labelKey": "catalog.tax.gst-free" }
+      {
+        "code": "taxable",
+        "labelKey": "catalog.tax.taxable"
+      },
+      {
+        "code": "gst_free",
+        "labelKey": "catalog.tax.gst-free"
+      }
     ],
     "sensitiveChanges": {
       "platformCategories": true,

@@ -169,6 +169,16 @@ async function loadFonts() {
 }
 function font(family, style) { return S.fonts[family + '|' + style] || S.fonts['IBM Plex Sans|Regular']; }
 
+// Binds the colour of each token layer of a spec effect. Figma's setBoundVariableForEffect returns the copy with spread 0
+// (forum.figma.com/t/setboundvariableforeffect-bug/59788; the real file had Focus/Ring and Ring/Urgent at spread 0 until 1.8.4),
+// so the spread is put back on the copy before the effects are set.
+function bindEffectColours(layers, e) {
+  return layers.map(function (fx, i) {
+    const tk = e.layers[i].token;
+    if (!tk) return fx;
+    return Object.assign({}, figma.variables.setBoundVariableForEffect(fx, 'color', S.color[tk]), { spread: e.layers[i].spread });
+  });
+}
 async function buildStyles() {
   // Font family variables hold the family actually loaded (fallback included), so bindings stay valid.
   const tm = S.colls.Typography.modes[0].modeId;
@@ -188,6 +198,7 @@ async function buildStyles() {
       st.setBoundVariable('lineHeight', S.typeVars['font/line-height/' + key]);
       st.setBoundVariable('fontFamily', S.typeVars[t.family === 'IBM Plex Mono' ? 'font/family/mono' : 'font/family/sans']);
     });
+    tag(st); // 1.8.4: styles carry the plugin tag, so a later repair can tell them from a style of the same name made by hand
     S.ts[t.name] = st;
   }
   for (let ei = 0; ei < SPEC.effects.length; ei++) {
@@ -200,10 +211,12 @@ async function buildStyles() {
     st.effects = layers;
     // Focus and urgent rings take their colour from semantic variables, so they follow the theme.
     if (e.layers.some(function (l) { return l.token; })) {
-      await safe('bind effect ' + e.name, function () {
-        st.effects = layers.map(function (fx, i) { const tk = e.layers[i].token; return tk ? figma.variables.setBoundVariableForEffect(fx, 'color', S.color[tk]) : fx; });
-      });
+      await safe('bind effect ' + e.name, function () { st.effects = bindEffectColours(layers, e); });
     }
+    // Read the style back: a spread or a binding Figma did not keep shows here rather than as a missing ring later.
+    const left = effectDiff(st.effects, e);
+    if (left) log('⚠ effect style ' + e.name + ' differs from the spec after the build (' + left + '): fix it in the style editor by hand');
+    tag(st);
     S.es[e.name] = st;
   }
   log('✓ Styles: ' + SPEC.type.length + ' text styles, ' + SPEC.effects.length + ' effect styles.');

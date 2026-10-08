@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { AttributeSchema, Id, MarketContext } from '@mondapac/shared-kernel';
 import type { AttributeDefinition } from '../../domain/attribute-definition';
 import type { AttributeFamily } from '../../domain/attribute-family';
 
@@ -21,6 +21,14 @@ export interface AttributeRepository {
 
   /** The id of the family with this code in this Market, or null. */
   familyIdByCode(market: MarketContext, code: string): Promise<Id<'AttributeFamily'> | null>;
+
+  /**
+   * The attribute schema of the family with this code, built from the family's published
+   * revision and the published revision of each definition it names (catalog design 3.3 rule 1),
+   * or null when the family is unknown, archived, or names a definition that is missing or
+   * archived (a partial schema is never returned).
+   */
+  loadSchema(market: MarketContext, familyCode: string): Promise<AttributeSchema | null>;
 
   /**
    * Inserts a definition built by `AttributeDefinition.create`: the root with no revision
