@@ -17,6 +17,12 @@ const IDENTITY_MAY_IMPORT = [];
 const SELLER_ACCESS_CONTRACT_FILE =
   '^src/modules/identity/contracts/seller-access\\.contract\\.ts$';
 
+// The approved-seller-zones contract of sellers (ApprovedSellerZonesReader, APPROVED_SELLER_ZONES):
+// the second file besides index.ts that another module may import, and only certification's
+// application layer does (sellers design 7.1a; Hassan L4). It is not exported by sellers' index.ts.
+const APPROVED_SELLER_ZONES_CONTRACT_FILE =
+  '^src/modules/sellers/contracts/approved-seller-zones\\.contract\\.ts$';
+
 // The file of `@NoMarketContext()` and the only files that may import it (design 8.2 rule 6,
 // CTO decision of slice 0 item 3): the guard reads the exemption, the health controller uses
 // it. Both files export only their own names (asserted in boundaries.spec.ts).
@@ -304,6 +310,7 @@ module.exports = {
           '^src/modules/$1/',
           '^src/modules/[^/]+/index\\.ts$',
           SELLER_ACCESS_CONTRACT_FILE,
+          APPROVED_SELLER_ZONES_CONTRACT_FILE,
         ],
       },
     },
@@ -317,6 +324,62 @@ module.exports = {
       severity: 'error',
       from: { pathNot: ['^src/modules/identity/', '^src/modules/sellers/'] },
       to: { path: SELLER_ACCESS_CONTRACT_FILE },
+    },
+    {
+      name: 'approved-seller-zones-contract-is-for-certification',
+      comment:
+        "Only certification's application and infrastructure layers and its Nest module import " +
+        "sellers' approved-seller-zones contract (APPROVED_SELLER_ZONES); certification reaches " +
+        'it through a certification-owned port with an infrastructure adapter that imports the ' +
+        'token. Its anonymous/system use-case pair answers every caller the same way and must ' +
+        'stay out of every other path (sellers design 7.1a; Hassan L4). Decision basis: ADR-0033 ' +
+        "(pending), restricted contract files, amends ADR-0008. sellers' index.ts does not " +
+        'export the contract file.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/sellers/',
+          '^src/modules/certification/(application|infrastructure)/',
+          '^src/modules/certification/certification\\.module\\.ts$',
+        ],
+      },
+      to: { path: APPROVED_SELLER_ZONES_CONTRACT_FILE },
+    },
+    {
+      name: 'approved-seller-zones-use-cases-stay-in-sellers-reader',
+      comment:
+        'Inside sellers only the reader implementation and the Nest module import the ' +
+        'approved-seller-zones use cases (the anonymous/system pair); a controller, job or ' +
+        'subscriber of sellers must not reach them (Hassan L1). ADR-0033 (pending).',
+      severity: 'error',
+      from: {
+        path: '^src/modules/sellers/',
+        pathNot: [
+          '^src/modules/sellers/presentation/approved-seller-zones\\.reader\\.ts$',
+          '^src/modules/sellers/sellers\\.module\\.ts$',
+          '^src/modules/sellers/application/use-cases/approved-seller-zones(-system)?\\.use-case\\.ts$',
+          '\\.spec\\.ts$',
+        ],
+      },
+      to: {
+        path: '^src/modules/sellers/application/use-cases/approved-seller-zones(-system)?\\.use-case\\.ts$',
+      },
+    },
+    {
+      name: 'certification-surface-does-not-reach-reader-adapter',
+      comment:
+        "Certification's public surface (presentation, contracts and index.ts) must not import " +
+        "its infrastructure, where the adapter of sellers' approved-seller-zones contract lives: " +
+        'the token must not leak through a re-export or a controller. ADR-0033 (pending), ' +
+        'restricted contract files, amends ADR-0008.',
+      severity: 'error',
+      from: {
+        path: [
+          '^src/modules/certification/(presentation|contracts)/',
+          '^src/modules/certification/index\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/certification/infrastructure/' },
     },
     {
       name: 'module-internals-are-private',
