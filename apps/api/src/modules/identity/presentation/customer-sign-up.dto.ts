@@ -66,6 +66,7 @@ export class ApiErrorBody {
       'credentials.invalid',
       'email-verification-required',
       'account.disabled',
+      'link.rejected',
       'access.unauthenticated',
       'access.denied',
       'access.unavailable',

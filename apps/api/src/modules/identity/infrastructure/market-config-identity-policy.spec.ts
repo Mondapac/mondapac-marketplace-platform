@@ -64,6 +64,29 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     expect(policy.signInRecordRetentionDays(zz)).toBe(60);
   });
 
+  it('reads each Market its own links, retention of unverified accounts and sender (slice 3)', () => {
+    const au = testMarketContext('AU', 'default');
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(policy.linkLifetimeMinutes(au, 'verify-email')).toBe(1440);
+    expect(policy.linkLifetimeMinutes(zz, 'verify-email')).toBe(720);
+    expect(policy.linkLifetimeMinutes(au, 'reset-password')).toBeNull();
+    expect(policy.unverifiedAccountRetentionDays(au)).toBe(7);
+    expect(policy.unverifiedAccountRetentionDays(zz)).toBe(5);
+    expect(policy.mailSender(au)).toEqual({
+      address: 'no-reply@au.mondapac.test',
+      name: 'MondaPac',
+    });
+    expect(policy.mailSender(zz)).toEqual({ address: 'noreply@zz.test', name: 'ZZ Shop' });
+    expect(policy.target(au, 'customer', 'verify-email')).toBe(
+      'https://storefront.au.mondapac.test/account/confirm-email',
+    );
+    expect(policy.target(zz, 'customer', 'sign-in')).toBe(
+      'https://storefront.zz.test/konto/anmelden',
+    );
+    expect(policy.target(au, 'seller', 'verify-email')).toBeNull();
+  });
+
   it('refuses a Market this Region Stack does not host, with no fallback', () => {
     const onlyZz = new MarketConfigIdentityPolicy(
       new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, [testMarketId('ZZ')])),

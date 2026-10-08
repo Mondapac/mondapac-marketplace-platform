@@ -1,10 +1,10 @@
-import { defineEvent, eventField } from '@mondapac/shared-kernel';
+import { defineEvent, eventField, POPULATIONS } from '@mondapac/shared-kernel';
 import type { EventDefinition } from '@mondapac/shared-kernel';
 
 /**
  * A customer account was created by sign-up (identity design 8.2; slice 1d). Ids only: the
- * email and the password never reach an event. Its first consumer is identity's own
- * verification mail (slice 3).
+ * email and the password never reach an event. The verification mail is not driven by it but
+ * by the link request recorded in the same unit (3.7, slice 3); its consumers come later.
  */
 export const CustomerAccountRegistered = defineEvent({
   type: 'identity.customer-account-registered.v1',
@@ -31,6 +31,43 @@ export const SignUpRepeated = defineEvent({
   },
 });
 
+/** The purposes of a one-time link (identity design 3.7; data design 3.7). */
+export const LINK_PURPOSES = [
+  'verify-email',
+  'reset-password',
+  'enrol-second-factor',
+  'confirm-second-factor-reset',
+] as const;
+
+/**
+ * A one-time link was requested (identity design 3.7 and 6.6): the row exists without a token;
+ * identity's own mail handler mints the token, sends the mail and stores the hash (9). Not
+ * recorded when the mail counters refused the mail (Mojtaba, item 3): the request's verdict
+ * travels in the unit, and the handler never reads a counter.
+ */
+export const OneTimeLinkRequested = defineEvent({
+  type: 'identity.one-time-link-requested.v1',
+  aggregateType: 'one-time-link',
+  payload: {
+    linkId: eventField.id(),
+    accountId: eventField.id(),
+    purpose: eventField.enumOf(LINK_PURPOSES),
+  },
+});
+
+/**
+ * The account's email was confirmed through its link and password (identity design 3.2, 8.2).
+ * Consumers: the seller welcome mail and the reviewer notice (slices 5 and 9).
+ */
+export const AccountEmailVerified = defineEvent({
+  type: 'identity.account-email-verified.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    population: eventField.enumOf(POPULATIONS),
+  },
+});
+
 /**
  * Every event identity publishes, declared with `defineEvent` (platform persistence design
  * 5.3; identity design 8.2) and registered with the event catalogue by `IdentityModule`. Each
@@ -39,4 +76,6 @@ export const SignUpRepeated = defineEvent({
 export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   CustomerAccountRegistered,
   SignUpRepeated,
+  OneTimeLinkRequested,
+  AccountEmailVerified,
 ];

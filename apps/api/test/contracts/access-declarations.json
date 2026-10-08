@@ -1,7 +1,12 @@
 [
+  { "name": "identity.confirm-customer-email", "rule": "anonymous" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.purge-expired", "rule": "system" },
+  { "name": "identity.purge-unverified-accounts", "rule": "system" },
   { "name": "identity.register-customer", "rule": "anonymous" },
+  { "name": "identity.request-customer-verification", "rule": "anonymous" },
+  { "name": "identity.send-existing-account-mail", "rule": "system" },
+  { "name": "identity.send-link-mail", "rule": "system" },
   { "name": "identity.sign-in-customer", "rule": "anonymous" },
   { "name": "identity.sign-out", "rule": "own-resources", "whenSellerNotApproved": "allow" }
 ]

@@ -69,6 +69,7 @@ model IdentityAccount {
   createdAt               DateTime                    @map("created_at") @db.Timestamptz(6)
   passwordCredential      IdentityPasswordCredential?
   sessions                IdentitySession[]
+  oneTimeLinks            IdentityOneTimeLink[]
 
   /// ADR-0018 decision 3: one account per Market, population and normalised email.
   @@unique([marketId, population, emailNormalized])
@@ -187,5 +188,56 @@ model IdentitySignInRecord {
   /// The retention purge, one day of occurred_at per statement.
   @@index([marketId, occurredAt])
   @@map("sign_in_records")
+  @@schema("identity")
+}
+
+/// A one-time link of an account for one purpose (identity design 3.7, 6.6; data design 3.7):
+/// one row per account and purpose, reused by every new request (the hash, the instants and
+/// consumed_at are reset and the version raised), so at most one link is usable (AC 19). Only
+/// the SHA-256 of the token is stored, and only after the mail was sent: a requested row has no
+/// token yet. Single use is one conditional update. The CHECKs and the grants are hand-written
+/// in the migration.
+model IdentityOneTimeLink {
+  /// UUIDv7; the linkId of identity.one-time-link-requested.v1.
+  id          String          @id @db.Uuid
+  marketId    String          @map("market_id") @db.VarChar(8)
+  tenantId    String          @map("tenant_id")
+  accountId   String          @map("account_id") @db.Uuid
+  /// verify-email | reset-password | enrol-second-factor | confirm-second-factor-reset.
+  purpose     String
+  /// The latest request.
+  requestedAt DateTime        @map("requested_at") @db.Timestamptz(6)
+  /// SHA-256 of the token (32 bytes); NULL while requested.
+  tokenHash   Bytes?          @map("token_hash")
+  /// Set with the hash by the mail handler; the lifetime counts from here.
+  issuedAt    DateTime?       @map("issued_at") @db.Timestamptz(6)
+  expiresAt   DateTime?       @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime?       @map("consumed_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate (P 10); 1 at insert.
+  version     Int
+  account     IdentityAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  /// One row per account and purpose (M8): at most one usable link (AC 19).
+  @@unique([marketId, accountId, purpose])
+  /// The lookup when a token is presented; NULLs do not collide.
+  @@unique([marketId, tokenHash])
+  @@map("one_time_links")
+  @@schema("identity")
+}
+
+/// Events identity's subscribers have handled (ADR-0006 decision 5; data design 3.8, PM4):
+/// `runOnce` inserts (event_id, handler) in the handler's own unit and skips the work when the
+/// row exists. Written only by platform/persistence/outbox/ (platform persistence design 9, the
+/// named exception). The CHECKs and the grants are hand-written in the migration.
+model IdentityInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "identity.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
   @@schema("identity")
 }

@@ -24,6 +24,7 @@ import {
 } from '../../src/modules/identity/infrastructure/sessions/hmac-throttle-keys';
 import { PrismaSessionRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-session.repository';
 import { PrismaSignInRecordRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-sign-in-record.repository';
+import { PrismaOneTimeLinkRepository } from '../../src/modules/identity/infrastructure/links/prisma-one-time-link.repository';
 import { PrismaThrottleRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-throttle.repository';
 import { RandomSessionTokens } from '../../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import type { AccessDecision, AuthorisationCheck } from '../../src/platform/authz';
@@ -113,11 +114,13 @@ describe('customer sign-in (database integration)', () => {
     const sessions = new PrismaSessionRepository(db.service);
     const throttles = new PrismaThrottleRepository(db.service);
     const records = new PrismaSignInRecordRepository(db.service);
+    const links = new PrismaOneTimeLinkRepository(db.service);
     hasher = new CountingHasher();
     const gate = createUseCaseGate(markets, allow);
     register = new RegisterCustomer(gate, {
       unitOfWork: db.unitOfWork,
       accounts,
+      links,
       throttles,
       keys,
       outbox: new PrismaOutboxWriterFactory(
@@ -152,6 +155,7 @@ describe('customer sign-in (database integration)', () => {
       sessions,
       throttles,
       records,
+      links,
       policy,
       clock,
     });

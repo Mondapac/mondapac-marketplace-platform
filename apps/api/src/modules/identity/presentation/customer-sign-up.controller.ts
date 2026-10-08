@@ -50,17 +50,21 @@ export function echoedFieldName(name: string): string {
 }
 
 /**
- * Checks the shape of an email-and-password body (sign-up and sign-in): a closed object of two
- * strings; values are never echoed (identity design 5.2).
+ * Checks the shape of a closed JSON body of string fields (identity design 5.2): every named
+ * field present and a string, no other field; values are never echoed, and an unknown field's
+ * name only after {@link echoedFieldName}.
  */
-export function parseSignUpBody(body: unknown): RegisterCustomerRequest | readonly FieldProblem[] {
+export function parseStringFields<const F extends string>(
+  body: unknown,
+  fields: readonly F[],
+): Readonly<Record<F, string>> | readonly FieldProblem[] {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return [{ path: '', code: 'type' }];
   }
   const record = body as Record<string, unknown>;
   // An unknown field is refused, never stored: a customer gives no name (`ux.md` A2).
   const unknown = Object.keys(record)
-    .filter((key) => !(FIELDS as readonly string[]).includes(key))
+    .filter((key) => !(fields as readonly string[]).includes(key))
     .sort();
   const problems: FieldProblem[] = unknown
     .slice(0, MAX_ECHOED_UNKNOWN_FIELDS)
@@ -68,13 +72,27 @@ export function parseSignUpBody(body: unknown): RegisterCustomerRequest | readon
   if (unknown.length > MAX_ECHOED_UNKNOWN_FIELDS) {
     problems.push({ path: MORE_FIELDS, code: 'unknown-field' });
   }
-  for (const field of FIELDS) {
-    const value = record[field];
+  for (const field of fields) {
+    const value = Object.hasOwn(record, field) ? record[field] : undefined;
     if (value === undefined) problems.push({ path: field, code: 'required' });
     else if (typeof value !== 'string') problems.push({ path: field, code: 'type' });
   }
   if (problems.length > 0) return problems;
-  return { email: record.email as string, password: record.password as string };
+  return Object.fromEntries(fields.map((field) => [field, record[field] as string])) as Record<
+    F,
+    string
+  >;
+}
+
+/**
+ * Checks the shape of an email-and-password body (sign-up and sign-in): a closed object of two
+ * strings; values are never echoed (identity design 5.2).
+ */
+export function parseSignUpBody(body: unknown): RegisterCustomerRequest | readonly FieldProblem[] {
+  const parsed = parseStringFields(body, FIELDS);
+  if (Array.isArray(parsed)) return parsed as readonly FieldProblem[];
+  const { email, password } = parsed as Readonly<Record<(typeof FIELDS)[number], string>>;
+  return { email, password };
 }
 
 /** An answer in the error format of identity design 5.2: `{ statusCode, code, details? }`. */

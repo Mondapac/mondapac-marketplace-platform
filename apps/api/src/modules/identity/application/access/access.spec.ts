@@ -80,6 +80,7 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
         units.push(options);
         return fakes.unitOfWork.run(m, work);
       },
+      runOnce: (m, delivery, work, options) => fakes.unitOfWork.runOnce(m, delivery, work, options),
     };
     warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     fakes.seedAccount(account(code));

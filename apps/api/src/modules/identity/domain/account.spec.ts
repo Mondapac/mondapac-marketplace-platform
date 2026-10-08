@@ -80,7 +80,12 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
     it('on an unverified account, replaces the password and restarts the purge anchor', () => {
       const account = Account.restore(register().state);
 
-      const outcome = account.signUpAgain({ passwordHash: NEW_HASH, now: LATER, noticeHours: 24 });
+      const outcome = account.signUpAgain({
+        passwordHash: NEW_HASH,
+        now: LATER,
+        noticeHours: 24,
+        mailAllowed: true,
+      });
 
       expect(outcome).toBe('unverified-replaced');
       expect(account.state).toMatchObject({
@@ -113,9 +118,14 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
       it('never touches the password or the purge anchor, and records a notice', () => {
         const account = verified(null);
 
-        expect(account.signUpAgain({ passwordHash: NEW_HASH, now: LATER, noticeHours: 24 })).toBe(
-          'verified-notice',
-        );
+        expect(
+          account.signUpAgain({
+            passwordHash: NEW_HASH,
+            now: LATER,
+            noticeHours: 24,
+            mailAllowed: true,
+          }),
+        ).toBe('verified-notice');
         expect(account.state).toMatchObject({
           credential: { passwordHash: HASH, changedAt: NOW },
           signedUpAt: NOW,
@@ -132,20 +142,76 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
       it('sends at most one notice per interval of the Market', () => {
         const account = verified(LATER.subtract({ hours: 23, minutes: 59 }));
 
-        expect(account.signUpAgain({ passwordHash: NEW_HASH, now: LATER, noticeHours: 24 })).toBe(
-          'unchanged',
-        );
+        expect(
+          account.signUpAgain({
+            passwordHash: NEW_HASH,
+            now: LATER,
+            noticeHours: 24,
+            mailAllowed: true,
+          }),
+        ).toBe('unchanged');
         expect(account.state.version).toBe(1);
+        expect(account.pendingEvents).toEqual([]);
+      });
+
+      it('records no notice when the mail counters refused the mail (Mojtaba item 3)', () => {
+        const account = verified(null);
+
+        expect(
+          account.signUpAgain({
+            passwordHash: NEW_HASH,
+            now: LATER,
+            noticeHours: 24,
+            mailAllowed: false,
+          }),
+        ).toBe('unchanged');
+        expect(account.state).toMatchObject({ existingAccountNoticeAt: null, version: 1 });
         expect(account.pendingEvents).toEqual([]);
       });
 
       it('sends the next notice once the interval has passed', () => {
         const account = verified(LATER.subtract({ hours: 12 }));
 
-        expect(account.signUpAgain({ passwordHash: NEW_HASH, now: LATER, noticeHours: 12 })).toBe(
-          'verified-notice',
-        );
+        expect(
+          account.signUpAgain({
+            passwordHash: NEW_HASH,
+            now: LATER,
+            noticeHours: 12,
+            mailAllowed: true,
+          }),
+        ).toBe('verified-notice');
       });
+    });
+  });
+
+  describe('verifyEmail (identity design 3.2)', () => {
+    const LATER = NOW.add({ hours: 3 });
+
+    it('sets the instant, raises the version and records account-email-verified', () => {
+      const account = Account.restore({ ...register().state, version: 2 });
+
+      expect(account.verifyEmail(LATER)).toBe(true);
+
+      expect(account.state).toMatchObject({ emailVerifiedAt: LATER, version: 3 });
+      expect(account.isEmailVerified).toBe(true);
+      expect(account.credentialChanged).toBe(false);
+      expect(account.pendingEvents).toEqual([
+        expect.objectContaining({
+          type: 'identity.account-email-verified.v1',
+          aggregateId: ACCOUNT_ID,
+          aggregateVersion: 3,
+          occurredAt: LATER,
+          payload: { accountId: ACCOUNT_ID, population: 'customer' },
+        }),
+      ]);
+    });
+
+    it('does not change an account already verified', () => {
+      const account = Account.restore({ ...register().state, emailVerifiedAt: NOW });
+
+      expect(account.verifyEmail(LATER)).toBe(false);
+      expect(account.state).toMatchObject({ emailVerifiedAt: NOW, version: 1 });
+      expect(account.pendingEvents).toEqual([]);
     });
   });
 
@@ -203,7 +269,12 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
         version: 3,
       });
 
-      account.signUpAgain({ passwordHash: NEW_HASH, now: NOW.add({ hours: 30 }), noticeHours: 24 });
+      account.signUpAgain({
+        passwordHash: NEW_HASH,
+        now: NOW.add({ hours: 30 }),
+        noticeHours: 24,
+        mailAllowed: true,
+      });
 
       expect(account.state.version).toBe(4);
       expect(account.credentialChanged).toBe(false);
@@ -212,7 +283,12 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
     it('reports a credential change when an unverified sign-up replaced the password', () => {
       const account = stored();
 
-      account.signUpAgain({ passwordHash: NEW_HASH, now: NOW.add({ hours: 1 }), noticeHours: 24 });
+      account.signUpAgain({
+        passwordHash: NEW_HASH,
+        now: NOW.add({ hours: 1 }),
+        noticeHours: 24,
+        mailAllowed: true,
+      });
 
       expect(account.credentialChanged).toBe(true);
     });

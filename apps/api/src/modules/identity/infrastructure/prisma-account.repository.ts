@@ -176,6 +176,7 @@ export class PrismaAccountRepository implements AccountRepository {
       where: { marketId: market.marketId, id: state.id, version: expected },
       data: {
         displayName: state.displayName,
+        emailVerifiedAt: state.emailVerifiedAt === null ? null : toDate(state.emailVerifiedAt),
         signedUpAt: toDate(state.signedUpAt),
         existingAccountNoticeAt:
           state.existingAccountNoticeAt === null ? null : toDate(state.existingAccountNoticeAt),
@@ -193,5 +194,34 @@ export class PrismaAccountRepository implements AccountRepository {
         changedAt: toDate(state.credential.changedAt),
       },
     });
+  }
+
+  async unverifiedSignedUpBefore(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<Id<'Account'>[]> {
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        emailVerifiedAt: null,
+        signedUpAt: { lt: toDate(before) },
+      },
+      select: { id: true },
+      orderBy: { signedUpAt: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Account'>);
+  }
+
+  async remove(market: MarketContext, account: Account): Promise<void> {
+    const state = account.state;
+    const expected = account.persistedVersion;
+    if (expected === null) throw new Error('remove: the account was never stored');
+    await this.subjectKeys.destroyKey(market, state.id);
+    const { count } = await this.prisma.tx(market).identityAccount.deleteMany({
+      where: { marketId: market.marketId, id: state.id, version: expected },
+    });
+    if (count !== 1) throw new StaleAggregateError('account', state.id);
   }
 }

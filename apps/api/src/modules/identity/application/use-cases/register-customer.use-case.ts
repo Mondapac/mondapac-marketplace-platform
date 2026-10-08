@@ -7,10 +7,13 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { Account } from '../../domain/account';
 import { parseEmailAddress, type EmailAddress } from '../../domain/email-address';
+import { OneTimeLink } from '../../domain/one-time-link';
 import { checkNewPassword, type PasswordRejected } from '../../domain/password-policy';
+import { reservationVerdict } from '../../domain/throttle';
 import type { AccountRepository } from '../ports/account.repository';
 import type { CommonPasswordList } from '../ports/common-password-list';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
@@ -47,6 +50,7 @@ export type RegisterCustomerFailure =
 export interface RegisterCustomerDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
+  readonly links: OneTimeLinkRepository;
   readonly throttles: ThrottleRepository;
   readonly keys: ThrottleKeys;
   readonly outbox: OutboxWriter;
@@ -77,7 +81,12 @@ export interface RegisterCustomerDependencies {
  * `mail.account` (the address) and `mail.origin`, in a short READ COMMITTED unit of its own
  * (the counters' isolation, data design 3.5), so every branch writes and costs the same: one
  * hash, the counter unit and the serializable unit. Sign-up is never refused by them: what a
- * counter above its limit stops is the mail (slice 3).
+ * counter above its limit stops is the mail (slice 3). The verdict is taken from the
+ * reservations that unit returned (their `attempts` are race-free) and carried into the
+ * serializable unit (Mojtaba, item 3): a new or unverified account gets its `verify-email` link
+ * requested (3.2, 3.7; the earlier one void), with `identity.one-time-link-requested.v1` only
+ * when the mail may go; a verified account's notice is recorded only then. The mail handler
+ * never reads a counter.
  *
  * Every branch answers `sign-up.accepted`. Two concurrent sign-ups of the same new address end
  * as if they had run one after the other: PostgreSQL usually refuses the second insert with a
@@ -147,11 +156,23 @@ export class RegisterCustomer extends UseCase<
     try {
       // L4: every branch counts the mail, in a short READ COMMITTED unit of its own, so a burst
       // of sign-ups from one origin waits on the counter row instead of failing serialisation.
-      await this.deps.unitOfWork.run(market, async () => {
-        await this.deps.throttles.reserve(market, mailCounters, now);
-        return ok(undefined);
+      const counted = await this.deps.unitOfWork.run(market, async () => {
+        const reservations = await this.deps.throttles.reserve(market, mailCounters, now);
+        const reserved = reservations.map((reservation, index) => ({
+          reservation,
+          rule: mailCounters[index]!.rule,
+        }));
+        return ok(reservationVerdict(reserved, now).allowed);
       });
-      stored = await this.store(context, email.value, hashed.value, now, noticeHours);
+      const mailAllowed = counted.ok && counted.value;
+      if (!mailAllowed) {
+        this.#logger.log({
+          msg: 'identity.register-customer.mail-throttled',
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
+      stored = await this.store(context, email.value, hashed.value, now, noticeHours, mailAllowed);
     } catch (error) {
       if (error instanceof TransactionConflictError) {
         this.#logger.warn({
@@ -177,12 +198,14 @@ export class RegisterCustomer extends UseCase<
     passwordHash: string,
     now: Temporal.Instant,
     noticeHours: number,
+    mailAllowed: boolean,
   ): Promise<Result<void, 'email-taken' | 'invalid'>> {
     const { market } = context;
+    const { accounts, links, outbox } = this.deps;
     return this.deps.unitOfWork.run(
       market,
       async (): Promise<Result<void, 'email-taken' | 'invalid'>> => {
-        const existing = await this.deps.accounts.findByEmail(market, 'customer', email.normalized);
+        const existing = await accounts.findByEmail(market, 'customer', email.normalized);
         if (existing === null) {
           const account = Account.registerCustomer({
             id: this.deps.ids.next<'Account'>(),
@@ -191,17 +214,47 @@ export class RegisterCustomer extends UseCase<
             passwordHash,
             now,
           });
-          const added = await this.deps.accounts.add(market, account);
+          const added = await accounts.add(market, account);
           if (!added.ok) {
             return err(added.error.code === 'account.email-taken' ? 'email-taken' : 'invalid');
           }
-          await this.deps.outbox.append(context, account.pendingEvents);
+          const link = OneTimeLink.request({
+            id: this.deps.ids.next<'OneTimeLink'>(),
+            marketId: market.marketId,
+            accountId: account.state.id,
+            purpose: 'verify-email',
+            now,
+            notify: mailAllowed,
+          });
+          await links.add(market, link);
+          await outbox.append(context, [...account.pendingEvents, ...link.pendingEvents]);
           return ok(undefined);
         }
-        existing.signUpAgain({ passwordHash, now, noticeHours });
-        await this.deps.accounts.save(market, existing);
-        const events = existing.pendingEvents;
-        if (events.length > 0) await this.deps.outbox.append(context, events);
+        const outcome = existing.signUpAgain({ passwordHash, now, noticeHours, mailAllowed });
+        await accounts.save(market, existing);
+        const events = [...existing.pendingEvents];
+        if (outcome === 'unverified-replaced') {
+          // 3.2: the older link is void; a new one is requested (no link for a disabled account).
+          const notify = mailAllowed && existing.state.status === 'active';
+          const found = await links.findFor(market, existing.state.id, 'verify-email');
+          if (found === null) {
+            const link = OneTimeLink.request({
+              id: this.deps.ids.next<'OneTimeLink'>(),
+              marketId: market.marketId,
+              accountId: existing.state.id,
+              purpose: 'verify-email',
+              now,
+              notify,
+            });
+            await links.add(market, link);
+            events.push(...link.pendingEvents);
+          } else {
+            found.requestAgain(now, notify);
+            await links.save(market, found);
+            events.push(...found.pendingEvents);
+          }
+        }
+        if (events.length > 0) await outbox.append(context, events);
         return ok(undefined);
       },
       { isolation: 'serializable' },
