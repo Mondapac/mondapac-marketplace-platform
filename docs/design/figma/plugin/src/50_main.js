@@ -774,6 +774,44 @@ async function updateLibrary() {
     });
   }
 
+  // 3f · release 1.8.4 "Fixes from the 1.8.3 real-Figma run": two in-place repairs; a node or style changed by hand is reported and left as it is.
+  // (a) Effect styles whose colour is bound (Focus/Ring, Ring/Urgent) were saved with spread 0 by Figma's setBoundVariableForEffect, so the rings
+  //     did not show. A style that matches the spec apart from the spread gets the spec spread back; its colour bindings stay.
+  const fx184 = [];
+  SPEC.effects.forEach(function (e) {
+    const st = S.es[e.name];
+    if (!st || !effectDiff(st.effects, e)) return;
+    const shape = effectDiff(st.effects.map(function (fx, i) { return e.layers[i] ? Object.assign({}, fx, { spread: e.layers[i].spread }) : fx; }), e);
+    if (shape) { log('ℹ skipped effect style ' + e.name + ': it differs from the spec in more than the spread (' + shape + ')'); return; }
+    fx184.push({ st: st, e: e });
+  });
+  fx184.forEach(function (f) {
+    f.st.effects = f.st.effects.map(function (fx, i) { return Object.assign({}, fx, { spread: f.e.layers[i].spread }); });
+    const left = effectDiff(f.st.effects, f.e);
+    if (left) log('⚠ effect style ' + f.e.name + ' still differs from the spec after the repair (' + left + '): set the spread in the style editor by hand');
+    else added.push('fix effect style ' + f.e.name + ': spread ' + f.e.layers.map(function (l) { return l.spread; }).join(' and ') + ' px');
+  });
+  // (b) The Main frame of the plugin's phone screens scrolls vertically (as phoneScreen now makes it), so a list longer than the screen
+  //     continues below the fold instead of sticking out (the seller Members and Roles phone screens in the real-Figma Audit).
+  const phones184 = {}; const seen184 = {}; let nPhones = 0;
+  Object.keys(T).forEach(function (key) {
+    const host = T[key] && T[key].host;
+    if (!host || !host.children || seen184[host.id]) return;
+    seen184[host.id] = true;
+    host.children.forEach(function (scr) {
+      if (scr.type !== 'FRAME' || scr.getPluginData(PLUGIN_TAG) !== '1' || !/\(phone\)$/.test(scr.name)) return;
+      const main = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Main'; })[0];
+      // Dialog sheet scenes have no Main; the phone role editor hugs the whole page, so its Main clips nothing.
+      if (!main || !main.clipsContent || main.overflowDirection === 'VERTICAL') return;
+      if (main.layoutMode !== 'VERTICAL' || (main.overflowDirection && main.overflowDirection !== 'NONE')) { log('ℹ skipped scrolling of ' + scr.name + ': its Main frame was changed by hand'); return; }
+      (phones184[key] = phones184[key] || []).push(main); nPhones++;
+    });
+  });
+  for (const key of Object.keys(phones184)) {
+    await onPage(T[key], 'Phone screens scroll', function () { phones184[key].forEach(function (m) { m.overflowDirection = 'VERTICAL'; }); });
+  }
+  if (nPhones) added.push('fix phone screens: Main scrolls vertically (' + nPhones + ' frames)');
+
   // 4 · documentation pages (only edits what the release changed)
   const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
   const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card', 'size/dialog-sm', 'size/dialog-md'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })

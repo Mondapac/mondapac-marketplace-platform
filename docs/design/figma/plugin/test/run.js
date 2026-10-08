@@ -451,6 +451,17 @@ function snapDiff(nodes, was) {
 // The changelog table gets a row for each release (and the row above it a divider), so its layers are left to the changelog checks.
 function inChangelog(n) { for (let p = n; p; p = p.parent) { if (p.name === 'Changelog' || p.name === 'changelog') return true; } return false; }
 
+// ---- Release 1.8.4 "Fixes from the 1.8.3 real-Figma run": the ring effect styles and the phone screens' Main.
+const RINGS = { 'Focus/Ring': [2, 4], 'Ring/Urgent': [3] };
+const RING_TOKENS = { 'Focus/Ring': ['bg/surface', 'focus/ring'], 'Ring/Urgent': ['status/critical/bg'] };
+const ringStyles = (M) => [...M.STYLES.values()].filter((st) => st.type === 'EFFECT' && RINGS[st.name] && !st.removed);
+const spreads = (st) => st.effects.map((e) => e.spread || 0).join();
+// The Main of each phone screen that clips (the phone role editor hugs its whole page and clips nothing).
+const phoneMains = (M) => topLevel(M).map((e) => e[1]).filter((n) => n.type === 'FRAME' && n.getPluginData('mondapac-ds') === '1' && /\(phone\)$/.test(n.name)).map((n) => n.children.find((c) => c.type === 'FRAME' && c.name === 'Main' && c.clipsContent)).filter(Boolean);
+const sellerPhoneMain = (M) => frameNamed(M, 'Shared · Members · Seller (phone)')[0].children.find((c) => c.name === 'Main');
+// What Update library of 1.8.4 reports on a file built before it (in the mock, as in Figma, the ring styles were saved with spread 0).
+const FIXED_184 = (phones) => ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + phones + ' frames)'];
+
 // Facts that hold for every 1.8.1 file, built new or repaired.
 function state181(M, label, skipOverlap) {
   const ov = skipOverlap ? [] : overlapsOf(M);
@@ -648,7 +659,7 @@ async function updateTo180(M, label, opts, from) {
   state183(M, 'updated');
   { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
     check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.3', 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.4', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -1134,12 +1145,12 @@ async function updateScenario(label, opts, from) {
     load(Q, CODE);
     const before = allNodes(Q); const ids0 = new Set(before.map((n) => n.id));
     const snap0 = new Map(before.map((n) => [n.id, fullSnap(n)]));
-    const pos0 = posOf(Q);
+    const pos0 = posOf(Q); const ph13 = phoneMains(Q).length;
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.2 file ' + tag13 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add13 = r.done ? r.done.added : []; console.log('    ' + add13.join('\n    '));
     const own13 = add13.filter((l) => !/^section .* moved /.test(l));
-    check(own13.join('|') === ADDED_183.concat(['changelog row 1.8.3', 'cover version', 'file version 1.8.3']).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the changelog row and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
+    check(own13.join('|') === ADDED_183.concat(FIXED_184(ph13), ['changelog row 1.8.3', 'changelog row 1.8.4', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
     state180(Q, opts, '1.8.2 file updated ' + tag13);
     state181(Q, '1.8.2 file updated ' + tag13);
     state183(Q, '1.8.2 file updated ' + tag13);
@@ -1207,6 +1218,82 @@ async function updateScenario(label, opts, from) {
     check(!r.err && add.join('|') === 'templates Panel 1.8.3 · Admin (2 frames, 1 template bodies)|templates Panel 1.8.3 · Seller (1 frames)' && lost.every((n) => frameNamed(Q, n).length === 1) && ADMIN_183.concat(SELLER_183).every((n) => frameNamed(Q, n).length === 1), 'Update library puts back exactly the lost frames and the lost body (' + (r.err ? r.err.message : add.join(', ')) + ')');
     const bodies = allNodes(Q).filter((n) => n.type === 'COMPONENT' && BODIES_183.includes(n.name)).map((n) => n.name).sort();
     check(bodies.join('|') === BODIES_183.slice().sort().join('|') && instMain(frameNamed(Q, 'Dialogs · Sellers · Admin')[0].findAll((x) => x.type === 'INSTANCE' && x.name === 'D4 Reject')[0].findOne((x) => x.name === 'content')) === 'Template body · D4 Reject' && [...keep].every((id) => Q.byId.has(id)), 'each template body exists once: the rebuilt dialogs reuse the bodies that are there, and nothing else was removed');
+  }
+
+  // 14 · release 1.8.4: a 1.8.3 file, built the way the real one was (Figma saves a colour-bound effect with spread 0), gets the ring spread back and
+  // scrolling phone screens; nothing else changes. The fixture is the code.js of release 1.8.3 (test/fixtures/code-1.8.3.js, merged at 8023ce8).
+  console.log('\n■ Scenario 14 · 1.8.4 fixes on a 1.8.3 file');
+  const CODE_183 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.8.3.js'), 'utf8');
+  for (const opts of [STARTER, { maxModes: 4 }]) {
+    const tag14 = opts.maxModes > 1 ? '(modes)' : '(Starter)';
+    const Q = start(opts, CODE_183);
+    r = await send(Q, { type: 'build' });
+    const ph0 = phoneMains(Q).length;
+    check(!r.err && Q.ROOT.getPluginData('version') === '1.8.3' && ringStyles(Q).length === 2 && ringStyles(Q).every((st) => /^0(,0)*$/.test(spreads(st))) && ph0 >= 10 && phoneMains(Q).every((m) => m.overflowDirection === 'NONE'), 'the 1.8.3 plugin builds the starting file as the real one is: both ring styles at spread 0, no phone Main scrolls (' + ph0 + ' phone screens) ' + tag14 + (r.err ? ': ' + r.err.message : ''));
+    // As in the real Audit: a seller phone list longer than its screen, cut at the bottom of Main (two more member cards here).
+    const tariq = sellerPhoneMain(Q).children.find((c) => c.name === 'Tariq Nasser'); tariq.clone(); tariq.clone();
+    load(Q, CODE);
+    r = await send(Q, { type: 'audit' }); let rep = r.done ? r.done.report : [];
+    check(rep.some((l) => /Shared · Members · Seller \(phone\) › Main › Tariq Nasser \+\d+px clipped/.test(l)) && rep.includes('⚠ Effect styles that differ from the library spec: 2 (2 unique)') && rep.includes('    Focus/Ring (layer 1 spread 0, spec 2; layer 2 spread 0, spec 4)') && rep.includes('    Ring/Urgent (layer 1 spread 0, spec 3)'), 'before the update, Audit file names both real-Figma findings: the clipped seller phone card and the two ring styles at spread 0');
+    const before = allNodes(Q); const ids0 = new Set(before.map((n) => n.id));
+    const snap0 = new Map(before.map((n) => [n.id, fullSnap(n)]));
+    const pos0 = posOf(Q);
+    r = await send(Q, { type: 'update' });
+    const add14 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
+    const want14 = ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)', 'changelog row 1.8.4', 'cover version', 'file version ' + SPEC_VERSION];
+    check(!r.err && add14.join('|') === want14.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the two ring styles, the phone screens, the changelog row and the version, with no warning or skip (' + (r.err ? r.err.message : add14.join(', ')) + ')');
+    check(ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join()), 'the ring styles have the spec spread again (Focus/Ring 2 and 4 px, Ring/Urgent 3 px)');
+    const colourVar = (name) => [...Q.VARS.values()].find((v) => v.name === name && Q.COLLS.get(v.variableCollectionId).name === 'Color');
+    check(ringStyles(Q).every((st) => st.effects.every((e, i) => e.boundVariables && e.boundVariables.color && e.boundVariables.color.id === colourVar(RING_TOKENS[st.name][i]).id)), 'their colours stay bound to bg/surface, focus/ring and status/critical/bg');
+    const focusId = ringStyles(Q).find((st) => st.name === 'Focus/Ring').id;
+    const focusNodes = allNodes(Q).filter((n) => n._effectStyle === focusId);
+    check(focusNodes.length >= 30 && focusNodes.every((n) => n.effects.map((e) => e.spread).join() === '2,4'), 'every layer that uses Focus/Ring now shows the 2 + 2 px ring (' + focusNodes.length + ' layers)');
+    check(phoneMains(Q).length === ph0 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'the Main of every phone screen scrolls vertically (' + ph0 + ')');
+    const gone = [...ids0].filter((id) => !Q.byId.has(id));
+    check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
+    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n));
+    check(changed.length === 0, 'no existing layer changed otherwise (type, name, parent, order, place, size, visibility, paints, bindings, sizing, properties, text), apart from the cover version and date, the changelog table and Starter section bounds (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
+    const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
+    check(moved.every((n) => n.type === 'SECTION'), 'no existing frame moved (' + moved.length + ' Starter sections)');
+    const freshTops = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id)).map((n) => n.name);
+    check(freshTops.every((n) => n === 'Row'), 'the only new layer is the changelog row (' + freshTops.join(', ') + ')');
+    r = await send(Q, { type: 'audit' }); rep = r.done ? r.done.report : [];
+    check(!r.err && rep.filter((l) => l.indexOf('⚠') === 0).length === 0 && rep.includes('✓ Effect styles that differ from the library spec: 0'), 'Audit file has zero warnings after the update: the cards below the fold of a scrolling Main are not counted' + (rep.length ? ': ' + rep.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
+    const all14 = allNodes(Q); const snap14 = new Map(all14.map((n) => [n.id, fullSnap(n) + n.overflowDirection])); const st14 = ringStyles(Q).map(spreads).join('|');
+    r = await send(Q, { type: 'update' });
+    const again = allNodes(Q).filter((n) => !snap14.has(n.id) || fullSnap(n) + n.overflowDirection !== snap14.get(n.id));
+    check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === all14.length && again.length === 0 && ringStyles(Q).map(spreads).join('|') === st14, 'a second run adds, changes and moves nothing (' + again.length + ')');
+    r = await send(Q, { type: 'export', version: SPEC_VERSION });
+    if (r.done) compareExport(r.done.files, '1.8.4 updated ' + tag14 + ' export');
+  }
+  {
+    // a new build: rings with their spread, scrolling phone screens
+    const Q = start(STARTER);
+    r = await send(Q, { type: 'build' });
+    check(!r.err && ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join()) && phoneMains(Q).length >= 10 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'a new 1.8.4 build has the ring spreads and scrolling phone screens');
+    // Audit: an entry past the 25th is announced, and a layer sticking out sideways from a scrolling Main is still counted
+    const box = Q.figma.createFrame(); box.name = 'Overflow box'; box.fills = []; box.layoutMode = 'VERTICAL'; box.resize(100, 600);
+    for (let i = 0; i < 30; i++) { const k = Q.figma.createFrame(); k.name = 'wide ' + i; k.fills = []; k.resize(200, 10); box.appendChild(k); }
+    const wide = Q.figma.createFrame(); wide.name = 'too wide'; wide.fills = []; wide.resize(500, 20); sellerPhoneMain(Q).appendChild(wide);
+    r = await send(Q, { type: 'audit' }); const rep = r.done ? r.done.report : [];
+    const i0 = rep.findIndex((l) => /^⚠ Layers sticking out of their parent: 31 \(31 unique\)$/.test(l));
+    check(i0 >= 0 && rep.slice(i0 + 1, i0 + 26).every((l) => /^ {4}\S/.test(l) && !/^ {4}…/.test(l)) && rep[i0 + 26] === '    … and 6 more', 'Audit file lists 25 entries and then says how many more there are (' + (i0 >= 0 ? rep[i0 + 26] : rep.filter((l) => /^⚠/.test(l)).join(' | ')) + ')');
+    check(rep.some((l) => /Shared · Members · Seller \(phone\) › Main › too wide \+\d+px clipped/.test(l)), 'a layer sticking out sideways from a scrolling Main is still counted');
+  }
+  {
+    // hand-edited: a ring style with another blur, a phone Main that scrolls sideways, a phone screen that is not the plugin's
+    const Q = start(STARTER, CODE_183);
+    r = await send(Q, { type: 'build' }); load(Q, CODE);
+    const urgent = ringStyles(Q).find((st) => st.name === 'Ring/Urgent'); urgent.effects = urgent.effects.map((e) => Object.assign({}, e, { radius: 6 }));
+    const mains = phoneMains(Q); const ph = mains.length;
+    mains[0].overflowDirection = 'HORIZONTAL'; const sideName = mains[0].parent.name;
+    mains[1].parent.setPluginData('mondapac-ds', ''); const foreignName = mains[1].parent.name;
+    r = await send(Q, { type: 'update' });
+    const rp = r.done ? r.done.report : []; const ad = r.done ? r.done.added : [];
+    check(!r.err && rp.includes('ℹ skipped effect style Ring/Urgent: it differs from the spec in more than the spread (layer 1 blur 6, spec 0)') && spreads(urgent) === '0' && urgent.effects[0].radius === 6 && ad.includes('fix effect style Focus/Ring: spread 2 and 4 px') && !ad.some((l) => /Ring\/Urgent/.test(l)), 'a ring style changed by hand keeps its shape and is reported; the other one is repaired' + (r.err ? ': ' + r.err.message : ''));
+    check(rp.includes('ℹ skipped scrolling of ' + sideName + ': its Main frame was changed by hand') && mains[0].overflowDirection === 'HORIZONTAL' && mains[1].overflowDirection === 'NONE' && !rp.some((l) => l.indexOf(foreignName) >= 0) && ad.includes('fix phone screens: Main scrolls vertically (' + (ph - 2) + ' frames)'), 'a phone Main that scrolls sideways is reported and kept; a phone screen that is not the plugin\'s is left alone');
+    r = await send(Q, { type: 'audit' }); const ar = r.done ? r.done.report : [];
+    check(ar.includes('⚠ Effect styles that differ from the library spec: 1 (1 unique)') && ar.includes('    Ring/Urgent (layer 1 blur 6, spec 0; layer 1 spread 0, spec 3)'), 'Audit file still names the hand-edited ring style');
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
