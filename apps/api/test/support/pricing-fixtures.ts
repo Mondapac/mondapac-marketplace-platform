@@ -71,6 +71,7 @@ export function newSeries(
     variantId: ids.next<'Variant'>(),
     productId: ids.next<'Product'>(),
     sellerId: ids.next<'Seller'>(),
+    currency: fixture.policy.currency,
     now: clock.now(),
   });
 }
