@@ -5,6 +5,7 @@
 conditions C1–C3, applied; Mojtaba's data design and Reza's `ux.md` complete; Jafar accepted with
 changes, applied; ADR-0028 Accepted by the owner 2026-10-07. Reviews recorded in 19.3 and 19.4. The owner gets a Persian summary with the questions of
 19.1 only.
+**Updated:** 2026-10-08 (second): the seller-chosen time zone (`docs/reviews/sellers-spike-3-zone-source.md`, guardrail 3) applied to 2.3 T2, 2.4, 4.2 step 1 and rule 2, the facade table, 14.1 slice 1, S-1, 19.4 and ADR-0028 decision 8 (the job's status writes in 8.6 and the approve guard in 3.2 keep reading `sellerSummaries`: the stored status is never decisive): `approvedSellerZones` answers `{ zone, addressZone }` and the seller boundary is the earliest of three.
 **Updated:** 2026-10-08: Q3 of `docs/design/domain/platform-audit.md` (Ali) applied to 3.7, 7.6, 11, 16.1, 19.2 item 13 and 19.4: the change reason lives on the revision only, never in an audit row.
 **Ground truth:** `docs/modules/certification/brief.md` (G1 approved 2026-10-03; sections, rules,
 owner answers and acceptance criteria are cited as "brief s5", "Q6", "AC 14"); ADR-0001, ADR-0003,
@@ -154,13 +155,26 @@ stored at approval, with the constraint that a zone change never extends or revi
 
 | Option | For | Against |
 |---|---|---|
-| **A (recommended).** Both: the boundary in the seller's zone at approval is stored on the submission; each evaluation also reads the seller's current **non-provisional** zone through one fixed `sellers` read whose answer does not depend on the caller (request S-1; B1) and uses the earlier of the two boundaries. No zone now means "not allowed" | Exact, and a zone change can only bring the boundary forward (never extends, never revives); "no seller zone means not allowed" (brief s5, AC 4) holds literally; no event from `sellers` is needed | One `sellers` facade call per `evaluateClaims` batch (at most 100 seller ids, one read-only unit there) |
+| **A (recommended).** Both: the boundary in the seller's zone at approval is stored on the submission; each evaluation also reads the seller's current **non-provisional** zone through one fixed `sellers` read whose answer does not depend on the caller (request S-1; B1) and uses the earliest of three boundaries (see the 2026-10-08 amendment below). No zone now means "not allowed" | Exact, and a zone change can only bring the boundary forward (never extends, never revives); "no seller zone means not allowed" (brief s5, AC 4) holds literally; no event from `sellers` is needed | One `sellers` facade call per `evaluateClaims` batch (at most 100 seller ids, one read-only unit there) |
 | B. Store at approval only; re-compute from a `sellers` zone event | No call in the hot path | `sellers` publishes no zone event today (SL 7.4; an admin correction is audited only); a window exists between a change and its delivery; "no zone" is not observable |
 
 **Ruling (Ali B1 = Hassan M4, 2026-10-07):** A, with the zone source of the claim path independent of
 the caller: only the non-provisional zone, through one fixed read (S-1, `approvedSellerZones`), never `sellerSummaries`
 under the caller's context (whose answer differs by actor). The submit and approve guards (3.2) and
 the job (8.6) may keep the provisional zone through `sellerSummaries`. ADR-0028 d8 records it.
+
+**Amendment (2026-10-08, seller-chosen zone; Hassan guardrail 3, Ali; sellers mini-review of spike 3):**
+the seller now chooses the zone from a per-region list, so the zone the seller picked can differ from
+the zone the address implies (a Sydney address with `Australia/Broken_Hill`, 30 minutes behind).
+An override must never extend a certificate. The fixed read therefore returns both zones,
+`{ zone, addressZone }` (the chosen zone of the approved revision and the zone the approved address
+gives, kept in a clear column; the address itself is never decrypted for this; `addressZone` is derived by the server from the approved address only, is never accepted from a client or an admin, and a `zone-change` revision never changes it), and the seller
+boundary is the **earliest of three**: the boundary stored at approval (in the zone read at approval,
+3.2, provisional allowed), the boundary in the current chosen zone, and the boundary in the current address zone. A
+missing `zone` or `addressZone`, or one that Temporal cannot resolve, is "no zone" (`seller-zone-missing`). A chosen zone can only bring the boundary forward: a certificate is never valid past the earlier of the stored boundary and the address-zone boundary, so switching zone cannot gain time. The stored boundary
+stays one instant per submission, so the data design is unchanged. Residual risk (Ali): the stored boundary uses the chosen zone at approval, not the earlier of the two zones; only a reviewed address change could exploit that, and the evaluation-time address zone covers it. This is a change to the fixed
+contract and merges before any seller-chosen zone can reach an approved revision (before `sellers`
+slice 2).
 
 **Toss-up T3: an edit of the coverage of an approved manufacturer certificate** (brief s5: "an edit
 of coverage after approval returns to review").
@@ -183,7 +197,7 @@ to branch on them. Feature file 08 s2 is corrected in a product-track PR (20). *
 // domain/validity.ts — pure; time comes in as an argument from Clock (ADR-0005 decision 5)
 function sellerCertificateValidAt(
   cert: SellerCertificationView, // status, approved submission, its type revision, issuer state
-  sellerZoneNow: TimeZoneId | null, // non-provisional, from sellers' fixed read in this request (T2, B1)
+  sellerZones: { zone: TimeZoneId; addressZone: TimeZoneId } | null, // non-provisional, from sellers' fixed read in this request (T2, B1; amended 2026-10-08)
   at: Temporal.Instant,
 ): Validity; // { valid: true, submissionId, expiresAt? } | { valid: false, reason }
 function productCertificateValidAt(cert: ProductCertificationView, marketZone: TimeZoneId, at: Temporal.Instant): Validity;
@@ -191,7 +205,7 @@ function productCertificateValidAt(cert: ProductCertificationView, marketZone: T
 | # | Rule |
 |---|---|
 | 1 | Valid only if: status is `approved` (not `revoked`, `suspended`, `declined`); an approved submission or revision exists; its issuer is not `derecognised` (Q6); and, when the submission's type revision has `requiresExpiry`, `at` is before the expiry boundary |
-| 2 | Seller boundary: the start of the day after the expiry date (00:00 local, DST-safe with Temporal's start of day) in the seller's zone (ADR-0005 decision 3, CERT-15); the earlier of the zone stored at approval and the current non-provisional zone, read the same way for every caller (T2, B1). No current zone: `{ valid: false, reason: 'seller-zone-missing' }` |
+| 2 | Seller boundary: the start of the day after the expiry date (00:00 local, DST-safe with Temporal's start of day) in the seller's zone (ADR-0005 decision 3, CERT-15); the earliest of the boundary stored at approval, the boundary in the current chosen zone and the boundary in the current address zone, both read the same way for every caller (T2, B1; amended 2026-10-08, so a chosen zone can only bring the boundary forward). No current chosen zone or no current address zone: `{ valid: false, reason: 'seller-zone-missing' }` |
 | 3 | Manufacturer boundary: the same rule in the Market's `defaultTimezone` (ADR-0028 d8), one instant for every Offer. The boundary computed at approval is stored; evaluation takes the earlier of it and the boundary in the current configured zone |
 | 4 | Status `expired`, written by the job (3.1), is never read by this function: past the boundary it is invalid whether or not the job ran (AC 8) |
 | 5 | A type that later drops `requiresExpiry` does not remove the expiry of a certificate approved under a revision that required it: the submission's own type revision decides (brief s5: easing a type never upgrades what was approved) |
@@ -444,7 +458,7 @@ The application layer loads, then calls the pure rule with `Clock.now()`:
 | Step | Load (outside any write; one read-only unit, ADR-0025) | Rule |
 |---|---|---|
 | 0 | Validate the batch shape (1 to 100; ids parse; enum values); `marketId` from the context only | Any malformed query is `{ allowed: false, reason: 'input-invalid' }`; the other queries still answer |
-| 1 | Seller zones: `sellers.approvedSellerZones`, the fixed, caller-independent read of approved, non-provisional zones (request S-1; `sellers` domain design 7.1a), distinct seller ids (T2, B1). Never `sellerSummaries` under the caller's context. Only ids of queries that passed step 0 are passed; when no seller-basis query remains, no call is made. A refusal is thrown and fails the batch closed (rule 1) | Missing seller or zone (`null`, or a key missing from the answer): `seller-zone-missing` for the seller basis. An unexpected key in the answer is a fault: the batch is `unavailable` |
+| 1 | Seller zones: `sellers.approvedSellerZones`, the fixed, caller-independent read of approved, non-provisional zones, `{ zone, addressZone }` per seller (request S-1; `sellers` domain design 7.1a), distinct seller ids (T2, B1). Never `sellerSummaries` under the caller's context. Only ids of queries that passed step 0 are passed; when no seller-basis query remains, no call is made. A refusal is thrown and fails the batch closed (rule 1) | Missing seller, `zone: null`, `addressZone: null` or a zone Temporal cannot resolve (or a key missing from the answer): `seller-zone-missing` for the seller basis. An unexpected key in the answer is a fault: the batch is `unavailable` |
 | 2 | **One statement** for the seller basis: per (seller, type) the non-terminal certificate, its approved submission, the submission's type revision, the issuer's state | — |
 | 3 | **One statement** for the type and policy: the type's published revision (default basis, mode), the published policy rows matching any category id in the paths or the handling | Unknown type: `type-unknown`. Resolve the basis requirement: the strictest of **all** matching rows, every category id of every path and the handling row together (M1); the type's default when none match. Strictness: `NOT_APPLICABLE` > `SELLER_REQUIRED` > `SELLER_OR_MANUFACTURER`. A handling row is never `SELLER_OR_MANUFACTURER` (2.1), so handling can only tighten. See 19.2 item 12 on the type default |
 | 4 | — | `NOT_APPLICABLE`: deny both bases (`policy-not-applicable`; AC 4) |
@@ -460,9 +474,9 @@ Rules:
    context), so each basis is decided from one statement and no security decision combines facts
    read by two statements (PP 3.1 row 9). Mojtaba writes the three statements (16.1). One
    named exception: the seller zone of step 1 comes from a separate `sellers` read. It is safe
-   because T2 takes the earlier of the boundary in the zone stored at approval and the boundary in
-   the current zone, so a stale current zone can never move a boundary later than the one stored
-   at approval; the staleness lasts at most the gap between the two reads of one request (Hassan
+   because both current zones (`zone`, `addressZone`) come from one `approvedSellerZones` read and
+   T2 takes the earliest of three boundaries (stored at approval, chosen zone, address zone), so a
+   stale answer can never move a boundary later than the stored one; the staleness lasts at most the gap between the two reads of one request (Hassan
    L10, `sellers` mini-review 19).
 3. **No model** on this path (ADR-0019 decision 10; AC 25). The files of this path are not on the
    `platform/ai` allow-list.
@@ -513,7 +527,7 @@ interface BadgeData {
   readonly sellerClaim: boolean;          // true for SELF_DECLARATION ("seller claim")
   readonly issuer: { id: Id; displayName: string } | null; // public registry name
   readonly validUntilLocalDate: Temporal.PlainDate | null; // the expiry date as written, with
-  readonly validUntilZone: TimeZoneId | null;              // the zone it is measured in (ADR-0005)
+  readonly validUntilZone: TimeZoneId | null;              // the zone that gave the earliest boundary (ADR-0005; 2.4 rule 2)
   readonly verifiedWithIssuer: boolean;   // from the submission or revision the decision names; never for sellerClaim
   readonly reviewedByPlatform: true;      // "the platform reviewed the document" (Q7)
 }
@@ -795,7 +809,7 @@ this module through facade calls from its own handlers (ADR-0028 d9).
 ### 8.5 Calls to `sellers`
 | Call | Where | Notes |
 |---|---|---|
-| `sellers.approvedSellerZones` (request S-1; `sellers` domain design 7.1a) | `evaluateClaims` (T2, B1) | The zone of the approved revision only (non-provisional), read through `approvedSellerZones`, the same answer for every caller; an unapproved seller has none, which is "no zone" and so "not allowed": correct, since such a seller cannot sell |
+| `sellers.approvedSellerZones` (request S-1; `sellers` domain design 7.1a) | `evaluateClaims` (T2, B1) | The chosen zone and the address zone of the approved revision only (non-provisional), `{ zone, addressZone }`, read through `approvedSellerZones`, the same answer for every caller; an unapproved seller has none, which is "no zone" and so "not allowed": correct, since such a seller cannot sell |
 | `sellerSummaries(ctx, ids)` | Submit and approve guards, the job | Zone, provisional allowed here (B1 ruling): these decide a review step or a status record, not the claim |
 | `reviewerBusinessDetails(ctx, sellerId)` | Review page | Personal data; returned only to the reviewer, never logged, audited by `sellers` (SL 7.1) |
 | `sellingEligibility` | Never | CERT-12: the claim and may-sell are separate questions; `catalog` asks both |
@@ -807,7 +821,7 @@ this module through facade calls from its own handlers (ADR-0028 d9).
 | `certification.purge-drafts` | Daily | Drafts never submitted and refused files older than the retention value (5.1); waits for counsel; deletes draft objects |
 
 The job reads zones through `sellers.sellerSummaries` in batches of 100 (system actor gets provisional
-zones; allowed by the B1 ruling). Concurrency per PP 7: safe to run twice.
+zones; allowed by the B1 ruling) and also through `approvedSellerZones` (the `system` pair); its boundary is the earliest of the stored boundary, the `sellerSummaries` zone, `zone` and `addressZone`, so the `expired` status does not lag the claim. When the job gets no approved zones for a seller it writes `expired`. Concurrency per PP 7: safe to run twice.
 
 ## 9. Documents and storage
 
@@ -963,7 +977,7 @@ AI surface). Sizes as ID 12.1.
 | # | Slice | Size | Needs first | Hassan checks |
 |---|---|---|---|---|
 | 0 | ADR-0028 accepted (7.4 confirmed by Ali 2026-10-07) | — | This G2 | — |
-| 1 | `CertificationType` (minimal), `SellerCertification` with a test-only path to an approved submission, `validity.ts`, `ClaimRule`, `evaluateClaims` (seller basis, default, `NOT_APPLICABLE`), outbox and inbox | M | `sellers` slices 1 and 2; the fixed zone read of S-1 (its `sellers` mini-review); identity 8a (registry); ADR-0030 accepted (raw read helper, data design 7.2) | Fail-closed matrix; AC 1 to 4, 8; no actor read; same answer under every caller (B1); CI check that the anonymous and system pairs are not reachable over HTTP (L3) |
+| 1 | `CertificationType` (minimal), `SellerCertification` with a test-only path to an approved submission, `validity.ts`, `ClaimRule`, `evaluateClaims` (seller basis, default, `NOT_APPLICABLE`), outbox and inbox | M | `sellers` slices 1 and 2; the fixed zone read of S-1 (its `sellers` mini-review); identity 8a (registry); ADR-0030 accepted (raw read helper, data design 7.2) | Fail-closed matrix; AC 1 to 4, 8; the earliest-of-three boundary (a Sydney-address seller choosing `Australia/Broken_Hill` never gains 30 minutes; AU and ZZ); a missing or unresolvable `zone` or `addressZone` is `seller-zone-missing`; no actor read; same answer under every caller (B1); CI check that the anonymous and system pairs are not reachable over HTTP (L3) |
 | 2 | Type revisions with form settings, default basis, claim terms; seeds (AU, ZZ); `Issuer` with expert reference; `certificationTypes`; `matchClaimTerms` | M | 1 | Matcher normalisation and corpus, incl. separator-removed, digit-to-letter and cross-locale cases (M8); seed path exemption; type relaxation pending a second admin, `verificationMode` immutable (H1) |
 | 3 | `ObjectStore` port and adapter; local server in compose; draft and evidence buckets | M | ADR-0029 accepted (storage parts); spike 1; the dependency approvals of 15 | Bucket policy; no public access; draft bucket lifecycle (M7); promote checks the clean hash (M7); no fake lock (S5) |
 | 4 | Intake: inspection, scanner, sandbox, previews, preview and download use cases, `document.view` | L | 3; ADR-0029 intake parts; spike 2; P-1 | The whole of 9.3 and 9.4 incl. the sandbox caps and polyglot refusal (L5) and draft encryption (M7); joins the penetration-test scope (ADR-0018 decision 7) |
@@ -1120,7 +1134,7 @@ No port, facade or event of another module is changed by this document.
 | I-1 | `identity` (mini-review, board 13 item 4) | Allow-list entries of 7.2 (N = allow) for a seller not yet approved or rejected | 5 |
 | I-2 | `identity` | Reuse R-4 (contact point) and R-11 (admin display names) accepted for `sellers` | 7 |
 | I-3 | `identity` | Seed the default admin role "Certification Reviewer" and map the keys of 7.1 to default roles (R10) | 7 |
-| S-1 | `sellers` | **New (B1):** one fixed read of sellers' non-provisional zones by id, whose answer does not depend on the caller (an `anonymous` and `system` pair returning only the zone of the approved revision, or nothing), for `evaluateClaims`. Named `approvedSellerZones` and designed in `sellers` 7.1a; merged by PR #62. `sellerSummaries` (provisional to system and authenticated callers) stays for the guards and the job; `reviewerBusinessDetails` as approved | 1, 7 |
+| S-1 | `sellers` | **New (B1):** one fixed read of sellers' non-provisional zones by id, whose answer does not depend on the caller (an `anonymous` and `system` pair returning only `{ zone, addressZone }` of the approved revision, or nothing; the pair of zones added 2026-10-08), for `evaluateClaims`. Named `approvedSellerZones` and designed in `sellers` 7.1a; merged by PR #62. `sellerSummaries` (provisional to system and authenticated callers) stays for the guards and the job; `reviewerBusinessDetails` as approved | 1, 7 |
 | S-1 note | `sellers` | S-1 changed `sellers`' facade, so it needed its own mini-review (`sellers` mini-review 19; Mohammad drafted, Ali and Hassan reviewed). Closed: PR #62; follow-up FU-2 applied in 4.2 step 1 and rule 2 | Done |
 | S-2 | `sellers` | Replace the claim group of the slug data file by the `ClaimGuard` port once `platform/ai` part 1 declares it (SL 3.5 "later supplied by the port") | After 16 |
 | C-1 | `catalog` | Apply ADR-0028: query from the storable Offer state with the product revision id (M3), every platform path, attestation flag; ask on every entry path of d5 incl. Offer reactivated or unsuspended, variant added, tag re-enabled (M9); refuse the save when `matchClaimTerms` fails (M8); accept a decision only with equal `inputs` under the Offer version; copies restrict only; tag copy keeps certificate, version and issuer ids | Its tag slice |
@@ -1182,6 +1196,7 @@ the rule (B2); easing a type or a claim rule needs a second admin (H1).
 ### 19.4 Review record: where each change was applied
 | Item | Change | Applied in |
 |---|---|---|
+| Spike 3 mini-review (2026-10-08; Hassan guardrail 3, Ali) | Seller-chosen zone: `approvedSellerZones` returns `{ zone, addressZone }`; the seller boundary is the earliest of three; a missing either zone is `seller-zone-missing`; test: a Sydney-address seller choosing `Australia/Broken_Hill` never gains 30 minutes | 2.3 T2 amendment, 2.4, 4.2 step 1 and rule 2, the facade table, S-1, 14.1 slice 1; ADR-0028 d8 |
 | Ali B1 = Hassan M4 | Claim path zone: non-provisional only, one fixed caller-independent read; guards and job may keep provisional | 2.3 T2 ruling, 2.4, 3.2 rows 1 and 3, 4.2 step 1, 8.5, 8.6, 14.1 slice 1, S-1; ADR-0028 d8 |
 | Ali B2 = Hassan M2 | Category move, merge, archive call `assertCategoriesRetirable`; refused while a row could relax on lapse; `SELLER_OR_MANUFACTURER` rows flagged | 3.7, 7.2, 8.1, 14.1 slice 13, C-4, 19.2 item 5; ADR-0028 d5, d9 |
 | Hassan H1 | `verificationMode` immutable; relaxing type and policy revisions, type and issuer reactivation by a second admin with own audit rows | 2.1, 2.3 T4, 3.5, 3.6, 3.7, 7.1, 7.2, 11, slices 2, 12, 13; ADR-0028 Consequences |
