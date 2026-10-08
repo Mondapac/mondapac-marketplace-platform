@@ -30,15 +30,20 @@ function parseTexts(
 ): Result<readonly string[], CertificationValidationFailed> {
   if (!Array.isArray(texts) || texts.length > MAX_TEXTS) return invalid('texts', 'length');
   const plain: string[] = [];
-  for (const [index, item] of (texts as readonly unknown[]).entries()) {
-    const entry = item as Partial<ClaimTextInput> | null;
+  for (let index = 0; index < texts.length; index += 1) {
+    const entry = texts[index] as Partial<ClaimTextInput> | null | undefined;
     if (typeof entry !== 'object' || entry === null) return invalid(`texts.${index}`, 'format');
-    if (typeof entry.locale !== 'string' || !LOCALE_PATTERN.test(entry.locale)) {
+    // Each field is read once, so a getter cannot show one value to the check and another later.
+    const { locale, text } = entry;
+    if (typeof locale !== 'string' || !LOCALE_PATTERN.test(locale)) {
       return invalid(`texts.${index}.locale`, 'format');
     }
-    if (typeof entry.text !== 'string') return invalid(`texts.${index}.text`, 'format');
-    if (entry.text.length > MAX_TEXT_LENGTH) return invalid(`texts.${index}.text`, 'length');
-    plain.push(entry.text);
+    if (typeof text !== 'string') return invalid(`texts.${index}.text`, 'format');
+    // Also after NFKC, which can expand a character (the matcher bounds it the same way).
+    if (text.length > MAX_TEXT_LENGTH || text.normalize('NFKC').length > MAX_TEXT_LENGTH) {
+      return invalid(`texts.${index}.text`, 'length');
+    }
+    plain.push(text);
   }
   return ok(plain);
 }
@@ -57,13 +62,37 @@ export async function matchClaimTermsFor(
   const parsed = parseTexts(texts);
   if (!parsed.ok) return parsed;
   try {
-    const vocabulary = prepareVocabulary(await reader.claimVocabulary(context.market));
+    const entries = await reader.claimVocabulary(context.market);
+    // No terms at all is a missing seed or a reader fault, not "no claim words" (M8).
+    if (!entries.some((entry) => entry.terms.length > 0)) throw new Error('empty vocabulary');
+    const vocabulary = prepareVocabulary(entries);
     return ok(matchClaimTerms(parsed.value, vocabulary));
   } catch (error) {
     // Never the texts or the terms: the class of the failure only.
     logger.error(`matchClaimTerms failed: ${error instanceof Error ? error.name : 'unknown'}`);
     return err(UNAVAILABLE);
   }
+}
+
+function project(t: CertificationTypeView): CertificationTypeView {
+  return {
+    code: t.code,
+    status: t.status,
+    publishedRevisionId: t.publishedRevisionId,
+    verificationMode: t.verificationMode,
+    requiresIssuerRegistry: t.requiresIssuerRegistry,
+    requiresDocument: t.requiresDocument,
+    requiresExpiry: t.requiresExpiry,
+    defaultBasis: t.defaultBasis,
+    autoApproveSelfDeclaration: t.autoApproveSelfDeclaration,
+    badgeIconKey: t.badgeIconKey,
+    locales: Object.fromEntries(
+      Object.entries(t.locales).map(([locale, l]) => [
+        locale,
+        { name: l.name, customerDescription: l.customerDescription },
+      ]),
+    ),
+  };
 }
 
 export async function certificationTypesFor(
@@ -76,7 +105,9 @@ export async function certificationTypesFor(
     return invalid('status', 'format');
   }
   try {
-    return ok(await reader.types(context.market, status === undefined ? {} : { status }));
+    const types = await reader.types(context.market, status === undefined ? {} : { status });
+    // A fresh object with exactly the contract's keys: nothing else a reader returns gets out.
+    return ok(types.map(project));
   } catch (error) {
     logger.error(`certificationTypes failed: ${error instanceof Error ? error.name : 'unknown'}`);
     return err(UNAVAILABLE);
