@@ -1351,3 +1351,47 @@ perOriginLimit, marketDailyBudget, reviewerLimit, recheckInterval, legalSuffixes
 (`legalSuffixes` is not in the D 4.1 table: the name comparison of D 7.7 says "legal suffix list from
 configuration").
 
+**Staleness of an `active` result (Hassan M1, 2026-10-08; no migration).** The comparison skips a field
+that is empty in the draft, and `register_checks` keeps no record of which fields were compared. The
+result is therefore trusted only for the draft as it was: the state is `stale` when
+`seller_files.last_changed_at` is later than `register_checks.checked_at` (both existing clear
+columns), in addition to the age rule. `blocksApproval` is then true, `mismatches` are not shown, and
+the reviewer view carries `staleReason` (`aged` or `draft-changed`); the seller still sees only
+matched / not-matched / could-not-be-checked / nothing. Any saved change of the draft counts (the
+conservative reading), so an edit of the phone also asks the register again on the next identifier save.
+The seller save asks again when the stored `active` result is older than `last_changed_at`, within the
+same three quotas; a definite negative and an `unavailable` result are unchanged. Residual: an edit
+saved between the draft read of a lookup and the write of its result is not seen (a window of one call).
+
+**Race closed (Hassan, second review; no migration).** An `active` result is stamped with the instant
+of the draft snapshot it was compared against (the file as the identifier save left it, read in that
+unit: the later of its `last_changed_at` and the read instant), not with the time the register
+answered. The write unit reads the file again: if its version is no longer the snapshot's, the result
+is stored already stale (stamped one nanosecond before that edit). `registerStateOf`, `lookupDue` and
+`registerCheckIsCurrent` share one rule (`last_changed_at > checked_at` means stale). Residual: an edit
+whose stamp was taken before the snapshot read but that commits after the write unit's re-read is not
+seen (also an edit stamped in the same millisecond as the snapshot, or on an instance whose clock is
+behind). Timestamps cannot detect these, and a row lock at submit alone does not close them either.
+
+**Slice 5 security condition (Hassan M1 residual; blocks the slice 5 merge).** The register result is
+bound to the file version it was compared against. Add `compared_file_version` to `register_checks`
+(migration signed off by database-designer). `runLookup` writes the snapshot's version and the write unit
+keeps the existing re-read. `registerCheckIsCurrent` returns true for an `active` result only if
+`compared_file_version` equals the file's current `version` and the age rule holds; a definite negative
+keeps its behaviour. Submit evaluates `registerCheckIsCurrent` in the same transaction as the submit
+transition, with the file row locked or under the submit's own version CAS on the version it checked. If
+the result is not current, submit continues as "not performed" (manual check needed, `blocksApproval`
+true) and never treats it as a clean `active`. Required tests on AU and ZZ: (a) a no-change identifier
+save racing a general save that commits after the re-read; (b) an edit stamped in the same millisecond as
+the snapshot; (c) an edit committed between the currency check and the submit transition. All three end
+with the result not current.
+
+Notes for later slices:
+
+- **The tax answer is outside `last_changed_at`.** The comparison also reads `registeredForIndirectTax`
+  from the tax profile. The slice that records the tax answer must make the register result stale too
+  (bump the file's version and `last_changed_at`, or include the tax profile version in the rule), and
+  must decide how a future-dated tax period is compared (today the period in force at the comparison
+  instant is used).
+- **`lookup.limit` counts repeat lookups.** The per-account limit counts every lookup that is due,
+  including a repeat of the same value after a draft change or after aging, not only new values.

@@ -8,6 +8,8 @@ import {
   blocksApproval,
   blocksSubmit,
   registerStateOf,
+  staleReasonOf,
+  type RegisterStaleReason,
   type RegisterCheckerKind,
   type RegisterMismatch,
   type RegisterState,
@@ -37,6 +39,11 @@ export interface ReviewRegisterCheckView {
   /** `not-performed` when there is no result, the Market has no lookup or no identifier is saved. */
   readonly state: RegisterState;
   readonly mismatches: readonly RegisterMismatch[];
+  /**
+   * Why a `stale` state is stale: the result aged out, or the draft changed after the check
+   * (Hassan M1; the flags of such a result are not shown). Null for every other state.
+   */
+  readonly staleReason: RegisterStaleReason | null;
   /** ISO instant of the latest answer, or null. */
   readonly checkedAt: string | null;
   readonly checkedBy: RegisterCheckerKind | null;
@@ -120,22 +127,31 @@ export class ReviewRegisterCheckRead extends UseCase<
             settings.kind === 'configured' && index !== null
               ? await registerChecks.find(market, sellerId, index)
               : null;
-          return ok({ identifierSaved: index !== null, check });
+          return ok({
+            identifierSaved: index !== null,
+            check,
+            changedAt: file.state.lastChangedAt,
+          });
         },
         { readOnly: true },
       );
       if (!read.ok) return err({ code: 'access.unavailable' });
       if (read.value === null) return err({ code: 'file.not-found' });
-      const { identifierSaved, check } = read.value;
+      const { identifierSaved, check, changedAt } = read.value;
+      const now = clock.now();
       const state =
         settings.kind === 'configured'
-          ? registerStateOf(check, clock.now(), settings.maxResultAgeDays)
+          ? registerStateOf(check, now, settings.maxResultAgeDays, changedAt)
           : 'not-performed';
       return ok({
         lookup: settings.kind === 'configured' ? 'configured' : 'none',
         identifierSaved,
         state,
         mismatches: state === 'active' && check !== null ? check.mismatches : [],
+        staleReason:
+          state === 'stale' && settings.kind === 'configured'
+            ? staleReasonOf(check, now, settings.maxResultAgeDays, changedAt)
+            : null,
         checkedAt: state === 'not-performed' || check === null ? null : check.checkedAt.toString(),
         checkedBy: state === 'not-performed' || check === null ? null : check.checkedBy.kind,
         blocksSubmit: blocksSubmit(state),
