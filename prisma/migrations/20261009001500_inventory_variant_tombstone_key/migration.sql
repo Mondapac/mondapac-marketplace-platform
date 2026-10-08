@@ -1,4 +1,4 @@
--- Inventory migration 3 (docs/design/data/inventory.md 3.10, 8.1; mini-review 2026-10-09 in
+-- Inventory migration 2a (docs/design/data/inventory.md 3.10, 8.1; mini-review 2026-10-09 in
 -- docs/modules/inventory/brief.md): a Variant tombstone is keyed by the Variant alone.
 -- `catalog.variant-removed.v1` carries (productId, variantId) and no Offer, and a Variant id is
 -- never reused (CAT M-1), so (market_id, variant_id) is the whole key and `offer_id` is NULL for
