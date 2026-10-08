@@ -1,8 +1,10 @@
-# ADR-0034: Panel App Topology (D2); amends ADR-0008
+# ADR-0034: Panel App Topology (D2)
 
 **Status:** Proposed — 2026-10-08. For Ali (cto) and Mohammad (software-architect); Hassan
-(security-tester) must confirm decisions 2 to 4 (hosts, cookies, CSRF, session) before the first
+(security-tester) must confirm decisions 2 to 4 (hosts, cookies, CSRF, session), decision 6 (CSP, HSTS)
+and the client-address gate in decision 3 before the first
 sign-in slice merges.
+**Amends:** ADR-0008 (layout block: adds `apps/seller`, `apps/admin`, `packages/ui`).
 **Relates to:** ADR-0008 (repository structure; `apps/web`), ADR-0018 and
 `docs/design/domain/identity.md` 6.4 (cookie, CSRF, HF7), ADR-0020 decision 3
 (`x-market-id`), ADR-0033 (UI base), board request 6.
@@ -96,12 +98,15 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
 ## Consequences
 - The API stays free of host or CORS logic, as ADR-0020 intends.
 - Each panel can be released and rolled back alone; `packages/ui` is the only coupling.
-- Three hosts (including the storefront) need three certificates and a local hosts-file or port convention.
+- Hosts multiply by panel and Market; a wildcard certificate per Market covers them, and locally `*.localhost` needs no hosts file.
 - Two Next.js servers cost more to run than one; accepted for the isolation Hassan asked for.
 
-## Alternatives rejected
+## Alternatives considered
 - **One app with route groups:** one origin for both panels breaks HF7.
 - **Browser calls the API directly with CORS:** needs credentialed CORS and exposes the
   Market header to the browser; ADR-0020 asked for the opposite.
 - **A single shared Next.js app with middleware by host:** one deploy unit and one bundle for both
   panels; an admin-only dependency would ship to sellers.
+
+## Reviews
+Ali (cto), Mohammad (software-architect) and Hassan (security-tester) reviewed on 2026-10-08; their should-fix items are applied above. Hassan: no blockers; would sign off on Accepted with the Origin, per-population `allowedOrigins` and trusted-hop rules written in (done). Open gates for the sign-in slice: identity spike 5 and Hassan's confirmation of client-address handling. Sajad (QA) and Bagher (QC) checked consistency on 2026-10-08. Acceptance by Ali is still to be recorded here.

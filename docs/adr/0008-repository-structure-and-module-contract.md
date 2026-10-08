@@ -11,6 +11,8 @@ core/vertical split and the market/time rules visible and machine-checked.
 
 ## Decision
 1. **pnpm workspace monorepo**
+   *(Amended by ADR-0034: the layout also holds `apps/seller`, `apps/admin` and `packages/ui` for
+   the two panels; each panel's server is its own BFF, and `apps/web` stays the storefront's.)*
    *(Amended by ADR-0020: `packages/shared-kernel/` also holds `ActorContext` (ADR-0018
    decision 6), `CorrelationId` and `CallContext`.)*
    ```

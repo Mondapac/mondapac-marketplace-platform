@@ -25,7 +25,7 @@ Tailwind's native binary) is part of the scaffold PR and blocks it if it fails.
    A small `@theme inline` file maps Tailwind theme names to `var(--mp-*)`. Tailwind's default
    palette, spacing and radius scales are disabled (`--color-*: initial`), so a class that
    is not a token has no colour. The lint rule is the control (Tailwind arbitrary values still
-   compile): it rejects hex, `rgb()` and arbitrary-value colour classes in app and `packages/ui` code (Bagher checks it in release review).
+   compile): it rejects hex, `rgb()` and arbitrary-value colour classes in app and `packages/ui` code.
    Dark mode follows the exported `[data-theme="dark"]` block; switching it on is a product
    decision (D5), not part of this ADR.
 3. **Headless behaviour:** Base UI (`@base-ui/react`). Radix is not chosen: Base UI is actively
@@ -66,8 +66,11 @@ Tailwind's native binary) is part of the scaffold PR and blocks it if it fails.
 - Base UI is younger than Radix; if it is abandoned, `packages/ui` is the only place to swap.
 - Next.js adds a Node server per panel. ADR-0034 uses that server as the BFF the platform design asked for.
 
-## Alternatives rejected
+## Alternatives considered
 - **Radix Primitives:** mature, but slower-moving; no capability we need that Base UI lacks.
 - **A styled kit (MUI, Ant, Mantine):** their visual system conflicts with ADR-0017 and the tokens.
 - **Plain CSS modules without Tailwind:** more code per component and no compile-time check
   that only tokens are used.
+
+## Reviews
+Ali (cto), Mohammad (software-architect) and Hassan (security-tester) reviewed on 2026-10-08; should-fix items are applied above. Sajad (QA) and Bagher (QC) checked consistency on 2026-10-08. Acceptance by Ali is still to be recorded here.
