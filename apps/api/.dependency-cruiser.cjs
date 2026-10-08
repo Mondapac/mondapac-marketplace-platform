@@ -366,6 +366,22 @@ module.exports = {
       },
     },
     {
+      name: 'certification-surface-does-not-reach-reader-adapter',
+      comment:
+        "Certification's public surface (presentation, contracts and index.ts) must not import " +
+        "its infrastructure, where the adapter of sellers' approved-seller-zones contract lives: " +
+        'the token must not leak through a re-export or a controller. ADR-0033 (pending), ' +
+        'restricted contract files, amends ADR-0008.',
+      severity: 'error',
+      from: {
+        path: [
+          '^src/modules/certification/(presentation|contracts)/',
+          '^src/modules/certification/index\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/certification/infrastructure/' },
+    },
+    {
       name: 'module-internals-are-private',
       comment: 'Code outside modules/ may import a module only through its index.ts.',
       severity: 'error',

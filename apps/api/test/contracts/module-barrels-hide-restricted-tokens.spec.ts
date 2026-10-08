@@ -9,8 +9,23 @@ import { APPROVED_SELLER_ZONES } from '../../src/modules/sellers/contracts/appro
 
 const MODULES = path.resolve(__dirname, '../../src/modules');
 
-const exposes = (barrel: Record<string, unknown>): boolean =>
-  Object.values(barrel).includes(APPROVED_SELLER_ZONES);
+const MAX_DEPTH = 5;
+
+/** True when the token is a value of the barrel, or nested in an object, array or Map value. */
+function exposes(value: unknown, depth = 0, seen = new Set<unknown>()): boolean {
+  if (value === APPROVED_SELLER_ZONES) return true;
+  if (typeof value !== 'object' || value === null || depth > MAX_DEPTH || seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  const children =
+    value instanceof Map
+      ? [...value.keys(), ...value.values()]
+      : value instanceof Set
+        ? [...value]
+        : Object.values(value);
+  return children.some((child) => exposes(child, depth + 1, seen));
+}
 
 const barrels = readdirSync(MODULES, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -45,5 +60,15 @@ describe('module barrels do not export APPROVED_SELLER_ZONES', () => {
 
   it('would catch a barrel that re-exports the token (negative control)', () => {
     expect(exposes({ SomethingElse: 1, ...{ Renamed: APPROVED_SELLER_ZONES } })).toBe(true);
+  });
+
+  it('would catch the token nested in an object, an array and a Map, and survive a cycle', () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    expect(exposes({ zones: APPROVED_SELLER_ZONES })).toBe(true);
+    expect(exposes({ list: [1, [APPROVED_SELLER_ZONES]] })).toBe(true);
+    expect(exposes({ map: new Map([['k', { deep: APPROVED_SELLER_ZONES }]]) })).toBe(true);
+    expect(exposes(cyclic)).toBe(false);
   });
 });
