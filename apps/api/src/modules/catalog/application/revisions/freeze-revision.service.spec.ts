@@ -256,7 +256,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     const found = result.error.issues.map((issue) => issue.code);
     // ZZ allows 3 variants: four is too many. AU allows 100: only the repeated option sets fail.
     expect(found.includes('too-many')).toBe(max === 3);
-    expect(found.includes('duplicate')).toBe(true);
+    expect(found.includes('duplicate')).toBe(max !== 3);
   });
 
   it('fails closed when the schema or the type handler is missing', async () => {

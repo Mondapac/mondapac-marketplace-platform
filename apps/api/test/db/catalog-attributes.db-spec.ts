@@ -339,6 +339,23 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
         seeded.groups.flatMap((group) => group.attributes.map((entry) => entry.code)).sort(),
       );
       expect(schema?.schemaRef.definitionRevisionIds).toHaveLength(schema?.fields.length ?? -1);
+
+      // A newer revision of the family that is not the published one changes nothing (3.3 rule 1).
+      const published = await sql.query<{ id: string; family_id: string }>(
+        `SELECT r.id, r.family_id FROM catalog.attribute_families f
+           JOIN catalog.attribute_family_revisions r
+             ON r.market_id = f.market_id AND r.id = f.published_revision_id
+          WHERE f.market_id = $1 AND f.code = $2`,
+        [market.marketId, seeded.code],
+      );
+      await sql.query(
+        `INSERT INTO catalog.attribute_family_revisions
+           (id, market_id, tenant_id, family_id, revision_no, groups, author_kind, created_at)
+         VALUES ($1, $2, $3, $4, 99, '[]', 'seed', $5)`,
+        [uuid7(), market.marketId, market.tenantId, published.rows[0]!.family_id, T0],
+      );
+      const again = await load(seeded.code);
+      expect(again?.schemaRef.familyRevisionId).toBe(published.rows[0]!.id);
     } finally {
       await persistence.close();
     }
