@@ -10,3 +10,4 @@ export {
 } from '../domain/events';
 export { buildOfferMovedMapping } from '../domain/events/offer-moved-payload';
 export type { OfferMovedPayloadRefused } from '../domain/events/offer-moved-payload';
+export { CATALOG_PERMISSIONS, CATALOG_PLATFORM_PRODUCT_EDIT } from './permissions';
