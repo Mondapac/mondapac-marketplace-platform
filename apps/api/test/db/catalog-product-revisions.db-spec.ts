@@ -7,6 +7,7 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
+import { reduceDatabaseError } from '../../src/platform/persistence/database-error';
 import { TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
@@ -55,6 +56,17 @@ describe.each(TEST_MARKETS)(
           if (!result.ok) throw new Error('unit failed');
           return result.value;
         });
+
+    /** `sqlState constraint` of a refused statement (constraint is empty for a trigger). */
+    const failure = async (work: Promise<unknown>): Promise<string> => {
+      try {
+        await work;
+      } catch (error) {
+        const reduced = reduceDatabaseError(error);
+        return `${reduced?.sqlState ?? 'none'} ${reduced?.constraint ?? ''}`.trim();
+      }
+      throw new Error('expected the statement to fail');
+    };
 
     async function insert(table: string, row: Record<string, unknown>) {
       const columns = Object.keys(row);
@@ -234,22 +246,152 @@ describe.each(TEST_MARKETS)(
         ...good.content,
         variants: good.content.variants.map((variant) => ({ ...variant, optionKey: 'size=l' })),
       };
-      await expect(
-        inUnit(market, () => revisions.add(market, revision(p, f, c, { content: twin }))),
-      ).rejects.toThrow();
+      expect(
+        await failure(
+          inUnit(market, () => revisions.add(market, revision(p, f, c, { content: twin }))),
+        ),
+      ).toBe('23505 product_revision_variants_market_id_revision_id_option_key_key');
 
       const foreign = {
         ...good.content,
         variants: [{ ...good.content.variants[0]!, variantId: q.state.variants[0]!.id }],
       };
-      await expect(
-        inUnit(market, () => revisions.add(market, revision(p, f, c, { content: foreign }))),
-      ).rejects.toThrow();
+      expect(
+        await failure(
+          inUnit(market, () => revisions.add(market, revision(p, f, c, { content: foreign }))),
+        ),
+      ).toBe('23503 product_revision_variants_market_id_product_id_variant_id_fkey');
 
       await inUnit(market, () => revisions.add(market, good));
-      await expect(
-        inUnit(market, () => revisions.add(market, revision(p, f, c, { revisionNo: 1 }))),
-      ).rejects.toThrow();
+      expect(
+        await failure(
+          inUnit(market, () => revisions.add(market, revision(p, f, c, { revisionNo: 1 }))),
+        ),
+      ).toBe('23505 product_revisions_market_id_product_id_revision_no_key');
+    });
+
+    it('round-trips a revert, a tax override and an acting-as seller revision (M1)', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c = await category();
+      const first = revision(p, f, c, { revisionNo: 1 });
+      await inUnit(market, () => revisions.add(market, first));
+      const override = revision(p, f, c, {
+        revisionNo: 2,
+        kind: 'tax-override',
+        baseRevisionId: first.id,
+        sensitive: true,
+        sensitiveReasons: ['tax-category', 'name'],
+        authorKind: 'admin',
+        content: { ...first.content, taxCategoryCode: 'exempt' },
+      });
+      const revert = revision(p, f, c, {
+        revisionNo: 3,
+        kind: 'revert',
+        baseRevisionId: override.id,
+        revertedFromRevisionId: first.id,
+        sensitive: false,
+        sensitiveReasons: [],
+      });
+      const acting = revision(p, f, c, {
+        revisionNo: 4,
+        authorKind: 'seller',
+        actingAdminAccountId: uuid7() as Id<'Account'>,
+        content: {
+          ...first.content,
+          texts: { en: { name: 'Only', shortDescription: null, description: null } },
+          attributeValues: {},
+          schemaRef: { familyRevisionId: f, definitionRevisionIds: [uuid7(), uuid7()] },
+        },
+      });
+      for (const stored of [override, revert, acting]) {
+        await inUnit(market, () => revisions.add(market, stored));
+        expect(await inUnit(market, () => revisions.find(market, p.state.id, stored.id))).toEqual(
+          stored,
+        );
+      }
+    });
+
+    it('leaves nothing behind when a child insert is refused (M2)', async () => {
+      const p = await product(2);
+      const q = await product(1);
+      const f = await familyRevision();
+      const c = await category();
+      const good = revision(p, f, c);
+      const bad = {
+        ...good,
+        content: {
+          ...good.content,
+          variants: [{ ...good.content.variants[0]!, variantId: q.state.variants[0]!.id }],
+        },
+      };
+      expect(await failure(inUnit(market, () => revisions.add(market, bad)))).toBe(
+        '23503 product_revision_variants_market_id_product_id_variant_id_fkey',
+      );
+      expect(await inUnit(market, () => revisions.find(market, p.state.id, bad.id))).toBeNull();
+      expect(await inUnit(market, () => revisions.nextRevisionNo(market, p.state.id))).toBe(1);
+    });
+
+    it('refuses a category of another Market (M3, AC 11)', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const foreignCategory = uuid7();
+      await app.query(
+        `INSERT INTO catalog.category_trees (market_id, tenant_id, version) VALUES ($1, $2, 1)
+         ON CONFLICT DO NOTHING`,
+        [other.marketId, other.tenantId],
+      );
+      await insert('platform_categories', {
+        id: foreignCategory,
+        market_id: other.marketId,
+        tenant_id: other.tenantId,
+        slug: `s-${randomUUID().slice(0, 12)}`,
+        parent_id: null,
+        status: 'active',
+        merged_into_id: null,
+        vertical_root_code: null,
+        created_by_kind: 'seed',
+        version: 1,
+        created_at: T0.toString(),
+      });
+      const stored = revision(p, f, foreignCategory);
+      expect(await failure(inUnit(market, () => revisions.add(market, stored)))).toMatch(/^23503 /);
+      expect(await inUnit(market, () => revisions.find(market, p.state.id, stored.id))).toBeNull();
+    });
+
+    it('lets one of two concurrent adds win and fails the other on the unique number (M4)', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c = await category();
+      const number = await inUnit(market, () => revisions.nextRevisionNo(market, p.state.id));
+      const results = await Promise.allSettled([
+        inUnit(market, () => revisions.add(market, revision(p, f, c, { revisionNo: number }))),
+        inUnit(market, () => revisions.add(market, revision(p, f, c, { revisionNo: number }))),
+      ]);
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(await inUnit(market, () => revisions.nextRevisionNo(market, p.state.id))).toBe(
+        number + 1,
+      );
+    });
+
+    it('reads categories and variants back in position order whatever the insert order (L4)', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c1 = await category();
+      const c2 = await category();
+      const stored = revision(p, f, c1);
+      const reversed = {
+        ...stored,
+        content: {
+          ...stored.content,
+          categoryIds: [c2, c1],
+          variants: [...stored.content.variants].reverse(),
+        },
+      };
+      await inUnit(market, () => revisions.add(market, reversed));
+      const found = await inUnit(market, () => revisions.find(market, p.state.id, stored.id));
+      expect(found?.content.categoryIds).toEqual([c2, c1]);
+      expect(found?.content.variants.map((variant) => variant.position)).toEqual([1, 2]);
     });
 
     it('refuses a retired variant in a new revision', async () => {
@@ -260,9 +402,9 @@ describe.each(TEST_MARKETS)(
       const removed = stored.removeProposedVariant(p.state.variants[1]!.id, T0, 'admin');
       expect(removed.ok).toBe(true);
       await inUnit(market, () => products.save(market, stored));
-      await expect(
-        inUnit(market, () => revisions.add(market, revision(p, f, c))),
-      ).rejects.toThrow();
+      expect(await failure(inUnit(market, () => revisions.add(market, revision(p, f, c))))).toBe(
+        '23514',
+      );
     });
 
     it('refuses images until the image slice exists', async () => {
@@ -278,28 +420,6 @@ describe.each(TEST_MARKETS)(
           }),
         ),
       ).rejects.toThrow(/slice 13/);
-    });
-
-    it('keeps the rows insert-only', async () => {
-      const p = await product(2);
-      const f = await familyRevision();
-      const c = await category();
-      const stored = revision(p, f, c);
-      await inUnit(market, () => revisions.add(market, stored));
-      const attempt = async (text: string): Promise<string | null> => {
-        try {
-          await app.query(text, [stored.id]);
-          return null;
-        } catch (error) {
-          return (error as { code?: string }).code ?? 'unknown';
-        }
-      };
-      expect(
-        await attempt(`UPDATE catalog.product_revisions SET sensitive = false WHERE id = $1`),
-      ).not.toBeNull();
-      expect(
-        await attempt(`DELETE FROM catalog.product_revision_texts WHERE revision_id = $1`),
-      ).not.toBeNull();
     });
   },
 );

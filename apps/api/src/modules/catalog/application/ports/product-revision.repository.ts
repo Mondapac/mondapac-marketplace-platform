@@ -4,10 +4,15 @@ import type { StoredRevision } from '../../domain/stored-revision';
 /**
  * The store of product revisions (catalog data design 3.7 to 3.10). Every method runs in the open
  * unit of the caller, through the Market-scoped client. Revisions are insert-only: there is no
- * update and no delete.
+ * update and no delete. `field_provenance` (D 13.1) is not carried yet: it arrives with the first
+ * AI-assisted draft slice, and the column stays NULL until then.
  */
 export interface ProductRevisionRepository {
-  /** The number the next revision of the product takes: one more than the highest, or 1. */
+  /**
+   * The number the next revision of the product takes: one more than the highest, or 1. Only a
+   * hint: two concurrent units can read the same number, and the unique key on (product,
+   * number) fails the second `add`, which the caller maps to a stale conflict and retries.
+   */
   nextRevisionNo(market: MarketContext, productId: Id<'Product'>): Promise<number>;
 
   /**
