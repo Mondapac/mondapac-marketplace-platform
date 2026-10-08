@@ -29,15 +29,9 @@ legal counsel's reading differs. Hossein is not a lawyer; this is a reading of t
   (`config/service-areas/AU.json`, both flags false) and so cannot onboard today.
 - No Google Maps call and no Google-derived data enters the repository.
 
-## Open for Mohammad, Hassan and Hadi (not decided here)
-"Leave it to the vendor" means a seller chooses the zone. Domain design 4.1 says today that the seller
-sees the zone and only an admin corrects it (`seller.correct-timezone`, audited; 7.1a row 9). The
-zone feeds cut-offs and `approvedSellerZones` for certification, so a seller-set zone is a design
-and security change. Options:
-1. Keep the design: state zone by default, admin corrects an exception seller (works today, no code).
-2. A seller picks from the zones the Market lists for the state (a design amendment: new field
-   error rules, audit, a Hassan check on `approvedSellerZones` evidence).
-3. A licence-clean public list of exception postcodes (counsel or Hadi to name one) filled into
-   the file.
-Recommendation: option 1 until a real seller sits in an exception area; then 3 if a source
-exists, else 2.
+## Owner's ruling (2026-10-08)
+The owner chose option 1 ("go with your suggestion"): keep domain design 4.1 as it is. The seller
+sees the zone, an admin corrects it (`seller.correct-timezone`, audited), no new code, and the AU
+`postcodeExceptions` table stays empty. Options 2 (seller picks a zone) and 3 (a licence-clean
+public list) are not taken; they come back only if a real seller sits in an exception postcode.
+Spike 3 is closed on that basis.
