@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import type { TestingModuleBuilder } from '@nestjs/testing';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type {
@@ -68,6 +69,16 @@ import {
   SECOND_FACTOR_REPOSITORY,
   type SecondFactorRepository,
 } from '../../src/modules/identity/application/ports/second-factor.repository';
+import {
+  SECOND_FACTOR_SECRETS,
+  type SecondFactorSecrets,
+} from '../../src/modules/identity/application/ports/second-factor-secrets';
+import { SubjectKeySecondFactorSecrets } from '../../src/modules/identity/infrastructure/second-factor/subject-key-second-factor-secrets';
+import {
+  SubjectKeyIntegrityError,
+  SubjectKeyMissingError,
+  type SubjectKeyService,
+} from '../../src/platform/subject-keys/subject-key-service';
 import {
   SIGN_IN_CHALLENGE_REPOSITORY,
   type SignInChallengeRepository,
@@ -145,6 +156,8 @@ export class IdentityFakes {
   readonly subjectKeys = new Map<string, 'live' | 'destroyed'>();
   /** Every account whose credential lock was taken, in order (N1). */
   readonly credentialLocks: string[] = [];
+  /** Every seller whose access row was locked by a session-opening unit, in order (item H). */
+  readonly sellerLocks: string[] = [];
   /** Mails the fake transport accepted, in order. */
   readonly mails: MailMessage[] = [];
   /** Makes the fake transport refuse every send. */
@@ -174,6 +187,7 @@ export class IdentityFakes {
     this.challenges.clear();
     this.invitations.clear();
     this.credentialLocks.length = 0;
+    this.sellerLocks.length = 0;
     this.mails.length = 0;
     this.mailDown = false;
     this.inbox.clear();
@@ -233,6 +247,12 @@ export class IdentityFakes {
         state === undefined || state.marketId !== market.marketId ? null : Account.restore(state),
       );
     },
+    existsInPopulation: (market: MarketContext, population: Population) =>
+      Promise.resolve(
+        [...this.accounts.values()].some(
+          (a) => a.marketId === market.marketId && a.population === population,
+        ),
+      ),
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       this.credentialLocks.push(id);
@@ -306,6 +326,11 @@ export class IdentityFakes {
   };
 
   readonly sellerAccessRepository: SellerAccessRepository = {
+    lockForSession: (market, sellerId) => {
+      const state = this.sellerAccess.get(sellerId);
+      this.sellerLocks.push(sellerId);
+      return Promise.resolve(state !== undefined && state.marketId === market.marketId);
+    },
     findById: (market, sellerId) => {
       const state = this.sellerAccess.get(sellerId);
       return Promise.resolve(
@@ -494,6 +519,18 @@ export class IdentityFakes {
       this.assignments.set(state.id, state);
       return Promise.resolve();
     },
+    hasActiveHolder: (market, roleId) =>
+      Promise.resolve(
+        [...this.assignments.values()].some((a) => {
+          const account = this.accounts.get(a.accountId);
+          return (
+            a.marketId === market.marketId &&
+            a.roleId === roleId &&
+            account?.status === 'active' &&
+            account.emailVerifiedAt !== null
+          );
+        }),
+      ),
     remove: (_market, assignment) => {
       const stored = this.assignments.get(assignment.state.id);
       if (stored === undefined || stored.version !== assignment.persistedVersion) {
@@ -919,6 +956,16 @@ export class IdentityFakes {
       );
       return Promise.resolve(state === undefined ? null : Invitation.restore(state));
     },
+    findPendingFor: (market, sellerId, emailNormalized) => {
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.state === 'pending' &&
+          candidate.sellerId === sellerId &&
+          candidate.email?.normalized === emailNormalized,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
     add: (_market, invitation) => {
       const state = invitation.state;
       const clash = [...this.invitations.values()].some(
@@ -966,6 +1013,55 @@ export class IdentityFakes {
       return Promise.resolve();
     },
   };
+
+  /**
+   * Identity's subject keys without a database (slice 7b): a stand-in with the port's contract
+   * and none of its cryptography. "Ciphertext" names the Market, the subject and the field, so a
+   * value bound to another one does not open; a destroyed subject answers `subject-key.destroyed`
+   * and one that never had a key throws, as the service does (PF 4 rows 5 to 7).
+   */
+  readonly subjectKeyService: SubjectKeyService = {
+    createKey: (_market: MarketContext, subject: Id) => {
+      this.subjectKeys.set(subject, 'live');
+      return Promise.resolve();
+    },
+    encrypt: (market: MarketContext, subject: Id, field: string, plain: string) =>
+      this.keyed(subject, () => `fake1|${market.marketId}|${subject}|${field}|${plain}`),
+    decrypt: (market: MarketContext, subject: Id, field: string, cipher: string) =>
+      this.keyed(subject, () => {
+        const [version, m, s, f, plain] = cipher.split('|');
+        if (version !== 'fake1' || m !== market.marketId || s !== subject || f !== field) {
+          throw new SubjectKeyIntegrityError('ciphertext-authentication');
+        }
+        return plain ?? '';
+      }),
+    hmac: (market: MarketContext, subject: Id, purpose: string, data: Uint8Array) =>
+      this.keyed(subject, () =>
+        createHmac('sha256', `${market.marketId}|${subject}|${purpose}`).update(data).digest('hex'),
+      ),
+    destroyKey: (_market: MarketContext, subject: Id) => {
+      this.subjectKeys.set(subject, 'destroyed');
+      return Promise.resolve();
+    },
+  };
+
+  /** The second factor's secrets over the fake subject keys (the real adapter, slice 7b). */
+  readonly secrets: SecondFactorSecrets = new SubjectKeySecondFactorSecrets(this.subjectKeyService);
+
+  private keyed<T>(
+    subject: Id,
+    work: () => T,
+  ): Promise<Result<T, { code: 'subject-key.destroyed' }>> {
+    const key = this.subjectKeys.get(subject);
+    if (key === undefined) return Promise.reject(new SubjectKeyMissingError());
+    if (key === 'destroyed')
+      return Promise.resolve(err({ code: 'subject-key.destroyed' as const }));
+    try {
+      return Promise.resolve(ok(work()));
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error('work failed'));
+    }
+  }
 
   readonly hasher: PasswordHasher = {
     hash: (plain: string): Promise<Result<string, PasswordHasherBusy>> => {
@@ -1027,6 +1123,8 @@ export class IdentityFakes {
       .useValue(this.invitationRepository)
       .overrideProvider(MAIL_TRANSPORT)
       .useValue(this.mailTransport)
+      .overrideProvider(SECOND_FACTOR_SECRETS)
+      .useValue(this.secrets)
       .overrideProvider(PASSWORD_HASHER)
       .useValue(this.hasher);
   }

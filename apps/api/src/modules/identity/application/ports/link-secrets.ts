@@ -28,7 +28,16 @@ export const LINK_TOKENS = Symbol('LINK_TOKENS');
 export interface LinkPages {
   readonly customer: 'verify-email' | 'sign-in' | 'reset-password';
   readonly seller: 'verify-email' | 'sign-in' | 'reset-password';
-  readonly admin: 'seller-review-queue';
+  /**
+   * Slice 7b adds the admin panel's sign-in, invitation acceptance, enrolment and reset pages;
+   * until the Market-config PR configures them they answer null and no such mail is sent.
+   */
+  readonly admin:
+    | 'seller-review-queue'
+    | 'sign-in'
+    | 'accept-invitation'
+    | 'enrol-second-factor'
+    | 'reset-password';
 }
 
 /** A page of {@link LinkPages}: of one population, or of any when none is named. */

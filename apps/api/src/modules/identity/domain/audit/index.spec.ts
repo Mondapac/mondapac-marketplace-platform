@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { parseId } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { accountRoleAssigned, AccountRoleAssigned, AccountRoleAssignedScopeError } from './index';
@@ -48,5 +50,45 @@ describe('accountRoleAssigned (identity.account-role.assigned)', () => {
     expect(() => accountRoleAssigned(ACCOUNT, { ...common, sellerId, scope })).toThrow(
       AccountRoleAssignedScopeError,
     );
+  });
+});
+
+// Hassan I-7 (7a round-1 review): the scope rule above holds only if no code builds the entry
+// around the builder. Every TypeScript file of the API's source (specs included) is scanned for
+// a member access to `AccountRoleAssigned.entry`; only this module's audit catalogue may hold one.
+describe('AccountRoleAssigned.entry is reached only through accountRoleAssigned (Hassan I-7)', () => {
+  const sourceRoot = path.resolve(__dirname, '../../../..');
+  const catalogue = path.resolve(__dirname, 'index.ts');
+  const ENTRY =
+    /\bAccountRoleAssigned\s*(?:\?\.|\.)\s*entry\b|\bAccountRoleAssigned\s*\[\s*['"`]entry/;
+
+  function sources(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === 'generated' ? [] : sources(full);
+      return entry.name.endsWith('.ts') ? [full] : [];
+    });
+  }
+
+  it('finds the builder in the catalogue and nowhere else', () => {
+    const files = sources(sourceRoot);
+    expect(files).toContain(catalogue);
+    const offenders = files.filter(
+      // This spec names the forms on purpose, as strings.
+      (file) => file !== catalogue && file !== __filename && ENTRY.test(readFileSync(file, 'utf8')),
+    );
+    expect(offenders).toEqual([]);
+    expect(ENTRY.test(readFileSync(catalogue, 'utf8'))).toBe(true);
+  });
+
+  it('would catch the forms of a bypass', () => {
+    for (const bypass of [
+      'AccountRoleAssigned.entry(id, { after })',
+      'AccountRoleAssigned ?. entry(id, x)',
+      "AccountRoleAssigned['entry'](id, x)",
+    ]) {
+      expect(ENTRY.test(bypass)).toBe(true);
+    }
+    expect(ENTRY.test('accountRoleAssigned(id, after)')).toBe(false);
   });
 });

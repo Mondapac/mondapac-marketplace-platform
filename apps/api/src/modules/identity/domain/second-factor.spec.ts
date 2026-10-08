@@ -108,7 +108,7 @@ describe.each(['AU', 'ZZ'] as const)('SecondFactor in market %s (identity design
 
   it('keeps a replacement secret beside the active one until its first code swaps them (M13)', () => {
     const factor = stored(active(100));
-    expect(factor.completeReplacement(101)).toEqual({
+    expect(factor.completeReplacement(101, LATER)).toEqual({
       ok: false,
       error: { code: 'second-factor.refused', reason: 'no-replacement' },
     });
@@ -119,8 +119,8 @@ describe.each(['AU', 'ZZ'] as const)('SecondFactor in market %s (identity design
     });
     // A new start replaces a waiting secret.
     expect(factor.startReplacement('cipher-c').ok).toBe(true);
-    expect(factor.completeReplacement(100).ok).toBe(false);
-    expect(factor.completeReplacement(102).ok).toBe(true);
+    expect(factor.completeReplacement(100, LATER).ok).toBe(false);
+    expect(factor.completeReplacement(102, LATER).ok).toBe(true);
     expect(factor.state).toMatchObject({
       secretCiphertext: 'cipher-c',
       pendingSecretCiphertext: null,
@@ -135,7 +135,7 @@ describe.each(['AU', 'ZZ'] as const)('SecondFactor in market %s (identity design
   it('regenerates ten codes, so the old ones stop working', () => {
     const factor = stored(active());
     factor.useRecoveryCode(1, LATER);
-    expect(factor.regenerateRecoveryCodes(hashes(50)).ok).toBe(true);
+    expect(factor.regenerateRecoveryCodes(hashes(50), LATER).ok).toBe(true);
     expect(factor.unusedRecoveryCodes).toHaveLength(10);
     expect(factor.state.recoveryCodes[0]!.codeHash).toEqual(new Uint8Array(32).fill(50));
   });
@@ -205,7 +205,9 @@ describe.each(['AU', 'ZZ'] as const)('SecondFactor in market %s (identity design
     ).toThrow(new SecondFactorInvariantError('the recovery codes are distinct'));
     const factor = stored(active());
     const before = factor.state;
-    expect(() => factor.regenerateRecoveryCodes(repeated)).toThrow(SecondFactorInvariantError);
+    expect(() => factor.regenerateRecoveryCodes(repeated, LATER)).toThrow(
+      SecondFactorInvariantError,
+    );
     expect(factor.state).toBe(before);
     const pending = SecondFactor.startEnrolment({
       id: FACTOR_ID,
