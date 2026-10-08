@@ -197,6 +197,39 @@ describe('AddressForm', () => {
   });
 });
 
+describe('SetupHub states', () => {
+  const allSaved = { ...emptyFile, missing: [] as MyFile['missing'] };
+  it('shows the details-needed badge and banner while steps are open', () => {
+    render(wrap(<SetupHub file={emptyFile} />));
+    expect(screen.getByText('Details needed')).toBeTruthy();
+    expect(screen.getByText('Finish your details')).toBeTruthy();
+    expect(screen.getByText('3 fields left')).toBeTruthy();
+    expect(screen.getAllByText('Waiting')).toHaveLength(1);
+  });
+
+  it('shows the ready badge and banner when every step is saved', () => {
+    render(wrap(<SetupHub file={allSaved} />));
+    expect(screen.getByText('Ready to submit')).toBeTruthy();
+    expect(screen.getByText('Your details are ready')).toBeTruthy();
+    expect(screen.queryByText('Waiting')).toBeNull();
+  });
+});
+
+describe('Back to checklist', () => {
+  it('is on the step forms and goes to the account page', () => {
+    render(
+      wrap(
+        <BusinessForm file={emptyFile} csrfToken="t" signInEmail="a@b.co" phoneMaxLength={20} />,
+      ),
+    );
+    expect(screen.getByRole('link', { name: 'Back to checklist' }).getAttribute('href')).toBe(
+      '/account-setup',
+    );
+    expect(screen.getByText('Sign-in email')).toBeTruthy();
+    expect(screen.getByText('a@b.co', { selector: 'span' })).toBeTruthy();
+  });
+});
+
 describe('SetupHub', () => {
   it('says the seller is outside the service area and marks the address step', () => {
     render(wrap(<SetupHub file={{ ...emptyFile, missing: [], outsideServiceArea: true }} />));
@@ -208,8 +241,8 @@ describe('SetupHub', () => {
     render(wrap(<SetupHub file={{ ...emptyFile, missing: ['slug'] }} />));
     // Account created, Email confirmed and three finished steps.
     expect(screen.getAllByText('Done')).toHaveLength(5);
-    // The shop web address, Review and submit and MondaPac reviews.
-    expect(screen.getAllByText('To do')).toHaveLength(3);
+    // The shop web address and MondaPac reviews; Review and submit is Waiting.
+    expect(screen.getAllByText('To do')).toHaveLength(2);
     expect(screen.getByText('1 field left')).toBeTruthy();
   });
 });

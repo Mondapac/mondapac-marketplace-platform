@@ -13,18 +13,20 @@ const PARTS: Readonly<Record<SetupStepKey, readonly MissingPart[]>> = {
   slug: ['slug'],
 };
 
-type StepState = 'done' | 'todo' | 'needs';
+type StepState = 'done' | 'todo' | 'needs' | 'waiting';
 type HubState = 'details-incomplete' | 'ready' | 'outside-area';
 
 const STATE_TEXT: Record<StepState, string> = {
   done: 'account.step-done',
   todo: 'account.step-todo',
   needs: 'account.step-needs',
+  waiting: 'account.status-waiting',
 };
 const STATE_TONE: Record<StepState, string> = {
   done: 'text-success-fg',
   todo: 'text-fg-muted',
   needs: 'text-attention-fg',
+  waiting: 'text-fg-muted',
 };
 const BADGE_TONE = {
   'details-incomplete': 'neutral',
@@ -118,7 +120,11 @@ export function SetupHub({ file }: { readonly file: MyFile }) {
             );
           })}
           {/* Review and submit waits for the sellers submit endpoint (backend slice 5). */}
-          <Row title={t('steps.submit')} state="todo" detail={t('account.submit-later')} />
+          <Row
+            title={t('steps.submit')}
+            state={state === 'ready' ? 'todo' : 'waiting'}
+            detail={t('account.submit-later')}
+          />
           <Row title={t('account.review')} state="todo" />
         </ol>
       </Card>
