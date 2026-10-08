@@ -289,7 +289,9 @@
       "variantRemoved": true
     },
     "maxVariantsPerProduct": 100,
-    "approvalRequired": true
+    "approvalRequired": true,
+    "productTypes": ["simple", "configurable"],
+    "defaultFamily": "default"
   },
   "pricing": {
     "maxUnitPriceMinor": 500000,

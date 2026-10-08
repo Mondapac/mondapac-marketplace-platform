@@ -979,8 +979,25 @@ const catalogSchema = z
      * setting `catalog.approval-required` until that store lands (catalog slice 10).
      */
     approvalRequired: z.boolean(),
+    /**
+     * The product types this Market offers (catalog design 3.1 rule 4, 7.1): a registered type
+     * not listed here is refused at product creation. At least one; no code repeated.
+     */
+    productTypes: z
+      .array(z.string().regex(/^[a-z][a-z0-9_-]{1,31}$/))
+      .min(1)
+      .max(20),
+    /** The attribute family a new product starts in (catalog design 4.1): a seeded family code. */
+    defaultFamily: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
   })
   .superRefine((catalog, context) => {
+    if (new Set(catalog.productTypes).size !== catalog.productTypes.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['productTypes'],
+        message: 'a product type must not repeat',
+      });
+    }
     const seen = new Set<string>();
     catalog.taxCategories.forEach((category, index) => {
       if (seen.has(category.code)) {

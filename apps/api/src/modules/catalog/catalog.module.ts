@@ -20,6 +20,10 @@ import {
 } from './application/ports/catalog-market-policy';
 import { CLAIM_TEXT_MATCHER } from './application/ports/claim-text-matcher';
 import { PRODUCT_REVISION_REPOSITORY } from './application/ports/product-revision.repository';
+import {
+  PRODUCT_TYPE_LOOKUP,
+  type ProductTypeLookup,
+} from './application/ports/product-type-lookup';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
@@ -29,6 +33,7 @@ import { FreezeRevision } from './application/revisions/freeze-revision.service'
 import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
+import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
 import { CATALOG_PERMISSIONS } from './contracts/permissions';
@@ -75,6 +80,7 @@ const PORT = {
   check: CheckClaimText,
   save: SaveWorkingCopy,
   saveDraft: SaveDraft,
+  productTypes: PRODUCT_TYPE_LOOKUP,
   revisions: PRODUCT_REVISION_REPOSITORY,
   freeze: FreezeRevision,
   submit: SubmitProduct,
@@ -181,18 +187,21 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
     }),
     {
+      provide: PRODUCT_TYPE_LOOKUP,
+      inject: [ExtensionPointRegistry],
+      useFactory:
+        (registry: ExtensionPointRegistry): ProductTypeLookup =>
+        (typeCode) =>
+          registry.get<ProductTypeHandler>(PRODUCT_TYPE_POINT, typeCode),
+    },
+    {
       provide: FreezeRevision,
-      inject: [ATTRIBUTE_REPOSITORY, CATALOG_MARKET_POLICY, ExtensionPointRegistry],
+      inject: [ATTRIBUTE_REPOSITORY, CATALOG_MARKET_POLICY, PRODUCT_TYPE_LOOKUP],
       useFactory: (
         attributes: AttributeRepository,
         policy: CatalogMarketPolicy,
-        registry: ExtensionPointRegistry,
-      ): FreezeRevision =>
-        new FreezeRevision({
-          attributes,
-          policy,
-          handlerFor: (typeCode) => registry.get<ProductTypeHandler>(PRODUCT_TYPE_POINT, typeCode),
-        }),
+        handlerFor: ProductTypeLookup,
+      ): FreezeRevision => new FreezeRevision({ attributes, policy, handlerFor }),
     },
     serviceProvider(SubmitProduct, {
       unitOfWork: true,
@@ -202,6 +211,16 @@ const productTypeProvider: FactoryProvider<string> = {
       freeze: true,
       check: true,
       policy: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformProductCreate, {
+      unitOfWork: true,
+      products: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
       outbox: true,
       clock: true,
       ids: true,

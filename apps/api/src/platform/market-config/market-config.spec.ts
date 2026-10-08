@@ -1783,6 +1783,8 @@ describe('loadMarketConfigs', () => {
       },
       maxVariantsPerProduct: 100,
       approvalRequired: true,
+      productTypes: ['simple', 'configurable'],
+      defaultFamily: 'default',
     };
     const withCatalog = (catalog: unknown) => directoryWith({ 'QQ.json': { ...VALID, catalog } });
 
@@ -1858,6 +1860,12 @@ describe('loadMarketConfigs', () => {
       ['a string variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: '100' }],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
+      ['no product types', without('productTypes')],
+      ['an empty product type list', { ...VALID_CATALOG, productTypes: [] }],
+      ['a repeated product type', { ...VALID_CATALOG, productTypes: ['simple', 'simple'] }],
+      ['a malformed product type', { ...VALID_CATALOG, productTypes: ['Simple!'] }],
+      ['no default family', without('defaultFamily')],
+      ['a malformed default family', { ...VALID_CATALOG, defaultFamily: 'Default Family' }],
       ['an unknown key', { ...VALID_CATALOG, photoLimits: {} }],
     ])('rejects %s', (_case, catalog) => {
       expect(() => loadMarketConfigs([withCatalog(catalog)], [QQ])).toThrow(

@@ -22,6 +22,10 @@ export interface CatalogMarketPolicy {
   };
   /** The most non-retired variants one product may hold (2.1). */
   maxVariantsPerProduct(market: MarketContext): number;
+  /** The product types this Market offers (3.1 rule 4). */
+  productTypes(market: MarketContext): readonly string[];
+  /** The attribute family a new product starts in (4.1). */
+  defaultFamily(market: MarketContext): string;
   /** Whether a new revision waits for review (4.2 row 1); read in the submitting unit. */
   approvalRequired(market: MarketContext): Promise<boolean>;
 }

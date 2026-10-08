@@ -74,6 +74,8 @@ describe.each(TEST_MARKETS)(
             throw new Error('not used');
           },
           maxVariantsPerProduct: () => 3,
+          productTypes: () => ['simple', 'configurable'],
+          defaultFamily: () => 'default',
           approvalRequired: () => Promise.resolve(true),
         },
         outbox: {
@@ -384,6 +386,8 @@ describe.each(TEST_MARKETS)(
               throw new Error('not used');
             },
             maxVariantsPerProduct: () => 3,
+            productTypes: () => ['simple', 'configurable'],
+            defaultFamily: () => 'default',
             approvalRequired: () => Promise.resolve(true),
           },
           outbox: { append: () => Promise.reject(new Error('outbox down')) },
@@ -446,6 +450,8 @@ describe.each(TEST_MARKETS)(
               throw new Error('not used');
             },
             maxVariantsPerProduct: () => 3,
+            productTypes: () => ['simple', 'configurable'],
+            defaultFamily: () => 'default',
             approvalRequired: () => Promise.resolve(true),
           },
           outbox: { append: () => Promise.resolve() },
