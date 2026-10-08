@@ -5,6 +5,7 @@ import {
   encodePayload,
   eventField,
   MAX_AGGREGATE_VERSION,
+  MAX_ENUM_VALUES,
 } from './domain-event';
 import type { Id } from './id';
 import { Temporal } from './time';
@@ -99,6 +100,68 @@ describe('defineEvent (platform persistence design 5.3)', () => {
     ['an over-long code', ['a'.repeat(65)]],
   ])('refuses enumOf with %s (literal codes only, PH2)', (_case, values) => {
     expect(() => eventField.enumOf(values as [string, ...string[]])).toThrow(TypeError);
+  });
+
+  it('refuses enumOf with more values than MAX_ENUM_VALUES, before copying any', () => {
+    let reads = 0;
+    const huge = new Proxy(['active'], {
+      get: (target, property, receiver) => {
+        if (property === 'length') return 2 ** 32 - 1;
+        if (/^\d+$/.test(String(property))) reads += 1;
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+
+    expect(() => eventField.enumOf(huge as unknown as [string])).toThrow(TypeError);
+    expect(reads).toBe(0);
+    expect(() =>
+      eventField.enumOf(Array.from({ length: MAX_ENUM_VALUES + 1 }, (_, i) => `v${i}`) as [string]),
+    ).toThrow(TypeError);
+  });
+
+  describe('enumOf copies its values once, then checks and freezes that copy (Hassan R2)', () => {
+    /** An array whose iterator yields codes on its first pass and free text after it. */
+    function trickyValues(stored: readonly string[]) {
+      const counters = { iterator: 0, species: 0 };
+      class Tricky extends Array<string> {
+        static override get [Symbol.species](): ArrayConstructor {
+          counters.species += 1;
+          return Array;
+        }
+        override [Symbol.iterator](): ArrayIterator<string> {
+          counters.iterator += 1;
+          return (counters.iterator === 1 ? ['active', 'disabled'] : ['Free Text', 'disabled'])[
+            Symbol.iterator
+          ]();
+        }
+      }
+      const values = new Tricky();
+      for (const value of stored) Array.prototype.push.call(values, value);
+      return { values: values as unknown as [string, ...string[]], counters };
+    }
+
+    it('keeps the indexed values in a plain frozen array, never consulting the iterator or species', () => {
+      const { values, counters } = trickyValues(['active', 'disabled']);
+      const kind = eventField.enumOf(values);
+
+      expect(kind.values).toEqual(['active', 'disabled']);
+      expect(kind.values).not.toBe(values);
+      expect(Object.getPrototypeOf(kind.values)).toBe(Array.prototype);
+      expect(Object.isFrozen(kind.values)).toBe(true);
+      expect(counters).toEqual({ iterator: 0, species: 0 });
+    });
+
+    it('refuses free text at an index, whatever the iterator yields', () => {
+      const { values } = trickyValues(['Free Text', 'disabled']);
+
+      expect(() => eventField.enumOf(values)).toThrow(TypeError);
+    });
+
+    it('refuses a duplicate at an index, whatever the iterator yields', () => {
+      const { values } = trickyValues(['active', 'active']);
+
+      expect(() => eventField.enumOf(values)).toThrow(/distinct/);
+    });
   });
 
   it.each([

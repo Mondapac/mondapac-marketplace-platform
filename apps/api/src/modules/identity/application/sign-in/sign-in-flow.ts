@@ -8,9 +8,11 @@ import type {
   Result,
   Temporal,
 } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { Account } from '../../domain/account';
+import { AccountRoleAssigned, SellerAccessFounded, SellerMemberAdded } from '../../domain/audit';
 import type { EmailAddress } from '../../domain/email-address';
 import type { OneTimeLink } from '../../domain/one-time-link';
 import type { SellerAccess, SellerAccessStateCode } from '../../domain/seller-access';
@@ -26,7 +28,11 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
-import type { SellerMembershipRepository } from '../ports/seller-team.repository';
+import { scopeOfPopulation } from '../../domain/role';
+import type {
+  RoleAssignmentRepository,
+  SellerMembershipRepository,
+} from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
@@ -110,6 +116,15 @@ export interface SellerSignInDependencies {
   readonly sellerAccess: SellerAccessRepository;
 }
 
+/**
+ * What the seller email confirmation needs on top (slice 6b): the audit writer for the founding
+ * rows and the assignment store to name the founding role (identity design 5.5).
+ */
+export interface FoundingDependencies {
+  readonly audit: AuditWriter;
+  readonly assignments: RoleAssignmentRepository;
+}
+
 /** Options of one attempt. */
 export interface SignInOptions {
   /** "Keep me signed in" (identity design 6.1): seller side only; ignored for a customer. */
@@ -170,7 +185,9 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  *    (`membership.none`) and a seller that is not suspended (`seller-access.suspended`); both
  *    are checked before a link is consumed, so a refused link stays unused. A link that
  *    verifies a self-registered owner records `identity.seller-registered.v1` on the seller
- *    (8.2, M4). Then a hash with older parameters is replaced and a session with a new token is
+ *    (8.2, M4) and, in the same unit, the three founding audit rows of 5.5 as `ANONYMOUS`
+ *    (slice 6b): the seller access founded, the owner's membership, the owner's assignment.
+ *    Then a hash with older parameters is replaced and a session with a new token is
  *    created; a seller session carries its seller and the answer its access state (`pending`
  *    and `rejected` sign in to a limited session, 3.3). Every attempt writes one sign-in record
  *    (never the email).
@@ -186,6 +203,7 @@ export class SignInFlow {
     private readonly deps: SignInDependencies,
     private readonly linkDeps: LinkSignInDependencies | null = null,
     private readonly sellerDeps: SellerSignInDependencies | null = null,
+    private readonly foundingDeps: FoundingDependencies | null = null,
   ) {
     if (population === 'seller' && sellerDeps === null) {
       throw new Error('SignInFlow: the seller population needs the seller dependencies');
@@ -395,6 +413,7 @@ export class SignInFlow {
           if (seller === null) return refuse('membership.none');
           if (!seller.allowsSignIn) return refuse('seller-access.suspended');
         }
+        let founded = false;
         if (link !== null) {
           // Bound to the link read in the reservation unit: a link re-issued (or consumed)
           // since then has another version, and this use is refused (Hassan L1).
@@ -407,7 +426,7 @@ export class SignInFlow {
           if (!consumed) return refuse('link.rejected');
           // 8.2, M4: the owner's verification publishes a self-registered seller, once.
           if (current.verifyEmail(now) && seller !== null && seller.state.origin === 'self') {
-            seller.recordRegistered(accountId, now);
+            founded = seller.recordRegistered(accountId, now);
           }
         }
         if (rehashed !== null && rehashed.ok) current.rehashPassword(rehashed.value);
@@ -421,6 +440,8 @@ export class SignInFlow {
         }
         const events = [...current.pendingEvents, ...(seller?.pendingEvents ?? [])];
         if (events.length > 0) await this.linkDeps!.outbox.append(context, events);
+        // 5.5 (slice 6b): the founding takes effect now, so its rows are written now, once.
+        if (founded && seller !== null) await this.#recordFounding(context, seller, accountId);
         const session = openSession({
           id: this.deps.ids.next<'Session'>(),
           marketId: market.marketId,
@@ -446,6 +467,46 @@ export class SignInFlow {
       persistent,
       sellerAccess: outcome.sellerAccess,
     });
+  }
+
+  /**
+   * The three founding rows of identity design 5.5 (`platform-audit.md` 5, Q1): the seller
+   * access founded, the Seller Owner's membership and the assignment of the seller's system
+   * role, each naming `sellerId`, `accountId` and `boundSubjectId` (the account the link and
+   * password bind, W4a). The writer derives the `ANONYMOUS` actor from the context. Any refusal
+   * throws, so the verification, the event and the session roll back with it (fail closed).
+   */
+  async #recordFounding(
+    context: CallContext,
+    seller: SellerAccess,
+    accountId: Id<'Account'>,
+  ): Promise<void> {
+    if (this.foundingDeps === null) {
+      throw new Error('SignInFlow: founding a seller needs the founding dependencies');
+    }
+    const { audit, assignments } = this.foundingDeps;
+    const assignment = await assignments.findByAccount(context.market, accountId);
+    const scope = scopeOfPopulation(this.population);
+    if (assignment === null || scope === null) {
+      throw new Error('SignInFlow: a self-registered owner has no founding assignment');
+    }
+    const { sellerId } = seller.state;
+    const { roleId } = assignment.state;
+    const named = { sellerId, accountId, boundSubjectId: accountId };
+    await audit.record(
+      context,
+      SellerAccessFounded.entry(sellerId, {
+        after: { ...named, state: seller.state.state, origin: seller.state.origin },
+      }),
+    );
+    await audit.record(
+      context,
+      SellerMemberAdded.entry(sellerId, { after: { ...named, roleId, founding: true } }),
+    );
+    await audit.record(
+      context,
+      AccountRoleAssigned.entry(accountId, { after: { ...named, roleId, scope, founding: true } }),
+    );
   }
 
   /**

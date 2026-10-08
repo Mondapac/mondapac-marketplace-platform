@@ -12,6 +12,12 @@ import {
   SELLER_ACCESS_CONTRACT,
   type SellerAccessContract,
 } from '../../src/modules/identity/contracts/seller-access.contract';
+import { IdentityModule } from '../../src/modules/identity/identity.module';
+import {
+  AUDIT_WRITER,
+  AuditWriteRefusedError,
+  type AuditWriter,
+} from '../../src/platform/audit/audit-writer';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -160,6 +166,30 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     return { account, membership, sellerId, access, assignment };
   }
 
+  /**
+   * The audit rows of this Market naming `subject` as target or in `after` (slice 6b), by
+   * action: rows of one unit share their `occurred_at`, and ids are random below the millisecond.
+   */
+  async function auditRowsOf(subject: string) {
+    const { rows } = await sql.query<{
+      action: string;
+      actor_type: string;
+      actor_id: string | null;
+      target_type: string;
+      target_id: string;
+      before: unknown;
+      after: Record<string, unknown> | null;
+    }>(
+      `SELECT action, actor_type, actor_id, target_type, target_id, before, after
+         FROM platform.audit_log
+        WHERE market_id = $1
+          AND (target_id = $2 OR after->>'sellerId' = $2 OR after->>'accountId' = $2)
+        ORDER BY action`,
+      [code, subject],
+    );
+    return rows;
+  }
+
   const keyOf = async (subject: string) =>
     (
       await sql.query<{ destroyed_at: Date | null }>(
@@ -193,6 +223,34 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
       { scope: 'platform', seed_code: 'platform-administrator' },
       { scope: 'seller', seed_code: 'seller-owner' },
     ]);
+
+    // identity.role.seeded once per role, by the run that created it; every later run (each
+    // test seeds again) writes none (slice 6b; platform-audit.md 5 row 1).
+    const { rows: seeded } = await sql.query<{
+      target_id: string;
+      actor_type: string;
+      after: unknown;
+    }>(
+      `SELECT target_id, actor_type, after FROM platform.audit_log
+        WHERE market_id = $1 AND action = 'identity.role.seeded' ORDER BY after->>'scope'`,
+      [code],
+    );
+    const { rows: roles } = await sql.query<{ id: string }>(
+      `SELECT id FROM identity.roles WHERE market_id = $1 AND kind = 'system' ORDER BY scope`,
+      [code],
+    );
+    expect(seeded).toEqual([
+      {
+        target_id: roles[0]!.id,
+        actor_type: 'SYSTEM',
+        after: { scope: 'platform', kind: 'system', seedVersion: expect.any(Number) as unknown },
+      },
+      {
+        target_id: roles[1]!.id,
+        actor_type: 'SYSTEM',
+        after: { scope: 'seller', kind: 'system', seedVersion: expect.any(Number) as unknown },
+      },
+    ]);
   });
 
   it('signs up the founding rows, mails the seller link, and confirming registers the seller once', async () => {
@@ -207,9 +265,18 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
       { scope: 'seller', kind: 'system', assigned_by_account_id: null },
     ]);
     expect(await keyOf(before.sellerId!)).toEqual({ destroyed_at: null });
+    // No founding row before the email is verified (identity design 5.5).
+    expect(await auditRowsOf(before.sellerId!)).toEqual([]);
 
     await settle();
     const [mail] = transport.to(email);
+    // A failed verification (a wrong password) writes no audit row either.
+    const refused = await post('confirm-email', {
+      token: tokenOf(mail!),
+      password: `${PASSWORD}!`,
+    });
+    expect(refused.status).not.toBe(200);
+    expect(await auditRowsOf(before.sellerId!)).toEqual([]);
     expect(mail!.text).toContain(`${identity().links.targets.seller!['verify-email']}#ml1_`);
 
     const confirmed = await post('confirm-email', { token: tokenOf(mail!), password: PASSWORD });
@@ -241,12 +308,110 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     );
     expect(sessions).toEqual([{ seller_id: after.sellerId, population: 'seller' }]);
 
+    // The three founding rows, in the unit of the verification (slice 6b; identity design 5.5).
+    const { rows: ownerRole } = await sql.query<{ role_id: string }>(
+      'SELECT role_id FROM identity.role_assignments WHERE market_id = $1 AND account_id = $2',
+      [code, after.account.id],
+    );
+    const named = {
+      sellerId: after.sellerId,
+      accountId: after.account.id,
+      boundSubjectId: after.account.id,
+    };
+    const founding = await auditRowsOf(after.sellerId!);
+    expect(founding).toEqual([
+      {
+        action: 'identity.account-role.assigned',
+        actor_type: 'ANONYMOUS',
+        actor_id: null,
+        target_type: 'identity.account',
+        target_id: after.account.id,
+        before: null,
+        after: { ...named, roleId: ownerRole[0]!.role_id, scope: 'seller', founding: true },
+      },
+      {
+        action: 'identity.seller-access.founded',
+        actor_type: 'ANONYMOUS',
+        actor_id: null,
+        target_type: 'identity.seller-access',
+        target_id: after.sellerId,
+        before: null,
+        after: { ...named, state: expectedState(), origin: 'self' },
+      },
+      {
+        action: 'identity.seller-member.added',
+        actor_type: 'ANONYMOUS',
+        actor_id: null,
+        target_type: 'identity.seller-access',
+        target_id: after.sellerId,
+        before: null,
+        after: { ...named, roleId: ownerRole[0]!.role_id, founding: true },
+      },
+    ]);
+    // AC 12: no address, name or free text in any audit row of the Market.
+    const { rows: everything } = await sql.query<{ text: string }>(
+      'SELECT row_to_json(a)::text AS text FROM platform.audit_log a WHERE market_id = $1',
+      [code],
+    );
+    for (const { text } of everything) {
+      expect(text.toLowerCase()).not.toContain(email.toLowerCase());
+      expect(text).not.toContain(NAME);
+      expect(text).not.toContain(PASSWORD);
+    }
+
     // The welcome mail goes out once the event is dispatched; the link mail had the token.
     await settle();
     const mails = transport.to(email);
     expect(mails).toHaveLength(2);
     expect(mails[1]!.text).not.toContain('ml1_');
     expect(mails[1]!.text).toContain(identity().links.targets.seller!['sign-in']);
+  });
+
+  it('a refused founding row rolls back the whole verification: no registration, session, event or row (Sajad L5)', async () => {
+    const email = newAddress();
+    expect((await signUp(email)).status).toBe(202);
+    await settle();
+    const token = tokenOf(transport.to(email)[0]!);
+    // The writer refuses the second founding row: the first one must roll back with it.
+    const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+    const record = writer.record.bind(writer);
+    const refusing = jest
+      .spyOn(writer, 'record')
+      .mockImplementation(
+        (
+          context: Parameters<AuditWriter['record']>[0],
+          entry: Parameters<AuditWriter['record']>[1],
+        ) => {
+          if (entry.action === 'identity.seller-member.added') {
+            return Promise.reject(new AuditWriteRefusedError('entry-invalid', 'after'));
+          }
+          return record(context, entry);
+        },
+      );
+
+    const refused = await post('confirm-email', { token, password: PASSWORD });
+
+    expect(refused.status).not.toBe(200);
+    const rows = (await rowsOf(email))!;
+    expect(rows.account.email_verified_at).toBeNull();
+    expect(rows.access!.registered_at).toBeNull();
+    expect(await auditRowsOf(rows.sellerId!)).toEqual([]);
+    const { rows: sessions } = await sql.query(
+      'SELECT 1 FROM identity.sessions WHERE market_id = $1 AND account_id = $2',
+      [code, rows.account.id],
+    );
+    expect(sessions).toEqual([]);
+    const { rows: events } = await sql.query(
+      `SELECT 1 FROM identity.outbox WHERE market_id = $1 AND aggregate_id = $2
+        AND type = 'identity.seller-registered.v1'`,
+      [code, rows.sellerId],
+    );
+    expect(events).toEqual([]);
+
+    // With the writer back, the same link verifies and founds once.
+    refusing.mockRestore();
+    expect((await post('confirm-email', { token, password: PASSWORD })).status).toBe(200);
+    expect(await auditRowsOf(rows.sellerId!)).toHaveLength(3);
   });
 
   it('signs in with "keep me signed in", reads the session and status, then the facade answers', async () => {
@@ -355,6 +520,9 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     expect(left).toEqual([]);
     expect((await keyOf(sellerId!))!.destroyed_at).not.toBeNull();
     expect((await keyOf(account.id))!.destroyed_at).not.toBeNull();
+    // The never-verified owner was never founded, so the purge leaves and writes no audit row.
+    expect(await auditRowsOf(sellerId!)).toEqual([]);
+    expect(await auditRowsOf(account.id)).toEqual([]);
     // A registered seller and its owner stay.
     expect((await rowsOf(kept))!.access!.registered_at).not.toBeNull();
   });

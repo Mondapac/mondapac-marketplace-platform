@@ -4,6 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { LinkTokens } from '../ports/link-secrets';
 import {
   SignInFlow,
+  type FoundingDependencies,
   type LinkSignInDependencies,
   type SellerSignInDependencies,
   type SignedIn,
@@ -30,7 +31,8 @@ export type ConfirmSellerEmailFailure =
 
 export type ConfirmSellerEmailDependencies = SignInDependencies &
   LinkSignInDependencies &
-  SellerSignInDependencies & { readonly linkTokens: LinkTokens };
+  SellerSignInDependencies &
+  FoundingDependencies & { readonly linkTokens: LinkTokens };
 
 /**
  * Confirming a seller-side account's email (identity design 3.2, 6.3, 6.7 option B, 8.2; slices 3
@@ -40,6 +42,9 @@ export type ConfirmSellerEmailDependencies = SignInDependencies &
  * `identity.seller-registered.v1` (M4): from then on other modules see the seller, and the purge
  * no longer deletes it. A token that is malformed, unknown, used, expired, of another purpose,
  * population or Market answers `link.rejected`; it is never logged, stored or echoed.
+ *
+ * From slice 6b the same unit writes the founding audit rows of identity design 5.5 (actor
+ * `ANONYMOUS`); a confirmation that is refused, or a later sign-in, writes none.
  */
 export class ConfirmSellerEmail extends UseCase<
   ConfirmSellerEmailInput,
@@ -58,7 +63,7 @@ export class ConfirmSellerEmail extends UseCase<
     private readonly deps: ConfirmSellerEmailDependencies,
   ) {
     super(gate);
-    this.#flow = new SignInFlow('seller', deps, deps, deps);
+    this.#flow = new SignInFlow('seller', deps, deps, deps, deps);
   }
 
   protected async handle(

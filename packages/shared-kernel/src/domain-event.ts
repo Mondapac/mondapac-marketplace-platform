@@ -64,11 +64,49 @@ export type PayloadFields = Readonly<Record<string, FieldKind>>;
 const ENUM_VALUE = /^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$/;
 const MAX_ENUM_VALUE_LENGTH = 64;
 
-function enumOf<const V extends readonly [string, ...string[]]>(values: V): EnumKind<V[number]> {
-  if (!Array.isArray(values) || values.length === 0) {
-    throw new TypeError('enumOf: at least one value is required');
+/** The most values one `enumOf` may declare: a list of codes, never a data set. */
+export const MAX_ENUM_VALUES = 256;
+
+/**
+ * A plain copy of an array-like list, taken before anything is checked (Hassan R1 and R2 on
+ * slice 6a): `length` is read once, then each index once, into a fresh array. No iterator, no
+ * `Symbol.species` and no `slice` of the caller's object is used, so a subclass, a stateful
+ * iterator or a Proxy cannot answer the checks with one list and the copy with another.
+ * Answers `undefined` when the length is not a list length of at most `max`, or a read throws.
+ * Internal to the kernel: not exported from index.ts.
+ */
+export function copyListOnce(
+  values: unknown,
+  max: number,
+): { readonly copy: unknown[] } | { readonly tooLong: true } | undefined {
+  try {
+    const length: unknown = (values as { readonly length?: unknown }).length;
+    if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) {
+      return undefined;
+    }
+    if (length > max) return { tooLong: true };
+    const copy: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      copy.push((values as Readonly<Record<number, unknown>>)[index]);
+    }
+    return { copy };
+  } catch {
+    return undefined;
   }
-  for (const value of values) {
+}
+
+function enumOf<const V extends readonly [string, ...string[]]>(values: V): EnumKind<V[number]> {
+  // Copy first, then check and freeze that same copy (Hassan R2 on slice 6a).
+  const copied = Array.isArray(values) ? copyListOnce(values, MAX_ENUM_VALUES) : undefined;
+  if (copied === undefined || !('copy' in copied) || copied.copy.length === 0) {
+    throw new TypeError(
+      `enumOf: a list of 1 to ${MAX_ENUM_VALUES} values is required, as an array of literals`,
+    );
+  }
+  const copy = copied.copy;
+  const seen = new Set<unknown>();
+  for (let index = 0; index < copy.length; index += 1) {
+    const value = copy[index];
     if (
       typeof value !== 'string' ||
       value.length > MAX_ENUM_VALUE_LENGTH ||
@@ -76,11 +114,10 @@ function enumOf<const V extends readonly [string, ...string[]]>(values: V): Enum
     ) {
       throw new TypeError('enumOf: each value must be a lower-case code such as "seller-owner"');
     }
+    if (seen.has(value)) throw new TypeError('enumOf: the values must be distinct');
+    seen.add(value);
   }
-  if (new Set(values).size !== values.length) {
-    throw new TypeError('enumOf: the values must be distinct');
-  }
-  return Object.freeze({ kind: 'enumOf', values: Object.freeze([...values]) });
+  return Object.freeze({ kind: 'enumOf', values: Object.freeze(copy as V[number][]) });
 }
 
 /**
