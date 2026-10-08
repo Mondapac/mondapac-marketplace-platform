@@ -11,7 +11,8 @@ import {
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { marketOf } from './persistence-support';
+import { PrismaAttributeRepository } from '../../src/modules/catalog/infrastructure/prisma-attribute.repository';
+import { createPersistence, marketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Catalog slice 3 on PostgreSQL (catalog data design 3.3, 5.1, 7), for both Market fixtures: the
@@ -312,5 +313,51 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     expect(Number(options.rows[0]?.n)).toBe(
       ZZ_ATTRIBUTE_DEFINITIONS.reduce((sum, entry) => sum + entry.options.length, 0),
     );
+  });
+
+  it('builds the schema of a seeded family from the published revisions, and none for an unknown one (4c-5b)', async () => {
+    await app.get(SeedAttributes).execute(seedContext(), {});
+    const persistence = createPersistence();
+    try {
+      const attributes = new PrismaAttributeRepository(persistence.service);
+      const load = (familyCode: string) =>
+        persistence.unitOfWork
+          .run(market, async () => ({
+            ok: true as const,
+            value: await attributes.loadSchema(market, familyCode),
+          }))
+          .then((result) => (result.ok ? result.value : null));
+      expect(await load('no-such-family')).toBeNull();
+      const seeded = ZZ_ATTRIBUTE_FAMILIES[0]!;
+      const schema = await load(seeded.code);
+      if (code !== 'ZZ') {
+        expect(schema).toBeNull();
+        return;
+      }
+      expect(schema?.schemaRef.familyCode).toBe(seeded.code);
+      expect(schema?.fields.map((field) => field.code).sort()).toEqual(
+        seeded.groups.flatMap((group) => group.attributes.map((entry) => entry.code)).sort(),
+      );
+      expect(schema?.schemaRef.definitionRevisionIds).toHaveLength(schema?.fields.length ?? -1);
+
+      // A newer revision of the family that is not the published one changes nothing (3.3 rule 1).
+      const published = await sql.query<{ id: string; family_id: string }>(
+        `SELECT r.id, r.family_id FROM catalog.attribute_families f
+           JOIN catalog.attribute_family_revisions r
+             ON r.market_id = f.market_id AND r.id = f.published_revision_id
+          WHERE f.market_id = $1 AND f.code = $2`,
+        [market.marketId, seeded.code],
+      );
+      await sql.query(
+        `INSERT INTO catalog.attribute_family_revisions
+           (id, market_id, tenant_id, family_id, revision_no, groups, author_kind, created_at)
+         VALUES ($1, $2, $3, $4, 99, '[]', 'seed', $5)`,
+        [uuid7(), market.marketId, market.tenantId, published.rows[0]!.family_id, T0],
+      );
+      const again = await load(seeded.code);
+      expect(again?.schemaRef.familyRevisionId).toBe(published.rows[0]!.id);
+    } finally {
+      await persistence.close();
+    }
   });
 });

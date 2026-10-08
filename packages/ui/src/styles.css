@@ -6,6 +6,9 @@
 
 @theme inline {
   --color-*: initial;
+  --radius-sm: var(--mp-radius-chip);
+  --radius-md: var(--mp-radius-control);
+  --radius-lg: var(--mp-radius-card);
   --color-page: var(--mp-color-bg-page);
   --color-surface: var(--mp-color-bg-surface);
   --color-subtle: var(--mp-color-bg-subtle);
@@ -34,6 +37,14 @@
   --color-info-fg: var(--mp-color-status-info-fg);
   --color-neutral-bg: var(--mp-color-status-neutral-bg);
   --color-neutral-fg: var(--mp-color-status-neutral-fg);
+  --color-showcase-seller: var(--mp-color-bg-auth-showcase-seller);
+  --color-showcase-admin: var(--mp-color-bg-auth-showcase-admin);
+  --color-on-showcase: var(--mp-color-text-on-showcase);
+  --color-on-showcase-muted: var(--mp-color-text-on-showcase-muted);
+  --color-critical-solid: var(--mp-color-status-critical-solid);
+  --color-critical-border: var(--mp-color-status-critical-border);
+  --color-info-border: var(--mp-color-border-info);
+  --color-info-banner: var(--mp-color-bg-info-banner);
 }
 
 @source './';

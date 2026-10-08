@@ -15,8 +15,19 @@ import type { AttributeFamilyState } from './attribute-family';
  * caller never validates against a partial form.
  */
 export function buildAttributeSchema(
-  family: AttributeFamilyState,
-  definitions: readonly AttributeDefinitionState[],
+  family: Pick<AttributeFamilyState, 'code' | 'revisionId' | 'groups'>,
+  definitions: readonly Pick<
+    AttributeDefinitionState,
+    | 'code'
+    | 'status'
+    | 'revisionId'
+    | 'dataType'
+    | 'localizable'
+    | 'isVariantOption'
+    | 'material'
+    | 'bounds'
+    | 'options'
+  >[],
 ):
   | { readonly ok: true; readonly schema: AttributeSchema }
   | { readonly ok: false; readonly missingCodes: readonly string[] } {

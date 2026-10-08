@@ -132,7 +132,8 @@ describe.each(TEST_MARKETS)(
         sellerId: null,
         handler: configurableProductType,
         familyCode: 'default',
-        productCode: await inUnit(market, () => products.nextProductCode(market)),
+        // Not the shared counter: a parallel spec asserts consecutive codes from it.
+        productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
         variantId: null,
         now: T0,
       });
