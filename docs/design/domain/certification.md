@@ -172,7 +172,7 @@ gives, kept in a clear column; the address itself is never decrypted for this), 
 boundary is the **earliest of three**: the boundary stored at approval (in the chosen zone then in
 force), the boundary in the current chosen zone, and the boundary in the current address zone. A
 missing `zone` or a missing `addressZone` is "no zone" (`seller-zone-missing`). The stored boundary
-stays one instant per submission, so the data design is unchanged. This is a change to the fixed
+stays one instant per submission, so the data design is unchanged. Residual risk (Ali): the stored boundary uses the chosen zone at approval, not the earlier of the two zones; only a reviewed address change could exploit that, and the evaluation-time address zone covers it. This is a change to the fixed
 contract and merges before any seller-chosen zone can reach an approved revision (before `sellers`
 slice 2).
 
@@ -474,9 +474,9 @@ Rules:
    context), so each basis is decided from one statement and no security decision combines facts
    read by two statements (PP 3.1 row 9). Mojtaba writes the three statements (16.1). One
    named exception: the seller zone of step 1 comes from a separate `sellers` read. It is safe
-   because T2 takes the earliest of the boundary stored at approval and the boundaries in the
-   current chosen and address zones, so a stale current zone can never move a boundary later than
-   the one stored at approval; the staleness lasts at most the gap between the two reads of one request (Hassan
+   because both current zones (`zone`, `addressZone`) come from one `approvedSellerZones` read and
+   T2 takes the earliest of three boundaries (stored at approval, chosen zone, address zone), so a
+   stale answer can never move a boundary later than the stored one; the staleness lasts at most the gap between the two reads of one request (Hassan
    L10, `sellers` mini-review 19).
 3. **No model** on this path (ADR-0019 decision 10; AC 25). The files of this path are not on the
    `platform/ai` allow-list.
