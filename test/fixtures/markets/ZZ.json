@@ -46,6 +46,9 @@
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
           "sign-in": "https://seller.zz.test/konto/anmelden",
           "reset-password": "https://seller.zz.test/konto/passwort?ref=mail"
+        },
+        "admin": {
+          "seller-review-queue": "https://admin.zz.test/haendler/pruefung?ref=mail"
         }
       }
     },
