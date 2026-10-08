@@ -21,8 +21,9 @@ export type ApprovedSellerZonesFailure = SellerIdsRefused;
  * `{ zone: null, addressZone: null }` and nothing is read. Slice 5 replaces this body with the
  * read of data design A18 (the approved pointer and revision, one read-only unit, `marketId` from
  * the `MarketContext`), taking the context as a parameter, and keeps the empty list and the
- * parse before any read. `addressZone` is then derived on the server from the approved
- * revision's address only, never from a client or an admin.
+ * parse before any read. `addressZone` is read from the revision's clear address zone column
+ * (derived on the server at every address save, from the operating address only, and copied at
+ * submit); nothing is derived and no key is unwrapped at read time.
  */
 export function approvedSellerZonesFor(
   sellerIds: readonly string[],

@@ -61,7 +61,9 @@ export class SellersFacadeImplementation implements SellersFacade {
   approvedSellerZones(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<ApprovedSellerZonesMap, AccessDenied | SellersValidationFailed>> {
+  ): Promise<
+    Result<ApprovedSellerZonesMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  > {
     const useCase =
       context.actor.kind === 'system'
         ? this.useCases.approvedSellerZonesSystem

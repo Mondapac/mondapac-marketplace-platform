@@ -1,4 +1,5 @@
 import {
+  testAuthenticatedActor,
   SequenceIdGenerator,
   FixedClock,
   testCallContext,
@@ -93,6 +94,75 @@ describe.each(['AU', 'ZZ'])('approvedSellerZones contract, Market %s', (code) =>
 
     expect(fromRequest.ok && fromJob.ok).toBe(true);
     expect(bytes(fromJob as never)).toBe(bytes(fromRequest as never));
+  });
+
+  it('gives byte-identical answers under every actor kind and for ids of the other Market', async () => {
+    const owned = ids.next<'Seller'>();
+    const other = ids.next<'Seller'>();
+    // An id issued for the other Market is only an id here: its entry is the same as any other.
+    const foreign = ids.next<'Seller'>();
+    const batch = [owned, other, foreign, '0197f2a0-0000-7000-8000-000000000000'];
+    const person = (population: 'seller' | 'admin', sellerId: typeof owned | null) =>
+      testAuthenticatedActor(market(), {
+        population,
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId,
+      });
+    const actors = [
+      'anonymous',
+      'system',
+      person('seller', owned),
+      person('seller', other),
+      person('admin', null),
+    ] as const;
+
+    const answers: string[] = [];
+    for (const actor of actors) {
+      const ran: string[] = [];
+      const traced = new SellersFacadeImplementation({
+        sellerSummaries: undefined as never,
+        sellerSummariesSystem: undefined as never,
+        sellingEligibility: undefined as never,
+        sellingEligibilitySystem: undefined as never,
+        approvedSellerZones: {
+          execute: (c: never, i: never) => (ran.push('anonymous'), request.execute(c, i)),
+        } as never,
+        approvedSellerZonesSystem: {
+          execute: (c: never, i: never) => (ran.push('system'), jobs.execute(c, i)),
+        } as never,
+      });
+      const result = await traced.approvedSellerZones(
+        testCallContext(market(), actor),
+        batch as never,
+      );
+      // Facade level: the system case runs for the system actor only.
+      expect(ran).toEqual([actor === 'system' ? 'system' : 'anonymous']);
+      expect(result.ok).toBe(true);
+      answers.push(JSON.stringify(result.ok ? [...result.value] : result));
+    }
+    expect(new Set(answers).size).toBe(1);
+  });
+
+  it('refuses an upper-case id whole, so ids differing only in case never collapse', async () => {
+    const a = ids.next<'Seller'>();
+
+    const refused = await request.execute(anonymous(), { sellerIds: [a, a.toUpperCase()] });
+
+    expect(refused).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'format' }] },
+    });
+  });
+
+  it('refuses a non-array input whole', async () => {
+    for (const sellerIds of [null, 'text', {}, 7]) {
+      const refused = await request.execute(anonymous(), { sellerIds: sellerIds as never });
+      expect(refused).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'length' }] },
+      });
+    }
   });
 
   it('keeps each case to its own actor kind (the facade picks the pair)', async () => {

@@ -71,7 +71,9 @@ export interface SellersFacade {
   approvedSellerZones(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<ApprovedSellerZonesMap, AccessDenied | SellersValidationFailed>>;
+  ): Promise<
+    Result<ApprovedSellerZonesMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
 }
 
 /** Nest token of the {@link SellersFacade}, provided and exported by `SellersModule`. */
