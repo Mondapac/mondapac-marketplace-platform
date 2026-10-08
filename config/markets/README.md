@@ -69,11 +69,21 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   identity design 6.8, HF2). It also checks that `keepSignedInSessions.seller.absoluteLifetimeMinutes` is greater than
   `sessions.seller.absoluteLifetimeMinutes` (1-B). Later identity slices add their
   values here.
-- `allowedOrigins`: the browser origins (`scheme://host[:port]`, no path) that may send a
-  request with an unsafe method to this Market (identity design 6.4, HF14). A request whose
-  `Origin` header is not listed, or whose `Sec-Fetch-Site` is not `same-origin`, is refused with
-  `request.csrf`; a request without either header is not refused by this check. Empty for AU
-  until the hosts of the panels are decided (D2).
+- `allowedOrigins`: one list per route population, `{ "admin": [...], "seller": [...],
+  "customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
+  3). Each list holds at most 20 exact browser origins (`scheme://host[:port]`, no path, none
+  twice) that may send a request with an unsafe method to that population's routes; an admin
+  route checks only `admin`, a seller route only `seller`, a customer route only `customer`. A
+  request whose `Origin` is not on its route's list, or whose `Sec-Fetch-Site` is not
+  `same-origin`, is refused with `request.csrf`; an empty list refuses every request that
+  carries `Origin` (fail closed). Admin and seller routes also refuse a request without both
+  headers (a rule in code, not here); customer routes pass a client that sends neither. Origins
+  are https, plain http only for a loopback host (`localhost`, `*.localhost`, `127.0.0.1`,
+  `[::1]`, the same rule as the link pages). Start-up refuses: two populations' lists sharing a
+  host name (another port or scheme on the same host counts); a list sharing a host name with
+  another population's `identity.links.targets`; a non-empty list that lacks the origin of one
+  of its own population's link pages. AU has three empty lists until the panel and storefront
+  hosts are decided (D2, Kazem fills the admin and seller lists).
 
 Tax, payment, carrier, certification-issuer and legal-entity settings are added by the modules
 that own them, after their readiness gates (ADR-0013).
