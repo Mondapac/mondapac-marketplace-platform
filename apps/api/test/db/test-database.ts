@@ -48,6 +48,7 @@ function exported(
     | 'TEST_INVENTORY_OWNER_DATABASE_URL'
     | 'TEST_AUDIT_DATABASE_URL'
     | 'TEST_AUDIT_OWNER_DATABASE_URL'
+    | 'TEST_ADMIN_TEAM_DATABASE_URL'
     | 'TEST_CERTIFICATION_DATABASE_URL'
     | 'TEST_CERTIFICATION_OWNER_DATABASE_URL',
 ): string {
@@ -145,6 +146,14 @@ export function auditTestDatabaseUrl(): string {
 
 export function auditOwnerTestDatabaseUrl(): string {
   return exported('TEST_AUDIT_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that admin-roles.db-spec.ts changes admin roles and statuses on, as the application
+ * login: the HF8 count of active Platform Administrators sees no other file's admins.
+ */
+export function adminTeamTestDatabaseUrl(): string {
+  return exported('TEST_ADMIN_TEAM_DATABASE_URL');
 }
 
 export { REPO_ROOT };

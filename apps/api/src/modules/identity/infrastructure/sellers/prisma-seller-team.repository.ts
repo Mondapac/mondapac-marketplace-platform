@@ -328,6 +328,37 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
     return row !== null;
   }
 
+  async activeHoldersOf(market: MarketContext, roleId: Id<'Role'>): Promise<Id<'Account'>[]> {
+    // The same read as hasActiveHolder: `(market_id, role_id)`, then the account by its key
+    // with the status and verification filter (data design 3.9).
+    const rows = await this.prisma.tx(market).identityRoleAssignment.findMany({
+      where: {
+        marketId: market.marketId,
+        roleId,
+        account: { status: 'active', emailVerifiedAt: { not: null } },
+      },
+      select: { accountId: true },
+    });
+    return rows.map((row) => row.accountId as Id<'Account'>);
+  }
+
+  async save(market: MarketContext, assignment: RoleAssignment): Promise<void> {
+    const state = assignment.state;
+    const expected = assignment.persistedVersion;
+    if (expected === null) throw new Error('save: the assignment was never stored; use add');
+    if (state.version === expected) return;
+    const { count } = await this.prisma.tx(market).identityRoleAssignment.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: expected },
+      data: {
+        roleId: state.roleId,
+        assignedByAccountId: state.assignedByAccountId,
+        assignedAt: toDate(state.assignedAt),
+        version: state.version,
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('role-assignment', state.id);
+  }
+
   async add(market: MarketContext, assignment: RoleAssignment): Promise<void> {
     const state = assignment.state;
     await this.prisma.tx(market).identityRoleAssignment.create({

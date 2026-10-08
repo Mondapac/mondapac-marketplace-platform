@@ -5,7 +5,7 @@ import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
-import { InvitationIssuedAudit } from '../../domain/audit';
+import { InvitationIssuedAudit, InvitationRevokedAudit } from '../../domain/audit';
 import { parseEmailAddress } from '../../domain/email-address';
 import { Invitation } from '../../domain/invitation';
 import type { AccountRepository } from '../ports/account.repository';
@@ -65,7 +65,9 @@ export interface IssueFirstAdminInvitationDependencies {
  * dispatched and is older than the admin lifetime, is revoked and replaced in the same unit;
  * any other pending one answers `invitation.already-pending`. The unit records
  * `identity.invitation-issued.v1` (the mail handler mints the token and dispatches it, 6.6) and
- * writes `identity.invitation.issued` as `SYSTEM`. The address is never logged or audited.
+ * writes `identity.invitation.issued` as `SYSTEM`; a replaced invitation records
+ * `identity.invitation-revoked.v1` and `identity.invitation.revoked` as `SYSTEM` (slice 8b). The
+ * address is never logged or audited.
  */
 export class IssueFirstAdminInvitation extends UseCase<
   IssueFirstAdminInvitationInput,
@@ -122,6 +124,15 @@ export class IssueFirstAdminInvitation extends UseCase<
             }
             pending.revoke(now);
             await this.deps.invitations.save(market, pending);
+            // Slice 8b: a revocation records `identity.invitation-revoked.v1` and, as every
+            // revocation, its audit row, here as SYSTEM (Mohammad C3 on PR #187).
+            await this.deps.outbox.append(context, pending.pendingEvents);
+            await this.deps.audit.record(
+              context,
+              InvitationRevokedAudit.entry(pending.state.id, {
+                after: { kind: pending.state.kind, roleId: pending.state.roleId },
+              }),
+            );
             replaced = true;
           }
           const invitation = Invitation.issue({

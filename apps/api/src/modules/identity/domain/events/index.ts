@@ -175,6 +175,65 @@ export const SecondFactorChanged = defineEvent({
 });
 
 /**
+ * An admin or customer account was disabled by an admin (identity design 3.1, 8.2; slice 8b). In
+ * the same unit every session of the account was revoked and its open challenges voided. Ids and
+ * a code only.
+ */
+export const AccountDisabled = defineEvent({
+  type: 'identity.account-disabled.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    population: eventField.enumOf(POPULATIONS),
+  },
+});
+
+/** A disabled account was enabled again by an admin (identity design 3.1, 8.2; slice 8b). */
+export const AccountEnabled = defineEvent({
+  type: 'identity.account-enabled.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    population: eventField.enumOf(POPULATIONS),
+  },
+});
+
+/** The two scopes of a role (identity design 2.1, R2), as an event names them. */
+export const ROLE_ASSIGNMENT_SCOPES = ['platform', 'seller'] as const;
+
+/**
+ * An account's role was changed by another account (identity design 8.2; slice 8a-2 for admins,
+ * 11 for Staff). Not recorded for a founding assignment or for the assignment an invitation's
+ * acceptance creates: `seller-registered` and `invitation-accepted` name those. Ids and codes
+ * only, never a role's name (R5). `sellerId` is null in platform scope.
+ */
+export const AccountRoleChanged = defineEvent({
+  type: 'identity.account-role-changed.v1',
+  aggregateType: 'role-assignment',
+  payload: {
+    accountId: eventField.id(),
+    scope: eventField.enumOf(ROLE_ASSIGNMENT_SCOPES),
+    sellerId: eventField.optional(eventField.id()),
+    previousRoleId: eventField.id(),
+    roleId: eventField.id(),
+  },
+});
+
+/**
+ * A pending invitation was revoked by the inviter's side (identity design 3.4, 8.2; slice 8b), or
+ * replaced by a new issue for the same address (item G). Ids and codes only.
+ */
+export const InvitationRevoked = defineEvent({
+  type: 'identity.invitation-revoked.v1',
+  aggregateType: 'invitation',
+  payload: {
+    invitationId: eventField.id(),
+    kind: eventField.enumOf(INVITATION_KINDS),
+    sellerId: eventField.optional(eventField.id()),
+  },
+});
+
+/**
  * Every event identity publishes, declared with `defineEvent` (platform persistence design
  * 5.3; identity design 8.2) and registered with the event catalogue by `IdentityModule`. Each
  * new type changes the catalogue snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -189,4 +248,8 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   InvitationIssued,
   InvitationAccepted,
   SecondFactorChanged,
+  AccountDisabled,
+  AccountEnabled,
+  AccountRoleChanged,
+  InvitationRevoked,
 ];

@@ -64,6 +64,15 @@ import { SIGN_IN_CHALLENGE_REPOSITORY } from './application/ports/sign-in-challe
 import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.repository';
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
 import { AcceptAdminInvitation } from './application/use-cases/accept-admin-invitation.use-case';
+import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
+import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
+import { DisableCustomerAccount } from './application/use-cases/disable-customer-account.use-case';
+import { EnableAdminAccount } from './application/use-cases/enable-admin-account.use-case';
+import { EnableCustomerAccount } from './application/use-cases/enable-customer-account.use-case';
+import { InviteAdmin } from './application/use-cases/invite-admin.use-case';
+import { ResendAdminInvitation } from './application/use-cases/resend-admin-invitation.use-case';
+import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other-admin-second-factor.use-case';
+import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
 import { ConfirmSecondFactorEnrolment } from './application/use-cases/confirm-second-factor-enrolment.use-case';
@@ -121,6 +130,7 @@ import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { AdminPasswordController } from './presentation/admin-password.controller';
 import { AdminSecondFactorController } from './presentation/admin-second-factor.controller';
 import { AdminSessionController } from './presentation/admin-session.controller';
+import { AdminTeamController } from './presentation/admin-team.controller';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
 import { CustomerPasswordController } from './presentation/customer-password.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
@@ -236,6 +246,11 @@ function useCaseProvider<D, U>(
  * `AuthorisationCheck`, the reviewer read and the actor summary alike; checks the seed's keys at
  * boot; seeds the default roles and applies newer seed versions (`SeedRoles`); and binds
  * `membershipOf` for other accounts (`TeamMembershipOf`, `identity.team-member.view`).
+ *
+ * Slices 8a-2 and 8b bind the admin team: an admin's role change (`AssignAdminRole`, HF8), admin
+ * invitations with an inviter (issue, resend, revoke; the acceptance re-checks the inviter),
+ * disabling and enabling admin and customer accounts, and the admin-initiated second-factor
+ * reset, behind one controller (`AdminTeamController`).
  */
 @Module({
   controllers: [
@@ -249,6 +264,7 @@ function useCaseProvider<D, U>(
     AdminSessionController,
     AdminSecondFactorController,
     AdminPasswordController,
+    AdminTeamController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('identity'),
@@ -705,6 +721,9 @@ function useCaseProvider<D, U>(
       secrets: true,
       hasher: true,
       commonPasswords: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
       outbox: true,
       audit: true,
       policy: true,
@@ -714,6 +733,121 @@ function useCaseProvider<D, U>(
     useCaseProvider(ResetAdminSecondFactor, {
       unitOfWork: true,
       accounts: true,
+      factors: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AssignAdminRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(InviteAdmin, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      invitations: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ResendAdminInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      invitations: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(RevokeAdminInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      invitations: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(DisableAdminAccount, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(EnableAdminAccount, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(DisableCustomerAccount, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(EnableCustomerAccount, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(ResetOtherAdminSecondFactor, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
       factors: true,
       sessions: true,
       challenges: true,
