@@ -1017,13 +1017,13 @@ async function updateScenario(label, opts, from) {
     check(!!grower && !!mover && grower.height < 900 - 0.5, 'the 1.8.0 file has a Panel page made shorter than 900 and a frame to move by hand');
     if (grower && mover) { mover.x = grower.x; mover.y = grower.y + grower.height + 20; }
     const pos0 = posOf(Q);
-    const heights0 = new Map(shellFrames(Q).map((f) => [f.id, f.height])); const nCb0 = cbParts(Q).set.children.map((c) => c.id).join();
+    const heights0 = new Map(shellFrames(Q).map((f) => [f.id, f.height])); const nCb0 = cbParts(Q).set.children.map((c) => c.id).join(); const ph11 = phoneMains(Q).length;
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.0 file ' + tag11 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
     // The 1.8.2 layout fixes (Input, AuthShowcase, Starter sections) run in the same update; scenario 12 checks them.
     const own181 = r.done ? r.done.added.filter((l) => !/^(Input|AuthShowcase) (variants laid out|documentation block)|^section .* moved /.test(l)) : [];
-    check(r.done && own181.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'].concat(ADDED_183, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    check(r.done && own181.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'].concat(ADDED_183, FIXED_184(ph11), ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
     state181(Q, '1.8.0 file repaired ' + tag11, true);
     state183(Q, '1.8.0 file updated ' + tag11);
     const gone11 = [...ids0.keys()].filter((id) => !Q.byId.has(id));
@@ -1231,7 +1231,10 @@ async function updateScenario(label, opts, from) {
     const ph0 = phoneMains(Q).length;
     check(!r.err && Q.ROOT.getPluginData('version') === '1.8.3' && ringStyles(Q).length === 2 && ringStyles(Q).every((st) => /^0(,0)*$/.test(spreads(st))) && ph0 >= 10 && phoneMains(Q).every((m) => m.overflowDirection === 'NONE'), 'the 1.8.3 plugin builds the starting file as the real one is: both ring styles at spread 0, no phone Main scrolls (' + ph0 + ' phone screens) ' + tag14 + (r.err ? ': ' + r.err.message : ''));
     // As in the real Audit: a seller phone list longer than its screen, cut at the bottom of Main (two more member cards here).
+    // The mock does not lay out, so the cards and Main get the bounds they would have on a 360 x 780 screen.
     const tariq = sellerPhoneMain(Q).children.find((c) => c.name === 'Tariq Nasser'); tariq.clone(); tariq.clone();
+    sellerPhoneMain(Q)._abb = { x: 0, y: 56, width: 360, height: 660 };
+    sellerPhoneMain(Q).children.filter((c) => c.name === 'Tariq Nasser').forEach((c, i) => { c._abb = { x: 16, y: 580 + i * 160, width: 328, height: 148 }; });
     load(Q, CODE);
     r = await send(Q, { type: 'audit' }); let rep = r.done ? r.done.report : [];
     check(rep.some((l) => /Shared · Members · Seller \(phone\) › Main › Tariq Nasser \+\d+px clipped/.test(l)) && rep.includes('⚠ Effect styles that differ from the library spec: 2 (2 unique)') && rep.includes('    Focus/Ring (layer 1 spread 0, spec 2; layer 2 spread 0, spec 4)') && rep.includes('    Ring/Urgent (layer 1 spread 0, spec 3)'), 'before the update, Audit file names both real-Figma findings: the clipped seller phone card and the two ring styles at spread 0');
@@ -1272,9 +1275,10 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'build' });
     check(!r.err && ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join()) && phoneMains(Q).length >= 10 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'a new 1.8.4 build has the ring spreads and scrolling phone screens');
     // Audit: an entry past the 25th is announced, and a layer sticking out sideways from a scrolling Main is still counted
-    const box = Q.figma.createFrame(); box.name = 'Overflow box'; box.fills = []; box.layoutMode = 'VERTICAL'; box.resize(100, 600);
-    for (let i = 0; i < 30; i++) { const k = Q.figma.createFrame(); k.name = 'wide ' + i; k.fills = []; k.resize(200, 10); box.appendChild(k); }
+    const box = Q.figma.createFrame(); box.name = 'Overflow box'; box.fills = []; box.layoutMode = 'VERTICAL'; box.resize(100, 600); box._abb = { x: 0, y: 0, width: 100, height: 600 };
+    for (let i = 0; i < 30; i++) { const k = Q.figma.createFrame(); k.name = 'wide ' + i; k.fills = []; k.resize(200, 10); box.appendChild(k); k._abb = { x: 0, y: i * 10, width: 200, height: 10 }; }
     const wide = Q.figma.createFrame(); wide.name = 'too wide'; wide.fills = []; wide.resize(500, 20); sellerPhoneMain(Q).appendChild(wide);
+    sellerPhoneMain(Q)._abb = { x: 0, y: 56, width: 360, height: 660 }; wide._abb = { x: 16, y: 100, width: 500, height: 20 };
     r = await send(Q, { type: 'audit' }); const rep = r.done ? r.done.report : [];
     const i0 = rep.findIndex((l) => /^⚠ Layers sticking out of their parent: 31 \(31 unique\)$/.test(l));
     check(i0 >= 0 && rep.slice(i0 + 1, i0 + 26).every((l) => /^ {4}\S/.test(l) && !/^ {4}…/.test(l)) && rep[i0 + 26] === '    … and 6 more', 'Audit file lists 25 entries and then says how many more there are (' + (i0 >= 0 ? rep[i0 + 26] : rep.filter((l) => /^⚠/.test(l)).join(' | ')) + ')');

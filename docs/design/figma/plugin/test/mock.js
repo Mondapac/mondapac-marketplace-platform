@@ -189,7 +189,7 @@ function makeFigma(opts) {
       this._fills = []; this._strokes = []; this._effects = []; this._bv = {}; this._refs = null; this._modes = {};
       this.strokeWeight = 1; this._strokeAlign = 'INSIDE'; this.dashPattern = []; this.opacity = 1; this.constraints = { horizontal: 'MIN', vertical: 'MIN' }; this._rot = 0;
       this._layoutPositioning = 'AUTO'; this._fillH = false; this._fillV = false;
-      ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_minH', '_ovf', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
+      ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_minH', '_ovf', '_abb', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
       if (AUTO.has(type)) Object.assign(this, { _layoutMode: 'NONE', _pAxis: 'FIXED', _cAxis: 'FIXED', paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, itemSpacing: 0, _counterAxisSpacing: 0, _wrap: 'NO_WRAP', _pAlign: 'MIN', _cAlign: 'MIN', clipsContent: true });
     }
     _isAuto() { return AUTO.has(this.type) && this.layoutMode !== 'NONE'; }
@@ -202,6 +202,8 @@ function makeFigma(opts) {
     set fills(a) { if (a === MIXED) fail('Cannot set fills to mixed'); if (!Array.isArray(a)) fail('fills must be an array'); a.forEach(checkPaint); this._fills = deep(a); }
     get strokes() { return Object.freeze(deep(this._strokes)); }
     set strokes(a) { if (!Array.isArray(a)) fail('strokes must be an array'); a.forEach(checkPaint); this._strokes = deep(a); }
+    // The mock does not lay out, so a node has no absolute bounds unless a test gives them (node._abb = { x, y, width, height }).
+    get absoluteBoundingBox() { return this._abb ? deep(this._abb) : null; }
     // Prototype scrolling: frames, components and instances only.
     get overflowDirection() { return AUTO.has(this.type) ? this._ovf || 'NONE' : undefined; }
     set overflowDirection(v) { if (!AUTO.has(this.type) || this.type === 'COMPONENT_SET') fail('overflowDirection not supported on ' + this.type); if (['NONE', 'HORIZONTAL', 'VERTICAL', 'BOTH'].indexOf(v) < 0) fail('overflowDirection ' + v); this._ovf = v; }

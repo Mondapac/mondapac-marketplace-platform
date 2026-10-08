@@ -62,6 +62,7 @@ The owner's file got 1.8.1, 1.8.2 and 1.8.3 in one sitting on 8 Oct 2026: Audit 
 - **Phone screens scroll.** The two overflows were the last card of `Shared · Members · Seller (phone)` (+38 px) and `Shared · Roles · Seller (phone)` (+60 px), cut at the bottom of the clipped Main. They were probably there since 1.8.0: the Audit listed only the first 25 entries of each kind. A phone page scrolls, so Main gets `overflowDirection` VERTICAL (also in prototypes) and the Audit no longer counts content below the fold of a clipped frame that scrolls vertically; anything sticking out at the top or the sides still counts. The admin phone members screen keeps its 3 cards (1.8.1).
 - **Audit.** After 25 entries of a kind it prints `… and N more`, and a new line checks that the library's effect styles match the spec (layer count, type, offset, blur, spread; colours are bound and left out).
 - The phone role editor (1.8.3) hugs its whole page and clips nothing, so it is left as it is.
+- **Test limit.** The mock does not lay out, so its nodes have no `absoluteBoundingBox` and the overflow part of Audit file never fires in `node test/run.js`; only the real file shows overflows. Scenario 14 gives the nodes it checks their bounds (`node._abb`) to test the scrolling rule and the `… and N more` line. The other Audit checks (paints, text styles, descriptions, focus rings, effect styles) run on every scenario.
 
 ### 1.8.3 Panel follow-up: what is drawn and what is left (TODO)
 
