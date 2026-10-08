@@ -61,17 +61,14 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   120), which of them is the `postcodeField` and the optional `regionField`, the
   `postcodePattern` (a regular expression) and the `regions` list. `regionField` and a non-empty
   `regions` go together.
-- `timezones`: `byRegion` names an IANA zone for exactly the regions of `address.regions`, and
-  `postcodeExceptions` lists postcodes (or same-length digit ranges) whose zone differs from their
-  region's. Never an offset (ADR-0005). An entry is an exact postcode (letters and digits, no
-  hyphen) or a digit range with ends of equal length, low to high, the same grammar as
-  `config/service-areas/`. A Market whose real postcodes contain a hyphen cannot list them yet;
-  the grammar grows when such a Market is added. Every exception must also match
-  `postcodePattern`, and no postcode may appear in two exceptions.
-
-The AU `postcodeExceptions` list is empty until the zone table of sellers spike 3 (a source whose
-licence allows a checked-in file) is done: Broken Hill, Lord Howe Island and Eucla are among the
-postcodes it will name. Until then sellers there are outside the open ServiceArea anyway.
+- `timezones`: `byRegion` names, for exactly the regions of `address.regions`, a `default` IANA zone
+  (the zone a saved address starts with) and the closed `selectable` list the seller may choose
+  from; `default` is one of `selectable`. A zone is a canonical IANA ID of the runtime zone
+  database (a `backward` link such as `Australia/NSW` and `Etc/*` are refused at boot) and never
+  an offset (ADR-0005). The lists follow tzdb `zone1970.tab` (public domain) and are reviewed like
+  any config change; the boot check cannot tell whether a listed zone belongs to the Market, so
+  the review does. The seller chooses within the list (sellers spike 3 record, mini-review
+  2026-10-08); there is no postcode-exception table and no Google-derived data.
 
 `postcodePattern` runs on user input, so it must be anchored with `^` and `$`, at most 64
 characters, with no `*`, `+`, lookaround or back-reference and only bounded `{n}` or `{n,m}`

@@ -332,8 +332,10 @@ describe('loadMarketConfigs', () => {
         regions: ['N', 'S'],
       },
       timezones: {
-        byRegion: { N: 'Pacific/Auckland', S: 'Pacific/Auckland' },
-        postcodeExceptions: [{ postcodes: ['90000-90010', '90020'], timezone: 'Pacific/Chatham' }],
+        byRegion: {
+          N: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland', 'Pacific/Chatham'] },
+          S: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland'] },
+        },
       },
     };
     const withSellers = (sellers: unknown) => directoryWith({ 'QQ.json': { ...VALID, sellers } });
@@ -375,18 +377,60 @@ describe('loadMarketConfigs', () => {
       ],
       [
         'an unknown time zone',
-        (c: typeof SELLERS) => void (c.timezones.byRegion.N = 'Mars/Olympus'),
-        /byRegion/,
+        (c: typeof SELLERS) => void (c.timezones.byRegion.N.selectable[1] = 'Mars/Olympus'),
+        /IANA time zone/,
+      ],
+      [
+        'a default that is not in the selectable list',
+        (c: typeof SELLERS) => void (c.timezones.byRegion.S.default = 'Pacific/Chatham'),
+        /default must be one of selectable/,
+      ],
+      [
+        'a selectable list that repeats a zone',
+        (c: typeof SELLERS) => void c.timezones.byRegion.S.selectable.push('Pacific/Auckland'),
+        /must not repeat/,
+      ],
+      [
+        'an empty selectable list',
+        (c: typeof SELLERS) => void (c.timezones.byRegion.S.selectable = []),
+        /selectable/,
+      ],
+      [
+        'a backward link instead of the canonical zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Australia/NSW';
+          c.timezones.byRegion.S.selectable = ['Australia/NSW'];
+        },
+        /IANA time zone/,
+      ],
+      [
+        'an Etc zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Etc/GMT+5';
+          c.timezones.byRegion.S.selectable = ['Etc/GMT+5'];
+        },
+        /IANA time zone|Etc/,
+      ],
+      [
+        'an offset instead of a zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = '+10:00';
+          c.timezones.byRegion.S.selectable = ['+10:00'];
+        },
+        /IANA time zone/,
       ],
       [
         'a region without a zone',
-        (c: typeof SELLERS) => void delete (c.timezones.byRegion as Record<string, string>).S,
+        (c: typeof SELLERS) => void delete (c.timezones.byRegion as Record<string, unknown>).S,
         /exactly the regions/,
       ],
       [
         'a zone for an unknown region',
         (c: typeof SELLERS) =>
-          void ((c.timezones.byRegion as Record<string, string>).X = 'Asia/Tokyo'),
+          void ((c.timezones.byRegion as Record<string, unknown>).X = {
+            default: 'Asia/Tokyo',
+            selectable: ['Asia/Tokyo'],
+          }),
         /exactly the regions/,
       ],
       [
@@ -413,36 +457,6 @@ describe('loadMarketConfigs', () => {
         'a region field without regions',
         (c: typeof SELLERS) => void (c.address.regions = []),
         /regionField/,
-      ],
-      [
-        'a malformed exception postcode',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['9-!']),
-        /not a postcode/,
-      ],
-      [
-        'an exception range with ends of different length',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['999-9999']),
-        /same length, low to high/,
-      ],
-      [
-        'an exception range written high to low',
-        (c: typeof SELLERS) =>
-          void (c.timezones.postcodeExceptions[0]!.postcodes = ['90010-90000']),
-        /same length, low to high/,
-      ],
-      [
-        'an exception postcode the pattern does not accept',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['ABC']),
-        /must match address.postcodePattern/,
-      ],
-      [
-        'two exceptions that claim one postcode',
-        (c: typeof SELLERS) =>
-          void c.timezones.postcodeExceptions.push({
-            postcodes: ['90005'],
-            timezone: 'Pacific/Auckland',
-          }),
-        /only one exception/,
       ],
       [
         'a pattern that backtracks catastrophically',

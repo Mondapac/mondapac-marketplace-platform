@@ -3,12 +3,6 @@ import path from 'node:path';
 import { parseMarketId } from '@mondapac/shared-kernel';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
-import {
-  InvalidPostcodeEntryError,
-  parsePostcodeEntries,
-  postcodesClash,
-  type ParsedPostcodes,
-} from './postcode-entry';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
 const TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
@@ -306,20 +300,38 @@ const addressFormatSchema = z
   });
 
 /**
- * The `timezones` of the `sellers` section (design 4.1, `TimezoneResolver`): region to IANA zone,
- * with postcodes whose zone differs from their region's. Never an offset (ADR-0005 decision 1).
+ * One region's zones (sellers design 4.1; spike 3 record, mini-review 2026-10-08): the zone a
+ * saved address starts with and the closed list the seller may choose from. `default` is a
+ * member of `selectable`. A zone is a canonical IANA ID of the runtime zone database (the
+ * `Intl` list holds no `backward` link such as `Australia/NSW`); `Etc/*` is refused. Never an
+ * offset (ADR-0005 decision 1).
  */
+const selectableZone = timeZone.refine((value) => !value.startsWith('Etc/'), 'must not be Etc/*');
+const regionZonesSchema = z
+  .strictObject({
+    default: selectableZone,
+    selectable: z.array(selectableZone).min(1).max(20),
+  })
+  .superRefine((zones, context) => {
+    if (!zones.selectable.includes(zones.default)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'default must be one of selectable',
+        path: ['default'],
+      });
+    }
+    if (new Set(zones.selectable).size !== zones.selectable.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'selectable must not repeat a zone',
+        path: ['selectable'],
+      });
+    }
+  });
+
+/** The `timezones` of the `sellers` section (design 4.1): region to its zones. */
 const sellerTimezonesSchema = z.strictObject({
-  byRegion: z.record(regionName, timeZone),
-  /** Postcode entries of `config/service-areas/` (exact, or a same-length digit range). */
-  postcodeExceptions: z
-    .array(
-      z.strictObject({
-        postcodes: z.array(z.string().max(32)).min(1).max(500),
-        timezone: timeZone,
-      }),
-    )
-    .max(500),
+  byRegion: z.record(regionName, regionZonesSchema),
 });
 
 /**
@@ -352,46 +364,6 @@ const sellersSchema = z
         path: ['timezones', 'byRegion'],
       });
     }
-
-    let pattern: RegExp;
-    try {
-      pattern = new RegExp(sellers.address.postcodePattern, 'u');
-    } catch {
-      return; // reported by the postcodePattern check itself
-    }
-    const claimed: ParsedPostcodes[] = [];
-    sellers.timezones.postcodeExceptions.forEach((exception, index) => {
-      const path = ['timezones', 'postcodeExceptions', index, 'postcodes'];
-      let parsed: ParsedPostcodes;
-      try {
-        parsed = parsePostcodeEntries(exception.postcodes);
-      } catch (error) {
-        if (!(error instanceof InvalidPostcodeEntryError)) throw error;
-        context.addIssue({ code: 'custom', message: error.message, path });
-        return;
-      }
-      const samples = [
-        ...parsed.exact,
-        ...parsed.intervals.flatMap(({ length, low, high }) =>
-          [low, high].map((n) => String(n).padStart(length, '0')),
-        ),
-      ];
-      if (samples.some((sample) => !pattern.test(sample))) {
-        context.addIssue({
-          code: 'custom',
-          message: 'every exception postcode must match address.postcodePattern',
-          path,
-        });
-      }
-      if (claimed.some((other) => postcodesClash(parsed, other))) {
-        context.addIssue({
-          code: 'custom',
-          message: 'a postcode may appear in only one exception',
-          path,
-        });
-      }
-      claimed.push(parsed);
-    });
   });
 
 const marketSchema = z
