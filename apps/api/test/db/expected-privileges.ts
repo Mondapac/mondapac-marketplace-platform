@@ -41,6 +41,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // docs/design/data/identity.md section 7 (slice 2): sessions and throttle counters are
+    // ordinary tables (revocation, the last_seen_at write, the purge, a cleared counter); sign-in
+    // records are append-only with retention, so no UPDATE (H6).
+    'identity.sessions': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'identity.sign_in_records': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'identity.sign_in_throttles': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // docs/design/data/identity.md section 7 (PM2): the envelope is immutable to the application.
     'identity.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
