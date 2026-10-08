@@ -279,11 +279,11 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
     expect(product.addVariant(variant(2), 5, T1)).toEqual({
       ok: false,
-      error: { code: 'product.not-a-draft' },
+      error: { code: 'product.not-editable' },
     });
     expect(product.removeProposedVariant(variant(1), T1)).toEqual({
       ok: false,
-      error: { code: 'product.not-a-draft' },
+      error: { code: 'product.not-editable' },
     });
   });
 
