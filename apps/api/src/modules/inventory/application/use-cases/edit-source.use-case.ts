@@ -107,6 +107,8 @@ export class EditSource extends UseCase<EditSourceInput, SourcesView, EditSource
       this.#logger.log({
         msg: 'inventory.edit-source.refused',
         code: result.error.code,
+        accountId: context.actor.kind === 'authenticated' ? context.actor.accountId : undefined,
+        sourceId: checked.sourceId,
         marketId: market.marketId,
         correlationId: context.correlationId,
       });

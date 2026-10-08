@@ -4,12 +4,24 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
+import {
+  FixedClock,
+  testAuthenticatedActor,
+  testCallContext,
+} from '@mondapac/shared-kernel/testing';
 import { SellerRegistered } from '../../src/modules/identity';
 import { PrismaSellerInventoryRepository } from '../../src/modules/inventory/infrastructure/prisma-seller-inventory.repository';
 import {
   DEFAULT_SOURCE_NAME,
   SellerInventory,
 } from '../../src/modules/inventory/domain/seller-inventory';
+import { CreateSource } from '../../src/modules/inventory/application/use-cases/create-source.use-case';
+import { EditSource } from '../../src/modules/inventory/application/use-cases/edit-source.use-case';
+import { ListSources } from '../../src/modules/inventory/application/use-cases/list-sources.use-case';
+import { ReorderSources } from '../../src/modules/inventory/application/use-cases/reorder-sources.use-case';
+import { ConfigInventoryPolicyProvider } from '../../src/modules/inventory/infrastructure/config-inventory-policy-provider';
+import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
+import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -395,6 +407,149 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
       expect(failing).toBeInstanceOf(Error);
       expect((await inventoryOf(code, sellerId))[0]).toMatchObject({ version: 1 });
       expect(await sourcesOf(code, sellerId)).toHaveLength(1);
+    });
+  });
+
+  describe('the real use cases on PostgreSQL (part 2)', () => {
+    const markets = () => app.get(MarketRegistry);
+    const useCases = () => {
+      const gate = createUseCaseGate(markets(), {
+        check: () => Promise.resolve({ allowed: true }),
+      });
+      const clock = new FixedClock(OCCURRED_AT);
+      const deps = {
+        unitOfWork: db.unitOfWork,
+        inventories: new PrismaSellerInventoryRepository(db.service),
+        policies: new ConfigInventoryPolicyProvider(markets()),
+      };
+      return {
+        list: new ListSources(gate, deps),
+        create: new CreateSource(gate, { ...deps, ids, clock }),
+        edit: new EditSource(gate, deps),
+        reorder: new ReorderSources(gate, deps),
+      };
+    };
+    const asSeller = (sellerId: Id<'Seller'>, target = market) =>
+      testCallContext(
+        target,
+        testAuthenticatedActor(target, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+    const body = (name: string) => ({ name, address: null, timeZone: null });
+    const ok1 = <V>(r: { ok: true; value: V } | { ok: false; error: unknown }): V => {
+      if (!r.ok) throw new Error(JSON.stringify(r.error));
+      return r.value;
+    };
+
+    it("applies the Market's own limit, checks the version first, and lists read-only", async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const uc = useCases();
+      const max = markets().get(market.marketId).inventory!.maxSourcesPerSeller;
+      let current = ok1(await uc.list.execute(asSeller(sellerId), {}));
+      expect(current).toMatchObject({ version: 1, max });
+      for (let i = 1; i < max; i += 1) {
+        current = ok1(
+          await uc.create.execute(asSeller(sellerId), {
+            expectedVersion: current.version,
+            ...body(`S${i}`),
+          }),
+        );
+      }
+      expect(current.sources).toHaveLength(max);
+      expect(
+        await uc.create.execute(asSeller(sellerId), {
+          expectedVersion: current.version - 1,
+          ...body('Late'),
+        }),
+      ).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(
+        await uc.create.execute(asSeller(sellerId), {
+          expectedVersion: current.version,
+          ...body('Over'),
+        }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'inventory.sources.limit-reached', details: { max } },
+      });
+      expect(await sourcesOf(code, sellerId)).toHaveLength(max);
+    });
+
+    it('edits and reorders through the use cases; the other Market sees none of it', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      await registered(other, sellerId);
+      const uc = useCases();
+      const list = ok1(await uc.list.execute(asSeller(sellerId), {}));
+      const added = ok1(
+        await uc.create.execute(asSeller(sellerId), {
+          expectedVersion: list.version,
+          ...body('A'),
+        }),
+      );
+      const renamed = ok1(
+        await uc.edit.execute(asSeller(sellerId), {
+          expectedVersion: added.version,
+          sourceId: added.sources[1]!.id,
+          name: 'Annex',
+          address: { line1: '1 Test St' },
+          timeZone: 'Australia/Perth',
+        }),
+      );
+      const reordered = ok1(
+        await uc.reorder.execute(asSeller(sellerId), {
+          expectedVersion: renamed.version,
+          orderedSourceIds: renamed.sources.map((x) => x.id).reverse(),
+        }),
+      );
+      expect(reordered.sources.map((x) => [x.name, x.position])).toEqual([
+        ['Annex', 1],
+        ['Default', 2],
+      ]);
+      expect(reordered.version).toBe(list.version + 3);
+      // The other Market's inventory of the same seller id is untouched, and its source ids
+      // answer not-found from this Market's context.
+      const there = await sourcesOf(other, sellerId);
+      expect(there).toHaveLength(1);
+      const otherList = ok1(await uc.list.execute(asSeller(sellerId, marketOf(other)), {}));
+      expect(
+        await uc.edit.execute(asSeller(sellerId), {
+          expectedVersion: reordered.version,
+          sourceId: otherList.sources[0]!.id,
+          ...body('Cross'),
+        }),
+      ).toEqual({ ok: false, error: { code: 'inventory.source.not-found' } });
+    });
+
+    it('lets a reorder race an add: one wins, the other is stale, no partial positions remain', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const uc = useCases();
+      const start = ok1(await uc.list.execute(asSeller(sellerId), {}));
+      const withTwo = ok1(
+        await uc.create.execute(asSeller(sellerId), {
+          expectedVersion: start.version,
+          ...body('A'),
+        }),
+      );
+      if (withTwo.max < 3) return;
+      const results = await Promise.all([
+        uc.reorder.execute(asSeller(sellerId), {
+          expectedVersion: withTwo.version,
+          orderedSourceIds: withTwo.sources.map((x) => x.id).reverse(),
+        }),
+        uc.create.execute(asSeller(sellerId), { expectedVersion: withTwo.version, ...body('B') }),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([
+        { ok: false, error: { code: 'conflict.stale' } },
+      ]);
+      const rows = await sourcesOf(code, sellerId);
+      expect(rows.map((r) => r.priority)).toEqual(rows.map((_, i) => i + 1));
     });
   });
 

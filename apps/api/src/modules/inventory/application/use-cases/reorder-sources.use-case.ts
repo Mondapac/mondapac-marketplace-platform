@@ -19,6 +19,9 @@ import {
 } from '../source-use-case-support';
 import { sourcesViewOf, type SourcesView } from '../sources-view';
 
+/** A generic bound on the list before any id is parsed; the real bound is the seller's sources. */
+const MAX_ORDER_LIST = 20;
+
 export interface ReorderSourcesInput {
   readonly expectedVersion: number;
   /** Every source id of the seller, in the new order (UX F29 step 5: "Save order"). */
@@ -76,7 +79,7 @@ export class ReorderSources extends UseCase<
     const expectedVersion = checkVersion(input?.expectedVersion, fields);
     const raw: unknown = input?.orderedSourceIds;
     const ordered: Id<'InventorySource'>[] = [];
-    if (!Array.isArray(raw) || raw.length < 1 || raw.length > 5) {
+    if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_ORDER_LIST) {
       fields.push({ path: 'orderedSourceIds', code: 'length' });
     } else {
       raw.forEach((entry: unknown, index) => {
@@ -107,6 +110,7 @@ export class ReorderSources extends UseCase<
       this.#logger.log({
         msg: 'inventory.reorder-sources.refused',
         code: result.error.code,
+        accountId: context.actor.kind === 'authenticated' ? context.actor.accountId : undefined,
         marketId: market.marketId,
         correlationId: context.correlationId,
       });

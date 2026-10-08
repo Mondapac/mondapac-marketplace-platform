@@ -4,7 +4,9 @@ import { err, ok, type Result } from '@mondapac/shared-kernel';
  * C0 and C1 controls and the bidi marks, embeddings, overrides and isolates (inventory data
  * design 3.3; the class of identity's display name). U+200D (joiner) is allowed.
  */
-const FORBIDDEN = /[\p{Cc}؜‎‏‪-‮⁦-⁩]/u;
+const FORBIDDEN = /[\p{Cc}\p{Zl}\p{Zp}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+/** Other invisible format characters (zero-width space, word joiner, BOM), except U+200D. */
+const INVISIBLE = /(?!\u200d)\p{Cf}/u;
 
 /** 1 to 80 code points (inventory design 2.1; data design 11.2 M3: a technical bound). */
 export const SOURCE_NAME_MAX = 80;
@@ -19,10 +21,13 @@ export type SourceTextInvalid = { readonly rule: 'type' | 'length' | 'characters
 /** Trimmed, NFC, within `max` code points, free of control and bidi characters. */
 function cleanText(raw: unknown, max: number): Result<string, SourceTextInvalid> {
   if (typeof raw !== 'string') return err({ rule: 'type' });
+  // Bound the work before normalising: a code point is at most two UTF-16 units, and NFC can
+  // lengthen a text, so four units per allowed code point is a generous ceiling.
+  if (raw.length > max * 4) return err({ rule: 'length' });
   const text = raw.normalize('NFC').trim();
   const length = [...text].length;
   if (length < 1 || length > max) return err({ rule: 'length' });
-  if (FORBIDDEN.test(text)) return err({ rule: 'characters' });
+  if (FORBIDDEN.test(text) || INVISIBLE.test(text)) return err({ rule: 'characters' });
   return ok(text);
 }
 

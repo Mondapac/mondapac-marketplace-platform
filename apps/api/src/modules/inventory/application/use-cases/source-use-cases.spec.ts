@@ -228,20 +228,98 @@ describe.each(['AU', 'ZZ'] as const)('inventory source use cases in market %s', 
   it('answers conflict.stale for an old version, before the limit, and saves nothing', async () => {
     const t = setUp();
     const s = seller(t);
-    view(await t.create.execute(s.context, { expectedVersion: 1, ...body('A') }));
+    let version = 1;
+    for (let i = 1; i < max; i += 1) {
+      version = view(
+        await t.create.execute(s.context, { expectedVersion: version, ...body(`S${i}`) }),
+      ).version;
+    }
+    // The seller is now at the limit: a current create is refused for the limit, an old one is stale.
+    const stale = { ok: false, error: { code: 'conflict.stale' } };
     const saves = t.inventories.saves;
-    for (const result of [
-      await t.create.execute(s.context, { expectedVersion: 1, ...body('B') }),
+    const ids = view(await t.list.execute(s.context, {})).sources.map((x) => x.id);
+    expect(
+      await t.create.execute(s.context, { expectedVersion: version - 1, ...body('Late') }),
+    ).toEqual(stale);
+    expect(
       await t.edit.execute(s.context, {
-        expectedVersion: 1,
-        sourceId: t.inventories.stored.get(`${code}|${s.sellerId}`)!.state.sources[0]!.id,
+        expectedVersion: version - 1,
+        sourceId: ids[0]!,
         ...body('X'),
       }),
-      await t.reorder.execute(s.context, { expectedVersion: 1, orderedSourceIds: [] }),
-    ]) {
-      expect(result.ok).toBe(false);
-    }
+    ).toEqual(stale);
+    expect(
+      await t.reorder.execute(s.context, {
+        expectedVersion: version - 1,
+        orderedSourceIds: [...ids].reverse(),
+      }),
+    ).toEqual(stale);
     expect(t.inventories.saves).toBe(saves);
+  });
+
+  it('accepts the max-th source, refuses the next, and keeps the version on a refusal', async () => {
+    const t = setUp();
+    const s = seller(t);
+    let version = 1;
+    for (let i = 1; i < max; i += 1) {
+      const out = view(
+        await t.create.execute(s.context, { expectedVersion: version, ...body(`S${i}`) }),
+      );
+      expect(out.sources).toHaveLength(i + 1);
+      version = out.version;
+    }
+    expect(
+      await t.create.execute(s.context, { expectedVersion: version, ...body('Over') }),
+    ).toEqual({
+      ok: false,
+      error: { code: 'inventory.sources.limit-reached', details: { max } },
+    });
+    expect(view(await t.list.execute(s.context, {})).version).toBe(version);
+  });
+
+  it('answers inventory.not-ready for edit and reorder too, even with a stale version', async () => {
+    const t = setUp();
+    const s = seller(t, false);
+    const notReady = { ok: false, error: { code: 'inventory.not-ready' } };
+    expect(
+      await t.edit.execute(s.context, {
+        expectedVersion: 9,
+        sourceId: t.ids.next<'InventorySource'>(),
+        ...body('X'),
+      }),
+    ).toEqual(notReady);
+    expect(
+      await t.reorder.execute(s.context, {
+        expectedVersion: 9,
+        orderedSourceIds: [t.ids.next<'InventorySource'>()],
+      }),
+    ).toEqual(notReady);
+  });
+
+  it('answers conflict.stale when the store finds another edit, for edit and reorder as well', async () => {
+    const t = setUp();
+    const s = seller(t);
+    const first = view(await t.create.execute(s.context, { expectedVersion: 1, ...body('A') }));
+    const stale = { ok: false, error: { code: 'conflict.stale' } };
+    t.inventories.staleOnSave = true;
+    expect(
+      await t.edit.execute(s.context, {
+        expectedVersion: first.version,
+        sourceId: first.sources[0]!.id,
+        ...body('Renamed'),
+      }),
+    ).toEqual(stale);
+    t.inventories.staleOnSave = true;
+    expect(
+      await t.reorder.execute(s.context, {
+        expectedVersion: first.version,
+        orderedSourceIds: first.sources.map((x) => x.id).reverse(),
+      }),
+    ).toEqual(stale);
+    expect(view(await t.list.execute(s.context, {})).sources.map((x) => x.name)).toEqual([
+      'Default',
+      'A',
+    ]);
   });
 
   it('answers conflict.stale when the store finds another edit in between', async () => {
@@ -315,32 +393,85 @@ describe.each(['AU', 'ZZ'] as const)('inventory source use cases in market %s', 
     expect(view(await t.list.execute(theirs.context, {})).sources[0]!.name).toBe('Default');
   });
 
-  it('reorders by the whole list, and refuses a list that is not exactly the seller sources', async () => {
+  it("answers the same not-found for the same seller's source in the other Market, logging no id or name", async () => {
     const t = setUp();
     const s = seller(t);
-    const a = view(await t.create.execute(s.context, { expectedVersion: 1, ...body('A') }));
-    if (max < 2) return;
-    const [d, x] = a.sources.map((y) => y.id);
-    const out = view(
-      await t.reorder.execute(s.context, {
-        expectedVersion: a.version,
-        orderedSourceIds: [x!, d!],
+    const otherCode = code === 'AU' ? 'ZZ' : 'AU';
+    const otherMarket = testMarketContext(otherCode, 'default');
+    // The same seller id has an inventory in the other Market too.
+    await t.inventories.add(
+      otherMarket,
+      SellerInventory.createWithDefaultSource({
+        id: t.ids.next<'SellerInventory'>(),
+        defaultSourceId: t.ids.next<'InventorySource'>(),
+        sellerId: s.sellerId,
+        marketId: otherMarket.marketId,
+        now: START,
       }),
     );
-    expect(out.sources.map((y) => [y.name, y.position])).toEqual([
-      ['A', 1],
-      ['Default', 2],
-    ]);
-    const mismatch = { ok: false, error: { code: 'inventory.sources.order-mismatch' } };
+    const there = t.inventories.stored.get(`${otherCode}|${s.sellerId}`)!.state.sources[0]!.id;
+    logged.length = 0;
     expect(
-      await t.reorder.execute(s.context, { expectedVersion: out.version, orderedSourceIds: [d!] }),
-    ).toEqual(mismatch);
-    expect(
+      await t.edit.execute(s.context, { expectedVersion: 1, sourceId: there, ...body('Cross') }),
+    ).toEqual({ ok: false, error: { code: 'inventory.source.not-found' } });
+    expect(JSON.stringify(logged)).toContain('inventory.source.not-found');
+    // The denial log names the actor and the requested id (ids only), never a name.
+    expect(JSON.stringify(logged)).toContain(there);
+    expect(JSON.stringify(logged)).not.toContain('Cross');
+    expect(t.inventories.stored.get(`${otherCode}|${s.sellerId}`)!.state.sources[0]!.name).toBe(
+      'Default',
+    );
+  });
+
+  it('reorders every source, whatever the count, and refuses a list that is not exactly the seller sources', async () => {
+    const t = setUp();
+    const s = seller(t);
+    let current = view(await t.list.execute(s.context, {}));
+    for (let i = 1; i < max; i += 1) {
+      current = view(
+        await t.create.execute(s.context, { expectedVersion: current.version, ...body(`S${i}`) }),
+      );
+    }
+    const ids = current.sources.map((x) => x.id);
+    const rotated = [...ids.slice(1), ids[0]!];
+    const out = view(
       await t.reorder.execute(s.context, {
-        expectedVersion: out.version,
-        orderedSourceIds: [d!, d!],
+        expectedVersion: current.version,
+        orderedSourceIds: rotated,
       }),
-    ).toEqual(mismatch);
+    );
+    expect(out.sources.map((x) => x.id)).toEqual(rotated);
+    expect(out.sources.map((x) => x.position)).toEqual(rotated.map((_, i) => i + 1));
+    expect(out.version).toBe(current.version + 1);
+
+    const mismatch = { ok: false, error: { code: 'inventory.sources.order-mismatch' } };
+    const send = (list: string[]) =>
+      t.reorder.execute(s.context, { expectedVersion: out.version, orderedSourceIds: list });
+    expect(await send(rotated.slice(1))).toEqual(mismatch);
+    expect(await send([rotated[0]!, ...rotated.slice(0, -1)])).toEqual(mismatch);
+    // A random id, or another seller's source, in place of one of the seller's own.
+    const theirs = seller(t);
+    const theirSource = view(await t.list.execute(theirs.context, {})).sources[0]!.id;
+    expect(await send([...rotated.slice(1), t.ids.next<'InventorySource'>()])).toEqual(mismatch);
+    expect(await send([...rotated.slice(1), theirSource])).toEqual(mismatch);
+    expect(view(await t.list.execute(s.context, {})).version).toBe(out.version);
+    expect(view(await t.list.execute(theirs.context, {})).sources).toHaveLength(1);
+  });
+
+  it('refuses an order list that is empty or longer than the validation bound', async () => {
+    const t = setUp();
+    const s = seller(t);
+    for (const list of [[], Array.from({ length: 21 }, () => t.ids.next<'InventorySource'>())]) {
+      expect(
+        await t.reorder.execute(s.context, { expectedVersion: 1, orderedSourceIds: list }),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'orderedSourceIds', code: 'length' }],
+        },
+      });
+    }
   });
 
   it('keeps the version when the order is unchanged', async () => {
