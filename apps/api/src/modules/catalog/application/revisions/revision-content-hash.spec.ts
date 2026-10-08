@@ -55,8 +55,6 @@ describe('revisionContentHash', () => {
       { schemaRef: { familyRevisionId: 'f1', definitionRevisionIds: ['d2', 'd1'] } },
     ],
   ] as const)('changes with %s', (_name, patch) => {
-    expect(revisionContentHash({ ...content, ...patch })).not.toBe(
-      revisionContentHash(content),
-    );
+    expect(revisionContentHash({ ...content, ...patch })).not.toBe(revisionContentHash(content));
   });
 });
