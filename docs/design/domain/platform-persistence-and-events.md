@@ -316,6 +316,7 @@ interface JobDefinition {
   readonly name: string; // '<module>.<job>'
   readonly every: Temporal.Duration; // a fixed interval; no cron, no wall-clock time
   readonly maxRunMs?: number; // default 60000, at most 600000
+  readonly runAtStart?: boolean; // first tick at worker start (identity slice 5)
   run(context: CallContext): Promise<void>; // calls one use case whose access rule is `system`
 }
 ```
@@ -323,6 +324,7 @@ interface JobDefinition {
 |---|---|
 | Where definitions live | In the owning module's `presentation/jobs/`: a job is an entry point like a controller, so foundations rule 9 of 8.2 covers it unchanged (PA6). Modules register with `JobRegistry` (`platform/scheduler/`) at bootstrap: the first segment is the module, a duplicate fails boot, sealed. A platform job sits beside the platform code it serves |
 | Who runs | The `worker` role only (ADR-0006 decision 7). Each worker ticks every `every`, first after a random part of the interval |
+| `runAtStart` (as built, identity slice 5) | An optional `runAtStart: true` on a `JobDefinition` makes its first tick run at worker start instead of after a random part of the interval; later ticks follow `every`. For jobs the application needs before it can serve a flow, such as `identity.seed-roles`. The lock and the "safe to run twice" rule are unchanged |
 | Per Market | A run iterates `MarketRegistry.hostedMarketIds()`. For each: `MarketContextFactory.forMarket`, the system actor, a newly generated correlation id, `createCallContext`, then `run(context)`. A failure is logged with job, Market and correlation id, and the next Market still runs (foundations 5.1) |
 | Overlap across processes | One runner per job (ADR-0006 decision 7): the runner holds `pg_try_advisory_xact_lock(key)` in a transaction of its own on `PrismaRoot` for the whole run, and skips the tick when the lock is taken. The transaction-scoped form, because Prisma's pool gives no session affinity outside a transaction: a session lock taken through the pool was "released" on another connection and stayed held (verified). **PA3** |
 | Lock key | The first 8 bytes of SHA-256 over `mondapac.job:<name>`, as a signed 64-bit integer (`node:crypto`) |
