@@ -128,7 +128,15 @@ describe.each(TEST_MARKETS)(
       const check = new CheckClaimText({
         unitOfWork: persistence.unitOfWork,
         matcher: {
-          match: (_c, texts) => Promise.resolve({ ok: true as const, value: texts.map(() => []) }),
+          match: (_c, texts) =>
+            Promise.resolve({
+              ok: true as const,
+              value: texts.map((item) =>
+                item.text.includes('halal')
+                  ? [{ typeCode: 'x', span: { fromToken: 0, toToken: 0 } }]
+                  : [],
+              ),
+            }),
         },
         counters: {
           reserve: () => Promise.reject(new Error('submit spends no counter')),
@@ -242,7 +250,82 @@ describe.each(TEST_MARKETS)(
       expect(appended).toContain('catalog.product-revision-submitted.v1');
     });
 
-    it('maps the loss of a race on the revision number to a stale conflict', async () => {
+    async function rowCount(table: string, productId: string): Promise<number> {
+      const { rows } = await app.query(
+        `SELECT count(*)::int AS n FROM catalog.${table} WHERE product_id = $1`,
+        [productId],
+      );
+      return (rows[0] as { n: number }).n;
+    }
+
+    it('refuses a matching text and leaves no revision row and no event', async () => {
+      const product = await draftedProduct();
+      await inUnit(() =>
+        copies.save(market, {
+          productId: product.state.id,
+          content: {
+            texts: { en: { name: 'Dates', description: 'halal dates' } },
+            categoryIds: [categoryId],
+            taxCategoryCode: 't1',
+          },
+          contentSchemaVersion: 1,
+          baseRevisionId: null,
+          lastSavedAt: T0,
+          lastSavedByAccountId: uuid7() as Id<'Account'>,
+        }),
+      );
+      const result = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      expect(!result.ok && result.error.code).toBe('claim-text.refused');
+      expect(await rowCount('product_revisions', product.state.id)).toBe(0);
+      expect(appended).toEqual([]);
+      const stored = await inUnit(() => products.findById(market, product.state.id));
+      expect(stored?.state.publishedRevisionId).toBeNull();
+    });
+
+    it('numbers a resubmit 2, names the published revision as its base and stores the reasons', async () => {
+      const product = await draftedProduct();
+      const first = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!first.ok) throw new Error(first.error.code);
+      await inUnit(() =>
+        copies.save(market, {
+          productId: product.state.id,
+          content: {
+            texts: { en: { name: 'Fresh dates', description: 'Sweet and soft' } },
+            categoryIds: [categoryId],
+            taxCategoryCode: 't1',
+          },
+          contentSchemaVersion: 1,
+          baseRevisionId: first.value.revisionId,
+          lastSavedAt: T0,
+          lastSavedByAccountId: uuid7() as Id<'Account'>,
+        }),
+      );
+      const second = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!second.ok) throw new Error(second.error.code);
+      expect(second.value.revisionNo).toBe(2);
+      const revision = await inUnit(() =>
+        revisions.find(market, product.state.id, second.value.revisionId),
+      );
+      expect(revision).toMatchObject({
+        baseRevisionId: first.value.revisionId,
+        sensitive: true,
+        sensitiveReasons: ['name'],
+      });
+      expect(await rowCount('product_revisions', product.state.id)).toBe(2);
+      expect(await rowCount('product_revision_variants', product.state.id)).toBe(2);
+      expect(appended).toContain('catalog.product-revision-published.v1');
+    });
+
+    it('the revision store turns a repeated revision number into StaleAggregateError (the service maps it to conflict.stale)', async () => {
       const product = await draftedProduct();
       const first = await submit.execute(adminContext(), {
         productId: product.state.id,

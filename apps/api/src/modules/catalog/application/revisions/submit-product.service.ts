@@ -128,8 +128,22 @@ export class SubmitProduct {
                 : checked.error,
           );
         }
-        const refused = checked.value.flatMap((verdict) => refusalOf(verdict) ?? []);
-        if (refused.length > 0) return err({ code: 'claim-text.refused', fields: refused });
+        // Anything that is not plainly clean refuses, so an unknown verdict can never pass.
+        const refused = checked.value.flatMap((verdict) =>
+          verdict.code === 'clean' ? [] : (refusalOf(verdict) ?? []),
+        );
+        if (checked.value.some((verdict) => verdict.code !== 'clean') && refused.length === 0) {
+          return err({ code: 'working-copy.invalid-content' });
+        }
+        if (refused.length > 0) {
+          this.#logger.warn({
+            msg: 'catalog.submit-product.claim-text-refused',
+            refusedFields: refused.length,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
+          return err({ code: 'claim-text.refused', fields: refused });
+        }
         return ok(frozen.value.contentHash);
       },
       { readOnly: true },
@@ -160,9 +174,15 @@ export class SubmitProduct {
             summaryOf(frozen.value.content),
             sensitiveChanges,
           );
+          let approvalRequired: boolean;
+          try {
+            approvalRequired = await policy.approvalRequired(market);
+          } catch {
+            return err({ code: 'access.unavailable' });
+          }
           const outcome = decideOutcome({
             classification,
-            approvalRequired: await policy.approvalRequired(market),
+            approvalRequired,
             sensitiveRevisionPending: false,
             author: 'admin-platform',
           });
@@ -211,7 +231,14 @@ export class SubmitProduct {
       });
       return stored;
     } catch (error) {
-      if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
+      if (error instanceof StaleAggregateError) {
+        this.#logger.warn({
+          msg: 'catalog.submit-product.stale',
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+        return err({ code: 'conflict.stale' });
+      }
       throw error;
     }
   }

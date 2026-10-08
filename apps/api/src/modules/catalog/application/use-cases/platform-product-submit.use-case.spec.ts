@@ -92,7 +92,14 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
     ...extra,
   });
 
-  function rig(matcherOverride?: ClaimTextMatcher) {
+  function rig(
+    matcherOverride?: ClaimTextMatcher,
+    options: {
+      approvalThrows?: boolean;
+      noSchema?: boolean;
+      gateOverride?: AuthorisationCheck;
+    } = {},
+  ) {
     const stored = new Map<string, Product>();
     const copies = new Map<string, WorkingCopy>();
     const revisions = new Map<string, StoredRevision>();
@@ -155,7 +162,10 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         variantRemoved: true,
       }),
       maxVariantsPerProduct: () => 100,
-      approvalRequired: () => Promise.resolve(true),
+      approvalRequired: () =>
+        options.approvalThrows === true
+          ? Promise.reject(new Error('config'))
+          : Promise.resolve(true),
     };
     const outbox: OutboxWriter = {
       append: (_c, list) => {
@@ -177,14 +187,29 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
     });
     const attributes = {
       loadSchema: () =>
-        Promise.resolve({
-          schemaRef: {
-            familyCode: 'default',
-            familyRevisionId: 'fam-rev-1',
-            definitionRevisionIds: [],
-          },
-          fields: [],
-        }),
+        Promise.resolve(
+          options.noSchema === true
+            ? null
+            : {
+                schemaRef: {
+                  familyCode: 'default',
+                  familyRevisionId: 'fam-rev-1',
+                  definitionRevisionIds: [],
+                },
+                fields: [
+                  {
+                    code: 'note',
+                    dataType: 'text',
+                    localizable: true,
+                    required: false,
+                    isVariantOption: false,
+                    material: false,
+                    claimChecked: true,
+                    bounds: { maxLength: 50 },
+                  },
+                ],
+              },
+        ),
     } as unknown as AttributeRepository;
     const freeze = new FreezeRevision({
       attributes,
@@ -203,7 +228,10 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       clock,
       ids,
     });
-    const useCase = new PlatformProductSubmit(gate, { submit });
+    const useCase = new PlatformProductSubmit(
+      options.gateOverride === undefined ? gate : createUseCaseGate(markets, options.gateOverride),
+      { submit },
+    );
     const seed = (product: Product, content: WorkingCopy['content'] | null = draft()) => {
       stored.set(product.state.id, product);
       if (content !== null) {
@@ -352,6 +380,105 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       ok: false,
       error: { code: 'working-copy.not-found' },
     });
+    expect(r.revisions.size).toBe(0);
+  });
+
+  it('refuses an account without the key before anything is read', async () => {
+    const denyAll: AuthorisationCheck = {
+      check: () => Promise.resolve({ allowed: false, reason: 'missing-permission' } as never),
+    };
+    const r = rig(undefined, { gateOverride: denyAll });
+    const product = newProduct();
+    r.seed(product);
+    const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(submitted.ok).toBe(false);
+    expect(r.matched).toHaveLength(0);
+    expect(r.revisions.size).toBe(0);
+  });
+
+  it('refuses when an attribute text matches, and stores nothing', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.seed(product, draft({ attributeValues: { note: { [locale]: 'halal note' } } }));
+    const withAttribute = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(!withAttribute.ok && withAttribute.error).toMatchObject({
+      code: 'claim-text.refused',
+      fields: [{ field: 'product.attribute-text-value', ref: 'note', locale }],
+    });
+    expect(r.revisions.size).toBe(0);
+  });
+
+  it('refuses a name with a hidden character, naming the field and offset', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.seed(product, draft({ texts: { [locale]: { name: 'Da\u202Etes', description: 'ok' } } }));
+    const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(!submitted.ok && submitted.error).toMatchObject({
+      code: 'claim-text.refused',
+      fields: [{ field: 'product.name', locale, code: 'text.invisible-character', offset: 2 }],
+    });
+    expect(r.revisions.size).toBe(0);
+  });
+
+  it('lists the placeholder refusal for every text, by field', async () => {
+    const r = rig(new UnavailableClaimTextMatcher());
+    const product = newProduct();
+    r.seed(product);
+    const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(!submitted.ok && submitted.error).toEqual({
+      code: 'claim-text.refused',
+      fields: [
+        { field: 'product.name', ref: null, locale, code: 'claim-text.check-unavailable' },
+        { field: 'product.description', ref: null, locale, code: 'claim-text.check-unavailable' },
+      ],
+    });
+  });
+
+  it('still publishes at once, and stores the reasons, when a sensitive field changes', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.seed(product);
+    const first = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(first.ok).toBe(true);
+    r.copies.set(product.state.id, {
+      ...r.copies.get(product.state.id)!,
+      content: draft({
+        texts: { [locale]: { name: 'Fresh dates', description: 'Sweet and soft' } },
+      }),
+    });
+    const second = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(second.ok && second.value.published).toBe(true);
+    const revision = [...r.revisions.values()][1]!;
+    expect(revision).toMatchObject({ sensitive: true, sensitiveReasons: ['name'] });
+  });
+
+  it('answers conflict.stale when the published revision cannot be read', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.seed(product);
+    const first = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    if (!first.ok) throw new Error('first');
+    r.revisions.clear();
+    const second = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(second).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+  });
+
+  it('answers access.unavailable when the approval setting cannot be read', async () => {
+    const r = rig(undefined, { approvalThrows: true });
+    const product = newProduct();
+    r.seed(product);
+    const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(submitted).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(r.revisions.size).toBe(0);
+  });
+
+  it('returns the freeze failure when the family schema is not available', async () => {
+    const r = rig(undefined, { noSchema: true });
+    const product = newProduct();
+    r.seed(product);
+    const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));
+    expect(submitted).toEqual({ ok: false, error: { code: 'revision.schema-unavailable' } });
+    expect(r.matched).toHaveLength(0);
     expect(r.revisions.size).toBe(0);
   });
 
