@@ -92,8 +92,6 @@ describe.each(['AU', 'ZZ'])('sellingEligibility stand-in, Market %s', (code) => 
       sellerSummariesSystem: undefined as never,
       sellingEligibility: request,
       sellingEligibilitySystem: jobs,
-      approvedSellerZones: undefined as never,
-      approvedSellerZonesSystem: undefined as never,
     });
     const a = ids.next<'Seller'>();
 

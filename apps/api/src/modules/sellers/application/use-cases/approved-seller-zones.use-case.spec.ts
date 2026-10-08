@@ -10,7 +10,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/su
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
-import { SellersFacadeImplementation } from '../../presentation/sellers.facade';
+import { ApprovedSellerZonesReaderImplementation } from '../../presentation/approved-seller-zones.reader';
 import { ApprovedSellerZonesSystem } from './approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './approved-seller-zones.use-case';
 
@@ -28,11 +28,7 @@ describe.each(['AU', 'ZZ'])('approvedSellerZones contract, Market %s', (code) =>
   const system = () => testCallContext(market(), 'system');
   const request = new ApprovedSellerZones(gate);
   const jobs = new ApprovedSellerZonesSystem(gate);
-  const facade = new SellersFacadeImplementation({
-    sellerSummaries: undefined as never,
-    sellerSummariesSystem: undefined as never,
-    sellingEligibility: undefined as never,
-    sellingEligibilitySystem: undefined as never,
+  const facade = new ApprovedSellerZonesReaderImplementation({
     approvedSellerZones: request,
     approvedSellerZonesSystem: jobs,
   });
@@ -120,11 +116,7 @@ describe.each(['AU', 'ZZ'])('approvedSellerZones contract, Market %s', (code) =>
     const answers: string[] = [];
     for (const actor of actors) {
       const ran: string[] = [];
-      const traced = new SellersFacadeImplementation({
-        sellerSummaries: undefined as never,
-        sellerSummariesSystem: undefined as never,
-        sellingEligibility: undefined as never,
-        sellingEligibilitySystem: undefined as never,
+      const traced = new ApprovedSellerZonesReaderImplementation({
         approvedSellerZones: {
           execute: (c: never, i: never) => (ran.push('anonymous'), request.execute(c, i)),
         } as never,
