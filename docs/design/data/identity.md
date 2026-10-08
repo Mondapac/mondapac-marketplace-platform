@@ -539,7 +539,7 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
 - An expired pending row still holds its keys until the hourly job deletes it, so the issue use
   case replaces such a row in its own unit (M7, confirmed). So does a pending row never
   dispatched (`token_hash IS NULL`) whose `created_at` is older than its kind's lifetime (Ali
-  2026-10-08); the hourly job deletes those too (9). A new `seller-owner` invitation may
+  2026-10-08); from slice 7b the hourly job deletes those too (9). A new `seller-owner` invitation may
   name a seller that never had a member (3.9).
 - Acceptance writes `accounts`, `seller_memberships` and `role_assignments`, so it runs
   `serializable` (C11): two concurrent first-admin acceptances cannot both see "no administrator".
@@ -795,7 +795,7 @@ measured; at these row counts every table is far below the point where partition
 
 | Job (PN4) | Per hosted Market, each statement with `market_id` at the top level |
 |---|---|
-| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days; pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
+| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days. From slice 7b, which passes the per-kind lifetimes from Market config: pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
 | `identity.purge-unverified-accounts`, daily, slice 3 | Accounts of the partial index of 3.3 whose latest sign-up is older than 7 days: destroy the key, delete the account, one `serializable` unit per account (C11); from slice 5 also its assignment, membership and the `seller_access` whose `registered_at` is NULL |
 
 Both delete only what is already invalid and are safe to run twice and at once. Autovacuum
