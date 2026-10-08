@@ -1110,6 +1110,20 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     const cert = await certificate(typeId);
     const sub = await submission(cert, typeId, revisionId);
     await insert('seller_submission_decisions', decision(sub));
+    // A row in each table of migration 2 that the trigger guards.
+    await insert('type_revision_texts', {
+      ...base(),
+      type_revision_id: revisionId,
+      locale: 'en',
+      name: 'Halal',
+      customer_description: 'Certified halal.',
+    });
+    await insert('claim_terms', {
+      ...base(),
+      type_revision_id: revisionId,
+      locale: 'en',
+      phrase: 'halal',
+    });
     const tables = insertOnlyTables();
     expect(tables).toEqual(
       expect.arrayContaining([

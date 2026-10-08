@@ -161,10 +161,12 @@ describe.each(TEST_MARKETS)('certification types registry in market %s (database
           `DELETE FROM certification.type_revision_texts WHERE type_revision_id = $1`,
         ]) {
           const result = await failure(client, statement, [revisionId]);
-          expect(result?.code).not.toBeNull();
+          expect(result?.code).toBe(client === sql ? '42501' : '23001');
         }
       }
-      expect(await failure(owner, 'TRUNCATE certification.type_revision_texts')).not.toBeNull();
+      expect(
+        (await failure(owner, 'TRUNCATE certification.type_revision_texts CASCADE'))?.code,
+      ).toBe('23001');
     });
   });
 
@@ -210,22 +212,27 @@ describe.each(TEST_MARKETS)('certification types registry in market %s (database
       await insert('type_revision_texts', text(revisionId));
       await insert('claim_terms', term(revisionId));
       for (const client of [sql, owner]) {
+        const state = client === sql ? '42501' : '23001';
         expect(
-          await failure(
-            client,
-            `UPDATE certification.claim_terms SET phrase = 'x' WHERE type_revision_id = $1`,
-            [revisionId],
-          ),
-        ).not.toBeNull();
+          (
+            await failure(
+              client,
+              `UPDATE certification.claim_terms SET phrase = 'x' WHERE type_revision_id = $1`,
+              [revisionId],
+            )
+          )?.code,
+        ).toBe(state);
         expect(
-          await failure(
-            client,
-            `DELETE FROM certification.claim_terms WHERE type_revision_id = $1`,
-            [revisionId],
-          ),
-        ).not.toBeNull();
+          (
+            await failure(
+              client,
+              `DELETE FROM certification.claim_terms WHERE type_revision_id = $1`,
+              [revisionId],
+            )
+          )?.code,
+        ).toBe(state);
       }
-      expect(await failure(owner, 'TRUNCATE certification.claim_terms')).not.toBeNull();
+      expect((await failure(owner, 'TRUNCATE certification.claim_terms'))?.code).toBe('23001');
     });
   });
 
