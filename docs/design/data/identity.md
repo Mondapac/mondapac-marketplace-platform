@@ -228,7 +228,8 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
   account (admin or customer) and the reset of another admin's second factor take it first too,
   in their serializable unit (5.1), then read the actor, the grants and the holders, then write
   the account, sessions, challenges and `second_factors`, then outbox and audit (Mojtaba, PR
-  #187). Either the session commits first and the revocation
+  #187). The actor's own row is only read, never locked, so such a unit holds at most one
+  account lock, the target's. Either the session commits first and the revocation
   ends it, or the other side waits and then reads the new hash.
 - **Lock order** in those units: account (this lock) first; then `seller_access` (the seller
   sign-in's `lockForSession`, slice 7b item H); then that unit's link, session, credential,
@@ -642,6 +643,9 @@ inviter) in the unit, so a disable or demotion that commits first refuses it on 
 races are tested in `apps/api/test/db/admin-roles.db-spec.ts`: two mutual disables, two mutual
 demotions, and a disable against a demotion. Exactly one commits, and one active, verified
 administrator remains.
+Inviting, re-sending and revoking an admin invitation stay at READ COMMITTED on purpose: their
+actor re-check is a statement snapshot, which revoke only narrows, and an invite or re-send is
+re-checked at acceptance in its serializable unit (`inviterMayStillGrant`) (Mojtaba, PR #187).
 
 ## 6. `platform.audit_log`: the `ANONYMOUS` actor type
 
