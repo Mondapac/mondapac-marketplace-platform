@@ -8,6 +8,10 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
 import {
+  realEffectiveKeys,
+  realPermissionRegistry,
+} from '../../../../../test/support/permission-registry';
+import {
   TEST_LOCALE_CONFIG_DIRS,
   TEST_MARKETS,
   TEST_MARKET_CONFIG_DIRS,
@@ -22,6 +26,8 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AccountState } from '../../domain/account';
+import type { RoleState } from '../../domain/role';
+import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-seed';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import { CatalogueMailComposer } from '../../infrastructure/mail/mail-catalogue';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
@@ -29,17 +35,20 @@ import { SellerAccessContractImplementation } from '../../presentation/seller-ac
 import {
   AccountAccessReviewers,
   isAccessReviewer,
+  NO_SECOND_FACTOR_STORE,
   type ReviewerRule,
   SELLER_ACCESS_APPROVE,
 } from '../access/account-access-reviewers';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import {
+  EMPTY_PERMISSION_REGISTRY,
   effectiveKeysOf,
   holdsEvery,
   type EffectiveKeyResolver,
   type PermissionRegistryView,
   type RoleGrant,
 } from '../access/effective-keys';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type {
   AccessReviewer,
   AccessReviewers,
@@ -59,8 +68,9 @@ import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
 // The reviewer notice (identity design 8.7; ux.md E3; request R-3; mini-review 3 with Ali's
 // rulings and Hassan's M2 and L2), in memory, for both Market fixtures: the system-only contract
 // method, the Market from the context, the pending-only guard, the recipient read that fails
-// closed until slices 7 and 8a-1, the fixed mail, the cap and the 20-second budget. The SQL of
-// the recipient read is covered by test/db/reviewer-candidates.db-spec.ts.
+// closed until slice 7 (no factor store; the grant read and the registry are bound since 8a-1),
+// the fixed mail, the cap and the 20-second budget. The SQL of the recipient read is covered by
+// test/db/reviewer-candidates.db-spec.ts.
 
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
@@ -188,6 +198,8 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         accounts: fakes.accountRepository,
         memberships: fakes.membershipRepository,
         sellerAccess: fakes.sellerAccessRepository,
+        grants: fakes.grantReader,
+        effectiveKeys: realEffectiveKeys(),
       }),
     );
     // The seller owner, with canary data, and three sellers: pending here, one of the other
@@ -570,6 +582,49 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
   });
 
   describe('the recipient read (Hassan M2): SQL narrows, effectiveKeysOf decides', () => {
+    const platformSystem: RoleGrant = {
+      roleId: id<'Role'>('01990000-0000-7000-8000-00000000d0ff'),
+      kind: 'system',
+      scope: 'platform',
+      sellerId: null,
+      storedKeys: [],
+    };
+
+    /** The checked-in seed's roles of this Market, as fixture rows, by `scope:seedCode`. */
+    function seedRealRoles(fakes: IdentityFakes): Map<string, RoleState> {
+      const roles = new Map<string, RoleState>();
+      new CheckedInRoleSeed().roles().forEach((seeded, n) => {
+        const state: RoleState = {
+          id: id<'Role'>(`01990000-0000-7000-8000-${String(0xc000 + n).padStart(12, '0')}`),
+          marketId: code as RoleState['marketId'],
+          scope: seeded.scope,
+          kind: seeded.kind,
+          seedCode: seeded.seedCode,
+          seedVersion: seeded.seedVersion,
+          sellerId: null,
+          permissionKeys: seeded.kind === 'system' ? [] : [...seeded.permissionKeys].sort(),
+          version: 1,
+          createdAt: START,
+        };
+        fakes.seedRole(state);
+        roles.set(`${seeded.scope}:${seeded.seedCode}`, state);
+      });
+      return roles;
+    }
+
+    /** An assignment of `role` to `accountId`, as a test fixture (admins exist only in tests). */
+    function assign(fakes: IdentityFakes, accountId: Id<'Account'>, role: RoleState, n: number) {
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${String(0xb100 + n).padStart(12, '0')}`),
+        marketId: code as RoleState['marketId'],
+        accountId,
+        roleId: role.id,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+    }
+
     function seedAdmins(fakes: IdentityFakes) {
       const n = (k: number) =>
         id<'Account'>(`01990000-0000-7000-8000-${String(0xe000 + k).padStart(12, '0')}`);
@@ -597,12 +652,18 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       expect(read.map((r) => r.accountId)).toEqual(candidates);
     });
 
-    it('answers an explicit empty set until slices 7 and 8a-1 (fail closed)', async () => {
+    it('answers an explicit empty set until slice 7, even for a Platform Administrator on the real registry (fail closed)', async () => {
       const s = setUp();
-      seedAdmins(s.fakes);
+      const { candidates } = seedAdmins(s.fakes);
+      // Slice 8a-1 binds the grant read and the registry: both candidates hold every platform
+      // key. With the production factor lookup (no store before slice 7) nobody is a reviewer.
+      const administrator = seedRealRoles(s.fakes).get('platform:platform-administrator')!;
+      candidates.forEach((accountId, n) => assign(s.fakes, accountId, administrator, n));
       const reviewers = new AccountAccessReviewers({
         unitOfWork: s.unitOfWork,
         candidates: s.fakes.reviewerCandidateReader,
+        grants: s.fakes.grantReader,
+        effectiveKeys: realEffectiveKeys(),
       });
 
       await expect(reviewers.reviewersOf(market)).resolves.toEqual([]);
@@ -632,6 +693,8 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
           run: () => Promise.resolve({ ok: false, error: 'down' }),
         } as never,
         candidates: s.fakes.reviewerCandidateReader,
+        grants: s.fakes.grantReader,
+        effectiveKeys: realEffectiveKeys(),
       });
 
       await expect(reviewers.reviewersOf(market)).rejects.toBeInstanceOf(
@@ -639,12 +702,30 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       );
     });
 
-    it('holds no key for any population until 8a-1, so no admin is a reviewer by default', () => {
+    it('holds no key without a role, and no admin is a reviewer without an active factor', () => {
+      const keys = realEffectiveKeys();
       for (const population of ['customer', 'seller', 'admin'] as const) {
-        expect([...effectiveKeysOf({ population, accountId: reviewer(1).accountId })]).toEqual([]);
+        expect([...keys({ population, accountId: reviewer(1).accountId })]).toEqual([]);
+        expect([
+          ...effectiveKeysOf(
+            { population, accountId: reviewer(1).accountId, grant: platformSystem },
+            EMPTY_PERMISSION_REGISTRY,
+          ),
+        ]).toEqual([]);
       }
       expect(holdsEvery(new Set([SELLER_ACCESS_APPROVE]), [SELLER_ACCESS_APPROVE])).toBe(true);
-      expect(isAccessReviewer(reviewer(1))).toBe(false);
+      expect(
+        isAccessReviewer(reviewer(1), platformSystem, {
+          factors: NO_SECOND_FACTOR_STORE,
+          keys,
+        }),
+      ).toBe(false);
+      expect(
+        isAccessReviewer(reviewer(1), platformSystem, {
+          factors: { hasActiveFactor: () => true },
+          keys,
+        }),
+      ).toBe(true);
     });
 
     it('never treats an empty requirement as held (Hassan I-2)', () => {
@@ -666,27 +747,35 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       const UNVERIFIED = n(8);
       const SELLER_SIDE = n(9);
       const OTHER_MARKET = n(10);
-      const system: RoleGrant = { kind: 'system', scope: 'platform', storedKeys: [] };
-      const approver: RoleGrant = {
-        kind: 'custom',
-        scope: 'platform',
-        storedKeys: ['identity.role.view', SELLER_ACCESS_APPROVE],
-      };
+      const grantOf = (
+        n: number,
+        kind: RoleGrant['kind'],
+        scope: RoleGrant['scope'],
+        storedKeys: string[],
+      ): RoleGrant => ({
+        roleId: id<'Role'>(`01990000-0000-7000-8000-${String(0xd000 + n).padStart(12, '0')}`),
+        kind,
+        scope,
+        sellerId: null,
+        storedKeys,
+      });
+      const system = grantOf(1, 'system', 'platform', []);
+      const approver = grantOf(2, 'custom', 'platform', [
+        'identity.role.view',
+        SELLER_ACCESS_APPROVE,
+      ]);
       const grants = new Map<string, RoleGrant>([
         [ADMINISTRATOR, system],
         [CUSTOM_APPROVER, approver],
         [NO_FACTOR, system],
-        [
-          CUSTOM_WITHOUT_KEY,
-          { kind: 'custom', scope: 'platform', storedKeys: ['identity.role.view'] },
-        ],
+        [CUSTOM_WITHOUT_KEY, grantOf(3, 'custom', 'platform', ['identity.role.view'])],
         [
           UNKNOWN_STORED_KEY,
-          { kind: 'custom', scope: 'platform', storedKeys: ['identity.seller-access.approve-all'] },
+          grantOf(4, 'custom', 'platform', ['identity.seller-access.approve-all']),
         ],
         [DISABLED, system],
         [UNVERIFIED, system],
-        [SELLER_SIDE, { kind: 'system', scope: 'seller', storedKeys: [] }],
+        [SELLER_SIDE, grantOf(5, 'system', 'seller', [])],
         [OTHER_MARKET, system],
       ]);
       const registry = (keys: readonly string[]): PermissionRegistryView => ({
@@ -703,14 +792,27 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         SELLER_SIDE,
         OTHER_MARKET,
       ]);
+      const fixtureGrants: RoleGrantReader = {
+        grantsOf: (_market, accountIds) =>
+          Promise.resolve(
+            new Map(
+              accountIds.flatMap((a) => {
+                const grant = grants.get(a);
+                return grant === undefined ? [] : [[a, grant] as const];
+              }),
+            ),
+          ),
+      };
       const ruleWith = (declared: readonly string[]): ReviewerRule => {
         const keys: EffectiveKeyResolver = (subject) =>
-          effectiveKeysOf(
-            { ...subject, grant: grants.get(subject.accountId) ?? null },
-            registry(declared),
-          );
+          effectiveKeysOf(subject, registry(declared));
         return { factors: { hasActiveFactor: (accountId) => withFactor.has(accountId) }, keys };
       };
+      const depsWith = (rule: ReviewerRule) => ({
+        grants: fixtureGrants,
+        effectiveKeys: rule.keys,
+        factors: rule.factors,
+      });
       const DECLARED = ['identity.role.view', SELLER_ACCESS_APPROVE];
 
       function seed(fakes: IdentityFakes): AccountState[] {
@@ -742,7 +844,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         const reviewers = await new AccountAccessReviewers({
           unitOfWork: s.unitOfWork,
           candidates: reversed,
-          rule: ruleWith(DECLARED),
+          ...depsWith(ruleWith(DECLARED)),
         }).reviewersOf(market);
 
         // Excluded: no active factor, a role without the key, a stored key the registry does not
@@ -758,7 +860,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         const reviewers = await new AccountAccessReviewers({
           unitOfWork: s.unitOfWork,
           candidates: s.fakes.reviewerCandidateReader,
-          rule: ruleWith(['identity.role.view']),
+          ...depsWith(ruleWith(['identity.role.view'])),
         }).reviewersOf(market);
 
         expect(reviewers).toEqual([]);
@@ -773,14 +875,15 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
           accounts: s.fakes.accountRepository,
           memberships: s.fakes.membershipRepository,
           sellerAccess: s.fakes.sellerAccessRepository,
-          keys: rule.keys,
+          grants: fixtureGrants,
+          effectiveKeys: rule.keys,
         });
         const recipients = new Set(
           (
             await new AccountAccessReviewers({
               unitOfWork: s.unitOfWork,
               candidates: s.fakes.reviewerCandidateReader,
-              rule,
+              ...depsWith(rule),
             }).reviewersOf(market)
           ).map((r) => r.accountId),
         );
@@ -818,6 +921,111 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         for (const row of rows.filter((a) => a.emailVerifiedAt === null || !withFactor.has(a.id))) {
           expect([row.id, recipients.has(row.id)]).toEqual([row.id, false]);
         }
+      });
+    });
+
+    // Slice 8a-1 (Hassan L-B; identity design 12.1): the equivalence again, on the real
+    // registry, the real seed's roles and the grant read, through the one resolver the module
+    // binds. Only the factor half is a fixture: no admin has a factor before slice 7.
+    describe('on the real registry and seed (slice 8a-1)', () => {
+      const n = (k: number) =>
+        id<'Account'>(`01990000-0000-7000-8000-${String(0xa100 + k).padStart(12, '0')}`);
+      const CODES = [
+        'platform-administrator',
+        'onboarding-compliance',
+        'catalogue-moderator',
+        'operations-support',
+        'finance',
+        'viewer',
+      ] as const;
+
+      it('a recipient exactly when the gate allows permissions [identity.seller-access.approve]', async () => {
+        const s = setUp();
+        const roles = seedRealRoles(s.fakes);
+        const registry = realPermissionRegistry();
+        const effectiveKeys = realEffectiveKeys(registry);
+        // One admin fixture account per platform role of the seed, one with no role, one with
+        // a seller-scope role (a corrupt row), one disabled and one unverified administrator.
+        const rows: AccountState[] = [];
+        CODES.forEach((seedCode, k) => {
+          const row = accountState(code, { id: n(k) });
+          s.fakes.seedAccount(row);
+          assign(s.fakes, row.id, roles.get(`platform:${seedCode}`)!, k);
+          rows.push(row);
+        });
+        const noRole = accountState(code, { id: n(20) });
+        const sellerRole = accountState(code, { id: n(21) });
+        const disabled = accountState(code, { id: n(22), status: 'disabled' });
+        const unverified = accountState(code, { id: n(23), emailVerifiedAt: null });
+        for (const row of [noRole, sellerRole, disabled, unverified]) {
+          s.fakes.seedAccount(row);
+          rows.push(row);
+        }
+        assign(s.fakes, sellerRole.id, roles.get('seller:seller-owner')!, 21);
+        assign(s.fakes, disabled.id, roles.get('platform:platform-administrator')!, 22);
+        assign(s.fakes, unverified.id, roles.get('platform:platform-administrator')!, 23);
+        const everyoneHasAFactor = { hasActiveFactor: () => true };
+
+        const check = new AccountAuthorisationCheck({
+          unitOfWork: s.unitOfWork,
+          accounts: s.fakes.accountRepository,
+          memberships: s.fakes.membershipRepository,
+          sellerAccess: s.fakes.sellerAccessRepository,
+          grants: s.fakes.grantReader,
+          effectiveKeys,
+        });
+        const recipients = new Set(
+          (
+            await new AccountAccessReviewers({
+              unitOfWork: s.unitOfWork,
+              candidates: s.fakes.reviewerCandidateReader,
+              grants: s.fakes.grantReader,
+              effectiveKeys,
+              factors: everyoneHasAFactor,
+            }).reviewersOf(market)
+          ).map((r) => r.accountId),
+        );
+        const narrowed = new Set(
+          (await s.fakes.reviewerCandidateReader.activeVerifiedAdmins(market, 1000)).map(
+            (c) => c.accountId,
+          ),
+        );
+        const approve: AccessDeclaration = {
+          name: 'identity.approve-anything',
+          rule: { kind: 'permissions', allOf: [SELLER_ACCESS_APPROVE as never] },
+        };
+
+        const compared: [string, boolean][] = [];
+        for (const row of rows.filter((a) => narrowed.has(a.id))) {
+          const context = testCallContext(
+            market,
+            testAuthenticatedActor(market, {
+              population: 'admin',
+              accountId: row.id,
+              sessionId: SESSION_ID,
+              sellerId: null,
+            }),
+          );
+          const allowed = (await check.check(context, approve)).allowed;
+          expect([row.id, recipients.has(row.id)]).toEqual([row.id, allowed]);
+          compared.push([row.id, allowed]);
+        }
+        // The Platform Administrator and Onboarding and Compliance hold the key; the other
+        // default roles, no role and a seller-scope role do not. Both answers occur.
+        expect(compared.filter(([, allowed]) => allowed).map(([a]) => a)).toEqual([n(0), n(1)]);
+        expect(compared.some(([, allowed]) => !allowed)).toBe(true);
+        expect(recipients.has(disabled.id)).toBe(false);
+        expect(recipients.has(unverified.id)).toBe(false);
+
+        // And with the production factor lookup (until slice 7) nobody is a recipient.
+        await expect(
+          new AccountAccessReviewers({
+            unitOfWork: s.unitOfWork,
+            candidates: s.fakes.reviewerCandidateReader,
+            grants: s.fakes.grantReader,
+            effectiveKeys,
+          }).reviewersOf(market),
+        ).resolves.toEqual([]);
       });
     });
   });

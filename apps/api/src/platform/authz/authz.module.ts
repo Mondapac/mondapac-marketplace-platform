@@ -1,6 +1,8 @@
 import { Module, type DynamicModule, type Type } from '@nestjs/common';
+import { PERMISSION_KEY_LOOKUP } from '../events/outbox-writer';
 import { MarketRegistry } from '../market-config/market-registry';
 import { AUTHORISATION_CHECK, type AuthorisationCheck } from './authorisation-check';
+import { PermissionRegistry } from './permission-registry';
 import { createUseCaseGate } from './use-case-gate';
 import { USE_CASE_GATE } from './use-case-gate.token';
 
@@ -14,6 +16,11 @@ import { USE_CASE_GATE } from './use-case-gate.token';
  * and exports {@link AUTHORISATION_CHECK} (identity's), so `platform/` imports no module
  * (ADR-0018 decision 4), and a graph without it fails boot with Nest's unknown-dependency
  * error. `platform/` ships no fallback.
+ *
+ * From identity slice 8a-1 it also holds the {@link PermissionRegistry} (foundations 6.1), into
+ * which every module pushes its catalogue at bootstrap, and binds it as the
+ * `PERMISSION_KEY_LOOKUP` of the outbox and audit writers in place of the fail-closed
+ * `NO_PERMISSION_KEYS` (platform-audit.md 14, Ali's condition 2).
  */
 @Module({})
 export class AuthzModule {
@@ -23,6 +30,10 @@ export class AuthzModule {
       global: true,
       imports: [authorisationProvider],
       providers: [
+        // One registry per process, with the checked-in retired list; Nest calls its
+        // `onApplicationBootstrap`, which seals it.
+        { provide: PermissionRegistry, useFactory: () => new PermissionRegistry() },
+        { provide: PERMISSION_KEY_LOOKUP, useExisting: PermissionRegistry },
         {
           provide: USE_CASE_GATE,
           inject: [MarketRegistry, AUTHORISATION_CHECK],
@@ -30,7 +41,7 @@ export class AuthzModule {
             createUseCaseGate(markets, authorisation),
         },
       ],
-      exports: [USE_CASE_GATE],
+      exports: [USE_CASE_GATE, PermissionRegistry, PERMISSION_KEY_LOOKUP],
     };
   }
 }

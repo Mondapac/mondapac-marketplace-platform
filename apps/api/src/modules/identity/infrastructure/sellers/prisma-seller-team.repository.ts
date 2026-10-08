@@ -7,7 +7,13 @@ import type {
   RoleRepository,
   SellerMembershipRepository,
 } from '../../application/ports/seller-team.repository';
-import { Role, RoleAssignment, type RoleKind, type RoleScope } from '../../domain/role';
+import {
+  Role,
+  RoleAssignment,
+  type RoleKind,
+  type RoleScope,
+  type SeedUpgrade,
+} from '../../domain/role';
 import { SellerMembership, type SellerMembershipStateCode } from '../../domain/seller-membership';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -131,7 +137,7 @@ const ROLE = {
   createdAt: true,
 } as const;
 
-function restoreRole(row: {
+type RoleRow = {
   id: string;
   marketId: string;
   scope: string;
@@ -141,8 +147,10 @@ function restoreRole(row: {
   sellerId: string | null;
   version: number;
   createdAt: Date;
-}): Role {
-  // The aggregate re-checks scope, kind, seed and seller (RoleInvariantError).
+};
+
+function restoreRole(row: RoleRow, permissionKeys: readonly string[]): Role {
+  // The aggregate re-checks scope, kind, seed, seller and keys (RoleInvariantError).
   return Role.restore({
     id: row.id as Id<'Role'>,
     marketId: marketOf('roles', row.marketId),
@@ -151,12 +159,17 @@ function restoreRole(row: {
     seedCode: row.seedCode,
     seedVersion: row.seedVersion,
     sellerId: row.sellerId as Id<'Seller'> | null,
+    permissionKeys,
     version: row.version,
     createdAt: toInstant(row.createdAt),
   });
 }
 
-/** {@link RoleRepository} on `identity.roles` (data design 3.9). */
+/**
+ * {@link RoleRepository} on `identity.roles` and `identity.role_permissions` (data design 3.9):
+ * single-table statements with `marketId` at the top level of `where`, no join. A role's stored
+ * keys are read with it, by `(market_id, role_id)`, the primary key's prefix.
+ */
 export class PrismaRoleRepository implements RoleRepository {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -166,7 +179,7 @@ export class PrismaRoleRepository implements RoleRepository {
       where: { marketId: market.marketId, scope, kind: 'system' },
       select: ROLE,
     });
-    return row === null ? null : restoreRole(row);
+    return this.withKeys(market, row);
   }
 
   async findById(market: MarketContext, id: Id<'Role'>): Promise<Role | null> {
@@ -174,7 +187,20 @@ export class PrismaRoleRepository implements RoleRepository {
       where: { marketId: market.marketId, id },
       select: ROLE,
     });
-    return row === null ? null : restoreRole(row);
+    return this.withKeys(market, row);
+  }
+
+  async findBySeedCode(
+    market: MarketContext,
+    scope: RoleScope,
+    seedCode: string,
+  ): Promise<Role | null> {
+    // `roles_market_id_scope_seed_code_key`.
+    const row = await this.prisma.tx(market).identityRole.findFirst({
+      where: { marketId: market.marketId, scope, seedCode },
+      select: ROLE,
+    });
+    return this.withKeys(market, row);
   }
 
   async addSeeded(market: MarketContext, role: Role): Promise<boolean> {
@@ -199,7 +225,62 @@ export class PrismaRoleRepository implements RoleRepository {
       ],
       skipDuplicates: true,
     });
-    return count === 1;
+    if (count !== 1) return false;
+    await this.addKeys(market, state.id, state.permissionKeys);
+    return true;
+  }
+
+  async applySeed(market: MarketContext, upgrade: SeedUpgrade): Promise<void> {
+    const { role, addedKeys, removedKeys } = upgrade;
+    const state = role.state;
+    const expected = role.persistedVersion;
+    if (expected === null) throw new Error('applySeed: the role was never stored');
+    // The version guard first: a concurrent run that upgraded the row meanwhile makes this one
+    // stale before it writes a key row (data design 8.3).
+    const { count } = await this.prisma.tx(market).identityRole.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: expected },
+      data: { seedVersion: state.seedVersion, version: state.version },
+    });
+    if (count !== 1) throw new StaleAggregateError('role', state.id);
+    await this.addKeys(market, state.id, addedKeys);
+    if (removedKeys.length > 0) {
+      await this.prisma.tx(market).identityRolePermission.deleteMany({
+        where: {
+          marketId: market.marketId,
+          roleId: state.id,
+          permissionKey: { in: [...removedKeys] },
+        },
+      });
+    }
+  }
+
+  private async addKeys(
+    market: MarketContext,
+    roleId: Id<'Role'>,
+    keys: readonly string[],
+  ): Promise<void> {
+    if (keys.length === 0) return;
+    await this.prisma.tx(market).identityRolePermission.createMany({
+      data: keys.map((permissionKey) => ({
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        roleId,
+        permissionKey,
+      })),
+    });
+  }
+
+  private async withKeys(market: MarketContext, row: RoleRow | null): Promise<Role | null> {
+    if (row === null) return null;
+    const keys = await this.prisma.tx(market).identityRolePermission.findMany({
+      where: { marketId: market.marketId, roleId: row.id },
+      select: { permissionKey: true },
+      orderBy: { permissionKey: 'asc' },
+    });
+    return restoreRole(
+      row,
+      keys.map((k) => k.permissionKey),
+    );
   }
 }
 

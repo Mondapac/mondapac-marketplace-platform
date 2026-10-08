@@ -1,5 +1,23 @@
 import { PERMISSION_KEY_PATTERN, type PermissionKey } from './access-rule';
 
+/**
+ * The longest permission key a module may declare (slice 8a-1; Ali's ruling on Mohammad's
+ * review): the stored column's limit, the CHECK on `identity.role_permissions.permission_key`
+ * (`char_length <= 128`, migration 20261008063654). A longer key could never be stored in a role,
+ * so `definePermission` refuses it at boot. Audit rows that list keys are bounded separately, by
+ * the byte budget of a seeded role's keys (`identity/application/roles/role-seed-budget.ts`).
+ */
+export const MAX_PERMISSION_KEY_LENGTH = 128;
+
+/** True for a well-formed key no longer than {@link MAX_PERMISSION_KEY_LENGTH}. */
+export function isDeclarablePermissionKey(key: unknown): key is string {
+  return (
+    typeof key === 'string' &&
+    key.length <= MAX_PERMISSION_KEY_LENGTH &&
+    PERMISSION_KEY_PATTERN.test(key)
+  );
+}
+
 /** The two scopes of a permission (R2): there is no customer scope. */
 export const PERMISSION_SCOPES = ['platform', 'seller'] as const;
 export type PermissionScope = (typeof PERMISSION_SCOPES)[number];
@@ -42,8 +60,10 @@ export function definePermission(
   },
 ): PermissionDeclaration {
   const { key, scope } = declaration;
-  if (typeof key !== 'string' || !PERMISSION_KEY_PATTERN.test(key)) {
-    throw new PermissionDeclarationError(`Malformed permission key "${String(key)}"`);
+  if (!isDeclarablePermissionKey(key)) {
+    throw new PermissionDeclarationError(
+      `Malformed or overlong permission key "${String(key)}" (at most ${MAX_PERMISSION_KEY_LENGTH} characters)`,
+    );
   }
   if (key.split('.')[0] !== module) {
     throw new PermissionDeclarationError(`Module "${module}" cannot declare "${key}"`);

@@ -7,7 +7,8 @@ import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import request from 'supertest';
 import { PurgeUnverifiedAccounts } from '../../src/modules/identity/application/use-cases/purge-unverified-accounts.use-case';
-import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { CheckedInRoleSeed } from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
 import {
   SELLER_ACCESS_CONTRACT,
   type SellerAccessContract,
@@ -85,7 +86,7 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
-    await app.get(SeedSystemRoles).execute(systemContext(), {});
+    await app.get(SeedRoles).execute(systemContext(), {});
   });
   afterEach(async () => {
     await app.close();
@@ -211,8 +212,8 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     return { email, confirmed };
   }
 
-  it('seeds one system role per scope, idempotently', async () => {
-    await app.get(SeedSystemRoles).execute(systemContext(), {});
+  it('seeds one system role per scope and the default roles, idempotently', async () => {
+    await app.get(SeedRoles).execute(systemContext(), {});
 
     const { rows } = await sql.query<{ scope: string; seed_code: string }>(
       `SELECT scope, seed_code FROM identity.roles WHERE market_id = $1 AND kind = 'system'
@@ -225,14 +226,28 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     ]);
 
     // identity.role.seeded once per role, by the run that created it; every later run (each
-    // test seeds again) writes none (slice 6b; platform-audit.md 5 row 1).
+    // test seeds again) writes none (slice 6b; platform-audit.md 5 row 1). Since slice 8a-1 the
+    // seed also holds the default roles of 5.6, each seeded once as well.
+    const { rows: everySeeded } = await sql.query<{ target_id: string }>(
+      `SELECT target_id FROM platform.audit_log
+        WHERE market_id = $1 AND action = 'identity.role.seeded'`,
+      [code],
+    );
+    const { rows: everyRole } = await sql.query<{ id: string }>(
+      `SELECT id FROM identity.roles WHERE market_id = $1 AND seed_code IS NOT NULL`,
+      [code],
+    );
+    expect(everyRole).toHaveLength(new CheckedInRoleSeed().roles().length);
+    expect(everySeeded.map((r) => r.target_id).sort()).toEqual(everyRole.map((r) => r.id).sort());
+
     const { rows: seeded } = await sql.query<{
       target_id: string;
       actor_type: string;
       after: unknown;
     }>(
       `SELECT target_id, actor_type, after FROM platform.audit_log
-        WHERE market_id = $1 AND action = 'identity.role.seeded' ORDER BY after->>'scope'`,
+        WHERE market_id = $1 AND action = 'identity.role.seeded' AND after->>'kind' = 'system'
+        ORDER BY after->>'scope'`,
       [code],
     );
     const { rows: roles } = await sql.query<{ id: string }>(

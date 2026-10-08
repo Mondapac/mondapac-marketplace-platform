@@ -23,7 +23,7 @@
   { "name": "identity.request-password-reset", "rule": "anonymous" },
   { "name": "identity.request-seller-verification", "rule": "anonymous" },
   { "name": "identity.reset-password", "rule": "anonymous" },
-  { "name": "identity.seed-system-roles", "rule": "system" },
+  { "name": "identity.seed-roles", "rule": "system" },
   { "name": "identity.seller-access-of", "rule": "anonymous" },
   { "name": "identity.seller-access-of-system", "rule": "system" },
   { "name": "identity.send-existing-account-mail", "rule": "system" },

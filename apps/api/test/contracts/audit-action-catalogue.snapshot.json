@@ -15,6 +15,20 @@
     }
   },
   {
+    "action": "identity.role.seed-applied",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": {
+      "seedVersion": "integer"
+    },
+    "after": {
+      "addedKeys": "listOf(permissionKey, max 40)",
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "seedVersion": "integer"
+    }
+  },
+  {
     "action": "identity.role.seeded",
     "targetType": "identity.role",
     "targetId": "id",

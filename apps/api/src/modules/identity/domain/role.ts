@@ -13,9 +13,25 @@ const SEED_CODE = /^[a-z][a-z0-9-]*$/;
 const MAX_SEED_CODE_LENGTH = 64;
 
 /**
- * The state of a {@link Role} (identity design 2.1; data design 3.9), as far as slice 5 reads
- * it. The name of a custom role and the keys of a default or custom role join with the slices
- * that create them (8a, 10); a system role has neither (R3).
+ * A permission key's shape (platform-foundations 6.1; the CHECK on `role_permissions`). The
+ * domain checks only the shape: whether the registry declares a key, and in which scope, is
+ * checked by the seed routine and the role editor, and an unknown stored key is dropped when
+ * keys are resolved (R7).
+ */
+const PERMISSION_KEY = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){2}$/;
+
+/** The stored keys in their canonical form: unique, sorted, frozen; or null when malformed. */
+function canonicalKeys(keys: readonly string[]): readonly string[] | null {
+  if (!Array.isArray(keys)) return null;
+  if (keys.some((key) => typeof key !== 'string' || !PERMISSION_KEY.test(key))) return null;
+  const sorted = [...new Set(keys)].sort();
+  return sorted.length === keys.length ? Object.freeze(sorted) : null;
+}
+
+/**
+ * The state of a {@link Role} (identity design 2.1; data design 3.9). The keys of a default role
+ * are stored from slice 8a-1; the name of a custom role joins with the role editor (slice 10). A
+ * system role has neither: it holds every key of its scope by definition (R3).
  */
 export interface RoleState {
   readonly id: Id<'Role'>;
@@ -27,8 +43,18 @@ export interface RoleState {
   readonly seedVersion: number | null;
   /** Set only on a seller-scope custom role (R9). */
   readonly sellerId: Id<'Seller'> | null;
+  /** The stored keys (`role_permissions`), unique and sorted; always empty for a system role. */
+  readonly permissionKeys: readonly string[];
   readonly version: number;
   readonly createdAt: Temporal.Instant;
+}
+
+/** What applying a newer seed version changed: the keys added and removed (R5, PA 5). */
+export interface SeedUpgrade {
+  readonly role: Role;
+  readonly fromSeedVersion: number;
+  readonly addedKeys: readonly string[];
+  readonly removedKeys: readonly string[];
 }
 
 /** A state that breaks an invariant of 2.1 or 5.5: a bug of the caller or a corrupt row. */
@@ -36,7 +62,16 @@ export class RoleInvariantError extends Error {
   override readonly name = 'RoleInvariantError';
   constructor(
     readonly invariant:
-      'scope' | 'kind' | 'seed' | 'seller' | 'version' | 'population' | 'market' | 'founding-role',
+      | 'scope'
+      | 'kind'
+      | 'seed'
+      | 'seller'
+      | 'keys'
+      | 'version'
+      | 'population'
+      | 'market'
+      | 'founding-role'
+      | 'seed-upgrade',
   ) {
     super(`Role invariant broken: ${invariant}`);
   }
@@ -88,10 +123,14 @@ export class Role {
     if ((state.scope === 'seller' && state.kind === 'custom') !== (state.sellerId !== null)) {
       throw new RoleInvariantError('seller');
     }
+    const keys = canonicalKeys(state.permissionKeys);
+    if (keys === null || (state.kind === 'system' && keys.length > 0)) {
+      throw new RoleInvariantError('keys');
+    }
     if (!Number.isInteger(state.version) || state.version < 1) {
       throw new RoleInvariantError('version');
     }
-    this.#state = Object.freeze({ ...state });
+    this.#state = Object.freeze({ ...state, permissionKeys: keys });
   }
 
   /** A system role created by the seed routine (5.6): the first holder of its scope gets it. */
@@ -113,6 +152,39 @@ export class Role {
         seedCode,
         seedVersion,
         sellerId: null,
+        permissionKeys: [],
+        version: 1,
+        createdAt: now,
+      },
+      null,
+    );
+  }
+
+  /**
+   * A default role created by the seed routine (5.6; slice 8a-1): a shared row of its scope and
+   * Market (no seller, R9) with the keys of its seed file. No use case of a seller or an admin
+   * changes it; only a newer seed version does ({@link applySeed}, R10).
+   */
+  static seedDefault(input: {
+    readonly id: Id<'Role'>;
+    readonly marketId: MarketId;
+    readonly scope: RoleScope;
+    readonly seedCode: string;
+    readonly seedVersion: number;
+    readonly permissionKeys: readonly string[];
+    readonly now: Temporal.Instant;
+  }): Role {
+    const { id, marketId, scope, seedCode, seedVersion, permissionKeys, now } = input;
+    return new Role(
+      {
+        id,
+        marketId,
+        scope,
+        kind: 'default',
+        seedCode,
+        seedVersion,
+        sellerId: null,
+        permissionKeys,
         version: 1,
         createdAt: now,
       },
@@ -131,6 +203,40 @@ export class Role {
 
   get isSystem(): boolean {
     return this.#state.kind === 'system';
+  }
+
+  /**
+   * Applies a newer version of this role's seed (5.6; Ali 2026-10-08, PA 14 condition 3): the
+   * stored keys become the seed's, key by key, and the version steps. Only a seeded role (system
+   * or default) and only a strictly newer version: a custom role changes only through the role
+   * editor (R10), and an older or equal version is never applied. A system role stays without
+   * stored keys (R3). The persisted version is kept, so the store updates at the version read.
+   */
+  applySeed(seed: {
+    readonly seedVersion: number;
+    readonly permissionKeys: readonly string[];
+  }): SeedUpgrade {
+    const state = this.#state;
+    if (state.kind === 'custom' || state.seedVersion === null) {
+      throw new RoleInvariantError('seed-upgrade');
+    }
+    if (!Number.isInteger(seed.seedVersion) || seed.seedVersion <= state.seedVersion) {
+      throw new RoleInvariantError('seed-upgrade');
+    }
+    const next = canonicalKeys(seed.permissionKeys);
+    if (next === null) throw new RoleInvariantError('keys');
+    const before = new Set(state.permissionKeys);
+    const after = new Set(next);
+    const role = new Role(
+      { ...state, seedVersion: seed.seedVersion, permissionKeys: next, version: state.version + 1 },
+      this.persistedVersion,
+    );
+    return {
+      role,
+      fromSeedVersion: state.seedVersion,
+      addedKeys: Object.freeze(next.filter((key) => !before.has(key))),
+      removedKeys: Object.freeze(state.permissionKeys.filter((key) => !after.has(key))),
+    };
   }
 }
 

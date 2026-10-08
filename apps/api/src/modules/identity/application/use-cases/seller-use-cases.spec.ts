@@ -10,6 +10,10 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { IdentityFakes } from '../../../../../test/support/identity-fakes';
 import {
+  realEffectiveKeys,
+  realPermissionRegistry,
+} from '../../../../../test/support/permission-registry';
+import {
   TEST_LOCALE_CONFIG_DIRS,
   TEST_MARKETS,
   TEST_MARKET_CONFIG_DIRS,
@@ -27,6 +31,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AccountState } from '../../domain/account';
+import { MAX_SEED_KEYS_PER_ROW } from '../../domain/audit';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer } from '../../infrastructure/mail/mail-catalogue';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
@@ -38,6 +43,7 @@ import {
 import { RandomSessionTokens } from '../../infrastructure/sessions/random-session-tokens';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import type { SeededRole } from '../ports/role-seed';
+import { checkRoleSeedKeys } from '../roles/role-seed-keys';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import { ConfirmSellerEmail } from './confirm-seller-email.use-case';
 import { DescribeSellerStatus } from './describe-seller-status.use-case';
@@ -46,7 +52,7 @@ import { MembershipOf } from './membership-of.use-case';
 import { PurgeUnverifiedAccounts } from './purge-unverified-accounts.use-case';
 import { RegisterSeller } from './register-seller.use-case';
 import { RequestSellerVerification } from './request-seller-verification.use-case';
-import { SeedSystemRoles } from './seed-system-roles.use-case';
+import { SeedRoles } from './seed-roles.use-case';
 import { SellerAccessOf } from './seller-access-of.use-case';
 import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
 import { identityMailSubscriptions } from '../../presentation/subscribers/mail.subscriptions';
@@ -102,6 +108,8 @@ function setUp() {
       accounts: fakes.accountRepository,
       memberships: fakes.membershipRepository,
       sellerAccess: fakes.sellerAccessRepository,
+      grants: fakes.grantReader,
+      effectiveKeys: realEffectiveKeys(),
     }),
   );
   const linkTokens = new RandomLinkTokens();
@@ -151,10 +159,11 @@ function setUp() {
       welcome,
       new SendPasswordChangedMail(gate, mailDeps),
     ),
-    seed: new SeedSystemRoles(gate, {
+    seed: new SeedRoles(gate, {
       unitOfWork,
       roles: fakes.roleRepository,
       seed: new CheckedInRoleSeed(),
+      permissions: realPermissionRegistry(),
       clock,
       ids,
       audit: fakes.audit,
@@ -236,15 +245,74 @@ describe('the checked-in role seed (identity design 5.6)', () => {
   });
   const platform = role({ scope: 'platform', seedCode: 'platform-administrator' });
 
-  it('holds exactly one system role per scope, with no keys', () => {
+  it('holds one system role per scope with no keys, and the default roles of 5.6 (slice 8a-1)', () => {
     expect(
       new CheckedInRoleSeed()
         .roles()
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
+      ['platform', 'default', 'onboarding-compliance', 4],
+      ['platform', 'default', 'catalogue-moderator', 1],
+      ['platform', 'default', 'operations-support', 4],
+      ['platform', 'default', 'finance', 1],
+      ['platform', 'default', 'viewer', 4],
       ['seller', 'system', 'seller-owner', 0],
+      ['seller', 'default', 'store-manager', 2],
+      ['seller', 'default', 'order-fulfilment', 0],
+      ['seller', 'default', 'catalogue-stock', 0],
+      ['seller', 'default', 'customer-service', 0],
+      ['seller', 'default', 'bookkeeper', 0],
     ]);
+  });
+
+  it('pins the key list of every default role of 5.6, by key (Sajad G4)', () => {
+    const keysOf = (seedCode: string) =>
+      [
+        ...new CheckedInRoleSeed().roles().find((r) => r.seedCode === seedCode)!.permissionKeys,
+      ].sort();
+    const registry = realPermissionRegistry();
+
+    // Viewer: every unprotected `view` key of the platform scope, as the registry declares them.
+    expect(keysOf('viewer')).toEqual(
+      registry
+        .list('platform')
+        .filter((d) => !d.protected && d.key.endsWith('.view'))
+        .map((d) => d.key)
+        .sort(),
+    );
+    expect(keysOf('onboarding-compliance')).toEqual([
+      'identity.seller-access.approve',
+      'identity.seller-access.suspend',
+      'identity.seller-access.view',
+      'identity.seller-account.create',
+    ]);
+    expect(keysOf('catalogue-moderator')).toEqual(['identity.seller-access.view']);
+    expect(keysOf('operations-support')).toEqual([
+      'identity.customer-account.disable',
+      'identity.customer-account.view',
+      'identity.seller-access.view',
+      'identity.seller-account.reset-second-factor',
+    ]);
+    expect(keysOf('finance')).toEqual(['identity.seller-access.view']);
+    expect(keysOf('store-manager')).toEqual([
+      'identity.seller-role.view',
+      'identity.team-member.view',
+    ]);
+    for (const seedCode of [
+      'order-fulfilment',
+      'catalogue-stock',
+      'customer-service',
+      'bookkeeper',
+    ]) {
+      expect([seedCode, keysOf(seedCode)]).toEqual([seedCode, []]);
+    }
+  });
+
+  it("its keys agree with the real registry: declared, in the role's scope, never protected", () => {
+    expect(() =>
+      checkRoleSeedKeys(new CheckedInRoleSeed().roles(), realPermissionRegistry()),
+    ).not.toThrow();
   });
 
   it.each<[string, SeededRole[]]>([
@@ -253,7 +321,35 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ['a duplicate code', [platform, role({}), role({})]],
     ['a system role with keys', [platform, role({ permissionKeys: ['catalog.offer.edit'] })]],
     ['two system roles in a scope', [platform, role({}), role({ seedCode: 'seller-boss' })]],
+    ['a custom role', [platform, role({}), role({ kind: 'custom' as never, seedCode: 'x' })]],
+    [
+      'a key listed twice',
+      [
+        platform,
+        role({}),
+        role({
+          kind: 'default',
+          seedCode: 'store-manager',
+          permissionKeys: ['identity.team-member.view', 'identity.team-member.view'],
+        }),
+      ],
+    ],
     ['a scope without a system role', [platform]],
+    [
+      'more keys than one seed-applied row can list (Mohammad 3, Hassan L-1)',
+      [
+        platform,
+        role({}),
+        role({
+          kind: 'default',
+          seedCode: 'store-manager',
+          permissionKeys: Array.from(
+            { length: MAX_SEED_KEYS_PER_ROW + 1 },
+            (_, n) => `identity.fixture-${n}.view`,
+          ),
+        }),
+      ],
+    ],
   ])('refuses %s', (_case, roles) => {
     expect(() => checkRoleSeed(roles)).toThrow(RoleSeedError);
   });
@@ -333,29 +429,38 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
   const registeredEvents = (s: Setup): PendingEvent[] =>
     s.fakes.events.filter((e) => e.type === 'identity.seller-registered.v1');
 
-  describe('SeedSystemRoles', () => {
+  describe('SeedRoles', () => {
     it('creates the two system roles once; a second run creates none', async () => {
       const s = setUp();
 
+      // 2 system and 10 default roles (slice 8a-1; the default roles have their own suite).
       await expect(s.seed.execute(system, {})).resolves.toEqual({
         ok: true,
-        value: { created: 2 },
+        value: { created: 12, upgraded: 0 },
       });
       await expect(s.seed.execute(system, {})).resolves.toEqual({
         ok: true,
-        value: { created: 0 },
+        value: { created: 0, upgraded: 0 },
       });
 
       expect(
-        [...s.fakes.roles.values()].map((r) => [r.marketId, r.scope, r.kind, r.seedCode]).sort(),
+        [...s.fakes.roles.values()]
+          .filter((r) => r.kind === 'system')
+          .map((r) => [r.marketId, r.scope, r.kind, r.seedCode])
+          .sort(),
       ).toEqual([
         [code, 'platform', 'system', 'platform-administrator'],
         [code, 'seller', 'system', 'seller-owner'],
       ]);
       // identity.role.seeded once per created role, as the system; the second run writes none.
-      const roleIds = new Map([...s.fakes.roles.values()].map((r) => [r.scope, r.id]));
+      const roleIds = new Map(
+        [...s.fakes.roles.values()].filter((r) => r.kind === 'system').map((r) => [r.scope, r.id]),
+      );
       expect(
-        s.fakes.audits.map((a) => [a.action, a.actor, a.marketId, a.targetId, a.after]).sort(),
+        s.fakes.audits
+          .filter((a) => [...roleIds.values()].includes(a.targetId as never))
+          .map((a) => [a.action, a.actor, a.marketId, a.targetId, a.after])
+          .sort(),
       ).toEqual([
         [
           'identity.role.seeded',
@@ -1041,7 +1146,7 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
       expect(s.fakes.subjectKeys.get(owner)).toBe('destroyed');
       expect(s.fakes.subjectKeys.get(sellerId)).toBe('destroyed');
       // The roles stay: they belong to the Market.
-      expect(s.fakes.roles.size).toBe(2);
+      expect(s.fakes.roles.size).toBe(new CheckedInRoleSeed().roles().length);
     });
 
     it('never touches a registered seller', async () => {

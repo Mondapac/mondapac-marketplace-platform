@@ -60,8 +60,8 @@ export class OutboxWriteRefusedError extends Error {
 
 /**
  * Answers whether a permission key is known to the `PermissionRegistry` or its retired list
- * (foundations 6.1), for `permissionKey` payload fields (P 5.3). The registry arrives with
- * identity slice 8a; until then the binding knows no key, so such a field is refused.
+ * (foundations 6.1), for `permissionKey` payload fields (P 5.3). Since identity slice 8a-1 the
+ * binding is the registry itself (`AuthzModule`).
  */
 export interface PermissionKeyLookup {
   isKnownPermissionKey(key: string): boolean;
@@ -69,7 +69,10 @@ export interface PermissionKeyLookup {
 
 export const PERMISSION_KEY_LOOKUP = Symbol('PERMISSION_KEY_LOOKUP');
 
-/** The binding before the permission registry exists: fail closed. */
+/**
+ * A lookup that knows no key: every `permissionKey` field is refused. The production binding
+ * before identity slice 8a-1; now only for tests of a writer that carries no such field.
+ */
 export const NO_PERMISSION_KEYS: PermissionKeyLookup = Object.freeze({
   isKnownPermissionKey: () => false,
 });

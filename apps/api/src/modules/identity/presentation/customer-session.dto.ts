@@ -53,10 +53,10 @@ export class CustomerSessionSummary {
   @ApiProperty({ type: String, nullable: true, description: 'Null for a customer.' })
   sellerId!: string | null;
 
-  @ApiProperty({ type: String, nullable: true, description: 'Null until slice 8a.' })
+  @ApiProperty({ type: String, nullable: true, description: 'Null: a customer holds no role.' })
   roleId!: string | null;
 
-  @ApiProperty({ type: [String], description: 'Empty until slice 8a.' })
+  @ApiProperty({ type: [String], description: 'Empty: a customer holds no permission key.' })
   permissionKeys!: string[];
 
   @ApiProperty({ type: String, nullable: true, description: 'Null for a customer.' })

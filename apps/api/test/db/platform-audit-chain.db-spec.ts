@@ -22,7 +22,8 @@ import {
   AUDIT_VERIFY_EXIT,
   runAuditVerifyCommand,
 } from '../../src/platform/audit/audit-verify-command';
-import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { CheckedInRoleSeed } from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
 import { IdentityModule } from '../../src/modules/identity/identity.module';
 import {
   AUDIT_WRITER,
@@ -789,19 +790,19 @@ describe('the audit chain on the database (slice 6b)', () => {
         .mockRejectedValue(new AuditWriteRefusedError('entry-invalid', 'after'));
 
       await app
-        .get(SeedSystemRoles)
+        .get(SeedRoles)
         .execute(system, {})
         .catch((error: unknown) => error);
 
       expect(await countRoles()).toBe(0);
       refusing.mockRestore();
-      await app.get(SeedSystemRoles).execute(system, {});
+      await app.get(SeedRoles).execute(system, {});
       expect(await countRoles()).toBe(2);
       const { rows: seeded } = await owner.query(
         `SELECT 1 FROM platform.audit_log WHERE market_id = $1 AND action = 'identity.role.seeded'`,
         [code],
       );
-      expect(seeded).toHaveLength(2);
+      expect(seeded).toHaveLength(new CheckedInRoleSeed().roles().length);
     }
   });
 
