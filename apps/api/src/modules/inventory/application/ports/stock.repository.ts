@@ -1,0 +1,89 @@
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+
+/** One stock item as the rules read it (data design 3.4). */
+export interface StockItemRow {
+  readonly id: Id<'StockItem'>;
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+  readonly sourceId: Id<'InventorySource'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly onHand: number;
+  readonly retired: boolean;
+  readonly version: number;
+}
+
+export interface NewStockItem {
+  readonly id: Id<'StockItem'>;
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+  readonly sourceId: Id<'InventorySource'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly onHand: number;
+  readonly createdAt: Temporal.Instant;
+}
+
+/** One ledger entry of an account's stock write (data design 3.5). */
+export interface NewStockMovement {
+  readonly id: Id<'StockMovement'>;
+  readonly stockItemId: Id<'StockItem'>;
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+  readonly delta: number;
+  readonly resultingOnHand: number;
+  readonly reason: 'seller-set';
+  readonly actorAccountId: Id<'Account'>;
+  readonly correlationId: string;
+  readonly occurredAt: Temporal.Instant;
+}
+
+/**
+ * The store of stock items and their ledger (data design 3.4, 3.5, 4.3, 4.4). Every method runs in
+ * the open unit of the use case; the writers run only in a `serializable` unit (4.5).
+ */
+export interface StockRepository {
+  /**
+   * Every stock item of the sell unit, retired ones included, locked `FOR NO KEY UPDATE` in
+   * ascending id order by the named statement `inventory.lock-stock-items` (lock rule L1). Empty
+   * when the sell unit has no item yet: there is nothing to lock, and the unique key plus the
+   * serializable unit settle a creation race.
+   */
+  lockSellUnit(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+    variantId: Id<'Variant'>,
+  ): Promise<readonly StockItemRow[]>;
+
+  /** True when a catalog retirement tombstone covers the Offer or the Variant (data design 3.10). */
+  isSellUnitRetired(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+    variantId: Id<'Variant'>,
+  ): Promise<boolean>;
+
+  /**
+   * The quantity held on each item by active reservations and committed lines (design 4.1),
+   * 0 for an item with none. Reservations arrive with slice 4 and this body then counts them; until
+   * then the table does not exist, so nothing can be held.
+   */
+  heldQuantities(
+    market: MarketContext,
+    stockItemIds: readonly Id<'StockItem'>[],
+  ): Promise<ReadonlyMap<Id<'StockItem'>, number>>;
+
+  insertItem(market: MarketContext, item: NewStockItem): Promise<void>;
+
+  /**
+   * Sets `onHand` and raises the version by one, only if the stored version is
+   * `expectedVersion`; otherwise writes nothing and answers `stale`.
+   */
+  setOnHand(
+    market: MarketContext,
+    id: Id<'StockItem'>,
+    expectedVersion: number,
+    onHand: number,
+  ): Promise<'saved' | 'stale'>;
+
+  appendMovement(market: MarketContext, movement: NewStockMovement): Promise<void>;
+}
+
+export const STOCK_REPOSITORY = Symbol('STOCK_REPOSITORY');

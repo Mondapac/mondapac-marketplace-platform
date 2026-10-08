@@ -190,7 +190,8 @@
     }
   },
   "inventory": {
-    "maxSourcesPerSeller": 2
+    "maxSourcesPerSeller": 2,
+    "defaultLowStockThreshold": 3
   },
   "catalog": {
     "taxCategories": [

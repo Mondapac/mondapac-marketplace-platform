@@ -1687,11 +1687,33 @@ describe('loadMarketConfigs', () => {
     });
 
     it.each([1, 4])('carries the source limit %i', (limit) => {
-      const loaded = loadMarketConfigs([withInventory({ maxSourcesPerSeller: limit })], [QQ]).get(
-        QQ,
-      );
+      const loaded = loadMarketConfigs(
+        [withInventory({ maxSourcesPerSeller: limit, defaultLowStockThreshold: 10 })],
+        [QQ],
+      ).get(QQ);
 
       expect(loaded?.inventory?.maxSourcesPerSeller).toBe(limit);
+    });
+
+    it.each([0, 99])('carries the default low-stock threshold %i', (threshold) => {
+      const loaded = loadMarketConfigs(
+        [withInventory({ maxSourcesPerSeller: 4, defaultLowStockThreshold: threshold })],
+        [QQ],
+      ).get(QQ);
+
+      expect(loaded?.inventory?.defaultLowStockThreshold).toBe(threshold);
+    });
+
+    it('gives the two Market fixtures different thresholds (AC 13)', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const thresholds = TEST_MARKET_IDS.map(
+        (id) => configs.get(id)?.inventory?.defaultLowStockThreshold,
+      );
+
+      expect(Object.fromEntries(TEST_MARKET_IDS.map((id, i) => [id, thresholds[i]]))).toEqual({
+        AU: 10,
+        ZZ: 3,
+      });
     });
 
     it('gives the two Market fixtures different limits (AC 13)', () => {
@@ -1705,14 +1727,25 @@ describe('loadMarketConfigs', () => {
     });
 
     it.each([
-      ['a missing limit', {}],
-      ['zero sources', { maxSourcesPerSeller: 0 }],
-      ['more sources than the re-key lock set allows', { maxSourcesPerSeller: 5 }],
-      ['a negative limit', { maxSourcesPerSeller: -1 }],
-      ['a null limit', { maxSourcesPerSeller: null }],
-      ['a string limit', { maxSourcesPerSeller: '4' }],
-      ['a fractional limit', { maxSourcesPerSeller: 2.5 }],
-      ['an unknown key', { maxSourcesPerSeller: 4, reservationMinutes: 15 }],
+      ['a missing limit', { defaultLowStockThreshold: 10 }],
+      ['a missing threshold', { maxSourcesPerSeller: 4 }],
+      ['zero sources', { maxSourcesPerSeller: 0, defaultLowStockThreshold: 10 }],
+      [
+        'more sources than the re-key lock set allows',
+        { maxSourcesPerSeller: 5, defaultLowStockThreshold: 10 },
+      ],
+      ['a negative limit', { maxSourcesPerSeller: -1, defaultLowStockThreshold: 10 }],
+      ['a null limit', { maxSourcesPerSeller: null, defaultLowStockThreshold: 10 }],
+      ['a string limit', { maxSourcesPerSeller: '4', defaultLowStockThreshold: 10 }],
+      ['a fractional limit', { maxSourcesPerSeller: 2.5, defaultLowStockThreshold: 10 }],
+      ['a negative threshold', { maxSourcesPerSeller: 4, defaultLowStockThreshold: -1 }],
+      ['a threshold above 99', { maxSourcesPerSeller: 4, defaultLowStockThreshold: 100 }],
+      ['a fractional threshold', { maxSourcesPerSeller: 4, defaultLowStockThreshold: 2.5 }],
+      ['a string threshold', { maxSourcesPerSeller: 4, defaultLowStockThreshold: '10' }],
+      [
+        'an unknown key',
+        { maxSourcesPerSeller: 4, defaultLowStockThreshold: 10, reservationMinutes: 15 },
+      ],
     ])('rejects %s', (_case, inventory) => {
       expect(() => loadMarketConfigs([withInventory(inventory)], [QQ])).toThrow(
         InvalidMarketConfigError,
