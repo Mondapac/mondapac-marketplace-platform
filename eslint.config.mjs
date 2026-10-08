@@ -289,6 +289,38 @@ const handleIsReachedOnlyByExecute = [
   },
 ];
 
+// ADR-0037 decision 8, client-address-is-resolved-once: only platform/http/client-address.ts
+// reads the socket's address; every other file reads the address it resolved (the socket, or
+// the address a BFF proved). `no-restricted-properties` has one value per file, so the
+// blocks below list the appRole entry next to it where both apply.
+const APP_ROLE_IS_READ_IN_TWO_PLACES = {
+  property: 'appRole',
+  message:
+    'app-role-is-read-in-two-places: only main.ts and platform/worker/ read appRole (P 12.2 rule 3).',
+};
+const CLIENT_ADDRESS_IS_RESOLVED_ONCE = {
+  property: 'remoteAddress',
+  message:
+    'client-address-is-resolved-once: read the client address through ' +
+    'platform/http/client-address.ts, never the socket (ADR-0037 decision 8).',
+};
+const CLIENT_ADDRESS_RESOLVER = [
+  'apps/api/src/platform/http/client-address.ts',
+  `${FIXTURES}/src/platform/http/client-address.ts`,
+];
+// Temporary: the readers of the socket address on main when this rule landed. The slice
+// feat/platform-bff-client-address moves them to the resolver and deletes this list.
+const SOCKET_READERS_BEFORE_ADR_0037 = [
+  'apps/api/src/platform/rate-limit/rate-limit.guard.ts',
+  'apps/api/src/modules/identity/presentation/customer-email-verification.controller.ts',
+  'apps/api/src/modules/identity/presentation/customer-session.controller.ts',
+  'apps/api/src/modules/identity/presentation/customer-sign-up.controller.ts',
+  'apps/api/src/modules/identity/presentation/password.answer.ts',
+  'apps/api/src/modules/identity/presentation/seller-sign-in.answer.ts',
+  'apps/api/src/modules/identity/presentation/seller-sign-up.controller.ts',
+  'apps/api/src/modules/sellers/presentation/my-file.controller.ts',
+];
+
 // The selector groups of the modules block and of the domain and application block.
 const MODULE_SYNTAX = [
   ...noMarketOrVerticalLiterals,
@@ -432,6 +464,7 @@ export default tseslint.config(
   {
     // P 12.2 rule 3, app-role-is-read-in-two-places: only main.ts and platform/worker/ read the
     // process role (APP_ROLE, P 8). Every other file receives behaviour, not the role.
+    // ADR-0037 decision 8: and only the resolver reads the socket's address.
     files: [`apps/api/src/**/*.${TS}`, `${FIXTURES}/src/**/*.${TS}`],
     ignores: [
       ...SPEC_FILES,
@@ -443,13 +476,27 @@ export default tseslint.config(
     rules: {
       'no-restricted-properties': [
         'error',
-        {
-          property: 'appRole',
-          message:
-            'app-role-is-read-in-two-places: only main.ts and platform/worker/ read appRole (P 12.2 rule 3).',
-        },
+        APP_ROLE_IS_READ_IN_TWO_PLACES,
+        CLIENT_ADDRESS_IS_RESOLVED_ONCE,
       ],
     },
+  },
+  {
+    // main.ts and platform/worker/ may read appRole, never the socket's address. Spec files
+    // too: a test builds a request with an address, it does not read one.
+    files: [
+      'apps/api/src/main.ts',
+      'apps/api/src/platform/worker/**',
+      `${FIXTURES}/src/main.ts`,
+      `${FIXTURES}/src/platform/worker/**`,
+      `apps/api/src/**/*.spec.${TS}`,
+    ],
+    rules: { 'no-restricted-properties': ['error', CLIENT_ADDRESS_IS_RESOLVED_ONCE] },
+  },
+  {
+    // The resolver alone reads the socket's address (and the temporary list above).
+    files: [...CLIENT_ADDRESS_RESOLVER, ...SOCKET_READERS_BEFORE_ADR_0037],
+    rules: { 'no-restricted-properties': ['error', APP_ROLE_IS_READ_IN_TWO_PLACES] },
   },
   {
     // The domain and application layers of a module.
