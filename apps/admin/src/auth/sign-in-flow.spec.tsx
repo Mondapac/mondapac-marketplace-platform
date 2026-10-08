@@ -103,6 +103,29 @@ describe('admin sign-in', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     expect(await screen.findByLabelText('Password')).toBeTruthy();
+    expect(screen.getByText(/Too many wrong codes. Sign in again/)).toBeTruthy();
+  });
+
+  it('shows the pause and disables Sign in when the second factor is locked', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-required', challengeToken: 'tok' },
+    });
+    render(wrap(<SignInFlow notice={null} />));
+    signIn();
+    await screen.findByText('Enter your 6-digit code');
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 429, code: 'second-factor.locked', details: { retryAfterSeconds: 86400 } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText(/paused for 24 hours/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Sign in' }).disabled).toBe(
+        true,
+      ),
+    );
   });
 
   it('says a set-up link was mailed after a two-step reset', async () => {
@@ -113,6 +136,52 @@ describe('admin sign-in', () => {
     });
     render(wrap(<SignInFlow notice={null} />));
     signIn();
-    expect(await screen.findByText(/We've sent a link to your email/)).toBeTruthy();
+    expect(await screen.findByText(/We've sent a link to a@example.com/)).toBeTruthy();
+  });
+
+  it('disables Sign in while throttled and does not point at a reset link that is not there', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 429, code: 'request.throttled', details: { retryAfterSeconds: 120 } },
+    });
+    render(wrap(<SignInFlow notice={null} />));
+    signIn();
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('2 minutes');
+    expect(alert.textContent).not.toContain('reset your password');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Sign in' }).disabled).toBe(true);
+  });
+
+  it('removes spaces and hyphens from the code before sending it', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-required', challengeToken: 'tok' },
+    });
+    render(wrap(<SignInFlow notice={null} />));
+    signIn();
+    await screen.findByText('Enter your 6-digit code');
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'signed-in' } });
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123 456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(call).toHaveBeenLastCalledWith('POST', 'identity/admin/second-factor', {
+      challengeToken: 'tok',
+      code: '123456',
+    });
+  });
+
+  it('shows the notice banners and changes the title on the code step', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-required', challengeToken: 'tok' },
+    });
+    const view = render(wrap(<SignInFlow notice="account-ready" />));
+    expect(screen.getByText('Your account is ready. Sign in.')).toBeTruthy();
+    signIn();
+    await screen.findByText('Enter your 6-digit code');
+    expect(document.title).toBe('Two-step verification – Admin account – MondaPac');
+    view.unmount();
   });
 });

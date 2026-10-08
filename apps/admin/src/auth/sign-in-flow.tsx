@@ -3,10 +3,11 @@
 import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, type FormEvent } from 'react';
-import { callApi } from '../api/client.ts';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { callApi, type ApiFailure } from '../api/client.ts';
 import { FocusHeading } from './focus-heading.tsx';
 import { fieldErrorKeys, formErrorKey, type ErrorKey } from './messages-for-errors.ts';
+import { ProblemBanner } from './problem-banner.tsx';
 import { useFocusFirstInvalid } from './use-focus-first-invalid.ts';
 import { useThrottle } from './use-throttle.ts';
 
@@ -21,17 +22,19 @@ type PasswordStep = { code: string; challengeToken?: string };
  */
 export function SignInFlow({ notice }: { readonly notice: SignInNotice | null }) {
   const [challenge, setChallenge] = useState<string | null>(null);
-  const [reEnrol, setReEnrol] = useState(false);
+  const [ended, setEnded] = useState<ApiFailure | null>(null);
+  const [reEnrol, setReEnrol] = useState<string | null>(null);
   const t = useTranslations('identity');
-  if (reEnrol) {
+  useDocumentTitle(reEnrol !== null ? 'check-email' : challenge !== null ? 'two-step' : null);
+  if (reEnrol !== null) {
     return (
       <div className="flex flex-col gap-4">
         <FocusHeading>{t('check-email.title')}</FocusHeading>
-        <p className="text-fg-secondary">{t('check-email.body.re-enrol')}</p>
+        <p className="text-fg-secondary">{t('check-email.body.re-enrol', { email: reEnrol })}</p>
         <button
           type="button"
           className="self-start text-sm text-link hover:underline"
-          onClick={() => setReEnrol(false)}
+          onClick={() => setReEnrol(null)}
         >
           {t('common.action.back-to-sign-in')}
         </button>
@@ -39,25 +42,40 @@ export function SignInFlow({ notice }: { readonly notice: SignInNotice | null })
     );
   }
   if (challenge !== null) {
-    return <CodeStep challengeToken={challenge} onEnded={() => setChallenge(null)} />;
+    return (
+      <CodeStep
+        challengeToken={challenge}
+        onEnded={(failure) => {
+          setEnded(failure);
+          setChallenge(null);
+        }}
+      />
+    );
   }
   return (
     <PasswordForm
       notice={notice}
-      onCode={(token) => setChallenge(token)}
-      onReEnrol={() => setReEnrol(true)}
+      endedBy={ended}
+      onCode={(token) => {
+        setEnded(null);
+        setChallenge(token);
+      }}
+      onReEnrol={(email) => setReEnrol(email)}
     />
   );
 }
 
 function PasswordForm({
   notice,
+  endedBy,
   onCode,
   onReEnrol,
 }: {
   readonly notice: SignInNotice | null;
+  /** Why the code step ended, when it did: the message and any wait show here (ux F7 step 1). */
+  readonly endedBy: ApiFailure | null;
   readonly onCode: (token: string) => void;
-  readonly onReEnrol: () => void;
+  readonly onReEnrol: (email: string) => void;
 }) {
   const t = useTranslations('identity');
   const formRef = useRef<HTMLFormElement>(null);
@@ -65,17 +83,27 @@ function PasswordForm({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
-  const [formError, setFormError] = useState<ErrorKey>(null);
+  const [formError, setFormError] = useState<ErrorKey>(() =>
+    endedBy === null ? null : formErrorKey(endedBy),
+  );
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
-  const [throttled, setThrottled] = useState(false);
-  useFocusFirstInvalid(formRef, fieldErrors);
+  const focusKeys = useMemo(
+    () => ({ ...fieldErrors, ...(formError ? { '#form': formError.key } : {}) }),
+    [fieldErrors, formError],
+  );
+  useFocusFirstInvalid(formRef, focusKeys);
+  useEffect(() => {
+    if (endedBy?.code === 'second-factor.locked') {
+      throttle.start(endedBy.details?.retryAfterSeconds ?? 60);
+    }
+    // Runs once, when the form appears after the code step.
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setPending(true);
     setFormError(null);
     setFieldErrors({});
-    setThrottled(false);
     const result = await callApi<PasswordStep>('POST', 'identity/admin/sign-in', {
       email: email.trim(),
       password,
@@ -86,7 +114,7 @@ function PasswordForm({
       if (result.body.code === 'second-factor-required' && result.body.challengeToken) {
         onCode(result.body.challengeToken);
       } else if (result.body.code === 'second-factor-enrolment-required') {
-        onReEnrol();
+        onReEnrol(email.trim());
       } else {
         setFormError({ key: 'unknown' });
       }
@@ -99,7 +127,6 @@ function PasswordForm({
     }
     setPassword('');
     if (failure.code === 'request.throttled' || failure.code === 'second-factor.locked') {
-      setThrottled(true);
       throttle.start(failure.details?.retryAfterSeconds ?? 60);
     }
     setFormError(formErrorKey(failure));
@@ -113,12 +140,7 @@ function PasswordForm({
       className="flex flex-col gap-5"
     >
       {notice ? <Banner tone="info">{t(`sign-in.banner.${notice}`)}</Banner> : null}
-      {formError ? (
-        <Banner tone="critical">
-          {t(`error.${formError.key}`, formError.values)}
-          {throttled ? ` ${t('sign-in.help.throttled')}` : ''}
-        </Banner>
-      ) : null}
+      {formError ? <ProblemBanner message={t(`error.${formError.key}`, formError.values)} /> : null}
       <TextField
         label={t('common.label.email')}
         type="email"
@@ -151,7 +173,7 @@ function CodeStep({
   onEnded,
 }: {
   readonly challengeToken: string;
-  readonly onEnded: () => void;
+  readonly onEnded: (failure: ApiFailure) => void;
 }) {
   const t = useTranslations('identity');
   const router = useRouter();
@@ -161,7 +183,12 @@ function CodeStep({
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<ErrorKey>(null);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
-  useFocusFirstInvalid(formRef, fieldErrors);
+  const throttle = useThrottle();
+  const focusKeys = useMemo(
+    () => ({ ...fieldErrors, ...(formError ? { '#form': formError.key } : {}) }),
+    [fieldErrors, formError],
+  );
+  useFocusFirstInvalid(formRef, focusKeys);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -170,7 +197,8 @@ function CodeStep({
     setFieldErrors({});
     const result = await callApi<{ code: 'signed-in' }>('POST', 'identity/admin/second-factor', {
       challengeToken,
-      code: code.trim(),
+      // A code pasted from the app may carry spaces; a backup code may carry spaces or hyphens.
+      code: code.replace(/[\s-]/g, ''),
     });
     if (result.ok) {
       router.replace('/');
@@ -186,8 +214,11 @@ function CodeStep({
     setCode('');
     if (failure.code === 'challenge.rejected' || failure.code === 'second-factor.locked') {
       // The challenge is over: back to the password step, which says why (ux F7 step 1).
-      onEnded();
+      onEnded(failure);
       return;
+    }
+    if (failure.code === 'request.throttled') {
+      throttle.start(failure.details?.retryAfterSeconds ?? 60);
     }
     setFormError(formErrorKey(failure));
   }
@@ -203,9 +234,7 @@ function CodeStep({
         {t(backup ? 'two-step.title-backup' : 'two-step.title')}
       </FocusHeading>
       <p className="text-fg-secondary">{t(backup ? 'two-step.body-backup' : 'two-step.body')}</p>
-      {formError ? (
-        <Banner tone="critical">{t(`error.${formError.key}`, formError.values)}</Banner>
-      ) : null}
+      {formError ? <ProblemBanner message={t(`error.${formError.key}`, formError.values)} /> : null}
       <TextField
         key={backup ? 'backup' : 'app'}
         label={t(backup ? 'two-step.label.backup-code' : 'two-step.label.code')}
@@ -217,7 +246,7 @@ function CodeStep({
         error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
         dir="ltr"
       />
-      <Button type="submit" block loading={pending}>
+      <Button type="submit" block loading={pending} disabled={throttle.blocked}>
         {t('two-step.action.verify')}
       </Button>
       <button
@@ -235,4 +264,17 @@ function CodeStep({
       <p className="text-sm text-fg-muted">{t('two-step.help.admin')}</p>
     </form>
   );
+}
+
+/** The document title follows the step (identity ux 6): the sign-in title when `surface` is null. */
+function useDocumentTitle(surface: 'two-step' | 'check-email' | null) {
+  const t = useTranslations('identity');
+  useEffect(() => {
+    if (surface === null) return undefined;
+    const previous = document.title;
+    document.title = t(`${surface}.page-title`);
+    return () => {
+      document.title = previous;
+    };
+  }, [surface, t]);
 }

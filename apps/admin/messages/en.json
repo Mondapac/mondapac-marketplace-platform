@@ -90,9 +90,6 @@
       "action": {
         "submit": "Sign in"
       },
-      "help": {
-        "throttled": "You can still reset your password."
-      },
       "banner": {
         "session-ended": "Your session has ended. Sign in again to continue.",
         "signed-out": "You're signed out.",
@@ -116,13 +113,15 @@
       "body-backup": "Each backup code works once.",
       "help": {
         "admin": "No phone and no backup codes? Ask another admin who manages admin accounts to reset it."
-      }
+      },
+      "page-title": "Two-step verification – Admin account – MondaPac"
     },
     "check-email": {
       "title": "Check your email",
       "body": {
-        "re-enrol": "Your two-step verification was reset. We've sent a link to your email to set it up again. The link works for 60 minutes."
-      }
+        "re-enrol": "Your two-step verification was reset. We've sent a link to {email} to set it up again. The link works for 60 minutes. Signing in again sends a new one."
+      },
+      "page-title": "Check your email – Admin account – MondaPac"
     }
   }
 }
