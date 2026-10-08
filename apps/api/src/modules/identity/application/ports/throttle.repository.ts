@@ -41,7 +41,8 @@ export interface ThrottleRepository {
    * Deletes the sign-in counters of one address, `sign-in.account` and `sign-in.account-origin`
    * (identity design 3.7: a reset lifts a sign-in block; AC 13), by its `account_key` (data
    * design 3.5). `mail.account` stays, so a reset cannot refill the address's mail budget, and so
-   * does `second-factor.account` (slice 7 decides how a reset treats it; Mojtaba, slice 4).
+   * does `second-factor.account`: nothing lifts that block early (identity design 6.8; Ali
+   * 2026-10-08).
    * Origin counters carry no address and stay. Answers how many rows went.
    */
   clearAccount(market: MarketContext, accountKey: Uint8Array): Promise<number>;

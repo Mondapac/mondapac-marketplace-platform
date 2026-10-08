@@ -1266,7 +1266,7 @@ numbers (6.1; brief s7 leaves it to the team); the rejection and suspension word
 Jafar and Hadi, which the owner sees in the screenshots (3.3); customers confirm their email before
 their first sign-in (3.2); three re-applications (3.3); the estimate of 12.1.
 
-### 14.5 Still open
+### 14.5 Open points and how they were settled
 | # | Point | Status |
 |---|---|---|
 | 1 | A seller-side account's first, optional enrolment (`ux.md` 7.3 item 1) | Decided by Hassan 2026-10-03: it starts from the mailed link (E16), like every enrolment outside an admin's invitation acceptance, because from Phase 5 the Seller Owner's factor proves a payout-account change (VER-10). 3.6 stands |

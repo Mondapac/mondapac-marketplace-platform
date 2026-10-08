@@ -273,7 +273,7 @@ column added by that mini-review, not now.
 |---|---|---|---|
 | `kind` | `text` | no | Closed CHECK list, the counters of D 6.8: `sign-in.account-origin`, `sign-in.account`, `sign-in.origin` (HF3), `second-factor.account` (HF2), `mail.account`, `mail.origin`. A new kind is a migration |
 | `key_hash` | `bytea` | no | HMAC-SHA-256 under the throttle secret of what the kind counts: Market, population, normalised email, the account id for `second-factor.account`, the origin. The origin is the IPv4 address or the IPv6 /64 (HF3), cut by the application before hashing. CHECK `octet_length = 32`. PK `(market_id, kind, key_hash)` |
-| `account_key` | `bytea` | yes | The keyed hash of (Market, population, normalised email) alone. CHECK `(account_key IS NULL) = (kind IN ('sign-in.origin', 'mail.origin'))` and length 32: every counter of an address carries it, so a password reset clears them all, the HF2 lock included (AC 13; D 3.7) |
+| `account_key` | `bytea` | yes | The keyed hash of (Market, population, normalised email) alone. CHECK `(account_key IS NULL) = (kind IN ('sign-in.origin', 'mail.origin'))` and length 32: every counter of an address carries it; a password reset clears only `sign-in.account` and `sign-in.account-origin` (AC 13; D 3.7). `second-factor.account` is never cleared early (D 6.8, Ali 2026-10-08) |
 | `window_started_at` | `timestamptz(6)` | no | Fixed windows with a block instant (M11) |
 | `attempts` | `integer` | no | CHECK `>= 0`. Reserved and failed attempts in the window |
 | `blocked_until` | `timestamptz(6)` | yes | Set by a failure that reaches the threshold |
