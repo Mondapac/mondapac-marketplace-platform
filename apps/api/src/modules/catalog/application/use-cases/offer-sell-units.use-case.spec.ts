@@ -76,6 +76,25 @@ describe.each(TEST_MARKETS)('offerSellUnits stand-in in market %s', (code) => {
     await expect(facade.offerSellUnits(context, full)).resolves.toMatchObject({ ok: true });
   });
 
+  it('collapses duplicates after the length check', async () => {
+    const context = testCallContext(market, 'system', 'offer-units-0006');
+    await expect(facade.offerSellUnits(context, [offerId(1), offerId(1)])).resolves.toMatchObject({
+      ok: true,
+    });
+    const duplicates = Array.from({ length: MAX_FACADE_BATCH + 1 }, () => offerId(1));
+    await expect(facade.offerSellUnits(context, duplicates)).resolves.toEqual({
+      ok: false,
+      error: { code: 'batch.too-large' },
+    });
+  });
+
+  it('refuses a non-string element', async () => {
+    const context = testCallContext(market, 'system', 'offer-units-0007');
+    await expect(
+      facade.offerSellUnits(context, [7 as unknown as Id<'Offer'>]),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+  });
+
   it('refuses 201 ids whole', async () => {
     const tooMany = Array.from({ length: MAX_FACADE_BATCH + 1 }, (_, i) => offerId(i + 1));
     await expect(

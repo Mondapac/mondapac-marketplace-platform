@@ -19,6 +19,11 @@ describe('buildOfferMovedMapping', () => {
     });
   });
 
+  it('accepts exactly the cap', () => {
+    const pairs = [1, 2, 3].map((n) => ({ from: v(n), to: v(n + 10) }));
+    expect(buildOfferMovedMapping(pairs, 3)).toMatchObject({ ok: true });
+  });
+
   it.each([
     ['empty', [], 3],
     ['too-many', [1, 2, 3, 4].map((n) => ({ from: v(n), to: v(n + 10) })), 3],

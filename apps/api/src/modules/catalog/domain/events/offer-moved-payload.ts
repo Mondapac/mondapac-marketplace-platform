@@ -3,7 +3,7 @@ import type { Id, Result } from '@mondapac/shared-kernel';
 
 export type OfferMovedPayloadRefused = {
   readonly code: 'offer-moved.mapping-invalid';
-  readonly reason: 'empty' | 'length-mismatch' | 'duplicate' | 'too-many';
+  readonly reason: 'empty' | 'duplicate' | 'too-many';
 };
 
 /**
