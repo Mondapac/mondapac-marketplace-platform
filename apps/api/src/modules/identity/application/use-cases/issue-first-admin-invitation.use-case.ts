@@ -122,6 +122,8 @@ export class IssueFirstAdminInvitation extends UseCase<
             }
             pending.revoke(now);
             await this.deps.invitations.save(market, pending);
+            // Slice 8b: a revocation records `identity.invitation-revoked.v1`.
+            await this.deps.outbox.append(context, pending.pendingEvents);
             replaced = true;
           }
           const invitation = Invitation.issue({

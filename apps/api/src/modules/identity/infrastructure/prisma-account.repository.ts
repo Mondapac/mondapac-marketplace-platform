@@ -197,6 +197,9 @@ export class PrismaAccountRepository implements AccountRepository {
       where: { marketId: market.marketId, id: state.id, version: expected },
       data: {
         displayName: state.displayName,
+        // Slice 8b: disable and enable. Written under the version guard, in the caller's
+        // serializable unit (HF8: every writer of accounts.status).
+        status: state.status,
         emailVerifiedAt: state.emailVerifiedAt === null ? null : toDate(state.emailVerifiedAt),
         signedUpAt: toDate(state.signedUpAt),
         existingAccountNoticeAt:

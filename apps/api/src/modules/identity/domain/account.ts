@@ -3,7 +3,9 @@ import type { Id, MarketId, PendingEvent, Population, Result } from '@mondapac/s
 import type { EmailAddress } from './email-address';
 import type { PASSWORD_CHANGE_CAUSES } from './events';
 import {
+  AccountDisabled,
   AccountEmailVerified,
+  AccountEnabled,
   AccountPasswordChanged,
   CustomerAccountRegistered,
   SignUpRepeated,
@@ -14,6 +16,15 @@ export type PasswordChangeCause = (typeof PASSWORD_CHANGE_CAUSES)[number];
 
 /** The account may not take a new password now: disabled, or its email never verified (3.7). */
 export type AccountNotEligible = { readonly code: 'account.not-eligible' };
+
+/**
+ * Why a disable or an enable changed nothing (identity design 3.1; slice 8b): the account is
+ * already in that state, or it is a seller-side account, which this path never touches.
+ */
+export type AccountStatusRefused =
+  | AccountNotEligible
+  | { readonly code: 'account.already-disabled' }
+  | { readonly code: 'account.already-active' };
 
 /** The password credential, an entity of the account: a PHC string and when it was set. */
 export interface PasswordCredential {
@@ -341,6 +352,43 @@ export class Account {
       }),
     );
     return ok(undefined);
+  }
+
+  /**
+   * `active` → `disabled` (identity design 3.1; AC 11, AC 18; slice 8b), by an admin. Records
+   * `identity.account-disabled.v1`. Only an admin or a customer account: a seller-side account
+   * is never disabled by this path (Staff are removed from the team, a seller is suspended).
+   * The guards that need other aggregates (not the actor itself, R1, the last full-access admin)
+   * and the effects (every session revoked, open challenges void, in the same serializable unit)
+   * belong to the use case.
+   */
+  disable(now: Temporal.Instant): Result<void, AccountStatusRefused> {
+    if (this.#state.population === 'seller') return err({ code: 'account.not-eligible' });
+    if (this.#state.status === 'disabled') return err({ code: 'account.already-disabled' });
+    this.changeStatus('disabled', now);
+    return ok(undefined);
+  }
+
+  /** `disabled` → `active` (identity design 3.1; decided by Ali, 14.1-8): as {@link disable}. */
+  enable(now: Temporal.Instant): Result<void, AccountStatusRefused> {
+    if (this.#state.population === 'seller') return err({ code: 'account.not-eligible' });
+    if (this.#state.status === 'active') return err({ code: 'account.already-active' });
+    this.changeStatus('active', now);
+    return ok(undefined);
+  }
+
+  private changeStatus(status: 'active' | 'disabled', now: Temporal.Instant): void {
+    const version = this.#state.version + 1;
+    this.#state = Object.freeze({ ...this.#state, status, version });
+    const definition = status === 'disabled' ? AccountDisabled : AccountEnabled;
+    this.#events.push(
+      definition.record({
+        aggregateId: this.#state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: this.#state.id, population: this.#state.population },
+      }),
+    );
   }
 
   private change(

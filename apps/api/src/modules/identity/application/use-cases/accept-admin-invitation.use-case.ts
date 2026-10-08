@@ -4,7 +4,13 @@ import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shar
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  UseCase,
+  type AccessDeclaration,
+  type SealedPermissionCatalogue,
+  type UseCaseGate,
+} from '../../../../platform/authz';
+import { ADMIN_ACCOUNT_INVITE } from '../../contracts/permissions';
 import { Account } from '../../domain/account';
 import {
   accountRoleAssigned,
@@ -18,13 +24,17 @@ import {
   MAX_PASSWORD_BYTES,
   type PasswordRejected,
 } from '../../domain/password-policy';
+import { GrantPolicy } from '../../domain/grant-policy';
 import { displayRecoveryCode, type RecoveryCode } from '../../domain/recovery-code';
-import { RoleAssignment } from '../../domain/role';
+import { RoleAssignment, type Role } from '../../domain/role';
 import { SecondFactor } from '../../domain/second-factor';
 import { blockAfterFailure, reservationVerdict } from '../../domain/throttle';
 import { candidateSteps, parseTotpCode } from '../../domain/totp';
+import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { CommonPasswordList } from '../ports/common-password-list';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
+import { grantedRoleOf, protectedKeysOf, readGrants } from '../roles/granting';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
@@ -82,6 +92,10 @@ export interface AcceptAdminInvitationDependencies {
   readonly invitations: InvitationRepository;
   readonly roles: RoleRepository;
   readonly assignments: RoleAssignmentRepository;
+  /** Slice 8b: the inviter's grant, read in the closing unit. */
+  readonly grants: RoleGrantReader;
+  readonly effectiveKeys: EffectiveKeyResolver;
+  readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
   readonly factors: SecondFactorRepository;
   readonly throttles: ThrottleRepository;
   readonly keys: ThrottleKeys;
@@ -103,9 +117,9 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
 /**
  * Accepts an admin invitation (identity design 3.4, 7.2, 7.4; HF5, HF6, HF13; AC 22, AC 29;
- * slice 7b items I, Hassan I-6). Rule `anonymous`: the invitation's token binds the request.
- * Slice 7b accepts the `admin` invitations without an inviter (the first-admin routine); one
- * with an inviter needs the inviter re-checked and comes with slice 8b.
+ * slice 7b items I, Hassan I-6; slice 8b). Rule `anonymous`: the invitation's token binds the
+ * request. Two kinds of `admin` invitation: without an inviter (the first-admin routine, 7b), and
+ * issued by an admin (8b), whose inviter is re-checked in the closing unit.
  *
  * 1. **Reservation unit**: `sign-in.origin` counted and the invitation read by the hash of its
  *    token (unusable: `invitation.rejected`, stays counted; usable: the count is given back),
@@ -114,17 +128,21 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  *    password's rules against the address and the new name (HF13); the first code against the
  *    presented secret with the steps of `candidateSteps(clock.now())` (I-2; a wrong code stays
  *    counted and blocks at the limit); the password's hash.
- * 3. **Closing unit**, SERIALIZABLE (the "no active Platform Administrator" rule spans rows):
- *    the invitation read again and still acceptable; **the role read again in the context
- *    Market** (I-6) and still the Platform Administrator system role; refused once the Market
- *    has an active holder of it (HF5); the account created `active` and verified with the
- *    invited address (its data key with it), the secret sealed under that key, ten recovery
- *    codes hashed, the factor created `active` with the code's step spent (HF6), the founding
- *    assignment, the invitation accepted (its address and name cleared). Events:
+ * 3. **Closing unit**, SERIALIZABLE (the "no active Platform Administrator" rule spans rows, and
+ *    it writes `role_assignments`, HF8): the invitation read again and still acceptable; **the
+ *    role read again in the context Market** (I-6), a platform role. Without an inviter: still
+ *    the Platform Administrator system role, refused once the Market has an active holder of it
+ *    or any admin account (HF5). With an inviter (8b): the inviter still an active, verified
+ *    admin of this Market who holds `identity.admin-account.invite` and could still grant the
+ *    role (`GrantPolicy.canGrant` with its grant read in this unit; Hassan 14.2, I-2). Then the
+ *    account created `active` and verified with the invited address (its data key with it), the
+ *    secret sealed under that key, ten recovery codes hashed, the factor created `active` with
+ *    the code's step spent (HF6), the assignment (founding without an inviter, granted by the
+ *    inviter otherwise), the invitation accepted (its address and name cleared). Events:
  *    `invitation-accepted` and `second-factor-changed` (`activated`). Audit rows, `ANONYMOUS`
  *    bound to the invitation: `identity.invitation.accepted`, `identity.account-role.assigned`
- *    (founding, platform scope, no seller; only through its builder, I-7) and
- *    `identity.second-factor.activated`. No session opens: the new admin signs in.
+ *    (platform scope, no seller, `founding` only without an inviter; only through its builder,
+ *    I-7) and `identity.second-factor.activated`. No session opens: the new admin signs in.
  *
  * Every refusal of the closing unit is `invitation.rejected` (one answer for every cause).
  */
@@ -340,15 +358,29 @@ export class AcceptAdminInvitation extends UseCase<
           };
           const invitation = await this.deps.invitations.findById(market, invitationId);
           if (!acceptableAdminInvitation(invitation, now)) return refuse();
-          // I-6: the role is read again, in the context Market, at this moment.
+          // I-6: the role is read again, in the context Market, at this moment. A platform role
+          // has no seller (R9); a seller's role is never an admin's.
           const role = await this.deps.roles.findById(market, invitation.state.roleId);
-          if (role === null || !role.isSystem || role.state.scope !== 'platform') return refuse();
-          // HF5: the first-admin path closes once the Market has an active administrator.
-          if (await this.deps.assignments.hasActiveHolder(market, role.state.id)) return refuse();
-          // Hassan L3 (PR #162): an invitation without an inviter is the first-admin path only;
-          // once the Market has any admin account (in any state, as the issue rule of 7.4), every
-          // other pending first-admin invitation is refused, never a second first admin.
-          if (await this.deps.accounts.existsInPopulation(market, 'admin')) return refuse();
+          if (role === null || role.state.scope !== 'platform' || role.state.sellerId !== null) {
+            return refuse();
+          }
+          const inviterId = invitation.state.invitedByAccountId;
+          if (inviterId === null) {
+            // The first-admin path (7.4): only the Platform Administrator role.
+            if (!role.isSystem) return refuse();
+            // HF5: the first-admin path closes once the Market has an active administrator.
+            if (await this.deps.assignments.hasActiveHolder(market, role.state.id)) {
+              return refuse();
+            }
+            // Hassan L3 (PR #162): an invitation without an inviter is the first-admin path
+            // only; once the Market has any admin account (in any state, as the issue rule of
+            // 7.4), every other pending first-admin invitation is refused, never a second first
+            // admin.
+            if (await this.deps.accounts.existsInPopulation(market, 'admin')) return refuse();
+          } else if (!(await this.inviterMayStillGrant(context, inviterId, role))) {
+            // Slice 8b (Hassan 14.2): the inviter is re-checked now, in this unit.
+            return refuse();
+          }
           const account = Account.acceptInvitation({
             id: this.deps.ids.next<'Account'>(),
             marketId: market.marketId,
@@ -374,14 +406,23 @@ export class AcceptAdminInvitation extends UseCase<
             now,
           });
           await this.deps.factors.add(market, factor);
+          const assigned = {
+            id: accountId,
+            marketId: market.marketId,
+            population: 'admin',
+          } as const;
+          const assignmentId = this.deps.ids.next<'RoleAssignment'>();
           await this.deps.assignments.add(
             market,
-            RoleAssignment.found({
-              id: this.deps.ids.next<'RoleAssignment'>(),
-              account: { id: accountId, marketId: market.marketId, population: 'admin' },
-              role,
-              now,
-            }),
+            inviterId === null
+              ? RoleAssignment.found({ id: assignmentId, account: assigned, role, now })
+              : RoleAssignment.grant({
+                  id: assignmentId,
+                  account: assigned,
+                  role,
+                  assignedBy: inviterId,
+                  now,
+                }),
           );
           if (!invitation.accept(accountId, now).ok) {
             throw new Error('AcceptAdminInvitation: an acceptable invitation refused acceptance');
@@ -406,7 +447,7 @@ export class AcceptAdminInvitation extends UseCase<
               sellerId: null,
               roleId,
               scope: 'platform',
-              founding: true,
+              founding: inviterId === null,
             }),
           );
           await this.deps.audit.record(
@@ -439,6 +480,52 @@ export class AcceptAdminInvitation extends UseCase<
       accountId: closed.value.accountId,
       recoveryCodes: closed.value.codes.map(displayRecoveryCode),
     });
+  }
+
+  /**
+   * Whether the inviter of an invitation could still issue it now (identity design 3.4 "the
+   * inviter is still active and could still grant the role", Hassan 14.2; slice 8b), read in the
+   * caller's serializable closing unit: an admin account of this Market, active, with a verified
+   * email; still holding `identity.admin-account.invite`; and `GrantPolicy.canGrant` on the role
+   * with its grant read in this unit (R1, R3, R11; Hassan I-2). A disabled or demoted inviter
+   * cannot leave a role behind in a pending invitation.
+   */
+  private async inviterMayStillGrant(
+    context: CallContext,
+    inviterId: Id<'Account'>,
+    role: Role,
+  ): Promise<boolean> {
+    const { market } = context;
+    const inviter = await this.deps.accounts.findById(market, inviterId);
+    if (
+      inviter === null ||
+      inviter.state.population !== 'admin' ||
+      inviter.state.status !== 'active' ||
+      !inviter.isEmailVerified
+    ) {
+      return false;
+    }
+    const reading = await readGrants(
+      this.deps.grants,
+      this.deps.effectiveKeys,
+      market,
+      { accountId: inviterId, population: 'admin', sellerId: null },
+      [],
+    );
+    if (reading === null || !reading.actor.effectiveKeys.has(ADMIN_ACCOUNT_INVITE.key)) {
+      return false;
+    }
+    const granted = GrantPolicy.canGrant(
+      reading.actor,
+      grantedRoleOf(role, this.deps.effectiveKeys),
+      protectedKeysOf(this.deps.permissions),
+    );
+    if (!granted.ok) {
+      this.log('identity.accept-invitation.inviter-cannot-grant', context, {
+        reason: granted.error.reason,
+      });
+    }
+    return granted.ok;
   }
 
   /** Gives the attempt back (no code was tried) and answers `failure`. */

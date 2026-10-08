@@ -2,7 +2,12 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result } from '@mondapac/shared-kernel';
 import { parseDisplayName } from './display-name';
 import type { EmailAddress } from './email-address';
-import { INVITATION_KINDS, InvitationAccepted, InvitationIssued } from './events';
+import {
+  INVITATION_KINDS,
+  InvitationAccepted,
+  InvitationIssued,
+  InvitationRevoked,
+} from './events';
 
 /** The three kinds (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
 export { INVITATION_KINDS };
@@ -220,10 +225,44 @@ export class Invitation {
     return ok(undefined);
   }
 
-  /** `pending` → `revoked` (3.4); an expired pending invitation may be revoked too. */
+  /**
+   * `pending` → `pending`: a re-send by the inviter's side (3.4, flows E2 and F2; slice 8b). The
+   * stored token is voided at once (its hash and expiry cleared), so the earlier link stops
+   * working before the new mail goes; the version rises and `identity.invitation-issued.v1` is
+   * recorded again, which the mail handler dispatches with a new token and a new expiry. An
+   * expired pending invitation may be re-sent too.
+   */
+  reissue(now: Temporal.Instant): Result<void, InvitationRejected> {
+    if (this.#state.state !== 'pending') return err(REJECTED);
+    this.change({ tokenHash: null, expiresAt: null });
+    const { id, kind, sellerId, version } = this.#state;
+    this.#events.push(
+      InvitationIssued.record({
+        aggregateId: id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { invitationId: id, kind, sellerId },
+      }),
+    );
+    return ok(undefined);
+  }
+
+  /**
+   * `pending` → `revoked` (3.4); an expired pending invitation may be revoked too. Records
+   * `identity.invitation-revoked.v1` (8.2; slice 8b).
+   */
   revoke(now: Temporal.Instant): Result<void, InvitationRejected> {
     if (this.#state.state !== 'pending') return err(REJECTED);
     this.change({ state: 'revoked', decidedAt: now, email: null, displayName: null });
+    const { id, kind, sellerId, version } = this.#state;
+    this.#events.push(
+      InvitationRevoked.record({
+        aggregateId: id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { invitationId: id, kind, sellerId },
+      }),
+    );
     return ok(undefined);
   }
 

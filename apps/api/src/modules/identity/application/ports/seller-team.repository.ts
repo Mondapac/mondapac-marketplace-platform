@@ -70,6 +70,20 @@ export interface RoleAssignmentRepository {
    */
   hasActiveHolder(market: MarketContext, roleId: Id<'Role'>): Promise<boolean>;
 
+  /**
+   * The holders of this role that can sign in, as account ids: active, with a verified email
+   * (identity design 5.5, `LastHolderPolicy`; slice 8a-2). The read of {@link hasActiveHolder},
+   * returning every id; run in the caller's serializable unit (HF8), so a concurrent change of
+   * any holder it read makes one of the two units retry.
+   */
+  activeHoldersOf(market: MarketContext, roleId: Id<'Role'>): Promise<Id<'Account'>[]>;
+
+  /**
+   * Stores a changed assignment (a new role, slice 8a-2) if its version is still the one read;
+   * otherwise throws `StaleAggregateError` (platform persistence 10).
+   */
+  save(market: MarketContext, assignment: RoleAssignment): Promise<void>;
+
   /** Deletes an assignment with the version read (the unverified purge); else stale. */
   remove(market: MarketContext, assignment: RoleAssignment): Promise<void>;
 }

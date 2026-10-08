@@ -71,7 +71,23 @@
     }
   },
   {
+    "type": "identity.account-disabled.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
     "type": "identity.account-email-verified.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-enabled.v1",
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
@@ -84,6 +100,17 @@
     "fields": {
       "accountId": "id",
       "cause": "enumOf(reset|change)"
+    }
+  },
+  {
+    "type": "identity.account-role-changed.v1",
+    "aggregateType": "role-assignment",
+    "fields": {
+      "accountId": "id",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)",
+      "previousRoleId": "id",
+      "roleId": "id"
     }
   },
   {
@@ -105,6 +132,15 @@
   },
   {
     "type": "identity.invitation-issued.v1",
+    "aggregateType": "invitation",
+    "fields": {
+      "invitationId": "id",
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "identity.invitation-revoked.v1",
     "aggregateType": "invitation",
     "fields": {
       "invitationId": "id",

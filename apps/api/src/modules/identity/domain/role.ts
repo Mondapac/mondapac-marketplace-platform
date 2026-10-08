@@ -1,4 +1,5 @@
-import type { Id, MarketId, Population, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketId, PendingEvent, Population, Temporal } from '@mondapac/shared-kernel';
+import { AccountRoleChanged } from './events';
 
 /** The two scopes of a role (R2): there is no customer scope. */
 export const ROLE_SCOPES = ['platform', 'seller'] as const;
@@ -252,15 +253,34 @@ export interface RoleAssignmentState {
   readonly version: number;
 }
 
+/** The account a role is put on (identity design 2.1, 5.5): what the invariants need of it. */
+export interface AssignedAccount {
+  readonly id: Id<'Account'>;
+  readonly marketId: MarketId;
+  readonly population: Population;
+  /** The seller of the account's active membership; null or absent outside the seller population. */
+  readonly sellerId?: Id<'Seller'> | null;
+}
+
 /**
  * The `RoleAssignment` aggregate (identity design 2.1, 2.3): the one role of an account in
  * Phase 2 (a database rule). The role's scope matches the account's population, and a customer
- * never has one (R2). Slice 5 builds the founding assignment of 5.5 only: the creation of a
- * scope, not a grant under R3, so no assigner, no audit row at self-registration and no event
- * (`seller-registered` names the owner).
+ * never has one (R2); a seller's custom role is put only on a member of that seller (R9; Hassan
+ * I-2 on slice 8a-1). Three ways in:
+ *
+ * - {@link found}: the founding assignment of 5.5, the creation of a scope and not a grant under
+ *   R3, so no assigner and no event (`seller-registered` and `invitation-accepted` name it);
+ * - {@link grant} (slice 8b): the assignment an invitation's acceptance creates, with the inviter
+ *   as its assigner; no event either (`invitation-accepted` names the account);
+ * - {@link reassign} (slice 8a-2): another account changes the role; records
+ *   `identity.account-role-changed.v1`.
+ *
+ * Whether the assigner may grant the role at all (R1, R3, R11) is `GrantPolicy`'s, and the last
+ * holder is `LastHolderPolicy`'s, both applied by the use case in its serializable unit (HF8).
  */
 export class RoleAssignment {
-  readonly #state: RoleAssignmentState;
+  #state: RoleAssignmentState;
+  #events: PendingEvent[] = [];
 
   private constructor(
     state: RoleAssignmentState,
@@ -278,22 +298,12 @@ export class RoleAssignment {
    */
   static found(input: {
     readonly id: Id<'RoleAssignment'>;
-    readonly account: {
-      readonly id: Id<'Account'>;
-      readonly marketId: MarketId;
-      readonly population: Population;
-    };
+    readonly account: AssignedAccount;
     readonly role: Role;
     readonly now: Temporal.Instant;
   }): RoleAssignment {
     const { id, account, role, now } = input;
-    const scope = scopeOfPopulation(account.population);
-    if (scope === null || scope !== role.state.scope) {
-      throw new RoleInvariantError('population');
-    }
-    if (account.marketId !== role.state.marketId) {
-      throw new RoleInvariantError('market');
-    }
+    RoleAssignment.checkFits(account, role);
     if (!role.isSystem) {
       throw new RoleInvariantError('founding-role');
     }
@@ -311,6 +321,34 @@ export class RoleAssignment {
     );
   }
 
+  /**
+   * A role put on an account that has none, by `assignedBy` (slice 8b: an invitation's
+   * acceptance, with the inviter). The caller has applied `GrantPolicy.canGrant` to the
+   * assigner in the same unit.
+   */
+  static grant(input: {
+    readonly id: Id<'RoleAssignment'>;
+    readonly account: AssignedAccount;
+    readonly role: Role;
+    readonly assignedBy: Id<'Account'>;
+    readonly now: Temporal.Instant;
+  }): RoleAssignment {
+    const { id, account, role, assignedBy, now } = input;
+    RoleAssignment.checkFits(account, role);
+    return new RoleAssignment(
+      {
+        id,
+        marketId: account.marketId,
+        accountId: account.id,
+        roleId: role.state.id,
+        assignedByAccountId: assignedBy,
+        assignedAt: now,
+        version: 1,
+      },
+      null,
+    );
+  }
+
   /** An assignment read from the store. */
   static restore(state: RoleAssignmentState): RoleAssignment {
     return new RoleAssignment(state, state.version);
@@ -318,5 +356,66 @@ export class RoleAssignment {
 
   get state(): RoleAssignmentState {
     return this.#state;
+  }
+
+  /** Events recorded since the assignment was built or restored. */
+  get pendingEvents(): readonly PendingEvent[] {
+    return [...this.#events];
+  }
+
+  /**
+   * Another account changes this account's role (identity design 5.5, 8.2; slice 8a-2). The
+   * same role changes nothing (`unchanged`). Otherwise the role, the assigner and the instant
+   * are replaced, the version rises by one and `identity.account-role-changed.v1` is recorded.
+   * `account` is the holder of this assignment, read in the same unit.
+   */
+  reassign(input: {
+    readonly account: AssignedAccount;
+    readonly role: Role;
+    readonly assignedBy: Id<'Account'>;
+    readonly now: Temporal.Instant;
+  }): 'changed' | 'unchanged' {
+    const { account, role, assignedBy, now } = input;
+    if (account.id !== this.#state.accountId) throw new RoleInvariantError('population');
+    RoleAssignment.checkFits(account, role);
+    const previousRoleId = this.#state.roleId;
+    if (previousRoleId === role.state.id) return 'unchanged';
+    const version = this.#state.version + 1;
+    this.#state = Object.freeze({
+      ...this.#state,
+      roleId: role.state.id,
+      assignedByAccountId: assignedBy,
+      assignedAt: now,
+      version,
+    });
+    this.#events.push(
+      AccountRoleChanged.record({
+        aggregateId: this.#state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: {
+          accountId: account.id,
+          scope: role.state.scope,
+          sellerId: role.state.scope === 'seller' ? (account.sellerId ?? null) : null,
+          previousRoleId,
+          roleId: role.state.id,
+        },
+      }),
+    );
+    return 'changed';
+  }
+
+  /** R2, R9 and the Market: the role fits the account it is put on. */
+  private static checkFits(account: AssignedAccount, role: Role): void {
+    const scope = scopeOfPopulation(account.population);
+    if (scope === null || scope !== role.state.scope) {
+      throw new RoleInvariantError('population');
+    }
+    if (account.marketId !== role.state.marketId) {
+      throw new RoleInvariantError('market');
+    }
+    if (role.state.sellerId !== null && role.state.sellerId !== (account.sellerId ?? null)) {
+      throw new RoleInvariantError('seller');
+    }
   }
 }
