@@ -472,7 +472,7 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       expect(t.counters.top('lookup.account')).toBe(1);
     });
 
-    it('does not ask again for a value that comes back, and leaves a cleared value without a result line', async () => {
+    it('asks again for a value that comes back, because the draft changed in between, and leaves a cleared value without a result line', async () => {
       const t = setUp(code);
       const { context } = seller(t, code);
       const [first, second] = activeNumbers(code, 2);
@@ -483,9 +483,17 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       const cleared = await save(t, context, '  ');
       expect(cleared.ok && cleared.value.registerResult).toBeNull();
 
+      // The result of `first` was compared against an older version of the draft. Even with the
+      // clock standing still (an edit in the same instant), the version tells them apart.
       const back = await save(t, context, first);
-      expect(back.ok && back.value.registerResult).toBe('matched');
-      expect(t.fake.calls).toHaveLength(2);
+      if (settings.perAccountLimit > 2) {
+        expect(back.ok && back.value.registerResult).toBe('matched');
+        expect(t.fake.calls).toHaveLength(3);
+      } else {
+        // The Market's account limit is already spent by the two values: the repeat counts.
+        expect(!back.ok && back.error.code).toBe('lookup.limit');
+        expect(t.fake.calls).toHaveLength(2);
+      }
     });
 
     it('asks again when the result is older than the maximum age, and never for a definite negative', async () => {
@@ -561,9 +569,19 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       expect(t.counters.top('lookup.market')).toBe(settings.perAccountLimit);
       const read = await t.read.execute(owner.context, {});
       expect(read.ok && read.value.identifier?.value).toBe(numbers[settings.perAccountLimit - 1]);
-      // A value already checked is still saved: it is not a new value.
-      const known = await save(t, owner.context, numbers[0]);
+      // The value the file holds, saved again, is no change: its result is current and no quota
+      // is spent, so it is still answered at the limit.
+      const known = await save(t, owner.context, numbers[settings.perAccountLimit - 1]);
       expect(known.ok && known.value.registerResult).toBe('matched');
+      expect(t.fake.calls).toHaveLength(callsBefore);
+      // A value that comes back after other saves was compared against an older version of the
+      // draft (slice 5, Hassan M1 residual): its result is stale, so it is due again and counts
+      // against the limit like any lookup (data design 21: repeat lookups count).
+      const back = await save(t, owner.context, numbers[0]);
+      expect(back).toEqual({
+        ok: false,
+        error: { code: 'lookup.limit', retryAfterSeconds: expect.any(Number) as unknown },
+      });
     });
 
     it('counts the limit per account, so another seller account is not refused by it', async () => {
@@ -811,6 +829,32 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
         expect(Temporal.Instant.compare(row!.checkedAt, file.lastChangedAt)).toBeLessThan(0);
       });
 
+      it('is stale when only the file version differs (same instant, same content timestamps)', async () => {
+        const [number] = activeNumbers(code, 1);
+        const t = setUp(code);
+        const { sellerId, context } = seller(t, code);
+        await save(t, context, number);
+        const clean = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(clean.ok && clean.value).toMatchObject({ state: 'active', blocksApproval: false });
+        const cleanRead = await t.read.execute(context, {});
+        expect(cleanRead.ok && cleanRead.value.registerResult).toBe('matched');
+
+        const key = `${code}|${sellerId}`;
+        const state = t.files.stored.get(key)!;
+        // An edit the instants cannot see: the version moves, lastChangedAt does not.
+        t.files.stored.set(key, { ...state, version: state.version + 1 });
+
+        const view = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(view.ok && view.value).toMatchObject({
+          state: 'stale',
+          staleReason: 'draft-changed',
+          mismatches: [],
+          blocksApproval: true,
+        });
+        const read = await t.read.execute(context, {});
+        expect(read.ok && read.value.registerResult).toBeNull();
+      });
+
       it('asks again on the next save of the same value, with the same quotas, and now flags the name', async () => {
         const [number] = activeNumbers(code, 1);
         const t = setUp(code);
@@ -861,29 +905,37 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
 
   describe('registerCheckIsCurrent (slice 5 reads it) and its boundary', () => {
     const settingsOf = SETTINGS[code];
+    /** A result compared against file version `version` (slice 5, Hassan M1 residual). */
     const checkOf = (
       outcome: 'active' | 'not-found' | 'unavailable',
       checkedAt: Temporal.Instant,
-    ) => registerCheckAfter(null, outcome, [], checkedAt, { kind: 'job', accountId: null });
-    const fileChangedAt = (t: Setup, at: Temporal.Instant) => {
+      version: number,
+    ) =>
+      registerCheckAfter(null, outcome, [], checkedAt, { kind: 'job', accountId: null }, version);
+    const fileChangedAt = (t: Setup, at: Temporal.Instant, version?: number) => {
       const { sellerId } = seller(t, code);
+      const stored = t.files.stored.get(`${code}|${sellerId}`)!;
       return SellerFile.restore({
-        ...t.files.stored.get(`${code}|${sellerId}`)!,
+        ...stored,
         lastChangedAt: at,
+        version: version ?? stored.version,
       });
     };
 
     it('is true for a fresh active result and for a definite negative', () => {
       const t = setUp(code);
       const file = fileChangedAt(t, START);
-      expect(registerCheckIsCurrent(file, checkOf('active', START), START, settingsOf)).toBe(true);
-      expect(registerCheckIsCurrent(file, checkOf('not-found', START), START, settingsOf)).toBe(
+      const v = file.state.version;
+      expect(registerCheckIsCurrent(file, checkOf('active', START, v), START, settingsOf)).toBe(
         true,
       );
-      // A negative never ages and is not moved by an edit.
+      expect(registerCheckIsCurrent(file, checkOf('not-found', START, v), START, settingsOf)).toBe(
+        true,
+      );
+      // A negative never ages and is not moved by an edit, nor by another file version.
       const much = START.add({ hours: settingsOf.maxResultAgeDays * 24 * 10 });
-      const edited = fileChangedAt(t, START.add({ hours: 1 }));
-      expect(registerCheckIsCurrent(edited, checkOf('not-found', START), much, settingsOf)).toBe(
+      const edited = fileChangedAt(t, START.add({ hours: 1 }), v + 3);
+      expect(registerCheckIsCurrent(edited, checkOf('not-found', START, v), much, settingsOf)).toBe(
         true,
       );
     });
@@ -891,25 +943,47 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
     it('is false with no result, for unavailable, for an aged result and for a changed draft', () => {
       const t = setUp(code);
       const file = fileChangedAt(t, START);
+      const v = file.state.version;
       expect(registerCheckIsCurrent(file, null, START, settingsOf)).toBe(false);
-      expect(registerCheckIsCurrent(file, checkOf('unavailable', START), START, settingsOf)).toBe(
+      expect(
+        registerCheckIsCurrent(file, checkOf('unavailable', START, v), START, settingsOf),
+      ).toBe(false);
+      const aged = START.add({ hours: settingsOf.maxResultAgeDays * 24, seconds: 1 });
+      expect(registerCheckIsCurrent(file, checkOf('active', START, v), aged, settingsOf)).toBe(
         false,
       );
-      const aged = START.add({ hours: settingsOf.maxResultAgeDays * 24, seconds: 1 });
-      expect(registerCheckIsCurrent(file, checkOf('active', START), aged, settingsOf)).toBe(false);
       const edited = fileChangedAt(t, START.add({ hours: 1 }));
-      expect(registerCheckIsCurrent(edited, checkOf('active', START), START, settingsOf)).toBe(
+      expect(registerCheckIsCurrent(edited, checkOf('active', START, v), START, settingsOf)).toBe(
         false,
       );
     });
 
     it('counts a change at the very instant of the check as current, and one nanosecond later as stale', () => {
       const t = setUp(code);
-      const check = checkOf('active', START);
       const equal = fileChangedAt(t, START);
+      const v = equal.state.version;
+      const check = checkOf('active', START, v);
       const later = fileChangedAt(t, START.add({ nanoseconds: 1 }));
       expect(registerCheckIsCurrent(equal, check, START, settingsOf)).toBe(true);
       expect(registerCheckIsCurrent(later, check, START, settingsOf)).toBe(false);
+    });
+
+    it('is false when the file is at another version than the one compared, whatever the instants say (Hassan M1 residual a, b)', () => {
+      const t = setUp(code);
+      const file = fileChangedAt(t, START);
+      const v = file.state.version;
+      // An edit in the same instant as the snapshot, and one whose stamp is not later than the
+      // check (a clock behind): the instants say "current", the version says "changed".
+      const sameInstant = fileChangedAt(t, START, v + 1);
+      const behindClock = fileChangedAt(t, START.subtract({ seconds: 5 }), v + 1);
+      const check = checkOf('active', START, v);
+      expect(registerCheckIsCurrent(file, check, START, settingsOf)).toBe(true);
+      expect(registerCheckIsCurrent(sameInstant, check, START, settingsOf)).toBe(false);
+      expect(registerCheckIsCurrent(behindClock, check, START, settingsOf)).toBe(false);
+      // Fail closed in the other direction too: a result that claims a later version.
+      expect(registerCheckIsCurrent(file, checkOf('active', START, v + 1), START, settingsOf)).toBe(
+        false,
+      );
     });
   });
 

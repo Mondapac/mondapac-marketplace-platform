@@ -35,9 +35,14 @@ interface Row {
   readonly checkedAt: Date;
   readonly checkedByKind: string;
   readonly checkedByAccountId: string | null;
+  readonly comparedFileVersion: number;
 }
 
 function checkOf(row: Row): RegisterCheck {
+  // The CHECK keeps it >= 1; a value outside it is a fault of the data, never a version to trust.
+  if (!Number.isSafeInteger(row.comparedFileVersion) || row.comparedFileVersion < 1) {
+    throw new StoredRegisterCheckError('compared_file_version');
+  }
   if (!(REGISTER_OUTCOMES as readonly string[]).includes(row.outcome)) {
     throw new StoredRegisterCheckError('outcome');
   }
@@ -56,6 +61,7 @@ function checkOf(row: Row): RegisterCheck {
       kind: row.checkedByKind as RegisterCheckerKind,
       accountId: row.checkedByAccountId as Id<'Account'> | null,
     },
+    comparedFileVersion: row.comparedFileVersion,
   };
 }
 
@@ -66,6 +72,7 @@ const COLUMNS = {
   checkedAt: true,
   checkedByKind: true,
   checkedByAccountId: true,
+  comparedFileVersion: true,
 } as const;
 
 /**
@@ -112,9 +119,14 @@ export class PrismaRegisterCheckRepository implements RegisterCheckRepository {
     const key = { marketId: market.marketId, sellerId, identifierIndex };
     const negative = write.outcome === 'not-found' || write.outcome === 'cancelled';
     const at = toDate(write.checkedAt);
+    if (!Number.isSafeInteger(write.comparedFileVersion) || write.comparedFileVersion < 1) {
+      throw new RangeError('record: the compared file version is a positive integer');
+    }
     const by = {
       checkedByKind: write.checkedBy.kind,
       checkedByAccountId: write.checkedBy.accountId,
+      // Every write states the version it compared; the latest answer replaces the earlier one.
+      comparedFileVersion: write.comparedFileVersion,
     };
 
     await transaction.sellersRegisterCheck.createMany({

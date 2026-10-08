@@ -18,3 +18,10 @@ export type SealedField = (typeof SEALED_FIELDS)[number];
  * in another. Opaque to the domain: it is never compared, parsed or shown (PF 4 row 2).
  */
 export type Sealed<F extends SealedField> = string & { readonly __sealed: F };
+
+/**
+ * The sealed content of a business file revision (data design 3.2, 4.2): the canonical JSON of
+ * `BusinessFileContent` under the seller key, label `sellers.business-file-revision.content`.
+ * One ciphertext per revision; opaque to the domain like every `Sealed` value.
+ */
+export type SealedRevisionContent = string & { readonly __sealed: 'revision-content' };

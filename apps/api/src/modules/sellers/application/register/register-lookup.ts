@@ -102,10 +102,13 @@ export function lookupDue(
   now: Temporal.Instant,
   settings: ConfiguredLookup,
   fileChangedAt: Temporal.Instant,
+  fileVersion: number,
 ): boolean {
   if (existing === null) return true;
   if (existing.definiteNegativeAt !== null) return false;
-  if (existing.outcome === 'active' && draftChangedSince(existing, fileChangedAt)) return true;
+  if (existing.outcome === 'active' && draftChangedSince(existing, fileChangedAt, fileVersion)) {
+    return true;
+  }
   return !isFresh(existing, now, settings.maxResultAgeDays);
 }
 
@@ -115,17 +118,22 @@ export function sellerResultOf(
   now: Temporal.Instant,
   settings: ConfiguredLookup,
   fileChangedAt: Temporal.Instant,
+  fileVersion: number,
 ): SellerRegisterResult | null {
   return sellerRegisterResultOf(
-    registerStateOf(existing, now, settings.maxResultAgeDays, fileChangedAt),
+    registerStateOf(existing, now, settings.maxResultAgeDays, fileChangedAt, fileVersion),
   );
 }
 
 /**
  * Whether the stored result is one the submission (slice 5) and the approval may rely on: an
- * `active` result that is fresh and was made on the draft as it now stands, or a definite
- * negative. False for no result, `unavailable`, and a stale result (aged, or the draft changed
- * since the check); the caller then asks again (`lookupDue`) or leaves it to a manual check.
+ * `active` result that is fresh and was compared against exactly the file version `file` is at
+ * now (and was not checked before the file last changed), or a definite negative. False for no
+ * result, `unavailable`, and a stale result (aged, the draft changed since the check, or the file
+ * is at another version than the one compared: Hassan M1 residual); the caller then asks again
+ * (`lookupDue`) or leaves it to a manual check. The submit evaluates this on the file it holds
+ * locked or CASes by version in the unit of the submit transition, so an edit between this
+ * check and the transition cannot slip past it.
  */
 export function registerCheckIsCurrent(
   file: SellerFile,
@@ -133,7 +141,13 @@ export function registerCheckIsCurrent(
   now: Temporal.Instant,
   settings: ConfiguredLookup,
 ): boolean {
-  const state = registerStateOf(existing, now, settings.maxResultAgeDays, file.state.lastChangedAt);
+  const state = registerStateOf(
+    existing,
+    now,
+    settings.maxResultAgeDays,
+    file.state.lastChangedAt,
+    file.state.version,
+  );
   return state === 'active' || state === 'negative';
 }
 
@@ -372,8 +386,7 @@ export async function runLookup(
 export async function recordResult(
   deps: RegisterLookupDependencies,
   context: CallContext,
-  run: Pick<LookupRun, 'sellerId' | 'index' | 'by'> &
-    Partial<Pick<LookupRun, 'file' | 'snapshotAt'>>,
+  run: Pick<LookupRun, 'sellerId' | 'index' | 'by' | 'file' | 'snapshotAt'>,
   outcome: RegisterAnswer['outcome'],
   mismatches: readonly RegisterMismatch[],
 ): Promise<RegisterCheck | null> {
@@ -382,7 +395,7 @@ export async function recordResult(
     const now = deps.clock.now();
     const stored = await deps.unitOfWork.run(market, async () => {
       let checkedAt = now;
-      if (outcome === 'active' && run.file !== undefined && run.snapshotAt !== undefined) {
+      if (outcome === 'active') {
         checkedAt = run.snapshotAt;
         const latest = await deps.files.findById(market, run.sellerId);
         if (latest === null || latest.state.version !== run.file.state.version) {
@@ -397,6 +410,9 @@ export async function recordResult(
           mismatches,
           checkedAt,
           checkedBy: run.by,
+          // The version the comparison read, never the latest one: a result is current only for
+          // the draft it was compared against (Hassan M1 residual).
+          comparedFileVersion: run.file.state.version,
         }),
       );
     });

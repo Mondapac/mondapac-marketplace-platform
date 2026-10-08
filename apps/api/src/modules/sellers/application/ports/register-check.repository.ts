@@ -13,6 +13,11 @@ export interface RegisterCheckWrite {
   readonly mismatches: readonly RegisterMismatch[];
   readonly checkedAt: Temporal.Instant;
   readonly checkedBy: RegisterChecker;
+  /**
+   * The `seller_files.version` the comparison read the draft at; stored with the result so that
+   * it is current only for that version (slice 5, Hassan M1 residual). A positive integer.
+   */
+  readonly comparedFileVersion: number;
 }
 
 /**
