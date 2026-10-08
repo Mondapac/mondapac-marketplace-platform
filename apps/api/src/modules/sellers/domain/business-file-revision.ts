@@ -8,6 +8,14 @@ import {
   type RegisterOutcome,
 } from './register-check';
 import {
+  REVISION_AUTHOR_KINDS,
+  REVISION_KINDS,
+  WITHDRAW_CAUSES,
+  type RevisionAuthorKind,
+  type RevisionKind,
+  type WithdrawCause,
+} from './revision-kinds';
+import {
   missingParts,
   type DraftPart,
   type DraftRequirements,
@@ -19,9 +27,14 @@ import {
 // submission check (completeness, ServiceArea, zones) and the status transitions. It knows no
 // Market, no register and no country: everything Market-specific arrives as a parameter.
 
-/** Why the revision exists (data design 3.2 `kind`). */
-export const REVISION_KINDS = ['onboarding', 'identity-change'] as const;
-export type RevisionKind = (typeof REVISION_KINDS)[number];
+export {
+  REVISION_AUTHOR_KINDS,
+  REVISION_KINDS,
+  WITHDRAW_CAUSES,
+  type RevisionAuthorKind,
+  type RevisionKind,
+  type WithdrawCause,
+};
 
 /** V1's four statuses plus the module's own `withdrawn` (design 2.4 rule 1). */
 export const REVISION_STATUSES = [
@@ -32,13 +45,6 @@ export const REVISION_STATUSES = [
   'superseded',
 ] as const;
 export type RevisionStatus = (typeof REVISION_STATUSES)[number];
-
-export const REVISION_AUTHOR_KINDS = ['seller', 'admin'] as const;
-export type RevisionAuthorKind = (typeof REVISION_AUTHOR_KINDS)[number];
-
-/** Why a pending revision was withdrawn (design 7.4); the caller is `seller` or `admin`. */
-export const WITHDRAW_CAUSES = ['edited', 'cancelled', 'reapply-refused'] as const;
-export type WithdrawCause = (typeof WITHDRAW_CAUSES)[number];
 
 /** The JSON shape of the content that new revisions are written with (data design 3.2). */
 export const CONTENT_SCHEMA_VERSION = 1;

@@ -93,6 +93,13 @@ import {
   type RevisionContentSealer,
 } from '../application/ports/revision-content-sealer';
 import { PrismaBusinessFileRevisionRepository } from './prisma-business-file-revision.repository';
+import {
+  SELLER_ACCESS_READER,
+  type SellerAccessReader,
+} from '../application/ports/seller-access-reader';
+import { REVIEWER_NOTIFIER, type ReviewerNotifier } from '../application/ports/reviewer-notifier';
+import { IdentitySellerAccess } from './identity-seller-access';
+import { IdentityReviewerNotifier } from './identity-reviewer-notifier';
 import { SubjectKeyRevisionContentSealer } from './subject-key-revision-content-sealer';
 
 /** One adapter serves both Market-format ports; a token of its own lets them share it. */
@@ -239,5 +246,19 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [SELLER_ACCESS_CONTRACT],
     useFactory: (identity: SellerAccessContract): RegisteredSellerSource =>
       new IdentityRegisteredSellers(identity),
+  },
+  {
+    // Slice 5b: the access state `identity` holds, read live (design 7.2), and the request to
+    // tell the reviewers of a waiting application (design 7.5; identity design 8.7).
+    provide: SELLER_ACCESS_READER,
+    inject: [SELLER_ACCESS_CONTRACT],
+    useFactory: (identity: SellerAccessContract): SellerAccessReader =>
+      new IdentitySellerAccess(identity),
+  },
+  {
+    provide: REVIEWER_NOTIFIER,
+    inject: [SELLER_ACCESS_CONTRACT],
+    useFactory: (identity: SellerAccessContract): ReviewerNotifier =>
+      new IdentityReviewerNotifier(identity),
   },
 ];

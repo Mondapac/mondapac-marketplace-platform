@@ -2,6 +2,7 @@ import { Temporal, err, ok } from '@mondapac/shared-kernel';
 import type { ContentHash, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  ApprovedZones,
   BusinessFileRevisionRepository,
   RevisionAddRefused,
 } from '../application/ports/business-file-revision.repository';
@@ -21,6 +22,9 @@ import {
 import { identifierIndexKeyOf } from '../domain/business-identifier';
 import { REGISTER_MISMATCHES, type RegisterMismatch } from '../domain/register-check';
 import type { SealedRevisionContent } from '../domain/sealed';
+
+/** The largest id list one read takes (sellers design 7.1a row 4). */
+const MAX_IDS = 100;
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -282,6 +286,74 @@ export class PrismaBusinessFileRevisionRepository implements BusinessFileRevisio
       select: METADATA,
     });
     return row === null ? null : revisionOf(row);
+  }
+
+  async saveWithdrawal(market: MarketContext, revision: BusinessFileRevision): Promise<boolean> {
+    const { withdrawal } = revision;
+    if (revision.status !== 'withdrawn' || withdrawal === null) {
+      throw new RangeError('saveWithdrawal: the revision must be withdrawn');
+    }
+    // The guard is in the statement, not in a read before it: only a pending revision changes.
+    const { count } = await this.prisma.tx(market).sellersBusinessFileRevision.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: revision.sellerId,
+        id: revision.id,
+        status: 'pending',
+      },
+      data: {
+        status: 'withdrawn',
+        statusChangedAt: toDate(revision.statusChangedAt),
+        withdrawCause: withdrawal.cause,
+        withdrawnByKind: withdrawal.byKind,
+        withdrawnAt: toDate(withdrawal.at),
+      },
+    });
+    return count === 1;
+  }
+
+  async approvedZones(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, ApprovedZones>> {
+    if (sellerIds.length === 0) return new Map();
+    if (sellerIds.length > MAX_IDS) throw new RangeError('approvedZones: at most 100 ids');
+    const tx = this.prisma.tx(market);
+    // The pointer is the authority (data design 3.1); then the revisions it names. Two snapshots
+    // are safe: an approved revision's zones never change (A18).
+    const pointers = await tx.sellersSellerFile.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: { in: [...sellerIds] },
+        approvedRevisionId: { not: null },
+      },
+      select: { sellerId: true, approvedRevisionId: true },
+    });
+    const revisionIds = pointers.flatMap((row) =>
+      row.approvedRevisionId === null ? [] : [row.approvedRevisionId],
+    );
+    if (revisionIds.length === 0) return new Map();
+    const rows = await tx.sellersBusinessFileRevision.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: { in: pointers.map((row) => row.sellerId) },
+        id: { in: revisionIds },
+      },
+      select: { id: true, sellerId: true, operatingTimezone: true, addressTimezone: true },
+    });
+    const byRevision = new Map(rows.map((row) => [row.id, row]));
+    const zones = new Map<Id<'Seller'>, ApprovedZones>();
+    for (const pointer of pointers) {
+      const row = byRevision.get(pointer.approvedRevisionId ?? '');
+      // The composite FK keeps the pointer inside the seller's own revisions; a mismatch is a
+      // fault of the data, never a zone to give (fail closed: the entry stays absent).
+      if (row === undefined || row.sellerId !== pointer.sellerId) continue;
+      zones.set(pointer.sellerId as Id<'Seller'>, {
+        operatingTimezone: row.operatingTimezone,
+        addressTimezone: row.addressTimezone,
+      });
+    }
+    return zones;
   }
 
   async readSealedContent(

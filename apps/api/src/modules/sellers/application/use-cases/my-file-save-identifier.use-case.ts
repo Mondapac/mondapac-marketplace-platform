@@ -41,6 +41,9 @@ import {
   type QuotaVerdict,
   type RegisterLookupDependencies,
 } from '../register/register-lookup';
+import { withdrawPendingOnEdit } from '../draft/withdraw-on-edit';
+import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFile } from '../../domain/seller-file';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -84,6 +87,8 @@ export type MyFileSaveIdentifierFailure =
 export interface MyFileSaveIdentifierDependencies extends RegisterLookupDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
+  readonly revisions: BusinessFileRevisionRepository;
+  readonly outbox: OutboxWriter;
   readonly policy: SellerMarketPolicy;
   readonly identifierSchemes: BusinessIdentifierSchemes;
   readonly identifierIndex: IdentifierIndex;
@@ -116,6 +121,9 @@ export interface MyFileSaveIdentifierDependencies extends RegisterLookupDependen
  * seller sees only `matched`, `not-matched` or `could-not-be-checked`. A Market with the `none`
  * adapter reserves nothing and calls nothing. A seller-side write is not offered in acting-as;
  * the session has no acting-as flag yet (see the slice 4a note in the data design).
+ *
+ * A save that changes the identifier withdraws the pending submission, if any, in the same unit
+ * (`withdrawPendingOnEdit`; design 3.1).
  *
  * Uniqueness is not decided here: a draft gives no right to a number (brief s7); the claim is
  * taken when a reviewer approves (7a-decide). The seller never learns whether another seller
@@ -288,7 +296,9 @@ export class MyFileSaveIdentifier extends UseCase<
           return ok(draftSaved(file, requirements));
         }
         if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
-        return ok(draftSaved(file, requirements));
+        const edit = await withdrawPendingOnEdit(this.deps, context, file);
+        if (edit === 'lost') return err({ code: 'conflict.stale' });
+        return ok(draftSaved(file, requirements, edit === 'withdrawn'));
       },
     );
     if (!saved.ok) return saved;

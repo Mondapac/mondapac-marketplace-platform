@@ -218,6 +218,27 @@
     }
   },
   {
+    "type": "sellers.business-file-submitted.v1",
+    "aggregateType": "seller-file",
+    "fields": {
+      "sellerId": "id",
+      "revisionId": "id",
+      "kind": "enumOf(onboarding|identity-change)",
+      "authorKind": "enumOf(seller|admin)",
+      "resubmission": "boolean"
+    }
+  },
+  {
+    "type": "sellers.business-file-withdrawn.v1",
+    "aggregateType": "seller-file",
+    "fields": {
+      "sellerId": "id",
+      "revisionId": "id",
+      "cause": "enumOf(edited|cancelled|reapply-refused)",
+      "byKind": "enumOf(seller|admin)"
+    }
+  },
+  {
     "type": "sellers.seller-file-created.v1",
     "aggregateType": "seller-file",
     "fields": {

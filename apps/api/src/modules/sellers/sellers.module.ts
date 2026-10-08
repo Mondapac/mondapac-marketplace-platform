@@ -1,6 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -8,6 +9,10 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-file-revision.repository';
+import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
+import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
+import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
 import { BUSINESS_IDENTIFIER_SCHEMES } from './application/ports/business-identifier-scheme';
 import { BUSINESS_REGISTER_LOOKUPS } from './application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX } from './application/ports/identifier-index';
@@ -27,6 +32,9 @@ import {
 import { SELLER_MARKET_POLICY } from './application/ports/seller-market-policy';
 import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
 import { TAX_PROFILE_REPOSITORY } from './application/ports/tax-profile.repository';
+import { AfterSubmission } from './application/use-cases/after-submission.use-case';
+import { MyFileSubmit } from './application/use-cases/my-file-submit.use-case';
+import { MyFileWithdraw } from './application/use-cases/my-file-withdraw.use-case';
 import { ApprovedSellerZonesSystem } from './application/use-cases/approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './application/use-cases/approved-seller-zones.use-case';
 import { BackfillSellerFiles } from './application/use-cases/backfill-seller-files.use-case';
@@ -83,6 +91,11 @@ const PORT = {
   registerPolicy: REGISTER_LOOKUP_POLICY,
   taxProfiles: TAX_PROFILE_REPOSITORY,
   outbox: OUTBOX_WRITER,
+  revisions: BUSINESS_FILE_REVISION_REPOSITORY,
+  sealer: REVISION_CONTENT_SEALER,
+  accessReader: SELLER_ACCESS_READER,
+  notifier: REVIEWER_NOTIFIER,
+  ids: ID_GENERATOR,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
 
@@ -150,6 +163,8 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileRead, {
       unitOfWork: true,
       files: true,
+      revisions: true,
+      accessReader: true,
       policy: true,
       identifierSchemes: true,
       cipher: true,
@@ -163,6 +178,8 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileSaveGeneral, {
       unitOfWork: true,
       files: true,
+      revisions: true,
+      outbox: true,
       policy: true,
       cipher: true,
       counters: true,
@@ -172,6 +189,8 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileSaveAddress, {
       unitOfWork: true,
       files: true,
+      revisions: true,
+      outbox: true,
       policy: true,
       cipher: true,
       counters: true,
@@ -186,6 +205,8 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       files: true,
       slugs: true,
+      revisions: true,
+      outbox: true,
       policy: true,
       counters: true,
       counterKeys: true,
@@ -213,6 +234,8 @@ function useCaseProvider<D, U>(
     useCaseProvider(MyFileSaveIdentifier, {
       unitOfWork: true,
       files: true,
+      revisions: true,
+      outbox: true,
       policy: true,
       identifierSchemes: true,
       identifierIndex: true,
@@ -226,6 +249,48 @@ function useCaseProvider<D, U>(
       addressFormats: true,
       clock: true,
     }),
+    // Slice 5b: submit, withdraw, the handler that tells the reviewers, and the real zone read.
+    useCaseProvider(MyFileSubmit, {
+      unitOfWork: true,
+      files: true,
+      slugs: true,
+      revisions: true,
+      outbox: true,
+      policy: true,
+      identifierSchemes: true,
+      areas: true,
+      addressFormats: true,
+      cipher: true,
+      sealer: true,
+      accessReader: true,
+      ids: true,
+      registerChecks: true,
+      registerLookups: true,
+      registerPolicy: true,
+      taxProfiles: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileWithdraw, {
+      unitOfWork: true,
+      files: true,
+      revisions: true,
+      outbox: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(AfterSubmission, {
+      unitOfWork: true,
+      revisions: true,
+      counters: true,
+      counterKeys: true,
+      notifier: true,
+      clock: true,
+    }),
+    useCaseProvider(ApprovedSellerZones, { unitOfWork: true, revisions: true }),
+    useCaseProvider(ApprovedSellerZonesSystem, { unitOfWork: true, revisions: true }),
     useCaseProvider(ReviewRegisterCheckRead, {
       unitOfWork: true,
       files: true,
@@ -235,14 +300,8 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
-    // The fail-closed stand-in of slice 9 (design 7.2) and the null-answering zone contract of
-    // slice 2 (design 7.1a): they read nothing, so only the gate.
-    ...[
-      SellingEligibility,
-      SellingEligibilitySystem,
-      ApprovedSellerZones,
-      ApprovedSellerZonesSystem,
-    ].map((type): FactoryProvider => ({
+    // The fail-closed stand-in of slice 9 (design 7.2): it reads nothing, so only the gate.
+    ...[SellingEligibility, SellingEligibilitySystem].map((type): FactoryProvider => ({
       provide: type,
       inject: [USE_CASE_GATE],
       useFactory: (gate: UseCaseGate) => new type(gate),
@@ -291,8 +350,11 @@ function useCaseProvider<D, U>(
         purgeExpiredJob(purge),
       ],
     ),
-    registerSubscriptionsFrom('sellers', [CreateSellerFile], (createFile: CreateSellerFile) =>
-      sellerFileSubscriptions(createFile),
+    registerSubscriptionsFrom(
+      'sellers',
+      [CreateSellerFile, AfterSubmission],
+      (createFile: CreateSellerFile, afterSubmission: AfterSubmission) =>
+        sellerFileSubscriptions(createFile, afterSubmission),
     ),
   ],
   exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES],

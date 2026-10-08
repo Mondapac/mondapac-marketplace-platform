@@ -84,6 +84,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.second-factor-mail',
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'sellers.after-submission',
       'sellers.create-file',
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([

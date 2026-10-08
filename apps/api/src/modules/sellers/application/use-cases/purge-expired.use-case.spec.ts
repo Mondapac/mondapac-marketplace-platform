@@ -31,6 +31,10 @@ class FakeCounters implements RateCounterRepository {
     return Promise.reject(new Error('not used here'));
   }
 
+  release(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   purgeStartedBefore(market: MarketContext, before: Temporal.Instant): Promise<number> {
     let deleted = 0;
     for (const [key, started] of this.rows) {

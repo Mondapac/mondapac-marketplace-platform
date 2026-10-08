@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { REVISION_AUTHOR_KINDS, WITHDRAW_CAUSES } from '../domain/revision-kinds';
+import { SELLER_STATUSES } from '../domain/seller-status';
 
 // The OpenAPI shapes of the seller's draft routes (sellers design 6.2). Requests never carry a
 // seller id, a Market, a state or an admin setting (AC 16): the seller is the session's, the
@@ -130,6 +132,13 @@ export class DraftSavedBody {
     description: 'The mandatory parts still missing, in the order of the form.',
   })
   missing!: readonly string[];
+
+  @ApiProperty({
+    description:
+      'True when this save withdrew the pending submission (an edit of a submitted file does): ' +
+      'the seller must submit again.',
+  })
+  submissionWithdrawn!: boolean;
 }
 
 /** What the register said, as the seller may see it (brief s5): never a register value. */
@@ -210,6 +219,52 @@ class GeneralView {
   contactEmail!: string | null;
 }
 
+class OnboardingStepBody {
+  @ApiProperty({ enum: ['sellers'] })
+  owningModule!: string;
+
+  @ApiProperty({ description: 'Translation key, e.g. sellers.steps.business.' })
+  titleKey!: string;
+
+  @ApiProperty({ enum: ['done', 'to-do', 'waiting', 'needs-attention'] })
+  state!: string;
+
+  @ApiProperty({ type: Number, nullable: true })
+  fieldsLeft!: number | null;
+}
+
+class SubmissionBody {
+  @ApiProperty()
+  revisionNo!: number;
+
+  @ApiProperty({ description: 'ISO 8601 instant (UTC).' })
+  submittedAt!: string;
+}
+
+class WithdrawalBody {
+  @ApiProperty({ enum: WITHDRAW_CAUSES })
+  cause!: string;
+
+  @ApiProperty({ enum: REVISION_AUTHOR_KINDS })
+  byKind!: string;
+
+  @ApiProperty({ description: 'ISO 8601 instant (UTC).' })
+  at!: string;
+}
+
+export class SubmittedBody extends SubmissionBody {
+  @ApiProperty({ description: "The file's version after the submission." })
+  version!: number;
+
+  @ApiProperty({ description: 'The file had an earlier revision: another try, not a first one.' })
+  resubmission!: boolean;
+}
+
+export class WithdrawnBody {
+  @ApiProperty({ description: "The file's version after the withdrawal." })
+  version!: number;
+}
+
 export class MyFileBody {
   @ApiProperty()
   version!: number;
@@ -275,6 +330,31 @@ export class MyFileBody {
 
   @ApiProperty({ type: [String] })
   zoneOptions!: readonly string[];
+
+  @ApiProperty({
+    type: String,
+    enum: SELLER_STATUSES,
+    description:
+      'The one status of the file (design 3.3). A rejected seller reads changes-needed until ' +
+      'the re-apply limit arrives with a later slice.',
+  })
+  status!: string;
+
+  @ApiProperty({
+    type: () => [OnboardingStepBody],
+    description: 'The steps card of the home page, in order; the client maps titleKey to its page.',
+  })
+  onboardingSteps!: readonly OnboardingStepBody[];
+
+  @ApiProperty({ type: () => SubmissionBody, nullable: true })
+  submission!: SubmissionBody | null;
+
+  @ApiProperty({
+    type: () => WithdrawalBody,
+    nullable: true,
+    description: 'The latest revision when it ended withdrawn: why, by whom and when.',
+  })
+  latestWithdrawal!: WithdrawalBody | null;
 }
 
 export class SlugCheckBody {

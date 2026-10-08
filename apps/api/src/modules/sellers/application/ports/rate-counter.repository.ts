@@ -24,6 +24,19 @@ export interface RateCounterRepository {
   ): Promise<readonly RateReservation[]>;
 
   /**
+   * Gives back one reservation of a reviewer-notice kind (data design 3.11): a guarded decrement
+   * of the counter's row where its window is still the one the reservation returned and its count
+   * is above zero, so it never touches a later window and never goes below zero. Answers whether
+   * a row changed. Any other kind is refused with a `TypeError`: only the two reviewer-notice
+   * kinds are ever released.
+   */
+  release(
+    market: MarketContext,
+    counter: RateCounter,
+    windowStartedAt: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /**
    * Deletes the Market's counters whose window started before `startedBefore` and answers how
    * many (data design 3.11: the purge keeps 48 hours, twice the longest window). Safe to run
    * twice and concurrently.

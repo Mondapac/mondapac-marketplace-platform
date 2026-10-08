@@ -30,6 +30,9 @@ import {
 } from '../draft/draft-view';
 import { suggestedZoneFor } from '../draft/location-hint';
 import type { LocationTimezoneResolver } from '../ports/location-timezone-resolver';
+import { withdrawPendingOnEdit } from '../draft/withdraw-on-edit';
+import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
@@ -84,6 +87,8 @@ export interface MyFileSaveAddressDependencies {
   readonly files: SellerFileRepository;
   readonly policy: SellerMarketPolicy;
   readonly cipher: SellerFileCipher;
+  readonly revisions: BusinessFileRevisionRepository;
+  readonly outbox: OutboxWriter;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
   readonly addressFormats: AddressFormats;
@@ -199,8 +204,10 @@ export class MyFileSaveAddress extends UseCase<
       );
       if (!applied.ok) return applied;
       if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
+      const edit = await withdrawPendingOnEdit(this.deps, context, file);
+      if (edit === 'lost') return err({ code: 'conflict.stale' });
       return ok({
-        ...draftSaved(file, requirements),
+        ...draftSaved(file, requirements, edit === 'withdrawn'),
         serviceArea: area,
         outsideServiceArea: area?.sellerOnboardingEnabled !== true,
         timezone: file.state.draft.zone,

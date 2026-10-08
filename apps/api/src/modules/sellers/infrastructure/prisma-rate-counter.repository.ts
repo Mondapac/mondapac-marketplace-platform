@@ -23,13 +23,15 @@ function inLockOrder(a: RateCounter, b: RateCounter): number {
 
 const KEY_HASH_BYTES = 32;
 
+/** The only kinds that are ever given back (data design 3.11, slice 5). */
+const RELEASABLE_KINDS: readonly string[] = ['reviewer-notice.market', 'reviewer-notice.seller'];
+
 /**
  * {@link RateCounterRepository} on `sellers.rate_counters` (data design 3.11), the pattern of
  * identity's throttle counters (ID-data 3.5, spike 6). Per counter, two statements (C10): an
  * `updateMany` that restarts a window that has ended, then an `upsert` on the primary key that
  * Prisma sends as one `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent units
- * count every attempt exactly once. Nothing is released here (only the reviewer-notice kinds of
- * slice 5 release).
+ * count every attempt exactly once. Only the reviewer-notice kinds are ever released (`release`).
  */
 export class PrismaRateCounterRepository implements RateCounterRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -82,6 +84,32 @@ export class PrismaRateCounterRepository implements RateCounterRepository {
       });
     }
     return counters.map((counter) => reserved.get(counter)!);
+  }
+
+  async release(
+    market: MarketContext,
+    counter: RateCounter,
+    windowStartedAt: Temporal.Instant,
+  ): Promise<boolean> {
+    const { kind } = counter.limit;
+    if (!RELEASABLE_KINDS.includes(kind)) {
+      throw new TypeError('release: only the reviewer-notice kinds are released');
+    }
+    if (counter.keyHash.length !== KEY_HASH_BYTES) {
+      throw new TypeError('release: a key hash is 32 bytes');
+    }
+    // One guarded statement: the window must still be the reserved one, and the count above zero.
+    const { count } = await this.prisma.tx(market).sellersRateCounter.updateMany({
+      where: {
+        marketId: market.marketId,
+        kind,
+        keyHash: Uint8Array.from(counter.keyHash),
+        windowStartedAt: toDate(windowStartedAt),
+        count: { gt: 0 },
+      },
+      data: { count: { decrement: 1 } },
+    });
+    return count === 1;
   }
 
   async purgeStartedBefore(
