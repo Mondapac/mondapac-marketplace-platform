@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { csrfTokenFor } from '../../../platform/call-context/csrf';
 import { clearedSessionCookie, sessionCookie } from '../../../platform/call-context/session-cookie';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import type { ChangePassword } from '../application/use-cases/change-password.use-case';
 import type {
@@ -55,8 +56,9 @@ export async function answerPasswordResetEmail(
   if (refused !== null) return refused;
   const input = parseStringFields(body, ['email'] as const);
   if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-  // The origin of the mail counter, from the socket only (never a forwarded header, Hassan I4).
-  const origin = clientOriginOf(request.socket.remoteAddress);
+  // The origin of the mail counter, from the resolved client address (ADR-0037; never a
+  // forwarded header, Hassan I4).
+  const origin = clientOriginOf(clientAddressFrom(request));
   if (origin === null) return fail(503, 'access.unavailable');
 
   const result = await useCase.execute(context, {
@@ -89,8 +91,8 @@ export async function answerResetPassword(
   if (refused !== null) return refused;
   const input = parseStringFields(body, ['token', 'password'] as const);
   if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-  const origin = clientOriginOf(request.socket.remoteAddress);
-  const address = clientAddressOf(request.socket.remoteAddress);
+  const origin = clientOriginOf(clientAddressFrom(request));
+  const address = clientAddressOf(clientAddressFrom(request));
   if (origin === null || address === null) return fail(503, 'access.unavailable');
 
   const fields = input as Readonly<Record<'token' | 'password', string>>;
@@ -143,8 +145,8 @@ export async function answerChangePassword(
   if (refused !== null) return refused;
   const input = parseStringFields(body, ['currentPassword', 'newPassword'] as const);
   if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-  const origin = clientOriginOf(request.socket.remoteAddress);
-  const address = clientAddressOf(request.socket.remoteAddress);
+  const origin = clientOriginOf(clientAddressFrom(request));
+  const address = clientAddressOf(clientAddressFrom(request));
   if (origin === null || address === null) return fail(503, 'access.unavailable');
 
   const fields = input as Readonly<Record<'currentPassword' | 'newPassword', string>>;

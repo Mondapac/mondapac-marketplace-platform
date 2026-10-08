@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { MetadataScanner, ModulesContainer } from '@nestjs/core';
 import { DECORATORS, DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
+import { CLIENT_ADDRESS_HEADER } from './platform/http/client-address';
 import { isMarketContextExempt } from './platform/market-context/market-context.guard';
 import { MARKET_ID_HEADER } from './platform/market-context/market-id-header';
 
@@ -25,6 +26,19 @@ const MARKET_ID_PARAMETER: Parameter = {
   schema: { type: 'string' },
 };
 
+const CLIENT_ADDRESS_PARAMETER: Parameter = {
+  name: CLIENT_ADDRESS_HEADER,
+  in: 'header',
+  required: false,
+  description:
+    'Set only by a MondaPac BFF server (ADR-0037): `v1;k=<keyId>;t=<unix-seconds>;a=<address>;' +
+    "s=<base64url HMAC-SHA-256>`, the browser's address proven under a key bound to the BFF's " +
+    'network and to the x-market-id value. Any other client must not send it. A request from a ' +
+    'BFF network without a valid proof, or a proof from anywhere else, is refused with 400 and ' +
+    'the code client-address.untrusted.',
+  schema: { type: 'string' },
+};
+
 /**
  * The operation id of a controller method. Set explicitly (not Swagger's default) because
  * `addMarketIdHeader` maps every id back to its controller class.
@@ -43,7 +57,30 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     operationIdFactory: (controllerKey: string, methodKey: string) =>
       operationIdOf(controllerKey, methodKey),
   });
-  return addMarketIdHeader(document, registeredControllers(app));
+  return addClientAddressHeader(addMarketIdHeader(document, registeredControllers(app)));
+}
+
+/**
+ * Adds the optional `x-client-address` header (ADR-0037) to every operation that carries
+ * `x-market-id`: the client-address middleware skips only the health probes, which are exempt
+ * from the Market too, so the two lists agree.
+ */
+export function addClientAddressHeader(document: OpenAPIObject): OpenAPIObject {
+  for (const item of Object.values(document.paths)) {
+    for (const [key, value] of Object.entries(item as Record<string, unknown>)) {
+      if (PATH_ITEM_FIELDS.has(key)) continue;
+      const operation = value as Operation;
+      const isHeader = (parameter: Parameter, name: string): boolean =>
+        'in' in parameter && parameter.in === 'header' && parameter.name.toLowerCase() === name;
+      const parameters = operation.parameters ?? [];
+      if (!parameters.some((parameter) => isHeader(parameter, MARKET_ID_HEADER))) continue;
+      operation.parameters = [
+        ...parameters.filter((parameter) => !isHeader(parameter, CLIENT_ADDRESS_HEADER)),
+        { ...CLIENT_ADDRESS_PARAMETER },
+      ];
+    }
+  }
+  return document;
 }
 
 function registeredControllers(app: INestApplication): ControllerClass[] {

@@ -26,7 +26,7 @@ export interface RegisterCustomerRequest {
 
 export interface RegisterCustomerInput extends RegisterCustomerRequest {
   /**
-   * The IPv4 address or the IPv6 /64 of the client, read from the socket by the controller
+   * The IPv4 address or the IPv6 /64 of the client, resolved per ADR-0037 and read by the controller
    * (never a forwarded header): the key of the `mail.origin` counter (identity design 6.8).
    */
   readonly origin: string;
