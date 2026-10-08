@@ -188,6 +188,113 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
     expect(await inUnit(() => repository.findById(market, uuid7() as Id<'Product'>))).toBeNull();
   });
 
+  it('stores and reads back the published and pending revision pointers (4c-4)', async () => {
+    const product = newProduct(market.marketId, {
+      code: await inUnit(() => repository.nextProductCode(market)),
+    });
+    await inUnit(() => repository.add(market, product));
+    const productId = product.state.id;
+    const base = { market_id: market.marketId, tenant_id: market.tenantId };
+    const insertRow = async (table: string, row: Record<string, unknown>) => {
+      const columns = Object.keys(row);
+      await app.query(
+        `INSERT INTO catalog.${table} (${columns.join(', ')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})`,
+        Object.values(row),
+      );
+    };
+    const familyId = uuid7();
+    const familyRevisionId = uuid7();
+    await insertRow('attribute_families', {
+      id: familyId,
+      ...base,
+      code: `f-${randomUUID().slice(0, 10)}`,
+      status: 'active',
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: T0.toString(),
+    });
+    await insertRow('attribute_family_revisions', {
+      id: familyRevisionId,
+      ...base,
+      family_id: familyId,
+      revision_no: 1,
+      groups: '[]',
+      author_kind: 'seed',
+      created_at: T0.toString(),
+    });
+    const revisionIds = [uuid7(), uuid7()] as Id<'ProductRevision'>[];
+    for (const [index, id] of revisionIds.entries()) {
+      await insertRow('product_revisions', {
+        id,
+        ...base,
+        product_id: productId,
+        revision_no: index + 1,
+        revision_kind: 'submission',
+        base_revision_id: null,
+        reverted_from_revision_id: null,
+        family_revision_id: familyRevisionId,
+        definition_revision_ids: [],
+        tax_category_code: 'standard',
+        attribute_values: '{}',
+        field_provenance: null,
+        sensitive: false,
+        sensitive_reasons: [],
+        content_schema_version: 1,
+        content_hash: `sha256:${'a'.repeat(64)}`,
+        author_kind: 'seller',
+        author_account_id: uuid7(),
+        acting_admin_account_id: null,
+        submitted_at: T0.toString(),
+      });
+    }
+
+    const stored = (await inUnit(() => repository.findById(market, productId)))!;
+    const variantId = stored.state.variants[0]!.id;
+    expect(stored.state).toMatchObject({
+      publishedRevisionId: null,
+      pendingRevisionId: null,
+      pendingSubmittedAt: null,
+    });
+    const published = stored.submitRevision({
+      revisionId: revisionIds[0]!,
+      baseRevisionId: null,
+      outcome: { outcome: 'published', publishKind: 'auto', sensitive: false, reasons: [] },
+      authorKind: 'seller',
+      replacePending: false,
+      revisionVariantIds: [variantId],
+      maxVariants: 5,
+      now: T1,
+    });
+    expect(published.ok).toBe(true);
+    await inUnit(() => repository.save(market, stored));
+
+    const again = (await inUnit(() => repository.findById(market, productId)))!;
+    expect(again.state).toMatchObject({
+      status: 'published',
+      publishedRevisionId: revisionIds[0],
+      pendingRevisionId: null,
+    });
+    const pending = again.submitRevision({
+      revisionId: revisionIds[1]!,
+      baseRevisionId: revisionIds[0]!,
+      outcome: { outcome: 'pending', publishKind: null, sensitive: true, reasons: ['name'] },
+      authorKind: 'seller',
+      replacePending: false,
+      revisionVariantIds: [variantId],
+      maxVariants: 5,
+      now: T1,
+    });
+    expect(pending.ok).toBe(true);
+    await inUnit(() => repository.save(market, again));
+
+    const last = (await inUnit(() => repository.findById(market, productId)))!;
+    expect(last.state).toMatchObject({
+      publishedRevisionId: revisionIds[0],
+      pendingRevisionId: revisionIds[1],
+    });
+    expect(last.state.pendingSubmittedAt?.toString()).toBe(T1.toString());
+  });
+
   it('saves a discard of a stored Configurable draft whose several events take consecutive versions', async () => {
     const created = newProduct(market.marketId, {
       configurable: true,

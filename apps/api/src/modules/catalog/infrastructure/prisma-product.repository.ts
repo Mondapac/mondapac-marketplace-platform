@@ -113,6 +113,9 @@ export class PrismaProductRepository implements ProductRepository {
       lastChangedAt: toInstant(row.lastChangedAt),
       version: row.version,
       createdAt: toInstant(row.createdAt),
+      publishedRevisionId: row.publishedRevisionId as Id<'ProductRevision'> | null,
+      pendingRevisionId: row.pendingRevisionId as Id<'ProductRevision'> | null,
+      pendingSubmittedAt: orNull(row.pendingSubmittedAt),
       variants: row.variants.map((variant): VariantRecord => ({
         id: variant.id as Id<'Variant'>,
         state: variant.state as VariantState,
@@ -140,6 +143,10 @@ export class PrismaProductRepository implements ProductRepository {
         discardedAt: state.discardedAt === null ? null : toDate(state.discardedAt),
         lastChangedAt: toDate(state.lastChangedAt),
         version: state.version,
+        publishedRevisionId: state.publishedRevisionId,
+        pendingRevisionId: state.pendingRevisionId,
+        pendingSubmittedAt:
+          state.pendingSubmittedAt === null ? null : toDate(state.pendingSubmittedAt),
       },
     });
     if (count !== 1) throw new StaleAggregateError('product', state.id);

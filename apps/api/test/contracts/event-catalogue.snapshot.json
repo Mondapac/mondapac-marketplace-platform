@@ -36,6 +36,25 @@
     }
   },
   {
+    "type": "catalog.product-revision-published.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "previousRevisionId": "optional(id)",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "type": "catalog.product-revision-submitted.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.variant-added.v1",
     "aggregateType": "product",
     "fields": {

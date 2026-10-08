@@ -1,6 +1,12 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
-import { VariantAdded, VariantRemoved } from './events';
+import {
+  ProductRevisionPublished,
+  ProductRevisionSubmitted,
+  VariantAdded,
+  VariantRemoved,
+} from './events';
+import type { RevisionOutcome } from './product-revision-policy';
 import type { ProductTypeCode, ProductTypeHandler, VariantModel } from './product-type-handler';
 
 export const PRODUCT_SCOPES = ['PLATFORM', 'SELLER'] as const;
@@ -30,6 +36,10 @@ function authorRefusal(scope: ProductScope, authorKind: AuthorKind): ProductRefu
   if (scope === 'SELLER' && authorKind !== 'seller') return { code: 'product.seller-only' };
   return null;
 }
+
+/** The lower-case spelling event enums use for a scope. */
+const eventScope = (scope: ProductScope): 'platform' | 'seller' =>
+  scope === 'PLATFORM' ? 'platform' : 'seller';
 
 /** A limit that is not a positive safe integer would switch the check off: refuse it loudly. */
 function assertMaxVariants(maxVariants: number): void {
@@ -71,6 +81,12 @@ export interface ProductState {
   readonly createdAt: Temporal.Instant;
   /** Every variant ever minted for the product, in creation order; none is removed. */
   readonly variants: readonly VariantRecord[];
+  /** The revision in force (data design 3.1); null until the first publication. */
+  readonly publishedRevisionId: Id<'ProductRevision'> | null;
+  /** The revision waiting for review; at most one (VER-01); distinct from the published one. */
+  readonly pendingRevisionId: Id<'ProductRevision'> | null;
+  /** Set exactly when `pendingRevisionId` is (the review queue's order). */
+  readonly pendingSubmittedAt: Temporal.Instant | null;
 }
 
 /** Why a command was refused: a stable code, never data. */
@@ -85,7 +101,12 @@ export type ProductRefusal =
   | { readonly code: 'variant.limit-reached'; readonly max: number }
   | { readonly code: 'variant.id-taken' }
   | { readonly code: 'variant.not-found' }
-  | { readonly code: 'variant.not-proposed' };
+  | { readonly code: 'variant.not-proposed' }
+  | { readonly code: 'variant.none' }
+  | { readonly code: 'revision.pending-exists' }
+  | { readonly code: 'revision.base-changed' }
+  | { readonly code: 'review.not-current-revision' }
+  | { readonly code: 'product.no-published-revision' };
 
 /** `P` and eight digits: the case-sensitive, enumerable-but-meaningless code of data design 3.1. */
 export function formatProductCode(sequence: number): string {
@@ -168,6 +189,9 @@ export class Product {
         version: 1,
         createdAt: input.now,
         variants,
+        publishedRevisionId: null,
+        pendingRevisionId: null,
+        pendingSubmittedAt: null,
       },
       null,
     );
@@ -338,6 +362,187 @@ export class Product {
   }
 
   /**
+   * A submit of a frozen revision (catalog design 4.2 row 1, 4.3). `outcome` is the verdict of
+   * `ProductRevisionPolicy.decideOutcome`: `pending` records the revision as the one waiting for
+   * review (a first submit moves `draft` to `unpublished`); `published` makes it the published
+   * revision at once. The revision's base must be the revision now published
+   * (`revision.base-changed`), and an existing pending revision is superseded only when
+   * `replacePending` says so (`revision.pending-exists`). The revision names the variants it
+   * holds: all live, none repeated, within `maxVariants`, a Simple product's one variant exactly.
+   */
+  submitRevision(input: {
+    readonly revisionId: Id<'ProductRevision'>;
+    readonly baseRevisionId: Id<'ProductRevision'> | null;
+    readonly outcome: RevisionOutcome;
+    readonly authorKind: AuthorKind;
+    readonly replacePending: boolean;
+    readonly revisionVariantIds: readonly Id<'Variant'>[];
+    readonly maxVariants: number;
+    readonly now: Temporal.Instant;
+  }): Result<{ readonly published: boolean }, ProductRefusal> {
+    assertMaxVariants(input.maxVariants);
+    const state = this.#state;
+    const refusal = authorRefusal(state.scope, input.authorKind);
+    if (refusal !== null) return err(refusal);
+    if (!EDITABLE_STATUSES.includes(state.status)) return err({ code: 'product.not-editable' });
+    if (input.baseRevisionId !== state.publishedRevisionId) {
+      return err({ code: 'revision.base-changed' });
+    }
+    if (state.pendingRevisionId !== null && !input.replacePending) {
+      return err({ code: 'revision.pending-exists' });
+    }
+    const variants = this.#checkRevisionVariants(input.revisionVariantIds, input.maxVariants);
+    if (!variants.ok) return variants;
+    const submitted = {
+      definition: ProductRevisionSubmitted,
+      payload: {
+        productId: state.id,
+        revisionId: input.revisionId,
+        scope: eventScope(state.scope),
+      },
+    };
+    if (input.outcome.outcome === 'pending') {
+      this.#applyRecords(
+        input.now,
+        {
+          status: state.status === 'draft' ? 'unpublished' : state.status,
+          pendingRevisionId: input.revisionId,
+          pendingSubmittedAt: input.now,
+        },
+        [submitted],
+      );
+      return ok({ published: false });
+    }
+    this.#publish(input.revisionId, input.revisionVariantIds, input.now, [submitted]);
+    return ok({ published: true });
+  }
+
+  /**
+   * The reviewer's approval (catalog design 4.2 row 3; AC 29): the revision named must be the
+   * pending one, else `review.not-current-revision` and nothing changes; its base must still be
+   * the published revision (`revision.base-changed`, the seller rebases). Admin only.
+   */
+  approveRevision(input: {
+    readonly revisionId: Id<'ProductRevision'>;
+    readonly baseRevisionId: Id<'ProductRevision'> | null;
+    readonly revisionVariantIds: readonly Id<'Variant'>[];
+    readonly maxVariants: number;
+    readonly now: Temporal.Instant;
+  }): Result<void, ProductRefusal> {
+    assertMaxVariants(input.maxVariants);
+    const state = this.#state;
+    if (state.scope !== 'SELLER') return err({ code: 'product.seller-only' });
+    if (!EDITABLE_STATUSES.includes(state.status)) return err({ code: 'product.not-editable' });
+    if (state.pendingRevisionId === null || state.pendingRevisionId !== input.revisionId) {
+      return err({ code: 'review.not-current-revision' });
+    }
+    if (input.baseRevisionId !== state.publishedRevisionId) {
+      return err({ code: 'revision.base-changed' });
+    }
+    const variants = this.#checkRevisionVariants(input.revisionVariantIds, input.maxVariants);
+    if (!variants.ok) return variants;
+    this.#publish(input.revisionId, input.revisionVariantIds, input.now, []);
+    return ok(undefined);
+  }
+
+  /**
+   * An admin's tax category override of a SELLER product (catalog design 4.3; AC 36): a revision
+   * built from the published one, published at once. A pending seller revision stays pending and
+   * is rebased by its seller. The variants are the ones the published revision holds.
+   */
+  publishTaxOverride(input: {
+    readonly revisionId: Id<'ProductRevision'>;
+    readonly now: Temporal.Instant;
+  }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    if (state.scope !== 'SELLER') return err({ code: 'product.seller-only' });
+    if (state.status !== 'published' || state.publishedRevisionId === null) {
+      return err({ code: 'product.no-published-revision' });
+    }
+    const held = this.liveVariants
+      .filter((variant) => variant.state === 'published')
+      .map((variant) => variant.id);
+    this.#publish(input.revisionId, held, input.now, [], true);
+    return ok(undefined);
+  }
+
+  /** The variants a revision names: at least one, none repeated, all live, within the limit. */
+  #checkRevisionVariants(
+    ids: readonly Id<'Variant'>[],
+    maxVariants: number,
+  ): Result<void, ProductRefusal> {
+    if (ids.length === 0) return err({ code: 'variant.none' });
+    const live = this.liveVariants;
+    const seen = new Set<Id<'Variant'>>();
+    for (const id of ids) {
+      if (seen.has(id) || !live.some((variant) => variant.id === id)) {
+        return err({ code: 'variant.unknown' });
+      }
+      seen.add(id);
+    }
+    if (this.#state.variantModel === 'single' && ids.length !== live.length) {
+      return err({ code: 'variant.unknown' });
+    }
+    if (ids.length > maxVariants) return err({ code: 'variant.limit-reached', max: maxVariants });
+    return ok(undefined);
+  }
+
+  /**
+   * Makes `revisionId` the published revision: a `proposed` variant it names becomes `published`,
+   * a `published` one it leaves out is retired and announced (M-1), the pending pointer is cleared
+   * unless `keepPending` (a tax override leaves a seller's pending revision alone; any other publish
+   * supersedes or fulfils it), and the status becomes `published`. `before` are events
+   * that come first (the submit event).
+   */
+  #publish(
+    revisionId: Id<'ProductRevision'>,
+    named: readonly Id<'Variant'>[],
+    now: Temporal.Instant,
+    before: readonly { definition: typeof ProductRevisionSubmitted; payload: unknown }[],
+    keepPending = false,
+  ): void {
+    const state = this.#state;
+    const dropped = state.variants.filter(
+      (variant) => variant.state === 'published' && !named.includes(variant.id),
+    );
+    const variants = state.variants.map((variant) => {
+      if (variant.state === 'proposed' && named.includes(variant.id)) {
+        return { ...variant, state: 'published' as const, publishedAt: now };
+      }
+      return variant;
+    });
+    this.#applyRecords(
+      now,
+      {
+        status: 'published',
+        publishedRevisionId: revisionId,
+        ...(keepPending ? {} : { pendingRevisionId: null, pendingSubmittedAt: null }),
+        variants: this.#retire(
+          variants,
+          dropped.map((variant) => variant.id),
+          now,
+        ),
+      },
+      [
+        ...before,
+        {
+          definition: ProductRevisionPublished,
+          payload: {
+            productId: state.id,
+            revisionId,
+            previousRevisionId: state.publishedRevisionId,
+            scope: eventScope(state.scope),
+          },
+        },
+        ...dropped.map((variant) => ({
+          definition: VariantRemoved,
+          payload: { productId: state.id, variantId: variant.id },
+        })),
+      ],
+    );
+  }
+
+  /**
    * `draft` to `discarded` (catalog design 4.1; terminal): the row stays, every non-retired
    * variant is retired and announced, one event each, in creation order. Only a draft that was
    * never submitted can be discarded.
@@ -384,15 +589,41 @@ export class Product {
       readonly variantId: Id<'Variant'> | undefined;
     }[],
   ): void {
+    this.#applyRecords(
+      now,
+      changes,
+      events
+        .filter((event) => event.variantId !== undefined)
+        .map((event) => ({
+          definition: event.definition,
+          payload: { productId: this.#state.id, variantId: event.variantId as Id<'Variant'> },
+        })),
+    );
+  }
+
+  #applyRecords(
+    now: Temporal.Instant,
+    changes: Partial<ProductState>,
+    records: readonly {
+      readonly definition: {
+        record(input: {
+          aggregateId: Id;
+          aggregateVersion: number;
+          occurredAt: Temporal.Instant;
+          payload: never;
+        }): PendingEvent;
+      };
+      readonly payload: unknown;
+    }[],
+  ): void {
     const base = this.#persistedVersion ?? 0;
-    const recorded = events.filter((event) => event.variantId !== undefined);
-    for (const event of recorded) {
+    for (const record of records) {
       this.#events.push(
-        event.definition.record({
+        record.definition.record({
           aggregateId: this.#state.id,
           aggregateVersion: base + this.#events.length + 1,
           occurredAt: now,
-          payload: { productId: this.#state.id, variantId: event.variantId as Id<'Variant'> },
+          payload: record.payload as never,
         }),
       );
     }
