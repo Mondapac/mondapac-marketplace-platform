@@ -59,37 +59,47 @@ model CatalogInbox {
 /// grants). The CHECKs, the case-sensitive product-code collation and the grants are
 /// hand-written in the migration.
 model CatalogProduct {
-  id                   String                  @id @db.Uuid
-  marketId             String                  @map("market_id") @db.VarChar(8)
-  tenantId             String                  @map("tenant_id")
+  id                   String                     @id @db.Uuid
+  marketId             String                     @map("market_id") @db.VarChar(8)
+  tenantId             String                     @map("tenant_id")
   /// PLATFORM | SELLER (ADR-0010).
   scope                String
   /// The owning seller of a SELLER product; null for PLATFORM (CHECK products_owner_check).
-  ownerSellerId        String?                 @map("owner_seller_id") @db.Uuid
+  ownerSellerId        String?                    @map("owner_seller_id") @db.Uuid
   /// The seller who created it; never updated, so the origin survives promotion.
-  createdBySellerId    String?                 @map("created_by_seller_id") @db.Uuid
-  typeCode             String                  @map("type_code")
+  createdBySellerId    String?                    @map("created_by_seller_id") @db.Uuid
+  typeCode             String                     @map("type_code")
   /// single | options: the handler's variantModel; the target of the variant foreign key.
-  variantModel         String                  @map("variant_model")
-  familyCode           String                  @map("family_code")
+  variantModel         String                     @map("variant_model")
+  familyCode           String                     @map("family_code")
   /// Minted from product_code_counters, never from input. Collation "C" is set in the migration.
-  productCode          String                  @map("product_code")
+  productCode          String                     @map("product_code")
   /// draft | discarded | unpublished | published | matched | withdrawn | retired.
   status               String
-  discardedAt          DateTime?               @map("discarded_at") @db.Timestamptz(6)
-  ownBrand             Boolean                 @map("own_brand")
-  matchedIntoProductId String?                 @map("matched_into_product_id") @db.Uuid
-  promotedAt           DateTime?               @map("promoted_at") @db.Timestamptz(6)
-  retiredAt            DateTime?               @map("retired_at") @db.Timestamptz(6)
-  withdrawnAt          DateTime?               @map("withdrawn_at") @db.Timestamptz(6)
+  discardedAt          DateTime?                  @map("discarded_at") @db.Timestamptz(6)
+  ownBrand             Boolean                    @map("own_brand")
+  matchedIntoProductId String?                    @map("matched_into_product_id") @db.Uuid
+  promotedAt           DateTime?                  @map("promoted_at") @db.Timestamptz(6)
+  retiredAt            DateTime?                  @map("retired_at") @db.Timestamptz(6)
+  withdrawnAt          DateTime?                  @map("withdrawn_at") @db.Timestamptz(6)
+  /// The published revision (V1 pointer); only a revision of this product (CE4). Null until first publish.
+  publishedRevisionId  String?                    @map("published_revision_id") @db.Uuid
+  /// The one pending revision (VER-01), a single column so the rule holds by construction.
+  pendingRevisionId    String?                    @map("pending_revision_id") @db.Uuid
+  /// Queue sort key, written with the pending pointer in the same statement.
+  pendingSubmittedAt   DateTime?                  @map("pending_submitted_at") @db.Timestamptz(6)
   /// Every save of the root.
-  lastChangedAt        DateTime                @map("last_changed_at") @db.Timestamptz(6)
+  lastChangedAt        DateTime                   @map("last_changed_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version              Int
-  createdAt            DateTime                @map("created_at") @db.Timestamptz(6)
+  createdAt            DateTime                   @map("created_at") @db.Timestamptz(6)
   variants             CatalogProductVariant[]
-  matchedInto          CatalogProduct?         @relation("ProductMatch", fields: [marketId, matchedIntoProductId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  duplicates           CatalogProduct[]        @relation("ProductMatch")
+  matchedInto          CatalogProduct?            @relation("ProductMatch", fields: [marketId, matchedIntoProductId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  duplicates           CatalogProduct[]           @relation("ProductMatch")
+  revisions            CatalogProductRevision[]   @relation("ProductRevisions")
+  publishedRevision    CatalogProductRevision?    @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  pendingRevision      CatalogProductRevision?    @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  workingCopy          CatalogProductWorkingCopy?
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -106,18 +116,19 @@ model CatalogProduct {
 /// proposed to published, proposed to retired and published to retired, and refuses every
 /// DELETE. The CHECKs, the single-variant partial unique and the trigger are hand-written.
 model CatalogProductVariant {
-  id           String         @id @db.Uuid
-  marketId     String         @map("market_id") @db.VarChar(8)
-  tenantId     String         @map("tenant_id")
-  productId    String         @map("product_id") @db.Uuid
+  id               String                          @id @db.Uuid
+  marketId         String                          @map("market_id") @db.VarChar(8)
+  tenantId         String                          @map("tenant_id")
+  productId        String                          @map("product_id") @db.Uuid
   /// A copy bound by the foreign key to the product's variant model.
-  variantModel String         @map("variant_model")
+  variantModel     String                          @map("variant_model")
   /// proposed | published | retired.
-  state        String
-  createdAt    DateTime       @map("created_at") @db.Timestamptz(6)
-  publishedAt  DateTime?      @map("published_at") @db.Timestamptz(6)
-  retiredAt    DateTime?      @map("retired_at") @db.Timestamptz(6)
-  product      CatalogProduct @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Restrict)
+  state            String
+  createdAt        DateTime                        @map("created_at") @db.Timestamptz(6)
+  publishedAt      DateTime?                       @map("published_at") @db.Timestamptz(6)
+  retiredAt        DateTime?                       @map("retired_at") @db.Timestamptz(6)
+  product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Restrict)
+  revisionVariants CatalogProductRevisionVariant[]
 
   @@unique([marketId, id])
   /// The count path of the variant limit and the target of a same-product foreign key (3.10).
@@ -178,6 +189,7 @@ model CatalogPlatformCategory {
   mergedFrom          CatalogPlatformCategory[]         @relation("CategoryMerge")
   revisions           CatalogPlatformCategoryRevision[] @relation("CategoryRevisions")
   publishedRevision   CatalogPlatformCategoryRevision?  @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
+  productRevisions    CatalogProductRevisionCategory[]
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -350,10 +362,191 @@ model CatalogAttributeFamilyRevision {
   createdAt           DateTime                 @map("created_at") @db.Timestamptz(6)
   family              CatalogAttributeFamily   @relation("FamilyRevisions", fields: [marketId, familyId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   published           CatalogAttributeFamily[] @relation("FamilyPublished")
+  productRevisions    CatalogProductRevision[]
 
   @@unique([marketId, familyId, revisionNo])
   @@unique([marketId, familyId, id])
   @@unique([marketId, id])
   @@map("attribute_family_revisions")
+  @@schema("catalog")
+}
+
+/// The working copy of a product (catalog design 2.3 M-2; data design 3.6): the incomplete draft,
+/// one row per product, mutable. Nothing queries inside `content`; a submit validates and freezes
+/// it into revision rows. Deleted explicitly when a draft is discarded or pruned (10.1).
+model CatalogProductWorkingCopy {
+  marketId             String                  @map("market_id") @db.VarChar(8)
+  tenantId             String                  @map("tenant_id")
+  productId            String                  @map("product_id") @db.Uuid
+  /// Texts, attribute values, variant drafts naming registry ids, category ids, tax category,
+  /// image ids with alt text. An object (CHECK).
+  content              Json                    @db.JsonB
+  contentSchemaVersion Int                     @map("content_schema_version") @db.SmallInt
+  /// The published revision it was started from; a revision of the same product.
+  baseRevisionId       String?                 @map("base_revision_id") @db.Uuid
+  lastSavedAt          DateTime                @map("last_saved_at") @db.Timestamptz(6)
+  lastSavedByAccountId String                  @map("last_saved_by_account_id") @db.Uuid
+  product              CatalogProduct          @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+  baseRevision         CatalogProductRevision? @relation(fields: [marketId, productId, baseRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, productId])
+  /// The prune job's range (A22).
+  @@index([marketId, lastSavedAt, productId], map: "product_working_copies_market_id_last_saved_at_idx")
+  @@map("product_working_copies")
+  @@schema("catalog")
+}
+
+/// A frozen revision of a product (V1; data design 3.7). Insert-only (CA3). Status is derived
+/// from the product's two pointers and the decision row.
+model CatalogProductRevision {
+  id                     String                           @id @db.Uuid
+  marketId               String                           @map("market_id") @db.VarChar(8)
+  tenantId               String                           @map("tenant_id")
+  productId              String                           @map("product_id") @db.Uuid
+  revisionNo             Int                              @map("revision_no")
+  /// submission | revert | tax-override.
+  revisionKind           String                           @map("revision_kind")
+  /// The published revision it was built on; same product.
+  baseRevisionId         String?                          @map("base_revision_id") @db.Uuid
+  revertedFromRevisionId String?                          @map("reverted_from_revision_id") @db.Uuid
+  /// Schema ref: the family revision, with the definition revisions below.
+  familyRevisionId       String                           @map("family_revision_id") @db.Uuid
+  definitionRevisionIds  String[]                         @map("definition_revision_ids") @db.Uuid
+  taxCategoryCode        String                           @map("tax_category_code")
+  attributeValues        Json                             @map("attribute_values") @db.JsonB
+  /// Per field typed | ai-unchanged | ai-edited, server-built; no text.
+  fieldProvenance        Json?                            @map("field_provenance") @db.JsonB
+  sensitive              Boolean
+  sensitiveReasons       String[]                         @map("sensitive_reasons")
+  contentSchemaVersion   Int                              @map("content_schema_version") @db.SmallInt
+  /// `sha256:` and 64 hex digits (ContentHash).
+  contentHash            String                           @map("content_hash")
+  /// seller | admin.
+  authorKind             String                           @map("author_kind")
+  authorAccountId        String                           @map("author_account_id") @db.Uuid
+  /// Acting-as (IMP-06): the admin behind a seller-authored revision.
+  actingAdminAccountId   String?                          @map("acting_admin_account_id") @db.Uuid
+  submittedAt            DateTime                         @map("submitted_at") @db.Timestamptz(6)
+  product                CatalogProduct                   @relation("ProductRevisions", fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  baseRevision           CatalogProductRevision?          @relation("RevisionBase", fields: [marketId, productId, baseRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  basedOnThis            CatalogProductRevision[]         @relation("RevisionBase")
+  revertedFrom           CatalogProductRevision?          @relation("RevisionRevertedFrom", fields: [marketId, productId, revertedFromRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  revertedBy             CatalogProductRevision[]         @relation("RevisionRevertedFrom")
+  familyRevision         CatalogAttributeFamilyRevision   @relation(fields: [marketId, familyRevisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  publishedOf            CatalogProduct[]                 @relation("ProductPublished")
+  pendingOf              CatalogProduct[]                 @relation("ProductPending")
+  workingCopies          CatalogProductWorkingCopy[]
+  texts                  CatalogProductRevisionText[]
+  categories             CatalogProductRevisionCategory[]
+  variants               CatalogProductRevisionVariant[]
+  decision               CatalogProductRevisionDecision?
+
+  @@unique([marketId, productId, revisionNo])
+  @@unique([marketId, id])
+  /// The target of the pointers and of every child (same-product foreign keys).
+  @@unique([marketId, productId, id])
+  @@map("product_revisions")
+  @@schema("catalog")
+}
+
+/// The texts of a revision per locale (data design 3.8). Insert-only.
+model CatalogProductRevisionText {
+  marketId         String                 @map("market_id") @db.VarChar(8)
+  tenantId         String                 @map("tenant_id")
+  revisionId       String                 @map("revision_id") @db.Uuid
+  locale           String
+  name             String
+  shortDescription String?                @map("short_description")
+  description      String?
+  revision         CatalogProductRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, locale])
+  @@map("product_revision_texts")
+  @@schema("catalog")
+}
+
+/// The platform categories a revision names (data design 3.9). Insert-only.
+model CatalogProductRevisionCategory {
+  marketId   String                  @map("market_id") @db.VarChar(8)
+  tenantId   String                  @map("tenant_id")
+  revisionId String                  @map("revision_id") @db.Uuid
+  categoryId String                  @map("category_id") @db.Uuid
+  /// Order as entered.
+  position   Int                     @db.SmallInt
+  revision   CatalogProductRevision  @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  category   CatalogPlatformCategory @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, categoryId])
+  /// The category re-ask and the impact count (A9, A10).
+  @@index([marketId, categoryId, revisionId])
+  @@map("product_revision_categories")
+  @@schema("catalog")
+}
+
+/// The variants a revision carries (data design 3.10): only variants of its own product.
+/// Insert-only; the not-retired trigger refuses a retired variant.
+model CatalogProductRevisionVariant {
+  marketId     String                 @map("market_id") @db.VarChar(8)
+  tenantId     String                 @map("tenant_id")
+  revisionId   String                 @map("revision_id") @db.Uuid
+  variantId    String                 @map("variant_id") @db.Uuid
+  productId    String                 @map("product_id") @db.Uuid
+  position     Int                    @db.SmallInt
+  /// The canonical string of the option values, built by the handler; unique per revision.
+  optionKey    String                 @map("option_key")
+  optionValues Json                   @map("option_values") @db.JsonB
+  /// Locale to label (CA6).
+  labels       Json                   @db.JsonB
+  revision     CatalogProductRevision @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  variant      CatalogProductVariant  @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, variantId])
+  @@unique([marketId, revisionId, optionKey])
+  @@map("product_revision_variants")
+  @@schema("catalog")
+}
+
+/// The one terminal outcome of a revision (data design 3.12). Insert-only. The check columns are
+/// created now and stay empty arrays until slice 10 fills them.
+model CatalogProductRevisionDecision {
+  marketId             String                 @map("market_id") @db.VarChar(8)
+  tenantId             String                 @map("tenant_id")
+  revisionId           String                 @map("revision_id") @db.Uuid
+  /// published | changes-requested | superseded.
+  outcome              String
+  /// reviewed | auto | admin-authored; set exactly when outcome is published.
+  publishKind          String?                @map("publish_kind")
+  approvalRequiredRead Boolean?               @map("approval_required_read")
+  /// resubmitted | withdrawn | promoted | matched; set exactly when superseded.
+  supersededCause      String?                @map("superseded_cause")
+  reasonCode           String?                @map("reason_code")
+  /// The reviewer's optional words; never copied to events, audit or logs (VER-13).
+  reasonText           String?                @map("reason_text")
+  requiredChecks       String[]               @map("required_checks")
+  confirmedChecks      String[]               @map("confirmed_checks")
+  /// admin | seller | system.
+  decidedByKind        String                 @map("decided_by_kind")
+  decidedByAccountId   String?                @map("decided_by_account_id") @db.Uuid
+  productVersion       Int                    @map("product_version")
+  decidedAt            DateTime               @map("decided_at") @db.Timestamptz(6)
+  revision             CatalogProductRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId])
+  @@map("product_revision_decisions")
+  @@schema("catalog")
+}
+
+/// Fixed-window counters of the catalog use cases (data design 3.26): the sellers shape, keyed by
+/// an HMAC under this module's rate-counter key. The kind list is a CHECK.
+model CatalogRateCounter {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  kind            String
+  keyHash         Bytes    @map("key_hash")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  count           Int
+
+  @@id([marketId, kind, keyHash])
+  @@map("rate_counters")
   @@schema("catalog")
 }

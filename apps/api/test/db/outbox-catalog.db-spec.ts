@@ -17,6 +17,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
+  'catalog.products_market_id_owner_seller_id_created_at_idx':
+    'CREATE INDEX products_market_id_owner_seller_id_created_at_idx ON catalog.products USING btree (market_id, owner_seller_id, created_at, id) WHERE (owner_seller_id IS NOT NULL)',
+  'catalog.products_market_id_pending_submitted_at_idx':
+    'CREATE INDEX products_market_id_pending_submitted_at_idx ON catalog.products USING btree (market_id, pending_submitted_at, id) WHERE (pending_revision_id IS NOT NULL)',
+  'catalog.products_market_id_published_revision_id_key':
+    'CREATE UNIQUE INDEX products_market_id_published_revision_id_key ON catalog.products USING btree (market_id, published_revision_id) WHERE (published_revision_id IS NOT NULL)',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.outbox_market_id_event_id_unpublished_idx':
