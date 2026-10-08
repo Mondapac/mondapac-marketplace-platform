@@ -423,6 +423,23 @@ describe('clientAddressResolver (ADR-0037)', () => {
         expect(expected.length).toBe(32);
       });
 
+      it('vector 1 with a non-canonical last character that decodes to the same bytes (Hassan L1)', () => {
+        const [keyId, address, market, s] = VECTORS[0];
+        // '8' is 111100 and '9' is 111101: the two low bits of the 43rd character are unused.
+        const respelled = `${s.slice(0, -1)}9`;
+        expect(s.endsWith('8')).toBe(true);
+        expect(Buffer.from(respelled, 'base64url')).toEqual(Buffer.from(s, 'base64url'));
+
+        const outcome = run({
+          lines: [
+            ['x-market-id', market],
+            ['x-client-address', `v1;k=${keyId};t=${T};a=${address};s=${respelled}`],
+          ],
+        });
+
+        expectRefused(outcome, 'signature-invalid', 'panel');
+      });
+
       it('a signature under another key', () => {
         const outcome = run({
           lines: [

@@ -180,7 +180,13 @@ export function clientAddressResolver(options: ClientAddressOptions): RequestHan
     }
     const expected = key.secret.sign(clientAddressMessage(keyId, unixSeconds, address, market));
     const given = Buffer.from(signature, 'base64url');
-    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    // One spelling only (Hassan L1): the last character of 43 base64url characters carries two
+    // unused bits, so four texts decode to the same bytes; only the canonical one verifies.
+    if (
+      given.toString('base64url') !== signature ||
+      given.length !== expected.length ||
+      !timingSafeEqual(given, expected)
+    ) {
       return refuse(request, response, 'signature-invalid', key);
     }
 

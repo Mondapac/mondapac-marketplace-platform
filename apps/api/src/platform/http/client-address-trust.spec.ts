@@ -114,7 +114,7 @@ describe('parseClientAddressTrust (ADR-0037)', () => {
         "a key's CIDR outside TRUSTED_BFF_CIDRS",
         CIDRS,
         `panel:10.30.1.0/24:${SECRET_A}`,
-        /"10\.30\.1\.0\/24" is not inside TRUSTED_BFF_CIDRS/,
+        /key "panel": CIDR 1 is not inside TRUSTED_BFF_CIDRS/,
       ],
       ['a CIDR without a prefix', '10.20.1.1', `p:10.20.1.1/32:${SECRET_A}`, /not a CIDR/],
       ['a CIDR with host bits set', '10.20.1.1/24', `p:10.20.1.0/24:${SECRET_A}`, /host bits set/],
@@ -131,6 +131,29 @@ describe('parseClientAddressTrust (ADR-0037)', () => {
 
       expect(trust).toBeNull();
       expect(issues.join('\n')).toMatch(expected);
+    });
+
+    it.each([
+      ['secret and CIDR swapped', `panel:${SECRET_A}:10.20.1.0/24`],
+      ['secret listed as a second CIDR', `panel:10.20.1.0/24,${SECRET_A}:${SECRET_B}`],
+      ['secret in the CIDR list of a two-part tail', `panel:${SECRET_A},x:${SECRET_B}`],
+    ])(
+      'names a bad CIDR of a key entry by keyId and position, never by its text (%s, Hassan L2)',
+      (_label, keys) => {
+        const issues = issuesOf(CIDRS, keys);
+        const text = issues.join('\n');
+
+        expect(text).toMatch(/CLIENT_ADDRESS_KEYS key "panel": CIDR \d is not a CIDR/);
+        for (const secret of [SECRET_A, SECRET_B, SECRET_A.slice(0, 16), SECRET_B.slice(0, 16)]) {
+          expect(text).not.toContain(secret);
+        }
+      },
+    );
+
+    it('still quotes a bad TRUSTED_BFF_CIDRS entry, which holds no secret', () => {
+      expect(issuesOf('10.20.0.0/16,nonsense', `p:10.20.1.0/24:${SECRET_A}`).join('\n')).toMatch(
+        /TRUSTED_BFF_CIDRS: "nonsense" is not a CIDR/,
+      );
     });
 
     it('never quotes a secret in a message', () => {

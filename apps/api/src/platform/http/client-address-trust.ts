@@ -113,23 +113,26 @@ function cidrWithin(inner: Cidr, outer: Cidr): boolean {
   );
 }
 
-/** Parses one CIDR, or answers why it is refused (decision 5). */
+/**
+ * Parses one CIDR, or answers why it is refused (decision 5). The reason never quotes the text:
+ * the caller decides whether the text may be shown (never inside a key entry, Hassan L2).
+ */
 export function parseCidr(text: string): Cidr | string {
   const match = /^([^/\s]+)\/(\d{1,3})$/.exec(text);
-  if (match === null) return `"${text}" is not a CIDR such as 10.20.1.0/24`;
+  if (match === null) return 'is not a CIDR such as 10.20.1.0/24';
   const address = parseIpAddress(match[1]!);
-  if (address === null) return `"${text}" is not a CIDR such as 10.20.1.0/24`;
+  if (address === null) return 'is not a CIDR such as 10.20.1.0/24';
   const prefix = Number(match[2]);
-  if (prefix > BITS[address.family]) return `"${text}" has a prefix longer than the address`;
-  if (prefix === 0) return `"${text}" trusts every address (0.0.0.0/0 and ::/0 are refused)`;
+  if (prefix > BITS[address.family]) return 'has a prefix longer than the address';
+  if (prefix === 0) return 'trusts every address (0.0.0.0/0 and ::/0 are refused)';
   if (prefix < MIN_PREFIX[address.family]) {
-    return `"${text}" is wider than /${MIN_PREFIX[address.family]}`;
+    return `is wider than /${MIN_PREFIX[address.family]}`;
   }
   if (address.family === 6 && address.value >> 32n === 0xffffn) {
-    return `"${text}" is an IPv4-mapped range; write the IPv4 CIDR`;
+    return 'is an IPv4-mapped range; write the IPv4 CIDR';
   }
   const hostBits = BigInt(BITS[address.family] - prefix);
-  if (address.value & ((1n << hostBits) - 1n)) return `"${text}" has host bits set`;
+  if (address.value & ((1n << hostBits) - 1n)) return 'has host bits set';
   return { family: address.family, network: address.value, prefix, text };
 }
 
@@ -140,17 +143,26 @@ function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim().length === 0;
 }
 
-function parseCidrList(text: string, label: string, issues: string[]): Cidr[] {
+/**
+ * Parses a comma-separated CIDR list. `quote` shows a refused CIDR's text; inside a
+ * `CLIENT_ADDRESS_KEYS` entry it is false and a CIDR is named by its position only, because a
+ * misordered entry would put the secret where a CIDR is expected (Hassan L2).
+ */
+function parseCidrList(text: string, label: string, issues: string[], quote: boolean): Cidr[] {
   const cidrs: Cidr[] = [];
-  for (const part of text.split(',').map((entry) => entry.trim())) {
-    if (part.length === 0) {
-      issues.push(`${label}: has an empty CIDR`);
-      continue;
-    }
-    const cidr = parseCidr(part);
-    if (typeof cidr === 'string') issues.push(`${label}: ${cidr}`);
-    else cidrs.push(cidr);
-  }
+  text
+    .split(',')
+    .map((entry) => entry.trim())
+    .forEach((part, index) => {
+      if (part.length === 0) {
+        issues.push(`${label}: has an empty CIDR`);
+        return;
+      }
+      const cidr = parseCidr(part);
+      const name = quote ? `"${part}"` : `CIDR ${index + 1}`;
+      if (typeof cidr === 'string') issues.push(`${label}: ${name} ${cidr}`);
+      else cidrs.push(cidr);
+    });
   return cidrs;
 }
 
@@ -173,7 +185,7 @@ export function parseClientAddressTrust(
   }
   if (issues.length > 0) return { trust: null, issues };
 
-  const bffCidrs = parseCidrList(cidrsText!, 'TRUSTED_BFF_CIDRS', issues);
+  const bffCidrs = parseCidrList(cidrsText!, 'TRUSTED_BFF_CIDRS', issues, true);
   const keys = new Map<string, ClientAddressKey>();
   const entries = keysText!.split(';').map((entry) => entry.trim());
   entries.forEach((entry, index) => {
@@ -196,13 +208,13 @@ export function parseClientAddressTrust(
     const label = `CLIENT_ADDRESS_KEYS key "${keyId}"`;
     const cidrsPart = entry.slice(first + 1, last).trim();
     const secretText = entry.slice(last + 1).trim();
-    const cidrs = cidrsPart.length === 0 ? [] : parseCidrList(cidrsPart, label, issues);
+    const cidrs = cidrsPart.length === 0 ? [] : parseCidrList(cidrsPart, label, issues, false);
     if (cidrsPart.length === 0) issues.push(`${label}: names no CIDR`);
-    for (const cidr of cidrs) {
+    cidrs.forEach((cidr, position) => {
       if (!bffCidrs.some((outer) => cidrWithin(cidr, outer))) {
-        issues.push(`${label}: "${cidr.text}" is not inside TRUSTED_BFF_CIDRS`);
+        issues.push(`${label}: CIDR ${position + 1} is not inside TRUSTED_BFF_CIDRS`);
       }
-    }
+    });
     // The secret's text is never quoted in a message.
     if (secretText.length === 0 || !BASE64.test(secretText)) {
       issues.push(`${label}: the secret is not valid base64`);
