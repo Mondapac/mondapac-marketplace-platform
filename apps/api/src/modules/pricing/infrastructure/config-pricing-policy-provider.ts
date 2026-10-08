@@ -4,7 +4,11 @@ import {
   PricingNotConfiguredError,
   type PricingPolicyProvider,
 } from '../application/ports/pricing-policy-provider';
-import { createPricingPolicy, type PricingPolicy } from '../domain/pricing-policy';
+import {
+  createPricingPolicy,
+  InvalidPricingPolicyError,
+  type PricingPolicy,
+} from '../domain/pricing-policy';
 
 /** A hosted Market whose `pricing` section is missing or does not make a valid policy. */
 export class PricingMarketConfigError extends Error {
@@ -42,11 +46,8 @@ export class ConfigPricingPolicyProvider implements PricingPolicyProvider {
           }),
         );
       } catch (error) {
-        const reason =
-          error instanceof Error && 'reason' in error
-            ? JSON.stringify((error as { reason: unknown }).reason)
-            : 'invalid';
-        problems.push(`${marketId}: invalid pricing policy ${reason}`);
+        if (!(error instanceof InvalidPricingPolicyError)) throw error;
+        problems.push(`${marketId}: invalid pricing policy (${error.reason.code})`);
       }
     }
     if (problems.length > 0) throw new PricingMarketConfigError(problems.join('; '));

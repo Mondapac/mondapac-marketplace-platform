@@ -572,7 +572,7 @@ const pricingSchema = z.strictObject({
   /** Which moves the hold applies to (Q9; AU both). */
   jumpDirections: z.enum(['up', 'down', 'both']),
   /** The jump window W, an ISO 8601 duration of days, hours and minutes (Q1; AU P7D). */
-  jumpWindow: z.string().regex(/^P(\d{1,3}D)?(T(\d{1,4}H)?(\d{1,5}M)?)?$/u),
+  jumpWindow: z.string().regex(/^P(?!$)(?!T$)(\d{1,3}D)?(T(\d{1,4}H)?(\d{1,5}M)?)?$/u),
 });
 
 /**

@@ -1002,6 +1002,8 @@ describe('loadMarketConfigs', () => {
       ['an unknown direction', { ...GOOD, jumpDirections: 'sideways' }],
       ['a missing window', { ...GOOD, jumpWindow: undefined }],
       ['a window that is not a duration', { ...GOOD, jumpWindow: '7 days' }],
+      ['an empty duration', { ...GOOD, jumpWindow: 'PT' }],
+      ['a bare P', { ...GOOD, jumpWindow: 'P' }],
       ['an unknown key', { ...GOOD, specialsEnabled: true }],
     ])('rejects %s', (_case, pricing) => {
       expect(() => loadMarketConfigs([withPricing(pricing)], [QQ])).toThrow(

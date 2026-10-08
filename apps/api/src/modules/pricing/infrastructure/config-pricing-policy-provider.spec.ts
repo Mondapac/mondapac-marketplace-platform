@@ -1,4 +1,4 @@
-import { parseMarketId, type MarketId } from '@mondapac/shared-kernel';
+import type { MarketId } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
@@ -57,8 +57,6 @@ describe('ConfigPricingPolicyProvider', () => {
   });
 
   it('refuses a Market that is not hosted', () => {
-    const other = parseMarketId('QQ');
-    if (!other.ok) throw new Error('QQ must parse');
     expect(() => provider.forMarket(testMarketContext('QQ', 'default'))).toThrow(
       PricingNotConfiguredError,
     );
@@ -72,6 +70,7 @@ describe('ConfigPricingPolicyProvider', () => {
 
   it.each([
     ['a window under one hour', { jumpWindow: 'PT30M' }],
+    ['a zero window', { jumpWindow: 'P0D' }],
     ['a window over ninety days', { jumpWindow: 'P91D' }],
     ['a threshold over one', { jumpThreshold: { numerator: 3, denominator: 2 } }],
   ])('refuses to start with %s', (_name, override) => {
