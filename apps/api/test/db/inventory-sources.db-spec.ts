@@ -236,6 +236,168 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
     expect(await sourcesOf(code, sellerId)).toHaveLength(1);
   });
 
+  describe('the seller changes its sources (part 2)', () => {
+    const repository = () => new PrismaSellerInventoryRepository(db.service);
+    const load = async (sellerId: Id<'Seller'>, target = market) => {
+      const found = await db.unitOfWork.run(
+        target,
+        async () => ok(await repository().findBySeller(target, sellerId)),
+        { readOnly: true },
+      );
+      return found.ok ? found.value : null;
+    };
+    const mutate = (
+      sellerId: Id<'Seller'>,
+      change: (inventory: SellerInventory) => SellerInventory,
+      target = market,
+    ) =>
+      db.unitOfWork.run(target, async () => {
+        const loaded = await repository().findBySeller(target, sellerId);
+        return ok(await repository().save(target, change(loaded!)));
+      });
+    const addTo = (
+      inventory: SellerInventory,
+      name: string,
+      address = null as null | Record<string, string>,
+    ) => {
+      const added = inventory.addSource({
+        id: ids.next<'InventorySource'>(),
+        name,
+        address,
+        timeZone: address === null ? null : 'Australia/Brisbane',
+        maxSources: 4,
+        now: OCCURRED_AT,
+      });
+      if (!added.ok) throw new Error('unexpected');
+      return added.value;
+    };
+
+    it('loads nothing for a seller without an inventory, and nothing across Markets', async () => {
+      const sellerId = newSeller();
+      expect(await load(sellerId)).toBeNull();
+      await registered(code, sellerId);
+      expect(await load(sellerId)).not.toBeNull();
+      expect(await load(sellerId, marketOf(other))).toBeNull();
+    });
+
+    it('adds a source last with its address and zone, and raises the version', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const result = await mutate(sellerId, (i) =>
+        addTo(i, 'Garage', { line1: '1 Test St', suburb: 'Brisbane' }),
+      );
+      expect(result).toEqual({ ok: true, value: 'saved' });
+      expect((await inventoryOf(code, sellerId))[0]).toMatchObject({ version: 2 });
+      expect(await sourcesOf(code, sellerId)).toEqual([
+        expect.objectContaining({ name: 'Default', priority: 1, address: null }),
+        expect.objectContaining({
+          name: 'Garage',
+          priority: 2,
+          address: { line1: '1 Test St', suburb: 'Brisbane' },
+          time_zone: 'Australia/Brisbane',
+          is_default: false,
+        }),
+      ]);
+      const loaded = await load(sellerId);
+      expect(loaded!.state.sources.map((x) => x.name)).toEqual(['Default', 'Garage']);
+      expect(loaded!.state.sources[1]!.address).toEqual({ line1: '1 Test St', suburb: 'Brisbane' });
+    });
+
+    it('edits name, address and zone, and clears the address with null', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const edit = (name: string, address: Record<string, string> | null) =>
+        mutate(sellerId, (i) => {
+          const edited = i.editSource({
+            sourceId: i.state.sources[0]!.id,
+            name,
+            address,
+            timeZone: address === null ? null : 'Australia/Perth',
+          });
+          if (!edited.ok) throw new Error('unexpected');
+          return edited.value;
+        });
+      await edit('Main shed', { line1: '2 Test St' });
+      expect((await sourcesOf(code, sellerId))[0]).toMatchObject({
+        name: 'Main shed',
+        address: { line1: '2 Test St' },
+        time_zone: 'Australia/Perth',
+        is_default: true,
+      });
+      await edit('Main shed', null);
+      expect((await sourcesOf(code, sellerId))[0]).toMatchObject({
+        address: null,
+        time_zone: null,
+      });
+    });
+
+    it('reorders in two passes against the unique position key, with no gap or duplicate', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      for (const name of ['A', 'B', 'C']) {
+        await mutate(sellerId, (i) => addTo(i, name));
+      }
+      const before = (await load(sellerId))!;
+      const [d, a, b, c] = before.state.sources.map((x) => x.id);
+      const result = await mutate(sellerId, (i) => {
+        const reordered = i.reorder([c!, b!, d!, a!]);
+        if (!reordered.ok) throw new Error('unexpected');
+        return reordered.value;
+      });
+      expect(result).toEqual({ ok: true, value: 'saved' });
+      expect((await sourcesOf(code, sellerId)).map((x) => [x.name, x.priority])).toEqual([
+        ['C', 1],
+        ['B', 2],
+        ['Default', 3],
+        ['A', 4],
+      ]);
+      expect((await inventoryOf(code, sellerId))[0]).toMatchObject({
+        version: before.state.version + 1,
+      });
+    });
+
+    it('answers stale, writing nothing, when another edit raised the version in between', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const loaded = (await load(sellerId))!;
+      await mutate(sellerId, (i) => addTo(i, 'First'));
+      const result = await db.unitOfWork.run(market, async () =>
+        ok(await repository().save(market, addTo(loaded, 'Second'))),
+      );
+      expect(result).toEqual({ ok: true, value: 'stale' });
+      expect((await sourcesOf(code, sellerId)).map((x) => x.name)).toEqual(['Default', 'First']);
+    });
+
+    it('lets exactly one of two concurrent adds win, the other seeing stale', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const loaded = (await load(sellerId))!;
+      const attempt = (name: string) =>
+        db.unitOfWork.run(market, async () =>
+          ok(await repository().save(market, addTo(loaded, name))),
+        );
+      const results = await Promise.all([attempt('X'), attempt('Y')]);
+      expect(results.map((r) => r.ok && r.value).sort()).toEqual(['saved', 'stale']);
+      expect(await sourcesOf(code, sellerId)).toHaveLength(2);
+      expect((await inventoryOf(code, sellerId))[0]).toMatchObject({ version: 2 });
+    });
+
+    it('rolls the whole change back when a later statement fails (version and sources together)', async () => {
+      const sellerId = newSeller();
+      await registered(code, sellerId);
+      const loaded = (await load(sellerId))!;
+      const failing = await db.unitOfWork
+        .run(market, async () => {
+          await repository().save(market, addTo(loaded, 'Doomed'));
+          throw new Error('boom');
+        })
+        .catch((error: unknown) => error);
+      expect(failing).toBeInstanceOf(Error);
+      expect((await inventoryOf(code, sellerId))[0]).toMatchObject({ version: 1 });
+      expect(await sourcesOf(code, sellerId)).toHaveLength(1);
+    });
+  });
+
   describe('what the database refuses (data design 3.3, 7)', () => {
     const insertSource = (
       sellerId: string,
