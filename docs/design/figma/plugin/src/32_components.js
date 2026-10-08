@@ -198,9 +198,15 @@ function buildMobileNav(root, have) {
 const TOPBAR_DESC = 'Breadcrumb, command search (Ctrl K), market context, notifications and the user. Show search and Show notifications (1.7.0) hide those slots in the limited seller shell (S1).';
 const TOPBAR_BOOLS = [{ prop: 'Show search', node: 'search', def: true }, { prop: 'Show notifications', node: 'notifications', def: true }];
 const CHECKLIST_AXES = { State: ['Done', 'To do', 'Waiting', 'Needs attention'] };
-const CHECKLIST_OPTS = { width: 1000, desc: 'One verification check or one step of a process. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem. Waiting (1.7.0) is a step someone else is working on; Needs attention (1.7.0) is a step the user must act on. Show actions and Action (1.7.0) show one text action under the step; the To do buttons follow Show actions too.',
-  text: [{ prop: 'Title', node: 'title', def: 'Certificate number confirmed with the issuer' }, { prop: 'By', node: 'by', def: 'Needs a person' }, { prop: 'Action', node: 'action-label', def: 'Update your details' }], bool: [{ prop: 'Show actions', node: 'actions', def: true }] };
-const CHECKLIST_DOC = { title: 'ChecklistItem', summary: 'Approve stays disabled until every check is done. Waiting and Needs attention mark the steps of a process, such as the seller application on S1.', props: ['Title, By (text)', 'Show actions (boolean) and Action (text, Waiting and Needs attention)', 'State: Done, To do, Waiting, Needs attention'], a11y: ['The state is a word in By and an icon in the mark, never colour alone.'] };
+const CHECKLIST_DESC_170 = 'One verification check or one step of a process. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem. Waiting (1.7.0) is a step someone else is working on; Needs attention (1.7.0) is a step the user must act on. Show actions and Action (1.7.0) show one text action under the step; the To do buttons follow Show actions too.';
+// 1.9.0 "Seller setup" (sellers ux.md section 4): a supporting line under the state word ("2 fields left") and a chevron for a step that opens a page.
+const CHECKLIST_OPTS = { width: 1000, desc: CHECKLIST_DESC_170 + ' Show detail and Detail (1.9.0) add a supporting line such as "2 fields left"; Show chevron (1.9.0) marks a step that opens its own page (the whole row is the link, named by its title).',
+  text: [{ prop: 'Title', node: 'title', def: 'Certificate number confirmed with the issuer' }, { prop: 'By', node: 'by', def: 'Needs a person' }, { prop: 'Action', node: 'action-label', def: 'Update your details' }, { prop: 'Detail', node: 'detail', def: '2 fields left' }],
+  bool: [{ prop: 'Show actions', node: 'actions', def: true }, { prop: 'Show detail', node: 'detail', def: false }, { prop: 'Show chevron', node: 'chevron', def: false }] };
+const CHECKLIST_DOC = { title: 'ChecklistItem', summary: 'Approve stays disabled until every check is done. Waiting and Needs attention mark the steps of a process, such as the seller application on S1.', props: ['Title, By (text)', 'Show actions (boolean) and Action (text, Waiting and Needs attention)', 'Show detail (boolean) and Detail (text), Show chevron (boolean), 1.9.0', 'State: Done, To do, Waiting, Needs attention'], a11y: ['The state is a word in By and an icon in the mark, never colour alone.', 'A step with a chevron is one link named by its title; the detail line is part of its description.'] };
+// The 1.9.0 nodes: the detail line (after By) and the chevron (last in the row). Both start hidden, like their properties.
+function checklistDetail() { const t = text('2 fields left', 'Caption/Default', 'text/muted', { name: 'detail' }); t.visible = false; return t; }
+function checklistChevron() { const f = frame({ name: 'chevron', dir: 'H', pad: [1, 0, 0, 0] }, [icon('chevron-right', 'icon/muted', 18)]); f.visible = false; return f; }
 const CK_MARK = { Done: ['status/success/fg', null, 'check', 'text/on-accent'], 'To do': ['bg/surface', 'border/input', null, null], Waiting: ['status/info/bg', null, 'clock', 'status/info/fg'], 'Needs attention': ['status/attention/bg', null, 'alert-circle', 'status/attention/fg'] };
 const CK_BY = { Done: ['Checked automatically · 29 Sep, 10:25 am', 'text/muted', 'Caption/Default'], 'To do': ['Needs a person', 'text/muted', 'Caption/Default'], Waiting: ['In progress', 'status/info/fg', 'Caption/Strong'], 'Needs attention': ['Needs changes', 'status/attention/fg', 'Caption/Strong'] };
 function checklistVariant(c, p) {
@@ -214,8 +220,10 @@ function checklistVariant(c, p) {
     frame({ name: 'content', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
       text('Certificate number confirmed with the issuer', 'Body/Default', 'text/primary', { name: 'title', sizeH: 'FILL' }),
       text(by[0], by[2], by[1], { name: 'by' }),
+      checklistDetail(),
       actions,
     ]),
+    checklistChevron(),
   ]);
 }
 
@@ -247,6 +255,7 @@ async function buildReview(page) {
   const ck = makeSet('ChecklistItem', CHECKLIST_AXES, checklistVariant, CHECKLIST_OPTS);
   componentBlock(root, ck, CHECKLIST_DOC);
   reasonQuoteBlock(root);
+  dataRowBlock(root); // 1.9.0
 
   const TL = { Blue: ['action/primary', 'bg/selected'], Info: ['status/info/fg', 'status/info/bg'], Neutral: ['status/neutral/fg', 'status/neutral/bg'], Teal: ['cert/seller/fg', 'cert/seller/tile'] };
   const tl = makeSet('TimelineItem', { Tone: Object.keys(TL) }, function (c, p) {
