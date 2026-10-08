@@ -126,6 +126,15 @@
       "required": false,
       "labelKey": "sellers.business-identifier.zz-corp-no"
     },
+    "registerLookup": {
+      "adapter": "fake",
+      "manualLinkTemplate": "https://register.example.test/lookup/{identifier}",
+      "maxResultAgeDays": 7,
+      "perAccountLimit": 2,
+      "perOriginLimit": 3,
+      "marketDailyBudget": 20,
+      "legalSuffixes": ["kk", "zz ltd"]
+    },
     "address": {
       "fields": [
         {

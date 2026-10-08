@@ -126,6 +126,15 @@
       "required": true,
       "labelKey": "sellers.business-identifier.abn"
     },
+    "registerLookup": {
+      "adapter": "none",
+      "manualLinkTemplate": "https://abr.business.gov.au/ABN/View?abn={identifier}",
+      "maxResultAgeDays": 30,
+      "perAccountLimit": 5,
+      "perOriginLimit": 30,
+      "marketDailyBudget": 1000,
+      "legalSuffixes": ["pty ltd", "pty limited", "limited", "ltd"]
+    },
     "address": {
       "fields": [
         {

@@ -23,6 +23,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX products_market_id_pending_submitted_at_idx ON catalog.products USING btree (market_id, pending_submitted_at, id) WHERE (pending_revision_id IS NOT NULL)',
   'catalog.products_market_id_published_revision_id_key':
     'CREATE UNIQUE INDEX products_market_id_published_revision_id_key ON catalog.products USING btree (market_id, published_revision_id) WHERE (published_revision_id IS NOT NULL)',
+  'certification.issuers_market_id_type_id_accreditation_number_key':
+    'CREATE UNIQUE INDEX issuers_market_id_type_id_accreditation_number_key ON certification.issuers USING btree (market_id, type_id, accreditation_number) WHERE (accreditation_number IS NOT NULL)',
+  'certification.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON certification.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'certification.seller_certifications_market_id_approved_boundary_at_idx':
+    "CREATE INDEX seller_certifications_market_id_approved_boundary_at_idx ON certification.seller_certifications USING btree (market_id, approved_boundary_at) WHERE (status = 'approved'::text)",
+  'certification.seller_certifications_market_id_seller_id_type_id_open_key':
+    "CREATE UNIQUE INDEX seller_certifications_market_id_seller_id_type_id_open_key ON certification.seller_certifications USING btree (market_id, seller_id, type_id) WHERE (status <> ALL (ARRAY['declined'::text, 'revoked'::text]))",
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
