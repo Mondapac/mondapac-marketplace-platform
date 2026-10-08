@@ -880,7 +880,7 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 | Jobs (PN4), each deleting only what is already invalid and safe to run twice: `identity.purge-expired` (sessions, challenges, links, invitations, throttle counters, sign-in records past retention), hourly, slice 2; `identity.purge-unverified-accounts`, daily, slice 3 | 2, 3 |
 | Audit writer, seal table, sealer; `ANONYMOUS` in the actor CHECK | 6a (writer, tables, migration) and 6b (sealer, verifier, log anchor), one slice set (ADR-0015 decision 1) |
 | Permission registry | 8a-1 |
-| Audit-chain hardening set: Object Lock anchor (compliance mode), worker-only INSERT group, chain-epoch recovery, `transaction_timeout` on the login roles, operator log for `SYSTEM` commands, owner answers to Q5 and Q7 | Release trigger, not a slice: before any non-local environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside the dev team (`platform-audit.md` 15; the audit-chain hardening ADR, number from the board, amending ADR-0015 decision 3; checked by Bagher) |
+| Audit-chain hardening set: Object Lock anchor (compliance mode), worker-only INSERT group, chain-epoch recovery, `transaction_timeout` on the login roles, operator log for `SYSTEM` commands, owner answers to Q5 and Q7 | Release trigger, not a slice: before any non-local environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside the dev team (`platform-audit.md` 15; ADR-0032, ADR-0032, amending ADR-0015 decision 3; checked by Bagher) |
 | Redis client | Not triggered by `identity`; only if the generic limiter needs a shared store |
 
 ### 12.3 Spikes still needed (run, not merged)

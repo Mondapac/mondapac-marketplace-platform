@@ -171,7 +171,7 @@ Rejected alternative: writing audit through the outbox, with a consumer writing 
 - **Lost race** (Mojtaba F5). The loser gets `23505` on the primary key, or `55P03` (lock timeout) or `40P01` (deadlock). All three mean "another sealer won": roll back, end this Market's run, log at info, never `audit.chain.broken`. The next tick continues from the new head. **No row locks:** the application role cannot `SELECT ... FOR UPDATE` or `FOR SHARE` on these tables (`42501`), and the design must not add one.
 - **S, the settle window, is 5 minutes**, a platform constant. Today's ceilings bound a unit's life to about 60 s: a unit timeout of at most 30 s, plus one statement of at most 30 s that is still running when the timeout fires (P 3.1 row 8; `statement_timeout`, K1a). A retried attempt reads `Clock` again (W3). Host clock skew uses up the rest of the margin; skew beyond it shows up as late rows, which is a true finding. Conditions (Ali Q2):
   - a unit test asserts `S >= 4 × (MAX_UNIT_TIMEOUT + STATEMENT_TIMEOUT_CEILING)` and fails the build when it stops holding;
-  - no unit-timeout override may exceed the platform ceiling, including for a future batch job. A higher timeout needs a CTO decision and a change to S (the audit-chain hardening ADR, 15);
+  - no unit-timeout override may exceed the platform ceiling, including for a future batch job. A higher timeout needs a CTO decision and a change to S (ADR-0032, 15);
   - the daily full verify, check (d), is the backstop for rows the 24-hour late window misses; the runbook says so.
 - **Database-side bound** (Hassan L4). The unit timeout is enforced by the application; a blocked event loop can keep a transaction open with short statements and idle gaps. Before the hardening trigger (15), PostgreSQL 17 `transaction_timeout` is set on the login roles (with K1a) at or below `MAX_UNIT_TIMEOUT` plus a margin, the role-settings test (platform.md 10.4) checks it, and the S assertion uses it. Owner: Kazem with Mojtaba (15).
 - **Replication** (Mojtaba F6). The bound assumes a commit is visible to other sessions once it returns. With synchronous replication (likely in Phase 7) a commit can stay invisible while it waits for the standby. A long stall then produces late rows that are false alarms. This is a runbook note for `audit.seal.late-row` and a note for Kazem's Phase 7 settings, not a design change.
@@ -196,7 +196,7 @@ Rejected alternative: writing audit through the outbox, with a consumer writing 
 - Each finding is one error-level log line with a fixed code (`audit.chain.broken`, `audit.seal.watermark-future`, `audit.row.unsealed`, `audit.row.future`, `audit.row.noncanonical`, `audit.anchor.mismatch`). It holds Market, `chain_seq` and the audit id, never row content. It is marked for alerting (the same mechanism as dead letters, P 6.4; routing is PK3, Phase 7; recipients are Q7). A finding has no automatic effect on business traffic. Making it block traffic would turn tampering into a denial-of-service tool.
 - **`AnchorSink`**, a port:
   - **Phase 2 adapter:** a structured log line `audit.checkpoint` (Market, `chain_seq`, `chain_hash` as a `sha256:` `ContentHash`, instant), and `audit.heartbeat` for the daily head. It can be written but not read back, so (f) is a runbook comparison against the logs. Accepted for Phase 2 because no environment is deployed and all data is synthetic (Hassan Q8).
-  - **Object Lock anchor, part of the hardening set** (Q6, decided by Ali; Hassan M5; the audit-chain hardening ADR, 15). Due **before the hardening trigger: any non-local environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside the dev team** (15). This is Hassan's stricter wording; it covers Ali's. An Object Lock bucket per Region Stack (ADR-0009 decision 5; ADR-0016 and ADR-0029 client), key `audit-anchors/<market>/<epoch>/<chain_seq>`, heartbeat key `audit-anchors/<market>/heartbeat/<UTC date>`. Each item is a release check, owned by Kazem (the bucket) and checked by Bagher at release:
+  - **Object Lock anchor, part of the hardening set** (Q6, decided by Ali; Hassan M5; ADR-0032, 15). Due **before the hardening trigger: any non-local environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside the dev team** (15). This is Hassan's stricter wording; it covers Ali's. An Object Lock bucket per Region Stack (ADR-0009 decision 5; ADR-0016 and ADR-0029 client), key `audit-anchors/<market>/<epoch>/<chain_seq>`, heartbeat key `audit-anchors/<market>/heartbeat/<UTC date>`. Each item is a release check, owned by Kazem (the bucket) and checked by Bagher at release:
     - (a) **compliance** mode, never governance mode; retention at least the audit retention (Q5);
     - (b) the application credential may only put objects: no delete, no `BypassGovernanceRetention`, no `PutObjectRetention`, no bucket-policy change. It lives in a different trust domain from the database owner and the people who run the database;
     - (c) every put is a conditional write (`If-None-Match: *`). The verifier reads every version of a key and treats differing versions as `audit.anchor.mismatch`. An idempotent key alone would let an attacker add a new version;
@@ -322,7 +322,7 @@ Notes:
   3. the design edits of Ali's final ruling (F3 decided with the scan on start, epoch in the 6.2 hash input, one trigger wording): done in this revision;
   4. identity slice 5 merged, and no other migration PR open;
   5. the kernel `ContentHash` and `canonicalJson` change announced on the board.
-- **Before 6b merges** (Hassan's re-review): the stall fixes of N1 (a) and (c) with their tests (7.1 steps 2 and 8, 6.2, 16); the audit-chain hardening ADR merged, so the trigger is on record before the first audit row can exist (Ali).
+- **Before 6b merges** (Hassan's re-review): the stall fixes of N1 (a) and (c) with their tests (7.1 steps 2 and 8, 6.2, 16); ADR-0032 merged, so the trigger is on record before the first audit row can exist (Ali).
 - **Exit criteria (Ali's binding input):** audit rows for the seeded system roles, the founding membership and the founding assignment (6b), plus everything in section 16. No environment of the hardening trigger opens before slice 6 is merged and the hardening set below exists.
 - **Hardening trigger** (one wording for every item below, decided by Ali 2026-10-08): **any non-local environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside the dev team.** ADR-0015 decision 2 (database roles before any shared or deployed environment) is unchanged. **Hardening set**, due before that trigger, a release check for Bagher:
   - Object Lock anchor with items (a) to (f) of 8 (M5; Kazem);
@@ -332,7 +332,7 @@ Notes:
   - measured on PostgreSQL 17: `SET LOCAL transaction_timeout = 0` inside an open transaction cancels the running timer, for the scheduler's job-lock transaction (13; Mojtaba F11; Hossein, Mojtaba);
   - operator log for `SYSTEM` commands (9.2; L6; Hossein, Kazem);
   - Q5 and Q7 answered by the owner (17).
-- **The audit-chain hardening ADR (number from the board)**, a shared file in its own PR, handled by the orchestrator. It amends ADR-0015 decision 3 with one row for the hardening set and its trigger, and records the coupling between the timeout ceilings and S. CTO acceptance is enough; it must merge before 6b merges.
+- **ADR-0032 (audit-chain hardening)**, a shared file in its own PR (#97). It amends ADR-0015 decision 3 with one row for the hardening set and its trigger, and records the coupling between the timeout ceilings and S. CTO acceptance is enough; it must merge before 6b merges.
 - **Edits to other documents:**
   - identity.md 5.5, 10.1, 12.1, 12.2, 14.1-2 row 2, the "as built" rows of slice 5, 14.5 item 3 (done with this revision);
   - identity brief change log (done); certification.md 3.7, 7.6, 11, 16.1 and the certification brief change log for Q3 (done);
@@ -399,7 +399,7 @@ Notes:
 | Q3 | Ali, Hassan | certification.md 11 allowed free text in `claim-policy.revised` `after` | **Decided** by Ali 2026-10-08: the reason lives on the revision only; the audit row carries the revision id and `reasonGiven`; all four reason sites (certification.md 11). Hassan's L5 residual is recorded there |
 | Q4 | Ali | Owner of the cross-module admin audit list | **Direction decided** by Ali 2026-10-08 (10); final at the first admin audit screen |
 | Q5 | Owner (counsel) | Audit retention per Market, and keeping pseudonymous ids after erasure | **Open for the owner.** Goes to counsel with the open certification retention items. Due before the hardening trigger (15); Mojtaba needs it before he designs partitioning |
-| Q6 | Ali, Kazem, Bagher | External readable anchor (Object Lock) as a release trigger | **Decided** by Ali 2026-10-08, with Hassan's stricter wording and conditions (8), as one trigger for the whole hardening set (15); the audit-chain hardening ADR (number from the board) |
+| Q6 | Ali, Kazem, Bagher | External readable anchor (Object Lock) as a release trigger | **Decided** by Ali 2026-10-08, with Hassan's stricter wording and conditions (8), as one trigger for the whole hardening set (15); ADR-0032 |
 | Q7 | Owner | Who receives audit-integrity alerts (a named person per Market or Region Stack) | **Open for the owner.** Asked together with Q5; due before the hardening trigger (15). Recommendation (Ali): the owner plus the CTO, with Kazem's on-call for operations; never only someone with database write access |
 | Q8 | Hassan | Is the log anchor enough for Phase 2? Is the hash construction of 6.2 sound? | **Decided** by Hassan 2026-10-08: yes to both, with L2 applied (6.2) and the hardening trigger wording (15) |
 
@@ -412,11 +412,11 @@ Reviews of 2026-10-08: Ali (cto, approved with conditions; second round: final r
 | Ali Q2 | Option A; S test; no override above the ceiling; daily verify as backstop | 6.1, 7.2, 7.1 step 4; runbook (15, Kazem) |
 | Ali Q3 | Reason on the revision only; audit row carries the revision id; all four reason sites | 3.2; certification.md 3.7, 7.6, 11, 16.1; certification brief change log |
 | Ali Q4 | Direction for the admin audit list; `platform.<component>.*` writers | 10; 3.2 |
-| Ali Q6 | Object Lock release trigger; compliance mode; put-only credential; `AnchorSource` live | 8; the audit-chain hardening ADR (15; orchestrator); Kazem owns the bucket, Bagher checks at release |
+| Ali Q6 | Object Lock release trigger; compliance mode; put-only credential; `AnchorSource` live | 8; ADR-0032 (15); Kazem owns the bucket, Bagher checks at release |
 | Ali 8a split | 8a-1 / 8a-2, five conditions | 14; identity.md 12.1, 12.2 |
 | Ali 6 split | 6a / 6b, five conditions | 15; 16 contracts; identity.md 12.1, 12.2 |
 | Ali note for Mojtaba | Foreign key through `(market_id, occurred_at, id)` for later partitioning | DP 11.2, 11.3; 11 here |
-| Ali paperwork | One ADR; brief change logs; content-hash note | 15 (ADR text with the orchestrator); identity and certification briefs |
+| Ali paperwork | One ADR; brief change logs; content-hash note | 15 (ADR-0032); identity and certification briefs |
 | Ali Q5, Q7 | On the owner's queue, due before the hardening trigger | 17, 15 |
 | Hassan M1 = Mojtaba F1 | Watermark went backwards; stall | 7.1 step 2, duplicates, step 8 (`audit.seal.stalled`); 16 late-row test |
 | Hassan M2 | Microsecond precision; no row may stop the sealer | W3 and DP 11.2 CHECK; 6.2 fallback; 16 |
@@ -444,7 +444,7 @@ Reviews of 2026-10-08: Ali (cto, approved with conditions; second round: final r
 | Ali round 2 (1) | F3 decided; scan on the first run after worker start | 7.1 step 4, 16 |
 | Ali round 2 (2) | Estimate 19 steps, about 27 PRs, confirmed | identity.md 12.1 |
 | Ali round 2 (3) | One trigger wording for the whole hardening set, Q5 and Q7 included; worker-only group at that trigger; `epoch` NOT NULL from 1 in the keys and `uint32be(epoch)` in the chain hash from version 1 | 15 (definition), 8, 9.1, 9.2, 7.2, 13, 16, 17; 6.2; DP 11 (Mojtaba) |
-| Ali round 2 (4) | ADR approved after edits; merged before 6b | 15 (orchestrator) |
+| Ali round 2 (4) | ADR approved after edits; merged before 6b | 15 (ADR-0032) |
 | Ali final ruling | 6a may start when five conditions hold | 15 entry criteria |
 | Hassan N1 (a) | Watermark in the future; stalled condition either side of the watermark | 7.1 steps 2 and 8, 9, 16 database test; before 6b merges |
 | Hassan N1 (b) | Epoch recovery: starting watermark from accepted seals only and never later than `now - S`; rows with rejected seals kept as evidence and listed; stored, anchored genesis target | 9.1, 6.2, 16; per-epoch unique key decided by Mojtaba (F13); before the hardening trigger |

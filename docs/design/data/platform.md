@@ -1145,4 +1145,3 @@ design:
 | Version | The parameter exists only from PostgreSQL 17. Compose and CI run 17; a native PostgreSQL 16 cluster refuses `ALTER ROLE ... SET` of an unknown parameter, so the bootstrap guards that statement on `server_version_num >= 170000` |
 | Checked | The role-settings test (10.4) and the self-check `role_timeouts` (10.8) gain `transaction_timeout`: present, non-zero, at most the ceiling, on PostgreSQL 17 and later |
 | Owners | Kazem (bootstrap and Phase 7 logins), Mojtaba (10.4, 10.8 and this section), Hossein (the job lock) |
-
