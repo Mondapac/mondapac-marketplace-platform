@@ -122,6 +122,7 @@ export function validateTypeRevision(
     }
     const termsOk =
       Array.isArray(l.claimTerms) &&
+      Object.keys(l.claimTerms).length === l.claimTerms.length && // no holes
       l.claimTerms.length <= MAX_TERMS_PER_LOCALE &&
       l.claimTerms.every((t) => textOk(t, MAX_TERM_LENGTH));
     if (!textOk(l.name, MAX_NAME) || !textOk(l.customerDescription, MAX_DESCRIPTION) || !termsOk) {

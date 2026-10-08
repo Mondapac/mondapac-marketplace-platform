@@ -28,8 +28,9 @@ const invalid = (path: string, code: string): Result<never, CertificationValidat
 function parseTexts(
   texts: readonly ClaimTextInput[],
 ): Result<readonly string[], CertificationValidationFailed> {
-  if (!Array.isArray(texts) || texts.length > MAX_TEXTS) return invalid('texts', 'length');
-  const count = texts.length;
+  if (!Array.isArray(texts)) return invalid('texts', 'length');
+  const count = texts.length; // read once: the bound and the loop use the same number
+  if (count > MAX_TEXTS) return invalid('texts', 'length');
   const plain: string[] = [];
   for (let index = 0; index < count; index += 1) {
     const entry = texts[index] as Partial<ClaimTextInput> | null | undefined;

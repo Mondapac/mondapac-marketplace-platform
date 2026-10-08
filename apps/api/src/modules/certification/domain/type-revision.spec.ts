@@ -181,6 +181,16 @@ describe('validateTypeRevision', () => {
     expect(problems(one)).toEqual([]);
   });
 
+  it('refuses a sparse term list (holes are not terms)', () => {
+    const sparse = base({
+      locales: {
+        en: { ...base().locales.en!, claimTerms: new Array<string>(1) },
+        ar: { ...base().locales.ar!, claimTerms: [] },
+      },
+    });
+    expect(problems(sparse)).toContain('type.text-invalid');
+  });
+
   it('refuses a bad icon key', () => {
     expect(problems(base({ badgeIconKey: '<svg>' }))).toContain('type.badge-icon-invalid');
   });
