@@ -509,6 +509,43 @@ describe('loadMarketConfigs', () => {
     });
   });
 
+  describe('the inventory section', () => {
+    const withInventory = (inventory: unknown) =>
+      directoryWith({ 'QQ.json': { ...VALID, inventory } });
+
+    it('is optional for a Market that does not host inventory', () => {
+      expect(
+        loadMarketConfigs([directoryWith({ 'QQ.json': VALID })], [QQ]).get(QQ)?.inventory,
+      ).toBeUndefined();
+    });
+
+    it('carries the source limit', () => {
+      const loaded = loadMarketConfigs([withInventory({ maxSourcesPerSeller: 4 })], [QQ]).get(QQ);
+
+      expect(loaded?.inventory?.maxSourcesPerSeller).toBe(4);
+    });
+
+    it('gives the two Market fixtures different limits (AC 13)', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const limits = TEST_MARKET_IDS.map((id) => configs.get(id)?.inventory?.maxSourcesPerSeller);
+
+      expect(limits.every((limit) => limit !== undefined)).toBe(true);
+      expect(new Set(limits).size).toBe(limits.length);
+    });
+
+    it.each([
+      ['a missing limit', {}],
+      ['zero sources', { maxSourcesPerSeller: 0 }],
+      ['more sources than the re-key lock set allows', { maxSourcesPerSeller: 6 }],
+      ['a fractional limit', { maxSourcesPerSeller: 2.5 }],
+      ['an unknown key', { maxSourcesPerSeller: 4, reservationMinutes: 15 }],
+    ])('rejects %s', (_case, inventory) => {
+      expect(() => loadMarketConfigs([withInventory(inventory)], [QQ])).toThrow(
+        InvalidMarketConfigError,
+      );
+    });
+  });
+
   it('rejects a file that is not JSON', () => {
     const directory = directoryWith({ 'QQ.json': '{ not json' });
 

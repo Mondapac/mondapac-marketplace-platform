@@ -394,6 +394,22 @@ const sellersSchema = z
     });
   });
 
+/**
+ * The `inventory` section of a Market file (inventory design 8; docs/design/data/inventory.md
+ * 8.3). It starts with what slice 1 needs; later slices add the reservation duration, the
+ * default low-stock threshold and the default per-customer cap here.
+ */
+const inventorySchema = z.strictObject({
+  /**
+   * The most sources (stock locations) one seller may have, the Default included (design 3.4;
+   * AU 4). Required: a Market never defaults it. At most 5, because the re-key of a moved Offer
+   * locks every stock item of up to `catalog.maxVariantsPerProduct` (AU 100) variants, in every
+   * source, on both keys in one statement capped at 1,000 items (design 3.6 step 2, 4.4):
+   * 100 x 5 x 2 = 1,000. Raising the limit past what the cap allows is a design change.
+   */
+  maxSourcesPerSeller: z.number().int().min(1).max(5),
+});
+
 const marketSchema = z
   .strictObject({
     code: marketCode,
@@ -409,6 +425,8 @@ const marketSchema = z
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */
     sellers: sellersSchema.optional(),
+    /** Owned by `inventory`; optional here, checked for every hosted Market at start-up by it. */
+    inventory: inventorySchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

@@ -99,5 +99,8 @@
         }
       ]
     }
+  },
+  "inventory": {
+    "maxSourcesPerSeller": 2
   }
 }
