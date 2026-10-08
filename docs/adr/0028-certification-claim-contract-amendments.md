@@ -87,7 +87,7 @@ depends on `certification`, so `certification` cannot import `catalog` without a
    the Market's default time zone, one instant for every Offer. A seller certificate keeps the
    seller's zone (ADR-0005 decision 3), measured with the seller's current non-provisional zone and
    never later than the boundary in the zone at approval, so a zone change never extends or revives
-   a certificate; no seller zone means "not allowed". **The zone used is independent of the
+   a certificate; no seller zone means "not allowed". *(Amended 2026-10-08, seller-chosen zone: the seller boundary is the earliest of the boundary stored at approval, the boundary in the seller's current chosen zone and the boundary in the zone the approved address gives; the fixed read returns both zones. See `docs/design/domain/certification.md` 2.3 T2 and `docs/reviews/sellers-spike-3-zone-source.md`.)* **The zone used is independent of the
    caller:** it comes from one fixed read that returns the same answer to every actor; status
    records and review guards may use the provisional zone, the claim never does. Validity is computed at the instant of the
    question and never waits for the expiry job. Amends ADR-0005 decision 3.
