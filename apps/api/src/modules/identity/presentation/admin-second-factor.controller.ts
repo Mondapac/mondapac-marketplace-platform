@@ -18,7 +18,10 @@ import type { Request, Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER, csrfTokenFor } from '../../../platform/call-context/csrf';
 import { clearedSessionCookie, sessionCookie } from '../../../platform/call-context/session-cookie';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { AcceptAdminInvitation } from '../application/use-cases/accept-admin-invitation.use-case';
 import { ConfirmSecondFactorEnrolment } from '../application/use-cases/confirm-second-factor-enrolment.use-case';
@@ -71,6 +74,7 @@ const ANONYMOUS_REFUSALS =
  * password, a name or an address.
  */
 @ApiTags('identity')
+@RoutePopulation('admin')
 @Controller('identity/admin')
 export class AdminSecondFactorController {
   readonly #logger = new Logger('AdminSecondFactorController');
@@ -180,7 +184,7 @@ export class AdminSecondFactorController {
 
   @Post('second-factor/replacement')
   @HttpCode(200)
-  @SessionPopulation('admin')
+  @ReadsSession()
   @RateLimit('anonymous-identity')
   @ApiOperation({
     summary: 'Start moving the second factor to a new device',
@@ -222,7 +226,7 @@ export class AdminSecondFactorController {
 
   @Post('second-factor/replacement/confirm')
   @HttpCode(200)
-  @SessionPopulation('admin')
+  @ReadsSession()
   @RateLimit('anonymous-identity')
   @ApiOperation({
     summary: 'Confirm the new device with its first code',
@@ -288,7 +292,7 @@ export class AdminSecondFactorController {
 
   @Post('second-factor/recovery-codes')
   @HttpCode(200)
-  @SessionPopulation('admin')
+  @ReadsSession()
   @RateLimit('anonymous-identity')
   @ApiOperation({
     summary: 'Make ten new recovery codes',

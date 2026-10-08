@@ -5,6 +5,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import request from 'supertest';
 import type { AccountState } from '../src/modules/identity/domain/account';
+import { RoutePopulation } from '../src/platform/call-context/route-population.decorator';
 import { RateLimit } from '../src/platform/rate-limit/rate-limit.decorator';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
@@ -68,6 +69,7 @@ function seed(code: string, overrides: Partial<AccountState> = {}): void {
 }
 
 /** A test-only route of the anonymous identity limit class. */
+@RoutePopulation('customer')
 @Controller('test/client-address')
 class LimitedController {
   @Post('anonymous')

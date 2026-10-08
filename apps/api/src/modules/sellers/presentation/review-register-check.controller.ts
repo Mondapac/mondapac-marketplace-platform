@@ -12,7 +12,10 @@ import {
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { ReviewRegisterCheckRead } from '../application/use-cases/review-register-check-read.use-case';
 import { errorOf } from './my-file.answer';
 import { SellersErrorBody } from './my-file.dto';
@@ -21,14 +24,15 @@ import { ReviewRegisterCheckBody } from './review-register-check.dto';
 /**
  * The register state of a seller's file for a reviewer (sellers design 6.2, 7.7; slice 4a). A
  * thin adapter: the `CallContext` comes from `@Call()` and the admin session cookie of the
- * request's Market (`@SessionPopulation('admin')`); the controller authenticates only. The use
- * case's gate decides who may read (`sellers.seller-file.review`), and the seller id of the path
+ * request's Market (`@RoutePopulation('admin')` with `@ReadsSession()`); the controller
+ * authenticates only. The use case's gate decides who may read (`sellers.seller-file.review`), and the seller id of the path
  * is read with the request's Market, so a seller of another Market is `file.not-found`,
  * byte-identical to an unknown id (AC 1). The seller id is a UUID, not personal data; the answer
  * holds no business data and no register value, and is `no-store` all the same.
  */
 @ApiTags('sellers')
-@SessionPopulation('admin')
+@RoutePopulation('admin')
+@ReadsSession()
 @Controller('sellers/admin')
 export class ReviewRegisterCheckController {
   readonly #logger = new Logger('ReviewRegisterCheckController');

@@ -20,7 +20,10 @@ import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { FormDescriptorsRead } from '../application/use-cases/form-descriptors-read.use-case';
 import { MyFileCheckSlug } from '../application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../application/use-cases/my-file-read.use-case';
@@ -62,10 +65,11 @@ const NO_STORE = 'no-store';
 /**
  * The seller's own draft over HTTP (sellers design 6.2, 8.3; SEL-11, SEL-22; slice 2). Thin
  * adapters: the `CallContext` comes from `@Call()` and the seller session cookie of the request's
- * Market (`@SessionPopulation('seller')`); the controller authenticates only. Who may do what is
- * decided by each use case's gate (permission `sellers.business-identity.edit`, allowed while the
- * seller is not approved) and by the ownership it derives from the actor: no route takes a
- * seller id. Bodies are JSON only and closed; their shape is checked here, their meaning in the
+ * Market (`@RoutePopulation('seller')` with `@ReadsSession()`); the controller authenticates
+ * only. An unsafe request also needs `Origin` on the Market's seller list and `Sec-Fetch-Site:
+ * same-origin` (identity design 6.4). Who may do what is decided by each use case's gate
+ * (permission `sellers.business-identity.edit`, allowed while the seller is not approved) and by
+ * the ownership it derives from the actor: no route takes a seller id. Bodies are JSON only and closed; their shape is checked here, their meaning in the
  * domain. A request body is never logged (design 8.3), and a log line holds the outcome code,
  * the Market and the correlation id only.
  *
@@ -73,7 +77,8 @@ const NO_STORE = 'no-store';
  * `Cache-Control: no-store`, errors included.
  */
 @ApiTags('sellers')
-@SessionPopulation('seller')
+@RoutePopulation('seller')
+@ReadsSession()
 @Controller('sellers/my-file')
 export class MyFileController {
   readonly #logger = new Logger('MyFileController');

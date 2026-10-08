@@ -11,7 +11,7 @@ import { RandomLinkTokens } from '../src/modules/identity/infrastructure/links/r
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { realPermissionRegistry } from './support/permission-registry';
 import { createTestApp, type LogLine } from './support/test-app';
-import { TEST_MARKETS } from './support/test-config';
+import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // Seller sign-up, email confirmation, limited sign-in, session, status and sign-out over HTTP
 // (identity design 3.3, 5.2, 6.1 to 6.4, 6.7, 8.6; `ux.md` A1, A2, S1; slice 5): the real guards,
@@ -96,12 +96,14 @@ describe('seller accounts over HTTP (integration)', () => {
   ) =>
     http()
       .post(`/identity/seller/${path}`)
-      .set({ 'x-market-id': market, ...headers })
+      .set({ 'x-market-id': market, ...panelHeaders(market, 'seller'), ...headers })
       .send(body as object);
 
   async function boot() {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info' },
+      // Seller routes need the seller panel's origin on the list (identity design 6.4).
+      panelOrigins: true,
       override: (builder) => fakes.override(builder),
     }));
   }

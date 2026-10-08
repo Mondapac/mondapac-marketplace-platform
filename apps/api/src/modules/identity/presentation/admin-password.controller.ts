@@ -17,7 +17,10 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { ChangePassword } from '../application/use-cases/change-password.use-case';
 import { RequestPasswordReset } from '../application/use-cases/request-password-reset.use-case';
@@ -53,6 +56,7 @@ import { outcomeOf } from './seller-sign-in.answer';
  * a token or the address.
  */
 @ApiTags('identity')
+@RoutePopulation('admin')
 @Controller('identity/admin')
 export class AdminPasswordController {
   readonly #logger = new Logger('AdminPasswordController');
@@ -134,7 +138,7 @@ export class AdminPasswordController {
 
   @Post('change-password')
   @HttpCode(200)
-  @SessionPopulation('admin')
+  @ReadsSession()
   @RateLimit('anonymous-identity')
   @ApiOperation({
     summary: 'Change the password of the signed-in admin account',

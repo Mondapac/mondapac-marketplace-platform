@@ -28,6 +28,7 @@ import {
   CustomerSignUpAccepted,
   CustomerSignUpRequest,
 } from './customer-sign-up.dto';
+import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 
 const FIELDS = ['email', 'password'] as const;
 
@@ -111,6 +112,7 @@ export function fail(status: number, code: string, details?: object): HttpExcept
  */
 @ApiTags('identity')
 @RateLimit('anonymous-identity')
+@RoutePopulation('customer')
 @Controller('identity/customer/sign-up')
 export class CustomerSignUpController {
   readonly #logger = new Logger('CustomerSignUpController');

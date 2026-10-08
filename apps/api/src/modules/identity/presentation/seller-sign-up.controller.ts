@@ -30,6 +30,7 @@ import { fail, parseStringFields } from './customer-sign-up.controller';
 import { ApiErrorBody, CustomerSignUpAccepted } from './customer-sign-up.dto';
 import { answerSellerSignIn, outcomeOf } from './seller-sign-in.answer';
 import { SellerConfirmEmailRequest, SellerSignedIn, SellerSignUpRequest } from './seller.dto';
+import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 
 /**
  * Seller self-registration and email verification over HTTP (identity design 3.1, 3.2, 6.7, 8.6
@@ -48,6 +49,7 @@ import { SellerConfirmEmailRequest, SellerSignedIn, SellerSignUpRequest } from '
  */
 @ApiTags('identity')
 @RateLimit('anonymous-identity')
+@RoutePopulation('seller')
 @Controller('identity/seller')
 export class SellerSignUpController {
   readonly #logger = new Logger('SellerSignUpController');

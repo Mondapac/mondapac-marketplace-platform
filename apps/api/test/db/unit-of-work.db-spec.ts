@@ -6,6 +6,7 @@ import { Client } from 'pg';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { databaseIsolationAccepted } from '../../src/check-database-role';
+import { RoutePopulation } from '../../src/platform/call-context/route-population.decorator';
 import { Market } from '../../src/platform/market-context/market.decorator';
 import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
 import { DatabaseProbe } from '../../src/platform/persistence/database-probe';
@@ -754,6 +755,7 @@ describe('UnitOfWork (database integration)', () => {
   });
 
   describe('HTTP: a conflict answers 409 conflict.retry (P 10)', () => {
+    @RoutePopulation('customer')
     @Controller('test/unit-of-work')
     class ConflictProbeController {
       constructor(@Inject(UNIT_OF_WORK) private readonly unitOfWork: UnitOfWork) {}

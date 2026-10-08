@@ -16,7 +16,7 @@ import { MyFileValidateIdentifier } from '../src/modules/sellers/application/use
 import { MyFileSaveGeneral } from '../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
 import { IdentityFakes } from './support/identity-fakes';
 import { completionLineOf, createTestApp, type LogLine } from './support/test-app';
-import { TEST_MARKETS } from './support/test-config';
+import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // The seller's draft routes over HTTP (sellers design 6.2, 8.3; slice 2): the real guards, the
 // real controller and a real seller session (identity's database ports as in-memory fakes). The
@@ -81,6 +81,8 @@ describe('the seller draft over HTTP (integration)', () => {
   async function boot(stubbed: boolean, env: Record<string, string> = {}) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info', ...env },
+      // Seller routes need the seller panel's origin on the list (identity design 6.4).
+      panelOrigins: true,
       override: (builder) => {
         const faked = fakes.override(builder);
         return stubbed
@@ -114,7 +116,7 @@ describe('the seller draft over HTTP (integration)', () => {
   /** Signs a seller up, confirms the email, and answers the session cookie and CSRF token. */
   async function signedIn(code: string) {
     await app.get(SeedRoles).execute(systemOf(code), {});
-    const headers = { 'x-market-id': code };
+    const headers = { 'x-market-id': code, ...panelHeaders(code, 'seller') };
     await http()
       .post('/identity/seller/sign-up')
       .set(headers)
@@ -145,7 +147,7 @@ describe('the seller draft over HTTP (integration)', () => {
     return {
       code,
       headers: {
-        'x-market-id': code,
+        ...headers,
         cookie: cookieOf(confirmed.headers['set-cookie']),
         'x-csrf-token': (confirmed.body as { csrfToken: string }).csrfToken,
       },
@@ -259,7 +261,10 @@ describe('the seller draft over HTTP (integration)', () => {
       // A well-shaped body per route: the shape is checked before the gate, so a malformed body
       // would answer 400 to anyone who is signed in.
       for (const [method, path, body] of routes) {
-        const visitor = await http()[method](path).set('x-market-id', code).send(body);
+        const visitor = await http()
+          [method](path)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') })
+          .send(body);
         expect([method, path, visitor.status, visitor.body]).toEqual([
           method,
           path,
@@ -580,10 +585,8 @@ describe('the seller draft over HTTP (integration)', () => {
       async (method, path, body) => {
         await boot(true);
         const session = await signedIn(code);
-        const withoutToken = {
-          'x-market-id': session.headers['x-market-id'],
-          cookie: session.headers.cookie,
-        };
+        const withoutToken: Record<string, string> = { ...session.headers };
+        delete withoutToken['x-csrf-token'];
         const missing = await http()[method](path).set(withoutToken).send(body);
         const invalid = await http()
           [method](path)
