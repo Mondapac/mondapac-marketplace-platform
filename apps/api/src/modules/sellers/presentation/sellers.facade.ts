@@ -1,13 +1,10 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
-import type { ApprovedSellerZonesSystem } from '../application/use-cases/approved-seller-zones-system.use-case';
-import type { ApprovedSellerZones } from '../application/use-cases/approved-seller-zones.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
-  ApprovedSellerZonesMap,
   SellersFacade,
   SellingEligibilityMap,
   SellersUnavailable,
@@ -15,14 +12,12 @@ import type {
 } from '../contracts/sellers.facade';
 import type { SellerSummary } from '../domain/seller-summary';
 
-/** The use cases behind the facade, one per method (two for `sellerSummaries`). */
+/** The use cases behind the facade, a pair per method. */
 export interface SellersFacadeUseCases {
   readonly sellerSummaries: SellerSummaries;
   readonly sellerSummariesSystem: SellerSummariesSystem;
   readonly sellingEligibility: SellingEligibility;
   readonly sellingEligibilitySystem: SellingEligibilitySystem;
-  readonly approvedSellerZones: ApprovedSellerZones;
-  readonly approvedSellerZonesSystem: ApprovedSellerZonesSystem;
 }
 
 /**
@@ -55,19 +50,6 @@ export class SellersFacadeImplementation implements SellersFacade {
       context.actor.kind === 'system'
         ? this.useCases.sellingEligibilitySystem
         : this.useCases.sellingEligibility;
-    return useCase.execute(context, { sellerIds });
-  }
-
-  approvedSellerZones(
-    context: CallContext,
-    sellerIds: readonly Id<'Seller'>[],
-  ): Promise<
-    Result<ApprovedSellerZonesMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
-  > {
-    const useCase =
-      context.actor.kind === 'system'
-        ? this.useCases.approvedSellerZonesSystem
-        : this.useCases.approvedSellerZones;
     return useCase.execute(context, { sellerIds });
   }
 }
