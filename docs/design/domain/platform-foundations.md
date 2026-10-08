@@ -533,6 +533,20 @@ their own; until then the `UseCase` constructor refuses at boot a class that ove
 `execute`, does not extend `UseCase` directly or has no own declaration, and the CI check
 refuses the same in source.
 
+Note, 2026-10-08 (identity slice 2, Hossein): W7 and W8 are closed in `eslint.config.mjs` (a
+shared-file commit of its own). The `use-case-entry-is-the-gate` `handle` group now applies to
+every file of `src/modules/` (facades, jobs and event handlers included, whatever their name),
+and also refuses a destructured `handle`, `'handle'` as an argument of `Reflect.*`, and any
+reflection over a class's methods in a module: `.prototype`, `__proto__`,
+`Object.getPrototypeOf` and `Object.getOwnPropertyDescriptor(s)` (so `Object.entries` or
+`Object.values` over a prototype is caught by its `.prototype`). A handler object in a module
+names its method something else. Fixtures: `calls-handler-object.ts` (now a violation),
+`calls-handle.facade.ts` and `reflects-handle.ts`. Rule 5 also names the kernel's
+`authenticatedActor` (entry `@mondapac/shared-kernel/authenticated-actor`): refused in every
+module file except identity's `application/access/session-authenticator.ts`, which keeps every
+other rule; the dependency-cruiser rule `authenticated-actor-is-built-by-the-authenticator` is
+the import check for the rest of the API.
+
 Changed by the security review of slice 1c (Hassan; H1, M1, M2, L1 to L3):
 - **H1.** At its first construction, a use-case class's prototype `handle` is replaced by
   one that always throws. Each instance gets an own, non-writable, non-configurable

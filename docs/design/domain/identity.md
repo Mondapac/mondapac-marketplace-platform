@@ -501,6 +501,7 @@ accepted this paragraph with HF14: until then the `Authorization` header is refu
 | Pepper | None (Hassan). If a second secret is ever wanted, the PHC string is encrypted under a stack key rather than keying argon2 with it: decrypting restores a portable hash (ADR-0018 decisions 1 and 9) |
 | Rules (Hassan) | 15 to 128 code points after Unicode NFKC (NIST SP 800-63B-4); the raw input at most 1024 bytes; no composition rules, no forced rotation; refused when equal to the email or, for an account that has one, the display name, or found on a checked-in list of at least 100,000 common passwords; never truncated, logged or echoed. A breached-password service is backlog (ADR-0018, consequences) |
 | Change | Needs the current password in the same request, and a code when a second factor is active; other sessions end and the current one is rotated (AC 32) |
+| Hash input (Hassan L1; slice 2) | The one form that is hashed and verified is the password after Unicode NFKC, the same form the rules count; `hash` and `verify` both normalise, with no fallback to the typed form. No account made before slice 2 exists outside test, so no re-hash rule is needed |
 
 ### 6.6 One-time tokens
 | Topic | Design |
@@ -537,16 +538,35 @@ left room, kept to its intent; reviewers may overturn any of them.
 | A refused constraint | The repository maps the unique key to "taken" (answered as accepted) and the CHECKs of data design 3.3 (N1 included) to `validation.failed`, never a 500 |
 | CSRF and the `Authorization` header | Not in 1d: the origin check of 6.4 (HF14) comes with sessions in slice 2 and covers this route then |
 
-**Open items from the slice 1d reviews (PR #77), to settle in or before slice 2.**
+**Open items from the slice 1d reviews (PR #77), to settle in or before slice 2.** Status,
+2026-10-08 (slice 2, Hossein): L1, L4, I5, N-a and N-b are done as the last column says; I4 stays
+a deployment decision, and nothing in slice 2 reads a forwarded header.
 
 | From | Item | What slice 2 (or the named point) must do |
 |---|---|---|
-| Hassan L1 | One hash input | Decide the one form of the password that is hashed and verified (proposed: NFKC, as NIST SP 800-63B-4 asks), and use it in `hash` and `verify` alike, before slice 2 merges. 1d hashes the password as typed and checks the rules on its NFKC form; accounts made before the decision need a rule (re-hash at next sign-in, or none exist outside test) |
-| Hassan L4 | Every sign-up branch writes | The branch "verified, notice already sent within the interval" must increment `mail.account` (6.8) in its unit, so every branch writes; add a test that each of the three branches writes |
-| Hassan I4 | Proxy hop count | Decide the trusted proxy hop count (PF 7 item 6) before any deployment behind a proxy; until then the origin is the socket address and `X-Forwarded-For` is ignored |
-| Hassan I5 | Unverified accounts | Password sign-in refuses an unverified account; the only way in for it is the verification link with its password (6.7 option B) |
-| Mojtaba N-a | Retries | Count `conflict.retry` (serialisation retries exhausted) for `identity.register-customer` in the metrics, to see contention on sign-up |
-| Mojtaba N-b | Credential rewrite | `PrismaAccountRepository.save()` rewrites `password_credentials` on every version step, also when only the notice instant changed; write it only when the credential changed |
+| Hassan L1 | One hash input | **Done in slice 2:** NFKC (6.5, hash input row). Decide the one form of the password that is hashed and verified (proposed: NFKC, as NIST SP 800-63B-4 asks), and use it in `hash` and `verify` alike, before slice 2 merges. 1d hashes the password as typed and checks the rules on its NFKC form; accounts made before the decision need a rule (re-hash at next sign-in, or none exist outside test) |
+| Hassan L4 | Every sign-up branch writes | The branch "verified, notice already sent within the interval" must increment `mail.account` (6.8) in its unit, so every branch writes; add a test that each of the three branches writes. **Done in slice 2:** see the as-built table below |
+| Hassan I4 | Proxy hop count | Decide the trusted proxy hop count (PF 7 item 6) before any deployment behind a proxy; until then the origin is the socket address and `X-Forwarded-For` is ignored. **Open (deployment).** Slice 2 reads the socket address only; a test sends forged `X-Forwarded-For` and `Forwarded` headers |
+| Hassan I5 | Unverified accounts | Password sign-in refuses an unverified account; the only way in for it is the verification link with its password (6.7 option B). **Done in slice 2:** `email-verification-required` (403) after a correct password, no session |
+| Mojtaba N-a | Retries | Count `conflict.retry` (serialisation retries exhausted) for `identity.register-customer` in the metrics, to see contention on sign-up. **Done in slice 2:** a warning log line with `metric: 'conflict.retry'` and the use case name, until a metrics port exists |
+| Mojtaba N-b | Credential rewrite | `PrismaAccountRepository.save()` rewrites `password_credentials` on every version step, also when only the notice instant changed; write it only when the credential changed. **Done in slice 2** |
+
+**Customer sign-in as built in slice 2 (Hossein, 2026-10-08).** Choices made where this design
+left room; reviewers may overturn any of them.
+
+| Point | As built |
+|---|---|
+| Routes | `POST /identity/customer/sign-in`, `POST /identity/customer/sign-out` and `GET /identity/customer/session` (8.6). Sign-in reads no session (its actor is anonymous); the other two read the customer cookie of the request's Market |
+| HTTP statuses | The design names codes, not statuses. Chosen: `validation.failed` 400, `credentials.invalid` and `session.invalid` 401, `email-verification-required`, `account.disabled` and `request.csrf` 403, `request.throttled` 429 with `Retry-After`, `request.busy` and `access.unavailable` 503 |
+| Cookie | `__Host-session-customer-<MARKET>`, `Max-Age` equal to the absolute lifetime (the server enforces the idle timeout). Sign-out and a rejected session clear it with `Max-Age=0`. Sign-in and the summary answer `Cache-Control: no-store` |
+| CSRF token | Returned in the sign-in answer and in the session summary; never the session token itself |
+| Hash input and sign-in units | As 6.3: reservation unit, hash outside any unit, closing unit. A re-hash (older parameters) and the session token are prepared before the closing unit, which saves the new hash with the session. A full hash queue releases the reservation and answers `request.busy` |
+| Blocks | A failure that reaches a counter's limit sets its block in the closing unit; blocks of one attempt are written in the fixed lock order of the reservation (kind, then key), so the two units never wait on each other in a cycle. `sign-in.account` blocks for 60 minutes after its 20th failure (6.8 names no block for it; to be confirmed by Hassan) |
+| Mail counters (L4) | Sign-up increments `mail.account` and `mail.origin` in every branch, in a short READ COMMITTED unit of its own before the serializable unit, so concurrent sign-ups from one origin do not fail each other with serialisation errors. This departs from "one write unit" of 6.7: every branch now has two units, the same two. Refusing at the mail threshold comes with the mail itself (slice 3) |
+| Throttle secret | The HMAC key of 6.8 is, for now, a local stand-in derived from a constant, which refuses to start unless `NODE_ENV` is explicitly `development` or `test`. Where the deployed secret lives (K1, H4) is decided with the first deployed environment; until then a production start fails |
+| Origin check | The Market's `allowedOrigins` (config/markets/README.md); empty for AU until D2 |
+| Purge job | `identity.purge-expired`, hourly: sessions 30 days after their absolute expiry (revoked ones too), throttle rows whose window started more than 48 hours ago and that are not blocked, sign-in records older than the Market's `signInRecordRetentionDays`, a day at a time, at most 400 days per run |
+| `lastSeenAt` | Written by the Authenticator in its own unit at most once a minute; a failure there is logged and does not refuse the request |
 
 ### 6.8 Throttling and rate limiting (I11)
 Thresholds are Hassan's. Counters live in an `identity` table, in PostgreSQL because the

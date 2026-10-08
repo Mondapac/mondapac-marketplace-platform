@@ -17,7 +17,17 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   (at least 15) and `password.maxLength` (64 to 128), counted in code points after Unicode
   NFKC (identity design 6.5); `existingAccountNoticeHours` (1 to 168; 24 for AU), the least
   time between two "you already have an account" notices to one account (identity design 6.7).
-  Later identity slices add their values here.
+  Slice 2 adds `sessions.customer` (`idleTimeoutMinutes` and `absoluteLifetimeMinutes`, idle at
+  most absolute; identity design 6.1), `signInThrottles` (`accountOrigin`, `account`, `origin`)
+  and `mailThrottles` (`account`, `origin`), each a `limit`, a `windowMinutes` and a
+  `blockMinutes` (0: no block, the window alone refuses; identity design 6.8), and
+  `signInRecordRetentionDays` (how long sign-in records are kept; data design 3.6). Later
+  identity slices add their values here.
+- `allowedOrigins`: the browser origins (`scheme://host[:port]`, no path) that may send a
+  request with an unsafe method to this Market (identity design 6.4, HF14). A request whose
+  `Origin` header is not listed, or whose `Sec-Fetch-Site` is not `same-origin`, is refused with
+  `request.csrf`; a request without either header is not refused by this check. Empty for AU
+  until the hosts of the panels are decided (D2).
 
 Tax, payment, carrier, certification-issuer and legal-entity settings are added by the modules
 that own them, after their readiness gates (ADR-0013).
