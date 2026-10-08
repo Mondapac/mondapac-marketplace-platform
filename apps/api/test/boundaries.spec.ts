@@ -296,7 +296,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ).toEqual({ status: 0, problems: [] });
     });
 
-    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, and the outbox exception', () => {
+    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, the outbox exception and the audit folder', () => {
       expect(
         checkPrisma(
           path.join(PRISMA_FIXTURES, 'passing/schema'),
@@ -327,6 +327,12 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'alpha.prisma: AlphaScopedChild.parent relates a market-scoped model to the exempt model AlphaExemptParent; exempt and market-scoped models may not relate',
           'alpha.prisma: AlphaExemptChild.parent relates an exempt model to the market-scoped model AlphaParent; exempt and market-scoped models may not relate',
           'beta.prisma: BetaOutbox is an outbox whose fields differ from AlphaOutbox',
+          'modules/alpha/infrastructure/hides-model.ts:9: destructured property "betaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/hides-model.ts:10: destructured property "betaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/hides-model.ts:10: destructured property "auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
+          'modules/alpha/infrastructure/hides-model.ts:11: a computed key on a tx(...) result hides the model it names; name the model as a property',
+          'modules/alpha/infrastructure/hides-model.ts:12: a computed key on a tx(...) result hides the model it names; name the model as a property',
+          'modules/alpha/infrastructure/hides-model.ts:13: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
           'modules/alpha/infrastructure/reaches-beta.ts:2: import of "BetaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/reaches-beta.ts:3: import "../../../generated/prisma/models/BetaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/reaches-beta.ts:3: import of "BetaThingModel" names model BetaThing, which belongs to module "beta"',
@@ -335,7 +341,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'modules/alpha/infrastructure/reaches-beta.ts:9: property ".betaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/writes-own-outbox.ts:5: property ".alphaOutbox" names model AlphaOutbox, which is reserved to platform/persistence/outbox/ (write it through OutboxWriter)',
           'platform/persistence/outbox/reaches-module.ts:6: property ".betaThing" names model BetaThing, which belongs to module "beta"',
-          'platform/persistence/reaches-module.ts:6: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
+          'platform/persistence/reaches-module.ts:6: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
+          'platform/persistence/reaches-module.ts:7: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
         ].sort(),
       );
     });
