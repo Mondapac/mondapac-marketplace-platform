@@ -148,7 +148,7 @@ export class SaveDraft {
   }
 }
 
-function refusalOf(verdict: ClaimTextVerdict): RefusedField | null {
+export function refusalOf(verdict: ClaimTextVerdict): RefusedField | null {
   const place = { field: verdict.field, ref: verdict.ref, locale: verdict.locale };
   switch (verdict.code) {
     case 'clean':

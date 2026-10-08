@@ -1,11 +1,13 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { ContentHash, Id, MarketContext } from '@mondapac/shared-kernel';
+import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { ProductRevisionRepository } from '../application/ports/product-revision.repository';
 import type { SensitiveReason } from '../domain/product-revision-policy';
 import type { RevisionContent } from '../domain/revision-content';
 import type { RevisionKind, StoredRevision } from '../domain/stored-revision';
 
+const REVISION_NO_KEY = 'product_revisions_market_id_product_id_revision_no_key';
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
@@ -34,6 +36,23 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
     }
     const tx = this.prisma.tx(market);
     const base = { marketId: market.marketId, tenantId: market.tenantId };
+    try {
+      await this.#insertRevision(tx, revision, base);
+    } catch (error) {
+      // Two submits read the same next number: the second loses and its caller retries (stale).
+      if (this.prisma.violatedConstraint(error) === REVISION_NO_KEY) {
+        throw new StaleAggregateError('product', revision.productId);
+      }
+      throw error;
+    }
+  }
+
+  async #insertRevision(
+    tx: ReturnType<PrismaService['tx']>,
+    revision: StoredRevision,
+    base: { readonly marketId: string; readonly tenantId: string },
+  ): Promise<void> {
+    const { content } = revision;
     await tx.catalogProductRevision.create({
       data: {
         id: revision.id,

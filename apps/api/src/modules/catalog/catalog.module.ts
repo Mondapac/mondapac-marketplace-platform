@@ -9,18 +9,28 @@ import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
-import { ATTRIBUTE_REPOSITORY } from './application/ports/attribute.repository';
+import {
+  ATTRIBUTE_REPOSITORY,
+  type AttributeRepository,
+} from './application/ports/attribute.repository';
 import { ATTRIBUTE_SEED } from './application/ports/attribute-seed';
-import { CATALOG_MARKET_POLICY } from './application/ports/catalog-market-policy';
+import {
+  CATALOG_MARKET_POLICY,
+  type CatalogMarketPolicy,
+} from './application/ports/catalog-market-policy';
 import { CLAIM_TEXT_MATCHER } from './application/ports/claim-text-matcher';
+import { PRODUCT_REVISION_REPOSITORY } from './application/ports/product-revision.repository';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
 import { WORKING_COPY_REPOSITORY } from './application/ports/working-copy.repository';
 import { CheckClaimText } from './application/claim-text/check-claim-text.service';
+import { FreezeRevision } from './application/revisions/freeze-revision.service';
+import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
+import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
 import { CATALOG_PERMISSIONS } from './contracts/permissions';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
@@ -65,6 +75,9 @@ const PORT = {
   check: CheckClaimText,
   save: SaveWorkingCopy,
   saveDraft: SaveDraft,
+  revisions: PRODUCT_REVISION_REPOSITORY,
+  freeze: FreezeRevision,
+  submit: SubmitProduct,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -167,7 +180,34 @@ const productTypeProvider: FactoryProvider<string> = {
       workingCopies: true,
       policy: true,
     }),
+    {
+      provide: FreezeRevision,
+      inject: [ATTRIBUTE_REPOSITORY, CATALOG_MARKET_POLICY, ExtensionPointRegistry],
+      useFactory: (
+        attributes: AttributeRepository,
+        policy: CatalogMarketPolicy,
+        registry: ExtensionPointRegistry,
+      ): FreezeRevision =>
+        new FreezeRevision({
+          attributes,
+          policy,
+          handlerFor: (typeCode) => registry.get<ProductTypeHandler>(PRODUCT_TYPE_POINT, typeCode),
+        }),
+    },
+    serviceProvider(SubmitProduct, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      freeze: true,
+      check: true,
+      policy: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
+    useCaseProvider(PlatformProductSubmit, { submit: true }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,
