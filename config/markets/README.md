@@ -8,6 +8,14 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 `defaultLocale`, `supportedLocales`, `defaultCurrency`, `settlementCurrency` and `timezone`.
 `timezone` is only a fallback (ADR-0005): sellers, locations and addresses carry their own zone.
 
+- `pricesIncludeTax` (required boolean; true for AU): the Market's price display convention
+  (ADR-0007 decision 4). When true, prices are entered and shown tax-inclusive and tax is
+  extracted from them; when false (the synthetic Market), tax is added on top. Read by pricing,
+  cart, tax, the storefront and invoices; no module defaults it.
+- `maxLineQuantity` (required whole number, 1 to 999; 99 for AU, 50 for the synthetic Market):
+  the most units of one Offer in a cart line and the ceiling of an Offer's per-customer cap
+  (inventory design 3.3, cart design 4).
+
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
   20 for AU) and `defaultPerMinute` (every other market-scoped route; 300 for AU). The counter

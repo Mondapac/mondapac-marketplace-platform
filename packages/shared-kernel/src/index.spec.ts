@@ -4,7 +4,7 @@ import * as kernel from './index';
 import * as testing from './testing';
 
 describe('the public surface of the kernel', () => {
-  it('exports exactly the slice 0, 1b, 1c, 6a and catalog P1 names from the main entry', () => {
+  it('exports exactly the slice 0, 1b, 1c, 6a, catalog P1 and Money names from the main entry', () => {
     expect(Object.keys(kernel).sort()).toEqual([
       'ATTRIBUTE_DATA_TYPES',
       'ATTRIBUTE_ISSUE_CODES',
@@ -15,11 +15,15 @@ describe('the public surface of the kernel', () => {
       'MAX_AGGREGATE_VERSION',
       'MAX_AUDIT_LIST_LENGTH',
       'MAX_CANONICAL_JSON_DEPTH',
+      'MoneyError',
       'POPULATIONS',
       'Temporal',
+      'addMoney',
+      'allocateMoney',
       'auditField',
       'canonicalJson',
       'checkAggregateVersion',
+      'compareMoney',
       'defineAuditAction',
       'defineEvent',
       'describeAuditAction',
@@ -30,14 +34,19 @@ describe('the public surface of the kernel', () => {
       'eventField',
       'isAuditActionDefinition',
       'isMinted',
+      'minorUnitExponent',
       'mintMarketContext',
+      'money',
       'ok',
       'parseContentHash',
       'parseCorrelationId',
       'parseId',
       'parseMarketId',
+      'parseMoney',
       'parsePlainText',
       'parseTenantId',
+      'scaleMoney',
+      'subtractMoney',
       'uuidV7',
       'validateAttributeValues',
     ]);
