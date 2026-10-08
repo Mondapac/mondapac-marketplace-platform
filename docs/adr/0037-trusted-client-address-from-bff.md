@@ -118,13 +118,49 @@ that reaches the API could send one, and a hop count needs deployment facts that
    - It signs in route handlers, server actions and the decision 4 server-component reads of
      ADR-0034; it always drops an incoming `x-client-address` and sets its own, as it does for
      `x-market-id`; a test proves a browser-sent value is overwritten.
-   - **Where the BFF gets the browser's address.** The BFF has the same problem one hop earlier:
-     behind a load balancer or CDN its socket peer is the load balancer. It therefore takes the
-     address from a per-deployment setting decided with Kazem: either its socket peer, or the
-     address a configured trusted edge puts in a named header (a hop count on `X-Forwarded-For`,
-     or a single header such as the CDN's client-IP header), read only when the BFF's socket peer
-     is inside the configured edge networks. **Until the deployment slice sets it, the BFF uses
-     its own socket peer.** The edge-to-BFF hop stays open until then (identity 6.7, I4).
+   - **Where the BFF gets the browser's address.** A Next.js route handler cannot see its socket
+     peer, and Next keeps a browser-sent `X-Forwarded-For`. Each BFF therefore runs behind
+     `apps/<app>/server.mjs`: a plain `http.createServer` (HTTP/1.1 only, no h2c) that both `dev`
+     and `start` use; `next dev` and the standalone `server.js` are never used. On every request
+     (never cached per connection) and before Next sees it, the wrapper deletes `x-forwarded-for`,
+     `forwarded`, `x-real-ip`, `x-client-address`, `x-mp-client-address` and the configured edge
+     header (after reading it), in any letter case and every repeat in `rawHeaders`, then sets
+     `x-mp-client-address`. `CLIENT_ADDRESS_SOURCE` (`socket` | `edge`, required, no default)
+     chooses the value:
+     - `socket`: the socket peer. Behind a load balancer the worst case is a shared bucket,
+       never a forged address. This is the mode until the deployment slice sets `edge`.
+     - `edge`: when the socket peer is inside `EDGE_CIDRS`, the value of the single header named
+       by `EDGE_CLIENT_ADDRESS_HEADER`; otherwise the socket peer. From a peer inside
+       `EDGE_CIDRS`, an absent, repeated or comma-joined value, or one that is not exactly one
+       address (`net.isIP`; a zone index, port or brackets are refused), gets
+       `400 { statusCode: 400, code: "client-address.untrusted" }` with no fallback.
+       `X-Forwarded-For` and `Forwarded` cannot be the edge header; a hop count on them needs an
+       amendment to this ADR (deployment slice, spike 5).
+
+     The signer reads only `x-mp-client-address` and refuses to sign (5xx) without it. The BFF
+     refuses to start when `CLIENT_ADDRESS_SOURCE` is missing or invalid; with `socket` and
+     either edge variable set; with `edge` and either edge variable empty; when `EDGE_CIDRS`
+     breaks a decision 5 CIDR rule; or when the header name is not a valid lowercase token or is
+     `x-forwarded-for`, `forwarded`, `x-client-address`, `x-mp-client-address` or `x-market-id`.
+     Tests in the frontend slice: spoofed headers (mixed case, repeated, `Forwarded`,
+     `X-Real-IP`, both internal names) never reach a handler; two keep-alive requests with
+     different edge values; edge peer inside and outside the ranges and every malformed case;
+     signer refusal without `x-mp-client-address`; every start-up refusal; `dev` and `start` run
+     the wrapper; an IPv6 peer; the three vectors.
+   - **BFF environment variables** (server only, never `NEXT_PUBLIC_*`; documented in each app's
+     own `.env.example` by the frontend slice):
+
+     | Variable | Value | Start-up rule |
+     |---|---|---|
+     | `CLIENT_ADDRESS_SOURCE` | `socket` or `edge` | Required, no default; anything else refuses to start. |
+     | `EDGE_CIDRS` | Comma-separated CIDRs | `socket`: must be empty. `edge`: required; every decision 5 CIDR rule applies. |
+     | `EDGE_CLIENT_ADDRESS_HEADER` | One lowercase header name | `socket`: must be empty. `edge`: required; the names listed above are refused. |
+     | `BFF_CLIENT_ADDRESS_KEY_ID` | `[a-z0-9-]{1,32}` | Set together with the secret; only one of the two set refuses to start. |
+     | `BFF_CLIENT_ADDRESS_SECRET` | Standard base64, at least 32 bytes | Same pairing rule; invalid or too short refuses to start, and the error never shows the value. |
+
+     With both key variables empty the signer sends no `x-client-address`, which matches the API's
+     off default (decision 4). `EDGE_XFF_TRUSTED_HOPS` is not defined. Clock synchronisation for
+     the ±60 s window (NTP or chrony) is a deployment runbook item (Kazem), not part of this ADR.
 10. **Amendments.** ADR-0034 decision 3 "Client address": the header and its trust are those of
     this ADR (an HMAC proof plus a pinned network, not a trust-proxy hop count on the API).
     ADR-0015 decision 3, "Baseline HTTP hardening" row: `trust proxy` stays off on the API; the
@@ -153,8 +189,8 @@ Vectors 1 and 2 differ only in the Market: vector 1's header sent with `x-market
   the board; (c) one atomic backend slice (config, middleware, rate limiter, six identity
   controllers, sellers reader, tests). Hassan's review and QC are mandatory on (c).
 - Two browsers behind one BFF get separate origin buckets; ADR-0034's sign-in gate is met on the
-  API side (Hassan's N5 and the API side of I4). The edge-to-BFF hop stays open until the
-  deployment slice (decision 9).
+  API side (Hassan's N5 and the API side of I4). The edge-to-BFF hop runs in `socket` mode
+  (shared bucket at worst, never forged) until the deployment slice sets `edge` (decision 9).
 - The seller panel's start-up tripwire (`assertClientAddressForwarding`, ADR-0034 "Known interim
   deviations") stays until the frontend PR that adopts the signer of decision 9, with a test that
   the header is sent; the API side alone does not lift it.
