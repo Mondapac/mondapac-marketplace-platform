@@ -1,7 +1,8 @@
 # ADR-0031: Fail-Closed Placeholder Bindings for Unmerged Cross-Module Facades
 
-**Status:** Proposed — 2026-10-08. Drafted for Ali's ruling of the same day on the catalog slice
-order (`docs/design/domain/catalog.md` 15.1); needs Hassan's review and Ali's acceptance.
+**Status:** Accepted — 2026-10-08. Ali (cto) 2026-10-08; Hassan (security-tester) confirmed
+2026-10-08. Drafted for Ali's ruling of the same day on the catalog slice order
+(`docs/design/domain/catalog.md` 15.1).
 **Relates to:** ADR-0008 (module facades), ADR-0012 decision 1 (certification enforcement),
 ADR-0013 (readiness gates), ADR-0018, `docs/design/domain/catalog.md` 6, 9.7, 15.1,
 `docs/design/domain/sellers.md` (slice 9; the `sellingEligibility` stand-in of PR #94), ADR-0015
@@ -59,18 +60,18 @@ flag only hides it. The same question recurs across `certification`, `sellers`, 
    retrofitted with the marker no later than the first catalog slice that consumes it (slice 7)
    or the registry PR, whichever comes first. Bagher
    (qc-release-manager) confirms both at the release gate.
-4a. **Interim real bindings that are more permissive than the final rule** carry
+   4a. **Interim real bindings that are more permissive than the final rule** carry
    `@PermissiveInterim('<port>')`, are counted in the same bound set and refuse a production
    start the same way, or the consumer stays on the error placeholder until the final rule lands.
-   `allowedProductTypesOf` answering `all` until sellers slice 14 is the first case.
+   `allowedProductTypesOf` answering `all` until sellers slice 14 is the first case. The marker is
+   applied no later than the first consuming slice that binds the interim answer (catalog slice 7).
 5. **Controls that are the rule itself are never stubbed.** Certification tags (`evaluateClaims`,
-   catalog slice 8) have no placeholder; slices that depend on them keep their full order. No check may be replaced
-   by a placeholder that can allow. The may-sell eligibility read is a permitted placeholder only
-   because it answers "no" for every id (decision 1). Authentication, permission and ownership
-   checks inside the consuming use case are never placeholders, nor is
-   any any `payments` or `commission-payouts`
-   call, any `pricing` price or Cost write or Cost-carrying read, or the AI claim guard ever a
-   placeholder.
+   catalog slice 8) have no placeholder; slices that depend on them keep their full order. No
+   check may be replaced by a placeholder that can allow. The may-sell eligibility read is a
+   permitted placeholder only because it answers "no" for every id (decision 1).
+   Authentication, permission and ownership checks inside the consuming use case are never
+   placeholders; nor is any `payments` or `commission-payouts` call, any `pricing` price or Cost
+   write or Cost-carrying read, or the AI claim guard.
 6. **Contracts first.** The producing module may merge a contracts-only PR (facade signature and
    v1 event schemas) so consumers build against fakes; its production binding answers "absent",
    which consumers already treat as not sellable. The contracts-only PR lists each consumer's
@@ -95,4 +96,4 @@ flag only hides it. The same question recurs across `certification`, `sellers`, 
 - A matching test fake in production wiring: rejected by decision 2.
 
 ## Reviews
-Ruling: Ali (cto), 2026-10-08, in the catalog thread. Hassan (security-tester): conditional approval, 2026-10-08; blockers B1 to B3 and the should-fix items are applied in this text. Second round 2026-10-08: Ali required R1 to R4, Hassan required M1 and M2 (both applied above); their confirmations are recorded on the PR before the Status line changes.
+Ruling: Ali (cto), 2026-10-08, in the catalog thread. Hassan (security-tester): conditional approval, 2026-10-08; blockers B1 to B3 and the should-fix items are applied in this text. Second round 2026-10-08: Ali required R1 to R4, Hassan required M1 and M2 (both applied above); both confirmed the revised text on 2026-10-08.
