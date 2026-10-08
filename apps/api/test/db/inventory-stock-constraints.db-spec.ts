@@ -640,20 +640,25 @@ describe.each(TEST_MARKETS)(
         market_id: code,
         tenant_id: 'default',
         scope: 'offer',
-        offer_id: ids.next(),
+        offer_id: ids.next() as string | null,
         variant_id: null as string | null,
         source_aggregate_version: 2,
         retired_at: at(0),
         ...overrides,
       });
 
-      it('ties the Variant id to the variant scope', async () => {
+      /** A Variant tombstone is keyed by the Variant alone: no Offer (migration 3). */
+      const variantTombstone = (overrides: Record<string, unknown> = {}) =>
+        retirementRow({ scope: 'variant', offer_id: null, variant_id: ids.next(), ...overrides });
+
+      it('ties the Variant id to the variant scope and the Offer id to the offer scope', async () => {
         const variant = 'retirements_variant_id_check';
+        const offer = 'retirements_offer_id_check';
         await check('retirements', retirementRow({ variant_id: ids.next() }), variant);
-        await check('retirements', retirementRow({ scope: 'variant' }), variant);
-        expect(
-          await insert('retirements', retirementRow({ scope: 'variant', variant_id: ids.next() })),
-        ).toBeNull();
+        await check('retirements', variantTombstone({ variant_id: null }), variant);
+        await check('retirements', retirementRow({ offer_id: null }), offer);
+        await check('retirements', variantTombstone({ offer_id: ids.next() }), offer);
+        expect(await insert('retirements', variantTombstone())).toBeNull();
         await check(
           'retirements',
           retirementRow({ scope: 'sell-unit' }),
@@ -685,44 +690,26 @@ describe.each(TEST_MARKETS)(
             retirementRow({ offer_id: offerRow.offer_id, market_id: otherCode }),
           ),
         ).toBeNull();
-        const variantRow = retirementRow({ scope: 'variant', variant_id: ids.next() });
+        const variantRow = variantTombstone();
         expect(await insert('retirements', variantRow)).toBeNull();
         await refuse(
           'retirements',
-          retirementRow({
-            scope: 'variant',
-            offer_id: variantRow.offer_id,
-            variant_id: variantRow.variant_id,
-          }),
+          variantTombstone({ variant_id: variantRow.variant_id }),
           UNIQUE,
-          'retirements_market_id_offer_id_variant_id_variant_key',
+          'retirements_market_id_variant_id_variant_key',
         );
         expect(
           await insert(
             'retirements',
-            retirementRow({
-              scope: 'variant',
-              offer_id: variantRow.offer_id,
-              variant_id: variantRow.variant_id,
-              market_id: otherCode,
-            }),
+            variantTombstone({ variant_id: variantRow.variant_id, market_id: otherCode }),
           ),
         ).toBeNull();
-        // An Offer tombstone and a Variant tombstone of the same Offer sit side by side.
-        expect(
-          await insert(
-            'retirements',
-            retirementRow({
-              scope: 'variant',
-              offer_id: offerRow.offer_id,
-              variant_id: ids.next(),
-            }),
-          ),
-        ).toBeNull();
+        // An Offer tombstone and a Variant tombstone sit side by side.
+        expect(await insert('retirements', variantTombstone())).toBeNull();
       });
 
       it('lets a tombstone be cleared but never edited', async () => {
-        const row = retirementRow({ scope: 'variant', variant_id: ids.next() });
+        const row = variantTombstone();
         expect(await insert('retirements', row)).toBeNull();
         const where = `WHERE market_id = '${code}' AND id = $1`;
         for (const set of [

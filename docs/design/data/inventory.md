@@ -239,12 +239,13 @@ Both are the identity tables with the module name changed (ID 3.1 and 3.8; P 11 
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
 | `scope` | `text` | no | CHECK `offer`, `variant` |
-| `offer_id` | `uuid` | no | C4 |
+| `offer_id` | `uuid` | yes | C4. CHECK `(scope = 'offer') = (offer_id IS NOT NULL)`: a Variant tombstone is keyed by the Variant alone (amended 2026-10-09, below) |
 | `variant_id` | `uuid` | yes | CHECK `(scope = 'variant') = (variant_id IS NOT NULL)` |
 | `source_aggregate_version` | `integer` | no | The `aggregate_version` of the catalog event that retired it (`offer-deleted`, `variant-removed`, or `offer-moved` for the re-key of D 3.6): the comparison for "Variant-added clears a tombstone only if newer" (D 3.5). CHECK `>= 1`. Kept for audit only: catalog never reuses a removed Variant id (CAT M-1), so the comparison never clears a tombstone |
 | `retired_at` | `timestamptz(6)` | no | |
 
-- Partial unique `(market_id, offer_id) WHERE scope = 'offer'` and partial unique `(market_id, offer_id, variant_id) WHERE scope = 'variant'`. There are two because Prisma cannot declare `NULLS NOT DISTINCT` (ID 8.4). Both also serve the tombstone check of the stock upsert.
+- Partial unique `(market_id, offer_id) WHERE scope = 'offer'` and partial unique `(market_id, variant_id) WHERE scope = 'variant'`. There are two because the keys differ by scope (and Prisma cannot declare `NULLS NOT DISTINCT`, ID 8.4). Both also serve the tombstone check of the stock upsert: `scope = 'offer' AND offer_id = $o OR scope = 'variant' AND variant_id = $v`.
+- **Amendment (2026-10-09, mini-review in the inventory brief change log; Ali).** `catalog.variant-removed.v1` carries `productId` and `variantId` and no Offer, `stock_items` has no product column, and a Variant id is minted per product and never reused (CAT M-1), so `(market_id, variant_id)` is the whole key of a Variant tombstone and `offer_id` is NULL for it. The first design keyed it by `(offer_id, variant_id)`, which the handler could not fill. Migration `inventory_variant_tombstone_key` changes the CHECK and the unique index and adds the partial index `(market_id, variant_id) WHERE retired_at IS NULL` on `stock_items`, which serves the Variant retirement across Offers (the predicate column is not written by a stock write, so those stay HOT). A Variant tombstone needs no re-key on `offer-moved`; only Offer-scope rows move.
 - A repeated retirement event inserts nothing (the unique key). Clearing a tombstone deletes its row, hence `DELETE` in the grant. Retired stock items of a cleared Variant never become active again (11.2 M6, closed: catalog G2 never reuses a Variant id); this design keeps `retired_at` one-way.
 
 ## 4. Locking, the raw statement and toss-up T1
@@ -394,6 +395,7 @@ Column-level `UPDATE` meets the four conditions of 10.2: the columns are named h
 |---|---|---|---|
 | 1 | 1 | `inventory_sources` | `CREATE SCHEMA "inventory"` and schema `USAGE`; `inbox`, `seller_inventories`, `sources`; grants. `base.prisma` gains `"inventory"` in `schemas` (a shared file, in this PR) |
 | 2 | 2 | `inventory_stock` | `outbox`, `stock_items`, `stock_movements`, `availability_signals`, `retirements`; grants |
+| 2a | 2 (part 4) | `inventory_variant_tombstone_key` | Variant tombstones keyed by the Variant alone (3.10); the partial index of 3.4 on active items by Variant |
 | 3 | 4 | `inventory_reservations` | `reservations`, `reservation_lines` (every CHECK value slice 5 needs), `offer_purchase_limits`; grants without `DELETE` on `reservations` |
 | 4 | With the prune job (9), before the first deployed environment | `inventory_reservation_prune` | The terminal partial index of 3.6; `GRANT DELETE ON "inventory"."reservations"` |
 | 5 | SEL-08's slice | `inventory_movement_acting_as` | The nullable column of 3.5 and its CHECK |
@@ -428,7 +430,8 @@ The Market values of D 8 are configuration, not rows: the reservation duration, 
 CREATE INDEX "outbox_market_id_event_id_unpublished_idx" ON "inventory"."outbox" ("market_id", "event_id") WHERE "published_at" IS NULL;
 CREATE UNIQUE INDEX "sources_market_id_seller_id_default_key" ON "inventory"."sources" ("market_id", "seller_id") WHERE "is_default";
 CREATE UNIQUE INDEX "retirements_market_id_offer_id_offer_key" ON "inventory"."retirements" ("market_id", "offer_id") WHERE "scope" = 'offer';
-CREATE UNIQUE INDEX "retirements_market_id_offer_id_variant_id_variant_key" ON "inventory"."retirements" ("market_id", "offer_id", "variant_id") WHERE "scope" = 'variant';
+CREATE UNIQUE INDEX "retirements_market_id_variant_id_variant_key" ON "inventory"."retirements" ("market_id", "variant_id") WHERE "scope" = 'variant';
+CREATE INDEX "stock_items_market_id_variant_id_active_idx" ON "inventory"."stock_items" ("market_id", "variant_id") WHERE "retired_at" IS NULL;
 CREATE UNIQUE INDEX "reservations_market_id_holder_account_id_active_key" ON "inventory"."reservations" ("market_id", "holder_account_id") WHERE "status" = 'active';
 CREATE INDEX "reservations_market_id_expires_at_active_idx" ON "inventory"."reservations" ("market_id", "expires_at") WHERE "status" = 'active';
 -- migration 4:

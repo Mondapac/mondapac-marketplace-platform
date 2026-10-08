@@ -202,7 +202,8 @@ model InventoryRetirement {
   tenantId               String   @map("tenant_id")
   /// offer or variant (CHECK).
   scope                  String
-  offerId                String   @map("offer_id") @db.Uuid
+  /// Set exactly when `scope` is offer (CHECK); a Variant tombstone is keyed by the Variant alone.
+  offerId                String?  @map("offer_id") @db.Uuid
   /// Set exactly when `scope` is variant (CHECK).
   variantId              String?  @map("variant_id") @db.Uuid
   /// The aggregate_version of the catalog event that retired it; kept for audit only.
