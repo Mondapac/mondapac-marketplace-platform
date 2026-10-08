@@ -70,6 +70,8 @@ describe('checkUnitOfWorkOptions (3.1 rows 8 and 9; ADR-0025 condition (c))', ()
     { readOnly: true },
     { readOnly: false, isolation: 'serializable', timeoutMs: 30_000 },
     { timeoutMs: 1 },
+    { lockTimeoutMs: 1 },
+    { lockTimeoutMs: 3000, isolation: 'serializable' },
   ])('accepts %j', (options) => {
     expect(() => checkUnitOfWorkOptions(options)).not.toThrow();
   });
@@ -81,6 +83,11 @@ describe('checkUnitOfWorkOptions (3.1 rows 8 and 9; ADR-0025 condition (c))', ()
     [{ timeoutMs: 0 }, 'timeout-out-of-range'],
     [{ timeoutMs: 30_001 }, 'timeout-out-of-range'],
     [{ timeoutMs: 1.5 }, 'timeout-out-of-range'],
+    [{ readOnly: true, lockTimeoutMs: 100 }, 'read-only-with-lock-timeout'],
+    [{ lockTimeoutMs: 0 }, 'lock-timeout-out-of-range'],
+    [{ lockTimeoutMs: 3001 }, 'lock-timeout-out-of-range'],
+    [{ lockTimeoutMs: 1.5 }, 'lock-timeout-out-of-range'],
+    [{ lockTimeoutMs: Number.NaN }, 'lock-timeout-out-of-range'],
   ])('refuses %j', (options, reason) => {
     expect(() => checkUnitOfWorkOptions(options)).toThrow(
       new InvalidUnitOfWorkOptionsError(reason as never),

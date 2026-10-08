@@ -1,6 +1,8 @@
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import type { MarketGuardRefusal } from '../unit-of-work/errors';
+import { Prisma } from '../../generated/prisma/client';
 import { marketGuardRefusal, type GuardUnit } from './market-guard';
+import { lockTimeoutStatement } from './named-statements';
 import type { ModelMap, ModelMapEntry } from './model-map';
 
 // P 4.1 and the first row of P 13: the guard's decision as a pure function of (map entry,
@@ -112,6 +114,41 @@ describe.each(['AU', 'ZZ'] as const)('market guard decision, unit opened for %s'
         expect(decide(undefined, operation, {}, 'no unit')).toBe('raw-sql');
       },
     );
+
+    describe('named statements (P 4.2)', () => {
+      const approved = lockTimeoutStatement(100);
+      const forged = Prisma.raw("SET LOCAL lock_timeout = '100ms'");
+
+      it.each(['$queryRaw', '$executeRaw'])(
+        'lets a statement the platform built through %s in an open read-write unit',
+        (operation) => {
+          expect(decide(undefined, operation, approved)).toBeNull();
+        },
+      );
+
+      it.each(['$queryRaw', '$executeRaw'])(
+        'refuses a hand-made statement of the same text through %s',
+        (operation) => {
+          expect(decide(undefined, operation, forged)).toBe('raw-sql');
+          expect(decide(undefined, operation, { ...approved })).toBe('raw-sql');
+          expect(decide(undefined, operation, [approved])).toBe('raw-sql');
+          expect(decide(undefined, operation, approved.sql)).toBe('raw-sql');
+        },
+      );
+
+      it.each(['$queryRawUnsafe', '$executeRawUnsafe', '$queryRawTyped'])(
+        'refuses %s even with an approved statement',
+        (operation) => {
+          expect(decide(undefined, operation, approved)).toBe('raw-sql');
+        },
+      );
+
+      it('refuses an approved statement with no unit, in a read-only unit and in a closed one', () => {
+        expect(decide(undefined, '$queryRaw', approved, 'no unit')).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', approved, readOnlyUnit)).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', approved, { ...unit, closed: true })).toBe('raw-sql');
+      });
+    });
 
     it('refuses any other client operation with no model', () => {
       expect(decide(undefined, '$somethingNew', {})).toBe('unknown-operation');
