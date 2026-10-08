@@ -37,6 +37,14 @@ class FakeInventories implements SellerInventoryRepository {
     this.stored.set(key, inventory);
     return Promise.resolve(true);
   }
+
+  findBySeller(): Promise<SellerInventory | null> {
+    return Promise.reject(new Error('not used by this handler'));
+  }
+
+  save(): Promise<'saved' | 'stale'> {
+    return Promise.reject(new Error('not used by this handler'));
+  }
 }
 
 function setUp() {
