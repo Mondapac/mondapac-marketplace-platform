@@ -286,7 +286,9 @@ dead at once for an unknown subscriber, a type that is not the subscription's, a
 that does not parse and a payload that does not decode against the subscription's definition.
 It is retried for a handler that throws or one that returns without a committed `runOnce`. The
 delivery a handler receives is a frozen handle: `runOnce` refuses a copy, one from another
-Market and a work result that is an error, which rolls back. Still to come: the requeue
+Market and a work result that is an error, which rolls back. A claimed row goes to its handler
+only while its lease (its back-off) has room for a 15 s handler budget; the rest of the batch is
+given back as due now, without spending an attempt (Mojtaba F1). Still to come: the requeue
 routine, and pruning of `delivered` rows (the application has no DELETE on
 `platform.event_delivery`; Mojtaba to size it before production).
 
