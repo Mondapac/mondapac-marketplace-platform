@@ -67,5 +67,69 @@
       "roleId": "id",
       "sellerId": "id"
     }
+  },
+  {
+    "action": "pricing.offer-write-refused.suppressed",
+    "targetType": "pricing.write-refusal-actor",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "windowStartedAt": "instant"
+    }
+  },
+  {
+    "action": "pricing.offer-write.refused",
+    "targetType": "pricing.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(absent|not-yours|deleted|variant-not-priceable|key-retired)",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.regular-price.accepted",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "anchorRecordId": "optional(id)",
+      "effectiveFrom": "instant",
+      "offerId": "id",
+      "previousRecordId": "optional(id)",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.regular-price.held",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "anchorRecordId": "id",
+      "direction": "enumOf(up|down)",
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.regular-price.superseded",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(replaced|cancelled|offer-removed|variant-removed)",
+      "offerId": "id",
+      "recordId": "id",
+      "supersededByRecordId": "optional(id)",
+      "variantId": "id"
+    }
   }
 ]

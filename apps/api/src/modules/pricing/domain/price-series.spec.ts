@@ -553,6 +553,122 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
     });
   });
 
+  describe('events: one version step per event (P 10; the convention of catalog Q-K3)', () => {
+    const summary = (series: PriceSeries) =>
+      series.pendingEvents.map((event) => ({
+        type: event.type,
+        version: event.aggregateVersion,
+        payload: event.payload,
+      }));
+
+    it('records effective-price-changed for an accepted price, at the new version', () => {
+      const { series, set } = setup();
+      const record = (outcomeOf(set(fixture.base)) as { record: RegularPriceRecord }).record;
+
+      expect(summary(series)).toEqual([
+        {
+          type: 'pricing.effective-price-changed.v1',
+          version: 2,
+          payload: {
+            offerId: series.state.offerId,
+            variantId: series.state.variantId,
+            cause: 'regular-accepted',
+            effectiveFrom: record.effectiveFrom,
+            previousProductId: null,
+            previousVariantId: null,
+          },
+        },
+      ]);
+      expect(series.state.version).toBe(2);
+      expect(series.pendingEvents[0]?.aggregateId).toBe(series.state.id);
+      expect(series.pendingEvents[0]?.occurredAt).toEqual(clock.now());
+    });
+
+    it('records price-hold-opened for a held price, with its direction and no amount', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      const held = (outcomeOf(set(heldUp(fixture.base))) as { record: RegularPriceRecord }).record;
+
+      expect(summary(series).at(-1)).toEqual({
+        type: 'pricing.price-hold-opened.v1',
+        version: 3,
+        payload: {
+          offerId: series.state.offerId,
+          variantId: series.state.variantId,
+          recordId: held.id,
+          kind: 'regular',
+          direction: 'up',
+        },
+      });
+    });
+
+    it('records the supersede of a pending record first, then the new record, one version each', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      const held = (outcomeOf(set(heldUp(fixture.base))) as { record: RegularPriceRecord }).record;
+      advance(1000);
+      outcomeOf(set(fixture.base + 1n));
+
+      const last = summary(series).slice(-2);
+      expect(last.map((event) => [event.type, event.version])).toEqual([
+        ['pricing.price-hold-decided.v1', 4],
+        ['pricing.effective-price-changed.v1', 5],
+      ]);
+      expect(last[0]?.payload).toEqual({
+        offerId: series.state.offerId,
+        variantId: series.state.variantId,
+        recordId: held.id,
+        kind: 'regular',
+        outcome: 'superseded',
+      });
+      expect(series.state.version).toBe(5);
+    });
+
+    it('records only the supersede when a write equal to the price in force cancels a pending change', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      set(heldUp(fixture.base));
+      advance(1000);
+      outcomeOf(set(fixture.base));
+
+      expect(
+        summary(series)
+          .slice(-1)
+          .map((event) => [event.type, event.version]),
+      ).toEqual([['pricing.price-hold-decided.v1', 4]]);
+      expect(series.state.version).toBe(4);
+    });
+
+    it('changes nothing, not even the version, when the write equals the price in force and nothing is pending', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      const before = series.state;
+      const events = series.pendingEvents.length;
+
+      expect(outcomeOf(set(fixture.base))).toEqual({ kind: 'unchanged', superseded: [] });
+      expect(series.state).toBe(before);
+      expect(series.pendingEvents).toHaveLength(events);
+    });
+
+    it('records no event for a refused write', () => {
+      const { series, set } = setup();
+      series.retire('offer-removed', clock.now());
+      const events = series.pendingEvents.length;
+      expect(set(fixture.base).ok).toBe(false);
+      expect(series.pendingEvents).toHaveLength(events);
+    });
+
+    it('starts a restored series with no pending event', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      expect(PriceSeriesAggregate.restore(series.state).pendingEvents).toEqual([]);
+    });
+  });
+
   it('never mutates a record it returned earlier', () => {
     const { set } = setup();
     const first = (outcomeOf(set(fixture.base)) as { record: RegularPriceRecord }).record;

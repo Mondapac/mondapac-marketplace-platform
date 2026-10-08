@@ -171,7 +171,7 @@ describe.each(TEST_MARKETS)(
 
     /** Identity's audit writer refuses every row while `work` runs. */
     async function whileAuditRefuses<T>(work: () => Promise<T>): Promise<T> {
-      const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+      const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER, { strict: true });
       const refusing = jest
         .spyOn(writer, 'record')
         .mockRejectedValue(new AuditWriteRefusedError('entry-invalid', 'after'));

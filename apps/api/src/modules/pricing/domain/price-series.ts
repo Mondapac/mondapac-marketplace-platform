@@ -1,5 +1,6 @@
 import { compareMoney, err, ok, Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketId, Result } from '@mondapac/shared-kernel';
+import type { Id, MarketId, PendingEvent, Result } from '@mondapac/shared-kernel';
+import { EffectivePriceChanged, PriceHoldDecided, PriceHoldOpened } from './events';
 import { measureJump } from './jump-policy';
 import { priceAmount } from './price-amount';
 import type { PriceAmount, PriceAmountError } from './price-amount';
@@ -176,15 +177,25 @@ export function jumpAnchor(
   return byStart(latestApproved, windowRecord) > 0 ? latestApproved : windowRecord;
 }
 
+/** One event of a change, built once its version is known. */
+type EventAt = (version: number) => PendingEvent;
+
 /**
  * The price series of one Variant of one Offer in one Market (pricing design 2.1). This part
  * holds the regular stream: the seller's write with its jump hold. Specials, decisions and the
  * re-key arrive in later parts and slices.
+ *
+ * Events (pricing design 6.3): a change raises the version by one per event it records, in a
+ * fixed order (a superseded pending record first, then the new record), and the n-th event
+ * carries the n-th new version, so the outbox's unique `(aggregate, version)` holds (P 10; the
+ * convention of catalog's Q-K3). A write that changes nothing raises nothing.
  */
 export class PriceSeries {
   #state: PriceSeriesState;
   /** The state as last read from or written to storage; null for a series never stored. */
   #stored: PriceSeriesState | null;
+  /** Events recorded since the aggregate was built, in the order of their versions. */
+  readonly #events: PendingEvent[] = [];
 
   private constructor(state: PriceSeriesState, stored: boolean) {
     this.#state = freezeState(state);
@@ -244,6 +255,11 @@ export class PriceSeries {
     return this.#stored?.version ?? null;
   }
 
+  /** Events recorded since the aggregate was built or restored, in version order. */
+  get pendingEvents(): readonly PendingEvent[] {
+    return [...this.#events];
+  }
+
   /** Called by the repository once it has written the current state; nothing else calls it. */
   markStored(): void {
     this.#stored = this.#state;
@@ -280,7 +296,12 @@ export class PriceSeries {
     // 1 ms ahead by an earlier write of the same instant is the seller's current intent.
     if (latest !== null && compareMoney(latest.amount, input.amount) === 0) {
       const superseded = pending.map((r) => supersede(r, 'cancelled', null, input.now));
-      this.#commit(replace(state.regular, superseded));
+      if (superseded.length > 0) {
+        this.#commit(
+          replace(state.regular, superseded),
+          this.#holdsSuperseded(superseded, input.now),
+        );
+      }
       return ok({ kind: 'unchanged', superseded });
     }
 
@@ -312,7 +333,26 @@ export class PriceSeries {
         supersedeCause: null,
       });
       const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
-      this.#commit([...replace(state.regular, superseded), record]);
+      const direction = verdict.direction;
+      this.#commit(
+        [...replace(state.regular, superseded), record],
+        [
+          ...this.#holdsSuperseded(superseded, input.now),
+          (version) =>
+            PriceHoldOpened.record({
+              aggregateId: state.id,
+              aggregateVersion: version,
+              occurredAt: input.now,
+              payload: {
+                offerId: state.offerId,
+                variantId: state.variantId,
+                recordId: record.id,
+                kind: 'regular',
+                direction,
+              },
+            }),
+        ],
+      );
       return ok({ kind: 'held', record, superseded });
     }
 
@@ -335,7 +375,26 @@ export class PriceSeries {
     const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
     const closed = latest === null ? null : Object.freeze({ ...latest, effectiveTo: start });
     const next = replace(replace(state.regular, superseded), closed === null ? [] : [closed]);
-    this.#commit([...next, record]);
+    this.#commit(
+      [...next, record],
+      [
+        ...this.#holdsSuperseded(superseded, input.now),
+        (version) =>
+          EffectivePriceChanged.record({
+            aggregateId: state.id,
+            aggregateVersion: version,
+            occurredAt: input.now,
+            payload: {
+              offerId: state.offerId,
+              variantId: state.variantId,
+              cause: 'regular-accepted',
+              effectiveFrom: start,
+              previousProductId: null,
+              previousVariantId: null,
+            },
+          }),
+      ],
+    );
     return ok({ kind: 'accepted', record, previous: closed, superseded });
   }
 
@@ -360,8 +419,36 @@ export class PriceSeries {
     return superseded;
   }
 
-  #commit(regular: readonly RegularPriceRecord[]): void {
-    this.#state = freezeState({ ...this.#state, regular, version: this.#state.version + 1 });
+  /** `price-hold-decided` (superseded) for each pending record a seller write superseded. */
+  #holdsSuperseded(superseded: readonly RegularPriceRecord[], now: Temporal.Instant): EventAt[] {
+    const { id, offerId, variantId } = this.#state;
+    return superseded.map(
+      (record) => (version: number) =>
+        PriceHoldDecided.record({
+          aggregateId: id,
+          aggregateVersion: version,
+          occurredAt: now,
+          payload: {
+            offerId,
+            variantId,
+            recordId: record.id,
+            kind: 'regular',
+            outcome: 'superseded',
+          },
+        }),
+    );
+  }
+
+  /** Applies a change and its events: one version step per event (at least one). */
+  #commit(regular: readonly RegularPriceRecord[], events: readonly EventAt[]): void {
+    const from = this.#state.version;
+    const recorded = events.map((at, index) => at(from + 1 + index));
+    this.#state = freezeState({
+      ...this.#state,
+      regular,
+      version: from + Math.max(1, events.length),
+    });
+    this.#events.push(...recorded);
   }
 }
 
