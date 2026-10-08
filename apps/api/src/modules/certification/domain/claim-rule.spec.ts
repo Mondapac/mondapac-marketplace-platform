@@ -60,6 +60,17 @@ describe('resolveRequirement', () => {
   });
 });
 
+describe('resolveRequirement, unknown values fail closed', () => {
+  it('reads an unknown row basis or default as NOT_APPLICABLE, including prototype names', () => {
+    for (const bogus of ['BOGUS', 'toString', 'constructor', '__proto__']) {
+      expect(resolveRequirement('SELLER_REQUIRED', [{ basis: bogus as never }])).toBe(
+        'NOT_APPLICABLE',
+      );
+      expect(resolveRequirement(bogus as never, [])).toBe('NOT_APPLICABLE');
+    }
+  });
+});
+
 describe('ClaimRule.decide (seller basis)', () => {
   it('allows with a valid seller certificate and echoes the inputs', () => {
     const d = decide(query, facts(), now);

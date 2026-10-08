@@ -40,10 +40,12 @@ export function resolveRequirement(
   let result: ClaimBasisRequirement | null = null;
   for (const row of matchedRows) {
     // An unknown basis (not in the closed list) is read as the strictest: fail closed.
-    const basis: ClaimBasisRequirement = row.basis in STRICTNESS ? row.basis : 'NOT_APPLICABLE';
+    const basis: ClaimBasisRequirement = Object.hasOwn(STRICTNESS, row.basis)
+      ? row.basis
+      : 'NOT_APPLICABLE';
     if (result === null || STRICTNESS[basis] > STRICTNESS[result]) result = basis;
   }
-  return result ?? (defaultBasis in STRICTNESS ? defaultBasis : 'NOT_APPLICABLE');
+  return result ?? (Object.hasOwn(STRICTNESS, defaultBasis) ? defaultBasis : 'NOT_APPLICABLE');
 }
 
 function deny(

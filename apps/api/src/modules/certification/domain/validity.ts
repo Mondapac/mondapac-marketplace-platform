@@ -39,13 +39,13 @@ export type Validity =
   | { readonly valid: true; readonly submissionId: Id; readonly expiresAt: Temporal.Instant | null }
   | { readonly valid: false; readonly reason: InvalidReason };
 
-/** 00:00 on the day after `expiryDate` in `zone`; DST-safe because it is a start of day. */
 /** The pair `sellers.approvedSellerZones` answers: the chosen zone and the zone the address gives. */
 export interface SellerZones {
   readonly zone: TimeZoneId;
   readonly addressZone: TimeZoneId;
 }
 
+/** 00:00 on the day after `expiryDate` in `zone`; DST-safe because it is a start of day. */
 export function expiryBoundary(expiryDate: Temporal.PlainDate, zone: TimeZoneId): Temporal.Instant {
   return expiryDate.add({ days: 1 }).toZonedDateTime(zone).toInstant();
 }
