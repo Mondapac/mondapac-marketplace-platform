@@ -121,6 +121,40 @@
     }
   },
   {
+    "type": "pricing.effective-price-changed.v1",
+    "aggregateType": "price-series",
+    "fields": {
+      "offerId": "id",
+      "variantId": "id",
+      "cause": "enumOf(regular-accepted|hold-approved|special-started|special-ended|special-withdrawn|series-retired|series-rekeyed)",
+      "effectiveFrom": "instant",
+      "previousProductId": "optional(id)",
+      "previousVariantId": "optional(id)"
+    }
+  },
+  {
+    "type": "pricing.price-hold-decided.v1",
+    "aggregateType": "price-series",
+    "fields": {
+      "offerId": "id",
+      "variantId": "id",
+      "recordId": "id",
+      "kind": "enumOf(regular|special)",
+      "outcome": "enumOf(approved|rejected|superseded)"
+    }
+  },
+  {
+    "type": "pricing.price-hold-opened.v1",
+    "aggregateType": "price-series",
+    "fields": {
+      "offerId": "id",
+      "variantId": "id",
+      "recordId": "id",
+      "kind": "enumOf(regular|special)",
+      "direction": "enumOf(up|down)"
+    }
+  },
+  {
     "type": "sellers.seller-file-created.v1",
     "aggregateType": "seller-file",
     "fields": {

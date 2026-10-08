@@ -54,7 +54,7 @@ export interface MyFileSaveIdentifierInput {
   readonly identifier?: unknown;
   /**
    * The network origin of the request (IPv4 address or IPv6 /64, cut by the controller from the
-   * socket; never from the body), for the per-origin lookup quota. Null or absent when it cannot
+   * resolved client address of ADR-0037; never from the body), for the per-origin lookup quota. Null or absent when it cannot
    * be read: a save that would call the register then fails closed (`access.unavailable`).
    */
   readonly origin?: string | null;

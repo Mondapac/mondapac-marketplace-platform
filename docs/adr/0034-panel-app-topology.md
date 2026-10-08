@@ -58,6 +58,10 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
      hop count, identity.md I4, is settled in the deployment slice), and the API is not
      reachable from outside that network. This is a **gate for the sign-in slice**: the slice does
      not merge until Hassan confirms it, or per-origin throttles would treat every user as one.
+     *(Amended by ADR-0037: the header is `x-client-address`, an HMAC proof bound to the Market
+     and to a key that is valid only from that BFF's pinned networks; the API keeps `trust proxy`
+     off and needs no hop count. The BFF takes the browser's address from a per-deployment
+     setting decided with Kazem, its own socket peer until then.)*
    - **Correlation:** the API issues the correlation id (ADR-0020); the BFF logs the response
      header and the client request id and never sends its own.
    - **Hygiene:** request headers are an allowlist (`Cookie`, `Content-Type`, `Accept`, `Origin`,

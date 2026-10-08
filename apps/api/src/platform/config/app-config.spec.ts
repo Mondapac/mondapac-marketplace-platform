@@ -26,6 +26,48 @@ describe('loadAppConfig', () => {
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
       mailCatcherUrl: null,
+      clientAddressTrust: null,
+    });
+  });
+
+  describe('the BFF client address (ADR-0037)', () => {
+    const SECRET = Buffer.alloc(32, 7).toString('base64');
+
+    it.each([
+      ['unset', {}],
+      ['empty', { TRUSTED_BFF_CIDRS: '', CLIENT_ADDRESS_KEYS: '' }],
+      ['blank', { TRUSTED_BFF_CIDRS: ' ', CLIENT_ADDRESS_KEYS: '  ' }],
+    ])('is off when both variables are %s', (_label, env) => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', ...env }).clientAddressTrust).toBeNull();
+    });
+
+    it('parses the networks and the keys', () => {
+      const trust = loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        TRUSTED_BFF_CIDRS: '10.20.0.0/16',
+        CLIENT_ADDRESS_KEYS: `panel:10.20.1.0/24:${SECRET}`,
+      }).clientAddressTrust;
+
+      expect(trust?.bffCidrs.map((cidr) => cidr.text)).toEqual(['10.20.0.0/16']);
+      expect([...(trust?.keys.keys() ?? [])]).toEqual(['panel']);
+    });
+
+    it('refuses to start on a bad setting and never prints the secret', () => {
+      let error: unknown;
+      try {
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          TRUSTED_BFF_CIDRS: '10.20.0.0/16',
+          CLIENT_ADDRESS_KEYS: `panel:10.20.1.0/24:${SECRET};panel:10.20.1.0/24:${SECRET}`,
+        });
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error).toBeInstanceOf(InvalidConfigError);
+      const message = (error as InvalidConfigError).message;
+      expect(message).toMatch(/CLIENT_ADDRESS_KEYS key "panel": the keyId is listed twice/);
+      expect(message).not.toContain(SECRET);
     });
   });
 

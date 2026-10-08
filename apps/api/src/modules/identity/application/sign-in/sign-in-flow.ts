@@ -38,7 +38,7 @@ import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 
-/** Where the request came from, read from the socket by the controller (never a forwarded header). */
+/** Where the request came from, as resolved per ADR-0037 (never a forwarded header). */
 export interface SignInClient {
   /** The IPv4 address or the IPv6 /64: the key of the origin counters (HF3). */
   readonly origin: string;

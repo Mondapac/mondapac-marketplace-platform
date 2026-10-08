@@ -33,7 +33,7 @@ export interface RegisterSellerInput {
   readonly displayName: string;
   readonly email: string;
   readonly password: string;
-  /** The IPv4 address or the IPv6 /64 of the client, from the socket: the `mail.origin` key. */
+  /** The IPv4 address or the IPv6 /64 of the client (ADR-0037 resolver): the `mail.origin` key. */
   readonly origin: string;
 }
 

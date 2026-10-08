@@ -6,6 +6,7 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { MarketRegistry } from '../market-config/market-registry';
 import { isMarketContextExempt } from '../market-context/market-context.guard';
 import { marketContextOf } from '../market-context/market.decorator';
+import { clientAddressFrom } from '../http/client-address';
 import { clientOriginOf } from './client-origin';
 import { RATE_LIMIT_CLASS, RATE_LIMIT_CLASSES, type RateLimitClass } from './rate-limit.decorator';
 
@@ -24,8 +25,9 @@ export const UNAVAILABLE_CODE = 'access.unavailable';
  * actor guard and every controller, so no `identity` code runs for a throttled request
  * (identity design 6.3 step 1).
  *
- * - **Key:** the socket's address, as the IPv4 address or the IPv6 /64 ({@link clientOriginOf}).
- *   Forwarded headers are never read.
+ * - **Key:** the resolved client address (`platform/http/client-address.ts`, ADR-0037: the
+ *   socket's, or the one a BFF proved), as the IPv4 address or the IPv6 /64
+ *   ({@link clientOriginOf}). Forwarded headers are never read.
  * - **Counters:** in this process's memory, one per limit class and origin, not split by Market
  *   (PF I11): the limiter is the cross-Market control. One API process may count in memory; a
  *   second instance needs the package's PostgreSQL store (identity design 13).
@@ -81,7 +83,7 @@ export class RateLimitGuard implements CanActivate {
         limitClass === 'anonymous-identity'
           ? limits.anonymousIdentityPerMinute
           : limits.defaultPerMinute;
-      const origin = clientOriginOf(request.socket.remoteAddress);
+      const origin = clientOriginOf(clientAddressFrom(request));
       if (origin === null) throw new Error('no client origin');
       const counted = await this.#counters[limitClass].consume(origin);
       retryAfterSeconds =

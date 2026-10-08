@@ -7,6 +7,7 @@ import type {
   PriceSeriesKey,
   PriceSeriesRepository,
 } from '../application/ports/price-series.repository';
+import { assertSerializableUnit } from '../application/serializable-unit';
 import type { PriceAmount } from '../domain/price-amount';
 import {
   PriceSeries,
@@ -201,6 +202,8 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
   }
 
   async add(market: MarketContext, series: PriceSeries): Promise<AddPriceSeriesOutcome> {
+    // Fail closed outside a serializable unit (pricing-data 5.1; Hassan M1): before any read.
+    assertSerializableUnit('PriceSeriesRepository.add');
     const state = series.state;
     if (series.storedState !== null) throw new Error('add: the series is stored; use save');
     if (state.marketId !== market.marketId) throw new Error('add: the series is of another Market');
