@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { forwardRef, Inject } from '@nestjs/common';
 import { ModulesContainer } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { APPROVED_SELLER_ZONES } from '../../src/modules/sellers/contracts/approved-seller-zones.contract';
@@ -22,9 +23,12 @@ import path from 'node:path';
 // sellers facade token may never be a controller dependency, listed or not.
 //
 // Limit: this is a check of direct controller dependencies. A controller that reached a
-// use case through a helper provider of its own would not be seen here; rule 9 of
-// dependency-cruiser (`use-cases-are-the-only-way-in`) and the contract file's import rule
-// (`approved-seller-zones-contract-is-for-certification`) cover that path.
+// use case through a helper provider of its own would not be seen here. Inside sellers the
+// dependency-cruiser rule `approved-seller-zones-use-cases-stay-in-sellers-reader` keeps the pair's
+// use-case files out of every file but the reader and the module, and the contract file's rule
+// (`approved-seller-zones-contract-is-for-certification`) keeps the token out of other modules;
+// rule 9 (`use-cases-are-the-only-way-in`) does not cover a controller -> helper provider ->
+// use case path.
 
 const LIST = path.resolve(__dirname, '../contracts/http-reachable-anonymous-system.json');
 /** Nest's metadata keys for `@Inject` on constructor parameters and on properties. */
@@ -47,7 +51,23 @@ function dependenciesOf(controller: object): unknown[] {
   const properties = (Reflect.getMetadata(PROPERTY_DEPS, controller) ?? []) as {
     type: unknown;
   }[];
-  return [...classes, ...injected.map((entry) => entry.param), ...properties.map((p) => p.type)];
+  return [
+    ...classes,
+    ...injected.map((entry) => entry.param),
+    ...properties.map((p) => p.type),
+  ].map(unwrapForwardRef);
+}
+
+/** `@Inject(forwardRef(() => X))` stores `{ forwardRef: () => X }`; the dependency is X. */
+function unwrapForwardRef(dependency: unknown): unknown {
+  if (
+    typeof dependency === 'object' &&
+    dependency !== null &&
+    typeof (dependency as { forwardRef?: unknown }).forwardRef === 'function'
+  ) {
+    return (dependency as { forwardRef: () => unknown }).forwardRef();
+  }
+  return dependency;
 }
 
 const isUseCaseClass = (value: unknown): value is typeof UseCase =>
@@ -140,19 +160,24 @@ describe('anonymous and system use cases are not reachable over HTTP', () => {
     ]);
   });
 
-  it('would see a controller that injected the pair', () => {
-    class Leaky {
+  it('would see a controller that injected the pair, with real Nest decorators', () => {
+    class Canary {
+      @Inject(APPROVED_SELLER_ZONES)
+      readonly byProperty!: unknown;
+
       constructor(
-        readonly zones: ApprovedSellerZones,
-        readonly token: unknown,
+        readonly byClass: ApprovedSellerZones,
+        @Inject(APPROVED_SELLER_ZONES) readonly byToken: unknown,
+        @Inject(forwardRef(() => ApprovedSellerZonesSystem)) readonly byForwardRef: unknown,
       ) {}
     }
-    Reflect.defineMetadata('design:paramtypes', [ApprovedSellerZones, Object], Leaky);
-    Reflect.defineMetadata(SELF_DECLARED_DEPS, [{ index: 1, param: APPROVED_SELLER_ZONES }], Leaky);
 
-    const dependencies = dependenciesOf(Leaky);
+    const dependencies = dependenciesOf(Canary);
 
+    // The class typed parameter, the @Inject token on a parameter, the @Inject token on a
+    // property and the unwrapped forwardRef are all seen; a renamed Nest metadata key breaks this.
     expect(dependencies).toContain(ApprovedSellerZones);
-    expect(dependencies).toContain(APPROVED_SELLER_ZONES);
+    expect(dependencies.filter((d) => d === APPROVED_SELLER_ZONES)).toHaveLength(2);
+    expect(dependencies).toContain(ApprovedSellerZonesSystem);
   });
 });

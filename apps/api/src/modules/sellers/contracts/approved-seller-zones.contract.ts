@@ -6,10 +6,12 @@ import type { SellersUnavailable, SellersValidationFailed } from './sellers.faca
 // The approved-seller-zones contract of `sellers` (sellers design 7.1a; request S-1 of
 // `certification`; Hassan L4). It is a contract of its own and not a method of `SellersFacade`
 // so that dependency-cruiser can confine it: `approved-seller-zones-contract-is-for-certification`
-// lets only `modules/sellers/` and `modules/certification/application/` import this file, and
-// `contracts/index.ts` does not export it (only the map type is re-exported). Its two use cases,
-// `anonymous` and `system`, are for that one caller; no controller may reach them
-// (test/authz/anonymous-system-pairs-not-over-http.spec.ts).
+// lets only `modules/sellers/`, certification's application and infrastructure layers and its
+// Nest module import this file (ADR-0033, pending: restricted contract files, amends ADR-0008).
+// `contracts/index.ts` does not export it (only the map type is re-exported). Certification
+// reaches it through a certification-owned port with an infrastructure adapter that imports the
+// token. Its two use cases, `anonymous` and `system`, are for that one caller; no controller may
+// reach them (test/authz/anonymous-system-pairs-not-over-http.spec.ts).
 
 /** One entry per distinct requested id (sellers design 7.1a row 1). */
 export type ApprovedSellerZonesMap = ReadonlyMap<Id<'Seller'>, ApprovedSellerZone>;
@@ -36,6 +38,6 @@ export interface ApprovedSellerZonesReader {
 
 /**
  * Nest token of the {@link ApprovedSellerZonesReader}, provided and exported by `SellersModule`.
- * Only `modules/certification/application/` may import it.
+ * Only certification's infrastructure adapter (and its Nest module) may import it.
  */
 export const APPROVED_SELLER_ZONES = Symbol('APPROVED_SELLER_ZONES');

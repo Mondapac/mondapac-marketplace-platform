@@ -328,15 +328,42 @@ module.exports = {
     {
       name: 'approved-seller-zones-contract-is-for-certification',
       comment:
-        "Only certification's application layer imports sellers' approved-seller-zones contract " +
-        '(APPROVED_SELLER_ZONES): its anonymous/system use-case pair answers every caller the ' +
-        "same way and must stay out of every other path (sellers design 7.1a; Hassan L4). sellers' " +
-        'index.ts does not export the contract file.',
+        "Only certification's application and infrastructure layers and its Nest module import " +
+        "sellers' approved-seller-zones contract (APPROVED_SELLER_ZONES); certification reaches " +
+        'it through a certification-owned port with an infrastructure adapter that imports the ' +
+        'token. Its anonymous/system use-case pair answers every caller the same way and must ' +
+        'stay out of every other path (sellers design 7.1a; Hassan L4). Decision basis: ADR-0033 ' +
+        "(pending), restricted contract files, amends ADR-0008. sellers' index.ts does not " +
+        'export the contract file.',
       severity: 'error',
       from: {
-        pathNot: ['^src/modules/sellers/', '^src/modules/certification/application/'],
+        pathNot: [
+          '^src/modules/sellers/',
+          '^src/modules/certification/(application|infrastructure)/',
+          '^src/modules/certification/certification\\.module\\.ts$',
+        ],
       },
       to: { path: APPROVED_SELLER_ZONES_CONTRACT_FILE },
+    },
+    {
+      name: 'approved-seller-zones-use-cases-stay-in-sellers-reader',
+      comment:
+        'Inside sellers only the reader implementation and the Nest module import the ' +
+        'approved-seller-zones use cases (the anonymous/system pair); a controller, job or ' +
+        'subscriber of sellers must not reach them (Hassan L1). ADR-0033 (pending).',
+      severity: 'error',
+      from: {
+        path: '^src/modules/sellers/',
+        pathNot: [
+          '^src/modules/sellers/presentation/approved-seller-zones\\.reader\\.ts$',
+          '^src/modules/sellers/sellers\\.module\\.ts$',
+          '^src/modules/sellers/application/use-cases/approved-seller-zones(-system)?\\.use-case\\.ts$',
+          '\\.spec\\.ts$',
+        ],
+      },
+      to: {
+        path: '^src/modules/sellers/application/use-cases/approved-seller-zones(-system)?\\.use-case\\.ts$',
+      },
     },
     {
       name: 'module-internals-are-private',
