@@ -608,3 +608,16 @@ Migration `20261008183000_pricing_series_regular` follows sections 3.1 to 3.3, 3
 **Reviews of PR #139 (2026-10-08)**, their findings applied in b5ceebe:
 - Hassan (security-tester): **GO**, with the conditions listed in D 19.
 - Sajad (qa-engineer): **GO**, with M1, M2 and the lows applied.
+
+### 12.2 Follow-up from slice 1, part 3b (as built; Hossein, 2026-10-08, for Mojtaba's review)
+
+No migration and no schema change. What the first caller of 3.8 settles:
+
+| # | Point | As built |
+|---|---|---|
+| 1 | Lock order of 3.8 (D 19 (b) and (e)) | **Actor row first, then the (actor, Offer) row.** One repository method takes both, `admitRefusal`; the port exposes no other way to the counters. The (actor, Offer) row is touched only when the actor has a slot under the cap |
+| 2 | `recorded_count` | When the pair already had its row in the window, the slot is given back on the actor row the unit holds (`UPDATE ... SET recorded_count = recorded_count - 1 WHERE recorded_count > 0`), so the column keeps counting rows written. Within the column grant of 7 |
+| 3 | Summary row | `admitRefusal` reads the actor row's `window_started_at` (the row it just updated) for the `pricing.offer-write-refused.suppressed` row; no count (12.1, summary-row decision) |
+| 4 | Purge | `purgeStartedBefore` is split into `purgeActorWindowsStartedBefore` and `purgeOfferWindowsStartedBefore`; the job `pricing.purge-write-refusal-throttles` runs them hourly, each in its own READ COMMITTED unit, actor table first, so it never holds rows of both tables |
+| 5 | 5.1 serializable units | `PriceSeriesRepository.add` refuses to run outside `runSerializable` (pricing's only way to open a `serializable` unit), before any statement |
+| 6 | Versions | One version per event (P 10): a seller write that supersedes a pending record and adds a new one raises the series version by two |

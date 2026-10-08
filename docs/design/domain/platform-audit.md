@@ -391,7 +391,7 @@ Notes:
 - **Contracts:**
   - snapshot of the audit action catalogue;
   - the boundary fixture: no module imports `platform/persistence/audit`; no factory token;
-  - **6a only:** no module binds an `AUDIT_WRITER` provider (Ali's condition 1 on the split); 6b changes the expectation to "identity only".
+  - **6a only:** no module binds an `AUDIT_WRITER` provider (Ali's condition 1 on the split); 6b changes the expectation to "identity only"; from pricing slice 1 part 3b: the modules of `AUDITING_MODULES`, each joining only with the audited actions of its approved G2.
 - **Identity integration (6b):**
   - the seed writes `identity.role.seeded` once per system role per Market, and a second run writes none;
   - Seller Owner verification writes the three founding rows in its unit, each with `sellerId`, `accountId` and `boundSubjectId`;

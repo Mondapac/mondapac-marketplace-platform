@@ -4,6 +4,10 @@ import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { PrismaPriceSeriesRepository } from '../../src/modules/pricing/infrastructure/prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from '../../src/modules/pricing/infrastructure/prisma-retirement-tombstone.repository';
+import {
+  runSerializable,
+  SerializableUnitRequiredError,
+} from '../../src/modules/pricing/application/serializable-unit';
 import { PriceSeries } from '../../src/modules/pricing/domain/price-series';
 import type { PriceSeriesState } from '../../src/modules/pricing/domain/price-series';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
@@ -73,12 +77,15 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
     options?: UnitOfWorkOptions,
     target: MarketContext = market,
   ): Promise<T> =>
-    persistence.unitOfWork
-      .run(target, async () => ok(await work()), options)
-      .then((result) => {
-        if (!result.ok) throw new Error('unit failed');
-        return result.value;
-      });
+    // A serializable unit is opened the way pricing opens one: through runSerializable, the only
+    // unit in which `add` runs (Hassan M1).
+    (options?.isolation === 'serializable'
+      ? runSerializable(persistence.unitOfWork, target, async () => ok(await work()))
+      : persistence.unitOfWork.run(target, async () => ok(await work()), options)
+    ).then((result) => {
+      if (!result.ok) throw new Error('unit failed');
+      return result.value;
+    });
   const serializable: UnitOfWorkOptions = { isolation: 'serializable' };
   const advance = (ms: number) => clock.set(clock.now().add({ milliseconds: ms }));
 
@@ -180,7 +187,9 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
       { status: 'superseded', supersede_cause: 'cancelled' },
       { status: 'superseded', supersede_cause: 'offer-removed' },
     ]);
-    expect(expected).toMatchObject({ retireCause: 'offer-removed', version: 8 });
+    // One version per event (P 10, part 3b): the replacing hold records two (superseded, opened)
+    // and the retirement two (the pending record superseded, then series-retired).
+    expect(expected).toMatchObject({ retireCause: 'offer-removed', version: 10 });
   });
 
   it('keeps the anchor copies equal to the records they name (Hassan, pricing-data review, Low)', async () => {
@@ -336,30 +345,26 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
 
       // The creator reads both tombstones (none) and inserts, then waits for the handler to
       // commit before it commits itself. Every retry rebuilds the series (P 3.1 row 5).
-      const creator = persistence.unitOfWork.run(
-        market,
-        async () => {
-          attempts += 1;
-          const attempt = PriceSeries.create({
-            id: ids.next<'PriceSeries'>(),
-            marketId: market.marketId,
-            offerId,
-            variantId,
-            productId,
-            sellerId,
-            currency: policy.currency,
-            now: clock.now(),
-          });
-          set(attempt, fixture.base);
-          const outcome = await series.add(market, attempt);
-          if (attempts === 1) {
-            creatorWrote.open();
-            await handlerDone.opened;
-          }
-          return ok(outcome);
-        },
-        serializable,
-      );
+      const creator = runSerializable(persistence.unitOfWork, market, async () => {
+        attempts += 1;
+        const attempt = PriceSeries.create({
+          id: ids.next<'PriceSeries'>(),
+          marketId: market.marketId,
+          offerId,
+          variantId,
+          productId,
+          sellerId,
+          currency: policy.currency,
+          now: clock.now(),
+        });
+        set(attempt, fixture.base);
+        const outcome = await series.add(market, attempt);
+        if (attempts === 1) {
+          creatorWrote.open();
+          await handlerDone.opened;
+        }
+        return ok(outcome);
+      });
       await creatorWrote.opened;
       // The Offer-removed handler: the tombstone, then every live series of the Offer retired.
       await inUnit(async () => {
@@ -379,6 +384,82 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
         `SELECT 1 FROM pricing.price_series
           WHERE market_id = $1 AND offer_id = $2 AND retired_at IS NULL`,
         [code, offerId],
+      );
+      expect(rows).toEqual([]);
+      expect(outcome).toEqual({ ok: true, value: 'key-retired' });
+      expect(attempts).toBe(2);
+    });
+  });
+
+  describe('add fails closed outside a serializable unit (design 19 condition (a); Hassan M1)', () => {
+    it('refuses add in a READ COMMITTED unit and in a serializable unit not opened by runSerializable', async () => {
+      const fresh = created();
+      set(fresh, fixture.base);
+
+      await expect(inUnit(() => series.add(market, fresh))).rejects.toBeInstanceOf(
+        SerializableUnitRequiredError,
+      );
+      await expect(
+        persistence.unitOfWork.run(market, async () => ok(await series.add(market, fresh)), {
+          isolation: 'serializable',
+        }),
+      ).rejects.toBeInstanceOf(SerializableUnitRequiredError);
+      await expect(series.add(market, fresh)).rejects.toBeInstanceOf(SerializableUnitRequiredError);
+      const { rows } = await sql.query(
+        `SELECT 1 FROM pricing.price_series WHERE market_id = $1 AND id = $2`,
+        [code, fresh.state.id],
+      );
+      expect(rows).toEqual([]);
+      expect(await inUnit(() => series.add(market, fresh), serializable)).toBe('added');
+    });
+
+    it('leaves no live series after a Variant tombstone when a first price races the Variant-removed handler', async () => {
+      const fresh = created();
+      const { offerId, variantId, productId, sellerId } = fresh.state;
+      const creatorWrote = gate();
+      const handlerDone = gate();
+      let attempts = 0;
+
+      const creator = runSerializable(persistence.unitOfWork, market, async () => {
+        attempts += 1;
+        const attempt = PriceSeries.create({
+          id: ids.next<'PriceSeries'>(),
+          marketId: market.marketId,
+          offerId,
+          variantId,
+          productId,
+          sellerId,
+          currency: policy.currency,
+          now: clock.now(),
+        });
+        set(attempt, fixture.base);
+        const outcome = await series.add(market, attempt);
+        if (attempts === 1) {
+          creatorWrote.open();
+          await handlerDone.opened;
+        }
+        return ok(outcome);
+      });
+      await creatorWrote.opened;
+      // The Variant-removed handler: the (product, Variant) tombstone, then its live series.
+      await inUnit(async () => {
+        await tombstones.recordRetiredVariant(market, {
+          productId,
+          variantId,
+          retiredAt: clock.now(),
+          causeEventId: ids.next<'Event'>(),
+        });
+        for (const found of await series.findByProductVariant(market, productId, variantId)) {
+          found.retire('variant-removed', clock.now());
+          await series.save(market, found);
+        }
+      }, serializable).finally(() => handlerDone.open());
+      const outcome = await creator;
+
+      const { rows } = await sql.query(
+        `SELECT 1 FROM pricing.price_series
+          WHERE market_id = $1 AND product_id = $2 AND variant_id = $3 AND retired_at IS NULL`,
+        [code, productId, variantId],
       );
       expect(rows).toEqual([]);
       expect(outcome).toEqual({ ok: true, value: 'key-retired' });

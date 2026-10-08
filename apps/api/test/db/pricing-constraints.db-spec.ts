@@ -681,7 +681,10 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
       );
       const expected = due.reduce((sum, r) => sum + Number(r.rows[0]?.n), 0);
       expect(expected).toBeGreaterThanOrEqual(2);
-      expect(await inUnit(() => throttles.purgeStartedBefore(market, t(-3600)))).toBe(expected);
+      // One unit per table, the actor table first (the purge never holds rows of both, 3.8).
+      const actors = await inUnit(() => throttles.purgeActorWindowsStartedBefore(market, t(-3600)));
+      const offers = await inUnit(() => throttles.purgeOfferWindowsStartedBefore(market, t(-3600)));
+      expect(actors + offers).toBe(expected);
       const left = await remaining();
       expect(left.sort()).toEqual(
         [

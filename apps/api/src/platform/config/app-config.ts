@@ -2,6 +2,7 @@ import path from 'node:path';
 import { parseMarketId } from '@mondapac/shared-kernel';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
+import { parseClientAddressTrust, type ClientAddressTrust } from '../http/client-address-trust';
 
 // apps/api/{src|dist}/platform/config -> repository root
 const DEFAULT_MARKET_CONFIG_DIR = path.resolve(__dirname, '../../../../../config/markets');
@@ -56,6 +57,10 @@ const envSchema = z.object({
   MAIL_CATCHER_URL: z
     .url({ protocol: /^https?$/, error: 'must be an http(s) URL such as http://localhost:8025' })
     .optional(),
+  // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
+  // and checked by parseClientAddressTrust below; a secret is never echoed.
+  TRUSTED_BFF_CIDRS: z.string().optional(),
+  CLIENT_ADDRESS_KEYS: z.string().optional(),
 });
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
@@ -102,6 +107,12 @@ export interface AppConfig {
    * unless `NODE_ENV` is explicitly `development` or `test` (`platform/mail/`).
    */
   readonly mailCatcherUrl: string | null;
+  /**
+   * Who may prove a client address, and with which keys (ADR-0037 decisions 4 and 5): from
+   * `TRUSTED_BFF_CIDRS` and `CLIENT_ADDRESS_KEYS`. `null` when both are empty: the address is the
+   * socket's. Holds secrets, which print as a marker only; read by `configureApp` alone.
+   */
+  readonly clientAddressTrust: ClientAddressTrust | null;
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -143,6 +154,8 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'LOG_LEVEL: the worker logs at info, debug or trace (audit anchors are info lines)',
     );
   }
+  const clientAddress = parseClientAddressTrust(env.TRUSTED_BFF_CIDRS, env.CLIENT_ADDRESS_KEYS);
+  issues.push(...clientAddress.issues);
   if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
   return Object.freeze({
     appRole: parsed.data.APP_ROLE,
@@ -158,5 +171,6 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
+    clientAddressTrust: clientAddress.trust,
   });
 }
