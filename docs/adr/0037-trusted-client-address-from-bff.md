@@ -41,7 +41,8 @@ that reaches the API could send one, and a hop count needs deployment facts that
    - `t`: the signing instant in whole Unix seconds (decimal, no sign).
    - `a`: exactly one IPv4 or IPv6 address in text form. A comma, a zone index (`%`), a port or
      brackets are refused.
-   - `s`: HMAC-SHA-256 under the key's secret, base64url without padding (43 characters), over
+   - `s`: HMAC-SHA-256 under the key's secret, base64url without padding (43 characters, the
+     canonical spelling only: it must re-encode to exactly the text sent), over
      the UTF-8 bytes of `v1\n<keyId>\n<t>\n<a>\n<x-market-id>`, where `<x-market-id>` is the
      request's `x-market-id` header exactly as sent. Binding the Market means a proof made for
      one Market is refused for another.
@@ -146,7 +147,10 @@ that reaches the API could send one, and a hop count needs deployment facts that
      `X-Real-IP`, both internal names) never reach a handler; two keep-alive requests with
      different edge values; edge peer inside and outside the ranges and every malformed case;
      signer refusal without `x-mp-client-address`; every start-up refusal; `dev` and `start` run
-     the wrapper; an IPv6 peer; the three vectors.
+     the wrapper; an IPv6 peer; an IPv4 edge reaching a dual-stack listener (the wrapper turns an
+     IPv4-mapped peer `::ffff:a.b.c.d` into plain IPv4 before matching `EDGE_CIDRS`); the three
+     vectors. Each `client-address.untrusted` 400 logs one warning with the reason code and the
+     peer, never the header value.
    - **BFF environment variables** (server only, never `NEXT_PUBLIC_*`; documented in each app's
      own `.env.example` by the frontend slice):
 
