@@ -83,7 +83,12 @@ Rejected alternative: writing audit through the outbox, with a consumer writing 
   - The amount follows the `parseMinorUnits` rules: digits only, no sign, no leading zero, at most 16 digits. The row and its hash never hold a float or a bigint, so the canonical JSON and the hash chain are deterministic.
   - Zero, a negative amount, 17 or more digits, a number or a string amount, and an unknown or lower-case currency are refused as `invalid` (W4). Each property is read once; nothing else of the value is written.
   - `money` may be wrapped by `optional` and `listOf`, and is never a `targetId`. The snapshot describes it as `money`.
-  - The catalogue contracts test checks that no `pricing.cost.*` action declares a `money` field, bare or wrapped: Cost never enters the audit log (ADR-0024).
+  - Own properties only: an `amount` or `currency` inherited from a prototype is refused (Hassan L1).
+  - The catalogue contracts test keeps Cost out of the audit log (ADR-0024; Hassan H2, M1). It checks, over every action of every module, `before` and `after`, with `optional` and `listOf` unwrapped:
+    1. a `money` field must be on a checked-in allow-list of `<action>.<side>.<field>` entries (empty today); a new money field fails the test until a reviewed change adds it;
+    2. no `money` or `integer` field on a `pricing.` action with a name segment (split on `.` and `-`) that starts with `cost`;
+    3. no `money` or `integer` field whose name contains `cost` (case-insensitive), in any module.
+    A negative test proves each rule catches a violation. The test reads declared kinds, so it cannot see a value smuggled into another kind; no kind accepts free text (above).
 - `anonymous` in `actors` is allowed only where the use case's credential binds exactly one account or invitation (data identity 6), and only with `boundSubjectId` (W4a). Hassan reviews each such action in the snapshot diff.
 - **No free-text exception.** certification.md 11 no longer stores a change reason in an audit row: the reason stays on the revision and the row carries the revision id and `reasonGiven` (Q3, decided by Ali).
 

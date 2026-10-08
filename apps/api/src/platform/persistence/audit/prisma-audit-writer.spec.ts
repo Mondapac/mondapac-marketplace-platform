@@ -1,6 +1,7 @@
 import {
   auditField,
   defineAuditAction,
+  money,
   parseCorrelationId,
   Temporal,
 } from '@mondapac/shared-kernel';
@@ -79,6 +80,12 @@ const bulkChanged = defineAuditAction({
   actors: ['system'],
   after: { roleIds: auditField.listOf(auditField.id(), 200) },
 });
+const bulkPriced = defineAuditAction({
+  action: 'identity.role.bulk-priced',
+  targetType: 'identity.role',
+  actors: ['system'],
+  after: { amounts: auditField.listOf(auditField.money(), 100) },
+});
 const roleListed = defineAuditAction({
   action: 'identity.role.listed',
   targetType: 'identity.role',
@@ -103,6 +110,7 @@ function sealedCatalogue(): AuditActionCatalogue {
     seedApplied,
     settingChanged,
     bulkChanged,
+    bulkPriced,
     roleListed,
   ]);
   catalogue.register('sellers', [sellersViewed]);
@@ -538,6 +546,36 @@ describe.each(MARKETS)('the audit writer in market %s (platform-audit.md 3.1)', 
               system(),
               bulkChanged.entry(TARGET, {
                 after: { roleIds: Array.from({ length: 200 }, () => ROLE) },
+              }),
+            ),
+          ),
+        'after-too-large',
+        null,
+      ],
+      [
+        'a money list over its maximum',
+        (h) =>
+          h.inUnit(market, () =>
+            h.writer.record(
+              system(),
+              bulkPriced.entry(TARGET, {
+                after: { amounts: Array.from({ length: 101 }, () => money(1n, 'AUD')) },
+              }),
+            ),
+          ),
+        'list-too-long',
+        'amounts',
+      ],
+      [
+        'an after side of money items over 4 KB of canonical JSON',
+        (h) =>
+          h.inUnit(market, () =>
+            h.writer.record(
+              system(),
+              bulkPriced.entry(TARGET, {
+                after: {
+                  amounts: Array.from({ length: 100 }, () => money(9_999_999_999_999_999n, 'AUD')),
+                },
               }),
             ),
           ),

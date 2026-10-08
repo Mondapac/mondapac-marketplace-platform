@@ -513,6 +513,37 @@ describe('a money field (platform-audit 3.2; pricing condition (h))', () => {
     expect(encode(new Priced())).toEqual(refused);
   });
 
+  it("refuses an amount or a currency that is inherited, not the value's own (Hassan L1)", () => {
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    try {
+      proto.amount = 5n;
+      proto.currency = 'AUD';
+      expect(encode({})).toEqual(refused);
+      expect(encode({ amount: 5n })).toEqual(refused);
+      expect(encode({ currency: 'AUD' })).toEqual(refused);
+      expect(encode({ amount: 5n, currency: 'AUD' })).toEqual({
+        ok: true,
+        value: { price: { amount: '5', currency: 'AUD' } },
+      });
+    } finally {
+      delete proto.amount;
+      delete proto.currency;
+    }
+  });
+
+  it('refuses a money list over its maximum as too-long', () => {
+    const fields = { steps: auditField.listOf(auditField.money(), 3) };
+    const steps = (count: number) => ({
+      steps: Array.from({ length: count }, () => money(1n, 'AUD')),
+    });
+
+    expect(encodeAuditFields(fields, steps(3), KNOWN_KEYS).ok).toBe(true);
+    expect(encodeAuditFields(fields, steps(4), KNOWN_KEYS)).toEqual({
+      ok: false,
+      error: { code: 'audit-fields.invalid', field: 'steps', problem: 'too-long' },
+    });
+  });
+
   it('writes no other property of the value', () => {
     expect(encode({ amount: 5n, currency: 'JPY', note: 'free text' })).toEqual({
       ok: true,

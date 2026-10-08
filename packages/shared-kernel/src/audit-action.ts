@@ -387,7 +387,15 @@ function moneyJson(value: unknown): JsonObject | undefined {
   let amount: unknown;
   let currency: unknown;
   try {
-    if (!isPlainObject(value)) return undefined;
+    // Own properties only: an `amount` or `currency` put on Object.prototype is not the value's
+    // (Hassan L1 on the money kind).
+    if (
+      !isPlainObject(value) ||
+      !Object.hasOwn(value, 'amount') ||
+      !Object.hasOwn(value, 'currency')
+    ) {
+      return undefined;
+    }
     amount = value.amount;
     currency = value.currency;
   } catch {
