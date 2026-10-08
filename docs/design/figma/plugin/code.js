@@ -2826,11 +2826,12 @@ const SELLER_MEMBERS = [
   { i: 'AR', tone: 'Amber', name: 'Amina Rahman', email: 'amina.rahman@kurabyfresh.example', role: 'Order packer', two: 'Off', status: 'Active' },
   { i: 'TN', tone: 'Blue', name: 'Tariq Nasser', email: 'tariq.nasser@kurabyfresh.example', role: 'Order packer', two: null, status: 'Invited' },
 ];
+// A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
+function listLoadError() { return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' }); }
 function membersTable(ws, state) {
   const admin = ws === 'Admin';
   const cols = admin ? [['Person', 'fill'], ['Role', 220], ['Status', 170], ['', 56]] : [['Person', 'fill'], ['Role', 200], ['Two-step verification', 200], ['Status', 150], ['', 56]];
-  // A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
-  if (state === 'Load error') return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' });
+  if (state === 'Load error') return listLoadError();
   const kids = [headerRow(cols)];
   if (state === 'Loading') return card('Member list', kids.concat(loadingRows(admin ? [['Two-line', 'fill'], ['Text', 220], ['Text', 170], ['Actions', 56]] : [['Two-line', 'fill'], ['Text', 200], ['Text', 200], ['Text', 150], ['Actions', 56]])));
   if (state === 'Empty') return card('Member list', kids.concat([inst('EmptyState', { Size: 'Card', Icon: { icon: 'users' }, Title: 'It’s just you so far', Body: 'Invite the people who help run your shop. Each person gets their own sign-in.' }, { name: 'empty-state', sizeH: 'FILL' })]));
@@ -3190,6 +3191,7 @@ const P1_AWAITING = [
 ];
 const P1_ALL = [P1_AWAITING[0],
   { i: 'IM', tone: 'Purple', name: 'Ibrahim Musa', email: 'ibrahim@logangrocer.example', status: 'Changes needed', since: '3 Oct 2026' },
+  { i: 'FN', tone: 'Amber', name: 'Faisal Noor', email: 'faisal@noorpantry.example', status: 'Approved', since: '4 Feb 2026' },
   { i: 'YK', tone: 'Teal', name: 'Yusuf Karimi', email: 'yusuf@kurabyfresh.example', status: 'Approved', since: '12 Mar 2026', reset: true },
   { i: 'KR', tone: 'Neutral', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example', status: 'Suspended', since: '20 Jan 2026' },
   { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbaorganics.example', status: 'Invited', since: '6 Oct 2026' },
@@ -3203,7 +3205,6 @@ function sellerCell(m) {
   if (m.reset) add(kids[1], text(RESET_WAITING, 'Caption/Default', 'text/muted', { name: 'reset-waiting', sizeH: 'FILL' }));
   return kids;
 }
-function listLoadError() { return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' }); }
 function sellersTable(list, state) {
   if (state === 'Load error') return listLoadError();
   const kids = [headerRow([['Seller', 'fill'], ['Status', 200], ['Since', 160], ['', 56]])];
@@ -3266,7 +3267,8 @@ function tplSellersP1(state) {
   kids.push(sellerSearch(false), p1Tabs(all ? 'All' : 'Awaiting approval', empty), sellersTable(all ? P1_ALL : P1_AWAITING, ['Loading', 'Empty', 'Load error'].indexOf(state) >= 0 ? state : null));
   const scr = screen(P1_NAME + (state ? ' · ' + state : ''), 'Admin', 'nav-sellers', 'Sellers', kids, { minH: PANEL_MIN_H });
   // The menu holds only the actions the API allows for the row (ux.md P1): Approve and Reject… while awaiting approval; an approved seller can be suspended
-  // or have the owner's two-step verification reset. View reason, Lift suspension, Resend and Cancel invitation belong to the other rows.
+  // or have the owner's two-step verification reset. View reason, Lift suspension, Resend and Cancel invitation belong to the other rows. The approved
+  // row's menu opens on a seller with no reset waiting: on the row that has one, starting again cancels the earlier link (DD 3.7), which this menu does not say.
   if (state === 'Menu open') {
     openUnderRow(scr, 0, actionMenu([['Default', 'Approve', 'check'], ['Destructive', 'Reject…', 'x']]));
     openUnderRow(scr, 2, actionMenu([['Default', 'Reset owner’s two-step verification…', 'smartphone'], ['Destructive', 'Suspend…', 'ban']]));
@@ -3371,22 +3373,31 @@ const R10_HELP = 'New features are never added to a custom role automatically. Y
 const PROTECTED_ADMIN = 'Only a Platform owner can give this permission.'; // role.help.protected with {systemRoleName}; the role name is a sample
 const PROTECTED_SELLER = 'Only the shop owner can do this. It can’t be given to team members yet.';
 const ACTOR_NOT_HELD = [3, 6]; // the signed-in admin (Layla Haddad, Compliance lead) does not hold Add sellers and Deactivate customer accounts (R1)
+// A ticked permission the actor does not hold stays ticked and locked: they can neither give it nor take it away (sample copy, no ux.md key yet).
+const NOT_HELD_CHANGE = 'You can’t change a permission you don’t have.';
 // Row states of one editor: o.checked (indexes), o.readOnly; editable rows are disabled when protected or not held, with the reason.
+// Only a duplicate drops what the actor does not hold (o.dropNotHeld, with the banner); editing an existing role keeps its stored value.
 function permRows(perms, ws, o) {
   return perms.map(function (p, i) {
     const r = { group: p[0], label: p[1], desc: p[2], badge: !!p[3], value: o.checked.indexOf(i) >= 0 ? 'Checked' : 'Unchecked', state: o.readOnly ? 'Read-only' : 'Default' };
     if (o.readOnly) return r;
     if (p[3]) { r.state = 'Disabled'; r.desc = ws === 'Admin' ? PROTECTED_ADMIN : PROTECTED_SELLER; }
-    else if (ws === 'Admin' && ACTOR_NOT_HELD.indexOf(i) >= 0) { r.state = 'Disabled'; r.desc = NOT_HELD; r.value = 'Unchecked'; }
+    else if (ws === 'Admin' && ACTOR_NOT_HELD.indexOf(i) >= 0) {
+      r.state = 'Disabled';
+      if (o.dropNotHeld) r.value = 'Unchecked';
+      r.desc = r.value === 'Checked' ? NOT_HELD_CHANGE : NOT_HELD;
+    }
     return r;
   });
 }
+// "Select all in {group}" ticks and clears only the rows the actor can give, so its state comes from those rows alone; with none it is disabled.
 function permCard(group, rows, readOnly) {
-  const on = rows.filter(function (r) { return r.value === 'Checked'; }).length, free = rows.filter(function (r) { return r.state === 'Default'; }).length;
-  const all = on === 0 ? 'Unchecked' : (on === rows.length ? 'Checked' : 'Indeterminate');
+  const free = rows.filter(function (r) { return r.state === 'Default'; }), counted = free.length ? free : rows;
+  const on = counted.filter(function (r) { return r.value === 'Checked'; }).length;
+  const all = on === 0 ? 'Unchecked' : (on === counted.length ? 'Checked' : 'Indeterminate');
   const head = frame({ name: 'card-header', dir: 'H', gap: 'space/3', align: 'center', justify: 'between', px: 'space/4', py: 'space/3', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [
     text(group, 'Heading/H2', 'text/primary', { name: 'resource' }),
-    readOnly ? null : frame({ name: 'select-all', dir: 'H', gap: 'space/2', align: 'center' }, [inst('Checkbox', { Value: all, State: free ? 'Default' : 'Disabled' }, { name: 'select-all-checkbox' }), text('Select all in ' + group, 'Body/Default', free ? 'text/primary' : 'text/muted', { name: 'select-all-label' })]),
+    readOnly ? null : frame({ name: 'select-all', dir: 'H', gap: 'space/2', align: 'center' }, [inst('Checkbox', { Value: all, State: free.length ? 'Default' : 'Disabled' }, { name: 'select-all-checkbox' }), text('Select all in ' + group, 'Body/Default', free.length ? 'text/primary' : 'text/muted', { name: 'select-all-label' })]),
   ]);
   return card('Permissions · ' + group, [head].concat(rows.map(function (r) {
     return inst('CheckboxRow', { Value: r.value, State: r.state, Label: r.label, Description: r.desc, 'Show badge': r.badge }, { name: 'permission · ' + r.label, sizeH: 'FILL' });
@@ -3434,12 +3445,13 @@ function tplRoleEditorPhone() {
   return scr;
 }
 const ADMIN_EDITORS = [
-  // A custom role being edited (the Roles list still shows it with no permissions: the changes are not saved).
-  { ws: 'Admin', suffix: 'Custom', title: 'Content editor', type: 'Custom', nameValue: 'Content editor', checked: [0, 5, 11] },
+  // A custom role being edited (the Roles list still shows it with no permissions: the changes are not saved). It holds Add sellers, which this admin
+  // does not hold, so that row is ticked and locked.
+  { ws: 'Admin', suffix: 'Custom', title: 'Content editor', type: 'Custom', nameValue: 'Content editor', checked: [0, 3, 5, 11] },
   { ws: 'Admin', suffix: 'Default', title: 'Seller reviewer', type: 'Default', readOnly: true, duplicate: true, checked: [0, 1, 2, 3], banner: ['Default role from MondaPac.', 'It can’t be changed. Duplicate it to make your own version.'] },
   { ws: 'Admin', suffix: 'System', title: 'Platform owner', type: 'System', readOnly: true, checked: ADMIN_PERMS.map(function (p, i) { return i; }), banner: ['System role.', 'It always has every permission in this panel and can’t be changed or deleted.'] },
-  { ws: 'Admin', suffix: 'Duplicate', title: 'Copy of Seller reviewer', type: 'Custom', nameValue: 'Copy of Seller reviewer', checked: [0, 1, 2], banner: ['Some permissions weren’t copied because you can’t give them.'] },
-  { ws: 'Admin', suffix: 'Errors', title: 'Content editor', type: 'Custom', nameValue: 'Finance reviewer', nameError: 'A role with this name already exists.', checked: [0, 5, 11] },
+  { ws: 'Admin', suffix: 'Duplicate', title: 'Copy of Seller reviewer', type: 'Custom', nameValue: 'Copy of Seller reviewer', checked: [0, 1, 2, 3], dropNotHeld: true, banner: ['Some permissions weren’t copied because you can’t give them.'] },
+  { ws: 'Admin', suffix: 'Errors', title: 'Content editor', type: 'Custom', nameValue: 'Finance reviewer', nameError: 'A role with this name already exists.', checked: [0, 3, 5, 11] },
 ];
 const SELLER_EARLY = ['Only a few permissions exist so far.', 'More appear here as MondaPac adds features.'];
 const SELLER_EDITORS = [

@@ -69,11 +69,12 @@ const SELLER_MEMBERS = [
   { i: 'AR', tone: 'Amber', name: 'Amina Rahman', email: 'amina.rahman@kurabyfresh.example', role: 'Order packer', two: 'Off', status: 'Active' },
   { i: 'TN', tone: 'Blue', name: 'Tariq Nasser', email: 'tariq.nasser@kurabyfresh.example', role: 'Order packer', two: null, status: 'Invited' },
 ];
+// A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
+function listLoadError() { return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' }); }
 function membersTable(ws, state) {
   const admin = ws === 'Admin';
   const cols = admin ? [['Person', 'fill'], ['Role', 220], ['Status', 170], ['', 56]] : [['Person', 'fill'], ['Role', 200], ['Two-step verification', 200], ['Status', 150], ['', 56]];
-  // A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
-  if (state === 'Load error') return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' });
+  if (state === 'Load error') return listLoadError();
   const kids = [headerRow(cols)];
   if (state === 'Loading') return card('Member list', kids.concat(loadingRows(admin ? [['Two-line', 'fill'], ['Text', 220], ['Text', 170], ['Actions', 56]] : [['Two-line', 'fill'], ['Text', 200], ['Text', 200], ['Text', 150], ['Actions', 56]])));
   if (state === 'Empty') return card('Member list', kids.concat([inst('EmptyState', { Size: 'Card', Icon: { icon: 'users' }, Title: 'It’s just you so far', Body: 'Invite the people who help run your shop. Each person gets their own sign-in.' }, { name: 'empty-state', sizeH: 'FILL' })]));

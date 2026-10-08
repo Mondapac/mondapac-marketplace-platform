@@ -432,6 +432,24 @@ const shellFrames = (M) => SHELL_ADMIN.concat(SHELL_SELLER).map((n) => frameName
 function topLevel(M) { const out = []; M.ROOT.children.forEach((p) => { p.children.forEach((n) => { out.push([p.name, n]); if (n.type === 'SECTION') n.children.forEach((c) => out.push([p.name + ' › ' + n.name, c])); }); }); return out; }
 const overlapsOf = (M) => { const by = {}; topLevel(M).forEach((e) => { (by[e[0]] = by[e[0]] || []).push(e[1]); }); const out = []; Object.keys(by).forEach((k) => { const a = by[k]; for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) { const p = a[i], q = a[j]; if (p.x + p.width > q.x + 0.5 && q.x + q.width > p.x + 0.5 && p.y + p.height > q.y + 0.5 && q.y + q.height > p.y + 0.5) out.push(k + ': ' + p.name + ' / ' + q.name); } }); return out; };
 const posOf = (M) => new Map(topLevel(M).map((e) => [e[1].id, e[1].x + ',' + e[1].y]));
+// Everything an update could change on a layer, as JSON; bounds leaves out the place and size (a Starter section may grow or move).
+const SNAP_KEYS = ['type', 'name', 'parent', 'index', 'x', 'y', 'width', 'height', 'visible', 'fills', 'strokes', 'boundVariables', 'sizingH', 'sizingV', 'props', 'characters'];
+function encodeSnap(o, bounds) {
+  const out = {}; SNAP_KEYS.filter((k) => !(bounds && ['x', 'y', 'width', 'height'].includes(k))).forEach((k) => { out[k] = o[k] === undefined ? null : o[k]; });
+  return JSON.stringify(out);
+}
+function fullSnap(n, bounds) {
+  const get = (k) => { try { return n[k]; } catch (e) { return '!'; } };
+  return encodeSnap({
+    type: n.type, name: n.name, parent: n.parent ? n.parent.id : null, index: n.parent && n.parent.children ? n.parent.children.indexOf(n) : -1, x: get('x'), y: get('y'), width: get('width'), height: get('height'),
+    visible: n.visible, fills: get('fills'), strokes: get('strokes'), boundVariables: get('boundVariables'), sizingH: get('layoutSizingHorizontal'), sizingV: get('layoutSizingVertical'),
+    props: n.type === 'INSTANCE' ? n.componentProperties : null, characters: n.type === 'TEXT' ? n.characters : null }, bounds);
+}
+function snapDiff(nodes, was) {
+  return nodes.slice(0, 6).map((n) => { const a = JSON.parse(was.get(n.id) || '{}'), b = JSON.parse(fullSnap(n)); return n.type + ' ' + n.name + ' [' + SNAP_KEYS.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).join(',') + ']'; }).join('; ');
+}
+// The changelog table gets a row for each release (and the row above it a divider), so its layers are left to the changelog checks.
+function inChangelog(n) { for (let p = n; p; p = p.parent) { if (p.name === 'Changelog' || p.name === 'changelog') return true; } return false; }
 
 // Facts that hold for every 1.8.1 file, built new or repaired.
 function state181(M, label, skipOverlap) {
@@ -476,6 +494,7 @@ const SHELL_183 = P1_FRAMES.concat(EDITOR_ADMIN, EDITOR_SELLER);
 const BODIES_183 = ['Template body · D4 Reject', 'Template body · D4 Reject (error)', 'Template body · D4 View reason', 'Template body · D5 Suspend', 'Template body · D6 Add seller'];
 const ADDED_183 = ['templates Panel 1.8.3 · Admin (' + ADMIN_183.length + ' frames, ' + BODIES_183.length + ' template bodies)', 'templates Panel 1.8.3 · Seller (' + SELLER_183.length + ' frames)'];
 const NOT_HELD_COPY = 'You can’t give a permission you don’t have.';
+const NOT_HELD_CHANGE_COPY = 'You can’t change a permission you don’t have.';
 const PROTECTED_ADMIN_COPY = 'Only a Platform owner can give this permission.';
 const PROTECTED_SELLER_COPY = 'Only the shop owner can do this. It can’t be given to team members yet.';
 const SELLERS_VIEW_ONLY_COPY = 'Your role can view sellers but not change them.';
@@ -509,9 +528,10 @@ function state183(M, label) {
   check(rowsOf(p1).length === 3 && rowsOf(p1).every((r) => textsOf(r).some((t) => /@/.test(t))) && textsOf(p1).includes('Search sellers') && textsOf(p1).includes('Enter the full email address.') && textsOf(p1).includes('12 sellers in the Australia market'), label + ': P1 lists 3 sellers awaiting approval (owner name over email), the search with its help line and the count line');
   const mo = F(P1 + ' · Menu open');
   const badges = rowsOf(mo).map((r) => instsOf(r, /, Leading=/).map((b) => instMain(b) + ' ' + propOf(b, 'Label')).join());
-  const want = [['Info', 'Awaiting approval'], ['Attention', 'Changes needed'], ['Success', 'Approved'], ['Critical', 'Suspended'], ['Neutral', 'Invited']];
-  check(badges.length === 5 && want.every((w, i) => badges[i].indexOf('Tone=' + w[0] + ', Leading=Icon') === 0 && badges[i].endsWith(' ' + w[1])), label + ': the All tab shows each status as a Badge with an icon and a word (' + badges.join(' | ') + ')');
-  check(textsOf(mo).filter((t) => /^Two-step reset waiting for the owner \(link expires .+\)$/.test(t)).length === 1, label + ': one row says the owner must still confirm a two-step reset, with the link expiry');
+  const want = [['Info', 'Awaiting approval'], ['Attention', 'Changes needed'], ['Success', 'Approved'], ['Success', 'Approved'], ['Critical', 'Suspended'], ['Neutral', 'Invited']];
+  check(badges.length === 6 && want.every((w, i) => badges[i].indexOf('Tone=' + w[0] + ', Leading=Icon') === 0 && badges[i].endsWith(' ' + w[1])), label + ': the All tab shows each status as a Badge with an icon and a word (' + badges.join(' | ') + ')');
+  const waits = (r) => textsOf(r).some((t) => /^Two-step reset waiting for the owner \(link expires .+\)$/.test(t));
+  check(textsOf(mo).filter((t) => /^Two-step reset waiting for the owner \(link expires .+\)$/.test(t)).length === 1 && waits(rowsOf(mo)[3]) && !waits(rowsOf(mo)[2]), label + ': one approved row says the owner must still confirm a two-step reset, with the link expiry; the approved row with the open menu has none waiting');
   const menus = (f) => f.children.filter((c) => c.type === 'INSTANCE' && c.name === 'Row menu (open)');
   const items = (m) => m.findAll((x) => x.type === 'INSTANCE' && /^item-/.test(x.name) && x.visible !== false).map((x) => [instMain(x).replace('State=', ''), propOf(x, 'Label'), propOf(x, 'Show description') ? propOf(x, 'Description') : '']);
   // The mock does not measure text, so a menu's height is not checked against the frame; its right edge sits on the actions button's right edge.
@@ -539,14 +559,21 @@ function state183(M, label) {
   check(dl.map((d) => d.name).join('|') === 'D4 Reject|D4 Reject · Error|D5 Suspend|D4 View reason|D6 Add seller' && ds.height >= 900 && row.y + row.height <= ds.height + 0.5 && ds.findOne((x) => x.name === 'scrim').height === ds.height, label + ': Dialogs · Sellers · Admin holds D4, D4 with its error, D5, the read-only D4 and D6 on a scrim as tall as the scene (' + Math.round(ds.height) + ' px)');
   check(['D4 Reject', 'D4 Reject · Error', 'D5 Suspend'].every((n) => /Size=Md, Tone=Destructive, Layout=Centred/.test(instMain(dOf(n)))) && /Size=Md, Tone=Default/.test(instMain(dOf('D4 View reason'))) && /Size=Sm, Tone=Default, Layout=Centred/.test(instMain(dOf('D6 Add seller'))), label + ': D4 and D5 are Md Destructive, the read-only D4 is Md Default and D6 is Sm Default');
   check(/State=Focus/.test(instMain(sec(dOf('D4 Reject')))) && /State=Focus/.test(instMain(sec(dOf('D5 Suspend')))) && sec(dOf('D4 View reason')).visible === false && textsOf(dOf('D4 View reason')).includes('Close'), label + ': D4 and D5 open with focus on Cancel; the read-only D4 has one button, "Close"');
+  const pri = (d) => d.findOne((x) => x.name === 'primary');
+  const dCopy = [['D4 Reject', 'Reject this seller application?', 'Reject application', 'Cancel'], ['D4 Reject · Error', 'Reject this seller application?', 'Reject application', 'Cancel'], ['D5 Suspend', 'Suspend this seller?', 'Suspend seller', 'Cancel'], ['D4 View reason', 'Reason for Ibrahim Musa', 'Close', null], ['D6 Add seller', 'Add a seller', 'Send invitation', 'Cancel']];
+  const dBad = dCopy.filter((c) => propOf(dOf(c[0]), 'Title') !== c[1] || textsOf(pri(dOf(c[0]))).join() !== c[2] || (c[3] !== null && textsOf(sec(dOf(c[0]))).join() !== c[3]));
+  check(dBad.length === 0, label + ': D4, D5 and D6 carry the ux.md titles and button labels (dialog.reject, dialog.suspend, dialog.add-seller; the read-only D4 title is a sample)' + (dBad.length ? ': ' + dBad.map((c) => c[0]).join(', ') : ''));
   const bodyOf = (n) => instMain(dOf(n).findOne((x) => x.name === 'content'));
   check(['D4 Reject', 'D4 Reject · Error', 'D5 Suspend', 'D4 View reason', 'D6 Add seller'].map(bodyOf).join('|') === ['Template body · D4 Reject', 'Template body · D4 Reject (error)', 'Template body · D5 Suspend', 'Template body · D4 View reason', 'Template body · D6 Add seller'].join('|'), label + ': each dialog holds its template body in the Content slot');
   const rejectBody = compOf(M, 'Template body · D4 Reject'), errBody = compOf(M, 'Template body · D4 Reject (error)');
   const fieldOf = (b) => b.findOne((x) => x.type === 'INSTANCE' && x.name === 'field-reason-for-the-seller');
-  check(fieldOf(rejectBody) && /State=Default/.test(instMain(fieldOf(rejectBody).findOne((x) => x.name === 'control'))) && fieldOf(rejectBody).findOne((x) => x.name === 'control')._main.parent.name === 'Textarea' && propOf(fieldOf(rejectBody), 'Show counter') === true && textsOf(rejectBody).includes('Reason for the seller') && textsOf(rejectBody).some((t) => /^The shop owner sees this in an email/.test(t)), label + ': D4 has a Textarea "Reason for the seller" with its helper and the counter');
+  check(fieldOf(rejectBody) && /State=Default/.test(instMain(fieldOf(rejectBody).findOne((x) => x.name === 'control'))) && fieldOf(rejectBody).findOne((x) => x.name === 'control')._main.parent.name === 'Textarea' && propOf(fieldOf(rejectBody), 'Show counter') === true && propOf(fieldOf(rejectBody), 'Counter') === '0 / 1000' && textsOf(rejectBody).includes('Reason for the seller') && textsOf(rejectBody).includes('The shop owner sees this in an email and when they sign in. Say what was wrong and what to change. Don’t add internal notes.'), label + ': D4 has a Textarea "Reason for the seller" with the full helper and the counter');
+  const d5 = compOf(M, 'Template body · D5 Suspend');
+  check(textsOf(d5)[0] === 'Everyone on the seller’s team is signed out and can’t sign in until you lift the suspension.' && fieldOf(d5) && propOf(fieldOf(d5), 'Show error') === false, label + ': D5 states the consequence first, then asks for the reason as D4 does');
   check(/State=Error/.test(instMain(fieldOf(errBody).findOne((x) => x.name === 'control'))) && propOf(fieldOf(errBody), 'Show error') === true && textsOf(errBody).includes('Write a reason before you continue.'), label + ': the D4 error state shows "Write a reason before you continue." with the Textarea in State=Error');
   const vr = compOf(M, 'Template body · D4 View reason');
-  check(vr.findOne((x) => x.type === 'INSTANCE' && x._main && x._main.name === 'ReasonQuote') && textsOf(vr).includes('Written by') && textsOf(vr).includes('Layla Haddad'), label + ': the read-only D4 shows the reason (ReasonQuote), its date and its author');
+  const rq = vr.findOne((x) => x.type === 'INSTANCE' && x._main && x._main.name === 'ReasonQuote');
+  check(rq && propOf(rq, 'Label') === 'Reason from MondaPac' && propOf(rq, 'Date') === 'Written on 3 Oct 2026' && textsOf(vr).includes('Written by') && textsOf(vr).includes('Layla Haddad'), label + ': the read-only D4 shows the reason (ReasonQuote "Reason from MondaPac", "Written on {date}") and its author');
   const d6 = compOf(M, 'Template body · D6 Add seller');
   check(textsOf(d6).includes('Owner’s name') && !textsOf(d6).includes('Seller name') && textsOf(d6).includes('The shop owner’s own name, not the business name. They add the store and business names when they set up.') && textsOf(d6).includes('We’ll email them a link to choose their own password. You never see or set it.') && textsOf(d6).includes('The account still needs approval after they accept.'), label + ': D6 asks for the "Owner’s name" (Hadi) and the email, with the password and approval notes');
   const sh = F('Dialog sheet · Reject (phone)'); const shd = sh.findOne((x) => x.type === 'INSTANCE' && /Layout=Sheet/.test(instMain(x)));
@@ -558,17 +585,26 @@ function state183(M, label) {
   const counterOf = (f) => (f.findOne((x) => x.type === 'TEXT' && x.name === 'selected-count') || {}).characters;
   const cust = ed(EDITOR_ADMIN[0]); const pr = permRowsOf(cust);
   const st = (i) => instMain(i).replace(/, /g, ' ');
-  check(pr.length === 14 && counterOf(cust) === '3 of 14 permissions selected' && pr.filter((i) => /Value=Checked/.test(instMain(i))).length === 3, label + ': the admin custom role shows the 14 catalogue rows and "3 of 14 permissions selected"');
+  check(pr.length === 14 && counterOf(cust) === '4 of 14 permissions selected' && pr.filter((i) => /Value=Checked/.test(instMain(i))).length === 4, label + ': the admin custom role shows the 14 catalogue rows and "4 of 14 permissions selected"');
   const prot = pr.filter((i) => propOf(i, 'Show badge') === true);
-  check(prot.length === 5 && prot.every((i) => /State=Disabled/.test(instMain(i)) && propOf(i, 'Description') === PROTECTED_ADMIN_COPY) && pr.filter((i) => propOf(i, 'Description') === NOT_HELD_COPY).every((i) => /Value=Unchecked, State=Disabled/.test(instMain(i))) && pr.filter((i) => propOf(i, 'Description') === NOT_HELD_COPY).length === 2, label + ': 5 protected rows (badge, disabled, "' + PROTECTED_ADMIN_COPY + '") and 2 rows the admin does not hold (disabled with the reason)');
+  const rowOf = (rows, lbl) => rows.filter((i) => propOf(i, 'Label') === lbl)[0];
+  check(prot.length === 5 && prot.every((i) => /State=Disabled/.test(instMain(i)) && propOf(i, 'Description') === PROTECTED_ADMIN_COPY), label + ': 5 protected rows (badge, disabled, "' + PROTECTED_ADMIN_COPY + '")');
+  // R1 both ways: a permission the admin does not hold can be neither given nor taken away, so a ticked one stays ticked (only Duplicate drops it).
+  for (const f of [cust, ed(EDITOR_ADMIN[4])]) {
+    const addRow = rowOf(permRowsOf(f), 'Add sellers'), deact = rowOf(permRowsOf(f), 'Deactivate customer accounts');
+    check(/Value=Checked, State=Disabled/.test(instMain(addRow)) && propOf(addRow, 'Description') === NOT_HELD_CHANGE_COPY && /Value=Unchecked, State=Disabled/.test(instMain(deact)) && propOf(deact, 'Description') === NOT_HELD_COPY && permRowsOf(f).filter((i) => /State=Disabled/.test(instMain(i))).length === 7, label + ': ' + f.name + ': a ticked permission the admin does not hold stays ticked and locked ("' + NOT_HELD_CHANGE_COPY + '"); an unticked one is locked with "' + NOT_HELD_COPY + '"');
+  }
   const sel = cust.findAll((x) => x.type === 'INSTANCE' && x.name === 'select-all-checkbox');
-  check(sel.length === 5 && sel.map((c) => /Value=(\w+)/.exec(instMain(c))[1]).join() === 'Indeterminate,Unchecked,Indeterminate,Unchecked,Indeterminate' && textsOf(cust).includes('Select all in Seller access'), label + ': each resource card has "Select all in {group}" with a three-state checkbox (' + sel.map((c) => /Value=(\w+)/.exec(instMain(c))[1]).join(', ') + ')');
+  check(sel.length === 5 && sel.map((c) => /Value=(\w+)/.exec(instMain(c))[1]).join() === 'Indeterminate,Unchecked,Checked,Unchecked,Checked' && sel.every((c) => /State=Default/.test(instMain(c))) && textsOf(cust).includes('Select all in Seller access'), label + ': each resource card has "Select all in {group}" with a three-state checkbox counted over the rows the admin can give (' + sel.map((c) => /Value=(\w+)/.exec(instMain(c))[1]).join(', ') + ')');
+  const back = cust.findOne((x) => x.type === 'INSTANCE' && x.name === 'back'); const tr = (f) => f.findOne((x) => x.name === 'title-row');
+  const h1Badge = (f) => [tr(f).children[0].characters, propOf(tr(f).children[1], 'Label')].join(' / ');
+  check(back && propOf(back, 'Label') === 'Roles' && /Variant=Ghost/.test(instMain(back)) && h1Badge(cust) === 'Content editor / Custom' && h1Badge(ed(EDITOR_ADMIN[3])) === 'Copy of Seller reviewer / Custom' && ed(EDITOR_ADMIN[3]).findOne((x) => x.type === 'INSTANCE' && x.name === 'field-role-name') && textsOf(ed(EDITOR_ADMIN[3]).findOne((x) => x.name === 'field-role-name')).includes('Copy of Seller reviewer'), label + ': the editor has the "Roles" back link (Ghost), the role name as H1 with its type badge, and the duplicate is named "Copy of Seller reviewer"');
   const bar = (f) => f.findOne((x) => x.name === 'Action bar');
   check(bar(cust) && textsOf(bar(cust)).join() === 'Save role,Cancel' && bar(cust).parent.name === 'Column' && bar(cust).parent.children[bar(cust).parent.children.length - 1] === bar(cust) && textsOf(cust).includes('Roles') && textsOf(cust).includes('New features are never added to a custom role automatically. You choose when to add them.') && cust.findOne((x) => x.name === 'Content column').width === 760, label + ': the custom role has the back link, the R10 line, a 760 px content column and the Save role / Cancel bar at the end of the page');
   const dft = ed(EDITOR_ADMIN[1]), sys = ed(EDITOR_ADMIN[2]);
   check([dft, sys].every((f) => permRowsOf(f).length === 14 && permRowsOf(f).every((i) => /State=Read-only/.test(instMain(i))) && !bar(f) && !f.findOne((x) => x.name === 'select-all-checkbox') && !counterOf(f)) && permRowsOf(sys).every((i) => /Value=Checked/.test(instMain(i))) && textsOf(dft).includes('Duplicate') && textsOf(dft).includes('Default role from MondaPac.') && textsOf(sys).includes('System role.'), label + ': Default and System roles are read-only (no bar, no Select all), with their banners; Default offers Duplicate and System has every permission');
   const dup = ed(EDITOR_ADMIN[3]);
-  check(textsOf(dup).includes('Some permissions weren’t copied because you can’t give them.') && dup.findOne((x) => x.name === 'banner').findOne((x) => x.name === 'body').visible === false && permRowsOf(dup).filter((i) => propOf(i, 'Label') === 'Add sellers').every((i) => /Value=Unchecked, State=Disabled/.test(instMain(i)) && propOf(i, 'Description') === NOT_HELD_COPY) && counterOf(dup) === '3 of 14 permissions selected', label + ': Duplicate names the copy, says why some permissions were not copied and leaves them unticked with the reason');
+  check(textsOf(dup).includes('Some permissions weren’t copied because you can’t give them.') && dup.findOne((x) => x.name === 'banner').findOne((x) => x.name === 'body').visible === false && permRowsOf(dup).filter((i) => propOf(i, 'Label') === 'Add sellers').every((i) => /Value=Unchecked, State=Disabled/.test(instMain(i)) && propOf(i, 'Description') === NOT_HELD_COPY) && counterOf(dup) === '3 of 14 permissions selected' && permRowsOf(dup).filter((i) => /Value=Checked/.test(instMain(i))).length === 3, label + ': Duplicate names the copy, says why some permissions were not copied and leaves them unticked with the reason');
   const er = ed(EDITOR_ADMIN[4]);
   check(textsOf(er).includes('A role with this name already exists.') && instsOf(er, /State=Error/).some((i) => i.name === 'control'), label + ': Errors shows "A role with this name already exists." under the name field');
   const sc = ed(EDITOR_SELLER[0]); const sr = permRowsOf(sc);
@@ -1097,8 +1133,7 @@ async function updateScenario(label, opts, from) {
     if (adminHost.type === 'SECTION') adminHost.resizeWithoutConstraints(adminHost.width, mover.y + mover.height + 240);
     load(Q, CODE);
     const before = allNodes(Q); const ids0 = new Set(before.map((n) => n.id));
-    const snap = (n) => n.name + '|' + (n.type === 'TEXT' ? n.characters : '');
-    const snap0 = new Map(before.map((n) => [n.id, snap(n)]));
+    const snap0 = new Map(before.map((n) => [n.id, fullSnap(n)]));
     const pos0 = posOf(Q);
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.2 file ' + tag13 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
@@ -1110,8 +1145,9 @@ async function updateScenario(label, opts, from) {
     state183(Q, '1.8.2 file updated ' + tag13);
     const gone = [...ids0].filter((id) => !Q.byId.has(id));
     check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
-    const changed = before.filter((n) => Q.byId.has(n.id) && snap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
-    check(changed.length === 0, 'no existing layer was renamed or had its text changed, apart from the cover version and date (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
+    // Every property that matters, on every existing layer: only the cover version and date, and the size and place of a Starter section, may change.
+    const changed = before.filter((n) => Q.byId.has(n.id) && fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n));
+    check(changed.length === 0, 'no existing layer changed (type, name, parent, order, place, size, visibility, paints, bindings, sizing, properties, text), apart from the cover version and date, the changelog table and Starter section bounds (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
     const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
     check(moved.every((n) => n.type === 'SECTION' && add13.some((l) => l.indexOf('section ' + n.name + ' moved ') === 0)) && mover.x + ',' + mover.y === moverAt, 'no existing frame moved (the hand-placed one included); only Starter sections that the growth pushed are moved, and reported (' + moved.length + ')');
     const fresh = ADMIN_183.map((n) => frameNamed(Q, n)[0]).concat(BODIES_183.map((n) => compOf(Q, n)));
@@ -1119,9 +1155,10 @@ async function updateScenario(label, opts, from) {
     const freshTops = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id)).map((n) => n.name);
     const okTops = new Set(ADMIN_183.concat(SELLER_183, BODIES_183, ['Row']));
     check(freshTops.every((n) => okTops.has(n)), 'new layers are only the 1.8.3 frames, their template bodies and the changelog row (' + freshTops.length + ')');
-    const n13 = allNodes(Q).length;
+    const all13 = allNodes(Q); const snap13 = new Map(all13.map((n) => [n.id, fullSnap(n)]));
     r = await send(Q, { type: 'update' });
-    check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === n13, 'a second run adds and moves nothing');
+    const again = allNodes(Q).filter((n) => !snap13.has(n.id) || fullSnap(n) !== snap13.get(n.id));
+    check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === all13.length && again.length === 0, 'a second run adds, changes and moves nothing (' + again.length + (again.length ? ': ' + snapDiff(again, snap13) : '') + ')');
     r = await send(Q, { type: 'audit' });
     check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update' + (r.done ? ': ' + r.done.report.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
     r = await send(Q, { type: 'export', version: SPEC_VERSION });
@@ -1142,6 +1179,34 @@ async function updateScenario(label, opts, from) {
     const n2 = allNodes(Q2).length;
     r = await send(Q2, { type: 'update' });
     check(!r.err && r.done.added.length === 0 && allNodes(Q2).length === n2, 'a second run adds nothing');
+    const guards = [
+      ['a Textarea that is not the plugin\'s', (G) => setOf(G, 'Textarea').setPluginData('mondapac-ds', ''), /they need the plugin's .*\bTextarea\b/],
+      ['a ReasonQuote that is not the plugin\'s', (G) => compOf(G, 'ReasonQuote').setPluginData('mondapac-ds', ''), /they need the plugin's .*\bReasonQuote\b/],
+      ['a Dialog without its Sheet variant', (G) => { setOf(G, 'Dialog').children.find((c) => c.name === 'Size=Sm, Tone=Destructive, Layout=Sheet').name = 'My sheet'; }, /they need the plugin's .*Dialog variants \(.*Layout=Sheet/],
+      // (renamed Loading variants are added back by the 1.8.0 step, so only a TableCell the plugin cannot extend leaves them out)
+      ['a TableCell that is not the plugin\'s, so without its Loading variants', (G) => setOf(G, 'TableCell').setPluginData('mondapac-ds', ''), /they need the plugin's .*\bTableCell\b/],
+    ];
+    for (const g of guards) {
+      const G = start(STARTER, CODE_182);
+      r = await send(G, { type: 'build' }); load(G, CODE); g[1](G);
+      r = await send(G, { type: 'update' }); rp = r.done ? r.done.report : [];
+      const line = rp.find((l) => /^ℹ skipped Panel 1\.8\.3 templates: /.test(l)) || '';
+      check(!r.err && g[2].test(line) && ADMIN_183.concat(SELLER_183).every((n) => frameNamed(G, n).length === 0) && BODIES_183.every((n) => !compOf(G, n)), g[0] + ' holds back every 1.8.3 frame, and the report says why (' + (r.err ? r.err.message : line) + ')');
+    }
+  }
+  {
+    // a 1.8.3 file that lost some frames and a template body: Update library puts back exactly those, and reuses the bodies that are there
+    const Q = start(STARTER, CODE_182);
+    r = await send(Q, { type: 'build' }); load(Q, CODE);
+    r = await send(Q, { type: 'update' });
+    const lost = [P1 + ' · Empty', 'Dialogs · Sellers · Admin', 'Shared · Role editor · Seller · Owner'];
+    lost.forEach((n) => frameNamed(Q, n)[0].remove()); compOf(Q, 'Template body · D6 Add seller').remove();
+    const keep = new Set(allNodes(Q).map((n) => n.id));
+    r = await send(Q, { type: 'update' });
+    const add = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
+    check(!r.err && add.join('|') === 'templates Panel 1.8.3 · Admin (2 frames, 1 template bodies)|templates Panel 1.8.3 · Seller (1 frames)' && lost.every((n) => frameNamed(Q, n).length === 1) && ADMIN_183.concat(SELLER_183).every((n) => frameNamed(Q, n).length === 1), 'Update library puts back exactly the lost frames and the lost body (' + (r.err ? r.err.message : add.join(', ')) + ')');
+    const bodies = allNodes(Q).filter((n) => n.type === 'COMPONENT' && BODIES_183.includes(n.name)).map((n) => n.name).sort();
+    check(bodies.join('|') === BODIES_183.slice().sort().join('|') && instMain(frameNamed(Q, 'Dialogs · Sellers · Admin')[0].findAll((x) => x.type === 'INSTANCE' && x.name === 'D4 Reject')[0].findOne((x) => x.name === 'content')) === 'Template body · D4 Reject' && [...keep].every((id) => Q.byId.has(id)), 'each template body exists once: the rebuilt dialogs reuse the bodies that are there, and nothing else was removed');
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));
