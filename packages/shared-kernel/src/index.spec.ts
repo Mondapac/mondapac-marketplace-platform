@@ -4,8 +4,10 @@ import * as kernel from './index';
 import * as testing from './testing';
 
 describe('the public surface of the kernel', () => {
-  it('exports exactly the slice 0, 1b and 1c names from the main entry', () => {
+  it('exports exactly the slice 0, 1b, 1c and catalog P1 names from the main entry', () => {
     expect(Object.keys(kernel).sort()).toEqual([
+      'ATTRIBUTE_DATA_TYPES',
+      'ATTRIBUTE_ISSUE_CODES',
       'ContextMismatchError',
       'MAX_AGGREGATE_VERSION',
       'POPULATIONS',
@@ -22,8 +24,10 @@ describe('the public surface of the kernel', () => {
       'parseCorrelationId',
       'parseId',
       'parseMarketId',
+      'parsePlainText',
       'parseTenantId',
       'uuidV7',
+      'validateAttributeValues',
     ]);
   });
 

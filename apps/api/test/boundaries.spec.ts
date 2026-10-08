@@ -125,6 +125,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'application-does-not-know-delivery',
         'authenticated-actor-is-built-by-the-authenticator',
+        'catalog-imports-neither-pricing-nor-inventory',
         'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
         'database-driver-only-in-infrastructure',
@@ -161,6 +162,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
         'authenticated-actor-is-built-by-the-authenticator: src/modules/identity/application/mints-authenticated-actor.ts',
         'authenticated-actor-is-built-by-the-authenticator: src/platform/mints-authenticated-actor.ts',
+        'catalog-imports-neither-pricing-nor-inventory: src/modules/catalog/application/imports-inventory.ts',
+        'catalog-imports-neither-pricing-nor-inventory: src/modules/catalog/application/imports-pricing.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
@@ -740,6 +743,13 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
     it('rejects hardcoded market identifiers in a module', () => {
       const messages = textsIn('src/modules/alpha/application/hardcoded-market.ts');
+
+      expect(messages).toHaveLength(2);
+      expect(messages.every((message) => /Market or vertical identifier/.test(message))).toBe(true);
+    });
+
+    it('rejects a hardcoded certification type name in catalog, in a string and a template', () => {
+      const messages = textsIn('src/modules/catalog/application/hardcoded-certification-type.ts');
 
       expect(messages).toHaveLength(2);
       expect(messages.every((message) => /Market or vertical identifier/.test(message))).toBe(true);
