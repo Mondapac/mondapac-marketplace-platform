@@ -161,6 +161,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CatalogValidationFailed: { noCustomerText: 'refusal code with fixed paths' },
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
+  DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },
   FamilyAttribute: { noCustomerText: 'internal code and flags' },
   FamilyGroup: { noCustomerText: 'internal code; the panel names a group by its own label key' },
   FreezeInput: { noCustomerText: 'working input of the freeze; its texts are checked as content' },
