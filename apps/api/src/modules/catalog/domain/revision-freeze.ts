@@ -40,6 +40,9 @@ const isText = (value: unknown): value is string => typeof value === 'string';
 
 const isNonBlank = (value: unknown): value is string => isText(value) && value.trim().length > 0;
 
+/** `=` and `;` build the option key, so a code or value holding one could collide with another set (Hassan L4). */
+const OPTION_SEPARATORS = /[=;]/;
+
 const NO_PROTOTYPE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /** The canonical string of option values: codes sorted, `code=value` joined by `;`. */
@@ -172,7 +175,12 @@ function parseVariants(
       return;
     }
     for (const [code, value] of Object.entries(options)) {
-      if (NO_PROTOTYPE_KEYS.has(code) || !isNonBlank(value)) {
+      if (
+        NO_PROTOTYPE_KEYS.has(code) ||
+        !isNonBlank(value) ||
+        OPTION_SEPARATORS.test(code) ||
+        OPTION_SEPARATORS.test(value)
+      ) {
         issues.push({ path: `${path}.optionValues.${code}`, code: 'invalid' });
         return;
       }

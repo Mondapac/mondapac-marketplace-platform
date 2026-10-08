@@ -6,6 +6,7 @@ import { configurableProductType } from './product-types/configurable';
 import { simpleProductType } from './product-types/simple';
 
 let MARKET = 'ZZ' as MarketId;
+let MAX_VARIANTS = 3;
 const FIXTURE_MARKETS = [
   { code: 'AU', maxVariants: 100 },
   { code: 'ZZ', maxVariants: 3 },
@@ -80,16 +81,17 @@ const submit = (
     authorKind: 'seller',
     replacePending: false,
     revisionVariantIds: product.liveVariants.map((variant) => variant.id),
-    maxVariants: 100,
+    maxVariants: MAX_VARIANTS,
     now: T1,
     ...input,
   });
 
 const types = (product: Product): string[] => product.pendingEvents.map((event) => event.type);
 
-describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code }) => {
+describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, maxVariants }) => {
   beforeEach(() => {
     MARKET = code as MarketId;
+    MAX_VARIANTS = maxVariants;
   });
 
   describe('first publish', () => {
@@ -217,7 +219,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code }) =
       const product = simple();
       submit(product, { revisionId: rev(1) });
       submit(product, { revisionId: rev(2), outcome: PENDING });
-      product.publishTaxOverride({ revisionId: rev(3), now: T2 });
+      product.publishTaxOverride({ revisionId: rev(3), fromRevisionId: rev(1), now: T2 });
       const result = product.approveRevision({
         revisionId: rev(2),
         baseRevisionId: rev(1),
@@ -271,7 +273,11 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code }) =
       const product = simple();
       submit(product, { revisionId: rev(1) });
       submit(product, { revisionId: rev(2), outcome: PENDING });
-      const result = product.publishTaxOverride({ revisionId: rev(3), now: T2 });
+      const result = product.publishTaxOverride({
+        revisionId: rev(3),
+        fromRevisionId: rev(1),
+        now: T2,
+      });
 
       expect(result.ok).toBe(true);
       expect(product.state).toMatchObject({
@@ -291,13 +297,21 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code }) =
 
     it('needs a published revision', () => {
       const product = simple();
-      const result = product.publishTaxOverride({ revisionId: rev(1), now: T1 });
+      const result = product.publishTaxOverride({
+        revisionId: rev(1),
+        fromRevisionId: rev(1),
+        now: T1,
+      });
       expect(result).toEqual({ ok: false, error: { code: 'product.no-published-revision' } });
     });
 
     it('is not available on a PLATFORM product', () => {
       const product = simple('PLATFORM');
-      const result = product.publishTaxOverride({ revisionId: rev(1), now: T1 });
+      const result = product.publishTaxOverride({
+        revisionId: rev(1),
+        fromRevisionId: rev(1),
+        now: T1,
+      });
       expect(result).toEqual({ ok: false, error: { code: 'product.seller-only' } });
     });
   });
@@ -394,6 +408,134 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code }) =
         ok: false,
         error: { code: 'product.not-editable' },
       });
+    });
+  });
+
+  describe('review follow-ups (Sajad)', () => {
+    it('refuses a published outcome while a revision is pending unless it replaces it (L3)', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1), outcome: PENDING });
+      expect(submit(product, { revisionId: rev(2) })).toEqual({
+        ok: false,
+        error: { code: 'revision.pending-exists' },
+      });
+    });
+
+    it('announces no previous revision on a first publish (L3)', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1) });
+      const published = product.pendingEvents.find(
+        (event) => event.type === 'catalog.product-revision-published.v1',
+      );
+      expect(published?.payload).toMatchObject({ revisionId: rev(1), previousRevisionId: null });
+    });
+
+    it('applies the Market variant limit at submit (L1)', () => {
+      const product = configurableWith(4);
+      const result = submit(product, { revisionId: rev(1) });
+      if (maxVariants === 3) {
+        expect(result).toEqual({ ok: false, error: { code: 'variant.limit-reached', max: 3 } });
+      } else {
+        expect(result.ok).toBe(true);
+      }
+    });
+
+    it('retires and announces a variant an approved revision leaves out (L2)', () => {
+      const product = configurableWith(2);
+      submit(product, { revisionId: rev(1) });
+      submit(product, { revisionId: rev(2), outcome: PENDING, revisionVariantIds: [v(1)] });
+      const result = product.approveRevision({
+        revisionId: rev(2),
+        baseRevisionId: rev(1),
+        revisionVariantIds: [v(1)],
+        maxVariants: MAX_VARIANTS,
+        now: T2,
+      });
+      expect(result.ok).toBe(true);
+      expect(product.state.variants.map((variant) => variant.state)).toEqual([
+        'published',
+        'retired',
+      ]);
+      const published = product.pendingEvents.filter(
+        (event) => event.type === 'catalog.product-revision-published.v1',
+      );
+      expect(published.at(-1)?.payload).toMatchObject({
+        revisionId: rev(2),
+        previousRevisionId: rev(1),
+      });
+      expect(
+        product.pendingEvents.filter((event) => event.type === 'catalog.variant-removed.v1'),
+      ).toHaveLength(1);
+    });
+
+    it('leaves a proposed variant alone at a tax override and emits no submit event (M2)', () => {
+      const product = configurableWith(1);
+      submit(product, { revisionId: rev(1) });
+      product.addVariant(v(2), MAX_VARIANTS, T1, 'seller');
+      const before = product.pendingEvents.length;
+      expect(
+        product.publishTaxOverride({ revisionId: rev(2), fromRevisionId: rev(1), now: T2 }).ok,
+      ).toBe(true);
+      expect(product.state.variants.map((variant) => variant.state)).toEqual([
+        'published',
+        'proposed',
+      ]);
+      expect(product.pendingEvents.slice(before).map((event) => event.type)).toEqual([
+        'catalog.product-revision-published.v1',
+      ]);
+    });
+
+    it('refuses a tax override on a product that is not published (M2)', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1), outcome: PENDING });
+      expect(
+        product.publishTaxOverride({ revisionId: rev(2), fromRevisionId: rev(1), now: T2 }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'product.no-published-revision' },
+      });
+    });
+
+    it('lets an unpublished product replace its pending revision (L6)', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1), outcome: PENDING });
+      const result = submit(product, {
+        revisionId: rev(2),
+        outcome: PENDING,
+        replacePending: true,
+      });
+      expect(result.ok).toBe(true);
+      expect(product.state.status).toBe('unpublished');
+    });
+  });
+
+  describe('review follow-ups (Hassan)', () => {
+    it('refuses an admin-authored outcome from a seller (L1)', () => {
+      const result = submit(simple(), {
+        revisionId: rev(1),
+        outcome: {
+          outcome: 'published',
+          publishKind: 'admin-authored',
+          sensitive: false,
+          reasons: [],
+        },
+      });
+      expect(result).toEqual({ ok: false, error: { code: 'revision.outcome-not-allowed' } });
+    });
+
+    it('binds a tax override to the published revision and a fresh id (L2)', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1) });
+      submit(product, { revisionId: rev(2), outcome: PENDING });
+      expect(
+        product.publishTaxOverride({ revisionId: rev(3), fromRevisionId: rev(2), now: T2 }),
+      ).toEqual({ ok: false, error: { code: 'revision.base-changed' } });
+      expect(
+        product.publishTaxOverride({ revisionId: rev(2), fromRevisionId: rev(1), now: T2 }),
+      ).toEqual({ ok: false, error: { code: 'revision.id-taken' } });
+      expect(
+        product.publishTaxOverride({ revisionId: rev(1), fromRevisionId: rev(1), now: T2 }),
+      ).toEqual({ ok: false, error: { code: 'revision.id-taken' } });
     });
   });
 });

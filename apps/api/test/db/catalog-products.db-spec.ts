@@ -222,7 +222,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       author_kind: 'seed',
       created_at: T0.toString(),
     });
-    const revisionIds = [uuid7(), uuid7()] as Id<'ProductRevision'>[];
+    const revisionIds = [uuid7(), uuid7(), uuid7(), uuid7()] as Id<'ProductRevision'>[];
     for (const [index, id] of revisionIds.entries()) {
       await insertRow('product_revisions', {
         id,
@@ -293,6 +293,52 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       pendingRevisionId: revisionIds[1],
     });
     expect(last.state.pendingSubmittedAt?.toString()).toBe(T1.toString());
+
+    // A tax override moves the published pointer and leaves the pending one (AC 36).
+    expect(
+      last.publishTaxOverride({
+        revisionId: revisionIds[2]!,
+        fromRevisionId: revisionIds[0]!,
+        now: T1,
+      }).ok,
+    ).toBe(true);
+    await inUnit(() => repository.save(market, last));
+    const overridden = (await inUnit(() => repository.findById(market, productId)))!;
+    expect(overridden.state).toMatchObject({
+      publishedRevisionId: revisionIds[2],
+      pendingRevisionId: revisionIds[1],
+    });
+
+    // Replace the pending revision, then approve it: the pending pair clears together.
+    const replaced = overridden.submitRevision({
+      revisionId: revisionIds[3]!,
+      baseRevisionId: revisionIds[2]!,
+      outcome: { outcome: 'pending', publishKind: null, sensitive: true, reasons: ['name'] },
+      authorKind: 'seller',
+      replacePending: true,
+      revisionVariantIds: [variantId],
+      maxVariants: 5,
+      now: T1,
+    });
+    expect(replaced.ok).toBe(true);
+    await inUnit(() => repository.save(market, overridden));
+    const toApprove = (await inUnit(() => repository.findById(market, productId)))!;
+    expect(
+      toApprove.approveRevision({
+        revisionId: revisionIds[3]!,
+        baseRevisionId: revisionIds[2]!,
+        revisionVariantIds: [variantId],
+        maxVariants: 5,
+        now: T1,
+      }).ok,
+    ).toBe(true);
+    await inUnit(() => repository.save(market, toApprove));
+    const approved = (await inUnit(() => repository.findById(market, productId)))!;
+    expect(approved.state).toMatchObject({
+      publishedRevisionId: revisionIds[3],
+      pendingRevisionId: null,
+      pendingSubmittedAt: null,
+    });
   });
 
   it('saves a discard of a stored Configurable draft whose several events take consecutive versions', async () => {

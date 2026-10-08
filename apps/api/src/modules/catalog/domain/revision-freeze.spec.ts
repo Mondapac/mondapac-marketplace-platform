@@ -146,6 +146,29 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       ).toContainEqual({ path: 'variants', code: 'too-many' });
     });
 
+    it('refuses option separators and prototype keys in option sets and labels (L3, L4)', () => {
+      const bad = (entry: Record<string, unknown>) =>
+        issues(configurable([{ variantId: v(1), ...entry }]));
+      expect(bad({ optionValues: { a: 'b;c=d' } })).toContainEqual({
+        path: 'variants.0.optionValues.a',
+        code: 'invalid',
+      });
+      expect(bad({ optionValues: { 'a=b': 'c' } })).toContainEqual({
+        path: 'variants.0.optionValues.a=b',
+        code: 'invalid',
+      });
+      expect(bad({ optionValues: JSON.parse('{"__proto__": "x"}') })).toContainEqual({
+        path: 'variants.0.optionValues.__proto__',
+        code: 'invalid',
+      });
+      expect(
+        bad({ optionValues: { a: 'b' }, labels: JSON.parse('{"constructor": "x"}') }),
+      ).toContainEqual({
+        path: 'variants.0.labels.constructor',
+        code: 'invalid',
+      });
+    });
+
     it('requires option values', () => {
       expect(issues(configurable([{ variantId: v(1) }]))).toContainEqual({
         path: 'variants.0.optionValues',

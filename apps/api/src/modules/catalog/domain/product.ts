@@ -104,6 +104,8 @@ export type ProductRefusal =
   | { readonly code: 'variant.not-proposed' }
   | { readonly code: 'variant.none' }
   | { readonly code: 'revision.pending-exists' }
+  | { readonly code: 'revision.id-taken' }
+  | { readonly code: 'revision.outcome-not-allowed' }
   | { readonly code: 'revision.base-changed' }
   | { readonly code: 'review.not-current-revision' }
   | { readonly code: 'product.no-published-revision' };
@@ -385,6 +387,10 @@ export class Product {
     const refusal = authorRefusal(state.scope, input.authorKind);
     if (refusal !== null) return err(refusal);
     if (!EDITABLE_STATUSES.includes(state.status)) return err({ code: 'product.not-editable' });
+    if (input.outcome.outcome === 'published' && input.outcome.publishKind === 'admin-authored') {
+      // Only an admin's own revision publishes as admin-authored (Hassan L1).
+      if (input.authorKind !== 'admin') return err({ code: 'revision.outcome-not-allowed' });
+    }
     if (input.baseRevisionId !== state.publishedRevisionId) {
       return err({ code: 'revision.base-changed' });
     }
@@ -452,12 +458,23 @@ export class Product {
    */
   publishTaxOverride(input: {
     readonly revisionId: Id<'ProductRevision'>;
+    /** The revision the override content was built from; it must be the published one (Hassan L2). */
+    readonly fromRevisionId: Id<'ProductRevision'>;
     readonly now: Temporal.Instant;
   }): Result<void, ProductRefusal> {
     const state = this.#state;
     if (state.scope !== 'SELLER') return err({ code: 'product.seller-only' });
     if (state.status !== 'published' || state.publishedRevisionId === null) {
       return err({ code: 'product.no-published-revision' });
+    }
+    if (input.fromRevisionId !== state.publishedRevisionId) {
+      return err({ code: 'revision.base-changed' });
+    }
+    if (
+      input.revisionId === state.publishedRevisionId ||
+      input.revisionId === state.pendingRevisionId
+    ) {
+      return err({ code: 'revision.id-taken' });
     }
     const held = this.liveVariants
       .filter((variant) => variant.state === 'published')
