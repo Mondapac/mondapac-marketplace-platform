@@ -27,6 +27,21 @@ describe('ExtensionPointRegistry', () => {
     expect(registry.get(POINT, 'special-type')).toBe(special);
     expect(registry.get(POINT, 'missing')).toBeUndefined();
     expect(registry.codes(POINT)).toEqual(['simple', 'special-type']);
+    expect(registry.registrantOf(POINT, 'special-type')).toEqual({ vertical: 'some-vertical' });
+    expect(registry.registrantOf(POINT, 'simple')).toEqual({ module: 'catalog' });
+  });
+
+  it('freezes what it stores, so a registered handler cannot be swapped afterwards', () => {
+    const registry = open();
+    const handler = { typeCode: 'simple' };
+    registry.register(POINT, 'simple', handler, { module: 'catalog' });
+    registry.seal();
+
+    expect(Object.isFrozen(registry.get(POINT, 'simple'))).toBe(true);
+    expect(() => {
+      'use strict';
+      handler.typeCode = 'other';
+    }).toThrow(TypeError);
   });
 
   it('is sealed by the bootstrap hook and then refuses every change', () => {

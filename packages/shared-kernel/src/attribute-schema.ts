@@ -2,6 +2,7 @@ import { err, ok } from './result';
 import type { Result } from './result';
 import type { Id } from './id';
 import { parsePlainText } from './plain-text';
+import type { InvisibleCharacterKind } from './plain-text';
 
 /** A BCP 47 tag of a Market locale, e.g. the Market's default locale. */
 export type Locale = string;
@@ -86,7 +87,13 @@ export type AttributeIssueCode = (typeof ATTRIBUTE_ISSUE_CODES)[number];
 export interface AttributeIssue {
   readonly path: string;
   readonly code: AttributeIssueCode;
+  /** `text.invisible-character` only: where, so a person can delete the character by hand. */
+  readonly offset?: number;
+  readonly character?: InvisibleCharacterKind;
 }
+
+/** The path of a key the schema does not know: the key is seller input and is never echoed. */
+export const UNKNOWN_KEY_PATH = '(unknown)';
 
 export type ValidationResult = Result<true, readonly AttributeIssue[]>;
 
@@ -122,7 +129,10 @@ function checkText(
     issues.push({ path, code: 'attribute.too-long' });
   }
   const plain = parsePlainText(value);
-  if (!plain.ok) issues.push({ path, code: plain.error.code });
+  if (!plain.ok) {
+    const { code, offset, character } = plain.error;
+    issues.push({ path, code, offset, character });
+  }
 }
 
 function isBlank(value: unknown): boolean {
@@ -200,12 +210,12 @@ export function validateAttributeValues(
   const issues: AttributeIssue[] = [];
   const known = new Set(schema.fields.map((field) => field.code));
   for (const code of Object.keys(values).sort()) {
-    if (!known.has(code)) issues.push({ path: code, code: 'attribute.unknown' });
+    if (!known.has(code)) issues.push({ path: UNKNOWN_KEY_PATH, code: 'attribute.unknown' });
   }
   const defaultLocale = locales[0];
 
   for (const field of schema.fields) {
-    const value = values[field.code];
+    const value = Object.hasOwn(values, field.code) ? values[field.code] : undefined;
     const textual = field.dataType === 'text' || field.dataType === 'long-text';
 
     if (field.localizable && textual) {
@@ -218,7 +228,8 @@ export function validateAttributeValues(
       for (const locale of Object.keys(byLocale).sort()) {
         const path = `${field.code}.${locale}`;
         if (!locales.includes(locale)) {
-          issues.push({ path, code: 'attribute.locale-unknown' });
+          // The locale key is seller input: report the field only.
+          issues.push({ path: field.code, code: 'attribute.locale-unknown' });
         } else if (!isBlank(byLocale[locale])) {
           checkText(path, byLocale[locale], field, issues);
         }

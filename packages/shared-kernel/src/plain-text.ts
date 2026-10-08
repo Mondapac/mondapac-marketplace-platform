@@ -22,9 +22,13 @@ export interface PlainTextError {
 const ZWNJ = 0x200c;
 const ZWJ = 0x200d;
 
-// Default_Ignorable_Code_Point includes the bidi isolates and the variation selectors; Bidi_Control
-// is listed too, so that the rule does not depend on the Unicode data version of the runtime.
-const REFUSED = /[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}]/u;
+// Refused in every field: default-ignorable and bidi characters (design 6.3), and, beyond the
+// design's two groups (security review of P1), every other control (C0 and C1, except the line
+// feed, carriage return and tab a long text needs), format character, lone surrogate,
+// noncharacter and the line and paragraph separators. ZWNJ and ZWJ are Cf and are handled apart.
+const REFUSED =
+  /[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cc}\p{Cf}\p{Cs}\p{Noncharacter_Code_Point}\p{Zl}\p{Zp}]/u;
+const ALLOWED_CONTROLS = new Set([0x09, 0x0a, 0x0d]);
 
 // A kernel list keyed by Unicode script, not a Market list (design 6.3): the cursive scripts
 // and the Indic scripts, where ZWNJ and ZWJ steer joining.
@@ -92,7 +96,7 @@ export function parsePlainText(text: string): Result<PlainText, PlainTextError> 
           character: code === ZWNJ ? 'ZWNJ' : 'ZWJ',
         });
       }
-    } else if (REFUSED.test(character)) {
+    } else if (REFUSED.test(character) && !ALLOWED_CONTROLS.has(code)) {
       return err({ code: 'text.invisible-character', offset, character: 'other' });
     }
     offset += character.length;

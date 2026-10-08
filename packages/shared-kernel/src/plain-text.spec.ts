@@ -1,6 +1,30 @@
 import { parsePlainText } from './plain-text';
 
 describe('parsePlainText', () => {
+  it('refuses other controls, format characters, lone surrogates, noncharacters and separators', () => {
+    for (const text of [
+      'a\u0000b',
+      'a\u001Bb',
+      'a\u0085b',
+      'a\u009Bb',
+      'a\u2028b',
+      'a\u2029b',
+      'a\u0600b',
+      'a\uFFF9b',
+      'a\uD800b',
+      'a\uFFFEb',
+    ]) {
+      expect(parsePlainText(text)).toEqual({
+        ok: false,
+        error: { code: 'text.invisible-character', offset: 1, character: 'other' },
+      });
+    }
+  });
+
+  it('keeps the line feed, carriage return and tab of a long text', () => {
+    expect(parsePlainText('line one\r\nline\ttwo').ok).toBe(true);
+  });
+
   it('accepts ordinary text in several scripts, unchanged', () => {
     for (const text of ['Olive oil 500 ml', 'روغن زیتون', 'जैतून का तेल', '', '日本語 テキスト']) {
       expect(parsePlainText(text)).toEqual({ ok: true, value: text });

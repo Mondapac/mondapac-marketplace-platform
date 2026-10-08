@@ -83,7 +83,7 @@ describe('validateAttributeValues', () => {
     const schema = schemaOf(field({ code: 'name', localizable: true }));
     expect(check(schema, { name: { 'zz-ZZ': 'x' } })).toEqual({
       ok: false,
-      error: [{ path: 'name.zz-ZZ', code: 'attribute.locale-unknown' }],
+      error: [{ path: 'name', code: 'attribute.locale-unknown' }],
     });
     expect(check(schema, { name: 'x' })).toEqual({
       ok: false,
@@ -91,7 +91,7 @@ describe('validateAttributeValues', () => {
     });
     expect(check(schema, { other: 'x' })).toEqual({
       ok: false,
-      error: [{ path: 'other', code: 'attribute.unknown' }],
+      error: [{ path: '(unknown)', code: 'attribute.unknown' }],
     });
   });
 
@@ -101,7 +101,12 @@ describe('validateAttributeValues', () => {
       ok: false,
       error: [
         { path: 'name.xx-ZZ', code: 'attribute.too-long' },
-        { path: 'name.yy-ZZ', code: 'text.invisible-character' },
+        {
+          path: 'name.yy-ZZ',
+          code: 'text.invisible-character',
+          offset: 1,
+          character: 'other',
+        },
       ],
     });
   });
@@ -109,6 +114,13 @@ describe('validateAttributeValues', () => {
   it('counts length in characters, not UTF-16 units', () => {
     const schema = schemaOf(field({ code: 'note', bounds: { maxLength: 2 } }));
     expect(check(schema, { note: '\u{1F600}\u{1F600}' }).ok).toBe(true);
+  });
+
+  it('never echoes a key the seller sent', () => {
+    const schema = schemaOf(field({ code: 'name', localizable: true }));
+    const result = check(schema, { '\u202E<b>x</b>': 'v', name: { '\u202Ezz': 'x' } });
+    expect(JSON.stringify(result)).not.toMatch(/202E|<b>|zz/i);
+    expect(result.ok).toBe(false);
   });
 
   it('requires a non-localizable field and treats blank as missing', () => {
@@ -170,5 +182,50 @@ describe('validateAttributeValues', () => {
   it('refuses every option of a select that declares none', () => {
     const schema = schemaOf(field({ code: 'size', dataType: 'select' }));
     expect(check(schema, { size: 's' }).ok).toBe(false);
+  });
+
+  it('reads only own properties of the values', () => {
+    const schema = schemaOf(field({ code: 'constructor', required: true }));
+    expect(check(schema, {})).toEqual({
+      ok: false,
+      error: [{ path: 'constructor', code: 'attribute.required' }],
+    });
+  });
+
+  it('accepts values exactly at the bounds, zero, and calendar edge dates', () => {
+    const schema = schemaOf(
+      field({ code: 'count', dataType: 'integer', required: true, bounds: { min: 0, max: 5 } }),
+      field({ code: 'weight', dataType: 'decimal', bounds: { min: 0, max: 10 } }),
+      field({ code: 'when', dataType: 'date' }),
+    );
+    for (const when of ['2000-02-29', '2028-02-29']) {
+      expect(check(schema, { count: 0, weight: '10', when }).ok).toBe(true);
+    }
+    expect(check(schema, { count: 5, weight: '0', when: '2027-12-31' }).ok).toBe(true);
+    for (const when of ['2100-02-29', '2027-13-01', '2027-00-10', '2027-2-9']) {
+      expect(check(schema, { count: 1, when }).ok).toBe(false);
+    }
+    for (const weight of ['01', '.5', '1e3']) {
+      expect(check(schema, { count: 1, weight }).ok).toBe(false);
+    }
+    expect(check(schema, { count: 2 ** 53 }).ok).toBe(false);
+  });
+
+  it('refuses malformed locale maps and values of the wrong shape', () => {
+    const localized = schemaOf(field({ code: 'name', localizable: true }));
+    expect(check(localized, { name: { 'xx-ZZ': 5 as unknown as string } }).ok).toBe(false);
+    expect(check(localized, { name: ['x'] }).ok).toBe(false);
+    const plain = schemaOf(field({ code: 'name' }));
+    expect(check(plain, { name: { 'xx-ZZ': 'x' } }).ok).toBe(false);
+    const multi = schemaOf(
+      field({
+        code: 'tags',
+        dataType: 'multi-select',
+        required: true,
+        bounds: { options: [{ code: 'a' }] },
+      }),
+    );
+    expect(check(multi, { tags: 'a' }).ok).toBe(false);
+    expect(check(multi, { tags: [] }).ok).toBe(false);
   });
 });

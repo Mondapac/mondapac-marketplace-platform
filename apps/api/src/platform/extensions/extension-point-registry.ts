@@ -23,7 +23,10 @@ const FOLDER_NAME = /^[a-z][a-z0-9-]*$/;
 interface Point {
   readonly owner: string;
   readonly validate: ExtensionValidator<unknown>;
-  readonly implementations: Map<string, unknown>;
+  readonly implementations: Map<
+    string,
+    { readonly implementation: unknown; readonly registrant: Registrant }
+  >;
 }
 
 /**
@@ -79,7 +82,11 @@ export class ExtensionPointRegistry implements OnApplicationBootstrap {
     if (!point.validate(implementation)) {
       throw new ExtensionRegistryError(`"${pointId}/${code}" does not fit the point's interface`);
     }
-    point.implementations.set(code, implementation);
+    // Frozen, so what was validated is what is read (sealing protects the maps, not the objects).
+    point.implementations.set(code, {
+      implementation: Object.freeze(implementation),
+      registrant: Object.freeze({ ...registrant }),
+    });
   }
 
   seal(): void {
@@ -96,7 +103,12 @@ export class ExtensionPointRegistry implements OnApplicationBootstrap {
 
   /** The implementation registered under `code`, or `undefined`. Only after sealing. */
   get<T>(pointId: string, code: string): T | undefined {
-    return this.#pointOf(pointId).implementations.get(code) as T | undefined;
+    return this.#pointOf(pointId).implementations.get(code)?.implementation as T | undefined;
+  }
+
+  /** Who registered the implementation, e.g. which Vertical a type belongs to. Only after sealing. */
+  registrantOf(pointId: string, code: string): Registrant | undefined {
+    return this.#pointOf(pointId).implementations.get(code)?.registrant;
   }
 
   /** Every code registered for the point, sorted. Only after sealing. */
