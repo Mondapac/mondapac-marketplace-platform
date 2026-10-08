@@ -44,8 +44,13 @@ export const MAIL_KEYS = [
   'identity.mail.password-changed.seller.subject',
   'identity.mail.password-changed.seller.heading',
   'identity.mail.password-changed.seller.body',
+  'identity.mail.reviewer-notice.admin.subject',
+  'identity.mail.reviewer-notice.admin.heading',
+  'identity.mail.reviewer-notice.admin.body',
+  'identity.mail.reviewer-notice.admin.action',
   'identity.mail.common.account-line.customer',
   'identity.mail.common.account-line.seller',
+  'identity.mail.common.account-line.admin',
   'identity.mail.common.ignore',
   'identity.mail.common.not-you',
   'identity.mail.common.footer',
@@ -135,16 +140,19 @@ export class CatalogueMailComposer implements IdentityMailComposer {
     // E13 is a notice without a button: "if this wasn't you" in place of "ignore this" (3.4).
     const action =
       mail.template === 'password-changed' ? [] : [`${line(key('action'))}: ${mail.url}`];
-    const closing: MailKey =
+    // E3 answers no request of the reader, so "ignore this" does not fit it (identity design 8.7).
+    const closing: MailKey[] =
       mail.template === 'password-changed'
-        ? 'identity.mail.common.not-you'
-        : 'identity.mail.common.ignore';
+        ? ['identity.mail.common.not-you']
+        : mail.template === 'reviewer-notice'
+          ? []
+          : ['identity.mail.common.ignore'];
     const text = [
       line(key('heading')),
       line(key(body)),
       ...action,
       line(accountLine as MailKey),
-      line(closing),
+      ...closing.map(line),
       line('identity.mail.common.footer'),
     ].join('\n\n');
     return { subject: line(key('subject')), text: `${text}\n` };

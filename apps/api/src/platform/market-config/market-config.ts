@@ -93,10 +93,11 @@ const pageUrl = z
     }
   }, 'must be an absolute https URL (http only for a loopback host) without a fragment, such as "https://panel.example/page"');
 
-/** The origin (`scheme://host[:port]`) of a page URL, or null when it does not parse. */
-function originOf(page: string): string | null {
+/** The origin and the host name of a page URL, or null when it does not parse. */
+function hostOf(page: string): { readonly origin: string; readonly hostname: string } | null {
   try {
-    return new URL(page).origin;
+    const url = new URL(page);
+    return { origin: url.origin, hostname: url.hostname };
   } catch {
     return null;
   }
@@ -135,18 +136,27 @@ const linkTargetsSchema = z
     }
     if (targets.admin === undefined) return;
     // The admin panel is a host of its own (HF7): a mail must never send an admin to a page on
-    // the seller panel or the storefront, nor the other way round (Hassan I1).
-    const others = new Set(
-      [targets.customer, targets.seller]
-        .flatMap((pages) => (pages === undefined ? [] : Object.values(pages)))
-        .map(originOf),
-    );
+    // the seller panel or the storefront, nor the other way round (Hassan I1). Origins and host
+    // names both: another scheme or port on the same host is the same host (Hassan I-1, R-3).
+    const others = [targets.customer, targets.seller]
+      .flatMap((pages) => (pages === undefined ? [] : Object.values(pages)))
+      .map(hostOf)
+      .filter((host) => host !== null);
+    const origins = new Set(others.map((host) => host.origin));
+    const hostnames = new Set(others.map((host) => host.hostname));
     for (const [page, url] of Object.entries(targets.admin)) {
-      const origin = originOf(url);
-      if (origin !== null && others.has(origin)) {
+      const host = hostOf(url);
+      if (host === null) continue;
+      if (origins.has(host.origin)) {
         context.addIssue({
           code: 'custom',
           message: 'an admin page must not share its origin with a seller or customer page',
+          path: ['admin', page],
+        });
+      } else if (hostnames.has(host.hostname)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must not share its host name with a seller or customer page',
           path: ['admin', page],
         });
       }
