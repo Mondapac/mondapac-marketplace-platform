@@ -34,8 +34,9 @@ import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-i
 import { SellerAccessContractImplementation } from '../../presentation/seller-access.contract';
 import {
   AccountAccessReviewers,
+  activeFactorsIn,
+  type ActiveSecondFactorReader,
   isAccessReviewer,
-  NO_SECOND_FACTOR_STORE,
   type ReviewerRule,
   SELLER_ACCESS_APPROVE,
 } from '../access/account-access-reviewers';
@@ -67,12 +68,27 @@ import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
 
 // The reviewer notice (identity design 8.7; ux.md E3; request R-3; mini-review 3 with Ali's
 // rulings and Hassan's M2 and L2), in memory, for both Market fixtures: the system-only contract
-// method, the Market from the context, the pending-only guard, the recipient read that fails
-// closed until slice 7 (no factor store; the grant read and the registry are bound since 8a-1),
+// method, the Market from the context, the pending-only guard, the recipient read (the grant
+// read and the registry are bound since 8a-1, the factor store since slice 7; it fails closed),
 // the fixed mail, the cap and the 20-second budget. The SQL of the recipient read is covered by
 // test/db/reviewer-candidates.db-spec.ts.
 
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
+
+/** A factor store holding active factors for exactly these accounts (slice 7). */
+const factorsFor = (accounts: Iterable<string>): ActiveSecondFactorReader => {
+  const holders = new Set(accounts);
+  return {
+    activeAmong: (_market, ids) =>
+      Promise.resolve(new Set(ids.filter((accountId) => holders.has(accountId)))),
+  };
+};
+/** No account has an active factor. */
+const NO_FACTORS = factorsFor([]);
+/** Every account has an active factor. */
+const EVERY_FACTOR: ActiveSecondFactorReader = {
+  activeAmong: (_market, ids) => Promise.resolve(new Set(ids)),
+};
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const policy = new MarketConfigIdentityPolicy(markets);
 const composer = new CatalogueMailComposer(markets, loadLocaleCatalogues(TEST_LOCALE_CONFIG_DIRS));
@@ -652,11 +668,10 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       expect(read.map((r) => r.accountId)).toEqual(candidates);
     });
 
-    it('answers an explicit empty set until slice 7, even for a Platform Administrator on the real registry (fail closed)', async () => {
+    it('answers an empty set when no candidate has an active factor, even a Platform Administrator on the real registry (fail closed)', async () => {
       const s = setUp();
       const { candidates } = seedAdmins(s.fakes);
-      // Slice 8a-1 binds the grant read and the registry: both candidates hold every platform
-      // key. With the production factor lookup (no store before slice 7) nobody is a reviewer.
+      // Both candidates hold every platform key; neither has an active factor in the store.
       const administrator = seedRealRoles(s.fakes).get('platform:platform-administrator')!;
       candidates.forEach((accountId, n) => assign(s.fakes, accountId, administrator, n));
       const reviewers = new AccountAccessReviewers({
@@ -664,6 +679,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         candidates: s.fakes.reviewerCandidateReader,
         grants: s.fakes.grantReader,
         effectiveKeys: realEffectiveKeys(),
+        factors: NO_FACTORS,
       });
 
       await expect(reviewers.reviewersOf(market)).resolves.toEqual([]);
@@ -695,6 +711,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         candidates: s.fakes.reviewerCandidateReader,
         grants: s.fakes.grantReader,
         effectiveKeys: realEffectiveKeys(),
+        factors: EVERY_FACTOR,
       });
 
       await expect(reviewers.reviewersOf(market)).rejects.toBeInstanceOf(
@@ -716,7 +733,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       expect(holdsEvery(new Set([SELLER_ACCESS_APPROVE]), [SELLER_ACCESS_APPROVE])).toBe(true);
       expect(
         isAccessReviewer(reviewer(1), platformSystem, {
-          factors: NO_SECOND_FACTOR_STORE,
+          factors: activeFactorsIn(new Set()),
           keys,
         }),
       ).toBe(false);
@@ -811,7 +828,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       const depsWith = (rule: ReviewerRule) => ({
         grants: fixtureGrants,
         effectiveKeys: rule.keys,
-        factors: rule.factors,
+        factors: factorsFor(withFactor),
       });
       const DECLARED = ['identity.role.view', SELLER_ACCESS_APPROVE];
 
@@ -964,7 +981,6 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         assign(s.fakes, sellerRole.id, roles.get('seller:seller-owner')!, 21);
         assign(s.fakes, disabled.id, roles.get('platform:platform-administrator')!, 22);
         assign(s.fakes, unverified.id, roles.get('platform:platform-administrator')!, 23);
-        const everyoneHasAFactor = { hasActiveFactor: () => true };
 
         const check = new AccountAuthorisationCheck({
           unitOfWork: s.unitOfWork,
@@ -981,7 +997,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
               candidates: s.fakes.reviewerCandidateReader,
               grants: s.fakes.grantReader,
               effectiveKeys,
-              factors: everyoneHasAFactor,
+              factors: EVERY_FACTOR,
             }).reviewersOf(market)
           ).map((r) => r.accountId),
         );
@@ -1017,13 +1033,14 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         expect(recipients.has(disabled.id)).toBe(false);
         expect(recipients.has(unverified.id)).toBe(false);
 
-        // And with the production factor lookup (until slice 7) nobody is a recipient.
+        // And with an empty factor store nobody is a recipient.
         await expect(
           new AccountAccessReviewers({
             unitOfWork: s.unitOfWork,
             candidates: s.fakes.reviewerCandidateReader,
             grants: s.fakes.grantReader,
             effectiveKeys,
+            factors: NO_FACTORS,
           }).reviewersOf(market),
         ).resolves.toEqual([]);
       });
