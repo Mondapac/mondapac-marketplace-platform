@@ -2,11 +2,11 @@
 
 import { Banner, Button, Card, CheckboxRow, FormActionBar, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
-import { nextHref } from './steps.ts';
+import { nextHref, SETUP_ROOT } from './steps.ts';
 import type { AddressSaved, FormDescriptors, MyFile, ZoneState } from './types.ts';
+import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
@@ -211,10 +211,14 @@ export function AddressForm({
         </Card>
       ) : null}
       {result?.outside ? (
-        <Banner tone="attention">{t('sellers.error.address.outside-service-area')}</Banner>
+        <Banner tone="attention" title={t('sellers.address.outside-title')}>
+          {t('sellers.address.outside-body')}
+        </Banner>
       ) : null}
       {result && !result.outside && result.timezone === null ? (
-        <Banner tone="attention">{t('sellers.error.timezone.unresolved')}</Banner>
+        <Banner tone="attention" title={t('sellers.address.unresolved-title')}>
+          {t('sellers.address.unresolved-body')}
+        </Banner>
       ) : null}
       {result && !result.outside && result.timezone ? (
         <Banner tone="success">
@@ -230,6 +234,9 @@ export function AddressForm({
         </Banner>
       ) : null}
       <FormActionBar status={result && !problem && !pending ? t('sellers.status.saved') : null}>
+        <ButtonLink href={SETUP_ROOT} variant="secondary">
+          {t('sellers.action.back-to-checklist')}
+        </ButtonLink>
         <Button type="submit" variant={result ? 'secondary' : 'primary'} loading={pending}>
           {t(
             pending
@@ -240,12 +247,9 @@ export function AddressForm({
           )}
         </Button>
         {result ? (
-          <Link
-            href={nextHref('address')}
-            className="inline-flex h-(--mp-size-control) items-center rounded-md bg-accent px-4 font-medium text-on-accent hover:bg-accent-hover"
-          >
+          <ButtonLink href={nextHref('address')} variant="primary">
             {t('sellers.action.continue')}
-          </Link>
+          </ButtonLink>
         ) : null}
       </FormActionBar>
     </form>

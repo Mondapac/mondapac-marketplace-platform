@@ -36,6 +36,14 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return this.section(market).maxVariantsPerProduct;
   }
 
+  productTypes(market: MarketContext): readonly string[] {
+    return [...this.section(market).productTypes];
+  }
+
+  defaultFamily(market: MarketContext): string {
+    return this.section(market).defaultFamily;
+  }
+
   approvalRequired(market: MarketContext): Promise<boolean> {
     // The port is async for the store of slice 10: a fault comes back as a rejection too.
     try {

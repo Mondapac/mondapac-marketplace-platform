@@ -74,6 +74,8 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => max,
+      productTypes: () => ['simple', 'configurable'],
+      defaultFamily: () => 'default',
       approvalRequired: () => Promise.resolve(true),
     };
     service = new FreezeRevision({

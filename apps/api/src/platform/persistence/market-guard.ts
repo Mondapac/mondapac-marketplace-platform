@@ -1,6 +1,7 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { MarketGuardError, type MarketGuardRefusal } from '../unit-of-work/errors';
 import type { ModelMap, ModelMapEntry } from './model-map';
+import { isApprovedStatement } from './named-statements';
 
 /**
  * The `market_id` guard (platform persistence design, "P", section 4). Every query of the
@@ -61,6 +62,8 @@ export const GUARDED_OPERATIONS = Object.freeze([
 ] as const);
 export type GuardedOperation = (typeof GUARDED_OPERATIONS)[number];
 const UPDATE_OPERATIONS = new Set(['update', 'updateMany', 'updateManyAndReturn']);
+/** The two raw operations a named statement (named-statements.ts) may use; no `Unsafe` form. */
+const NAMED_STATEMENT_OPERATIONS = new Set(['$queryRaw', '$executeRaw']);
 const RAW_OPERATIONS = new Set([
   '$queryRaw',
   '$executeRaw',
@@ -191,7 +194,18 @@ export function marketGuardRefusal(
   unit: GuardUnit | undefined,
 ): MarketGuardRefusal | null {
   const { model, operation } = request;
-  if (RAW_OPERATIONS.has(operation)) return 'raw-sql';
+  if (RAW_OPERATIONS.has(operation)) {
+    // The one exemption (P 4.2): the exact text of a named statement, with the open unit's
+    // Market and tenant as its parameters, in a read-write unit that is still open. Anything
+    // else is refused.
+    const named =
+      NAMED_STATEMENT_OPERATIONS.has(operation) &&
+      unit !== undefined &&
+      isApprovedStatement(request, unit.market) &&
+      !unit.closed &&
+      !unit.readOnly;
+    return named ? null : 'raw-sql';
+  }
   if (model === undefined) return 'unknown-operation';
   if (unit === undefined) return 'no-open-unit';
   if (unit.closed) return 'unit-closed';

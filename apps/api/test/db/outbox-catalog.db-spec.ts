@@ -53,6 +53,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX seller_memberships_market_id_account_id_active_key ON identity.seller_memberships USING btree (market_id, account_id) WHERE (state = 'active'::text)",
   'identity.sessions_market_id_seller_id_seller_idx':
     'CREATE INDEX sessions_market_id_seller_id_seller_idx ON identity.sessions USING btree (market_id, seller_id) WHERE (seller_id IS NOT NULL)',
+  'inventory.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON inventory.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'inventory.retirements_market_id_offer_id_offer_key':
+    "CREATE UNIQUE INDEX retirements_market_id_offer_id_offer_key ON inventory.retirements USING btree (market_id, offer_id) WHERE (scope = 'offer'::text)",
+  'inventory.retirements_market_id_offer_id_variant_id_variant_key':
+    "CREATE UNIQUE INDEX retirements_market_id_offer_id_variant_id_variant_key ON inventory.retirements USING btree (market_id, offer_id, variant_id) WHERE (scope = 'variant'::text)",
   'inventory.sources_market_id_seller_id_default_key':
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per

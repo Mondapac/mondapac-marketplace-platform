@@ -174,6 +174,14 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
   product may hold. The ceiling of 100 keeps the re-key of a moved Offer (inventory design 3.6)
   under the lock helper's 1,000-item cap with 4 sources.
+- `productTypes` (required, 1 to 20 entries, no code repeated): the product type codes the Market
+  offers (lower-case letters, digits and `-`, as the registry's codes are). A type that is not
+  listed, or is listed but not registered, is refused at product creation (`product.type-not-offered`,
+  `product.type-unknown`). AU: `simple`, `configurable`. There is no start-up check that a listed
+  type is registered; a typo shows as a refusal.
+- `defaultFamily` (required): the seeded attribute family code a new product starts in (design 4.1).
+  A family that is not seeded gives `product.family-unavailable` at creation (AU has none until its
+  attribute seed lands).
 - `approvalRequired` (required): true when a new revision of a published product waits for review
   unless it is minor and nothing is pending (design 4.2 row 1); the interim home of the ADR-0026
   setting `catalog.approval-required` until its store lands (catalog slice 10).

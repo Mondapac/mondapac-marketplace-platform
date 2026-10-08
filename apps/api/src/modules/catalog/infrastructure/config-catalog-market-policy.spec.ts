@@ -23,6 +23,13 @@ describe('ConfigCatalogMarketPolicy', () => {
     expect(policy.taxCategoryCodes(zz)).toEqual(['zz_standard', 'zz_reduced', 'zz_zero']);
   });
 
+  it('gives the product types and the default family of each Market', () => {
+    expect(policy.productTypes(au)).toEqual(['simple', 'configurable']);
+    expect(policy.productTypes(zz)).toEqual(['simple']);
+    expect(policy.defaultFamily(au)).toBe('default');
+    expect(policy.defaultFamily(zz)).toBe('default');
+  });
+
   it('gives the sensitive-change flags of the Market', () => {
     expect(policy.sensitiveChanges(au)).toMatchObject({ platformCategories: true, name: true });
     expect(policy.sensitiveChanges(zz)).toMatchObject({

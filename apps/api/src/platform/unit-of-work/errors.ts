@@ -48,9 +48,11 @@ export class InvalidUnitOfWorkOptionsError extends Error {
 export type InvalidUnitOfWorkOptionsReason =
   | 'read-only-with-isolation'
   | 'read-only-with-timeout'
+  | 'read-only-with-lock-timeout'
   | 'read-only-run-once'
   | 'unknown-isolation'
-  | 'timeout-out-of-range';
+  | 'timeout-out-of-range'
+  | 'lock-timeout-out-of-range';
 
 /**
  * The market guard refused a query (P 4). The reason is one of a closed set of codes, with the
@@ -120,3 +122,21 @@ export class StaleAggregateError extends Error {
     super(`The ${aggregateType} was changed by someone else since it was read`);
   }
 }
+
+/**
+ * A named raw statement (platform persistence design 4.2) refused its input or its result. The
+ * reason is one of a closed set; the statement name is an identifier from the checked-in list;
+ * no id, row or value (P 12.3).
+ */
+export class NamedStatementRefusedError extends Error {
+  override readonly name = 'NamedStatementRefusedError';
+  constructor(
+    readonly statement: string,
+    readonly reason: NamedStatementRefusal,
+  ) {
+    super(`Named statement ${statement} refused: ${reason}`);
+  }
+}
+
+export type NamedStatementRefusal =
+  'read-only-unit' | 'ids-empty' | 'ids-too-many' | 'ids-malformed' | 'rows-missing';
