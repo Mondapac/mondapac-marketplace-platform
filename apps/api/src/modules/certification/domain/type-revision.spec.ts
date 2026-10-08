@@ -164,6 +164,33 @@ describe('validateTypeRevision', () => {
     expect(problems(fa, ['zz'])).toEqual([]);
   });
 
+  it('refuses a revision with no claim term in any locale (Hassan)', () => {
+    const none = base({
+      locales: {
+        en: { ...base().locales.en!, claimTerms: [] },
+        ar: { ...base().locales.ar!, claimTerms: [] },
+      },
+    });
+    expect(problems(none)).toEqual(['type.claim-terms-missing']);
+    const zzNone = zz({ locales: { zz: { ...zz().locales.zz!, claimTerms: [] } } });
+    expect(problems(zzNone, ['zz'])).toEqual(['type.claim-terms-missing']);
+    // One locale with terms is enough; the other may stay empty.
+    const one = base({
+      locales: { en: base().locales.en!, ar: { ...base().locales.ar!, claimTerms: [] } },
+    });
+    expect(problems(one)).toEqual([]);
+  });
+
+  it('refuses a sparse term list (holes are not terms)', () => {
+    const sparse = base({
+      locales: {
+        en: { ...base().locales.en!, claimTerms: new Array<string>(1) },
+        ar: { ...base().locales.ar!, claimTerms: [] },
+      },
+    });
+    expect(problems(sparse)).toContain('type.text-invalid');
+  });
+
   it('refuses a bad icon key', () => {
     expect(problems(base({ badgeIconKey: '<svg>' }))).toContain('type.badge-icon-invalid');
   });
