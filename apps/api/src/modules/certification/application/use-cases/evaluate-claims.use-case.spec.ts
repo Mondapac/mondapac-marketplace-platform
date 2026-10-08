@@ -428,6 +428,8 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     ['an unknown zone name', 'Mars/Olympus'],
     ['an empty zone', ''],
     ['an offset', '+10:00'],
+    ['an ISO date-time with an offset', '2026-01-01T00:00:00+05:00'],
+    ['an ISO date-time in Z', '2026-01-01T00:00Z'],
     ['a non-string', 42],
   ] as const)(
     'denies with seller-zone-missing for %s on a certificate with no expiry',

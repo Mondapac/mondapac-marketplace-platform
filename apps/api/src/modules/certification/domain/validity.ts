@@ -54,8 +54,11 @@ export function isUsableZone(zone: unknown): zone is TimeZoneId {
   if (typeof zone !== 'string' || zone.length === 0 || zone.length > 64) return false;
   if (/^[+-]/u.test(zone)) return false;
   try {
-    Temporal.Instant.from('2026-01-01T00:00:00Z').toZonedDateTimeISO(zone);
-    return true;
+    // Compare what Temporal resolved with the input: its parser also takes ISO date-times
+    // and offsets and keeps only the zone part, which must not count as an IANA id.
+    const resolved =
+      Temporal.Instant.from('2026-01-01T00:00:00Z').toZonedDateTimeISO(zone).timeZoneId;
+    return !/^[+-]/u.test(resolved) && resolved.toLowerCase() === zone.toLowerCase();
   } catch {
     return false;
   }

@@ -5,7 +5,7 @@ import type { SellerCertificationView } from '../../domain/validity';
 
 /** What the type-and-policy statement answers for one query (design 4.2 step 3). */
 export interface TypeAndPolicy {
-  /** The type this answer is for; the use case checks it against the request (no matching by position alone). */
+  /** The type this answer is for; the use case checks it against the request (no matching by position alone). Policy answers also depend on categories and handling, which this key does not cover: the reader slice's shuffled-order contract test must include two requests of one type with different categories or handling (Hassan, #142 Low-2). */
   readonly typeCode: CertificationTypeCode;
   readonly type: ClaimFacts['type'];
   readonly policy: ClaimFacts['policy'];
