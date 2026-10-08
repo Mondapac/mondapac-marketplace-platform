@@ -40,15 +40,12 @@ describe('sellerCertificateValidAt', () => {
     expect(v.valid).toBe(true);
   });
 
-  it('is invalid at the boundary, whatever the stored status says', () => {
-    for (const status of ['approved', 'expired'] as const) {
-      const v = sellerCertificateValidAt(
-        cert({}, status),
-        both(SYDNEY),
-        at('2027-03-31T13:00:00Z'),
-      );
-      expect(v).toEqual({ valid: false, reason: 'expired' });
-    }
+  it('is invalid at the boundary for an approved certificate, with or without the job having run', () => {
+    const v = sellerCertificateValidAt(cert(), both(SYDNEY), at('2027-03-31T13:00:00Z'));
+    expect(v).toEqual({ valid: false, reason: 'expired' });
+    expect(
+      sellerCertificateValidAt(cert({}, 'expired'), both(SYDNEY), at('2027-03-31T13:00:00Z')).valid,
+    ).toBe(false);
   });
 
   it('never extends: a later current-zone boundary does not revive a stored earlier one', () => {
@@ -151,5 +148,66 @@ describe('sellerCertificateValidAt', () => {
       valid: false,
       reason: 'expiry-missing',
     });
+  });
+
+  it('treats a zone Temporal cannot resolve as missing, never as a throw', () => {
+    const bad = both(z('Not/AZone'), SYDNEY);
+    expect(sellerCertificateValidAt(cert(), bad, at('2027-01-01T00:00:00Z'))).toEqual({
+      valid: false,
+      reason: 'seller-zone-missing',
+    });
+    const badAtApproval = cert({ zoneAtApproval: z('Nope/Zone') });
+    expect(
+      sellerCertificateValidAt(badAtApproval, both(SYDNEY), at('2027-01-01T00:00:00Z')),
+    ).toEqual({
+      valid: false,
+      reason: 'seller-zone-missing',
+    });
+  });
+
+  it('follows the DST flip: Sydney expiry 2027-04-03 ends at 2027-04-03T13:00:00Z (+11), 2027-04-04 at +10', () => {
+    // DST ends 2027-04-04 at 03:00 local. The day after 2027-04-03 starts 2027-04-04 00:00 (+11).
+    const c = cert({ expiryDate: Temporal.PlainDate.from('2027-04-03') });
+    const b = expiryBoundary(Temporal.PlainDate.from('2027-04-03'), SYDNEY);
+    expect(b.toString()).toBe('2027-04-03T13:00:00Z');
+    expect(sellerCertificateValidAt(c, both(SYDNEY), b.subtract({ seconds: 1 })).valid).toBe(true);
+    expect(sellerCertificateValidAt(c, both(SYDNEY), b).valid).toBe(false);
+    // The day after the flip is measured at +10.
+    const after = expiryBoundary(Temporal.PlainDate.from('2027-04-04'), SYDNEY);
+    expect(after.toString()).toBe('2027-04-04T14:00:00Z');
+  });
+
+  it('handles a zone whose midnight does not exist (start of day, not 00:00)', () => {
+    // Sao Paulo skipped midnight on DST start days in past years; Temporal gives the start of day.
+    const zone = z('America/Sao_Paulo');
+    const b = expiryBoundary(Temporal.PlainDate.from('2018-11-03'), zone);
+    expect(b.toZonedDateTimeISO(zone).hour).toBe(1);
+  });
+
+  it('never reads the stored expired status as a grant: approved past the boundary is invalid; expired never grants', () => {
+    expect(
+      sellerCertificateValidAt(cert({}, 'approved'), both(SYDNEY), at('2099-01-01T00:00:00Z'))
+        .valid,
+    ).toBe(false);
+    expect(
+      sellerCertificateValidAt(cert({}, 'expired'), both(SYDNEY), at('2027-01-01T00:00:00Z')).valid,
+    ).toBe(false);
+    expect(
+      sellerCertificateValidAt(
+        cert({ requiresExpiry: false }, 'expired'),
+        both(SYDNEY),
+        at('2027-01-01T00:00:00Z'),
+      ).valid,
+    ).toBe(false);
+  });
+
+  it('allows only active and closed-to-new issuers', () => {
+    const v = (issuerState: never) =>
+      sellerCertificateValidAt(cert({ issuerState }), both(SYDNEY), at('2027-01-01T00:00:00Z'))
+        .valid;
+    expect(v('proposed' as never)).toBe(false);
+    expect(v('mystery' as never)).toBe(false);
+    expect(v('closed-to-new' as never)).toBe(true);
+    expect(v('active' as never)).toBe(true);
   });
 });

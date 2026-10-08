@@ -61,13 +61,21 @@ export function sellerCertificateValidAt(
   sellerZones: SellerZones | null,
   at: Temporal.Instant,
 ): Validity {
-  // `expired` is only a record for people and events; the boundary below decides (rule 4).
-  if (cert.status !== 'approved' && cert.status !== 'expired') {
+  // Only `approved` can grant. A stored `expired` never grants and never decides a denial that the
+  // boundary would not (rule 4): past the boundary the answer is "no" whether or not the job ran.
+  if (cert.status !== 'approved') {
     return { valid: false, reason: 'not-approved' };
   }
   const sub = cert.approved;
   if (sub === null) return { valid: false, reason: 'no-approved-submission' };
-  if (sub.issuerState === 'derecognised') return { valid: false, reason: 'issuer-derecognised' };
+  // Allow-list: anything but an active or closed-to-new issuer (or none) is not valid (Hassan L1).
+  if (
+    sub.issuerState !== null &&
+    sub.issuerState !== 'active' &&
+    sub.issuerState !== 'closed-to-new'
+  ) {
+    return { valid: false, reason: 'issuer-derecognised' };
+  }
   if (sellerZones === null) return { valid: false, reason: 'seller-zone-missing' };
 
   if (!sub.requiresExpiry) {
@@ -77,11 +85,18 @@ export function sellerCertificateValidAt(
 
   // The earliest of three: the boundary stored at approval, the chosen zone's and the address
   // zone's, so a chosen zone can only bring the boundary forward (T2, amended 2026-10-08).
-  const boundary = [
-    expiryBoundary(sub.expiryDate, sub.zoneAtApproval),
-    expiryBoundary(sub.expiryDate, sellerZones.zone),
-    expiryBoundary(sub.expiryDate, sellerZones.addressZone),
-  ].reduce((a, b) => (Temporal.Instant.compare(a, b) <= 0 ? a : b));
+  let boundary: Temporal.Instant;
+  try {
+    boundary = [
+      expiryBoundary(sub.expiryDate, sub.zoneAtApproval),
+      expiryBoundary(sub.expiryDate, sellerZones.zone),
+      expiryBoundary(sub.expiryDate, sellerZones.addressZone),
+    ].reduce((a, b) => (Temporal.Instant.compare(a, b) <= 0 ? a : b));
+  } catch (error) {
+    // A zone Temporal cannot resolve is "no zone": not allowed (design 4.2 step 1).
+    if (error instanceof RangeError) return { valid: false, reason: 'seller-zone-missing' };
+    throw error;
+  }
   if (Temporal.Instant.compare(at, boundary) >= 0) return { valid: false, reason: 'expired' };
   return { valid: true, submissionId: sub.submissionId, expiresAt: boundary };
 }

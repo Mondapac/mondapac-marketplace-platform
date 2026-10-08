@@ -124,3 +124,99 @@ describe('ClaimRule.decide (seller basis)', () => {
     });
   });
 });
+
+describe('ClaimRule.decide, more cases', () => {
+  const sydneyBoundary = Temporal.Instant.from('2028-01-01T00:00:00Z').subtract({ hours: 11 });
+
+  it('is exact at the boundary instant', () => {
+    const f = facts({
+      sellerCertificate: {
+        ...facts().sellerCertificate!,
+        approved: {
+          ...facts().sellerCertificate!.approved!,
+          expiryDate: Temporal.PlainDate.from('2027-12-31'),
+        },
+      },
+    });
+    expect(decide(query, f, sydneyBoundary.subtract({ seconds: 1 })).allowed).toBe(true);
+    expect(decide(query, f, sydneyBoundary).reason).toBe('no-valid-seller-certificate');
+  });
+
+  it('denies a derecognised issuer and allows a closed-to-new one', () => {
+    const withIssuer = (issuerState: 'derecognised' | 'closed-to-new') =>
+      facts({
+        sellerCertificate: {
+          ...facts().sellerCertificate!,
+          approved: { ...facts().sellerCertificate!.approved!, issuerState },
+        },
+      });
+    expect(decide(query, withIssuer('derecognised'), now).reason).toBe(
+      'no-valid-seller-certificate',
+    );
+    expect(decide(query, withIssuer('closed-to-new'), now).allowed).toBe(true);
+  });
+
+  it('maps a missing approved submission and a missing expiry date to no-valid-seller-certificate', () => {
+    const noApproved = facts({
+      sellerCertificate: { ...facts().sellerCertificate!, approved: null },
+    });
+    expect(decide(query, noApproved, now).reason).toBe('no-valid-seller-certificate');
+    const noExpiry = facts({
+      sellerCertificate: {
+        ...facts().sellerCertificate!,
+        approved: { ...facts().sellerCertificate!.approved!, expiryDate: null },
+      },
+    });
+    expect(decide(query, noExpiry, now).reason).toBe('no-valid-seller-certificate');
+  });
+
+  it('denies requiresExpiry=false when the seller has no zone (a missing zone is never allowed)', () => {
+    const f = facts({
+      sellerZones: null,
+      sellerCertificate: {
+        ...facts().sellerCertificate!,
+        approved: { ...facts().sellerCertificate!.approved!, requiresExpiry: false },
+      },
+    });
+    expect(decide(query, f, now).reason).toBe('seller-zone-missing');
+  });
+
+  it('resolves the requirement in either row order and keeps the policy id only when a row matched', () => {
+    const rows = (...b: ('SELLER_REQUIRED' | 'SELLER_OR_MANUFACTURER')[]) =>
+      facts({ policy: { revisionId: id('p1'), matchedRows: b.map((basis) => ({ basis })) } });
+    expect(
+      decide(query, rows('SELLER_REQUIRED', 'SELLER_OR_MANUFACTURER'), now).policyRevisionId,
+    ).toBe('p1');
+    expect(decide(query, rows('SELLER_OR_MANUFACTURER', 'SELLER_REQUIRED'), now).allowed).toBe(
+      true,
+    );
+    expect(decide(query, rows(), now).policyRevisionId).toBeNull();
+    expect(
+      resolveRequirement('SELLER_OR_MANUFACTURER', [
+        { basis: 'NOT_APPLICABLE' },
+        { basis: 'SELLER_REQUIRED' },
+      ]),
+    ).toBe('NOT_APPLICABLE');
+  });
+
+  it('runs on a synthetic Market: other zone, other default basis', () => {
+    const zz = facts({
+      type: { publishedRevisionId: id('tr1'), defaultBasis: 'SELLER_OR_MANUFACTURER' },
+      sellerZones: {
+        zone: 'Pacific/Auckland' as TimeZoneId,
+        addressZone: 'Pacific/Auckland' as TimeZoneId,
+      },
+      sellerCertificate: {
+        ...facts().sellerCertificate!,
+        approved: {
+          ...facts().sellerCertificate!.approved!,
+          zoneAtApproval: 'Pacific/Auckland' as TimeZoneId,
+        },
+      },
+    });
+    expect(decide(query, zz, now).allowed).toBe(true);
+    expect(decide(query, { ...zz, sellerCertificate: null }, now).reason).toBe(
+      'no-valid-seller-certificate',
+    );
+  });
+});

@@ -39,9 +39,11 @@ export function resolveRequirement(
 ): ClaimBasisRequirement {
   let result: ClaimBasisRequirement | null = null;
   for (const row of matchedRows) {
-    if (result === null || STRICTNESS[row.basis] > STRICTNESS[result]) result = row.basis;
+    // An unknown basis (not in the closed list) is read as the strictest: fail closed.
+    const basis: ClaimBasisRequirement = row.basis in STRICTNESS ? row.basis : 'NOT_APPLICABLE';
+    if (result === null || STRICTNESS[basis] > STRICTNESS[result]) result = basis;
   }
-  return result ?? defaultBasis;
+  return result ?? (defaultBasis in STRICTNESS ? defaultBasis : 'NOT_APPLICABLE');
 }
 
 function deny(
