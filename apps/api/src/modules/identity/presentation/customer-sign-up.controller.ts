@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import {
   RegisterCustomer,
@@ -177,8 +178,9 @@ export class CustomerSignUpController {
     }
     const input = parseSignUpBody(body);
     if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-    // The origin of the mail counter, from the socket only (never a forwarded header, HF3).
-    const origin = clientOriginOf(request.socket.remoteAddress);
+    // The origin of the mail counter, from the resolved client address (ADR-0037; never a
+    // forwarded header, HF3).
+    const origin = clientOriginOf(clientAddressFrom(request));
     if (origin === null) return fail(503, 'access.unavailable');
 
     const result = await this.registerCustomer.execute(context, {

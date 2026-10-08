@@ -18,6 +18,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { csrfTokenFor } from '../../../platform/call-context/csrf';
 import { sessionCookie } from '../../../platform/call-context/session-cookie';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { ConfirmCustomerEmail } from '../application/use-cases/confirm-customer-email.use-case';
@@ -164,9 +165,9 @@ export class CustomerEmailVerificationController {
     }
     const input = parseStringFields(body, ['token', 'password'] as const);
     if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-    // From the socket only: forwarded headers are never trusted (Hassan I4).
-    const origin = clientOriginOf(request.socket.remoteAddress);
-    const address = clientAddressOf(request.socket.remoteAddress);
+    // The resolved client address (ADR-0037): forwarded headers are never trusted (Hassan I4).
+    const origin = clientOriginOf(clientAddressFrom(request));
+    const address = clientAddressOf(clientAddressFrom(request));
     if (origin === null || address === null) return fail(503, 'access.unavailable');
 
     const fields = input as Readonly<Record<'token' | 'password', string>>;
@@ -216,7 +217,7 @@ export class CustomerEmailVerificationController {
     }
     const input = parseStringFields(body, ['email'] as const);
     if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-    const origin = clientOriginOf(request.socket.remoteAddress);
+    const origin = clientOriginOf(clientAddressFrom(request));
     if (origin === null) return fail(503, 'access.unavailable');
 
     const result = await this.requestVerification.execute(context, {
