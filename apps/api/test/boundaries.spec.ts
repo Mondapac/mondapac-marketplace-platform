@@ -124,8 +124,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'application-does-not-know-delivery',
+        'approved-seller-zones-contract-is-for-certification',
+        'approved-seller-zones-use-cases-stay-in-sellers-reader',
         'authenticated-actor-is-built-by-the-authenticator',
         'catalog-imports-neither-pricing-nor-inventory',
+        'certification-surface-does-not-reach-reader-adapter',
         'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
         'database-driver-only-in-infrastructure',
@@ -160,10 +163,14 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
     it('reports every deliberate violation in the fixtures, and nothing else', () => {
       expect(found).toEqual([
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
+        'approved-seller-zones-contract-is-for-certification: src/modules/alpha/application/reads-approved-seller-zones.ts',
+        'approved-seller-zones-contract-is-for-certification: src/modules/certification/presentation/reads-approved-seller-zones.ts',
+        'approved-seller-zones-use-cases-stay-in-sellers-reader: src/modules/sellers/presentation/reaches-zone-use-case.ts',
         'authenticated-actor-is-built-by-the-authenticator: src/modules/identity/application/mints-authenticated-actor.ts',
         'authenticated-actor-is-built-by-the-authenticator: src/platform/mints-authenticated-actor.ts',
         'catalog-imports-neither-pricing-nor-inventory: src/modules/catalog/application/imports-inventory.ts',
         'catalog-imports-neither-pricing-nor-inventory: src/modules/catalog/application/imports-pricing.ts',
+        'certification-surface-does-not-reach-reader-adapter: src/modules/certification/presentation/imports-infrastructure.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
@@ -242,6 +249,10 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/identity/application/uses-own-domain.ts',
       // sellers consumes identity's seller-access contract (ADR-0022 decision 6).
       'src/modules/sellers/application/reads-seller-access.ts',
+      // certification's application layer consumes sellers' approved-seller-zones contract.
+      'src/modules/certification/application/reads-approved-seller-zones.ts',
+      'src/modules/certification/infrastructure/reads-approved-seller-zones.ts',
+      'src/modules/sellers/presentation/approved-seller-zones.reader.ts',
       // identity's Authenticator alone builds authenticated actors (slice 2).
       'src/modules/identity/application/access/session-authenticator.ts',
       // A module's infrastructure reaches the database through PrismaService only.

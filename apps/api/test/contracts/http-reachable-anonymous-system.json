@@ -1,0 +1,82 @@
+[
+  {
+    "name": "identity.accept-admin-invitation",
+    "rule": "anonymous",
+    "reason": "Admin invitation acceptance with the mailed token: the invitee has no session yet."
+  },
+  {
+    "name": "identity.complete-admin-sign-in",
+    "rule": "anonymous",
+    "reason": "Second step of admin sign-in with the pending sign-in ticket: no session exists until it passes."
+  },
+  {
+    "name": "identity.confirm-customer-email",
+    "rule": "anonymous",
+    "reason": "Customer email-confirmation link: the visitor is not signed in yet."
+  },
+  {
+    "name": "identity.confirm-second-factor-enrolment",
+    "rule": "anonymous",
+    "reason": "Admin second-factor enrolment confirmation with the enrolment challenge token and the first code: no session exists yet."
+  },
+  {
+    "name": "identity.confirm-seller-email",
+    "rule": "anonymous",
+    "reason": "Seller email-confirmation link: the visitor is not signed in yet."
+  },
+  {
+    "name": "identity.register-customer",
+    "rule": "anonymous",
+    "reason": "Customer sign-up form."
+  },
+  {
+    "name": "identity.register-seller",
+    "rule": "anonymous",
+    "reason": "Seller sign-up form."
+  },
+  {
+    "name": "identity.request-customer-verification",
+    "rule": "anonymous",
+    "reason": "Resend of the customer verification mail; the answer never reveals whether the account exists."
+  },
+  {
+    "name": "identity.request-password-reset",
+    "rule": "anonymous",
+    "reason": "Password-reset mail request by a visitor who cannot sign in."
+  },
+  {
+    "name": "identity.request-seller-verification",
+    "rule": "anonymous",
+    "reason": "Resend of the seller verification mail; the answer never reveals whether the account exists."
+  },
+  {
+    "name": "identity.reset-password",
+    "rule": "anonymous",
+    "reason": "Password reset with the mailed link by a visitor who cannot sign in."
+  },
+  {
+    "name": "identity.sign-in-admin",
+    "rule": "anonymous",
+    "reason": "Admin sign-in first step: the caller has no session."
+  },
+  {
+    "name": "identity.sign-in-customer",
+    "rule": "anonymous",
+    "reason": "Customer sign-in: the caller has no session yet."
+  },
+  {
+    "name": "identity.sign-in-seller",
+    "rule": "anonymous",
+    "reason": "Seller sign-in: the caller has no session yet."
+  },
+  {
+    "name": "identity.start-admin-invitation-acceptance",
+    "rule": "anonymous",
+    "reason": "Start of admin invitation acceptance with the mailed token: the invitee has no session yet."
+  },
+  {
+    "name": "identity.start-second-factor-enrolment",
+    "rule": "anonymous",
+    "reason": "Admin second-factor enrolment start with the mailed enrolment link's token and the password: the admin has no session yet."
+  }
+]
