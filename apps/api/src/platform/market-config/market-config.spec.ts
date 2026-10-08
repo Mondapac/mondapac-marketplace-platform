@@ -569,24 +569,31 @@ describe('loadMarketConfigs', () => {
       ).toBeUndefined();
     });
 
-    it('carries the source limit', () => {
-      const loaded = loadMarketConfigs([withInventory({ maxSourcesPerSeller: 4 })], [QQ]).get(QQ);
+    it.each([1, 4])('carries the source limit %i', (limit) => {
+      const loaded = loadMarketConfigs([withInventory({ maxSourcesPerSeller: limit })], [QQ]).get(
+        QQ,
+      );
 
-      expect(loaded?.inventory?.maxSourcesPerSeller).toBe(4);
+      expect(loaded?.inventory?.maxSourcesPerSeller).toBe(limit);
     });
 
     it('gives the two Market fixtures different limits (AC 13)', () => {
       const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
       const limits = TEST_MARKET_IDS.map((id) => configs.get(id)?.inventory?.maxSourcesPerSeller);
 
-      expect(limits.every((limit) => limit !== undefined)).toBe(true);
-      expect(new Set(limits).size).toBe(limits.length);
+      expect(Object.fromEntries(TEST_MARKET_IDS.map((id, i) => [id, limits[i]]))).toEqual({
+        AU: 4,
+        ZZ: 2,
+      });
     });
 
     it.each([
       ['a missing limit', {}],
       ['zero sources', { maxSourcesPerSeller: 0 }],
-      ['more sources than the re-key lock set allows', { maxSourcesPerSeller: 6 }],
+      ['more sources than the re-key lock set allows', { maxSourcesPerSeller: 5 }],
+      ['a negative limit', { maxSourcesPerSeller: -1 }],
+      ['a null limit', { maxSourcesPerSeller: null }],
+      ['a string limit', { maxSourcesPerSeller: '4' }],
       ['a fractional limit', { maxSourcesPerSeller: 2.5 }],
       ['an unknown key', { maxSourcesPerSeller: 4, reservationMinutes: 15 }],
     ])('rejects %s', (_case, inventory) => {
