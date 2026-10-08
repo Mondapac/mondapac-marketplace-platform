@@ -379,7 +379,10 @@ and used through `SubjectKeyService` in the save's unit and only when a reason i
 CE8). The platform subject is not used, because its key is never destroyed. A deferred use case
 `change-reason.erase` destroys that key and writes an audit row; it is built when a privacy request
 names text in a reason or seller data is found in one (ADR-0015 trigger). A destroyed reason shows an
-"erased" placeholder in the history. The input shows a hint not to include personal data (Reza).
+"erased" placeholder in the history. Only `subject-key.destroyed` maps to the erased placeholder; a wrapper failure or a bad tag throws
+(PF 4). The reason, in plaintext or ciphertext, never goes into an event, the outbox, a log, an error
+or model input, and no AI tool or capability reads it (R2, R9). The input shows a hint not to include
+personal data (Reza).
 Owner: Mohammad, Mojtaba (data), Hassan reviews.
 
 **Retired categories** (B2; ADR-0028 d5 and d9). `catalog`'s move, merge and archive of a platform
@@ -717,7 +720,7 @@ interface RelaxationProposalView {
   readonly proposedRevisionId: Id | null;     // null for a reactivation
   readonly proposer: { accountId: Id; displayName: string }; // display name via identity R-11
   readonly proposedAt: Temporal.Instant;
-  readonly reason: string | null;             // the optional change reason (3.7), read from the revision or proposal, never from an audit row
+  readonly reason: { state: 'given'; text: string } | { state: 'erased' } | null; // the optional change reason (3.7), read from the revision or proposal, never from an audit row
   readonly diff: readonly {
     readonly path: string;                    // field key, `terms.<locale>`, or `row:<selector>`
     readonly before: string | boolean | null; // codes and values, never free text of a seller
