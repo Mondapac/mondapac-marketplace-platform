@@ -247,7 +247,13 @@ export class MyFileSaveIdentifier extends UseCase<
     const due: LookupPlan | null =
       plan !== null &&
       parsed !== null &&
-      lookupDue(existing, clock.now(), plan.settings, current.state.lastChangedAt)
+      lookupDue(
+        existing,
+        clock.now(),
+        plan.settings,
+        current.state.lastChangedAt,
+        current.state.version,
+      )
         ? plan
         : null;
     let verdict: QuotaVerdict = 'go';
@@ -313,7 +319,13 @@ export class MyFileSaveIdentifier extends UseCase<
     }
     return ok({
       ...saved.value,
-      registerResult: sellerResultOf(check, clock.now(), plan.settings, changedAt),
+      registerResult: sellerResultOf(
+        check,
+        clock.now(),
+        plan.settings,
+        changedAt,
+        snapshot.state.version,
+      ),
     });
   }
 }

@@ -61,65 +61,72 @@ model SellersInbox {
 /// The CHECKs are hand-written in the migration.
 model SellersSellerFile {
   /// UUIDv7 minted by identity (S3); also the subject id of the seller's data key.
-  sellerId                         String                    @id @map("seller_id") @db.Uuid
-  marketId                         String                    @map("market_id") @db.VarChar(8)
-  tenantId                         String                    @map("tenant_id")
+  sellerId                       String                        @id @map("seller_id") @db.Uuid
+  marketId                       String                        @map("market_id") @db.VarChar(8)
+  tenantId                       String                        @map("tenant_id")
   /// self | invitation.
-  origin                           String
+  origin                         String
   /// The Market policy read in the creating unit (D 7.5); a missing row gives true.
-  approvalRequiredAtRegistration   Boolean                   @map("approval_required_at_registration")
+  approvalRequiredAtRegistration Boolean                       @map("approval_required_at_registration")
   /// Written by the aggregate on every save: false at creation.
-  draftComplete                    Boolean                   @map("draft_complete")
+  draftComplete                  Boolean                       @map("draft_complete")
   /// Every change of the file; equals created_at at creation.
-  lastChangedAt                    DateTime                  @map("last_changed_at") @db.Timestamptz(6)
+  lastChangedAt                  DateTime                      @map("last_changed_at") @db.Timestamptz(6)
   /// Slice 2. Clear (public once approved, D 8.1); the CHECK S7 class, 1 to 100 characters.
-  storeName                        String?                   @map("store_name")
+  storeName                      String?                       @map("store_name")
   /// Slice 2. The prefix-search key (NFKC, case-folded, whitespace collapsed by the
   /// application). The column is `COLLATE "C"` (S6), hand-written in the migration: Prisma
   /// does not see a column collation (spike S1), so the catalog test checks it.
-  storeNameKey                     String?                   @map("store_name_key")
+  storeNameKey                   String?                       @map("store_name_key")
   /// Slice 2. Personal; ciphertext under the seller's subject key (S4), never compared or
   /// indexed. Label sellers.seller-file.business-name.
-  businessNameCiphertext           String?                   @map("business_name_ciphertext")
+  businessNameCiphertext         String?                       @map("business_name_ciphertext")
   /// Slice 2. Personal, S4. Label sellers.seller-file.phone.
-  phoneCiphertext                  String?                   @map("phone_ciphertext")
+  phoneCiphertext                String?                       @map("phone_ciphertext")
   /// Slice 2. Personal, S4. Label sellers.seller-file.contact-email; never the sign-in email.
-  contactEmailCiphertext           String?                   @map("contact_email_ciphertext")
+  contactEmailCiphertext         String?                       @map("contact_email_ciphertext")
   /// Slice 2. Personal, S4. The operating address (a JSON object of the Market's
   /// address.format); the only address that drives the ServiceArea and the zones.
-  addressCiphertext                String?                   @map("address_ciphertext")
+  addressCiphertext              String?                       @map("address_ciphertext")
   /// Slice 2. Personal, S4. The registered address when it differs; NULL means "same as the
   /// operating address".
-  registeredAddressCiphertext      String?                   @map("registered_address_ciphertext")
+  registeredAddressCiphertext    String?                       @map("registered_address_ciphertext")
   /// Slice 2. Clear ServiceArea code (Market configuration) the address fell in at the last save.
-  serviceAreaCode                  String?                   @map("service_area_code")
+  serviceAreaCode                String?                       @map("service_area_code")
   /// Slice 2. Clear IANA zone ID of the seller (ADR-0005 decision 1), never an offset: the
   /// address's zone, a hint, or a zone chosen from the region's list (spike 3 record).
-  operatingTimezone                String?                   @map("operating_timezone")
+  operatingTimezone              String?                       @map("operating_timezone")
   /// Slice 2. Who set operating_timezone: default | browser | location | seller | admin.
-  timezoneSource                   String?                   @map("timezone_source")
+  timezoneSource                 String?                       @map("timezone_source")
   /// Slice 2. Clear IANA zone the operating address gives (the region's default), stored so no
   /// read decrypts the address to derive it (zero-unwrap rule; guardrail 3 of spike 3).
-  addressTimezone                  String?                   @map("address_timezone")
+  addressTimezone                String?                       @map("address_timezone")
   /// Q-M25. The draft's chosen shop slug (normalised). Clear, not public while a draft; `COLLATE "C"`
   /// and the CHECK `seller_files_draft_slug_check` are hand-written in the migration. No unique key
   /// and no index: uniqueness is decided when the first submission holds the slug in shop_slugs (T1).
-  draftSlug                        String?                   @map("draft_slug")
+  draftSlug                      String?                       @map("draft_slug")
   /// Slice 3. Clear scheme code from Market configuration; the three identifier columns are all
   /// NULL or all set (CHECK seller_files_identifier_set_check, hand-written).
-  identifierScheme                 String?                   @map("identifier_scheme")
+  identifierScheme               String?                       @map("identifier_scheme")
   /// Slice 3. Personal, S4. The normalised identifier; label sellers.seller-file.identifier.
-  identifierCiphertext             String?                   @map("identifier_ciphertext")
+  identifierCiphertext           String?                       @map("identifier_ciphertext")
   /// Slice 3. Personal (pseudonymous), S5: IdentifierIndex.of(market, scheme, normalised), 32
   /// bytes. The partial index (market_id, identifier_index) WHERE NOT NULL is hand-written.
-  identifierIndex                  Bytes?                    @map("identifier_index")
+  identifierIndex                Bytes?                        @map("identifier_index")
+  /// Slice 5. The V1 pointer to the live approved revision of this seller (ADR-0009 decision 2),
+  /// NULL until a revision is approved (moved by slice 7a-decide only). The composite foreign key
+  /// below names (market, seller, revision), so the pointer can only name a revision of this
+  /// seller; a file with an approved revision has a frozen draft.
+  approvedRevisionId             String?                       @map("approved_revision_id") @db.Uuid
   /// Optimistic version of the aggregate (P 10); 1 at insert.
-  version                          Int
-  createdAt                        DateTime                  @map("created_at") @db.Timestamptz(6)
-  adminSettings                    SellersSellerAdminSettings?
-  taxProfile                       SellersSellerTaxProfile?
-  storeProfile                     SellersStoreProfile?
-  registerChecks                   SellersRegisterCheck[]
+  version                        Int
+  createdAt                      DateTime                      @map("created_at") @db.Timestamptz(6)
+  approvedRevision               SellersBusinessFileRevision?  @relation("SellerFileApprovedRevision", fields: [marketId, sellerId, approvedRevisionId], references: [marketId, sellerId, id], onDelete: Restrict, onUpdate: Restrict)
+  revisions                      SellersBusinessFileRevision[] @relation("SellerFileRevisions")
+  adminSettings                  SellersSellerAdminSettings?
+  taxProfile                     SellersSellerTaxProfile?
+  storeProfile                   SellersStoreProfile?
+  registerChecks                 SellersRegisterCheck[]
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
@@ -184,21 +191,21 @@ model SellersRateCounter {
 /// the AI switch. No column default (C2): the creating handler writes true, false, false, so a
 /// missing row is a fault and never silently a default.
 model SellersSellerAdminSettings {
-  sellerId                           String            @id @map("seller_id") @db.Uuid
-  marketId                           String            @map("market_id") @db.VarChar(8)
-  tenantId                           String            @map("tenant_id")
-  allProductTypesAllowed             Boolean           @map("all_product_types_allowed")
-  allProductTypesChangedAt           DateTime?         @map("all_product_types_changed_at") @db.Timestamptz(6)
-  allProductTypesChangedByAccountId  String?           @map("all_product_types_changed_by_account_id") @db.Uuid
-  categoryProposalsAllowed           Boolean           @map("category_proposals_allowed")
-  categoryProposalsChangedAt         DateTime?         @map("category_proposals_changed_at") @db.Timestamptz(6)
-  categoryProposalsChangedByAccountId String?          @map("category_proposals_changed_by_account_id") @db.Uuid
-  aiEnabled                          Boolean           @map("ai_enabled")
-  aiEnabledChangedAt                 DateTime?         @map("ai_enabled_changed_at") @db.Timestamptz(6)
-  aiEnabledChangedByAccountId        String?           @map("ai_enabled_changed_by_account_id") @db.Uuid
-  version                            Int
-  createdAt                          DateTime          @map("created_at") @db.Timestamptz(6)
-  sellerFile                         SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  sellerId                            String            @id @map("seller_id") @db.Uuid
+  marketId                            String            @map("market_id") @db.VarChar(8)
+  tenantId                            String            @map("tenant_id")
+  allProductTypesAllowed              Boolean           @map("all_product_types_allowed")
+  allProductTypesChangedAt            DateTime?         @map("all_product_types_changed_at") @db.Timestamptz(6)
+  allProductTypesChangedByAccountId   String?           @map("all_product_types_changed_by_account_id") @db.Uuid
+  categoryProposalsAllowed            Boolean           @map("category_proposals_allowed")
+  categoryProposalsChangedAt          DateTime?         @map("category_proposals_changed_at") @db.Timestamptz(6)
+  categoryProposalsChangedByAccountId String?           @map("category_proposals_changed_by_account_id") @db.Uuid
+  aiEnabled                           Boolean           @map("ai_enabled")
+  aiEnabledChangedAt                  DateTime?         @map("ai_enabled_changed_at") @db.Timestamptz(6)
+  aiEnabledChangedByAccountId         String?           @map("ai_enabled_changed_by_account_id") @db.Uuid
+  version                             Int
+  createdAt                           DateTime          @map("created_at") @db.Timestamptz(6)
+  sellerFile                          SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, sellerId])
   @@map("seller_admin_settings")
@@ -208,12 +215,12 @@ model SellersSellerAdminSettings {
 /// The root of a seller's tax registration periods (data design 3.7; V2): it exists so that a
 /// recorded period raises one version.
 model SellersSellerTaxProfile {
-  sellerId   String                        @id @map("seller_id") @db.Uuid
-  marketId   String                        @map("market_id") @db.VarChar(8)
-  tenantId   String                        @map("tenant_id")
+  sellerId   String                         @id @map("seller_id") @db.Uuid
+  marketId   String                         @map("market_id") @db.VarChar(8)
+  tenantId   String                         @map("tenant_id")
   version    Int
-  createdAt  DateTime                      @map("created_at") @db.Timestamptz(6)
-  sellerFile SellersSellerFile             @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  createdAt  DateTime                       @map("created_at") @db.Timestamptz(6)
+  sellerFile SellersSellerFile              @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
   periods    SellersTaxRegistrationPeriod[]
 
   @@unique([marketId, sellerId])
@@ -227,23 +234,23 @@ model SellersSellerTaxProfile {
 /// migration: Prisma does not model it) and the CHECKs and grants are hand-written too. The
 /// application may only INSERT, close (UPDATE valid_to) and DELETE a period that has not started.
 model SellersTaxRegistrationPeriod {
-  id                         String                  @id @db.Uuid
-  marketId                   String                  @map("market_id") @db.VarChar(8)
-  tenantId                   String                  @map("tenant_id")
-  sellerId                   String                  @map("seller_id") @db.Uuid
+  id                       String                  @id @db.Uuid
+  marketId                 String                  @map("market_id") @db.VarChar(8)
+  tenantId                 String                  @map("tenant_id")
+  sellerId                 String                  @map("seller_id") @db.Uuid
   /// Clear; the platform decides nothing from it (ADR-0007 decision 6).
-  registeredForIndirectTax   Boolean                 @map("registered_for_indirect_tax")
+  registeredForIndirectTax Boolean                 @map("registered_for_indirect_tax")
   /// The local date the person entered (or the recording instant's local date).
-  effectiveFromLocal         DateTime                @map("effective_from_local") @db.Date
+  effectiveFromLocal       DateTime                @map("effective_from_local") @db.Date
   /// IANA zone that turned the local date into valid_from (ADR-0005 decision 3).
-  effectiveZone              String                  @map("effective_zone")
-  validFrom                  DateTime                @map("valid_from") @db.Timestamptz(6)
-  validTo                    DateTime?               @map("valid_to") @db.Timestamptz(6)
+  effectiveZone            String                  @map("effective_zone")
+  validFrom                DateTime                @map("valid_from") @db.Timestamptz(6)
+  validTo                  DateTime?               @map("valid_to") @db.Timestamptz(6)
   /// seller | admin.
-  recordedByKind             String                  @map("recorded_by_kind")
-  recordedByAccountId        String                  @map("recorded_by_account_id") @db.Uuid
-  recordedAt                 DateTime                @map("recorded_at") @db.Timestamptz(6)
-  taxProfile                 SellersSellerTaxProfile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  recordedByKind           String                  @map("recorded_by_kind")
+  recordedByAccountId      String                  @map("recorded_by_account_id") @db.Uuid
+  recordedAt               DateTime                @map("recorded_at") @db.Timestamptz(6)
+  taxProfile               SellersSellerTaxProfile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   /// "As of an instant" (ADR-0007 decision 7), led by market_id (C7).
   @@index([marketId, sellerId, validFrom])
@@ -276,6 +283,9 @@ model SellersRegisterCheck {
   checkedByKind            String            @map("checked_by_kind")
   /// A plain id (C4); NULL exactly for the job.
   checkedByAccountId       String?           @map("checked_by_account_id") @db.Uuid
+  /// Slice 5 (Hassan M1 residual): the `seller_files.version` the comparison read the draft at.
+  /// An `active` result is current only while the file is still at this version. >= 1 (CHECK).
+  comparedFileVersion      Int               @map("compared_file_version")
   sellerFile               SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, sellerId, identifierIndex])
@@ -295,5 +305,66 @@ model SellersStoreProfile {
 
   @@unique([marketId, sellerId])
   @@map("store_profiles")
+  @@schema("sellers")
+}
+
+/// One revision of a seller's business file (data design 3.2; ADR-0009 V1): the frozen content a
+/// reviewer decides on. Content never changes: the application role may update only the status
+/// columns (column-level UPDATE grant, hand-written in the migration with every CHECK, the
+/// partial unique indexes "one pending" and "one approved", and the reviewer-queue index).
+model SellersBusinessFileRevision {
+  id                   String              @id @db.Uuid
+  marketId             String              @map("market_id") @db.VarChar(8)
+  tenantId             String              @map("tenant_id")
+  sellerId             String              @map("seller_id") @db.Uuid
+  /// onboarding | identity-change (CHECK).
+  kind                 String
+  /// 1, 2, ... per seller (CHECK >= 1); unique per seller.
+  revisionNo           Int                 @map("revision_no")
+  /// pending | approved | rejected | withdrawn | superseded (CHECK).
+  status               String
+  /// seller | admin (CHECK).
+  authorKind           String              @map("author_kind")
+  /// A plain id (C4): a revision is only created from a person's submission.
+  authorAccountId      String              @map("author_account_id") @db.Uuid
+  /// Personal, Enc, label sellers.business-file-revision.content: the sorted-key JSON of the
+  /// content, sealed under the seller's key. Never queried; the reviewer reads it whole.
+  contentCiphertext    String              @map("content_ciphertext")
+  /// The JSON shape of the content (CHECK >= 1), not the envelope version.
+  contentSchemaVersion Int                 @map("content_schema_version") @db.SmallInt
+  /// hmac-sha256:<64 hex> over the canonical content (CHECK), keyed by the seller's subject key.
+  contentHash          String              @map("content_hash")
+  /// Personal (pseudonymous), S5: the submitted identifier's index; NULL when none was given.
+  identifierIndex      Bytes?              @map("identifier_index")
+  /// Clear IANA zone and ServiceArea code of the operating address at submission.
+  operatingTimezone    String              @map("operating_timezone")
+  serviceAreaCode      String              @map("service_area_code")
+  /// Clear IANA zone derived from the operating address only, copied at submit; NULL for a
+  /// backfill revision (fail closed for the claim path).
+  addressTimezone      String?             @map("address_timezone")
+  /// Snapshot of the register check at submission (CHECKs: outcome list, mismatch subset).
+  registerOutcome      String              @map("register_outcome")
+  registerMismatches   String[]            @map("register_mismatches")
+  registerCheckedAt    DateTime?           @map("register_checked_at") @db.Timestamptz(6)
+  createdAt            DateTime            @map("created_at") @db.Timestamptz(6)
+  statusChangedAt      DateTime            @map("status_changed_at") @db.Timestamptz(6)
+  decidedAt            DateTime?           @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId   String?             @map("decided_by_account_id") @db.Uuid
+  identityDecisionId   String?             @map("identity_decision_id") @db.Uuid
+  /// A code from the Market's reject reasons, never text (S8 pattern CHECK).
+  rejectReasonCode     String?             @map("reject_reason_code")
+  /// edited | cancelled | reapply-refused (CHECK).
+  withdrawCause        String?             @map("withdraw_cause")
+  /// seller | admin (CHECK).
+  withdrawnByKind      String?             @map("withdrawn_by_kind")
+  withdrawnAt          DateTime?           @map("withdrawn_at") @db.Timestamptz(6)
+  sellerFile           SellersSellerFile   @relation("SellerFileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  approvedFor          SellersSellerFile[] @relation("SellerFileApprovedRevision")
+
+  /// The seller's revision numbers; the latest-rejected probe reads it backwards (3.2).
+  @@unique([marketId, sellerId, revisionNo])
+  /// The target of the pointer foreign keys of seller_files (3.1, 3.2).
+  @@unique([marketId, sellerId, id])
+  @@map("business_file_revisions")
   @@schema("sellers")
 }

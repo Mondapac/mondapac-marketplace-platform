@@ -63,6 +63,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX regular_price_records_effective_period_excl ON pricing.regular_price_records USING gist (market_id, series_id, tstzrange(effective_from, effective_to, '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
   'pricing.regular_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX regular_price_records_market_id_series_id_pending_key ON pricing.regular_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
+  // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
+  // approved revision per file, and the reviewer queue by kind and age.
+  'sellers.business_file_revisions_market_id_seller_id_approved_key':
+    "CREATE UNIQUE INDEX business_file_revisions_market_id_seller_id_approved_key ON sellers.business_file_revisions USING btree (market_id, seller_id) WHERE (status = 'approved'::text)",
+  'sellers.business_file_revisions_market_id_seller_id_pending_key':
+    "CREATE UNIQUE INDEX business_file_revisions_market_id_seller_id_pending_key ON sellers.business_file_revisions USING btree (market_id, seller_id) WHERE (status = 'pending'::text)",
+  'sellers.business_file_revisions_market_id_kind_created_at_pending_idx':
+    "CREATE INDEX business_file_revisions_market_id_kind_created_at_pending_idx ON sellers.business_file_revisions USING btree (market_id, kind, created_at, id) WHERE (status = 'pending'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_files_market_id_identifier_index_idx':

@@ -1,5 +1,11 @@
-import { fieldLabel, type FieldLabel } from '../../../platform/subject-keys/labels';
+import { fieldLabel, hashPurpose, type FieldLabel } from '../../../platform/subject-keys/labels';
 import type { SealedField } from '../domain/sealed';
+
+/** The label of `business_file_revisions.content_ciphertext` (data design 4.2). */
+export const REVISION_CONTENT_LABEL = fieldLabel('sellers.business-file-revision.content');
+
+/** The hash purpose of `business_file_revisions.content_hash` (sellers design 2.4 rule 2). */
+export const REVISION_CONTENT_HASH_PURPOSE = hashPurpose('sellers.business-file.content');
 
 /**
  * The field labels of the draft's ciphertext columns (sellers data design 4.2; PF 4 row 3):

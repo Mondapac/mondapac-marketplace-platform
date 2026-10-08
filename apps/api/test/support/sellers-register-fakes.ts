@@ -53,6 +53,7 @@ export class InMemoryRegisterChecks implements RegisterCheckRepository {
       write.mismatches,
       write.checkedAt,
       write.checkedBy,
+      write.comparedFileVersion,
     );
     this.rows.set(key, next);
     return Promise.resolve(next);

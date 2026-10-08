@@ -42,6 +42,13 @@ export interface RegisterCheck {
   readonly definiteNegativeAt: Temporal.Instant | null;
   readonly checkedAt: Temporal.Instant;
   readonly checkedBy: RegisterChecker;
+  /**
+   * The `seller_files.version` the comparison read the draft at (slice 5; Hassan M1 residual).
+   * Instants cannot tell two edits of one millisecond apart, or an edit that commits after the
+   * write unit's re-read; the version can. An `active` result is current only while the file is
+   * still at this version.
+   */
+  readonly comparedFileVersion: number;
 }
 
 const isNegative = (outcome: RegisterOutcome): boolean =>
@@ -60,7 +67,11 @@ export function registerCheckAfter(
   mismatches: readonly RegisterMismatch[],
   now: Temporal.Instant,
   by: RegisterChecker,
+  comparedFileVersion: number,
 ): RegisterCheck {
+  if (!Number.isSafeInteger(comparedFileVersion) || comparedFileVersion < 1) {
+    throw new TypeError('registerCheckAfter: the compared file version is a positive integer');
+  }
   if (!(REGISTER_OUTCOMES as readonly string[]).includes(outcome)) {
     throw new TypeError('registerCheckAfter: unknown outcome');
   }
@@ -86,6 +97,7 @@ export function registerCheckAfter(
     definiteNegativeAt: mark,
     checkedAt: now,
     checkedBy: by,
+    comparedFileVersion,
   };
 }
 
@@ -120,11 +132,21 @@ export type RegisterStaleReason = 'aged' | 'draft-changed';
 
 /**
  * The draft changed after the check: the file's `lastChangedAt` is later than the result's
- * `checkedAt`. Any saved change counts (an existing clear column, no migration): the comparison
- * ran on the draft as it was then, and a field it skipped for being empty is not known to match.
+ * `checkedAt`, or the file is no longer at the version the comparison read (slice 5, Hassan M1
+ * residual: the version catches an edit in the same millisecond and one that commits after the
+ * write unit's re-read, which the instants cannot). Any saved change counts: the comparison ran
+ * on the draft as it was then, and a field it skipped for being empty is not known to match.
+ * Fail closed: any difference of version, a later one or an earlier one, is a change.
  */
-export function draftChangedSince(check: RegisterCheck, fileChangedAt: Temporal.Instant): boolean {
-  return Temporal.Instant.compare(fileChangedAt, check.checkedAt) > 0;
+export function draftChangedSince(
+  check: RegisterCheck,
+  fileChangedAt: Temporal.Instant,
+  fileVersion: number,
+): boolean {
+  return (
+    Temporal.Instant.compare(fileChangedAt, check.checkedAt) > 0 ||
+    check.comparedFileVersion !== fileVersion
+  );
 }
 
 /** The reason an `active` result is stale, or null when it is current (or not `active`). */
@@ -133,13 +155,14 @@ export function staleReasonOf(
   now: Temporal.Instant,
   maxResultAgeDays: number,
   fileChangedAt: Temporal.Instant,
+  fileVersion: number,
 ): RegisterStaleReason | null {
   assertMaxAgeDays(maxResultAgeDays);
   if (check === null || check.definiteNegativeAt !== null || check.outcome !== 'active') {
     return null;
   }
   if (!isFresh(check, now, maxResultAgeDays)) return 'aged';
-  return draftChangedSince(check, fileChangedAt) ? 'draft-changed' : null;
+  return draftChangedSince(check, fileChangedAt, fileVersion) ? 'draft-changed' : null;
 }
 
 export function registerStateOf(
@@ -147,12 +170,15 @@ export function registerStateOf(
   now: Temporal.Instant,
   maxResultAgeDays: number,
   fileChangedAt: Temporal.Instant,
+  fileVersion: number,
 ): RegisterState {
   assertMaxAgeDays(maxResultAgeDays);
   if (check === null) return 'not-performed';
   if (check.definiteNegativeAt !== null) return 'negative';
   if (check.outcome === 'unavailable') return 'unavailable';
-  return staleReasonOf(check, now, maxResultAgeDays, fileChangedAt) === null ? 'active' : 'stale';
+  return staleReasonOf(check, now, maxResultAgeDays, fileChangedAt, fileVersion) === null
+    ? 'active'
+    : 'stale';
 }
 
 /** A definite negative closes the submission (AC 31); every other state lets it through (AC 32). */

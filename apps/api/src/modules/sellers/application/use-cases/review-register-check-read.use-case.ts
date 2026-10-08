@@ -131,17 +131,18 @@ export class ReviewRegisterCheckRead extends UseCase<
             identifierSaved: index !== null,
             check,
             changedAt: file.state.lastChangedAt,
+            fileVersion: file.state.version,
           });
         },
         { readOnly: true },
       );
       if (!read.ok) return err({ code: 'access.unavailable' });
       if (read.value === null) return err({ code: 'file.not-found' });
-      const { identifierSaved, check, changedAt } = read.value;
+      const { identifierSaved, check, changedAt, fileVersion } = read.value;
       const now = clock.now();
       const state =
         settings.kind === 'configured'
-          ? registerStateOf(check, now, settings.maxResultAgeDays, changedAt)
+          ? registerStateOf(check, now, settings.maxResultAgeDays, changedAt, fileVersion)
           : 'not-performed';
       return ok({
         lookup: settings.kind === 'configured' ? 'configured' : 'none',
@@ -150,7 +151,7 @@ export class ReviewRegisterCheckRead extends UseCase<
         mismatches: state === 'active' && check !== null ? check.mismatches : [],
         staleReason:
           state === 'stale' && settings.kind === 'configured'
-            ? staleReasonOf(check, now, settings.maxResultAgeDays, changedAt)
+            ? staleReasonOf(check, now, settings.maxResultAgeDays, changedAt, fileVersion)
             : null,
         checkedAt: state === 'not-performed' || check === null ? null : check.checkedAt.toString(),
         checkedBy: state === 'not-performed' || check === null ? null : check.checkedBy.kind,
