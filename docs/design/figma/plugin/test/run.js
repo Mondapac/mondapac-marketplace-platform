@@ -1275,14 +1275,15 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'build' });
     check(!r.err && ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join()) && phoneMains(Q).length >= 10 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'a new 1.8.4 build has the ring spreads and scrolling phone screens');
     // Audit: an entry past the 25th is announced, and a layer sticking out sideways from a scrolling Main is still counted
-    const box = Q.figma.createFrame(); box.name = 'Overflow box'; box.fills = []; box.layoutMode = 'VERTICAL'; box.resize(100, 600); box._abb = { x: 0, y: 0, width: 100, height: 600 };
-    for (let i = 0; i < 30; i++) { const k = Q.figma.createFrame(); k.name = 'wide ' + i; k.fills = []; k.resize(200, 10); box.appendChild(k); k._abb = { x: 0, y: i * 10, width: 200, height: 10 }; }
     const wide = Q.figma.createFrame(); wide.name = 'too wide'; wide.fills = []; wide.resize(500, 20); sellerPhoneMain(Q).appendChild(wide);
     sellerPhoneMain(Q)._abb = { x: 0, y: 56, width: 360, height: 660 }; wide._abb = { x: 16, y: 100, width: 500, height: 20 };
-    r = await send(Q, { type: 'audit' }); const rep = r.done ? r.done.report : [];
+    r = await send(Q, { type: 'audit' }); let rep = r.done ? r.done.report : [];
+    check(rep.includes('⚠ Layers sticking out of their parent: 1 (1 unique)') && rep.some((l) => /Shared · Members · Seller \(phone\) › Main › too wide \+156px clipped$/.test(l)), 'a layer sticking out sideways from a scrolling Main is still counted (' + rep.filter((l) => /too wide/.test(l)).join('') + ')');
+    const box = Q.figma.createFrame(); box.name = 'Overflow box'; box.fills = []; box.layoutMode = 'VERTICAL'; box.resize(100, 600); box._abb = { x: 0, y: 0, width: 100, height: 600 };
+    for (let i = 0; i < 30; i++) { const k = Q.figma.createFrame(); k.name = 'wide ' + i; k.fills = []; k.resize(200, 10); box.appendChild(k); k._abb = { x: 0, y: i * 10, width: 200, height: 10 }; }
+    r = await send(Q, { type: 'audit' }); rep = r.done ? r.done.report : [];
     const i0 = rep.findIndex((l) => /^⚠ Layers sticking out of their parent: 31 \(31 unique\)$/.test(l));
-    check(i0 >= 0 && rep.slice(i0 + 1, i0 + 26).every((l) => /^ {4}\S/.test(l) && !/^ {4}…/.test(l)) && rep[i0 + 26] === '    … and 6 more', 'Audit file lists 25 entries and then says how many more there are (' + (i0 >= 0 ? rep[i0 + 26] : rep.filter((l) => /^⚠/.test(l)).join(' | ')) + ')');
-    check(rep.some((l) => /Shared · Members · Seller \(phone\) › Main › too wide \+\d+px clipped/.test(l)), 'a layer sticking out sideways from a scrolling Main is still counted');
+    check(i0 >= 0 && rep.slice(i0 + 1, i0 + 26).every((l) => /^ {4}\S/.test(l) && !/^ {4}…/.test(l)) && rep[i0 + 26] === '    … and 6 more' && /^✓ /.test(rep[i0 + 27]), 'Audit file lists 25 entries and then says how many more there are (' + (i0 >= 0 ? rep[i0 + 26] : rep.filter((l) => /^⚠/.test(l)).join(' | ')) + ')');
   }
   {
     // hand-edited: a ring style with another blur, a phone Main that scrolls sideways, a phone screen that is not the plugin's
