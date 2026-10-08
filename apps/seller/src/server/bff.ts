@@ -35,7 +35,6 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/reset-password',
     'identity/seller/change-password',
     'sellers/my-file/slug-check',
-    'sellers/my-file/identifier-check',
   ]),
 };
 

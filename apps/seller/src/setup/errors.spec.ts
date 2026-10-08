@@ -14,7 +14,7 @@ describe('problemOf', () => {
         ],
       },
     });
-    expect(problem.form).toBeNull();
+    expect(problem.form?.key).toBe('sellers.validation.summary');
     expect(problem.fields).toEqual({
       storeName: 'sellers.validation.required',
       'address.postcode': 'sellers.validation.invalid',
@@ -28,6 +28,24 @@ describe('problemOf', () => {
     ['slug.format', 'slug', 'sellers.error.slug.format'],
   ])('puts %s on the %s field', (code, field, key) => {
     expect(problemOf({ status: 422, code }).fields).toEqual({ [field]: key });
+  });
+
+  it('gives a problem on a path no input owns a form message', () => {
+    const problem = problemOf({
+      status: 400,
+      code: 'validation.failed',
+      details: { fields: [{ path: 'address', code: 'format' }] },
+    });
+    expect(problem.form?.key).toBe('sellers.validation.summary');
+  });
+
+  it('puts a time zone that cannot be selected on the zone field, and 503 on its own message', () => {
+    expect(problemOf({ status: 409, code: 'timezone.not-selectable' }).fields).toEqual({
+      timezone: 'sellers.error.timezone.not-selectable',
+    });
+    expect(problemOf({ status: 503, code: 'sellers.unavailable' }).form?.key).toBe(
+      'sellers.error.unavailable',
+    );
   });
 
   it('shows known top-level codes as a form message and everything else as unknown', () => {

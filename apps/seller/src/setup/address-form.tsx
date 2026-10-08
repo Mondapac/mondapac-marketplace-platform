@@ -7,6 +7,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import { nextHref } from './steps.ts';
 import type { AddressSaved, FormDescriptors, MyFile, ZoneState } from './types.ts';
+import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
 type AddressValues = Record<string, string>;
@@ -91,12 +92,13 @@ export function AddressForm({
           zoneOptions: file.zoneOptions,
         },
   );
-  const { pending, problem, save } = useStepSave(csrfToken);
-  useFocusFirstInvalid(formRef, problem?.fields ?? {});
+  const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  useFocusFirstInvalid(formRef, focusKeys);
 
   const region = regionField === null ? null : (address[regionField] ?? '');
   const regionZones = region === null ? [] : (descriptors.timezones[region] ?? []);
-  const zoneChoices = result?.zoneOptions.length ? result.zoneOptions : regionZones;
+  // The zones of the region as it stands now; the last save's options only before a region is chosen.
+  const zoneChoices = regionZones.length > 0 ? regionZones : (result?.zoneOptions ?? []);
 
   function label(key: string, fallback: string): string {
     return t.has(key) ? t(key) : fallback;
@@ -175,7 +177,7 @@ export function AddressForm({
       noValidate
       className="flex flex-col gap-5"
     >
-      {problem?.form ? <Banner tone="critical">{t(problem.form.key)}</Banner> : null}
+      {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card title={t('sellers.address.title')}>
         <p className="text-sm text-fg-muted">{t('sellers.address.help.scope')}</p>
         {renderFields(address, setAddress, 'address')}
@@ -185,7 +187,8 @@ export function AddressForm({
             label={t('sellers.address.label.zone')}
             help={t('sellers.address.help.zone')}
             error={problem?.fields['timezone'] ? t(problem.fields['timezone']) : undefined}
-            value={zone ?? zoneChoices[0] ?? ''}
+            placeholder={t('sellers.address.choose-zone')}
+            value={zone !== null && zoneChoices.includes(zone) ? zone : ''}
             options={zoneChoices.map((value) => ({
               value,
               label: `${zoneName(value)} (${value})`,
@@ -209,6 +212,9 @@ export function AddressForm({
       ) : null}
       {result?.outside ? (
         <Banner tone="attention">{t('sellers.error.address.outside-service-area')}</Banner>
+      ) : null}
+      {result && !result.outside && result.timezone === null ? (
+        <Banner tone="attention">{t('sellers.error.timezone.unresolved')}</Banner>
       ) : null}
       {result && !result.outside && result.timezone ? (
         <Banner tone="success">

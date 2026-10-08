@@ -261,7 +261,8 @@
       "country": "Country",
       "label": {
         "zone": "Time zone"
-      }
+      },
+      "choose-zone": "Choose…"
     },
     "number": {
       "title": "Business number",
@@ -285,7 +286,9 @@
       "suggested": "Suggested from your store name. You can change it.",
       "status": {
         "checking": "Checking…",
-        "available": "Available now. It's held for you when you submit."
+        "available": "Available now. It's held for you when you submit.",
+        "throttled": "Too many checks. Wait a moment.",
+        "failed": "We couldn't check this address. Try saving it, and we'll check again."
       }
     },
     "validation": {
@@ -294,7 +297,8 @@
       "length": "This is too long or too short.",
       "format": "Check the format and try again.",
       "region": "Choose one of the options.",
-      "invalid": "Check this detail and try again."
+      "invalid": "Check this detail and try again.",
+      "summary": "Check the details below and try again."
     },
     "error": {
       "phone": {
@@ -330,7 +334,8 @@
       },
       "limit": {
         "daily": "You've reached today's limit for this. Try again later."
-      }
+      },
+      "unavailable": "We couldn't save this right now. Try again in a moment."
     },
     "common": {
       "contact-us": "Contact us"

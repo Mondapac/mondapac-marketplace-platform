@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
+import { Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -9,6 +9,7 @@ import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import { SLUG_MAX, SLUG_MIN, slugFormatOk, suggestSlug } from './slug.ts';
 import { nextHref } from './steps.ts';
 import type { DraftSaved, MyFile, SlugCheck } from './types.ts';
+import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
 const IDLE_MS = 600;
@@ -17,7 +18,7 @@ type CheckState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'checking' }
   | { readonly kind: 'done'; readonly slug: string; readonly code: string }
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed'; readonly throttled: boolean };
 
 export function SlugForm({
   file,
@@ -35,8 +36,8 @@ export function SlugForm({
   const [suggested, setSuggested] = useState(file.slug === null && suggestion !== '');
   const [check, setCheck] = useState<CheckState>({ kind: 'idle' });
   const [savedOnce, setSavedOnce] = useState(file.slug !== null);
-  const { pending, problem, save } = useStepSave(csrfToken);
-  useFocusFirstInvalid(formRef, problem?.fields ?? {});
+  const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  useFocusFirstInvalid(formRef, focusKeys);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const latest = useRef(value);
@@ -63,7 +64,11 @@ export function SlugForm({
       void runCheck(latest.current);
       return;
     }
-    setCheck(result.ok ? { kind: 'done', slug, code: result.body.code } : { kind: 'failed' });
+    setCheck(
+      result.ok
+        ? { kind: 'done', slug, code: result.body.code }
+        : { kind: 'failed', throttled: result.failure.code === 'request.throttled' },
+    );
   }
 
   function scheduleCheck(slug: string) {
@@ -105,10 +110,20 @@ export function SlugForm({
   const failure = problem?.fields['slug'];
   const checkedCode = check.kind === 'done' && check.slug === value ? check.code : null;
   let status;
-  if (check.kind === 'checking') {
+  if (failure !== undefined || localInvalid) {
+    status = undefined;
+  } else if (check.kind === 'checking') {
     status = <FieldStatus tone="checking">{t('sellers.slug.status.checking')}</FieldStatus>;
   } else if (checkedCode === 'slug.available') {
     status = <FieldStatus tone="success">{t('sellers.slug.status.available')}</FieldStatus>;
+  } else if (check.kind === 'failed') {
+    status = (
+      <FieldStatus tone={check.throttled ? 'critical' : 'info'}>
+        {t(check.throttled ? 'sellers.slug.status.throttled' : 'sellers.slug.status.failed')}
+      </FieldStatus>
+    );
+  } else if (checkedCode === 'slug.format') {
+    status = <FieldStatus tone="critical">{t('sellers.error.slug.format', limits)}</FieldStatus>;
   } else if (checkedCode === 'slug.taken' || checkedCode === 'slug.reserved') {
     status = <FieldStatus tone="critical">{t(`sellers.error.${checkedCode}`)}</FieldStatus>;
   }
@@ -138,7 +153,7 @@ export function SlugForm({
       noValidate
       className="flex flex-col gap-5"
     >
-      {problem?.form ? <Banner tone="critical">{t(problem.form.key)}</Banner> : null}
+      {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card>
         <TextField
           name="slug"

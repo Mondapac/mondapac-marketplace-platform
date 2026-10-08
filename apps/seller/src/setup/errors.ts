@@ -14,7 +14,6 @@ const PLAIN = new Set([
   'lookup.limit',
   'conflict.stale',
   'file.change-request-required',
-  'timezone.not-selectable',
   'request.throttled',
 ]);
 
@@ -27,7 +26,12 @@ export function problemOf(failure: ApiFailure): SaveProblem {
         ? `sellers.validation.${problem.code}`
         : 'sellers.validation.invalid';
     }
-    return { form: null, fields };
+    // A summary banner too: a problem on a path no input owns (the address as a whole) must
+    // never leave the seller with no message at all.
+    return { form: { key: 'sellers.validation.summary' }, fields };
+  }
+  if (failure.code === 'timezone.not-selectable') {
+    return { form: null, fields: { timezone: 'sellers.error.timezone.not-selectable' } };
   }
   if (failure.code === 'phone.required') {
     return { form: null, fields: { phone: 'sellers.error.phone.required' } };
@@ -41,6 +45,9 @@ export function problemOf(failure: ApiFailure): SaveProblem {
     failure.code === 'slug.format'
   ) {
     return { form: null, fields: { slug: `sellers.error.${failure.code}` } };
+  }
+  if (failure.status === 503 || failure.code === 'sellers.unavailable') {
+    return { form: { key: 'sellers.error.unavailable' }, fields: {} };
   }
   if (failure.code === 'request.csrf')
     return { form: { key: 'identity.error.request.csrf' }, fields: {} };

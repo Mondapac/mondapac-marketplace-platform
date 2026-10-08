@@ -1,12 +1,13 @@
 'use client';
 
-import { Banner, Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
+import { Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import { nextHref } from './steps.ts';
 import type { FormDescriptors, IdentifierSaved, MyFile, RegisterResult } from './types.ts';
+import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
 const RESULT_KEY: Record<RegisterResult, { tone: 'success' | 'critical' | 'info'; key: string }> = {
@@ -32,8 +33,8 @@ export function NumberForm({
   const [value, setValue] = useState(file.identifier?.display ?? '');
   const [registerResult, setRegisterResult] = useState<RegisterResult | null>(file.registerResult);
   const [savedOnce, setSavedOnce] = useState(file.identifier !== null);
-  const { pending, problem, save } = useStepSave(csrfToken);
-  useFocusFirstInvalid(formRef, problem?.fields ?? {});
+  const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  useFocusFirstInvalid(formRef, focusKeys);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -47,12 +48,9 @@ export function NumberForm({
   }
 
   const failure = problem?.fields['identifier'];
-  const limit = problem?.form?.key === 'sellers.error.lookup.limit';
   const status = pending ? (
     <FieldStatus tone="checking">{t('sellers.number.status.checking')}</FieldStatus>
-  ) : limit ? (
-    <FieldStatus tone="critical">{t('sellers.error.lookup.limit')}</FieldStatus>
-  ) : registerResult ? (
+  ) : failure === undefined && registerResult ? (
     <FieldStatus tone={RESULT_KEY[registerResult].tone}>
       {t(RESULT_KEY[registerResult].key)}
     </FieldStatus>
@@ -65,7 +63,7 @@ export function NumberForm({
       noValidate
       className="flex flex-col gap-5"
     >
-      {problem?.form && !limit ? <Banner tone="critical">{t(problem.form.key)}</Banner> : null}
+      {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card>
         <TextField
           name="identifier"

@@ -1,12 +1,13 @@
 'use client';
 
-import { Banner, Button, Card, FormActionBar, TextField } from '@mondapac/ui';
+import { Button, Card, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import { nextHref } from './steps.ts';
 import type { DraftSaved, MyFile } from './types.ts';
+import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
 export function BusinessForm({
@@ -29,13 +30,13 @@ export function BusinessForm({
     phone: file.general.phone ?? '',
     contactEmail: file.general.contactEmail ?? '',
   });
-  const { pending, problem, save } = useStepSave(csrfToken);
+  const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
   const fieldKey = (name: keyof typeof values) => problem?.fields[name];
   const fieldError = (name: keyof typeof values) => {
     const key = fieldKey(name);
     return key === undefined ? undefined : t(key);
   };
-  useFocusFirstInvalid(formRef, problem?.fields ?? {});
+  useFocusFirstInvalid(formRef, focusKeys);
 
   function set(name: keyof typeof values) {
     return (event: { target: { value: string } }) =>
@@ -58,7 +59,7 @@ export function BusinessForm({
       noValidate
       className="flex flex-col gap-5"
     >
-      {problem?.form ? <Banner tone="critical">{t(problem.form.key)}</Banner> : null}
+      {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card title={t('sellers.business.title')}>
         <TextField
           name="storeName"

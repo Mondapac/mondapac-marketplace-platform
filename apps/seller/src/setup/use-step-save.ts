@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { problemOf, type SaveProblem } from './errors.ts';
 
@@ -24,9 +24,19 @@ export function useStepSave(csrfToken: string) {
     busy.current = false;
     setPending(false);
     if (result.ok) setSaved(true);
+    else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setProblem(problemOf(result.failure));
     return result;
   }
 
-  return { pending, problem, saved, setSaved, save };
+  // What the focus hook watches: the invalid fields, or the form-level message when none is.
+  const focusKeys = useMemo<Record<string, string>>(
+    () =>
+      problem === null
+        ? {}
+        : { ...problem.fields, ...(problem.form ? { '#form': problem.form.key } : {}) },
+    [problem],
+  );
+
+  return { pending, problem, saved, setSaved, save, focusKeys };
 }

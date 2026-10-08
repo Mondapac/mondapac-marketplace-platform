@@ -11,6 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { BusinessForm } from './business-form.tsx';
+import { AddressForm } from './address-form.tsx';
 import { NumberForm } from './number-form.tsx';
 import { SetupHub } from './setup-hub.tsx';
 import { SlugForm } from './slug-form.tsx';
@@ -138,6 +139,61 @@ describe('SlugForm', () => {
     expect(
       screen.getByRole<HTMLButtonElement>('button', { name: 'Save and continue' }).disabled,
     ).toBe(true);
+  });
+});
+
+describe('SlugForm checks', () => {
+  it('says so when the check is throttled', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    call.mockResolvedValue({ ok: false, failure: { status: 429, code: 'request.throttled' } });
+    render(wrap(<SlugForm file={emptyFile} csrfToken="t" storefrontAddress={null} />));
+    fireEvent.change(screen.getByLabelText('Shop web address'), { target: { value: 'my-shop' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(await screen.findByText('Too many checks. Wait a moment.')).toBeTruthy();
+    vi.useRealTimers();
+  });
+});
+
+describe('AddressForm', () => {
+  const addressDescriptors = {
+    address: {
+      fields: [
+        { key: 'line1', labelKey: 'sellers.address.line1', required: true, maxLength: 100 },
+        { key: 'state', labelKey: 'sellers.address.state', required: true, maxLength: 20 },
+      ],
+      postcodeField: 'postcode',
+      regionField: 'state',
+      postcodePattern: '^\\d{4}$',
+      regions: ['QLD', 'NSW'],
+    },
+    timezones: { QLD: ['Australia/Brisbane'], NSW: ['Australia/Sydney'] },
+  } as unknown as FormDescriptors;
+
+  it('says so when a save gives no time zone', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { outsideServiceArea: false, timezone: null, zoneOptions: [] },
+    });
+    render(wrap(<AddressForm file={emptyFile} descriptors={addressDescriptors} csrfToken="t" />));
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
+    expect(await screen.findByText(/work out your time zone/)).toBeTruthy();
+  });
+
+  it('shows a message when the problem is on the address as a whole', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'address', code: 'format' }] },
+      },
+    });
+    render(wrap(<AddressForm file={emptyFile} descriptors={addressDescriptors} csrfToken="t" />));
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
+    expect(await screen.findByText('Check the details below and try again.')).toBeTruthy();
   });
 });
 
