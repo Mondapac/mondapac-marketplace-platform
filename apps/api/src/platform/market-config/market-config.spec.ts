@@ -410,7 +410,7 @@ describe('loadMarketConfigs', () => {
       [
         'an empty selectable list',
         (c: typeof SELLERS) => void (c.timezones.byRegion.S.selectable = []),
-        /too small|at least 1/i,
+        /expected array to have >=1 items/,
       ],
       [
         'a backward link instead of the canonical zone',
