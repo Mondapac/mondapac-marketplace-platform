@@ -186,9 +186,9 @@ model PricingWriteRefusalThrottle {
 }
 
 /// The per-actor cap of M7 (D 5.2, 8): at most 20 refusal audit rows per actor per minute across
-/// Offers, then one `pricing.offer-write-refused.suppressed` summary row. Proposed shape, pending
-/// Mojtaba's fold-in of the per-actor counter into data design 3.8 (12.1). Transient: purged
-/// after an hour. The CHECKs and the grants are hand-written in the migration.
+/// Offers, then one `pricing.offer-write-refused.suppressed` summary row (no count; data design
+/// 12.1). Adopted in data design 3.8 (2026-10-08, 12.1 row 3). Transient: purged after an hour.
+/// The CHECKs and the grants are hand-written in the migration.
 model PricingWriteRefusalActorThrottle {
   marketId        String   @map("market_id") @db.VarChar(8)
   tenantId        String   @map("tenant_id")

@@ -1,9 +1,9 @@
 # Physical data model — `pricing` schema (G2)
 
 **Author:** Mojtaba (database-designer) — 2026-10-07
-**Status:** G2 approved with conditions 2026-10-07 (Ali (cto) final verdict; Bagher (qc-release-manager) final check; 11.3). Reviewers: Mohammad (software-architect), Ali (cto), Hassan (security-tester); Kazem (devops-engineer) settles 8.3 (a condition). Each migration still needs my sign-off. Catalog G2 is merged (PR #54) and accepts CF1–CF4 as ruled (catalog 9.7, 18). Follow-up: Reza (ui-ux-designer) pending, UI condition. Revised 2026-10-07 for Ali's ruling P-1 on catalog's G2 (draft 25cbf3a, merged as PR #54): the CF4 re-key (3.2, 3.6, 3.7, 5.1, 7, 8.1, 11.2 M8). Revised again 2026-10-07 for Ali's and Hassan's re-key review (3.2.1, 7, 8.1 row 7, 11.2 M8). Open points: 11.2.
+**Status:** G2 approved with conditions 2026-10-07 (Ali (cto) final verdict; Bagher (qc-release-manager) final check; 11.3). Reviewers: Mohammad (software-architect), Ali (cto), Hassan (security-tester); Kazem (devops-engineer) settles 8.3 (a condition). Each migration still needs my sign-off. Catalog G2 is merged (PR #54) and accepts CF1–CF4 as ruled (catalog 9.7, 18). Follow-up: Reza (ui-ux-designer) pending, UI condition. Revised 2026-10-07 for Ali's ruling P-1 on catalog's G2 (draft 25cbf3a, merged as PR #54): the CF4 re-key (3.2, 3.6, 3.7, 5.1, 7, 8.1, 11.2 M8). Revised again 2026-10-07 for Ali's and Hassan's re-key review (3.2.1, 7, 8.1 row 7, 11.2 M8). Revised 2026-10-08 for slice 1, part 2 as built: per-actor counter adopted (3.8), R1 and the function attributes in 3.3, `btree_gist` in schema `extensions` (8.1, 8.3), sign-off of migration 2 (12.1). Open points: 11.2.
 **Ground truth:** `docs/design/domain/pricing.md` (Mohammad, revised 2026-10-07 with Ali's and Hassan's reviews applied; cited as **D**, for example "D 3.1"; its inputs PD1 to PD7 and questions M1 to M3); `docs/modules/pricing/brief.md` (G1 approved by the owner 2026-10-07; "brief s5", "AC 12", "Q8"); `docs/design/domain/platform-persistence-and-events.md` (**P**; inputs PM1 to PM8); `docs/design/data/platform.md` section 10 (roles and grants, cited "platform.md 10"); `docs/design/data/identity.md` (conventions C1 to C11, cited "ID-data"); ADR-0004 (decisions 3 to 7), ADR-0006, ADR-0007 (decisions 1, 2, 4, 8, 10), ADR-0008, ADR-0009 (decision 2, V2), ADR-0020 (decision 6), ADR-0023 (decision 1), ADR-0024.
-**Prisma models:** `prisma/schema/pricing.prisma` (new). Nothing here exists yet. This document is the specification the migrations are written from.
+**Prisma models:** `prisma/schema/pricing.prisma`. Slice 1's tables exist (migration 2, 8.1; as built in 12.1); the rest does not yet. This document is the specification the migrations are written from.
 **Business rules:** none changed. Wherever the mapping needed a value or a reading that neither the brief nor D gives, it is an open question in 11.2, and the table shows my proposal.
 
 ## 1. Scope and table list
@@ -23,7 +23,8 @@ ADR-0009 patterns: **V2** for the regular and special price records (effective p
 | `pricing.cost_records` | `CostRecord` | V4 append-only | 3 |
 | `pricing.special_price_records` | `SpecialPriceRecord` | V2, plus write-once decision columns | 5 |
 | `pricing.special_price_boundaries` | `BoundaryMarker` (PD6) | V4 append-only | 5 |
-| `pricing.write_refusal_throttles` | **Proposed, open (11.2 M7):** the counter behind "at most 1 audit row per (actor, Offer) per minute" (D 5.2, H3) | None: transient counters | 1, if adopted |
+| `pricing.write_refusal_throttles` | The counter behind "at most 1 audit row per (actor, Offer) per minute" (D 5.2, H3); adopted (11.2 M7) | None: transient counters | 1 |
+| `pricing.write_refusal_actor_throttles` | The per-actor cap: at most 20 refusal audit rows per actor per minute across Offers, then one summary row (D 5.2, 8; M7); adopted 2026-10-08 (12.1 row 3) | None: transient counters | 1 |
 
 Every table carries `market_id` and `tenant_id`, so the guard of P 4 needs no exemption line. `platform.audit_log` is unchanged (8.1).
 
@@ -50,6 +51,8 @@ pricing.retired_variants (market_id, product_id, variant_id)   no FK
 pricing.cost_series ──< pricing.cost_records       no relation to any price table (D 6.5)
 
 pricing.outbox, pricing.inbox                      no FK
+pricing.write_refusal_throttles        (market_id, actor_account_id, offer_id)   no FK, transient
+pricing.write_refusal_actor_throttles  (market_id, actor_account_id)             no FK, transient
 ```
 
 ## 2. Conventions used by every table
@@ -131,7 +134,7 @@ The two tables of ID-data 3.1 and 3.8, under this schema, with these changes onl
 | `submitted_by_account_id` | `uuid` | no | P8 |
 | `anchor_record_id` | `uuid` | yes | The anchor this record was measured against (D 2.4 option A, decided by Ali). NULL only for a record that was not measured (the first price, D 3.1). FK `regular_price_records_anchor_record_id_fkey` `(market_id, series_id, anchor_record_id)` → `(market_id, series_id, id)` (P3). CHECK: not the record itself |
 | `anchor_amount_minor` | `bigint` | yes | The anchor's amount, copied. CHECK `(anchor_record_id IS NULL) = (anchor_amount_minor IS NULL)`, range as P1 |
-| `hold_direction` | `text` | yes | CHECK `up`, `down`. `regular_price_records_hold_direction_check`: NULL if and only if `status = 'accepted'` (a held record is every record that is not `accepted`), and the direction agrees with the amounts: `up` requires `amount_minor > anchor_amount_minor`, `down` requires `<` |
+| `hold_direction` | `text` | yes | CHECK `up`, `down`. `regular_price_records_hold_direction_check`: NULL if and only if `status = 'accepted'` (a held record is every record that is not `accepted`), the direction agrees with the amounts (`up` requires `amount_minor > anchor_amount_minor`, `down` requires `<`), and a held record carries its anchor (R1, 2026-10-08). Text below the constraint table |
 | `effective_from` | `timestamptz(6)` | yes | Set when the record becomes effective: at insert for `accepted`, at approval for `approved` (D 3.1). CHECK: NOT NULL if and only if `accepted` or `approved`; `>= submitted_at`; for `approved`, `>= decided_at` ("effective from approval", brief s5). No input sets it (Q5) |
 | `effective_to` | `timestamptz(6)` | yes | **The stored period end (M1).** NULL = open. Written once, in the unit that makes the next record effective (P7). CHECK `effective_to > effective_from`, so a period is never empty |
 | `decided_at`, `decided_by_account_id` | `timestamptz(6)`, `uuid` | yes | CHECK: set if and only if `approved` or `rejected`; both or neither; `decided_at >= submitted_at` |
@@ -148,19 +151,29 @@ The two tables of ID-data 3.1 and 3.8, under this schema, with these changes onl
 | `regular_price_records_effective_period_excl`: `EXCLUDE USING gist (market_id WITH =, series_id WITH =, tstzrange(effective_from, effective_to, '[)') WITH &&) WHERE (status IN ('accepted', 'approved'))` | Regular effective periods never overlap (PD1, D 2.1). Two open periods always overlap, so it also means "at most one open period per series" | Overlap refused `23P01`; adjacent `[a, b)` and `[b, …)` accepted; pending, rejected and superseded rows ignored; approving before closing the previous period refused |
 | `regular_price_records_market_id_series_id_pending_key`: unique `(market_id, series_id) WHERE status = 'pending-review'` | At most one pending regular record per series (PD2, AC 12) | Second pending refused `23505` |
 | `regular_price_records_decider_check`: `decided_by_account_id IS NULL OR decided_by_account_id <> submitted_by_account_id` | The decider is never the submitter (H4, Hassan) | Refused `23514` |
-| `regular_price_records_hold_direction_check` | A held record carries its anchor and a direction that matches the amounts (D 3.1, 4.2) | Wrong direction refused |
+| `regular_price_records_hold_direction_check` | A held record carries its anchor and a direction that matches the amounts (D 3.1, 4.2) | Wrong direction refused; a held record without an anchor refused `23514` (R1, `pricing-constraints.db-spec.ts`) |
 | `regular_price_records_effective_check`, `_decision_check`, `_superseded_check` | The columns each status needs (D 3.1); "effective from approval" | Each refused case in 10 |
 | Trigger `regular_price_records_write_once` (`BEFORE UPDATE`, function `pricing.regular_price_records_guard_update()`) | Record content never changes; status moves only `pending-review` → `approved` / `rejected` / `superseded`; a written-once column never changes again (P5) | `approved` → `rejected`, rewriting or re-opening `effective_to`, adding a note later, `accepted` → `superseded`: all `23001`, as the application and as the owner |
 | Triggers `regular_price_records_no_delete`, `_no_truncate` (function `pricing.reject_mutation()`) | Never deleted (P6) | Owner `DELETE` and `TRUNCATE … CASCADE` refused `23001`; the application gets `42501` first |
 
 "Strictly increasing starts" (D 2.1): the database guarantees non-empty, non-overlapping periods. That the newest record has the latest start follows from P7 and `effective_from = max(now, previous + 1 ms)` (D 9), which is the domain's job (5).
 
-The trigger function, as measured (the special-record function in 3.4 follows the same pattern):
+The hold-direction CHECK as built (migration `20261008173358_pricing_series_regular`, with R1, commit a14de32). The last line is R1: without it a held row with a NULL anchor passed, because `amount_minor > NULL` is NULL and a CHECK accepts NULL. `regular_price_records_anchor_check` already makes `anchor_record_id` and `anchor_amount_minor` NULL together:
 
 ```sql
-CREATE FUNCTION "pricing"."regular_price_records_guard_update"() RETURNS trigger
-  LANGUAGE plpgsql
-AS $$
+ADD CONSTRAINT "regular_price_records_hold_direction_check" CHECK (
+  ("hold_direction" IS NULL) = ("status" = 'accepted')
+  AND ("hold_direction" IS NULL
+       OR ("hold_direction" = 'up' AND "amount_minor" > "anchor_amount_minor")
+       OR ("hold_direction" = 'down' AND "amount_minor" < "anchor_amount_minor"))
+  AND ("hold_direction" IS NULL OR "anchor_record_id" IS NOT NULL))
+```
+
+The trigger function, as built (the special-record function in 3.4 follows the same pattern). Every pricing function is `SECURITY INVOKER` with a pinned `search_path` and schema-qualified names, no dynamic `EXECUTE` (platform.md 10.2; Hassan, Informational):
+
+```sql
+CREATE FUNCTION "pricing"."regular_price_records_guard_update"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF (NEW."id", NEW."market_id", NEW."tenant_id", NEW."series_id", NEW."amount_minor", NEW."currency",
       NEW."tax_inclusive", NEW."submitted_at", NEW."submitted_by_account_id", NEW."anchor_record_id",
@@ -274,20 +287,38 @@ The job writes the marker **first** in its unit, with `createMany({ skipDuplicat
 - Current Cost of a series = the latest row. Index `cost_records_market_id_cost_series_id_submitted_at_id_idx`, read newest first per series. A page of the seller's Offer list reads the rows of at most that page's series in one statement. Cost changes are rare, so the read returns few rows per series. Not measured at volume; revisit with the slice 3 plans (10).
 - No column of a price table holds Cost, and no Cost table has a relation to a price table. A query on price tables cannot return Cost by structure, as `password_credentials` is kept apart from `accounts` (ID-data 3.3).
 
-### 3.8 `pricing.write_refusal_throttles` (proposed; slice 1 if adopted; 11.2 M7)
+### 3.8 `pricing.write_refusal_throttles` and `pricing.write_refusal_actor_throttles` (slice 1; adopted; 11.2 M7)
 
-D 5.2 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, Offer) per minute. They must be written on the same path for every cause (Hassan finding 2), but D does not say where the counter lives. Proposal, the pattern of identity's `sign_in_throttles` (ID-data 3.5):
+D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, Offer) per minute and, because the Offer id comes from the caller, at 20 per actor per minute across Offers, followed by one `pricing.offer-write-refused.suppressed` summary row for that window (M7, Hassan). Both counters are PostgreSQL tables updated in the refusal's own unit, next to the audit row, so a counter never advances without its row (M7, decided 2026-10-07). Pattern of identity's `sign_in_throttles` (ID-data 3.5). Both tables are in migration `20261008173358_pricing_series_regular`.
 
-| Column | Type | Notes |
-|---|---|---|
-| `actor_account_id`, `offer_id` | `uuid` | PK `(market_id, actor_account_id, offer_id)` |
-| `window_started_at` | `timestamptz(6)` | |
+**`write_refusal_throttles`** (per actor and Offer)
 
-- In the refusal's own short unit: `updateMany` where the key matches and `window_started_at <= now − 60 s`, setting `window_started_at = now`. If no row changed, `createMany({ skipDuplicates: true })`. If either changed a row, write the audit row; otherwise write nothing.
-- Purge rows older than one hour (hourly job; no index needed at this size).
-- Grants `SELECT, INSERT, UPDATE (window_started_at), DELETE`.
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `actor_account_id`, `offer_id` | `uuid` | no | PK `write_refusal_throttles_pkey (market_id, actor_account_id, offer_id)` |
+| `window_started_at` | `timestamptz(6)` | no | |
+
+- `updateMany` where the key matches and `window_started_at <= now − 60 s`, setting `window_started_at = now`. If no row changed, `createMany({ skipDuplicates: true })`. Either one changed a row: the pair may write its audit row; otherwise not.
+
+**`write_refusal_actor_throttles`** (per actor, adopted 2026-10-08, 12.1 row 3)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `actor_account_id` | `uuid` | no | PK `write_refusal_actor_throttles_pkey (market_id, actor_account_id)` |
+| `window_started_at` | `timestamptz(6)` | no | Start of the actor's current one-minute window |
+| `recorded_count` | `integer` | no | Refusal rows recorded in this window (at most the cap) |
+| `suppressed_count` | `integer` | no | Refusals past the cap in this window. Only its move from 0 to 1 matters (it elects the one summary row); the value itself is never written anywhere else (12.1, summary-row decision) |
+
+- `write_refusal_actor_throttles_counts_check`: `recorded_count >= 0 AND suppressed_count >= 0`. The cap (20) is policy, not a CHECK, as the Market maximums (P1).
+- Each step is one conditional single-row `updateMany` (or `createMany` with `skipDuplicates`), never read-then-write, so under READ COMMITTED a concurrent call waits on the row and re-checks the condition: (1) window older than 60 s → restart at `now` with `recorded_count = 1, suppressed_count = 0` → record; (2) no row → insert the same → record; (3) `recorded_count < cap` → `+ 1` → record; (4) `suppressed_count = 0` → set to 1 → write the summary row; (5) otherwise `suppressed_count + 1` → write nothing.
+- **Summary row** (decided 2026-10-08, 12.1): it says only that suppression started for the actor's window starting at `window_started_at`. No count and no Offer ids: at step (4) the count is 1 and an audit row is never updated afterwards, so any count in it would be wrong.
+- **Lock order.** A refusal locks one actor row and one (actor, Offer) row. Every caller, and the purge, must take them in one fixed order, or two units of the same actor can deadlock (`40P01`). D 19 condition (b) has the actor row first (`countActorRefusal`, then `claimOfferWindow` unless `suppress`); condition (e) has the Offer window row first. They disagree; part 3 settles one order before the first caller merges (12.1, sign-off condition). The purge, as built, deletes Offer rows then actor rows in one unit: it must follow the chosen order, or run each `deleteMany` in its own unit.
+
+**Both tables**
+- Purge rows whose window started more than one hour ago (hourly job, per hosted Market; no index needed at this size: at most one row per active actor and Offer). The purge ships with the first caller (D 19 condition (b)).
+- Grants: `write_refusal_throttles` `SELECT, INSERT, UPDATE (window_started_at), DELETE`; `write_refusal_actor_throttles` `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE` (7).
 - Not personal beyond the account id, which the audit row holds anyway.
-- Alternative: a Redis counter (ADR-0004 decision 1 allows Redis for rate limiting). Rejected here: a second store on a security path for one counter.
+- Alternative: a Redis counter (ADR-0004 decision 1 allows Redis for rate limiting). Rejected: a second store on a security path, and it cannot commit with the audit row (M7).
 
 ## 4. What is never stored
 
@@ -319,7 +350,7 @@ D 5.2 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor, O
 | The copies on `price_series` (`product_id`, `seller_id`) equal catalog's | Cross-module | Read once at creation; `product_id` updated by the CF4 re-key; never used for ownership (D 2.3) |
 | A re-key moves a series only to a free, untombstoned (Offer, `to`) named once | Cross-row, needs the event's mapping | The re-key handler (3.2.1); the unique key and the guard trigger back it |
 | Cost never leaves the module | Behaviour | D 6.5 (types, routes, boundary rule, tests); grants (7) |
-| H3's one audit row per (actor, Offer) per minute | A rate, not a row rule | 3.8, if adopted |
+| H3's one audit row per (actor, Offer) per minute; M7's 20 per actor per minute | A rate, not a row rule | The counters of 3.8, in the audit row's unit |
 
 ### 5.1 Serializable units (P10; M3)
 
@@ -403,7 +434,8 @@ Under platform.md 10.2: hand-written in the `migration.sql` that creates the tab
 | `pricing.regular_price_records` | `SELECT, INSERT, UPDATE (status, effective_from, effective_to, decided_at, decided_by_account_id, decision_reason_code, decision_note, superseded_at, superseded_by_record_id, supersede_cause)` | PD3: status, decision and period-end columns only; no `DELETE` |
 | `pricing.special_price_records` | `SELECT, INSERT, UPDATE (status, effective_from, decided_at, decided_by_account_id, decision_reason_code, decision_note, superseded_at, superseded_by_record_id, supersede_cause, withdrawn_at, withdrawn_by_account_id, withdraw_cause)` | PD3; the window and the zone are not updatable |
 | `pricing.special_price_boundaries`, `pricing.retired_offers`, `pricing.retired_variants`, `pricing.cost_records` | `SELECT, INSERT` | Append-only |
-| `pricing.write_refusal_throttles` (if adopted) | `SELECT, INSERT, UPDATE (window_started_at), DELETE` | Counters with purge |
+| `pricing.write_refusal_throttles` | `SELECT, INSERT, UPDATE (window_started_at), DELETE` | Counters with purge (3.8) |
+| `pricing.write_refusal_actor_throttles` | `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE` | Counters with purge (3.8) |
 
 Column-level `UPDATE` follows the four conditions of platform.md 10.2: it replaces the table-level `UPDATE`; it covers exactly the named columns (no `@updatedAt` column exists); it never stands next to a table-level `UPDATE`; and the test of 10.4 proves that every other column refuses with `42501`, driven by the expected map. Measured: content columns, `market_id`, keys, the outbox `payload`, `DELETE` and `TRUNCATE` all refused `42501` for the application.
 
@@ -420,8 +452,8 @@ Column-level `UPDATE` follows the four conditions of platform.md 10.2: it replac
 
 | # | Slice | Migration | Contains |
 |---|---|---|---|
-| 1 | 1 | `platform_btree_gist` | `CREATE EXTENSION "btree_gist" WITH SCHEMA "public";` only (8.3) |
-| 2 | 1 | `pricing_series_regular` | `CREATE SCHEMA "pricing"`, schema `USAGE`; `outbox`, `inbox`, `price_series`, `regular_price_records` (with its `EXCLUDE`, the pending key, the two triggers and their functions), `retired_offers`, `retired_variants`; `write_refusal_throttles` if M7 is adopted; grants |
+| 1 | — | `20261007220000_platform_btree_gist` (exists; created by sellers) | `CREATE SCHEMA "extensions"; CREATE EXTENSION "btree_gist" SCHEMA "extensions";` (sellers 9.2, Ali's O1 ruling). Pricing creates nothing here (8.3; 12.1 row 1) |
+| 2 | 1 | `20261008173358_pricing_series_regular` (signed off 2026-10-08, 12.1) | `CREATE SCHEMA "pricing"`, schema `USAGE`; `outbox`, `inbox`, `price_series`, `regular_price_records` (with its `EXCLUDE`, the pending key, the two triggers and their functions), `retired_offers`, `retired_variants`, `write_refusal_throttles`, `write_refusal_actor_throttles`; grants |
 | 3 | 2 | `pricing_effective_read_index` | `regular_price_records_market_id_series_id_effective_to_live_idx` (it arrives with its reader) |
 | 4 | 3 | `pricing_cost` | `cost_series`, `cost_records`, triggers, grants |
 | 5 | 4 | `pricing_price_hold_indexes` | The regular queue index and the "latest approved" index |
@@ -429,12 +461,12 @@ Column-level `UPDATE` follows the four conditions of platform.md 10.2: it replac
 | — | 6 (P1) | None expected | VER-09's admin history list brings its own index with its reader |
 | 7 | P1, before catalog's CAT-45 slice | `pricing_series_rekey` | `ADD COLUMN rekeyed_from_product_id`, `rekeyed_from_variant_id` (nullable, no default) with their CHECK on both series tables; `price_series_guard_update` on both (function and triggers, 3.2.1); `GRANT UPDATE (variant_id, product_id, rekeyed_from_product_id, rekeyed_from_variant_id)` on both. Metadata only, no lock that matters. `down.sql` **revokes the grant first**, then drops the triggers, the function, the CHECKs and the columns (Hassan's condition on M8 (a)). The trigger tests of 3.2.1 ship in the same PR |
 
-Migrations 1 and 2 are in one PR (slice 1), as identity's slice 3 carried two. If the retirement handlers ship later than slice 1 (11.2 M5), the tombstone tables still land in migration 2: the creating unit reads them from the first price on.
+Migration 1 already existed when slice 1 was built, so slice 1's PR (#139) carries migration 2 only. If the retirement handlers ship later than slice 1 (11.2 M5), the tombstone tables still land in migration 2: the creating unit reads them from the first price on.
 
 ### 8.2 Reversibility and safety
 
 - Every `down.sql` mirrors its up in reverse: `REVOKE`s first, then triggers, then tables (children before parents), then functions, then (migration 2) `REVOKE USAGE ON SCHEMA`. The empty schema stays, as in ID-data 8.2. No `IF EXISTS`. Measured: up, down, up on PostgreSQL 16.15 as a non-superuser owner, with the extension in place. After the down no relation or function is left in `pricing` and the schema carries no grant.
-- `platform_btree_gist`'s down is `DROP EXTENSION "btree_gist";`. It fails while an `EXCLUDE` uses it, which is the right order: pricing's downs run first.
+- `20261007220000_platform_btree_gist` belongs to sellers; pricing's `down.sql` never touches the extension. Its down fails while any `EXCLUDE` (sellers' or pricing's) uses it, which is the right order: the modules' downs run first.
 - All tables are new: no backfill and no lock that matters. Migrations 3 and 5 add indexes to tables that may hold rows in a deployed environment by then. If any deployed environment holds more than about 10⁵ rows in that table, the migration is hand-written as `CREATE INDEX CONCURRENTLY` alone in its file (it cannot run inside a transaction), with `SET lock_timeout = '5s'` before it. The PR checks how Prisma Migrate runs such a file (not measured here). Otherwise a plain `CREATE INDEX`.
 - Later changes on live tables use expand/contract. A new CHECK is added `NOT VALID`, then `VALIDATE`. A new column is nullable without a default, which is metadata only. **A change of the `EXCLUDE` is drop-and-add, which takes an `ACCESS EXCLUSIVE` lock and rescans the table**: plan it as its own migration with `lock_timeout`, outside peak hours.
 - The SEL-08 acting-as columns (P8) are metadata-only `ADD COLUMN`s plus `CREATE OR REPLACE` of both trigger functions, so the new columns join the immutable list.
@@ -444,8 +476,8 @@ Migrations 1 and 2 are in one PR (slice 1), as identity's slice 3 carried two. I
 
 - **Why:** the `EXCLUDE` constraints compare `market_id` (varchar) and `series_id` (uuid) with `=` inside a GiST index. Without btree_gist there is no GiST operator class for them (ADR-0009 decision 2 names it).
 - **Can a migration create it?** Yes. btree_gist is a *trusted* extension (PostgreSQL 13 and later), so the non-superuser migration role, which owns the database, may create it. Measured on 16.15 with a role of platform.md 10.1's shape. The application role needs no privilege on the extension's functions to insert into a table with the constraint (measured).
-- **Schema:** `public`. The constraint binds the operator classes when it is created, so `search_path` at run time does not matter. Nothing is granted on `public` (platform.md 10.2 "Never").
-- **Ownership.** Mojtaba designs it (this section); Hossein writes migration 1 in slice 1's PR. It is a database-wide object in a shared path (`prisma/migrations` order), so it is announced on the board. The first module that needs it creates it once; no other module creates it again. Kazem confirms that the extension is available and creatable by the migration role on the PostgreSQL 17 image of Compose and CI and on each Region Stack's managed PostgreSQL. Some managed services allow-list extensions by a server parameter, so this is a deploy-time check (11.2 K1).
+- **Schema (as built, 2026-10-08):** `extensions`, created by `20261007220000_platform_btree_gist` (sellers 9.2, ADR-0023 decision 5, Ali's O1 ruling), not `public` as first proposed here. The `EXCLUDE` finds btree_gist's default operator class without `extensions` on any `search_path`, because the constraint binds the operator classes when it is created. `mondapac_app` has no `USAGE` on `extensions` and needs none to insert through the index (sellers' migration comment; pricing's `test:db` cases insert and are refused on overlap as `mondapac_app`). Nothing is granted on `public` (platform.md 10.2 "Never").
+- **Ownership.** The first module that needed it (sellers) created it once; pricing, and every later module, uses it and never creates or drops it. The line for platform.md (12) is covered by sellers. Kazem confirms that the extension is available and creatable by the migration role on the PostgreSQL 17 image of Compose and CI and on each Region Stack's managed PostgreSQL. Some managed services allow-list extensions by a server parameter, so this is a deploy-time check (11.2 K1).
 - **No ADR needed:** ADR-0009 decision 2 already names btree_gist.
 
 ### 8.4 Prisma specifics
@@ -474,13 +506,14 @@ Migrations 1 and 2 are in one PR (slice 1), as identity's slice 3 carried two. I
 | `retired_offers`, `retired_variants` | Deleted Offers and removed Variants: 10³ to 10⁴ | — | Kept (a tombstone must outlive the redelivery window; there is no Variant-added clearing) |
 | `outbox` | About 1.5 events per change: up to 2 × 10⁶ | — | Platform pruning (P 6.5); decided at 10⁶ rows as for identity |
 | `inbox` | catalog's `offer-deleted`, `variant-removed` (draft saves included) and, from P1, `offer-moved` events | — | Platform prune job (ID-data 3.8) |
+| `write_refusal_throttles`, `write_refusal_actor_throttles` | At most one row per actor and Offer (actor) refused in the last hour: 10² to 10³ | — | Hourly purge of rows whose window started more than one hour ago (3.8) |
 
 - **Writes:** the bulk load of 1.3 × 10⁶ regular rows with all indexes took 101 s (about 78 µs per row in bulk). Single-row latency was not measured.
 - **Update churn** is one or two updates per record in its life (period end; decision), each touching an indexed column, so they are not HOT. Autovacuum defaults are enough at this rate. `price_series` takes a version update per write and per boundary; it is the table to watch first.
 - **Jobs (per hosted Market, `market_id` at the top level of every statement):**
   - `pricing.publish-special-price-boundaries`, every minute (D 11), with horizon H (6.2).
   - A daily check for unmarked boundaries older than H (alert only).
-  - The hourly purge of `write_refusal_throttles`, if adopted.
+  - The hourly purge of `write_refusal_throttles` and `write_refusal_actor_throttles` (3.8; ships with the first caller, D 19 condition (b); lock order as 3.8).
   - Each job is safe to run twice and concurrently (markers, P 7).
 
 ## 10. Evidence
@@ -520,7 +553,7 @@ Measured on 2026-10-07 on PostgreSQL 16.15. The setup was a throwaway database a
 | M5 | (a) The Variant tombstone keyed by `(product_id, variant_id)`, as CF2 carries no Offer id (3.6). (b) Which slice ships the two retirement handlers: at the latest slice 1, because slice 1 creates series. (c) Can a removed Variant id ever come back? **Answered by catalog G2 (M-1, merged PR #54): never**; tombstones stay one-way | Mohammad; (c) closed |
 | M8 | The CF4 re-key (3.2.1, 8.1 row 7): (a) widening `UPDATE` on both series tables to `variant_id`, `product_id` and the `rekeyed_from_*` columns, guarded by the trigger; (b) measure the re-key unit (100 pairs, 200 series), the `40001` on a concurrent target insert, and that no `EXCLUDE` is touched, in the P1 PR; (c) whether `variantMapping` is one-to-one and complete | (a) **Accepted by Hassan 2026-10-07 on conditions, all applied:** the High (mapping validated, D 6.4) and Medium changes (guard requires both ids to change; one writer by `pnpm boundaries`; owner role gets `23001`); `down.sql` revokes before dropping triggers; the trigger test in the P1 PR (3.2.1, 8.1). (b) Hossein with me, P1 PR. (c) **Closed by Ali 2026-10-07:** catalog G2 4.5 maps every non-retired Variant one-to-one to a distinct published target Variant, not necessarily all of them; at most 100 pairs (`catalog.maxVariantsPerProduct`); the retire branch stays as a backstop |
 | M6 | Proposed value lists and limits: `supersede_cause` (`replaced`, `cancelled`, `offer-removed`, `variant-removed`), `withdraw_cause` (`seller`, `replaced`, `offer-removed`, `variant-removed`), `retire_cause`; `decision_note` at most 1,000 characters (Jafar for the wording with Q4); `currency` on the series tables (P2) | Mohammad |
-| M7 | Where the H3 counter (1 audit row per actor and Offer per minute) lives: the proposed table 3.8, or something else | **Decided 2026-10-07** (Mohammad; security half Hassan): the PostgreSQL table of 3.8, updated in the same unit as the audit row, so the counter cannot advance without its row; Redis rejected. Added (Hassan, Medium: the Offer id comes from the caller): a per-actor cap of 20 rows a minute across Offers, then one `pricing.offer-write-refused.suppressed` summary row for that minute. The pricing write routes are under the general per-account rate limit (tested in slice 1). Follow-up for Mojtaba: the per-actor counter in 3.8, 7 and 8.1 (D 5.2, 8) |
+| M7 | Where the H3 counter (1 audit row per actor and Offer per minute) lives: the proposed table 3.8, or something else | **Decided 2026-10-07** (Mohammad; security half Hassan): the PostgreSQL table of 3.8, updated in the same unit as the audit row, so the counter cannot advance without its row; Redis rejected. Added (Hassan, Medium: the Offer id comes from the caller): a per-actor cap of 20 rows a minute across Offers, then one `pricing.offer-write-refused.suppressed` summary row for that minute. The pricing write routes are under the general per-account rate limit (tested in slice 1). The per-actor counter is folded into 3.8, 7, 8.1 and 9 (Mojtaba, 2026-10-08; 12.1 row 3) |
 | H-D1 | Cost isolation in the database: option A (structure plus code, recommended) or B (separate group, login and client) (7) | **Decided by Hassan 2026-10-07: option A**, with three conditions: (1) `pnpm boundaries` enforces in CI that only `infrastructure/cost/` uses `PricingCost*`; (2) when the worker gets its own group, its access to `cost_records` is revoked in the same PR; (3) move to option B if raw SQL, a reporting replica or an export ever reads the `pricing` schema (D 6.5) |
 | K1 | btree_gist available and creatable by the migration role on the PostgreSQL 17 image (Compose, CI) and on each Region Stack's managed PostgreSQL (8.3) | Kazem |
 | S1 | Spike S1 (8.4): Prisma drift with `EXCLUDE` and the extension; composite relations; the SQL of Q1 to Q3 through the real client; `skipDuplicates` counts | Hossein, with me, in slice 1's PR |
@@ -529,7 +562,7 @@ Measured on 2026-10-07 on PostgreSQL 16.15. The setup was a throwaway database a
 
 **Answers to Mojtaba (Mohammad, 2026-10-07; recorded in D 15).** M4: (a) accepted, PD2 = one pending special plus no overlap among specials in effect; (b) accepted, a `withdrawn` special is in effect until `withdrawn_at` (D 3.2, 4.1, 11 updated); (c) H = 7 days with the daily alert. M5: (a) accepted, Variant tombstone keyed by `(product_id, variant_id)`; (b) both retirement handlers ship in slice 1; (c) a dependency on catalog G2, now closed: catalog's merged G2 (PR #54, M-1) never reuses a Variant id. M6: all value lists, `decision_note` 1 to 1,000 characters and `currency` on the series tables accepted as proposed. The owner decided Q1 to Q5 on 2026-10-07; Q3 is one special at a time, so the special `EXCLUDE` stays. M7, H-D1, K1 and S1 remain open with the people named above.
 
-**Hassan's review of this document (2026-10-07; approved with conditions, no Critical or High), recorded by Mohammad in D 6.5, 8, 13, 15 and 17.** H-D1 and M7 decided as in the table. Also: (Low) a `test:db` or integration test that `regular_amount_minor` and `anchor_amount_minor` equal the rows they reference; (Low) `$queryRaw` and `$executeRaw*` banned under `modules/pricing` by lint or `pnpm boundaries`, confirmed by spike S1; (Informational) the trigger functions stay `SECURITY INVOKER` (platform.md 10.8 self-check), and the contract snapshot test is mandatory because it is the only check of the outbox "no amount" rule. **Still open:** K1 (Kazem); S1 (Hossein with Mojtaba, now also confirming the raw-SQL ban); the per-actor counter in 3.8 (Mojtaba).
+**Hassan's review of this document (2026-10-07; approved with conditions, no Critical or High), recorded by Mohammad in D 6.5, 8, 13, 15 and 17.** H-D1 and M7 decided as in the table. Also: (Low) a `test:db` or integration test that `regular_amount_minor` and `anchor_amount_minor` equal the rows they reference; (Low) `$queryRaw` and `$executeRaw*` banned under `modules/pricing` by lint or `pnpm boundaries`, confirmed by spike S1; (Informational) the trigger functions stay `SECURITY INVOKER` (platform.md 10.8 self-check), and the contract snapshot test is mandatory because it is the only check of the outbox "no amount" rule. **Still open:** K1 (Kazem). S1 answered in 12.1 row 2 except (c), deferred to slice 2. The per-actor counter in 3.8: done 2026-10-08 (12.1 row 3).
 
 ### 11.3 G2 verdict (2026-10-07)
 
@@ -545,7 +578,7 @@ This document changes no other file. After G2:
 | `docs/design/data/pricing.md` | This document, moved into the repo (D 1 names that path) | With the G2 PR; Mojtaba |
 | `prisma/schema/base.prisma`, `pricing.prisma`; the migrations of 8.1 with `down.sql` | As specified; each needs my sign-off | Per slice; Hossein |
 | Privilege map, partial-index list, exclusion-constraint list, outbox column test (`pnpm test:db`) | Section 7 and 8.4 | With each migration; Hossein |
-| `docs/design/data/platform.md` | One line: btree_gist is enabled by `platform_btree_gist` (8.3) | After migration 1 merges; Mojtaba |
+| `docs/design/data/platform.md` | One line: btree_gist is enabled by `platform_btree_gist` (8.3) | Not needed: covered by sellers' `20261007220000_platform_btree_gist` (8.3, 12.1 row 1) |
 
 ### 12.1 Follow-up from slice 1, part 2 (as built; Hossein, 2026-10-08, for Mojtaba's sign-off)
 
@@ -555,10 +588,23 @@ Migration `20261008173358_pricing_series_regular` follows sections 3.1 to 3.3, 3
 |---|---|---|
 | 1 | 8.1 row 1, 8.2, 8.3: `platform_btree_gist` | **Not created.** `btree_gist` already exists in schema `extensions` (`20261007220000_platform_btree_gist`, sellers 9.2, Ali's O1 ruling), and 8.3 says the first module that needs it creates it once. The `EXCLUDE` finds the default operator class with `extensions` on no `search_path`; the application has no `USAGE` there (privilege map unchanged for it). The 8.3 line for platform.md is already covered by sellers. Pricing's `down.sql` does not touch the extension |
 | 2 | Spike S1 (8.4) | (a) Prisma 7.10's drift check (`pnpm db:check-reversible`: up, down, up, then `migrate diff`) reports **no drift** with the `EXCLUDE ... WHERE`, the expression GiST index, the partial unique index and the triggers, so option B of ID-data 8.4 is not needed. (b) The composite relations generate exactly `regular_price_records_series_id_fkey` `(market_id, series_id, currency)` → `price_series (market_id, id, currency)` and `regular_price_records_anchor_record_id_fkey` `(market_id, series_id, anchor_record_id)` → `(market_id, series_id, id)`, both `RESTRICT`. (c) **Deferred to slice 2**: Q2 and Q3 are the batch read, which arrives with migration 3's live index. (d) `createMany({ skipDuplicates: true })` returns the inserted count (1, then 0; measured on both tombstone tables). The raw-SQL ban is active under `modules/pricing` (ESLint `no-raw-sql-or-transaction-in-modules`, probed) |
-| 3 | 3.8 per-actor counter (M7; the fold-in is Mojtaba's) | **Proposed, needs a decision:** `pricing.write_refusal_actor_throttles` (`market_id`, `tenant_id`, `actor_account_id`, `window_started_at`, `recorded_count int`, `suppressed_count int`), PK `(market_id, actor_account_id)`, CHECK both counts `>= 0` (the cap of 20 is policy), grants `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE`. Repository: a stale window restarts at `now` with `recorded_count = 1`; under the cap `recorded_count + 1` (record); the first refusal past it sets `suppressed_count = 1` (write the summary row); later ones only count. Open with it: when the summary row's "count of refusals not recorded" is written (at the first suppressed refusal the count is 1) |
-| 4 | 3.3 trigger functions | Both functions are `SECURITY INVOKER SET search_path = pg_catalog, pg_temp` (catalog's convention, platform.md 10.2); the listing in 3.3 has neither clause. Bodies unchanged |
+| 3 | 3.8 per-actor counter (M7; the fold-in is Mojtaba's) | **Adopted 2026-10-08 (Mojtaba), folded into 1, 3.8, 5, 7, 8.1 and 9.** The count question below is resolved: the summary row carries no count (sign-off below). As proposed by Hossein: `pricing.write_refusal_actor_throttles` (`market_id`, `tenant_id`, `actor_account_id`, `window_started_at`, `recorded_count int`, `suppressed_count int`), PK `(market_id, actor_account_id)`, CHECK both counts `>= 0` (the cap of 20 is policy), grants `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE`. Repository: a stale window restarts at `now` with `recorded_count = 1`; under the cap `recorded_count + 1` (record); the first refusal past it sets `suppressed_count = 1` (write the summary row); later ones only count. Open with it: when the summary row's "count of refusals not recorded" is written (at the first suppressed refusal the count is 1) |
+| 4 | 3.3 trigger functions | Both functions are `SECURITY INVOKER SET search_path = pg_catalog, pg_temp` (catalog's convention, platform.md 10.2). Bodies unchanged. The 3.3 listing now shows both clauses (2026-10-08) |
 | 5 | Constraint names the design does not give | `price_series_currency_check`, `_retire_cause_check`, `_retired_check`, `_version_check`; `regular_price_records_amount_minor_check`, `_currency_check`, `_status_check`, `_anchor_check`, `_decision_reason_code_check`, `_supersede_cause_check`; `write_refusal_actor_throttles_counts_check`. `_superseded_check` also refuses a record that names itself as successor |
 | 6 | 6.2 "bounded working set" | Slice 1 loads a series with its **whole** regular history (`(market_id, series_id, id)` key): `PriceSeries.restore` checks that priced records are contiguous. The bounded load waits for slice 2 (live index) and a domain that accepts a partial set |
 | 7 | P 10 "insert writes 1" | A first price inserts the series at version 1, then raises it to 2 with the record in the same unit (P7 order), so a first price costs one extra `UPDATE` |
 | 8 | 8.4 catalog tests | The `EXCLUDE ... WHERE` creates a partial GiST index, so `regular_price_records_effective_period_excl` is in both the partial-index list and the exclusion-constraint list |
 | 9 | `decision_note` "no outer spaces" | `= btrim(decision_note)` (spaces only), as identity's display name; a newline is allowed inside, any other C0, C1 or bidi character is refused |
+| 10 | R1 (Mojtaba's review): a held record must carry its anchor | Applied in a14de32: `AND ("hold_direction" IS NULL OR "anchor_record_id" IS NOT NULL)` added to `regular_price_records_hold_direction_check` (text in 3.3), with a `test:db` case refusing a held record without an anchor (`23514`) |
+
+**Summary-row decision (Mojtaba, 2026-10-08; row 3's open question).** The `pricing.offer-write-refused.suppressed` row says only that suppression started for the actor's window starting at `window_started_at` (X). It carries **no count** and no Offer ids. Reason: it is written at the first suppressed refusal, when the count is 1, and audit rows are never updated, so a count would always be 1 and misleading. `suppressed_count` stays in the throttle table only to elect the one summary row (3.8). D 8's audit table still says "the count of refusals not recorded"; it is superseded by this decision, recorded as condition (g) of D 19 (Mohammad aligns the D 8 row in his next revision).
+
+**Sign-off of `20261008173358_pricing_series_regular` (Mojtaba, database-designer, 2026-10-08): signed off**, at PR #139 head b5ceebe, including R1 (a14de32) and the per-actor table (row 3, adopted). Checked against platform.md 8, the five review points of platform.md 10.2 and 8.2 of this document: names as section 3 and row 5; every CHECK, the `EXCLUDE`, the partial unique key, both triggers and their `SECURITY INVOKER` functions with a pinned `search_path`; grants equal section 7 and `down.sql` revokes before it drops; no extension created or dropped (row 1); Hossein's drift check reported clean (row 2). Conditions for part 3, on the first use case that writes a refusal:
+- The summary row follows the summary-row decision above: actor and the window start X, no count, no Offer ids.
+- One lock order for the two counter rows, used by every caller and by the purge (3.8): D 19 conditions (b) and (e) disagree on it and part 3 settles it (Mohammad, with Hassan) before the first caller merges; a `test:db` case runs concurrent mixed callers and the purge.
+
+**Stale comment, harmless.** The block comment before `write_refusal_actor_throttles`' CHECKs in `migration.sql` still reads "a proposed shape, pending database-designer's fold-in into 3.8 (12.1)" (Mojtaba O5). It is a SQL comment and changes no object. The migration file is not edited after review: Prisma checksums it, so an edit would flag every database it already ran on. The model comment in `prisma/schema/pricing.prisma` is updated to "adopted".
+
+**Reviews of PR #139 (2026-10-08)**, their findings applied in b5ceebe:
+- Hassan (security-tester): **GO**, with the conditions listed in D 19.
+- Sajad (qa-engineer): **GO**, with M1, M2 and the lows applied.
