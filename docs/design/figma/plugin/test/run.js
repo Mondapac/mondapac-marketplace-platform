@@ -315,6 +315,22 @@ function state180(M, opts, label) {
   const nColl = opts.maxModes > 1 ? 1 : 2;
   const vars = (name) => [...M.VARS.values()].filter((v) => v.name === name);
   const dc = [...M.COLLS.values()].find((c) => c.name === 'Dimension');
+  // Every component block fits the 1440 px page: the set is at most 1440 wide, the row and the Usage panel are laid out
+  // for the set's width (real-Figma Audit after 1.7.0 found Input and AuthShowcase sticking out of their sections).
+  const blocks = allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Component + usage' && n.children[0] && n.children[0].type === 'COMPONENT_SET');
+  const misfit = blocks.filter((r) => {
+    const set = r.children[0]; const wide = set.width + 24 + 360 > 1440; const panel = r.children.find((c) => c.name === 'Usage');
+    return set.width > 1440 || r.layoutMode !== (wide ? 'VERTICAL' : 'HORIZONTAL') || (panel && (panel.layoutMode !== (wide ? 'HORIZONTAL' : 'VERTICAL') || Math.round(panel.width) !== (wide ? Math.min(1440, Math.max(Math.round(set.width), 720)) : 360)));
+  }).map((r) => r.children[0].name);
+  check(blocks.length > 20 && misfit.length === 0, label + ': all ' + blocks.length + ' component blocks fit the 1440 px page' + (misfit.length ? ' (not: ' + misfit.join(', ') + ')' : ''));
+  // Starter layout: no two library sections on a page overlap (owner's file had page 3 sections on top of each other after updates).
+  const secOver = [];
+  M.ROOT.children.filter((pg) => pg.getPluginData('layout') === 'compact').forEach((pg) => {
+    const ss = pg.children.filter((n) => n.type === 'SECTION');
+    ss.forEach((a, i) => ss.slice(i + 1).forEach((b) => { if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) secOver.push(a.name + ' / ' + b.name); }));
+  });
+  check(secOver.length === 0, label + ': no two sections on a Starter page overlap' + (secOver.length ? ' (' + secOver.join(', ') + ')' : ''));
+  check(['Input', 'AuthShowcase'].every((n) => setOf(M, n).width <= 1440) && setOf(M, 'Input').children.every((c) => setOf(M, 'Input').children.filter((k) => Math.abs(k.x - c.x) < 0.5).every((k) => k.variantProperties.Type === c.variantProperties.Type)), label + ': Input has one column per Type and AuthShowcase one variant per row (' + Math.round(setOf(M, 'Input').width) + ' and ' + Math.round(setOf(M, 'AuthShowcase').width) + ' px wide)');
   [['size/dialog-sm', 400], ['size/dialog-md', 560]].forEach((d) => {
     const vs = vars(d[0]); const v0 = vs.find((v) => v.variableCollectionId === dc.id);
     check(vs.length === nColl && vs.every((v) => v.scopes.join() === 'WIDTH_HEIGHT' && v.codeSyntax.WEB === 'var(--mp-' + d[0].replace('/', '-') + ')') && v0 && dc.modes.every((m) => v0.valuesByMode[m.modeId] === d[1] || v0.valuesByMode[m.modeId] === undefined), label + ': ' + d[0] + ' is ' + d[1] + ' (desktop and touch) with scope WIDTH_HEIGHT and code syntax');
@@ -399,6 +415,7 @@ function state180(M, opts, label) {
 // The code.js of release 1.8.0 (test/fixtures/code-1.8.0.js, the plugin as released at 5d2e100): its Panel pages hug their content with no minimum height,
 // the admin phone members screen has 5 cards and the CheckboxRow set is 2960 wide. Update library of 1.8.1 repairs those in place.
 const CODE_180 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.8.0.js'), 'utf8');
+const CODE_181 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.8.1.js'), 'utf8'); // the released 1.8.1 plugin, for the 1.8.2 update scenario
 const SHELL_ADMIN = ADMIN_180.filter((n) => !/\(phone\)|^Dialogs/.test(n));
 const SHELL_SELLER = SELLER_180.filter((n) => !/\(phone\)|^Dialogs/.test(n));
 const FIXED_900 = ['Shared · No access · Admin', 'Shared · No access · Seller', 'Shared · Not found', 'Shared · Account security · Seller · Saved']; // built with a fixed 900 height
@@ -472,7 +489,7 @@ async function updateTo180(M, label, opts, from) {
   state181(M, 'updated', true); // overlaps of the update path are checked just below: reported, not absent
   { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
     check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.1', 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.8.2', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -486,8 +503,10 @@ async function updateTo180(M, label, opts, from) {
   const after = allNodes(M);
   const gone = before.filter((n) => n.removed || !M.byId.has(n.id));
   check(gone.length === 0, 'no existing node was deleted or replaced (' + gone.length + ')');
-  const changed = before.filter((n) => M.byId.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
-  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
+  // The Usage panels beside Input and AuthShowcase are re-fitted to the re-laid-out sets (layout fix for 1.7.0).
+  const refit = new Set(['Input', 'AuthShowcase'].map((k) => setOf(M, k)).filter((x) => x && x.parent && x.parent.name === 'Component + usage').map((x) => (x.parent.children.find((c) => c.name === 'Usage') || {}).id));
+  const changed = before.filter((n) => M.byId.has(n.id) && !refit.has(n.id) && snap(n) !== beforeSnap.get(n.id) && !(n.type === 'TEXT' && (n.characters.indexOf(SPEC_VERSION) >= 0 || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))));
+  check(changed.length === 0, 'no existing node changed its name, paints, bindings or text, apart from the cover version and date and the Usage panels of Input and AuthShowcase (' + changed.length + (changed.length ? ': ' + changed.slice(0, 5).map((n) => n.name).join(', ') : '') + ')');
   const freshNodes = after.filter((n) => !beforeIds.has(n.id));
   const tops = freshNodes.filter((n) => n.parent && beforeIds.has(n.parent.id)).map((n) => n.name);
   const okTops = new Set(NEW_180.concat(ADMIN_180, SELLER_180, BODIES_180, ['Row', 'Select', 'Dialog', 'DialogBody']));
@@ -794,7 +813,7 @@ async function updateScenario(label, opts, from) {
   const lostV = tcz.children.filter((c) => ['Type=Number, State=Loading', 'Type=Actions, State=Loading'].includes(c.name)); lostV.forEach((c) => c.remove());
   const lostF = ['Shared · Members · Admin · Loading', 'Shared · Members · Seller · Loading'].map((n) => frameNamed(Z, n)[0]); const lostN = lostF.map((f) => f.name); lostF.forEach((f) => f.remove());
   check(tcz.children.length === 14 && lostV.length === 2 && lostN.length === 2, 'removed 2 Loading variants and 2 Loading frames');
-  r = await send(Z, { type: 'update' }); const add10 = r.done ? r.done.added : [];
+  r = await send(Z, { type: 'update' }); const add10 = r.done ? r.done.added.filter((a) => !/^section .* moved /.test(a)) : []; // a section that grew may push the next ones along (restackSections)
   check(!r.err && add10.length === 3 && add10.includes('variants added to TableCell (2): State=Loading') && add10.includes('templates Panel · Admin (1 frames)') && add10.includes('templates Panel · Seller (1 frames)'), 'the update re-adds only those (' + add10.join(', ') + ')' + (r.err ? ': ' + r.err.message : ''));
   check(tcz.children.length === 16 && tcz.children.filter((c) => /State=Loading/.test(c.name)).length === 5 && lostN.every((n) => frameNamed(Z, n).length === 1) && BODIES_180.every((n) => countNamed(Z, 'COMPONENT', n) === 1), 'TableCell has 16 variants again, each Loading frame exists once and no template body was made twice');
   const lx = tcz.children.filter((c) => /State=Loading/.test(c.name)).map((c) => Math.round(c.x));
@@ -830,7 +849,9 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.0 file ' + tag11 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
-    check(r.done && r.done.added.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)', 'changelog row 1.8.1', 'cover version', 'file version 1.8.1'].join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    // The 1.8.2 layout fixes (Input, AuthShowcase, Starter sections) run in the same update; scenario 12 checks them.
+    const own181 = r.done ? r.done.added.filter((l) => !/^(Input|AuthShowcase) (variants laid out|documentation block)|^section .* moved /.test(l)) : [];
+    check(r.done && own181.join('|') === ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)', 'changelog row 1.8.1', 'changelog row 1.8.2', 'cover version', 'file version 1.8.2'].join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
     state181(Q, '1.8.0 file repaired ' + tag11, true);
     const gone11 = [...ids0.keys()].filter((id) => !Q.byId.has(id));
     check(gone11.length === cardNodes.size && gone11.every((id) => cardNodes.has(id)), 'the only deletions are the 2 member cards and their layers (' + gone11.length + ')');
@@ -880,6 +901,59 @@ async function updateScenario(label, opts, from) {
     const foreignCb = cbParts(R).set; foreignCb.setPluginData('mondapac-ds', ''); const fx = foreignCb.children.map((c) => c.x).join();
     r = await send(R, { type: 'update' });
     check(!r.err && foreignCb.children.map((c) => c.x).join() === fx && foreignCb.width > 2900, 'a CheckboxRow set that is not the plugin\'s is not re-laid out');
+  }
+
+  // 12 · release 1.8.2: Input and AuthShowcase fit the page; Starter sections that an update grew no longer cover the next ones
+  console.log('\n■ Scenario 12 · 1.8.2 layout fixes on a 1.8.1 file');
+  for (const opts of [STARTER, { maxModes: 4 }]) {
+    const tag12 = opts.maxModes > 1 ? '(modes)' : '(Starter)';
+    const Q = start(opts, CODE_181);
+    r = await send(Q, { type: 'build' });
+    check(!r.err && Q.ROOT.getPluginData('version') === '1.8.1', 'the 1.8.1 plugin builds the starting file ' + tag12 + (r.err ? ': ' + r.err.message : ''));
+    check(setOf(Q, 'Input').width > 1440 && setOf(Q, 'AuthShowcase').width > 1440, 'the 1.8.1 file has the sets the Audit found too wide (Input ' + Math.round(setOf(Q, 'Input').width) + ', AuthShowcase ' + Math.round(setOf(Q, 'AuthShowcase').width) + ')');
+    let seller = null, sandbox = null, sandboxAt = '', forms = null, archive = null, archiveAt = '';
+    if (opts.maxModes === 1) {
+      // what the owner's page 3 looked like: a section that grew covers the next one; another one was moved aside by hand
+      const admin = hostNamed(Q, 'Templates · Admin'); seller = hostNamed(Q, 'Templates · Seller'); sandbox = hostNamed(Q, 'Sandbox');
+      seller.y = admin.y + 200; sandbox.x = admin.x + admin.width + 2000; sandbox.y = admin.y; sandboxAt = sandbox.x + ',' + sandbox.y;
+      // page 2 runs left to right: Forms & selection pushed onto Actions; Archive placed beside Dark preview (side by side, no overlap)
+      const actions = hostNamed(Q, 'Actions'); forms = hostNamed(Q, 'Forms & selection'); forms.x = actions.x + 300;
+      const dark = hostNamed(Q, 'Templates · Dark preview'); archive = hostNamed(Q, 'Archive'); archive.x = dark.x + dark.width + 600; archive.y = dark.y; archiveAt = archive.x + ',' + archive.y;
+    }
+    load(Q, CODE);
+    const ids0 = new Set(allNodes(Q).map((n) => n.id)); const inputIds = setOf(Q, 'Input').children.map((c) => c.id + c.name).sort().join();
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done, 'Update library finished on the 1.8.1 file ' + tag12 + (r.err ? ': ' + r.err.message : ''));
+    const add12 = r.done ? r.done.added : []; console.log('    ' + add12.join('\n    '));
+    check(['Input variants laid out to fit the page', 'AuthShowcase variants laid out to fit the page'].every((t) => add12.some((l) => l.indexOf(t) === 0)) && add12.includes('changelog row 1.8.2') && add12.includes('file version 1.8.2') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the Input and AuthShowcase fixes, the changelog row and the version, with no warning or skip');
+    state180(Q, opts, '1.8.1 file updated ' + tag12);
+    check([...ids0].every((id) => Q.byId.has(id)) && setOf(Q, 'Input').children.map((c) => c.id + c.name).sort().join() === inputIds, 'nothing was deleted and the 18 Input variants keep their ids and names');
+    if (seller) {
+      check(add12.includes('section Templates · Seller moved down so it no longer overlaps the section before it') && sandbox.x + ',' + sandbox.y === sandboxAt, 'the covered section moved down; the section arranged by hand stayed where it was');
+      const act = hostNamed(Q, 'Actions');
+      check(add12.includes('section Forms & selection moved right so it no longer overlaps the section before it') && forms.x >= act.x + act.width + 240 - 0.5, 'on the left-to-right components page the covered section moved right');
+      check(archive.x + ',' + archive.y === archiveAt && !add12.some((l) => /^section Archive /.test(l)), 'a section placed beside another (no overlap) stayed where it was');
+    }
+    const n12 = allNodes(Q).length;
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === n12, 'a second run adds and moves nothing');
+    r = await send(Q, { type: 'audit' });
+    check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update');
+    r = await send(Q, { type: 'export', version: SPEC_VERSION });
+    if (r.done) compareExport(r.done.files, '1.8.2 updated ' + tag12 + ' export');
+  }
+  {
+    // an Input set that is not the plugin's is not re-laid out
+    const Q = start(STARTER, CODE_181);
+    r = await send(Q, { type: 'build' }); load(Q, CODE);
+    const fin = setOf(Q, 'Input'); fin.setPluginData('mondapac-ds', ''); const fx = fin.children.map((c) => c.x).join();
+    r = await send(Q, { type: 'update' });
+    check(!r.err && fin.children.map((c) => c.x).join() === fx && fin.width > 1440, 'an Input set that is not the plugin\'s is not re-laid out');
+    const Q2 = start(STARTER, CODE_181);
+    r = await send(Q2, { type: 'build' }); load(Q2, CODE);
+    const fas = setOf(Q2, 'AuthShowcase'); fas.setPluginData('mondapac-ds', ''); const fax = fas.children.map((c) => c.x + ',' + c.y).join();
+    r = await send(Q2, { type: 'update' });
+    check(!r.err && fas.children.map((c) => c.x + ',' + c.y).join() === fax && fas.width > 1440 && !r.done.added.some((l) => /^AuthShowcase /.test(l)), 'an AuthShowcase set that is not the plugin\'s is not re-laid out');
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));

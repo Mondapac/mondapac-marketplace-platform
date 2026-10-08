@@ -303,6 +303,46 @@ async function ensureAuthHost(T) {
 }
 function semverLess(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
+// In-place fix for two 1.7.0 sets that were wider than the 1440 px page (real-Figma Audit: layers sticking out of their
+// parent). Input (Type x State) is laid out with Type in columns; AuthShowcase puts one variant per row; their documentation
+// blocks are re-fitted. Only positions and the block around each set change: no variant, layer or instance is renamed,
+// rebuilt or deleted. Sets that are not the plugin's are left alone. Returns the report lines; a second run returns none.
+function fixLayout170(own) {
+  const done = [];
+  [['Input', INPUT_AXES, INPUT_OPTS], ['AuthShowcase', { Workspace: ['Admin', 'Seller'] }, { width: SHOWCASE_SET_W, gapX: 40 }]].forEach(function (f) {
+    const rec = S.sets[f[0]]; if (!rec || !rec.set || !own(f[0])) return;
+    if (rec.set.width > DOC_CONTENT_W) { gridVariants(rec.set, f[1], f[2]); done.push(f[0] + ' variants laid out to fit the page (' + Math.round(rec.set.width) + ' px wide)'); }
+    if (fitBlock(rec.set)) done.push(f[0] + ' documentation block re-fitted to the set');
+  });
+  return done;
+}
+// Starter layout (3 pages of canvas sections): Update library grows a section to fit what it adds (fitSection) but did not
+// move the sections after it, so they ended up on top of each other (owner's file after 1.7.0 and 1.8.0, page 3). On each
+// compact page, a section that overlaps one before it (in the page's direction: down on the templates page, right on the
+// others) moves past it with the usual 240 px gap. Sections that do not overlap stay where they are, so a layout the owner
+// arranged by hand is kept. Returns the report lines.
+function restackSections() {
+  const done = [];
+  figma.root.children.forEach(function (page) {
+    if (page.getPluginData(PLUGIN_TAG) !== 'page' || page.getPluginData('layout') !== 'compact') return;
+    const def = COMPACT.filter(function (d) { return d[0] === page.getPluginData('key'); })[0]; const down = !def || def[2] === 'V';
+    const secs = page.children.filter(function (n) { return n.type === 'SECTION' && n.getPluginData(PLUGIN_TAG) === 'section'; })
+      .sort(function (a, b) { return down ? (a.y - b.y) || (a.x - b.x) : (a.x - b.x) || (a.y - b.y); });
+    const hits = function (a, b) { return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height; };
+    secs.forEach(function (sec, i) {
+      let moved = false;
+      for (let guard = 0; guard < secs.length; guard++) {
+        const over = secs.slice(0, i).filter(function (o) { return hits(sec, o); });
+        if (!over.length) break;
+        if (down) sec.y = Math.max.apply(null, over.map(function (o) { return o.y + o.height; })) + 240;
+        else sec.x = Math.max.apply(null, over.map(function (o) { return o.x + o.width; })) + 240;
+        moved = true;
+      }
+      if (moved) done.push('section ' + sec.name + ' moved ' + (down ? 'down' : 'right') + ' so it no longer overlaps the section before it');
+    });
+  });
+  return done;
+}
 async function updateLibrary() {
   STEP = 0; STEPS = 8; S.report = []; UPDATE_TOUCHED.length = 0;
   await figma.loadAllPagesAsync();
@@ -484,6 +524,8 @@ async function updateLibrary() {
       });
     }
   }
+  // 2d2 · layout fix for two 1.7.0 sets that were wider than the 1440 px page (fixLayout170, below).
+  fixLayout170(own).forEach(function (a) { added.push(a); });
   // New components. A component of the same name that is not the plugin's blocks it (and what depends on it).
   ['BrandMark', 'MenuItem', 'Menu', 'ReasonQuote', 'Field', 'AuthShowcase'].forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
   if (skipped.Input && !S.sets.Field) skip('Field', 'component Field: it needs the plugin\'s Input with Type=Text');
@@ -727,6 +769,9 @@ async function updateLibrary() {
   const coverOf = function (k) { const f = T.cover.host.findOne(function (n) { return n.type === 'FRAME' && n.name === k && n.children.length === 2; }); const t = f && f.children[1]; return t && t.type === 'TEXT' ? t : null; };
   if (coverOf('Version') && semverLess(coverOf('Version').characters, SPEC.version)) Object.keys(meta).forEach(function (k) { const t = coverOf(k); if (t) coverEdits.push([t, meta[k]]); });
   if (coverEdits.length) { await onPage(T.cover, 'Cover', function () { coverEdits.forEach(function (e) { e[0].characters = e[1]; }); }); added.push('cover version'); }
+
+  // 5 · Starter layout: sections that grew in this or an earlier update must not cover the next section.
+  restackSections().forEach(function (a) { added.push(a); });
 
   await flush();
   reportOverlaps();
