@@ -1,4 +1,4 @@
--- Reverses 20261008165942_identity_second_factor_invitations (docs/design/data/identity.md 8.2):
+-- Reverses 20261008185000_identity_second_factor_invitations (docs/design/data/identity.md 8.2):
 -- the grants first, in reverse order; then the tables, children before parents. CHECKs, indexes
 -- (the partial ones included) and the foreign keys go with their tables. No existing table was
 -- changed, so nothing else is undone.
