@@ -448,7 +448,7 @@ interface ClaimDecision {
   } | null;
   readonly policyRevisionId: Id | null;       // null = the type's default applied
   readonly badge: BadgeData | null;           // 4.5; present only when allowed
-  readonly inputs: ClaimQuery;                // echoed, normalised (ADR-0028 d2)
+  readonly inputs: ClaimQuery | null;         // echoed, normalised (ADR-0028 d2); null only for `input-invalid`
   readonly evaluatedAt: Temporal.Instant;
 }
 evaluateClaims(ctx: CallContext, queries: readonly ClaimQuery[]): Promise<readonly ClaimDecision[]>; // 1..100

@@ -1,7 +1,13 @@
 // Public contracts of the certification module (ADR-0008): event types and the facade interface.
 // Other modules may import only what this file exports, through ../index.ts.
 export type { ClaimTermMatch } from '../domain/claim-text-matcher';
-export type { CertificationTypeCode } from '../domain/claim-types';
+export type {
+  BadgeData,
+  CertificationTypeCode,
+  ClaimDecision,
+  ClaimQuery,
+  ClaimReason,
+} from '../domain/claim-types';
 export {
   CERTIFICATION_FACADE,
   type CertificationFacade,
