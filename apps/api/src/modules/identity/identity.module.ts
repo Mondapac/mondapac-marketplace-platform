@@ -768,6 +768,7 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(ResendAdminInvitation, {
       unitOfWork: true,
+      accounts: true,
       roles: true,
       grants: true,
       effectiveKeys: true,
@@ -780,6 +781,9 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(RevokeAdminInvitation, {
       unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
       invitations: true,
       outbox: true,
       audit: true,

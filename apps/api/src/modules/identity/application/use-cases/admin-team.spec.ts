@@ -30,6 +30,8 @@ import { openSession } from '../../domain/session';
 import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-seed';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import { inviterMayStillGrant } from '../roles/granting';
 import { AssignAdminRole } from './assign-admin-role.use-case';
 import { DisableAdminAccount } from './disable-admin-account.use-case';
 import { DisableCustomerAccount } from './disable-customer-account.use-case';
@@ -91,11 +93,17 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
   let units: (UnitOfWorkOptions | undefined)[];
   let roles: Map<string, RoleState>;
   let clock: FixedClock;
+  /**
+   * Runs once at the start of the next unit that is not read-only, after the gate's read-only
+   * unit: a change that commits between the gate's check and the use case's own unit (C1).
+   */
+  let betweenGateAndUnit: (() => void | Promise<unknown>) | null;
 
-  function setUp() {
+  function setUp(options: { readonly withoutInvitationLifetime?: boolean } = {}) {
     fakes = new IdentityFakes();
     units = [];
     clock = new FixedClock(START);
+    betweenGateAndUnit = null;
     const unitOfWork: UnitOfWork = {
       run: <T, E>(
         m: MarketContext,
@@ -103,6 +111,11 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
         options?: UnitOfWorkOptions,
       ) => {
         units.push(options);
+        if (options?.readOnly !== true && betweenGateAndUnit !== null) {
+          const change = betweenGateAndUnit;
+          betweenGateAndUnit = null;
+          return Promise.resolve(change()).then(() => fakes.unitOfWork.run(m, work));
+        }
         return fakes.unitOfWork.run(m, work);
       },
       runOnce: (m, delivery, work, options) => fakes.unitOfWork.runOnce(m, delivery, work, options),
@@ -213,7 +226,14 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       challenges: fakes.challengeRepository,
     };
     const permissions = realPermissionRegistry();
-    const policy = new MarketConfigIdentityPolicy(markets);
+    const base = new MarketConfigIdentityPolicy(markets);
+    // A Market that configures no admin invitation lifetime: nothing could be dispatched.
+    const policy: IdentityMarketPolicy =
+      options.withoutInvitationLifetime === true
+        ? Object.assign(Object.create(base) as IdentityMarketPolicy, {
+            invitationLifetimeMinutes: () => null,
+          })
+        : base;
     const invitations = fakes.invitationRepository;
     return {
       assign: new AssignAdminRole(gate, { ...common, permissions }),
@@ -233,13 +253,8 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
         ids: new SequenceIdGenerator(clock),
       }),
       resend: new ResendAdminInvitation(gate, { ...common, permissions, invitations, policy }),
-      revoke: new RevokeAdminInvitation(gate, {
-        unitOfWork,
-        invitations,
-        outbox: fakes.outbox,
-        audit: fakes.audit,
-        clock,
-      }),
+      revoke: new RevokeAdminInvitation(gate, { ...common, invitations }),
+      inviter: { ...common, permissions },
     };
   }
 
@@ -295,19 +310,31 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
     );
   }
 
-  function seedFactor(account: Id<'Account'>, n: number) {
+  /** A factor of `account`: pending, active with its ten codes, or active and locked (HF2). */
+  function seedFactor(
+    account: Id<'Account'>,
+    n: number,
+    kind: 'pending' | 'active' | 'locked' = 'pending',
+  ) {
+    const active = kind !== 'pending';
     fakes.factors.set(account, {
       id: id<'SecondFactor'>(`01990000-0000-7000-8000-${n12(0xf300 + n)}`),
       marketId,
       accountId: account,
-      state: 'pending',
+      state: active ? 'active' : 'pending',
       secretCiphertext: 'sealed',
       pendingSecretCiphertext: null,
-      lastAcceptedStep: null,
-      activatedAt: null,
-      lockedAt: null,
+      lastAcceptedStep: active ? 1 : null,
+      activatedAt: active ? START : null,
+      lockedAt: kind === 'locked' ? START : null,
       createdAt: START,
-      recoveryCodes: [],
+      recoveryCodes: active
+        ? Array.from({ length: 10 }, (_, i) => ({
+            position: i + 1,
+            codeHash: new Uint8Array(32).fill(i + 1),
+            usedAt: null,
+          }))
+        : [],
       version: 1,
     });
   }
@@ -791,9 +818,10 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
         ok: false,
         error: { code: 'invitation.rejected' },
       });
+      // Mohammad Q4: found (revoke finds it), never sent again.
       await expect(resend.execute(as(ROOT), { invitationId: firstAdmin })).resolves.toEqual({
         ok: false,
-        error: { code: 'invitation.unknown' },
+        error: { code: 'invitation.rejected' },
       });
       await expect(resend.execute(as(LEAD), { invitationId: protectedRole })).resolves.toEqual({
         ok: false,
@@ -838,6 +866,385 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       await expect(revoke.execute(as(SUPPORT), { invitationId })).resolves.toEqual({
         ok: false,
         error: { code: 'access.denied' },
+      });
+    });
+  });
+
+  /** A change committed by someone else: the account disabled (its version steps). */
+  function disabled(account: Id<'Account'>) {
+    const state = fakes.accounts.get(account)!;
+    fakes.accounts.set(account, { ...state, status: 'disabled', version: state.version + 1 });
+  }
+
+  /** A change committed by someone else: the account's role replaced. */
+  function demoted(account: Id<'Account'>, roleId: Id<'Role'>) {
+    const state = [...fakes.assignments.values()].find((a) => a.accountId === account)!;
+    fakes.assignments.set(state.id, { ...state, roleId, version: state.version + 1 });
+  }
+
+  function seedAdmin(n: number, idOf: Id<'Account'>, roleId: Id<'Role'>) {
+    fakes.seedAccount({
+      id: idOf,
+      marketId,
+      population: 'admin',
+      email: { typed: `a${n}@example.com`, normalized: `a${n}@example.com` },
+      displayName: `Account ${n}`,
+      status: 'active',
+      emailVerifiedAt: START,
+      existingAccountNoticeAt: null,
+      signedUpAt: START,
+      createdAt: START,
+      version: 1,
+      credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+    });
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe100 + n)}`),
+      marketId,
+      accountId: idOf,
+      roleId,
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
+  }
+
+  type Built = ReturnType<typeof setUp>;
+  /** Every writing use case of the slices, by ROOT, on a target prepared for it. */
+  const WRITERS: readonly [string, (built: Built) => Promise<Result<unknown, unknown>>][] = [
+    [
+      'assign',
+      (b) =>
+        b.assign.execute(as(ROOT), { accountId: VIEWER, roleId: roleOf('operations-support') }),
+    ],
+    ['disable admin', (b) => b.disableAdmin.execute(as(ROOT), { accountId: VIEWER })],
+    [
+      'enable admin',
+      (b) => {
+        disabled(VIEWER);
+        return b.enableAdmin.execute(as(ROOT), { accountId: VIEWER });
+      },
+    ],
+    ['disable customer', (b) => b.disableCustomer.execute(as(ROOT), { accountId: CUSTOMER })],
+    [
+      'enable customer',
+      (b) => {
+        disabled(CUSTOMER);
+        return b.enableCustomer.execute(as(ROOT), { accountId: CUSTOMER });
+      },
+    ],
+    [
+      'reset factor',
+      (b) => {
+        seedFactor(VIEWER, 9, 'active');
+        return b.resetFactor.execute(as(ROOT), { accountId: VIEWER });
+      },
+    ],
+    [
+      'invite',
+      (b) => b.invite.execute(as(ROOT), { email: 'c1@example.com', roleId: roleOf('viewer') }),
+    ],
+    ['resend', (b) => b.resend.execute(as(ROOT), { invitationId: seedInvitation(20) })],
+    ['revoke', (b) => b.revoke.execute(as(ROOT), { invitationId: seedInvitation(21) })],
+  ];
+
+  describe('the actor re-checked in the writing unit (Mohammad C1, Hassan I1)', () => {
+    it.each(WRITERS)(
+      '%s: each succeeds for an actor the gate and the unit both allow',
+      async (_, run) => {
+        const built = setUp();
+
+        await expect(run(built)).resolves.toMatchObject({ ok: true });
+      },
+    );
+
+    it.each(WRITERS)(
+      '%s: refused when the actor is disabled between the gate and the unit',
+      async (_, run) => {
+        const built = setUp();
+        betweenGateAndUnit = () => disabled(ROOT);
+
+        await expect(run(built)).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+        expect(fakes.events).toEqual([]);
+        expect(fakes.audits).toEqual([]);
+      },
+    );
+
+    it.each(WRITERS)(
+      '%s: refused when the actor is demoted between the gate and the unit',
+      async (_, run) => {
+        const built = setUp();
+        betweenGateAndUnit = () => demoted(ROOT, roleOf('viewer'));
+
+        await expect(run(built)).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+        expect(fakes.events).toEqual([]);
+        expect(fakes.audits).toEqual([]);
+      },
+    );
+
+    it('refuses an actor whose email is no longer verified in the unit', async () => {
+      const { assign } = setUp();
+      betweenGateAndUnit = () => {
+        const state = fakes.accounts.get(ROOT)!;
+        fakes.accounts.set(ROOT, { ...state, emailVerifiedAt: null });
+      };
+
+      await expect(
+        assign.execute(as(ROOT), { accountId: VIEWER, roleId: roleOf('operations-support') }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('three administrators: B disables A while A demotes C; A is refused, C keeps the role', async () => {
+      const { assign, disableAdmin } = setUp();
+      const third = accountId(8);
+      seedAdmin(8, third, roleOf('platform-administrator'));
+      // B's disable of A commits after A's request passed the gate.
+      betweenGateAndUnit = () => disableAdmin.execute(as(ROOT2), { accountId: ROOT });
+
+      const demotion = await assign.execute(as(ROOT), {
+        accountId: third,
+        roleId: roleOf('viewer'),
+      });
+
+      expect(demotion).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(statusOf(ROOT)).toBe('disabled');
+      expect(roleIdOf(third)).toBe(roleOf('platform-administrator'));
+      expect(eventTypes()).toEqual(['identity.account-disabled.v1']);
+    });
+  });
+
+  describe('enable, customer and reset edges (Sajad 6 to 8)', () => {
+    it('enable refuses oneself, a holder of more keys, a seller account and an actor without the key', async () => {
+      const { enableAdmin, enableCustomer } = setUp();
+      disabled(ROOT2);
+      disabled(CUSTOMER);
+
+      await expect(enableAdmin.execute(as(ROOT), { accountId: ROOT })).resolves.toEqual({
+        ok: false,
+        error: { code: 'member.self' },
+      });
+      await expect(enableAdmin.execute(as(LEAD), { accountId: ROOT2 })).resolves.toEqual({
+        ok: false,
+        error: { code: 'member.outranks-actor' },
+      });
+      await expect(enableAdmin.execute(as(ROOT), { accountId: SELLER_ACCOUNT })).resolves.toEqual({
+        ok: false,
+        error: { code: 'account.unknown' },
+      });
+      await expect(enableAdmin.execute(as(SUPPORT), { accountId: ROOT2 })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      await expect(enableCustomer.execute(as(VIEWER), { accountId: CUSTOMER })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(statusOf(ROOT2)).toBe('disabled');
+      expect(statusOf(CUSTOMER)).toBe('disabled');
+    });
+
+    it('disables a customer: every customer session revoked, its challenges void; twice is refused', async () => {
+      const { disableCustomer } = setUp();
+      seedSession(CUSTOMER, 6);
+      seedSession(CUSTOMER, 7);
+      seedChallenge(CUSTOMER, 6);
+      seedSession(VIEWER, 8);
+
+      await expect(disableCustomer.execute(as(SUPPORT), { accountId: CUSTOMER })).resolves.toEqual({
+        ok: true,
+        value: { code: 'account.disabled', accountId: CUSTOMER, revokedSessions: 2 },
+      });
+      const sessions = [...fakes.sessions.values()].map((s) => s.session);
+      expect(sessions.filter((s) => s.accountId === CUSTOMER).map((s) => s.revokedReason)).toEqual([
+        'account-disabled',
+        'account-disabled',
+      ]);
+      expect(sessions.find((s) => s.accountId === VIEWER)!.revokedAt).toBeNull();
+      expect([...fakes.challenges.values()]).toEqual([]);
+      expect(fakes.audits).toEqual([
+        expect.objectContaining({
+          action: 'identity.account.disabled',
+          after: { status: 'disabled', population: 'customer' },
+        }),
+      ]);
+      await expect(disableCustomer.execute(as(SUPPORT), { accountId: CUSTOMER })).resolves.toEqual({
+        ok: false,
+        error: { code: 'account.already-disabled' },
+      });
+    });
+
+    it.each(['active', 'locked'] as const)(
+      'resets an %s factor of another admin, with its ten recovery codes',
+      async (kind) => {
+        const { resetFactor } = setUp();
+        seedFactor(VIEWER, 10, kind);
+
+        await expect(resetFactor.execute(as(ROOT), { accountId: VIEWER })).resolves.toMatchObject({
+          ok: true,
+          value: { code: 'second-factor.reset' },
+        });
+        expect(fakes.factors.has(VIEWER)).toBe(false);
+        expect(fakes.audits).toEqual([
+          expect.objectContaining({
+            action: 'identity.second-factor.reset',
+            before: { state: 'active' },
+          }),
+        ]);
+      },
+    );
+
+    it('reset refuses an actor without the key and answers a seller account as unknown', async () => {
+      const { resetFactor } = setUp();
+      seedFactor(SUPPORT, 11, 'active');
+
+      await expect(resetFactor.execute(as(VIEWER), { accountId: SUPPORT })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      await expect(resetFactor.execute(as(ROOT), { accountId: SELLER_ACCOUNT })).resolves.toEqual({
+        ok: false,
+        error: { code: 'account.unknown' },
+      });
+      expect(fakes.factors.has(SUPPORT)).toBe(true);
+    });
+  });
+
+  describe('re-send and invite edges (Mohammad C2, Q4; Hassan L3; Sajad 4, 9)', () => {
+    const LIFETIME_MINUTES = () =>
+      markets.get(market.marketId).identity.invitations!.lifetimeMinutes.admin!;
+
+    it('re-sends up to createdAt plus the lifetime, and refuses at it (C2)', async () => {
+      const { resend } = setUp();
+      const early = seedInvitation(30);
+      const late = seedInvitation(31);
+      const lifetime = LIFETIME_MINUTES();
+
+      clock.set(START.add({ minutes: lifetime - 1 }));
+      await expect(resend.execute(as(ROOT), { invitationId: early })).resolves.toMatchObject({
+        ok: true,
+      });
+      clock.set(START.add({ minutes: lifetime }));
+      await expect(resend.execute(as(ROOT), { invitationId: late })).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      expect(fakes.invitations.get(late)!.tokenHash).not.toBeNull();
+    });
+
+    it('refuses a re-send whose original inviter could no longer issue it (L3)', async () => {
+      const { resend } = setUp();
+      const byDisabled = seedInvitation(32, { invitedByAccountId: ROOT2 });
+      const byDemoted = seedInvitation(33, { invitedByAccountId: LEAD });
+      const byCustomer = seedInvitation(34, { invitedByAccountId: CUSTOMER });
+      const byUnknown = seedInvitation(35, { invitedByAccountId: UNKNOWN });
+      disabled(ROOT2);
+      demoted(LEAD, roleOf('viewer'));
+
+      for (const invitationId of [byDisabled, byDemoted, byCustomer, byUnknown]) {
+        await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+          ok: false,
+          error: { code: 'invitation.rejected' },
+        });
+      }
+      expect(fakes.events).toEqual([]);
+    });
+
+    it("refuses a re-send whose role is gone or not an admin's (R12)", async () => {
+      const { resend } = setUp();
+      const gone = seedInvitation(36, { roleId: UNKNOWN_ROLE });
+      const sellerRole = seedInvitation(37, { roleId: SELLER_CUSTOM_ROLE });
+
+      for (const invitationId of [gone, sellerRole]) {
+        await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+          ok: false,
+          error: { code: 'invitation.rejected' },
+        });
+      }
+    });
+
+    it('answers access.unavailable for invite and resend in a Market without an admin invitation lifetime', async () => {
+      const { invite, resend } = setUp({ withoutInvitationLifetime: true });
+      const invitationId = seedInvitation(38);
+
+      await expect(
+        invite.execute(as(ROOT), { email: 'x@example.com', roleId: roleOf('viewer') }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+      expect(fakes.invitations.size).toBe(1);
+    });
+  });
+
+  describe("inviterMayStillGrant, the acceptance's re-check of the inviter (Hassan 14.2, L2)", () => {
+    it('stands for an active admin who holds the invite key and can grant the role', async () => {
+      const { inviter } = setUp();
+
+      for (const [account, role] of [
+        [ROOT, roleOf('platform-administrator')],
+        [ROOT, roleOf('viewer')],
+        [LEAD, roleOf('viewer')],
+      ] as const) {
+        const found = await fakes.roleRepository.findById(market, role);
+        await expect(inviterMayStillGrant(inviter, market, account, found!)).resolves.toEqual({
+          ok: true,
+          value: undefined,
+        });
+      }
+    });
+
+    it('refuses a missing, non-admin, disabled or unverified inviter', async () => {
+      const { inviter } = setUp();
+      const viewer = (await fakes.roleRepository.findById(market, roleOf('viewer')))!;
+      disabled(ROOT2);
+      const state = fakes.accounts.get(LEAD)!;
+      fakes.accounts.set(LEAD, { ...state, emailVerifiedAt: null });
+
+      for (const account of [UNKNOWN, CUSTOMER, SELLER_ACCOUNT, ROOT2, LEAD]) {
+        await expect(inviterMayStillGrant(inviter, market, account, viewer)).resolves.toEqual({
+          ok: false,
+          error: 'inviter-inactive',
+        });
+      }
+    });
+
+    it('refuses an inviter that lost the invite key, or can no longer grant the role', async () => {
+      const { inviter } = setUp();
+      const viewer = (await fakes.roleRepository.findById(market, roleOf('viewer')))!;
+      const administrator = (await fakes.roleRepository.findById(
+        market,
+        roleOf('platform-administrator'),
+      ))!;
+
+      // SUPPORT never held identity.admin-account.invite; ROOT2 is demoted to viewer.
+      demoted(ROOT2, roleOf('viewer'));
+      for (const account of [SUPPORT, ROOT2]) {
+        await expect(inviterMayStillGrant(inviter, market, account, viewer)).resolves.toEqual({
+          ok: false,
+          error: 'inviter-inactive',
+        });
+      }
+      // LEAD holds the key but not the Platform Administrator role (R3), nor its own role's
+      // protected keys without it (R11).
+      for (const role of [
+        administrator,
+        (await fakes.roleRepository.findById(market, LEAD_ROLE))!,
+      ]) {
+        await expect(inviterMayStillGrant(inviter, market, LEAD, role)).resolves.toEqual({
+          ok: false,
+          error: 'inviter-cannot-grant',
+        });
+      }
+    });
+
+    it('reads the inviter in the context Market only', async () => {
+      const { inviter } = setUp();
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', PLATFORM_TENANT_ID);
+      const viewer = (await fakes.roleRepository.findById(market, roleOf('viewer')))!;
+
+      await expect(inviterMayStillGrant(inviter, other, ROOT, viewer)).resolves.toEqual({
+        ok: false,
+        error: 'inviter-inactive',
       });
     });
   });

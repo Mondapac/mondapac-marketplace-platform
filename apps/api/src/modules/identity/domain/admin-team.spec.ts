@@ -11,6 +11,8 @@ import { Role, RoleAssignment, RoleInvariantError } from './role';
 
 const NOW = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const LATER = NOW.add({ minutes: 5 });
+/** The admin invitation lifetime of a Market, in minutes (72 hours). */
+const LIFETIME = 72 * 60;
 const HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFndGFndGFn';
 const TOKEN_HASH = new Uint8Array(32).fill(7);
 
@@ -336,7 +338,7 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
     it('re-sends: the token voided at once, version +1 and invitation-issued again', () => {
       const invitation = dispatched();
 
-      expect(invitation.reissue(LATER)).toEqual({ ok: true, value: undefined });
+      expect(invitation.reissue(LATER, LIFETIME)).toEqual({ ok: true, value: undefined });
 
       expect(invitation.state).toMatchObject({
         state: 'pending',
@@ -355,13 +357,28 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       ]);
     });
 
-    it('re-sends an expired pending invitation too', () => {
+    it('re-sends a pending invitation whose token expired, within the kind lifetime', () => {
       const invitation = dispatched();
       const afterExpiry = NOW.add({ minutes: 61 });
 
       expect(invitation.statusAt(afterExpiry)).toBe('expired');
-      expect(invitation.reissue(afterExpiry)).toEqual({ ok: true, value: undefined });
+      expect(invitation.reissue(afterExpiry, LIFETIME)).toEqual({ ok: true, value: undefined });
       expect(invitation.statusAt(afterExpiry)).toBe('pending');
+    });
+
+    it('refuses a re-send at and after createdAt plus the kind lifetime (Mohammad C2)', () => {
+      const lastMinute = NOW.add({ minutes: LIFETIME - 1 });
+      const cutoff = NOW.add({ minutes: LIFETIME });
+
+      expect(dispatched().reissue(lastMinute, LIFETIME)).toEqual({ ok: true, value: undefined });
+      const late = dispatched();
+      expect(late.reissue(cutoff, LIFETIME)).toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      expect(late.pendingEvents).toEqual([]);
+      expect(late.state.tokenHash).not.toBeNull();
+      expect(() => dispatched().reissue(NOW, 0)).toThrow(RangeError);
     });
 
     it('revokes: the address cleared, version +1 and invitation-revoked', () => {
@@ -389,7 +406,10 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       invitation.revoke(LATER);
       const decided = Invitation.restore(invitation.state);
 
-      expect(decided.reissue(LATER)).toEqual({ ok: false, error: { code: 'invitation.rejected' } });
+      expect(decided.reissue(LATER, LIFETIME)).toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
       expect(decided.revoke(LATER)).toEqual({ ok: false, error: { code: 'invitation.rejected' } });
       expect(decided.pendingEvents).toEqual([]);
     });

@@ -229,11 +229,20 @@ export class Invitation {
    * `pending` → `pending`: a re-send by the inviter's side (3.4, flows E2 and F2; slice 8b). The
    * stored token is voided at once (its hash and expiry cleared), so the earlier link stops
    * working before the new mail goes; the version rises and `identity.invitation-issued.v1` is
-   * recorded again, which the mail handler dispatches with a new token and a new expiry. An
-   * expired pending invitation may be re-sent too.
+   * recorded again, which the mail handler dispatches with a new token and a new expiry.
+   *
+   * Refused once `now` is at or past `createdAt` plus the kind's lifetime (Mohammad C2 on PR
+   * #187): the cleared token would make it a never-dispatched invitation that item G already
+   * counts as stale, and `expired` → `pending` is not a transition of 3.4. The admin invites
+   * again instead, which replaces it.
    */
-  reissue(now: Temporal.Instant): Result<void, InvitationRejected> {
+  reissue(now: Temporal.Instant, lifetimeMinutes: number): Result<void, InvitationRejected> {
+    if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
+      throw new RangeError('reissue: a positive whole lifetime in minutes is required');
+    }
     if (this.#state.state !== 'pending') return err(REJECTED);
+    const cutoff = this.#state.createdAt.add({ minutes: lifetimeMinutes });
+    if (Temporal.Instant.compare(now, cutoff) >= 0) return err(REJECTED);
     this.change({ tokenHash: null, expiresAt: null });
     const { id, kind, sellerId, version } = this.#state;
     this.#events.push(

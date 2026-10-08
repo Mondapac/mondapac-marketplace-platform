@@ -15,7 +15,9 @@ import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
-import { readGrants, type GrantSubject } from '../roles/granting';
+import { readActingGrants, type GrantSubject } from '../roles/granting';
+
+const RULE_KEYS = [ADMIN_ACCOUNT_RESET_SECOND_FACTOR.key];
 
 export interface ResetOtherAdminSecondFactorInput {
   readonly accountId: Id<'Account'>;
@@ -58,7 +60,9 @@ export interface ResetOtherAdminSecondFactorDependencies {
  * (`ResetAdminSecondFactor`, 7.4), which stays the way for the last Platform Administrator.
  *
  * One serializable unit: the account's credential lock first, as every unit that ends sessions
- * takes it (6.3, HF11); the target, an admin of the context Market, else `account.unknown`; the
+ * takes it (6.3, HF11); the actor, still an active, verified admin holding the rule's key, read
+ * in this unit (Mohammad C1 on PR #187; else `access.denied`); the target, an admin of the
+ * context Market, else `account.unknown`; the
  * grants of both read in this unit (Hassan I-2); `GrantPolicy.canActOn`: never one's own factor
  * through this path (`member.self`, 3.6 "forbidden"), never an admin who holds a key the actor
  * lacks (R1, AC 33), and a holder of the Platform Administrator role only by a holder (R3). Then
@@ -108,16 +112,19 @@ export class ResetOtherAdminSecondFactor extends UseCase<
         if (!(await this.deps.accounts.lockCredential(market, input.accountId))) {
           return err({ code: 'account.unknown' });
         }
+        const subject: GrantSubject = {
+          accountId: input.accountId,
+          population: 'admin',
+          sellerId: null,
+        };
+        // C1: the actor is still an active admin holding the rule's key, read in this unit.
+        const reading = await readActingGrants(this.deps, market, self, [subject], RULE_KEYS);
+        if (reading === null) return err({ code: 'access.denied' });
         const account = await this.deps.accounts.findById(market, input.accountId);
         if (account === null || account.state.population !== 'admin') {
           return err({ code: 'account.unknown' });
         }
         const accountId = account.state.id;
-        const subject: GrantSubject = { accountId, population: 'admin', sellerId: null };
-        const reading = await readGrants(this.deps.grants, this.deps.effectiveKeys, market, self, [
-          subject,
-        ]);
-        if (reading === null) return err({ code: 'access.denied' });
         const acted = GrantPolicy.canActOn(reading.actor, reading.targets.get(accountId)!);
         if (!acted.ok) return err(acted.error);
         const system = await this.deps.roles.findSystemRole(market, 'platform');

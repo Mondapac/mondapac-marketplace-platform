@@ -1,13 +1,17 @@
-import type { Id, MarketContext, Population } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Population, Result } from '@mondapac/shared-kernel';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
-import type {
-  ActedOnAccount,
-  GrantedRole,
-  GrantingActor,
-  ProtectedKeyCatalogue,
+import { ADMIN_ACCOUNT_INVITE } from '../../contracts/permissions';
+import {
+  GrantPolicy,
+  type ActedOnAccount,
+  type GrantedRole,
+  type GrantingActor,
+  type ProtectedKeyCatalogue,
 } from '../../domain/grant-policy';
 import { scopeOfPopulation, type Role } from '../../domain/role';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
+import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 
 /** An account whose grant is read: who it is, as the actor context or the store says. */
@@ -103,4 +107,75 @@ export function protectedKeysOf(
   registry: Pick<SealedPermissionCatalogue, 'get'>,
 ): ProtectedKeyCatalogue {
   return { isProtected: (key) => registry.get(key)?.protected === true };
+}
+
+/** The ports {@link readActingGrants} and {@link inviterMayStillGrant} read. */
+export interface ActingGrantDependencies {
+  readonly accounts: AccountRepository;
+  readonly grants: RoleGrantReader;
+  readonly effectiveKeys: EffectiveKeyResolver;
+}
+
+/**
+ * The actor re-checked **in the unit that writes** (Mohammad C1, Hassan I1 on PR #187). The
+ * gate checks in an earlier unit, so a disable or a demotion of the actor can commit in between.
+ * The actor must still be an account of its population in this Market, `active`, with a
+ * verified email, and its effective keys, read in this unit, must hold every key of
+ * `requiredKeys` (the use case's rule). Then the grants of the actor and of `targets`, as
+ * {@link readGrants}. Null: the caller answers `access.denied`.
+ */
+export async function readActingGrants(
+  deps: ActingGrantDependencies,
+  market: MarketContext,
+  actor: GrantSubject,
+  targets: readonly GrantSubject[],
+  requiredKeys: readonly string[],
+): Promise<GrantReading | null> {
+  const account = await deps.accounts.findById(market, actor.accountId);
+  if (
+    account === null ||
+    account.state.population !== actor.population ||
+    account.state.status !== 'active' ||
+    !account.isEmailVerified
+  ) {
+    return null;
+  }
+  const reading = await readGrants(deps.grants, deps.effectiveKeys, market, actor, targets);
+  if (reading === null) return null;
+  return requiredKeys.every((key) => reading.actor.effectiveKeys.has(key)) ? reading : null;
+}
+
+/** Why an invitation's inviter no longer stands behind it (logged, never answered). */
+export type InviterRefusal = 'inviter-inactive' | 'inviter-cannot-grant';
+
+/**
+ * Whether the inviter of an admin invitation could still issue it now (identity design 3.4;
+ * Hassan 14.2): an active, verified admin of this Market who holds
+ * `identity.admin-account.invite` and passes `GrantPolicy.canGrant` for the role, all read in
+ * the caller's unit. The acceptance's closing unit calls it, and so does a re-send (Hassan L3 on
+ * PR #187): an invitation its inviter could no longer issue can never be accepted, so it is not
+ * sent again either.
+ */
+export async function inviterMayStillGrant(
+  deps: ActingGrantDependencies & {
+    readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
+  },
+  market: MarketContext,
+  inviterId: Id<'Account'>,
+  role: Role,
+): Promise<Result<void, InviterRefusal>> {
+  const reading = await readActingGrants(
+    deps,
+    market,
+    { accountId: inviterId, population: 'admin', sellerId: null },
+    [],
+    [ADMIN_ACCOUNT_INVITE.key],
+  );
+  if (reading === null) return err('inviter-inactive');
+  const granted = GrantPolicy.canGrant(
+    reading.actor,
+    grantedRoleOf(role, deps.effectiveKeys),
+    protectedKeysOf(deps.permissions),
+  );
+  return granted.ok ? ok(undefined) : err('inviter-cannot-grant');
 }

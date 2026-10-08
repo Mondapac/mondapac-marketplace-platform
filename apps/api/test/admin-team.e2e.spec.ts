@@ -14,7 +14,13 @@ import { TOTP } from '../src/modules/identity/domain/totp';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
+import {
+  IDENTITY_MARKET_POLICY,
+  type IdentityMarketPolicy,
+} from '../src/modules/identity/application/ports/identity-market-policy';
+import { MarketConfigIdentityPolicy } from '../src/modules/identity/infrastructure/market-config-identity-policy';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { MarketRegistry } from '../src/platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
@@ -54,12 +60,27 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
   let logLines: LogLine[];
   const http = () => request(app.getHttpServer());
 
-  async function boot() {
+  async function boot(options: { readonly withoutInvitationLifetime?: boolean } = {}) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info' },
       panelOrigins: true,
-      override: (builder) => fakes.override(builder).overrideProvider(CLOCK).useValue(clock),
+      override: (builder) => {
+        const built = fakes.override(builder).overrideProvider(CLOCK).useValue(clock);
+        return options.withoutInvitationLifetime === true
+          ? built
+              .overrideProvider(IDENTITY_MARKET_POLICY)
+              .useFactory({ factory: withoutInvitationLifetime, inject: [MarketRegistry] })
+          : built;
+      },
     }));
+  }
+
+  /** The real policy of a Market that configures no admin invitation lifetime. */
+  function withoutInvitationLifetime(markets: MarketRegistry): IdentityMarketPolicy {
+    const base = new MarketConfigIdentityPolicy(markets);
+    return Object.assign(Object.create(base) as IdentityMarketPolicy, {
+      invitationLifetimeMinutes: () => null,
+    });
   }
 
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -396,6 +417,272 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       expect(extra.status).toBe(400);
       expect(fakes.accounts.get(VIEWER)!.status).toBe('active');
       expect(fakes.accounts.get(ROOT2)!.status).toBe('active');
+    });
+
+    /** Each route with a body and a path its refusals are checked on (Sajad 2). */
+    const ROUTES: readonly [string, () => string, () => object][] = [
+      ['assign role', () => `accounts/${VIEWER}/role`, () => ({ roleId: roleOf('viewer') })],
+      ['invite', () => 'invitations', () => ({ email: INVITEE, roleId: roleOf('viewer') })],
+      ['resend', () => `invitations/${MISSING}/resend`, () => ({})],
+      ['revoke', () => `invitations/${MISSING}/revoke`, () => ({})],
+      ['disable admin', () => `accounts/${ROOT2}/disable`, () => ({})],
+      ['enable admin', () => `accounts/${ROOT2}/enable`, () => ({})],
+      ['disable customer', () => `customers/${CUSTOMER}/disable`, () => ({})],
+      ['enable customer', () => `customers/${CUSTOMER}/enable`, () => ({})],
+      ['reset factor', () => `accounts/${ROOT2}/second-factor/reset`, () => ({})],
+    ];
+
+    it.each(ROUTES)(
+      '%s: 403 request.csrf without the token, 401 without a session, 403 without the permission',
+      async (_, path, body) => {
+        await boot();
+        await seeded(code);
+        const root = sessionOf(code, ROOT, 1);
+        // VIEWER holds only view keys: none of these routes' permissions.
+        const viewer = sessionOf(code, VIEWER, 3);
+
+        const noCsrf = await post(code, path(), body(), { cookie: root.cookie });
+        expect([noCsrf.status, noCsrf.body]).toEqual([
+          403,
+          { statusCode: 403, code: 'request.csrf' },
+        ]);
+        const anonymous = await post(code, path(), body(), {});
+        expect(anonymous.status).toBe(401);
+        const denied = await post(code, path(), body(), viewer);
+        expect([denied.status, denied.body]).toEqual([
+          403,
+          { statusCode: 403, code: 'access.denied' },
+        ]);
+        expect(fakes.events).toEqual([]);
+        expect(fakes.audits.filter((a) => a.actor === 'authenticated')).toEqual([]);
+      },
+    );
+
+    it('enables a customer over HTTP; enabling an active one is 409', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+
+      const active = await post(code, `customers/${CUSTOMER}/enable`, {}, root);
+      expect([active.status, active.body]).toEqual([
+        409,
+        { statusCode: 409, code: 'account.already-active' },
+      ]);
+      await post(code, `customers/${CUSTOMER}/disable`, {}, root);
+      const enabled = await post(code, `customers/${CUSTOMER}/enable`, {}, root);
+      expect([enabled.status, enabled.body]).toEqual([
+        200,
+        { code: 'account.enabled', accountId: CUSTOMER },
+      ]);
+      expect(fakes.accounts.get(CUSTOMER)!.status).toBe('active');
+    });
+
+    it('answers role.unchanged 200 and the 404 and 409 refusals over HTTP', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+
+      const unchanged = await post(
+        code,
+        `accounts/${VIEWER}/role`,
+        { roleId: roleOf('viewer') },
+        root,
+      );
+      expect([unchanged.status, unchanged.body]).toEqual([
+        200,
+        { code: 'role.unchanged', accountId: VIEWER, roleId: roleOf('viewer') },
+      ]);
+      const unknownRole = await post(code, `accounts/${VIEWER}/role`, { roleId: MISSING }, root);
+      expect([unknownRole.status, unknownRole.body]).toEqual([
+        404,
+        { statusCode: 404, code: 'role.unknown' },
+      ]);
+      const exists = await post(
+        code,
+        'invitations',
+        { email: 'A3@example.com', roleId: roleOf('viewer') },
+        root,
+      );
+      expect([exists.status, exists.body]).toEqual([
+        409,
+        { statusCode: 409, code: 'account.exists' },
+      ]);
+      await post(code, 'invitations', { email: INVITEE, roleId: roleOf('viewer') }, root);
+      const pending = await post(
+        code,
+        'invitations',
+        { email: INVITEE, roleId: roleOf('viewer') },
+        root,
+      );
+      expect([pending.status, pending.body]).toEqual([
+        409,
+        { statusCode: 409, code: 'invitation.already-pending' },
+      ]);
+      const revoked = [...fakes.invitations.values()].at(-1)!.id;
+      await post(code, `invitations/${revoked}/revoke`, {}, root);
+      const decided = await post(code, `invitations/${revoked}/revoke`, {}, root);
+      expect([decided.status, decided.body]).toEqual([
+        409,
+        { statusCode: 409, code: 'invitation.rejected' },
+      ]);
+    });
+
+    it('refuses a malformed invite body with 400 and the field, never echoing the address', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+
+      const badEmail = await post(
+        code,
+        'invitations',
+        { email: 'not-an-address', roleId: roleOf('viewer') },
+        root,
+      );
+      expect([badEmail.status, badEmail.body]).toEqual([
+        400,
+        {
+          statusCode: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: 'email', code: 'format' }] },
+        },
+      ]);
+      const badRole = await post(code, 'invitations', { email: INVITEE, roleId: 'x' }, root);
+      expect([badRole.status, badRole.body]).toEqual([
+        400,
+        {
+          statusCode: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: 'roleId', code: 'format' }] },
+        },
+      ]);
+      expect(JSON.stringify([badEmail.body, badRole.body])).not.toContain('not-an-address');
+      expect(fakes.invitations.size).toBe(0);
+    });
+
+    it('answers 503 access.unavailable to invite in a Market without an admin invitation lifetime', async () => {
+      await boot({ withoutInvitationLifetime: true });
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+
+      const answer = await post(
+        code,
+        'invitations',
+        { email: INVITEE, roleId: roleOf('viewer') },
+        root,
+      );
+      expect([answer.status, answer.body]).toEqual([
+        503,
+        { statusCode: 503, code: 'access.unavailable' },
+      ]);
+      expect(fakes.invitations.size).toBe(0);
+    });
+
+    it("refuses the acceptance when the inviter is demoted, or the role became a seller's (14.2, I-6)", async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const root2 = sessionOf(code, ROOT2, 2);
+
+      await post(code, 'invitations', { email: INVITEE, roleId: roleOf('viewer') }, root2);
+      const demotedToken = await mailed(code);
+      await post(code, `accounts/${ROOT2}/role`, { roleId: roleOf('viewer') }, root);
+      await expect(accept(code, demotedToken)).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+
+      await post(
+        code,
+        'invitations',
+        { email: 'other@example.com', roleId: roleOf('viewer') },
+        root,
+      );
+      const sellerToken = await mailed(code);
+      const invitation = [...fakes.invitations.values()].find(
+        (i) => i.state === 'pending' && i.invitedByAccountId === ROOT,
+      )!;
+      const sellerRole = [...fakes.roles.values()].find(
+        (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === 'store-manager',
+      )!;
+      fakes.invitations.set(invitation.id, { ...invitation, roleId: sellerRole.id });
+      await expect(accept(code, sellerToken)).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      expect([...fakes.accounts.values()].filter((a) => a.population === 'admin')).toHaveLength(3);
+    });
+
+    it('records the acceptance with an inviter as granted by it, never as founding', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+
+      await post(code, 'invitations', { email: INVITEE, roleId: roleOf('viewer') }, root);
+      const token = await mailed(code);
+      await expect(accept(code, token)).resolves.toMatchObject({ ok: true });
+
+      expect(fakes.audits.find((a) => a.action === 'identity.account-role.assigned')).toMatchObject(
+        {
+          actor: 'anonymous',
+          after: expect.objectContaining({
+            founding: false,
+            roleId: roleOf('viewer'),
+            scope: 'platform',
+          }) as object,
+        },
+      );
+    });
+
+    it('answers 404 for an account, a role or an invitation of the other Market (Hassan L2)', async () => {
+      await boot();
+      await seeded(code);
+      const other = code === 'AU' ? 'ZZ' : 'AU';
+      await app.get(SeedRoles).execute(systemOf(other), {});
+      const root = sessionOf(code, ROOT, 1);
+      const elsewhere = accountId(50);
+      fakes.seedAccount({
+        ...fakes.accounts.get(VIEWER)!,
+        id: elsewhere,
+        marketId: other as AccountState['marketId'],
+        email: { typed: 'elsewhere@example.com', normalized: 'elsewhere@example.com' },
+      });
+      const otherRole = [...fakes.roles.values()].find(
+        (r) =>
+          r.marketId === other && r.scope === 'platform' && r.seedCode === 'operations-support',
+      )!.id;
+      const otherInvitation = id<'Invitation'>('01990000-0000-7000-8000-00000000f4ee');
+      fakes.invitations.set(otherInvitation, {
+        id: otherInvitation,
+        marketId: other as AccountState['marketId'],
+        kind: 'admin',
+        email: { typed: 'x@example.com', normalized: 'x@example.com' },
+        displayName: null,
+        roleId: otherRole,
+        sellerId: null,
+        invitedByAccountId: ROOT,
+        tokenHash: null,
+        expiresAt: null,
+        state: 'pending',
+        decidedAt: null,
+        acceptedAccountId: null,
+        createdAt: START,
+        version: 1,
+      });
+
+      const account = await post(code, `accounts/${elsewhere}/disable`, {}, root);
+      expect([account.status, account.body]).toEqual([
+        404,
+        { statusCode: 404, code: 'account.unknown' },
+      ]);
+      const role = await post(code, `accounts/${VIEWER}/role`, { roleId: otherRole }, root);
+      expect([role.status, role.body]).toEqual([404, { statusCode: 404, code: 'role.unknown' }]);
+      const invitation = await post(code, `invitations/${otherInvitation}/revoke`, {}, root);
+      expect([invitation.status, invitation.body]).toEqual([
+        404,
+        { statusCode: 404, code: 'invitation.unknown' },
+      ]);
+      expect(fakes.accounts.get(elsewhere)!.status).toBe('active');
+      expect(fakes.invitations.get(otherInvitation)!.state).toBe('pending');
     });
   });
 });

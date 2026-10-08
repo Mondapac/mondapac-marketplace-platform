@@ -240,12 +240,13 @@ export const InvitationReissuedAudit = defineAuditAction({
 
 /**
  * A pending invitation was revoked by the inviter's side, or replaced by a new issue for the same
- * address (identity design 3.4; PA 5 row 8b). Target: the invitation.
+ * address (identity design 3.4; PA 5 row 8b). Target: the invitation. `system` when the
+ * operator's first-admin routine replaces a stale first-admin invitation (Mohammad C3 on PR #187).
  */
 export const InvitationRevokedAudit = defineAuditAction({
   action: 'identity.invitation.revoked',
   targetType: 'identity.invitation',
-  actors: ['authenticated'],
+  actors: ['authenticated', 'system'],
   after: {
     kind: auditField.enumOf(INVITATION_KINDS),
     roleId: auditField.id(),

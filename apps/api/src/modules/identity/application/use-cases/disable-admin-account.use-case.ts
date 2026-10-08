@@ -37,6 +37,10 @@ export class DisableAdminAccount extends UseCase<
     context: CallContext,
     input: AccountStatusInput,
   ): Promise<Result<AccountStatusOutput, AccountStatusFailure>> {
-    return changeAccountStatus(this.deps, context, input, { population: 'admin', to: 'disabled' });
+    return changeAccountStatus(this.deps, context, input, {
+      population: 'admin',
+      to: 'disabled',
+      ruleKey: ADMIN_ACCOUNT_DISABLE.key,
+    });
   }
 }

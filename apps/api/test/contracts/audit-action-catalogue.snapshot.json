@@ -103,7 +103,7 @@
     "action": "identity.invitation.revoked",
     "targetType": "identity.invitation",
     "targetId": "id",
-    "actors": ["authenticated"],
+    "actors": ["authenticated", "system"],
     "before": null,
     "after": {
       "kind": "enumOf(seller-owner|staff|admin)",

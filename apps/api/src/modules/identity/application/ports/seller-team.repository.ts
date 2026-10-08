@@ -75,6 +75,11 @@ export interface RoleAssignmentRepository {
    * (identity design 5.5, `LastHolderPolicy`; slice 8a-2). The read of {@link hasActiveHolder},
    * returning every id; run in the caller's serializable unit (HF8), so a concurrent change of
    * any holder it read makes one of the two units retry.
+   *
+   * **Platform roles only** (Mojtaba F2 on PR #187): a platform role has a handful of holders,
+   * so the read is an index scan with few predicate locks. A role with thousands of holders
+   * turns it into a full scan of `accounts` that a serializable unit locks whole; seller holders
+   * go through memberships (data design 3.9).
    */
   activeHoldersOf(market: MarketContext, roleId: Id<'Role'>): Promise<Id<'Account'>[]>;
 

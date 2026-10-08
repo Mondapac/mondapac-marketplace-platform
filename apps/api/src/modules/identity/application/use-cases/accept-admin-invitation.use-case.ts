@@ -10,7 +10,6 @@ import {
   type SealedPermissionCatalogue,
   type UseCaseGate,
 } from '../../../../platform/authz';
-import { ADMIN_ACCOUNT_INVITE } from '../../contracts/permissions';
 import { Account } from '../../domain/account';
 import {
   accountRoleAssigned,
@@ -24,7 +23,6 @@ import {
   MAX_PASSWORD_BYTES,
   type PasswordRejected,
 } from '../../domain/password-policy';
-import { GrantPolicy } from '../../domain/grant-policy';
 import { displayRecoveryCode, type RecoveryCode } from '../../domain/recovery-code';
 import { RoleAssignment, type Role } from '../../domain/role';
 import { SecondFactor } from '../../domain/second-factor';
@@ -34,7 +32,7 @@ import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { CommonPasswordList } from '../ports/common-password-list';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
-import { grantedRoleOf, protectedKeysOf, readGrants } from '../roles/granting';
+import { inviterMayStillGrant } from '../roles/granting';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
@@ -377,7 +375,7 @@ export class AcceptAdminInvitation extends UseCase<
             // 7.4), every other pending first-admin invitation is refused, never a second first
             // admin.
             if (await this.deps.accounts.existsInPopulation(market, 'admin')) return refuse();
-          } else if (!(await this.inviterMayStillGrant(context, inviterId, role))) {
+          } else if (!(await this.inviterStillStands(context, inviterId, role))) {
             // Slice 8b (Hassan 14.2): the inviter is re-checked now, in this unit.
             return refuse();
           }
@@ -485,47 +483,19 @@ export class AcceptAdminInvitation extends UseCase<
   /**
    * Whether the inviter of an invitation could still issue it now (identity design 3.4 "the
    * inviter is still active and could still grant the role", Hassan 14.2; slice 8b), read in the
-   * caller's serializable closing unit: an admin account of this Market, active, with a verified
-   * email; still holding `identity.admin-account.invite`; and `GrantPolicy.canGrant` on the role
-   * with its grant read in this unit (R1, R3, R11; Hassan I-2). A disabled or demoted inviter
-   * cannot leave a role behind in a pending invitation.
+   * caller's serializable closing unit through the shared {@link inviterMayStillGrant}. A
+   * disabled or demoted inviter cannot leave a role behind in a pending invitation.
    */
-  private async inviterMayStillGrant(
+  private async inviterStillStands(
     context: CallContext,
     inviterId: Id<'Account'>,
     role: Role,
   ): Promise<boolean> {
-    const { market } = context;
-    const inviter = await this.deps.accounts.findById(market, inviterId);
-    if (
-      inviter === null ||
-      inviter.state.population !== 'admin' ||
-      inviter.state.status !== 'active' ||
-      !inviter.isEmailVerified
-    ) {
-      return false;
+    const checked = await inviterMayStillGrant(this.deps, context.market, inviterId, role);
+    if (!checked.ok) {
+      this.log('identity.accept-invitation.inviter-refused', context, { reason: checked.error });
     }
-    const reading = await readGrants(
-      this.deps.grants,
-      this.deps.effectiveKeys,
-      market,
-      { accountId: inviterId, population: 'admin', sellerId: null },
-      [],
-    );
-    if (reading === null || !reading.actor.effectiveKeys.has(ADMIN_ACCOUNT_INVITE.key)) {
-      return false;
-    }
-    const granted = GrantPolicy.canGrant(
-      reading.actor,
-      grantedRoleOf(role, this.deps.effectiveKeys),
-      protectedKeysOf(this.deps.permissions),
-    );
-    if (!granted.ok) {
-      this.log('identity.accept-invitation.inviter-cannot-grant', context, {
-        reason: granted.error.reason,
-      });
-    }
-    return granted.ok;
+    return checked.ok;
   }
 
   /** Gives the attempt back (no code was tried) and answers `failure`. */

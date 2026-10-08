@@ -36,6 +36,10 @@ export class EnableAdminAccount extends UseCase<
     context: CallContext,
     input: AccountStatusInput,
   ): Promise<Result<AccountStatusOutput, AccountStatusFailure>> {
-    return changeAccountStatus(this.deps, context, input, { population: 'admin', to: 'active' });
+    return changeAccountStatus(this.deps, context, input, {
+      population: 'admin',
+      to: 'active',
+      ruleKey: ADMIN_ACCOUNT_DISABLE.key,
+    });
   }
 }

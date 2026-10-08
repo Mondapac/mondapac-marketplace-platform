@@ -37,6 +37,7 @@ export class EnableCustomerAccount extends UseCase<
   ): Promise<Result<AccountStatusOutput, AccountStatusFailure>> {
     return changeAccountStatus(this.deps, context, input, {
       population: 'customer',
+      ruleKey: CUSTOMER_ACCOUNT_DISABLE.key,
       to: 'active',
     });
   }

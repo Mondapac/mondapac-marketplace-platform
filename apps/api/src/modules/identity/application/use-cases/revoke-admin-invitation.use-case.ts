@@ -7,7 +7,13 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ADMIN_ACCOUNT_INVITE } from '../../contracts/permissions';
 import { InvitationRevokedAudit } from '../../domain/audit';
+import type { EffectiveKeyResolver } from '../access/effective-keys';
+import type { AccountRepository } from '../ports/account.repository';
 import type { InvitationRepository } from '../ports/invitation.repository';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
+import { readActingGrants } from '../roles/granting';
+
+const RULE_KEYS = [ADMIN_ACCOUNT_INVITE.key];
 
 export interface RevokeAdminInvitationInput {
   readonly invitationId: Id<'Invitation'>;
@@ -27,6 +33,9 @@ export type RevokeAdminInvitationFailure =
 
 export interface RevokeAdminInvitationDependencies {
   readonly unitOfWork: UnitOfWork;
+  readonly accounts: AccountRepository;
+  readonly grants: RoleGrantReader;
+  readonly effectiveKeys: EffectiveKeyResolver;
   readonly invitations: InvitationRepository;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
@@ -37,7 +46,8 @@ export interface RevokeAdminInvitationDependencies {
  * Revokes a pending admin invitation (identity design 3.4 `pending` → `revoked`; R12; slice 8b).
  * Rule `permissions [identity.admin-account.invite]` (protected). Any pending admin invitation of
  * the Market, expired ones and the operator's first-admin invitation included: revoking only
- * narrows access, so no `GrantPolicy` check is needed. The address is cleared with the decision
+ * narrows access, so no `GrantPolicy` check is needed; the actor is re-checked in the unit
+ * (still an active, verified admin holding the key; Mohammad C1 on PR #187). The address is cleared with the decision
  * (data design 4). `identity.invitation-revoked.v1` and `identity.invitation.revoked` as the
  * actor.
  */
@@ -71,6 +81,11 @@ export class RevokeAdminInvitation extends UseCase<
     const result = await this.deps.unitOfWork.run(
       market,
       async (): Promise<Result<RevokeAdminInvitationOutput, RevokeAdminInvitationFailure>> => {
+        // C1: the actor is still an active admin holding the rule's key, read in this unit.
+        const self = { accountId: actor.accountId, population: 'admin', sellerId: null } as const;
+        if ((await readActingGrants(this.deps, market, self, [], RULE_KEYS)) === null) {
+          return err({ code: 'access.denied' });
+        }
         const invitation = await this.deps.invitations.findById(market, input.invitationId);
         if (invitation === null || invitation.state.kind !== 'admin') {
           return err({ code: 'invitation.unknown' });

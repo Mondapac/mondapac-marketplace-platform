@@ -21,10 +21,12 @@ import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-t
 import {
   grantedRoleOf,
   protectedKeysOf,
-  readGrants,
+  readActingGrants,
   roleIsInActorsReach,
   type GrantSubject,
 } from '../roles/granting';
+
+const RULE_KEYS = [PLATFORM_ROLE_ASSIGN.key];
 
 export interface AssignAdminRoleInput {
   readonly accountId: Id<'Account'>;
@@ -69,6 +71,9 @@ export interface AssignAdminRoleDependencies {
  * **one serializable unit** (5.5, HF8; data design 5.1), so of two concurrent demotions of the
  * last two Platform Administrators one is retried and then refused:
  *
+ * 0. The actor, read in this unit (`readActingGrants`; Mohammad C1, Hassan I1 on PR #187): still
+ *    an active, verified admin holding `identity.platform-role.assign`, else `access.denied`.
+ *    A disable or demotion of the actor that commits after the gate's check is seen here.
  * 1. The target is an admin account of the context Market; any other id answers
  *    `account.unknown`, and a role that is not a platform role of this Market `role.unknown`,
  *    byte-identical to a missing one (5.2; Hassan I-2: a seller's custom role is never in an
@@ -121,6 +126,14 @@ export class AssignAdminRole extends UseCase<
       market,
       async (): Promise<Result<AssignAdminRoleOutput, AssignAdminRoleFailure>> => {
         const now = this.deps.clock.now();
+        const subject: GrantSubject = {
+          accountId: input.accountId,
+          population: 'admin',
+          sellerId: null,
+        };
+        // C1: the actor is still an active admin holding the rule's key, read in this unit.
+        const reading = await readActingGrants(this.deps, market, self, [subject], RULE_KEYS);
+        if (reading === null) return err({ code: 'access.denied' });
         const target = await this.deps.accounts.findById(market, input.accountId);
         if (target === null || target.state.population !== 'admin') {
           return err({ code: 'account.unknown' });
@@ -129,15 +142,6 @@ export class AssignAdminRole extends UseCase<
         if (role === null || !roleIsInActorsReach(role, self)) {
           return err({ code: 'role.unknown' });
         }
-        const subject: GrantSubject = {
-          accountId: target.state.id,
-          population: 'admin',
-          sellerId: null,
-        };
-        const reading = await readGrants(this.deps.grants, this.deps.effectiveKeys, market, self, [
-          subject,
-        ]);
-        if (reading === null) return err({ code: 'access.denied' });
         const acted = GrantPolicy.canActOn(reading.actor, reading.targets.get(subject.accountId)!);
         if (!acted.ok) return err(acted.error);
         const assignment = await this.deps.assignments.findByAccount(market, subject.accountId);

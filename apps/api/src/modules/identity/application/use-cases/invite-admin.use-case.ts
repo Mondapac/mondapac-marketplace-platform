@@ -27,11 +27,13 @@ import type { RoleRepository } from '../ports/seller-team.repository';
 import {
   grantedRoleOf,
   protectedKeysOf,
-  readGrants,
+  readActingGrants,
   roleIsInActorsReach,
   type GrantSubject,
 } from '../roles/granting';
 import type { FieldProblem } from './register-customer.use-case';
+
+const RULE_KEYS = [ADMIN_ACCOUNT_INVITE.key];
 
 export interface InviteAdminInput {
   /** The invitee's address. Personal data: never logged or audited. */
@@ -79,7 +81,8 @@ export interface InviteAdminDependencies {
  * The actor is the inviter: the invitation carries its account id, and the acceptance checks
  * again that it is still active and could still grant the role (Hassan 14.2).
  *
- * In one unit: the role, a platform role of the context Market (a seller's role is never in an
+ * In one unit: the actor, still an active, verified admin holding the rule's key (Mohammad C1
+ * on PR #187; else `access.denied`); the role, a platform role of the context Market (a seller's role is never in an
  * admin's reach, Hassan I-2: `role.unknown`); the actor's grant read in this unit and
  * `GrantPolicy.canGrant` (R1, R3, R11: `role.not-grantable`); an address that already has an
  * admin account in the Market is refused (`account.exists`), since acceptance could only fail;
@@ -127,18 +130,13 @@ export class InviteAdmin extends UseCase<InviteAdminInput, InviteAdminOutput, In
         market,
         async (): Promise<Result<InviteAdminOutput, InviteAdminFailure>> => {
           const now = this.deps.clock.now();
+          // C1: the actor is still an active admin holding the rule's key, read in this unit.
+          const reading = await readActingGrants(this.deps, market, self, [], RULE_KEYS);
+          if (reading === null) return err({ code: 'access.denied' });
           const role = await this.deps.roles.findById(market, input.roleId);
           if (role === null || !roleIsInActorsReach(role, self)) {
             return err({ code: 'role.unknown' });
           }
-          const reading = await readGrants(
-            this.deps.grants,
-            this.deps.effectiveKeys,
-            market,
-            self,
-            [],
-          );
-          if (reading === null) return err({ code: 'access.denied' });
           const granted = GrantPolicy.canGrant(
             reading.actor,
             grantedRoleOf(role, this.deps.effectiveKeys),

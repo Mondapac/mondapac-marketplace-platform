@@ -13,7 +13,7 @@ import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
-import { readGrants, type GrantSubject } from '../roles/granting';
+import { readActingGrants, type GrantSubject } from '../roles/granting';
 
 /** The account an admin disables or enables again. */
 export interface AccountStatusInput {
@@ -62,7 +62,9 @@ const logger = new Logger('AccountStatus');
  * 1. The account's credential lock first (`AccountRepository.lockCredential`), the lock the
  *    sign-in closing units take before they re-check the status (6.3, HF11), so a sign-in racing
  *    a disable either commits its session first, and the session is revoked here, or reads the
- *    disabled status and refuses. Then the account: one of the use case's population in the
+ *    disabled status and refuses. Then the actor, read in this unit (`readActingGrants`;
+ *    Mohammad C1, Hassan I1 on PR #187): still an active, verified admin holding the rule's
+ *    key, else `access.denied`. Then the account: one of the use case's population in the
  *    context Market, else `account.unknown`, byte-identical to a missing one (5.2).
  * 2. The grants of the actor and the target, read in this unit (Hassan I-2); `GrantPolicy.canActOn`:
  *    never oneself (`member.self`), and an admin target's keys are a subset of the actor's (R1).
@@ -83,7 +85,12 @@ export async function changeAccountStatus(
   deps: AccountStatusDependencies,
   context: CallContext,
   input: AccountStatusInput,
-  change: { readonly population: 'admin' | 'customer'; readonly to: 'disabled' | 'active' },
+  change: {
+    readonly population: 'admin' | 'customer';
+    readonly to: 'disabled' | 'active';
+    /** The key of the calling use case's rule, re-checked in the unit (C1). */
+    readonly ruleKey: string;
+  },
 ): Promise<Result<AccountStatusOutput, AccountStatusFailure>> {
   const { market, actor } = context;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
@@ -97,14 +104,19 @@ export async function changeAccountStatus(
       if (!(await deps.accounts.lockCredential(market, input.accountId))) {
         return err({ code: 'account.unknown' });
       }
+      const subject: GrantSubject = {
+        accountId: input.accountId,
+        population: change.population,
+        sellerId: null,
+      };
+      // C1: the actor is still an active admin holding the rule's key, read in this unit.
+      const reading = await readActingGrants(deps, market, self, [subject], [change.ruleKey]);
+      if (reading === null) return err({ code: 'access.denied' });
       const account = await deps.accounts.findById(market, input.accountId);
       if (account === null || account.state.population !== change.population) {
         return err({ code: 'account.unknown' });
       }
       const accountId = account.state.id;
-      const subject: GrantSubject = { accountId, population: change.population, sellerId: null };
-      const reading = await readGrants(deps.grants, deps.effectiveKeys, market, self, [subject]);
-      if (reading === null) return err({ code: 'access.denied' });
       const acted = GrantPolicy.canActOn(reading.actor, reading.targets.get(accountId)!);
       if (!acted.ok) return err(acted.error);
       if (change.population === 'admin') {
