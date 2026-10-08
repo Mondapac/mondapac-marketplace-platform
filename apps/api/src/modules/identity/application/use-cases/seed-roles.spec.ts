@@ -8,6 +8,7 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { IdentityFakes } from '../../../../../test/support/identity-fakes';
 import { realPermissionRegistry } from '../../../../../test/support/permission-registry';
+import { keysCosting } from '../../../../../test/support/seed-key-fixtures';
 import {
   TEST_MARKETS,
   TEST_MARKET_CONFIG_DIRS,
@@ -23,6 +24,7 @@ import { MAX_SEED_KEYS_PER_ROW, RoleSeedApplied } from '../../domain/audit';
 import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-seed';
 import type { RoleSeed, SeededRole } from '../ports/role-seed';
 import type { RoleRepository } from '../ports/seller-team.repository';
+import { SEED_KEYS_BUDGET_BYTES } from '../roles/role-seed-budget';
 import { SeedRoles } from './seed-roles.use-case';
 
 // The seed routine of identity design 5.6 for slice 8a-1, in memory, for both Market fixtures:
@@ -286,6 +288,14 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
             }
           : r,
       'too-many-keys',
+    ],
+    [
+      'keys one byte over the budget of one seed-applied list',
+      (r) =>
+        r.seedCode === 'viewer'
+          ? { ...r, permissionKeys: keysCosting(SEED_KEYS_BUDGET_BYTES + 1, 'over') }
+          : r,
+      'keys-too-large',
     ],
   ])('refuses the whole seed with %s, writing nothing', async (_case, change, problem) => {
     await expect(seedRoles(seedWith(change)).execute(system, {})).resolves.toEqual({

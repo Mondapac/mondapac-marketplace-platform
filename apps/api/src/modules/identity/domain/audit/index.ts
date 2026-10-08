@@ -37,10 +37,12 @@ export const RoleSeeded = defineAuditAction({
  * as added, and as removed. `checkRoleSeed` and `checkRoleSeedKeys` refuse a seed role with more,
  * at boot and on every run (Mohammad 3, Hassan L-1). Since every version of a role holds at most
  * this many keys, an upgrade adds at most 40 and removes at most 40, however many versions a
- * Market that is behind jumps over (it goes straight to the file's version). Permission keys are
- * at most `MAX_PERMISSION_KEY_LENGTH` (45) characters, so the worst case, 40 added and 40 removed
- * at that length, fits the writer's 4 KB per side (PA W4; tested in
- * test/contracts/role-seed.contract.spec.ts).
+ * Market that is behind jumps over (it goes straight to the file's version). The bytes are
+ * bounded separately: a seeded role's keys must also fit the byte budget of
+ * `application/roles/role-seed-budget.ts`, measured from this action's own encoding, so the
+ * worst row fits the writer's 4 KB per side (PA W4; tested in
+ * test/contracts/role-seed.contract.spec.ts). "Removed" is a subset of a previous version that
+ * passed the same budget; if the budget formula changes, older snapshot entries are re-checked.
  */
 export const MAX_SEED_KEYS_PER_ROW = 40;
 

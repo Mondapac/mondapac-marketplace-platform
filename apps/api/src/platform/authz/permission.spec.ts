@@ -27,7 +27,11 @@ describe('definePermission', () => {
     ['no protection stated', { key: 'identity.order.view', scope: 'platform' }],
     [
       'a key longer than MAX_PERMISSION_KEY_LENGTH',
-      { key: `identity.${'a'.repeat(32)}.view`, scope: 'platform', protected: false },
+      {
+        key: `identity.${'a'.repeat(MAX_PERMISSION_KEY_LENGTH - 'identity..view'.length + 1)}.view`,
+        scope: 'platform',
+        protected: false,
+      },
     ],
   ])('refuses %s', (_case, declaration) => {
     expect(() => definePermission('identity', declaration as never)).toThrow(
@@ -36,7 +40,7 @@ describe('definePermission', () => {
   });
 });
 
-describe('the key length cap (slice 8a-1; Mohammad 3, Hassan L-1)', () => {
+describe('the key length cap: the stored column limit of 128 (slice 8a-1; Ali on Mohammad)', () => {
   it('accepts a key of exactly MAX_PERMISSION_KEY_LENGTH characters', () => {
     const key = `identity.${'a'.repeat(MAX_PERMISSION_KEY_LENGTH - 'identity..view'.length)}.view`;
     expect(key).toHaveLength(MAX_PERMISSION_KEY_LENGTH);

@@ -1,13 +1,13 @@
 import { PERMISSION_KEY_PATTERN, type PermissionKey } from './access-rule';
 
 /**
- * The longest permission key a module may declare (slice 8a-1; Mohammad 3, Hassan L-1). It
- * bounds the audit rows that list keys: one `identity.role.seed-applied` row holds up to 40 keys
- * added and 40 removed, and must stay under the audit writer's 4 KB per side
- * (`MAX_AUDIT_SIDE_BYTES`); a test proves the worst case fits. The longest key today is 43
- * characters (`identity.seller-account.reset-second-factor`).
+ * The longest permission key a module may declare (slice 8a-1; Ali's ruling on Mohammad's
+ * review): the stored column's limit, the CHECK on `identity.role_permissions.permission_key`
+ * (`char_length <= 128`, migration 20261008063654). A longer key could never be stored in a role,
+ * so `definePermission` refuses it at boot. Audit rows that list keys are bounded separately, by
+ * the byte budget of a seeded role's keys (`identity/application/roles/role-seed-budget.ts`).
  */
-export const MAX_PERMISSION_KEY_LENGTH = 45;
+export const MAX_PERMISSION_KEY_LENGTH = 128;
 
 /** True for a well-formed key no longer than {@link MAX_PERMISSION_KEY_LENGTH}. */
 export function isDeclarablePermissionKey(key: unknown): key is string {

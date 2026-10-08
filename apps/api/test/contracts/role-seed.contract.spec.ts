@@ -2,12 +2,22 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { canonicalJson, encodeAuditFields } from '@mondapac/shared-kernel';
+import {
+  SEED_APPLIED_OVERHEAD_BYTES,
+  SEED_KEYS_BUDGET_BYTES,
+  seedKeysCost,
+} from '../../src/modules/identity/application/roles/role-seed-budget';
+import { checkRoleSeedKeys } from '../../src/modules/identity/application/roles/role-seed-keys';
 import { RoleSeedApplied, MAX_SEED_KEYS_PER_ROW } from '../../src/modules/identity/domain/audit';
-import { CheckedInRoleSeed } from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
+import {
+  checkRoleSeed,
+  CheckedInRoleSeed,
+} from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
 import { MAX_AUDIT_SIDE_BYTES } from '../../src/platform/audit/audit-writer';
 import { MAX_PERMISSION_KEY_LENGTH } from '../../src/platform/authz';
 import { PERMISSION_KEY_PATTERN } from '../../src/platform/authz/access-rule';
 import { realPermissionRegistry } from '../support/permission-registry';
+import { keysCosting, keysWithin } from '../support/seed-key-fixtures';
 
 // The append-only snapshot of the role seed (identity slice 8a-1; Mohammad 2, Hassan M-1).
 // `identity.role.seeded` names a default role's keys only by its seed version, so the keys of
@@ -18,9 +28,11 @@ import { realPermissionRegistry } from '../support/permission-registry';
 // entry or a pin: the pins make a changed or removed entry fail here, and any change to them
 // shows in review.
 //
-// Also the worst case of the 40-key cap (Mohammad 3, Hassan L-1): a `seed-applied` row with 40
-// keys added and 40 removed, each of the longest length the registry allows, fits the audit
-// writer's 4 KB per side.
+// Also the byte budget of a seeded role's keys (role-seed-budget.ts; Ali's ruling on Mohammad's
+// review): with both lists of a `seed-applied` row filled to the budget, or to 40 keys, the row
+// fits the audit writer's 4 KB per side, and one byte over the budget is refused. "Removed" is a
+// subset of a previous version that passed the same budget; if the budget formula changes, the
+// older entries of the snapshot must be re-checked against it.
 
 const SNAPSHOT = path.join(__dirname, 'role-seed.snapshot.json');
 
@@ -72,6 +84,9 @@ const digestOf = (entry: SnapshotEntry): string =>
       }),
     )
     .digest('hex');
+
+const CHECKED_IN = new CheckedInRoleSeed().roles();
+const VIEWER = CHECKED_IN.find((role) => role.seedCode === 'viewer')!;
 
 const snapshot = JSON.parse(readFileSync(SNAPSHOT, 'utf8')) as SnapshotEntry[];
 
@@ -140,34 +155,71 @@ describe('the append-only role seed snapshot (slice 8a-1; Mohammad 2, Hassan M-1
   });
 });
 
-describe('the 40-key cap fits the audit writer (Mohammad 3, Hassan L-1)', () => {
-  it('a seed-applied row with 40 keys added and 40 removed, at the longest key length, fits 4 KB', () => {
-    const key = (n: number, side: string) => {
-      const middle = `${side}${n}`;
-      const value = `identity.${middle}.${'v'.repeat(MAX_PERMISSION_KEY_LENGTH - 'identity..'.length - middle.length)}`;
-      expect(value).toHaveLength(MAX_PERMISSION_KEY_LENGTH);
-      expect(value).toMatch(PERMISSION_KEY_PATTERN);
-      return value;
-    };
-    const after = {
+describe('the byte budget of a seeded role fits the audit writer (Ali on Mohammad, Hassan L-1)', () => {
+  /** The canonical JSON bytes of a `seed-applied` after, through the writer's own encoding. */
+  function bytesOf(addedKeys: string[], removedKeys: string[]): number {
+    const encoded = encodeAuditFields(
+      RoleSeedApplied.after,
       // The column is a PostgreSQL integer: its largest value is the longest version.
-      seedVersion: 2_147_483_647,
-      addedKeys: Array.from({ length: MAX_SEED_KEYS_PER_ROW }, (_, n) => key(n, 'a')),
-      removedKeys: Array.from({ length: MAX_SEED_KEYS_PER_ROW }, (_, n) => key(n, 'r')),
-    };
+      { seedVersion: 2_147_483_647, addedKeys, removedKeys },
+      { isKnownPermissionKey: () => true },
+    );
+    if (!encoded.ok) throw new Error(`does not encode: ${encoded.error.problem}`);
+    const text = canonicalJson(encoded.value);
+    if (!text.ok) throw new Error('no canonical JSON');
+    return Buffer.byteLength(text.value, 'utf8');
+  }
 
-    const encoded = encodeAuditFields(RoleSeedApplied.after, after, {
-      isKnownPermissionKey: () => true,
-    });
-    expect(encoded.ok).toBe(true);
-    const text = canonicalJson(encoded.ok ? encoded.value : null);
-    expect(text.ok).toBe(true);
-    expect(Buffer.byteLength(text.ok ? text.value : '', 'utf8')).toBeLessThanOrEqual(
-      MAX_AUDIT_SIDE_BYTES,
+  it('measures the overhead from the encoder and splits the rest in two', () => {
+    expect(SEED_APPLIED_OVERHEAD_BYTES).toBe(bytesOf([], []));
+    expect(SEED_KEYS_BUDGET_BYTES).toBe(
+      Math.floor((MAX_AUDIT_SIDE_BYTES - SEED_APPLIED_OVERHEAD_BYTES) / 2),
     );
   });
 
-  it('every key the registry declares is within the length cap', () => {
+  it('both lists filled to the exact byte budget fit 4 KB', () => {
+    const added = keysCosting(SEED_KEYS_BUDGET_BYTES, 'a');
+    const removed = keysCosting(SEED_KEYS_BUDGET_BYTES, 'r');
+    expect([seedKeysCost(added), seedKeysCost(removed)]).toEqual([
+      SEED_KEYS_BUDGET_BYTES,
+      SEED_KEYS_BUDGET_BYTES,
+    ]);
+    expect(Math.max(...added.map((k) => k.length))).toBe(MAX_PERMISSION_KEY_LENGTH);
+    for (const key of [...added, ...removed]) expect(key).toMatch(PERMISSION_KEY_PATTERN);
+    expect(() =>
+      checkRoleSeed([
+        ...CHECKED_IN.filter((r) => r !== VIEWER),
+        { ...VIEWER, permissionKeys: added },
+      ]),
+    ).not.toThrow();
+
+    expect(bytesOf(added, removed)).toBeLessThanOrEqual(MAX_AUDIT_SIDE_BYTES);
+  });
+
+  it('both lists filled to 40 keys, as long as the budget allows, fit 4 KB', () => {
+    const added = keysWithin(SEED_KEYS_BUDGET_BYTES, MAX_SEED_KEYS_PER_ROW, 'a');
+    const removed = keysWithin(SEED_KEYS_BUDGET_BYTES, MAX_SEED_KEYS_PER_ROW, 'r');
+    expect([added.length, seedKeysCost(added) <= SEED_KEYS_BUDGET_BYTES]).toEqual([
+      MAX_SEED_KEYS_PER_ROW,
+      true,
+    ]);
+
+    expect(bytesOf(added, removed)).toBeLessThanOrEqual(MAX_AUDIT_SIDE_BYTES);
+  });
+
+  it('refuses one byte over the budget at boot: checkRoleSeed and checkRoleSeedKeys', () => {
+    const over = keysCosting(SEED_KEYS_BUDGET_BYTES + 1, 'a');
+    expect(seedKeysCost(over)).toBe(SEED_KEYS_BUDGET_BYTES + 1);
+    const roles = [...CHECKED_IN.filter((r) => r !== VIEWER), { ...VIEWER, permissionKeys: over }];
+
+    expect(() => checkRoleSeed(roles)).toThrow(/keys-too-large/);
+    expect(() => checkRoleSeedKeys(roles, realPermissionRegistry())).toThrow(
+      expect.objectContaining({ problem: 'keys-too-large', seedCode: 'viewer' }) as Error,
+    );
+  });
+
+  it('every key the registry declares is within the stored column limit of 128', () => {
+    expect(MAX_PERMISSION_KEY_LENGTH).toBe(128);
     for (const declaration of realPermissionRegistry().list()) {
       expect(declaration.key.length).toBeLessThanOrEqual(MAX_PERMISSION_KEY_LENGTH);
     }

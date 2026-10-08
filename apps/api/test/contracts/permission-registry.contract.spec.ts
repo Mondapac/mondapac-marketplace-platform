@@ -11,6 +11,8 @@ import { isPermissionCatalogue } from '../../src/platform/authz/permission';
 import { ROLE_SEED, type RoleSeed } from '../../src/modules/identity/application/ports/role-seed';
 import { RoleSeedKeyError } from '../../src/modules/identity/application/roles/role-seed-keys';
 import { CheckedInRoleSeed } from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
+import { SEED_KEYS_BUDGET_BYTES } from '../../src/modules/identity/application/roles/role-seed-budget';
+import { keysCosting } from '../support/seed-key-fixtures';
 import { testAppConfig } from '../support/test-config';
 
 // The permission registry of the booted application (platform-foundations 6.1, guarantees 1
@@ -154,5 +156,23 @@ describe('the boot check of the seed keys (identity design 5.6)', () => {
     };
 
     await expect(boot('api', broken)).rejects.toBeInstanceOf(RoleSeedKeyError);
+  });
+
+  it("fails boot when a seed role's keys are one byte over the seed-applied budget", async () => {
+    const roles = new CheckedInRoleSeed().roles();
+    const over: RoleSeed = {
+      roles: () =>
+        roles.map((role) =>
+          role.seedCode === 'viewer'
+            ? { ...role, permissionKeys: keysCosting(SEED_KEYS_BUDGET_BYTES + 1, 'over') }
+            : role,
+        ),
+    };
+
+    await expect(boot('api', over)).rejects.toMatchObject({
+      name: 'RoleSeedKeyError',
+      problem: 'keys-too-large',
+      seedCode: 'viewer',
+    });
   });
 });
