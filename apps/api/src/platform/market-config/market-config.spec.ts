@@ -365,6 +365,133 @@ describe('loadMarketConfigs', () => {
     expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links).toEqual(identity.links);
   });
 
+  describe('the admin link targets (identity design 8.7, the reviewer notice)', () => {
+    const SELLER_PAGES = {
+      'verify-email': 'https://seller.qq.test/confirm-email',
+      'sign-in': 'https://seller.qq.test/sign-in',
+      'reset-password': 'https://seller.qq.test/reset-password',
+    };
+    const QUEUE = 'https://admin.qq.test/sellers/awaiting-review';
+
+    function withTargets(targets: Record<string, unknown>) {
+      return {
+        ...VALID,
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, targets: { ...IDENTITY.links.targets, ...targets } },
+        },
+      };
+    }
+
+    it('configures the review queue page for both test Markets, on an origin of its own', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+
+      for (const market of markets.values()) {
+        const { admin, seller, customer } = market.identity.links.targets;
+        expect(admin?.['seller-review-queue']).toMatch(/^https:\/\//);
+        const queueOrigin = new URL(admin!['seller-review-queue']).origin;
+        for (const page of [...Object.values(seller ?? {}), ...Object.values(customer)]) {
+          expect(new URL(page).origin).not.toBe(queueOrigin);
+        }
+      }
+    });
+
+    it('accepts seller targets together with the admin review queue page', () => {
+      const directory = directoryWith({
+        'QQ.json': withTargets({ seller: SELLER_PAGES, admin: { 'seller-review-queue': QUEUE } }),
+      });
+
+      expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links.targets.admin).toEqual({
+        'seller-review-queue': QUEUE,
+      });
+    });
+
+    it('accepts a Market without seller sign-up and without admin targets', () => {
+      const directory = directoryWith({ 'QQ.json': VALID });
+
+      expect(
+        loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links.targets.admin,
+      ).toBeUndefined();
+    });
+
+    it.each([
+      [
+        'seller targets without the admin review queue page (boot fails, not a mail)',
+        { seller: SELLER_PAGES },
+        /identity\.links\.targets\.admin: admin\.seller-review-queue is required/,
+      ],
+      [
+        'an admin targets section without the review queue page',
+        { seller: SELLER_PAGES, admin: {} },
+        /identity\.links\.targets\.admin\.seller-review-queue/,
+      ],
+      [
+        'the review queue page under the seller population (admin only)',
+        { seller: { ...SELLER_PAGES, 'seller-review-queue': QUEUE } },
+        /identity\.links\.targets\.seller/,
+      ],
+      [
+        'the review queue page under the customer population (admin only)',
+        { customer: { ...IDENTITY.links.targets.customer, 'seller-review-queue': QUEUE } },
+        /identity\.links\.targets\.customer/,
+      ],
+      [
+        'a seller page under the admin population',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': QUEUE, 'sign-in': QUEUE } },
+        /identity\.links\.targets\.admin/,
+      ],
+      [
+        'an admin page on the seller panel origin (Hassan I1)',
+        {
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'https://seller.qq.test/admin/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its origin/,
+      ],
+      [
+        'an admin page on the storefront origin (Hassan I1)',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'https://shop.qq.test/queue' } },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its origin/,
+      ],
+      [
+        'an admin page on the seller host under another port (Hassan I-1)',
+        {
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'https://seller.qq.test:8443/admin/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its host name/,
+      ],
+      [
+        'an admin page on a loopback storefront host under another port (Hassan I-1)',
+        {
+          customer: {
+            'verify-email': 'http://localhost:3001/confirm-email',
+            'sign-in': 'http://localhost:3001/sign-in',
+            'reset-password': 'http://localhost:3001/reset-password',
+          },
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'http://localhost:3002/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its host name/,
+      ],
+      [
+        'an admin page with a fragment',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'https://admin.qq.test/q#x' } },
+        /identity\.links\.targets\.admin\.seller-review-queue/,
+      ],
+      [
+        'an admin page over plain http on a public host',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'http://admin.qq.test/q' } },
+        /identity\.links\.targets\.admin\.seller-review-queue/,
+      ],
+    ])('rejects %s', (_case, targets, message) => {
+      const directory = directoryWith({ 'QQ.json': withTargets(targets) });
+
+      expect(() => loadMarketConfigs([directory], [QQ])).toThrow(InvalidMarketConfigError);
+      expect(() => loadMarketConfigs([directory], [QQ])).toThrow(message);
+    });
+  });
+
   describe('the sellers section', () => {
     const SELLERS = {
       approvalRequired: true,

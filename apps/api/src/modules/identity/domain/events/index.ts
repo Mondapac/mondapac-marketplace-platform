@@ -57,7 +57,9 @@ export const OneTimeLinkRequested = defineEvent({
 
 /**
  * The account's email was confirmed through its link and password (identity design 3.2, 8.2).
- * Consumers: the seller welcome mail and the reviewer notice (slices 5 and 9).
+ * Consumers: the seller welcome mail only (slice 5, sent on `identity.seller-registered.v1`,
+ * recorded in the same unit). The reviewer notice is not sent on it: it follows a seller's
+ * submission, through the seller-access contract (identity design 8.7, request R-3).
  */
 export const AccountEmailVerified = defineEvent({
   type: 'identity.account-email-verified.v1',

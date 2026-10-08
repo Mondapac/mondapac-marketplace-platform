@@ -123,6 +123,61 @@ describe('CatalogueMailComposer (identity design 9; ux.md E1, E12)', () => {
     expect(mail.text).toContain('出品者パネル');
   });
 
+  it.each([
+    [
+      'AU',
+      'https://admin.au.mondapac.test/sellers/awaiting-review',
+      'A seller application is waiting for review',
+      'Open the review queue: https://admin.au.mondapac.test/sellers/awaiting-review',
+      'This email is about your MondaPac admin account.',
+    ],
+    [
+      'ZZ',
+      'https://admin.zz.test/haendler/pruefung?ref=mail',
+      '審査待ちの出品者申請があります',
+      '審査キューを開く: https://admin.zz.test/haendler/pruefung?ref=mail',
+      'このメールは管理者アカウントについてです。',
+    ],
+  ])(
+    'writes the reviewer notice (E3, identity design 8.7) in the %s locale: fixed text, the queue link',
+    (code, url, subject, action, accountLine) => {
+      const mail = composer.compose(testMarketContext(code, 'default'), {
+        template: 'reviewer-notice',
+        population: 'admin',
+        url,
+      });
+
+      expect(mail.subject).toBe(subject);
+      expect(mail.text).toContain(action);
+      expect(mail.text).toContain(accountLine);
+      // A notice that answers no request of the reader: no "ignore this" line.
+      for (const locale of catalogues.locales()) {
+        expect(mail.text).not.toContain(
+          catalogues.messages('identity', locale)!['identity.mail.common.ignore'],
+        );
+      }
+      expect(mail.text).not.toMatch(/\{[a-z]+\}/);
+      expect(mail.text).not.toMatch(/<[a-z]/i);
+      expect(mail.text.split('\n').filter((line) => line.includes('://'))).toEqual([action]);
+    },
+  );
+
+  it('gives the reviewer notice no field for seller data (Jafar: canary seller)', () => {
+    const canary = { sellerName: 'Canary Seller Wombat', sellerEmail: 'canary@seller.test' };
+    const mail = composer.compose(testMarketContext('AU', 'default'), {
+      template: 'reviewer-notice',
+      population: 'admin',
+      url: 'https://admin.au.mondapac.test/sellers/awaiting-review',
+      // @ts-expect-error E3 carries no seller data: the mail type has no such field.
+      sellerName: canary.sellerName,
+    });
+
+    for (const value of Object.values(canary)) {
+      expect(mail.subject).not.toContain(value);
+      expect(mail.text).not.toContain(value);
+    }
+  });
+
   it('refuses a population without a mail', () => {
     expect(() =>
       composer.compose(testMarketContext('AU', 'default'), {

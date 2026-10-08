@@ -93,6 +93,76 @@ const pageUrl = z
     }
   }, 'must be an absolute https URL (http only for a loopback host) without a fragment, such as "https://panel.example/page"');
 
+/** The origin and the host name of a page URL, or null when it does not parse. */
+function hostOf(page: string): { readonly origin: string; readonly hostname: string } | null {
+  try {
+    const url = new URL(page);
+    return { origin: url.origin, hostname: url.hostname };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The page a mail links to, per population and page (identity design 9, `LinkTargets`). Each
+ * population has its own set of pages: `seller-review-queue` exists only for `admin` (identity
+ * design 8.7, the reviewer notice; Hassan I1).
+ */
+const linkTargetsSchema = z
+  .strictObject({
+    customer: z.strictObject({
+      'verify-email': pageUrl,
+      'sign-in': pageUrl,
+      'reset-password': pageUrl,
+    }),
+    /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
+    seller: z
+      .strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl, 'reset-password': pageUrl })
+      .optional(),
+    /**
+     * The admin panel's pages (identity design 8.7). `seller-review-queue` is the "Awaiting
+     * review" queue the reviewer notice links to: the queue only, never a seller id or a query
+     * built from data (Ali C8, Q6). Required whenever `seller` is present.
+     */
+    admin: z.strictObject({ 'seller-review-queue': pageUrl }).optional(),
+  })
+  .superRefine((targets, context) => {
+    if (targets.seller !== undefined && targets.admin === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'admin.seller-review-queue is required when seller targets are configured',
+        path: ['admin'],
+      });
+    }
+    if (targets.admin === undefined) return;
+    // The admin panel is a host of its own (HF7): a mail must never send an admin to a page on
+    // the seller panel or the storefront, nor the other way round (Hassan I1). Origins and host
+    // names both: another scheme or port on the same host is the same host (Hassan I-1, R-3).
+    const others = [targets.customer, targets.seller]
+      .flatMap((pages) => (pages === undefined ? [] : Object.values(pages)))
+      .map(hostOf)
+      .filter((host) => host !== null);
+    const origins = new Set(others.map((host) => host.origin));
+    const hostnames = new Set(others.map((host) => host.hostname));
+    for (const [page, url] of Object.entries(targets.admin)) {
+      const host = hostOf(url);
+      if (host === null) continue;
+      if (origins.has(host.origin)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must not share its origin with a seller or customer page',
+          path: ['admin', page],
+        });
+      } else if (hostnames.has(host.hostname)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must not share its host name with a seller or customer page',
+          path: ['admin', page],
+        });
+      }
+    }
+  });
+
 /**
  * The identity policy section (identity design 8.5 `IdentityMarketPolicy`; design 15). Each
  * value is Hassan's number (identity design 6.1, 6.5, 6.8; data design 3.6). A slice adds the
@@ -155,17 +225,7 @@ const identitySchema = z.strictObject({
       // SEL-05, ACC-04: "exactly 60 minutes", the same rule in every Market (slice 4).
       'reset-password': z.literal(60),
     }),
-    targets: z.strictObject({
-      customer: z.strictObject({
-        'verify-email': pageUrl,
-        'sign-in': pageUrl,
-        'reset-password': pageUrl,
-      }),
-      /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
-      seller: z
-        .strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl, 'reset-password': pageUrl })
-        .optional(),
-    }),
+    targets: linkTargetsSchema,
   }),
   /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
   unverifiedAccountRetentionDays: z.number().int().min(1).max(30),

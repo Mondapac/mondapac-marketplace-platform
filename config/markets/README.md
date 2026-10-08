@@ -37,7 +37,14 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   `links.targets.seller` offers no seller sign-up: it answers `access.unavailable`. Slice 4
   adds `links.lifetimeMinutes.reset-password` (required, and exactly 60 in every Market: SEL-05
   and ACC-04 fix it) and the `reset-password` page in `links.targets.customer` and
-  `links.targets.seller` (the page of the reset mail; the token goes into its fragment). Later
+  `links.targets.seller` (the page of the reset mail; the token goes into its fragment). The
+  reviewer notice (identity design 8.7, request R-3) adds `links.targets.admin` with one page,
+  `seller-review-queue`: the admin panel's "Awaiting review" queue, the only link of the
+  reviewer notice (a fixed page URL, never a seller id or a query built from data). Each
+  population has its own pages, so this page exists only for `admin`. It is required whenever
+  `links.targets.seller` is present (boot fails without it), and its origin and host name must
+  differ from those of every `seller` and `customer` page (the admin panel is a host of its own;
+  another port on the same host is refused too). Later
   identity slices add their values here.
 - `allowedOrigins`: the browser origins (`scheme://host[:port]`, no path) that may send a
   request with an unsafe method to this Market (identity design 6.4, HF14). A request whose

@@ -10,6 +10,7 @@
   },
   { "name": "identity.list-registered-sellers", "rule": "system" },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
+  { "name": "identity.notify-access-reviewers", "rule": "system" },
   { "name": "identity.purge-expired", "rule": "system" },
   { "name": "identity.purge-unverified-accounts", "rule": "system" },
   { "name": "identity.register-customer", "rule": "anonymous" },

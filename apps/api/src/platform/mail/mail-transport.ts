@@ -34,7 +34,14 @@ export class MailSendError extends Error {
 }
 
 export interface MailTransport {
-  /** Resolves when the transport accepted the message; throws {@link MailSendError} otherwise. */
+  /**
+   * Resolves when the transport accepted the message; throws {@link MailSendError} otherwise.
+   *
+   * An adapter ends a request on its own timeout, at most 5 seconds: the reviewer notice
+   * (identity design 8.7) stops waiting for a send after `REVIEWER_NOTICE_SEND_TIMEOUT_MS` (5 s)
+   * and cannot cancel it, so a longer adapter timeout would leave a send running after the call
+   * returned (Hassan I-3). The Mailpit adapter's `MAIL_SEND_TIMEOUT_MS` is 5 s.
+   */
   send(message: MailMessage): Promise<void>;
 }
 
