@@ -1,4 +1,5 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   PRICE_SERIES_REPOSITORY,
@@ -12,6 +13,11 @@ import {
   WRITE_REFUSAL_THROTTLE_REPOSITORY,
   type WriteRefusalThrottleRepository,
 } from '../application/ports/write-refusal-throttle.repository';
+import {
+  PRICING_POLICY_PROVIDER,
+  type PricingPolicyProvider,
+} from '../application/ports/pricing-policy-provider';
+import { ConfigPricingPolicyProvider } from './config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from './prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from './prisma-retirement-tombstone.repository';
 import { PrismaWriteRefusalThrottleRepository } from './prisma-write-refusal-throttle.repository';
@@ -39,5 +45,11 @@ export const pricingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): WriteRefusalThrottleRepository =>
       new PrismaWriteRefusalThrottleRepository(prisma),
+  },
+  {
+    provide: PRICING_POLICY_PROVIDER,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): PricingPolicyProvider =>
+      new ConfigPricingPolicyProvider(markets),
   },
 ];

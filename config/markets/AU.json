@@ -212,5 +212,14 @@
     },
     "maxVariantsPerProduct": 100,
     "approvalRequired": true
+  },
+  "pricing": {
+    "maxUnitPriceMinor": 500000,
+    "jumpThreshold": {
+      "numerator": 1,
+      "denominator": 2
+    },
+    "jumpDirections": "both",
+    "jumpWindow": "P7D"
   }
 }
