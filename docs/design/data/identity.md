@@ -226,10 +226,20 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
   unit, the link variant included) or that replaces the credential and revokes sessions (reset,
   change) takes it first, at READ COMMITTED. Either the session commits first and the revocation
   ends it, or the other side waits and then reads the new hash.
-- **Lock order** in those units: account (this lock) first; then that unit's link, session,
-  credential and record rows in any order; then throttle rows (kind order, then key); then
-  outbox. A unit that does not take the account lock writes only one of these child rows, so no
-  wait cycle forms.
+- **Lock order** in those units: account (this lock) first; then `seller_access` (the seller
+  sign-in's `lockForSession`, slice 7b item H); then that unit's link, session, credential,
+  record, `second_factors` and `sign_in_challenges` rows (child rows of the account) in any
+  order; then throttle rows (kind order, then key); then outbox. A unit that does not take the
+  account lock writes only one of these child rows, so no wait cycle forms.
+- **Throttle before challenge** (slice 7b; Mojtaba, PR #162). Units that do not take the
+  account lock and touch both take the throttle row first: the code step's reservation unit
+  reserves the throttle counters, then the challenge's attempt. Because that unit takes no
+  account lock, the account lock does not order it against the code step's closing unit, so the
+  closing unit follows the same rule as an exception to the order above: it releases the
+  throttle row before it consumes the challenge (a lost consume rolls the release back). So does
+  every unit that voids challenges and writes throttles: reset and change release or clear their
+  counters before `voidAllOf`; activation and device replacement release the attempt before
+  their `voidAllOf`; the break-glass reset writes no throttle.
 - **Accepted conflicts:** clearing an address's sign-in counters in a reset can meet a
   reservation of the same address in the other order and fail with `40P01`; the unit of work
   retries it. A serializable writer of `accounts` (the purge, 5.1) can meet the lock and get one
