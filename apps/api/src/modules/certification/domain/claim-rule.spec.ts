@@ -201,7 +201,8 @@ describe('ClaimRule.decide, more cases', () => {
 
   it('runs on a synthetic Market: other zone, other default basis', () => {
     const zz = facts({
-      type: { publishedRevisionId: id('tr1'), defaultBasis: 'SELLER_OR_MANUFACTURER' },
+      type: { publishedRevisionId: id('tr1'), defaultBasis: 'NOT_APPLICABLE' },
+      policy: { revisionId: id('p9'), matchedRows: [{ basis: 'SELLER_REQUIRED' }] },
       sellerZones: {
         zone: 'Pacific/Auckland' as TimeZoneId,
         addressZone: 'Pacific/Auckland' as TimeZoneId,
