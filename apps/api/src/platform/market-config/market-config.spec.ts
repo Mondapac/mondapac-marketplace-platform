@@ -29,7 +29,6 @@ const VALID = {
     existingAccountNoticeHours: 24,
     sessions: { customer: { idleTimeoutMinutes: 60, absoluteLifetimeMinutes: 120 } },
     keepSignedInSessions: {},
-    sellerApprovalRequired: true,
     signInThrottles: {
       accountOrigin: { limit: 5, windowMinutes: 15, blockMinutes: 15 },
       account: { limit: 20, windowMinutes: 60, blockMinutes: 60 },
@@ -244,11 +243,6 @@ describe('loadMarketConfigs', () => {
       /identity\.sessions\.customer\.idleTimeoutMinutes/,
     ],
     [
-      'no seller approval policy: a Market never defaults it (slice 5)',
-      { identity: { ...IDENTITY, sellerApprovalRequired: undefined } },
-      /identity\.sellerApprovalRequired/,
-    ],
-    [
       'a seller session idle longer than its absolute lifetime',
       {
         identity: {
@@ -325,6 +319,7 @@ describe('loadMarketConfigs', () => {
 
   describe('the sellers section', () => {
     const SELLERS = {
+      approvalRequired: true,
       address: {
         fields: [
           { key: 'line1', labelKey: 'k.line1', required: true, maxLength: 120 },
@@ -373,6 +368,11 @@ describe('loadMarketConfigs', () => {
     });
 
     it.each([
+      [
+        'no approval policy: a Market never defaults it',
+        (c: typeof SELLERS) => void delete (c as { approvalRequired?: boolean }).approvalRequired,
+        /approvalRequired/,
+      ],
       [
         'an unknown time zone',
         (c: typeof SELLERS) => void (c.timezones.byRegion.N = 'Mars/Olympus'),

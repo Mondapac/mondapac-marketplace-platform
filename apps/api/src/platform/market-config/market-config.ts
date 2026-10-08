@@ -104,8 +104,8 @@ const pageUrl = z
  * value is Hassan's number (identity design 6.1, 6.5, 6.8; data design 3.6). A slice adds the
  * values it reads: 1d the password rules; slice 2 the customer session lifetime, the sign-in
  * and mail throttles and the retention of sign-in records; slice 3 the links, the retention of
- * unverified accounts and the mail sender; slice 5 "approval required" and the seller
- * lifetimes; slice 7 the admin lifetime.
+ * unverified accounts and the mail sender; slice 5 the seller lifetimes ("approval required"
+ * lives in the `sellers` section); slice 7 the admin lifetime.
  */
 const identitySchema = z.strictObject({
   password: z
@@ -135,11 +135,6 @@ const identitySchema = z.strictObject({
    * sign-in. Seller side only (14 days idle, 30 absolute); a population absent here never gets it.
    */
   keepSignedInSessions: z.strictObject({ seller: sessionLifetimeSchema.optional() }),
-  /**
-   * Whether a new seller starts `pending` (true) or `approved` (false) (identity design 3.3 and
-   * 15, SEL-03, AC 5). Required: a Market never defaults it.
-   */
-  sellerApprovalRequired: z.boolean(),
   /** The sign-in counters of 6.8, per Market (A6). */
   signInThrottles: z.strictObject({
     /** `sign-in.account-origin`: failed sign-ins per address and origin (AC 13). */
@@ -332,7 +327,17 @@ const sellerTimezonesSchema = z.strictObject({
  * later slices add the rest of design 4.1 here, each with its own readiness gate (ADR-0013).
  */
 const sellersSchema = z
-  .strictObject({ address: addressFormatSchema, timezones: sellerTimezonesSchema })
+  .strictObject({
+    address: addressFormatSchema,
+    timezones: sellerTimezonesSchema,
+    /**
+     * Whether a new seller starts `pending` (true) or `approved` (false) (sellers design 4.1;
+     * identity design 3.3, SEL-03, AC 5). Required: a Market never defaults it. It is the seed
+     * of the ADR-0026 setting `sellers.approval-required`; `identity` and `sellers` both read
+     * it from here until that store lands (sellers slice 15).
+     */
+    approvalRequired: z.boolean(),
+  })
   .superRefine((sellers, context) => {
     const regions = sellers.address.regions;
     const zoned = Object.keys(sellers.timezones.byRegion);

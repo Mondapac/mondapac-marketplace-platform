@@ -44,8 +44,13 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     };
   }
 
+  /**
+   * "Approval required" lives in the `sellers` section of the Market file (sellers design 4.1;
+   * moved there from `identity`, Ali 2026-10-08). A Market with no such section gets the safe
+   * value `true` (ADR-0026 decision 5), never another Market's value.
+   */
   sellerApprovalRequired(market: MarketContext): boolean {
-    return this.markets.get(market.marketId).identity.sellerApprovalRequired;
+    return this.markets.get(market.marketId).sellers?.approvalRequired ?? true;
   }
 
   signInThrottles(market: MarketContext): SignInThrottleRules {

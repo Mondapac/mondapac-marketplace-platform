@@ -8,7 +8,10 @@ import { Client } from 'pg';
 import request from 'supertest';
 import { PurgeUnverifiedAccounts } from '../../src/modules/identity/application/use-cases/purge-unverified-accounts.use-case';
 import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
-import { IDENTITY_FACADE, type IdentityFacade } from '../../src/modules/identity';
+import {
+  SELLER_ACCESS_CONTRACT,
+  type SellerAccessContract,
+} from '../../src/modules/identity/contracts/seller-access.contract';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -110,7 +113,10 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
   const systemContext = () => testCallContext(market, 'system', `db-seller-${randomUUID()}`);
   const newAddress = () => `Seller.Owner+${randomUUID()}@Example.com`;
   const identity = () => app.get(MarketRegistry).get(market.marketId).identity;
-  const expectedState = () => (identity().sellerApprovalRequired ? 'pending' : 'approved');
+  const expectedState = () =>
+    (app.get(MarketRegistry).get(market.marketId).sellers?.approvalRequired ?? true)
+      ? 'pending'
+      : 'approved';
 
   async function settle(): Promise<void> {
     for (;;) {
@@ -262,7 +268,7 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     expect(session.body).toHaveProperty('roleId', expect.any(String));
     expect(status.body).toMatchObject({ sellerId, state: expectedState(), reason: null });
 
-    const facade = app.get<IdentityFacade>(IDENTITY_FACADE);
+    const facade = app.get<SellerAccessContract>(SELLER_ACCESS_CONTRACT);
     await expect(
       facade.sellerAccessOf(systemContext(), [sellerId as Id<'Seller'>]),
     ).resolves.toEqual({

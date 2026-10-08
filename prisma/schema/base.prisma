@@ -18,5 +18,5 @@ generator modelMap {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["identity", "platform"]
+  schemas  = ["identity", "platform", "sellers"]
 }

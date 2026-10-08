@@ -11,6 +11,12 @@ const AUTHENTICATOR_FILE = 'src/modules/identity/application/access/session-auth
 // (ADR-0018 decision 4, ADR-0020 A9): `legal` joins only by a named decision at its gate.
 const IDENTITY_MAY_IMPORT = [];
 
+// The seller-access contract of identity (sellerAccessOf, listRegisteredSellers): the one file
+// besides index.ts that another module may import, and only `sellers` does (ADR-0022 decision 6,
+// Ali's condition at sellers G2). It is not exported by identity's index.ts.
+const SELLER_ACCESS_CONTRACT_FILE =
+  '^src/modules/identity/contracts/seller-access\\.contract\\.ts$';
+
 // The file of `@NoMarketContext()` and the only files that may import it (design 8.2 rule 6,
 // CTO decision of slice 0 item 3): the guard reads the exemption, the health controller uses
 // it. Both files export only their own names (asserted in boundaries.spec.ts).
@@ -282,8 +288,23 @@ module.exports = {
       from: { path: '^src/modules/([^/]+)/' },
       to: {
         path: '^src/modules/[^/]+/',
-        pathNot: ['^src/modules/$1/', '^src/modules/[^/]+/index\\.ts$'],
+        pathNot: [
+          '^src/modules/$1/',
+          '^src/modules/[^/]+/index\\.ts$',
+          SELLER_ACCESS_CONTRACT_FILE,
+        ],
       },
+    },
+    {
+      name: 'seller-access-contract-is-for-sellers',
+      comment:
+        "Only the sellers module imports identity's seller-access contract (sellerAccessOf and " +
+        'listRegisteredSellers): every other consumer of seller access would bypass the one ' +
+        "may-sell contract that sellers owns (ADR-0022 decision 6). identity's index.ts does " +
+        'not export the contract file.',
+      severity: 'error',
+      from: { pathNot: ['^src/modules/identity/', '^src/modules/sellers/'] },
+      to: { path: SELLER_ACCESS_CONTRACT_FILE },
     },
     {
       name: 'module-internals-are-private',

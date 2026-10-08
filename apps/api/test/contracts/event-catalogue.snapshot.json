@@ -40,5 +40,12 @@
       "accountId": "id",
       "cause": "enumOf(unverified-replaced|verified-notice)"
     }
+  },
+  {
+    "type": "sellers.seller-file-created.v1",
+    "aggregateType": "seller-file",
+    "fields": {
+      "sellerId": "id"
+    }
   }
 ]
