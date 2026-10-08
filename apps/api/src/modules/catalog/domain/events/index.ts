@@ -68,6 +68,35 @@ export const PlatformCategoryCreated = defineEvent({
 });
 
 /**
+ * A revision of a product was submitted (catalog design 4.2 row 1; 9.4). Written for every
+ * submit, whether the revision then waits for review or is published at once. Ids and the scope.
+ */
+export const ProductRevisionSubmitted = defineEvent({
+  type: 'catalog.product-revision-submitted.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
+ * A revision became the product's published one (catalog design 4.2 rows 1, 3, 4; AC 36 for a tax
+ * override). `previousRevisionId` is absent for the first publication. Ids and the scope.
+ */
+export const ProductRevisionPublished = defineEvent({
+  type: 'catalog.product-revision-published.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    previousRevisionId: eventField.optional(eventField.id()),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
  * Every event catalog publishes, declared with `defineEvent` and registered with the event
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -79,4 +108,6 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferDeleted,
   OfferMoved,
   PlatformCategoryCreated,
+  ProductRevisionSubmitted,
+  ProductRevisionPublished,
 ];

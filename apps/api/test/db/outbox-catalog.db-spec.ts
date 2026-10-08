@@ -25,6 +25,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX products_market_id_published_revision_id_key ON catalog.products USING btree (market_id, published_revision_id) WHERE (published_revision_id IS NOT NULL)',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
+  'identity.invitations_market_id_email_pending_platform_key':
+    "CREATE UNIQUE INDEX invitations_market_id_email_pending_platform_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((state = 'pending'::text) AND (seller_id IS NULL))",
+  'identity.invitations_market_id_seller_id_email_pending_key':
+    "CREATE UNIQUE INDEX invitations_market_id_seller_id_email_pending_key ON identity.invitations USING btree (market_id, seller_id, email_normalized) WHERE ((state = 'pending'::text) AND (seller_id IS NOT NULL))",
+  'identity.invitations_market_id_seller_id_owner_pending_key':
+    "CREATE UNIQUE INDEX invitations_market_id_seller_id_owner_pending_key ON identity.invitations USING btree (market_id, seller_id) WHERE ((kind = 'seller-owner'::text) AND (state = 'pending'::text))",
   'identity.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON identity.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'identity.roles_market_id_name_platform_custom_key':
@@ -39,6 +45,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX sessions_market_id_seller_id_seller_idx ON identity.sessions USING btree (market_id, seller_id) WHERE (seller_id IS NOT NULL)',
   'inventory.sources_market_id_seller_id_default_key':
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
+  // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
+  // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
+  'pricing.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON pricing.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'pricing.regular_price_records_effective_period_excl':
+    "CREATE INDEX regular_price_records_effective_period_excl ON pricing.regular_price_records USING gist (market_id, series_id, tstzrange(effective_from, effective_to, '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
+  'pricing.regular_price_records_market_id_series_id_pending_key':
+    "CREATE UNIQUE INDEX regular_price_records_market_id_series_id_pending_key ON pricing.regular_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_files_market_id_identifier_index_idx':
@@ -132,7 +146,10 @@ describe('outbox tables and partial indexes (database catalog)', () => {
     );
 
     // docs/design/data/sellers.md 3.7 and 9.5: no two periods of one seller overlap.
+    // docs/design/data/pricing.md 3.3 (PD1): no two effective regular periods of a series overlap.
     expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual({
+      'pricing.regular_price_records_effective_period_excl':
+        "EXCLUDE USING gist (market_id WITH =, series_id WITH =, tstzrange(effective_from, effective_to, '[)'::text) WITH &&) WHERE ((status = ANY (ARRAY['accepted'::text, 'approved'::text])))",
       'sellers.tax_registration_periods_no_overlap_excl':
         "EXCLUDE USING gist (market_id WITH =, seller_id WITH =, tstzrange(valid_from, valid_to, '[)'::text) WITH &&)",
     });

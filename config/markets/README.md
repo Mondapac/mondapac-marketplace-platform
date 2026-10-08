@@ -141,3 +141,19 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   unless it is minor and nothing is pending (design 4.2 row 1); the interim home of the ADR-0026
   setting `catalog.approval-required` until its store lands (catalog slice 10).
 
+## `pricing` section (optional)
+
+Owned by the `pricing` module (`docs/design/domain/pricing.md` 4.6, 15). The module builds the
+policy of every hosted Market at start-up and refuses to start when the section is missing or a
+value does not make a safe policy (`createPricingPolicy`); the schema keeps it optional so a
+Market that does not host pricing yet still loads. No value has a default. The currency of the
+policy is the Market's `defaultCurrency`.
+
+- `maxUnitPriceMinor` (required, whole, 1 to 2^53 - 1): the most one unit may cost, in minor
+  units of the Market currency (AU 500000 = $5,000).
+- `jumpThreshold` (required): `numerator` and `denominator`, whole numbers with
+  0 < numerator <= denominator <= 2^31. A price change of more than this fraction against the
+  anchor goes to review (AU 1/2).
+- `jumpDirections` (required): `up`, `down` or `both` (AU `both`).
+- `jumpWindow` (required): an ISO 8601 duration of days, hours and minutes, between one hour
+  and 90 days (AU `P7D`).
