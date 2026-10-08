@@ -196,5 +196,21 @@
   },
   "inventory": {
     "maxSourcesPerSeller": 4
+  },
+  "catalog": {
+    "taxCategories": [
+      { "code": "taxable", "labelKey": "catalog.tax.taxable" },
+      { "code": "gst_free", "labelKey": "catalog.tax.gst-free" }
+    ],
+    "sensitiveChanges": {
+      "platformCategories": true,
+      "taxCategory": true,
+      "name": true,
+      "primaryImage": true,
+      "anyImage": true,
+      "variantRemoved": true
+    },
+    "maxVariantsPerProduct": 100,
+    "approvalRequired": true
   }
 }

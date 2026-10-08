@@ -120,3 +120,24 @@ reservation duration, the default low-stock threshold and the default per-custom
   Default included (inventory design 3.4). The ceiling of 4 keeps the re-key of a moved Offer
   (design 3.6) under the lock helper's 1,000-item cap with 100 variants per product (800 items
   plus held ones); raising it is a design change with a re-check.
+
+## `catalog` section (optional)
+
+Owned by the `catalog` module (`docs/design/domain/catalog.md` 7.1). The module checks at
+start-up that every hosted Market has it; the schema keeps it optional so a Market that does not
+host the catalog yet still loads. It starts with what slice 4 needs; later slices add the
+conditions, review reasons, photo limits, import limits and the rest of 7.1.
+
+- `taxCategories` (required, 1 to 20 entries, no code repeated): `code` (lower-case letters,
+  digits and `_`) and `labelKey`. The AU values wait for the tax adviser (ADR-0007 decision 5).
+- `sensitiveChanges` (required, every flag required): `platformCategories`, `taxCategory`,
+  `name`, `primaryImage`, `anyImage`, `variantRemoved`. A change in a field marked `true` sends
+  the revision to review (design 4.3). `anyImage` must be `true`: an added or replaced
+  image always goes to review (Hassan H1), so a Market cannot switch it off.
+- `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
+  product may hold. The ceiling of 100 keeps the re-key of a moved Offer (inventory design 3.6)
+  under the lock helper's 1,000-item cap with 4 sources.
+- `approvalRequired` (required): true when a new revision of a published product waits for review
+  unless it is minor and nothing is pending (design 4.2 row 1); the interim home of the ADR-0026
+  setting `catalog.approval-required` until its store lands (catalog slice 10).
+

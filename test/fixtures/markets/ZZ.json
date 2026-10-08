@@ -119,5 +119,22 @@
   },
   "inventory": {
     "maxSourcesPerSeller": 2
+  },
+  "catalog": {
+    "taxCategories": [
+      { "code": "zz_standard", "labelKey": "catalog.tax.zz-standard" },
+      { "code": "zz_reduced", "labelKey": "catalog.tax.zz-reduced" },
+      { "code": "zz_zero", "labelKey": "catalog.tax.zz-zero" }
+    ],
+    "sensitiveChanges": {
+      "platformCategories": false,
+      "taxCategory": true,
+      "name": true,
+      "primaryImage": false,
+      "anyImage": true,
+      "variantRemoved": false
+    },
+    "maxVariantsPerProduct": 3,
+    "approvalRequired": false
   }
 }
