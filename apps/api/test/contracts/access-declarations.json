@@ -5,6 +5,8 @@
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
+  { "name": "certification.evaluate-claims", "rule": "anonymous" },
+  { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },

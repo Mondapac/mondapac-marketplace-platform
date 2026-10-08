@@ -1,6 +1,7 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ClaimTermMatch } from '../domain/claim-text-matcher';
+import type { ClaimDecision, ClaimQuery } from '../domain/claim-types';
 import type { CertificationTypeCode } from '../domain/claim-types';
 import type { TypeDefaultBasis, VerificationMode } from '../domain/type-revision';
 
@@ -46,6 +47,20 @@ type Failure = AccessDenied | CertificationValidationFailed | CertificationUnava
  * exposed over HTTP. `evaluateClaims` joins in slice 1's use-case part.
  */
 export interface CertificationFacade {
+  /**
+   * The one question "may this seller carry this certification tag on this Offer" (design 4.1,
+   * CERT-21; ADR-0028 d1 and d2). 1 to 100 queries; a malformed query answers `input-invalid`
+   * and the others still answer; any fault answers `unavailable` for every query of the batch
+   * (fail closed; nothing cached). A decision is valid only in the request that asked: callers
+   * ask again at each moment and accept it only when its `inputs` equal the state they save. The
+   * actor is never read; the answer is the same for every caller. Two use cases: `anonymous`
+   * for request actors, `system` for handlers and jobs. Not exposed over HTTP.
+   */
+  evaluateClaims(
+    context: CallContext,
+    queries: readonly ClaimQuery[],
+  ): Promise<Result<readonly ClaimDecision[], AccessDenied | CertificationValidationFailed>>;
+
   /**
    * Per text, in order, the type codes whose published claim terms (every locale of the Market,
    * active or inactive types) occur in it, with the token span of a first-pass match. At most

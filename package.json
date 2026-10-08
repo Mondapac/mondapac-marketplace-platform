@@ -12,6 +12,8 @@
     "postinstall": "prisma generate",
     "dev": "pnpm --filter @mondapac/shared-kernel build && pnpm --filter @mondapac/api dev",
     "dev:worker": "node scripts/dev-worker.mjs",
+    "dev:seller": "pnpm --filter @mondapac/seller dev",
+    "dev:admin": "pnpm --filter @mondapac/admin dev",
     "build": "pnpm db:generate && pnpm -r build && node scripts/check-built-kernel.mjs",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "lint": "eslint . && prettier --check .",
@@ -24,7 +26,7 @@
     "db:check-reversible": "node scripts/check-migrations-reversible.mjs",
     "db:bootstrap": "docker compose exec -T postgres psql -U postgres -d mondapac -f /docker-entrypoint-initdb.d/10-bootstrap-dev.sql",
     "verify": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm test:db && pnpm db:check-reversible",
-    "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs"
+    "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs && node scripts/check-panel-boundaries.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

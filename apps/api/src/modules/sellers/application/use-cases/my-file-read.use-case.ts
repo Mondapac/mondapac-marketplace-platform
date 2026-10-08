@@ -147,7 +147,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     const file = read.value.found;
     const registerResult =
       lookup.kind === 'configured'
-        ? sellerResultOf(read.value.check, this.deps.clock.now(), lookup)
+        ? sellerResultOf(read.value.check, this.deps.clock.now(), lookup, file.state.lastChangedAt)
         : null;
     const format = addressFormats.formatOf(market);
     const requirements = draftRequirementsOf(this.deps.policy, market);

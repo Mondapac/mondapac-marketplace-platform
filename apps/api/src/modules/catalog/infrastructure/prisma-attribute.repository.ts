@@ -1,9 +1,19 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type {
+  AttributeDataType,
+  AttributeSchema,
+  Id,
+  MarketContext,
+} from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { AttributeRepository } from '../application/ports/attribute.repository';
-import type { AttributeDefinition } from '../domain/attribute-definition';
-import type { AttributeFamily } from '../domain/attribute-family';
+import type {
+  AttributeBounds,
+  AttributeDefinition,
+  LocalizedText,
+} from '../domain/attribute-definition';
+import { buildAttributeSchema } from '../domain/attribute-schema-builder';
+import type { AttributeFamily, FamilyGroup } from '../domain/attribute-family';
 
 const toDate = (instant: { readonly epochMilliseconds: number }): Date =>
   new Date(instant.epochMilliseconds);
@@ -46,6 +56,48 @@ export class PrismaAttributeRepository implements AttributeRepository {
       select: { id: true },
     });
     return row === null ? null : (row.id as Id<'AttributeFamily'>);
+  }
+
+  async loadSchema(market: MarketContext, familyCode: string): Promise<AttributeSchema | null> {
+    const tx = this.prisma.tx(market);
+    const family = await tx.catalogAttributeFamily.findFirst({
+      where: { marketId: market.marketId, code: familyCode, status: 'active' },
+      include: { publishedRevision: true },
+    });
+    const revision = family?.publishedRevision;
+    if (family === null || revision === null || revision === undefined) return null;
+    const groups = revision.groups as unknown as FamilyGroup[];
+    const codes = groups.flatMap((group) => group.attributes.map((entry) => entry.code));
+    const rows = await tx.catalogAttributeDefinition.findMany({
+      where: { marketId: market.marketId, code: { in: codes } },
+      include: { publishedRevision: { include: { options: true } } },
+    });
+    const definitions = [];
+    for (const row of rows) {
+      const published = row.publishedRevision;
+      if (published === null) return null;
+      definitions.push({
+        code: row.code,
+        status: row.status as 'active' | 'archived',
+        revisionId: published.id as Id<'AttributeDefinitionRevision'>,
+        dataType: row.dataType as AttributeDataType,
+        localizable: row.localizable,
+        isVariantOption: published.isVariantOption,
+        material: published.material,
+        bounds: published.bounds as AttributeBounds,
+        options: published.options.map((option) => ({
+          code: option.optionCode,
+          labels: option.labels as LocalizedText,
+          active: option.active,
+          position: option.position,
+        })),
+      });
+    }
+    const built = buildAttributeSchema(
+      { code: family.code, revisionId: revision.id as Id<'AttributeFamilyRevision'>, groups },
+      definitions,
+    );
+    return built.ok ? built.schema : null;
   }
 
   async addDefinition(market: MarketContext, definition: AttributeDefinition): Promise<void> {

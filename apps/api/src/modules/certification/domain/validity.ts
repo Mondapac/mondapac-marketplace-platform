@@ -45,6 +45,25 @@ export interface SellerZones {
   readonly addressZone: TimeZoneId;
 }
 
+/**
+ * True for a zone Temporal resolves that is an IANA id: a non-empty string, not a UTC offset
+ * (ADR-0005 decision 1). Anything else is "no zone" (design 4.2 step 1), whether or not the
+ * certificate has an expiry.
+ */
+export function isUsableZone(zone: unknown): zone is TimeZoneId {
+  if (typeof zone !== 'string' || zone.length === 0 || zone.length > 64) return false;
+  if (/^[+-]/u.test(zone)) return false;
+  try {
+    // Compare what Temporal resolved with the input: its parser also takes ISO date-times
+    // and offsets and keeps only the zone part, which must not count as an IANA id.
+    const resolved =
+      Temporal.Instant.from('2026-01-01T00:00:00Z').toZonedDateTimeISO(zone).timeZoneId;
+    return !/^[+-]/u.test(resolved) && resolved.toLowerCase() === zone.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 /** 00:00 on the day after `expiryDate` in `zone`; DST-safe because it is a start of day. */
 export function expiryBoundary(expiryDate: Temporal.PlainDate, zone: TimeZoneId): Temporal.Instant {
   return expiryDate.add({ days: 1 }).toZonedDateTime(zone).toInstant();
@@ -76,7 +95,13 @@ export function sellerCertificateValidAt(
   ) {
     return { valid: false, reason: 'issuer-derecognised' };
   }
-  if (sellerZones === null) return { valid: false, reason: 'seller-zone-missing' };
+  if (
+    sellerZones === null ||
+    !isUsableZone(sellerZones.zone) ||
+    !isUsableZone(sellerZones.addressZone)
+  ) {
+    return { valid: false, reason: 'seller-zone-missing' };
+  }
 
   if (!sub.requiresExpiry) {
     return { valid: true, submissionId: sub.submissionId, expiresAt: null };
