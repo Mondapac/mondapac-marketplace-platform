@@ -1,5 +1,16 @@
 import type { Id } from '@mondapac/shared-kernel';
 
+/**
+ * One answer of `approvedSellerZones` (sellers design 7.1a row 1): the zone the seller chose and
+ * the zone derived on the server from the APPROVED address only, never from a client or an
+ * admin. Both are IANA ids, or null when there is no approved revision. A missing zone is the
+ * consumer's `seller-zone-missing`, never a default.
+ */
+export interface ApprovedSellerZone {
+  readonly zone: string | null;
+  readonly addressZone: string | null;
+}
+
 /** The operating zone of a seller as `sellerSummaries` gives it (sellers design 7.1). */
 export interface SummaryTimezone {
   /** IANA id, never an offset (ADR-0005 decision 1). */

@@ -34,6 +34,8 @@
   { "name": "identity.sign-in-seller", "rule": "anonymous" },
   { "name": "identity.sign-out", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
+  { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
+  { "name": "sellers.approved-seller-zones-system", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
   {
