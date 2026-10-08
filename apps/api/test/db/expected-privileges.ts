@@ -59,6 +59,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'identity.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/identity.md section 7 (slice 5): ordinary tables, except the keys of a
+    // role, which are added or removed and never edited.
+    'identity.seller_access': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.seller_memberships': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.roles': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'identity.role_permissions': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'identity.role_assignments': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.

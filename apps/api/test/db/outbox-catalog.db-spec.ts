@@ -17,6 +17,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON identity.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'identity.roles_market_id_name_platform_custom_key':
+    "CREATE UNIQUE INDEX roles_market_id_name_platform_custom_key ON identity.roles USING btree (market_id, name_normalized) WHERE ((kind = 'custom'::text) AND (scope = 'platform'::text))",
+  'identity.roles_market_id_scope_system_key':
+    "CREATE UNIQUE INDEX roles_market_id_scope_system_key ON identity.roles USING btree (market_id, scope) WHERE (kind = 'system'::text)",
+  'identity.roles_market_id_seller_id_name_custom_key':
+    "CREATE UNIQUE INDEX roles_market_id_seller_id_name_custom_key ON identity.roles USING btree (market_id, seller_id, name_normalized) WHERE ((kind = 'custom'::text) AND (seller_id IS NOT NULL))",
+  'identity.seller_memberships_market_id_account_id_active_key':
+    "CREATE UNIQUE INDEX seller_memberships_market_id_account_id_active_key ON identity.seller_memberships USING btree (market_id, account_id) WHERE (state = 'active'::text)",
   'identity.sessions_market_id_seller_id_seller_idx':
     'CREATE INDEX sessions_market_id_seller_id_seller_idx ON identity.sessions USING btree (market_id, seller_id) WHERE (seller_id IS NOT NULL)',
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':
