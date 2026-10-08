@@ -12,6 +12,7 @@ export default async function globalTeardown(): Promise<void> {
     process.env.TEST_PASSWORD_DATABASE_NAME,
     process.env.TEST_INVENTORY_DATABASE_NAME,
     process.env.TEST_AUDIT_DATABASE_NAME,
+    process.env.TEST_ADMIN_TEAM_DATABASE_NAME,
     process.env.TEST_CERTIFICATION_DATABASE_NAME,
     process.env.TEST_DATABASE_NAME,
   ].filter((name): name is string => name !== undefined && name !== '');

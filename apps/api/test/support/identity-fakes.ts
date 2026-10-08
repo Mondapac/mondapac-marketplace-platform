@@ -531,6 +531,29 @@ export class IdentityFakes {
           );
         }),
       ),
+    activeHoldersOf: (market, roleId) =>
+      Promise.resolve(
+        [...this.assignments.values()]
+          .filter((a) => {
+            const account = this.accounts.get(a.accountId);
+            return (
+              a.marketId === market.marketId &&
+              a.roleId === roleId &&
+              account?.status === 'active' &&
+              account.emailVerifiedAt !== null
+            );
+          })
+          .map((a) => a.accountId),
+      ),
+    save: (_market, assignment) => {
+      const state = assignment.state;
+      if (state.version === assignment.persistedVersion) return Promise.resolve();
+      if (this.assignments.get(state.id)?.version !== assignment.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('role-assignment', state.id));
+      }
+      this.assignments.set(state.id, state);
+      return Promise.resolve();
+    },
     remove: (_market, assignment) => {
       const stored = this.assignments.get(assignment.state.id);
       if (stored === undefined || stored.version !== assignment.persistedVersion) {
