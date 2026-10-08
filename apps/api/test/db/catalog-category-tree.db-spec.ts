@@ -169,8 +169,7 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
       ]),
     ).toBe('23514');
     // A 65th level exceeds the cap of 64.
-    const sixtyFifth = await insertCategory({ parent_id: ids[63] }).catch(() => null);
-    expect(sixtyFifth).toBeNull();
+    await expect(insertCategory({ parent_id: ids[63] })).rejects.toMatchObject({ code: '23514' });
   });
 
   it('refuses a child row in another Market (composite foreign key)', async () => {
@@ -286,6 +285,15 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
     );
     expect(rows).toHaveLength(expected);
     expect(rows.every((row) => row.version === 1 && row.revision !== null)).toBe(true);
+
+    if (code !== 'ZZ') {
+      const seeded = await sql.query<{ n: string }>(
+        `SELECT count(*) AS n FROM catalog.outbox WHERE market_id = $1
+            AND type = 'catalog.platform-category-created.v1'`,
+        [market.marketId],
+      );
+      expect(Number(seeded.rows[0]?.n)).toBe(0);
+    }
 
     if (code === 'ZZ') {
       const tree = await sql.query<{ version: number }>(

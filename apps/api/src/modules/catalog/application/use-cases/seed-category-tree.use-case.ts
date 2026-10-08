@@ -31,8 +31,9 @@ export interface SeedCategoryTreeDependencies {
  * `system`, run per hosted Market at worker start and then daily. For each category of the
  * Market's checked-in seed whose slug is missing, one unit creates it with its first revision,
  * raises the tree version and announces `catalog.platform-category-created.v1`. It only ever
- * creates (Ali B4): it has no update path, an existing slug is skipped whatever its state, and
- * the application holds no grant a seed could use to rewrite a category. A concurrent or
+ * creates (Ali B4): an existing slug is skipped whatever its state, and
+ * its code has no update path to rewrite a category (the grants allow only the structural columns
+ * slice 21's editor needs, and never slug, creator kind, names or revision history). A concurrent or
  * repeated run converges on the unique slug and the tree version guard: the loser's unit is
  * stale, fails, and the next run finds the work done. The claim-text check of seed names joins
  * with slice 5.
