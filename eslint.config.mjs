@@ -65,6 +65,8 @@ const noDateConversion = [
 // boundaries.spec.ts checks that apps/api/src and the kernel's src hold no other kind.
 const TS = '{ts,mts,cts}';
 const SPEC_FILES = [`**/*.spec.${TS}`];
+// The panel apps and the shared UI package also hold .tsx (ADR-0033, ADR-0034).
+const PANEL_TSX = ['apps/seller/**/*.tsx', 'apps/admin/**/*.tsx', 'packages/ui/**/*.tsx'];
 // The fixture tree is outside the globs below, so each block names its fixture files too.
 const FIXTURES = 'apps/api/test/boundary-fixtures';
 
@@ -312,6 +314,9 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      // Next.js build output and the file Next generates in each panel app.
+      '**/.next/**',
+      '**/next-env.d.ts',
       '**/coverage/**',
       '**/node_modules/**',
       'Claude outputs/**',
@@ -337,7 +342,7 @@ export default tseslint.config(
     linterOptions: { noInlineConfig: true },
   },
   {
-    files: [`**/*.${TS}`],
+    files: [`**/*.${TS}`, ...PANEL_TSX],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: { ...globals.node },
@@ -489,6 +494,35 @@ export default tseslint.config(
   {
     files: ['packages/shared-kernel/src/time.ts', `${FIXTURES}/packages/shared-kernel/src/time.ts`],
     rules: { 'no-restricted-imports': kernelImports('^(?!\\./|temporal-polyfill$)|\\.\\.') },
+  },
+  {
+    // The panels (ADR-0033, ADR-0034): browser code. No raw colours (every colour is a token),
+    // no physical left/right utilities (logical ones keep a right-to-left Market working), no
+    // raw HTML injection. The panel config files run in Node.
+    files: ['apps/seller/**/*.{ts,tsx}', 'apps/admin/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}'],
+    languageOptions: { globals: { ...globals.browser } },
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'Literal[value=/#[0-9a-fA-F]{3,8}\\b|\\b(rgb|rgba|hsl|hsla|oklch)\\(|\\[#|-\\[(rgb|hsl|oklch)/]',
+          message:
+            'panel-tokens-only: use a colour token (ADR-0033 decision 2), never a raw colour value.',
+        },
+        {
+          selector:
+            'Literal[value=/(^|\\s)(-?(pl|pr|ml|mr|left|right|rounded-l|rounded-r|border-l|border-r)-|text-left|text-right)/]',
+          message:
+            'logical-properties-only: use start/end utilities (ps, pe, ms, me, border-s, border-e, text-start, text-end), ADR-0033 decision 10.',
+        },
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message:
+            'no-raw-html: dangerouslySetInnerHTML is banned in the panels (ADR-0034 decision 6).',
+        },
+      ],
+    },
   },
   {
     files: [...SPEC_FILES, `**/test/**/*.${TS}`],
