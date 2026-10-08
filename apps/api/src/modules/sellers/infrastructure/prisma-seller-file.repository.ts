@@ -46,6 +46,7 @@ const FILE_COLUMNS = {
   identifierScheme: true,
   identifierCiphertext: true,
   identifierIndex: true,
+  approvedRevisionId: true,
 } as const;
 
 /** A stored row that breaks the domain's rules: a fault of the data, never a value to use. */
@@ -206,9 +207,9 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
       lastChangedAt: toInstant(row.lastChangedAt),
       version: row.version,
       createdAt: toInstant(row.createdAt),
-      // Slice 2: no revision exists yet. Slice 5 adds `approved_revision_id` and reads
-      // `approvedRevisionId !== null` here; until then no file is frozen.
-      hasApprovedRevision: false,
+      // Slice 5: the file is frozen (draft saves refused) as soon as the V1 pointer names a
+      // revision (data design 3.1). Nothing moves the pointer before slice 7a-decide.
+      hasApprovedRevision: row.approvedRevisionId !== null,
       draft: {
         storeName,
         businessName: sealed<'business-name'>(row.businessNameCiphertext),

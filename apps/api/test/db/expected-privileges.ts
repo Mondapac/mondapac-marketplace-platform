@@ -179,10 +179,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 2): a slug and its holder never change, only
-    // its state (DELETE arrives in slice 5, Q-M21); rate counters are reserved, released (the
-    // two reviewer-notice kinds, 3.11) and purged after 48 hours.
+    // its state; DELETE arrived in slice 5 (Q-M21, section 22: a never-public held row is
+    // released by the seller before approval, by an admin, or by the purge); rate counters are
+    // reserved, released (the two reviewer-notice kinds, 3.11) and purged after 48 hours.
     'sellers.shop_slugs': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
     // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
@@ -195,6 +196,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
     'sellers.register_checks': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // docs/design/data/sellers.md section 8 (slice 5, section 22): a revision's content never
+    // changes by privilege; only the status columns do. DELETE arrives with the purge (18).
+    'sellers.business_file_revisions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'identity_decision_id',
+        'reject_reason_code',
+        'status',
+        'status_changed_at',
+        'withdraw_cause',
+        'withdrawn_at',
+        'withdrawn_by_kind',
+      ],
+    },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
     // the key columns and the Default flag are immutable, so UPDATE is by column.

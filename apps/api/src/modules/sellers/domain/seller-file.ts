@@ -321,7 +321,8 @@ export class SellerFile {
   }
 }
 
-function missingParts(
+/** The mandatory parts a draft does not hold, in form order (also the submission's check). */
+export function missingParts(
   draft: SellerFileDraft,
   requirements: DraftRequirements,
 ): readonly DraftPart[] {

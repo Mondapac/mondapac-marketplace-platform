@@ -240,6 +240,7 @@ aggregate's (6). The approval guard reads the checks of revision N by the primar
 | `checked_at` | `timestamptz(6)` | no | Bound to the maximum age of D 7.7 at read time, against `Clock` |
 | `checked_by_kind` | `text` | no | CHECK `seller`, `reviewer`, `job` |
 | `checked_by_account_id` | `uuid` | yes | C4. CHECK `(checked_by_kind = 'job') = (checked_by_account_id IS NULL)` |
+| `compared_file_version` | `integer` | no | Slice 5 (section 22; Hassan M1 residual): the `seller_files.version` the comparison read the draft at. CHECK `>= 1`. Every write states it; an `active` result is current only while the file is still at this version |
 
 The current result of a file is the row for the file's current `identifier_index` (a primary key
 probe). Every approval guard (reviewer, admin edit, automatic) reads the row for (seller, revision
@@ -738,7 +739,7 @@ Aligned with D 11.1 as revised at G2 (slices P1 and P2, 7a-read, 7a-decide, 7a-a
 | 3a | 2 (Q-M25) | `sellers_draft_slug` | `seller_files.draft_slug` (`ADD COLUMN`, nullable, no default, `COLLATE "C"`) and `seller_files_draft_slug_check` (`NOT VALID` then `VALIDATE`, under `lock_timeout`); no index, no unique key, no grant change (the table-level grant covers it), no data change. **Implemented:** `20261008150000_sellers_draft_slug` (19) |
 | 4 | 3 | `sellers_identifier_tax` | The identifier columns, their CHECK and partial index; `tax_registration_periods` with its exclusion constraint |
 | 5 | 4a | `sellers_register_checks` | `register_checks`. **Implemented in slice 4a:** `20261008180000_sellers_register_checks` (21) |
-| 6 | 5 | `sellers_business_file_revisions` | `business_file_revisions` (withdrawal columns included; nullable clear `address_timezone` with its zone CHECK `business_file_revisions_address_timezone_check`, NULL or a valid IANA zone) with its partial uniques and queue index; `seller_files.approved_revision_id` and its FK; `GRANT DELETE` on `shop_slugs` (Q-M21) |
+| 6 | 5 | `sellers_business_file_revisions` | `business_file_revisions` (withdrawal columns included; nullable clear `address_timezone` with its zone CHECK `business_file_revisions_address_timezone_check`, NULL or a valid IANA zone) with its partial uniques and queue index; `seller_files.approved_revision_id` and its FK; `GRANT DELETE` on `shop_slugs` (Q-M21). **Implemented in slice 5a:** `20261008213000_sellers_business_file_revisions`, with `register_checks.compared_file_version` (22) |
 | 7 | 6 | `sellers_list_index` | Partial `(market_id, last_changed_at, seller_id) WHERE approved_revision_id IS NULL` (9.3 decides whether `CONCURRENTLY`) |
 | 8 | 7a-read | `sellers_review_checks` | `review_checks`; the partial `identifier_index` index on `business_file_revisions` |
 | 9 | 7a-decide | `sellers_review_decisions` | `identifier_claims`; `admin_flags`; the decision-intent columns, CHECK, FK and partial index; `public_store_name` |
@@ -1395,3 +1396,144 @@ Notes for later slices:
   instant is used).
 - **`lookup.limit` counts repeat lookups.** The per-account limit counts every lookup that is due,
   including a repeat of the same value after a draft change or after aging, not only new values.
+
+## 22. Slice 5a migration `20261008213000_sellers_business_file_revisions` (2026-10-08)
+
+| Reviewer | Verdict | Date |
+|---|---|---|
+| Mojtaba (database-designer) | Pending | |
+| Hassan (security-tester), the register version binding | Pending | |
+
+Written by Hossein from 3.1, 3.2, 3.4, 3.11, 4.5, 8 and 9 (the table and the two columns by
+`prisma migrate diff`, the rest by hand; `pnpm db:check-reversible` runs up, down, up and the drift
+check). Slice 5a is schema, domain and repository only: no submit use case, no withdraw on edit, no
+`onboardingSteps`, no reviewer notice (slice 5b), and no move of the approved pointer (7a-decide).
+It depends on `seller_files` and `register_checks`.
+
+| Object | What it adds |
+|---|---|
+| `business_file_revisions` (new) | The columns of 3.2 plus `market_id` and `tenant_id` (C1). Primary key `id`; unique `(market_id, seller_id, revision_no)` and `(market_id, seller_id, id)` (the pointer target); composite FK `(market_id, seller_id)` to `seller_files`, `RESTRICT`. 24 named CHECKs `business_file_revisions_<name>_check`: `market_id`, `tenant_id`, `kind`, `revision_no`, `status`, `author_kind`, `content_ciphertext`, `content_schema_version`, `content_hash`, `identifier_index`, `operating_timezone`, `address_timezone`, `service_area_code`, `register_outcome`, `register_mismatches`, `register_checked_at`, `status_changed_at`, `decided_at`, `decided_by_account_id`, `identity_decision_id`, `reject_reason_code`, `withdraw_cause`, `withdrawn_by_kind`, `withdrawn` (cause, who and instant together, and `status = 'withdrawn'` exactly with a cause). `register_mismatches` is `NOT NULL` by a hand-written `ALTER COLUMN` (as 21) |
+| Partial indexes (9.5) | `business_file_revisions_market_id_seller_id_pending_key` (unique, one pending per file, either kind), `..._approved_key` (unique, one live approved), `business_file_revisions_market_id_kind_created_at_pending_idx` (the reviewer queue). Added to the catalog test `outbox-catalog.db-spec.ts`. The `identifier_index` partial index and `review_checks` stay with 7a-read |
+| `seller_files.approved_revision_id` | Nullable `uuid`, no default (a catalog change, no rewrite). FK `seller_files_market_id_seller_id_approved_revision_id_fkey` `(market_id, seller_id, approved_revision_id)` to `business_file_revisions (market_id, seller_id, id)`, `RESTRICT` both ways, default `MATCH SIMPLE` (an empty pointer is not checked). Prisma accepts the overlapping fields (spike S2: no fallback needed). Nothing moves the pointer in 5a; the file repository now reads `hasApprovedRevision` from it, so a pointed file refuses every draft save |
+| `register_checks.compared_file_version` | `integer NOT NULL`, CHECK `>= 1` (`NOT VALID` then `VALIDATE`, 9.3). See the decision below |
+| Grants (section 8) | `business_file_revisions`: `SELECT, INSERT` and `UPDATE` on nine status columns, to `mondapac_app`; `shop_slugs`: `DELETE` (Q-M21, 9.1 row 6). `seller_files` and `register_checks` keep their table-level grants, which cover the new columns. `apps/api/test/db/expected-privileges.ts` is updated in the same PR |
+| `rate_counters` | **No change** (see the block below) |
+
+**`rate_counters` kinds (isolated for Mojtaba's sign-off).** 3.1, 7.3 and 3.11 name four kinds for
+slice 5: `submit.file` (5 per 24 h), `withdraw.file` (10 per 24 h), `reviewer-notice.seller` (1 per
+fixed 6 h window) and `reviewer-notice.market` (1 per fixed 15-minute window). All four are
+already in `rate_counters_kind_check` since slice 2b (13 kinds; 3.11 says "no later slice alters it"; the
+two reviewer-notice kinds were added before that migration merged, Ali R-3). The migration
+therefore touches neither the CHECK nor the table, and the guarded release of the two
+reviewer-notice kinds uses the table-level `UPDATE` of section 8. A db test asserts the four kinds
+are accepted and an unknown `reviewer-notice.other` is refused. If Mojtaba wants the list changed,
+that is a separate, additive step.
+
+**Decisions taken here (for Mojtaba to confirm):**
+
+- **`compared_file_version` is `NOT NULL`, and existing rows are backfilled with 1.** The column is
+  added as `INTEGER NOT NULL DEFAULT 1` and the default is dropped at once: PostgreSQL stores a
+  constant default in the catalog, so there is no rewrite and no batch job, and every later insert
+  must state its version (the model has no default, and the drift check passes). Why 1 is safe: a
+  result exists only after an identifier save, which raises the file to version 2 at least, and a
+  version is never lowered, so a pre-existing row never equals its file's current version; it is
+  not current, the next save asks the register again (or a reviewer decides on a manual check).
+  A definite negative keeps its behaviour (it never depends on the version). No deployed
+  environment holds rows today (9.3).
+- **The rule is "equal", not "not older".** `draftChangedSince` is true when `lastChangedAt` is
+  later than `checked_at` **or** the file's version differs from `compared_file_version`, in either
+  direction. `registerStateOf`, `staleReasonOf`, `lookupDue`, `sellerResultOf` and
+  `registerCheckIsCurrent` all take the file's version; the reviewer view and `my-file.read` pass
+  the version they read in the same unit. `runLookup` writes the version of the snapshot it compared
+  (the write unit's existing re-read still stamps a result already stale when the file moved). A
+  later answer replaces the version of an earlier one; a slower writer with an older snapshot can
+  therefore make a good result not current, which fails closed.
+- **Consequence for the quota (not a schema fault).** A value the seller leaves and comes back to
+  was compared against an older draft version, so its result is stale and the lookup is due again;
+  it counts against `lookup.limit` (the note at the end of 21). The 4a tests that expected "a value
+  that comes back is not asked again" only held because their clock did not move; they now assert
+  the deterministic behaviour. Hadi may want a gentler rule for a value that comes back with
+  nothing else changed; that is a product decision, not part of 5a.
+- **Revision content bound: `BETWEEN 41 AND 32768`.** The 4.5 rule applied to the whole object:
+  store name (100), business name (200), two addresses (about 6 KB of JSON each), identifier
+  (64), phone (32), contact email (254) and the tax answer come to at most about 16,000 plaintext
+  bytes, so about 21,400 characters in the v1 envelope, rounded up to the next power of two.
+  `content_schema_version` is a `smallint >= 1`; v1 carries `schemaVersion` inside the sealed JSON
+  as well, so the bytes are self-describing.
+- **Content and hash.** The sealed text is the RFC 8785 canonical JSON of the content (the kernel's
+  `canonicalJson`, sorted keys, nothing optional: absent members are `null`). The hash is
+  `SubjectKeyService.hmac(market, sellerId, 'sellers.business-file.content', those bytes)` as
+  `hmac-sha256:<hex>`. The label is `sellers.business-file-revision.content`. Opening the content
+  and hashing it again reproduces `content_hash`. Both die with the seller's key.
+- **`address_timezone` is copied, not derived.** `evaluateSubmission` copies the draft's stored
+  `addressTimezone` (the region's default, set at the address save), never the operating zone and
+  never a fresh derivation. A submission with no zone is refused as incomplete.
+- **CHECKs beyond the text of 3.2**, each implied by it, for Mojtaba to confirm:
+  `status_changed_at = created_at` while `pending` (3.2 "equals created_at while pending");
+  `decided_by_account_id IS NULL OR kind = 'identity-change'` ("identity changes only");
+  `register_outcome` includes `not-performed`, so the snapshot of a submission with no usable result
+  is storable; `reject_reason_code` also has the S8 pattern.
+- **`Revision<T>` stays in the `sellers` domain** (as `EffectivePeriod` did, 2.4): the sellers
+  design names the kernel as its home, but a kernel change is a shared-file PR and no second
+  module needs it yet.
+- **A refused insert does not abort the unit.** The repository inserts with `createMany …
+  skipDuplicates` (`ON CONFLICT DO NOTHING`, which covers the partial unique keys), then names the
+  key that was taken (`revision.id-taken`, `revision.number-taken`, `revision.pending-exists`). A
+  thrown unique violation would put the surrounding transaction in the aborted state.
+- **The approved revision is read through the pointer** (`findApproved`: the pointer on
+  `seller_files`, then the revision by that id). The status column and the partial unique are a
+  backstop, not the authority (3.1).
+- **`down.sql`** revokes both grants, drops the pointer FK, the table, the pointer column, the
+  CHECK and the `register_checks` column.
+
+**Open points (for Mojtaba, Hassan and Hadi; none blocks 5a):**
+
+1. **`DELETE` on `shop_slugs` has no database guard on which rows.** The grant is table-level, as
+   section 8 says, and `shop_slugs_one_way` does not fire on `DELETE`. The rule "only a held,
+   never-public row is deleted" is the application's. A `BEFORE DELETE` trigger refusing
+   `state = 'retired' OR ever_public` (for every role) would match 3.5 ("a retired slug outlives
+   the purge") and cost one function. Not added, because 3.5 and 8 do not ask for it; Mojtaba to
+   decide before 5b uses the grant.
+2. **The pointer and the status are two facts.** Nothing in the database requires the revision the
+   pointer names to be `approved`; the pointer FK only requires it to belong to this seller. The
+   move of the pointer (7a-decide) must set status and pointer in one unit, and a test there asserts
+   the pair.
+3. **The repository does not yet change a revision's status.** Withdraw, supersede, approve and
+   reject are domain transitions (`withdrawn`, `superseded`, `canTransition`) with no persistence
+   until 5b and 7a-decide add the guarded `updateMany`s (each `WHERE status = 'pending'`, so a lost
+   race writes nothing).
+4. **Purge order (slice 18).** `business_file_revisions` has `DELETE` from nobody until then. The
+   purge deletes the pointer's target only after clearing `approved_revision_id`, and deletes the
+   revisions before `seller_files` (`RESTRICT` both ways).
+
+**Tests** (`apps/api/test/db/sellers-business-file-revisions.db-spec.ts`, both Market fixtures;
+`privileges.db-spec.ts` through `expected-privileges.ts`; `outbox-catalog.db-spec.ts` for the three
+partial indexes): every CHECK with a refused row and the boundary values accepted; one
+pending per file (either kind), one approved, the revision number, a freed slot after a
+withdrawal; the FKs (missing file, another Market, a pointer to another seller's revision,
+`RESTRICT` both ways); `42501` on the update of every non-status column and on `DELETE`; the
+`shop_slugs` delete; the repository (insert, every read, Market isolation, the three refusals that
+keep the unit usable, two and three concurrent submissions converging on one, the sealed content with
+a real subject key, which another seller's key does not open, and the snapshot columns of
+`evaluateSubmission`); the version binding of register results (the column, its CHECKs, the three
+races of Hassan's condition at repository level); the four rate-counter kinds.
+
+**Left for slice 5b as use-case tests (AU and ZZ), listed here so they are not lost:**
+
+1. Hassan (a), at use-case level: `my-file.save-identifier` with no change racing a general save
+   that commits after the write unit's re-read, then `submit`: the revision snapshot says
+   `not-performed` and `blocksApproval` is true.
+2. Hassan (b): an edit stamped in the same millisecond as the snapshot, then `submit`: the same.
+3. Hassan (c): an edit committed between the currency check and the submit transition. The
+   submit evaluates `registerCheckIsCurrent` in the same unit as the transition, with the file row
+   locked or under its own version compare-and-set on the version it checked (the repository test
+   shows the compare-and-set loses after the edit); the use case must also assert this end to end.
+4. The submit itself: completeness against the current Market configuration, the ServiceArea with
+   onboarding on, the slug hold, `submit.file` and `withdraw.file` reservations, the event, the
+   handler's `reviewer-notice` reservation and release.
+5. Withdraw on edit (one `UPDATE … WHERE status = 'pending'`) and the guarded release of the
+   reviewer-notice counter.
+6. `approvedSellerZones` reading the approved pointer and revision (7.1a rows 1 to 3 and 7), with a
+   fixture approved revision; the ordering and caller-independence tests re-run with real rows; no
+   identity-approved seller answers `null` after the backfill (7.1a row 2, Ali F2); the A18 plans
+   recorded (12, Mojtaba F4).

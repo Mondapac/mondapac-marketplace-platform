@@ -2258,8 +2258,8 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           `INSERT INTO sellers.register_checks
              (market_id, tenant_id, seller_id, identifier_index, outcome, mismatches,
               definite_negative_at, compared_values_ciphertext, checked_at, checked_by_kind,
-              checked_by_account_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+              checked_by_account_id, compared_file_version)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             overrides.market ?? code,
             overrides.tenant ?? 'default',
@@ -2272,6 +2272,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
             at,
             overrides.kind ?? 'seller',
             'account' in overrides ? overrides.account : ACCOUNT,
+            overrides.version ?? 2,
           ],
         );
       const refuses = (promise: Promise<unknown>, constraint: string) =>
@@ -2383,7 +2384,13 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           outcome: 'active' | 'not-found' | 'cancelled' | 'unavailable',
           when: Temporal.Instant = T0,
           mismatches: ('postcode' | 'business-name')[] = [],
-        ) => ({ outcome, mismatches, checkedAt: when, checkedBy: seller });
+        ) => ({
+          outcome,
+          mismatches,
+          checkedAt: when,
+          checkedBy: seller,
+          comparedFileVersion: 2,
+        });
 
         it('records and finds the latest result of a value, with the sticky negative of AC 31', async () => {
           const sellerId = await registerSeller(code);
@@ -2401,6 +2408,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
             definiteNegativeAt: T0,
             checkedAt: T0,
             checkedBy: seller,
+            comparedFileVersion: 2,
           });
           // A later unavailable keeps the mark and the first instant; the latest outcome is kept.
           const later = T0.add({ hours: 1 });
@@ -2432,6 +2440,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
             definiteNegativeAt: null,
             checkedAt: later.add({ hours: 2 }),
             checkedBy: seller,
+            comparedFileVersion: 2,
           });
           expect(await inUnit(code, () => repository().find(m, sellerId, index))).toEqual(answered);
           expect(await checkRows(sellerId)).toHaveLength(1);

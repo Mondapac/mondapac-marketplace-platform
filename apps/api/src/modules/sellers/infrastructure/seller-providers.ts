@@ -84,6 +84,16 @@ import { PrismaSellerFileRepository } from './prisma-seller-file.repository';
 import { PrismaShopSlugRepository } from './prisma-shop-slug.repository';
 import { PrismaTaxProfileRepository } from './prisma-tax-profile.repository';
 import { SubjectKeySellerFileCipher } from './subject-key-seller-file-cipher';
+import {
+  BUSINESS_FILE_REVISION_REPOSITORY,
+  type BusinessFileRevisionRepository,
+} from '../application/ports/business-file-revision.repository';
+import {
+  REVISION_CONTENT_SEALER,
+  type RevisionContentSealer,
+} from '../application/ports/revision-content-sealer';
+import { PrismaBusinessFileRevisionRepository } from './prisma-business-file-revision.repository';
+import { SubjectKeyRevisionContentSealer } from './subject-key-revision-content-sealer';
 
 /** One adapter serves both Market-format ports; a token of its own lets them share it. */
 const SELLER_FORMATS = Symbol('SELLER_FORMATS');
@@ -148,6 +158,20 @@ export const sellerProviders: readonly FactoryProvider[] = [
     provide: SELLER_FILE_CIPHER,
     inject: [SUBJECT_KEY_SERVICE],
     useFactory: (keys: SubjectKeyService): SellerFileCipher => new SubjectKeySellerFileCipher(keys),
+  },
+  {
+    // Slice 5a: the store of revisions and the sealer of their content. No use case injects them
+    // before slice 5b.
+    provide: BUSINESS_FILE_REVISION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BusinessFileRevisionRepository =>
+      new PrismaBusinessFileRevisionRepository(prisma),
+  },
+  {
+    provide: REVISION_CONTENT_SEALER,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): RevisionContentSealer =>
+      new SubjectKeyRevisionContentSealer(keys),
   },
   {
     provide: SELLER_MARKET_POLICY,
