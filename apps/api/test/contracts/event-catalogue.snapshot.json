@@ -1,10 +1,34 @@
 [
   {
+    "type": "catalog.variant-added.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "type": "catalog.variant-removed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "type": "identity.account-email-verified.v1",
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
       "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-password-changed.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "cause": "enumOf(reset|change)"
     }
   },
   {

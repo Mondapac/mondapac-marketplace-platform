@@ -105,5 +105,8 @@ export function lastSeenIsDue(session: Session, now: Temporal.Instant): boolean 
   return Temporal.Instant.compare(now, due) >= 0;
 }
 
-/** The code of a revocation (data design 3.4: a code, checked by the table's pattern). */
-export type SessionRevokedReason = 'sign-out';
+/**
+ * The code of a revocation (data design 3.4: a code, checked by the table's pattern): sign-out;
+ * a password reset (every session of the account); a password change (every other session).
+ */
+export type SessionRevokedReason = 'sign-out' | 'password-reset' | 'password-changed';

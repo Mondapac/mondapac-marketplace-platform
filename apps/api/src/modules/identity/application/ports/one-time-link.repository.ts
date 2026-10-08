@@ -40,6 +40,19 @@ export interface OneTimeLinkRepository {
     now: Temporal.Instant,
   ): Promise<boolean>;
 
+  /**
+   * Cancels the account's unused link of this purpose, if any: one conditional statement that
+   * clears the token hash and the instants and raises the version, as a new request does, so an
+   * issued link stops working at once and a mail still pending for it is skipped as superseded.
+   * No event is recorded. True when a row changed (Hassan L2, slice 4: a password change cancels
+   * an outstanding reset link).
+   */
+  cancelUnused(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    purpose: LinkPurpose,
+  ): Promise<boolean>;
+
   /** Deletes links consumed or expired before `before` (the hourly purge, data design 9). */
   purgeSpent(market: MarketContext, before: Temporal.Instant): Promise<number>;
 }

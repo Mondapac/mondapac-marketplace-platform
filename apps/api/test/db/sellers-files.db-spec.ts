@@ -295,6 +295,23 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     expect(JSON.stringify(asSystem)).toBe(JSON.stringify(asAnonymous));
   });
 
+  it('answers sellingEligibility false for everyone, whoever calls (stand-in until slice 9)', async () => {
+    const sellerId = await registerSeller(code);
+    const never = new SequenceIdGenerator(clock).next<'Seller'>();
+
+    for (const context of [anonymousContext(code), systemContext(code)]) {
+      const result = await facade().sellingEligibility(context, [sellerId, never]);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect([...result.value]).toEqual([
+          [sellerId, { eligible: false }],
+          [never, { eligible: false }],
+        ]);
+      }
+    }
+  });
+
   it('refuses what the database must refuse: another module`s event type, a file in another Market', async () => {
     const sellerId = await registerSeller(code);
 
@@ -320,5 +337,370 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     await expect(
       sql.query('UPDATE sellers.seller_files SET version = 0 WHERE seller_id = $1', [sellerId]),
     ).rejects.toMatchObject({ code: '23514', constraint: 'seller_files_version_check' });
+  });
+
+  // Slice 2 (migration sellers_file_details; data design 3.1, 3.5, 3.11): what the database holds.
+  describe('slice 2 columns, shop slugs and rate counters', () => {
+    const refuses = (statement: string, params: unknown[], constraint: string) =>
+      expect(sql.query(statement, params)).rejects.toMatchObject({ code: '23514', constraint });
+    const update = (sellerId: string, set: string, params: unknown[] = []) =>
+      sql.query(`UPDATE sellers.seller_files SET ${set} WHERE seller_id = $1`, [
+        sellerId,
+        ...params,
+      ]);
+
+    /**
+     * A well-formed placeholder ciphertext of `length` characters: the v1 envelope shape
+     * ("v1." and base64url; 41 characters is the envelope of an empty plaintext, data design 4.5).
+     */
+    const ciphertext = (length: number) => `v1.${'A'.repeat(length - 3)}`;
+
+    it('holds a complete draft and refuses what its CHECKs refuse', async () => {
+      const sellerId = await registerSeller(code);
+      const zone = code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo';
+
+      await update(
+        sellerId,
+        `store_name = 'Al Noor', store_name_key = 'al noor', business_name_ciphertext = $2,
+         phone_ciphertext = $2, address_ciphertext = $2, service_area_code = 'greater-brisbane',
+         operating_timezone = $3, address_timezone = $3, timezone_source = 'default'`,
+        [ciphertext(41), zone],
+      );
+
+      const bad: [string, unknown[], string][] = [
+        ["store_name = ' padded', store_name_key = 'padded'", [], 'seller_files_store_name_check'],
+        ["store_name = 'padded ', store_name_key = 'padded'", [], 'seller_files_store_name_check'],
+        ["store_name = '', store_name_key = 'a'", [], 'seller_files_store_name_check'],
+        ["store_name = 'a' || chr(1), store_name_key = 'a'", [], 'seller_files_store_name_check'],
+        // U+0085 (C1), U+202E (bidi override), U+061C (Arabic letter mark).
+        ["store_name = 'a' || chr(133), store_name_key = 'a'", [], 'seller_files_store_name_check'],
+        [
+          "store_name = 'a' || chr(8238), store_name_key = 'a'",
+          [],
+          'seller_files_store_name_check',
+        ],
+        [
+          "store_name = 'a' || chr(1564), store_name_key = 'a'",
+          [],
+          'seller_files_store_name_check',
+        ],
+        [
+          "store_name = repeat('a', 101), store_name_key = 'a'",
+          [],
+          'seller_files_store_name_check',
+        ],
+        ['store_name = NULL', [], 'seller_files_store_name_key_pair_check'],
+        ['store_name_key = NULL', [], 'seller_files_store_name_key_pair_check'],
+        ["store_name_key = 'Upper'", [], 'seller_files_store_name_key_check'],
+        ["store_name_key = ' al noor'", [], 'seller_files_store_name_key_check'],
+        ["store_name_key = ''", [], 'seller_files_store_name_key_check'],
+        // U+FB01 (the "fi" ligature) is not NFKC-normalised.
+        ['store_name_key = chr(64257)', [], 'seller_files_store_name_key_check'],
+        ["store_name_key = repeat('a', 401)", [], 'seller_files_store_name_key_check'],
+        ["service_area_code = 'Bad Code'", [], 'seller_files_service_area_code_check'],
+        ["operating_timezone = '+10:00'", [], 'seller_files_operating_timezone_check'],
+        [
+          "operating_timezone = 'Aa/Bb/Cc/Dd', timezone_source = 'seller'",
+          [],
+          'seller_files_operating_timezone_check',
+        ],
+        [
+          "operating_timezone = repeat('A', 65), timezone_source = 'seller'",
+          [],
+          'seller_files_operating_timezone_check',
+        ],
+        [
+          "address_timezone = '+10:00', timezone_source = 'seller'",
+          [],
+          'seller_files_address_timezone_check',
+        ],
+        [
+          "address_timezone = repeat('A', 65), timezone_source = 'seller'",
+          [],
+          'seller_files_address_timezone_check',
+        ],
+        ["timezone_source = 'gps'", [], 'seller_files_timezone_source_check'],
+        ['timezone_source = NULL', [], 'seller_files_timezone_set_check'],
+        ['operating_timezone = NULL', [], 'seller_files_timezone_set_check'],
+        ['address_timezone = NULL', [], 'seller_files_timezone_set_check'],
+        [
+          "timezone_source = 'default', operating_timezone = 'Pacific/Auckland'",
+          [],
+          'seller_files_timezone_default_check',
+        ],
+        ['address_ciphertext = NULL', [], 'seller_files_timezone_address_check'],
+      ];
+      // Every ciphertext column: accepted at its bound, refused one above it, below the empty
+      // envelope (41) and in any other shape.
+      const bounds = [
+        ['business_name', 2048],
+        ['phone', 512],
+        ['contact_email', 2048],
+        ['address', 16384],
+        ['registered_address', 16384],
+      ] as const;
+      for (const [column, bound] of bounds) {
+        const constraint = `seller_files_${column}_ciphertext_check`;
+        await update(sellerId, `${column}_ciphertext = $2`, [ciphertext(bound)]);
+        bad.push(
+          [`${column}_ciphertext = $2`, [ciphertext(bound + 1)], constraint],
+          [`${column}_ciphertext = $2`, [ciphertext(40)], constraint],
+          [`${column}_ciphertext = $2`, ['x'.repeat(41)], constraint],
+          [`${column}_ciphertext = $2`, [`v1.${'/'.repeat(38)}`], constraint],
+          [`${column}_ciphertext = ''`, [], constraint],
+        );
+      }
+      for (const [set, params, constraint] of bad) {
+        await refuses(
+          `UPDATE sellers.seller_files SET ${set} WHERE seller_id = $1`,
+          [sellerId, ...params],
+          constraint,
+        );
+      }
+      // A chosen zone may differ from the address zone once the source says so.
+      await update(sellerId, `operating_timezone = 'Pacific/Auckland', timezone_source = 'seller'`);
+
+      // The plain prefix-search index (A6) exists as Prisma declares it.
+      const index = await owner.query<{ indexdef: string }>(
+        `SELECT indexdef FROM pg_indexes
+          WHERE schemaname = 'sellers' AND indexname = 'seller_files_market_id_store_name_key_idx'`,
+      );
+      expect(index.rows.map((row) => row.indexdef)).toEqual([
+        'CREATE INDEX seller_files_market_id_store_name_key_idx ON sellers.seller_files USING btree (market_id, store_name_key)',
+      ]);
+    });
+
+    it('stores slugs with the C collation, unique per Market, one held per seller, never deleted', async () => {
+      const sellerId = await registerSeller(code);
+      const insert = (market: string, slug: string, seller: string, state = 'held', ever = false) =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, now(),
+                   CASE WHEN $5 = 'retired' THEN now() END, 1, now())`,
+          [randomUUID(), market, slug, seller, state, ever],
+        );
+      /** An insert with every column given, for the CHECKs a normal insert cannot reach. */
+      const insertRaw = (row: {
+        market?: string;
+        slug?: string;
+        state?: string;
+        ever?: boolean;
+        retiredAt?: string | null;
+        version?: number;
+      }) =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, now(), $7::timestamptz, $8, now())`,
+          [
+            randomUUID(),
+            row.market ?? code,
+            row.slug ?? `raw-${randomUUID().slice(0, 8)}`,
+            randomUUID(),
+            row.state ?? 'held',
+            row.ever ?? false,
+            row.retiredAt ?? null,
+            row.version ?? 1,
+          ],
+        );
+      const slug = `shop-${randomUUID().slice(0, 8)}`;
+
+      await insert(code, slug, sellerId);
+      await expect(insert(code, slug, randomUUID())).rejects.toMatchObject({
+        code: '23505',
+        constraint: 'shop_slugs_market_id_slug_key',
+      });
+      await expect(insert(code, `${slug}x`, sellerId)).rejects.toMatchObject({
+        code: '23505',
+        constraint: 'shop_slugs_market_id_seller_id_held_key',
+      });
+      // The same slug in the other Market is another key.
+      await insert(other, slug, randomUUID());
+      for (const [bad, constraint] of [
+        ['Has-Upper', 'shop_slugs_slug_check'],
+        ['ab', 'shop_slugs_slug_check'],
+        ['a--b', 'shop_slugs_slug_check'],
+        ['-abc', 'shop_slugs_slug_check'],
+        ['abc-', 'shop_slugs_slug_check'],
+        ['ab_c', 'shop_slugs_slug_check'],
+        ['a'.repeat(51), 'shop_slugs_slug_check'],
+      ] as const) {
+        await expect(insert(code, bad, randomUUID())).rejects.toMatchObject({ constraint });
+      }
+      // 3 and 50 characters are accepted.
+      const short = randomUUID().slice(0, 3);
+      await insert(code, short, randomUUID());
+      // The application role cannot delete; the owner removes the row so a re-run cannot clash.
+      await owner.query('DELETE FROM sellers.shop_slugs WHERE market_id = $1 AND slug = $2', [
+        code,
+        short,
+      ]);
+      await insert(code, `${'a'.repeat(42)}${randomUUID().slice(0, 8)}`, randomUUID());
+
+      const raw: [Parameters<typeof insertRaw>[0], string][] = [
+        [{ state: 'retired', ever: true, retiredAt: null }, 'shop_slugs_retired_at_check'],
+        [{ state: 'held', retiredAt: new Date().toISOString() }, 'shop_slugs_retired_at_check'],
+        [
+          { state: 'retired', ever: true, retiredAt: '2000-01-01T00:00:00Z' },
+          'shop_slugs_retired_at_check',
+        ],
+        [{ state: 'bogus', ever: true }, 'shop_slugs_state_check'],
+        [{ version: 0 }, 'shop_slugs_version_check'],
+        [{ market: 'au' }, 'shop_slugs_market_id_check'],
+      ];
+      for (const [row, constraint] of raw) {
+        await expect(insertRaw(row)).rejects.toMatchObject({ code: '23514', constraint });
+      }
+
+      // Only a slug that was ever public can be retired.
+      await expect(insert(code, `${slug}r`, randomUUID(), 'retired', false)).rejects.toMatchObject({
+        constraint: 'shop_slugs_ever_public_check',
+      });
+      await insert(code, `${slug}r`, randomUUID(), 'retired', true);
+      await expect(
+        sql.query('DELETE FROM sellers.shop_slugs WHERE slug = $1', [slug]),
+      ).rejects.toMatchObject({ code: '42501' });
+      await expect(
+        sql.query('UPDATE sellers.shop_slugs SET slug = $2 WHERE slug = $1', [slug, 'other']),
+      ).rejects.toMatchObject({ code: '42501' });
+      await expect(
+        sql.query(
+          'UPDATE sellers.shop_slugs SET seller_id = $3 WHERE market_id = $1 AND slug = $2',
+          [code, slug, randomUUID()],
+        ),
+      ).rejects.toMatchObject({ code: '42501' });
+
+      // The application retires the held slug through the granted columns; the seller may then
+      // hold another one, and nobody may hold the retired one again.
+      const retired = await sql.query(
+        `UPDATE sellers.shop_slugs SET state = 'retired', retired_at = now(), ever_public = true,
+                version = version + 1
+          WHERE market_id = $1 AND slug = $2 AND state = 'held'`,
+        [code, slug],
+      );
+      expect(retired.rowCount).toBe(1);
+      const next = `${slug}n`;
+      await insert(code, next, sellerId);
+      await expect(insert(code, slug, randomUUID())).rejects.toMatchObject({
+        code: '23505',
+        constraint: 'shop_slugs_market_id_slug_key',
+      });
+      // One held slug per seller and Market: the same seller id holds one in the other Market.
+      await insert(other, `${slug}m`, sellerId);
+
+      // One-way columns (Hassan L1): ever_public is never set back, a retired slug never returns.
+      await sql.query(
+        'UPDATE sellers.shop_slugs SET ever_public = true WHERE market_id = $1 AND slug = $2',
+        [code, next],
+      );
+      await expect(
+        sql.query(
+          'UPDATE sellers.shop_slugs SET ever_public = false WHERE market_id = $1 AND slug = $2',
+          [code, next],
+        ),
+      ).rejects.toMatchObject({ code: '23001' });
+      await expect(
+        sql.query(
+          `UPDATE sellers.shop_slugs SET state = 'held', retired_at = NULL
+            WHERE market_id = $1 AND slug = $2`,
+          [code, slug],
+        ),
+      ).rejects.toMatchObject({ code: '23001' });
+
+      const collation = await owner.query(
+        `SELECT a.attname, c.collname FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+           JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_collation c ON c.oid = a.attcollation
+          WHERE n.nspname = 'sellers' AND ((t.relname = 'shop_slugs' AND a.attname = 'slug')
+             OR (t.relname = 'seller_files' AND a.attname = 'store_name_key'))
+          ORDER BY a.attname`,
+      );
+      expect(collation.rows.map((row: { collname: string }) => row.collname)).toEqual(['C', 'C']);
+    });
+
+    it('counts in rate_counters with the closed kind list, a 32-byte key and a guarded decrement', async () => {
+      const key = Buffer.alloc(32, 7);
+      const reserve = (
+        kind: string,
+        hash: Buffer = key,
+        marketCode: string = code,
+        tenant = 'default',
+      ) =>
+        sql.query<{ count: number; window_started_at: string }>(
+          `INSERT INTO sellers.rate_counters (market_id, tenant_id, kind, key_hash, window_started_at, count)
+           VALUES ($1, $4, $2, $3, now(), 1)
+           ON CONFLICT (market_id, kind, key_hash) DO UPDATE SET count = sellers.rate_counters.count + 1
+           RETURNING count, window_started_at::text`,
+          [marketCode, kind, hash, tenant],
+        );
+      const kinds = [
+        'slug-check.account.minute',
+        'slug-check.account.day',
+        'save.account.minute',
+        'save.account.day',
+        'lookup.account',
+        'lookup.origin',
+        'lookup.market',
+        'lookup.admin',
+        'submit.file',
+        'withdraw.file',
+        'bulk.admin',
+        'reviewer-notice.seller',
+        'reviewer-notice.market',
+      ];
+      try {
+        for (const kind of kinds) expect((await reserve(kind)).rows[0]!.count).toBe(1);
+        expect((await reserve('save.account.day')).rows[0]!.count).toBe(2);
+        // The same kind and key in the other Market is another row.
+        expect((await reserve('save.account.day', key, other)).rows[0]!.count).toBe(1);
+        await expect(reserve('unknown.kind')).rejects.toMatchObject({
+          constraint: 'rate_counters_kind_check',
+        });
+        await expect(reserve('save.account.day', Buffer.alloc(31))).rejects.toMatchObject({
+          constraint: 'rate_counters_key_hash_check',
+        });
+        await expect(reserve('save.account.day', Buffer.alloc(33))).rejects.toMatchObject({
+          constraint: 'rate_counters_key_hash_check',
+        });
+        await expect(reserve('save.account.day', key, 'au')).rejects.toMatchObject({
+          constraint: 'rate_counters_market_id_check',
+        });
+        await expect(reserve('save.account.day', key, code, 'Default')).rejects.toMatchObject({
+          constraint: 'rate_counters_tenant_id_check',
+        });
+
+        // The release of a reviewer-notice reservation (3.11): only in the window the
+        // reservation returned, and never below zero.
+        const reserved = await reserve('reviewer-notice.seller');
+        expect(reserved.rows[0]!.count).toBe(2);
+        // As text: a JS Date would drop the microseconds of the stored instant.
+        const window = reserved.rows[0]!.window_started_at;
+        const release = (windowStartedAt: string, shiftSeconds = 0) =>
+          sql.query(
+            `UPDATE sellers.rate_counters SET count = count - 1
+              WHERE market_id = $1 AND kind = 'reviewer-notice.seller' AND key_hash = $2
+                AND window_started_at = $3::timestamptz - make_interval(secs => $4)
+                AND count > 0`,
+            [code, key, windowStartedAt, shiftSeconds],
+          );
+        // A stale window (the window restarted since the reservation) is never touched.
+        expect((await release(window, 1)).rowCount).toBe(0);
+        expect((await release(window)).rowCount).toBe(1);
+        expect((await release(window)).rowCount).toBe(1);
+        expect((await release(window)).rowCount).toBe(0);
+        await expect(
+          sql.query(
+            `UPDATE sellers.rate_counters SET count = -1
+              WHERE market_id = $1 AND kind = 'submit.file' AND key_hash = $2`,
+            [code, key],
+          ),
+        ).rejects.toMatchObject({ constraint: 'rate_counters_count_check' });
+      } finally {
+        await sql.query(
+          'DELETE FROM sellers.rate_counters WHERE market_id IN ($1, $2) AND key_hash = $3',
+          [code, other, key],
+        );
+      }
+    });
   });
 });

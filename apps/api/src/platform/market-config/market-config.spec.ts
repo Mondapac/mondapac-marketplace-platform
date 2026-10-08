@@ -40,11 +40,12 @@ const VALID = {
     },
     signInRecordRetentionDays: 90,
     links: {
-      lifetimeMinutes: { 'verify-email': 1440 },
+      lifetimeMinutes: { 'verify-email': 1440, 'reset-password': 60 },
       targets: {
         customer: {
           'verify-email': 'https://shop.qq.test/confirm-email',
           'sign-in': 'https://shop.qq.test/sign-in',
+          'reset-password': 'https://shop.qq.test/reset-password',
         },
       },
     },
@@ -202,17 +203,64 @@ describe('loadMarketConfigs', () => {
       {
         identity: {
           ...IDENTITY,
-          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 1441 } },
+          links: {
+            ...IDENTITY.links,
+            lifetimeMinutes: { 'verify-email': 1441, 'reset-password': 60 },
+          },
         },
       },
       /identity\.links\.lifetimeMinutes\.verify-email/,
+    ],
+    [
+      'a reset link that is not exactly 60 minutes (SEL-05, ACC-04)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            lifetimeMinutes: { 'verify-email': 1440, 'reset-password': 30 },
+          },
+        },
+      },
+      /identity\.links\.lifetimeMinutes\.reset-password/,
+    ],
+    [
+      'no reset link lifetime',
+      {
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 1440 } },
+        },
+      },
+      /identity\.links\.lifetimeMinutes\.reset-password/,
+    ],
+    [
+      'no reset page for the customer',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: {
+                'verify-email': 'https://shop.qq.test/confirm-email',
+                'sign-in': 'https://shop.qq.test/sign-in',
+              },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.reset-password/,
     ],
     [
       'a link lifetime of zero',
       {
         identity: {
           ...IDENTITY,
-          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 0 } },
+          links: {
+            ...IDENTITY.links,
+            lifetimeMinutes: { 'verify-email': 0, 'reset-password': 60 },
+          },
         },
       },
       /identity\.links\.lifetimeMinutes/,
@@ -308,13 +356,140 @@ describe('loadMarketConfigs', () => {
     const identity = {
       ...IDENTITY,
       links: {
-        lifetimeMinutes: { 'verify-email': 1440 },
+        lifetimeMinutes: { 'verify-email': 1440, 'reset-password': 60 },
         targets: { customer: { ...IDENTITY.links.targets.customer, 'verify-email': page } },
       },
     };
     const directory = directoryWith({ 'QQ.json': { ...VALID, identity } });
 
     expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links).toEqual(identity.links);
+  });
+
+  describe('the admin link targets (identity design 8.7, the reviewer notice)', () => {
+    const SELLER_PAGES = {
+      'verify-email': 'https://seller.qq.test/confirm-email',
+      'sign-in': 'https://seller.qq.test/sign-in',
+      'reset-password': 'https://seller.qq.test/reset-password',
+    };
+    const QUEUE = 'https://admin.qq.test/sellers/awaiting-review';
+
+    function withTargets(targets: Record<string, unknown>) {
+      return {
+        ...VALID,
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, targets: { ...IDENTITY.links.targets, ...targets } },
+        },
+      };
+    }
+
+    it('configures the review queue page for both test Markets, on an origin of its own', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+
+      for (const market of markets.values()) {
+        const { admin, seller, customer } = market.identity.links.targets;
+        expect(admin?.['seller-review-queue']).toMatch(/^https:\/\//);
+        const queueOrigin = new URL(admin!['seller-review-queue']).origin;
+        for (const page of [...Object.values(seller ?? {}), ...Object.values(customer)]) {
+          expect(new URL(page).origin).not.toBe(queueOrigin);
+        }
+      }
+    });
+
+    it('accepts seller targets together with the admin review queue page', () => {
+      const directory = directoryWith({
+        'QQ.json': withTargets({ seller: SELLER_PAGES, admin: { 'seller-review-queue': QUEUE } }),
+      });
+
+      expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links.targets.admin).toEqual({
+        'seller-review-queue': QUEUE,
+      });
+    });
+
+    it('accepts a Market without seller sign-up and without admin targets', () => {
+      const directory = directoryWith({ 'QQ.json': VALID });
+
+      expect(
+        loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links.targets.admin,
+      ).toBeUndefined();
+    });
+
+    it.each([
+      [
+        'seller targets without the admin review queue page (boot fails, not a mail)',
+        { seller: SELLER_PAGES },
+        /identity\.links\.targets\.admin: admin\.seller-review-queue is required/,
+      ],
+      [
+        'an admin targets section without the review queue page',
+        { seller: SELLER_PAGES, admin: {} },
+        /identity\.links\.targets\.admin\.seller-review-queue/,
+      ],
+      [
+        'the review queue page under the seller population (admin only)',
+        { seller: { ...SELLER_PAGES, 'seller-review-queue': QUEUE } },
+        /identity\.links\.targets\.seller/,
+      ],
+      [
+        'the review queue page under the customer population (admin only)',
+        { customer: { ...IDENTITY.links.targets.customer, 'seller-review-queue': QUEUE } },
+        /identity\.links\.targets\.customer/,
+      ],
+      [
+        'a seller page under the admin population',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': QUEUE, 'sign-in': QUEUE } },
+        /identity\.links\.targets\.admin/,
+      ],
+      [
+        'an admin page on the seller panel origin (Hassan I1)',
+        {
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'https://seller.qq.test/admin/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its origin/,
+      ],
+      [
+        'an admin page on the storefront origin (Hassan I1)',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'https://shop.qq.test/queue' } },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its origin/,
+      ],
+      [
+        'an admin page on the seller host under another port (Hassan I-1)',
+        {
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'https://seller.qq.test:8443/admin/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its host name/,
+      ],
+      [
+        'an admin page on a loopback storefront host under another port (Hassan I-1)',
+        {
+          customer: {
+            'verify-email': 'http://localhost:3001/confirm-email',
+            'sign-in': 'http://localhost:3001/sign-in',
+            'reset-password': 'http://localhost:3001/reset-password',
+          },
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'http://localhost:3002/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its host name/,
+      ],
+      [
+        'an admin page with a fragment',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'https://admin.qq.test/q#x' } },
+        /identity\.links\.targets\.admin\.seller-review-queue/,
+      ],
+      [
+        'an admin page over plain http on a public host',
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'http://admin.qq.test/q' } },
+        /identity\.links\.targets\.admin\.seller-review-queue/,
+      ],
+    ])('rejects %s', (_case, targets, message) => {
+      const directory = directoryWith({ 'QQ.json': withTargets(targets) });
+
+      expect(() => loadMarketConfigs([directory], [QQ])).toThrow(InvalidMarketConfigError);
+      expect(() => loadMarketConfigs([directory], [QQ])).toThrow(message);
+    });
   });
 
   describe('the sellers section', () => {
@@ -331,9 +506,13 @@ describe('loadMarketConfigs', () => {
         postcodePattern: '^[0-9]{5}$',
         regions: ['N', 'S'],
       },
+      reservedWords: { slugs: ['admin'], claimWords: ['gold'] },
       timezones: {
-        byRegion: { N: 'Pacific/Auckland', S: 'Pacific/Auckland' },
-        postcodeExceptions: [{ postcodes: ['90000-90010', '90020'], timezone: 'Pacific/Chatham' }],
+        countries: ['NZ'],
+        byRegion: {
+          N: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland', 'Pacific/Chatham'] },
+          S: { default: 'Pacific/Auckland', selectable: ['Pacific/Auckland'] },
+        },
       },
     };
     const withSellers = (sellers: unknown) => directoryWith({ 'QQ.json': { ...VALID, sellers } });
@@ -367,7 +546,79 @@ describe('loadMarketConfigs', () => {
       );
     });
 
+    it('lists, in every region of both fixtures, a default inside selectable; one ZZ region has two zones', () => {
+      const fixtures = [...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values()];
+      const regions = fixtures.flatMap((market) =>
+        Object.values(market.sellers?.timezones.byRegion ?? {}),
+      );
+
+      expect(regions.length).toBeGreaterThan(0);
+      for (const zones of regions) expect(zones.selectable).toContain(zones.default);
+      const synthetic = fixtures.find((market) => market.code !== 'AU');
+      expect(
+        Object.values(synthetic?.sellers?.timezones.byRegion ?? {}).some(
+          (zones) => zones.selectable.length > 1,
+        ),
+      ).toBe(true);
+    });
+
+    it('lists different reserved words in the two Market fixtures', () => {
+      const [first, second] = [
+        ...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values(),
+      ];
+
+      expect(first?.sellers?.reservedWords.claimWords.length).toBeGreaterThan(0);
+      expect(first?.sellers?.reservedWords.claimWords).not.toEqual(
+        second?.sellers?.reservedWords.claimWords,
+      );
+    });
+
     it.each([
+      [
+        'no reserved words: a Market never defaults them',
+        (c: typeof SELLERS) => void delete (c as { reservedWords?: unknown }).reservedWords,
+        /reservedWords/,
+      ],
+      [
+        'a hyphenated claim word, which could never match a token',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('non-gmo'),
+        /lower-case letters only/,
+      ],
+      [
+        'an empty claim word list, which would switch the claim check off',
+        (c: typeof SELLERS) => void (c.reservedWords.claimWords = []),
+        /expected array to have >=1 items/,
+      ],
+      [
+        'a repeated claim word',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('gold'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a repeated reserved slug',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('admin'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a reserved slug longer than 50 characters',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('a'.repeat(51)),
+        /too big|<=50/,
+      ],
+      [
+        'an unknown key in reservedWords',
+        (c: typeof SELLERS) => void ((c.reservedWords as Record<string, unknown>).extra = []),
+        /unrecognized/i,
+      ],
+      [
+        'a reserved word that is not a slug token',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('Not A Token'),
+        /lower-case letters, digits and single hyphens/,
+      ],
+      [
+        'a claim word with upper case',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('Gold2'),
+        /lower-case letters only/,
+      ],
       [
         'no approval policy: a Market never defaults it',
         (c: typeof SELLERS) => void delete (c as { approvalRequired?: boolean }).approvalRequired,
@@ -375,18 +626,79 @@ describe('loadMarketConfigs', () => {
       ],
       [
         'an unknown time zone',
-        (c: typeof SELLERS) => void (c.timezones.byRegion.N = 'Mars/Olympus'),
-        /byRegion/,
+        (c: typeof SELLERS) => void (c.timezones.byRegion.N.selectable[1] = 'Mars/Olympus'),
+        /IANA time zone/,
+      ],
+      [
+        'a default that is not in the selectable list',
+        (c: typeof SELLERS) => void (c.timezones.byRegion.S.default = 'Pacific/Chatham'),
+        /default must be one of selectable/,
+      ],
+      [
+        'a selectable list that repeats a zone',
+        (c: typeof SELLERS) => void c.timezones.byRegion.S.selectable.push('Pacific/Auckland'),
+        /must not repeat/,
+      ],
+      [
+        'an empty selectable list',
+        (c: typeof SELLERS) => void (c.timezones.byRegion.S.selectable = []),
+        /expected array to have >=1 items/,
+      ],
+      [
+        'a backward link instead of the canonical zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Australia/NSW';
+          c.timezones.byRegion.S.selectable = ['Australia/NSW'];
+        },
+        /IANA time zone/,
+      ],
+      [
+        'a zone of another country than timezones.countries',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Asia/Tokyo';
+          c.timezones.byRegion.S.selectable = ['Asia/Tokyo'];
+        },
+        /does not belong to any of timezones.countries/,
+      ],
+      [
+        'a country with no zones',
+        (c: typeof SELLERS) => void (c.timezones.countries = ['NZ', 'XX']),
+        /no time zones in the runtime/,
+      ],
+      ['no countries', (c: typeof SELLERS) => void (c.timezones.countries = []), /timezones/],
+      [
+        'a country that is not an ISO code',
+        (c: typeof SELLERS) => void (c.timezones.countries = ['nz']),
+        /ISO 3166-1/,
+      ],
+      [
+        'an Etc zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = 'Etc/GMT+5';
+          c.timezones.byRegion.S.selectable = ['Etc/GMT+5'];
+        },
+        /IANA time zone/,
+      ],
+      [
+        'an offset instead of a zone',
+        (c: typeof SELLERS) => {
+          c.timezones.byRegion.S.default = '+10:00';
+          c.timezones.byRegion.S.selectable = ['+10:00'];
+        },
+        /IANA time zone/,
       ],
       [
         'a region without a zone',
-        (c: typeof SELLERS) => void delete (c.timezones.byRegion as Record<string, string>).S,
+        (c: typeof SELLERS) => void delete (c.timezones.byRegion as Record<string, unknown>).S,
         /exactly the regions/,
       ],
       [
         'a zone for an unknown region',
         (c: typeof SELLERS) =>
-          void ((c.timezones.byRegion as Record<string, string>).X = 'Asia/Tokyo'),
+          void ((c.timezones.byRegion as Record<string, unknown>).X = {
+            default: 'Asia/Tokyo',
+            selectable: ['Asia/Tokyo'],
+          }),
         /exactly the regions/,
       ],
       [
@@ -413,36 +725,6 @@ describe('loadMarketConfigs', () => {
         'a region field without regions',
         (c: typeof SELLERS) => void (c.address.regions = []),
         /regionField/,
-      ],
-      [
-        'a malformed exception postcode',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['9-!']),
-        /not a postcode/,
-      ],
-      [
-        'an exception range with ends of different length',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['999-9999']),
-        /same length, low to high/,
-      ],
-      [
-        'an exception range written high to low',
-        (c: typeof SELLERS) =>
-          void (c.timezones.postcodeExceptions[0]!.postcodes = ['90010-90000']),
-        /same length, low to high/,
-      ],
-      [
-        'an exception postcode the pattern does not accept',
-        (c: typeof SELLERS) => void (c.timezones.postcodeExceptions[0]!.postcodes = ['ABC']),
-        /must match address.postcodePattern/,
-      ],
-      [
-        'two exceptions that claim one postcode',
-        (c: typeof SELLERS) =>
-          void c.timezones.postcodeExceptions.push({
-            postcodes: ['90005'],
-            timezone: 'Pacific/Auckland',
-          }),
-        /only one exception/,
       ],
       [
         'a pattern that backtracks catastrophically',
@@ -504,6 +786,50 @@ describe('loadMarketConfigs', () => {
 
     it('rejects an unknown key', () => {
       expect(() => loadMarketConfigs([withSellers({ ...SELLERS, vatRate: 1 })], [QQ])).toThrow(
+        InvalidMarketConfigError,
+      );
+    });
+  });
+
+  describe('the inventory section', () => {
+    const withInventory = (inventory: unknown) =>
+      directoryWith({ 'QQ.json': { ...VALID, inventory } });
+
+    it('is optional for a Market that does not host inventory', () => {
+      expect(
+        loadMarketConfigs([directoryWith({ 'QQ.json': VALID })], [QQ]).get(QQ)?.inventory,
+      ).toBeUndefined();
+    });
+
+    it.each([1, 4])('carries the source limit %i', (limit) => {
+      const loaded = loadMarketConfigs([withInventory({ maxSourcesPerSeller: limit })], [QQ]).get(
+        QQ,
+      );
+
+      expect(loaded?.inventory?.maxSourcesPerSeller).toBe(limit);
+    });
+
+    it('gives the two Market fixtures different limits (AC 13)', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const limits = TEST_MARKET_IDS.map((id) => configs.get(id)?.inventory?.maxSourcesPerSeller);
+
+      expect(Object.fromEntries(TEST_MARKET_IDS.map((id, i) => [id, limits[i]]))).toEqual({
+        AU: 4,
+        ZZ: 2,
+      });
+    });
+
+    it.each([
+      ['a missing limit', {}],
+      ['zero sources', { maxSourcesPerSeller: 0 }],
+      ['more sources than the re-key lock set allows', { maxSourcesPerSeller: 5 }],
+      ['a negative limit', { maxSourcesPerSeller: -1 }],
+      ['a null limit', { maxSourcesPerSeller: null }],
+      ['a string limit', { maxSourcesPerSeller: '4' }],
+      ['a fractional limit', { maxSourcesPerSeller: 2.5 }],
+      ['an unknown key', { maxSourcesPerSeller: 4, reservationMinutes: 15 }],
+    ])('rejects %s', (_case, inventory) => {
+      expect(() => loadMarketConfigs([withInventory(inventory)], [QQ])).toThrow(
         InvalidMarketConfigError,
       );
     });

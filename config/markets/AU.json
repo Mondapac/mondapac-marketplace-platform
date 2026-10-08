@@ -35,15 +35,20 @@
     },
     "signInRecordRetentionDays": 90,
     "links": {
-      "lifetimeMinutes": { "verify-email": 1440 },
+      "lifetimeMinutes": { "verify-email": 1440, "reset-password": 60 },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
-          "sign-in": "https://storefront.au.mondapac.test/account/sign-in"
+          "sign-in": "https://storefront.au.mondapac.test/account/sign-in",
+          "reset-password": "https://storefront.au.mondapac.test/account/reset-password"
         },
         "seller": {
           "verify-email": "https://seller.au.mondapac.test/confirm-email",
-          "sign-in": "https://seller.au.mondapac.test/sign-in"
+          "sign-in": "https://seller.au.mondapac.test/sign-in",
+          "reset-password": "https://seller.au.mondapac.test/reset-password"
+        },
+        "admin": {
+          "seller-review-queue": "https://admin.au.mondapac.test/sellers/awaiting-review"
         }
       }
     },
@@ -93,18 +98,96 @@
       "postcodePattern": "^[0-9]{4}$",
       "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
     },
+    "reservedWords": {
+      "slugs": [
+        "about",
+        "account",
+        "admin",
+        "api",
+        "app",
+        "assets",
+        "blog",
+        "cart",
+        "categories",
+        "category",
+        "checkout",
+        "contact",
+        "dashboard",
+        "help",
+        "login",
+        "logout",
+        "mondapac",
+        "orders",
+        "platform",
+        "privacy",
+        "product",
+        "products",
+        "register",
+        "search",
+        "seller",
+        "sellers",
+        "settings",
+        "shop",
+        "shops",
+        "signin",
+        "signup",
+        "static",
+        "store",
+        "stores",
+        "support",
+        "terms"
+      ],
+      "claimWords": [
+        "mondapac",
+        "authentic",
+        "certified",
+        "halal",
+        "kosher",
+        "official",
+        "organic",
+        "vegan",
+        "verified"
+      ]
+    },
     "timezones": {
+      "countries": ["AU"],
       "byRegion": {
-        "ACT": "Australia/Sydney",
-        "NSW": "Australia/Sydney",
-        "NT": "Australia/Darwin",
-        "QLD": "Australia/Brisbane",
-        "SA": "Australia/Adelaide",
-        "TAS": "Australia/Hobart",
-        "VIC": "Australia/Melbourne",
-        "WA": "Australia/Perth"
-      },
-      "postcodeExceptions": []
+        "ACT": {
+          "default": "Australia/Sydney",
+          "selectable": ["Australia/Sydney"]
+        },
+        "NSW": {
+          "default": "Australia/Sydney",
+          "selectable": ["Australia/Sydney", "Australia/Broken_Hill", "Australia/Lord_Howe"]
+        },
+        "NT": {
+          "default": "Australia/Darwin",
+          "selectable": ["Australia/Darwin"]
+        },
+        "QLD": {
+          "default": "Australia/Brisbane",
+          "selectable": ["Australia/Brisbane", "Australia/Lindeman"]
+        },
+        "SA": {
+          "default": "Australia/Adelaide",
+          "selectable": ["Australia/Adelaide"]
+        },
+        "TAS": {
+          "default": "Australia/Hobart",
+          "selectable": ["Australia/Hobart"]
+        },
+        "VIC": {
+          "default": "Australia/Melbourne",
+          "selectable": ["Australia/Melbourne"]
+        },
+        "WA": {
+          "default": "Australia/Perth",
+          "selectable": ["Australia/Perth", "Australia/Eucla"]
+        }
+      }
     }
+  },
+  "inventory": {
+    "maxSourcesPerSeller": 4
   }
 }

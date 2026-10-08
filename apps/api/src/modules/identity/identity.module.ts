@@ -18,6 +18,7 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { AccountAuthorisationCheck } from './application/access/account-authorisation-check';
 import { SessionAuthenticator } from './application/access/session-authenticator';
+import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
 import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
 import { COMMON_PASSWORD_LIST } from './application/ports/common-password-list';
 import { IDENTITY_MAIL_COMPOSER } from './application/ports/identity-mails';
@@ -44,23 +45,28 @@ import {
 } from './application/ports/session-secrets';
 import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.repository';
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
+import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { ConfirmCustomerEmail } from './application/use-cases/confirm-customer-email.use-case';
 import { ConfirmSellerEmail } from './application/use-cases/confirm-seller-email.use-case';
 import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
+import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { PurgeUnverifiedAccounts } from './application/use-cases/purge-unverified-accounts.use-case';
 import { RegisterCustomer } from './application/use-cases/register-customer.use-case';
 import { RegisterSeller } from './application/use-cases/register-seller.use-case';
 import { RequestCustomerVerification } from './application/use-cases/request-customer-verification.use-case';
+import { RequestPasswordReset } from './application/use-cases/request-password-reset.use-case';
 import { RequestSellerVerification } from './application/use-cases/request-seller-verification.use-case';
+import { ResetPassword } from './application/use-cases/reset-password.use-case';
 import { SeedSystemRoles } from './application/use-cases/seed-system-roles.use-case';
 import { SellerAccessOf } from './application/use-cases/seller-access-of.use-case';
 import { SellerAccessOfSystem } from './application/use-cases/seller-access-of-system.use-case';
 import { SendExistingAccountMail } from './application/use-cases/send-existing-account-mail.use-case';
 import { SendLinkMail } from './application/use-cases/send-link-mail.use-case';
+import { SendPasswordChangedMail } from './application/use-cases/send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './application/use-cases/send-welcome-mail.use-case';
 import { SignInCustomer } from './application/use-cases/sign-in-customer.use-case';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
@@ -73,9 +79,11 @@ import { linkProviders } from './infrastructure/links/link-providers';
 import { MarketConfigIdentityPolicy } from './infrastructure/market-config-identity-policy';
 import { Argon2idPasswordHasher } from './infrastructure/passwords/argon2id-password-hasher';
 import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-common-passwords';
+import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
+import { CustomerPasswordController } from './presentation/customer-password.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
 import { CustomerSignUpController } from './presentation/customer-sign-up.controller';
 import { IdentityFacadeImplementation } from './presentation/identity.facade';
@@ -83,6 +91,7 @@ import { SellerAccessContractImplementation } from './presentation/seller-access
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified-accounts.job';
 import { seedSystemRolesJob } from './presentation/jobs/seed-system-roles.job';
+import { SellerPasswordController } from './presentation/seller-password.controller';
 import { SellerSessionController } from './presentation/seller-session.controller';
 import { SellerSignUpController } from './presentation/seller-sign-up.controller';
 import { identityMailSubscriptions } from './presentation/subscribers/mail.subscriptions';
@@ -100,6 +109,7 @@ const PORT = {
   records: SIGN_IN_RECORD_REPOSITORY,
   links: ONE_TIME_LINK_REPOSITORY,
   sellerAccess: SELLER_ACCESS_REPOSITORY,
+  reviewers: ACCESS_REVIEWERS,
   memberships: SELLER_MEMBERSHIP_REPOSITORY,
   roles: ROLE_REPOSITORY,
   assignments: ROLE_ASSIGNMENT_REPOSITORY,
@@ -160,6 +170,12 @@ function useCaseProvider<D, U>(
  * seller self-registration, sign-in, email confirmation, "send it again" and status, with their
  * two controllers; `membershipOf`, `sellerAccessOf` (its two use cases) and the registered
  * seller paging behind the facade; the welcome mail handler; and the `identity.seed-roles` job.
+ *
+ * Slice 4 binds the password reset request, the reset with a link and the signed-in change, with
+ * one controller per population, and the "password changed" mail handler.
+ *
+ * R-3 binds the reviewer read and the reviewer notice behind the seller-access contract
+ * (identity design 8.7). No subscription sends it: only `sellers` calls it, after a submission.
  */
 @Module({
   controllers: [
@@ -168,6 +184,8 @@ function useCaseProvider<D, U>(
     CustomerEmailVerificationController,
     SellerSignUpController,
     SellerSessionController,
+    CustomerPasswordController,
+    SellerPasswordController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('identity'),
@@ -183,6 +201,7 @@ function useCaseProvider<D, U>(
     ...sessionProviders,
     ...linkProviders,
     ...sellerProviders,
+    ...reviewerProviders,
     {
       provide: AUTHENTICATOR,
       inject: [UNIT_OF_WORK, SESSION_REPOSITORY, SESSION_TOKENS, CLOCK],
@@ -372,6 +391,15 @@ function useCaseProvider<D, U>(
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(SellerAccessOfSystem, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(ListRegisteredSellers, { unitOfWork: true, sellerAccess: true }),
+    useCaseProvider(NotifyAccessReviewers, {
+      unitOfWork: true,
+      sellerAccess: true,
+      reviewers: true,
+      targets: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
     useCaseProvider(SeedSystemRoles, {
       unitOfWork: true,
       roles: true,
@@ -387,6 +415,56 @@ function useCaseProvider<D, U>(
       transport: true,
       policy: true,
     }),
+    useCaseProvider(RequestPasswordReset, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ResetPassword, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      sessions: true,
+      throttles: true,
+      records: true,
+      ids: true,
+      keys: true,
+      linkTokens: true,
+      outbox: true,
+      hasher: true,
+      commonPasswords: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(ChangePassword, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      links: true,
+      throttles: true,
+      records: true,
+      ids: true,
+      keys: true,
+      tokens: true,
+      outbox: true,
+      hasher: true,
+      commonPasswords: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(SendPasswordChangedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
     {
       provide: IDENTITY_FACADE,
       inject: [DescribeActor, MembershipOf],
@@ -394,20 +472,22 @@ function useCaseProvider<D, U>(
         new IdentityFacadeImplementation({ describeActor, membershipOf }),
     },
     {
-      // The two calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
+      // The calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
       // imported through a contract file that is not in index.ts and that a boundary rule
       // limits to modules/sellers/.
       provide: SELLER_ACCESS_CONTRACT,
-      inject: [SellerAccessOf, SellerAccessOfSystem, ListRegisteredSellers],
+      inject: [SellerAccessOf, SellerAccessOfSystem, ListRegisteredSellers, NotifyAccessReviewers],
       useFactory: (
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
         listRegisteredSellers: ListRegisteredSellers,
+        notifyAccessReviewers: NotifyAccessReviewers,
       ) =>
         new SellerAccessContractImplementation({
           sellerAccessOf,
           sellerAccessOfSystem,
           listRegisteredSellers,
+          notifyAccessReviewers,
         }),
     },
     registerJobsFrom(
@@ -425,12 +505,19 @@ function useCaseProvider<D, U>(
     ),
     registerSubscriptionsFrom(
       'identity',
-      [SendLinkMail, SendExistingAccountMail, SendWelcomeMail],
+      [SendLinkMail, SendExistingAccountMail, SendWelcomeMail, SendPasswordChangedMail],
       (
         sendLinkMail: SendLinkMail,
         sendExistingAccountMail: SendExistingAccountMail,
         sendWelcomeMail: SendWelcomeMail,
-      ) => identityMailSubscriptions(sendLinkMail, sendExistingAccountMail, sendWelcomeMail),
+        sendPasswordChangedMail: SendPasswordChangedMail,
+      ) =>
+        identityMailSubscriptions(
+          sendLinkMail,
+          sendExistingAccountMail,
+          sendWelcomeMail,
+          sendPasswordChangedMail,
+        ),
     ),
   ],
   exports: [AUTHENTICATOR, AUTHORISATION_CHECK, IDENTITY_FACADE, SELLER_ACCESS_CONTRACT],

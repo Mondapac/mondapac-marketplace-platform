@@ -20,18 +20,33 @@ export interface LinkTokens {
 /** Nest token of the {@link LinkTokens}. */
 export const LINK_TOKENS = Symbol('LINK_TOKENS');
 
-/** The panel pages a mail of `identity` links to. */
-export type LinkPage = 'verify-email' | 'sign-in';
+/**
+ * The panel pages a mail of `identity` links to, per population (slice 4 adds the reset page;
+ * R-3 the admin review queue, identity design 8.7). Each population has its own pages, as in the
+ * Market file: `seller-review-queue` exists only for `admin`.
+ */
+export interface LinkPages {
+  readonly customer: 'verify-email' | 'sign-in' | 'reset-password';
+  readonly seller: 'verify-email' | 'sign-in' | 'reset-password';
+  readonly admin: 'seller-review-queue';
+}
+
+/** A page of {@link LinkPages}: of one population, or of any when none is named. */
+export type LinkPage<P extends Population = Population> = LinkPages[P];
 
 /**
  * Where a mail's link points (identity design 9, `LinkTargets(market, population, purpose)`):
  * configuration, because the panel and storefront hosts are not decided (brief s6; D2). The
  * answer is an absolute URL without a fragment; the token, when there is one, goes into the
  * fragment, never the path or the query (I15). Null when the Market configures no page for this
- * population: the mail cannot be sent.
+ * population, including a page of another population: the mail cannot be sent.
  */
 export interface LinkTargets {
-  target(market: MarketContext, population: Population, page: LinkPage): string | null;
+  target<P extends Population>(
+    market: MarketContext,
+    population: P,
+    page: LinkPage<P>,
+  ): string | null;
 }
 
 /** Nest token of the {@link LinkTargets}. */

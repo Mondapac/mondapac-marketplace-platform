@@ -1,5 +1,8 @@
 import { ok } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
+import { AUDIT_PROPERTIES } from '../../src/platform/persistence/guarded-client';
+import type { MarketContext } from '@mondapac/shared-kernel';
 import { MarketGuardError, NoUnitOfWorkError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -53,9 +56,14 @@ describe('market guard (database integration)', () => {
 
     describe.each(scopedModels)('scoped model %s', (_model, entry) => {
       const delegateIn = (tx: unknown) => (tx as Record<string, Delegate>)[entry.clientProperty]!;
+      /** The audit models are only in the writer's view (Hassan M1 on slice 6a). */
+      const viewOf = (market: MarketContext): unknown =>
+        (AUDIT_PROPERTIES as readonly string[]).includes(entry.clientProperty)
+          ? auditTx(market)
+          : db.service.tx(market);
       const runWith = (call: (delegate: Delegate) => Promise<unknown>) =>
         db.unitOfWork.run(market, async () => {
-          await call(delegateIn(db.service.tx(market)));
+          await call(delegateIn(viewOf(market)));
           return ok(undefined);
         });
       /** A row the guard must refuse before it reaches the database. */
@@ -96,6 +104,9 @@ describe('market guard (database integration)', () => {
         ['another tenant', { tenantId: 'other-tenant' }, 'data-tenant-mismatch'],
       ])('refuses a create with %s and writes no row', async (_case, overrides, reason) => {
         const row = draft(overrides);
+        // A model keyed by its Market (a counter, a version row) may already have a row for
+        // the Market from another suite: the check is that the refusal adds none.
+        const before = await countById(row);
 
         await expect(runWith((d) => d.create!({ data: row }))).rejects.toMatchObject({
           name: 'MarketGuardError',
@@ -104,16 +115,17 @@ describe('market guard (database integration)', () => {
         await expect(runWith((d) => d.createMany!({ data: [row] }))).rejects.toMatchObject({
           reason,
         });
-        await expect(countById(row)).resolves.toBe(0);
+        await expect(countById(row)).resolves.toBe(before);
       });
 
       it('refuses a nested write on every relation field (none yet on some models)', async () => {
         for (const relation of entry.relationFields) {
           const row = draft({ [relation]: { connect: { id: randomUUID() } } });
+          const before = await countById(row);
           await expect(runWith((d) => d.create!({ data: row }))).rejects.toMatchObject({
             reason: 'nested-write',
           });
-          await expect(countById(row)).resolves.toBe(0);
+          await expect(countById(row)).resolves.toBe(before);
         }
       });
 
@@ -131,7 +143,7 @@ describe('market guard (database integration)', () => {
           market,
           async () =>
             ok(
-              (await delegateIn(db.service.tx(market)).findMany!({
+              (await delegateIn(viewOf(market)).findMany!({
                 where: { marketId: market.marketId },
                 take: 50,
               })) as { marketId: string }[],

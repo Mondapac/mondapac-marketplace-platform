@@ -179,6 +179,40 @@ export class PrismaSessionRepository implements SessionRepository {
     return count === 1;
   }
 
+  async revokeAllOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    reason: SessionRevokedReason,
+    now: Temporal.Instant,
+    exceptId: Id<'Session'> | null,
+  ): Promise<number> {
+    // On the index (market_id, account_id) (data design 3.4).
+    const { count } = await this.prisma.tx(market).identitySession.updateMany({
+      where: {
+        marketId: market.marketId,
+        accountId,
+        revokedAt: null,
+        ...(exceptId === null ? {} : { id: { not: exceptId } }),
+      },
+      data: { revokedAt: toDate(now), revokedReason: reason },
+    });
+    return count;
+  }
+
+  async rotate(
+    market: MarketContext,
+    id: Id<'Session'>,
+    accountId: Id<'Account'>,
+    tokenHash: Uint8Array,
+  ): Promise<boolean> {
+    // By primary key; not a HOT update, because the token hash is indexed (data design 3.4).
+    const { count } = await this.prisma.tx(market).identitySession.updateMany({
+      where: { marketId: market.marketId, id, accountId, revokedAt: null },
+      data: { tokenHash: Uint8Array.from(tokenHash) },
+    });
+    return count === 1;
+  }
+
   async purgeExpired(market: MarketContext, expiredBefore: Temporal.Instant): Promise<number> {
     const { count } = await this.prisma.tx(market).identitySession.deleteMany({
       where: { marketId: market.marketId, absoluteExpiresAt: { lt: toDate(expiredBefore) } },

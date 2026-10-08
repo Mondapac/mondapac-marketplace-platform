@@ -48,6 +48,7 @@ const fakeAccounts: AccountRepository = {
     return Promise.resolve(stored === undefined ? null : Account.restore(stored));
   },
   findById: () => Promise.reject(new Error('sign-up reads no account by id')),
+  lockCredential: () => Promise.reject(new Error('sign-up takes no credential lock')),
   add: (market, account) => {
     const { population, email } = account.state;
     state.accounts.set(`${market.marketId}|${population}|${email.normalized}`, account.state);

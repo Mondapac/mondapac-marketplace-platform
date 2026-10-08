@@ -1,7 +1,8 @@
 // The sellers module (schema "sellers"). Physical design: docs/design/data/sellers.md; every
 // model is named Sellers<Name> (its S2) and mapped to its table with @@map. Slice 1 creates
-// the outbox, the inbox and the four roots that share the seller id (S3); later slices add
-// columns and tables, each in its own migration (data design 9.1).
+// the outbox, the inbox and the four roots that share the seller id (S3); slice 2 adds the
+// file's details, shop slugs and rate counters; later slices add columns and tables, each in
+// its own migration (data design 9.1).
 
 /// Events of the sellers module (ADR-0006 decisions 1 and 2; data design 3.12, PM1). Written
 /// only by the platform OutboxWriter in the unit of the state change, read and marked only by
@@ -71,6 +72,35 @@ model SellersSellerFile {
   draftComplete                    Boolean                   @map("draft_complete")
   /// Every change of the file; equals created_at at creation.
   lastChangedAt                    DateTime                  @map("last_changed_at") @db.Timestamptz(6)
+  /// Slice 2. Clear (public once approved, D 8.1); the CHECK S7 class, 1 to 100 characters.
+  storeName                        String?                   @map("store_name")
+  /// Slice 2. The prefix-search key (NFKC, case-folded, whitespace collapsed by the
+  /// application). The column is `COLLATE "C"` (S6), hand-written in the migration: Prisma
+  /// does not see a column collation (spike S1), so the catalog test checks it.
+  storeNameKey                     String?                   @map("store_name_key")
+  /// Slice 2. Personal; ciphertext under the seller's subject key (S4), never compared or
+  /// indexed. Label sellers.seller-file.business-name.
+  businessNameCiphertext           String?                   @map("business_name_ciphertext")
+  /// Slice 2. Personal, S4. Label sellers.seller-file.phone.
+  phoneCiphertext                  String?                   @map("phone_ciphertext")
+  /// Slice 2. Personal, S4. Label sellers.seller-file.contact-email; never the sign-in email.
+  contactEmailCiphertext           String?                   @map("contact_email_ciphertext")
+  /// Slice 2. Personal, S4. The operating address (a JSON object of the Market's
+  /// address.format); the only address that drives the ServiceArea and the zones.
+  addressCiphertext                String?                   @map("address_ciphertext")
+  /// Slice 2. Personal, S4. The registered address when it differs; NULL means "same as the
+  /// operating address".
+  registeredAddressCiphertext      String?                   @map("registered_address_ciphertext")
+  /// Slice 2. Clear ServiceArea code (Market configuration) the address fell in at the last save.
+  serviceAreaCode                  String?                   @map("service_area_code")
+  /// Slice 2. Clear IANA zone ID of the seller (ADR-0005 decision 1), never an offset: the
+  /// address's zone, a hint, or a zone chosen from the region's list (spike 3 record).
+  operatingTimezone                String?                   @map("operating_timezone")
+  /// Slice 2. Who set operating_timezone: default | browser | location | seller | admin.
+  timezoneSource                   String?                   @map("timezone_source")
+  /// Slice 2. Clear IANA zone the operating address gives (the region's default), stored so no
+  /// read decrypts the address to derive it (zero-unwrap rule; guardrail 3 of spike 3).
+  addressTimezone                  String?                   @map("address_timezone")
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                          Int
   createdAt                        DateTime                  @map("created_at") @db.Timestamptz(6)
@@ -80,7 +110,60 @@ model SellersSellerFile {
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
+  /// The admin list's store-name prefix search as a range on the "C" key (data design A6, S6).
+  @@index([marketId, storeNameKey])
   @@map("seller_files")
+  @@schema("sellers")
+}
+
+/// A shop slug (sellers design 3.5; data design 3.5): held by one seller, or retired for good.
+/// The seller id is a plain id with no foreign key (C4): a retired slug outlives the purge of
+/// its file (Q-M3). The slug column is `COLLATE "C"` (S6), hand-written in the migration. The
+/// CHECKs, the partial unique "one held slug per seller" and the column-level UPDATE grant are
+/// hand-written too.
+model SellersShopSlug {
+  /// UUIDv7; the aggregate id of sellers.slug-changed.v1 in the outbox.
+  id         String    @id @db.Uuid
+  marketId   String    @map("market_id") @db.VarChar(8)
+  tenantId   String    @map("tenant_id")
+  /// Clear, public: a-z, 0-9 and single inner hyphens, 3 to 50 characters.
+  slug       String
+  sellerId   String    @map("seller_id") @db.Uuid
+  /// held | retired.
+  state      String
+  /// True once held while its seller had an approved revision (Hassan M6); never set back.
+  everPublic Boolean   @map("ever_public")
+  heldAt     DateTime  @map("held_at") @db.Timestamptz(6)
+  retiredAt  DateTime? @map("retired_at") @db.Timestamptz(6)
+  /// Optimistic version (S1); 1 at insert.
+  version    Int
+  createdAt  DateTime  @map("created_at") @db.Timestamptz(6)
+
+  /// Unique per Market, retired rows included, so a retired slug is never held again; the
+  /// insert's P2002 is `slug.taken`. Also the slug prefix search and the public read (A7).
+  @@unique([marketId, slug])
+  @@map("shop_slugs")
+  @@schema("sellers")
+}
+
+/// Rate counters of the sellers module (data design 3.11; D 6.5, 7.7; Hassan L10): one fixed
+/// window per Market, kind and keyed subject hash, reserved before the work. No account id,
+/// seller id or origin in clear. The kind list and the CHECKs are hand-written in the migration;
+/// the hourly sellers.purge-expired deletes rows whose window started more than 48 hours ago.
+model SellersRateCounter {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  /// A closed list (CHECK); a new kind is a migration.
+  kind            String
+  /// HMAC-SHA-256 of the kind's subject under the sellers rate-counter key (32 bytes).
+  keyHash         Bytes    @map("key_hash")
+  /// Start of the fixed window, set at the first reservation; its length is the kind's, in code.
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  /// Reservations in the window; never below 0.
+  count           Int
+
+  @@id([marketId, kind, keyHash])
+  @@map("rate_counters")
   @@schema("sellers")
 }
 

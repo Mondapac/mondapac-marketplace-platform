@@ -1,7 +1,7 @@
-import type { MarketContext, Population } from '@mondapac/shared-kernel';
+import type { MarketContext, Population, Temporal } from '@mondapac/shared-kernel';
 
 /**
- * The mails of `identity` in slices 3 and 5 (identity design 9; `ux.md` 5, E1, E2 and E12). What
+ * The mails of `identity` in slices 3 to 5 and R-3 (identity design 9; `ux.md` 5, E1, E2, E3, E8, E12, E13). What
  * varies is data; the words come from the module's locale files, in the Market's default locale.
  */
 export type IdentityMail =
@@ -11,6 +11,24 @@ export type IdentityMail =
       /** The confirmation page, with the token in the fragment. */
       readonly url: string;
       readonly lifetimeMinutes: number;
+    }
+  | {
+      /** E8: the reset link (slice 4). */
+      readonly template: 'reset-password';
+      readonly population: Population;
+      /** The reset page, with the token in the fragment. */
+      readonly url: string;
+      readonly lifetimeMinutes: number;
+    }
+  | {
+      /**
+       * E13: the password was changed or reset (slice 4). A notice without a button (`ux.md`
+       * 3.4): what changed, when, and "if this wasn't you".
+       */
+      readonly template: 'password-changed';
+      readonly population: Population;
+      /** When the password was changed: written in the Market's time zone and locale. */
+      readonly changedAt: Temporal.Instant;
     }
   | {
       readonly template: 'existing-account';
@@ -26,6 +44,16 @@ export type IdentityMail =
       readonly url: string;
       /** Whether the seller waits for approval: the body differs (`ux.md` 3.4). */
       readonly approvalRequired: boolean;
+    }
+  | {
+      /**
+       * E3, to one admin who may approve, after a seller's submission (identity design 8.7;
+       * request R-3). Fixed text: no seller name, store name, email, id or count.
+       */
+      readonly template: 'reviewer-notice';
+      readonly population: 'admin';
+      /** The admin panel's "Awaiting review" queue, from configuration: no seller id. */
+      readonly url: string;
     };
 
 /** A rendered mail: plain text only (identity design 9; HF13). */

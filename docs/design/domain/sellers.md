@@ -248,8 +248,10 @@ s5). Before approval the seller may save a different slug: the old row, never pu
 slug is held at the next submission (T1; 14.4 Q-M21). A seller never changes a slug after approval
 (brief s7, AC 16). Rules (brief s7): `a-z0-9-`
 only, 3 to 50 characters, no leading, trailing or double hyphen, compared after lower-casing; a
-reserved list in a checked-in data file of the module (site routes, platform names, and a claim
-group), never literals in `sellers`' code (Ali change 3). The claim group (certification words such
+reserved list in checked-in data (site routes, platform names, and a claim
+group), never literals in `sellers`' code (Ali change 3); as built in slice 2b the data is the
+`reservedWords` of the Market's `sellers` section (4.1), because a data file inside `src` is refused by
+the boundary test and a literal list by the lint rule on certification names. The claim group (certification words such
 as halal, kosher, vegan, certified, verified, official) is later supplied by the port that
 `certification` implements (16.2 item 6). Claim words are matched per token (split on hyphens and
 spaces): in a slug they are refused (`slug.reserved`); in a store name they are flagged to the
@@ -288,7 +290,8 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 | `registerLookup.maxResultAge`, `perAccountLimit`, `reviewerLimit`, `perOriginLimit`, `marketDailyBudget`, `recheckInterval` | 30 days; 5 new values per account per 24 h; 30 per admin per 24 h; 30 per origin per 24 h; 1,000 per Market per 24 h; 90 days (Hassan, 6.5) | Small values | 7.7 |
 | `taxRegistration.questionKey` | "Registered for GST" key | Its own | Draft, `SellerTaxProfile` |
 | `address.format` | Fields and their order; postcode pattern; region list | Different fields | `AddressFormat` |
-| `timezones` | Region → IANA zone, with postcode exceptions (data file) | Its own | `TimezoneResolver` |
+| `timezones` | Region → `{ default, selectable[] }` IANA zones: the zone a saved address starts with and the closed list the seller chooses from; no postcode exceptions (amended 2026-10-08, spike 3 record, PR #96) | Its own (one region with two zones) | `TimezoneResolver` |
+| `reservedWords` | `slugs` (site routes, platform names) and `claimWords` (certification words), the checked-in data of 3.5; the claim group moves to a `certification` port later (16.2 item 6). Added in slice 2b | Its own, different words | `ShopSlug`, `StoreName` (3.5) |
 | `reviewChecks` | Codes and translation keys of the reviewer's named checks, which are required, and `manual-register-check` | A smaller list | 3.1, 7.3 |
 | `rejectReasons` | Codes and translation keys of the prepared reasons (brief s7) | Its own | Bulk reject, identity change |
 | `approvalRequired` | `true`: the checked-in default that seeds the ADR-0026 store; once seeded, the store is the source of truth and a change here no longer changes a live Market (14.1) | `false` | 7.3, AC 12, AC 19. The safe value (`true`) is in `sellers`' code, not here (ADR-0026 decision 5) |
@@ -300,7 +303,7 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 |---|---|---|
 | `BusinessIdentifierScheme` | One file per scheme in `infrastructure/identifier-schemes/` (`abn`, `zz-corp-no`) | `normalise(text)`, `validate(normalised)` → `ok` or `identifier.format` / `identifier.checksum`; `display(normalised)`. Pure; no I/O. A value valid in ZZ is refused in AU (AC 3) |
 | `AddressFormat` | One per Market format | Validates the fields of `address.format`; returns the postcode and region for the next two ports |
-| `TimezoneResolver` | One adapter reading `timezones` | Region and postcode → IANA zone, or `timezone.unresolved` (then the seller cannot submit and the reviewer is told). Never an offset (ADR-0005 decision 1). The seller sees the zone; only an admin corrects it, audited (16.2 item 4). AC 8 runs on the Brisbane, Sydney, Adelaide and Perth fixtures |
+| `TimezoneResolver` | One adapter reading `timezones` | Region → its `default` zone and `selectable` list; the seller chooses within the list and the domain refuses any other zone, free text, an offset or `Etc/*`. Never an offset (ADR-0005 decision 1). Amended 2026-10-08 (spike 3 record, PR #96): the postcode input, `timezone.unresolved` and the admin-only correction (16.2 item 4) are replaced by the seller's choice; AC 8 runs on the Brisbane, Sydney, Adelaide and Perth fixtures and a ZZ region with two zones. The rest of the amendment (6.2, 7.1a, AC 8) is applied by Mohammad with the certification amendment |
 | `BusinessRegisterLookup` | `none`, `fake`, `abr` (named after the register, no Market code inside) | 7.7 |
 
 These are module-internal strategies chosen by a configuration value, like `identity`'s policy
@@ -729,7 +732,7 @@ A). Sizes as in ID 12.1: S, M, L, XL.
 | 7a-auto | Automatic approval | M | 7a-decide. Off the first-sale path (AU keeps approval on); must merge before any hosted Market switches approval off | AC 33 with the M1 cases (both policy values; claim words) |
 | 7b | Submit again and the re-apply limit; the final state's way out (R-7) | M | 7a-decide; R-7 | AC 11 |
 | 8 | Admin edit, submit on behalf, bulk approve and reject | M | 7a-decide | AC 16, AC 22; M2 |
-| 9 | `sellingEligibility`; `allowedProductTypesOf` (always `all`); `reviewerBusinessDetails` | M | 7a-decide | AC 13; L4; must merge before `catalog`'s first Offer slice and `certification` slice 7 |
+| 9 | `sellingEligibility`; `allowedProductTypesOf` (always `all`); `reviewerBusinessDetails` | M | 7a-decide | AC 13; L4; must merge before the first sale (ADR-0031 decision 4, which replaces "before `catalog`'s first Offer slice": the fail-closed stand-in of PR #94 answers `eligible: false` until then) and before `certification` slice 7 |
 | 10 | Change of business identity after approval; admin edit of an approved seller (H1); live contact edit with its history | L | 7a-decide; **identity mini-review 2** (R-2); R-4 | AC 20, AC 23; the H1 test; L2; L6; re-run the postcode-mismatch comparison (7.7) after an address-only change (Hassan, G2 confirmation, Low); `seller.correct-timezone` on an approved seller is refused with `seller.use-identity-edit` and changes nothing, and a zone corrected through `seller.edit-approved-identity` is the next answer of `approvedSellerZones` (7.1a row 9, Ali F3) |
 | 11 | Periodic re-check | S | 4b; P2, after launch (SEL-27) | AC 35; budget share (L7) |
 | 12 | Public store profile (V1, allow-list facade) | M | 5 | AC 24, AC 25; M5; L9 |
@@ -1036,6 +1039,7 @@ H1 closed: Hassan confirmed the applied text (3.1, 6.2, slice 10) in writing on 
 | `.env.example` | The `IdentifierIndex` secret (distinct from the throttle secret, boot check); the register access key (secret per Region Stack) | Slices 3 and 4b; shared-file PR |
 | `docs/modules/sellers/brief.md` (optional) | Clarifying change-log row: SEL-22's "email" is the sign-in email; the contact email is optional (14.4 Q-M19) | Hadi |
 | ADR of 14.1 | Written and accepted as ADR-0026 (owner, 2026-10-07); this design aligned in 19 | Done |
+| `sellingEligibility` stand-in | 2026-10-08: a fail-closed stand-in (every id `eligible: false`, final signature of 7.2 row 1) merged with PR #94 so `catalog` can build against the contract. It is a placeholder in the sense of ADR-0031 decision 4 (marked and counted there; production refuses to start while it is bound), so slice 9 must merge before the first sale. Slice 9 replaces it; the slice-9 PR deletes the stand-in comments and adds the real-condition tests; any change that can return `true` is slice 9 and needs Hassan's review (Ali's review of PR #94). No flag, config switch or default-true branch; catalog tests needing `eligible: true` use a fake `SellersFacade` in their own test code only | Hossein; Ali reviewed |
 | `docs/modules/README.md`, the board | G2 status once the blockers of 16.4.1 close; the ADRs of 14.1 and 14.2 reserved; requests R-1 to R-12 to the backend track; Kazem checks the managed provider's extension allow-list before the first deployed environment (O1) | Orchestrator |
 
 ## 18. Mini-review 2026-10-07: minimum order (ADR-0013 decision 4)

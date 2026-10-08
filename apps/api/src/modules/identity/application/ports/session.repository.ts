@@ -57,6 +57,34 @@ export interface SessionRepository {
     now: Temporal.Instant,
   ): Promise<boolean>;
 
+  /**
+   * Revokes every session of the account that is not revoked yet, except `exceptId` when given
+   * (identity design 3.5: a reset ends all of them; a change all but the current one, which is
+   * rotated). One set-based update; answers how many rows changed. The caller holds the
+   * account's credential lock (`AccountRepository.lockCredential`), so a session a racing
+   * sign-in opened with the old password is either already committed, and revoked here, or
+   * never opened.
+   */
+  revokeAllOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    reason: SessionRevokedReason,
+    now: Temporal.Instant,
+    exceptId: Id<'Session'> | null,
+  ): Promise<number>;
+
+  /**
+   * Gives the account's live session a new token (identity design 6.2: the current session at a
+   * password change): replaces its stored hash in place, only while it is not revoked. Answers
+   * whether it did; false when the session was revoked or is gone.
+   */
+  rotate(
+    market: MarketContext,
+    id: Id<'Session'>,
+    accountId: Id<'Account'>,
+    tokenHash: Uint8Array,
+  ): Promise<boolean>;
+
   /** Deletes sessions whose absolute expiry is before `expiredBefore`; answers how many. */
   purgeExpired(market: MarketContext, expiredBefore: Temporal.Instant): Promise<number>;
 }

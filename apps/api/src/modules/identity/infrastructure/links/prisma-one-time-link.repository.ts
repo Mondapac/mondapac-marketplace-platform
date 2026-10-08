@@ -151,6 +151,19 @@ export class PrismaOneTimeLinkRepository implements OneTimeLinkRepository {
     return count === 1;
   }
 
+  async cancelUnused(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    purpose: LinkPurpose,
+  ): Promise<boolean> {
+    // On the unique key (market_id, account_id, purpose) (M8): at most one row.
+    const { count } = await this.prisma.tx(market).identityOneTimeLink.updateMany({
+      where: { marketId: market.marketId, accountId, purpose, consumedAt: null },
+      data: { tokenHash: null, issuedAt: null, expiresAt: null, version: { increment: 1 } },
+    });
+    return count === 1;
+  }
+
   async purgeSpent(market: MarketContext, before: Temporal.Instant): Promise<number> {
     const at = toDate(before);
     const { count } = await this.prisma.tx(market).identityOneTimeLink.deleteMany({

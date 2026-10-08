@@ -318,7 +318,14 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
 
     const answers = await Promise.all([signUp(email), signUp(email)]);
 
-    expect(answers.map((a) => a.status)).toEqual([202, 202]);
+    // Under load both serializable units can lose to each other until the third attempt
+    // (platform persistence design 3.1 row 7): the platform then answers `conflict.retry`, which
+    // tells the client to repeat the request. That is a valid answer; two sellers never are.
+    // An answer other than 202 is that 409 and nothing else, and repeating it is accepted.
+    for (const answer of answers.filter((a) => a.status !== 202)) {
+      expect(answer.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect((await signUp(email)).status).toBe(202);
+    }
     const rows = (await rowsOf(email))!;
     expect(rows.membership).toHaveLength(1);
     const { rows: owned } = await sql.query(

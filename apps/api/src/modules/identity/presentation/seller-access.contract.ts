@@ -1,11 +1,14 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ListRegisteredSellers } from '../application/use-cases/list-registered-sellers.use-case';
+import type { NotifyAccessReviewers } from '../application/use-cases/notify-access-reviewers.use-case';
 import type { SellerAccessOf } from '../application/use-cases/seller-access-of.use-case';
 import type { SellerAccessOfSystem } from '../application/use-cases/seller-access-of-system.use-case';
 import type {
   FacadeValidationFailed,
   RegisteredSellerPage,
+  ReviewerNoticeOutcome,
+  ReviewerNoticeUnavailable,
   SellerAccessContract,
   SellerAccessSummary,
 } from '../contracts/seller-access.contract';
@@ -15,12 +18,13 @@ export interface SellerAccessContractUseCases {
   readonly sellerAccessOf: SellerAccessOf;
   readonly sellerAccessOfSystem: SellerAccessOfSystem;
   readonly listRegisteredSellers: ListRegisteredSellers;
+  readonly notifyAccessReviewers: NotifyAccessReviewers;
 }
 
 /**
  * The implementation of {@link SellerAccessContract} (identity design 8.1; ADR-0022 decision 6):
  * a class of its own, so the object other modules receive as `IDENTITY_FACADE` does not carry
- * these two methods at all. Each method passes the caller's `CallContext` unchanged to one use
+ * these methods at all. Each method passes the caller's `CallContext` unchanged to one use
  * case through `execute`, so the gate runs.
  */
 export class SellerAccessContractImplementation implements SellerAccessContract {
@@ -43,5 +47,14 @@ export class SellerAccessContractImplementation implements SellerAccessContract 
     page: { readonly after: Id<'Seller'> | null; readonly limit: number },
   ): Promise<Result<RegisteredSellerPage, AccessDenied | FacadeValidationFailed>> {
     return this.useCases.listRegisteredSellers.execute(context, page);
+  }
+
+  notifyAccessReviewers(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<ReviewerNoticeOutcome, AccessDenied | FacadeValidationFailed | ReviewerNoticeUnavailable>
+  > {
+    return this.useCases.notifyAccessReviewers.execute(context, { sellerId });
   }
 }

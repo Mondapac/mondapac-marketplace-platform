@@ -125,6 +125,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'application-does-not-know-delivery',
         'authenticated-actor-is-built-by-the-authenticator',
+        'catalog-imports-neither-pricing-nor-inventory',
         'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
         'database-driver-only-in-infrastructure',
@@ -161,6 +162,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
         'authenticated-actor-is-built-by-the-authenticator: src/modules/identity/application/mints-authenticated-actor.ts',
         'authenticated-actor-is-built-by-the-authenticator: src/platform/mints-authenticated-actor.ts',
+        'catalog-imports-neither-pricing-nor-inventory: src/modules/catalog/application/imports-inventory.ts',
+        'catalog-imports-neither-pricing-nor-inventory: src/modules/catalog/application/imports-pricing.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
@@ -188,8 +191,10 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'module-public-api-only: src/modules/alpha/application/reaches-into-module.ts',
         'modules-reach-authz-through-its-barrel: src/modules/alpha/application/reaches-use-case-gate.ts',
         'no-circular: src/modules/alpha/domain/circular-a.ts',
+        'persistence-internals-are-private: src/modules/alpha/application/reaches-audit-writer.ts',
         'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-service.ts',
         'persistence-internals-are-private: src/modules/alpha/application/uses-prisma-via-barrel.ts',
+        'persistence-root-is-private: src/modules/alpha/infrastructure/reaches-audit-writer.ts',
         'persistence-root-is-private: src/modules/alpha/infrastructure/uses-prisma-root.ts',
         'platform-does-not-import-modules: src/platform/imports-module-index.ts',
         'platform-does-not-import-modules: src/platform/reaches-into-module.ts',
@@ -291,7 +296,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ).toEqual({ status: 0, problems: [] });
     });
 
-    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, and the outbox exception', () => {
+    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, the outbox exception and the audit folder', () => {
       expect(
         checkPrisma(
           path.join(PRISMA_FIXTURES, 'passing/schema'),
@@ -322,6 +327,12 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'alpha.prisma: AlphaScopedChild.parent relates a market-scoped model to the exempt model AlphaExemptParent; exempt and market-scoped models may not relate',
           'alpha.prisma: AlphaExemptChild.parent relates an exempt model to the market-scoped model AlphaParent; exempt and market-scoped models may not relate',
           'beta.prisma: BetaOutbox is an outbox whose fields differ from AlphaOutbox',
+          'modules/alpha/infrastructure/hides-model.ts:9: destructured property "betaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/hides-model.ts:10: destructured property "betaThing" names model BetaThing, which belongs to module "beta"',
+          'modules/alpha/infrastructure/hides-model.ts:10: destructured property "auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
+          'modules/alpha/infrastructure/hides-model.ts:11: a computed key on a tx(...) result hides the model it names; name the model as a property',
+          'modules/alpha/infrastructure/hides-model.ts:12: a computed key on a tx(...) result hides the model it names; name the model as a property',
+          'modules/alpha/infrastructure/hides-model.ts:13: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
           'modules/alpha/infrastructure/reaches-beta.ts:2: import of "BetaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/reaches-beta.ts:3: import "../../../generated/prisma/models/BetaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/reaches-beta.ts:3: import of "BetaThingModel" names model BetaThing, which belongs to module "beta"',
@@ -330,7 +341,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'modules/alpha/infrastructure/reaches-beta.ts:9: property ".betaThing" names model BetaThing, which belongs to module "beta"',
           'modules/alpha/infrastructure/writes-own-outbox.ts:5: property ".alphaOutbox" names model AlphaOutbox, which is reserved to platform/persistence/outbox/ (write it through OutboxWriter)',
           'platform/persistence/outbox/reaches-module.ts:6: property ".betaThing" names model BetaThing, which belongs to module "beta"',
-          'platform/persistence/reaches-module.ts:6: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
+          'platform/persistence/reaches-module.ts:6: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
+          'platform/persistence/reaches-module.ts:7: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
         ].sort(),
       );
     });
@@ -740,6 +752,13 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
     it('rejects hardcoded market identifiers in a module', () => {
       const messages = textsIn('src/modules/alpha/application/hardcoded-market.ts');
+
+      expect(messages).toHaveLength(2);
+      expect(messages.every((message) => /Market or vertical identifier/.test(message))).toBe(true);
+    });
+
+    it('rejects a hardcoded certification type name in catalog, in a string and a template', () => {
+      const messages = textsIn('src/modules/catalog/application/hardcoded-certification-type.ts');
 
       expect(messages).toHaveLength(2);
       expect(messages.every((message) => /Market or vertical identifier/.test(message))).toBe(true);

@@ -74,14 +74,16 @@ UNION ALL
 SELECT 'temporary_on_database', NULL
  WHERE pg_catalog.has_database_privilege(pg_catalog.current_database(), 'TEMPORARY')
 UNION ALL
-SELECT 'audit_log_privilege', NULL
-  FROM (SELECT pg_catalog.to_regclass('platform.audit_log') AS audit_log) AS t
- WHERE t.audit_log IS NOT NULL
-   AND (pg_catalog.has_table_privilege(t.audit_log, 'UPDATE, DELETE, TRUNCATE, TRIGGER')
-        OR pg_catalog.has_any_column_privilege(t.audit_log, 'UPDATE')
+SELECT 'audit_log_privilege', t.name
+  FROM (VALUES ('platform.audit_log'), ('platform.audit_log_seal'),
+               ('platform.audit_chain_checkpoint')) AS v(name)
+ CROSS JOIN LATERAL (SELECT v.name, pg_catalog.to_regclass(v.name) AS rel) AS t
+ WHERE t.rel IS NOT NULL
+   AND (pg_catalog.has_table_privilege(t.rel, 'UPDATE, DELETE, TRUNCATE, TRIGGER')
+        OR pg_catalog.has_any_column_privilege(t.rel, 'UPDATE')
         -- MAINTAIN (PostgreSQL 17) allows LOCK TABLE, which could block audit writes.
         OR CASE WHEN pg_catalog.current_setting('server_version_num')::int >= 170000
-                THEN pg_catalog.has_table_privilege(t.audit_log, 'MAINTAIN')
+                THEN pg_catalog.has_table_privilege(t.rel, 'MAINTAIN')
                 ELSE false END)
 ORDER BY 1, 2`;
 

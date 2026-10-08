@@ -3,12 +3,6 @@ import path from 'node:path';
 import { parseMarketId } from '@mondapac/shared-kernel';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { z } from 'zod';
-import {
-  InvalidPostcodeEntryError,
-  parsePostcodeEntries,
-  postcodesClash,
-  type ParsedPostcodes,
-} from './postcode-entry';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
 const TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
@@ -99,6 +93,76 @@ const pageUrl = z
     }
   }, 'must be an absolute https URL (http only for a loopback host) without a fragment, such as "https://panel.example/page"');
 
+/** The origin and the host name of a page URL, or null when it does not parse. */
+function hostOf(page: string): { readonly origin: string; readonly hostname: string } | null {
+  try {
+    const url = new URL(page);
+    return { origin: url.origin, hostname: url.hostname };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The page a mail links to, per population and page (identity design 9, `LinkTargets`). Each
+ * population has its own set of pages: `seller-review-queue` exists only for `admin` (identity
+ * design 8.7, the reviewer notice; Hassan I1).
+ */
+const linkTargetsSchema = z
+  .strictObject({
+    customer: z.strictObject({
+      'verify-email': pageUrl,
+      'sign-in': pageUrl,
+      'reset-password': pageUrl,
+    }),
+    /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
+    seller: z
+      .strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl, 'reset-password': pageUrl })
+      .optional(),
+    /**
+     * The admin panel's pages (identity design 8.7). `seller-review-queue` is the "Awaiting
+     * review" queue the reviewer notice links to: the queue only, never a seller id or a query
+     * built from data (Ali C8, Q6). Required whenever `seller` is present.
+     */
+    admin: z.strictObject({ 'seller-review-queue': pageUrl }).optional(),
+  })
+  .superRefine((targets, context) => {
+    if (targets.seller !== undefined && targets.admin === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'admin.seller-review-queue is required when seller targets are configured',
+        path: ['admin'],
+      });
+    }
+    if (targets.admin === undefined) return;
+    // The admin panel is a host of its own (HF7): a mail must never send an admin to a page on
+    // the seller panel or the storefront, nor the other way round (Hassan I1). Origins and host
+    // names both: another scheme or port on the same host is the same host (Hassan I-1, R-3).
+    const others = [targets.customer, targets.seller]
+      .flatMap((pages) => (pages === undefined ? [] : Object.values(pages)))
+      .map(hostOf)
+      .filter((host) => host !== null);
+    const origins = new Set(others.map((host) => host.origin));
+    const hostnames = new Set(others.map((host) => host.hostname));
+    for (const [page, url] of Object.entries(targets.admin)) {
+      const host = hostOf(url);
+      if (host === null) continue;
+      if (origins.has(host.origin)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must not share its origin with a seller or customer page',
+          path: ['admin', page],
+        });
+      } else if (hostnames.has(host.hostname)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must not share its host name with a seller or customer page',
+          path: ['admin', page],
+        });
+      }
+    }
+  });
+
 /**
  * The identity policy section (identity design 8.5 `IdentityMarketPolicy`; design 15). Each
  * value is Hassan's number (identity design 6.1, 6.5, 6.8; data design 3.6). A slice adds the
@@ -149,18 +213,19 @@ const identitySchema = z.strictObject({
   /** Sign-in records are deleted this many days after the attempt (H3: 90). */
   signInRecordRetentionDays: z.number().int().min(1).max(3650),
   /**
-   * One-time links (identity design 6.6, 9; slice 3). `lifetimeMinutes` per purpose, from the
-   * issue (HF15: verification 24 hours); a purpose without one is never issued. `targets`: the
-   * page a mail links to, per population and page (`LinkTargets`; hosts wait for D2).
+   * One-time links (identity design 6.6, 9; slices 3 and 4). `lifetimeMinutes` per purpose,
+   * from the issue (HF15: verification 24 hours; SEL-05 and ACC-04: a reset link exactly 60
+   * minutes, in every Market); a purpose without one is never issued. `targets`: the page a mail
+   * links to, per population and page (`LinkTargets`; hosts wait for D2).
    */
   links: z.strictObject({
-    // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
-    lifetimeMinutes: z.strictObject({ 'verify-email': z.number().int().min(1).max(1440) }),
-    targets: z.strictObject({
-      customer: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }),
-      /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
-      seller: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }).optional(),
+    lifetimeMinutes: z.strictObject({
+      // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
+      'verify-email': z.number().int().min(1).max(1440),
+      // SEL-05, ACC-04: "exactly 60 minutes", the same rule in every Market (slice 4).
+      'reset-password': z.literal(60),
     }),
+    targets: linkTargetsSchema,
   }),
   /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
   unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
@@ -306,20 +371,85 @@ const addressFormatSchema = z
   });
 
 /**
- * The `timezones` of the `sellers` section (design 4.1, `TimezoneResolver`): region to IANA zone,
- * with postcodes whose zone differs from their region's. Never an offset (ADR-0005 decision 1).
+ * One region's zones (sellers design 4.1; spike 3 record, mini-review 2026-10-08): the zone a
+ * saved address starts with and the closed list the seller may choose from. `default` is a
+ * member of `selectable`. A zone must be in the runtime's `Intl` zone list: IANA IDs in the form
+ * ICU holds them, so `Etc/*`, offsets, abbreviations and most `backward` links (`Australia/NSW`)
+ * are refused. That form is ICU's (CLDR's), not always tzdb's `zone1970.tab` spelling
+ * (`Asia/Calcutta` is listed, `Asia/Kolkata` is not on Node 24), so a Market whose zones differ
+ * between the two needs a look when the runtime moves. Never an offset (ADR-0005 decision 1).
  */
+const regionZonesSchema = z
+  .strictObject({
+    default: timeZone,
+    selectable: z.array(timeZone).min(1).max(20),
+  })
+  .superRefine((zones, context) => {
+    if (!zones.selectable.includes(zones.default)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'default must be one of selectable',
+        path: ['default'],
+      });
+    }
+    if (new Set(zones.selectable).size !== zones.selectable.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'selectable must not repeat a zone',
+        path: ['selectable'],
+      });
+    }
+  });
+
+/** The `timezones` of the `sellers` section (design 4.1): region to its zones. */
 const sellerTimezonesSchema = z.strictObject({
-  byRegion: z.record(regionName, timeZone),
-  /** Postcode entries of `config/service-areas/` (exact, or a same-length digit range). */
-  postcodeExceptions: z
+  /**
+   * ISO 3166-1 countries whose zones this Market may list (the Market code is not always a
+   * country): boot fails when a listed zone belongs to none of them (guardrail 1).
+   */
+  countries: z
+    .array(z.string().regex(/^[A-Z]{2}$/, 'must be an ISO 3166-1 alpha-2 code'))
+    .min(1)
+    .max(10),
+  byRegion: z.record(regionName, regionZonesSchema),
+});
+
+/** The zones the runtime assigns to a country, or none for an unknown code. */
+function zonesOfCountry(country: string): readonly string[] {
+  // `getTimeZones` is in Node 24's V8 but not in the TypeScript lib this project targets.
+  const locale = new Intl.Locale(`und-${country}`) as { getTimeZones?: () => string[] | undefined };
+  return locale.getTimeZones?.() ?? [];
+}
+
+/** A reserved slug or claim word as a slug token (sellers design 3.5): lower-case a-z and 0-9. */
+const reservedToken = z
+  .string()
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'must be lower-case letters, digits and single hyphens')
+  .max(50);
+
+/**
+ * The reserved words of a Market (sellers design 3.5; Ali change 3): checked-in data, never
+ * literals in the module. `slugs` are whole slugs never held (site routes, platform names);
+ * `claimWords` are matched per token in a slug (refused) and in a store name (reviewer flag),
+ * until `certification` supplies the claim group through a port (design 16.2 item 6).
+ */
+const reservedWordsSchema = z.strictObject({
+  slugs: z
+    .array(reservedToken)
+    .max(500)
+    .refine((list) => new Set(list).size === list.length, 'must not repeat an entry'),
+  // No hyphen: a claim word is matched against one token, so a hyphenated entry could never
+  // match. At least one, so a Market file cannot quietly switch the claim check off.
+  claimWords: z
     .array(
-      z.strictObject({
-        postcodes: z.array(z.string().max(32)).min(1).max(500),
-        timezone: timeZone,
-      }),
+      z
+        .string()
+        .regex(/^[a-z]+$/, 'must be lower-case letters only (no digit, no hyphen)')
+        .max(50),
     )
-    .max(500),
+    .min(1)
+    .max(200)
+    .refine((list) => new Set(list).size === list.length, 'must not repeat an entry'),
 });
 
 /**
@@ -330,6 +460,7 @@ const sellersSchema = z
   .strictObject({
     address: addressFormatSchema,
     timezones: sellerTimezonesSchema,
+    reservedWords: reservedWordsSchema,
     /**
      * Whether a new seller starts `pending` (true) or `approved` (false) (sellers design 4.1;
      * identity design 3.3, SEL-03, AC 5). Required: a Market never defaults it. It is the seed
@@ -339,6 +470,29 @@ const sellersSchema = z
     approvalRequired: z.boolean(),
   })
   .superRefine((sellers, context) => {
+    const known = new Set<string>();
+    sellers.timezones.countries.forEach((country, index) => {
+      const zones = zonesOfCountry(country);
+      if (zones.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          message: `${country} has no time zones in the runtime zone database`,
+          path: ['timezones', 'countries', index],
+        });
+      }
+      zones.forEach((zone) => known.add(zone));
+    });
+    for (const [region, zones] of Object.entries(sellers.timezones.byRegion)) {
+      for (const zone of zones.selectable) {
+        if (!known.has(zone)) {
+          context.addIssue({
+            code: 'custom',
+            message: `${zone} does not belong to any of timezones.countries`,
+            path: ['timezones', 'byRegion', region, 'selectable'],
+          });
+        }
+      }
+    }
     const regions = sellers.address.regions;
     const zoned = Object.keys(sellers.timezones.byRegion);
     const missing = regions.filter((region) => !zoned.includes(region));
@@ -352,47 +506,23 @@ const sellersSchema = z
         path: ['timezones', 'byRegion'],
       });
     }
-
-    let pattern: RegExp;
-    try {
-      pattern = new RegExp(sellers.address.postcodePattern, 'u');
-    } catch {
-      return; // reported by the postcodePattern check itself
-    }
-    const claimed: ParsedPostcodes[] = [];
-    sellers.timezones.postcodeExceptions.forEach((exception, index) => {
-      const path = ['timezones', 'postcodeExceptions', index, 'postcodes'];
-      let parsed: ParsedPostcodes;
-      try {
-        parsed = parsePostcodeEntries(exception.postcodes);
-      } catch (error) {
-        if (!(error instanceof InvalidPostcodeEntryError)) throw error;
-        context.addIssue({ code: 'custom', message: error.message, path });
-        return;
-      }
-      const samples = [
-        ...parsed.exact,
-        ...parsed.intervals.flatMap(({ length, low, high }) =>
-          [low, high].map((n) => String(n).padStart(length, '0')),
-        ),
-      ];
-      if (samples.some((sample) => !pattern.test(sample))) {
-        context.addIssue({
-          code: 'custom',
-          message: 'every exception postcode must match address.postcodePattern',
-          path,
-        });
-      }
-      if (claimed.some((other) => postcodesClash(parsed, other))) {
-        context.addIssue({
-          code: 'custom',
-          message: 'a postcode may appear in only one exception',
-          path,
-        });
-      }
-      claimed.push(parsed);
-    });
   });
+
+/**
+ * The `inventory` section of a Market file (inventory design 8; docs/design/data/inventory.md
+ * 8.3). It starts with what slice 1 needs; later slices add the reservation duration, the
+ * default low-stock threshold and the default per-customer cap here.
+ */
+const inventorySchema = z.strictObject({
+  /**
+   * The most sources (stock locations) one seller may have, the Default included (design 3.4;
+   * AU 4). Required: a Market never defaults it. At most 4, because the re-key of a moved Offer
+   * locks every stock item of up to `catalog.maxVariantsPerProduct` (AU 100) variants, in every
+   * source, on both keys in one statement capped at 1,000 items (design 3.6 step 2, 4.4):
+   * 100 x 4 x 2 = 800 plus held items. Raising the limit is a design change with a re-check.
+   */
+  maxSourcesPerSeller: z.number().int().min(1).max(4),
+});
 
 const marketSchema = z
   .strictObject({
@@ -409,6 +539,8 @@ const marketSchema = z
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */
     sellers: sellersSchema.optional(),
+    /** Owned by `inventory`; optional here, checked for every hosted Market at start-up by it. */
+    inventory: inventorySchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

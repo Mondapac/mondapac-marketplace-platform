@@ -56,6 +56,18 @@ module.exports = {
       },
     },
     {
+      // Catalog design 15.1 slice P1 (ADR-0024 decision 5): "sellable now" is composed by cart
+      // and ordering, never by catalog.
+      name: 'catalog-imports-neither-pricing-nor-inventory',
+      comment:
+        'catalog imports neither pricing nor inventory, not even through their index.ts ' +
+        '(ADR-0024 decision 5, catalog design 9.1): no price, stock or "sellable now" in any ' +
+        'catalog answer. Those modules consume catalog events and its facade instead.',
+      severity: 'error',
+      from: { path: '^src/modules/catalog/' },
+      to: { path: '^src/modules/(pricing|inventory)/' },
+    },
+    {
       // Rule 3.
       name: 'temporal-only-through-kernel',
       comment:
@@ -298,8 +310,8 @@ module.exports = {
     {
       name: 'seller-access-contract-is-for-sellers',
       comment:
-        "Only the sellers module imports identity's seller-access contract (sellerAccessOf and " +
-        'listRegisteredSellers): every other consumer of seller access would bypass the one ' +
+        "Only the sellers module imports identity's seller-access contract (sellerAccessOf, " +
+        'listRegisteredSellers and notifyAccessReviewers): every other consumer of seller access would bypass the one ' +
         "may-sell contract that sellers owns (ADR-0022 decision 6). identity's index.ts does " +
         'not export the contract file.',
       severity: 'error',

@@ -55,6 +55,8 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'MAIL');
   await createCopy(name, 'SELLER');
   await createCopy(name, 'SELLER_FILES');
+  await createCopy(name, 'PASSWORD');
+  await createCopy(name, 'INVENTORY');
 }
 
 /**
@@ -70,12 +72,24 @@ export default async function globalSetup(): Promise<void> {
  * - `seller`: seller-account.db-spec.ts relays and dispatches identity's seller events to the
  *   link and welcome mail handlers, for the same reason;
  * - `seller_files`: sellers-files.db-spec.ts relays and dispatches identity's seller events to
- *   `sellers.create-file`, for the same reason.
+ *   `sellers.create-file`, for the same reason;
+ * - `password`: password-reset.db-spec.ts relays and dispatches identity's reset and change
+ *   events to their mail handlers, for the same reason;
+ * - `inventory`: inventory-sources.db-spec.ts relays and dispatches seller-registered events to
+ *   `inventory.ensure-seller-inventory`, for the same reason.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
   template: string,
-  kind: 'LOCKING' | 'RELAY' | 'DELIVERY' | 'MAIL' | 'SELLER' | 'SELLER_FILES',
+  kind:
+    | 'LOCKING'
+    | 'RELAY'
+    | 'DELIVERY'
+    | 'MAIL'
+    | 'SELLER'
+    | 'SELLER_FILES'
+    | 'PASSWORD'
+    | 'INVENTORY',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

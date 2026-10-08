@@ -35,15 +35,20 @@
     },
     "signInRecordRetentionDays": 60,
     "links": {
-      "lifetimeMinutes": { "verify-email": 720 },
+      "lifetimeMinutes": { "verify-email": 720, "reset-password": 60 },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.zz.test/konto/bestaetigen?ref=mail",
-          "sign-in": "https://storefront.zz.test/konto/anmelden"
+          "sign-in": "https://storefront.zz.test/konto/anmelden",
+          "reset-password": "https://storefront.zz.test/konto/passwort?ref=mail"
         },
         "seller": {
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
-          "sign-in": "https://seller.zz.test/konto/anmelden"
+          "sign-in": "https://seller.zz.test/konto/anmelden",
+          "reset-password": "https://seller.zz.test/konto/passwort?ref=mail"
+        },
+        "admin": {
+          "seller-review-queue": "https://admin.zz.test/haendler/pruefung?ref=mail"
         }
       }
     },
@@ -87,17 +92,25 @@
       "postcodePattern": "^[0-9]{7}$",
       "regions": ["ZA", "ZB"]
     },
+    "reservedWords": {
+      "slugs": ["admin", "api", "zz-staff", "zzmart"],
+      "claimWords": ["zzmart", "blessed", "genuine", "pure"]
+    },
     "timezones": {
+      "countries": ["JP", "NZ"],
       "byRegion": {
-        "ZA": "Asia/Tokyo",
-        "ZB": "Pacific/Auckland"
-      },
-      "postcodeExceptions": [
-        {
-          "postcodes": ["9999999"],
-          "timezone": "Pacific/Chatham"
+        "ZA": {
+          "default": "Asia/Tokyo",
+          "selectable": ["Asia/Tokyo"]
+        },
+        "ZB": {
+          "default": "Pacific/Auckland",
+          "selectable": ["Pacific/Auckland", "Pacific/Chatham"]
         }
-      ]
+      }
     }
+  },
+  "inventory": {
+    "maxSourcesPerSeller": 2
   }
 }

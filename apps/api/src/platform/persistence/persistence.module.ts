@@ -1,6 +1,8 @@
 import { Global, Module, type FactoryProvider } from '@nestjs/common';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { MODEL_MAP } from '../../generated/model-map';
+import { AuditActionCatalogue } from '../audit/audit-action-catalogue';
+import { AUDIT_WRITER, type AuditWriter } from '../audit/audit-writer';
 import { CLOCK } from '../clock/clock.module';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
@@ -21,6 +23,7 @@ import { JOB_LOCK } from '../scheduler/job-lock';
 import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AdvisoryJobLock } from './advisory-job-lock';
+import { createAuditWriter } from './audit/prisma-audit-writer';
 import { DatabaseProbe } from './database-probe';
 import { createGuardedClient, GUARDED_CLIENT, type GuardedClient } from './guarded-client';
 import type { ModelMap } from './model-map';
@@ -135,6 +138,29 @@ export class PersistenceModule {
         new PrismaOutboxWriterFactory(modelMap, prisma, catalogue, ids, permissionKeys).forModule(
           module,
         ),
+    };
+  }
+
+  /**
+   * The one line of a module's Nest module that binds its own audit writer
+   * (docs/design/domain/platform-audit.md 2, 3.1): `providers: [PersistenceModule.auditWriterFor('identity')]`.
+   * The owner is the module's folder, or `platform.<component>` for a platform component. As
+   * with the outbox writer, no factory is injectable and a module never exports
+   * `AUDIT_WRITER`. Identity slice 6a calls it from tests only; 6b binds it into identity.
+   */
+  static auditWriterFor(owner: string): FactoryProvider<AuditWriter> {
+    if (!/^(?:platform\.)?[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(owner) || owner === 'platform') {
+      throw new Error(`"${owner}" is not a module name or "platform.<component>"`);
+    }
+    return {
+      provide: AUDIT_WRITER,
+      inject: [AuditActionCatalogue, ID_GENERATOR, CLOCK, PERMISSION_KEY_LOOKUP],
+      useFactory: (
+        catalogue: AuditActionCatalogue,
+        ids: IdGenerator,
+        clock: Clock,
+        permissionKeys: PermissionKeyLookup,
+      ) => createAuditWriter(owner, { catalogue, ids, clock, permissionKeys }),
     };
   }
 

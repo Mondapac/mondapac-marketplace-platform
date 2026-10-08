@@ -5,6 +5,7 @@
 conditions C1–C3, applied; Mojtaba's data design and Reza's `ux.md` complete; Jafar accepted with
 changes, applied; ADR-0028 Accepted by the owner 2026-10-07. Reviews recorded in 19.3 and 19.4. The owner gets a Persian summary with the questions of
 19.1 only.
+**Updated:** 2026-10-08: Q3 of `docs/design/domain/platform-audit.md` (Ali) applied to 3.7, 7.6, 11, 16.1, 19.2 item 13 and 19.4: the change reason lives on the revision only, never in an audit row.
 **Ground truth:** `docs/modules/certification/brief.md` (G1 approved 2026-10-03; sections, rules,
 owner answers and acceptance criteria are cited as "brief s5", "Q6", "AC 14"); ADR-0001, ADR-0003,
 ADR-0004, ADR-0005, ADR-0006, ADR-0008, ADR-0009, ADR-0010, ADR-0012, ADR-0013, ADR-0015,
@@ -365,10 +366,18 @@ with `claim-policy.edit`, not its author, approves it (H1; the rule of Q3 and AC
 category are validated through `CatalogReferences`; `SELLER_OR_MANUFACTURER` is refused on a
 handling selector (M1). The save dialog's warning about affected Offers (ux.md CA8) only warns; no
 acknowledgement blocks the save (Hadi, 2026-10-07). The admin may give an optional change reason:
-plain text, at most 500 characters, stored on the revision and in the audit row (Hadi's ruling; the
-same optional reason applies to type revisions and to issuer and type reactivations, Q-C9; the
-one free-text field in a `certification` audit row, so the reason is admin-written and holds no
-seller data; rendered inert).
+plain text, at most 500 characters, admin-written, holding no seller data, rendered inert (Hadi's
+ruling). The same optional reason applies to type revisions and to issuer and type reactivations
+(Q-C9). **Where it lives (Ali, 2026-10-08, `platform-audit.md` Q3):** on the revision only (for a
+reactivation, on its relaxation proposal, 7.6), never in an audit row. The audit row carries the
+revision or proposal id and `reasonGiven` (boolean), so `certification` audit rows hold no free
+text at all. The reason is still captured, stored and shown in the policy history; only where it
+is stored changed. **Erasure residual (Hassan L5):** the revision is insert-only (data design
+CE3), so the stored text still cannot be erased. Before slice 2 (the first slice that writes a
+reason) merges, one of two is decided and recorded here: the reason is encrypted under a key that
+can be destroyed, or the owner accepts the residual risk explicitly through counsel (with Q5 of
+`platform-audit.md`). Either way the input shows a hint not to include personal data (Reza).
+Owner: Mohammad proposes, Mojtaba (data), Hassan reviews.
 
 **Retired categories** (B2; ADR-0028 d5 and d9). `catalog`'s move, merge and archive of a platform
 category first call `assertCategoriesRetirable` (8.1). It refuses (`category.referenced-by-policy`,
@@ -705,7 +714,7 @@ interface RelaxationProposalView {
   readonly proposedRevisionId: Id | null;     // null for a reactivation
   readonly proposer: { accountId: Id; displayName: string }; // display name via identity R-11
   readonly proposedAt: Temporal.Instant;
-  readonly reason: string | null;             // the optional change reason (3.7)
+  readonly reason: string | null;             // the optional change reason (3.7), read from the revision or proposal, never from an audit row
   readonly diff: readonly {
     readonly path: string;                    // field key, `terms.<locale>`, or `row:<selector>`
     readonly before: string | boolean | null; // codes and values, never free text of a seller
@@ -898,8 +907,9 @@ the type revision id, AC 22): `certification.seller-certification.approved`, `.c
 `certification.issuer.created`, `.activated`, `.closed-to-new`, `.derecognised`;
 `certification.issuer-request.answered`; `certification.product-certification.recorded`, `.edited`,
 `.approved`, `.rejected`, `.suspended`, `.reinstated`, `.revoked`, `.expired`;
-`certification.claim-policy.revised` (its `after` may hold the optional change reason, the one
-free-text exception, 3.7). A seller's own submit or withdraw is not an audit row (it is
+`certification.claim-policy.revised`. No row holds the change reason: the type and policy revision
+rows and the reactivation rows (all four reason sites of Q-C9) carry the revision or proposal id and
+`reasonGiven` (boolean); the text stays on the revision or proposal (3.7; Ali, 2026-10-08). A seller's own submit or withdraw is not an audit row (it is
 history), as SL 9.
 
 **Status history** (CERT-17, V4, append-only and never updated (M6, 3.2 rule 8), owned here; brief s8 item 7): one row per transition of
@@ -1052,8 +1062,11 @@ Q-C10: fixed in 3.6. Correction for data design section 16: the rule is the stri
 matching rows, the type default **only when no row matches** (4.2 step 3, 19.2 item 12), not "rows
 and the default".
 11. Relaxation proposals (7.6): one pending per subject (partial unique index), proposer and
-    decider columns, state; the optional change reason (≤ 500 characters) on policy revisions and
-    the audit row (3.7).
+    decider columns, state; the optional change reason (≤ 500 characters) on policy revisions, type
+    revisions and reactivation proposals only, never in the audit row (3.7; Ali, 2026-10-08). The
+    data design's remark that the reason is "the one free-text value in a `certification` audit
+    row" (its 3.19) is withdrawn; L5's decision (encryption under a destroyable key, or explicit
+    risk acceptance) is recorded before slice 2.
 
 ### 16.2 For Reza (`docs/modules/certification/ux.md`)
 The screens of brief s12. From the API: the status codes of 3.3; refusal codes (`file.*` of 3.8,
@@ -1154,7 +1167,7 @@ the rule (B2); easing a type or a claim rule needs a second admin (H1).
 | 11 | New: are `requiresExpiry` to false and `defaultBasis` from `NOT_APPLICABLE` to `SELLER_REQUIRED` relaxations under H1? | Yes; this design treats them so (3.6) | Closed: both are relaxations (Ali; confirmed by Hassan) |
 | 12 | New: the type default in M1 | Hassan's M1 reads "the strictest of all matching rows and the type default". Taken literally, `SELLER_OR_MANUFACTURER` could never result, since `defaultBasis` is never `SELLER_OR_MANUFACTURER` (brief s5, AC 4), and the manufacturer basis of ADR-0012 would be dead. Applied here: strictest of all matching rows (every path and handling together), the default when none match (4.2 step 3). Alternative: a `NOT_APPLICABLE` default always wins over rows | Closed: M1 as applied (Ali; confirmed by Hassan); ADR-0028 d1 restates the rule |
 | 14 | Q-C5 (data design): correcting a wrong issuer confirmation | Out of scope until asked. Recommendation if asked: a new confirmation row with result `retracted` (latest wins, M6), by a reviewer, audited, with the issuer-confirmed event so `catalog` drops the flag; Hassan reviews | Open, deferred |
-| 13 | Hadi's rulings (product owner) | — | CERT-23 several types: AND across types, OR across bases inside one type (CERT-46; 4.4). The claim-policy warning only warns, no blocking acknowledgement; the audit row may store an optional change reason (3.7) |
+| 13 | Hadi's rulings (product owner) | — | CERT-23 several types: AND across types, OR across bases inside one type (CERT-46; 4.4). The claim-policy warning only warns, no blocking acknowledgement; the optional change reason is stored on the revision (3.7). ~~The audit row may store it.~~ Changed by Ali 2026-10-08 (`platform-audit.md` Q3): the audit row carries the revision id and `reasonGiven` only |
 
 ### 19.3 Reviews
 | Reviewer | Result | Date |
@@ -1196,6 +1209,7 @@ the rule (B2); easing a type or a claim rule needs a second admin (H1).
 | Hassan C3 | Duplicate hint: reviewer only, store name and checked link, recorded view, never to AI | 3.2 rule 6 |
 | Hassan info | Category move under a `SELLER_OR_MANUFACTURER` parent is an entry path | C-8 |
 | Hadi | CERT-23 meaning; warning only; optional change reason | 4.4, 3.7, 19.2 item 13 |
+| Ali Q3 of `platform-audit.md` (2026-10-08) = Hassan L5 | Change reason on the revision (or reactivation proposal) only; the audit row carries its id and `reasonGiven`; all four reason sites; erasure residual decided before slice 2 | 3.7, 7.6, 11, 16.1 item 11, 19.2 item 13 |
 | Data design Q-C1 to Q-C10 | Answered | 3.6, 11, 14.1 slice 5, 2.1, 7.2, 3.7, 16.1, 19.2 item 14 |
 | Coordinator additions | Relaxation-proposal mail; what happens to the Offer and tag after expiry; ADR-0026 Accepted; Jafar's result | 12, 4.4, 17, 19.3 |
 

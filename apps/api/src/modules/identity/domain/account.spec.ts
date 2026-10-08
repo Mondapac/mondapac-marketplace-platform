@@ -373,4 +373,65 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
       expect(customer.state.displayName).toBeNull();
     });
   });
+
+  describe('replacePassword (identity design 3.5, 3.7, 6.5; slice 4)', () => {
+    const LATER = NOW.add({ hours: 5 });
+    const verified = () =>
+      Account.restore({ ...register().state, emailVerifiedAt: NOW, version: 4 });
+
+    it.each(['reset', 'change'] as const)(
+      'on a %s sets the new hash and changedAt, raises the version and records the event',
+      (cause) => {
+        const account = verified();
+
+        expect(account.replacePassword({ passwordHash: NEW_HASH, now: LATER, cause })).toEqual({
+          ok: true,
+          value: undefined,
+        });
+
+        expect(account.state.credential).toEqual({ passwordHash: NEW_HASH, changedAt: LATER });
+        expect(account.state.version).toBe(5);
+        expect(account.credentialChanged).toBe(true);
+        expect(account.pendingEvents).toEqual([
+          expect.objectContaining({
+            type: 'identity.account-password-changed.v1',
+            aggregateId: ACCOUNT_ID,
+            aggregateVersion: 5,
+            occurredAt: LATER,
+            payload: { accountId: ACCOUNT_ID, cause },
+          }),
+        ]);
+      },
+    );
+
+    it('refuses an unverified account (3.7: no reset for it; it signs up again)', () => {
+      const account = Account.restore({ ...register().state, version: 2 });
+
+      expect(
+        account.replacePassword({ passwordHash: NEW_HASH, now: LATER, cause: 'reset' }),
+      ).toEqual({ ok: false, error: { code: 'account.not-eligible' } });
+      expect(account.state.version).toBe(2);
+      expect(account.state.credential.passwordHash).toBe(HASH);
+      expect(account.pendingEvents).toEqual([]);
+    });
+
+    it('refuses a disabled account (3.1: no link and no change for it)', () => {
+      const account = Account.restore({ ...verified().state, status: 'disabled' });
+
+      expect(
+        account.replacePassword({ passwordHash: NEW_HASH, now: LATER, cause: 'change' }),
+      ).toEqual({ ok: false, error: { code: 'account.not-eligible' } });
+      expect(account.credentialChanged).toBe(false);
+    });
+
+    it('records the change even when the new hash equals the old one (a new changedAt)', () => {
+      const account = verified();
+
+      account.replacePassword({ passwordHash: HASH, now: LATER, cause: 'change' });
+
+      expect(account.state.credential).toEqual({ passwordHash: HASH, changedAt: LATER });
+      expect(account.credentialChanged).toBe(true);
+      expect(account.pendingEvents).toHaveLength(1);
+    });
+  });
 });

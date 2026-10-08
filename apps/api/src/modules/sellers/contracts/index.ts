@@ -8,4 +8,5 @@ export {
   type SellersFacade,
   type SellersUnavailable,
   type SellersValidationFailed,
+  type SellingEligibilityMap,
 } from './sellers.facade';

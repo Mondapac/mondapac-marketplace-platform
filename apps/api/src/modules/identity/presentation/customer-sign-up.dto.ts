@@ -64,6 +64,7 @@ export class ApiErrorBody {
     enum: [
       'validation.failed',
       'password.rejected',
+      'password.current-incorrect',
       'request.body-unsupported',
       'request.throttled',
       'request.busy',

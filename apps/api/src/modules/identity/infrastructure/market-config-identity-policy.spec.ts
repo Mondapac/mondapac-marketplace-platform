@@ -1,3 +1,4 @@
+import type { Population } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import {
   TEST_MARKET_CONFIG_DIRS,
@@ -94,7 +95,10 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
 
     expect(policy.linkLifetimeMinutes(au, 'verify-email')).toBe(1440);
     expect(policy.linkLifetimeMinutes(zz, 'verify-email')).toBe(720);
-    expect(policy.linkLifetimeMinutes(au, 'reset-password')).toBeNull();
+    // SEL-05, ACC-04: exactly 60 minutes in every Market (slice 4).
+    expect(policy.linkLifetimeMinutes(au, 'reset-password')).toBe(60);
+    expect(policy.linkLifetimeMinutes(zz, 'reset-password')).toBe(60);
+    expect(policy.linkLifetimeMinutes(au, 'enrol-second-factor')).toBeNull();
     expect(policy.unverifiedAccountRetentionDays(au)).toBe(7);
     expect(policy.unverifiedAccountRetentionDays(zz)).toBe(5);
     expect(policy.mailSender(au)).toEqual({
@@ -108,7 +112,23 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     expect(policy.target(zz, 'customer', 'sign-in')).toBe(
       'https://storefront.zz.test/konto/anmelden',
     );
-    expect(policy.target(au, 'admin', 'verify-email')).toBeNull();
+    // A page of another population is never resolved, even when the type is widened.
+    expect(policy.target<Population>(au, 'admin', 'verify-email')).toBeNull();
+  });
+
+  it('resolves the admin review queue page only for the admin population (identity design 8.7)', () => {
+    for (const code of ['AU', 'ZZ']) {
+      const market = testMarketContext(code, 'default');
+      const queue = policy.target(market, 'admin', 'seller-review-queue');
+
+      expect(queue).toMatch(/^https:\/\/admin\./);
+      expect(queue).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+      expect(policy.target<Population>(market, 'seller', 'seller-review-queue')).toBeNull();
+      expect(policy.target<Population>(market, 'customer', 'seller-review-queue')).toBeNull();
+    }
+    expect(
+      policy.target(testMarketContext('AU', 'default'), 'admin', 'seller-review-queue'),
+    ).not.toBe(policy.target(testMarketContext('ZZ', 'default'), 'admin', 'seller-review-queue'));
   });
 
   it('refuses a Market this Region Stack does not host, with no fallback', () => {
