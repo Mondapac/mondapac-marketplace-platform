@@ -1,5 +1,21 @@
 [
   {
+    "type": "catalog.variant-added.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "type": "catalog.variant-removed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "type": "identity.account-email-verified.v1",
     "aggregateType": "account",
     "fields": {

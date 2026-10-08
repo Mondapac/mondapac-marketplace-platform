@@ -96,6 +96,9 @@ describe('market guard (database integration)', () => {
         ['another tenant', { tenantId: 'other-tenant' }, 'data-tenant-mismatch'],
       ])('refuses a create with %s and writes no row', async (_case, overrides, reason) => {
         const row = draft(overrides);
+        // A model keyed by its Market (a counter, a version row) may already have a row for
+        // the Market from another suite: the check is that the refusal adds none.
+        const before = await countById(row);
 
         await expect(runWith((d) => d.create!({ data: row }))).rejects.toMatchObject({
           name: 'MarketGuardError',
@@ -104,16 +107,17 @@ describe('market guard (database integration)', () => {
         await expect(runWith((d) => d.createMany!({ data: [row] }))).rejects.toMatchObject({
           reason,
         });
-        await expect(countById(row)).resolves.toBe(0);
+        await expect(countById(row)).resolves.toBe(before);
       });
 
       it('refuses a nested write on every relation field (none yet on some models)', async () => {
         for (const relation of entry.relationFields) {
           const row = draft({ [relation]: { connect: { id: randomUUID() } } });
+          const before = await countById(row);
           await expect(runWith((d) => d.create!({ data: row }))).rejects.toMatchObject({
             reason: 'nested-write',
           });
-          await expect(countById(row)).resolves.toBe(0);
+          await expect(countById(row)).resolves.toBe(before);
         }
       });
 
