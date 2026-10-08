@@ -82,7 +82,7 @@ export type ProductRefusal =
   | { readonly code: 'product.seller-only' }
   | { readonly code: 'variant.unknown' }
   | { readonly code: 'variant.fixed' }
-  | { readonly code: 'variant.limit-reached' }
+  | { readonly code: 'variant.limit-reached'; readonly max: number }
   | { readonly code: 'variant.id-taken' }
   | { readonly code: 'variant.not-found' }
   | { readonly code: 'variant.not-proposed' };
@@ -219,7 +219,8 @@ export class Product {
     if (this.#state.variants.some((existing) => existing.id === variantId)) {
       return err({ code: 'variant.id-taken' });
     }
-    if (this.liveVariants.length >= maxVariants) return err({ code: 'variant.limit-reached' });
+    if (this.liveVariants.length >= maxVariants)
+      return err({ code: 'variant.limit-reached', max: maxVariants });
     const variant: VariantRecord = {
       id: variantId,
       state: 'proposed',
@@ -296,7 +297,7 @@ export class Product {
     const removed = live.filter((variant) => variant.state === 'proposed' && !kept.has(variant.id));
     const added = input.variantIds.filter((id) => id === null).length;
     if (live.length - removed.length + added > input.maxVariants) {
-      return err({ code: 'variant.limit-reached' });
+      return err({ code: 'variant.limit-reached', max: input.maxVariants });
     }
     const createdVariants: VariantRecord[] = [];
     const resolved = input.variantIds.map((id) => {

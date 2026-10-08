@@ -11,7 +11,11 @@ import { SaveWorkingCopy } from '../../src/modules/catalog/application/working-c
 import type { RateCounter } from '../../src/modules/catalog/application/ports/rate-counter.repository';
 import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
-import { DRAFT_SAVE_LIMITS, rateVerdict } from '../../src/modules/catalog/domain/rate-limits';
+import {
+  DRAFT_SAVE_LIMITS,
+  RATE_COUNTER_KINDS,
+  rateVerdict,
+} from '../../src/modules/catalog/domain/rate-limits';
 import { HmacRateCounterKeys } from '../../src/modules/catalog/infrastructure/hmac-rate-counter-keys';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaRateCounterRepository } from '../../src/modules/catalog/infrastructure/prisma-rate-counter.repository';
@@ -213,6 +217,37 @@ describe.each(TEST_MARKETS)(
         expect(later.find((r) => r.kind === 'draft-save.account.day')?.count).toBe(62);
       });
 
+      it('restarts a window at exactly its length and not a second before', async () => {
+        const subject = uuid7();
+        await inUnit(() => counters.reserve(market, counterFor(subject), T0));
+        const before = await inUnit(() =>
+          counters.reserve(market, counterFor(subject), T0.add({ seconds: 59 })),
+        );
+        expect(before.find((r) => r.kind === 'draft-save.account.minute')?.count).toBe(2);
+        const at = await inUnit(() =>
+          counters.reserve(market, counterFor(subject), T0.add({ seconds: 60 })),
+        );
+        expect(at.find((r) => r.kind === 'draft-save.account.minute')?.count).toBe(1);
+      });
+
+      it('keeps two accounts apart', async () => {
+        const a = uuid7();
+        const b = uuid7();
+        for (let n = 0; n < 3; n += 1)
+          await inUnit(() => counters.reserve(market, counterFor(a), T0));
+        const first = await inUnit(() => counters.reserve(market, counterFor(b), T0));
+        expect(first[0]!.count).toBe(1);
+      });
+
+      it('lists exactly the kinds its CHECK accepts', async () => {
+        const { rows } = await owner.query(
+          "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'rate_counters_kind_check' AND conrelid = 'catalog.rate_counters'::regclass",
+        );
+        const def = (rows[0] as { def: string }).def;
+        const inCheck = [...def.matchAll(/'([a-z.-]+)'::text/g)].map((m) => m[1]).sort();
+        expect(inCheck).toEqual([...RATE_COUNTER_KINDS]);
+      });
+
       it('counts concurrent attempts exactly once each', async () => {
         const subject = uuid7();
         await Promise.all(
@@ -363,6 +398,72 @@ describe.each(TEST_MARKETS)(
         expect(await inUnit(() => copies.find(market, product.state.id))).toBeNull();
         const reloaded = await inUnit(() => products.findById(market, product.state.id));
         expect(reloaded?.liveVariants).toHaveLength(0);
+      });
+
+      it('refuses a NUL character in the content before the database sees it', async () => {
+        const sellerId = uuid7() as Id<'Seller'>;
+        const product = await storedProduct(sellerId);
+        const refused = await service.execute(sellerContext(sellerId), {
+          productId: product.state.id,
+          content: { a: 'x\u0000y' },
+          variantIds: [],
+        });
+        expect(refused).toEqual({ ok: false, error: { code: 'working-copy.invalid-content' } });
+        expect(await inUnit(() => copies.find(market, product.state.id))).toBeNull();
+      });
+
+      it('answers conflict.stale to a save that read an older product and writes no draft', async () => {
+        const sellerId = uuid7() as Id<'Seller'>;
+        const product = await storedProduct(sellerId);
+        // The loser reads version 1, then another save moves the product to version 2 before it writes.
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const slowProducts = {
+          ...products,
+          nextProductCode: products.nextProductCode.bind(products),
+          add: products.add.bind(products),
+          findById: async (target: typeof market, id: Id<'Product'>) => {
+            const loaded = await products.findById(target, id);
+            await held;
+            return loaded;
+          },
+          save: products.save.bind(products),
+        };
+        const slow = new SaveWorkingCopy({
+          unitOfWork: persistence.unitOfWork,
+          products: slowProducts,
+          workingCopies: copies,
+          counters,
+          counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(9)),
+          policy: {
+            taxCategoryCodes: () => [],
+            sensitiveChanges: () => {
+              throw new Error('not used');
+            },
+            maxVariantsPerProduct: () => 3,
+            approvalRequired: () => Promise.resolve(true),
+          },
+          outbox: { append: () => Promise.resolve() },
+          clock,
+          ids,
+        });
+        const loser = slow.execute(sellerContext(sellerId), {
+          productId: product.state.id,
+          content: { who: 'loser' },
+          variantIds: [null],
+        });
+        const winner = await service.execute(sellerContext(sellerId), {
+          productId: product.state.id,
+          content: { who: 'winner' },
+          variantIds: [null],
+        });
+        expect(winner.ok).toBe(true);
+        release();
+        expect(await loser).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+        const draft = await inUnit(() => copies.find(market, product.state.id));
+        expect(draft?.content).toEqual({ who: 'winner' });
       });
 
       it('throttles an account after 60 saves in a minute', async () => {

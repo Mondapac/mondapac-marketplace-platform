@@ -22,14 +22,35 @@ export interface WorkingCopy {
   readonly lastSavedByAccountId: Id<'Account'>;
 }
 
-/** A plain JSON object (not an array, not null) whose serialisation fits the size cap. */
+/** A string PostgreSQL `jsonb` cannot store: a NUL character or an unpaired surrogate. */
+const UNPAIRED_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+const unstorableText = (text: string): boolean =>
+  text.includes('\u0000') || UNPAIRED_SURROGATE.test(text);
+
+/**
+ * A plain JSON object (not an array, not null) whose serialisation fits the
+ * size cap and holds no key or string that `jsonb` refuses (U+0000, an unpaired surrogate): such
+ * a payload would otherwise fail in the database as an unexpected fault. A value that does not
+ * serialise (BigInt, a cycle) is refused. The caller passes the parsed request body, never an
+ * object of its own making (a Date or a class instance is not a body).
+ */
 export function isStorableContent(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  let refused = false;
   let json: string | undefined;
   try {
-    json = JSON.stringify(value);
+    json = JSON.stringify(value, (key, inner: unknown) => {
+      if (unstorableText(key) || (typeof inner === 'string' && unstorableText(inner))) {
+        refused = true;
+      }
+      return inner;
+    });
   } catch {
     return false;
   }
-  return json !== undefined && Buffer.byteLength(json, 'utf8') <= MAX_WORKING_COPY_CONTENT_BYTES;
+  return (
+    !refused &&
+    json !== undefined &&
+    Buffer.byteLength(json, 'utf8') <= MAX_WORKING_COPY_CONTENT_BYTES
+  );
 }

@@ -140,7 +140,7 @@ describe.each(FIXTURE_MARKETS)(
 
       expect(save(product, tooMany)).toEqual({
         ok: false,
-        error: { code: 'variant.limit-reached' },
+        error: { code: 'variant.limit-reached', max: maxVariants },
       });
       expect(product.liveVariants).toEqual([]);
       expect(product.pendingEvents).toEqual([]);

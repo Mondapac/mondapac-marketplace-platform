@@ -79,7 +79,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
     stale: { value: boolean };
   }
 
-  function rig(limitOverride?: number): Rig {
+  function rig(policy: 'answers' | 'throws' = 'answers'): Rig {
     const stored = new Map<string, Product>();
     const copies = new Map<string, WorkingCopy>();
     const appended: string[] = [];
@@ -115,7 +115,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
         if (failCounters.value) return Promise.reject(new Error('store down'));
         return Promise.resolve(
           wanted.map((counter): RateReservation => {
-            const key = `${counter.limit.kind}`;
+            const key = `${counter.limit.kind}:${Buffer.from(counter.keyHash).toString('hex')}`;
             const count = (counters.get(key) ?? 0) + 1;
             counters.set(key, count);
             return { kind: counter.limit.kind, count, windowStartedAt: now };
@@ -124,12 +124,15 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       },
       purgeStartedBefore: () => Promise.resolve(0),
     };
-    const policy: CatalogMarketPolicy = {
+    const marketPolicy: CatalogMarketPolicy = {
       taxCategoryCodes: () => [],
       sensitiveChanges: () => {
         throw new Error('not used');
       },
-      maxVariantsPerProduct: () => limitOverride ?? maxVariants,
+      maxVariantsPerProduct: () => {
+        if (policy === 'throws') throw new Error('policy down');
+        return maxVariants;
+      },
       approvalRequired: () => Promise.resolve(true),
     };
     const outbox: OutboxWriter = {
@@ -144,7 +147,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       workingCopies,
       counters: counterRepo,
       counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(7)),
-      policy,
+      policy: marketPolicy,
       outbox,
       clock,
       ids,
@@ -237,6 +240,8 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
     ['an array', []],
     ['null', null],
     ['a string', 'text'],
+    ['a NUL character', { a: 'x\u0000y' }],
+    ['an unpaired surrogate', { a: '\ud800' }],
     ['an object over the size cap', { text: 'x'.repeat(300 * 1024) }],
   ])('refuses %s as content before reserving anything', async (_name, content) => {
     const r = rig();
@@ -268,7 +273,9 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       ok: false,
       error: { code: 'request.throttled', retryAfterSeconds: 60 },
     });
-    expect(r.counters.get('draft-save.account.minute')).toBe(61);
+    expect(
+      [...r.counters.entries()].find(([key]) => key.startsWith('draft-save.account.minute'))?.[1],
+    ).toBe(61);
     expect(r.copies.get(product.state.id)?.content).toEqual({ n: 59 });
   });
 
@@ -295,7 +302,10 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       content: {},
       variantIds: Array.from({ length: maxVariants + 1 }, () => null),
     });
-    expect(refused).toEqual({ ok: false, error: { code: 'variant.limit-reached' } });
+    expect(refused).toEqual({
+      ok: false,
+      error: { code: 'variant.limit-reached', max: maxVariants },
+    });
     expect(r.copies.size).toBe(0);
     expect(r.appended).toEqual([]);
   });
@@ -332,5 +342,82 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       variantIds: [],
     });
     expect(r.copies.get(product.state.id)?.baseRevisionId).toBe(base);
+  });
+
+  it('throttles one account without throttling another', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const busy = actorContext('seller');
+    for (let attempt = 0; attempt < 61; attempt += 1) {
+      await r.service.execute(busy, { productId: product.state.id, content: {}, variantIds: [] });
+    }
+    const other = await r.service.execute(actorContext('seller'), {
+      productId: product.state.id,
+      content: {},
+      variantIds: [],
+    });
+    expect(other.ok).toBe(true);
+  });
+
+  it('answers access.unavailable when the Market policy cannot answer, storing nothing', async () => {
+    const r = rig('throws');
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const refused = await r.service.execute(actorContext('seller'), {
+      productId: product.state.id,
+      content: {},
+      variantIds: [],
+    });
+    expect(refused).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(r.copies.size).toBe(0);
+  });
+
+  it('accepts a save to exactly the Market limit', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const saved = await r.service.execute(actorContext('seller'), {
+      productId: product.state.id,
+      content: {},
+      variantIds: Array.from({ length: maxVariants }, () => null),
+    });
+    expect(saved.ok && saved.value.variantIds).toHaveLength(maxVariants);
+  });
+
+  it('refuses a variant id of another product, the same as an invented one, minting nothing', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const foreign = await r.service.execute(actorContext('seller'), {
+      productId: product.state.id,
+      content: {},
+      variantIds: [ids.next<'Variant'>(), null],
+    });
+    expect(foreign).toEqual({ ok: false, error: { code: 'variant.unknown' } });
+    expect(r.copies.size).toBe(0);
+    expect(r.appended).toEqual([]);
+  });
+
+  it('hides a PLATFORM product from a seller as not found and names the refusal for an admin on a SELLER one', async () => {
+    const r = rig();
+    const platform = newProduct('PLATFORM');
+    const sellers = newProduct('SELLER');
+    r.stored.set(platform.state.id, platform);
+    r.stored.set(sellers.state.id, sellers);
+    expect(
+      await r.service.execute(actorContext('seller'), {
+        productId: platform.state.id,
+        content: {},
+        variantIds: [],
+      }),
+    ).toEqual({ ok: false, error: { code: 'product.not-found' } });
+    expect(
+      await r.service.execute(actorContext('admin'), {
+        productId: sellers.state.id,
+        content: {},
+        variantIds: [],
+      }),
+    ).toEqual({ ok: false, error: { code: 'product.seller-only' } });
   });
 });
