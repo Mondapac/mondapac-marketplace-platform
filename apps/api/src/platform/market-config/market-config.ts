@@ -552,6 +552,17 @@ const marketSchema = z
     supportedLocales: z.array(locale).min(1),
     defaultCurrency: currency,
     settlementCurrency: currency,
+    /**
+     * The Market's price display convention (ADR-0007 decision 4): true when prices are entered
+     * and shown tax-inclusive (AU). Read by pricing, cart, tax, storefront and invoices, so it is
+     * platform configuration (pricing design 4.5; Ali A2). Required: a Market never defaults it.
+     */
+    pricesIncludeTax: z.boolean(),
+    /**
+     * The most units of one Offer in a cart line, and the ceiling of an Offer's per-customer
+     * cap (inventory design 3.3, cart design 4; AU 99; Ali A2). Required, whole, 1 to 999.
+     */
+    maxLineQuantity: z.number().int().min(1).max(999),
     /** Fallback only (ADR-0005): sellers, locations and addresses carry their own zone. */
     timezone: z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone'),
     requestLimits: requestLimitsSchema,

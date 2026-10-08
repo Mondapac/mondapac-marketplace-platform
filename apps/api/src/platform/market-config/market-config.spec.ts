@@ -21,6 +21,8 @@ const VALID = {
   supportedLocales: ['en-NZ'],
   defaultCurrency: 'NZD',
   settlementCurrency: 'NZD',
+  pricesIncludeTax: true,
+  maxLineQuantity: 99,
   timezone: 'Pacific/Auckland',
   requestLimits: { anonymousIdentityPerMinute: 20, defaultPerMinute: 300 },
   allowedOrigins: ['https://shop.qq.test'],
@@ -867,6 +869,50 @@ describe('loadMarketConfigs', () => {
 
     it('rejects an unknown key', () => {
       expect(() => loadMarketConfigs([withSellers({ ...SELLERS, vatRate: 1 })], [QQ])).toThrow(
+        InvalidMarketConfigError,
+      );
+    });
+  });
+
+  describe('pricesIncludeTax and maxLineQuantity', () => {
+    const load = (overrides: Record<string, unknown>) =>
+      loadMarketConfigs([directoryWith({ 'QQ.json': { ...VALID, ...overrides } })], [QQ]).get(QQ);
+    const without = (key: string) =>
+      Object.fromEntries(Object.entries(VALID).filter(([name]) => name !== key));
+
+    it('are read for each Market and differ between the two fixtures', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const read = TEST_MARKET_IDS.map((id) => [
+        configs.get(id)?.pricesIncludeTax,
+        configs.get(id)?.maxLineQuantity,
+      ]);
+      expect(read).toContainEqual([true, 99]);
+      expect(read).toContainEqual([false, 50]);
+    });
+
+    it.each([1, 99, 999])('accepts a line ceiling of %s', (limit) => {
+      expect(load({ maxLineQuantity: limit })?.maxLineQuantity).toBe(limit);
+    });
+
+    it('accepts a tax-exclusive Market', () => {
+      expect(load({ pricesIncludeTax: false })?.pricesIncludeTax).toBe(false);
+    });
+
+    it.each([
+      ['a zero ceiling', { maxLineQuantity: 0 }],
+      ['a ceiling above 999', { maxLineQuantity: 1000 }],
+      ['a negative ceiling', { maxLineQuantity: -1 }],
+      ['a fractional ceiling', { maxLineQuantity: 2.5 }],
+      ['a string ceiling', { maxLineQuantity: '99' }],
+      ['a null ceiling', { maxLineQuantity: null }],
+      ['a string convention', { pricesIncludeTax: 'true' }],
+      ['a null convention', { pricesIncludeTax: null }],
+    ])('rejects %s', (_case, overrides) => {
+      expect(() => load(overrides)).toThrow(InvalidMarketConfigError);
+    });
+
+    it.each(['pricesIncludeTax', 'maxLineQuantity'])('requires %s, with no default', (key) => {
+      expect(() => loadMarketConfigs([directoryWith({ 'QQ.json': without(key) })], [QQ])).toThrow(
         InvalidMarketConfigError,
       );
     });
