@@ -1,6 +1,7 @@
 // Built-kernel check (platform-foundations design 3.7 and its section 13 note): after
-// `pnpm build`, the API must load ONE build of the shared kernel through its three
-// entries, `@mondapac/shared-kernel`, `/testing` and `/contexts` (slice 1c). Minted
+// `pnpm build`, the API must load ONE build of the shared kernel through its four
+// entries, `@mondapac/shared-kernel`, `/testing`, `/contexts` (slice 1c) and
+// `/authenticated-actor` (identity slice 2). Minted
 // contexts are recorded in a module-private WeakSet, so a second copy of the kernel in
 // one process would make every context from the other copy fail `isMinted`.
 //
@@ -42,6 +43,8 @@ const entries = [
   '@mondapac/shared-kernel',
   '@mondapac/shared-kernel/testing',
   '@mondapac/shared-kernel/contexts',
+  // The authenticated-actor constructor (identity slice 2), for identity's Authenticator.
+  '@mondapac/shared-kernel/authenticated-actor',
 ];
 // Deep imports that the kernel's `exports` map must refuse: a file of its build output, and
 // the minting module by a subpath. pnpm boundaries refuses them in the source as well.
@@ -77,6 +80,7 @@ if (problems.length === 0) {
     const kernel = fromApi('@mondapac/shared-kernel');
     const testing = fromApi('@mondapac/shared-kernel/testing');
     const contexts = fromApi('@mondapac/shared-kernel/contexts');
+    const authenticated = fromApi('@mondapac/shared-kernel/authenticated-actor');
     for (const market of markets) {
       const context = testing.testMarketContext(market, 'mondapac');
       if (!kernel.isMinted(context)) {
@@ -93,6 +97,17 @@ if (problems.length === 0) {
       );
       if (!kernel.isMinted(call) || !kernel.isMinted(call.actor)) {
         problems.push(`a ${market} call context built through /contexts fails isMinted`);
+      }
+      // An authenticated actor built through its own entry, in a call context of /contexts.
+      const actor = authenticated.authenticatedActor(context, {
+        population: 'customer',
+        accountId: '01900000-0000-7000-8000-000000000001',
+        sessionId: '01900000-0000-7000-8000-000000000002',
+        sellerId: null,
+      });
+      const signedIn = contexts.createCallContext(context, actor, 'built-kernel-check-0002');
+      if (!kernel.isMinted(actor) || !kernel.isMinted(signedIn)) {
+        problems.push(`a ${market} authenticated actor fails isMinted across the entries`);
       }
     }
   } catch (error) {

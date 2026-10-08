@@ -84,8 +84,10 @@ function forbidNames(names, message) {
 
 // Rule 5, contexts-are-minted-by-platform (design 3.7): a module never mints a context and
 // never asserts a value to a context type; it receives the context from its entry adapter.
-// Slice 1 adds the actor and CallContext constructors and types (one file of identity may
-// then call the authenticated-actor constructor). Lint is a guard rail here: a literal can
+// Slice 1 adds the actor and CallContext constructors and types; slice 2 adds the
+// authenticated-actor constructor, which identity's Authenticator alone may call (the
+// exemption block below; dependency-cruiser authenticated-actor-is-built-by-the-authenticator
+// is the import check). Lint is a guard rail here: a literal can
 // still reach a context parameter through `as any`, a type alias or an untyped value, so the
 // run-time control is the kernel's isMinted check. The dependency-cruiser rule
 // market-context-only-through-the-decorator closes the paths to the factory, and
@@ -96,6 +98,7 @@ const CONTEXT_CONSTRUCTORS = [
   'anonymousActor',
   'systemActor',
   'createCallContext',
+  'authenticatedActor',
 ];
 const CONTEXT_TYPES = [
   'MarketContext',
@@ -108,8 +111,12 @@ const CONTEXT_TYPES = [
 const MINTED_BY_PLATFORM =
   'contexts-are-minted-by-platform: a module never mints a context; it receives one from ' +
   'its platform entry adapter.';
-const contextsAreMintedByPlatform = [
-  ...forbidNames(CONTEXT_CONSTRUCTORS, MINTED_BY_PLATFORM),
+/** Rule 5's selectors, with the constructors in `allowed` left out (the Authenticator's block). */
+const contextsAreMintedByPlatformExcept = (allowed) => [
+  ...forbidNames(
+    CONTEXT_CONSTRUCTORS.filter((name) => !allowed.includes(name)),
+    MINTED_BY_PLATFORM,
+  ),
   {
     selector: `:matches(TSAsExpression, TSTypeAssertion) > .typeAnnotation Identifier[name=/^(${CONTEXT_TYPES.join('|')})$/]`,
     message:
@@ -117,11 +124,12 @@ const contextsAreMintedByPlatform = [
       'context is minted by the platform.',
   },
 ];
+const contextsAreMintedByPlatform = contextsAreMintedByPlatformExcept([]);
 // The same rule as import restrictions of the modules (a separate rule key, so the
 // no-restricted-syntax blocks do not replace it). With importNames, a namespace import and
 // an `export *` of the package are reported too. Provider discovery would hand a module the
 // global factory without naming it.
-const contextImportsOfModules = [
+const contextImportPaths = (entries) => [
   'error',
   {
     paths: [
@@ -130,10 +138,7 @@ const contextImportsOfModules = [
         importNames: ['mintMarketContext'],
         message: MINTED_BY_PLATFORM,
       },
-      // The actor and CallContext constructors live in the kernel entry `contexts`. A path
-      // name match, so it holds whether or not the entry exists yet; a module imports the
-      // context types from the kernel main entry and never this entry.
-      { name: '@mondapac/shared-kernel/contexts', message: MINTED_BY_PLATFORM },
+      ...entries.map((name) => ({ name, message: MINTED_BY_PLATFORM })),
       {
         name: '@nestjs/core',
         importNames: ['DiscoveryService', 'DiscoveryModule', 'ModulesContainer'],
@@ -144,6 +149,15 @@ const contextImportsOfModules = [
     ],
   },
 ];
+// The actor and CallContext constructors live in the kernel entry `contexts` and the
+// authenticated-actor constructor in `authenticated-actor`. A path name match, so it holds
+// whether or not the entry exists; a module imports the context types from the kernel main
+// entry and never these entries. Identity's Authenticator alone imports the second one.
+const contextImportsOfModules = contextImportPaths([
+  '@mondapac/shared-kernel/contexts',
+  '@mondapac/shared-kernel/authenticated-actor',
+]);
+const contextImportsOfTheAuthenticator = contextImportPaths(['@mondapac/shared-kernel/contexts']);
 
 // P 12.2 rule 4, no-raw-sql-or-transaction-in-modules: raw SQL and $transaction belong to the
 // platform (UnitOfWork); a module reaches the database through the unit-of-work port. It is part
@@ -224,6 +238,51 @@ const kernelImports = (regex) => [
   },
 ];
 
+// Slice 1c, use-case-entry-is-the-gate (ADR-0018): UseCase.execute is the one entry that
+// checks the access rule; a use case implements the protected `handle` and never overrides
+// `execute` (application/use-cases/ only). Slice 2 (platform-foundations 8.3 W7 and W8) widens
+// the `handle` group to every file of src/modules/, so a facade, a job or an event handler
+// reaches a use case through execute too: no `handle` member on another object, no `handle`
+// destructured, no 'handle' named to Reflect, and no reflection over a class's methods
+// (`.prototype`, `__proto__`, Object.getPrototypeOf, Object.getOwnPropertyDescriptor(s)).
+// `this.handle(` stays allowed (UseCase.execute is in platform/authz/, outside modules). A
+// handler object in a module names its method something else.
+const GATE = 'use-case-entry-is-the-gate';
+const useCaseNeverOverridesExecute = {
+  selector:
+    "ClassBody > :matches(MethodDefinition, PropertyDefinition):matches([key.name='execute'], [key.value='execute'])",
+  message: `${GATE}: a use case never overrides execute.`,
+};
+const HANDLE_ONLY_BY_EXECUTE = `${GATE}: handle is called only by UseCase.execute.`;
+const handleIsReachedOnlyByExecute = [
+  {
+    // The member, not the call, so that x['handle'](), x.handle.call(...) and x.handle.bind(...)
+    // are caught too.
+    selector:
+      "MemberExpression:matches([property.name='handle'], [property.value='handle'])[object.type!='ThisExpression']",
+    message: HANDLE_ONLY_BY_EXECUTE,
+  },
+  {
+    selector: "ObjectPattern > Property:matches([key.name='handle'], [key.value='handle'])",
+    message: HANDLE_ONLY_BY_EXECUTE,
+  },
+  {
+    selector:
+      "CallExpression[callee.object.name='Reflect'] > :matches(Literal[value='handle'], TemplateLiteral > TemplateElement[value.raw='handle'])",
+    message: HANDLE_ONLY_BY_EXECUTE,
+  },
+  {
+    selector:
+      'CallExpression:matches([callee.name=/^(getPrototypeOf|getOwnPropertyDescriptors?)$/], [callee.property.name=/^(getPrototypeOf|getOwnPropertyDescriptors?)$/])',
+    message: `${GATE}: no reflection over a class's methods in a module (it reaches handle). Use Object.hasOwn, or a platform helper for plain-object checks; interceptors (CallHandler.handle) live in platform/.`,
+  },
+  {
+    selector:
+      'MemberExpression:matches([property.name=/^(prototype|__proto__)$/], [property.value=/^(prototype|__proto__)$/])',
+    message: `${GATE}: no reflection over a class's methods in a module (it reaches handle). Use Object.hasOwn, or a platform helper for plain-object checks; interceptors (CallHandler.handle) live in platform/.`,
+  },
+];
+
 // The selector groups of the modules block and of the domain and application block.
 const MODULE_SYNTAX = [
   ...noMarketOrVerticalLiterals,
@@ -232,37 +291,19 @@ const MODULE_SYNTAX = [
   ...contextsAreMintedByPlatform,
   ...noRawSqlOrTransactionInModules,
   ...moduleStaticImportsOnly,
+  ...handleIsReachedOnlyByExecute,
 ];
-const DOMAIN_APPLICATION_SYNTAX = [
+const domainApplicationSyntax = (contextRules) => [
   ...noMarketOrVerticalLiterals,
   ...noWallClock,
   ...noDateConversion,
   ...onlyTheGuardAttaches,
-  ...contextsAreMintedByPlatform,
+  ...contextRules,
   ...noRawSqlOrTransactionInModules,
   ...moduleStaticImportsOnly,
+  ...handleIsReachedOnlyByExecute,
 ];
-
-// Slice 1c, use-case-entry-is-the-gate (ADR-0018): UseCase.execute is the one entry that
-// checks the access rule; a use case implements the protected `handle` and never overrides
-// `execute`, and nothing calls `handle` on another object. Both selectors are scoped to
-// application/use-cases/ (where use cases live) and, for the call, presentation/ (where a
-// controller could bypass the gate). A `.handle(` elsewhere in a module (a handler object,
-// an event handler) is not flagged. `this.handle(` stays allowed (UseCase.execute is in
-// platform/authz/, outside modules).
-const GATE = 'use-case-entry-is-the-gate';
-const useCaseNeverOverridesExecute = {
-  selector:
-    "ClassBody > :matches(MethodDefinition, PropertyDefinition):matches([key.name='execute'], [key.value='execute'])",
-  message: `${GATE}: a use case never overrides execute.`,
-};
-const handleIsCalledOnlyByExecute = {
-  // The member, not the call, so that x['handle'](), x.handle.call(...) and x.handle.bind(...)
-  // are caught too.
-  selector:
-    "MemberExpression:matches([property.name='handle'], [property.value='handle'])[object.type!='ThisExpression']",
-  message: `${GATE}: handle is called only by UseCase.execute.`,
-};
+const DOMAIN_APPLICATION_SYNTAX = domainApplicationSyntax(contextsAreMintedByPlatform);
 
 export default tseslint.config(
   {
@@ -415,19 +456,23 @@ export default tseslint.config(
     files: [`**/src/modules/*/application/use-cases/**/*.${TS}`],
     ignores: SPEC_FILES,
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        ...DOMAIN_APPLICATION_SYNTAX,
-        useCaseNeverOverridesExecute,
-        handleIsCalledOnlyByExecute,
-      ],
+      'no-restricted-syntax': ['error', ...DOMAIN_APPLICATION_SYNTAX, useCaseNeverOverridesExecute],
     },
   },
   {
-    // Presentation: a controller reaches a use case through execute only.
-    files: [`**/src/modules/*/presentation/**/*.${TS}`],
-    ignores: SPEC_FILES,
-    rules: { 'no-restricted-syntax': ['error', ...MODULE_SYNTAX, handleIsCalledOnlyByExecute] },
+    // Identity's Authenticator (identity design 6.2, slice 2): the one file that builds an
+    // authenticated actor. Only that constructor is exempt; every other rule stays.
+    files: [
+      'apps/api/src/modules/identity/application/access/session-authenticator.ts',
+      `${FIXTURES}/src/modules/identity/application/access/session-authenticator.ts`,
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...domainApplicationSyntax(contextsAreMintedByPlatformExcept(['authenticatedActor'])),
+      ],
+      '@typescript-eslint/no-restricted-imports': contextImportsOfTheAuthenticator,
+    },
   },
   {
     // The shared kernel is framework-free and used by both api and web (ADR-0008), spec

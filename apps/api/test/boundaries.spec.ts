@@ -124,6 +124,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'application-does-not-know-delivery',
+        'authenticated-actor-is-built-by-the-authenticator',
         'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
         'database-driver-only-in-infrastructure',
@@ -157,6 +158,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
     it('reports every deliberate violation in the fixtures, and nothing else', () => {
       expect(found).toEqual([
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
+        'authenticated-actor-is-built-by-the-authenticator: src/modules/identity/application/mints-authenticated-actor.ts',
+        'authenticated-actor-is-built-by-the-authenticator: src/platform/mints-authenticated-actor.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
@@ -230,6 +233,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/alpha/presentation/market-controller.ts',
       // identity may import its own files.
       'src/modules/identity/application/uses-own-domain.ts',
+      // identity's Authenticator alone builds authenticated actors (slice 2).
+      'src/modules/identity/application/access/session-authenticator.ts',
       // A module's infrastructure reaches the database through PrismaService only.
       'src/modules/alpha/infrastructure/uses-prisma-service.ts',
       // A platform entry adapter builds actors and call contexts (identity slice 1c).
@@ -607,8 +612,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'src/modules/alpha/application/uses-context-types.ts',
         imports('contexts-are-minted-by-platform'),
       ],
-      // Slice 1c, use-case-entry-is-the-gate: no execute override and no `.handle(` call on
-      // another object in use-cases/; no `.handle(` call in presentation/.
+      // Slice 1c, use-case-entry-is-the-gate: no execute override in use-cases/. Slice 2 (W7,
+      // W8): no `handle` reached on another object, by destructuring or by reflection in any
+      // file of a module.
       [
         'src/modules/alpha/application/use-cases/overrides-execute.ts',
         syntax('use-case-entry-is-the-gate', 3),
@@ -619,7 +625,27 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ],
       ['src/modules/alpha/presentation/calls-handle.ts', syntax('use-case-entry-is-the-gate')],
       ['src/modules/alpha/application/use-cases/allowed-use-case.ts', []],
-      ['src/modules/alpha/application/calls-handler-object.ts', []],
+      [
+        'src/modules/alpha/application/calls-handler-object.ts',
+        syntax('use-case-entry-is-the-gate'),
+      ],
+      [
+        'src/modules/alpha/infrastructure/calls-handle.facade.ts',
+        syntax('use-case-entry-is-the-gate'),
+      ],
+      ['src/modules/alpha/application/reflects-handle.ts', syntax('use-case-entry-is-the-gate', 7)],
+      // Slice 2, rule 5: the authenticated-actor constructor is refused in a module (import
+      // path and name), except in identity's Authenticator; the platform may name it (the
+      // dependency-cruiser rule refuses that import).
+      [
+        'src/modules/identity/application/mints-authenticated-actor.ts',
+        [
+          ...imports('contexts-are-minted-by-platform'),
+          ...syntax('contexts-are-minted-by-platform'),
+        ],
+      ],
+      ['src/modules/identity/application/access/session-authenticator.ts', []],
+      ['src/platform/mints-authenticated-actor.ts', []],
       // Only the guard attaches a MarketContext, in every part of the API.
       [
         'src/platform/attaches-market-context.ts',
@@ -678,6 +704,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       );
       expect(textsIn('src/modules/alpha/application/use-cases/calls-handle.ts')).toEqual(
         Array(4).fill('use-case-entry-is-the-gate: handle is called only by UseCase.execute.'),
+      );
+      expect(textsIn('src/modules/alpha/application/reflects-handle.ts')).toEqual(
+        Array(7).fill(expect.stringMatching(/^use-case-entry-is-the-gate: /)),
       );
     });
 

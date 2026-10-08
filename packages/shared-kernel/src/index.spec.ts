@@ -1,3 +1,4 @@
+import * as authenticated from './authenticated-actor';
 import * as contexts from './contexts';
 import * as kernel from './index';
 import * as testing from './testing';
@@ -32,7 +33,7 @@ describe('the public surface of the kernel', () => {
   });
 
   it('does not export the internal mint functions', () => {
-    for (const entry of [kernel, testing, contexts]) {
+    for (const entry of [kernel, testing, contexts, authenticated]) {
       expect(entry).not.toHaveProperty('mint');
       expect(entry).not.toHaveProperty('mintAuthenticatedActor');
     }
@@ -48,6 +49,14 @@ describe('the public surface of the kernel', () => {
     for (const name of Object.keys(contexts)) {
       expect(kernel).not.toHaveProperty(name);
       expect(testing).not.toHaveProperty(name);
+    }
+  });
+
+  it('keeps the authenticated-actor constructor on its own entry only (identity slice 2)', () => {
+    expect(Object.keys(authenticated)).toEqual(['authenticatedActor']);
+    expect(authenticated).not.toHaveProperty('default');
+    for (const entry of [kernel, testing, contexts]) {
+      expect(entry).not.toHaveProperty('authenticatedActor');
     }
   });
 

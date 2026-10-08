@@ -4,7 +4,8 @@
 // from tests only (dependency-cruiser rule `contexts-are-built-by-platform`). The types, the
 // minted check and `ContextMismatchError` stay on the main entry, which every layer may import.
 //
-// Named exports only. The authenticated-actor constructor is not here: identity slice 2 gives
-// it its own entry, reachable from the one file of `identity` that builds actors (3.7).
+// Named exports only. The authenticated-actor constructor is not here: it has its own entry,
+// `@mondapac/shared-kernel/authenticated-actor` (identity slice 2), reachable from the one file
+// of `identity` that builds actors (3.7).
 export { anonymousActor, systemActor } from './actor-context';
 export { createCallContext } from './call-context';

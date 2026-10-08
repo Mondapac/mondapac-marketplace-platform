@@ -18,6 +18,10 @@
     "./contexts": {
       "types": "./dist/contexts.d.ts",
       "default": "./dist/contexts.js"
+    },
+    "./authenticated-actor": {
+      "types": "./dist/authenticated-actor.d.ts",
+      "default": "./dist/authenticated-actor.js"
     }
   },
   "files": [
