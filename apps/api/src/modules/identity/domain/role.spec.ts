@@ -50,6 +50,7 @@ describe.each(['AU', 'ZZ'])(
           seedCode: 'seller-owner',
           seedVersion: 1,
           sellerId: null,
+          permissionKeys: [],
           version: 1,
           createdAt: NOW,
         });
@@ -81,6 +82,98 @@ describe.each(['AU', 'ZZ'])(
             sellerId: id<'Seller'>('01990000-0000-7000-8000-0000000000a1'),
           }),
         ).toThrow(RoleInvariantError);
+      });
+    });
+
+    describe('Role.seedDefault and applySeed (5.6, R3, R10; slice 8a-1)', () => {
+      const storeManager = (keys: readonly string[] = ['identity.team-member.view']) =>
+        Role.seedDefault({
+          id: ROLE_ID,
+          marketId,
+          scope: 'seller',
+          seedCode: 'store-manager',
+          seedVersion: 1,
+          permissionKeys: keys,
+          now: NOW,
+        });
+
+      it('is a shared default row of its scope (no seller, R9) with sorted stored keys', () => {
+        const role = storeManager(['identity.seller-role.view', 'identity.team-member.view']);
+        expect(role.state).toMatchObject({
+          kind: 'default',
+          sellerId: null,
+          seedVersion: 1,
+          permissionKeys: ['identity.seller-role.view', 'identity.team-member.view'],
+        });
+        expect(Object.isFrozen(role.state.permissionKeys)).toBe(true);
+        expect(role.persistedVersion).toBeNull();
+      });
+
+      it.each([
+        ['a malformed key', ['identity.Team.view']],
+        ['a duplicate key', ['identity.team-member.view', 'identity.team-member.view']],
+      ])('refuses %s', (_name, keys) => {
+        expect(() => storeManager(keys)).toThrow(RoleInvariantError);
+      });
+
+      it('refuses a system role with stored keys (R3)', () => {
+        expect(() =>
+          Role.restore({
+            ...systemRole('seller').state,
+            permissionKeys: ['identity.team-member.view'],
+          }),
+        ).toThrow(new RoleInvariantError('keys'));
+      });
+
+      it('applies a newer seed key by key, stepping the version and keeping the persisted one', () => {
+        const stored = Role.restore({ ...storeManager().state, version: 3 });
+        const upgrade = stored.applySeed({
+          seedVersion: 2,
+          permissionKeys: ['identity.seller-role.view', 'catalog.offer.edit'],
+        });
+        expect(upgrade.fromSeedVersion).toBe(1);
+        expect(upgrade.addedKeys).toEqual(['catalog.offer.edit', 'identity.seller-role.view']);
+        expect(upgrade.removedKeys).toEqual(['identity.team-member.view']);
+        expect(upgrade.role.state).toMatchObject({
+          seedVersion: 2,
+          version: 4,
+          permissionKeys: ['catalog.offer.edit', 'identity.seller-role.view'],
+        });
+        expect(upgrade.role.persistedVersion).toBe(3);
+      });
+
+      it('upgrades a system role without keys (the seed-version upgrade of Ali, PA 14)', () => {
+        const upgrade = Role.restore(systemRole('platform').state).applySeed({
+          seedVersion: 2,
+          permissionKeys: [],
+        });
+        expect(upgrade).toMatchObject({ fromSeedVersion: 1, addedKeys: [], removedKeys: [] });
+        expect(upgrade.role.state.seedVersion).toBe(2);
+        expect(() =>
+          Role.restore(systemRole('platform').state).applySeed({
+            seedVersion: 2,
+            permissionKeys: ['identity.platform-role.view'],
+          }),
+        ).toThrow(new RoleInvariantError('keys'));
+      });
+
+      it('never applies an older or equal version, and never touches a custom role (R10)', () => {
+        const stored = Role.restore({ ...storeManager().state, seedVersion: 2 });
+        for (const seedVersion of [1, 2, 2.5]) {
+          expect(() => stored.applySeed({ seedVersion, permissionKeys: [] })).toThrow(
+            new RoleInvariantError('seed-upgrade'),
+          );
+        }
+        const custom = Role.restore({
+          ...storeManager().state,
+          kind: 'custom',
+          seedCode: null,
+          seedVersion: null,
+          sellerId: id<'Seller'>('01990000-0000-7000-8000-0000000000a1'),
+        });
+        expect(() => custom.applySeed({ seedVersion: 2, permissionKeys: [] })).toThrow(
+          new RoleInvariantError('seed-upgrade'),
+        );
       });
     });
 
