@@ -153,7 +153,7 @@ sign-up (M5).
 |---|---|---|---|
 | (sign-up) → `unverified` | Sign-up of a customer or a seller | A `verify-email` link is requested (3.7); the answer is the same whether or not the address already has an account (AC 21) | Flow A1 to A3 |
 | `unverified` → `unverified` | Sign-up again with the same address: the password is replaced, and for a seller the display name too; the older link is void | The way to correct a mistyped address and to displace a squatter (6.7) | Flow A2 |
-| `unverified` → `verified` | The link is presented with the account's password (6.7), as the variant of sign-in that carries a link (6.3), under full throttling; the link is unused, unexpired and of this account, purpose and Market, and is consumed only when the password is correct (Hassan, 14.2) | Event `identity.account-email-verified.v1`; for a Seller Owner the welcome mail and, in Phase 2, the admin notification (8.5). Sign-in then continues and normally ends in a session | AC 16, AC 19 |
+| `unverified` → `verified` | The link is presented with the account's password (6.7), as the variant of sign-in that carries a link (6.3), under full throttling; the link is unused, unexpired and of this account, purpose and Market, and is consumed only when the password is correct (Hassan, 14.2) | Event `identity.account-email-verified.v1`; for a Seller Owner the welcome mail. No reviewer notice here: it follows a seller's submission (8.7). Sign-in then continues and normally ends in a session | AC 16, AC 19 |
 | (invitation) → `verified` | Accepting an invitation creates the account verified: the link proved the mailbox | — | AC 22, AC 29 |
 
 Forbidden: a session before verification, for every population (team decision of brief s7 for
@@ -693,7 +693,7 @@ so, and no caller may put them in an event, a log or an audit row.
 | `approveSellerAccess(ctx, sellerId, basisId?)`, `rejectSellerAccess(…, reason, basisId?)` | The new state or a refusal code. `basisId` is an id that means nothing to `identity`; it is stored on the decision and published (8.4) | `identity.seller-access.approve` | 9 |
 | `autoApproveSellerAccess(ctx, sellerId)` | As above; refused unless the Market policy "approval required" is off, and called only when every `sellers` check passes (8.4, point 5) | `system` | With `sellers` |
 | `reapplySellerAccess(ctx, sellerId)` | The new state, or `seller-access.reapply-limit` | `own-resources` of the Seller Owner, allowed when not approved | 9 |
-| `notifyAccessReviewers(ctx, sellerId)` | Nothing | `system` | With `sellers` |
+| `notifyAccessReviewers(ctx, sellerId)`, **in the sellers-only contract file `contracts/seller-access.contract.ts`**, not in this facade or `index.ts` (8.7) | `reviewer-notice.sent`, or `reviewer-notice.skipped` with `seller.unknown`, `seller.not-pending` or `recipients.none`; refusals `access.denied`, `validation.failed`, `reviewer-notice.unavailable`. Never a recipient count or an address | `system` (use case `identity.notify-access-reviewers`) | R-3 |
 
 "Who is this request from?" is the `ActorContext`; "may this actor do X?" is the gate. Other
 modules never ask for role or membership tables (R8). Named and not built: the contact point of
@@ -765,7 +765,7 @@ ADR-0022 point 6 answers for a set of seller ids in one call; `sellerAccessOf` t
 | Approve only with a "current submission" (mini-review 1) | Not an `identity` rule: `identity` does not know submissions. It is the precondition of 8.4 (4), and it replaces the Phase 2 behaviour (approve on name and email) when the entry moves. `identity` keeps its own guard (owner exists, email verified) |
 | "Approval required" off: register result and unique identifier first | 8.4 (5). From that slice the initial state is `pending` in both settings and the automatic approval follows the checks. This changes AC 5 ("approved without admin action" at registration): a mini-review of the identity brief (ADR-0013 decision 4) |
 | Re-confirm identity before `sellers` slice 10 (mini-review 2) | Designed here: the session records when its holder last re-entered the password, and the code when a factor is active; `hasRecentConfirmation` reads it. Built by that mini-review, because the identity brief (s3) gives the capability to Phase 5 with VER-10. "Only the Seller Owner may ask" is, in this design, a protected seller-scope permission under the narrowing of 5.4, not a fifth rule kind (decided by Ali, 14.1-3). Moving re-confirmation from Phase 5 to Phase 3 is one of the three later mini-reviews (14.1-12) |
-| The moment "notify the admin" (mini-review 3) | Phase 2: when the Seller Owner's email is verified and the state is `pending` (flow A4, AC 16), from slice 9, where reviewers first exist (12.1); the handler is separate from verification. With `sellers`: after a submission; `sellers`' handler calls `notifyAccessReviewers`, `identity` resolves the recipients (active admins holding `identity.seller-access.approve`) and sends; the Phase 2 trigger is switched off in the same mini-review |
+| The moment "notify the admin" (mini-review 3) | **Decided 2026-10-08 (8.7):** after a seller's onboarding submission, never at email verification. `sellers`' handler `sellers.after-submission` decides when and coalesces; `identity` resolves the recipients (active admins of the Market with a verified email, an active second factor and `identity.seller-access.approve`) and sends, through `notifyAccessReviewers` in the sellers-only contract file. The Phase 2 trigger at email verification was never built: no subscriber of `identity` sends the notice. Built in the R-3 slice (12.1) |
 | ADR "Market settings editable by an admin" | `identity` only names it. It reads "approval required", "email verification required" and the policy values of 3 and 6 through one port, `IdentityMarketPolicy`, whose Phase 2 adapter reads Market configuration as code (brief s3). Constraints for that ADR: the store is platform infrastructure, not `sellers` (R7); a read is synchronous and sees a committed change at once; every change is audited. Effective dating (VER-09) and telling senior admins are that ADR's questions |
 | Landing of a seller that is not approved | One route, Reza's S1 "Your seller account" (`ux.md` F5; the title stays): after sign-in, inside the limited shell, a status banner, the reason (owner only) and a steps card. The panel offers only routes whose use cases are on the allow-list of 5.2 and sends any other route to S1 (Jafar). A step is {owning module, title key, state, optional route}, with the states Done, To do, Waiting and Needs attention; `identity` supplies its three steps and their dates (8.6 row 4). A step with a route opens its own page in the limited shell and returns to S1; S1 holds no inline form, so `sellers` and later `certification` own their step pages, and the `sellers` states become banner variants (sellers brief s7). A suspended seller has no session: state and reason appear on the Auth template (brief s12). The page decides from the actor summary, never from a guess |
 
@@ -786,6 +786,164 @@ ADR-0022 point 6 answers for a set of seller ids in one call; `sellerAccessOf` t
 | 12 | One list of owner questions | **Accept:** 14.4 |
 | 13 | Second round (`ux.md` 7.2): more codes, lifetimes by kind, the re-apply limit, admin acceptance with the A8 code | Items 1 and 3: **accepted**, in row 1. Item 4: row 2. Item 2: **accepted** in 3.4 (HF6) |
 
+### 8.7 The reviewer notice (mini-review 3; sellers request R-3)
+Designed by Mohammad; ruled by Ali (two rulings, 2026-10-08; the second replaces his C2 with
+Hassan's M1 and adds the Market-wide kind); security mini-review by Hassan (OK with conditions
+M1, M2, L1 to L3, I1, I2), 2026-10-08. Built in the R-3 slice (12.1). The brief's change-log row
+waits for Hassan, Hadi, Reza and Jafar.
+
+**A. What changes**
+
+| # | Rule |
+|---|---|
+| 1 | The reviewer notice (`ux.md` E3, SEL-02) is sent **after a seller's onboarding submission**, not when the owner's email is verified. `sellers` decides *when*: its handler `sellers.after-submission` on `sellers.business-file-submitted.v1`, kind `onboarding`, when the file goes to a person (sellers 7.5). `identity` decides *who* and *how*: it resolves the recipients and sends. A submission needs a session and a session needs a verified email, so AC 16 ("no admin notice before verification") still holds and is stronger |
+| 2 | The Phase 2 trigger at email verification (3.2, flow A4) was **never built**, and is withdrawn from the design: slice 9 builds no subscriber for E3, and no subscription of `identity` sends `reviewer-notice` (section G) |
+| 3 | No new event, no `identity` migration, nothing in the shared kernel, no audit row |
+
+**B. Contract**
+- **File:** `contracts/seller-access.contract.ts`, the sellers-only contract (ADR-0022; the
+  dependency-cruiser rule `seller-access-contract-is-for-sellers`). Not in `identity.facade.ts`,
+  not in `index.ts`.
+- **Signature:** `notifyAccessReviewers(context: CallContext, sellerId: Id<'Seller'>)`, answering
+  `Result<ReviewerNoticeOutcome, AccessDenied | FacadeValidationFailed | ReviewerNoticeUnavailable>`.
+  `ReviewerNoticeOutcome` is `{ code: 'reviewer-notice.sent' }` or
+  `{ code: 'reviewer-notice.skipped', reason: 'seller.unknown' | 'seller.not-pending' | 'recipients.none' }`;
+  `ReviewerNoticeUnavailable` is `{ code: 'reviewer-notice.unavailable' }`. No recipient count and
+  no address is returned.
+- **Use case:** `identity.notify-access-reviewers` (`notify-access-reviewers.use-case.ts`), rule
+  `system`, listed in `test/contracts/access-declarations.json`. Not exposed over HTTP. It is
+  **not idempotent by itself**: a repeated call sends again. That is acceptable only because the
+  method is sellers-only and system-only and the one caller coalesces (D). A second caller brings
+  option B back (D; Ali C4).
+
+**C. Actor, Market, state**
+
+| # | Rule |
+|---|---|
+| 1 | **Actor:** the system actor of the `sellers` handler; the dispatcher builds the `CallContext` from the envelope's Market and `sellers` passes it on unchanged. Every other actor is refused with `access.denied` and no mail, by the gate (rule `system`) and again in the use case: anonymous, a seller actor (the owner of that seller too), an admin, even one holding the approve key, and an acting-as session |
+| 2 | **Market:** only from `MarketContext`. The seller is read with `SellerAccessRepository.findById(market, id)` in a read-only unit. A seller of another Market, a never-issued id and an unregistered seller (`registered_at` null) all answer `skipped / seller.unknown`, byte-identical |
+| 3 | **State guard:** `pending` only. `approved`, `rejected` and `suspended` answer `skipped / seller.not-pending` (for example after a reviewer decided in between). After a re-application the state is `pending` again (3.3), so "submit again" notifies |
+| 4 | **Input:** an id that does not parse is `validation.failed` (`sellerId`, `format`); the value is never echoed in the answer or a log |
+| 5 | **Scope (Hassan Q5):** onboarding submissions notify, including one an admin writes for a seller (slice 8). `identity-change` submissions do not: their reviewers hold `sellers.identity-change.approve`, not `identity.seller-access.approve`, and widening the guard would let approved and suspended sellers trigger admin mail. A notice for them needs its own method and key, in a new mini-review |
+
+**D. Coalescing, in `sellers` (option A; Ali ruling 1, amended by M1 and L1)**
+- Two counter kinds in `sellers.rate_counters` (sellers data design 3.11; owned by the sellers
+  track; the lengths are in code, as for every kind):
+  - `reviewer-notice.seller`: subject the seller id, HMAC'd as the other kinds; limit 1; a fixed
+    window of 6 h from the first reservation.
+  - `reviewer-notice.market`: a constant subject (as `lookup.market`); limit 1 per Market per
+    15 minutes; fixed window; no digest (the mail has no content, so coalescing loses nothing).
+- **Lock order:** 3.11 takes counters in (kind, key) order and "market" sorts before "seller", so
+  the handler reserves them in **two separate units of one counter each**: the seller kind first,
+  then the market kind only if the seller kind is due. No unit holds two counter locks.
+- **Keep only on `sent` (M1(a), replacing Ali's C2):** the handler keeps its reservations only
+  when `identity` answers `reviewer-notice.sent`. Every other answer releases them, within the
+  same window only, by a guarded decrement that never goes below 0: every `skipped` reason
+  (`seller.unknown`, `seller.not-pending`, `recipients.none`), `unavailable`, an error and a
+  timeout. Releasing on `recipients.none` cannot loop: `runOnce` marks the delivery handled.
+  Coalesced at Market level: both reservations are kept and the delivery is marked handled (that
+  seller then gets no notice for 6 h; the queue already shows it). 3.11 records this as the one
+  exception to "nothing is released".
+- **Order inside the handler:** (1) reserve in read-write units and commit; (2) if due, call
+  `notifyAccessReviewers` outside any unit with a hard deadline of 30 s (7.3); (3) on any answer
+  but `sent`, release and, for `unavailable`, an error or a timeout, throw so the delivery is
+  retried; (4) `runOnce` marks the delivery. A coalesced notice is logged at info with Market,
+  seller id and correlation id (Ali C3).
+- **Redelivery and loss:** a redelivery after a send is caught by the inbox, and after a crash
+  between (2) and (4) by the counter. A crash between (1) and (2) loses that window's notice, at
+  most once (accepted, Q2): the "Awaiting review" queue is the source of truth.
+- **Before `sellers` slice 2's migration merges (L3; Ali C1):** Mojtaba adds both kinds and the
+  release exception to sellers data design 3.11, so every kind is in the CHECK from slice 2.
+- **Before `sellers` slice 5 (M1(b), M1(c)):** for a re-application, the submitted event is
+  written in unit 2 on success and on the reconciliation path that ends as "reapplied"; a refusal
+  at `reapply-limit` writes none (sellers 3.1 and 7.3, edited by Mohammad, a row in the sellers
+  brief's change log, Mojtaba confirms no data impact). Slice 5 tests that a re-application
+  whose handler runs before the re-apply call returns still ends in exactly one notice, plus the
+  six coalescing tests of the design (sellers' tests, not R-3's; Ali C14).
+- **Rejected:** option B (a column on `identity.seller_access`: a migration in the serial queue
+  for a rule with one caller), and an inbox row per (seller, 6 h bucket).
+- **For 7a-auto (Hassan I3):** retrying a failed notice must not run the automatic approval again;
+  Mohammad settles it before that slice's design.
+
+**E. Recipients (Ali ruling 2; Hassan M2 and Q4)**
+- **Who counts:** accounts of population `admin` in the context's Market that are `active`, have
+  a verified email, have an active second factor, and hold `identity.seller-access.approve`.
+- **One definition of the keys (M2):** `effectiveKeysOf` in `identity/application/access/` is the
+  only answer to "which keys does this account hold". `AccountAuthorisationCheck` decides every
+  `permissions` rule with it, and the recipient filter calls it; no second implementation. The
+  refactor changed no decision of the gate (its tests are unchanged). Until slice 8a-1 it answers
+  no key for any population.
+- **SQL narrows, code decides:** one read-only unit (ADR-0025: no transaction) reads `id` and
+  `email` of the accounts with Market, `population = 'admin'`, `status = 'active'` and a verified
+  email, by id, at most 1,000 rows (a guard: a Market holds 10² admin accounts or fewer, so no new
+  index; the unique index on Market, population and email serves the prefix). The active factor
+  and the key are evaluated in code (`isAccessReviewer`).
+- **Until slices 7 and 8a-1 the answer is an explicit empty set** (fail closed, tested): there is
+  no factor store before 7 and no key before 8a-1. Slice 7, the slice that first creates admin
+  accounts, adds the active-factor condition; 8a-1 adds the non-empty equivalence test (12.1).
+  When admins arrive, those two slices change the resolver; nothing else changes.
+- **Equivalence test:** for every fixture account, "is a recipient" holds exactly when the gate
+  allows `permissions [identity.seller-access.approve]` (both false today; non-empty from 8a-1).
+- **Cap:** 50 recipients in account-id order. Above it, the error log
+  `identity.reviewer-notice.recipients-capped` with the count only.
+- **No recipients:** `skipped / recipients.none` and the warning
+  `identity.reviewer-notice.no-recipients` (Market, seller id, correlation id). No fallback.
+- **Launch (Q7; Ali C7):** a warning is enough for this slice (no deployed environment, no
+  admins). Before a deployed environment opens seller sign-up for a Market, Kazem turns
+  `identity.reviewer-notice.no-recipients` into an operational alert, and Bagher's release
+  checklist adds "the Market has at least one active admin with a second factor who holds the
+  approve key".
+- **Rejected:** a shared reviewer mailbox in Market configuration (an identity outside the account
+  model: no second factor, no disable, no revocation, undecided personal-data handling; a second
+  definition of who reviews), and deferred delivery until admins exist (the queue is the backlog).
+
+**F. Mail**
+
+| # | Rule |
+|---|---|
+| 1 | **Template:** `reviewer-notice` (E3), a member of the `IdentityMail` union: `{ template: 'reviewer-notice', population: 'admin', url }`. Keys, in the composer's `identity.mail.<template>.<population>` form: `identity.mail.reviewer-notice.admin.subject`, `.heading`, `.body`, `.action`, and the account line `identity.mail.common.account-line.admin`. The Market's default locale (there is no per-admin locale); en-AU, and ja-JP for the synthetic ZZ |
+| 2 | **Content:** fixed subject and body, one button, no "ignore this" line (a notice answers no request of the reader). No seller name, store name, business name, email, seller id or count (Jafar's condition, sellers `ux.md`). The en-AU text is a draft for Reza and Jafar |
+| 3 | **Delivery:** one mail per recipient, one address in `To`; sender `policy.mailSender(market)`; outside any unit |
+| 4 | **Link (Q6):** the queue page only, built from configuration by `LinkTargets.target(market, 'admin', 'seller-review-queue')`. Link pages are typed per population (`LinkPages`), and the Market file holds `links.targets.admin['seller-review-queue']`, which boot requires whenever `links.targets.seller` is present, and whose origin must differ from every seller and customer page origin (Hassan I1). No seller id, no query built from data |
+| 5 | **Bounded fan-out (L2):** sends run one after another; each send has 5 s, the whole fan-out 20 s, below the caller's 30 s. A send past its timeout counts as failed and is no longer awaited (the transport's own timeout ends the request; the port has no cancel); when the budget is spent no further send starts, and no timer survives the call. At least one send accepted is `sent`; none, or a failed read, is `unavailable` and the caller retries |
+| 6 | **Logs:** `identity.reviewer-notice.sent` (info, or warn when some failed or were not attempted), `.skipped`, `.unavailable` (with a reason code), `.no-recipients`, `.recipients-capped`: the code, Market, seller id, the recipient, sent, failed and not-attempted counts and the correlation id. Never an address, a name or the body |
+
+**G. The switch-off, as built**
+1. Nothing to delete in code: no E3 sender ever existed. `identityMailSubscriptions` holds the
+   link, existing-account, welcome and password-changed mails; a test asserts this list and that
+   nothing subscribes to `identity.account-email-verified.v1`.
+2. The comment on `identity.account-email-verified.v1` names the welcome mail only.
+3. A test, AU and ZZ: confirming a seller's email, with every recorded event delivered to every
+   identity subscription, sends exactly one mail, the welcome, and no `reviewer-notice`.
+4. Doc edits: 3.2, 8.1, 8.5, 9 and 12.1 here; `ux.md` E3 and flow row 3; the brief's SEL-02 row,
+   flow step 4, AC 16 and its change-log row.
+
+**H. Idempotency and failure.** Idempotency comes from `sellers`' inbox (`runOnce`) and the
+counters (D); `identity` writes nothing, so it needs no inbox row. The submission commits with its
+outbox event before any of this runs, in a worker handler; a failure only retries that delivery
+(back-off, then dead letter with an alert, P 6.4). The notice is never an input to a decision use
+case or an automation, and no AI is involved (ADR-0019 R2).
+
+**I. Audit (Q8).** No audit row, now or later: a notice changes no state and is not an action of
+AC 11 or AC 27; identity's other mails are not audited either. Ali's founding-row override (5.5)
+covers a state change, not a notice. Structured logs with the correlation id are the trail, so
+R-3 does not depend on 6a or 6b.
+
+**J. Tests (as built).** `application/use-cases/reviewer-notice.spec.ts` (both Markets): sent to
+two reviewers, one address each, the queue link, seller canaries absent from subject, body and
+headers; every non-system actor refused with no mail; the three `seller.unknown` cases
+byte-identical; the three non-pending states; no recipients; all sends failed and one of two
+failed; read failure; nothing written (read-only units only, no `runOnce`, no event, no inbox
+row) and no address in a log; a malformed id not echoed; the cap; a slow send, an exhausted
+budget with and without a send accepted (fake timers); the resolver's SQL narrowing, explicit
+empty set, read failure and the equivalence with the gate. `seller-use-cases.spec.ts`: the
+switch-off test and the subscription snapshot. `mail-catalogue.spec.ts`: the E3 text in en-AU
+and ja-JP. `market-config-identity-policy.spec.ts` and `market-config.spec.ts`: the queue page
+resolves only for `admin`, and boot refuses a missing page or a shared origin.
+`test/db/reviewer-candidates.db-spec.ts`: the recipient query on PostgreSQL, both Markets, in a
+read-only unit with no transaction. The access-declaration list gains one `system` entry; the
+event catalogue snapshot does not change.
+
 ## 9. Email in Phase 2
 
 | Topic | Design |
@@ -794,7 +952,7 @@ ADR-0022 point 6 answers for a set of seller ids in one call; `sellerAccessOf` t
 | Sender in `identity` | Handlers subscribed to `identity`'s own events (link requested, invitation issued, email verified, the access decisions, password and second-factor changes, repeated sign-up), in the worker, as the system actor. Order (PN2): a read-only unit loads the account and decrypts what is needed; the token is minted and the mail rendered and sent outside any unit; then `runOnce` stores the token hash and the inbox row. Mail is therefore at least once: a crash between send and record repeats the mail, with a new token |
 | Consequence, and the alternative | This is the first subscription, so the delivery side of the platform document (its 6.4) is built in slice 3, not with `sellers`. Alternative: a mail-request table in `identity` read by a scheduled job, which needs only the scheduler but builds a second retry mechanism that is thrown away in Phase 6. Decided by Ali (14.1-6): the subscription; `notifications` will subscribe to the same events |
 | Translation keys (INTL-11) | `identity.mail.<template>.subject` and `.body`, in locale files of the module with named placeholders; no ICU library in Phase 2 (no plural is needed). Locale: the Market's default locale. Lifetimes are written as durations ("valid for 60 minutes"), so no zone is needed (ADR-0005 decision 3). **As built:** `config/locales` and Market config, see the slice 3 as-built note in 6.7; Ali 2026-10-08 |
-| Templates | Verify email; welcome (seller); notify reviewers; approved; rejected and suspended (with the reason, to the owner only); reinstated; password reset; password changed; second factor changed or reset, and the owner's reset confirmation; the enrolment link (HF6); the alert after ten failed codes (HF2); the three invitations; "you already have an account". Each names the account type (decision 5, AC 3). Display names and role names are escaped in every mail (HF13). No mail greets the recipient by name; a customer account may have no display name. |
+| Templates | Verify email; welcome (seller); notify reviewers (E3, `reviewer-notice`: sent by the use case behind the seller-access contract after a submission, not by an event handler; fixed text, no seller data, a link to the review queue only; 8.7); approved; rejected and suspended (with the reason, to the owner only); reinstated; password reset; password changed; second factor changed or reset, and the owner's reset confirmation; the enrolment link (HF6); the alert after ten failed codes (HF2); the three invitations; "you already have an account". Each names the account type (decision 5, AC 3). Display names and role names are escaped in every mail (HF13). No mail greets the recipient by name; a customer account may have no display name. |
 | Link targets | A port `LinkTargets(market, population, purpose)` backed by configuration per Region Stack, because the storefront does not exist and hosts are not decided (brief s6). **As built:** `config/locales` and Market config, see the slice 3 as-built note in 6.7; Ali 2026-10-08 |
 
 ## 10. Audit and sign-in records (I8)
@@ -856,14 +1014,15 @@ review every slice of this module gets.
 | 2 | Sign-in, sign-out, sessions, throttling | L | `Authenticator`, actor and CSRF guards, throttle and sign-in tables; the first slice the penetration test will aim at | HF1, HF3, HF7, HF11, HF14; a timing test |
 | 3 | Email verification | L | One-time links, mail transport and handlers; **Δ** the first subscription, so the delivery side of the event bus lands here (9); purge job | HF15 |
 | 4 | Password reset and change | M | Reuses slice 3 | — |
-| 5 | Seller account and limited sign-in | L | `SellerAccess`, membership, outcome codes, the allow-list. **Δ** the role and assignment model with the two system roles seeded lands here, so the Seller Owner holds a real role from the first seller; `membershipOf` for oneself only (8.1); the reviewer mail moves to slice 9, where reviewers first exist | — |
+| 5 | Seller account and limited sign-in | L | `SellerAccess`, membership, outcome codes, the allow-list. **Δ** the role and assignment model with the two system roles seeded lands here, so the Seller Owner holds a real role from the first seller; `membershipOf` for oneself only (8.1); the reviewer mail moves to the R-3 slice, after a submission (8.7) | — |
+| R-3 | Reviewer notice (sellers request R-3; mini-review 3) | S/M | **Δ 2026-10-08** After 5 and the Market-config PR (`links.targets.admin['seller-review-queue']`); **no migration**, nothing under `prisma/` or in the shared kernel; independent of 6a, 6b, 7, 8a-1 and 8a-2 (an empty recipient set is the designed behaviour until 7 and 8a-1), so it may merge before 6a; merges before `sellers` slice 5. `notifyAccessReviewers` in the sellers-only contract, the shared `effectiveKeysOf`, the recipient read, the `reviewer-notice` mail (8.7) | Mandatory review (auth area): Hassan M2, L2 |
 | 6a | Audit writer (tests only), kernel `ContentHash` and `canonicalJson`, the `platform_audit_seal` migration | L | **Δ** Designed in `docs/design/domain/platform-audit.md` (15). 6a and 6b are one slice set (ADR-0015 decision 1). 6a binds no `AUDIT_WRITER` provider into any module, proved by a test; it carries the only migration, and no other migration PR is open while it is; the kernel change is announced on the board (sellers slice 5 waits on it) | Mandatory review; PA M2, L3 |
 | 6b | Sealer, verifier, checkpoints, log anchor; the identity retrofit (seed and founding rows) | L | **Δ** Merges before any other slice that writes an audit row (7, 8a-1, sellers, certification) | Mandatory review; PA M1, M3, L1, L2 |
-| 7 | Admin account, first admin, second factor, admin sign-in | L | TOTP, challenge, recovery codes, operator routine, the enrolment link. The `Invitation` aggregate (kind `admin`, acceptance with enrolment) lands here because the first admin is invited. **Acceptance from slice 4 (Hassan I2):** (a) a password reset never removes or bypasses the second factor (it opens no session; sign-in with the factor stays the only way in); (b) an admin's password change needs the current password and a code; (c) decide whether a seller's reset or change ends admins' Login-as-Seller sessions over that seller (they sit on the admin's account, so `revokeAllOf` does not reach them); (d) a reset cancels open second-factor challenges | HF2, HF6 |
-| 8a-1 | Registry, catalogue, default roles, permission path | L | **Δ** split from 8a (Ali 2026-10-08), right after 6b and before 7. `GrantPolicy`, `LastHolderPolicy`, the permission path of `AuthorisationCheck`; `membershipOf` for other accounts; the default-role seed and the audited seed-version upgrade of system roles; `NO_PERMISSION_KEYS` swapped for the registry in the outbox and the audit writer in the same PR. Admin fixture accounts exist only in tests: no seed, dev route or script creates an admin before slice 7 | HF5, R7 |
+| 7 | Admin account, first admin, second factor, admin sign-in | L | TOTP, challenge, recovery codes, operator routine, the enrolment link. The `Invitation` aggregate (kind `admin`, acceptance with enrolment) lands here because the first admin is invited. **Acceptance from slice 4 (Hassan I2):** (a) a password reset never removes or bypasses the second factor (it opens no session; sign-in with the factor stays the only way in); (b) an admin's password change needs the current password and a code; (c) decide whether a seller's reset or change ends admins' Login-as-Seller sessions over that seller (they sit on the admin's account, so `revokeAllOf` does not reach them); (d) a reset cancels open second-factor challenges. **R-3 (Hassan M2):** in this slice, the one that first creates admin accounts, the reviewer-notice resolver gets its active-second-factor condition from the factor store (8.7) | HF2, HF6 |
+| 8a-1 | Registry, catalogue, default roles, permission path | L | **Δ** split from 8a (Ali 2026-10-08), right after 6b and before 7. `GrantPolicy`, `LastHolderPolicy`, the permission path of `AuthorisationCheck`; `membershipOf` for other accounts; the default-role seed and the audited seed-version upgrade of system roles; `NO_PERMISSION_KEYS` swapped for the registry in the outbox and the audit writer in the same PR. Admin fixture accounts exist only in tests: no seed, dev route or script creates an admin before slice 7. **R-3 (Hassan M2):** `effectiveKeysOf` gets the registry and role keys here, and the non-empty equivalence test is added: for every fixture account, "is a reviewer-notice recipient" holds exactly when the gate allows `permissions [identity.seller-access.approve]` (8.7) | HF5, R7 |
 | 8a-2 | Assign an admin's role | M | **Δ** After 7, with 8b: needs admin accounts and sessions. Admin invitation and role grants still come after admin sign-in with a second factor (brief s11) | HF8, with the serializable race test |
 | 8b | Admin invitation, disabling accounts, admin second-factor reset | M | **Δ** Uses 8a-1; ships with 8a-2, after 7 | — |
-| 9 | Approve, reject, suspend, reinstate, seller by invitation | L | Decisions with encrypted reasons, the decision mails and the reviewer mail, re-apply behind the facade | HF13 |
+| 9 | Approve, reject, suspend, reinstate, seller by invitation | L | Decisions with encrypted reasons, the decision mails, re-apply behind the facade. **Δ 2026-10-08:** no reviewer mail and no subscriber for E3 here (the R-3 slice, 8.7) | HF13 |
 | 10 | Role editor (both scopes) | M | Three use cases on 8a | — |
 | 11 | Seller team | M | Staff invitation and acceptance, role change, removal | HF5, HF8 |
 | 12 | Optional second factor for the seller side | S | Reuses slice 7; adds the owner-confirmed reset | — |
@@ -871,7 +1030,7 @@ review every slice of this module gets.
 
 **Estimate for the owner** (Ali, 2026-10-03; **updated 2026-10-08** for the 6a/6b and 8a-1/8a-2
 splits). Identity is 19 backend steps: slices 0 to 12, with slice 1 in four parts, slice 6 in two
-and slice 8 in three. That is about 27 pull requests. Nine of them carry
+and slice 8 in three. That is about 27 pull requests, plus the R-3 slice (no migration). Nine of them carry
 identity's database migrations (slices 1b, 1c, 1d, 2, 3, 5, 6a, 7 and 9: data design 8.1), which
 must merge one at a time, and every one needs a security review. The panel screens come on top of
 that. The riskiest steps are slice 2 (sign-in and sessions), slices 8a and 10 (permissions and

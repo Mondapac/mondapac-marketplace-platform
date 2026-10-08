@@ -83,7 +83,7 @@ Text templates, outside Figma. Every email names its account type (criterion 3).
 |---|---|---|---|---|---|
 | E1 | Confirm your email | New seller or customer account | 3 | 16, 19 | no feature ID |
 | E2 | Welcome | Seller, after the email is confirmed | 5 | 4 | P0 (SEL-02) |
-| E3 | A seller is waiting for approval | Admins who may approve, only after the seller's email is confirmed | 9 | 16 | P0 (SEL-02) |
+| E3 | A seller is waiting for approval | Admins who may approve, after a seller's submission for review: at most once per seller per 6 hours and once per Market per 15 minutes; a submission needs a confirmed email (identity design 8.7) | R-3 | 16 | P0 (SEL-02) |
 | E4 | Seller approved | Seller Owner | 9 | 4 | P0 (SEL-02) |
 | E5 | Application needs changes, with the reason | Seller Owner only | 9 | 6 | P1 (SEL-13), needed by decision 9 |
 | E6 | Account suspended, with the reason | Seller Owner only | 9 | 14 | P1 (SEL-13) |
@@ -166,7 +166,7 @@ page offers a switch that carries typed credentials to another population.
 |---|---|---|
 | 1 | A2: name, email, password (one field with show/hide, Jafar answer 4) | `validation.failed` (also for a name with control, bidi or URL-like text, Hassan 13), `password.rejected` |
 | 2 | `sign-up.accepted` (uniform answer): A3 with "Send it again" (answered `verification-resend.accepted` for any address) and "Wrong address? Sign up again" | `request.throttled` on resend |
-| 3 | The link in E1 opens A4; with the password typed there the email is confirmed and sign-in completes (DD 8.6-3). E2 goes to the seller; only now E3 goes to the admins (from slice 9, where reviewers first exist) | `link.rejected`, `credentials.invalid` |
+| 3 | The link in E1 opens A4; with the password typed there the email is confirmed and sign-in completes (DD 8.6-3). E2 goes to the seller. E3 is not sent here: it goes to the admins after the seller submits the business file for review (identity design 8.7) | `link.rejected`, `credentials.invalid` |
 | 4 | The seller lands from A4, and from every later sign-in (F2). Approval required (on for the AU Market): S1 "awaiting approval". Approval not required: Home, and S1 is never shown (criterion 5) | — |
 | 5 | An admin approves (F9): E4. The seller's next request has full access; Home replaces S1 | — |
 | 6 | An admin rejects with a reason: E5 to the Seller Owner, and the seller's sessions end (DD 3.3). After the next sign-in S1 shows "changes needed", the reason and the support contact (Jafar 1 and 6) | — |

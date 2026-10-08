@@ -34,8 +34,13 @@
   "identity.mail.password-changed.seller.subject": "The password for your MondaPac seller account was changed",
   "identity.mail.password-changed.seller.heading": "Your password was changed",
   "identity.mail.password-changed.seller.body": "The password for your seller account was changed on {time}. Your other open sessions have been signed out.",
+  "identity.mail.reviewer-notice.admin.subject": "A seller application is waiting for review",
+  "identity.mail.reviewer-notice.admin.heading": "A seller application is waiting for review",
+  "identity.mail.reviewer-notice.admin.body": "A seller has sent an application for review. Open the review queue to see the applications waiting for a decision.",
+  "identity.mail.reviewer-notice.admin.action": "Open the review queue",
   "identity.mail.common.account-line.customer": "This email is about your customer account. A seller account with the same email is separate.",
   "identity.mail.common.account-line.seller": "This email is about your seller account. A customer account with the same email is separate.",
+  "identity.mail.common.account-line.admin": "This email is about your MondaPac admin account.",
   "identity.mail.common.ignore": "If you didn't ask for this, you can ignore this email.",
   "identity.mail.common.not-you": "If this wasn't you, reset your password from the sign-in page straight away.",
   "identity.mail.common.footer": "This is an automatic message from MondaPac. Replies are not read."

@@ -38,7 +38,23 @@ export interface FacadeValidationFailed {
 }
 
 /**
- * The two calls of `identity` that only `sellers` consumes. Every method takes the caller's
+ * The answer of `notifyAccessReviewers` (identity design 8.7; request R-3). No recipient count
+ * and no address is ever returned. `sellers` keeps its coalescing reservation only on `sent`.
+ */
+export type ReviewerNoticeOutcome =
+  | { readonly code: 'reviewer-notice.sent' }
+  | {
+      readonly code: 'reviewer-notice.skipped';
+      readonly reason: 'seller.unknown' | 'seller.not-pending' | 'recipients.none';
+    };
+
+/** The notice could not be sent to anyone (read failed, or no send succeeded): retry later. */
+export interface ReviewerNoticeUnavailable {
+  readonly code: 'reviewer-notice.unavailable';
+}
+
+/**
+ * The calls of `identity` that only `sellers` consumes. Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs.
  */
 export interface SellerAccessContract {
@@ -64,6 +80,26 @@ export interface SellerAccessContract {
     context: CallContext,
     page: { readonly after: Id<'Seller'> | null; readonly limit: number },
   ): Promise<Result<RegisteredSellerPage, AccessDenied | FacadeValidationFailed>>;
+
+  /**
+   * Tells the admins who may approve that a seller application waits for review (identity
+   * design 8.7; `ux.md` E3; request R-3), for the system actor only: `sellers` calls it from its
+   * `sellers.after-submission` handler after an onboarding submission, with the dispatcher's
+   * context unchanged. The Market comes only from the context. A seller of another Market, a
+   * never-issued id and an unregistered seller all answer `skipped / seller.unknown`, the same;
+   * a seller that is not `pending` answers `skipped / seller.not-pending`.
+   *
+   * Not idempotent by itself: a repeated call sends again. The caller coalesces (sellers
+   * `rate_counters`, kinds `reviewer-notice.seller` and `reviewer-notice.market`) and keeps its
+   * reservation only on `reviewer-notice.sent`. Bounded to 20 seconds in all; on
+   * `reviewer-notice.unavailable` nothing was sent and the caller retries.
+   */
+  notifyAccessReviewers(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<ReviewerNoticeOutcome, AccessDenied | FacadeValidationFailed | ReviewerNoticeUnavailable>
+  >;
 }
 
 /** Nest token of the {@link SellerAccessContract}, provided and exported by `IdentityModule`. */

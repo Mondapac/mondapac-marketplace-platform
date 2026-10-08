@@ -9,6 +9,7 @@ import type {
 import type { AccountRepository } from '../ports/account.repository';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
 import type { SellerMembershipRepository } from '../ports/seller-team.repository';
+import { effectiveKeysOf, holdsEvery } from './effective-keys';
 
 const ALLOWED: AccessDecision = Object.freeze({ allowed: true });
 const DENIED: AccessDecision = Object.freeze({
@@ -35,9 +36,12 @@ export interface AccountAuthorisationCheckDependencies {
  *   `access.seller-not-approved` with its state, unless the declaration says
  *   `whenSellerNotApproved: 'allow'` (the allow-list of 5.2; decision 6, AC 4);
  * - `own-resources`: then allowed;
- * - `permissions`: denied until slice 8a, which brings the registry and role keys (R7: a key no
- *   role grants is never held). For the seller population the seller's state is decided first,
- *   so a seller that is not approved learns why.
+ * - `permissions`: allowed only when the actor holds every listed key, by `effectiveKeysOf`, the
+ *   one definition the reviewer-notice recipients use too (identity design 8.7; Hassan M2). It
+ *   answers no key until slice 8a-1 brings the registry and role keys (R7: a key no role grants
+ *   is never held), so every `permissions` rule is denied until then. Outside the seller
+ *   population a rule the actor cannot hold is denied before any read; for the seller population
+ *   the seller's state is decided first, so a seller that is not approved learns why.
  *
  * An exception propagates; the gate turns it into `access.unavailable` (fail closed).
  */
@@ -50,7 +54,14 @@ export class AccountAuthorisationCheck implements AuthorisationCheck {
     const rule = declaration.rule.kind;
     if (rule !== 'own-resources' && rule !== 'permissions') return DENIED;
     const seller = actor.population === 'seller';
-    if (rule === 'permissions' && !seller) return DENIED;
+    const required = declaration.rule.kind === 'permissions' ? declaration.rule.allOf : null;
+    const holdsRequired =
+      required === null ||
+      holdsEvery(
+        effectiveKeysOf({ population: actor.population, accountId: actor.accountId }),
+        required,
+      );
+    if (!seller && !holdsRequired) return DENIED;
     if (seller && actor.sellerId === null) return DENIED;
     const read = await this.deps.unitOfWork.run(
       market,
@@ -97,6 +108,6 @@ export class AccountAuthorisationCheck implements AuthorisationCheck {
         };
       }
     }
-    return rule === 'own-resources' ? ALLOWED : DENIED;
+    return holdsRequired ? ALLOWED : DENIED;
   }
 }

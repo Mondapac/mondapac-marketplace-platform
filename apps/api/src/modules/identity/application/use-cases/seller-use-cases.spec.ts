@@ -17,6 +17,10 @@ import {
 } from '../../../../../test/support/test-config';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
+import type {
+  ConsumedEnvelope,
+  SubscriberContext,
+} from '../../../../platform/events/event-subscriptions';
 import { loadLocaleCatalogues } from '../../../../platform/i18n/locale-catalogues';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
@@ -45,7 +49,10 @@ import { RequestSellerVerification } from './request-seller-verification.use-cas
 import { SeedSystemRoles } from './seed-system-roles.use-case';
 import { SellerAccessOf } from './seller-access-of.use-case';
 import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
+import { identityMailSubscriptions } from '../../presentation/subscribers/mail.subscriptions';
+import { SendExistingAccountMail } from './send-existing-account-mail.use-case';
 import { SendLinkMail } from './send-link-mail.use-case';
+import { SendPasswordChangedMail } from './send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './send-welcome-mail.use-case';
 import { SignInSeller } from './sign-in-seller.use-case';
 
@@ -126,10 +133,24 @@ function setUp() {
     transport: fakes.mailTransport,
     policy,
   };
+  const sendLinkMail = new SendLinkMail(gate, {
+    ...mailDeps,
+    links: fakes.linkRepository,
+    linkTokens,
+    clock,
+  });
+  const welcome = new SendWelcomeMail(gate, mailDeps);
   return {
     fakes,
     clock,
     units,
+    /** Identity's mail subscriptions, as the module registers them (identity design 9). */
+    subscriptions: identityMailSubscriptions(
+      sendLinkMail,
+      new SendExistingAccountMail(gate, mailDeps),
+      welcome,
+      new SendPasswordChangedMail(gate, mailDeps),
+    ),
     seed: new SeedSystemRoles(gate, {
       unitOfWork,
       roles: fakes.roleRepository,
@@ -147,12 +168,7 @@ function setUp() {
       commonPasswords: { isCommon: () => false },
     }),
     resend: new RequestSellerVerification(gate, common),
-    sendLinkMail: new SendLinkMail(gate, {
-      ...mailDeps,
-      links: fakes.linkRepository,
-      linkTokens,
-      clock,
-    }),
+    sendLinkMail,
     confirm: new ConfirmSellerEmail(gate, { ...signInDeps, linkTokens }),
     signIn: new SignInSeller(gate, signInDeps),
     status: new DescribeSellerStatus(gate, {
@@ -174,7 +190,7 @@ function setUp() {
       unitOfWork,
       sellerAccess: fakes.sellerAccessRepository,
     }),
-    welcome: new SendWelcomeMail(gate, mailDeps),
+    welcome,
     purge: new PurgeUnverifiedAccounts(gate, {
       unitOfWork,
       accounts: fakes.accountRepository,
@@ -839,6 +855,68 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
         ).resolves.toEqual({ ok: true, value: { code: 'welcome-mail.skipped', reason } });
       }
       expect(s.fakes.mails.length).toBe(mailsBefore);
+    });
+  });
+
+  describe('no reviewer notice at email verification (identity design 8.7; R-3 switch-off)', () => {
+    const reviewerNotice = () =>
+      composer.compose(market, {
+        template: 'reviewer-notice',
+        population: 'admin',
+        url: policy.target(market, 'admin', 'seller-review-queue')!,
+      });
+
+    it("confirming a seller's email sends only the welcome mail, through every identity subscription", async () => {
+      const s = setUp();
+      await s.seed.execute(system, {});
+      await signUp(s);
+      const token = await mailedToken(s);
+      const eventsBefore = s.fakes.events.length;
+      const mailsBefore = s.fakes.mails.length;
+
+      const confirmed = await s.confirm.execute(anonymous, {
+        token,
+        password: PASSWORD,
+        keepSignedIn: false,
+        client: CLIENT,
+      });
+      expect(confirmed.ok).toBe(true);
+      // Deliver every event the confirmation recorded to every identity subscription of its type.
+      const recorded = s.fakes.events.slice(eventsBefore);
+      expect(recorded.map((e) => e.type)).toContain('identity.seller-registered.v1');
+      for (const event of recorded) {
+        for (const subscription of s.subscriptions.filter((x) => x.event.type === event.type)) {
+          await subscription.handle(
+            event as unknown as ConsumedEnvelope,
+            deliveryOf(subscription.name),
+            system as SubscriberContext,
+          );
+        }
+      }
+
+      const mails = s.fakes.mails.slice(mailsBefore);
+      const welcome = composer.compose(market, {
+        template: 'welcome',
+        population: 'seller',
+        url: policy.target(market, 'seller', 'sign-in')!,
+        approvalRequired,
+      });
+      expect(mails.map((m) => [m.to, m.subject])).toEqual([[EMAIL, welcome.subject]]);
+      expect(mails.map((m) => m.subject)).not.toContain(reviewerNotice().subject);
+    });
+
+    it('no identity subscription sends the reviewer notice (snapshot of the subscription names)', () => {
+      const s = setUp();
+
+      expect(s.subscriptions.map((x) => [x.name, x.event.type])).toEqual([
+        ['identity.link-mail', 'identity.one-time-link-requested.v1'],
+        ['identity.existing-account-mail', 'identity.sign-up-repeated.v1'],
+        ['identity.welcome-mail', 'identity.seller-registered.v1'],
+        ['identity.password-changed-mail', 'identity.account-password-changed.v1'],
+      ]);
+      expect(s.subscriptions.map((x) => x.event.type)).not.toContain(
+        'identity.account-email-verified.v1',
+      );
     });
   });
 
