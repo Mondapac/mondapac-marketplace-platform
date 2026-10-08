@@ -145,7 +145,12 @@ Rows, values and SQL are never logged.
 - Every read of the chain tables is bounded to `AUDIT_TIME_RANGE` (`audit-chain-policy.ts`):
   `[2000-01-01, 10000-01-01)` on `occurred_at`, `sealed_at`, `audit_occurred_at` and
   `created_at`, the range of the CHECKs tracked as DP 11.15. A JavaScript Date cannot hold
-  `infinity`; out-of-range rows are never sealed and the verifier names them by id.
+  `infinity`; out-of-range rows are never sealed and the verifier names them by id. An
+  incremental run looks for out-of-range seals only from its walk's start up (no upper bound)
+  and in unknown epochs; a full run looks at all of the Market's seals (Mojtaba D1).
+- Runbook: Prisma's query log prints the upper bound as `+010000-01-01T00:00:00.000Z`. That
+  literal is not valid if pasted into psql ("time zone displacement out of range"); write
+  `'10000-01-01 00:00:00+00'` instead. The adapter itself sends a form PostgreSQL accepts.
 - The sealer (`platform.audit-seal`, worker only, every 10 s, from start): one read-write
   unit per batch. It checks the head's link, stops a Market whose head link is broken
   (`audit.chain.broken`) or whose watermark is later than `now - S`

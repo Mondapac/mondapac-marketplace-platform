@@ -9,6 +9,22 @@ import type { AuditRowRecord } from './audit-hash';
  * the sealer's read-write unit, or the verifier's read-only unit (ADR-0025). Bound only by
  * `AuditModule`; never exported, so no module reads the chain (PA 2).
  */
+/**
+ * Where the verifier looks for seals with a time outside the range (Mojtaba D1). A full run
+ * looks at every seal of the Market. An incremental run looks at `epoch` from `fromSeq` up,
+ * with no upper bound (a seal at head + 1 with such a time is invisible to the head read and
+ * only this read names it), and at every epoch above `maxKnownEpoch` (`sealsAboveEpoch` is
+ * bounded to the range too), so it reads only the part of the table its walk reads.
+ */
+export type OutOfRangeSealScope =
+  | { readonly mode: 'full' }
+  | {
+      readonly mode: 'incremental';
+      readonly epoch: number;
+      readonly fromSeq: bigint;
+      readonly maxKnownEpoch: number;
+    };
+
 export interface AuditChainStore {
   // Every read returns only rows whose time columns lie in AUDIT_TIME_RANGE (audit-chain-policy):
   // a value outside cannot be held by a JavaScript Date. The `...OutOfRange` reads name those
@@ -118,8 +134,15 @@ export interface AuditChainStore {
   /** Up to `limit` ids of audit rows whose `occurred_at` is outside the range. */
   rowsOutOfRange(market: MarketContext, limit: number): Promise<string[]>;
 
-  /** Up to `limit` seals whose `sealed_at` or `audit_occurred_at` is outside the range. */
-  sealsOutOfRange(market: MarketContext, limit: number): Promise<SealPosition[]>;
+  /**
+   * Up to `limit` seals whose `sealed_at` or `audit_occurred_at` is outside the range, within
+   * `scope` (Mojtaba D1).
+   */
+  sealsOutOfRange(
+    market: MarketContext,
+    limit: number,
+    scope: OutOfRangeSealScope,
+  ): Promise<SealPosition[]>;
 
   /** Up to `limit` checkpoints whose `created_at` is outside the range. */
   checkpointsOutOfRange(

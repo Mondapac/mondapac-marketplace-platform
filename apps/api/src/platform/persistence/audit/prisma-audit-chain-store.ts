@@ -7,6 +7,7 @@ import {
   SealInsertConflictError,
   type AuditChainStore,
   type CheckpointRecord,
+  type OutOfRangeSealScope,
   type SealKey,
   type SealPosition,
   type SealRecord,
@@ -428,17 +429,34 @@ export class PrismaAuditChainStore implements AuditChainStore {
     return rows.map((row) => row.id);
   }
 
-  async sealsOutOfRange(market: MarketContext, limit: number): Promise<SealPosition[]> {
+  async sealsOutOfRange(
+    market: MarketContext,
+    limit: number,
+    scope: OutOfRangeSealScope,
+  ): Promise<SealPosition[]> {
+    const outOfRange = {
+      OR: [
+        { sealedAt: { lt: MIN_TIME } },
+        { sealedAt: { gte: UNTIL_TIME } },
+        { auditOccurredAt: { lt: MIN_TIME } },
+        { auditOccurredAt: { gte: UNTIL_TIME } },
+      ],
+    };
+    // An incremental run reads the primary key from its walk's start up, with no upper bound,
+    // plus the unknown epochs; a full run reads the Market's seals (Mojtaba D1).
+    const within =
+      scope.mode === 'full'
+        ? []
+        : [
+            {
+              OR: [
+                { epoch: { gt: scope.maxKnownEpoch } },
+                { epoch: scope.epoch, chainSeq: { gte: scope.fromSeq } },
+              ],
+            },
+          ];
     return auditTx(market).auditLogSeal.findMany({
-      where: {
-        marketId: market.marketId,
-        OR: [
-          { sealedAt: { lt: MIN_TIME } },
-          { sealedAt: { gte: UNTIL_TIME } },
-          { auditOccurredAt: { lt: MIN_TIME } },
-          { auditOccurredAt: { gte: UNTIL_TIME } },
-        ],
-      },
+      where: { marketId: market.marketId, AND: [outOfRange, ...within] },
       orderBy: [{ epoch: 'asc' }, { chainSeq: 'asc' }],
       take: limit,
       select: { epoch: true, chainSeq: true, auditLogId: true },

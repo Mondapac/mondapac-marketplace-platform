@@ -187,6 +187,39 @@ describe.each(TEST_MARKETS)('AuditVerifier (PA 8) for market %s', (code) => {
     });
   });
 
+  it('an incremental run names out-of-range seals from its start up and in unknown epochs only (Mojtaba D1)', async () => {
+    const s = await sealedChain(3, [market]);
+    s.store.addRow(rowAt(market, START.subtract({ minutes: 20 })));
+    s.store.addRow(rowAt(market, START.subtract({ minutes: 19 })));
+    s.clock.advance(Temporal.Duration.from({ minutes: 10 }));
+    await s.sealer.run(context);
+    const outOfRange = Temporal.Instant.from('+010000-01-01T00:00:00Z');
+    // Below the walk's start (the checkpoint at 3): only a full run reads there.
+    s.store.replaceSeal(1, 2n, { sealedAt: outOfRange }, code);
+    // At head + 1, invisible to the head read, and in an epoch nobody opened.
+    const [head] = sealsOf(s.store, market).slice(-1);
+    const row = rowAt(market, s.clock.now().subtract({ minutes: 1 }));
+    s.store.addRow(row);
+    s.store.seals.push(
+      { ...head!, chainSeq: 6n, auditLogId: row.id, sealedAt: outOfRange },
+      { ...head!, epoch: 2, chainSeq: 1n, auditLogId: row.id, sealedAt: outOfRange },
+    );
+
+    const incremental = await s.verifier.verify(context, 'incremental');
+    expect(incremental.fromSeq).toBe(4n);
+    // A seal the range hides leaves its row unsealed to (d); only the range findings matter here.
+    expect(
+      incremental.findings
+        .filter((f) => f.code === 'audit.seal.out-of-range')
+        .map(({ code: c, epoch, chainSeq }) => [c, epoch, chainSeq]),
+    ).toEqual([
+      ['audit.seal.out-of-range', 1, 6n],
+      ['audit.seal.out-of-range', 2, 1n],
+    ]);
+    const full = await s.verifier.verify(context, 'full');
+    expect(full.findings.filter((f) => f.code === 'audit.seal.out-of-range')).toHaveLength(3);
+  });
+
   it('passes a late row sealed with late = true', async () => {
     const s = await sealedChain(3, [market]);
     s.store.addRow(rowAt(market, START.subtract({ minutes: 59, seconds: 30 })));

@@ -694,6 +694,33 @@ describe('the audit chain on the database (slice 6b)', () => {
         const report = await verifierOf().verify(context, 'full');
         expect(report.complete).toBe(true);
         expect(codesOf(report.findings)).toEqual([['audit.seal.out-of-range', 3n]]);
+        // The incremental read has no upper bound at the pinned head (Mojtaba D1).
+        const incremental = await verifierOf().verify(context, 'incremental');
+        expect(codesOf(incremental.findings)).toEqual([['audit.seal.out-of-range', 3n]]);
+      });
+
+      it('a seal in an unknown epoch with sealed_at = infinity: an incremental run names it (Mojtaba D1)', async () => {
+        await rows(market, 2);
+        await rows(other, 1);
+        await sealerOf().run(context);
+        await sealerOf().run(otherContext);
+        const head = await headOf(market);
+        await sql.query(
+          `INSERT INTO platform.audit_log_seal
+             (market_id, tenant_id, epoch, chain_seq, audit_log_id, audit_occurred_at, row_hash,
+              chain_hash, late, hash_version, sealed_at)
+           SELECT market_id, tenant_id, 2, 1, audit_log_id, audit_occurred_at, row_hash,
+                  chain_hash, late, hash_version, 'infinity'
+             FROM platform.audit_log_seal
+            WHERE market_id = $1 AND epoch = 1 AND chain_seq = $2`,
+          [code, head.chainSeq],
+        );
+
+        const report = await verifierOf().verify(context, 'incremental');
+        expect(report.complete).toBe(true);
+        expect(report.findings.map(({ code: c, epoch, chainSeq }) => [c, epoch, chainSeq])).toEqual(
+          [['audit.seal.out-of-range', 2, 1n]],
+        );
       });
 
       it('a checkpoint with created_at = infinity: the sealer goes on, audit.checkpoint.out-of-range', async () => {

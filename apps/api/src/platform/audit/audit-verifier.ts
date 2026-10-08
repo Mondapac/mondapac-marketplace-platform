@@ -400,8 +400,15 @@ export class AuditVerifier {
     findAll('audit.row.out-of-range', rowsOut, (id) =>
       find('audit.row.out-of-range', null, id, null),
     );
+    // An incremental run looks from its walk's start up and in the unknown epochs (Mojtaba D1).
     const sealsOut = await this.read(market, () =>
-      this.store.sealsOutOfRange(market, MAX_FINDINGS_PER_CODE),
+      this.store.sealsOutOfRange(
+        market,
+        MAX_FINDINGS_PER_CODE,
+        mode === 'full'
+          ? { mode }
+          : { mode, epoch, fromSeq: fromSeq ?? 1n, maxKnownEpoch: Math.max(...KNOWN_EPOCHS) },
+      ),
     );
     findAll('audit.seal.out-of-range', sealsOut, (seal) =>
       find('audit.seal.out-of-range', seal.chainSeq, seal.auditLogId, seal.epoch),

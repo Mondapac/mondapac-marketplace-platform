@@ -9,6 +9,7 @@ import {
   type SealPosition,
   type AuditChainStore,
   type CheckpointRecord,
+  type OutOfRangeSealScope,
   type SealKey,
   type SealRecord,
   type SealWithRow,
@@ -303,10 +304,28 @@ export class InMemoryAuditChainStore implements AuditChainStore {
     );
   }
 
-  sealsOutOfRange(market: MarketContext, limit: number): Promise<SealPosition[]> {
+  sealsOutOfRange(
+    market: MarketContext,
+    limit: number,
+    scope: OutOfRangeSealScope,
+  ): Promise<SealPosition[]> {
+    const within = (s: SealRecord) =>
+      scope.mode === 'full' ||
+      s.epoch > scope.maxKnownEpoch ||
+      (s.epoch === scope.epoch && s.chainSeq >= scope.fromSeq);
     return Promise.resolve(
       this.allSealsOf(market)
         .filter((s) => !inAuditTimeRange(s.sealedAt) || !inAuditTimeRange(s.auditOccurredAt))
+        .filter(within)
+        .sort((a, b) =>
+          a.epoch !== b.epoch
+            ? a.epoch - b.epoch
+            : a.chainSeq < b.chainSeq
+              ? -1
+              : a.chainSeq > b.chainSeq
+                ? 1
+                : 0,
+        )
         .map(({ epoch, chainSeq, auditLogId }) => ({ epoch, chainSeq, auditLogId }))
         .slice(0, limit),
     );
