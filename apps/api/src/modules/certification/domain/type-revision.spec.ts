@@ -103,6 +103,35 @@ describe('validateTypeRevision', () => {
     expect(problems(base({ locales: l('ok', ['']) }))).toContain('type.text-invalid');
   });
 
+  it('refuses claim terms the matcher cannot use or that match almost everything (Hassan M1)', () => {
+    const withTerm = (term: string): TypeRevisionContent =>
+      base({
+        locales: {
+          en: { ...base().locales.en!, claimTerms: ['halal', term] },
+          ar: base().locales.ar!,
+        },
+      });
+    for (const bad of ['\u200b1', ' - ', '!!!', '\u0301', '\u0640', '\u202e', 'ーー', 'e', 'ab']) {
+      expect([bad, problems(withTerm(bad))]).toEqual([bad, expect.any(Array)]);
+      expect(problems(withTerm(bad)).length).toBeGreaterThan(0);
+    }
+    expect(problems(withTerm('abc'))).toEqual([]);
+    const zzBad = zz({ locales: { zz: { ...zz().locales.zz!, claimTerms: ['зд'] } } });
+    expect(problems(zzBad, ['zz'])).toContain('type.claim-term-unmatchable');
+  });
+
+  it('refuses bidi, format and line-separator characters in texts (Hassan L1)', () => {
+    for (const bad of ['Halal \u202eedivorp', 'Ha\u200blal', 'a\u2028b', 'a\u2029b']) {
+      const c = base({
+        locales: {
+          en: { ...base().locales.en!, name: bad },
+          ar: base().locales.ar!,
+        },
+      });
+      expect(problems(c)).toContain('type.text-invalid');
+    }
+  });
+
   it('refuses a bad icon key', () => {
     expect(problems(base({ badgeIconKey: '<svg>' }))).toContain('type.badge-icon-invalid');
   });
@@ -210,5 +239,7 @@ describe('assertSecondAdmin', () => {
       error: { code: 'approval.same-admin' },
     });
     expect(assertSecondAdmin('a1', 'a2').ok).toBe(true);
+    expect(assertSecondAdmin('', 'a2').ok).toBe(false);
+    expect(assertSecondAdmin('a1', ' ').ok).toBe(false);
   });
 });

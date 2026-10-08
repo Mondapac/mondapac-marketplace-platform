@@ -1,5 +1,5 @@
 import { err, ok, type Result } from '@mondapac/shared-kernel';
-import { normaliseClaimText } from './claim-text-matcher';
+import { compactForm, normaliseClaimText, tokenise } from './claim-text-matcher';
 import type { CertificationTypeCode } from './claim-types';
 
 export const VERIFICATION_MODES = ['THIRD_PARTY_DOCUMENT', 'SELF_DECLARATION'] as const;
@@ -36,6 +36,7 @@ export type TypeRevisionProblem =
   | { readonly code: 'type.locale-not-supported'; readonly locale: string }
   | { readonly code: 'type.locale-missing'; readonly locale: string }
   | { readonly code: 'type.text-invalid'; readonly locale: string }
+  | { readonly code: 'type.claim-term-unmatchable'; readonly locale: string }
   | { readonly code: 'type.badge-icon-invalid' }
   | { readonly code: 'type.verification-mode-immutable' };
 
@@ -45,13 +46,32 @@ const MAX_NAME = 80;
 const MAX_DESCRIPTION = 500;
 const MAX_TERMS_PER_LOCALE = 200;
 const MAX_TERM_LENGTH = 100;
+/**
+ * A term shorter than this after the matcher's own compaction would match almost any text in
+ * the second pass (Hassan M1). A per-script exception needs the product owner's word.
+ */
+export const MIN_CLAIM_TERM_COMPACT_LENGTH = 3;
+
+/** True when the matcher can use the term and it is not so short that it matches everything. */
+function termMatchable(term: string): boolean {
+  try {
+    const normalised = normaliseClaimText(term);
+    return (
+      tokenise(normalised).length > 0 &&
+      [...compactForm(normalised)].length >= MIN_CLAIM_TERM_COMPACT_LENGTH
+    );
+  } catch {
+    return false;
+  }
+}
 
 export function isCertificationTypeCode(value: unknown): value is CertificationTypeCode {
   return typeof value === 'string' && CODE_PATTERN.test(value);
 }
 
 // Plain text: no markup, no control characters (brief s5).
-const hasMarkupOrControl = (s: string): boolean => /[<>\p{Cc}]/u.test(s);
+const hasMarkupOrControl = (s: string): boolean =>
+  /[<>\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}]/u.test(s);
 const textOk = (s: unknown, max: number): boolean =>
   typeof s === 'string' && s.trim().length > 0 && s.length <= max && !hasMarkupOrControl(s);
 
@@ -96,6 +116,8 @@ export function validateTypeRevision(
       l.claimTerms.every((t) => textOk(t, MAX_TERM_LENGTH));
     if (!textOk(l.name, MAX_NAME) || !textOk(l.customerDescription, MAX_DESCRIPTION) || !termsOk) {
       problems.push({ code: 'type.text-invalid', locale });
+    } else if (!l.claimTerms.every(termMatchable)) {
+      problems.push({ code: 'type.claim-term-unmatchable', locale });
     }
   }
   return problems.length > 0 ? err(problems) : ok(content);
@@ -181,5 +203,8 @@ export function assertSecondAdmin(
   authorAccountId: string,
   approverAccountId: string,
 ): Result<true, SecondAdminProblem> {
+  if (!authorAccountId.trim() || !approverAccountId.trim()) {
+    return err({ code: 'approval.same-admin' });
+  }
   return authorAccountId === approverAccountId ? err({ code: 'approval.same-admin' }) : ok(true);
 }

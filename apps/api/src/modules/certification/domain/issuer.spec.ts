@@ -77,6 +77,17 @@ describe('issuer state machine', () => {
       );
     });
 
+    it('treats a re-typed old reference as not new, and an empty requester as invalid (Hassan L2, I1)', () => {
+      for (const r of ['DOC-1', ' doc-1 ', 'ｄｏｃ-1']) {
+        expect(code(requestReactivation(closed(), 'a1', ref(r)))).toBe(
+          'issuer.expert-approval-not-new',
+        );
+      }
+      expect(code(requestReactivation(closed(), ' ', ref('doc-2')))).toBe('approval.same-admin');
+      const p = val(requestReactivation(closed(), 'a1', ref(' doc-2 ')));
+      expect(p.reactivation?.expertApproval.reference).toBe('doc-2');
+    });
+
     it('refuses the requester as approver and a missing request', () => {
       const pending = val(requestReactivation(closed(), 'a1', ref('doc-2')));
       expect(code(approveReactivation(pending, 'a1'))).toBe('approval.same-admin');

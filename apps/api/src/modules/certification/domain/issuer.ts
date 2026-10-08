@@ -36,6 +36,10 @@ const hasText = (s: unknown): s is string => typeof s === 'string' && s.trim().l
 const approvalValid = (a: ExpertApproval | null | undefined): a is ExpertApproval =>
   a !== null && a !== undefined && hasText(a.confirmedBy) && hasText(a.reference);
 
+const refKey = (r: string): string => r.normalize('NFKC').trim().toLowerCase();
+const sameReference = (a: string, b: string | undefined): boolean =>
+  b !== undefined && refKey(a) === refKey(b);
+
 const forbidden = (from: IssuerState, to: string): Result<never, IssuerProblem> =>
   err({ code: 'issuer.transition-forbidden', from, to });
 
@@ -91,10 +95,17 @@ export function requestReactivation(
   if (i.state !== 'closed-to-new') return forbidden(i.state, 'active');
   if (i.reactivation !== null) return err({ code: 'issuer.reactivation-pending' });
   if (!approvalValid(approval)) return err({ code: 'issuer.expert-approval-required' });
-  if (approval.reference === i.expertApproval?.reference) {
+  if (!hasText(requestedBy)) return err({ code: 'approval.same-admin' });
+  if (sameReference(approval.reference, i.expertApproval?.reference)) {
     return err({ code: 'issuer.expert-approval-not-new' });
   }
-  return ok({ ...i, reactivation: { requestedBy, expertApproval: approval } });
+  return ok({
+    ...i,
+    reactivation: {
+      requestedBy,
+      expertApproval: { ...approval, reference: approval.reference.trim() },
+    },
+  });
 }
 
 /** A second admin, not the requester, approves; the issuer stays `closed-to-new` until then. */
