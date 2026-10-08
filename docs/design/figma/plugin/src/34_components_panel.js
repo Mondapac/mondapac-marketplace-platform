@@ -61,31 +61,44 @@ function textareaBlock(root) {
   return ta;
 }
 
-// ---- CheckboxRow (Forms & selection): one permission on the role editor
-const CHECKBOXROW_AXES = { Value: ['Unchecked', 'Checked'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Read-only'] };
-// 1.8.1: columns are the 2 Values (5 States as rows), so the set is 1176 wide; with State as columns it was 2960 and stuck out of its documentation row.
-const CHECKBOXROW_OPTS = { width: 1280, colAxis: 'Value', desc: 'One permission row: a Checkbox, a label, a one-line description and an optional "Protected" Badge (lock icon plus text). The whole row is one <label> (at least 32 px high; 24 px checkbox hit area). Disabled gives the reason in text on the description line (never a tooltip) and stays focusable (aria-disabled). Read-only is for a system or default role where nothing can change: it keeps full contrast, has no hover, and screen readers get "Granted" or "Not granted" as hidden text. Focus puts the Focus/Ring on the row. Group rows per resource in a <fieldset> with a <legend>; the group "Select all in {group}" is a Checkbox with Value=Indeterminate when some rows are on.',
-  text: [{ prop: 'Label', node: 'label', def: 'View seller accounts' }, { prop: 'Description', node: 'description', def: 'See sellers, their status and their team.' }], bool: [{ prop: 'Show badge', node: 'badge', def: false }] };
+// ---- CheckboxRow (Forms & selection): one permission on the role editor; from 1.10.0 also one reviewer check (P3)
+// 1.10.0 "Seller admin" (sellers ux.md section 4): State=Saving (a check saves the moment it is ticked) and Show undo (a link Button "Undo" at the end
+// of a recorded check). "Required" is the badge slot with Leading None and Label "Required"; "Recorded by {name} on {dateTime}" is the Description.
+const CHECKBOXROW_AXES_180 = { Value: ['Unchecked', 'Checked'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Read-only'] };
+const CHECKBOXROW_AXES = { Value: ['Unchecked', 'Checked'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Read-only', 'Saving'] };
+const CHECKBOXROW_DESC_180 = 'One permission row: a Checkbox, a label, a one-line description and an optional "Protected" Badge (lock icon plus text). The whole row is one <label> (at least 32 px high; 24 px checkbox hit area). Disabled gives the reason in text on the description line (never a tooltip) and stays focusable (aria-disabled). Read-only is for a system or default role where nothing can change: it keeps full contrast, has no hover, and screen readers get "Granted" or "Not granted" as hidden text. Focus puts the Focus/Ring on the row. Group rows per resource in a <fieldset> with a <legend>; the group "Select all in {group}" is a Checkbox with Value=Indeterminate when some rows are on.';
+const CHECKBOXROW_DESC = CHECKBOXROW_DESC_180 + ' From 1.10.0 it is also one reviewer check (P3): the check saves the moment it is ticked, State=Saving shows the new value with "Saving…" in place of the description (aria-busy on the row; the icon is drawn still and never spins under reduced motion), then the description reads "Recorded by {name} on {dateTime}". Show undo shows a link Button "Undo" at the end of a recorded check: it sets the check back to not done, and the approval guard counts it missing again. A required check sets the badge to Leading None and Label "Required" (a nested override of the badge slot).';
+// 1.8.1: columns are the 2 Values (States as rows), so the set is 1176 wide; with State as columns it was 2960 and stuck out of its documentation row.
+const CHECKBOXROW_OPTS = { width: 1280, colAxis: 'Value', desc: CHECKBOXROW_DESC,
+  text: [{ prop: 'Label', node: 'label', def: 'View seller accounts' }, { prop: 'Description', node: 'description', def: 'See sellers, their status and their team.' }], bool: [{ prop: 'Show badge', node: 'badge', def: false }, { prop: 'Show undo', node: 'undo', def: false }] };
+// The 1.10.0 node: the "Undo" link at the end of the row. It starts hidden, like its property.
+function checkboxRowUndo() { const b = inst('Button', { Variant: 'Link', Size: 'Sm', State: 'Default', Label: 'Undo' }, { name: 'undo' }); b.visible = false; return b; }
 function checkboxRowVariant(c, p) {
-  const dis = p.State === 'Disabled';
+  const dis = p.State === 'Disabled'; const saving = p.State === 'Saving';
   const badge = inst('Badge', { Tone: 'Neutral', Leading: 'Icon', Label: 'Protected', Icon: { icon: 'lock' } }, { name: 'badge' });
+  const desc = text(dis ? 'You can’t give a permission you don’t have.' : 'See sellers, their status and their team.', 'Caption/Default', 'text/muted', { name: 'description', sizeH: 'FILL' });
+  const lines = [text('View seller accounts', 'Body/Default', dis ? 'text/muted' : 'text/primary', { name: 'label', sizeH: 'FILL' }), desc];
+  // Saving: "Saving…" with a still icon takes the description's place; the description stays wired, hidden in this state.
+  if (saving) { desc.visible = false; lines.push(frame({ name: 'saving', dir: 'H', gap: 'space/1', align: 'center' }, [icon('refresh-cw', 'icon/muted', 12), text('Saving…', 'Caption/Default', 'text/muted', { name: 'saving-text' })])); }
   body(c, { dir: 'H', w: 560, px: 'space/3', py: 'space/2-5', gap: 'space/3', align: 'start', fill: p.State === 'Hover' ? 'bg/subtle' : null, stroke: 'border/row', sides: ['bottom'] }, [
     inst('Checkbox', { Value: p.Value, State: p.State === 'Focus' ? 'Focus' : (dis ? 'Disabled' : 'Default') }, { name: 'checkbox' }),
-    frame({ name: 'content', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [
-      text('View seller accounts', 'Body/Default', dis ? 'text/muted' : 'text/primary', { name: 'label', sizeH: 'FILL' }),
-      text(dis ? 'You can’t give a permission you don’t have.' : 'See sellers, their status and their team.', 'Caption/Default', 'text/muted', { name: 'description', sizeH: 'FILL' }),
-    ]),
+    frame({ name: 'content', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, lines),
     badge,
+    checkboxRowUndo(),
   ]);
   badge.visible = false;
   if (p.State === 'Focus') focusRing(c);
 }
+const CHECKBOXROW_PROPS_180 = ['Label, Description (text); Show badge (boolean, the "Protected" Badge)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only'];
+const CHECKBOXROW_PROPS = ['Label, Description (text); Show badge (boolean, the "Protected" Badge, or "Required" on a reviewer check); Show undo (boolean, 1.10.0)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only, Saving (1.10.0)'];
+const CHECKBOXROW_A11Y_180 = ['The row is one <label>; disabled rows use aria-disabled and stay focusable with the reason tied by aria-describedby.', 'Read-only keeps the checked state readable ("Granted" or "Not granted" as hidden text).', '"Protected" is text plus the lock icon, never colour alone.', 'A group per resource is a <fieldset> with a <legend>.'];
+const CHECKBOXROW_A11Y = CHECKBOXROW_A11Y_180.concat(['Saving (1.10.0): aria-busy on the row and "Saving…" in a role="status" region; "Recorded" is announced once. "Undo" is named "Undo {check}" and keeps focus on the row after it.']);
 function checkboxRowBlock(root) {
   const cr = makeSet('CheckboxRow', CHECKBOXROW_AXES, checkboxRowVariant, CHECKBOXROW_OPTS);
-  componentBlock(root, cr, { title: 'CheckboxRow', summary: 'One permission on the role editor and later multi-select lists (1.8.0). 2 values by 5 states.',
-    use: ['A permission with a name and a one-line description. A permission the user cannot give is shown disabled with its reason, not hidden.', 'Read-only on a system or default role.'],
-    props: ['Label, Description (text); Show badge (boolean, the "Protected" Badge)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only'],
-    a11y: ['The row is one <label>; disabled rows use aria-disabled and stay focusable with the reason tied by aria-describedby.', 'Read-only keeps the checked state readable ("Granted" or "Not granted" as hidden text).', '"Protected" is text plus the lock icon, never colour alone.', 'A group per resource is a <fieldset> with a <legend>.'],
+  componentBlock(root, cr, { title: 'CheckboxRow', summary: 'One permission on the role editor and later multi-select lists (1.8.0); one reviewer check that saves on its own (1.10.0). 2 values by 6 states.',
+    use: ['A permission with a name and a one-line description. A permission the user cannot give is shown disabled with its reason, not hidden.', 'Read-only on a system or default role.', 'A reviewer check (P3, 1.10.0): ticking saves it at once (Saving), then "Recorded by {name} on {dateTime}" and "Undo".'],
+    props: CHECKBOXROW_PROPS,
+    a11y: CHECKBOXROW_A11Y,
     dont: ['A tooltip for the reason.', 'Hiding a permission the user cannot give.'] });
   return cr;
 }

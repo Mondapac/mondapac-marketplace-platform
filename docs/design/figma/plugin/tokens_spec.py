@@ -255,7 +255,7 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.9.0", "generated": "2026-10-08",
+ "version": "1.10.0", "generated": "2026-10-08",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
  "color": [{"name": k, "light": None if literal(v[0]) else prim[v[0].upper()], "dark": None if literal(v[1]) else prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],
