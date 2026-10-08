@@ -704,11 +704,6 @@ describe('loadMarketConfigs', () => {
         /sessions\.admin needs links\.targets\.admin\.sign-in/,
       ],
       [
-        'some admin sign-in pages without the others',
-        (c) => delete at(c, 'links', 'targets', 'admin')['enrol-second-factor'],
-        /identity\.links\.targets\.admin: admin pages sign-in, accept-invitation, enrol-second-factor, reset-password are given together/,
-      ],
-      [
         'an admin sign-in page on the storefront origin (Hassan I1)',
         (c) => (at(c, 'links', 'targets', 'admin')['sign-in'] = 'https://shop.qq.test/admin'),
         /identity\.links\.targets\.admin\.sign-in: an admin page must not share its origin/,
@@ -725,7 +720,104 @@ describe('loadMarketConfigs', () => {
       expect(() => load(identity)).toThrow(message);
     });
 
-    describe('the 1-B guard: "keep me signed in" differs from the default seller session', () => {
+    const SIGN_IN_PAGES = [
+      'sign-in',
+      'accept-invitation',
+      'enrol-second-factor',
+      'reset-password',
+    ] as const;
+
+    it.each(SIGN_IN_PAGES)(
+      'rejects the admin sign-in pages without %s (all four or none)',
+      (page) => {
+        const identity = change((c) => delete at(c, 'links', 'targets', 'admin')[page]);
+        expect(() => load(identity)).toThrow(
+          /identity\.links\.targets\.admin: admin pages sign-in, accept-invitation, enrol-second-factor, reset-password are given together/,
+        );
+      },
+    );
+
+    // Hassan, PR #157: an admin token is only ever mailed to the origin of the admin panel.
+    it.each(
+      SIGN_IN_PAGES.flatMap((page) => [
+        [page, 'a foreign host', 'https://evil.example/admin/page'],
+        [page, 'another port of the admin host', 'https://admin.qq.test:8443/page'],
+      ]),
+    )('rejects the admin page %s on %s', (page, _case, url) => {
+      const identity = change((c) => (at(c, 'links', 'targets', 'admin')[page] = url));
+      expect(() => load(identity)).toThrow(
+        new RegExp(
+          `identity\\.links\\.targets\\.admin\\.${page}: an admin page must have the origin of seller-review-queue`,
+        ),
+      );
+    });
+
+    it('rejects every admin sign-in page when the review queue moves to another origin', () => {
+      const identity = change(
+        (c) =>
+          (at(c, 'links', 'targets', 'admin')['seller-review-queue'] =
+            'https://admin.qq.test:9443/sellers/awaiting-review'),
+      );
+      for (const page of SIGN_IN_PAGES) {
+        expect(() => load(identity)).toThrow(
+          new RegExp(`identity\\.links\\.targets\\.admin\\.${page}: an admin page must have`),
+        );
+      }
+    });
+
+    // Sajad, PR #157: each numeric key at its bounds, the value outside refused and the bound
+    // itself accepted.
+    it.each<[string, string[], number, number, ((c: Node) => void)?]>([
+      ['the admin idle timeout', ['sessions', 'admin', 'idleTimeoutMinutes'], 0, 1],
+      [
+        'the admin absolute lifetime',
+        ['sessions', 'admin', 'absoluteLifetimeMinutes'],
+        0,
+        1,
+        (c) => (at(c, 'sessions', 'admin').idleTimeoutMinutes = 1),
+      ],
+      ['the enrolment link', ['links', 'lifetimeMinutes', 'enrol-second-factor'], 0, 1],
+      ['the admin invitation', ['invitations', 'lifetimeMinutes', 'admin'], 0, 1],
+      ['the seller-owner invitation', ['invitations', 'lifetimeMinutes', 'seller-owner'], 0, 1],
+      ['the staff invitation', ['invitations', 'lifetimeMinutes', 'staff'], 0, 1],
+      ['the challenge attempts', ['challenges', 'maxAttempts'], 0, 1],
+      ['the challenge lifetime', ['challenges', 'lifetimeSeconds'], 29, 30],
+      ['the second-factor limit', ['secondFactorThrottles', 'account', 'limit'], 0, 1],
+      [
+        'the second-factor window (lower bound)',
+        ['secondFactorThrottles', 'account', 'windowMinutes'],
+        1439,
+        1440,
+      ],
+      [
+        'the second-factor window (upper bound)',
+        ['secondFactorThrottles', 'account', 'windowMinutes'],
+        10_081,
+        10_080,
+      ],
+      [
+        'the second-factor block (lower bound)',
+        ['secondFactorThrottles', 'account', 'blockMinutes'],
+        1439,
+        1440,
+      ],
+    ])('bounds %s', (...[, keys, refused, accepted, prepare]) => {
+      // A rest parameter: Jest would take a fifth named parameter for a done callback.
+      const parent = keys.slice(0, -1);
+      const key = keys.at(-1)!;
+      const valued = (value: number) =>
+        change((c) => {
+          prepare?.(c);
+          at(c, ...parent)[key] = value;
+        });
+      const pattern = new RegExp(`identity\\.${keys.join('\\.')}`);
+
+      expect(() => load(valued(refused))).toThrow(InvalidMarketConfigError);
+      expect(() => load(valued(refused))).toThrow(pattern);
+      expect(at(load(valued(accepted)) as unknown as Node, ...parent)[key]).toBe(accepted);
+    });
+
+    describe('the 1-B guard: "keep me signed in" lasts longer than the default seller session', () => {
       const withSeller = (keptAbsolute: number) => ({
         ...IDENTITY,
         sessions: {
@@ -749,18 +841,21 @@ describe('loadMarketConfigs', () => {
         },
       });
 
-      it('rejects a kept absolute lifetime equal to the default one', () => {
-        expect(() => load(withSeller(1440))).toThrow(
-          /identity\.keepSignedInSessions\.seller\.absoluteLifetimeMinutes: keepSignedInSessions\.seller\.absoluteLifetimeMinutes must differ/,
+      it.each([
+        ['equal to', 1440],
+        ['lower than', 1439],
+      ])('rejects a kept absolute lifetime %s the default one', (_case, kept) => {
+        expect(() => load(withSeller(kept))).toThrow(
+          /identity\.keepSignedInSessions\.seller\.absoluteLifetimeMinutes: keepSignedInSessions\.seller\.absoluteLifetimeMinutes must be greater than sessions\.seller\.absoluteLifetimeMinutes/,
         );
       });
 
-      it('accepts a kept absolute lifetime that differs, longer or shorter', () => {
+      it('accepts a kept absolute lifetime greater than the default one', () => {
+        expect(load(withSeller(1441)).keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBe(
+          1441,
+        );
         expect(load(withSeller(43_200)).keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBe(
           43_200,
-        );
-        expect(load(withSeller(1439)).keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBe(
-          1439,
         );
       });
 
@@ -768,7 +863,7 @@ describe('loadMarketConfigs', () => {
         const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
         for (const market of markets.values()) {
           const { sessions, keepSignedInSessions } = market.identity;
-          expect(keepSignedInSessions.seller!.absoluteLifetimeMinutes).not.toBe(
+          expect(keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBeGreaterThan(
             sessions.seller!.absoluteLifetimeMinutes,
           );
         }

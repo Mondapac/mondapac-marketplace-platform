@@ -177,6 +177,20 @@ const linkTargetsSchema = z
         path: ['admin'],
       });
     }
+    // Every admin page is on the origin of the review queue (scheme, host and port; Hassan,
+    // PR #157): an admin token is only ever mailed to our own admin panel.
+    const queue = hostOf(targets.admin['seller-review-queue']);
+    for (const page of ADMIN_SIGN_IN_PAGES) {
+      const url = targets.admin[page];
+      if (url === undefined || queue === null) continue;
+      if (hostOf(url)?.origin !== queue.origin) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must have the origin of seller-review-queue',
+          path: ['admin', page],
+        });
+      }
+    }
     // The admin panel is a host of its own (HF7): a mail must never send an admin to a page on
     // the seller panel or the storefront, nor the other way round (Hassan I1). Origins and host
     // names both: another scheme or port on the same host is the same host (Hassan I-1, R-3).
@@ -353,19 +367,19 @@ const identitySchema = z
     }),
   })
   .superRefine((identity, context) => {
-    // 1-B: "keep me signed in" must differ from the default seller session, so a kept session is
-    // always told apart from a default one by its lifetime.
+    // 1-B (Hassan, PR #157): "keep me signed in" lasts longer than the default seller session, so
+    // a kept session is always told apart from a default one by its lifetime.
     const kept = identity.keepSignedInSessions.seller;
     const standard = identity.sessions.seller;
     if (
       kept !== undefined &&
       standard !== undefined &&
-      kept.absoluteLifetimeMinutes === standard.absoluteLifetimeMinutes
+      kept.absoluteLifetimeMinutes <= standard.absoluteLifetimeMinutes
     ) {
       context.addIssue({
         code: 'custom',
         message:
-          'keepSignedInSessions.seller.absoluteLifetimeMinutes must differ from sessions.seller.absoluteLifetimeMinutes',
+          'keepSignedInSessions.seller.absoluteLifetimeMinutes must be greater than sessions.seller.absoluteLifetimeMinutes',
         path: ['keepSignedInSessions', 'seller', 'absoluteLifetimeMinutes'],
       });
     }

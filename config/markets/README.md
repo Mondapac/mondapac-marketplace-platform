@@ -59,14 +59,15 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   no `keepSignedInSessions.admin`: an admin session is never persistent),
   `links.lifetimeMinutes.enrol-second-factor` (1 to 60; 60 for AU), the four admin pages
   `sign-in`, `accept-invitation`, `enrol-second-factor` and `reset-password` in
-  `links.targets.admin` (all four or none, under the same host rules as `seller-review-queue`),
+  `links.targets.admin` (all four or none, each on the same origin, scheme, host and port, as
+  `seller-review-queue`, so an admin token is only mailed to the admin panel),
   `invitations.lifetimeMinutes` per kind (`admin` at most 72 hours, `seller-owner` and `staff`
   at most 7 days; 4320, 10080 and 10080 for AU; also the age at which a never-dispatched
   invitation is purged), `challenges` (`maxAttempts` 1 to 5, `lifetimeSeconds` 30 to 300; 5 and
   300 for AU) and `secondFactorThrottles.account` (`limit` 1 to 10, `windowMinutes` and
   `blockMinutes` 1440 to 10080, never 0: the block is the lock; 10, 1440 and 1440 for AU;
-  identity design 6.8, HF2). It also checks that `keepSignedInSessions.seller` never has the
-  same `absoluteLifetimeMinutes` as `sessions.seller` (1-B). Later identity slices add their
+  identity design 6.8, HF2). It also checks that `keepSignedInSessions.seller.absoluteLifetimeMinutes` is greater than
+  `sessions.seller.absoluteLifetimeMinutes` (1-B). Later identity slices add their
   values here.
 - `allowedOrigins`: the browser origins (`scheme://host[:port]`, no path) that may send a
   request with an unsafe method to this Market (identity design 6.4, HF14). A request whose
