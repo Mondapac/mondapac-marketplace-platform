@@ -37,6 +37,7 @@ export type TypeRevisionProblem =
   | { readonly code: 'type.locale-missing'; readonly locale: string }
   | { readonly code: 'type.text-invalid'; readonly locale: string }
   | { readonly code: 'type.claim-term-unmatchable'; readonly locale: string }
+  | { readonly code: 'type.claim-terms-missing' }
   | { readonly code: 'type.badge-icon-invalid' }
   | { readonly code: 'type.verification-mode-immutable' };
 
@@ -129,6 +130,13 @@ export function validateTypeRevision(
       problems.push({ code: 'type.claim-term-unmatchable', locale });
     }
   }
+  // Every type has a human-written term list in at least one locale, active or not: without
+  // one its words would pass the claim-text control unseen (Hassan).
+  const anyTerm = Object.keys(content.locales).some((locale) => {
+    const l = Object.hasOwn(content.locales, locale) ? content.locales[locale] : undefined;
+    return Array.isArray(l?.claimTerms) && l.claimTerms.length > 0;
+  });
+  if (!anyTerm) problems.push({ code: 'type.claim-terms-missing' });
   return problems.length > 0 ? err(problems) : ok(content);
 }
 

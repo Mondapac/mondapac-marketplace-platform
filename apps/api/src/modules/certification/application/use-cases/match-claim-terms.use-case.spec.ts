@@ -45,7 +45,7 @@ const typeView = (c: string, status: 'active' | 'inactive'): CertificationTypeVi
 });
 let failing = false;
 let unusableVocabulary = false;
-let emptyVocabulary: 'none' | 'no-entries' | 'no-terms' = 'none';
+let emptyVocabulary: 'none' | 'no-entries' | 'no-terms' | 'one-empty' = 'none';
 let leakyTypes = false;
 const typesCalls: unknown[] = [];
 const reader: PublishedTypesReader = {
@@ -55,6 +55,12 @@ const reader: PublishedTypesReader = {
     if (emptyVocabulary === 'no-entries') return Promise.resolve([]);
     if (emptyVocabulary === 'no-terms') {
       return Promise.resolve([{ typeCode: code('halal'), terms: [] }]);
+    }
+    if (emptyVocabulary === 'one-empty') {
+      return Promise.resolve([
+        { typeCode: code('halal'), terms: [] },
+        { typeCode: code('kosher'), terms: ['kosher'] },
+      ]);
     }
     if (unusableVocabulary) return Promise.resolve([{ typeCode: code('x'), terms: [' - '] }]);
     return Promise.resolve(VOCAB[market.marketId] ?? []);
@@ -132,8 +138,8 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
     expect((await jobs.execute(system(), { texts })).ok).toBe(true);
   });
 
-  it('is unavailable when the Market has no claim terms at all (missing seed, reader fault)', async () => {
-    for (const mode of ['no-entries', 'no-terms'] as const) {
+  it('is unavailable when the Market has no types, or any type has no terms (missing seed, reader fault)', async () => {
+    for (const mode of ['no-entries', 'no-terms', 'one-empty'] as const) {
       emptyVocabulary = mode;
       const r = await facade.matchClaimTerms(system(), [{ locale: 'en', text: own }]);
       expect(r).toEqual({ ok: false, error: { code: 'certification.unavailable' } });

@@ -29,8 +29,9 @@ function parseTexts(
   texts: readonly ClaimTextInput[],
 ): Result<readonly string[], CertificationValidationFailed> {
   if (!Array.isArray(texts) || texts.length > MAX_TEXTS) return invalid('texts', 'length');
+  const count = texts.length;
   const plain: string[] = [];
-  for (let index = 0; index < texts.length; index += 1) {
+  for (let index = 0; index < count; index += 1) {
     const entry = texts[index] as Partial<ClaimTextInput> | null | undefined;
     if (typeof entry !== 'object' || entry === null) return invalid(`texts.${index}`, 'format');
     // Each field is read once, so a getter cannot show one value to the check and another later.
@@ -63,8 +64,12 @@ export async function matchClaimTermsFor(
   if (!parsed.ok) return parsed;
   try {
     const entries = await reader.claimVocabulary(context.market);
-    // No terms at all is a missing seed or a reader fault, not "no claim words" (M8).
-    if (!entries.some((entry) => entry.terms.length > 0)) throw new Error('empty vocabulary');
+    // A Market with no types, or a type with no terms, is a missing seed or a reader fault, not
+    // "no claim words": its words would pass unseen (M8; Hassan). Every published type, active
+    // or inactive, has terms (a revision without one is refused at the domain).
+    if (entries.length === 0 || entries.some((entry) => entry.terms.length === 0)) {
+      throw new Error('incomplete vocabulary');
+    }
     const vocabulary = prepareVocabulary(entries);
     return ok(matchClaimTerms(parsed.value, vocabulary));
   } catch (error) {
