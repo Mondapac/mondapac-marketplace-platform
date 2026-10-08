@@ -48,7 +48,9 @@ export interface FreezeRevisionDependencies {
  * 4. the content hash.
  *
  * It writes nothing: the submit use case stores the revision and calls `Product.submitRevision`.
- * Every issue of every check is returned together, so the seller fixes the draft once.
+ * The issues of the shape checks and the attribute checks are returned together; the variant option
+ * checks run once the shape is sound (they read the frozen variants), so a seller may see them in a
+ * second round.
  */
 export class FreezeRevision {
   constructor(private readonly deps: FreezeRevisionDependencies) {}
@@ -87,7 +89,9 @@ export class FreezeRevision {
     const values = (
       typeof rawValues === 'object' && rawValues !== null ? rawValues : {}
     ) as AttributeValues;
-    const attributes = handler.validateAttributes(schema, values, locales.supported);
+    // The validator reads the first locale as the default, so the default goes first.
+    const ordered = [locales.default, ...locales.supported.filter((l) => l !== locales.default)];
+    const attributes = handler.validateAttributes(schema, values, ordered);
     if (!attributes.ok) {
       issues.push(...attributes.error.map((issue) => ({ path: issue.path, code: issue.code })));
     }

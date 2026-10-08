@@ -14,7 +14,7 @@ const v = (n: number): Id<'Variant'> => `v${n}` as Id<'Variant'>;
 // Two fixture Markets with a different default locale, tax list and variant limit.
 const MARKETS = [
   { code: 'AU', locale: 'en-AU', locales: ['en-AU'], tax: ['GST', 'GST_FREE'], max: 100 },
-  { code: 'ZZ', locale: 'zz-ZZ', locales: ['zz-ZZ', 'yy-ZZ'], tax: ['STD', 'ZERO'], max: 3 },
+  { code: 'ZZ', locale: 'zz-ZZ', locales: ['yy-ZZ', 'zz-ZZ'], tax: ['STD', 'ZERO'], max: 3 },
 ] as const;
 
 const schemaOf = (): AttributeSchema => ({
@@ -33,6 +33,16 @@ const schemaOf = (): AttributeSchema => ({
       material: false,
       claimChecked: true,
       bounds: { maxLength: 20 },
+    },
+    {
+      code: 'tagline',
+      dataType: 'text',
+      localizable: true,
+      required: true,
+      isVariantOption: false,
+      material: false,
+      claimChecked: true,
+      bounds: { maxLength: 40 },
     },
     {
       code: 'size',
@@ -110,7 +120,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     texts: { [locale]: { name: 'Dates' } },
     categoryIds: ['c1'],
     taxCategoryCode: tax[0],
-    attributeValues: { origin: 'AU' },
+    attributeValues: { origin: 'AU', tagline: { [locale]: 'Sweet' } },
     imageIds: [],
     ...extra,
   });
@@ -175,7 +185,29 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       product('simple'),
       copyOf(ready({ texts: { [locale]: { name: 'Dates' }, xx: { name: 'x' } } })),
     );
-    expect(result).toMatchObject({ ok: false, error: { code: 'revision.not-ready' } });
+    if (result.ok || result.error.code !== 'revision.not-ready') throw new Error('expected issues');
+    expect(result.error.issues).toContainEqual({ path: 'texts.xx', code: 'unknown' });
+  });
+
+  it('requires a localizable attribute in the Market default locale, whatever its list position', async () => {
+    const onlyOther = locales.find((l) => l !== locale) ?? 'xx';
+    const result = await service.freeze(
+      market,
+      product('simple'),
+      copyOf(ready({ attributeValues: { origin: 'AU', tagline: { [onlyOther]: 'Sweet' } } })),
+    );
+    if (locales.length > 1) {
+      // A non-default locale alone is not enough: the default is required.
+      if (result.ok || result.error.code !== 'revision.not-ready')
+        throw new Error('expected issues');
+      expect(result.error.issues.map((i) => i.code)).toContain('attribute.required');
+    }
+    const filled = await service.freeze(
+      market,
+      product('simple'),
+      copyOf(ready({ attributeValues: { origin: 'AU', tagline: { [locale]: 'Sweet' } } })),
+    );
+    expect(filled.ok).toBe(true);
   });
 
   it('checks the option combinations of a Configurable draft', async () => {
@@ -224,6 +256,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     const found = result.error.issues.map((issue) => issue.code);
     // ZZ allows 3 variants: four is too many. AU allows 100: only the repeated option sets fail.
     expect(found.includes('too-many')).toBe(max === 3);
+    expect(found.includes('duplicate')).toBe(true);
   });
 
   it('fails closed when the schema or the type handler is missing', async () => {
