@@ -39,7 +39,8 @@ function exported(
     | 'TEST_LOCKING_OWNER_DATABASE_URL'
     | 'TEST_RELAY_DATABASE_URL'
     | 'TEST_DELIVERY_DATABASE_URL'
-    | 'TEST_MAIL_DATABASE_URL',
+    | 'TEST_MAIL_DATABASE_URL'
+    | 'TEST_SELLER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -89,6 +90,11 @@ export function deliveryTestDatabaseUrl(): string {
 /** The copy that email-verification.db-spec.ts relays and dispatches on, likewise. */
 export function mailTestDatabaseUrl(): string {
   return exported('TEST_MAIL_DATABASE_URL');
+}
+
+/** The copy that seller-account.db-spec.ts relays and dispatches on, likewise. */
+export function sellerTestDatabaseUrl(): string {
+  return exported('TEST_SELLER_DATABASE_URL');
 }
 
 export { REPO_ROOT };
