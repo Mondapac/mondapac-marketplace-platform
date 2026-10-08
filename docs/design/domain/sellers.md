@@ -1036,6 +1036,7 @@ H1 closed: Hassan confirmed the applied text (3.1, 6.2, slice 10) in writing on 
 | `.env.example` | The `IdentifierIndex` secret (distinct from the throttle secret, boot check); the register access key (secret per Region Stack) | Slices 3 and 4b; shared-file PR |
 | `docs/modules/sellers/brief.md` (optional) | Clarifying change-log row: SEL-22's "email" is the sign-in email; the contact email is optional (14.4 Q-M19) | Hadi |
 | ADR of 14.1 | Written and accepted as ADR-0026 (owner, 2026-10-07); this design aligned in 19 | Done |
+| `sellingEligibility` stand-in | 2026-10-08: a fail-closed stand-in (every id `eligible: false`, final signature of 7.2 row 1) merged with PR #94 so `catalog` can build against the contract. Slice 9 replaces it; the slice-9 PR deletes the stand-in comments and adds the real-condition tests; any change that can return `true` is slice 9 and needs Hassan's review (Ali's review of PR #94). No flag, config switch or default-true branch; catalog tests needing `eligible: true` use a fake `SellersFacade` in their own test code only | Hossein; Ali reviewed |
 | `docs/modules/README.md`, the board | G2 status once the blockers of 16.4.1 close; the ADRs of 14.1 and 14.2 reserved; requests R-1 to R-12 to the backend track; Kazem checks the managed provider's extension allow-list before the first deployed environment (O1) | Orchestrator |
 
 ## 18. Mini-review 2026-10-07: minimum order (ADR-0013 decision 4)

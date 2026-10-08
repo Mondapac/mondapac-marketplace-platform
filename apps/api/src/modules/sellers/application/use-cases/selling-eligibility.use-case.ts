@@ -14,10 +14,12 @@ export type SellingEligibilityFailure = SellerIdsRefused;
 
 /**
  * Fail-closed stand-in for the may-sell contract (sellers design 7.2; slice 9 builds the real
- * one). Every seller is `eligible: false`: no seller can be approved before slice 7a-decide, so
- * this is the true answer today, and `catalog` can build against the final signature. It reads
- * nothing and calls no other module. It is replaced by slice 9; until then a caller that needs a
- * `true` cannot get one by accident.
+ * one). Every seller is `eligible: false`. That is the true answer today because 7.2 row 2
+ * needs an approved `sellers` revision and none can exist before slice 7a-decide; identity's
+ * `approved` alone never means eligible (ADR-0022 decision 6: `sellers`' conditions only narrow
+ * identity's yes). `catalog` can build against the final signature. It reads nothing and calls
+ * no other module. Slice 9 replaces it and deletes this comment; until then nothing here can
+ * return `true`, and no flag, config switch or default-true branch may be added.
  */
 export function answerFor(ids: ReadonlySet<Id<'Seller'>>): SellingEligibilityAnswer {
   return new Map([...ids].map((sellerId) => [sellerId, { eligible: false }] as const));

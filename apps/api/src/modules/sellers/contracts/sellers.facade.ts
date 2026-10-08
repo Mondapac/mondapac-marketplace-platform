@@ -39,8 +39,11 @@ export interface SellersFacade {
   /**
    * The may-sell contract (sellers design 7.2): per distinct requested id, `eligible`. Fails
    * closed: an unknown id, a missing record or any error is `eligible: false`, never cached, and
-   * no reason leaves the facade. **Until slice 9 every answer is `false`** (no seller can be
-   * approved before slice 7a-decide). At most 100 ids; a larger or malformed call is refused
+   * no reason leaves the facade. **Until slice 9 every answer is `false`**, because the contract
+   * needs an approved `sellers` revision (7.2 row 2) and none exists before slice 7a-decide;
+   * identity's `approved` alone never means eligible (ADR-0022 decision 6). Callers treat any
+   * `ok: false` (`AccessDenied`, `validation.failed`) and any missing key as not eligible; nothing
+   * is cached and nothing is retried towards a yes. At most 100 ids; a larger or malformed call is refused
    * whole. Two use cases behind this method, as for `sellerSummaries`. Not exposed over HTTP.
    */
   sellingEligibility(
