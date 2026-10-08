@@ -7,8 +7,10 @@ import {
   MAX_AUDIT_LIST_LENGTH,
 } from './audit-action';
 import type { AuditFields } from './audit-action';
+import { canonicalJson } from './canonical-json';
 import { eventField } from './domain-event';
 import type { Id } from './id';
+import { money, parseMinorUnits, parseMoney } from './money';
 import { Temporal } from './time';
 
 const ID = '01890a5d-ac96-774b-bcce-b302099a8057' as Id;
@@ -109,6 +111,7 @@ describe('defineAuditAction (platform-audit.md 3.2)', () => {
       ['an empty after', { after: {} }],
       ['a snake_case field', { after: { role_id: auditField.id() } }],
       ['a free-text field kind', { after: { reason: { kind: 'text' } } }],
+      ['a target id of kind money', { targetId: auditField.money() }],
       ['a listOf without a maximum', { after: { keys: eventField.listOf(auditField.id()) } }],
       ['a listOf with maximum 0', { after: { keys: auditField.listOf(auditField.id(), 0) } }],
       [
@@ -383,6 +386,187 @@ describe('encodeAuditFields (W4)', () => {
         });
       }
     });
+  });
+});
+
+describe('a money field (platform-audit 3.2; pricing condition (h))', () => {
+  const only = { price: auditField.money() };
+  const encode = (value: unknown) => encodeAuditFields(only, { price: value }, KNOWN_KEYS);
+  const refused = {
+    ok: false,
+    error: { code: 'audit-fields.invalid', field: 'price', problem: 'invalid' },
+  };
+
+  it('is a frozen kind of its own, rebuilt from a literal like every other kind', () => {
+    expect(auditField.money()).toEqual({ kind: 'money' });
+    expect(Object.isFrozen(auditField.money())).toBe(true);
+    const literal = { kind: 'money' };
+    const definition = defineAuditAction({
+      action: 'pricing.regular-price.accepted',
+      targetType: 'pricing.price-record',
+      actors: ['authenticated'],
+      after: {
+        amount: literal,
+        anchorAmount: { kind: 'optional', of: { kind: 'money' } },
+        steps: { kind: 'listOf', of: { kind: 'money' }, max: 3 },
+      },
+    } as unknown as Parameters<typeof defineAuditAction>[0]);
+
+    expect(definition.after?.amount).not.toBe(literal);
+    expect(Object.isFrozen(definition.after?.amount)).toBe(true);
+    expect(describeAuditAction(definition).after).toEqual({
+      amount: 'money',
+      anchorAmount: 'optional(money)',
+      steps: 'listOf(money, max 3)',
+    });
+  });
+
+  it.each([
+    ['AUD (exponent 2)', money(1999n, 'AUD'), { amount: '1999', currency: 'AUD' }],
+    ['JPY (exponent 0)', money(500n, 'JPY'), { amount: '500', currency: 'JPY' }],
+    ['KWD (exponent 3)', money(1n, 'KWD'), { amount: '1', currency: 'KWD' }],
+    [
+      'the largest amount of 16 digits',
+      money(9_999_999_999_999_999n, 'AUD'),
+      { amount: '9999999999999999', currency: 'AUD' },
+    ],
+    [
+      'a plain Money-shaped object',
+      { amount: 42n, currency: 'NZD' },
+      { amount: '42', currency: 'NZD' },
+    ],
+  ])('writes %s as a digit string of minor units and its currency', (_case, value, expected) => {
+    expect(encode(value)).toEqual({ ok: true, value: { price: expected } });
+  });
+
+  it.each([
+    ['zero', { amount: 0n, currency: 'AUD' }],
+    ['a negative amount', { amount: -1n, currency: 'AUD' }],
+    ['an amount of 17 digits', { amount: 10n ** 16n, currency: 'AUD' }],
+    ['a number amount', { amount: 1999, currency: 'AUD' }],
+    ['a fractional number amount', { amount: 19.99, currency: 'AUD' }],
+    [
+      'a digit-string amount (the jsonb form is not the in-memory value)',
+      { amount: '1999', currency: 'AUD' },
+    ],
+    ['a non-digit string amount', { amount: '12a', currency: 'AUD' }],
+    ['no amount', { currency: 'AUD' }],
+    ['a lower-case currency', { amount: 1999n, currency: 'aud' }],
+    ['an unknown currency', { amount: 1999n, currency: 'ZZQ' }],
+    ['a four-letter currency', { amount: 1999n, currency: 'AUDD' }],
+    ['no currency', { amount: 1999n }],
+    ['a bare bigint', 1999n],
+    ['a string', '1999 AUD'],
+    ['a list', [1999n, 'AUD']],
+    ['a Date', new Date()],
+  ])('refuses %s', (_case, value) => {
+    expect(encode(value)).toEqual(refused);
+  });
+
+  it('refuses null and undefined as missing, but takes null for an optional money', () => {
+    for (const value of [null, undefined]) {
+      expect(encode(value)).toEqual({
+        ok: false,
+        error: { code: 'audit-fields.invalid', field: 'price', problem: 'missing' },
+      });
+    }
+    expect(
+      encodeAuditFields(
+        { anchor: auditField.optional(auditField.money()) },
+        { anchor: null },
+        KNOWN_KEYS,
+      ),
+    ).toEqual({ ok: true, value: { anchor: null } });
+  });
+
+  it('reads each property once, so a getter or a Proxy cannot answer the checks and the row differently', () => {
+    let reads = 0;
+    const shifty = {
+      get amount() {
+        reads += 1;
+        return reads === 1 ? 100n : -100n;
+      },
+      currency: 'AUD',
+    };
+    expect(encode(shifty)).toEqual({
+      ok: true,
+      value: { price: { amount: '100', currency: 'AUD' } },
+    });
+    expect(reads).toBe(1);
+
+    const throwing = new Proxy(
+      { amount: 1n, currency: 'AUD' },
+      {
+        get: () => {
+          throw new Error('trap');
+        },
+      },
+    );
+    expect(encode(throwing)).toEqual(refused);
+  });
+
+  it('refuses an instance of a class: only a plain Money-shaped object', () => {
+    class Priced {
+      readonly amount = 1n;
+      readonly currency = 'AUD';
+    }
+    expect(encode(new Priced())).toEqual(refused);
+  });
+
+  it('writes no other property of the value', () => {
+    expect(encode({ amount: 5n, currency: 'JPY', note: 'free text' })).toEqual({
+      ok: true,
+      value: { price: { amount: '5', currency: 'JPY' } },
+    });
+  });
+
+  it('encodes deterministically: equal Money gives the same canonical JSON, whatever the key order', () => {
+    const fields = {
+      amount: auditField.money(),
+      anchorAmount: auditField.optional(auditField.money()),
+    };
+    const first = encodeAuditFields(
+      fields,
+      { amount: money(1999n, 'AUD'), anchorAmount: money(1000n, 'AUD') },
+      KNOWN_KEYS,
+    );
+    const second = encodeAuditFields(
+      fields,
+      {
+        anchorAmount: { currency: 'AUD', amount: 1000n },
+        amount: { currency: 'AUD', amount: 1999n },
+      },
+      KNOWN_KEYS,
+    );
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+
+    expect(canonicalJson(first.value)).toEqual({
+      ok: true,
+      value:
+        '{"amount":{"amount":"1999","currency":"AUD"},"anchorAmount":{"amount":"1000","currency":"AUD"}}',
+    });
+    expect(canonicalJson(second.value)).toEqual(canonicalJson(first.value));
+  });
+
+  it.each([
+    ['AUD', money(9_007_199_254_740_993n, 'AUD')],
+    ['JPY', money(123_456_789n, 'JPY')],
+  ])('round-trips a %s amount through canonical JSON without a float', (_case, value) => {
+    const encoded = encode(value);
+    expect(encoded.ok).toBe(true);
+    if (!encoded.ok) return;
+    const text = canonicalJson(encoded.value);
+    expect(text.ok).toBe(true);
+    if (!text.ok) return;
+
+    const read = (JSON.parse(text.value) as { price: { amount: unknown; currency: unknown } })
+      .price;
+    expect(typeof read.amount).toBe('string');
+    const amount = parseMinorUnits(read.amount);
+    expect(amount.ok).toBe(true);
+    if (!amount.ok) return;
+    expect(parseMoney(amount.value, read.currency)).toEqual({ ok: true, value });
   });
 });
 

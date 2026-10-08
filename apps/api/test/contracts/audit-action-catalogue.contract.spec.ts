@@ -4,7 +4,12 @@ import path from 'node:path';
 import { Module, type INestApplicationContext, type Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
-import type { AuditActionDescription } from '@mondapac/shared-kernel';
+import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
+import type {
+  AuditActionDefinition,
+  AuditActionDescription,
+  AuditFieldKind,
+} from '@mondapac/shared-kernel';
 import pino from 'pino';
 import { AppModule } from '../../src/app.module';
 import { CORE_MODULES } from '../../src/modules';
@@ -26,7 +31,9 @@ import { testAppConfig } from '../support/test-config';
 //   folder it is declared in: `<m>` only in src/modules/<m>/<m>.module.ts, and
 //   `platform.<component>` only in src/platform/<component>/. Checked in the source and in the
 //   booted graph, for `registerAuditActions` and `auditWriterFor` alike;
-// - a module can reach neither another module's writer nor a writer factory (PA 2).
+// - a module can reach neither another module's writer nor a writer factory (PA 2);
+// - no `pricing.cost.*` action declares a `money` field, bare or wrapped: Cost never enters the
+//   audit log (ADR-0024; pricing design 21, condition (h); Hassan H2).
 
 const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 
@@ -102,6 +109,24 @@ function nestModulesOf(moduleRef: unknown): NestModuleView[] {
   return [...container.getModules().values()];
 }
 
+/** True for a `money` kind, or a `listOf` or `optional` of one. */
+const isMoneyKind = (kind: AuditFieldKind): boolean =>
+  kind.kind === 'money' ||
+  ((kind.kind === 'listOf' || kind.kind === 'optional') && kind.of.kind === 'money');
+
+/** `<action>.<side>.<field>` for every money field of a Cost action (ADR-0024: none allowed). */
+function costMoneyFields(definitions: readonly AuditActionDefinition[]): string[] {
+  return definitions
+    .filter((definition) => definition.action.startsWith('pricing.cost.'))
+    .flatMap((definition) =>
+      (['before', 'after'] as const).flatMap((side) =>
+        Object.entries(definition[side] ?? {})
+          .filter(([, kind]) => isMoneyKind(kind))
+          .map(([name]) => `${definition.action}.${side}.${name}`),
+      ),
+    );
+}
+
 /** The owner a bound writer was built for (the writer keeps it to check each entry). */
 const ownerOfWriter = (writer: unknown) => (writer as { owner?: unknown }).owner;
 
@@ -149,6 +174,44 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.role.seeded',
       'identity.seller-access.founded',
       'identity.seller-member.added',
+    ]);
+  });
+
+  it('declares no money field on a pricing.cost.* action: Cost never enters the audit log (ADR-0024, H2)', () => {
+    const catalogue = graphs.get('api')!.get(AuditActionCatalogue);
+    const definitions = catalogue.snapshot().map((entry) => catalogue.get(entry.action)!);
+
+    expect(definitions.length).toBeGreaterThan(0);
+    expect(costMoneyFields(definitions)).toEqual([]);
+  });
+
+  it('would catch a money field on a pricing.cost.* action, bare, optional or in a list', () => {
+    const costChanged = (after: Record<string, AuditFieldKind>) =>
+      defineAuditAction({
+        action: 'pricing.cost.changed',
+        targetType: 'pricing.cost-record',
+        actors: ['authenticated'],
+        after,
+      });
+    const price = defineAuditAction({
+      action: 'pricing.regular-price.accepted',
+      targetType: 'pricing.price-record',
+      actors: ['authenticated'],
+      after: { amount: auditField.money() },
+    });
+
+    expect(
+      costMoneyFields([
+        costChanged({ amount: auditField.money() }),
+        costChanged({ previous: auditField.optional(auditField.money()) }),
+        costChanged({ steps: auditField.listOf(auditField.money(), 4) }),
+        costChanged({ recordId: auditField.id() }),
+        price,
+      ]),
+    ).toEqual([
+      'pricing.cost.changed.after.amount',
+      'pricing.cost.changed.after.previous',
+      'pricing.cost.changed.after.steps',
     ]);
   });
 
