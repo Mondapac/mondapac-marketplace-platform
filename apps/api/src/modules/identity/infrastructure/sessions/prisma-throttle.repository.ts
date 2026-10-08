@@ -22,6 +22,9 @@ function inLockOrder(a: ThrottleCounter, b: ThrottleCounter): number {
   return Buffer.compare(a.keyHash, b.keyHash);
 }
 
+/** The counters of an address that a password reset clears (identity design 3.7, AC 13). */
+const SIGN_IN_ACCOUNT_KINDS = ['sign-in.account', 'sign-in.account-origin'] as const;
+
 /**
  * {@link ThrottleRepository} on `identity.sign_in_throttles` (data design 3.5). Per counter, two
  * statements (C10): an `updateMany` that restarts an ended window, then an `upsert` on the
@@ -29,9 +32,6 @@ function inLockOrder(a: ThrottleCounter, b: ThrottleCounter): number {
  * 20 concurrent units allowed exactly the limit). Release and block touch only the reserved
  * window: a window restarted in between is left alone.
  */
-/** The counters of an address that a password reset clears (identity design 3.7, AC 13). */
-const SIGN_IN_ACCOUNT_KINDS = ['sign-in.account', 'sign-in.account-origin'] as const;
-
 export class PrismaThrottleRepository implements ThrottleRepository {
   constructor(private readonly prisma: PrismaService) {}
 

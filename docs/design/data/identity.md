@@ -226,9 +226,10 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
   unit, the link variant included) or that replaces the credential and revokes sessions (reset,
   change) takes it first, at READ COMMITTED. Either the session commits first and the revocation
   ends it, or the other side waits and then reads the new hash.
-- **Lock order** in those units: account (this lock) -> link -> account save -> sessions ->
-  throttle rows (kind order, then key) -> outbox. No unit holds a link or session row and then
-  waits for the account row.
+- **Lock order** in those units: account (this lock) first; then that unit's link, session,
+  credential and record rows in any order; then throttle rows (kind order, then key); then
+  outbox. A unit that does not take the account lock writes only one of these child rows, so no
+  wait cycle forms.
 - **Accepted conflicts:** clearing an address's sign-in counters in a reset can meet a
   reservation of the same address in the other order and fail with `40P01`; the unit of work
   retries it. A serializable writer of `accounts` (the purge, 5.1) can meet the lock and get one
