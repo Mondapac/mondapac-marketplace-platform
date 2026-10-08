@@ -216,6 +216,26 @@ string, so a raw password cannot be stored by mistake, and the algorithm stays r
 raises `accounts.version`. The database guarantees at most one credential per account, not
 exactly one (5).
 
+**The credential lock (slice 4; Hassan slice-2 N1).** `AccountRepository.lockCredential` is one
+guarded statement, `UPDATE identity.accounts SET version = version + 0 WHERE market_id = $1 AND
+id = $2` (Prisma `updateMany` with `increment: 0`; the market guard allows no raw `FOR UPDATE`).
+It changes no value but takes the row's `FOR NO KEY UPDATE` lock until the unit ends, which does
+not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
+`one_time_links`.
+- **Rule:** every unit that opens a session after checking the credential (the sign-in closing
+  unit, the link variant included) or that replaces the credential and revokes sessions (reset,
+  change) takes it first, at READ COMMITTED. Either the session commits first and the revocation
+  ends it, or the other side waits and then reads the new hash.
+- **Lock order** in those units: account (this lock) -> link -> account save -> sessions ->
+  throttle rows (kind order, then key) -> outbox. No unit holds a link or session row and then
+  waits for the account row.
+- **Accepted conflicts:** clearing an address's sign-in counters in a reset can meet a
+  reservation of the same address in the other order and fail with `40P01`; the unit of work
+  retries it. A serializable writer of `accounts` (the purge, 5.1) can meet the lock and get one
+  more `40001`; it is retried too.
+- **Cost, measured:** about 155 to 195 bytes of WAL per lock, and the new row version is
+  HOT-eligible (97.7 % HOT in steady state), as the statement touches no indexed column.
+
 ### 3.4 `identity.sessions` (slice 2)
 
 | Column | Type | Null | Notes |
@@ -570,7 +590,9 @@ and on the whole table after a sequential scan, which the planner prefers while 
 small. Two unrelated units, two sign-ups whose addresses share an index page for example, can
 then fail with `40001`, and the UnitOfWork runs the work again, three attempts in all (P 3.1 row
 7). Therefore: the queries of these units are written for the indexes of section 3, with `market_id` in every relation's predicate; the purge takes one account per unit (3.3); the test of P 13 asserts each writer's isolation. Measured in spike 6 (2026-10-07; 20 concurrent units per wave, three attempts): the last-holder invariant held in every round, while READ COMMITTED broke it in 30 of 30. Unrelated writers conflicted on 2.4 % of attempts with 2 × 10⁴ memberships and on 16 % on a near-empty table. There the planner reads a seller's team through the partial unique index of 3.9 on `market_id` alone, so the predicate lock covers the Market's whole active membership. Five admins disabling each other at once exhausted three attempts in 1 to 5 of 100 units. Decision (Mojtaba): no larger retry budget and no query shaped against the planner. An exhausted unit is `TransactionConflictError`, answered 409 `conflict.retry` with nothing committed, and a P 13 test proves it for both error shapes. The small-table rate falls as the tables grow; it is revisited only if `conflict.retry` appears in production logs. The reservation unit and the
-sign-in's closing unit write none of the three tables and stay READ COMMITTED.
+sign-in's closing unit write none of the three tables and stay READ COMMITTED. Since slice 4 the
+sign-in closing unit writes the account row (`version + 0`, the credential lock of 3.3) and stays
+READ COMMITTED.
 
 ## 6. `platform.audit_log`: the `ANONYMOUS` actor type
 
