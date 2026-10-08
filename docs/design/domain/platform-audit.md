@@ -1,7 +1,7 @@
 # Platform audit: writer, hash chain, sealer (identity slice 6)
 
 **Author:** Mohammad (software-architect), 2026-10-08
-**Status:** Approved with conditions by Ali (2026-10-08); final ruling by Ali 2026-10-08: 6a may start when the conditions listed in 15 hold. Hassan OK with conditions (re-review 2026-10-08); Mojtaba OK, data design signed off 2026-10-08 (DP 11). Every condition is applied in this text or recorded as a trigger with its owner (section 18). Open: Q5 and Q7 for the owner (17).
+**Status:** Approved with conditions by Ali (2026-10-08); final ruling by Ali 2026-10-08: 6a may start when the conditions listed in 15 hold. Hassan OK with conditions (re-review 2026-10-08); Mojtaba OK, data design signed off 2026-10-08 (DP 11). Every condition is applied in this text or recorded as a trigger with its owner (section 18). Open: Q5 for the owner (17); Q7 answered by the owner 2026-10-08.
 **Updated:** 2026-10-08, three review rounds applied (section 18).
 **Ground truth:** ADR-0004 decision 7; ADR-0009 V4 and decisions 5, 6 and 8; ADR-0015 decisions 1 to 3; ADR-0018 decisions 3 and 4; ADR-0020 decisions 1 and 8; ADR-0023; ADR-0025; ADR-0026 decision 3; ADR-0005; ADR-0006. Also `docs/design/data/platform.md` (2, 3.3 to 3.5, 5, 10, and 11, cited as "DP 11"), `docs/design/data/identity.md` 6 and 8.1, `docs/design/domain/identity.md` (5.5, 5.6, 10, 12), `docs/design/domain/platform-foundations.md` (3.4, 3.8, 5.2), `docs/design/domain/platform-persistence-and-events.md` ("P": 3.1, 3.3, 5.3, 7), the identity brief (AC 11, AC 12, AC 27, R5), and VER-08, VER-13, VER-14, IMP-06, IMP-10, CERT-32.
 **Code on main checked:** `platform.audit_log` (baseline plus grants); `OutboxWriter` and its per-module binding; `JobRegistry`, `AdvisoryJobLock`; `SubjectKeyService` (`hmac` returns lowercase hex); `ActorContext` kinds `anonymous`, `system`, `authenticated`. No `platform/audit` code exists yet. Main carries identity migrations up to slice 2.
@@ -411,7 +411,7 @@ Notes:
 | Q4 | Ali | Owner of the cross-module admin audit list | **Direction decided** by Ali 2026-10-08 (10); final at the first admin audit screen |
 | Q5 | Owner (counsel) | Audit retention per Market, and keeping pseudonymous ids after erasure | **Open for the owner.** Goes to counsel with the open certification retention items. Due before the hardening trigger (15); Mojtaba needs it before he designs partitioning |
 | Q6 | Ali, Kazem, Bagher | External readable anchor (Object Lock) as a release trigger | **Decided** by Ali 2026-10-08, with Hassan's stricter wording and conditions (8), as one trigger for the whole hardening set (15); ADR-0032 |
-| Q7 | Owner | Who receives audit-integrity alerts (a named person per Market or Region Stack) | **Open for the owner.** Asked together with Q5; due before the hardening trigger (15). Recommendation (Ali): the owner plus the CTO, with Kazem's on-call for operations; never only someone with database write access |
+| Q7 | Owner | Who receives audit-integrity alerts (a named person per Market or Region Stack) | **Answered by the owner 2026-10-08:** the owner and Ali (CTO) receive audit-integrity alerts, as Ali recommended; Kazem's on-call handles operations. Neither recipient may be only someone with database write access. Kazem wires the routing before the hardening trigger (15) |
 | Q8 | Hassan | Is the log anchor enough for Phase 2? Is the hash construction of 6.2 sound? | **Decided** by Hassan 2026-10-08: yes to both, with L2 applied (6.2) and the hardening trigger wording (15) |
 
 ## 18. Review record
@@ -428,7 +428,7 @@ Reviews of 2026-10-08: Ali (cto, approved with conditions; second round: final r
 | Ali 6 split | 6a / 6b, five conditions | 15; 16 contracts; identity.md 12.1, 12.2 |
 | Ali note for Mojtaba | Foreign key through `(market_id, occurred_at, id)` for later partitioning | DP 11.2, 11.3; 11 here |
 | Ali paperwork | One ADR; brief change logs; content-hash note | 15 (ADR-0032); identity and certification briefs |
-| Ali Q5, Q7 | On the owner's queue, due before the hardening trigger | 17, 15 |
+| Ali Q5, Q7 | Q7 answered by the owner 2026-10-08 (owner and Ali); Q5 on the owner's queue, due before the hardening trigger | 17, 15 |
 | Hassan M1 = Mojtaba F1 | Watermark went backwards; stall | 7.1 step 2, duplicates, step 8 (`audit.seal.stalled`); 16 late-row test |
 | Hassan M2 | Microsecond precision; no row may stop the sealer | W3 and DP 11.2 CHECK; 6.2 fallback; 16 |
 | Hassan M3 | Anonymous rows must name the bound account | W4a, 3.2, 4, 5; A3 amendment to identity data 6 (Mojtaba) |

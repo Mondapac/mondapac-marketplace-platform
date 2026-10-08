@@ -13,7 +13,10 @@ import { ATTRIBUTE_SEED } from './application/ports/attribute-seed';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
 import { SeedAttributes } from './application/use-cases/seed-attributes.use-case';
+import { OfferSellUnitsSystemQuery } from './application/use-cases/offer-sell-units-system.use-case';
+import { OfferSellUnitsQuery } from './application/use-cases/offer-sell-units.use-case';
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
+import { CATALOG_FACADE } from './contracts/catalog.facade';
 import { CATALOG_EVENTS } from './domain/events';
 import {
   PRODUCT_TYPE_POINT,
@@ -24,6 +27,7 @@ import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
+import { CatalogFacadeImplementation } from './presentation/catalog.facade';
 import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job';
 
 /**
@@ -114,6 +118,21 @@ const productTypeProvider: FactoryProvider<string> = {
         seedAttributesJob(attributes),
       ],
     ),
+    // The fail-closed stand-in of slice 7 (ADR-0031 decision 6): it reads nothing, so only the gate.
+    ...[OfferSellUnitsQuery, OfferSellUnitsSystemQuery].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
+    {
+      provide: CATALOG_FACADE,
+      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery],
+      useFactory: (
+        offerSellUnits: OfferSellUnitsQuery,
+        offerSellUnitsSystem: OfferSellUnitsSystemQuery,
+      ) => new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem }),
+    },
   ],
+  exports: [CATALOG_FACADE],
 })
 export class CatalogModule {}
