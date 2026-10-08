@@ -2,11 +2,11 @@
 
 import { Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
-import { nextHref } from './steps.ts';
+import { nextHref, SETUP_ROOT } from './steps.ts';
 import type { FormDescriptors, IdentifierSaved, MyFile, RegisterResult } from './types.ts';
+import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
 
@@ -81,6 +81,9 @@ export function NumberForm({
         />
       </Card>
       <FormActionBar status={savedOnce && !problem && !pending ? t('sellers.status.saved') : null}>
+        <ButtonLink href={SETUP_ROOT} variant="secondary">
+          {t('sellers.action.back-to-checklist')}
+        </ButtonLink>
         <Button type="submit" variant={savedOnce ? 'secondary' : 'primary'} loading={pending}>
           {t(
             pending
@@ -91,12 +94,9 @@ export function NumberForm({
           )}
         </Button>
         {savedOnce ? (
-          <Link
-            href={nextHref('number')}
-            className="inline-flex h-(--mp-size-control) items-center rounded-md bg-accent px-4 font-medium text-on-accent hover:bg-accent-hover"
-          >
+          <ButtonLink href={nextHref('number')} variant="primary">
             {t('sellers.action.continue')}
-          </Link>
+          </ButtonLink>
         ) : null}
       </FormActionBar>
     </form>

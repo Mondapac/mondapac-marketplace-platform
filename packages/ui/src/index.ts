@@ -11,3 +11,4 @@ export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
+export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
