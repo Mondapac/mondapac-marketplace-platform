@@ -4,10 +4,9 @@ import type {
   ClaimDecision,
   ClaimQuery,
   ClaimReason,
-  TimeZoneId,
 } from './claim-types';
 import { sellerCertificateValidAt } from './validity';
-import type { SellerCertificationView } from './validity';
+import type { SellerCertificationView, SellerZones } from './validity';
 
 /** A published policy row that matches the query (a category id of a path, or the handling). */
 export interface MatchedPolicyRow {
@@ -27,8 +26,8 @@ export interface ClaimFacts {
   } | null;
   /** The non-terminal certificate of (seller, type), or `null`. */
   readonly sellerCertificate: SellerCertificationView | null;
-  /** Non-provisional zone from `sellers.approvedSellerZones`; `null` when there is none. */
-  readonly sellerZoneNow: TimeZoneId | null;
+  /** Non-provisional zones from `sellers.approvedSellerZones`; `null` when either is missing. */
+  readonly sellerZones: SellerZones | null;
 }
 
 // Strictness: NOT_APPLICABLE > SELLER_REQUIRED > SELLER_OR_MANUFACTURER (design 4.2 step 3, M1).
@@ -89,7 +88,7 @@ export function decide(query: ClaimQuery, facts: ClaimFacts, at: Temporal.Instan
   const cert = facts.sellerCertificate;
   if (cert === null) return deny(query, 'no-valid-seller-certificate', at, policyRevisionId);
 
-  const validity = sellerCertificateValidAt(cert, facts.sellerZoneNow, at);
+  const validity = sellerCertificateValidAt(cert, facts.sellerZones, at);
   if (!validity.valid) {
     const reason: ClaimReason =
       validity.reason === 'seller-zone-missing'

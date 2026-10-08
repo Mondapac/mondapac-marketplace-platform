@@ -19,7 +19,7 @@ const now = Temporal.Instant.from('2027-01-01T00:00:00Z');
 const facts = (over: Partial<ClaimFacts> = {}): ClaimFacts => ({
   type: { publishedRevisionId: id('tr1'), defaultBasis: 'SELLER_REQUIRED' },
   policy: null,
-  sellerZoneNow: 'Australia/Sydney' as TimeZoneId,
+  sellerZones: { zone: 'Australia/Sydney' as TimeZoneId, addressZone: 'Australia/Sydney' as TimeZoneId },
   sellerCertificate: {
     certificateId: id('c1'),
     status: 'approved',
@@ -107,7 +107,7 @@ describe('ClaimRule.decide (seller basis)', () => {
     expect(decide(query, facts(), Temporal.Instant.from('2028-06-01T00:00:00Z')).reason).toBe(
       'no-valid-seller-certificate',
     );
-    expect(decide(query, facts({ sellerZoneNow: null }), now).reason).toBe('seller-zone-missing');
+    expect(decide(query, facts({ sellerZones: null }), now).reason).toBe('seller-zone-missing');
   });
 
   it('fails closed on SELLER_OR_MANUFACTURER without a seller certificate (manufacturer basis is slice 13)', () => {

@@ -40,6 +40,12 @@ export type Validity =
   | { readonly valid: false; readonly reason: InvalidReason };
 
 /** 00:00 on the day after `expiryDate` in `zone`; DST-safe because it is a start of day. */
+/** The pair `sellers.approvedSellerZones` answers: the chosen zone and the zone the address gives. */
+export interface SellerZones {
+  readonly zone: TimeZoneId;
+  readonly addressZone: TimeZoneId;
+}
+
 export function expiryBoundary(expiryDate: Temporal.PlainDate, zone: TimeZoneId): Temporal.Instant {
   return expiryDate.add({ days: 1 }).toZonedDateTime(zone).toInstant();
 }
@@ -52,7 +58,7 @@ export function expiryBoundary(expiryDate: Temporal.PlainDate, zone: TimeZoneId)
  */
 export function sellerCertificateValidAt(
   cert: SellerCertificationView,
-  sellerZoneNow: TimeZoneId | null,
+  sellerZones: SellerZones | null,
   at: Temporal.Instant,
 ): Validity {
   // `expired` is only a record for people and events; the boundary below decides (rule 4).
@@ -62,18 +68,20 @@ export function sellerCertificateValidAt(
   const sub = cert.approved;
   if (sub === null) return { valid: false, reason: 'no-approved-submission' };
   if (sub.issuerState === 'derecognised') return { valid: false, reason: 'issuer-derecognised' };
-  if (sellerZoneNow === null) return { valid: false, reason: 'seller-zone-missing' };
+  if (sellerZones === null) return { valid: false, reason: 'seller-zone-missing' };
 
   if (!sub.requiresExpiry) {
     return { valid: true, submissionId: sub.submissionId, expiresAt: null };
   }
   if (sub.expiryDate === null) return { valid: false, reason: 'expiry-missing' };
 
-  // The earlier of the boundary in the zone stored at approval and in the current zone, so a
-  // zone change can only bring the boundary forward (T2).
-  const atApproval = expiryBoundary(sub.expiryDate, sub.zoneAtApproval);
-  const now = expiryBoundary(sub.expiryDate, sellerZoneNow);
-  const boundary = Temporal.Instant.compare(atApproval, now) <= 0 ? atApproval : now;
+  // The earliest of three: the boundary stored at approval, the chosen zone's and the address
+  // zone's, so a chosen zone can only bring the boundary forward (T2, amended 2026-10-08).
+  const boundary = [
+    expiryBoundary(sub.expiryDate, sub.zoneAtApproval),
+    expiryBoundary(sub.expiryDate, sellerZones.zone),
+    expiryBoundary(sub.expiryDate, sellerZones.addressZone),
+  ].reduce((a, b) => (Temporal.Instant.compare(a, b) <= 0 ? a : b));
   if (Temporal.Instant.compare(at, boundary) >= 0) return { valid: false, reason: 'expired' };
   return { valid: true, submissionId: sub.submissionId, expiresAt: boundary };
 }
