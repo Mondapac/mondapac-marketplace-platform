@@ -1,4 +1,4 @@
-import { clientOriginOf } from './client-origin';
+import { clientAddressOf, clientOriginOf } from './client-origin';
 
 describe('clientOriginOf (identity design 6.8, HF3)', () => {
   it.each([
@@ -33,5 +33,24 @@ describe('clientOriginOf (identity design 6.8, HF3)', () => {
     ['a forwarded-header list', '198.51.100.1, 203.0.113.7'],
   ])('answers null for %s, so the limiter fails closed', (_case, address) => {
     expect(clientOriginOf(address)).toBeNull();
+  });
+});
+
+describe('clientAddressOf (identity design 10.2: the address of a sign-in record)', () => {
+  it.each([
+    ['an IPv4 address', '203.0.113.7', '203.0.113.7'],
+    ['an IPv4-mapped IPv6 address', '::ffff:203.0.113.7', '203.0.113.7'],
+    ['a compressed IPv6 address', '2001:db8::1', '2001:db8:0:0:0:0:0:1'],
+    ['an upper-case IPv6 address with a zone', 'FE80::A%eth0', 'fe80:0:0:0:0:0:0:a'],
+  ])('keeps the whole of %s', (_case, address, stored) => {
+    expect(clientAddressOf(address)).toBe(stored);
+  });
+
+  it.each([
+    ['no address', undefined],
+    ['a host name', 'example.com'],
+    ['a forwarded-header list', '198.51.100.1, 203.0.113.7'],
+  ])('answers null for %s', (_case, address) => {
+    expect(clientAddressOf(address)).toBeNull();
   });
 });

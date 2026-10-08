@@ -5,6 +5,7 @@ import {
   JobRegistry,
   JobRegistryError,
   registerJobs,
+  registerJobsFrom,
   type JobDefinition,
 } from './job-registry';
 
@@ -81,6 +82,19 @@ describe('JobRegistry (platform persistence design 7)', () => {
 
     expect(provider.inject).toEqual([JobRegistry]);
     provider.useFactory(registry);
+    expect(registry.names()).toEqual(['identity.purge-expired']);
+  });
+
+  it('registers jobs built from providers of the module', () => {
+    const registry = new JobRegistry();
+    const USE_CASE = Symbol('USE_CASE');
+    const provider = registerJobsFrom('identity', [USE_CASE], (name: string) => [job(name)]) as {
+      inject: unknown[];
+      useFactory: (registry: JobRegistry, ...dependencies: unknown[]) => unknown;
+    };
+
+    expect(provider.inject).toEqual([JobRegistry, USE_CASE]);
+    provider.useFactory(registry, 'identity.purge-expired');
     expect(registry.names()).toEqual(['identity.purge-expired']);
   });
 });

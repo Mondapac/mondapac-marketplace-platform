@@ -31,6 +31,39 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     expect(policy.existingAccountNoticeHours(testMarketContext('ZZ', 'default'))).toBe(12);
   });
 
+  it('reads each Market its own customer session lifetime, in seconds, and none for others', () => {
+    expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'customer')).toEqual({
+      idleTimeoutSeconds: 14 * 86_400,
+      absoluteLifetimeSeconds: 30 * 86_400,
+    });
+    expect(policy.sessionLifetime(testMarketContext('ZZ', 'default'), 'customer')).toEqual({
+      idleTimeoutSeconds: 7 * 86_400,
+      absoluteLifetimeSeconds: 14 * 86_400,
+    });
+    expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'seller')).toBeNull();
+    expect(policy.sessionLifetime(testMarketContext('ZZ', 'default'), 'admin')).toBeNull();
+  });
+
+  it('reads each Market its own throttles and retention (identity design 6.8, H3)', () => {
+    const au = testMarketContext('AU', 'default');
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(policy.signInThrottles(au).accountOrigin).toEqual({
+      limit: 5,
+      windowMinutes: 15,
+      blockMinutes: 15,
+    });
+    expect(policy.signInThrottles(zz).accountOrigin).toEqual({
+      limit: 4,
+      windowMinutes: 10,
+      blockMinutes: 20,
+    });
+    expect(policy.mailThrottles(au).account.limit).toBe(3);
+    expect(policy.mailThrottles(zz).account.limit).toBe(2);
+    expect(policy.signInRecordRetentionDays(au)).toBe(90);
+    expect(policy.signInRecordRetentionDays(zz)).toBe(60);
+  });
+
   it('refuses a Market this Region Stack does not host, with no fallback', () => {
     const onlyZz = new MarketConfigIdentityPolicy(
       new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, [testMarketId('ZZ')])),

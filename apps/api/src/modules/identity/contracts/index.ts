@@ -2,3 +2,4 @@
 // Other modules may import only what this file exports, through ../index.ts. Event
 // definitions are declared in domain/events/ and re-exported here (ADR-0006 decision 6).
 export { IDENTITY_EVENTS } from '../domain/events';
+export { IDENTITY_FACADE, type ActorDescription, type IdentityFacade } from './identity.facade';

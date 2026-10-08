@@ -39,6 +39,23 @@ const SELECTED = {
   passwordCredential: { select: { passwordHash: true, changedAt: true } },
 } as const;
 
+/** One account row as {@link SELECTED} reads it. */
+interface SelectedRow {
+  readonly id: string;
+  readonly marketId: string;
+  readonly population: string;
+  readonly email: string;
+  readonly emailNormalized: string;
+  readonly displayName: string | null;
+  readonly status: string;
+  readonly emailVerifiedAt: Date | null;
+  readonly existingAccountNoticeAt: Date | null;
+  readonly signedUpAt: Date;
+  readonly version: number;
+  readonly createdAt: Date;
+  readonly passwordCredential: { readonly passwordHash: string; readonly changedAt: Date } | null;
+}
+
 /**
  * {@link AccountRepository} on `identity.accounts` and `identity.password_credentials` (data
  * design 3.3). Every statement goes through `PrismaService.tx(market)` with `marketId` at the
@@ -61,7 +78,18 @@ export class PrismaAccountRepository implements AccountRepository {
       where: { marketId: market.marketId, population, emailNormalized },
       select: SELECTED,
     });
-    if (row === null) return null;
+    return row === null ? null : this.restore(row);
+  }
+
+  async findById(market: MarketContext, id: Id<'Account'>): Promise<Account | null> {
+    const row = await this.prisma.tx(market).identityAccount.findFirst({
+      where: { marketId: market.marketId, id },
+      select: SELECTED,
+    });
+    return row === null ? null : this.restore(row);
+  }
+
+  private restore(row: SelectedRow): Account {
     const credential = row.passwordCredential;
     const marketId = parseMarketId(row.marketId);
     if (
@@ -155,7 +183,9 @@ export class PrismaAccountRepository implements AccountRepository {
       },
     });
     if (count !== 1) throw new StaleAggregateError('account', state.id);
-    // A change of the credential goes through its root, whose version rose above (data 3.3).
+    // A change of the credential goes through its root, whose version rose above (data 3.3);
+    // the row is rewritten only when the credential changed (Mojtaba N-b).
+    if (!account.credentialChanged) return;
     await transaction.identityPasswordCredential.updateMany({
       where: { marketId: market.marketId, accountId: state.id },
       data: {

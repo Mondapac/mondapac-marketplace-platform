@@ -19,12 +19,15 @@ import type { MarketConfig } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
+import { TransactionConflictError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import { Account, type AccountState } from '../../domain/account';
 import type { PasswordRules } from '../../domain/password-policy';
 import type { AccountAddRefused, AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
+import type { ThrottleKeys } from '../ports/session-secrets';
+import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import { RegisterCustomer } from './register-customer.use-case';
 
 // identity design 3.2, 6.5, 6.7 (HF12), 8.6 row 1; slice 1d. Both Market fixtures, with the
@@ -38,9 +41,10 @@ const NOTICE_HOURS: Record<string, number> = { AU: 24, ZZ: 12 };
 const START = Temporal.Instant.from('2026-10-07T10:00:00Z');
 const GOOD_PASSWORD = 'correct horse battery staple';
 const COMMON = 'iloveyouiloveyou';
+const ORIGIN = '203.0.113.7';
 
 /** Everything the fakes did, in order, so a test can check that the hash came first. */
-type Step = 'hash' | 'unit' | 'find' | 'add' | 'save' | 'append';
+type Step = 'hash' | 'unit' | 'reserve' | 'find' | 'add' | 'save' | 'append';
 
 class Recorder {
   readonly steps: Step[] = [];
@@ -105,6 +109,10 @@ class FakeAccounts implements AccountRepository {
     return Promise.resolve(state === undefined ? null : Account.restore(state));
   }
 
+  findById(): never {
+    throw new Error('sign-up reads no account by id');
+  }
+
   add(market: MarketContext, account: Account): Promise<Result<void, AccountAddRefused>> {
     this.recorder.steps.push('add');
     if (this.refuseNextAdd !== null) {
@@ -130,6 +138,48 @@ class FakeAccounts implements AccountRepository {
     return Promise.resolve();
   }
 }
+
+/** Records the counters each committed unit reserved (the mail counters of 6.8, L4). */
+class FakeThrottles implements ThrottleRepository {
+  readonly committed: string[][] = [];
+  constructor(private readonly recorder: Recorder) {}
+
+  reserve(_market: MarketContext, counters: readonly ThrottleCounter[]) {
+    this.recorder.steps.push('reserve');
+    this.committed.push(
+      counters.map((c) => `${c.kind}:${Buffer.from(c.keyHash).toString('utf8')}`),
+    );
+    return Promise.resolve(
+      counters.map((c) => ({
+        kind: c.kind,
+        keyHash: c.keyHash,
+        attempts: 1,
+        windowStartedAt: START,
+        blockedUntil: null,
+      })),
+    );
+  }
+
+  release(): never {
+    throw new Error('sign-up never releases');
+  }
+
+  block(): never {
+    throw new Error('sign-up never blocks');
+  }
+
+  purge(): never {
+    throw new Error('sign-up never purges');
+  }
+}
+
+/** Readable keys: the parts joined, so a test can see what each counter counts. */
+const keys: ThrottleKeys = {
+  account: (market, population, email) => Buffer.from(`${market.marketId}|${population}|${email}`),
+  accountOrigin: (market, population, email, origin) =>
+    Buffer.from(`${market.marketId}|${population}|${email}|${origin}`),
+  origin: (market, origin) => Buffer.from(`${market.marketId}|${origin}`),
+};
 
 class FakeOutbox implements OutboxWriter {
   readonly contexts: CallContext[] = [];
@@ -165,9 +215,16 @@ class FakeHasher implements PasswordHasher {
   }
 }
 
+const MAIL = { limit: 3, windowMinutes: 60, blockMinutes: 0 };
 const policy: IdentityMarketPolicy = {
   passwordRules: (market) => RULES[market.marketId]!,
   existingAccountNoticeHours: (market) => NOTICE_HOURS[market.marketId]!,
+  sessionLifetime: () => null,
+  signInThrottles: () => {
+    throw new Error('sign-up reads no sign-in throttle');
+  },
+  mailThrottles: () => ({ account: MAIL, origin: MAIL }),
+  signInRecordRetentionDays: () => 90,
 };
 
 function setUp() {
@@ -178,6 +235,7 @@ function setUp() {
   const accounts = new FakeAccounts(store, recorder);
   const outbox = new FakeOutbox(store, recorder);
   const hasher = new FakeHasher(recorder);
+  const throttles = new FakeThrottles(recorder);
   const gate = createUseCaseGate(
     new MarketRegistry(new Map(TEST_MARKET_IDS.map((id) => [id, {} as MarketConfig]))),
     null,
@@ -185,6 +243,8 @@ function setUp() {
   const useCase = new RegisterCustomer(gate, {
     unitOfWork,
     accounts,
+    throttles,
+    keys,
     outbox,
     hasher,
     commonPasswords: { isCommon: (comparable) => comparable === COMMON },
@@ -192,7 +252,7 @@ function setUp() {
     clock,
     ids: new SequenceIdGenerator(clock),
   });
-  return { recorder, store, clock, unitOfWork, accounts, outbox, hasher, useCase };
+  return { recorder, store, clock, unitOfWork, accounts, throttles, outbox, hasher, useCase };
 }
 
 const accepted = { ok: true, value: { code: 'sign-up.accepted' } };
@@ -220,7 +280,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       const { useCase, store, hasher } = setUp();
 
       await expect(
-        useCase.execute(context, { email: '  New.Customer@Example.COM ', password: GOOD_PASSWORD }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: '  New.Customer@Example.COM ',
+          password: GOOD_PASSWORD,
+        }),
       ).resolves.toEqual(accepted);
 
       const [account, ...others] = stored(store);
@@ -242,7 +306,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
     it('appends customer-account-registered with the caller context, in the same unit', async () => {
       const { useCase, store, outbox } = setUp();
 
-      await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
 
       const [account] = stored(store);
       expect(store.committedEvents).toHaveLength(1);
@@ -254,13 +322,17 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       expect(outbox.contexts).toEqual([context]);
     });
 
-    it('hashes before any read and runs one serializable unit (HF12)', async () => {
+    it('hashes before any read, counts the mail, then runs one serializable unit (HF12)', async () => {
       const { useCase, recorder, unitOfWork } = setUp();
 
-      await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
 
-      expect(recorder.steps).toEqual(['hash', 'unit', 'find', 'add', 'append']);
-      expect(unitOfWork.options).toEqual([{ isolation: 'serializable' }]);
+      expect(recorder.steps).toEqual(['hash', 'unit', 'reserve', 'unit', 'find', 'add', 'append']);
+      expect(unitOfWork.options).toEqual([undefined, { isolation: 'serializable' }]);
     });
 
     it('keeps the Markets apart: the same address in another Market is a new account', async () => {
@@ -271,8 +343,16 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
         'anonymous',
       );
 
-      await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
-      await useCase.execute(otherContext, { email: 'a@example.com', password: GOOD_PASSWORD });
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
+      await useCase.execute(otherContext, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
 
       expect(stored(store).map((s) => [s.marketId, s.version])).toEqual([
         [code, 1],
@@ -286,14 +366,22 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
   });
 
   describe('an address that already has a customer account (AC 21: the same answer)', () => {
-    it('unverified: replaces the password, restarts the anchor, one hash and one unit', async () => {
+    it('unverified: replaces the password, restarts the anchor, the same hash and units', async () => {
       const { useCase, store, clock, recorder } = setUp();
-      await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
       clock.advance(Temporal.Duration.from({ hours: 1 }));
       recorder.steps.length = 0;
 
       await expect(
-        useCase.execute(context, { email: 'A@example.com', password: `${GOOD_PASSWORD}!` }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'A@example.com',
+          password: `${GOOD_PASSWORD}!`,
+        }),
       ).resolves.toEqual(accepted);
 
       const [account] = stored(store);
@@ -306,7 +394,7 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
         type: 'identity.sign-up-repeated.v1',
         payload: { accountId: account!.id, cause: 'unverified-replaced' },
       });
-      expect(recorder.steps).toEqual(['hash', 'unit', 'find', 'save', 'append']);
+      expect(recorder.steps).toEqual(['hash', 'unit', 'reserve', 'unit', 'find', 'save', 'append']);
     });
 
     describe('verified', () => {
@@ -317,11 +405,19 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
 
       it('changes nothing but the notice instant and records verified-notice', async () => {
         const { useCase, store, hasher } = setUp();
-        await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+        await useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        });
         verify(store);
 
         await expect(
-          useCase.execute(context, { email: 'a@example.com', password: 'another long passphrase' }),
+          useCase.execute(context, {
+            origin: ORIGIN,
+            email: 'a@example.com',
+            password: 'another long passphrase',
+          }),
         ).resolves.toEqual(accepted);
 
         const [account] = stored(store);
@@ -340,23 +436,39 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
 
       it("records at most one notice per the Market's interval", async () => {
         const { useCase, store, clock, recorder } = setUp();
-        await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+        await useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        });
         verify(store);
-        await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+        await useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        });
         const events = store.committedEvents.length;
 
         clock.advance(Temporal.Duration.from({ hours: NOTICE_HOURS[code]! - 1 }));
         recorder.steps.length = 0;
         await expect(
-          useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD }),
+          useCase.execute(context, {
+            origin: ORIGIN,
+            email: 'a@example.com',
+            password: GOOD_PASSWORD,
+          }),
         ).resolves.toEqual(accepted);
         expect(store.committedEvents).toHaveLength(events);
         expect(stored(store)[0]!.version).toBe(2);
-        // Within the interval: still one hash and one unit; nothing is written.
-        expect(recorder.steps).toEqual(['hash', 'unit', 'find', 'save']);
+        // Within the interval: the same hash and units; only the mail counters are written.
+        expect(recorder.steps).toEqual(['hash', 'unit', 'reserve', 'unit', 'find', 'save']);
 
         clock.advance(Temporal.Duration.from({ hours: 1 }));
-        await useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD });
+        await useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        });
         expect(store.committedEvents).toHaveLength(events + 1);
         expect(stored(store)[0]).toMatchObject({
           version: 3,
@@ -370,10 +482,65 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       accounts.refuseNextAdd = { code: 'account.email-taken' };
 
       await expect(
-        useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        }),
       ).resolves.toEqual(accepted);
       expect(stored(store)).toEqual([]);
       expect(store.committedEvents).toEqual([]);
+    });
+  });
+
+  describe('the mail counters (Hassan L4; identity design 6.7, 6.8)', () => {
+    it('every branch counts mail.account and mail.origin before its serializable unit', async () => {
+      const { useCase, store, clock, throttles } = setUp();
+      const verify = () => {
+        const [[key, state]] = [...store.committed.entries()] as [[string, AccountState]];
+        store.committed.set(key, { ...state, emailVerifiedAt: START });
+      };
+      const signUp = () =>
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        });
+
+      await signUp(); // new address
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      await signUp(); // unverified: replaced
+      verify();
+      await signUp(); // verified: notice
+      await signUp(); // verified, notice already sent within the interval: unchanged
+
+      const expected = [
+        `mail.account:${code}|customer|a@example.com`,
+        `mail.origin:${code}|${ORIGIN}`,
+      ];
+      expect(throttles.committed).toEqual([expected, expected, expected, expected]);
+    });
+  });
+
+  describe('a conflict that outlasts the retries (Mojtaba N-a)', () => {
+    it('logs conflict.retry with the use case and the correlation id, and rethrows', async () => {
+      const { useCase, unitOfWork } = setUp();
+      jest.spyOn(unitOfWork, 'run').mockRejectedValue(new TransactionConflictError('40001'));
+
+      await expect(
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        }),
+      ).rejects.toThrow(TransactionConflictError);
+      expect(warnings).toHaveBeenCalledWith({
+        msg: 'identity.register-customer.conflict-retry',
+        metric: 'conflict.retry',
+        useCase: 'identity.register-customer',
+        marketId: code,
+        correlationId: context.correlationId,
+      });
     });
   });
 
@@ -382,7 +549,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       const { useCase, recorder } = setUp();
 
       await expect(
-        useCase.execute(context, { email: 'not-an-email', password: GOOD_PASSWORD }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'not-an-email',
+          password: GOOD_PASSWORD,
+        }),
       ).resolves.toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'email', code: 'format' }] },
@@ -394,7 +565,9 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       const { useCase, recorder } = setUp();
       const email = 'longer.address@example.com';
 
-      await expect(useCase.execute(context, { email, password: email })).resolves.toEqual({
+      await expect(
+        useCase.execute(context, { origin: ORIGIN, email, password: email }),
+      ).resolves.toEqual({
         ok: false,
         error: { code: 'password.rejected', rule: 'contains-identity' },
       });
@@ -405,7 +578,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       const { useCase } = setUp();
       const fifteen = 'abcdefghijklmno';
 
-      const result = await useCase.execute(context, { email: 'a@example.com', password: fifteen });
+      const result = await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: fifteen,
+      });
 
       expect(result).toEqual(
         RULES[code]!.minLength <= 15
@@ -418,7 +595,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       const { useCase } = setUp();
 
       await expect(
-        useCase.execute(context, { email: 'a@example.com', password: COMMON.toUpperCase() }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: COMMON.toUpperCase(),
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'password.rejected', rule: 'common' } });
     });
 
@@ -427,7 +608,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       hasher.busy = true;
 
       await expect(
-        useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'request.busy', retryAfterSeconds: 1 } });
       expect(recorder.steps).toEqual(['hash']);
     });
@@ -437,7 +622,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       accounts.refuseNextAdd = { code: 'validation.failed' };
 
       await expect(
-        useCase.execute(context, { email: 'a@example.com', password: GOOD_PASSWORD }),
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'validation.failed', fields: [] } });
       expect(stored(store)).toEqual([]);
       expect(store.committedEvents).toEqual([]);

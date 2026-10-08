@@ -73,6 +73,46 @@ describe('Argon2idPasswordHasher (identity design 6.5)', () => {
     });
   });
 
+  it('hashes and verifies the NFKC form of the password (Hassan L1)', async () => {
+    // U+FB01 (the "fi" ligature) and U+00C5 composed: NFKC gives "fi" and the same U+00C5 that
+    // "A" plus U+030A composes to.
+    const typed = 'pro\uFB01le lantern A\u030Arbour';
+    const stored = await hasher.hash(typed);
+    if (!stored.ok) throw new Error('hash refused');
+
+    expect(await hasher.verify('profile lantern \u00C5rbour', stored.value)).toEqual({
+      ok: true,
+      value: { matches: true, needsRehash: false },
+    });
+  }, 30_000);
+
+  it('derives against a dummy hash with the current parameters when there is no account (HF12)', async () => {
+    const calls: Parameters<Argon2Derive>[] = [];
+    const derive: Argon2Derive = (message, nonce, parameters) => {
+      calls.push([message, nonce, parameters]);
+      return Promise.resolve(Buffer.alloc(parameters.tagLength, 1));
+    };
+    const counting = new Argon2idPasswordHasher(derive);
+    const known = encodePhc({
+      memory: ARGON2ID_PARAMETERS.memory,
+      passes: ARGON2ID_PARAMETERS.passes,
+      parallelism: ARGON2ID_PARAMETERS.parallelism,
+      salt: Buffer.alloc(16, 9),
+      tag: Buffer.alloc(32, 1),
+    });
+
+    const unknown = await counting.verify(PASSWORD, null);
+    const real = await counting.verify(PASSWORD, known);
+
+    // The same work: one derivation each, with the same parameters and a 16-byte salt.
+    expect(calls).toHaveLength(2);
+    expect(calls[0]![2]).toEqual(calls[1]![2]);
+    expect(calls[0]![1]).toHaveLength(16);
+    // The fake derivation "matches" both tags; only the real account may match.
+    expect(real).toEqual({ ok: true, value: { matches: true, needsRehash: false } });
+    expect(unknown).toEqual({ ok: true, value: { matches: false, needsRehash: false } });
+  });
+
   it.each([
     [
       'another algorithm',

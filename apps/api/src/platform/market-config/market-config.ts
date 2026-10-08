@@ -47,10 +47,37 @@ const requestLimitsSchema = z.strictObject({
   defaultPerMinute: perMinute,
 });
 
+/** Minutes, at most 60 days: the unit of every lifetime, window and block below. */
+const minutes = z.number().int().min(1).max(86_400);
+
+/**
+ * A session lifetime of one population (identity design 6.1): the idle timeout and the
+ * absolute lifetime, both fixed on the session at creation (M2).
+ */
+const sessionLifetimeSchema = z
+  .strictObject({ idleTimeoutMinutes: minutes, absoluteLifetimeMinutes: minutes })
+  .refine((lifetime) => lifetime.idleTimeoutMinutes <= lifetime.absoluteLifetimeMinutes, {
+    message: 'idleTimeoutMinutes must not exceed absoluteLifetimeMinutes',
+    path: ['idleTimeoutMinutes'],
+  });
+
+/**
+ * One throttle counter of identity design 6.8: at most `limit` attempts in a fixed window of
+ * `windowMinutes`; a failure that reaches the limit blocks the counter for `blockMinutes` (0:
+ * no block, the window alone refuses until it ends).
+ */
+const throttleCounterSchema = z.strictObject({
+  limit: z.number().int().min(1).max(1000),
+  windowMinutes: z.number().int().min(1).max(1440),
+  blockMinutes: z.number().int().min(0).max(1440),
+});
+
 /**
  * The identity policy section (identity design 8.5 `IdentityMarketPolicy`; design 15). Each
- * value is Hassan's number (identity design 6.5). A slice adds the values it reads: 1d the
- * password rules; slice 5 "approval required"; later slices lifetimes and limits.
+ * value is Hassan's number (identity design 6.1, 6.5, 6.8; data design 3.6). A slice adds the
+ * values it reads: 1d the password rules; slice 2 the customer session lifetime, the sign-in
+ * and mail throttles and the retention of sign-in records; slice 5 "approval required" and the
+ * seller lifetimes; slice 7 the admin lifetime.
  */
 const identitySchema = z.strictObject({
   password: z
@@ -69,7 +96,40 @@ const identitySchema = z.strictObject({
    * hours (identity design 6.7: 24).
    */
   existingAccountNoticeHours: z.number().int().min(1).max(168),
+  /** Per population; a population without a lifetime here cannot open a session. */
+  sessions: z.strictObject({ customer: sessionLifetimeSchema }),
+  /** The sign-in counters of 6.8, per Market (A6). */
+  signInThrottles: z.strictObject({
+    /** `sign-in.account-origin`: failed sign-ins per address and origin (AC 13). */
+    accountOrigin: throttleCounterSchema,
+    /** `sign-in.account`: failed sign-ins per address, all origins. */
+    account: throttleCounterSchema,
+    /** `sign-in.origin` (HF3): failed sign-ins per origin, any address. */
+    origin: throttleCounterSchema,
+  }),
+  /** The mail counters of 6.8: sign-up, reset, verification re-send, enrolment, invitation. */
+  mailThrottles: z.strictObject({ account: throttleCounterSchema, origin: throttleCounterSchema }),
+  /** Sign-in records are deleted this many days after the attempt (H3: 90). */
+  signInRecordRetentionDays: z.number().int().min(1).max(3650),
 });
+
+/**
+ * The exact origins (`scheme://host[:port]`) whose browsers may send an unsafe request to this
+ * Market's routes (identity design 6.4, HF14). A request with an `Origin` header that is not on
+ * the list is refused with `request.csrf`. Empty until the panel and storefront hosts are
+ * decided (the D2 ADR): until then only requests without an `Origin` header pass.
+ */
+const allowedOrigin = z
+  .string()
+  .max(200)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return (url.protocol === 'https:' || url.protocol === 'http:') && url.origin === value;
+    } catch {
+      return false;
+    }
+  }, 'must be an exact origin such as "https://panel.example"');
 
 const timeZone = z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone');
 /** A name used as an object key must never be an `Object.prototype` member (`constructor`...). */
@@ -273,6 +333,7 @@ const marketSchema = z
     /** Fallback only (ADR-0005): sellers, locations and addresses carry their own zone. */
     timezone: z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone'),
     requestLimits: requestLimitsSchema,
+    allowedOrigins: z.array(allowedOrigin).max(20),
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */
     sellers: sellersSchema.optional(),

@@ -11,6 +11,11 @@ import { MarketConfigIdentityPolicy } from '../../src/modules/identity/infrastru
 import { Argon2idPasswordHasher } from '../../src/modules/identity/infrastructure/passwords/argon2id-password-hasher';
 import { CheckedInCommonPasswords } from '../../src/modules/identity/infrastructure/passwords/checked-in-common-passwords';
 import { PrismaAccountRepository } from '../../src/modules/identity/infrastructure/prisma-account.repository';
+import {
+  HmacThrottleKeys,
+  localThrottleSecret,
+} from '../../src/modules/identity/infrastructure/sessions/hmac-throttle-keys';
+import { PrismaThrottleRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-throttle.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
 import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
@@ -36,6 +41,8 @@ import { testDatabaseUrl } from './test-database';
 // unit of work, outbox writer, SubjectKeyService and argon2id hasher; only the clock is fixed.
 
 const PASSWORD = 'correct horse battery staple';
+/** The client origin of every sign-up here (the mail.origin counter, L4). */
+const ORIGIN = '192.0.2.10';
 const NOTICE_HOURS: Record<string, number> = { AU: 24, ZZ: 12 };
 
 interface AccountRow {
@@ -59,6 +66,7 @@ describe('customer sign-up (database integration)', () => {
   let db: Persistence;
   let sql: Client;
   let repository: PrismaAccountRepository;
+  let keys: HmacThrottleKeys;
   let useCase: RegisterCustomer;
   let warnings: jest.SpyInstance;
 
@@ -74,9 +82,12 @@ describe('customer sign-up (database integration)', () => {
       clock,
     );
     repository = new PrismaAccountRepository(db.service, subjectKeys);
+    keys = new HmacThrottleKeys(localThrottleSecret({ nodeEnv: 'test', nodeEnvExplicit: true }));
     useCase = new RegisterCustomer(createUseCaseGate(markets, null), {
       unitOfWork: db.unitOfWork,
       accounts: repository,
+      throttles: new PrismaThrottleRepository(db.service),
+      keys,
       outbox: new PrismaOutboxWriterFactory(
         modelMap,
         db.service,
@@ -139,7 +150,9 @@ describe('customer sign-up (database integration)', () => {
     it('stores the account without a name, its argon2id credential, its key and its event', async () => {
       const email = freshEmail();
 
-      await expect(useCase.execute(context(), { email, password: PASSWORD })).resolves.toEqual({
+      await expect(
+        useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD }),
+      ).resolves.toEqual({
         ok: true,
         value: { code: 'sign-up.accepted' },
       });
@@ -176,12 +189,16 @@ describe('customer sign-up (database integration)', () => {
 
     it('replaces the password of an unverified account and records the repeat', async () => {
       const email = freshEmail();
-      await useCase.execute(context(), { email, password: PASSWORD });
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD });
       const [before] = await accountsOf(code, email.toLowerCase());
       const [oldCredential] = await credentialOf(before!.id);
       clock.advance(Temporal.Duration.from({ hours: 2 }));
 
-      await useCase.execute(context(), { email: email.toUpperCase(), password: `${PASSWORD}!` });
+      await useCase.execute(context(), {
+        origin: ORIGIN,
+        email: email.toUpperCase(),
+        password: `${PASSWORD}!`,
+      });
 
       const [after] = await accountsOf(code, email.toLowerCase());
       expect(after).toMatchObject({ id: before!.id, version: 2, email });
@@ -196,7 +213,7 @@ describe('customer sign-up (database integration)', () => {
 
     it("records one notice for a verified account per the Market's interval", async () => {
       const email = freshEmail();
-      await useCase.execute(context(), { email, password: PASSWORD });
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD });
       const [account] = await accountsOf(code, email.toLowerCase());
       // Verification arrives with slice 3; the owner role sets it here.
       await sql.query(
@@ -205,11 +222,11 @@ describe('customer sign-up (database integration)', () => {
       );
       const [credential] = await credentialOf(account!.id);
 
-      await useCase.execute(context(), { email, password: `${PASSWORD} again` });
+      await useCase.execute(context(), { origin: ORIGIN, email, password: `${PASSWORD} again` });
       clock.advance(Temporal.Duration.from({ hours: NOTICE_HOURS[code]! - 1 }));
-      await useCase.execute(context(), { email, password: `${PASSWORD} again` });
+      await useCase.execute(context(), { origin: ORIGIN, email, password: `${PASSWORD} again` });
       clock.advance(Temporal.Duration.from({ hours: 1 }));
-      await useCase.execute(context(), { email, password: `${PASSWORD} again` });
+      await useCase.execute(context(), { origin: ORIGIN, email, password: `${PASSWORD} again` });
 
       const causes = (await eventsOf(account!.id)).map(
         (e) => (e.payload as { cause?: string }).cause ?? e.type,
@@ -226,6 +243,34 @@ describe('customer sign-up (database integration)', () => {
       expect((await credentialOf(account!.id))[0]?.password_hash).toBe(credential?.password_hash);
     });
 
+    it('counts the mail of every branch on the mail.account counter (Hassan L4)', async () => {
+      const email = freshEmail();
+      const normalized = email.toLowerCase();
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD }); // new
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD }); // replaced
+      const [account] = await accountsOf(code, normalized);
+      await sql.query(
+        'UPDATE identity.accounts SET email_verified_at = signed_up_at WHERE id = $1',
+        [account!.id],
+      );
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD }); // notice
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD }); // unchanged
+
+      const counter = await sql.query<{ attempts: number; account_key: Buffer }>(
+        `SELECT attempts, account_key FROM identity.sign_in_throttles
+          WHERE market_id = $1 AND kind = 'mail.account' AND key_hash = $2`,
+        [code, Buffer.from(keys.account(market, 'customer', normalized))],
+      );
+      expect(counter.rows).toHaveLength(1);
+      expect(counter.rows[0]!.attempts).toBe(4);
+      // Only keyed hashes are stored: never the address.
+      const raw = await sql.query<{ row: string }>(
+        `SELECT t::text AS row FROM identity.sign_in_throttles t WHERE market_id = $1`,
+        [code],
+      );
+      expect(JSON.stringify(raw.rows)).not.toContain(normalized);
+    });
+
     it('treats the NFC, NFD and mixed-case forms of one address as one account (Sajad G2)', async () => {
       // Built from code points so no combining mark is hidden in this file.
       const local = `zo${String.fromCodePoint(0xe9)}-${randomUUID()}`; // composed e-acute
@@ -239,7 +284,9 @@ describe('customer sign-up (database integration)', () => {
       expect(nfd).not.toBe(nfc);
 
       for (const email of [nfc, nfd, mixed]) {
-        await expect(useCase.execute(context(), { email, password: PASSWORD })).resolves.toEqual({
+        await expect(
+          useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD }),
+        ).resolves.toEqual({
           ok: true,
           value: { code: 'sign-up.accepted' },
         });
@@ -265,8 +312,9 @@ describe('customer sign-up (database integration)', () => {
       const email = freshEmail();
       const other = otherMarketOf(code);
 
-      await useCase.execute(context(), { email, password: PASSWORD });
+      await useCase.execute(context(), { origin: ORIGIN, email, password: PASSWORD });
       await useCase.execute(testCallContext(marketOf(other), 'anonymous'), {
+        origin: ORIGIN,
         email,
         password: PASSWORD,
       });
@@ -282,7 +330,9 @@ describe('customer sign-up (database integration)', () => {
       const email = freshEmail();
 
       const answers = await Promise.all(
-        [1, 2, 3].map((n) => useCase.execute(context(), { email, password: `${PASSWORD} ${n}` })),
+        [1, 2, 3].map((n) =>
+          useCase.execute(context(), { origin: ORIGIN, email, password: `${PASSWORD} ${n}` }),
+        ),
       );
 
       expect(answers).toEqual(

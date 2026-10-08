@@ -95,7 +95,10 @@ function decisionOf(decision: AccessDecision): Denial | null {
 export class UseCaseGate {
   readonly #logger = new Logger('UseCaseGate');
   readonly #markets: MarketRegistry;
-  /** `null` until identity slice 2 binds it: every authenticated actor is then refused. */
+  /**
+   * Identity's check, bound by `AuthzModule` (slice 2). `null` only where a test builds a gate
+   * without one: every authenticated actor is then refused with `access.unavailable`.
+   */
   readonly #authorisation: AuthorisationCheck | null;
 
   constructor(

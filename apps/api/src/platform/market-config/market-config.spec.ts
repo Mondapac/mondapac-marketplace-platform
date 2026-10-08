@@ -23,8 +23,24 @@ const VALID = {
   settlementCurrency: 'NZD',
   timezone: 'Pacific/Auckland',
   requestLimits: { anonymousIdentityPerMinute: 20, defaultPerMinute: 300 },
-  identity: { password: { minLength: 15, maxLength: 128 }, existingAccountNoticeHours: 24 },
+  allowedOrigins: ['https://shop.qq.test'],
+  identity: {
+    password: { minLength: 15, maxLength: 128 },
+    existingAccountNoticeHours: 24,
+    sessions: { customer: { idleTimeoutMinutes: 60, absoluteLifetimeMinutes: 120 } },
+    signInThrottles: {
+      accountOrigin: { limit: 5, windowMinutes: 15, blockMinutes: 15 },
+      account: { limit: 20, windowMinutes: 60, blockMinutes: 60 },
+      origin: { limit: 30, windowMinutes: 15, blockMinutes: 15 },
+    },
+    mailThrottles: {
+      account: { limit: 3, windowMinutes: 60, blockMinutes: 0 },
+      origin: { limit: 10, windowMinutes: 60, blockMinutes: 0 },
+    },
+    signInRecordRetentionDays: 90,
+  },
 };
+const IDENTITY = VALID.identity;
 
 function directoryWith(files: Record<string, unknown>): string {
   const directory = mkdtempSync(path.join(tmpdir(), 'markets-'));
@@ -112,18 +128,48 @@ describe('loadMarketConfigs', () => {
     ['no identity section', { identity: undefined }, /identity/],
     [
       'a password minimum below 15',
-      { identity: { password: { minLength: 8, maxLength: 128 } } },
+      { identity: { ...IDENTITY, password: { minLength: 8, maxLength: 128 } } },
       /identity\.password\.minLength/,
     ],
     [
       'a password maximum above 128',
-      { identity: { password: { minLength: 15, maxLength: 1024 } } },
+      { identity: { ...IDENTITY, password: { minLength: 15, maxLength: 1024 } } },
       /identity\.password\.maxLength/,
     ],
+    ['an unknown identity field', { identity: { ...IDENTITY, pepper: 'x' } }, /identity/],
     [
-      'an unknown identity field',
-      { identity: { password: { minLength: 15, maxLength: 128 }, pepper: 'x' } },
-      /identity/,
+      'an idle timeout longer than the absolute lifetime',
+      {
+        identity: {
+          ...IDENTITY,
+          sessions: { customer: { idleTimeoutMinutes: 121, absoluteLifetimeMinutes: 120 } },
+        },
+      },
+      /identity\.sessions\.customer\.idleTimeoutMinutes/,
+    ],
+    [
+      'a throttle limit of zero',
+      {
+        identity: {
+          ...IDENTITY,
+          signInThrottles: {
+            ...IDENTITY.signInThrottles,
+            origin: { limit: 0, windowMinutes: 15, blockMinutes: 15 },
+          },
+        },
+      },
+      /identity\.signInThrottles\.origin\.limit/,
+    ],
+    ['no allowed origins', { allowedOrigins: undefined }, /allowedOrigins/],
+    [
+      'an allowed origin with a path',
+      { allowedOrigins: ['https://shop.qq.test/'] },
+      /allowedOrigins\.0/,
+    ],
+    [
+      'an allowed origin that is not http(s)',
+      { allowedOrigins: ['ftp://shop.qq.test'] },
+      /allowedOrigins/,
     ],
   ])('rejects %s', (_case, overrides, message) => {
     const directory = directoryWith({ 'QQ.json': { ...VALID, ...overrides } });

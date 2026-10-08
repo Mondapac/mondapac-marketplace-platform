@@ -29,6 +29,26 @@ export function clientOriginOf(remoteAddress: string | undefined): string | null
     .join(':')}::/64`;
 }
 
+/**
+ * The full client address, as stored in a sign-in record (identity design 10.2; data design 3.6,
+ * `inet`): the IPv4 address, an IPv4-mapped IPv6 address as its IPv4 peer, or the IPv6 address in
+ * its canonical text form. From the socket only, like {@link clientOriginOf}; `null` when the
+ * socket has no usable address.
+ */
+export function clientAddressOf(remoteAddress: string | undefined): string | null {
+  if (typeof remoteAddress !== 'string' || remoteAddress.length === 0) return null;
+  const address = remoteAddress.split('%', 1)[0]!;
+  if (isIPv4(address)) return address;
+  if (!isIPv6(address)) return null;
+  const groups = expandIPv6(address);
+  if (groups === null) return null;
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    const [high, low] = [groups[6]!, groups[7]!];
+    return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+  }
+  return groups.map((group) => group.toString(16)).join(':');
+}
+
 /** The eight 16-bit groups of a valid IPv6 address, with an embedded IPv4 tail converted. */
 function expandIPv6(address: string): number[] | null {
   let text = address.toLowerCase();

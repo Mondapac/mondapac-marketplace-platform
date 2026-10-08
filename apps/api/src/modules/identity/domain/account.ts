@@ -43,11 +43,14 @@ export class AccountInvariantError extends Error {
  * email is unique per Market and population (the database constraint). A seller-side or admin
  * account always has a display name; a customer account may have none, and the customer
  * factory takes none. Times come from the caller's `Clock`; every change raises the version
- * by one and records one event (one event per version step, platform persistence 5.1).
+ * by one and records at most one event (platform persistence 5.1): every state change of
+ * 3.1 and 3.2 records one, the re-hash of 6.5 none.
  */
 export class Account {
   #state: AccountState;
   #events: PendingEvent[] = [];
+  /** The credential as read from the store (null for a new account), for {@link credentialChanged}. */
+  readonly #storedCredential: PasswordCredential | null;
 
   private constructor(
     state: AccountState,
@@ -58,6 +61,7 @@ export class Account {
       throw new AccountInvariantError('display-name-required');
     }
     this.#state = Object.freeze({ ...state });
+    this.#storedCredential = persistedVersion === null ? null : this.#state.credential;
   }
 
   /**
@@ -109,6 +113,19 @@ export class Account {
     return this.#state;
   }
 
+  /** Whether the owner confirmed the email (identity design 3.2). */
+  get isEmailVerified(): boolean {
+    return this.#state.emailVerifiedAt !== null;
+  }
+
+  /**
+   * Whether the credential differs from the one read from the store, so the repository writes
+   * `password_credentials` only then (Mojtaba N-b). Always true for a new account.
+   */
+  get credentialChanged(): boolean {
+    return this.#storedCredential !== this.#state.credential;
+  }
+
   /** Events recorded since the account was built or restored. */
   get pendingEvents(): readonly PendingEvent[] {
     return [...this.#events];
@@ -150,6 +167,22 @@ export class Account {
     }
     this.change({ existingAccountNoticeAt: now }, now, 'verified-notice');
     return 'verified-notice';
+  }
+
+  /**
+   * Replaces a hash made with older parameters after a successful sign-in (identity design 6.5).
+   * The password is the same, so `changedAt` stays and no event is recorded; the version rises
+   * by one, so a concurrent change of the account wins or loses as a whole (platform persistence
+   * 5.1: at most one event per version step).
+   */
+  rehashPassword(passwordHash: string): void {
+    const credential = this.#state.credential;
+    if (passwordHash === credential.passwordHash) return;
+    this.#state = Object.freeze({
+      ...this.#state,
+      credential: Object.freeze({ passwordHash, changedAt: credential.changedAt }),
+      version: this.#state.version + 1,
+    });
   }
 
   private change(
