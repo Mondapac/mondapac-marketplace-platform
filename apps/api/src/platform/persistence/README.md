@@ -31,6 +31,29 @@ Implements platform persistence design sections 3 to 9 and 12.3
 - At start-up the API refuses to listen unless `default_transaction_isolation` is
   `read committed` (`databaseIsolationAccepted` in `check-database-role.ts`).
 
+## Named raw statements and `lockTimeoutMs` (inventory slice 2, part 2; P 4.2)
+- Raw SQL stays refused for modules. The one exception is a closed list in
+  `named-statements.ts`, reached through `PrismaService.namedQuery(market, name, params)`:
+  - `inventory.lock-stock-items` locks stock items `FOR NO KEY UPDATE` in ascending id order
+    (inventory data design 4.3). One to 1,000 distinct ids; fewer rows back than ids is
+    `NamedStatementRefusedError('rows-missing')`.
+  - The Market and tenant are bound from the open unit, never from `params`; every other value
+    is a bound parameter. The text is fixed.
+  - It needs an open read-write unit of the same Market; a read-only unit gets
+    `NamedStatementRefusedError('read-only-unit')`.
+- The market guard lets a raw operation through only for the exact text of a listed statement,
+  through `$queryRaw` or `$executeRaw`, with the open unit's Market and tenant as its
+  parameters, in an open read-write unit. Recognition is by text because Prisma copies the
+  `Sql` object before the extension sees it. Every `Unsafe` form stays refused.
+- A statement named `<module>.<name>` may be called only from `modules/<module>/`
+  (`named-statement-owners.spec.ts`).
+- `UnitOfWorkOptions.lockTimeoutMs` (1 to 3000, read-write units only) issues
+  `SET LOCAL lock_timeout` as the first statement of every attempt. A wait that runs out ends
+  the unit with `TransactionConflictError('55P03')`. It can tighten the login role's
+  `lock_timeout` (at most 3 s) but not loosen it.
+- A new statement is a change to `named-statements.ts` with its guard rule, a two-Market
+  database test, and reviews by the database-designer and the security-tester.
+
 ## Market guard
 `market-guard.ts` is a Prisma client extension. It refuses any query that:
 - runs with no open unit, or after the unit has closed;

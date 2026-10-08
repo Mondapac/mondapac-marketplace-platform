@@ -1,28 +1,49 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { Prisma } from '../../generated/prisma/client';
 import { NamedStatementRefusedError } from '../unit-of-work/errors';
+import { MAX_LOCK_TIMEOUT_MS } from '../unit-of-work/unit-of-work';
 
 /**
  * The raw SQL of the platform (platform persistence design, "P", 4.2): a closed list of named
  * statements, each with a fixed text, the Market and tenant bound here from the open unit and
  * never from the caller, and every other value a bound parameter.
  *
- * The market guard cannot read SQL, so it refuses every raw operation except one object: a
- * `Prisma.Sql` that this file built and registered in {@link approved}. The set is private,
- * holds objects by identity, and is filled only by the builders below, so a module cannot
- * forge an entry: a hand-made `Prisma.sql` is a different object and is refused. Modules
- * reach the list through `PrismaService.namedQuery`, never this file.
+ * The market guard cannot parse SQL, so it refuses every raw operation except the exact texts
+ * below, and for those it checks that the Market and tenant parameters are the open unit's.
+ * Recognition is by text, not by object identity, because Prisma copies the `Sql` object
+ * before the client extension sees it (measured). Modules cannot reach a raw client at all
+ * (`PrismaService.tx` has no raw members; dependency-cruiser keeps them off the guarded
+ * client), so this is a second line: a statement built by hand with these texts can lock
+ * nothing outside the unit's own Market and tenant. Modules call the list through
+ * `PrismaService.namedQuery`, never this file.
  */
-const approved = new WeakSet<object>();
-
-/** True for a statement built by this file (the guard's one raw exemption). */
-export function isApprovedStatement(args: unknown): boolean {
-  return typeof args === 'object' && args !== null && approved.has(args);
+export interface RawStatementRequest {
+  readonly operation: string;
+  readonly args: unknown;
 }
 
-function approve(statement: Prisma.Sql): Prisma.Sql {
-  approved.add(statement);
-  return statement;
+const LOCK_TIMEOUT_TEXT = /^SET LOCAL lock_timeout = '([1-9][0-9]{0,3})ms'$/u;
+
+/** True when the guard may let this raw operation through for a unit of `market`. */
+export function isApprovedStatement(request: RawStatementRequest, market: MarketContext): boolean {
+  const { operation, args } = request;
+  if (typeof args !== 'object' || args === null) return false;
+  const { sql, values } = args as { sql?: unknown; values?: unknown };
+  if (typeof sql !== 'string' || !Array.isArray(values)) return false;
+  if (operation === '$queryRaw') {
+    return (
+      sql === LOCK_STOCK_ITEMS_TEXT &&
+      values.length === 3 &&
+      values[0] === market.marketId &&
+      values[1] === market.tenantId &&
+      Array.isArray(values[2])
+    );
+  }
+  if (operation === '$executeRaw') {
+    const match = LOCK_TIMEOUT_TEXT.exec(sql);
+    return match !== null && values.length === 0 && Number(match[1]) <= MAX_LOCK_TIMEOUT_MS;
+  }
+  return false;
 }
 
 /**
@@ -31,10 +52,10 @@ function approve(statement: Prisma.Sql): Prisma.Sql {
  * value is part of the text.
  */
 export function lockTimeoutStatement(milliseconds: number): Prisma.Sql {
-  if (!Number.isInteger(milliseconds) || milliseconds < 1 || milliseconds > 3000) {
+  if (!Number.isInteger(milliseconds) || milliseconds < 1 || milliseconds > MAX_LOCK_TIMEOUT_MS) {
     throw new RangeError('lock timeout out of range');
   }
-  return approve(Prisma.raw(`SET LOCAL lock_timeout = '${milliseconds}ms'`));
+  return Prisma.raw(`SET LOCAL lock_timeout = '${milliseconds}ms'`);
 }
 
 /** The most stock items one `inventory.lock-stock-items` call locks (inventory data design 4.3). */
@@ -89,6 +110,18 @@ interface RawLockedRow {
   version: number;
 }
 
+/** The statement of `inventory.lock-stock-items`: Market and tenant first, then the ids. */
+export function lockStockItemsStatement(market: MarketContext, ids: readonly string[]): Prisma.Sql {
+  return Prisma.sql`
+    SELECT s.id, s.offer_id, s.variant_id, s.source_id, s.seller_id, s.on_hand, s.retired_at, s.version
+      FROM "inventory"."stock_items" AS s
+     WHERE s.market_id = ${market.marketId}
+       AND s.tenant_id = ${market.tenantId}
+       AND s.id = ANY(${ids}::uuid[])
+     ORDER BY s.id
+       FOR NO KEY UPDATE OF s`;
+}
+
 async function lockStockItems(
   runner: RawRunner,
   market: MarketContext,
@@ -104,14 +137,7 @@ async function lockStockItems(
   if (!ids.every((id): id is string => typeof id === 'string' && UUID.test(id))) {
     throw new NamedStatementRefusedError(name, 'ids-malformed');
   }
-  const statement = approve(Prisma.sql`
-    SELECT s.id, s.offer_id, s.variant_id, s.source_id, s.seller_id, s.on_hand, s.retired_at, s.version
-      FROM "inventory"."stock_items" AS s
-     WHERE s.market_id = ${market.marketId}
-       AND s.tenant_id = ${market.tenantId}
-       AND s.id = ANY(${ids}::uuid[])
-     ORDER BY s.id
-       FOR NO KEY UPDATE OF s`);
+  const statement = lockStockItemsStatement(market, ids);
   const rows = (await runner.query(statement)) as RawLockedRow[];
   if (rows.length !== ids.length) throw new NamedStatementRefusedError(name, 'rows-missing');
   return rows.map((row) => ({
@@ -126,6 +152,12 @@ async function lockStockItems(
   }));
 }
 
+/** The text the guard recognises for `inventory.lock-stock-items`, taken from the builder itself. */
+const LOCK_STOCK_ITEMS_TEXT = lockStockItemsStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  [],
+).sql;
+
 /** Runs one named statement on the open read-write unit's transaction. */
 export async function runNamedStatement<K extends NamedStatementName>(
   runner: RawRunner,
@@ -135,11 +167,7 @@ export async function runNamedStatement<K extends NamedStatementName>(
 ): Promise<NamedStatementRow<K>[]> {
   switch (name) {
     case 'inventory.lock-stock-items':
-      return (await lockStockItems(
-        runner,
-        market,
-        params as NamedStatementParams<'inventory.lock-stock-items'>,
-      )) as NamedStatementRow<K>[];
+      return await lockStockItems(runner, market, params);
     default:
       throw new Error('Unknown named statement');
   }

@@ -195,13 +195,13 @@ export function marketGuardRefusal(
 ): MarketGuardRefusal | null {
   const { model, operation } = request;
   if (RAW_OPERATIONS.has(operation)) {
-    // The one exemption (P 4.2): a statement the platform built and registered, in a
-    // read-write unit that is still open. Anything else, a hand-made `Prisma.sql` included,
-    // is refused.
+    // The one exemption (P 4.2): the exact text of a named statement, with the open unit's
+    // Market and tenant as its parameters, in a read-write unit that is still open. Anything
+    // else is refused.
     const named =
       NAMED_STATEMENT_OPERATIONS.has(operation) &&
-      isApprovedStatement(request.args) &&
       unit !== undefined &&
+      isApprovedStatement(request, unit.market) &&
       !unit.closed &&
       !unit.readOnly;
     return named ? null : 'raw-sql';

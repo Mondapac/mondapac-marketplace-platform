@@ -2,7 +2,7 @@ import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import type { MarketGuardRefusal } from '../unit-of-work/errors';
 import { Prisma } from '../../generated/prisma/client';
 import { marketGuardRefusal, type GuardUnit } from './market-guard';
-import { lockTimeoutStatement } from './named-statements';
+import { lockStockItemsStatement, lockTimeoutStatement } from './named-statements';
 import type { ModelMap, ModelMapEntry } from './model-map';
 
 // P 4.1 and the first row of P 13: the guard's decision as a pure function of (map entry,
@@ -116,37 +116,44 @@ describe.each(['AU', 'ZZ'] as const)('market guard decision, unit opened for %s'
     );
 
     describe('named statements (P 4.2)', () => {
-      const approved = lockTimeoutStatement(100);
-      const forged = Prisma.raw("SET LOCAL lock_timeout = '100ms'");
+      const lock = (marketId: string, tenantId: string) =>
+        lockStockItemsStatement({ marketId, tenantId } as never, [
+          '00000000-0000-4000-8000-000000000001',
+        ]);
+      const own = lock(M, TENANT);
+      const timeout = lockTimeoutStatement(100);
 
-      it.each(['$queryRaw', '$executeRaw'])(
-        'lets a statement the platform built through %s in an open read-write unit',
-        (operation) => {
-          expect(decide(undefined, operation, approved)).toBeNull();
-        },
-      );
+      it('lets the lock statement through $queryRaw and the timeout through $executeRaw', () => {
+        expect(decide(undefined, '$queryRaw', own)).toBeNull();
+        expect(decide(undefined, '$executeRaw', timeout)).toBeNull();
+      });
 
-      it.each(['$queryRaw', '$executeRaw'])(
-        'refuses a hand-made statement of the same text through %s',
-        (operation) => {
-          expect(decide(undefined, operation, forged)).toBe('raw-sql');
-          expect(decide(undefined, operation, { ...approved })).toBe('raw-sql');
-          expect(decide(undefined, operation, [approved])).toBe('raw-sql');
-          expect(decide(undefined, operation, approved.sql)).toBe('raw-sql');
-        },
-      );
+      it('refuses the lock statement for another Market or tenant than the unit’s', () => {
+        expect(decide(undefined, '$queryRaw', lock(other, TENANT))).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', lock(M, OTHER_TENANT))).toBe('raw-sql');
+      });
+
+      it('refuses a text that is not on the list, and the other operation for a listed text', () => {
+        expect(decide(undefined, '$queryRaw', Prisma.sql`SELECT 1`)).toBe('raw-sql');
+        expect(decide(undefined, '$executeRaw', own)).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', timeout)).toBe('raw-sql');
+        expect(decide(undefined, '$executeRaw', Prisma.raw('SET LOCAL lock_timeout = 5000'))).toBe(
+          'raw-sql',
+        );
+      });
 
       it.each(['$queryRawUnsafe', '$executeRawUnsafe', '$queryRawTyped'])(
-        'refuses %s even with an approved statement',
+        'refuses %s even with a listed statement',
         (operation) => {
-          expect(decide(undefined, operation, approved)).toBe('raw-sql');
+          expect(decide(undefined, operation, own)).toBe('raw-sql');
+          expect(decide(undefined, operation, timeout)).toBe('raw-sql');
         },
       );
 
-      it('refuses an approved statement with no unit, in a read-only unit and in a closed one', () => {
-        expect(decide(undefined, '$queryRaw', approved, 'no unit')).toBe('raw-sql');
-        expect(decide(undefined, '$queryRaw', approved, readOnlyUnit)).toBe('raw-sql');
-        expect(decide(undefined, '$queryRaw', approved, { ...unit, closed: true })).toBe('raw-sql');
+      it('refuses a listed statement with no unit, in a read-only unit and in a closed one', () => {
+        expect(decide(undefined, '$queryRaw', own, 'no unit')).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', own, readOnlyUnit)).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', own, { ...unit, closed: true })).toBe('raw-sql');
       });
     });
 

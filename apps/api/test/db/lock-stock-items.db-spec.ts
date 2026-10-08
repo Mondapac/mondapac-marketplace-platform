@@ -58,12 +58,12 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
   }
 
   /** `count` stock items of one seller in `marketCode`, each of its own sell unit. */
-  async function newItems(count: number, marketCode = code, retiredFrom = Infinity) {
+  async function newItems(count: number, marketCode: string = code, retiredFrom = Infinity) {
     const sellerId = ids.next<'Seller'>();
     await insert('seller_inventories', {
       id: ids.next(),
       market_id: marketCode,
-      tenant_id: 'default',
+      tenant_id: market.tenantId,
       seller_id: sellerId,
       version: 1,
       created_at: at(0),
@@ -72,7 +72,7 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
     await insert('sources', {
       id: sourceId,
       market_id: marketCode,
-      tenant_id: 'default',
+      tenant_id: market.tenantId,
       seller_id: sellerId,
       name: 'Default',
       is_default: true,
@@ -84,7 +84,7 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
       const row = {
         id: ids.next<string>() as string,
         market_id: marketCode,
-        tenant_id: 'default',
+        tenant_id: market.tenantId,
         offer_id: ids.next<string>() as string,
         variant_id: ids.next<string>() as string,
         source_id: sourceId,
@@ -287,7 +287,7 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
         insert('stock_movements', {
           id: ids.next(),
           market_id: code,
-          tenant_id: 'default',
+          tenant_id: market.tenantId,
           stock_item_id: item.id,
           offer_id: item.offer_id,
           variant_id: item.variant_id,

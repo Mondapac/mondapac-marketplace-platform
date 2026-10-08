@@ -1,8 +1,9 @@
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
-import type { Prisma } from '../../generated/prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 import { NamedStatementRefusedError } from '../unit-of-work/errors';
 import {
   isApprovedStatement,
+  lockStockItemsStatement,
   lockTimeoutStatement,
   MAX_LOCKED_STOCK_ITEMS,
   runNamedStatement,
@@ -60,7 +61,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.lock-stock-items in market %s', 
     });
     expect(seen).toHaveLength(1);
     const statement = seen[0]!;
-    expect(isApprovedStatement(statement)).toBe(true);
+    expect(isApprovedStatement({ operation: '$queryRaw', args: statement }, market)).toBe(true);
     expect(statement.values).toEqual([market.marketId, market.tenantId, [ID(2), ID(1)]]);
     expect(statement.sql).toMatch(
       /s\.market_id = \?\s+AND s\.tenant_id = \?\s+AND s\.id = ANY\(\?::uuid\[\]\)/u,
@@ -127,11 +128,73 @@ describe.each(['AU', 'ZZ'] as const)('inventory.lock-stock-items in market %s', 
   });
 });
 
+describe.each(['AU', 'ZZ'] as const)(
+  'the guard’s recognition of raw statements, unit of %s',
+  (code) => {
+    const market = testMarketContext(code, 'mondapac');
+    const otherCode = code === 'AU' ? 'ZZ' : 'AU';
+    const lock = (marketId: string, tenantId: string) =>
+      lockStockItemsStatement({ marketId, tenantId } as never, [ID(1)]);
+
+    it('recognises the lock statement only with the unit’s Market and tenant', () => {
+      const own = lock(market.marketId, market.tenantId);
+      expect(isApprovedStatement({ operation: '$queryRaw', args: own }, market)).toBe(true);
+      for (const forged of [lock(otherCode, market.tenantId), lock(market.marketId, 'other')]) {
+        expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+      }
+    });
+
+    it('recognises each text for its own operation only', () => {
+      const own = lock(market.marketId, market.tenantId);
+      const timeout = lockTimeoutStatement(100);
+      expect(isApprovedStatement({ operation: '$executeRaw', args: own }, market)).toBe(false);
+      expect(isApprovedStatement({ operation: '$queryRaw', args: timeout }, market)).toBe(false);
+      expect(isApprovedStatement({ operation: '$executeRaw', args: timeout }, market)).toBe(true);
+      for (const operation of ['$queryRawUnsafe', '$executeRawUnsafe', '$queryRawTyped']) {
+        expect(isApprovedStatement({ operation, args: own }, market)).toBe(false);
+        expect(isApprovedStatement({ operation, args: timeout }, market)).toBe(false);
+      }
+    });
+
+    it.each([
+      "SET LOCAL lock_timeout = '3001ms'",
+      "SET LOCAL lock_timeout = '0ms'",
+      "SET LOCAL lock_timeout = '100ms'; SELECT 1",
+      "SET LOCAL statement_timeout = '100ms'",
+      "SET lock_timeout = '100ms'",
+      'SELECT 1',
+    ])('refuses the text %s', (text) => {
+      expect(
+        isApprovedStatement({ operation: '$executeRaw', args: Prisma.raw(text) }, market),
+      ).toBe(false);
+    });
+
+    it('refuses the lock text with changed SQL or an extra parameter', () => {
+      const own = lock(market.marketId, market.tenantId);
+      const altered = Prisma.raw(own.sql.replace('FOR NO KEY UPDATE', 'FOR UPDATE'));
+      expect(isApprovedStatement({ operation: '$queryRaw', args: altered }, market)).toBe(false);
+      expect(
+        isApprovedStatement(
+          { operation: '$queryRaw', args: { sql: own.sql, values: [...own.values, 'x'] } },
+          market,
+        ),
+      ).toBe(false);
+    });
+
+    it.each([null, undefined, 'SELECT 1', 42, [], {}, { sql: 1, values: [] }])(
+      'refuses the argument %j',
+      (args) => {
+        expect(isApprovedStatement({ operation: '$queryRaw', args }, market)).toBe(false);
+        expect(isApprovedStatement({ operation: '$executeRaw', args }, market)).toBe(false);
+      },
+    );
+  },
+);
+
 describe('lockTimeoutStatement', () => {
   it('builds the fixed text with the checked number and registers it', () => {
     const statement = lockTimeoutStatement(250);
     expect(statement.sql).toBe("SET LOCAL lock_timeout = '250ms'");
-    expect(isApprovedStatement(statement)).toBe(true);
   });
 
   it.each([0, -1, 3001, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
