@@ -71,16 +71,35 @@ the new zone at once. An address change also carries a chosen zone.
 7. Counts toward the submission limit, plus at most 3 zone changes per 90 days.
 8. Not retroactive: orders, tax periods and stored boundaries keep the instants already computed.
 
-**GPS pre-fill (Hassan's addendum).** A port `LocationTimezoneResolver` (coordinates to an IANA zone
-or none) in `sellers/application/ports`, no-op default; it fails closed (error, timeout or stub
-returns none and the form uses the address-derived zone). Coordinates are untrusted: finite numbers
-in range, the result still passes the allow-list, the seller still confirms, and the certificate rule
-above still applies. Source recorded as `address`, `device` or `seller`. Privacy: our own notice
-before the browser prompt, coordinates rounded on the client (about 2 decimals), never stored,
-logged, audited, put in events, telemetry or AI input (only the resulting zone is kept); only this
-use case may import the port (`pnpm boundaries`); no pre-fill in acting-as; a real provider needs a
-vendor and licence review first (Google Maps terms forbid storing a zone derived from their data,
-see above).
+**GPS pre-fill (Mohammad's and Hassan's addenda).** Port `LocationTimezoneResolver` in
+`modules/sellers/application/ports`, adapters in `sellers/infrastructure`, chosen per Market
+(`sellers.locationTimezone.adapter`: default `none`, `fake` in tests). Contract:
+`zoneFor(market, { latitude, longitude }) -> IanaZoneId | null`; `null` means no suggestion (the
+`none` adapter, invalid coordinates, a point outside the Market, an error or a short fixed timeout);
+it never throws into the save path and never returns an offset. The real adapter looks up offline in
+a checked-in boundary dataset (no third-party geocoder; Google is ruled out above); the dataset
+needs a licence check before it merges (timezone-boundary-builder is ODbL).
+- **The address wins.** The GPS zone is only a hint for a draft whose zone no seller or admin has set,
+  never after approval, and only if it is on the allow-list of the address's region; otherwise it is
+  dropped silently and the region default stays. The domain method takes
+  `suggestedZone: IanaZoneId | null` and enforces the rule itself. The seller can still correct it
+  from the allowed list (the fallback).
+- **Untrusted input.** Coordinates are client-supplied: finite numbers in range, never trusted for
+  more than the hint; the certificate rule above still applies. Source recorded as `default`,
+  `location`, `seller` or `admin`; the reviewer sees when the final zone differs from the
+  address-derived one and who chose it, never coordinates.
+- **Privacy.** Our own notice before the browser prompt (wording for the owner and counsel), client
+  rounding to about 2 decimals, coordinates live only for the request and are never stored, logged,
+  audited, put in events, telemetry or AI input; only this use case may import the port
+  (`pnpm boundaries`); no pre-fill in acting-as.
+- **When.** Slice 2 builds the port, the `none` and `fake` adapters and the domain rule, tested on AU
+  and ZZ, but the HTTP request does not accept coordinates yet (an unused field is attack surface).
+  A later small slice ("location hint", tier A, Hassan reviews) adds the real adapter and dataset, the
+  optional `location` field on `save-address` and the frontend step (Figma first), once the GPS
+  finder exists. Not on the first-sale path.
+- **Option for Hadi.** The browser already knows the device zone (`Intl` `resolvedOptions().timeZone`):
+  as the first hint it needs no location permission, no dataset and no location data, and goes through
+  the same allow-list rule. Recommended first; GPS later if still wanted.
 
 **Amendments needed (Mohammad).** `sellers.md` 1.1, 2.1, 3.1, 4.1, 4.2, 6.2 (row `correct-timezone`),
 6.3, 6.4, 6.5, 7.1a row 9, 7.4, 9, 10, 13.1, 13.2, 16.2 item 4 and the AC 8 and change log; the data
