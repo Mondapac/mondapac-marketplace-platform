@@ -801,6 +801,12 @@ describe('loadMarketConfigs', () => {
         1439,
         1440,
       ],
+      [
+        'the second-factor block (upper bound)',
+        ['secondFactorThrottles', 'account', 'blockMinutes'],
+        10_081,
+        10_080,
+      ],
     ])('bounds %s', (...[, keys, refused, accepted, prepare]) => {
       // A rest parameter: Jest would take a fifth named parameter for a done callback.
       const parent = keys.slice(0, -1);
