@@ -35,14 +35,25 @@ describe.each(TEST_MARKETS)(
       await app.end();
     });
 
+    /** The constraint named by the last refusal, or null (a privilege error names none). */
+    let lastConstraint: string | null = null;
+
     /** The SQLSTATE of a statement that must fail, or null when it succeeded. */
     async function sqlState(text: string, values: unknown[] = []): Promise<string | null> {
+      lastConstraint = null;
       try {
         await app.query(text, values);
         return null;
       } catch (error) {
-        return (error as { code?: string }).code ?? 'unknown';
+        const failure = error as { code?: string; constraint?: string };
+        lastConstraint = failure.constraint ?? null;
+        return failure.code ?? 'unknown';
       }
+    }
+
+    /** The last statement was refused with `code` by exactly the constraint `constraint`. */
+    function refusedBy(state: string | null, code: string, constraint: string): void {
+      expect({ state, constraint: lastConstraint }).toEqual({ state: code, constraint });
     }
 
     async function insert(table: string, row: Record<string, unknown>): Promise<string | null> {
@@ -55,7 +66,7 @@ describe.each(TEST_MARKETS)(
     }
 
     /** A seller inventory with one source, in `market`. */
-    async function newSource(market = code, sellerId = ids.next<'Seller'>()) {
+    async function newSource(market: string = code, sellerId = ids.next<'Seller'>()) {
       expect(
         await insert('seller_inventories', {
           id: ids.next(),
@@ -125,6 +136,26 @@ describe.each(TEST_MARKETS)(
       ...overrides,
     });
 
+    /** Insert a row that one named CHECK, UNIQUE key or foreign key must refuse. */
+    async function refuse(
+      table: string,
+      row: Record<string, unknown>,
+      code: string,
+      constraint: string,
+    ): Promise<void> {
+      refusedBy(await insert(table, row), code, constraint);
+    }
+    const check = (table: string, row: Record<string, unknown>, constraint: string) =>
+      refuse(table, row, CHECK, constraint);
+
+    /** The malformed Market and tenant of every table are refused by that table's own CHECK. */
+    async function refuseMalformedScope(table: string, row: () => Record<string, unknown>) {
+      await check(table, { ...row(), market_id: 'au' }, `${table}_market_id_check`);
+      await check(table, { ...row(), market_id: 'A' }, `${table}_market_id_check`);
+      await check(table, { ...row(), tenant_id: 'Default' }, `${table}_tenant_id_check`);
+      await check(table, { ...row(), tenant_id: '' }, `${table}_tenant_id_check`);
+    }
+
     describe('outbox (3.1)', () => {
       const outboxRow = (overrides: Record<string, unknown> = {}) => ({
         event_id: ids.next(),
@@ -140,17 +171,52 @@ describe.each(TEST_MARKETS)(
         ...overrides,
       });
 
-      it('accepts an inventory event and refuses another module’s type', async () => {
+      it('accepts an inventory event and refuses another module’s type or a look-alike', async () => {
         expect(await insert('outbox', outboxRow())).toBeNull();
-        expect(await insert('outbox', outboxRow({ type: 'catalog.offer-created.v1' }))).toBe(CHECK);
+        await check('outbox', outboxRow({ type: 'catalog.offer-created.v1' }), 'outbox_type_check');
+        await check('outbox', outboxRow({ type: 'inventoryXlow-stock.v1' }), 'outbox_type_check');
+        await check(
+          'outbox',
+          outboxRow({ type: 'inventory.low-stock-reached.v0' }),
+          'outbox_type_check',
+        );
       });
 
-      it('refuses a second event with the same aggregate version', async () => {
+      it('refuses a malformed Market, tenant, aggregate, correlation id or payload', async () => {
+        await refuseMalformedScope('outbox', outboxRow);
+        await check(
+          'outbox',
+          outboxRow({ aggregate_type: 'Signal' }),
+          'outbox_aggregate_type_check',
+        );
+        await check(
+          'outbox',
+          outboxRow({ aggregate_version: 0 }),
+          'outbox_aggregate_version_check',
+        );
+        await check(
+          'outbox',
+          outboxRow({ correlation_id: 'short' }),
+          'outbox_correlation_id_check',
+        );
+        await check('outbox', outboxRow({ payload: '[]' }), 'outbox_payload_check');
+      });
+
+      it('keeps one event per aggregate version in a Market, and the same pair in each apart', async () => {
         const first = outboxRow();
         expect(await insert('outbox', first)).toBeNull();
-        expect(await insert('outbox', outboxRow({ aggregate_id: first.aggregate_id }))).toBe(
+        await refuse(
+          'outbox',
+          outboxRow({ aggregate_id: first.aggregate_id }),
           UNIQUE,
+          'outbox_market_id_aggregate_id_aggregate_version_key',
         );
+        expect(
+          await insert(
+            'outbox',
+            outboxRow({ aggregate_id: first.aggregate_id, market_id: otherCode }),
+          ),
+        ).toBeNull();
       });
 
       it('lets the relay mark published_at and nothing else', async () => {
@@ -163,9 +229,11 @@ describe.each(TEST_MARKETS)(
             at(5),
           ]),
         ).toBeNull();
-        expect(
-          await sqlState(`UPDATE inventory.outbox SET payload = '{}' ${where}`, [row.event_id]),
-        ).toBe(DENIED);
+        for (const set of ["payload = '{}'", "market_id = 'AU'", `aggregate_version = 9`]) {
+          expect(
+            await sqlState(`UPDATE inventory.outbox SET ${set} ${where}`, [row.event_id]),
+          ).toBe(DENIED);
+        }
         expect(await sqlState(`DELETE FROM inventory.outbox ${where}`, [row.event_id])).toBe(
           DENIED,
         );
@@ -173,15 +241,16 @@ describe.each(TEST_MARKETS)(
     });
 
     describe('stock_items (3.4)', () => {
-      it('keeps one item per Offer, Variant and source', async () => {
+      it('keeps one item per Offer, Variant and source, in each Market apart', async () => {
         const source = await newSource();
         const row = await newItem(source);
-        expect(
-          await insert(
-            'stock_items',
-            itemRow(source, { offer_id: row.offer_id, variant_id: row.variant_id }),
-          ),
-        ).toBe(UNIQUE);
+        await refuse(
+          'stock_items',
+          itemRow(source, { offer_id: row.offer_id, variant_id: row.variant_id }),
+          UNIQUE,
+          'stock_items_market_id_offer_id_variant_id_source_id_key',
+        );
+        // Another source of the same seller holds the same sell unit.
         const secondSource = { ...source, sourceId: ids.next<'InventorySource'>() };
         expect(
           await insert('sources', {
@@ -201,25 +270,41 @@ describe.each(TEST_MARKETS)(
             itemRow(secondSource, { offer_id: row.offer_id, variant_id: row.variant_id }),
           ),
         ).toBeNull();
+        // The same Offer and Variant ids in the other Market do not collide.
+        const otherSource = await newSource(otherCode);
+        expect(
+          await insert(
+            'stock_items',
+            itemRow(otherSource, {
+              market_id: otherCode,
+              offer_id: row.offer_id,
+              variant_id: row.variant_id,
+            }),
+          ),
+        ).toBeNull();
       });
 
       it('refuses a negative level, a version below 1 and a malformed Market or tenant', async () => {
         const source = await newSource();
-        expect(await insert('stock_items', itemRow(source, { on_hand: -1 }))).toBe(CHECK);
-        expect(await insert('stock_items', itemRow(source, { version: 0 }))).toBe(CHECK);
-        expect(await insert('stock_items', itemRow(source, { market_id: 'au' }))).toBe(CHECK);
-        expect(await insert('stock_items', itemRow(source, { tenant_id: 'Default' }))).toBe(CHECK);
+        await check('stock_items', itemRow(source, { on_hand: -1 }), 'stock_items_on_hand_check');
+        await check('stock_items', itemRow(source, { version: 0 }), 'stock_items_version_check');
+        await refuseMalformedScope('stock_items', () => itemRow(source));
         expect(await insert('stock_items', itemRow(source, { on_hand: 0 }))).toBeNull();
       });
 
       it('proves the item’s seller is its source’s seller, and its Market too', async () => {
         const source = await newSource();
-        const stranger = ids.next<'Seller'>();
-        expect(await insert('stock_items', itemRow(source, { seller_id: stranger }))).toBe(
+        await refuse(
+          'stock_items',
+          itemRow(source, { seller_id: ids.next() }),
           FOREIGN_KEY,
+          'stock_items_market_id_source_id_seller_id_fkey',
         );
-        expect(await insert('stock_items', itemRow(source, { market_id: otherCode }))).toBe(
+        await refuse(
+          'stock_items',
+          itemRow(source, { market_id: otherCode }),
           FOREIGN_KEY,
+          'stock_items_market_id_source_id_seller_id_fkey',
         );
       });
 
@@ -233,11 +318,34 @@ describe.each(TEST_MARKETS)(
             [row.id, at(3)],
           ),
         ).toBeNull();
-        expect(
+        refusedBy(
           await sqlState(`UPDATE inventory.stock_items SET on_hand = -1 ${where}`, [row.id]),
-        ).toBe(CHECK);
-        for (const column of ['offer_id', 'variant_id', 'source_id', 'seller_id', 'created_at']) {
-          const value = column === 'created_at' ? at(9) : ids.next();
+          CHECK,
+          'stock_items_on_hand_check',
+        );
+        refusedBy(
+          await sqlState(`UPDATE inventory.stock_items SET version = 0 ${where}`, [row.id]),
+          CHECK,
+          'stock_items_version_check',
+        );
+        for (const column of [
+          'id',
+          'market_id',
+          'tenant_id',
+          'offer_id',
+          'variant_id',
+          'source_id',
+          'seller_id',
+          'created_at',
+        ]) {
+          const value =
+            column === 'created_at'
+              ? at(9)
+              : column === 'market_id'
+                ? otherCode
+                : column === 'tenant_id'
+                  ? 'other'
+                  : ids.next();
           expect(
             await sqlState(`UPDATE inventory.stock_items SET ${column} = $2 ${where}`, [
               row.id,
@@ -255,7 +363,7 @@ describe.each(TEST_MARKETS)(
         try {
           const { rows } = await app.query(
             `SELECT id FROM inventory.stock_items
-            WHERE market_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR NO KEY UPDATE`,
+              WHERE market_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR NO KEY UPDATE`,
             [code, [row.id]],
           );
           expect(rows).toHaveLength(1);
@@ -266,15 +374,27 @@ describe.each(TEST_MARKETS)(
     });
 
     describe('stock_movements (3.5)', () => {
+      const moduleActor = {
+        actor_kind: 'module',
+        actor_account_id: null,
+        actor_module: 'inventory',
+      };
+
       it('records a movement and keeps the ledger append-only', async () => {
-        const source = await newSource();
-        const item = await newItem(source);
+        const item = await newItem(await newSource());
         const row = movementRow(item);
         expect(await insert('stock_movements', row)).toBeNull();
         const where = `WHERE market_id = '${code}' AND id = $1`;
-        expect(
-          await sqlState(`UPDATE inventory.stock_movements SET delta = 1 ${where}`, [row.id]),
-        ).toBe(DENIED);
+        for (const set of [
+          'delta = 1',
+          'resulting_on_hand = 1',
+          "reason = 'restock'",
+          'occurred_at = now()',
+        ]) {
+          expect(
+            await sqlState(`UPDATE inventory.stock_movements SET ${set} ${where}`, [row.id]),
+          ).toBe(DENIED);
+        }
         expect(await sqlState(`DELETE FROM inventory.stock_movements ${where}`, [row.id])).toBe(
           DENIED,
         );
@@ -282,16 +402,29 @@ describe.each(TEST_MARKETS)(
 
       it('refuses a zero delta and a level that was or would be negative', async () => {
         const item = await newItem(await newSource());
-        expect(await insert('stock_movements', movementRow(item, { delta: 0 }))).toBe(CHECK);
-        expect(
-          await insert('stock_movements', movementRow(item, { delta: 3, resulting_on_hand: 2 })),
-        ).toBe(CHECK);
-        expect(
-          await insert('stock_movements', movementRow(item, { delta: -3, resulting_on_hand: -1 })),
-        ).toBe(CHECK);
+        await check(
+          'stock_movements',
+          movementRow(item, { delta: 0 }),
+          'stock_movements_delta_check',
+        );
+        await check(
+          'stock_movements',
+          movementRow(item, { delta: 3, resulting_on_hand: 2 }),
+          'stock_movements_resulting_on_hand_check',
+        );
+        await check(
+          'stock_movements',
+          movementRow(item, { delta: -3, resulting_on_hand: -1 }),
+          'stock_movements_resulting_on_hand_check',
+        );
         expect(
           await insert('stock_movements', movementRow(item, { delta: -3, resulting_on_hand: 2 })),
         ).toBeNull();
+      });
+
+      it('refuses a malformed Market or tenant', async () => {
+        const item = await newItem(await newSource());
+        await refuseMalformedScope('stock_movements', () => movementRow(item));
       });
 
       it('accepts only the four reasons', async () => {
@@ -299,64 +432,101 @@ describe.each(TEST_MARKETS)(
         expect(
           await insert('stock_movements', movementRow(item, { reason: 'restock' })),
         ).toBeNull();
-        expect(await insert('stock_movements', movementRow(item, { reason: 'adjustment' }))).toBe(
-          CHECK,
+        await check(
+          'stock_movements',
+          movementRow(item, { reason: 'adjustment' }),
+          'stock_movements_reason_check',
         );
       });
 
       it('ties the actor columns to the actor kind', async () => {
         const item = await newItem(await newSource());
-        const module = { actor_kind: 'module', actor_account_id: null, actor_module: 'inventory' };
-        expect(await insert('stock_movements', movementRow(item, { actor_account_id: null }))).toBe(
-          CHECK,
+        await check(
+          'stock_movements',
+          movementRow(item, { actor_kind: 'system', actor_account_id: null }),
+          'stock_movements_actor_kind_check',
         );
-        expect(
-          await insert('stock_movements', movementRow(item, { actor_module: 'inventory' })),
-        ).toBe(CHECK);
-        expect(await insert('stock_movements', movementRow(item, module))).toBeNull();
-        expect(
-          await insert(
-            'stock_movements',
-            movementRow(item, { ...module, actor_module: 'Inventory' }),
-          ),
-        ).toBe(CHECK);
-        expect(
-          await insert(
-            'stock_movements',
-            movementRow(item, { ...module, actor_account_id: account }),
-          ),
-        ).toBe(CHECK);
+        await check(
+          'stock_movements',
+          movementRow(item, { actor_account_id: null }),
+          'stock_movements_actor_account_id_check',
+        );
+        await check(
+          'stock_movements',
+          movementRow(item, { actor_module: 'inventory' }),
+          'stock_movements_actor_module_check',
+        );
+        expect(await insert('stock_movements', movementRow(item, moduleActor))).toBeNull();
+        await check(
+          'stock_movements',
+          movementRow(item, { ...moduleActor, actor_module: 'Inventory' }),
+          'stock_movements_actor_module_check',
+        );
+        await check(
+          'stock_movements',
+          movementRow(item, { ...moduleActor, actor_account_id: account }),
+          'stock_movements_actor_account_id_check',
+        );
       });
 
-      it('lets only the module actor write a shipment or a re-key', async () => {
+      it('lets only a module actor write a shipment or a re-key, and anyone a seller-set', async () => {
         const item = await newItem(await newSource());
-        const module = { actor_kind: 'module', actor_account_id: null, actor_module: 'ordering' };
         for (const reason of ['shipment', 're-key']) {
-          expect(await insert('stock_movements', movementRow(item, { reason }))).toBe(CHECK);
+          await check(
+            'stock_movements',
+            movementRow(item, { reason }),
+            'stock_movements_system_reason_check',
+          );
           expect(
-            await insert('stock_movements', movementRow(item, { reason, ...module })),
+            await insert('stock_movements', movementRow(item, { reason, ...moduleActor })),
           ).toBeNull();
         }
+        expect(
+          await insert('stock_movements', movementRow(item, { reason: 'seller-set' })),
+        ).toBeNull();
       });
 
-      it('proves the Offer and Variant copies equal the item’s', async () => {
+      it('proves the Offer, Variant and Market equal the item’s, and the item exists', async () => {
         const item = await newItem(await newSource());
-        expect(await insert('stock_movements', movementRow(item, { offer_id: ids.next() }))).toBe(
+        const fkey = 'stock_movements_market_id_stock_item_id_offer_id_variant_i_fkey';
+        await refuse(
+          'stock_movements',
+          movementRow(item, { offer_id: ids.next() }),
           FOREIGN_KEY,
+          fkey,
         );
-        expect(await insert('stock_movements', movementRow(item, { variant_id: ids.next() }))).toBe(
+        await refuse(
+          'stock_movements',
+          movementRow(item, { variant_id: ids.next() }),
           FOREIGN_KEY,
+          fkey,
         );
-        expect(await insert('stock_movements', movementRow(item, { market_id: otherCode }))).toBe(
+        await refuse(
+          'stock_movements',
+          movementRow(item, { market_id: otherCode }),
           FOREIGN_KEY,
+          fkey,
+        );
+        await refuse(
+          'stock_movements',
+          movementRow(item, { stock_item_id: ids.next() }),
+          FOREIGN_KEY,
+          fkey,
         );
       });
 
       it('refuses a malformed correlation id', async () => {
         const item = await newItem(await newSource());
+        for (const correlation_id of ['short', 'has space in it', 'x'.repeat(129)]) {
+          await check(
+            'stock_movements',
+            movementRow(item, { correlation_id }),
+            'stock_movements_correlation_id_check',
+          );
+        }
         expect(
-          await insert('stock_movements', movementRow(item, { correlation_id: 'short' })),
-        ).toBe(CHECK);
+          await insert('stock_movements', movementRow(item, { correlation_id: 'x'.repeat(128) })),
+        ).toBeNull();
       });
     });
 
@@ -375,32 +545,50 @@ describe.each(TEST_MARKETS)(
       });
 
       it('ties only_left to the low status, within 1 to 99', async () => {
+        const only = 'availability_signals_only_left_check';
         expect(
           await insert('availability_signals', signalRow({ status: 'low', only_left: 3 })),
         ).toBeNull();
-        expect(await insert('availability_signals', signalRow({ status: 'low' }))).toBe(CHECK);
-        expect(await insert('availability_signals', signalRow({ only_left: 3 }))).toBe(CHECK);
-        expect(
-          await insert('availability_signals', signalRow({ status: 'out', only_left: 1 })),
-        ).toBe(CHECK);
-        expect(
-          await insert('availability_signals', signalRow({ status: 'low', only_left: 0 })),
-        ).toBe(CHECK);
-        expect(
-          await insert('availability_signals', signalRow({ status: 'low', only_left: 100 })),
-        ).toBe(CHECK);
-        expect(await insert('availability_signals', signalRow({ status: 'unknown' }))).toBe(CHECK);
+        await check('availability_signals', signalRow({ status: 'low' }), only);
+        await check('availability_signals', signalRow({ only_left: 3 }), only);
+        await check('availability_signals', signalRow({ status: 'out', only_left: 1 }), only);
+        await check('availability_signals', signalRow({ status: 'low', only_left: 0 }), only);
+        await check('availability_signals', signalRow({ status: 'low', only_left: 100 }), only);
+        await check(
+          'availability_signals',
+          signalRow({ status: 'unknown' }),
+          'availability_signals_status_check',
+        );
+        await check(
+          'availability_signals',
+          signalRow({ version: 0 }),
+          'availability_signals_version_check',
+        );
       });
 
-      it('keeps one signal per sell unit and lets only the state columns change', async () => {
+      it('refuses a malformed Market or tenant', async () => {
+        await refuseMalformedScope('availability_signals', signalRow);
+      });
+
+      it('keeps one signal per sell unit in a Market, and lets only the state columns change', async () => {
         const row = signalRow();
         expect(await insert('availability_signals', row)).toBeNull();
+        await refuse(
+          'availability_signals',
+          signalRow({ offer_id: row.offer_id, variant_id: row.variant_id }),
+          UNIQUE,
+          'availability_signals_market_id_offer_id_variant_id_key',
+        );
         expect(
           await insert(
             'availability_signals',
-            signalRow({ offer_id: row.offer_id, variant_id: row.variant_id }),
+            signalRow({
+              offer_id: row.offer_id,
+              variant_id: row.variant_id,
+              market_id: otherCode,
+            }),
           ),
-        ).toBe(UNIQUE);
+        ).toBeNull();
         const where = `WHERE market_id = '${code}' AND id = $1`;
         expect(
           await sqlState(
@@ -408,12 +596,38 @@ describe.each(TEST_MARKETS)(
             [row.id, at(4)],
           ),
         ).toBeNull();
-        expect(
-          await sqlState(`UPDATE inventory.availability_signals SET seller_id = $2 ${where}`, [
+        // The state columns stay consistent with each other on update, too.
+        refusedBy(
+          await sqlState(`UPDATE inventory.availability_signals SET status = 'low' ${where}`, [
             row.id,
-            ids.next(),
           ]),
-        ).toBe(DENIED);
+          CHECK,
+          'availability_signals_only_left_check',
+        );
+        refusedBy(
+          await sqlState(`UPDATE inventory.availability_signals SET version = 0 ${where}`, [
+            row.id,
+          ]),
+          CHECK,
+          'availability_signals_version_check',
+        );
+        for (const column of [
+          'id',
+          'market_id',
+          'tenant_id',
+          'offer_id',
+          'variant_id',
+          'seller_id',
+        ]) {
+          const value =
+            column === 'market_id' ? otherCode : column === 'tenant_id' ? 'other' : ids.next();
+          expect(
+            await sqlState(`UPDATE inventory.availability_signals SET ${column} = $2 ${where}`, [
+              row.id,
+              value,
+            ]),
+          ).toBe(DENIED);
+        }
         expect(
           await sqlState(`DELETE FROM inventory.availability_signals ${where}`, [row.id]),
         ).toBe(DENIED);
@@ -427,28 +641,43 @@ describe.each(TEST_MARKETS)(
         tenant_id: 'default',
         scope: 'offer',
         offer_id: ids.next(),
+        variant_id: null as string | null,
         source_aggregate_version: 2,
         retired_at: at(0),
         ...overrides,
       });
 
       it('ties the Variant id to the variant scope', async () => {
-        expect(await insert('retirements', retirementRow({ variant_id: ids.next() }))).toBe(CHECK);
-        expect(await insert('retirements', retirementRow({ scope: 'variant' }))).toBe(CHECK);
+        const variant = 'retirements_variant_id_check';
+        await check('retirements', retirementRow({ variant_id: ids.next() }), variant);
+        await check('retirements', retirementRow({ scope: 'variant' }), variant);
         expect(
           await insert('retirements', retirementRow({ scope: 'variant', variant_id: ids.next() })),
         ).toBeNull();
-        expect(await insert('retirements', retirementRow({ scope: 'sell-unit' }))).toBe(CHECK);
-        expect(await insert('retirements', retirementRow({ source_aggregate_version: 0 }))).toBe(
-          CHECK,
+        await check(
+          'retirements',
+          retirementRow({ scope: 'sell-unit' }),
+          'retirements_scope_check',
         );
+        await check(
+          'retirements',
+          retirementRow({ source_aggregate_version: 0 }),
+          'retirements_source_aggregate_version_check',
+        );
+      });
+
+      it('refuses a malformed Market or tenant', async () => {
+        await refuseMalformedScope('retirements', retirementRow);
       });
 
       it('keeps one tombstone per Offer and one per Variant, in each Market apart', async () => {
         const offerRow = retirementRow();
         expect(await insert('retirements', offerRow)).toBeNull();
-        expect(await insert('retirements', retirementRow({ offer_id: offerRow.offer_id }))).toBe(
+        await refuse(
+          'retirements',
+          retirementRow({ offer_id: offerRow.offer_id }),
           UNIQUE,
+          'retirements_market_id_offer_id_offer_key',
         );
         expect(
           await insert(
@@ -458,6 +687,16 @@ describe.each(TEST_MARKETS)(
         ).toBeNull();
         const variantRow = retirementRow({ scope: 'variant', variant_id: ids.next() });
         expect(await insert('retirements', variantRow)).toBeNull();
+        await refuse(
+          'retirements',
+          retirementRow({
+            scope: 'variant',
+            offer_id: variantRow.offer_id,
+            variant_id: variantRow.variant_id,
+          }),
+          UNIQUE,
+          'retirements_market_id_offer_id_variant_id_variant_key',
+        );
         expect(
           await insert(
             'retirements',
@@ -465,9 +704,10 @@ describe.each(TEST_MARKETS)(
               scope: 'variant',
               offer_id: variantRow.offer_id,
               variant_id: variantRow.variant_id,
+              market_id: otherCode,
             }),
           ),
-        ).toBe(UNIQUE);
+        ).toBeNull();
         // An Offer tombstone and a Variant tombstone of the same Offer sit side by side.
         expect(
           await insert(
@@ -482,14 +722,20 @@ describe.each(TEST_MARKETS)(
       });
 
       it('lets a tombstone be cleared but never edited', async () => {
-        const row = retirementRow();
+        const row = retirementRow({ scope: 'variant', variant_id: ids.next() });
         expect(await insert('retirements', row)).toBeNull();
         const where = `WHERE market_id = '${code}' AND id = $1`;
-        expect(
-          await sqlState(`UPDATE inventory.retirements SET source_aggregate_version = 3 ${where}`, [
-            row.id,
-          ]),
-        ).toBe(DENIED);
+        for (const set of [
+          'source_aggregate_version = 3',
+          'retired_at = now()',
+          "scope = 'offer'",
+          'variant_id = NULL',
+          `offer_id = '${ids.next()}'`,
+        ]) {
+          expect(await sqlState(`UPDATE inventory.retirements SET ${set} ${where}`, [row.id])).toBe(
+            DENIED,
+          );
+        }
         expect(await sqlState(`DELETE FROM inventory.retirements ${where}`, [row.id])).toBeNull();
       });
     });
