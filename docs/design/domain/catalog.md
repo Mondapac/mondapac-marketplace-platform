@@ -1345,7 +1345,7 @@ behind a flag): `ClaimTextMatcher` answers "unavailable", `sellingEligibility` a
 production code imports one. Each real binding is its own small PR reviewed by Hassan; slice 5's
 Hassan sign-off is conditional until the matcher is the real one. Slice 8 (tags), 11, 12 and 16 keep
 their full order with no placeholder. No placeholder may be bound at first sale; Bagher checks this at
-the release gate, and a start-up log line names each placeholder still bound.
+the release gate, as set by ADR-0031 decision 4.
 
 **First sale (Phase 3 exit for `catalog`, brief s11):** P1, 1 to 14 and 17. **Launch-required, not
 first sale:** 16 (CAT-45, Q5), 18 (Q6 behaviour), 20 (CAT-48 is the safety valve for a bad shared

@@ -40,8 +40,9 @@ flag only hides it. The same question recurs across `certification`, `sellers`, 
    first sale. Each placeholder is a class marked `@FailClosedPlaceholder('<port>')` under
    `infrastructure/placeholders/`; the bound set is derived at start-up from the composition root,
    not hand-maintained, and logged. The API and worker refuse to start when the bound set is
-   non-empty and the deployment environment is production (checked as the existing role and
-   HOSTED_MARKETS checks are, with no override). A required CI check on the production deploy
+   non-empty and the deployment environment is production, which means `NODE_ENV` is anything
+   other than an explicit `development` or `test` (so an unset value counts as production; no
+   override), with a start-up test for `NODE_ENV` unset and one placeholder bound. A required CI check on the production deploy
    pipeline fails while the set is non-empty. Producer-side stand-ins such as the
    `sellingEligibility` one of PR #94 are marked and counted the same way. Bagher
    (qc-release-manager) confirms both at the release gate.
@@ -53,7 +54,8 @@ flag only hides it. The same question recurs across `certification`, `sellers`, 
 6. **Contracts first.** The producing module may merge a contracts-only PR (facade signature and
    v1 event schemas) so consumers build against fakes; its production binding answers "absent",
    which consumers already treat as not sellable. The contracts-only PR lists each consumer's
-   handling of "absent" (cart K-1 for `offerSellUnits`) and is reviewed by Hassan.
+   handling of "absent" (pricing P-1 for `offerSellUnits`, cart K-1 for `offerListings`) and is
+   reviewed by Hassan. The "absent" binding is a placeholder under decision 4.
 
 ## Consequences
 - Phase 4 can code against `offerSellUnits` and `offer-created` before certification slice 2 and
