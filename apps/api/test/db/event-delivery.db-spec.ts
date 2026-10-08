@@ -96,6 +96,8 @@ describe('event delivery (database integration)', () => {
       behaviour: 'consume' as Behaviour,
       /** A slow handler: the work moves this clock on by this much. */
       slow: null as { clock: FixedClock; by: Temporal.Duration } | null,
+      /** Run in order, one per consuming call, before its work (a slow or interleaved handler). */
+      hooks: [] as (() => Promise<void>)[],
     };
     const entry = subscription({
       name,
@@ -137,6 +139,7 @@ describe('event delivery (database integration)', () => {
           case 'consume': {
             let ran = false;
             if (state.slow !== null) state.slow.clock.advance(state.slow.by);
+            await state.hooks.shift()?.();
             await db.unitOfWork.runOnce(context.market, delivery, async () => {
               ran = true;
               // The work of the use case: a state change in the same unit as the inbox row.
@@ -526,6 +529,56 @@ describe('event delivery (database integration)', () => {
       const rows = await deliveriesOf(handler.entry.name);
       expect(rows.every((row) => row.status === 'delivered' && row.attempts === 1)).toBe(true);
       expect(handler.handled.map((seen) => seen.attempt)).toEqual([1, 1, 1]);
+    },
+  );
+
+  it.each(TEST_MARKETS)(
+    '%s: a give-back never undoes a later claim of the row, even one given back again (Mojtaba C1)',
+    async (code) => {
+      const clock = startClock();
+      const start = clock.now();
+      const handler = recordingHandler(uniqueName('aba'));
+      const a = stackOf([handler.entry], clock);
+      const b = stackOf([handler.entry], clock);
+      await writeThings(code, 3);
+      await relayAll(a.relay);
+      // A claims all three rows (attempts 1, lease end start + 30 s). Its first handler
+      // overruns by 35 s; meanwhile B claims all three again (attempts 2, lease end start + 95 s),
+      // delivers one in 50 s and gives the other two back (attempts 1, due at start + 85 s).
+      // A's own handler then finds its row handled, and A gives back its other two: their
+      // attempts are 1 again, as A's claim returned them, but they are B's give-back now.
+      handler.state.hooks.push(
+        async () => {
+          clock.advance(seconds(35));
+          await b.dispatcher.runOnce();
+        },
+        () => {
+          clock.advance(seconds(50));
+          return Promise.resolve();
+        },
+      );
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect((await a.dispatcher.runOnce()).claimed).toBe(3);
+      } finally {
+        warn.mockRestore();
+      }
+
+      const rows = await deliveriesOf(handler.entry.name);
+      // B delivered one row (attempt 2); A's own row is delivered by A or was B's. Every row B
+      // gave back keeps B's give-back: without the lease-end guard, A's give-back would have
+      // taken it to attempts 0 and moved its due time.
+      expect(rows.filter((row) => row.status === 'delivered').map((row) => row.attempts)).toContain(
+        2,
+      );
+      const pending = rows.filter((row) => row.status === 'pending');
+      expect(pending.length).toBeGreaterThanOrEqual(1);
+      for (const row of pending) {
+        expect(row.attempts).toBe(1);
+        expect(row.next_attempt_at.getTime()).toBe(start.add(seconds(85)).epochMilliseconds);
+      }
+      expect(rows.every((row) => row.attempts >= 1)).toBe(true);
+      expect(handler.handled.map((seen) => seen.attempt)).toEqual([2, 1]);
     },
   );
 

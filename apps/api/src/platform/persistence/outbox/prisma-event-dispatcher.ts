@@ -9,7 +9,6 @@ import {
   DISPATCH_BATCH_SIZE,
   HANDLER_BUDGET_MS,
   MAX_DELIVERY_ATTEMPTS,
-  backOffSeconds,
   type DispatchPass,
   type EventDispatcher,
 } from '../../events/event-delivery';
@@ -31,6 +30,8 @@ interface DeliveryRecord {
   readonly market_id: string;
   readonly tenant_id: string;
   readonly attempts: number;
+  /** The end of this claim's lease: the database's own value, which the give-back matches. */
+  readonly next_attempt_at: Date;
   readonly type: string;
   readonly occurred_at: Date;
   readonly aggregate_type: string;
@@ -58,7 +59,8 @@ UPDATE "platform"."event_delivery" d
             AND "next_attempt_at" <= $2::timestamptz
           ORDER BY "next_attempt_at" LIMIT $3
             FOR UPDATE SKIP LOCKED)
-RETURNING d."event_id", d."subscriber", d."market_id", d."tenant_id", d."attempts", d."type",
+RETURNING d."event_id", d."subscriber", d."market_id", d."tenant_id", d."attempts",
+          d."next_attempt_at", d."type",
           d."occurred_at", d."aggregate_type", d."aggregate_id", d."aggregate_version",
           d."correlation_id", d."causation_id", d."payload"`;
 
@@ -69,14 +71,15 @@ UPDATE "platform"."event_delivery"
 
 /**
  * Gives back a claimed row whose handler did not start (Mojtaba F1): the claim's attempt is
- * undone and the row is due now, unless another claim counted it since (then it is that
- * claim's).
+ * undone and the row is due now, only while the row still holds this claim: its attempts and its
+ * lease end both as this claim returned them. The lease end comes from the claim's `now`, so a
+ * later claim (even one released again, which restores the count: C1) never matches.
  */
 const RELEASE = `
 UPDATE "platform"."event_delivery"
    SET "attempts" = "attempts" - 1, "next_attempt_at" = $4::timestamptz
  WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'
-   AND "attempts" = $5`;
+   AND "attempts" = $5 AND "next_attempt_at" = $6::timestamptz`;
 
 const FAILED = `
 UPDATE "platform"."event_delivery" SET "error_code" = $4
@@ -132,11 +135,10 @@ export class PrismaEventDispatcher implements EventDispatcher {
       const context = this.contexts.forMarket(marketId);
       if (!context.ok) throw new Error(`The hosted Market ${marketId} has no context`);
       const rows = await this.claim(context.value);
-      const claimedAt = this.clock.now();
       claimed += rows.length;
       if (rows.length === DISPATCH_BATCH_SIZE) fullBatch = true;
       for (const [index, row] of rows.entries()) {
-        if (!this.leaseCovers(row, claimedAt)) {
+        if (!this.leaseCovers(row)) {
           await this.release(rows.slice(index));
           break;
         }
@@ -147,13 +149,13 @@ export class PrismaEventDispatcher implements EventDispatcher {
   }
 
   /**
-   * Whether the row's lease (the back-off its claim set) still has room for a whole handler
-   * (Mojtaba F1): handlers of a batch run one after the other, so a late row of a slow batch
-   * would otherwise run while another dispatcher claims it again.
+   * Whether the row's lease still has room for a whole handler (Mojtaba F1, C2): handlers of a
+   * batch run one after the other, so a late row of a slow batch would otherwise run while
+   * another dispatcher claims it again. Measured against the lease end the claim stored, which
+   * starts at the claim's own `now`, not at the end of the claim's transaction.
    */
-  private leaseCovers(row: DeliveryRecord, claimedAt: Temporal.Instant): boolean {
-    const elapsedMs = this.clock.now().epochMilliseconds - claimedAt.epochMilliseconds;
-    return elapsedMs + HANDLER_BUDGET_MS <= backOffSeconds(row.attempts) * 1000;
+  private leaseCovers(row: DeliveryRecord): boolean {
+    return this.clock.now().epochMilliseconds + HANDLER_BUDGET_MS <= row.next_attempt_at.getTime();
   }
 
   /** Gives back the rest of a batch whose lease ran short, without spending an attempt. */
@@ -167,6 +169,7 @@ export class PrismaEventDispatcher implements EventDispatcher {
         row.subscriber,
         now,
         row.attempts,
+        row.next_attempt_at,
       );
     }
     this.logger.warn({
