@@ -34,6 +34,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     inventory: ['USAGE'],
     platform: ['USAGE'],
     catalog: ['USAGE'],
+    certification: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
   },
@@ -124,6 +125,40 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // docs/design/data/sellers.md section 8 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job; the four roots have no
     // DELETE until the purge of slice 18.
+    // docs/design/data/certification.md section 8 (migration 1): outbox and inbox as every module;
+    // the type root and the issuers change only the listed columns (code, verification mode and
+    // type are immutable); the root of a seller certificate is mutable; revisions, submissions and
+    // decisions are insert-only, backed by the triggers of 6.1.
+    'certification.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'certification.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.certification_types': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'status', 'version'],
+    },
+    'certification.certification_type_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.issuers': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'accreditation_number',
+        'display_name',
+        'display_name_key',
+        'expert_reference_ciphertext',
+        'state',
+        'state_changed_at',
+        'state_changed_by_account_id',
+        'state_changed_by_kind',
+        'version',
+      ],
+    },
+    'certification.seller_certifications': {
+      table: ['INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'certification.seller_certification_submissions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.seller_submission_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
