@@ -21,6 +21,17 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return { ...this.section(market).sensitiveChanges };
   }
 
+  locales(market: MarketContext): {
+    readonly default: string;
+    readonly supported: readonly string[];
+  } {
+    // The locales belong to the Market, not to the catalog section; a missing section is still
+    // a configuration fault (the same answer as the other settings).
+    this.section(market);
+    const config = this.markets.get(market.marketId);
+    return { default: config.defaultLocale, supported: [...config.supportedLocales] };
+  }
+
   maxVariantsPerProduct(market: MarketContext): number {
     return this.section(market).maxVariantsPerProduct;
   }

@@ -1,7 +1,11 @@
 // ---- Phone templates (360 × 780, release 1.5.0, D16): PhoneTopbar (56 px), bottom tab bar (seller), drawer over a bg/scrim scrim (1.6.0)
 function phoneTopbar(ws) { return inst('PhoneTopbar', { Workspace: ws }, { name: 'PhoneTopbar', sizeH: 'FILL' }); } // release 1.6.0: an instance, no longer a loose frame
+// 1.8.4: Main scrolls vertically, as the page does on a phone. A list longer than the screen is cut at the bottom on purpose
+// (it continues below the fold), and the Audit does not count that as a layer sticking out.
 function phoneScreen(name, ws, kids, barActive) {
-  const parts = [phoneTopbar(ws), frame({ name: 'Main', dir: 'V', gap: 'space/3', pad: 'space/4', sizeH: 'FILL', sizeV: 'FILL', clip: true }, kids)];
+  const main = frame({ name: 'Main', dir: 'V', gap: 'space/3', pad: 'space/4', sizeH: 'FILL', sizeV: 'FILL', clip: true }, kids);
+  main.overflowDirection = 'VERTICAL';
+  const parts = [phoneTopbar(ws), main];
   if (barActive) parts.push(inst('BottomTabBar', { Active: barActive, Tabs: '4' }, { name: 'BottomTabBar', sizeH: 'FILL' }));
   const scr = frame({ name: name, dir: 'V', w: 360, h: 780, fill: 'bg/page', clip: true }, parts);
   tag(scr);

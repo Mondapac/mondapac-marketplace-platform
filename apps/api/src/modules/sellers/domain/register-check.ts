@@ -91,7 +91,9 @@ export function registerCheckAfter(
 
 /**
  * Where a file's current identifier stands against the register (design 3.4). `stale` is an
- * `active` result older than the maximum age: it counts as `not-performed` for approval. A
+ * `active` result older than the maximum age, or one that was checked before the draft last
+ * changed (the comparison skips a field that was empty and the seller may have filled it in
+ * since; Hassan M1): it counts as `not-performed` for approval. A
  * definite negative never ages: it ends only with a successful lookup or a new value.
  */
 export type RegisterState = 'not-performed' | 'active' | 'negative' | 'unavailable' | 'stale';
@@ -113,16 +115,44 @@ export function isFresh(
   return Temporal.Instant.compare(now, expires) <= 0;
 }
 
+/** Why an `active` result is `stale`: it aged out, or the draft changed after the check. */
+export type RegisterStaleReason = 'aged' | 'draft-changed';
+
+/**
+ * The draft changed after the check: the file's `lastChangedAt` is later than the result's
+ * `checkedAt`. Any saved change counts (an existing clear column, no migration): the comparison
+ * ran on the draft as it was then, and a field it skipped for being empty is not known to match.
+ */
+export function draftChangedSince(check: RegisterCheck, fileChangedAt: Temporal.Instant): boolean {
+  return Temporal.Instant.compare(fileChangedAt, check.checkedAt) > 0;
+}
+
+/** The reason an `active` result is stale, or null when it is current (or not `active`). */
+export function staleReasonOf(
+  check: RegisterCheck | null,
+  now: Temporal.Instant,
+  maxResultAgeDays: number,
+  fileChangedAt: Temporal.Instant,
+): RegisterStaleReason | null {
+  assertMaxAgeDays(maxResultAgeDays);
+  if (check === null || check.definiteNegativeAt !== null || check.outcome !== 'active') {
+    return null;
+  }
+  if (!isFresh(check, now, maxResultAgeDays)) return 'aged';
+  return draftChangedSince(check, fileChangedAt) ? 'draft-changed' : null;
+}
+
 export function registerStateOf(
   check: RegisterCheck | null,
   now: Temporal.Instant,
   maxResultAgeDays: number,
+  fileChangedAt: Temporal.Instant,
 ): RegisterState {
   assertMaxAgeDays(maxResultAgeDays);
   if (check === null) return 'not-performed';
   if (check.definiteNegativeAt !== null) return 'negative';
   if (check.outcome === 'unavailable') return 'unavailable';
-  return isFresh(check, now, maxResultAgeDays) ? 'active' : 'stale';
+  return staleReasonOf(check, now, maxResultAgeDays, fileChangedAt) === null ? 'active' : 'stale';
 }
 
 /** A definite negative closes the submission (AC 31); every other state lets it through (AC 32). */

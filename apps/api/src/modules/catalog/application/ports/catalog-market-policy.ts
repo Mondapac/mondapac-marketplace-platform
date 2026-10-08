@@ -15,6 +15,11 @@ export interface CatalogMarketPolicy {
   taxCategoryCodes(market: MarketContext): readonly string[];
   /** Which changes to a published product go to review (4.3). */
   sensitiveChanges(market: MarketContext): SensitiveChangesPolicy;
+  /** The Market's default locale and the locales content may be written in. */
+  locales(market: MarketContext): {
+    readonly default: string;
+    readonly supported: readonly string[];
+  };
   /** The most non-retired variants one product may hold (2.1). */
   maxVariantsPerProduct(market: MarketContext): number;
   /** Whether a new revision waits for review (4.2 row 1); read in the submitting unit. */
