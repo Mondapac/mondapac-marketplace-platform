@@ -13,6 +13,7 @@ import type { ThrottleKeys } from '../ports/session-secrets';
 import type { ThrottleRepository } from '../ports/throttle.repository';
 import {
   checkPresentedCode,
+  codeProven,
   recordCodeFailure,
   reserveSecondFactor,
   secondFactorCounter,
@@ -74,7 +75,7 @@ export interface SignedInFactorSpec<T> {
  *    counter reserved before the code is checked (HF1, HF2; at its limit `second-factor.locked`).
  * 2. The code checked outside any unit with `candidateSteps(clock.now())` (I-2); a secret that
  *    cannot be used answers as a wrong code and alarms (I-3); `prepare` runs.
- * 3. Closing unit: the factor read again (the same id, active, the same secret as checked), the
+ * 3. Closing unit: the account's credential lock first (data design 3.3), the factor read again (the same id, active, the same secret as checked), the
  *    code spent (a step accepted once or a recovery code spent once); a failure stays counted and
  *    the attempt that reaches the limit locks the factor (HF2). On success the reservation is
  *    given back and `succeed` runs with the factor read again.
@@ -155,7 +156,7 @@ export class SignedInFactorStep {
       try {
         await spec.prepare(account, factor);
       } catch (error) {
-        await this.release(context, attempt);
+        if (codeProven(check, false)) await this.release(context, attempt);
         throw error;
       }
     }
@@ -164,11 +165,20 @@ export class SignedInFactorStep {
       | { readonly kind: 'done'; readonly value: T }
       | { readonly kind: 'failed'; readonly locked: boolean };
     let closed: Result<Closed, SignedInFactorRefusal>;
+    // Whether the last run of the closing unit spent the code (a retried unit starts again).
+    let spentInUnit = false;
     try {
       closed = await unitOfWork.run(
         market,
         async (): Promise<Result<Closed, SignedInFactorRefusal>> => {
+          spentInUnit = false;
           const now = this.deps.clock.now();
+          // The account's credential lock first, as every unit that changes a factor: the
+          // success path (factor, then throttle) and the failure path (throttle, then factor)
+          // then never interleave with each other (data design 3.3; Mojtaba, PR #162).
+          if (!(await this.deps.accounts.lockCredential(market, accountId))) {
+            return err({ code: 'session.invalid' });
+          }
           const current = await this.deps.factors.findByAccount(market, accountId);
           if (
             current === null ||
@@ -179,6 +189,7 @@ export class SignedInFactorStep {
             return err({ code: 'second-factor.unavailable' });
           }
           const spent = check.kind !== 'no-match' && (await spec.spend(current, check, now));
+          spentInUnit = spent;
           if (!spent) {
             const lockedNow = await recordCodeFailure(
               { throttles, factors: this.deps.factors, outbox: this.deps.outbox },
@@ -199,8 +210,9 @@ export class SignedInFactorStep {
       );
     } catch (error) {
       this.warn('identity.signed-in-factor.closing-failed', context);
-      // A wrong code keeps its attempt counted even when the unit fails (HF2; PR #162).
-      if (check.kind !== 'no-match') await this.release(context, attempt);
+      // Only a code proven correct gets its attempt back when the unit fails; a wrong code,
+      // or a recovery code not spent, stays counted (HF2; Mojtaba and Hassan, PR #162).
+      if (codeProven(check, spentInUnit)) await this.release(context, attempt);
       throw error;
     }
     if (!closed.ok) {

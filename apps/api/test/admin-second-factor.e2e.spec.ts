@@ -1339,6 +1339,63 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       expect(secondFactorAttempts()).toBe(1);
     });
 
+    it('keeps a wrong recovery code counted when the closing unit fails, in every code step (Hassan, round 2)', async () => {
+      await boot();
+      const { secret, recoveryCodes } = await acceptedAdmin(code);
+      const context = await signedIn(code, secret);
+      // Well formed, so the check outside the unit answers `recovery`; no stored code has it.
+      const wrongRecovery = '0000000000';
+      expect(recoveryCodes).not.toContain(wrongRecovery);
+      /** The closing unit's credential lock fails once; nothing of the unit is kept. */
+      const failClosingLock = () =>
+        jest
+          .spyOn(fakes.accountRepository, 'lockCredential')
+          .mockRejectedValueOnce(new Error('unit failed'));
+
+      // The sign-in code step.
+      const challengeToken = await challenge(code);
+      let spy = failClosingLock();
+      await expect(complete(challengeToken, wrongRecovery)).rejects.toThrow('unit failed');
+      spy.mockRestore();
+      expect(secondFactorAttempts()).toBe(1);
+
+      // A signed-in step, which now takes the credential lock first (Mojtaba, round 2).
+      clock.advance(STEP);
+      spy = failClosingLock();
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: wrongRecovery }),
+      ).rejects.toThrow('unit failed');
+      expect(spy).toHaveBeenCalledWith(expect.anything(), adminAccount().id);
+      spy.mockRestore();
+      expect(secondFactorAttempts()).toBe(2);
+
+      // The admin's password change: the password counters come back, the code's attempt does not.
+      clock.advance(STEP);
+      spy = failClosingLock();
+      await expect(
+        app.get(ChangePassword).execute(context, {
+          currentPassword: PASSWORD,
+          newPassword: NEW_PASSWORD,
+          code: wrongRecovery,
+          client: CLIENT,
+        }),
+      ).rejects.toThrow('unit failed');
+      spy.mockRestore();
+      expect(secondFactorAttempts()).toBe(3);
+
+      // A recovery code the unit spent before it failed is proven, and its attempt comes back.
+      clock.advance(STEP);
+      // The unit's own release, right after the spend, fails (the fakes keep no rollback).
+      const failAfterSpend = jest
+        .spyOn(fakes.throttleRepository, 'release')
+        .mockRejectedValueOnce(new Error('unit failed'));
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: recoveryCodes[0]! }),
+      ).rejects.toThrow('unit failed');
+      failAfterSpend.mockRestore();
+      expect(secondFactorAttempts()).toBe(3);
+    });
+
     it('refuses the signed-in steps over HTTP without the CSRF token', async () => {
       await boot();
       const { secret } = await acceptedAdmin(code);

@@ -31,6 +31,7 @@ import type { SecondFactorSecrets } from '../ports/second-factor-secrets';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import {
   checkPresentedCode,
+  codeProven,
   parsePresentedCode,
   recordCodeFailure,
   reserveSecondFactor,
@@ -326,14 +327,27 @@ export class ChangePassword extends UseCase<
         return err(failed);
       }
     }
+    // Whether the last run of the closing unit spent the admin's code (a retried unit starts
+    // again).
+    let spentInUnit = false;
+    /**
+     * What is given back when the work after the code check fails and keeps nothing: the
+     * sign-in counters (the current password matched) and the factor's attempt only for a code
+     * proven correct (`codeProven`; Hassan, PR #162). A wrong recovery code stays counted.
+     */
+    const refundable = (): readonly ThrottleReservation[] =>
+      factorAttempt === null || (check !== null && !codeProven(check, spentInUnit))
+        ? signInReservations
+        : reservations;
     const hashed = await hasher.hash(input.newPassword);
-    if (!hashed.ok) return this.releasing(context, reservations, hashed.error);
+    if (!hashed.ok) return this.releasing(context, refundable(), hashed.error);
     const issued = this.deps.tokens.issue();
     const verifiedHash = account.state.credential.passwordHash;
 
     // 3. The closing unit.
-    const closed = await this.closing(context, reservations, () =>
+    const closed = await this.closing(context, refundable, () =>
       unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
+        spentInUnit = false;
         const now = this.deps.clock.now();
         const locked = await accounts.lockCredential(market, actor.accountId);
         const current = locked ? await accounts.findById(market, actor.accountId) : null;
@@ -353,6 +367,7 @@ export class ChangePassword extends UseCase<
             factor.isActive &&
             factor.state.secretCiphertext === reserved.factor!.secret &&
             (await spendCode(this.deps.factors, market, factor.state.id, check, now));
+          spentInUnit = spent;
           if (!spent) {
             const lockedNow = await recordCodeFailure(
               { throttles, factors: this.deps.factors, outbox: this.deps.outbox },
@@ -451,18 +466,20 @@ export class ChangePassword extends UseCase<
 
   /**
    * Runs the closing unit. When it throws (a lock timeout, exhausted retries, a lost connection)
-   * nothing of it was kept, so the reservation is given back, best effort, before the error goes
-   * on to its usual answer (Mojtaba, slice 4).
+   * nothing of it was kept, so the refundable reservations (read after the unit: a code proven
+   * correct only) are given back, best effort, before the error goes on to its usual answer
+   * (Mojtaba, slice 4; Hassan, PR #162).
    */
   private async closing<T>(
     context: CallContext,
-    reservations: readonly ThrottleReservation[],
+    refundable: () => readonly ThrottleReservation[],
     run: () => Promise<Result<T, never>>,
   ): Promise<Result<T, never>> {
     try {
       return await run();
     } catch (error) {
       this.log('identity.change-password.closing-failed', context, {});
+      const reservations = refundable();
       await this.failClosed(context, () =>
         this.deps.unitOfWork.run(context.market, async () => {
           await this.deps.throttles.release(context.market, reservations);

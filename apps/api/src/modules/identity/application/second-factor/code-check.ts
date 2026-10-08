@@ -87,6 +87,19 @@ export async function checkPresentedCode(
 }
 
 /**
+ * Whether an attempt is given back when the work after the check fails and keeps nothing (a
+ * closing unit that throws, a `prepare` or a hash that fails; HF2; Mojtaba and Hassan, PR #162):
+ * only for a code proven correct. An app code is proven by its match outside the unit; a
+ * recovery code only by a spend that the closing unit accepted before it failed, since
+ * {@link checkPresentedCode} answers `recovery` for any well-formed one. A wrong code, or a
+ * recovery code not yet spent, stays counted.
+ */
+export function codeProven(check: CodeCheck | null, recoverySpent: boolean): boolean {
+  if (check === null) return false;
+  return check.kind === 'totp' || (check.kind === 'recovery' && recoverySpent);
+}
+
+/**
  * Spends what {@link checkPresentedCode} found, in the closing unit: a step accepted once by its
  * guarded statement, or an unused recovery code spent once. False when it lost (a replayed or
  * concurrent code, a spent or unknown recovery code) or there was no match.

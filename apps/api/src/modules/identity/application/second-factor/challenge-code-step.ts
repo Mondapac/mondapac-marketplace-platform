@@ -32,6 +32,7 @@ import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repo
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import {
   checkPresentedCode,
+  codeProven,
   recordCodeFailure,
   reserveSecondFactor,
   secondFactorCounter,
@@ -250,7 +251,7 @@ export class ChallengeCodeStep<T> {
       try {
         await this.spec.prepare(account);
       } catch (error) {
-        await this.releaseQuietly(context, attempt);
+        if (codeProven(check, false)) await this.releaseQuietly(context, attempt);
         throw error;
       }
     }
@@ -260,8 +261,11 @@ export class ChallengeCodeStep<T> {
       | { readonly kind: 'done'; readonly value: T }
       | { readonly kind: 'refused'; readonly refusal: ChallengeStepRefusal | { code: string } };
     let closed: Result<Closed, 'lost'>;
+    // Whether the last run of the closing unit spent the code (a retried unit starts again).
+    let spentInUnit = false;
     try {
       closed = await unitOfWork.run(market, async (): Promise<Result<Closed, 'lost'>> => {
+        spentInUnit = false;
         const now = this.deps.clock.now();
         const locked = await this.deps.accounts.lockCredential(market, accountId);
         const current = locked ? await this.deps.accounts.findById(market, accountId) : null;
@@ -281,6 +285,7 @@ export class ChallengeCodeStep<T> {
         }
         const spent =
           check.kind !== 'no-match' && (await this.spec.spend(currentFactor, check, now));
+        spentInUnit = spent;
         if (!spent) {
           const lockedNow = await recordCodeFailure(
             {
@@ -323,10 +328,10 @@ export class ChallengeCodeStep<T> {
       });
     } catch (error) {
       this.warn('identity.second-factor-step.closing-failed', context);
-      // Nothing of the unit was kept. A code that matched gets its attempt back, best effort; a
-      // wrong code keeps it counted, so a failing unit never refunds a guess (HF2; Mojtaba and
-      // Hassan, PR #162).
-      if (check.kind !== 'no-match') await this.releaseQuietly(context, attempt);
+      // Nothing of the unit was kept. A code proven correct (an app code that matched, or a
+      // recovery code the unit spent) gets its attempt back, best effort; any other keeps it
+      // counted, so a failing unit never refunds a guess (HF2; Mojtaba and Hassan, PR #162).
+      if (codeProven(check, spentInUnit)) await this.releaseQuietly(context, attempt);
       throw error;
     }
     if (!closed.ok) {
