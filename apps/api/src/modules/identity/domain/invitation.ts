@@ -1,5 +1,6 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, Result } from '@mondapac/shared-kernel';
+import { parseDisplayName } from './display-name';
 import type { EmailAddress } from './email-address';
 
 /** The three kinds (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
@@ -202,6 +203,14 @@ export class Invitation {
     }
     if (ownerName && state.displayName === null) {
       throw new InvitationInvariantError('a seller-owner invitation names its invitee');
+    }
+    // The name rules of an account's display name (HF13; review nit): parsed by the caller,
+    // re-checked here so a malformed name is never stored.
+    if (state.displayName !== null) {
+      const parsed = parseDisplayName(state.displayName);
+      if (!parsed.ok || parsed.value !== state.displayName) {
+        throw new InvitationInvariantError('the name follows the display-name rules');
+      }
     }
     if ((state.tokenHash === null) !== (state.expiresAt === null)) {
       throw new InvitationInvariantError('the token hash and the expiry are set together');

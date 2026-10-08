@@ -21,8 +21,14 @@ const encodeSecret = (secret: Uint8Array): string => Buffer.from(secret).toStrin
 /**
  * {@link SecondFactorSecrets} over the platform's `SubjectKeyService` (identity design 7.1, 7.3,
  * 7.5; data design 3.10): the secret is sealed under the account's key with its own label, and a
- * recovery code is hashed with the account's key under its own purpose. Plaintext buffers are
- * zeroed once used. Nothing is logged here.
+ * recovery code is hashed with the account's key under its own purpose. Nothing is logged here.
+ *
+ * A destroyed key (erasure) answers "no match"; a ciphertext that does not open under this
+ * account's key and label (another account's, another label's, or altered) throws the service's
+ * `SubjectKeyIntegrityError`, which is never a match (Hassan L-1). The decoded secret buffer is
+ * zeroed after use, but that is best effort only: the base64url strings that `seal` takes and
+ * `decrypt` returns are JavaScript strings, which cannot be zeroed and live until the garbage
+ * collector reclaims them (Hassan I-5).
  */
 export class SubjectKeySecondFactorSecrets implements SecondFactorSecrets {
   constructor(private readonly subjectKeys: SubjectKeyService) {}
@@ -58,6 +64,7 @@ export class SubjectKeySecondFactorSecrets implements SecondFactorSecrets {
       SECOND_FACTOR_SECRET,
       secretCiphertext,
     );
+    // Only a destroyed key is an answer; an integrity failure throws on (Hassan L-1).
     if (!opened.ok) return null;
     const secret = Buffer.from(opened.value, 'base64url');
     try {

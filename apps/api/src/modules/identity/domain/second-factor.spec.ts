@@ -93,8 +93,15 @@ describe.each(['AU', 'ZZ'] as const)('SecondFactor in market %s (identity design
   it('spends a recovery code once', () => {
     const factor = stored(active());
     expect(factor.useRecoveryCode(3, LATER).ok).toBe(true);
-    expect(factor.useRecoveryCode(3, LATER).ok).toBe(false);
-    expect(factor.useRecoveryCode(11, LATER).ok).toBe(false);
+    // A spent code has its own reason (review nit); an unknown position is wrong-state.
+    expect(factor.useRecoveryCode(3, LATER)).toEqual({
+      ok: false,
+      error: { code: 'second-factor.refused', reason: 'code-spent' },
+    });
+    expect(factor.useRecoveryCode(11, LATER)).toEqual({
+      ok: false,
+      error: { code: 'second-factor.refused', reason: 'wrong-state' },
+    });
     expect(factor.unusedRecoveryCodes.map((c) => c.position)).not.toContain(3);
     expect(factor.state.recoveryCodes.find((c) => c.position === 3)?.usedAt).toEqual(LATER);
   });
@@ -180,6 +187,37 @@ describe.each(['AU', 'ZZ'] as const)('SecondFactor in market %s (identity design
         now: NOW,
       }),
     ).toThrow(SecondFactorInvariantError);
+  });
+
+  it('refuses a repeated recovery-code hash, at activation, creation and regeneration (Hassan L-3)', () => {
+    const repeated = [...hashes(1).slice(1), hashes(1)[0]!];
+    repeated[9] = Uint8Array.from(repeated[0]!);
+    expect(() =>
+      SecondFactor.createActive({
+        id: FACTOR_ID,
+        marketId,
+        accountId: ACCOUNT_ID,
+        secretCiphertext: 'c',
+        acceptedStep: 1,
+        recoveryCodeHashes: repeated,
+        now: NOW,
+      }),
+    ).toThrow(new SecondFactorInvariantError('the recovery codes are distinct'));
+    const factor = stored(active());
+    const before = factor.state;
+    expect(() => factor.regenerateRecoveryCodes(repeated)).toThrow(SecondFactorInvariantError);
+    expect(factor.state).toBe(before);
+    const pending = SecondFactor.startEnrolment({
+      id: FACTOR_ID,
+      marketId,
+      accountId: ACCOUNT_ID,
+      secretCiphertext: 'cipher-a',
+      now: NOW,
+    });
+    expect(() =>
+      pending.activate({ acceptedStep: 7, recoveryCodeHashes: repeated, now: LATER }),
+    ).toThrow(SecondFactorInvariantError);
+    expect(pending.isActive).toBe(false);
   });
 
   it('copies the hashes it is given, so a caller cannot change a stored hash', () => {

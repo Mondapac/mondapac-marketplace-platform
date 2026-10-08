@@ -1,5 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { Invitation } from '../../domain/invitation';
+import type { Invitation, InvitationKind } from '../../domain/invitation';
 
 /**
  * The invitations of `identity` (identity design 3.4; data design 3.10). Every method runs in
@@ -26,13 +26,16 @@ export interface InvitationRepository {
   save(market: MarketContext, invitation: Invitation): Promise<void>;
 
   /**
-   * The hourly purge (data design 9): pending invitations whose expiry is before `now`, and
-   * decided ones whose decision is before `decidedBefore`. Answers how many were deleted.
+   * The hourly purge (data design 9): pending invitations whose expiry is before `now`, decided
+   * ones whose decision is before `decidedBefore`, and (Ali 2026-10-08) pending invitations never
+   * dispatched (no token) created before the cut-off given for their kind, which is `now` minus
+   * that kind's lifetime. A kind with no cut-off is left alone. Answers how many were deleted.
    */
   purge(
     market: MarketContext,
     now: Temporal.Instant,
     decidedBefore: Temporal.Instant,
+    undispatchedCreatedBefore?: Readonly<Partial<Record<InvitationKind, Temporal.Instant>>>,
   ): Promise<number>;
 }
 

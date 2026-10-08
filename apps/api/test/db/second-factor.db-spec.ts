@@ -10,7 +10,9 @@ import {
 import type { AccessDeclaration } from '../../src/platform/authz';
 import { PrismaSubjectKeyStore } from '../../src/platform/persistence/prisma-subject-key-store';
 import { LocalKeyWrapper } from '../../src/platform/subject-keys/local-key-wrapper';
+import { fieldLabel } from '../../src/platform/subject-keys/labels';
 import { NodeSubjectKeyService } from '../../src/platform/subject-keys/node-subject-key-service';
+import { SubjectKeyIntegrityError } from '../../src/platform/subject-keys/subject-key-service';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import {
   AccountAccessReviewers,
@@ -391,6 +393,78 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       expect(read?.state.version).toBe(factor.state.version + 1);
     });
 
+    it('a factor loaded before a recovery-code use cannot be saved afterwards (Hassan L-2 a)', async () => {
+      const account = await insertAdmin();
+      const { codes, factor } = await enrol(account);
+      const before = (await unit(() => factors.findByAccount(market, account)))!;
+      const hash = await unit(() => secrets.recoveryCodeHash(market, account, codes[0]!));
+      await expect(
+        unit(() => factors.useRecoveryCode(market, factor.state.id, hash, NOW)),
+      ).resolves.toBe(true);
+
+      // Saving the older copy would bring the spent code back as unused: refused as stale.
+      expect(before.regenerateRecoveryCodes(Array.from({ length: 10 }, () => HASH())).ok).toBe(
+        true,
+      );
+      await expect(unit(() => factors.save(market, before))).rejects.toBeInstanceOf(
+        StaleAggregateError,
+      );
+      const read = await unit(() => factors.findByAccount(market, account));
+      expect(read?.state.recoveryCodes.find((c) => c.position === 1)?.usedAt).not.toBeNull();
+    });
+
+    it('a code from before a regeneration no longer works (Hassan L-2 b)', async () => {
+      const account = await insertAdmin();
+      const { codes, factor } = await enrol(account);
+      const oldHash = await unit(() => secrets.recoveryCodeHash(market, account, codes[2]!));
+      const loaded = (await unit(() => factors.findByAccount(market, account)))!;
+      const fresh = secrets.newRecoveryCodes();
+      const freshHashes = await unit(async () => {
+        const out: Uint8Array[] = [];
+        for (const c of fresh) out.push(await secrets.recoveryCodeHash(market, account, c));
+        return out;
+      });
+      expect(loaded.regenerateRecoveryCodes(freshHashes).ok).toBe(true);
+      await unit(() => factors.save(market, loaded));
+
+      await expect(
+        unit(() => factors.useRecoveryCode(market, factor.state.id, oldHash, NOW)),
+      ).resolves.toBe(false);
+      await expect(
+        unit(() => factors.useRecoveryCode(market, factor.state.id, freshHashes[2]!, NOW)),
+      ).resolves.toBe(true);
+    });
+
+    it('never matches a secret sealed for another account or label: an integrity error (Hassan L-1)', async () => {
+      const mine = await insertAdmin();
+      const theirs = await insertAdmin();
+      const secret = secrets.newSecret();
+      const step = timeStepAt(NOW);
+      const code = hotp(secret, step);
+      const sealedForTheirs = await unit(() => secrets.seal(market, theirs, secret));
+      const otherLabel = await unit(async () => {
+        const sealed = await subjectKeys.encrypt(
+          market,
+          mine,
+          fieldLabel('identity.second-factor.other'),
+          Buffer.from(secret).toString('base64url'),
+        );
+        if (!sealed.ok) throw new Error('key destroyed');
+        return sealed.value;
+      });
+
+      for (const ciphertext of [sealedForTheirs, otherLabel]) {
+        await expect(
+          unit(() => secrets.matchStored(market, mine, ciphertext, code, candidateSteps(NOW))),
+        ).rejects.toBeInstanceOf(SubjectKeyIntegrityError);
+      }
+      // Sealed for the right account and label, the same code matches.
+      const sealedForMine = await unit(() => secrets.seal(market, mine, secret));
+      await expect(
+        unit(() => secrets.matchStored(market, mine, sealedForMine, code, candidateSteps(NOW))),
+      ).resolves.toBe(step);
+    });
+
     it('refuses a second factor for the account as stale, and removes it at a reset', async () => {
       const account = await insertAdmin();
       await enrol(account);
@@ -509,7 +583,7 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
   });
 
   describe('the invitation (identity design 3.4; M12)', () => {
-    const adminInvitation = (address: string) =>
+    const adminInvitation = (address: string, at: Temporal.Instant = NOW) =>
       Invitation.issue({
         id: randomUUID() as Id<'Invitation'>,
         marketId: market.marketId,
@@ -518,8 +592,45 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
         roleId: randomUUID() as Id<'Role'>,
         sellerId: null,
         invitedByAccountId: null,
+        now: at,
+      });
+    const sellerInvitation = (
+      kind: 'seller-owner' | 'staff',
+      sellerId: Id<'Seller'>,
+      address: string,
+    ) =>
+      Invitation.issue({
+        id: randomUUID() as Id<'Invitation'>,
+        marketId: market.marketId,
+        kind,
+        email: emailOf(address),
+        displayName: kind === 'seller-owner' ? 'Shop Owner' : null,
+        roleId: randomUUID() as Id<'Role'>,
+        sellerId,
+        invitedByAccountId: null,
         now: NOW,
       });
+    /** A seller access row the seller-scoped invitations point at (RESTRICT FK). */
+    async function insertSeller(): Promise<Id<'Seller'>> {
+      const sellerId = randomUUID() as Id<'Seller'>;
+      await sql.query(
+        `INSERT INTO identity.seller_access (seller_id, market_id, tenant_id, origin, state,
+           state_changed_at, reapply_count, registered_at, version, created_at)
+         VALUES ($1, $2, 'default', 'self', 'approved', $3, 0, $3, 1, $3)`,
+        [sellerId, code, CREATED],
+      );
+      return sellerId;
+    }
+    /** Loads, changes and saves one invitation in its own unit. */
+    async function decide(id: Id<'Invitation'>, how: 'revoke' | 'accept', at: Temporal.Instant) {
+      const loaded = (await unit(() => invitations.findById(market, id)))!;
+      const done =
+        how === 'revoke' ? loaded.revoke(at) : loaded.accept(randomUUID() as Id<'Account'>, at);
+      expect(done.ok).toBe(true);
+      await unit(() => invitations.save(market, loaded));
+    }
+    const exists = async (id: Id<'Invitation'>) =>
+      (await unit(() => invitations.findById(market, id))) !== null;
 
     it('is stored, dispatched, found by its hash and accepted through versioned saves', async () => {
       const address = `First.Admin.${randomUUID()}@Example.test`;
@@ -564,6 +675,143 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       await expect(unit(() => invitations.add(market, adminInvitation(address)))).resolves.toBe(
         undefined,
       );
+    });
+
+    it('keeps one pending invitation per seller and address, released by a revocation or an acceptance (M12; Sajad 1)', async () => {
+      const sellerId = await insertSeller();
+      const otherSeller = await insertSeller();
+      const address = `Staff.${randomUUID()}@example.test`;
+      const first = sellerInvitation('staff', sellerId, address);
+      await unit(() => invitations.add(market, first));
+
+      // The same address for the same seller: invitations_market_id_seller_id_email_pending_key.
+      await expect(
+        unit(() => invitations.add(market, sellerInvitation('staff', sellerId, address))),
+      ).rejects.toBeInstanceOf(InvitationAlreadyPendingError);
+      // Another seller, or the platform scope, may invite the same address.
+      await unit(() => invitations.add(market, sellerInvitation('staff', otherSeller, address)));
+      await unit(() => invitations.add(market, adminInvitation(address)));
+
+      await decide(first.state.id, 'revoke', NOW);
+      const second = sellerInvitation('staff', sellerId, address);
+      await unit(() => invitations.add(market, second));
+      const hash = HASH();
+      const loaded = (await unit(() => invitations.findById(market, second.state.id)))!;
+      loaded.dispatch(hash, NOW, 60);
+      await unit(() => invitations.save(market, loaded));
+      await decide(second.state.id, 'accept', NOW.add({ minutes: 1 }));
+      await expect(
+        unit(() => invitations.add(market, sellerInvitation('staff', sellerId, address))),
+      ).resolves.toBeUndefined();
+    });
+
+    it('keeps one pending seller-owner invitation per seller, released by a revocation or an acceptance (HF5 (a), M12; Sajad 1)', async () => {
+      const sellerId = await insertSeller();
+      const owner = sellerInvitation(
+        'seller-owner',
+        sellerId,
+        `Owner.${randomUUID()}@example.test`,
+      );
+      await unit(() => invitations.add(market, owner));
+
+      // Another address, same seller: invitations_market_id_seller_id_owner_pending_key.
+      await expect(
+        unit(() =>
+          invitations.add(
+            market,
+            sellerInvitation('seller-owner', sellerId, `Other.${randomUUID()}@example.test`),
+          ),
+        ),
+      ).rejects.toBeInstanceOf(InvitationAlreadyPendingError);
+      // A staff invitation for the seller is not an owner invitation.
+      await unit(() =>
+        invitations.add(
+          market,
+          sellerInvitation('staff', sellerId, `Staff.${randomUUID()}@example.test`),
+        ),
+      );
+
+      await decide(owner.state.id, 'revoke', NOW);
+      const next = sellerInvitation('seller-owner', sellerId, `Next.${randomUUID()}@example.test`);
+      await unit(() => invitations.add(market, next));
+      const loaded = (await unit(() => invitations.findById(market, next.state.id)))!;
+      loaded.dispatch(HASH(), NOW, 60);
+      await unit(() => invitations.save(market, loaded));
+      await decide(next.state.id, 'accept', NOW.add({ minutes: 1 }));
+      await expect(
+        unit(() =>
+          invitations.add(
+            market,
+            sellerInvitation('seller-owner', sellerId, `Third.${randomUUID()}@example.test`),
+          ),
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('purges decided invitations older than the cut-off only, never a pending one by that clause (Sajad 2)', async () => {
+      const cutoff = NOW.subtract({ hours: 30 * 24 });
+      const made: Record<string, Id<'Invitation'>> = {};
+      for (const [name, how, decidedAt] of [
+        ['acceptedOld', 'accept', cutoff.subtract({ hours: 24 })],
+        ['revokedOld', 'revoke', cutoff.subtract({ hours: 24 })],
+        ['acceptedNew', 'accept', cutoff.add({ hours: 24 })],
+        ['revokedNew', 'revoke', cutoff.add({ hours: 24 })],
+      ] as const) {
+        const issued = adminInvitation(`${name}.${randomUUID()}@example.test`, decidedAt);
+        issued.dispatch(HASH(), decidedAt, 60);
+        await unit(() => invitations.add(market, issued));
+        await decide(issued.state.id, how, decidedAt.add({ minutes: 1 }));
+        made[name] = issued.state.id;
+      }
+      // Pending and created long before the cut-off, but dispatched and unexpired.
+      const pendingOld = adminInvitation(
+        `Pending.${randomUUID()}@example.test`,
+        cutoff.subtract({ hours: 48 }),
+      );
+      pendingOld.dispatch(HASH(), cutoff.subtract({ hours: 48 }), 60 * 24 * 365);
+      await unit(() => invitations.add(market, pendingOld));
+
+      await unit(() => invitations.purge(market, NOW, cutoff));
+
+      expect(await exists(made.acceptedOld!)).toBe(false);
+      expect(await exists(made.revokedOld!)).toBe(false);
+      expect(await exists(made.acceptedNew!)).toBe(true);
+      expect(await exists(made.revokedNew!)).toBe(true);
+      expect(await exists(pendingOld.state.id)).toBe(true);
+    });
+
+    it("purges a never-dispatched pending invitation older than its kind's cut-off only (Ali 2026-10-08)", async () => {
+      const sellerId = await insertSeller();
+      const adminOld = adminInvitation(
+        `AdminOld.${randomUUID()}@example.test`,
+        NOW.subtract({ hours: 73 }),
+      );
+      const adminNew = adminInvitation(
+        `AdminNew.${randomUUID()}@example.test`,
+        NOW.subtract({ hours: 71 }),
+      );
+      const staffOld = sellerInvitation('staff', sellerId, `StaffOld.${randomUUID()}@example.test`);
+      const dispatchedOld = adminInvitation(
+        `Sent.${randomUUID()}@example.test`,
+        NOW.subtract({ hours: 100 }),
+      );
+      dispatchedOld.dispatch(HASH(), NOW.subtract({ hours: 100 }), 60 * 24 * 30);
+      for (const invitation of [adminOld, adminNew, staffOld, dispatchedOld]) {
+        await unit(() => invitations.add(market, invitation));
+      }
+
+      // A cut-off for admin only (now - 72 h): staff has none, so it is left alone.
+      await unit(() =>
+        invitations.purge(market, NOW, NOW.subtract({ hours: 30 * 24 }), {
+          admin: NOW.subtract({ hours: 72 }),
+        }),
+      );
+
+      expect(await exists(adminOld.state.id)).toBe(false);
+      expect(await exists(adminNew.state.id)).toBe(true);
+      expect(await exists(staffOld.state.id)).toBe(true);
+      // Dispatched: its expiry decides, not its age.
+      expect(await exists(dispatchedOld.state.id)).toBe(true);
     });
 
     it('purges pending invitations past their expiry and decisions older than the cut-off', async () => {

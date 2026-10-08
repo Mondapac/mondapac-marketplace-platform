@@ -527,8 +527,31 @@ describe.each(TEST_MARKETS)(
         );
       });
 
-      it('a reset voids the open challenges, keeps the second factor and opens no session (HF11; Hassan I2 (a), (d))', async () => {
+      it('a reset voids the open challenges, keeps the second factor and its HF2 block, and opens no session (HF11; Hassan I2 (a), (d), I-4)', async () => {
         const { email, accountId } = await verified(population);
+        // A wrong guess leaves the address's sign-in counters; an HF2 block sits beside them.
+        expect((await post(population, 'sign-in', { email, password: 'wrong guess' })).status).toBe(
+          401,
+        );
+        const { rows: signIn } = await sql.query<{ account_key: Buffer }>(
+          `SELECT account_key FROM identity.sign_in_throttles WHERE market_id = $1
+          AND kind = 'sign-in.account' ORDER BY window_started_at DESC LIMIT 1`,
+          [code],
+        );
+        const accountKey = signIn[0]!.account_key;
+        const factorKey = randomBytes(32);
+        await sql.query(
+          `INSERT INTO identity.sign_in_throttles (market_id, tenant_id, kind, key_hash,
+             account_key, window_started_at, attempts, blocked_until)
+           VALUES ($1, 'default', 'second-factor.account', $2, $3, $4, 10, $5)`,
+          [
+            code,
+            factorKey,
+            accountKey,
+            new Date(clock.now().epochMilliseconds),
+            new Date(clock.now().add({ hours: 24 }).epochMilliseconds),
+          ],
+        );
         const token = await resetToken(population, email);
         await openChallengeAndFactor(accountId);
         expect(await challengesAndFactors(accountId)).toEqual({ challenges: 1, factors: 1 });
@@ -539,6 +562,15 @@ describe.each(TEST_MARKETS)(
         expect(reset.headers['set-cookie']).toBeUndefined();
         expect(await challengesAndFactors(accountId)).toEqual({ challenges: 0, factors: 1 });
         expect(await liveSessions(accountId)).toEqual([]);
+        // Ali 2026-10-08 (I-4, 6.8): nothing lifts the HF2 block early, a reset included; only the
+        // two sign-in counters of the address go.
+        const { rows: left } = await sql.query<{ kind: string }>(
+          `SELECT kind FROM identity.sign_in_throttles WHERE market_id = $1 AND account_key = $2
+          ORDER BY kind`,
+          [code, accountKey],
+        );
+        expect(left.map((r) => r.kind)).not.toContain('sign-in.account');
+        expect(left.map((r) => r.kind)).toContain('second-factor.account');
       });
 
       it('a change voids the open challenges and keeps the second factor (HF11; Hassan I2 (d))', async () => {

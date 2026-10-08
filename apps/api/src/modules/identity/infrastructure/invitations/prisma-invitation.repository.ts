@@ -149,13 +149,23 @@ export class PrismaInvitationRepository implements InvitationRepository {
     market: MarketContext,
     now: Temporal.Instant,
     decidedBefore: Temporal.Instant,
+    undispatchedCreatedBefore: Readonly<Partial<Record<InvitationKind, Temporal.Instant>>> = {},
   ): Promise<number> {
+    // A never-dispatched invitation (no token, so no expiry) still holds its pending keys; it
+    // goes once it is older than its kind's lifetime (Ali 2026-10-08; data design 9).
+    const undispatched = INVITATION_KINDS.flatMap((kind) => {
+      const before = undispatchedCreatedBefore[kind];
+      return before === undefined
+        ? []
+        : [{ state: 'pending', kind, tokenHash: null, createdAt: { lt: toDate(before) } }];
+    });
     const { count } = await this.prisma.tx(market).identityInvitation.deleteMany({
       where: {
         marketId: market.marketId,
         OR: [
           { state: 'pending', expiresAt: { lt: toDate(now) } },
           { state: { in: ['accepted', 'revoked'] }, decidedAt: { lt: toDate(decidedBefore) } },
+          ...undispatched,
         ],
       },
     });

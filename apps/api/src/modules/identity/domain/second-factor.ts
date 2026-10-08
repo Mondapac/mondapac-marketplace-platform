@@ -39,7 +39,7 @@ export interface SecondFactorState {
 /** Why a factor change was refused. One code: the caller answers the user its own code. */
 export type SecondFactorRefused = {
   readonly code: 'second-factor.refused';
-  readonly reason: 'wrong-state' | 'step-not-fresh' | 'no-replacement';
+  readonly reason: 'wrong-state' | 'step-not-fresh' | 'no-replacement' | 'code-spent';
 };
 
 /** A factor that would break an invariant of 3.10: a programmer error, never a user's. */
@@ -193,12 +193,12 @@ export class SecondFactor {
   useRecoveryCode(position: number, now: Temporal.Instant): Result<void, SecondFactorRefused> {
     if (this.#state.state !== 'active') return err(refused('wrong-state'));
     const codes = this.#state.recoveryCodes;
-    if (!codes.some((code) => code.position === position && code.usedAt === null)) {
-      return err(refused('wrong-state'));
-    }
+    const code = codes.find((candidate) => candidate.position === position);
+    if (code === undefined) return err(refused('wrong-state'));
+    if (code.usedAt !== null) return err(refused('code-spent'));
     this.change({
-      recoveryCodes: codes.map((code) =>
-        code.position === position ? { ...code, usedAt: now } : code,
+      recoveryCodes: codes.map((candidate) =>
+        candidate.position === position ? { ...candidate, usedAt: now } : candidate,
       ),
     });
     return ok(undefined);
@@ -309,10 +309,21 @@ export class SecondFactor {
   }
 }
 
-/** Ten unused codes at positions 1 to 10, in the order given. */
+/** The bytes as lower-case hex, to compare hashes by value (no Node API in the domain). */
+const hexOf = (bytes: Uint8Array): string =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+/**
+ * Ten unused codes at positions 1 to 10, in the order given. Ten distinct codes have ten
+ * distinct hashes, so a repeated hash is a generator fault and is refused (Hassan L-3): one code
+ * would otherwise sit at two positions and could be spent twice.
+ */
 function freshCodes(hashes: readonly Uint8Array[]): StoredRecoveryCode[] {
   if (hashes.length !== RECOVERY_CODES.count) {
     throw new SecondFactorInvariantError(`exactly ${RECOVERY_CODES.count} recovery codes`);
+  }
+  if (new Set(hashes.map(hexOf)).size !== hashes.length) {
+    throw new SecondFactorInvariantError('the recovery codes are distinct');
   }
   return hashes.map((codeHash, index) => ({
     position: index + 1,

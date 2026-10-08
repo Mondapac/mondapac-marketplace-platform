@@ -142,6 +142,14 @@ describe.each([
     ['a staff invitation without a seller', { kind: 'staff' }],
     ['a name on an admin invitation', { displayName: 'Someone' }],
     ['a seller-owner invitation without a name', { kind: 'seller-owner', sellerId: SELLER_ID }],
+    [
+      'a seller-owner name with a bidi control',
+      { kind: 'seller-owner', sellerId: SELLER_ID, displayName: 'Shop\u202eOwner' },
+    ],
+    [
+      'an untrimmed seller-owner name',
+      { kind: 'seller-owner', sellerId: SELLER_ID, displayName: ' Shop Owner' },
+    ],
     ['a token without an expiry', { tokenHash: HASH }],
     ['a pending invitation without an address', { email: null }],
     [
