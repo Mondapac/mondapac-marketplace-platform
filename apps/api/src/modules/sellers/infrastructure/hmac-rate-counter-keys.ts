@@ -18,7 +18,9 @@ const RATE_COUNTER_INFO = 'sellers.rate-counter';
  * {@link RateCounterKeys} (data design 3.11): HMAC-SHA-256 under a key derived with HKDF-SHA-256
  * from the sellers stack secret. The parts are a JSON array (kind, Market, subject), so no two
  * different inputs share a message and two kinds never share a key. The secret and the derived
- * key are never logged; rotating them only resets the counters.
+ * key are never logged. The same secret also feeds the identifier index through the HKDF label
+ * `sellers.identifier-index`, so rotating it resets the counters AND rotates every
+ * `identifier_index` (a recompute batch, sellers data design 4.4).
  */
 export class HmacRateCounterKeys implements RateCounterKeys {
   readonly #key: Buffer;

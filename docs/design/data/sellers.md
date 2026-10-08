@@ -122,7 +122,7 @@ encrypted column under S4.
 | `address_timezone` | `text` | yes | 2 | Clear. The zone the operating address gives (the region's `default`, D 4.1), stored at every address save so that no read decrypts the address to derive it (4.3, zero unwrap) and the reviewer and `certification` (guardrail 3: the earliest boundary of the chosen and the address zone) can read it. CHECK as `operating_timezone`. No column for coordinates, ever |
 | `draft_slug` | `text COLLATE "C"` | yes | 2 (Q-M25) | Clear. The shop slug the seller chose in the draft, normalised by the application. CHECK `^[a-z0-9]+(-[a-z0-9]+)*$` and `char_length BETWEEN 3 AND 50`, the rule of `shop_slugs_slug_check` (3.5); the reserved words stay in Market configuration, never in the CHECK. **No unique key and no index**: a draft slug is not held, and uniqueness is decided only when the first submission holds it in `shop_slugs` (T1). Not public while a draft; personal-adjacent for a sole trader (10.4); removed with the row |
 | `identifier_scheme` | `text` | yes | 3 | Clear scheme code from Market configuration (`abn`, `zz-corp-no`). CHECK `^[a-z][a-z0-9-]{0,31}$` |
-| `identifier_ciphertext` | `text` | yes | 3 | **Personal**, Enc, `sellers.seller-file.identifier`: the normalised value |
+| `identifier_ciphertext` | `text` | yes | 3 | **Personal**, Enc, `sellers.seller-file.identifier`: the normalised value. CHECK envelope shape, length 41 to 512 (4.5) |
 | `identifier_index` | `bytea` | yes | 3 | **Personal (pseudonymous)**, S5. CHECK `octet_length = 32`. CHECK: the three identifier columns are all NULL or all set |
 | `approved_revision_id` | `uuid` | yes | 5 | V1 pointer (ADR-0009 decision 2). FK `(market_id, seller_id, approved_revision_id)` → `business_file_revisions (market_id, seller_id, id)`, RESTRICT: the pointer can only name a revision **of this seller** (measured) |
 | `public_store_name` | `text` | yes | 7a-decide | The store name of the approved revision, copied in every unit that moves the pointer: a reviewer's approval, the automatic approval and an admin's edit of an approved seller (D 3.1, H1). CHECK `(approved_revision_id IS NULL) = (public_store_name IS NULL)` and S7. Why it exists: Q-M2 (confirmed) |
@@ -160,6 +160,8 @@ encrypted column under S4.
   holds `draft_slug`; `my-file.save-slug` with a different value deletes the never-public held row
   in the same unit (slice 5); the admin `seller.change-slug` writes both; the purge deletes both.
   Until slice 5 no held row exists, so the invariant holds trivially.
+- **Implemented in slice 3** (migration `20261008160000_sellers_identifier_tax`, 2026-10-08, section
+  20): the three identifier columns, their CHECKs and the partial index above.
 - **Implemented in slice 2b** (migration `20261008130000_sellers_file_details`, 2026-10-08): the
   slice-2 rows above, their CHECKs and `(market_id, store_name_key)`; constraint names in 18.
 
@@ -346,6 +348,9 @@ ALTER TABLE "sellers"."tax_registration_periods"
   cancelled: a `DELETE` of that row only, audited, under the root's version, which also re-opens
   the previous period (its `valid_to` back to NULL) (D 14.3 Q-M13). "Not started" is a time rule
   against `Clock`, so the use case enforces it; `DELETE` is granted from slice 3.
+
+**Implemented in slice 3** (section 20): the table, its CHECKs, the exclusion constraint and the
+grant `SELECT, INSERT, UPDATE (valid_to), DELETE`.
 
 ### 3.8 `sellers.store_profiles` and `sellers.store_profile_revisions` (slices 1 and 12; V1)
 
@@ -570,7 +575,7 @@ secret as identity's throttle secret (ID-data 3.5, H4). It is a different secret
 at boot, and backed up like the wrapping key (Hassan, G2). I propose that `sellers` derives two
 keys from it with HKDF-SHA-256 and distinct labels, `sellers.identifier-index` and
 `sellers.rate-counter` (3.11), so the module needs one secret and the two hashes can never be
-compared (O3, Hassan to confirm). Rotation is not needed before launch (Hassan). It recomputes every index, which needs every seller's
+compared (O3, Hassan to confirm). Rotation is not needed before launch (Hassan). Rotating the shared sellers secret also rotates every `identifier_index` (HKDF label `sellers.identifier-index`) as well as the rate-counter keys. It recomputes every index, which needs every seller's
 identifier decrypted under that seller's key. That is a batch job, not a migration, and while it
 runs, uniqueness depends on old and new values never being compared with each other. The procedure
 is open (14, O3). A key-version column is not added now; if rotation needs one, it is an
@@ -595,8 +600,9 @@ writing an unbounded value, not the field limit (the application checks that bef
 | `phone_ciphertext` | 32 characters | 211 | 512 |
 | `contact_email_ciphertext` | 254 characters | 1,395 | 2048 |
 | `address_ciphertext`, `registered_address_ciphertext` | JSON of at most 12 fields (the `address.format` schema caps it) of at most 120 characters, keys at most 32 | about 8,330 | 16384 |
+| `identifier_ciphertext` (slice 3) | 64 characters (`IDENTIFIER_INPUT_MAX_LENGTH`; the real schemes are 9 to 11) | 382 | 512 |
 
-Later ciphertext columns (identifier, revision content, register values, history, store profile
+Later ciphertext columns (revision content, register values, history, store profile
 texts) get their bounds by the same rule in their slice's migration. O2 (14) stays open only for a
 future envelope version that would not fit these bounds; such a version needs a migration that
 widens them first.
@@ -704,7 +710,7 @@ rows) and arrives with the slice that first deletes from the table.
 | `seller_admin_settings` | `SELECT, INSERT, UPDATE` | 18 | |
 | `seller_allowed_product_types` | `SELECT, INSERT, DELETE` | 14 | A code row is added or removed, never edited |
 | `seller_tax_profiles` | `SELECT, INSERT, UPDATE` | 18 | |
-| `tax_registration_periods` | `SELECT, INSERT`, `UPDATE (valid_to)` | 3 | V2: a period is only closed; a future period may be cancelled (3.7, Q-M13) |
+| `tax_registration_periods` | `SELECT, INSERT`, `UPDATE (valid_to)` | 3 | `DELETE` is granted in slice 3 because the repository's cancellation path ships in this slice (the cancel use case comes later). V2: a period is only closed; a future period may be cancelled (3.7, Q-M13) |
 | `store_profiles` | `SELECT, INSERT, UPDATE` | 18 | |
 | `store_profile_revisions` | `SELECT, INSERT` | 18 | Insert-only (3.8) |
 | `contact_detail_history` | `SELECT, INSERT` | 18 | V4 append-only |
@@ -789,7 +795,7 @@ would run against a deployed environment that holds `sellers` rows. Every migrat
 | Change | How |
 |---|---|
 | New nullable column with no default (slices 2, 3, 5, 7a-decide, 12) | `ALTER TABLE … ADD COLUMN`: a catalog change, brief `ACCESS EXCLUSIVE` lock, no rewrite |
-| CHECK or FK on an existing table | `ADD CONSTRAINT … NOT VALID`, then `VALIDATE CONSTRAINT` in the same file (`SHARE UPDATE EXCLUSIVE`; writes continue). The new columns are NULL in every existing row, so validation finds nothing |
+| CHECK or FK on an existing table | `ADD CONSTRAINT … NOT VALID`, then `VALIDATE CONSTRAINT`. Prisma applies a file as one implicit transaction, so a `VALIDATE` in the same file as its `ADD COLUMN` or `ADD CONSTRAINT` gains no lock benefit (the earlier `ACCESS EXCLUSIVE` lock is held to the end). A populated live table puts `VALIDATE` in its own, later migration (`SHARE UPDATE EXCLUSIVE`; writes continue). The new columns are NULL in every existing row, so validation finds nothing |
 | Index on an existing table (migrations 3, 4, 7, 8, 12) | With rows in a deployed environment: `CREATE INDEX CONCURRENTLY`, hand-written, **alone in its migration file**, because it cannot run in a transaction block. Whether Prisma applies a single-statement `CONCURRENTLY` file correctly is spike S3. Without such an environment: plain `CREATE INDEX` in the slice's migration |
 | A NOT NULL column on an existing table | Avoided by design: every NOT NULL column of `seller_files` is created in slice 1 with the table. If one is needed later: add nullable, backfill in batches by `(market_id, seller_id)` keyset, add `CHECK (col IS NOT NULL) NOT VALID`, validate, `SET NOT NULL` (PostgreSQL then skips the scan), drop the CHECK |
 | Rename or type change | Not planned. Expand (new column, dual write), backfill, contract in a later release |
@@ -1212,3 +1218,46 @@ creates files through `SellerFile.create`, which sets `draft_complete = false`, 
 true. Slice 2 tests also cover a deterministic lost-update case (the version bumped by another unit
 between load and save changes 0 rows, `conflict.stale`) and a retired slug, own or another
 seller's, read as `taken` through the Prisma `findBySlug` mapping.
+
+## 20. Slice 3 migration `20261008160000_sellers_identifier_tax` (2026-10-08)
+
+| Reviewer | Verdict | Date |
+|---|---|---|
+| Mojtaba (database-designer) | Approved with D1 to D3 applied | 2026-10-08 |
+
+Written by Hossein from 3.1, 3.7, 4.5, 8 and 9 (the Prisma part by hand, because the schema change is
+two columns' worth of model and one table; `pnpm db:check-reversible` runs up, down, up and the drift
+check, and passes on PostgreSQL 16). It depends on the P2 migration
+(`btree_gist` in schema `extensions`).
+
+| Object | What it adds |
+|---|---|
+| `seller_files` (existing; columns nullable, no default: a catalog change, 9.3) | `identifier_scheme`, `identifier_ciphertext`, `identifier_index` (`bytea`). `seller_files_identifier_scheme_check` (pattern of 3.1), `_identifier_ciphertext_check` (envelope shape and `BETWEEN 41 AND 512`), `_identifier_index_check` (`octet_length = 32`), `_identifier_set_check` (all three NULL or all set). Each CHECK is added `NOT VALID` and then `VALIDATE`d in the same file (9.3; the file is one implicit transaction, so this gives no lock benefit, which is acceptable because no deployed environment holds rows). Partial index `seller_files_market_id_identifier_index_idx (market_id, identifier_index) WHERE identifier_index IS NOT NULL` (plain `CREATE INDEX`: no deployed environment holds rows, 9.3) |
+| `tax_registration_periods` (new) | The columns of 3.7 plus `market_id` and `tenant_id` (C1). Primary key `id`; composite FK `(market_id, seller_id)` to `seller_tax_profiles`, `RESTRICT`; index `(market_id, seller_id, valid_from)`; CHECKs `_market_id_check`, `_tenant_id_check`, `_effective_zone_check` (the `operating_timezone` pattern, at most 64), `_valid_to_check` (`valid_to IS NULL OR valid_to > valid_from`), `_recorded_by_kind_check` (`seller`, `admin`); exclusion constraint `tax_registration_periods_no_overlap_excl` exactly as 3.7 |
+| Grants | `tax_registration_periods`: `SELECT, INSERT, UPDATE (valid_to), DELETE` to `mondapac_app` (section 8; `DELETE` is granted here because the repository's cancellation path for a period that has not started ships in slice 3, Q-M13; the cancel use case comes later). Nothing else changes |
+
+Decisions taken here (confirmed by Mojtaba in his review: DELETE grant now, bound 41 to 512, the gist exclusion, no FK for `identifier_scheme`):
+
+- **Ciphertext bound 512** for `identifier_ciphertext`. A normalised identifier is at most 64
+  characters (the application's input bound, `IDENTIFIER_INPUT_MAX_LENGTH`; the real schemes are 9 to
+  11) of at most 4 bytes, so at most 382 characters in the `v1` envelope (4.5); 512 is the bound of
+  `phone_ciphertext` and the next power of two.
+- **The exclusion constraint's `market_id WITH =`** is on a `varchar(8)`: it needed no operator-class
+  name, the default class is found by type (9.2). Measured by the db test below on both Market
+  fixtures.
+- **No unique key on `identifier_index`**: a draft gives no right to a number (brief s7). The claim
+  is slice 7a-decide's `identifier_claims`.
+- **`down.sql`** revokes the grant, drops the index and the four CHECKs, drops the table (its CHECKs,
+  the exclusion constraint, the index and the FK go with it) and then the three columns.
+
+Tests (`apps/api/test/db/sellers-files.db-spec.ts`, both Market fixtures; `outbox-catalog.db-spec.ts`;
+`privileges.db-spec.ts` through `expected-privileges.ts`): every CHECK of the three columns with
+accepted and refused rows (envelope shape, 41 and 512, scheme pattern, index length, all-or-none);
+the partial index by `pg_indexes` and in the checked-in list; two files may hold one index; the
+exclusion constraint refuses overlapping, nested, open-with-open and one-millisecond overlaps and
+accepts an adjacent period and another seller's identical span, and is in the catalog test of
+exclusion constraints by name and definition (`contype = 'x'`); every CHECK and the foreign key of the
+periods table; `42501` for an update of any column but `valid_to`; a repository round trip that
+closes the open period, answers "as of" an instant and keeps the local date and zone; a cancellation
+that re-opens the previous period; a lost race on the root's version changes nothing, and of two
+parallel recordings exactly one commits.

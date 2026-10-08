@@ -17,6 +17,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
+  'catalog.products_market_id_owner_seller_id_created_at_idx':
+    'CREATE INDEX products_market_id_owner_seller_id_created_at_idx ON catalog.products USING btree (market_id, owner_seller_id, created_at, id) WHERE (owner_seller_id IS NOT NULL)',
+  'catalog.products_market_id_pending_submitted_at_idx':
+    'CREATE INDEX products_market_id_pending_submitted_at_idx ON catalog.products USING btree (market_id, pending_submitted_at, id) WHERE (pending_revision_id IS NOT NULL)',
+  'catalog.products_market_id_published_revision_id_key':
+    'CREATE UNIQUE INDEX products_market_id_published_revision_id_key ON catalog.products USING btree (market_id, published_revision_id) WHERE (published_revision_id IS NOT NULL)',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.outbox_market_id_event_id_unpublished_idx':
@@ -35,6 +41,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'sellers.seller_files_market_id_identifier_index_idx':
+    'CREATE INDEX seller_files_market_id_identifier_index_idx ON sellers.seller_files USING btree (market_id, identifier_index) WHERE (identifier_index IS NOT NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
     "CREATE UNIQUE INDEX shop_slugs_market_id_seller_id_held_key ON sellers.shop_slugs USING btree (market_id, seller_id) WHERE (state = 'held'::text)",
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':
@@ -111,5 +119,22 @@ describe('outbox tables and partial indexes (database catalog)', () => {
     expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual(
       PARTIAL_INDEXES,
     );
+  });
+
+  it('has exactly the checked-in exclusion constraints (Prisma does not model them)', async () => {
+    const { rows } = await sql.query<{ name: string; definition: string }>(
+      `SELECT n.nspname || '.' || c.conname AS name, pg_get_constraintdef(c.oid) AS definition
+         FROM pg_constraint c
+         JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE c.contype = 'x' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg\\_%'
+        ORDER BY 1`,
+    );
+
+    // docs/design/data/sellers.md 3.7 and 9.5: no two periods of one seller overlap.
+    expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual({
+      'sellers.tax_registration_periods_no_overlap_excl':
+        "EXCLUDE USING gist (market_id WITH =, seller_id WITH =, tstzrange(valid_from, valid_to, '[)'::text) WITH &&)",
+    });
   });
 });

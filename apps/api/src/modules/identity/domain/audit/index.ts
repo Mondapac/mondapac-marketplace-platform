@@ -9,12 +9,17 @@ import { ROLE_KINDS, ROLE_SCOPES } from '../role';
 // flags only: never an email, a name, a role name or a reason (R5, VER-13, AC 12). Every new or
 // changed action changes the checked-in catalogue snapshot, for the security review.
 //
-// Slice 6b: the retrofit of slice 5. Later slices add their actions here (PA 5).
+// Slice 6b: the retrofit of slice 5. Slice 8a-1: the seed-version upgrade. Later slices add
+// their actions here (PA 5).
 
 /**
- * A system role was created by the seed routine for one hosted Market (identity design 5.6;
- * PA 5 row 1). Target: the role. Written once per role per Market, when the role is created;
- * a run that finds the role creates nothing and writes nothing. No backfill (PA 5).
+ * A system or (slice 8a-1) default role was created by the seed routine for one hosted Market
+ * (identity design 5.6; PA 5 row 1). Target: the role. Written once per role per Market, when
+ * the role is created; a run that finds the role creates nothing and writes nothing. No backfill
+ * (PA 5). A default role's keys are those of its seed file at `seedVersion` (a change raises the
+ * version), so the row names them by version: the append-only test/contracts/role-seed.snapshot.json
+ * keeps the keys of every version that shipped (Mohammad 2, Hassan M-1). A later change is
+ * `identity.role.seed-applied`.
  */
 export const RoleSeeded = defineAuditAction({
   action: 'identity.role.seeded',
@@ -24,6 +29,41 @@ export const RoleSeeded = defineAuditAction({
     scope: auditField.enumOf(ROLE_SCOPES),
     kind: auditField.enumOf(ROLE_KINDS),
     seedVersion: auditField.integer(),
+  },
+});
+
+/**
+ * Most keys one seeded role may hold, and so most keys one `identity.role.seed-applied` row lists
+ * as added, and as removed. `checkRoleSeed` and `checkRoleSeedKeys` refuse a seed role with more,
+ * at boot and on every run (Mohammad 3, Hassan L-1). Since every version of a role holds at most
+ * this many keys, an upgrade adds at most 40 and removes at most 40, however many versions a
+ * Market that is behind jumps over (it goes straight to the file's version). The bytes are
+ * bounded separately: a seeded role's keys must also fit the byte budget of
+ * `application/roles/role-seed-budget.ts`, measured from this action's own encoding, so the
+ * worst row fits the writer's 4 KB per side (PA W4; tested in
+ * test/contracts/role-seed.contract.spec.ts). "Removed" is a subset of a previous version that
+ * passed the same budget; if the budget formula changes, older snapshot entries are re-checked.
+ */
+export const MAX_SEED_KEYS_PER_ROW = 40;
+
+/**
+ * A newer seed version applied to a stored system or default role (identity design 5.6; PA 5
+ * row 8a-1; Ali 2026-10-08: "compare seed_version, then an audited update", never
+ * `ON CONFLICT DO NOTHING`). Target: the role. Written in the unit of the update, one row per
+ * role per upgrade; an equal or older stored version writes nothing. The keys are permission
+ * keys known to the registry or its retired list (W4); never the role's name (R5).
+ */
+export const RoleSeedApplied = defineAuditAction({
+  action: 'identity.role.seed-applied',
+  targetType: 'identity.role',
+  actors: ['system'],
+  before: {
+    seedVersion: auditField.integer(),
+  },
+  after: {
+    seedVersion: auditField.integer(),
+    addedKeys: auditField.listOf(auditField.permissionKey(), MAX_SEED_KEYS_PER_ROW),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_SEED_KEYS_PER_ROW),
   },
 });
 
@@ -80,6 +120,7 @@ export const AccountRoleAssigned = defineAuditAction({
 /** Every audited action of identity, for its module's registration. */
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
+  RoleSeedApplied,
   SellerAccessFounded,
   SellerMemberAdded,
   AccountRoleAssigned,

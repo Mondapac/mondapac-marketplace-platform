@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { rateVerdict, type RateLimit } from '../../domain/rate-limits';
+import type { DraftRequirements } from '../../domain/seller-file';
+import type { SellerMarketPolicy } from '../ports/seller-market-policy';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -126,4 +128,19 @@ export async function fileExists(
     { readOnly: true },
   );
   return read.ok && read.value;
+}
+
+/**
+ * What the Market asks of a complete draft (design 3.1, 4.1), from its configuration. Null when
+ * the Market has no `sellers` section: the caller answers `sellers.unavailable`, it never judges
+ * a draft by another Market's rule.
+ */
+export function draftRequirementsOf(
+  policy: SellerMarketPolicy,
+  market: MarketContext,
+): DraftRequirements | null {
+  const rule = policy.businessIdentifier(market);
+  return rule === null
+    ? null
+    : { identifierRequired: rule.required, identifierScheme: rule.scheme };
 }

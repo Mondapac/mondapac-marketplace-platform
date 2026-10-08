@@ -9,6 +9,7 @@ import type { Sealed } from '../../domain/sealed';
 import type { DraftRefused } from '../../domain/seller-file';
 import type { ZoneState } from '../../domain/zone';
 import {
+  draftRequirementsOf,
   fileExists,
   logDraftOutcome,
   reserveRateLimits,
@@ -33,6 +34,7 @@ import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
+import type { SellerMarketPolicy } from '../ports/seller-market-policy';
 import type {
   AddressFormats,
   DraftServiceArea,
@@ -80,6 +82,7 @@ export type MyFileSaveAddressFailure =
 export interface MyFileSaveAddressDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
+  readonly policy: SellerMarketPolicy;
   readonly cipher: SellerFileCipher;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
@@ -142,13 +145,14 @@ export class MyFileSaveAddress extends UseCase<
     const owner = sellerActorOf(context);
     if (owner === null) return err({ code: 'access.denied' });
     const { market } = context;
-    const { unitOfWork, files, addressFormats, zones, areas, clock } = this.deps;
+    const { unitOfWork, files, policy, addressFormats, zones, areas, clock } = this.deps;
 
     const reserved = await reserveRateLimits(this.deps, context, SAVE_LIMITS, owner.accountId);
     if (!reserved.ok) return reserved;
 
     const format = addressFormats.formatOf(market);
-    if (format === null) return err({ code: 'sellers.unavailable' });
+    const requirements = draftRequirementsOf(policy, market);
+    if (format === null || requirements === null) return err({ code: 'sellers.unavailable' });
     const problems: FieldProblem[] = [];
     const operating = parseAddress(input.address, format, 'address');
     if (!operating.ok) problems.push(...operating.error);
@@ -191,11 +195,12 @@ export class MyFileSaveAddress extends UseCase<
           },
         },
         clock.now(),
+        requirements,
       );
       if (!applied.ok) return applied;
       if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
       return ok({
-        ...draftSaved(file),
+        ...draftSaved(file, requirements),
         serviceArea: area,
         outsideServiceArea: area?.sellerOnboardingEnabled !== true,
         timezone: file.state.draft.zone,

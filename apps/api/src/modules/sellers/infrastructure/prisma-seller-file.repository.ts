@@ -2,6 +2,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId, PlainText } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { SellerFileRepository } from '../application/ports/seller-file.repository';
+import { identifierIndexKeyOf, type DraftIdentifier } from '../domain/business-identifier';
 import type { Sealed, SealedField } from '../domain/sealed';
 import {
   NEW_SELLER_ADMIN_SETTINGS,
@@ -42,6 +43,9 @@ const FILE_COLUMNS = {
   timezoneSource: true,
   addressTimezone: true,
   draftSlug: true,
+  identifierScheme: true,
+  identifierCiphertext: true,
+  identifierIndex: true,
 } as const;
 
 /** A stored row that breaks the domain's rules: a fault of the data, never a value to use. */
@@ -72,6 +76,23 @@ function zoneOf(row: {
     operatingTimezone,
     timezoneSource: timezoneSource as TimezoneSource,
     addressTimezone,
+  };
+}
+
+function identifierOf(row: {
+  readonly identifierScheme: string | null;
+  readonly identifierCiphertext: string | null;
+  readonly identifierIndex: Uint8Array | null;
+}): DraftIdentifier | null {
+  const { identifierScheme, identifierCiphertext, identifierIndex } = row;
+  // The CHECK `seller_files_identifier_set_check` keeps the three together.
+  if (identifierScheme === null || identifierCiphertext === null || identifierIndex === null) {
+    return null;
+  }
+  return {
+    scheme: identifierScheme,
+    sealed: sealed<'identifier'>(identifierCiphertext)!,
+    index: identifierIndexKeyOf(new Uint8Array(identifierIndex)),
   };
 }
 
@@ -199,6 +220,7 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
         zone: zoneOf(row),
         // Read back as stored (the CHECK holds the format); the reserved words are not re-checked.
         slug: row.draftSlug as ShopSlug | null,
+        identifier: identifierOf(row),
       },
     });
   }
@@ -228,6 +250,9 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
         timezoneSource: draft.zone?.timezoneSource ?? null,
         addressTimezone: draft.zone?.addressTimezone ?? null,
         draftSlug: draft.slug,
+        identifierScheme: draft.identifier?.scheme ?? null,
+        identifierCiphertext: draft.identifier?.sealed ?? null,
+        identifierIndex: draft.identifier === null ? null : Buffer.from(draft.identifier.index),
         draftComplete: state.draftComplete,
         lastChangedAt: toDate(state.lastChangedAt),
         version: state.version,

@@ -1,0 +1,77 @@
+[
+  {
+    "entry": "platform:platform-administrator@1",
+    "kind": "system",
+    "permissionKeys": []
+  },
+  {
+    "entry": "platform:onboarding-compliance@1",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.seller-access.approve",
+      "identity.seller-access.suspend",
+      "identity.seller-access.view",
+      "identity.seller-account.create"
+    ]
+  },
+  {
+    "entry": "platform:catalogue-moderator@1",
+    "kind": "default",
+    "permissionKeys": ["identity.seller-access.view"]
+  },
+  {
+    "entry": "platform:operations-support@1",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.customer-account.disable",
+      "identity.customer-account.view",
+      "identity.seller-access.view",
+      "identity.seller-account.reset-second-factor"
+    ]
+  },
+  {
+    "entry": "platform:finance@1",
+    "kind": "default",
+    "permissionKeys": ["identity.seller-access.view"]
+  },
+  {
+    "entry": "platform:viewer@1",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view"
+    ]
+  },
+  {
+    "entry": "seller:seller-owner@1",
+    "kind": "system",
+    "permissionKeys": []
+  },
+  {
+    "entry": "seller:store-manager@1",
+    "kind": "default",
+    "permissionKeys": ["identity.seller-role.view", "identity.team-member.view"]
+  },
+  {
+    "entry": "seller:order-fulfilment@1",
+    "kind": "default",
+    "permissionKeys": []
+  },
+  {
+    "entry": "seller:catalogue-stock@1",
+    "kind": "default",
+    "permissionKeys": []
+  },
+  {
+    "entry": "seller:customer-service@1",
+    "kind": "default",
+    "permissionKeys": []
+  },
+  {
+    "entry": "seller:bookkeeper@1",
+    "kind": "default",
+    "permissionKeys": []
+  }
+]

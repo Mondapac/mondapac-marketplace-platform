@@ -601,7 +601,7 @@ describe.each(MARKETS)('the audit writer in market %s (platform-audit.md 3.1)', 
       ).resolves.toEqual(['catalogue-not-sealed', null]);
     });
 
-    it('refuses every permission key before the registry exists (NO_PERMISSION_KEYS, 8a-1)', async () => {
+    it('refuses every permission key under the fail-closed lookup (NO_PERMISSION_KEYS, tests only since 8a-1)', async () => {
       const h = harness({ keys: NO_PERMISSION_KEYS });
 
       await expect(

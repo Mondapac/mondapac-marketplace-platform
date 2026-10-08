@@ -1,5 +1,34 @@
 [
   {
+    "type": "catalog.offer-created.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "offerId": "id",
+      "productId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-deleted.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "offerId": "id",
+      "productId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-moved.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "offerId": "id",
+      "fromProductId": "id",
+      "toProductId": "id",
+      "fromVariantIds": "listOf(id)",
+      "toVariantIds": "listOf(id)"
+    }
+  },
+  {
     "type": "catalog.platform-category-created.v1",
     "aggregateType": "platform-category",
     "fields": {
@@ -75,6 +104,13 @@
   {
     "type": "sellers.seller-file-created.v1",
     "aggregateType": "seller-file",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "sellers.tax-registration-recorded.v1",
+    "aggregateType": "seller-tax-profile",
     "fields": {
       "sellerId": "id"
     }

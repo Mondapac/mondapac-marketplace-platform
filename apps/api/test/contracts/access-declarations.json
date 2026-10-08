@@ -1,4 +1,6 @@
 [
+  { "name": "catalog.offer-sell-units", "rule": "anonymous" },
+  { "name": "catalog.offer-sell-units-system", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
@@ -21,7 +23,7 @@
   { "name": "identity.request-password-reset", "rule": "anonymous" },
   { "name": "identity.request-seller-verification", "rule": "anonymous" },
   { "name": "identity.reset-password", "rule": "anonymous" },
-  { "name": "identity.seed-system-roles", "rule": "system" },
+  { "name": "identity.seed-roles", "rule": "system" },
   { "name": "identity.seller-access-of", "rule": "anonymous" },
   { "name": "identity.seller-access-of-system", "rule": "system" },
   { "name": "identity.send-existing-account-mail", "rule": "system" },
@@ -56,7 +58,17 @@
     "whenSellerNotApproved": "allow"
   },
   {
+    "name": "sellers.my-file-save-identifier",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "sellers.my-file-save-slug",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "sellers.my-file-validate-identifier",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },

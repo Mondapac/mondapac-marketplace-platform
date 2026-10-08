@@ -9,6 +9,7 @@ export const SEALED_FIELDS = [
   'contact-email',
   'address',
   'registered-address',
+  'identifier',
 ] as const;
 export type SealedField = (typeof SEALED_FIELDS)[number];
 

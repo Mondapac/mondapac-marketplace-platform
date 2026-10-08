@@ -14,7 +14,7 @@ import {
   SESSION_REPOSITORY,
   type SessionRepository,
 } from '../../src/modules/identity/application/ports/session.repository';
-import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
@@ -119,7 +119,7 @@ describe.each(TEST_MARKETS)(
       }));
       relay = app.get<OutboxRelay>(OUTBOX_RELAY);
       dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
-      await app.get(SeedSystemRoles).execute(systemContext(market), {});
+      await app.get(SeedRoles).execute(systemContext(market), {});
     });
     afterEach(async () => {
       await app.close();

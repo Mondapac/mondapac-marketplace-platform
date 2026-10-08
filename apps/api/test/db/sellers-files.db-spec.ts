@@ -11,14 +11,25 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import request from 'supertest';
-import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SELLERS_FACADE, type SellersFacade } from '../../src/modules/sellers';
 import { BackfillSellerFiles } from '../../src/modules/sellers/application/use-cases/backfill-seller-files.use-case';
+import { MyFileValidateIdentifier } from '../../src/modules/sellers/application/use-cases/my-file-validate-identifier.use-case';
+import { MyFileSaveIdentifier } from '../../src/modules/sellers/application/use-cases/my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from '../../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
 import { MyFileCheckSlug } from '../../src/modules/sellers/application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../../src/modules/sellers/application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
 import { MyFileSaveGeneral } from '../../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
+import {
+  IDENTIFIER_INDEX,
+  type IdentifierIndex,
+} from '../../src/modules/sellers/application/ports/identifier-index';
+import {
+  TAX_PROFILE_REPOSITORY,
+  type TaxProfileRepository,
+} from '../../src/modules/sellers/application/ports/tax-profile.repository';
+import type { NormalisedIdentifier } from '../../src/modules/sellers/domain/business-identifier';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { PrismaShopSlugRepository } from '../../src/modules/sellers/infrastructure/prisma-shop-slug.repository';
 import { reservedWordsOf } from '../../src/modules/sellers/domain/reserved-words';
@@ -75,10 +86,12 @@ const tokenOf = (mail: MailMessage): string => {
 };
 
 /**
- * Stands in for identity slice 8a (the permission registry and role keys): until then identity's
- * check refuses every `permissions` rule. The Seller Owner system role holds every seller key, so
- * this admits an authenticated seller actor under a `permissions` rule and nothing else; the
- * sellers use cases still check ownership and the access state themselves.
+ * Isolates the sellers use cases from identity's gate, so that this file exercises sellers' own
+ * ownership and state logic, including for actors the real gate refuses first (a session of
+ * another Market, a suspended seller). It admits an authenticated seller actor under a
+ * `permissions` rule and nothing else. Since identity slice 8a-1 the real check admits the
+ * Seller Owner under every seller key; that path is covered by test/db/role-seed.db-spec.ts and
+ * the end-to-end tests of the sellers routes.
  */
 const sellerOwnerCheck: AuthorisationCheck = {
   check: (context, declaration) =>
@@ -135,7 +148,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
-    await app.get(SeedSystemRoles).execute(systemContext(market.marketId), {});
+    await app.get(SeedRoles).execute(systemContext(market.marketId), {});
   });
   afterEach(async () => {
     await app.close();
@@ -158,8 +171,13 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     }
   }
 
-  /** Signs a seller up and confirms the email in `marketCode`; answers the seller id. */
-  async function registerSeller(marketCode: string): Promise<Id<'Seller'>> {
+  /**
+   * Signs a seller up and confirms the email in `marketCode`; answers the seller id and the
+   * headers of the session it opened (cookie and CSRF token).
+   */
+  async function signUpSeller(
+    marketCode: string,
+  ): Promise<{ sellerId: Id<'Seller'>; headers: Record<string, string> }> {
     const email = `Seller.Owner+${randomUUID()}@Example.com`;
     const post = (path: string, body: object) =>
       request(app.getHttpServer())
@@ -174,9 +192,8 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     expect(signedUp.status).toBe(202);
     await settle();
     const mail = transport.sent.filter((message) => message.to === email)[0]!;
-    expect((await post('confirm-email', { token: tokenOf(mail), password: PASSWORD })).status).toBe(
-      200,
-    );
+    const confirmed = await post('confirm-email', { token: tokenOf(mail), password: PASSWORD });
+    expect(confirmed.status).toBe(200);
     await settle();
     const { rows } = await sql.query<{ seller_id: string }>(
       `SELECT m.seller_id FROM identity.seller_memberships m
@@ -184,8 +201,19 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         WHERE a.market_id = $1 AND a.email_normalized = $2`,
       [marketCode, email.toLowerCase()],
     );
-    return rows[0]!.seller_id as Id<'Seller'>;
+    const [cookie] = (confirmed.headers['set-cookie'] as unknown as string[])[0]!.split(';', 1);
+    return {
+      sellerId: rows[0]!.seller_id as Id<'Seller'>,
+      headers: {
+        'x-market-id': marketCode,
+        cookie: cookie!,
+        'x-csrf-token': (confirmed.body as { csrfToken: string }).csrfToken,
+      },
+    };
   }
+
+  const registerSeller = async (marketCode: string): Promise<Id<'Seller'>> =>
+    (await signUpSeller(marketCode)).sellerId;
 
   const fileOf = async (marketCode: string, sellerId: string) =>
     (
@@ -322,7 +350,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
 
   it('answers sellerSummaries alike to the anonymous and the system caller, never across Markets', async () => {
     const sellerId = await registerSeller(code);
-    await app.get(SeedSystemRoles).execute(systemContext(other), {});
+    await app.get(SeedRoles).execute(systemContext(other), {});
     const elsewhere = await registerSeller(other);
     const never = new SequenceIdGenerator(clock).next<'Seller'>();
     const ids = [never, sellerId, elsewhere, sellerId];
@@ -973,6 +1001,20 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         zones: ['Pacific/Auckland', 'Pacific/Chatham'],
       },
     }[code];
+    /** The missing parts as this Market sees them: the identifier only where it is required. */
+    const parts = (...list: string[]) =>
+      list.filter(
+        (part) =>
+          part !== 'identifier' ||
+          (app.get(MarketRegistry).get(marketOf(code).marketId).sellers?.businessIdentifier
+            .required ??
+            true),
+      );
+    /** A valid number of the Market's scheme (the checksums differ per scheme). */
+    const IDENTIFIER = {
+      AU: { typed: '51 824 753 556', normalised: '51824753556', display: '51 824 753 556' },
+      ZZ: { typed: '123-456-782', normalised: '123456782', display: '123-456-782' },
+    }[code];
     const GENERAL = {
       storeName: 'Al Noor Grocer',
       businessName: 'Al Noor Trading Pty Ltd',
@@ -1053,13 +1095,17 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
 
       expect(await app.get(MyFileSaveGeneral).execute(context, GENERAL)).toEqual({
         ok: true,
-        value: { version: 2, draftComplete: false, missing: ['address', 'timezone', 'slug'] },
+        value: {
+          version: 2,
+          draftComplete: false,
+          missing: parts('address', 'timezone', 'identifier', 'slug'),
+        },
       });
       const saved = await app.get(MyFileSaveAddress).execute(context, {
         address: FIXTURE.address,
         timezone: FIXTURE.zones[1],
       });
-      expect(saved.ok && saved.value.missing).toEqual(['slug']);
+      expect(saved.ok && saved.value.missing).toEqual(parts('identifier', 'slug'));
       expect(saved.ok && saved.value.draftComplete).toBe(false);
 
       const stored = await row(sellerId);
@@ -1163,13 +1209,16 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       expect(
         (await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address })).ok,
       ).toBe(true);
+      expect(
+        (await app.get(MyFileSaveIdentifier).execute(context, { identifier: IDENTIFIER.typed })).ok,
+      ).toBe(true);
       expect((await app.get(MyFileCheckSlug).execute(context, { slug: 'al-noor' })).ok).toBe(true);
       expect((await row(sellerId)).draft_slug).toBeNull();
       expect(
         (await app.get(MyFileSaveSlug).execute(context, { slug: `al-noor-${code.toLowerCase()}` }))
           .ok,
       ).toBe(true);
-      expect(await row(sellerId)).toMatchObject({ draft_complete: true, version: 4 });
+      expect(await row(sellerId)).toMatchObject({ draft_complete: true, version: 5 });
 
       // `suspended` and `approved` do not freeze the draft by themselves either. (A suspended
       // seller has no session in identity; the draft rule is the file's alone.)
@@ -1177,7 +1226,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         await setAccessState(sellerId, state);
         expect((await app.get(MyFileSaveGeneral).execute(context, GENERAL)).ok).toBe(true);
       }
-      expect((await row(sellerId)).version).toBe(6);
+      expect((await row(sellerId)).version).toBe(7);
     });
 
     it('proves only the read-to-write guard: a save writes over the version it read, a lost race is conflict.stale', async () => {
@@ -1261,7 +1310,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         value: {
           version: 2,
           draftComplete: false,
-          missing: ['storeName', 'businessName', 'phone', 'address', 'timezone'],
+          missing: parts('storeName', 'businessName', 'phone', 'address', 'timezone', 'identifier'),
         },
       });
       expect(await row(sellerId)).toMatchObject({ draft_slug: `noor-${suffix}`, version: 2 });
@@ -1312,7 +1361,10 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
             'UPDATE sellers.seller_files SET version = version + 1 WHERE seller_id = $1',
             [sellerId],
           );
-          const applied = file!.saveSlug(slug.value, clock.now());
+          const applied = file!.saveSlug(slug.value, clock.now(), {
+            identifierRequired: false,
+            identifierScheme: 'abn',
+          });
           if (!applied.ok) throw new Error('the slug is accepted by the aggregate');
           return ok(await files.saveDraft(marketContext, file!));
         });
@@ -1471,6 +1523,647 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         );
       }
       expect((await row(sellerId)).version).toBe(1);
+    });
+
+    describe('slice 3: business identifier and tax registration periods', () => {
+      const refuses = (statement: string, params: unknown[], constraint: string) =>
+        expect(sql.query(statement, params)).rejects.toMatchObject({ code: '23514', constraint });
+      const ciphertext = (length: number) => `v1.${'A'.repeat(length - 3)}`;
+      const indexBytes = (n: number) => Buffer.alloc(32, n);
+      const scheme = code === 'AU' ? 'abn' : 'zz-corp-no';
+      // Ids from a clock of its own (2031, a day apart per Market): the run clocks restart for
+      // each Market and would mint the same ids twice in this database.
+      const uniqueIds = new SequenceIdGenerator(
+        new FixedClock(
+          Temporal.Instant.from('2031-01-01T00:00:00Z').add({ hours: code === 'AU' ? 0 : 24 }),
+        ),
+      );
+      const foreign = code === 'AU' ? '123-456-782' : '51 824 753 556';
+      const identifierRow = async (sellerId: string) =>
+        (
+          await sql.query<{
+            identifier_scheme: string | null;
+            identifier_ciphertext: string | null;
+            identifier_index: Buffer | null;
+            draft_complete: boolean;
+            version: number;
+          }>(
+            `SELECT identifier_scheme, identifier_ciphertext, identifier_index, draft_complete, version
+               FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+            [code, sellerId],
+          )
+        ).rows[0]!;
+
+      it('holds the three identifier columns together and refuses what their CHECKs refuse', async () => {
+        const sellerId = await registerSeller(code);
+        const set = (sets: string, params: unknown[] = []) =>
+          sql.query(`UPDATE sellers.seller_files SET ${sets} WHERE seller_id = $1`, [
+            sellerId,
+            ...params,
+          ]);
+        await set('identifier_scheme = $2, identifier_ciphertext = $3, identifier_index = $4', [
+          scheme,
+          ciphertext(41),
+          indexBytes(1),
+        ]);
+        // The bound of 512 and the minimum of 41 (data design 4.5).
+        await set('identifier_ciphertext = $2', [ciphertext(512)]);
+        await refuses(
+          'UPDATE sellers.seller_files SET identifier_ciphertext = $2 WHERE seller_id = $1',
+          [sellerId, ciphertext(513)],
+          'seller_files_identifier_ciphertext_check',
+        );
+        await refuses(
+          'UPDATE sellers.seller_files SET identifier_ciphertext = $2 WHERE seller_id = $1',
+          [sellerId, ciphertext(40)],
+          'seller_files_identifier_ciphertext_check',
+        );
+        // A clear number is not an envelope.
+        await refuses(
+          'UPDATE sellers.seller_files SET identifier_ciphertext = $2 WHERE seller_id = $1',
+          [sellerId, '51824753556'.padEnd(41, '0')],
+          'seller_files_identifier_ciphertext_check',
+        );
+        for (const bad of ['ABN', '1abn', 'a'.repeat(33), 'a_b', '']) {
+          await refuses(
+            'UPDATE sellers.seller_files SET identifier_scheme = $2 WHERE seller_id = $1',
+            [sellerId, bad],
+            'seller_files_identifier_scheme_check',
+          );
+        }
+        for (const length of [0, 16, 31, 33, 64]) {
+          await refuses(
+            'UPDATE sellers.seller_files SET identifier_index = $2 WHERE seller_id = $1',
+            [sellerId, Buffer.alloc(length, 1)],
+            'seller_files_identifier_index_check',
+          );
+        }
+        // All three or none.
+        for (const sets of [
+          'identifier_scheme = NULL',
+          'identifier_ciphertext = NULL',
+          'identifier_index = NULL',
+        ]) {
+          await refuses(
+            `UPDATE sellers.seller_files SET ${sets} WHERE seller_id = $1`,
+            [sellerId],
+            'seller_files_identifier_set_check',
+          );
+        }
+        await set(
+          'identifier_scheme = NULL, identifier_ciphertext = NULL, identifier_index = NULL',
+        );
+        expect(await identifierRow(sellerId)).toMatchObject({
+          identifier_scheme: null,
+          identifier_ciphertext: null,
+          identifier_index: null,
+        });
+      });
+
+      it('has the partial index of the exact search and no unique key on the index', async () => {
+        const { rows } = await owner.query<{ indexdef: string }>(
+          `SELECT indexdef FROM pg_indexes WHERE schemaname = 'sellers'
+              AND indexname = 'seller_files_market_id_identifier_index_idx'`,
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.indexdef).toContain('(market_id, identifier_index)');
+        expect(rows[0]!.indexdef).toContain('WHERE (identifier_index IS NOT NULL)');
+        expect(rows[0]!.indexdef).not.toContain('UNIQUE');
+        // A draft gives no right to a number (brief s7): two files may hold the same index.
+        const first = await registerSeller(code);
+        const second = await registerSeller(code);
+        for (const sellerId of [first, second]) {
+          await sql.query(
+            `UPDATE sellers.seller_files SET identifier_scheme = $2, identifier_ciphertext = $3,
+                    identifier_index = $4 WHERE seller_id = $1`,
+            [sellerId, scheme, ciphertext(60), indexBytes(9)],
+          );
+        }
+        const { rows: found } = await sql.query(
+          `SELECT seller_id FROM sellers.seller_files
+            WHERE market_id = $1 AND identifier_index = $2 ORDER BY seller_id`,
+          [code, indexBytes(9)],
+        );
+        expect(found.map((r) => (r as { seller_id: string }).seller_id)).toEqual(
+          [first, second].sort(),
+        );
+      });
+
+      it('saves the number encrypted at rest, with its scheme and keyed index, and reads it back', async () => {
+        const { sellerId, context } = await draftSeller();
+        const saved = await app
+          .get(MyFileSaveIdentifier)
+          .execute(context, { identifier: IDENTIFIER.typed });
+        expect(saved).toEqual({
+          ok: true,
+          value: {
+            version: 2,
+            draftComplete: false,
+            missing: parts('storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'),
+          },
+        });
+        const stored = await identifierRow(sellerId);
+        expect(stored.identifier_scheme).toBe(scheme);
+        expect(stored.identifier_ciphertext).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
+        expect(stored.identifier_ciphertext).not.toContain(IDENTIFIER.normalised);
+        expect(stored.identifier_index).toHaveLength(32);
+        // The index is the keyed hash of Market, scheme and number: exact search finds the file.
+        const index = app.get<IdentifierIndex>(IDENTIFIER_INDEX);
+        const expected = Buffer.from(
+          index.of(marketOf(code), scheme, IDENTIFIER.normalised as NormalisedIdentifier),
+        );
+        expect(stored.identifier_index!.equals(expected)).toBe(true);
+        expect(expected.includes(Buffer.from(IDENTIFIER.normalised))).toBe(false);
+        const { rows: found } = await sql.query(
+          'SELECT seller_id FROM sellers.seller_files WHERE market_id = $1 AND identifier_index = $2',
+          [code, expected],
+        );
+        // Other files of this database may hold the same number (a draft gives no right to it).
+        expect(found).toContainEqual({ seller_id: sellerId });
+        // The same number in the other Market is another index (AC 21).
+        expect(
+          Buffer.from(
+            index.of(marketOf(other), scheme, IDENTIFIER.normalised as NormalisedIdentifier),
+          ).equals(expected),
+        ).toBe(false);
+
+        const read = await app.get(MyFileRead).execute(context, {});
+        expect(read.ok && read.value.identifier).toEqual({
+          value: IDENTIFIER.normalised,
+          display: IDENTIFIER.display,
+        });
+        // The same number again is a no-op; a number bound to another column does not open.
+        await app.get(MyFileSaveIdentifier).execute(context, { identifier: IDENTIFIER.normalised });
+        expect((await identifierRow(sellerId)).version).toBe(2);
+        await owner.query(
+          `UPDATE sellers.seller_files SET phone_ciphertext = identifier_ciphertext
+            WHERE market_id = $1 AND seller_id = $2`,
+          [code, sellerId],
+        );
+        expect(await app.get(MyFileRead).execute(context, {})).toEqual({
+          ok: false,
+          error: { code: 'sellers.unavailable' },
+        });
+      });
+
+      it('refuses a number of another scheme and a wrong checksum, validates without storing', async () => {
+        const { sellerId, context } = await draftSeller();
+        expect(
+          await app.get(MyFileSaveIdentifier).execute(context, { identifier: foreign }),
+        ).toEqual({ ok: false, error: { code: 'identifier.format' } });
+        expect(
+          await app.get(MyFileValidateIdentifier).execute(context, { identifier: foreign }),
+        ).toEqual({ ok: false, error: { code: 'identifier.format' } });
+        const lastDigit = IDENTIFIER.normalised.endsWith('9') ? '8' : '9';
+        expect(
+          await app.get(MyFileSaveIdentifier).execute(context, {
+            identifier: IDENTIFIER.normalised.slice(0, -1) + lastDigit,
+          }),
+        ).toEqual({ ok: false, error: { code: 'identifier.checksum' } });
+        expect(
+          await app
+            .get(MyFileValidateIdentifier)
+            .execute(context, { identifier: IDENTIFIER.typed }),
+        ).toEqual({ ok: true, value: { display: IDENTIFIER.display } });
+        expect(await identifierRow(sellerId)).toMatchObject({
+          identifier_scheme: null,
+          identifier_ciphertext: null,
+          identifier_index: null,
+          version: 1,
+        });
+      });
+
+      it('completes the draft with the number only where the Market requires it, and clears it', async () => {
+        const { sellerId, context } = await draftSeller();
+        await app.get(MyFileSaveGeneral).execute(context, GENERAL);
+        await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address });
+        await app.get(MyFileSaveSlug).execute(context, { slug: `noor-${code.toLowerCase()}` });
+        const withoutNumber = await identifierRow(sellerId);
+        expect(withoutNumber.draft_complete).toBe(code === 'ZZ');
+        await app.get(MyFileSaveIdentifier).execute(context, { identifier: IDENTIFIER.typed });
+        expect((await identifierRow(sellerId)).draft_complete).toBe(true);
+        const cleared = await app.get(MyFileSaveIdentifier).execute(context, { identifier: null });
+        expect(cleared.ok && cleared.value.draftComplete).toBe(code === 'ZZ');
+        expect(await identifierRow(sellerId)).toMatchObject({
+          identifier_scheme: null,
+          identifier_index: null,
+          draft_complete: code === 'ZZ',
+        });
+      });
+
+      it('keeps sellers apart: a file of the other Market is no file here, and nothing is written to it', async () => {
+        const mine = await draftSeller();
+        await app.get(MyFileSaveIdentifier).execute(mine.context, { identifier: IDENTIFIER.typed });
+        // A file of the other Market, inserted as the owner (no sign-up: a sign-up in the other
+        // Market would write its throttle windows with this Market's clock).
+        const elsewhere = uniqueIds.next<'Seller'>();
+        const otherTenant = marketOf(other).tenantId;
+        await owner.query(
+          `INSERT INTO sellers.seller_files
+             (seller_id, market_id, tenant_id, origin, approval_required_at_registration,
+              draft_complete, last_changed_at, version, created_at)
+           VALUES ($1, $2, $3, 'self', true, false, now(), 1, now())`,
+          [elsewhere, other, otherTenant],
+        );
+        const crossed = testCallContext(
+          marketOf(code),
+          testAuthenticatedActor(marketOf(code), {
+            population: 'seller',
+            accountId: (mine.context.actor as { accountId: Id<'Account'> }).accountId,
+            sessionId: ids.next<'Session'>(),
+            sellerId: elsewhere,
+          }),
+          `db-sellers-${randomUUID()}`,
+        );
+        expect(
+          await app.get(MyFileSaveIdentifier).execute(crossed, { identifier: IDENTIFIER.typed }),
+        ).toEqual({ ok: false, error: { code: 'file.not-found' } });
+        expect(await app.get(MyFileRead).execute(crossed, {})).toEqual({
+          ok: false,
+          error: { code: 'file.not-found' },
+        });
+        const { rows } = await owner.query(
+          'SELECT identifier_index, version FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2',
+          [other, elsewhere],
+        );
+        expect(rows).toEqual([{ identifier_index: null, version: 1 }]);
+        // Leave no stray file behind: other tests count the Market's files against its inbox.
+        await owner.query(
+          'DELETE FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2',
+          [other, elsewhere],
+        );
+      });
+
+      it('serves the routes over HTTP with the real use cases: no-store, codes only, CSRF', async () => {
+        const { sellerId, headers } = await signUpSeller(code);
+        const http = () => request(app.getHttpServer());
+
+        const checked = await http()
+          .post('/sellers/my-file/identifier-check')
+          .set(headers)
+          .send({ identifier: IDENTIFIER.typed });
+        expect(checked.status).toBe(200);
+        expect(checked.headers['cache-control']).toBe('no-store');
+        expect(checked.body).toEqual({ display: IDENTIFIER.display });
+
+        const refused = await http()
+          .put('/sellers/my-file/identifier')
+          .set(headers)
+          .send({ identifier: foreign });
+        expect(refused.status).toBe(400);
+        expect(refused.body).toEqual({ statusCode: 400, code: 'identifier.format' });
+        expect(refused.text).not.toContain(foreign);
+
+        const saved = await http()
+          .put('/sellers/my-file/identifier')
+          .set(headers)
+          .send({ identifier: IDENTIFIER.typed });
+        expect(saved.status).toBe(200);
+        expect(saved.headers['cache-control']).toBe('no-store');
+        expect(saved.body).toMatchObject({ version: 2, draftComplete: false });
+        expect((saved.body as { missing: string[] }).missing).not.toContain('identifier');
+
+        const read = await http().get('/sellers/my-file').set(headers);
+        expect(read.status).toBe(200);
+        expect((read.body as { identifier: unknown }).identifier).toEqual({
+          value: IDENTIFIER.normalised,
+          display: IDENTIFIER.display,
+        });
+
+        const descriptors = await http().get('/sellers/my-file/form-descriptors').set(headers);
+        expect((descriptors.body as { identifier: unknown }).identifier).toEqual({
+          scheme,
+          labelKey: `sellers.business-identifier.${scheme}`,
+          required: code === 'AU',
+          maxLength: 64,
+        });
+
+        const noCsrf = await http()
+          .put('/sellers/my-file/identifier')
+          .set({ ...headers, 'x-csrf-token': 'wrong' })
+          .send({ identifier: IDENTIFIER.typed });
+        expect(noCsrf.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+        expect((await identifierRow(sellerId)).version).toBe(2);
+      });
+
+      describe('tax registration periods (V2)', () => {
+        const SELLER_ZONE = FIXTURE.zones[0]!;
+        const ACCOUNT = '01928a3c-0000-7000-8000-0000000000a1';
+        const insertPeriod = (
+          sellerId: string,
+          from: string,
+          to: string | null,
+          overrides: Record<string, unknown> = {},
+        ) =>
+          sql.query(
+            `INSERT INTO sellers.tax_registration_periods
+               (id, market_id, tenant_id, seller_id, registered_for_indirect_tax,
+                effective_from_local, effective_zone, valid_from, valid_to, recorded_by_kind,
+                recorded_by_account_id, recorded_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [
+              overrides.id ?? randomUUID(),
+              overrides.market ?? code,
+              overrides.tenant ?? 'default',
+              sellerId,
+              true,
+              '2026-01-01',
+              overrides.zone ?? SELLER_ZONE,
+              from,
+              to,
+              overrides.kind ?? 'seller',
+              ACCOUNT,
+              '2026-10-08T00:00:00Z',
+            ],
+          );
+        const periodsOf = async (sellerId: string) =>
+          (
+            await sql.query<{ id: string; valid_from: Date; valid_to: Date | null }>(
+              `SELECT id, valid_from, valid_to FROM sellers.tax_registration_periods
+                WHERE market_id = $1 AND seller_id = $2 ORDER BY valid_from`,
+              [code, sellerId],
+            )
+          ).rows;
+
+        it('refuses overlapping periods of one seller, accepts adjacent ones and other sellers', async () => {
+          const a = await registerSeller(code);
+          const b = await registerSeller(code);
+          await insertPeriod(a, '2026-01-01T00:00:00Z', '2026-07-01T00:00:00Z');
+          const overlap = (from: string, to: string | null) =>
+            expect(insertPeriod(a, from, to)).rejects.toMatchObject({
+              code: '23P01',
+              constraint: 'tax_registration_periods_no_overlap_excl',
+            });
+          await overlap('2026-06-30T23:59:59.999Z', null);
+          await overlap('2026-02-01T00:00:00Z', '2026-03-01T00:00:00Z');
+          await overlap('2025-01-01T00:00:00Z', '2026-01-01T00:00:00.001Z');
+          // Half-open: it may start exactly where the previous one ends.
+          await insertPeriod(a, '2026-07-01T00:00:00Z', null);
+          await overlap('2030-01-01T00:00:00Z', null);
+          // Another seller of the Market may hold the same span.
+          await insertPeriod(b, '2026-01-01T00:00:00Z', null);
+          expect(await periodsOf(a)).toHaveLength(2);
+          expect(await periodsOf(b)).toHaveLength(1);
+        });
+
+        it('refuses what the CHECKs, the foreign key and the grants refuse', async () => {
+          const sellerId = await registerSeller(code);
+          const check = (constraint: string, run: () => Promise<unknown>) =>
+            expect(run()).rejects.toMatchObject({ code: '23514', constraint });
+          await check('tax_registration_periods_valid_to_check', () =>
+            insertPeriod(sellerId, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+          );
+          await check('tax_registration_periods_valid_to_check', () =>
+            insertPeriod(sellerId, '2026-02-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+          );
+          await check('tax_registration_periods_recorded_by_kind_check', () =>
+            insertPeriod(sellerId, '2026-01-01T00:00:00Z', null, { kind: 'system' }),
+          );
+          for (const zone of ['+10:00', 'Etc UTC', '', 'x'.repeat(65), '/Australia']) {
+            await check('tax_registration_periods_effective_zone_check', () =>
+              insertPeriod(sellerId, '2026-01-01T00:00:00Z', null, { zone }),
+            );
+          }
+          await check('tax_registration_periods_market_id_check', () =>
+            insertPeriod(sellerId, '2026-01-01T00:00:00Z', null, { market: 'au' }),
+          );
+          await check('tax_registration_periods_tenant_id_check', () =>
+            insertPeriod(sellerId, '2026-01-01T00:00:00Z', null, { tenant: 'Default' }),
+          );
+          // The foreign key: a seller with no tax profile, or a profile of another Market.
+          await expect(
+            insertPeriod(randomUUID(), '2026-01-01T00:00:00Z', null),
+          ).rejects.toMatchObject({ code: '23503' });
+          await expect(
+            sql.query(
+              `INSERT INTO sellers.tax_registration_periods
+                 (id, market_id, tenant_id, seller_id, registered_for_indirect_tax,
+                  effective_from_local, effective_zone, valid_from, recorded_by_kind,
+                  recorded_by_account_id, recorded_at)
+               VALUES ($1, $2, 'default', $3, true, '2026-01-01', 'UTC', now(), 'seller', $4, now())`,
+              [randomUUID(), other, sellerId, ACCOUNT],
+            ),
+          ).rejects.toMatchObject({ code: '23503' });
+          expect(await periodsOf(sellerId)).toEqual([]);
+
+          // Grants: only valid_to may change (and a row may be deleted); a start never moves.
+          await insertPeriod(sellerId, '2026-01-01T00:00:00Z', null);
+          for (const set of [
+            "valid_from = valid_from + interval '1 day'",
+            'registered_for_indirect_tax = false',
+            "effective_zone = 'UTC'",
+            "recorded_by_kind = 'admin'",
+          ]) {
+            await expect(
+              sql.query(`UPDATE sellers.tax_registration_periods SET ${set} WHERE seller_id = $1`, [
+                sellerId,
+              ]),
+            ).rejects.toMatchObject({ code: '42501' });
+          }
+          await sql.query(
+            `UPDATE sellers.tax_registration_periods SET valid_to = '2027-01-01T00:00:00Z'
+              WHERE seller_id = $1`,
+            [sellerId],
+          );
+          expect((await periodsOf(sellerId))[0]!.valid_to).toEqual(
+            new Date('2027-01-01T00:00:00Z'),
+          );
+        });
+
+        it('records a period through the aggregate and repository: closes the open one, as of any instant', async () => {
+          const { sellerId } = await draftSeller();
+          const repository = app.get<TaxProfileRepository>(TAX_PROFILE_REPOSITORY);
+          const unit = app.get<UnitOfWork>(UNIT_OF_WORK);
+          const market = marketOf(code);
+          const by = { kind: 'seller', accountId: ACCOUNT as Id<'Account'> } as const;
+
+          const first = await unit.run<boolean, never>(market, async () => {
+            const profile = (await repository.findBySellerId(market, sellerId))!;
+            expect(profile.periods).toEqual([]);
+            const recorded = profile.record({
+              periodId: uniqueIds.next<'TaxRegistrationPeriod'>(),
+              registeredForIndirectTax: true,
+              effectiveFromLocal: Temporal.PlainDate.from('2026-03-10'),
+              zone: SELLER_ZONE,
+              by,
+              now: clock.now(),
+            });
+            expect(recorded.ok).toBe(true);
+            return ok(await repository.save(market, profile));
+          });
+          expect(first).toEqual({ ok: true, value: true });
+          const second = await unit.run<boolean, never>(market, async () => {
+            const profile = (await repository.findBySellerId(market, sellerId))!;
+            expect(profile.version).toBe(2);
+            profile.record({
+              periodId: uniqueIds.next<'TaxRegistrationPeriod'>(),
+              registeredForIndirectTax: false,
+              effectiveFromLocal: null,
+              zone: SELLER_ZONE,
+              by,
+              now: clock.now(),
+            });
+            return ok(await repository.save(market, profile));
+          });
+          expect(second).toEqual({ ok: true, value: true });
+
+          const rows = await periodsOf(sellerId);
+          expect(rows).toHaveLength(2);
+          const start = Temporal.PlainDate.from('2026-03-10')
+            .toZonedDateTime({ timeZone: SELLER_ZONE })
+            .toInstant();
+          expect(rows[0]!.valid_from.getTime()).toBe(start.epochMilliseconds);
+          expect(rows[0]!.valid_to).toEqual(rows[1]!.valid_from);
+          expect(rows[1]!.valid_to).toBeNull();
+          const { rows: profileRow } = await sql.query(
+            'SELECT version FROM sellers.seller_tax_profiles WHERE market_id = $1 AND seller_id = $2',
+            [code, sellerId],
+          );
+          expect(profileRow).toEqual([{ version: 3 }]);
+          const { rows: stored } = await sql.query(
+            `SELECT effective_from_local::text AS local, effective_zone, registered_for_indirect_tax AS yes
+               FROM sellers.tax_registration_periods WHERE seller_id = $1 ORDER BY valid_from`,
+            [sellerId],
+          );
+          expect(stored).toEqual([
+            { local: '2026-03-10', effective_zone: SELLER_ZONE, yes: true },
+            {
+              local: clock.now().toZonedDateTimeISO(SELLER_ZONE).toPlainDate().toString(),
+              effective_zone: SELLER_ZONE,
+              yes: false,
+            },
+          ]);
+
+          // As of an instant (ADR-0007 decision 7): the ranged query of data design 3.7.
+          const asOf = async (at: string) =>
+            (
+              await sql.query<{ yes: boolean }>(
+                `SELECT registered_for_indirect_tax AS yes FROM sellers.tax_registration_periods
+                  WHERE market_id = $1 AND seller_id = $2 AND valid_from <= $3
+                    AND (valid_to IS NULL OR valid_to > $3)`,
+                [code, sellerId, at],
+              )
+            ).rows;
+          expect(await asOf(start.subtract({ milliseconds: 1 }).toString())).toEqual([]);
+          expect(await asOf(start.toString())).toEqual([{ yes: true }]);
+          expect(await asOf(rows[1]!.valid_from.toISOString())).toEqual([{ yes: false }]);
+          const reloaded = await unit.run(market, async () =>
+            ok((await repository.findBySellerId(market, sellerId))!.asOf(start)?.effectiveZone),
+          );
+          expect(reloaded).toEqual({ ok: true, value: SELLER_ZONE });
+        });
+
+        it('cancels a period that has not started and re-opens the previous one', async () => {
+          const { sellerId } = await draftSeller();
+          const repository = app.get<TaxProfileRepository>(TAX_PROFILE_REPOSITORY);
+          const unit = app.get<UnitOfWork>(UNIT_OF_WORK);
+          const market = marketOf(code);
+          const by = { kind: 'admin', accountId: ACCOUNT as Id<'Account'> } as const;
+          const record = (from: string) =>
+            unit.run<boolean, never>(market, async () => {
+              const profile = (await repository.findBySellerId(market, sellerId))!;
+              const result = profile.record({
+                periodId: uniqueIds.next<'TaxRegistrationPeriod'>(),
+                registeredForIndirectTax: true,
+                effectiveFromLocal: Temporal.PlainDate.from(from),
+                zone: SELLER_ZONE,
+                by,
+                now: clock.now(),
+              });
+              if (!result.ok) throw new Error(result.error.code);
+              return ok(await repository.save(market, profile));
+            });
+          await record('2026-01-01');
+          await record('2027-02-01');
+          const before = await periodsOf(sellerId);
+          expect(before[0]!.valid_to).toEqual(before[1]!.valid_from);
+
+          const cancelled = await unit.run<boolean, never>(market, async () => {
+            const profile = (await repository.findBySellerId(market, sellerId))!;
+            const result = profile.cancel(
+              before[1]!.id as Id<'TaxRegistrationPeriod'>,
+              clock.now(),
+            );
+            expect(result.ok).toBe(true);
+            return ok(await repository.save(market, profile));
+          });
+          expect(cancelled).toEqual({ ok: true, value: true });
+          const after = await periodsOf(sellerId);
+          expect(after).toHaveLength(1);
+          expect(after[0]!.id).toBe(before[0]!.id);
+          expect(after[0]!.valid_to).toBeNull();
+
+          // A started period cannot be cancelled: the aggregate refuses before any statement.
+          const started = await unit.run(market, async () => {
+            const profile = (await repository.findBySellerId(market, sellerId))!;
+            return ok(profile.cancel(after[0]!.id as Id<'TaxRegistrationPeriod'>, clock.now()));
+          });
+          expect(started).toEqual({
+            ok: true,
+            value: { ok: false, error: { code: 'tax.period-started' } },
+          });
+        });
+
+        it('writes nothing when another unit changed the profile first, and the database keeps the chain', async () => {
+          const { sellerId } = await draftSeller();
+          const repository = app.get<TaxProfileRepository>(TAX_PROFILE_REPOSITORY);
+          const unit = app.get<UnitOfWork>(UNIT_OF_WORK);
+          const market = marketOf(code);
+          const by = { kind: 'seller', accountId: ACCOUNT as Id<'Account'> } as const;
+          const attempt = (from: string) =>
+            unit.run<boolean, never>(market, async () => {
+              const profile = (await repository.findBySellerId(market, sellerId))!;
+              profile.record({
+                periodId: uniqueIds.next<'TaxRegistrationPeriod'>(),
+                registeredForIndirectTax: true,
+                effectiveFromLocal: Temporal.PlainDate.from(from),
+                zone: SELLER_ZONE,
+                by,
+                now: clock.now(),
+              });
+              // Another unit commits between this unit's read and its write.
+              await sql.query(
+                'UPDATE sellers.seller_tax_profiles SET version = version + 1 WHERE seller_id = $1',
+                [sellerId],
+              );
+              return ok(await repository.save(market, profile));
+            });
+          expect(await attempt('2026-01-01')).toEqual({ ok: true, value: false });
+          expect(await periodsOf(sellerId)).toEqual([]);
+
+          // Two parallel recordings for one seller: both read the same version, exactly one commits.
+          let loaded = 0;
+          let release!: () => void;
+          const bothLoaded = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          const results = await Promise.all(
+            ['2026-02-01', '2026-03-01'].map((from) =>
+              unit.run<boolean, never>(market, async () => {
+                const profile = (await repository.findBySellerId(market, sellerId))!;
+                loaded += 1;
+                if (loaded === 2) release();
+                await Promise.race([
+                  bothLoaded,
+                  new Promise((resolve) => setTimeout(resolve, 5_000)),
+                ]);
+                profile.record({
+                  periodId: uniqueIds.next<'TaxRegistrationPeriod'>(),
+                  registeredForIndirectTax: true,
+                  effectiveFromLocal: Temporal.PlainDate.from(from),
+                  zone: SELLER_ZONE,
+                  by,
+                  now: clock.now(),
+                });
+                return ok(await repository.save(market, profile));
+              }),
+            ),
+          );
+          const committed = results.filter((r) => r.ok && r.value).length;
+          expect(committed).toBe(1);
+          expect(await periodsOf(sellerId)).toHaveLength(1);
+        });
+      });
     });
   });
 });

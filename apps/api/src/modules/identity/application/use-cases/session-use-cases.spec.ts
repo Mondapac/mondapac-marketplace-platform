@@ -10,6 +10,10 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
 import {
+  realEffectiveKeys,
+  realPermissionRegistry,
+} from '../../../../../test/support/permission-registry';
+import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
   TEST_MARKETS,
@@ -136,14 +140,16 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         unitOfWork: fakes.unitOfWork,
         accounts: fakes.accountRepository,
         sessions: fakes.sessionRepository,
-        assignments: fakes.assignmentRepository,
         sellerAccess: fakes.sellerAccessRepository,
+        grants: fakes.grantReader,
+        effectiveKeys: realEffectiveKeys(),
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>
       new IdentityFacadeImplementation({
         describeActor: describe,
         membershipOf: undefined as never,
+        teamMembershipOf: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {
@@ -182,6 +188,134 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         },
       });
       expect(JSON.stringify(facade)).not.toContain('Example.com');
+    });
+
+    describe('the effective keys of an admin fixture account (slice 8a-1; Sajad G1)', () => {
+      const ADMIN_ID = id<'Account'>('01990000-0000-7000-8000-000000000a01');
+      const ADMIN_SESSION = id<'Session'>('01990000-0000-7000-8000-00000000aa01');
+      const ROLE_ID = id<'Role'>('01990000-0000-7000-8000-00000000d0a1');
+      const adminContext = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: ADMIN_ID,
+          sessionId: ADMIN_SESSION,
+          sellerId: null,
+        }),
+      );
+
+      /** An admin account with one role, as test fixtures (no seed or route creates one). */
+      function adminWith(role: {
+        scope: 'platform' | 'seller';
+        kind: 'system' | 'default' | 'custom';
+        keys: string[];
+      }) {
+        fakes.seedAccount({
+          id: ADMIN_ID,
+          marketId: market.marketId,
+          population: 'admin',
+          email: { typed: 'Admin@Example.com', normalized: 'admin@example.com' },
+          displayName: 'Admin',
+          status: 'active',
+          emailVerifiedAt: START,
+          existingAccountNoticeAt: null,
+          signedUpAt: START,
+          createdAt: START,
+          version: 1,
+          credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+        });
+        void fakes.sessionRepository.add(
+          market,
+          openSession({
+            id: ADMIN_SESSION,
+            marketId: market.marketId,
+            accountId: ADMIN_ID,
+            population: 'admin',
+            transport: 'cookie',
+            lifetime: { idleTimeoutSeconds: 900, absoluteLifetimeSeconds: 28_800 },
+            now: START,
+          }),
+          new Uint8Array(createHash('sha256').update('admin-token').digest()),
+        );
+        const seeded = role.kind !== 'custom';
+        fakes.seedRole({
+          id: ROLE_ID,
+          marketId: market.marketId,
+          scope: role.scope,
+          kind: role.kind,
+          seedCode: seeded ? 'fixture-role' : null,
+          seedVersion: seeded ? 1 : null,
+          sellerId: null,
+          permissionKeys: role.kind === 'system' ? [] : [...role.keys].sort(),
+          version: 1,
+          createdAt: START,
+        });
+        fakes.seedAssignment({
+          id: id<'RoleAssignment'>('01990000-0000-7000-8000-00000000e0a1'),
+          marketId: market.marketId,
+          accountId: ADMIN_ID,
+          roleId: ROLE_ID,
+          assignedByAccountId: null,
+          assignedAt: START,
+          version: 1,
+        });
+      }
+
+      const summaryOf = async () => {
+        const result = await describeActor().execute(adminContext, {});
+        if (!result.ok) throw new Error(`describeActor refused: ${result.error.code}`);
+        return result.value;
+      };
+
+      it('a default role (Onboarding and Compliance) answers its keys, sorted, and its role id', async () => {
+        adminWith({
+          scope: 'platform',
+          kind: 'default',
+          keys: [
+            'identity.seller-access.view',
+            'identity.seller-access.approve',
+            'identity.seller-access.suspend',
+            'identity.seller-account.create',
+          ],
+        });
+
+        await expect(summaryOf()).resolves.toMatchObject({
+          roleId: ROLE_ID,
+          permissionKeys: [
+            'identity.seller-access.approve',
+            'identity.seller-access.suspend',
+            'identity.seller-access.view',
+            'identity.seller-account.create',
+          ],
+        });
+      });
+
+      it('the Platform Administrator answers every platform key the registry declares', async () => {
+        adminWith({ scope: 'platform', kind: 'system', keys: [] });
+
+        expect((await summaryOf()).permissionKeys).toEqual(
+          realPermissionRegistry()
+            .list('platform')
+            .map((d) => d.key)
+            .sort(),
+        );
+      });
+
+      it('a custom role drops a stored key the registry no longer declares (R7)', async () => {
+        adminWith({
+          scope: 'platform',
+          kind: 'custom',
+          keys: ['identity.seller-access.view', 'identity.ledger.view'],
+        });
+
+        expect((await summaryOf()).permissionKeys).toEqual(['identity.seller-access.view']);
+      });
+
+      it('a seller-scope role on an admin account grants nothing', async () => {
+        adminWith({ scope: 'seller', kind: 'system', keys: [] });
+
+        await expect(summaryOf()).resolves.toMatchObject({ roleId: ROLE_ID, permissionKeys: [] });
+      });
     });
 
     it('is refused to an anonymous caller through the facade too (the gate runs)', async () => {

@@ -8,7 +8,7 @@ import type { FieldProblem } from './my-file.body';
  * The HTTP status of each failure code of the seller's draft use cases (sellers design 6.2, 8.3;
  * the error format of identity design 5.2: `{ statusCode, code, details? }`). Refusals of the
  * gate keep `ACCESS_DENIED_STATUS`. A refusal of a value (`validation.failed`, `phone.required`,
- * `timezone.not-selectable`, `slug.format`, `slug.reserved`) is 400, as identity answers `validation.failed` and
+ * `timezone.not-selectable`, `slug.format`, `slug.reserved`, `identifier.format`, `identifier.checksum`) is 400, as identity answers `validation.failed` and
  * `password.rejected`; a state that forbids the request is 409.
  */
 export const MY_FILE_STATUS = {
@@ -18,6 +18,8 @@ export const MY_FILE_STATUS = {
   'slug.format': 400,
   'slug.reserved': 400,
   'slug.taken': 409,
+  'identifier.format': 400,
+  'identifier.checksum': 400,
   'file.not-found': 404,
   'file.change-request-required': 409,
   'conflict.stale': 409,

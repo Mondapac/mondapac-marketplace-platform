@@ -5,9 +5,10 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { SELLERS_BUSINESS_IDENTITY_EDIT } from '../../contracts/permissions';
 import { addressFromJson, type AddressFormatSpec } from '../../domain/address';
 import type { Sealed, SealedField } from '../../domain/sealed';
-import type { DraftPart, SellerFile } from '../../domain/seller-file';
+import type { DraftPart, DraftRequirements, SellerFile } from '../../domain/seller-file';
 import type { ZoneState } from '../../domain/zone';
 import {
+  draftRequirementsOf,
   logDraftOutcome,
   sellerActorOf,
   type DraftAccessDenied,
@@ -16,6 +17,8 @@ import {
 import { zoneOptionsOf, type FileNotFound } from '../draft/draft-view';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
+import type { SellerMarketPolicy } from '../ports/seller-market-policy';
+import type { BusinessIdentifierSchemes } from '../ports/business-identifier-scheme';
 import type {
   AddressFormats,
   DraftServiceArea,
@@ -49,6 +52,12 @@ export interface MyFileView {
   readonly timezone: ZoneState | null;
   /** The chosen shop slug (clear, Q-M25), or null. */
   readonly slug: string | null;
+  /**
+   * The business identifier of the Market's scheme: the normalised value and how people write it
+   * (slice 3). Null when none is saved, or when the saved one is of a scheme the Market no longer
+   * uses (it does not count as saved, AC 3).
+   */
+  readonly identifier: { readonly value: string; readonly display: string } | null;
   /** The zones of the saved address's region, the default first; empty without an address. */
   readonly zoneOptions: readonly string[];
 }
@@ -58,6 +67,8 @@ export type MyFileReadFailure = DraftAccessDenied | SellersUnavailable | FileNot
 export interface MyFileReadDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
+  readonly policy: SellerMarketPolicy;
+  readonly identifierSchemes: BusinessIdentifierSchemes;
   readonly cipher: SellerFileCipher;
   readonly addressFormats: AddressFormats;
   readonly zones: TimezoneResolver;
@@ -112,9 +123,10 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     if (!read.ok || read.value === null) return err({ code: 'file.not-found' });
     const file = read.value;
     const format = addressFormats.formatOf(market);
-    if (format === null) return err({ code: 'sellers.unavailable' });
+    const requirements = draftRequirementsOf(this.deps.policy, market);
+    if (format === null || requirements === null) return err({ code: 'sellers.unavailable' });
     try {
-      return await this.view(market, owner.sellerId, file, format);
+      return await this.view(market, owner.sellerId, file, format, requirements);
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
@@ -125,8 +137,9 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     sellerId: Id<'Seller'>,
     file: SellerFile,
     format: AddressFormatSpec,
+    requirements: DraftRequirements,
   ): Promise<Result<MyFileView, SellersUnavailable>> {
-    const { cipher, zones, areas } = this.deps;
+    const { cipher, zones, areas, identifierSchemes } = this.deps;
     let destroyed = false;
     const open = async <F extends SealedField>(
       field: F,
@@ -143,6 +156,11 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     const contactEmail = await open('contact-email', draft.contactEmail);
     const addressJson = await open('address', draft.address);
     const registeredJson = await open('registered-address', draft.registeredAddress);
+    const scheme = identifierSchemes.schemeOf(market);
+    const identifierValue =
+      draft.identifier === null || scheme?.scheme !== draft.identifier.scheme
+        ? null
+        : await open('identifier', draft.identifier.sealed);
     if (destroyed) return err({ code: 'sellers.unavailable' });
 
     const address = addressJson === null ? null : addressFromJson(addressJson, format);
@@ -152,7 +170,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     return ok({
       version: file.state.version,
       draftComplete: file.state.draftComplete,
-      missing: file.missing(),
+      missing: file.missing(requirements),
       general: {
         storeName: draft.storeName?.name ?? null,
         businessName,
@@ -165,6 +183,10 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
       outsideServiceArea: address === null ? null : area?.sellerOnboardingEnabled !== true,
       timezone: draft.zone,
       slug: draft.slug,
+      identifier:
+        identifierValue === null || scheme === null
+          ? null
+          : { value: identifierValue, display: scheme.display(identifierValue) },
       zoneOptions: zoneOptionsOf(regionZones),
     });
   }

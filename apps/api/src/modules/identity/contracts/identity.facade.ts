@@ -3,8 +3,9 @@ import type { AccessDenied } from '../../../platform/authz';
 
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a
- * name or an email. The role and the seller's access state are read from slice 5; permission
- * keys and the second factor arrive with slices 8a and 7, until then empty and false.
+ * name or an email. The role and the seller's access state are read from slice 5, the effective
+ * permission keys from slice 8a-1 (sorted); the second factor arrives with slice 7, until then
+ * false.
  */
 export interface ActorDescription {
   readonly accountId: Id<'Account'>;
@@ -32,9 +33,10 @@ export interface IdentityFacade {
   describeActor(context: CallContext): Promise<Result<ActorDescription, AccessDenied>>;
 
   /**
-   * The active membership of `accountId` and its role, or null (slice 5). Rule `own-resources`,
-   * allowed when the seller is not approved, **for the actor's own account only**: another id
-   * is `access.denied`. The variant for other accounts waits for slice 8a.
+   * The active membership of `accountId` and its role, or null. For the actor's own account
+   * (slice 5): rule `own-resources`, allowed when the seller is not approved. For another account
+   * (slice 8a-1): rule `identity.team-member.view`, seller scope, denied while the seller is not
+   * approved; an account outside the actor's own team answers null, as one without a membership.
    */
   membershipOf(
     context: CallContext,

@@ -6,6 +6,7 @@ import { SELLERS_BUSINESS_IDENTITY_EDIT } from '../../contracts/permissions';
 import { SAVE_LIMITS, SLUG_CHECK_LIMITS } from '../../domain/rate-limits';
 import { parseShopSlug } from '../../domain/shop-slug';
 import {
+  draftRequirementsOf,
   logDraftOutcome,
   reserveRateLimits,
   sellerActorOf,
@@ -118,7 +119,8 @@ export class MyFileSaveSlug extends UseCase<
     if (!reserved.ok) return reserved;
 
     const words = policy.reservedWords(market);
-    if (words === null) return err({ code: 'sellers.unavailable' });
+    const requirements = draftRequirementsOf(policy, market);
+    if (words === null || requirements === null) return err({ code: 'sellers.unavailable' });
     const slug = parseShopSlug(input.slug, words);
     if (!slug.ok) return slug;
 
@@ -130,11 +132,11 @@ export class MyFileSaveSlug extends UseCase<
       const mine =
         holder === null || (holder.state === 'held' && holder.sellerId === owner.sellerId);
       if (!mine) return err({ code: 'slug.taken' });
-      const applied = file.saveSlug(slug.value, clock.now());
+      const applied = file.saveSlug(slug.value, clock.now(), requirements);
       if (!applied.ok) return applied;
-      if (file.state.version === file.persistedVersion) return ok(draftSaved(file));
+      if (file.state.version === file.persistedVersion) return ok(draftSaved(file, requirements));
       if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
-      return ok(draftSaved(file));
+      return ok(draftSaved(file, requirements));
     });
   }
 }

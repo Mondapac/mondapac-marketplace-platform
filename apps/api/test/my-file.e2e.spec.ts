@@ -3,13 +3,15 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
-import { SeedSystemRoles } from '../src/modules/identity/application/use-cases/seed-system-roles.use-case';
+import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
 import { FormDescriptorsRead } from '../src/modules/sellers/application/use-cases/form-descriptors-read.use-case';
 import { MyFileCheckSlug } from '../src/modules/sellers/application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../src/modules/sellers/application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveIdentifier } from '../src/modules/sellers/application/use-cases/my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from '../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
+import { MyFileValidateIdentifier } from '../src/modules/sellers/application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from '../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
 import { IdentityFakes } from './support/identity-fakes';
 import { completionLineOf, createTestApp, type LogLine } from './support/test-app';
@@ -19,8 +21,9 @@ import { TEST_MARKETS } from './support/test-config';
 // real controller and a real seller session (identity's database ports as in-memory fakes). The
 // five use cases are replaced by recording stubs for the mapping tests: their own behaviour is
 // covered by their specs. Two tests keep the real use cases to prove the wiring and the gate:
-// until identity slice 8a no seller holds `sellers.business-identity.edit`, so every route
-// answers access.denied to a signed-in seller and access.unauthenticated to a visitor.
+// since identity slice 8a-1 the Seller Owner holds `sellers.business-identity.edit` and passes
+// the gate; a seller account without a role answers access.denied, a visitor
+// access.unauthenticated.
 // nestjs-pino captures the log lines of a file's first application only, so the logging test
 // comes first.
 
@@ -65,6 +68,8 @@ describe('the seller draft over HTTP (integration)', () => {
     address: new Stub(),
     slug: new Stub(),
     saveSlug: new Stub(),
+    saveIdentifier: new Stub(),
+    validateIdentifier: new Stub(),
     descriptors: new Stub(),
   };
   const http = () => request(app.getHttpServer());
@@ -86,6 +91,10 @@ describe('the seller draft over HTTP (integration)', () => {
               .useValue(stubs.saveSlug)
               .overrideProvider(MyFileCheckSlug)
               .useValue(stubs.slug)
+              .overrideProvider(MyFileSaveIdentifier)
+              .useValue(stubs.saveIdentifier)
+              .overrideProvider(MyFileValidateIdentifier)
+              .useValue(stubs.validateIdentifier)
               .overrideProvider(FormDescriptorsRead)
               .useValue(stubs.descriptors)
           : faked;
@@ -98,7 +107,7 @@ describe('the seller draft over HTTP (integration)', () => {
 
   /** Signs a seller up, confirms the email, and answers the session cookie and CSRF token. */
   async function signedIn(code: string) {
-    await app.get(SeedSystemRoles).execute(systemOf(code), {});
+    await app.get(SeedRoles).execute(systemOf(code), {});
     const headers = { 'x-market-id': code };
     await http()
       .post('/identity/seller/sign-up')
@@ -214,20 +223,36 @@ describe('the seller draft over HTTP (integration)', () => {
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
-    it('refuses a visitor and a signed-in seller without the permission (real use cases, real gate)', async () => {
+    it('admits the Seller Owner, and refuses a visitor and a session without a role (real use cases, real gate)', async () => {
       await boot(false);
       const session = await signedIn(code);
-
-      // A well-shaped body per route: the shape is checked before the gate, so a malformed body
-      // would answer 400 to anyone who is signed in.
-      for (const [method, path, body] of [
+      const routes = [
         ['get', '/sellers/my-file', {}],
         ['get', '/sellers/my-file/form-descriptors', {}],
         ['put', '/sellers/my-file/general', { phone: '0400' }],
         ['put', '/sellers/my-file/address', { address: { line1: 'x' } }],
         ['put', '/sellers/my-file/slug', { slug: 'a-shop' }],
         ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
-      ] as const) {
+        ['put', '/sellers/my-file/identifier', { identifier: '1' }],
+        ['post', '/sellers/my-file/identifier-check', { identifier: '1' }],
+      ] as const;
+
+      // The Seller Owner holds every seller key, `sellers.business-identity.edit` included,
+      // through the seller system role (identity slice 8a-1), so the real gate admits it and the
+      // sellers use case runs. Only identity's ports are faked in this suite: sellers' own
+      // repositories have no database here, so the use case's answer is not asserted, only that
+      // the gate did not refuse it (neither 401 nor 403). The admitted path on PostgreSQL is in
+      // test/db/role-seed.db-spec.ts (the gate) and test/db/sellers-files.db-spec.ts (the use cases).
+      for (const [method, path, body] of routes) {
+        const owner = await http()[method](path).set(session.headers).send(body);
+        expect([method, path, [401, 403].includes(owner.status)]).toEqual([method, path, false]);
+      }
+
+      // Without its role assignment the same session holds no key: access.denied.
+      fakes.assignments.clear();
+      // A well-shaped body per route: the shape is checked before the gate, so a malformed body
+      // would answer 400 to anyone who is signed in.
+      for (const [method, path, body] of routes) {
         const visitor = await http()[method](path).set('x-market-id', code).send(body);
         expect([method, path, visitor.status, visitor.body]).toEqual([
           method,
@@ -542,6 +567,8 @@ describe('the seller draft over HTTP (integration)', () => {
       ['put', '/sellers/my-file/address', { address: { line1: 'x' } }],
       ['put', '/sellers/my-file/slug', { slug: 'a-shop' }],
       ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
+      ['put', '/sellers/my-file/identifier', { identifier: '1' }],
+      ['post', '/sellers/my-file/identifier-check', { identifier: '1' }],
     ] as const)(
       '%s %s: a missing or invalid CSRF token answers 403 request.csrf, no-store, without a call',
       async (method, path, body) => {
@@ -570,6 +597,8 @@ describe('the seller draft over HTTP (integration)', () => {
       ['put', '/sellers/my-file/general', { phone: '0400' }, 'general'],
       ['put', '/sellers/my-file/address', { address: { line1: 'x' } }, 'address'],
       ['put', '/sellers/my-file/slug', { slug: 'a-shop' }, 'saveSlug'],
+      ['put', '/sellers/my-file/identifier', { identifier: '1' }, 'saveIdentifier'],
+      ['post', '/sellers/my-file/identifier-check', { identifier: '1' }, 'validateIdentifier'],
     ] as const)(
       '%s %s: request.throttled answers 429 with Retry-After',
       async (method, path, body, stub) => {
@@ -616,7 +645,112 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(stubs.general.calls).toHaveLength(calls);
     });
 
-    it('is in the OpenAPI document with its six routes, the CSRF header, 415 and 429', async () => {
+    it('saves an identifier from a PUT body: only the number, no scheme, seller or Market', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.saveIdentifier.next = { ok: true, value: { ...SAVED, missing: ['slug'] } };
+
+      const saved = await http()
+        .put('/sellers/my-file/identifier')
+        .set(session.headers)
+        .send({ identifier: '51 824 753 556' });
+      const cleared = await http()
+        .put('/sellers/my-file/identifier')
+        .set(session.headers)
+        .send({ identifier: null });
+      const absent = await http().put('/sellers/my-file/identifier').set(session.headers).send({});
+
+      expect(saved.status).toBe(200);
+      expect(saved.headers['cache-control']).toBe('no-store');
+      expect(saved.body).toEqual({ ...SAVED, missing: ['slug'] });
+      expect(stubs.saveIdentifier.calls.map((call) => call.input)).toEqual([
+        { identifier: '51 824 753 556' },
+        { identifier: null },
+        {},
+      ]);
+      expect([cleared.status, absent.status]).toEqual([200, 200]);
+      expect(stubs.saveIdentifier.calls[0]!.context.market.marketId).toBe(code);
+
+      const calls = stubs.saveIdentifier.calls.length;
+      const extra = await http()
+        .put('/sellers/my-file/identifier')
+        .set(session.headers)
+        .send({ identifier: '1', scheme: 'zz-corp-no', sellerId: 'x', marketId: 'ZZ' });
+      const wrongType = await http()
+        .put('/sellers/my-file/identifier')
+        .set(session.headers)
+        .send({ identifier: 5 });
+      const tooLong = await http()
+        .put('/sellers/my-file/identifier')
+        .set(session.headers)
+        .send({ identifier: '9'.repeat(200) });
+      expect(detailsOf(extra)).toEqual({
+        fields: [
+          { path: 'marketId', code: 'unknown-field' },
+          { path: 'scheme', code: 'unknown-field' },
+          { path: 'sellerId', code: 'unknown-field' },
+        ],
+      });
+      expect(detailsOf(wrongType)).toEqual({ fields: [{ path: 'identifier', code: 'type' }] });
+      expect(detailsOf(tooLong)).toEqual({ fields: [{ path: 'identifier', code: 'length' }] });
+      expect(JSON.stringify([extra.body, wrongType.body, tooLong.body])).not.toContain('9999');
+      expect(stubs.saveIdentifier.calls).toHaveLength(calls);
+    });
+
+    it('checks an identifier from a POST body and answers the display form', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.validateIdentifier.next = { ok: true, value: { display: '51 824 753 556' } };
+
+      const checked = await http()
+        .post('/sellers/my-file/identifier-check')
+        .set(session.headers)
+        .send({ identifier: '51824753556' });
+      const missing = await http()
+        .post('/sellers/my-file/identifier-check')
+        .set(session.headers)
+        .send({});
+
+      expect(checked.status).toBe(200);
+      expect(checked.headers['cache-control']).toBe('no-store');
+      expect(checked.body).toEqual({ display: '51 824 753 556' });
+      expect(stubs.validateIdentifier.calls[0]!.input).toEqual({ identifier: '51824753556' });
+      expect(detailsOf(missing)).toEqual({ fields: [{ path: 'identifier', code: 'required' }] });
+      expect(stubs.validateIdentifier.calls).toHaveLength(1);
+    });
+
+    it.each([
+      ['identifier.format', 400],
+      ['identifier.checksum', 400],
+      ['file.not-found', 404],
+      ['file.change-request-required', 409],
+      ['conflict.stale', 409],
+      ['sellers.unavailable', 503],
+    ] as const)('maps the identifier failure %s to %i, codes only', async (failure, status) => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.saveIdentifier.next = { ok: false, error: { code: failure } };
+      stubs.validateIdentifier.next = { ok: false, error: { code: failure } };
+
+      for (const response of [
+        await http()
+          .put('/sellers/my-file/identifier')
+          .set(session.headers)
+          .send({ identifier: 'SECRET-NUMBER' }),
+        await http()
+          .post('/sellers/my-file/identifier-check')
+          .set(session.headers)
+          .send({ identifier: 'SECRET-NUMBER' }),
+      ]) {
+        expect(response.status).toBe(status);
+        expect(response.body).toEqual({ statusCode: status, code: failure });
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.text).not.toContain('SECRET-NUMBER');
+      }
+      expect(JSON.stringify(logLines)).not.toContain('SECRET-NUMBER');
+    });
+
+    it('is in the OpenAPI document with its eight routes, the CSRF header, 415 and 429', async () => {
       await boot(true, { API_DOCS_ENABLED: 'true' });
 
       const response = await http().get('/docs-json').expect(200);
@@ -633,6 +767,8 @@ describe('the seller draft over HTTP (integration)', () => {
         ['put', '/sellers/my-file/address'],
         ['put', '/sellers/my-file/slug'],
         ['post', '/sellers/my-file/slug-check'],
+        ['put', '/sellers/my-file/identifier'],
+        ['post', '/sellers/my-file/identifier-check'],
       ] as const;
       for (const [method, path] of routes) expect(paths[path]?.[method]).toBeDefined();
       for (const [method, path] of routes.slice(2)) {

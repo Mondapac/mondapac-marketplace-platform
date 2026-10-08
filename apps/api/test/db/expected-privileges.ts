@@ -118,6 +118,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
+    // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
+    // closed (valid_to is the only column that changes) and, while it has not started, deleted.
+    'sellers.tax_registration_periods': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['valid_to'],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
@@ -144,7 +150,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'matched_into_product_id',
         'owner_seller_id',
         'own_brand',
+        'pending_revision_id',
+        'pending_submitted_at',
         'promoted_at',
+        'published_revision_id',
         'retired_at',
         'scope',
         'status',
@@ -183,6 +192,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_family_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
+    // mutable and deleted from; the five revision tables are insert-only (CA3).
+    'catalog.product_working_copies': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'catalog.product_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_categories': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.rate_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {

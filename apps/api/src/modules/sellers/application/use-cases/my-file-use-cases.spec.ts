@@ -30,6 +30,8 @@ import {
   MarketConfigSellerFormats,
 } from '../../infrastructure/market-config-seller-formats';
 import { MarketConfigSellerPolicy } from '../../infrastructure/market-config-seller-policy';
+import { HmacIdentifierIndex } from '../../infrastructure/hmac-identifier-index';
+import { MarketConfigIdentifierSchemes } from '../../infrastructure/identifier-schemes';
 import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SealedFieldValues, SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -41,7 +43,9 @@ import { MyFileCheckSlug } from './my-file-check-slug.use-case';
 import { MyFileRead } from './my-file-read.use-case';
 import { MyFileSaveAddress } from './my-file-save-address.use-case';
 import { MyFileSaveGeneral } from './my-file-save-general.use-case';
+import { MyFileSaveIdentifier } from './my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from './my-file-save-slug.use-case';
+import { MyFileValidateIdentifier } from './my-file-validate-identifier.use-case';
 
 // The seller's draft in memory (sellers design 3.1, 3.5, 4.2, 4.3, 6.2, 6.5, 8.1; spike 3
 // record): the four `my-file.*` use cases and `form-descriptors.read`, on both Market fixtures.
@@ -205,6 +209,9 @@ function setUp() {
     runOnce: noRunOnce,
   };
   const formats = new MarketConfigSellerFormats(markets);
+  const policy = new MarketConfigSellerPolicy(markets);
+  const identifierSchemes = new MarketConfigIdentifierSchemes(markets);
+  const identifierIndex = new HmacIdentifierIndex(new Uint8Array(32).fill(9));
   const counterKeys = new HmacRateCounterKeys(new Uint8Array(32).fill(7));
   const common = { unitOfWork, counters, counterKeys, clock };
   // What the position gives; a test sets `locationAnswer` and reads `positions` (rounded values).
@@ -234,15 +241,18 @@ function setUp() {
     read: new MyFileRead(gate, {
       unitOfWork,
       files,
+      policy,
+      identifierSchemes,
       cipher,
       addressFormats: formats,
       zones: formats,
       areas: new DirectoryServiceAreas(directory),
     }),
-    saveGeneral: new MyFileSaveGeneral(gate, { ...common, files, cipher }),
+    saveGeneral: new MyFileSaveGeneral(gate, { ...common, files, policy, cipher }),
     saveAddress: new MyFileSaveAddress(gate, {
       ...common,
       files,
+      policy,
       cipher,
       addressFormats: formats,
       zones: {
@@ -256,7 +266,19 @@ function setUp() {
       ...common,
       files,
       slugs,
-      policy: new MarketConfigSellerPolicy(markets),
+      policy,
+    }),
+    saveIdentifier: new MyFileSaveIdentifier(gate, {
+      ...common,
+      files,
+      policy,
+      identifierSchemes,
+      identifierIndex,
+      cipher,
+    }),
+    validateIdentifier: new MyFileValidateIdentifier(gate, {
+      ...common,
+      identifierSchemes,
     }),
     checkSlug: new MyFileCheckSlug(gate, {
       ...common,
@@ -264,7 +286,11 @@ function setUp() {
       policy: new MarketConfigSellerPolicy(markets),
       files,
     }),
-    descriptors: new FormDescriptorsRead(gate, { addressFormats: formats, zones: formats }),
+    descriptors: new FormDescriptorsRead(gate, {
+      addressFormats: formats,
+      zones: formats,
+      policy,
+    }),
   };
 }
 
@@ -303,6 +329,22 @@ function ownerContext(t: Setup, code: string, sellerId: Id<'Seller'>): CallConte
   );
 }
 
+/** What each Market fixture asks of a draft (design 4.1): AU requires an identifier, ZZ does not. */
+const REQUIREMENTS = {
+  AU: { identifierRequired: true, identifierScheme: 'abn' },
+  ZZ: { identifierRequired: false, identifierScheme: 'zz-corp-no' },
+} as const;
+
+/** The missing parts as a Market sees them: the identifier only where the Market requires it. */
+const parts = (code: 'AU' | 'ZZ', ...list: string[]) =>
+  list.filter((part) => part !== 'identifier' || REQUIREMENTS[code].identifierRequired);
+
+/** A valid number per scheme (the checksums of the two schemes differ), and what is stored. */
+const IDENTIFIERS = {
+  AU: { typed: ' 51 824 753 556 ', normalised: '51824753556', display: '51 824 753 556' },
+  ZZ: { typed: '123-456-782', normalised: '123456782', display: '123-456-782' },
+} as const;
+
 const GENERAL = {
   storeName: '  Al Noor Grocer ',
   businessName: 'Al Noor Pty Ltd',
@@ -327,7 +369,11 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
 
       expect(await t.saveGeneral.execute(context, GENERAL)).toEqual({
         ok: true,
-        value: { version: 2, draftComplete: false, missing: ['address', 'timezone', 'slug'] },
+        value: {
+          version: 2,
+          draftComplete: false,
+          missing: parts(code, 'address', 'timezone', 'identifier', 'slug'),
+        },
       });
       const stored = t.files.stored.get(`${code}|${sellerId}`)!.draft;
       expect(stored.storeName).toEqual({ name: 'Al Noor Grocer', key: 'al noor grocer' });
@@ -559,7 +605,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         value: {
           version: 3,
           draftComplete: false,
-          missing: ['slug'],
+          missing: parts(code, 'identifier', 'slug'),
           serviceArea: fixture.area,
           outsideServiceArea: !fixture.area.sellerOnboardingEnabled,
           timezone: {
@@ -699,6 +745,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
             zone: { chosen: undefined, hint: undefined },
           },
           START,
+          REQUIREMENTS[code],
         );
         a.files.stored.set(keyA, file.state);
       };
@@ -726,6 +773,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
             contactEmail: null,
           },
           START,
+          REQUIREMENTS[code],
         );
         b.files.stored.set(keyB, file.state);
       };
@@ -960,6 +1008,282 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
     });
   });
 
+  describe('business identifier (slice 3: validate and save)', () => {
+    const own = IDENTIFIERS[code];
+    // The other Market's valid number: a format error in this Market's scheme (AC 3).
+    const foreign = IDENTIFIERS[code === 'AU' ? 'ZZ' : 'AU'];
+    const index = new HmacIdentifierIndex(new Uint8Array(32).fill(9));
+    const storedOf = (t: Setup, sellerId: Id<'Seller'>) =>
+      t.files.stored.get(`${code}|${sellerId}`)!;
+
+    it('saves the normalised number sealed, with its scheme and keyed index, and reads it back', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      expect(await t.saveIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: true,
+        value: {
+          version: 2,
+          draftComplete: false,
+          missing: parts(
+            code,
+            'storeName',
+            'businessName',
+            'phone',
+            'address',
+            'timezone',
+            'identifier',
+            'slug',
+          ).filter((part) => part !== 'identifier'),
+        },
+      });
+      const { identifier } = storedOf(t, sellerId).draft;
+      expect(identifier?.scheme).toBe(REQUIREMENTS[code].identifierScheme);
+      expect(identifier?.sealed).toMatch(/^v1\./);
+      // Ciphertext, not the number: neither form appears in the stored value.
+      expect(identifier?.sealed).not.toContain(own.normalised);
+      expect(Buffer.from(identifier!.index).toString('hex')).toBe(
+        Buffer.from(
+          index.of(market(code), REQUIREMENTS[code].identifierScheme, own.normalised as never),
+        ).toString('hex'),
+      );
+      const read = await t.read.execute(context, {});
+      expect(read.ok && read.value.identifier).toEqual({
+        value: own.normalised,
+        display: own.display,
+      });
+    });
+
+    it('refuses the other scheme as format and a wrong checksum as checksum, writing nothing', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      expect(await t.saveIdentifier.execute(context, { identifier: foreign.typed })).toEqual({
+        ok: false,
+        error: { code: 'identifier.format' },
+      });
+      const wrongChecksum =
+        own.normalised.slice(0, -1) + (own.normalised.endsWith('9') ? '8' : '9');
+      expect(await t.saveIdentifier.execute(context, { identifier: wrongChecksum })).toEqual({
+        ok: false,
+        error: { code: 'identifier.checksum' },
+      });
+      for (const bad of ['letters', '1'.repeat(65), 12345, {}]) {
+        expect(await t.saveIdentifier.execute(context, { identifier: bad })).toEqual({
+          ok: false,
+          error: { code: 'identifier.format' },
+        });
+      }
+      expect(storedOf(t, sellerId).version).toBe(1);
+      expect(storedOf(t, sellerId).draft.identifier).toBeNull();
+      expect(t.cipher.sealed).toBe(0);
+    });
+
+    it('keeps the same number as a no-op and replaces it with another', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      await t.saveIdentifier.execute(context, { identifier: own.typed });
+      const before = storedOf(t, sellerId);
+      // Typed differently, same number: no write, the ciphertext stays.
+      const again = await t.saveIdentifier.execute(context, { identifier: own.normalised });
+      expect(again.ok && again.value.version).toBe(2);
+      expect(storedOf(t, sellerId)).toBe(before);
+    });
+
+    it('clears the number on a blank value; the draft needs it only where the Market requires it', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      await t.saveGeneral.execute(context, GENERAL);
+      await t.saveAddress.execute(context, { address: fixture.address });
+      await t.saveIdentifier.execute(context, { identifier: own.typed });
+      await t.saveSlug.execute(context, { slug: 'al-noor' });
+      expect(storedOf(t, sellerId).draftComplete).toBe(true);
+      for (const blank of [undefined, null, '', '   ']) {
+        await t.saveIdentifier.execute(context, { identifier: own.typed });
+        const cleared = await t.saveIdentifier.execute(context, { identifier: blank });
+        expect(cleared.ok && cleared.value.missing).toEqual(parts(code, 'identifier'));
+        expect(cleared.ok && cleared.value.draftComplete).toBe(
+          !REQUIREMENTS[code].identifierRequired,
+        );
+        expect(storedOf(t, sellerId).draft.identifier).toBeNull();
+      }
+    });
+
+    it('completes a draft in either order and counts the part only where required', async () => {
+      const t = setUp();
+      const { context } = seller(t, code);
+      await t.saveIdentifier.execute(context, { identifier: own.typed });
+      await t.saveSlug.execute(context, { slug: 'al-noor' });
+      await t.saveAddress.execute(context, { address: fixture.address });
+      const saved = await t.saveGeneral.execute(context, GENERAL);
+      expect(saved).toEqual({
+        ok: true,
+        value: { version: 5, draftComplete: true, missing: [] },
+      });
+    });
+
+    it('refuses on a file with an approved revision and when the key is destroyed', async () => {
+      const t = setUp();
+      const approved = seller(t, code, true);
+      expect(await t.saveIdentifier.execute(approved.context, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'file.change-request-required' },
+      });
+      expect(storedOf(t, approved.sellerId).version).toBe(1);
+
+      const { sellerId, context } = seller(t, code);
+      t.cipher.destroyed.add(sellerId);
+      expect(await t.saveIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+      expect(storedOf(t, sellerId).version).toBe(1);
+    });
+
+    it("is the actor's own file: no file, another Market and a non-seller are refused", async () => {
+      const t = setUp();
+      const stranger = ownerContext(t, code, t.ids.next<'Seller'>());
+      expect(await t.saveIdentifier.execute(stranger, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      const otherCode = code === 'AU' ? 'ZZ' : 'AU';
+      const { sellerId } = seller(t, otherCode);
+      const crossMarket = ownerContext(t, code, sellerId);
+      expect(await t.saveIdentifier.execute(crossMarket, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      expect(
+        await t.saveIdentifier.execute(testCallContext(market(code), 'system'), {
+          identifier: own.typed,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await t.validateIdentifier.execute(testCallContext(market(code), 'system'), {
+          identifier: own.typed,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('loses a race to a concurrent save with conflict.stale and writes nothing', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const key = `${code}|${sellerId}`;
+      t.files.beforeWrite = () => {
+        t.files.beforeWrite = null;
+        const file = SellerFile.restore(t.files.stored.get(key)!);
+        file.saveSlug('winner-shop' as ShopSlug, START, REQUIREMENTS[code]);
+        t.files.stored.set(key, file.state);
+      };
+      expect(await t.saveIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      expect(storedOf(t, sellerId).draft.identifier).toBeNull();
+    });
+
+    it('does not show, and does not count, a number of a scheme the Market no longer uses', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      await t.saveIdentifier.execute(context, { identifier: own.typed });
+      const key = `${code}|${sellerId}`;
+      const state = t.files.stored.get(key)!;
+      t.files.stored.set(key, {
+        ...state,
+        draft: {
+          ...state.draft,
+          identifier: { ...state.draft.identifier!, scheme: 'retired-scheme' },
+        },
+      });
+      const read = await t.read.execute(context, {});
+      expect(read.ok && read.value.identifier).toBeNull();
+      expect(read.ok && read.value.missing).toEqual(
+        expect.arrayContaining(parts(code, 'identifier')),
+      );
+    });
+
+    it('validates format and checksum only: no file read, nothing sealed or stored', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const readsBefore = t.readOnly.filter(Boolean).length;
+      expect(await t.validateIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: true,
+        value: { display: own.display },
+      });
+      expect(await t.validateIdentifier.execute(context, { identifier: foreign.typed })).toEqual({
+        ok: false,
+        error: { code: 'identifier.format' },
+      });
+      expect(
+        await t.validateIdentifier.execute(context, {
+          identifier: own.normalised.slice(0, -1) + (own.normalised.endsWith('9') ? '8' : '9'),
+        }),
+      ).toEqual({ ok: false, error: { code: 'identifier.checksum' } });
+      expect(await t.validateIdentifier.execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'identifier.format' },
+      });
+      expect(t.cipher.sealed).toBe(0);
+      expect(storedOf(t, sellerId).version).toBe(1);
+      expect(t.readOnly.filter(Boolean).length).toBe(readsBefore);
+    });
+
+    it('counts validation against the saves limit of the account, and refuses past it', async () => {
+      const t = setUp();
+      const { context } = seller(t, code);
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        expect((await t.validateIdentifier.execute(context, { identifier: own.typed })).ok).toBe(
+          true,
+        );
+      }
+      expect(await t.validateIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+      // The same counter: a save is refused too.
+      expect(await t.saveIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+      t.counters.failing = true;
+      t.clock.advance(Temporal.Duration.from({ minutes: 5 }));
+      expect(await t.validateIdentifier.execute(context, { identifier: own.typed })).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+    });
+
+    it('logs the outcome code, never the number', async () => {
+      const logged: unknown[] = [];
+      jest.spyOn(Logger.prototype, 'log').mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+      const t = setUp();
+      const { context } = seller(t, code);
+      await t.saveIdentifier.execute(context, { identifier: own.typed });
+      await t.validateIdentifier.execute(context, { identifier: foreign.typed });
+      const text = JSON.stringify(logged);
+      expect(text).toContain('sellers.my-file-save-identifier');
+      for (const secret of [own.normalised, own.display, foreign.normalised]) {
+        expect(text).not.toContain(secret);
+      }
+      jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    });
+  });
+
+  describe('form descriptors: the identifier field of the Market', () => {
+    it('describes the scheme, label key, requirement and input bound from configuration', async () => {
+      const t = setUp();
+      const { context } = seller(t, code);
+      const descriptors = await t.descriptors.execute(context, {});
+      expect(descriptors.ok && descriptors.value.identifier).toEqual({
+        scheme: REQUIREMENTS[code].identifierScheme,
+        labelKey: `sellers.business-identifier.${REQUIREMENTS[code].identifierScheme}`,
+        required: REQUIREMENTS[code].identifierRequired,
+        maxLength: 64,
+      });
+    });
+  });
+
   describe('rate limits (design 6.5)', () => {
     it('allows 60 saves a minute per account and refuses the 61st, before any work', async () => {
       const t = setUp();
@@ -1011,14 +1335,15 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
     const storedOf = (t: Setup, sellerId: Id<'Seller'>) =>
       t.files.stored.get(`${code}|${sellerId}`)!;
 
-    it('saves an available slug and completes the sixth part', async () => {
+    it('saves an available slug and completes the last part', async () => {
       const t = setUp();
       const { sellerId, context } = seller(t, code);
       await t.saveGeneral.execute(context, GENERAL);
       await t.saveAddress.execute(context, { address: fixture.address });
+      await t.saveIdentifier.execute(context, { identifier: IDENTIFIERS[code].typed });
       expect(await t.saveSlug.execute(context, { slug: ' Al-Noor ' })).toEqual({
         ok: true,
-        value: { version: 4, draftComplete: true, missing: [] },
+        value: { version: 5, draftComplete: true, missing: [] },
       });
       expect(storedOf(t, sellerId).draft.slug).toBe('al-noor');
       expect(storedOf(t, sellerId).draftComplete).toBe(true);
@@ -1110,7 +1435,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       t.files.beforeWrite = () => {
         t.files.beforeWrite = null;
         const file = SellerFile.restore(t.files.stored.get(key)!);
-        file.saveSlug('winner-shop' as ShopSlug, START);
+        file.saveSlug('winner-shop' as ShopSlug, START, REQUIREMENTS[code]);
         t.files.stored.set(key, file.state);
       };
       expect(await t.saveSlug.execute(context, { slug: 'al-noor' })).toEqual({
