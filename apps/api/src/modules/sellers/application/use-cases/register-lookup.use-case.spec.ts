@@ -783,6 +783,32 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
         expect(read.ok && read.value.registerResult).toBeNull();
       });
 
+      it('is stale when a name is saved while the register call is waiting (the race)', async () => {
+        const [number] = activeNumbers(code, 1);
+        const t = setUp(code);
+        const { sellerId, context } = seller(t, code);
+        t.fake.whileWaiting = () => {
+          t.clock.set(START.add({ minutes: 1 }));
+          edit(t, sellerId, 'Some Other Trader Pty Ltd', t.clock.now());
+          t.clock.set(START.add({ minutes: 2 }));
+        };
+
+        const saved = await save(t, context, number);
+
+        expect(saved.ok).toBe(true);
+        const view = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(view.ok && view.value).toMatchObject({
+          state: 'stale',
+          staleReason: 'draft-changed',
+          mismatches: [],
+          blocksApproval: true,
+        });
+        const file = t.files.stored.get(`${code}|${sellerId}`)!;
+        const row = await t.registerChecks.find(market(code), sellerId, indexOf(t, code, number!));
+        expect(row?.outcome).toBe('active');
+        expect(Temporal.Instant.compare(row!.checkedAt, file.lastChangedAt)).toBeLessThan(0);
+      });
+
       it('asks again on the next save of the same value, with the same quotas, and now flags the name', async () => {
         const [number] = activeNumbers(code, 1);
         const t = setUp(code);

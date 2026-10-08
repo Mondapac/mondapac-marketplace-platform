@@ -1362,3 +1362,23 @@ conservative reading), so an edit of the phone also asks the register again on t
 The seller save asks again when the stored `active` result is older than `last_changed_at`, within the
 same three quotas; a definite negative and an `unavailable` result are unchanged. Residual: an edit
 saved between the draft read of a lookup and the write of its result is not seen (a window of one call).
+
+**Race closed (Hassan, second review; no migration).** An `active` result is stamped with the instant
+of the draft snapshot it was compared against (the file as the identifier save left it, read in that
+unit: the later of its `last_changed_at` and the read instant), not with the time the register
+answered. The write unit reads the file again: if its version is no longer the snapshot's, the result
+is stored already stale (stamped one nanosecond before that edit). `registerStateOf`, `lookupDue` and
+`registerCheckIsCurrent` share one rule (`last_changed_at > checked_at` means stale). Residual: an edit
+whose stamp was taken before the snapshot read but that commits after the write unit's re-read is not
+seen; closing it needs a file-row lock or a version column on `register_checks`, which the file's
+version already gives to a future slice that wants it.
+
+Notes for later slices:
+
+- **The tax answer is outside `last_changed_at`.** The comparison also reads `registeredForIndirectTax`
+  from the tax profile. The slice that records the tax answer must make the register result stale too
+  (bump the file's version and `last_changed_at`, or include the tax profile version in the rule), and
+  must decide how a future-dated tax period is compared (today the period in force at the comparison
+  instant is used).
+- **`lookup.limit` counts repeat lookups.** The per-account limit counts every lookup that is due,
+  including a repeat of the same value after a draft change or after aging, not only new values.

@@ -1,13 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { err, ok } from '@mondapac/shared-kernel';
-import type {
-  CallContext,
-  Clock,
-  Id,
-  MarketContext,
-  Result,
-  Temporal,
-} from '@mondapac/shared-kernel';
+import { Temporal, err, ok } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { addressFromJson } from '../../domain/address';
 import type { IdentifierIndexKey, NormalisedIdentifier } from '../../domain/business-identifier';
@@ -40,6 +33,7 @@ import type {
 } from '../ports/business-register-lookup';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
+import type { SellerFileRepository } from '../ports/seller-file.repository';
 import type { RegisterCheckRepository } from '../ports/register-check.repository';
 import type { RegisterLookupPolicy, RegisterLookupSettings } from '../ports/register-lookup-policy';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
@@ -69,6 +63,7 @@ export interface LookupPlan {
 
 export interface RegisterLookupDependencies {
   readonly unitOfWork: UnitOfWork;
+  readonly files: SellerFileRepository;
   readonly registerChecks: RegisterCheckRepository;
   readonly registerLookups: BusinessRegisterLookups;
   readonly registerPolicy: RegisterLookupPolicy;
@@ -309,8 +304,13 @@ export interface LookupRun {
   readonly scheme: string;
   readonly identifier: NormalisedIdentifier;
   readonly index: IdentifierIndexKey;
-  /** The file the comparison reads the draft from (as the caller loaded it). */
+  /**
+   * The snapshot the comparison reads the draft from: the file as it stands after the caller's own
+   * save committed, read in that unit. A result is current only for this snapshot (Hassan M1).
+   */
   readonly file: SellerFile;
+  /** The instant of that read; an `active` result is stamped with it, never with a later time. */
+  readonly snapshotAt: Temporal.Instant;
   readonly by: RegisterChecker;
 }
 
@@ -360,27 +360,46 @@ export async function runLookup(
   return recordResult(deps, context, run, answer.outcome, mismatches);
 }
 
-/** Records an outcome that needed no call (the Market budget is spent: `unavailable`). */
+/**
+ * Records an outcome that needed no call (the Market budget is spent: `unavailable`), or the
+ * answer of a call. An `active` answer is stamped with the instant of the draft snapshot it was
+ * compared against (`run.snapshotAt`, the later of the snapshot's last change and its read), not
+ * with the time the register answered, so any edit saved afterwards is later than the result and
+ * makes it stale. In the same unit the file is read again: if its version is no longer the
+ * snapshot's, an edit slipped in during the call and the result is stored already stale (stamped
+ * one nanosecond before that edit), never as a clean `active` (Hassan M1, race).
+ */
 export async function recordResult(
   deps: RegisterLookupDependencies,
   context: CallContext,
-  run: Pick<LookupRun, 'sellerId' | 'index' | 'by'>,
+  run: Pick<LookupRun, 'sellerId' | 'index' | 'by'> &
+    Partial<Pick<LookupRun, 'file' | 'snapshotAt'>>,
   outcome: RegisterAnswer['outcome'],
   mismatches: readonly RegisterMismatch[],
 ): Promise<RegisterCheck | null> {
   const { market } = context;
   try {
-    const checkedAt = deps.clock.now();
-    const stored = await deps.unitOfWork.run(market, async () =>
-      ok(
+    const now = deps.clock.now();
+    const stored = await deps.unitOfWork.run(market, async () => {
+      let checkedAt = now;
+      if (outcome === 'active' && run.file !== undefined && run.snapshotAt !== undefined) {
+        checkedAt = run.snapshotAt;
+        const latest = await deps.files.findById(market, run.sellerId);
+        if (latest === null || latest.state.version !== run.file.state.version) {
+          const changed = latest?.state.lastChangedAt ?? run.snapshotAt;
+          checkedAt = changed.subtract({ nanoseconds: 1 });
+          if (Temporal.Instant.compare(checkedAt, run.snapshotAt) > 0) checkedAt = run.snapshotAt;
+        }
+      }
+      return ok(
         await deps.registerChecks.record(market, run.sellerId, run.index, {
           outcome,
           mismatches,
           checkedAt,
           checkedBy: run.by,
         }),
-      ),
-    );
+      );
+    });
     if (!stored.ok) return null;
     logger.log({
       msg: 'sellers.register-lookup',
