@@ -120,6 +120,7 @@ encrypted column under S4.
 | `operating_timezone` | `text` | yes | 2 | Clear. IANA zone ID (ADR-0005 decision 1), never an offset: the zone of the address's region, a hint, or a zone the seller or an admin chose from the region's closed list (spike 3 record, `docs/reviews/sellers-spike-3-zone-source.md`). CHECK `^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,2}$` and length at most 64; validity against the zone database and the region list is the application's (`TimezoneResolver`, `chooseZone`) |
 | `timezone_source` | `text` | yes | 2 | Clear. Who set `operating_timezone` (spike 3 record, data design changes): CHECK `default`, `browser`, `location`, `seller`, `admin` (closed, S8). `location` is written only once the later location-hint slice exists; it is in the list now so that slice alters no CHECK |
 | `address_timezone` | `text` | yes | 2 | Clear. The zone the operating address gives (the region's `default`, D 4.1), stored at every address save so that no read decrypts the address to derive it (4.3, zero unwrap) and the reviewer and `certification` (guardrail 3: the earliest boundary of the chosen and the address zone) can read it. CHECK as `operating_timezone`. No column for coordinates, ever |
+| `draft_slug` | `text COLLATE "C"` | yes | 2 (Q-M25) | Clear. The shop slug the seller chose in the draft, normalised by the application. CHECK `^[a-z0-9]+(-[a-z0-9]+)*$` and `char_length BETWEEN 3 AND 50`, the rule of `shop_slugs_slug_check` (3.5); the reserved words stay in Market configuration, never in the CHECK. **No unique key and no index**: a draft slug is not held, and uniqueness is decided only when the first submission holds it in `shop_slugs` (T1). Not public while a draft; personal-adjacent for a sole trader (10.4); removed with the row |
 | `identifier_scheme` | `text` | yes | 3 | Clear scheme code from Market configuration (`abn`, `zz-corp-no`). CHECK `^[a-z][a-z0-9-]{0,31}$` |
 | `identifier_ciphertext` | `text` | yes | 3 | **Personal**, Enc, `sellers.seller-file.identifier`: the normalised value |
 | `identifier_index` | `bytea` | yes | 3 | **Personal (pseudonymous)**, S5. CHECK `octet_length = 32`. CHECK: the three identifier columns are all NULL or all set |
@@ -154,6 +155,11 @@ encrypted column under S4.
   `timezone_source <> 'default' OR operating_timezone = address_timezone` (the region default is the
   address's zone). "The chosen zone is on the region's list" and "a hint only for a draft whose zone
   nobody set" are configuration and transition rules: the aggregate's (`chooseZone`, 6).
+- **Invariant I-S1 (Q-M25).** While a held `shop_slugs` row exists for the seller, `draft_slug`
+  equals its `slug`. The database does not carry it (6); the application does: the submission
+  holds `draft_slug`; `my-file.save-slug` with a different value deletes the never-public held row
+  in the same unit (slice 5); the admin `seller.change-slug` writes both; the purge deletes both.
+  Until slice 5 no held row exists, so the invariant holds trivially.
 - **Implemented in slice 2b** (migration `20261008130000_sellers_file_details`, 2026-10-08): the
   slice-2 rows above, their CHECKs and `(market_id, store_name_key)`; constraint names in 18.
 
@@ -265,6 +271,9 @@ bounds them.
   next submission (D 14.4 Q-M21). The purge deletes the held row the same way (10.2). The
   application gets `DELETE` on this table from slice 5, the first slice that holds and so can
   release (8).
+- The seller's draft choice is `seller_files.draft_slug` (3.1, Q-M25). It is not held, has no key
+  here, and is checked against this table only as an advisory `slug.taken` at save; the unique
+  key above, at the submission's insert, is the authority.
 - The prefix search of the admin list is a range on `(market_id, slug)` (S6).
 - The public read by slug (D 7.1, Hassan M5) reads `WHERE market_id = $1 AND slug = $2 AND state =
   'held'`: a retired slug never resolves, and the seller must then pass `sellingEligibility`.
@@ -510,6 +519,7 @@ table is added to it. `platform.event_delivery` is unchanged: `sellers.<handler>
 |---|---|---|
 | Store name (draft), its search key, the approved store name | `seller_files` | Clear: public once approved, and the list searches it (D 8.1) |
 | Slug | `shop_slugs` | Clear, public |
+| Draft slug | `seller_files.draft_slug` | Clear, not public while a draft (Q-M25) |
 | Business name, phone, contact email, operating and registered address, identifier (draft and live) | `seller_files` | Enc, one column per field (S4) |
 | Revision content (everything the reviewer saw) | `business_file_revisions` | Enc, one column |
 | Store profile texts | `store_profile_revisions` | Enc, one column (D 8.1) |
@@ -618,6 +628,7 @@ widens them first.
 | Slug not on the reserved list; slug or store name not confusable with an approved seller's | A checked-in list and a distance measure | Application (D 3.5) |
 | `all_product_types_allowed` true ⇒ no type rows; false ⇒ at least one row (`types.empty`) | Cross-table | `SellerAdminSettings` aggregate |
 | `shop_slugs.ever_public` is set when the seller first has an approved revision | Cross-table | The unit that first moves the pointer sets it; the CHECK forbids retiring a slug that was never public (3.5) |
+| I-S1: while a held `shop_slugs` row exists, `seller_files.draft_slug` equals its slug (Q-M25) | Cross-row, cross-table | Application: submission holds `draft_slug`; `my-file.save-slug` with a different value deletes the never-public held row in the same unit; `seller.change-slug` writes both; the purge deletes both (3.1) |
 | Only a tax period that has not started is cancelled | Time against `Clock` | Use case under the root's version (3.7) |
 | An approved file's draft is not edited (L2) | Depends on the pointer and the caller | Use cases (3.1) |
 | Counters within their limits; a failed reservation refuses (L10) | Policy values and `Clock` | Reservation unit (3.11) |
@@ -717,6 +728,7 @@ Aligned with D 11.1 as revised at G2 (slices P1 and P2, 7a-read, 7a-decide, 7a-a
 | 1 | P2 (platform PR, before slice 3) | `platform_btree_gist` | `CREATE SCHEMA "extensions"`; `CREATE EXTENSION btree_gist SCHEMA "extensions"`; no grant. The same PR amends platform.md 10.5 guard 1 and adds the no-`USAGE` test (9.2, 9.6) |
 | 2 | 1 | `sellers_files` | `CREATE SCHEMA "sellers"`; `outbox`, `inbox`; `seller_files` (slice-1 columns of 3.1); `seller_admin_settings`; `seller_tax_profiles`; `store_profiles` (without the pointer); schema `USAGE` and table grants |
 | 3 | 2 | `sellers_file_details` | The slice-2 columns of `seller_files` (`timezone_source` and `address_timezone` included, spike 3 record) and their CHECKs; `(market_id, store_name_key)`; `shop_slugs`; `rate_counters`. **Implemented in slice 2b:** `20261008130000_sellers_file_details` (18) |
+| 3a | 2 (Q-M25) | `sellers_draft_slug` | `seller_files.draft_slug` (`ADD COLUMN`, nullable, no default, `COLLATE "C"`) and `seller_files_draft_slug_check` (`NOT VALID` then `VALIDATE`, under `lock_timeout`); no index, no unique key, no grant change (the table-level grant covers it), no data change. **Implemented:** `20261008150000_sellers_draft_slug` (19) |
 | 4 | 3 | `sellers_identifier_tax` | The identifier columns, their CHECK and partial index; `tax_registration_periods` with its exclusion constraint |
 | 5 | 4a | `sellers_register_checks` | `register_checks` |
 | 6 | 5 | `sellers_business_file_revisions` | `business_file_revisions` (withdrawal columns included) with its partial uniques and queue index; `seller_files.approved_revision_id` and its FK; `GRANT DELETE` on `shop_slugs` (Q-M21) |
@@ -795,6 +807,7 @@ Backfills, if any, run as a worker job in bounded batches (P 7), never inside a 
   of 9 drops `seller_files_decision_revision_id_fkey` and the intent CHECK before
   `identifier_claims`; down of 13 drops the pointer FK before `store_profile_revisions` (measured
   order, 12); down of 9 drops `admin_flags` too. Down of 6 also revokes `DELETE` on `shop_slugs`.
+- Down of 3a (`sellers_draft_slug`) drops `seller_files_draft_slug_check`, then the column.
 - Down of 1 (P2) drops the extension and the schema `extensions`; it runs after down of 4.
 - A down drops columns and data: it is for an empty or development database. CI runs up, down, up
   (`pnpm db:check-reversible`) on every migration.
@@ -813,7 +826,7 @@ Backfills, if any, run as a worker job in bounded batches (P 7), never inside a 
   `(market_id, approved_revision_id)` → `(market_id, id)` and the same-seller rule left to the
   aggregate.
 - Hand-written blocks appended to the generated `migration.sql`, as in platform.md section 6:
-  every CHECK; the exclusion constraint; `COLLATE "C"` on `store_name_key` and `slug` (spike S1:
+  every CHECK; the exclusion constraint; `COLLATE "C"` on `store_name_key`, `draft_slug` and `slug` (spike S1:
   whether Prisma's drift check sees a column collation; if it reports drift, the fallback is a
   `bytea` key of the UTF-8 bytes, which orders bytewise with no collation, measured by the same
   spike); the grants; and the partial indexes, invisible to Prisma (ID-data 8.4, A5) and listed for
@@ -939,7 +952,7 @@ process stops after the `sellers` unit commits: it runs from the purged event (1
 ### 10.4 Erasure of an approved seller (later; CUS-03, D 14.2)
 
 Not in Phase 3. For that design, the columns that destroying the key does **not** make unreadable,
-and which must be deleted or overwritten: `store_name`, `store_name_key`, `public_store_name`, the
+and which must be deleted or overwritten: `store_name`, `store_name_key`, `public_store_name`, `draft_slug` (clear, personal-adjacent for a sole trader; deleted with the file row), the
 held slug (public trading data, but still about a person for a sole trader), and every
 `identifier_index` (`seller_files`, `business_file_revisions`, `register_checks`,
 `identifier_claims`; S5). Everything else of the seller is ciphertext under the destroyed key.
@@ -1037,6 +1050,7 @@ cases happened to agree); plans at real volume (no data yet).
 | Q-M21 | Seller changes the slug before approval | Yes: the held row is deleted, no audit row; `DELETE` on `shop_slugs` moves to slice 5 (3.5, 8, 9.1) |
 | Q-M22 | Withdraw limit key | Per seller file (3.11) |
 | Q-M23 | Separate registered address | Yes (corrected after the first answer): optional, captured when it differs, encrypted, part of the revision content and of an identity change; only the operating address drives ServiceArea and time zone. `seller_files.registered_address_ciphertext` (slice 2) and the revision content (3.1, 3.2) |
+| Q-M25 | Where the draft keeps the slug the seller chose (follow-up 8) | `seller_files.draft_slug`, nullable, clear, the `shop_slugs` slug rule as a CHECK, no key or index; saved by `my-file.save-slug`, which counts against both the save and the slug-check limits; the sixth completeness part; invariant I-S1 (3.1). Migration 3a (9.1, 19) |
 | Q-M24 | P2 and 8 in D 11.1 | Done by Mohammad; after Q-M21 slice 8 has no migration (9.1), and D 11.1 already says so |
 
 ## 14. Open
@@ -1174,3 +1188,27 @@ semantics, but a reviewer could not see them). Tests in `apps/api/test/db/seller
 refused case (all five ciphertext bounds and shapes, store name C1 and bidi characters, key NFKC,
 every zone case); the trigger (`23001`); the guarded release with its `window_started_at` guard (a
 stale window changes 0 rows); `seller_files_market_id_store_name_key_idx` in `pg_indexes`.
+
+## 19. Slice 2 migration `20261008150000_sellers_draft_slug` (2026-10-08; Q-M25)
+
+Written by Hossein from Mohammad's amendment Q-M25 (3.1, 3.5, 9.1 row 3a); for Mojtaba's sign-off.
+The column is nullable with no default (a catalog change, no rewrite) and `COLLATE "C"` by hand
+(Prisma does not see a collation, spike S1). `seller_files_draft_slug_check` has the rule of
+`shop_slugs_slug_check`; it is added `NOT VALID` and then `VALIDATE`d under `lock_timeout = '5s'`
+(Mojtaba decides whether the plain form is preferable: the column is all NULL, so both forms scan
+nothing of consequence). No index, no unique key, no grant change, no data change. `down.sql`
+drops the CHECK and then the column. Tests in `apps/api/test/db/sellers-files.db-spec.ts` (both
+Market fixtures): `attcollation` `C` for `draft_slug`; the CHECK accepts `abc`, `a-b-c` and 50
+characters, refuses 2 and 51 characters, upper case, a leading or trailing hyphen, a double hyphen
+and non-ASCII; two files may hold the same draft slug; no index names the column; a repository
+round trip; a write over a stale version changes 0 rows; the privilege map is unchanged.
+
+The migration changes no data on purpose. `draft_complete` is consumed only at submission (slice 5),
+which re-checks completeness against the current Market configuration (section 6), and no real
+seller drafts exist before this slice; existing development rows stay stale (a draft with no slug
+reads `draft_complete = false` or a value computed without the slug) until their next save, which
+recomputes it. `BackfillSellerFiles` (the sellers job that fills missing files) was checked: it
+creates files through `SellerFile.create`, which sets `draft_complete = false`, and never sets it to
+true. Slice 2 tests also cover a deterministic lost-update case (the version bumped by another unit
+between load and save changes 0 rows, `conflict.stale`) and a retired slug, own or another
+seller's, read as `taken` through the Prisma `findBySlug` mapping.

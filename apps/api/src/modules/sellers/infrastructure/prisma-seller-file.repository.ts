@@ -9,6 +9,7 @@ import {
   SellerFile,
   type SellerFileOrigin,
 } from '../domain/seller-file';
+import type { ShopSlug } from '../domain/shop-slug';
 import type { StoreName } from '../domain/store-name';
 import { TIMEZONE_SOURCES, type TimezoneSource, type ZoneState } from '../domain/zone';
 
@@ -40,6 +41,7 @@ const FILE_COLUMNS = {
   operatingTimezone: true,
   timezoneSource: true,
   addressTimezone: true,
+  draftSlug: true,
 } as const;
 
 /** A stored row that breaks the domain's rules: a fault of the data, never a value to use. */
@@ -173,6 +175,8 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
         registeredAddress: sealed<'registered-address'>(row.registeredAddressCiphertext),
         serviceAreaCode: row.serviceAreaCode,
         zone: zoneOf(row),
+        // Read back as stored (the CHECK holds the format); the reserved words are not re-checked.
+        slug: row.draftSlug as ShopSlug | null,
       },
     });
   }
@@ -201,6 +205,7 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
         operatingTimezone: draft.zone?.operatingTimezone ?? null,
         timezoneSource: draft.zone?.timezoneSource ?? null,
         addressTimezone: draft.zone?.addressTimezone ?? null,
+        draftSlug: draft.slug,
         draftComplete: state.draftComplete,
         lastChangedAt: toDate(state.lastChangedAt),
         version: state.version,

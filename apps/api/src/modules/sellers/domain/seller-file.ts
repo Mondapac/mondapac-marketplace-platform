@@ -2,6 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
 import { SellerFileCreated } from './events';
 import type { Sealed } from './sealed';
+import type { ShopSlug } from './shop-slug';
 import type { StoreName } from './store-name';
 import { zoneAfterAddressSave, type RegionZones, type ZoneChoice, type ZoneState } from './zone';
 
@@ -26,6 +27,8 @@ export interface SellerFileDraft {
   /** The ServiceArea the operating address fell in at its last save, or null for none. */
   readonly serviceAreaCode: string | null;
   readonly zone: ZoneState | null;
+  /** The shop slug the seller chose (Q-M25): parsed, not held; the first submission holds it. */
+  readonly slug: ShopSlug | null;
 }
 
 export const EMPTY_DRAFT: SellerFileDraft = Object.freeze({
@@ -37,6 +40,7 @@ export const EMPTY_DRAFT: SellerFileDraft = Object.freeze({
   registeredAddress: null,
   serviceAreaCode: null,
   zone: null,
+  slug: null,
 });
 
 export interface SellerFileState {
@@ -88,7 +92,14 @@ export type DraftRefused =
   | { readonly code: 'timezone.not-selectable' };
 
 /** The mandatory parts of a complete draft (brief AC 5), in the order of the form. */
-export const DRAFT_PARTS = ['storeName', 'businessName', 'phone', 'address', 'timezone'] as const;
+export const DRAFT_PARTS = [
+  'storeName',
+  'businessName',
+  'phone',
+  'address',
+  'timezone',
+  'slug',
+] as const;
 export type DraftPart = (typeof DRAFT_PARTS)[number];
 
 /**
@@ -113,6 +124,7 @@ export const NEW_SELLER_ADMIN_SETTINGS = Object.freeze({
  *   request. `identity`'s access state never freezes the draft; until slice 5 no file has an
  *   approved revision, so nothing is frozen yet;
  * - the General group is never saved without a phone (SEL-11, AC 7);
+ * - saving the slug the draft already has is a no-op (no version change);
  * - a chosen zone is on its region's list (`zoneAfterAddressSave`);
  * - every save recomputes `draftComplete`, stamps `lastChangedAt` and raises the version by one;
  *   the repository writes it only over the version it read (optimistic, P 10).
@@ -228,6 +240,21 @@ export class SellerFile {
     return ok(undefined);
   }
 
+  /**
+   * Saves the chosen shop slug (Q-M25). The slug is already parsed against the Market's reserved
+   * words and checked for availability by the use case; it is not held here. Saving the slug the
+   * draft already has changes nothing (no version bump).
+   */
+  saveSlug(
+    slug: ShopSlug,
+    now: Temporal.Instant,
+  ): Result<void, { readonly code: 'file.change-request-required' }> {
+    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+    if (this.#state.draft.slug === slug) return ok(undefined);
+    this.apply({ ...this.#state.draft, slug }, now);
+    return ok(undefined);
+  }
+
   private apply(draft: SellerFileDraft, now: Temporal.Instant): void {
     this.#state = Object.freeze({
       ...this.#state,
@@ -246,6 +273,7 @@ function missingParts(draft: SellerFileDraft): readonly DraftPart[] {
     phone: draft.phone !== null,
     address: draft.address !== null,
     timezone: draft.zone !== null,
+    slug: draft.slug !== null,
   };
   return DRAFT_PARTS.filter((part) => !present[part]);
 }

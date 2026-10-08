@@ -26,6 +26,7 @@ import { FormDescriptorsRead } from './application/use-cases/form-descriptors-re
 import { MyFileCheckSlug } from './application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from './application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from './application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
@@ -140,6 +141,15 @@ function useCaseProvider<D, U>(
       addressFormats: true,
       zones: true,
       areas: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileSaveSlug, {
+      unitOfWork: true,
+      files: true,
+      slugs: true,
+      policy: true,
+      counters: true,
+      counterKeys: true,
       clock: true,
     }),
     useCaseProvider(MyFileCheckSlug, {

@@ -54,6 +54,11 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "sellers.my-file-save-slug",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
