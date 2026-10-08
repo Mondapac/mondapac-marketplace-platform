@@ -102,6 +102,39 @@ describe('relay', () => {
     expect(response.status).toBe(413);
   });
 
+  it('refuses a streamed body over the cap without a Content-Length', async () => {
+    const fetchImpl = upstreamOk();
+    const big = new Uint8Array(16 * 1024 + 1).fill(120);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(big.slice(0, 8000));
+        controller.enqueue(big.slice(8000));
+        controller.close();
+      },
+    });
+    const request = new Request('http://seller.localhost:3001/api/identity/seller/sign-in', {
+      method: 'POST',
+      headers: sameOrigin,
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+    const response = await relay(config, request, ['identity', 'seller', 'sign-in'], fetchImpl);
+    expect(response.status).toBe(413);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses at once when Content-Length is over the cap', async () => {
+    const fetchImpl = upstreamOk();
+    const response = await relay(
+      config,
+      post('identity/seller/sign-in', { ...sameOrigin, 'content-length': '99999' }),
+      ['identity', 'seller', 'sign-in'],
+      fetchImpl,
+    );
+    expect(response.status).toBe(413);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('sends only allowlisted headers and the Market of the host', async () => {
     const fetchImpl = upstreamOk();
     await relay(

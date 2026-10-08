@@ -68,6 +68,26 @@ export function upstreamHeaders(request: Request, host: PanelHost): Headers {
   return headers;
 }
 
+/** The request body as text, or null once more than `limit` bytes have arrived. */
+async function readCapped(request: Request, limit: number): Promise<string | null> {
+  if (request.body === null) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const decoder = new TextDecoder();
+  return chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join('') + decoder.decode();
+}
+
 /**
  * Relays one browser request to the API. `fetchImpl` is injected for tests; the route handler
  * passes the global `fetch`.
@@ -93,9 +113,10 @@ export async function relay(
   if (declared > MAX_BODY_BYTES) return jsonError(413, 'request.too-large');
   let body: string | undefined;
   if (request.method !== 'GET') {
-    body = await request.text();
-    if (new TextEncoder().encode(body).length > MAX_BODY_BYTES)
-      return jsonError(413, 'request.too-large');
+    // Read the stream with a hard cap, so a chunked body without Content-Length is refused too.
+    const read = await readCapped(request, MAX_BODY_BYTES);
+    if (read === null) return jsonError(413, 'request.too-large');
+    body = read;
   }
   let upstream: Response;
   try {

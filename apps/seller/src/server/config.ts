@@ -97,14 +97,11 @@ export function parsePanelConfig(env: Readonly<Record<string, string | undefined
 /**
  * Start-up tripwire (ADR-0034 decision 3, Hassan's gate on the sign-in slice): the panel does not
  * yet forward the browser's address to the API, so every user would share one per-origin throttle
- * bucket. Until the identity client-address slice lands, a production start is refused unless every
- * host is a `*.localhost` development host.
+ * bucket. Until the identity client-address slice lands, a start is refused, whatever NODE_ENV says,
+ * unless every host is a `*.localhost` development host. Remove it in the PR that adopts the ADR-0037
+ * signer, together with a test that the signed header is sent.
  */
-export function assertClientAddressForwarding(
-  config: PanelConfig,
-  env: Readonly<Record<string, string | undefined>>,
-): void {
-  if (env['NODE_ENV'] !== 'production') return;
+export function assertClientAddressForwarding(config: PanelConfig): void {
   const local = config.hosts.every((host) => /^[a-z0-9-]+\.localhost(:\d+)?$/.test(host.host));
   if (local) return;
   throw new Error(
@@ -119,7 +116,7 @@ let cached: PanelConfig | undefined;
 export function panelConfig(): PanelConfig {
   if (cached === undefined) {
     const config = parsePanelConfig(process.env);
-    assertClientAddressForwarding(config, process.env);
+    assertClientAddressForwarding(config);
     cached = config;
   }
   return cached;
