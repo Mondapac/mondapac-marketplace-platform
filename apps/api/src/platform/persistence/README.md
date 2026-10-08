@@ -182,6 +182,8 @@ Rows, values and SQL are never logged.
     with the stack's api environment (`DATABASE_URL` of the api login, `HOSTED_MARKETS`). It
     only reads. Exit 2: read the alert lines of the same run (`msg` = the code) for positions;
     exit 3: run it again, then with `--full`; repeated 3s go to Mojtaba (database) and Hassan.
+    `audit.verify.incomplete` on consecutive job runs means a full run does not fit the
+    budget (it is retried full every hour): tune the verify budget or `VERIFY_BATCH_SIZE` (`audit-chain-policy.ts`).
 - Tests: unit specs over `test/support/in-memory-audit-chain.ts`;
   `test/db/platform-audit-chain.db-spec.ts` runs on its own database copy (`audit`), where
   the owner tampers and resets the chain with the user triggers off.
