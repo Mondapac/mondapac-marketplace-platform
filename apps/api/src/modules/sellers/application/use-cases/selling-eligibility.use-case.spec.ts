@@ -9,6 +9,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/su
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
+import { SellersFacadeImplementation } from '../../presentation/sellers.facade';
 import { SellingEligibilitySystem } from './selling-eligibility-system.use-case';
 import { SellingEligibility } from './selling-eligibility.use-case';
 
@@ -83,5 +84,22 @@ describe.each(['AU', 'ZZ'])('sellingEligibility stand-in, Market %s', (code) => 
 
     expect(jobOnRequestActor.ok).toBe(false);
     expect(requestOnSystem.ok).toBe(false);
+  });
+
+  it('is answered through the facade for a request actor and for the system actor alike', async () => {
+    const facade = new SellersFacadeImplementation({
+      sellerSummaries: undefined as never,
+      sellerSummariesSystem: undefined as never,
+      sellingEligibility: request,
+      sellingEligibilitySystem: jobs,
+    });
+    const a = ids.next<'Seller'>();
+
+    for (const actor of ['anonymous', 'system'] as const) {
+      const result = await facade.sellingEligibility(testCallContext(market(), actor), [a]);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect([...result.value]).toEqual([[a, { eligible: false }]]);
+    }
   });
 });
