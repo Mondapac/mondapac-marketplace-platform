@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
 import { CORE_MODULES } from './modules';
+import { IdentityModule } from './modules/identity';
 import { AuthzModule } from './platform/authz/authz.module';
 import { ActorGuard } from './platform/call-context/actor.guard';
 import { ClockModule } from './platform/clock/clock.module';
@@ -27,7 +28,8 @@ import { WorkerModule } from './platform/worker/worker.module';
  * RateLimitGuard is second (identity design 6.3 step 1 and 6.8): the generic per-origin limit
  * runs before the actor guard and every controller, so no module code, `identity`'s included,
  * runs for a throttled request. ActorGuard is third: it attaches the request's actor (PF 5.2
- * rule 4; anonymous until identity slice 2). No other module declares APP_GUARD, and `main.ts` adds no
+ * rule 4) through identity's Authenticator (slice 2), after the origin and CSRF checks of
+ * identity design 6.4. No other module declares APP_GUARD, and `main.ts` adds no
  * `useGlobalGuards`; a test asserts this list and its order.
  */
 export const GLOBAL_GUARDS = [MarketContextGuard, RateLimitGuard, ActorGuard] as const;
@@ -56,7 +58,8 @@ export class AppModule {
         IdsModule,
         MarketConfigModule,
         MarketContextModule,
-        AuthzModule,
+        // The gate is built with identity's AuthorisationCheck (identity slice 2).
+        AuthzModule.register(IdentityModule),
         PersistenceModule,
         SubjectKeysModule,
         EventsModule,

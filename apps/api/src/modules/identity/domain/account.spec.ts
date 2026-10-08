@@ -173,4 +173,55 @@ describe.each(['AU', 'ZZ'])('Account in market %s (identity design 2.1, 3.1, 3.2
       expect(account.persistedVersion).toBe(7);
     });
   });
+  describe('rehashPassword and credentialChanged (identity design 6.5; Mojtaba N-b)', () => {
+    const stored = () => Account.restore({ ...register().state, version: 3 });
+
+    it('replaces the hash, keeps changedAt, raises the version and records no event', () => {
+      const account = stored();
+
+      account.rehashPassword(NEW_HASH);
+
+      expect(account.state.credential).toEqual({ passwordHash: NEW_HASH, changedAt: NOW });
+      expect(account.state.version).toBe(4);
+      expect(account.pendingEvents).toEqual([]);
+      expect(account.credentialChanged).toBe(true);
+    });
+
+    it('does nothing for the same hash', () => {
+      const account = stored();
+
+      account.rehashPassword(HASH);
+
+      expect(account.state.version).toBe(3);
+      expect(account.credentialChanged).toBe(false);
+    });
+
+    it('reports no credential change when only the notice instant changed', () => {
+      const account = Account.restore({
+        ...register().state,
+        emailVerifiedAt: NOW,
+        version: 3,
+      });
+
+      account.signUpAgain({ passwordHash: NEW_HASH, now: NOW.add({ hours: 30 }), noticeHours: 24 });
+
+      expect(account.state.version).toBe(4);
+      expect(account.credentialChanged).toBe(false);
+    });
+
+    it('reports a credential change when an unverified sign-up replaced the password', () => {
+      const account = stored();
+
+      account.signUpAgain({ passwordHash: NEW_HASH, now: NOW.add({ hours: 1 }), noticeHours: 24 });
+
+      expect(account.credentialChanged).toBe(true);
+    });
+
+    it('knows whether the email is verified', () => {
+      expect(stored().isEmailVerified).toBe(false);
+      expect(Account.restore({ ...register().state, emailVerifiedAt: NOW }).isEmailVerified).toBe(
+        true,
+      );
+    });
+  });
 });

@@ -1,4 +1,9 @@
-import { Injectable, type OnApplicationBootstrap, type Provider } from '@nestjs/common';
+import {
+  Injectable,
+  type InjectionToken,
+  type OnApplicationBootstrap,
+  type Provider,
+} from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, SystemActor } from '@mondapac/shared-kernel';
 import { jobLockKey, PRISMA_MIGRATE_LOCK_KEY } from './job-lock';
@@ -119,6 +124,26 @@ export function registerJobs(module: string, jobs: readonly JobDefinition[]): Pr
     inject: [JobRegistry],
     useFactory: (registry: JobRegistry) => {
       registry.register(module, jobs);
+      return module;
+    },
+  };
+}
+
+/**
+ * As {@link registerJobs}, for jobs that need providers of their module (a use case): `build`
+ * receives the providers named in `inject`, in order, and returns the module's jobs.
+ * `providers: [registerJobsFrom('identity', [PurgeExpired], (purge) => [purgeExpiredJob(purge)])]`.
+ */
+export function registerJobsFrom(
+  module: string,
+  inject: readonly InjectionToken[],
+  build: (...dependencies: never[]) => readonly JobDefinition[],
+): Provider {
+  return {
+    provide: Symbol(`jobs:${module}`),
+    inject: [JobRegistry, ...inject],
+    useFactory: (registry: JobRegistry, ...dependencies: never[]) => {
+      registry.register(module, build(...dependencies));
       return module;
     },
   };

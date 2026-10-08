@@ -31,7 +31,7 @@ class FieldProblemBody {
   @ApiProperty({ example: 'email' })
   path!: string;
 
-  @ApiProperty({ enum: ['required', 'type', 'format', 'unknown-field'] })
+  @ApiProperty({ enum: ['required', 'type', 'format', 'length', 'unknown-field'] })
   code!: string;
 }
 
@@ -61,6 +61,13 @@ export class ApiErrorBody {
       'request.body-unsupported',
       'request.throttled',
       'request.busy',
+      'request.csrf',
+      'session.invalid',
+      'credentials.invalid',
+      'email-verification-required',
+      'account.disabled',
+      'access.unauthenticated',
+      'access.denied',
       'access.unavailable',
       'conflict.retry',
     ],

@@ -10,12 +10,26 @@
     "anonymousIdentityPerMinute": 10,
     "defaultPerMinute": 200
   },
+  "allowedOrigins": ["https://storefront.zz.test"],
   "identity": {
     "password": {
       "minLength": 16,
       "maxLength": 100
     },
-    "existingAccountNoticeHours": 12
+    "existingAccountNoticeHours": 12,
+    "sessions": {
+      "customer": { "idleTimeoutMinutes": 10080, "absoluteLifetimeMinutes": 20160 }
+    },
+    "signInThrottles": {
+      "accountOrigin": { "limit": 4, "windowMinutes": 10, "blockMinutes": 20 },
+      "account": { "limit": 15, "windowMinutes": 60, "blockMinutes": 30 },
+      "origin": { "limit": 25, "windowMinutes": 15, "blockMinutes": 15 }
+    },
+    "mailThrottles": {
+      "account": { "limit": 2, "windowMinutes": 60, "blockMinutes": 0 },
+      "origin": { "limit": 8, "windowMinutes": 30, "blockMinutes": 0 }
+    },
+    "signInRecordRetentionDays": 60
   },
   "sellers": {
     "address": {

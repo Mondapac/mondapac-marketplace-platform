@@ -3,10 +3,12 @@ import {
   ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
+  ApiForbiddenResponse,
   ApiOperation,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
@@ -14,10 +16,11 @@ import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
+import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import {
   RegisterCustomer,
   type FieldProblem,
-  type RegisterCustomerInput,
+  type RegisterCustomerRequest,
 } from '../application/use-cases/register-customer.use-case';
 import {
   ApiErrorBody,
@@ -46,8 +49,11 @@ export function echoedFieldName(name: string): string {
     .join('');
 }
 
-/** Checks the shape of the body; values are never echoed (identity design 5.2). */
-export function parseSignUpBody(body: unknown): RegisterCustomerInput | readonly FieldProblem[] {
+/**
+ * Checks the shape of an email-and-password body (sign-up and sign-in): a closed object of two
+ * strings; values are never echoed (identity design 5.2).
+ */
+export function parseSignUpBody(body: unknown): RegisterCustomerRequest | readonly FieldProblem[] {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return [{ path: '', code: 'type' }];
   }
@@ -71,7 +77,8 @@ export function parseSignUpBody(body: unknown): RegisterCustomerInput | readonly
   return { email: record.email as string, password: record.password as string };
 }
 
-function fail(status: number, code: string, details?: object): HttpException {
+/** An answer in the error format of identity design 5.2: `{ statusCode, code, details? }`. */
+export function fail(status: number, code: string, details?: object): HttpException {
   return new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
 }
 
@@ -104,6 +111,16 @@ export class CustomerSignUpController {
   @ApiBadRequestResponse({
     type: ApiErrorBody,
     description: 'validation.failed (details.fields) or password.rejected (details.rule)',
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid: the request carries an Authorization header (HF14)',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description:
+      'request.csrf: Sec-Fetch-Site is present and not same-origin, or Origin is present and ' +
+      "not on the Market's list (HF14)",
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
@@ -142,8 +159,14 @@ export class CustomerSignUpController {
     }
     const input = parseSignUpBody(body);
     if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
+    // The origin of the mail counter, from the socket only (never a forwarded header, HF3).
+    const origin = clientOriginOf(request.socket.remoteAddress);
+    if (origin === null) return fail(503, 'access.unavailable');
 
-    const result = await this.registerCustomer.execute(context, input as RegisterCustomerInput);
+    const result = await this.registerCustomer.execute(context, {
+      ...(input as RegisterCustomerRequest),
+      origin,
+    });
     if (result.ok) return result.value;
     const error = result.error;
     switch (error.code) {

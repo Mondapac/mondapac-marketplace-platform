@@ -68,6 +68,7 @@ model IdentityAccount {
   version                 Int
   createdAt               DateTime                    @map("created_at") @db.Timestamptz(6)
   passwordCredential      IdentityPasswordCredential?
+  sessions                IdentitySession[]
 
   /// ADR-0018 decision 3: one account per Market, population and normalised email.
   @@unique([marketId, population, emailNormalized])
@@ -90,5 +91,101 @@ model IdentityPasswordCredential {
 
   @@id([marketId, accountId])
   @@map("password_credentials")
+  @@schema("identity")
+}
+
+/// A session of one account on one transport (identity design 3.5, 6.1, 6.2; data design 3.4).
+/// Only the SHA-256 of the token is stored (ADR-0018 decision 2); the token itself never is. Not
+/// versioned (M1): it changes only by single guarded statements (revocation, the once-a-minute
+/// last_seen_at write). Expiry is decided at read time from Clock, never by a job. The CHECKs,
+/// the partial seller index and the grants are hand-written in the migration.
+model IdentitySession {
+  /// UUIDv7; the sessionId of the ActorContext, never the token.
+  id                 String          @id @db.Uuid
+  marketId           String          @map("market_id") @db.VarChar(8)
+  tenantId           String          @map("tenant_id")
+  accountId          String          @map("account_id") @db.Uuid
+  /// Copy of the account's population, fixed at creation.
+  population         String
+  /// Copy of the active membership's seller (seller population only); its foreign key arrives
+  /// with seller_access in slice 5.
+  sellerId           String?         @map("seller_id") @db.Uuid
+  /// SHA-256 of the token (32 bytes).
+  tokenHash          Bytes           @map("token_hash")
+  /// cookie | bearer: a session is refused on the other transport.
+  transport          String
+  createdAt          DateTime        @map("created_at") @db.Timestamptz(6)
+  /// Written at most once a minute; in no index, so the update can stay HOT.
+  lastSeenAt         DateTime        @map("last_seen_at") @db.Timestamptz(6)
+  /// Fixed at creation from the population's policy (M2).
+  idleTimeoutSeconds Int             @map("idle_timeout_seconds")
+  /// Fixed at creation; never extended.
+  absoluteExpiresAt  DateTime        @map("absolute_expires_at") @db.Timestamptz(6)
+  revokedAt          DateTime?       @map("revoked_at") @db.Timestamptz(6)
+  /// A code (sign-out, password-changed, ...), set with revoked_at.
+  revokedReason      String?         @map("revoked_reason")
+  account            IdentityAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  /// The per-request read of the Authenticator.
+  @@unique([marketId, tokenHash])
+  /// Revocation of every session of an account.
+  @@index([marketId, accountId])
+  /// identity.purge-expired: rows 30 days past their absolute expiry.
+  @@index([marketId, absoluteExpiresAt])
+  @@map("sessions")
+  @@schema("identity")
+}
+
+/// A throttle counter (identity design 6.8; data design 3.5): a fixed window with a block
+/// instant (M11), keyed by an HMAC-SHA-256 under the stack's throttle secret. No address and
+/// no email is stored, only keyed hashes, also for unknown addresses. Transient: purged 48
+/// hours after its window started unless blocked.
+model IdentitySignInThrottle {
+  marketId        String    @map("market_id") @db.VarChar(8)
+  tenantId        String    @map("tenant_id")
+  /// The counter: a closed list in the CHECK; a new kind is a migration.
+  kind            String
+  /// HMAC-SHA-256 of what the kind counts (32 bytes).
+  keyHash         Bytes     @map("key_hash")
+  /// HMAC-SHA-256 of (Market, population, normalised email); NULL only for the origin kinds,
+  /// so a password reset clears every counter of an address.
+  accountKey      Bytes?    @map("account_key")
+  windowStartedAt DateTime  @map("window_started_at") @db.Timestamptz(6)
+  /// Reserved and failed attempts in the window.
+  attempts        Int
+  /// Set by a failure that reaches the threshold.
+  blockedUntil    DateTime? @map("blocked_until") @db.Timestamptz(6)
+
+  @@id([marketId, kind, keyHash])
+  /// Clearing every counter of an address at a password reset.
+  @@index([marketId, accountKey])
+  @@map("sign_in_throttles")
+  @@schema("identity")
+}
+
+/// One sign-in attempt of any population (identity design 10.2; data design 3.6, I8):
+/// append-only for the application by privilege (no UPDATE), kept 90 days with the full
+/// client address (H3), then deleted by identity.purge-expired. Never the typed email.
+model IdentitySignInRecord {
+  /// UUIDv7.
+  id            String   @id @db.Uuid
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// The sign-in page that was used.
+  population    String
+  /// Plain id (C4); NULL for an unknown address.
+  accountId     String?  @map("account_id") @db.Uuid
+  /// The outcome code of identity design 6.3.
+  outcome       String
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+  /// Personal: the client address, the only place in the database that stores one.
+  origin        String   @db.Inet
+  /// Plain id; set on success.
+  sessionId     String?  @map("session_id") @db.Uuid
+  correlationId String   @map("correlation_id")
+
+  /// The retention purge, one day of occurred_at per statement.
+  @@index([marketId, occurredAt])
+  @@map("sign_in_records")
   @@schema("identity")
 }

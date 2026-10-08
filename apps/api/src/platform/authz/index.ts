@@ -1,9 +1,22 @@
 // What a module may use from `platform/authz` (identity design 5.2; security review of slice
 // 1c, M1). A module imports from this file only (dependency-cruiser
 // `modules-reach-authz-through-its-barrel`): the base class, the declaration types, the
-// permission helpers, the answers and the gate's token and type. The gate's factory, the
-// AuthorisationCheck port and the declaration checks stay inside `platform/`.
+// permission helpers, the answers and the gate's token and type, and (identity slice 2) the two
+// ports `identity` implements, `Authenticator` and `AuthorisationCheck`, with their tokens. The
+// gate's factory and the declaration checks stay inside `platform/`.
 export { ACCESS_DENIED_STATUS, type AccessDenied } from './access-denied';
+export {
+  AUTHENTICATOR,
+  type Authenticator,
+  type CredentialRejected,
+  type SessionCredential,
+  type SessionTransport,
+} from './authenticator';
+export {
+  AUTHORISATION_CHECK,
+  type AccessDecision,
+  type AuthorisationCheck,
+} from './authorisation-check';
 export type {
   AccessDeclaration,
   AccessRule,

@@ -28,6 +28,14 @@ const BUSY: PasswordHasherBusy = Object.freeze({
   retryAfterSeconds: BUSY_RETRY_AFTER_SECONDS,
 });
 
+/**
+ * The one form of a password that is hashed and verified (Hassan L1; identity design 6.5): its
+ * Unicode NFKC form, the form whose length the rules count (NIST SP 800-63B-4).
+ */
+export function hashInput(plain: string): string {
+  return plain.normalize('NFKC');
+}
+
 /** Upper bounds for parameters read from a stored hash, so a bad row cannot exhaust memory. */
 const STORED_LIMITS = Object.freeze({ memory: 262_144, passes: 10, parallelism: 4 });
 const ARGON2_VERSION = 19;
@@ -110,18 +118,33 @@ export function decodePhc(stored: string): PhcHash {
  * {@link MAX_WAITING_HASHES} more wait in order; any call beyond that is answered `request.busy`
  * at once, without hashing. Verification compares in constant time and reports a hash made
  * with other parameters, to be replaced at the next successful sign-in.
+ *
+ * Both `hash` and `verify` derive from {@link hashInput} (NFKC). With no stored hash, `verify`
+ * derives against a dummy PHC string with the current parameters, a random salt and a random
+ * tag, made once per process, and answers no match: the same work as for a real account (HF12).
  */
 export class Argon2idPasswordHasher implements PasswordHasher {
   #running = 0;
   readonly #waiting: (() => void)[] = [];
+  readonly #dummy: string;
 
-  constructor(private readonly derive: Argon2Derive = nodeDerive) {}
+  constructor(private readonly derive: Argon2Derive = nodeDerive) {
+    const { memory, passes, parallelism, saltLength, tagLength } = ARGON2ID_PARAMETERS;
+    this.#dummy = encodePhc({
+      memory,
+      passes,
+      parallelism,
+      salt: randomBytes(saltLength),
+      tag: randomBytes(tagLength),
+    });
+  }
 
   async hash(plain: string): Promise<Result<string, PasswordHasherBusy>> {
     const salt = randomBytes(ARGON2ID_PARAMETERS.saltLength);
     const { memory, passes, parallelism, tagLength } = ARGON2ID_PARAMETERS;
+    const message = hashInput(plain);
     const tag = await this.limited(() =>
-      this.derive(plain, salt, { memory, passes, parallelism, tagLength }),
+      this.derive(message, salt, { memory, passes, parallelism, tagLength }),
     );
     if (tag === null) return err(BUSY);
     return ok(encodePhc({ memory, passes, parallelism, salt, tag }));
@@ -129,11 +152,13 @@ export class Argon2idPasswordHasher implements PasswordHasher {
 
   async verify(
     plain: string,
-    stored: string,
+    stored: string | null,
   ): Promise<Result<PasswordVerification, PasswordHasherBusy>> {
-    const phc = decodePhc(stored);
+    const known = stored !== null;
+    const phc = decodePhc(stored ?? this.#dummy);
+    const message = hashInput(plain);
     const tag = await this.limited(() =>
-      this.derive(plain, phc.salt, {
+      this.derive(message, phc.salt, {
         memory: phc.memory,
         passes: phc.passes,
         parallelism: phc.parallelism,
@@ -141,7 +166,9 @@ export class Argon2idPasswordHasher implements PasswordHasher {
       }),
     );
     if (tag === null) return err(BUSY);
-    const matches = tag.length === phc.tag.length && timingSafeEqual(tag, phc.tag);
+    const equal = tag.length === phc.tag.length && timingSafeEqual(tag, phc.tag);
+    // Never a match against the dummy, whatever was typed.
+    const matches = known && equal;
     const needsRehash =
       phc.memory !== ARGON2ID_PARAMETERS.memory ||
       phc.passes !== ARGON2ID_PARAMETERS.passes ||

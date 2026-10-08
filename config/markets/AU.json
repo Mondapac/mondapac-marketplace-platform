@@ -10,12 +10,26 @@
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300
   },
+  "allowedOrigins": [],
   "identity": {
     "password": {
       "minLength": 15,
       "maxLength": 128
     },
-    "existingAccountNoticeHours": 24
+    "existingAccountNoticeHours": 24,
+    "sessions": {
+      "customer": { "idleTimeoutMinutes": 20160, "absoluteLifetimeMinutes": 43200 }
+    },
+    "signInThrottles": {
+      "accountOrigin": { "limit": 5, "windowMinutes": 15, "blockMinutes": 15 },
+      "account": { "limit": 20, "windowMinutes": 60, "blockMinutes": 60 },
+      "origin": { "limit": 30, "windowMinutes": 15, "blockMinutes": 15 }
+    },
+    "mailThrottles": {
+      "account": { "limit": 3, "windowMinutes": 60, "blockMinutes": 0 },
+      "origin": { "limit": 10, "windowMinutes": 60, "blockMinutes": 0 }
+    },
+    "signInRecordRetentionDays": 90
   },
   "sellers": {
     "address": {

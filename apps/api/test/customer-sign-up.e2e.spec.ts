@@ -12,9 +12,11 @@ import {
   type PasswordHasher,
   type PasswordHasherBusy,
 } from '../src/modules/identity/application/ports/password-hasher';
+import { THROTTLE_REPOSITORY } from '../src/modules/identity/application/ports/throttle.repository';
 import { Account, type AccountState } from '../src/modules/identity/domain/account';
 import { OUTBOX_WRITER, type OutboxWriter } from '../src/platform/events/outbox-writer';
 import { UNIT_OF_WORK, type UnitOfWork } from '../src/platform/unit-of-work/unit-of-work';
+import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
 
@@ -42,6 +44,7 @@ const fakeAccounts: AccountRepository = {
     const stored = state.accounts.get(`${market.marketId}|${population}|${email}`);
     return Promise.resolve(stored === undefined ? null : Account.restore(stored));
   },
+  findById: () => Promise.reject(new Error('sign-up reads no account by id')),
   add: (market, account) => {
     const { population, email } = account.state;
     state.accounts.set(`${market.marketId}|${population}|${email.normalized}`, account.state);
@@ -64,8 +67,13 @@ const fakeHasher: PasswordHasher = {
   verify: () => Promise.reject(new Error('sign-up never verifies')),
 };
 
+// The mail counters of 6.8 (L4), in memory.
+const mailCounters = new IdentityFakes();
+
 const override = (builder: TestingModuleBuilder) =>
   builder
+    .overrideProvider(THROTTLE_REPOSITORY)
+    .useValue(mailCounters.throttleRepository)
     .overrideProvider(UNIT_OF_WORK)
     .useValue(fakeUnitOfWork)
     .overrideProvider(ACCOUNT_REPOSITORY)
@@ -93,6 +101,7 @@ describe('POST /identity/customer/sign-up (integration)', () => {
     state.events.length = 0;
     state.hashed = 0;
     state.busy = false;
+    mailCounters.reset();
   });
 
   afterEach(async () => {
@@ -343,6 +352,8 @@ describe('POST /identity/customer/sign-up (integration)', () => {
     expect(Object.keys(operation?.responses ?? {}).sort()).toEqual([
       '202',
       '400',
+      '401',
+      '403',
       '415',
       '429',
       '503',

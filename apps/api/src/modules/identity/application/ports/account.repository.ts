@@ -1,4 +1,4 @@
-import type { MarketContext, Population, Result } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Population, Result } from '@mondapac/shared-kernel';
 import type { Account } from '../../domain/account';
 
 /**
@@ -23,6 +23,9 @@ export interface AccountRepository {
     emailNormalized: string,
   ): Promise<Account | null>;
 
+  /** The account with this id, with its credential, or null. */
+  findById(market: MarketContext, id: Id<'Account'>): Promise<Account | null>;
+
   /**
    * Stores a new account, its credential and its data key (identity design 11.3: the key is
    * created with the account, in the same unit).
@@ -31,7 +34,8 @@ export interface AccountRepository {
 
   /**
    * Stores the changes of a loaded account if its version is still the one read; otherwise
-   * throws `StaleAggregateError` (platform persistence 10).
+   * throws `StaleAggregateError` (platform persistence 10). The credential row is written only
+   * when the credential changed (Mojtaba N-b).
    */
   save(market: MarketContext, account: Account): Promise<void>;
 }
