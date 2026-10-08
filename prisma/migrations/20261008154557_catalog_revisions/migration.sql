@@ -333,7 +333,8 @@ ALTER TABLE "catalog"."product_revision_decisions"
     ("decided_by_kind" <> 'seller' OR "outcome" = 'superseded')
     AND ("publish_kind" IS DISTINCT FROM 'auto' OR "decided_by_kind" = 'system')
     AND ("publish_kind" IS NULL OR "publish_kind" = 'auto' OR "decided_by_kind" = 'admin')
-    AND ("outcome" <> 'changes-requested' OR "decided_by_kind" = 'admin')),
+    AND ("outcome" <> 'changes-requested' OR "decided_by_kind" = 'admin')
+    AND ("decided_by_kind" <> 'seller' OR "superseded_cause" IN ('resubmitted', 'withdrawn'))),
   ADD CONSTRAINT "product_revision_decisions_product_version_check" CHECK ("product_version" >= 1);
 
 -- Data design 3.26: the sellers shape, with the catalog kinds of D 8.4.

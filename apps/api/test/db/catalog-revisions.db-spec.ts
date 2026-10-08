@@ -573,6 +573,14 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       }),
     ).toBe('23503');
     for (const cause of ['promoted', 'matched']) {
+      const rs = await revision(p, f, { revision_no: 9000 + ++sequence });
+      expect(
+        await insertState('product_revision_decisions', {
+          ...row,
+          revision_id: rs,
+          superseded_cause: cause,
+        }),
+      ).toBe('23514');
       const r2 = await revision(p, f, { revision_no: 9000 + ++sequence });
       expect(
         await insertState('product_revision_decisions', {
