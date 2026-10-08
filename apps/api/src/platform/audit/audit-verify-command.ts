@@ -19,11 +19,15 @@ export const AUDIT_VERIFY_EXIT = Object.freeze({
   clean: 0,
   /** A usage error, a Market this stack does not host, or a failed start. */
   refused: 1,
-  /** Verified, with at least one finding (each is also an alert line in the log). */
+  /**
+   * At least one finding (each is also an alert line in the log), whether or not the run
+   * completed: a finding wins over an incomplete run (Mohammad, round 2 C2).
+   */
   findings: 2,
   /**
-   * The verification did not complete: its budget ran out (`audit.verify.incomplete`) or an
-   * error stopped it after the start-up checks (Mohammad 8, Hassan L4). Nothing is known.
+   * The verification did not complete and found nothing before it stopped: its budget ran out
+   * (`audit.verify.incomplete`) or an error stopped it after the start-up checks (Mohammad 8,
+   * Hassan L4). The part after the stop was not checked; any findings listed are valid.
    */
   incomplete: 3,
 });
@@ -111,8 +115,8 @@ export async function runAuditVerifyCommand(
     return AUDIT_VERIFY_EXIT.incomplete;
   }
   write(describeReport(report));
-  if (!report.complete) return AUDIT_VERIFY_EXIT.incomplete;
-  return report.findings.length === 0 ? AUDIT_VERIFY_EXIT.clean : AUDIT_VERIFY_EXIT.findings;
+  if (report.findings.length > 0) return AUDIT_VERIFY_EXIT.findings;
+  return report.complete ? AUDIT_VERIFY_EXIT.clean : AUDIT_VERIFY_EXIT.incomplete;
 }
 
 const CLASS_NAME = /^[A-Za-z][A-Za-z0-9]{0,63}$/;

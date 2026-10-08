@@ -169,9 +169,10 @@ Rows, values and SQL are never logged.
 - Operator command: `APP_ROLE=api node dist/audit-verify.js --market <id> [--full]`
   (incremental unless `--full`; it loads the same configuration as the api, so `APP_ROLE`
   is required as everywhere). It prints one JSON line of positions, codes and counts and
-  exits 0 when clean, 2 with findings, 3 when the verification did not complete (budget
-  spent, or an error: stderr gets the error class and SQLSTATE, never its text), 1 when
-  refused (usage, a Market this stack does not host, a failed start).
+  exits 0 when clean, 2 with findings (a finding wins over an incomplete run), 3 when the
+  verification did not complete and found nothing (budget spent, or an error: stderr gets the
+  error class and SQLSTATE, never its text), 1 when refused (usage, a Market this stack does
+  not host, a failed start). An incomplete full run of the job is retried full.
   - Runbook note (Kazem): run it in the api image of the Region Stack that hosts the Market,
     with the stack's api environment (`DATABASE_URL` of the api login, `HOSTED_MARKETS`). It
     only reads. Exit 2: read the alert lines of the same run (`msg` = the code) for positions;

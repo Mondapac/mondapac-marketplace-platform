@@ -182,6 +182,32 @@ describe.each(TEST_MARKETS)('runAuditVerifyCommand for market %s', (code) => {
     expect(calls).toEqual([]);
   });
 
+  it('exits 2 when an incomplete run already found something: a finding wins (Mohammad C2)', async () => {
+    const { app } = appWith({
+      complete: false,
+      findings: [
+        {
+          code: 'audit.chain.broken',
+          marketId: code,
+          epoch: 1,
+          chainSeq: 7n,
+          auditLogId: '01990000-0000-7000-8000-000000000007',
+        },
+      ],
+    });
+    const lines: string[] = [];
+
+    await expect(
+      runAuditVerifyCommand(
+        app,
+        ['--market', code],
+        (l) => lines.push(l),
+        (l) => lines.push(l),
+      ),
+    ).resolves.toBe(AUDIT_VERIFY_EXIT.findings);
+    expect((JSON.parse(lines[0]!) as { complete: boolean }).complete).toBe(false);
+  });
+
   it('exits 3 when the verification ran out of its budget, with the report written', async () => {
     const { app } = appWith({ complete: false });
     const lines: string[] = [];

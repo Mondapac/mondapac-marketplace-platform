@@ -31,7 +31,7 @@ describe('the audit jobs', () => {
     const modes: [string, VerifyMode][] = [];
     const verify = jest.fn((context: JobContext, mode: VerifyMode) => {
       modes.push([context.market.marketId, mode]);
-      return Promise.resolve();
+      return Promise.resolve({ complete: true });
     });
     const job = auditVerifyJob({ verify } as unknown as AuditVerifier, clock);
     expect(job.name).toBe(AUDIT_VERIFY_JOB);
@@ -66,12 +66,36 @@ describe('the audit jobs', () => {
       })
       .mockImplementation((_context: JobContext, mode: VerifyMode) => {
         modes.push(mode);
-        return Promise.resolve();
+        return Promise.resolve({ complete: true });
       });
     const job = auditVerifyJob({ verify } as unknown as AuditVerifier, clock);
 
     await expect(job.run(jobContextOf('AU'))).rejects.toThrow('database gone');
     await job.run(jobContextOf('AU'));
     expect(modes).toEqual(['full', 'full']);
+  });
+
+  it('runs the next verification full again when a full one ran out of its budget (Mohammad C1)', async () => {
+    const clock = new FixedClock(START);
+    const modes: VerifyMode[] = [];
+    const verify = jest
+      .fn()
+      .mockImplementationOnce((_context: JobContext, mode: VerifyMode) => {
+        modes.push(mode);
+        return Promise.resolve({ complete: false });
+      })
+      .mockImplementation((_context: JobContext, mode: VerifyMode) => {
+        modes.push(mode);
+        return Promise.resolve({ complete: true });
+      });
+    const job = auditVerifyJob({ verify } as unknown as AuditVerifier, clock);
+
+    await job.run(jobContextOf('AU'));
+    clock.advance(Temporal.Duration.from({ hours: 1 }));
+    await job.run(jobContextOf('AU'));
+    clock.advance(Temporal.Duration.from({ hours: 1 }));
+    await job.run(jobContextOf('AU'));
+
+    expect(modes).toEqual(['full', 'full', 'incremental']);
   });
 });

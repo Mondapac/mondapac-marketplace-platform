@@ -35,7 +35,8 @@ export function auditSealJob(sealer: AuditSealer): JobDefinition {
 /**
  * `platform.audit-verify` (PA 8): every hour an incremental check from the last checkpoint,
  * and a full check when this process has not completed one for that Market in the last 24
- * hours, so the first run after the worker starts is full. Findings are alerts only.
+ * hours, so the first run after the worker starts is full; a full run that did not complete
+ * is not counted. Findings are alerts only.
  */
 export function auditVerifyJob(verifier: AuditVerifier, clock: Clock): JobDefinition {
   const lastFull = new Map<string, Temporal.Instant>();
@@ -52,8 +53,10 @@ export function auditVerifyJob(verifier: AuditVerifier, clock: Clock): JobDefini
         Temporal.Instant.compare(started, previous.add(FULL_VERIFY_EVERY)) >= 0
           ? 'full'
           : 'incremental';
-      await verifier.verify(context, mode);
-      if (mode === 'full') lastFull.set(marketId, started);
+      const report = await verifier.verify(context, mode);
+      // Only a completed full run counts: one that ran out of budget is retried full on the
+      // next tick (Mohammad, round 2 C1).
+      if (mode === 'full' && report.complete) lastFull.set(marketId, started);
     },
   };
 }
