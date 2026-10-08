@@ -29,7 +29,12 @@ function insertOnlyTables(): string[] {
         name.startsWith('certification.') &&
         grant.table.join() === 'INSERT,SELECT' &&
         grant.columnUpdate.length === 0 &&
-        !['certification.outbox', 'certification.inbox'].includes(name),
+        ![
+          'certification.outbox',
+          'certification.inbox',
+          // Insert-only by grant but not on the trigger list of data design 6.1.
+          'certification.platform_subjects',
+        ].includes(name),
     )
     .map(([name]) => name.slice('certification.'.length))
     .sort();
@@ -695,6 +700,299 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
         [cert],
       ),
     ).toBe('23514');
+  });
+
+  /** The violated constraint of a statement that must fail, or null when it succeeded. */
+  async function constraintOf(table: string, row: Record<string, unknown>): Promise<string | null> {
+    try {
+      await sql.query(...insertSql(table, row));
+      return null;
+    } catch (error) {
+      return (error as { constraint?: string }).constraint ?? 'unknown';
+    }
+  }
+
+  it('names the constraint that refuses each malformed row of every table (one case per CHECK)', async () => {
+    const t = await type();
+    const cert = await certificate(t.typeId);
+    const certSeller = (
+      await sql.query<{ seller_id: string }>(
+        `SELECT seller_id FROM certification.seller_certifications WHERE id = $1`,
+        [cert],
+      )
+    ).rows[0]!.seller_id;
+    const sub = await submission(cert, t.typeId, t.revisionId);
+    const envelope = (n: number): string => `v1.${'A'.repeat(n - 3)}`;
+    const valid = {
+      outbox: () => ({
+        event_id: uuid7(),
+        type: 'certification.type-created.v1',
+        occurred_at: T0,
+        ...base(),
+        aggregate_type: 'certification-type',
+        aggregate_id: uuid7(),
+        aggregate_version: 1,
+        correlation_id: 'corr-00000001',
+        payload: '{}',
+      }),
+      inbox: () => ({
+        event_id: uuid7(),
+        handler: 'certification.some-handler',
+        ...base(),
+        processed_at: T0,
+      }),
+      certification_types: () => ({
+        id: uuid7(),
+        ...base(),
+        code: `c${uuid7().slice(-10)}`,
+        verification_mode: 'SELF_DECLARATION',
+        status: 'active',
+        version: 1,
+        created_at: T0,
+      }),
+      issuers: () => ({
+        id: uuid7(),
+        ...base(),
+        type_id: t.typeId,
+        display_name: 'An Issuer',
+        display_name_key: `an issuer ${uuid7()}`,
+        state: 'active',
+        expert_reference_ciphertext: CIPHERTEXT,
+        state_changed_at: T0,
+        state_changed_by_kind: 'seed',
+        version: 1,
+        created_at: T0,
+      }),
+      seller_certifications: () => ({
+        id: uuid7(),
+        ...base(),
+        seller_id: uuid7(),
+        type_id: t.typeId,
+        status: 'draft',
+        status_changed_at: T0,
+        last_changed_at: T0,
+        version: 1,
+        created_at: T0,
+      }),
+      seller_certification_submissions: () => ({
+        id: uuid7(),
+        ...base(),
+        seller_certification_id: cert,
+        seller_id: certSeller,
+        type_id: t.typeId,
+        type_revision_id: t.revisionId,
+        submission_no: sequence++ + 100,
+        kind: 'initial',
+        content_schema_version: 1,
+        content_hash: HASH,
+        submitted_zone: 'Australia/Sydney',
+        submitted_at: T0,
+        submitted_by_account_id: uuid7(),
+      }),
+      seller_submission_decisions: () => ({
+        ...decision(uuid7()),
+      }),
+    } as const;
+    const decisionRow = async (overrides: Record<string, unknown>) => ({
+      ...decision(await submission(await certificate(t.typeId), t.typeId, t.revisionId), {}),
+      ...overrides,
+    });
+    const cases: [string, Record<string, unknown>, string][] = [
+      ['outbox', { type: 'sellers.x.v1' }, 'outbox_type_check'],
+      ['outbox', { aggregate_type: 'Bad Type' }, 'outbox_aggregate_type_check'],
+      ['outbox', { aggregate_version: 0 }, 'outbox_aggregate_version_check'],
+      ['outbox', { correlation_id: 'short' }, 'outbox_correlation_id_check'],
+      ['outbox', { payload: '[]' }, 'outbox_payload_check'],
+      ['outbox', { market_id: 'au' }, 'outbox_market_id_check'],
+      ['outbox', { tenant_id: 'Bad Tenant' }, 'outbox_tenant_id_check'],
+      ['inbox', { handler: 'sellers.x' }, 'inbox_handler_check'],
+      ['inbox', { market_id: 'au' }, 'inbox_market_id_check'],
+      ['inbox', { tenant_id: 'Bad Tenant' }, 'inbox_tenant_id_check'],
+      ['certification_types', { status: 'gone' }, 'certification_types_status_check'],
+      [
+        'certification_types',
+        { verification_mode: 'OTHER' },
+        'certification_types_verification_mode_check',
+      ],
+      ['certification_types', { version: 0 }, 'certification_types_version_check'],
+      ['certification_types', { market_id: 'au' }, 'certification_types_market_id_check'],
+      ['certification_types', { tenant_id: 'Bad Tenant' }, 'certification_types_tenant_id_check'],
+      ['issuers', { version: 0 }, 'issuers_version_check'],
+      ['issuers', { display_name: '' }, 'issuers_display_name_check'],
+      ['issuers', { display_name: 'x'.repeat(201) }, 'issuers_display_name_check'],
+      ['issuers', { display_name_key: ' padded ' }, 'issuers_display_name_key_check'],
+      ['issuers', { display_name_key: 'k'.repeat(401) }, 'issuers_display_name_key_check'],
+      ['issuers', { accreditation_number: '' }, 'issuers_accreditation_number_check'],
+      ['issuers', { accreditation_number: 'A'.repeat(65) }, 'issuers_accreditation_number_check'],
+      ['issuers', { accreditation_number: ' A1 ' }, 'issuers_accreditation_number_check'],
+      ['issuers', { accreditation_number: 'A\u0007' }, 'issuers_accreditation_number_check'],
+      ['issuers', { state_changed_by_kind: 'robot' }, 'issuers_state_changed_by_kind_check'],
+      [
+        'issuers',
+        { expert_reference_ciphertext: envelope(4097) },
+        'issuers_expert_reference_ciphertext_check',
+      ],
+      [
+        'issuers',
+        { expert_reference_ciphertext: envelope(40) },
+        'issuers_expert_reference_ciphertext_check',
+      ],
+      ['issuers', { market_id: 'au' }, 'issuers_market_id_check'],
+      ['seller_certifications', { status: 'gone' }, 'seller_certifications_status_check'],
+      ['seller_certifications', { market_id: 'au' }, 'seller_certifications_market_id_check'],
+      [
+        'seller_certifications',
+        { tenant_id: 'Bad Tenant' },
+        'seller_certifications_tenant_id_check',
+      ],
+      [
+        'seller_certification_submissions',
+        { submission_no: 0 },
+        'seller_certification_submissions_submission_no_check',
+      ],
+      [
+        'seller_certification_submissions',
+        { submitted_zone: 'Z'.repeat(65) },
+        'seller_certification_submissions_submitted_zone_check',
+      ],
+      [
+        'seller_certification_submissions',
+        { self_declaration_note_ciphertext: envelope(8193) },
+        'seller_certification_submissions_note_ciphertext_check',
+      ],
+      [
+        'seller_certification_submissions',
+        { self_declaration_note_ciphertext: 'plain' },
+        'seller_certification_submissions_note_ciphertext_check',
+      ],
+      [
+        'seller_certification_submissions',
+        { market_id: 'au' },
+        'seller_certification_submissions_market_id_check',
+      ],
+      [
+        'seller_certification_submissions',
+        { tenant_id: 'Bad Tenant' },
+        'seller_certification_submissions_tenant_id_check',
+      ],
+    ];
+    for (const [table, overrides, constraint] of cases) {
+      const row = { ...valid[table as keyof typeof valid](), ...overrides };
+      expect({ table, overrides, constraint: await constraintOf(table, row) }).toEqual({
+        table,
+        overrides,
+        constraint,
+      });
+    }
+    // The positive control of every table: the unmodified row is accepted.
+    for (const table of Object.keys(valid).filter((k) => k !== 'seller_submission_decisions')) {
+      expect(await constraintOf(table, valid[table as keyof typeof valid]())).toBeNull();
+    }
+    // The bounds that are accepted exactly at the limit.
+    expect(
+      await constraintOf('issuers', {
+        ...valid.issuers(),
+        expert_reference_ciphertext: envelope(4096),
+      }),
+    ).toBeNull();
+    expect(
+      await constraintOf('seller_certification_submissions', {
+        ...valid.seller_certification_submissions(),
+        self_declaration_note_ciphertext: envelope(8192),
+      }),
+    ).toBeNull();
+    // The decisions: each half of the pairing checks, and the shape checks.
+    const dcases: [Record<string, unknown>, string][] = [
+      [{ outcome: 'gone', approved_zone: null }, 'seller_submission_decisions_outcome_check'],
+      [{ approved_zone: 'Z'.repeat(65) }, 'seller_submission_decisions_approved_zone_shape_check'],
+      [
+        { outcome: 'declined', reason_code: 'not-valid' },
+        'seller_submission_decisions_approved_zone_check',
+      ],
+      [{ reason_code: 'not-valid' }, 'seller_submission_decisions_reason_code_check'],
+      [
+        {
+          outcome: 'declined',
+          approved_zone: null,
+          reason_code: 'not-valid',
+          withdraw_cause: 'edited',
+        },
+        'seller_submission_decisions_withdraw_pair_check',
+      ],
+      [{ withdraw_cause: 'edited' }, 'seller_submission_decisions_withdraw_pair_check'],
+      [
+        { outcome: 'withdrawn', approved_zone: null, withdraw_cause: 'gone' },
+        'seller_submission_decisions_withdraw_cause_check',
+      ],
+      [
+        { reason_text_ciphertext: envelope(8193) },
+        'seller_submission_decisions_reason_text_ciphertext_check',
+      ],
+      [{ actor_kind: 'system' }, 'seller_submission_decisions_actor_pair_check'],
+      [{ actor_account_id: null }, 'seller_submission_decisions_actor_pair_check'],
+      [{ market_id: 'au' }, 'seller_submission_decisions_market_id_check'],
+      [{ tenant_id: 'Bad Tenant' }, 'seller_submission_decisions_tenant_id_check'],
+    ];
+    for (const [overrides, constraint] of dcases) {
+      expect({
+        overrides,
+        constraint: await constraintOf('seller_submission_decisions', await decisionRow(overrides)),
+      }).toEqual({
+        overrides,
+        constraint,
+      });
+    }
+    expect(sub).toBeTruthy();
+  });
+
+  it('names the foreign key that refuses a row of another Market', async () => {
+    const t = await type();
+    const cert = await certificate(t.typeId);
+    const sub = await submission(cert, t.typeId, t.revisionId);
+    const foreign = base(other.marketId, other.tenantId);
+    expect(
+      await constraintOf('seller_submission_decisions', {
+        ...decision(sub),
+        ...foreign,
+      }),
+    ).toBe('seller_submission_decisions_market_id_submission_id_fkey');
+    expect(
+      await constraintOf('issuers', {
+        id: uuid7(),
+        ...foreign,
+        type_id: t.typeId,
+        display_name: 'Foreign',
+        display_name_key: `foreign ${uuid7()}`,
+        state: 'proposed',
+        state_changed_at: T0,
+        state_changed_by_kind: 'seed',
+        version: 1,
+        created_at: T0,
+      }),
+    ).toBe('issuers_market_id_type_id_fkey');
+  });
+
+  it('frees the open-certificate slot for declined and revoked only (T1)', async () => {
+    const t = await type();
+    const open = async (status: string): Promise<string | null> => {
+      const sellerId = uuid7();
+      await certificate(t.typeId, { seller_id: sellerId, status });
+      return constraintOf('seller_certifications', {
+        id: uuid7(),
+        ...base(),
+        seller_id: sellerId,
+        type_id: t.typeId,
+        status: 'draft',
+        status_changed_at: T0,
+        last_changed_at: T0,
+        version: 1,
+        created_at: T0,
+      });
+    };
+    for (const status of ['draft', 'in-review', 'approved', 'changes-needed', 'expired']) {
+      expect(await open(status)).toBe('seller_certifications_market_id_seller_id_type_id_open_key');
+    }
+    for (const status of ['declined', 'revoked']) expect(await open(status)).toBeNull();
   });
 
   it('keeps the issuer registry rules: no active issuer without an expert reference, unique names', async () => {
