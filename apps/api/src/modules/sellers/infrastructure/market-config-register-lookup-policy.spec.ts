@@ -3,7 +3,10 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/suppo
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { MarketConfigRegisterLookupPolicy } from './market-config-register-lookup-policy';
-import { UnknownRegisterLookupAdapterError } from './register-lookups';
+import {
+  UnknownRegisterLookupAdapterError,
+  availableRegisterAdapterCodes,
+} from './register-lookups';
 
 // The Market-configured register-lookup values and the start-up check (sellers design 4.1, 4.2;
 // Hassan L3). Both Market fixtures are loaded from their files.
@@ -37,7 +40,43 @@ describe('MarketConfigRegisterLookupPolicy', () => {
     expect(
       () =>
         new MarketConfigRegisterLookupPolicy(registryHosting(TEST_MARKET_IDS), new Set<string>()),
+    ).toThrow(
+      expect.objectContaining({
+        name: 'UnknownRegisterLookupAdapterError',
+        marketId: synthetic,
+        adapter: 'fake',
+      }),
+    );
+  });
+
+  it.each([
+    ['production, even when set explicitly', { nodeEnv: 'production', nodeEnvExplicit: true }],
+    ['development that was not set explicitly', { nodeEnv: 'development', nodeEnvExplicit: false }],
+    ['test that was not set explicitly', { nodeEnv: 'test', nodeEnvExplicit: false }],
+  ] as const)('never starts a Market that names the fake in %s', (_name, environment) => {
+    const available = availableRegisterAdapterCodes(environment);
+
+    expect(available.has('fake')).toBe(false);
+    expect(
+      () => new MarketConfigRegisterLookupPolicy(registryHosting([synthetic]), available),
     ).toThrow(UnknownRegisterLookupAdapterError);
+  });
+
+  it('has the fake only on an explicit development or test start', () => {
+    for (const nodeEnv of ['development', 'test'] as const) {
+      expect(availableRegisterAdapterCodes({ nodeEnv, nodeEnvExplicit: true }).has('fake')).toBe(
+        true,
+      );
+    }
+  });
+
+  it('gives a hosted Market with no sellers section no register', () => {
+    const bare = new Map(
+      [...configs].map(([id, config]) => [id, { ...config, sellers: undefined }]),
+    );
+    const policy = new MarketConfigRegisterLookupPolicy(new MarketRegistry(bare), new Set());
+
+    expect(policy.settingsOf(testMarketContext(synthetic, 'default'))).toEqual({ kind: 'none' });
   });
 
   it('does not check a Market this Region Stack does not host, and refuses its context', () => {
@@ -46,6 +85,6 @@ describe('MarketConfigRegisterLookupPolicy', () => {
       new Set<string>(),
     );
 
-    expect(() => policy.settingsOf(testMarketContext(synthetic, 'default'))).toThrow();
+    expect(() => policy.settingsOf(testMarketContext(synthetic, 'default'))).toThrow(/not hosted/);
   });
 });

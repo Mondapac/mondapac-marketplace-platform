@@ -1122,6 +1122,72 @@ describe('loadMarketConfigs', () => {
         /must not repeat an entry/,
       ],
       [
+        'a legal suffix repeated in another case',
+        (c: typeof SELLERS) => void c.registerLookup.legalSuffixes.push('LTD'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a legal suffix with an angle bracket',
+        (c: typeof SELLERS) => void c.registerLookup.legalSuffixes.push('<b>'),
+        /printable text/,
+      ],
+      [
+        'an adapter with a trailing hyphen',
+        (c: typeof SELLERS) => void (c.registerLookup.adapter = 'abr-'),
+        /lower-case adapter token/,
+      ],
+      [
+        'an adapter longer than 32 characters',
+        (c: typeof SELLERS) => void (c.registerLookup.adapter = 'a'.repeat(33)),
+        /too big|<=32/,
+      ],
+      [
+        'a manual link that is a javascript URL',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'javascript:alert(1)//{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a manual link with a backslash',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'https://r.example.test\\{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a manual link with a space',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'https://r.example.test/a b/{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a manual link in upper-case scheme',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'HTTPS://r.example.test/{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a manual link that is relative',
+        (c: typeof SELLERS) => void (c.registerLookup.manualLinkTemplate = '/find/{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a result age above a year',
+        (c: typeof SELLERS) => void (c.registerLookup.maxResultAgeDays = 366),
+        /maxResultAgeDays|<=365/,
+      ],
+      [
+        'a limit given as text',
+        (c: typeof SELLERS) =>
+          void ((c.registerLookup as { perOriginLimit: unknown }).perOriginLimit = '30'),
+        /perOriginLimit|number/,
+      ],
+      [
+        'more than 50 legal suffixes',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.legalSuffixes = Array.from({ length: 51 }, (_, i) => `s${i}`)),
+        /too big|<=50/,
+      ],
+      [
         'an unknown key in registerLookup',
         (c: typeof SELLERS) => void ((c.registerLookup as Record<string, unknown>).extra = 1),
         /unrecognized/i,

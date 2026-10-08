@@ -74,12 +74,8 @@ import { MarketConfigIdentifierSchemes } from './identifier-schemes';
 import { NoneLocationTimezoneResolver } from './location-timezone-resolvers';
 import { MarketConfigRegisterLookupPolicy } from './market-config-register-lookup-policy';
 import { PrismaRegisterCheckRepository } from './prisma-register-check.repository';
-import {
-  fakeRegisterLookupAllowed,
-  FAKE_REGISTER_ADAPTER,
-  FakeRegisterLookup,
-} from './register-lookups/fake';
-import { MarketConfigRegisterLookups } from './register-lookups';
+import { FAKE_REGISTER_ADAPTER, FakeRegisterLookup } from './register-lookups/fake';
+import { MarketConfigRegisterLookups, availableRegisterAdapterCodes } from './register-lookups';
 import { IdentityRegisteredSellers } from './identity-registered-sellers';
 import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-config-seller-formats';
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
@@ -101,11 +97,6 @@ const SELLERS_SECRET = Symbol('SELLERS_SECRET');
  * (dependency-cruiser `persistence-internals-are-private`, `subject-keys-only-in-infrastructure`,
  * `seller-access-contract-is-for-sellers`).
  */
-/** The register adapters this environment has: the `fake` only on an explicit dev or test start. */
-function availableRegisterAdapters(config: AppConfig): ReadonlySet<string> {
-  return new Set(fakeRegisterLookupAllowed(config) ? [FAKE_REGISTER_ADAPTER] : []);
-}
-
 export const sellerProviders: readonly FactoryProvider[] = [
   {
     provide: SELLER_FILE_REPOSITORY,
@@ -203,7 +194,7 @@ export const sellerProviders: readonly FactoryProvider[] = [
     provide: REGISTER_LOOKUP_POLICY,
     inject: [MarketRegistry, APP_CONFIG],
     useFactory: (markets: MarketRegistry, config: AppConfig): RegisterLookupPolicy =>
-      new MarketConfigRegisterLookupPolicy(markets, availableRegisterAdapters(config)),
+      new MarketConfigRegisterLookupPolicy(markets, availableRegisterAdapterCodes(config)),
   },
   {
     // The adapters of this environment: the `fake` only where a development or test start is
@@ -213,7 +204,7 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [REGISTER_LOOKUP_POLICY, APP_CONFIG],
     useFactory: (policy: RegisterLookupPolicy, config: AppConfig): BusinessRegisterLookups => {
       const adapters = new Map<string, BusinessRegisterLookup>();
-      if (availableRegisterAdapters(config).has(FAKE_REGISTER_ADAPTER)) {
+      if (availableRegisterAdapterCodes(config).has(FAKE_REGISTER_ADAPTER)) {
         adapters.set(FAKE_REGISTER_ADAPTER, new FakeRegisterLookup());
       }
       return new MarketConfigRegisterLookups(policy, adapters);

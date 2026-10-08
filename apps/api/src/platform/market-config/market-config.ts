@@ -647,6 +647,7 @@ const IDENTIFIER_PLACEHOLDER = '{identifier}';
  */
 function isManualLinkTemplate(template: string): boolean {
   if (template.split(IDENTIFIER_PLACEHOLDER).length !== 2) return false;
+  if (!/^https:\/\/[^\s\\\p{C}]+$/u.test(template)) return false;
   try {
     const probe = 'zzidentifierzz';
     const url = new URL(template.replace(IDENTIFIER_PLACEHOLDER, probe));
@@ -661,7 +662,7 @@ function isManualLinkTemplate(template: string): boolean {
   }
 }
 
-/** A legal suffix such as "pty ltd": letters, digits, spaces and dots, folded before compare. */
+/** A legal suffix such as "pty ltd": printable text, compared after folding case. */
 const legalSuffixSchema = z
   .string()
   .min(1)
@@ -701,7 +702,10 @@ const registerLookupSchema = z.strictObject({
   legalSuffixes: z
     .array(legalSuffixSchema)
     .max(50)
-    .refine((list) => new Set(list).size === list.length, 'must not repeat an entry'),
+    .refine(
+      (list) => new Set(list.map((suffix) => suffix.toLowerCase())).size === list.length,
+      'must not repeat an entry',
+    ),
 });
 
 /**
