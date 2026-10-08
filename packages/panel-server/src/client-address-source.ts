@@ -68,7 +68,13 @@ type Resolution =
 /** Removes the scrubbed headers (and the edge one) from `headers` and `rawHeaders`, in place. */
 function scrub(request: IncomingMessage, extra: readonly string[]): void {
   const names = new Set<string>([...SCRUBBED, ...extra]);
-  for (const name of names) delete request.headers[name];
+  // Node builds `headers` and `headersDistinct` lazily from `rawHeaders` and the header count it
+  // saved at parse time. Build both before `rawHeaders` shrinks, or `headersDistinct` throws.
+  const distinct = request.headersDistinct;
+  for (const name of names) {
+    delete request.headers[name];
+    delete distinct[name];
+  }
   const kept: string[] = [];
   for (let index = 0; index + 1 < request.rawHeaders.length; index += 2) {
     const name = request.rawHeaders[index] ?? '';
@@ -124,6 +130,7 @@ export function applyClientAddress(
     return false;
   }
   request.headers[INTERNAL_ADDRESS_HEADER] = resolution.address;
+  request.headersDistinct[INTERNAL_ADDRESS_HEADER] = [resolution.address];
   request.rawHeaders.push(INTERNAL_ADDRESS_HEADER, resolution.address);
   return true;
 }

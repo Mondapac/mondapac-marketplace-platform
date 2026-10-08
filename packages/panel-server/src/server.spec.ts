@@ -98,9 +98,33 @@ describe('socket mode', () => {
   });
 });
 
+describe('headersDistinct', () => {
+  it('stays readable and holds no spoofed header after a request with many scrubbed headers', async () => {
+    const seenDistinct: Record<string, string[] | undefined>[] = [];
+    server = createPanelServer({
+      source: parseClientAddressSource({ CLIENT_ADDRESS_SOURCE: 'socket' }),
+      handle: (req, res) => {
+        seenDistinct.push({ ...req.headersDistinct });
+        res.end('ok');
+      },
+    });
+    await new Promise<void>((done) => server!.listen(0, '127.0.0.1', done));
+    const target = { port: (server.address() as AddressInfo).port, host: '127.0.0.1' };
+    expect(await send(target, SPOOFS)).toBe(200);
+    expect(seenDistinct[0]?.['x-forwarded-for']).toBeUndefined();
+    expect(seenDistinct[0]?.['x-real-ip']).toBeUndefined();
+    expect(seenDistinct[0]?.['x-mp-client-address']).toEqual(['127.0.0.1']);
+  });
+});
+
 describe('an IPv6 peer', () => {
   const fake = (remoteAddress: string, rawHeaders: string[] = []) =>
-    ({ socket: { remoteAddress }, headers: {}, rawHeaders }) as unknown as IncomingMessage;
+    ({
+      socket: { remoteAddress },
+      headers: {},
+      headersDistinct: {},
+      rawHeaders,
+    }) as unknown as IncomingMessage;
 
   it('is its own address in socket mode, and an IPv4-mapped peer is its IPv4 address', () => {
     const v6 = fake('2001:db8::7');
@@ -126,7 +150,12 @@ describe('an IPv6 peer', () => {
 
 describe('edge peers on a dual-stack listener and unknown peers', () => {
   const fake = (remoteAddress: string | undefined, rawHeaders: string[] = []) =>
-    ({ socket: { remoteAddress }, headers: {}, rawHeaders }) as unknown as IncomingMessage;
+    ({
+      socket: { remoteAddress },
+      headers: {},
+      headersDistinct: {},
+      rawHeaders,
+    }) as unknown as IncomingMessage;
   const source = parseClientAddressSource({
     CLIENT_ADDRESS_SOURCE: 'edge',
     EDGE_CIDRS: '127.0.0.0/16',
@@ -244,7 +273,12 @@ describe('edge mode', () => {
 
 describe('the upgrade handler (dev hot reload)', () => {
   const upgradeRequest = (remoteAddress: string, rawHeaders: string[]) =>
-    ({ socket: { remoteAddress }, headers: {}, rawHeaders }) as unknown as IncomingMessage;
+    ({
+      socket: { remoteAddress },
+      headers: {},
+      headersDistinct: {},
+      rawHeaders,
+    }) as unknown as IncomingMessage;
 
   function bare(env: Record<string, string>) {
     const upgraded: IncomingMessage[] = [];
@@ -267,7 +301,12 @@ describe('the upgrade handler (dev hot reload)', () => {
       '8.8.8.8',
     ]);
     request.headers['x-forwarded-for'] = '9.9.9.9';
-    created.emit('upgrade', request, { destroy: () => undefined }, Buffer.alloc(0));
+    created.emit(
+      'upgrade',
+      request,
+      { end: () => undefined, destroy: () => undefined },
+      Buffer.alloc(0),
+    );
     expect(upgraded).toHaveLength(1);
     expect(upgraded[0]?.headers['x-forwarded-for']).toBeUndefined();
     expect(upgraded[0]?.headers['x-mp-client-address']).toBe('203.0.113.4');
@@ -283,7 +322,7 @@ describe('the upgrade handler (dev hot reload)', () => {
     created.emit(
       'upgrade',
       upgradeRequest('127.0.0.1', []),
-      { destroy: () => (destroyed = true) },
+      { end: () => undefined, destroy: () => (destroyed = true) },
       Buffer.alloc(0),
     );
     expect(destroyed).toBe(true);

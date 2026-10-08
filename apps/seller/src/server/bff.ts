@@ -3,6 +3,7 @@
 // headers, sets `x-market-id` from the request host, and refuses an unsafe request that is not
 // same-origin, because the API's own origin check is fail-open when the headers are absent.
 
+import 'server-only';
 import {
   CLIENT_ADDRESS_HEADER,
   MissingClientAddressError,

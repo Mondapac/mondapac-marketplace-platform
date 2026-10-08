@@ -1,5 +1,6 @@
 // Server-side configuration of the seller panel (ADR-0034 decision 3). Nothing here has a
 // default Market: a host that is not listed is unknown and answers 404 (ADR-0020 decision 3).
+import 'server-only';
 import { parseClientAddressKey, type ClientAddressKey } from '@mondapac/panel-server/signer';
 
 export interface PanelHost {

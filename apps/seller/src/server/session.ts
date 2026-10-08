@@ -1,6 +1,6 @@
 import 'server-only';
 import { headers } from 'next/headers';
-import { INTERNAL_ADDRESS_HEADER } from '@mondapac/panel-server';
+import { INTERNAL_ADDRESS_HEADER, MissingClientAddressError } from '@mondapac/panel-server';
 import { panelConfig } from './config.ts';
 import { panelHostFor, upstreamHeaders } from './bff.ts';
 
@@ -49,7 +49,10 @@ export async function readSession(): Promise<SessionRead> {
     if (!response.ok) return { kind: 'unavailable' };
     const body = (await response.json()) as SellerSession;
     return { kind: 'signed-in', session: body };
-  } catch {
+  } catch (error) {
+    if (error instanceof MissingClientAddressError) {
+      console.log(JSON.stringify({ msg: 'panel.session.client-address-missing' }));
+    }
     return { kind: 'unavailable' };
   }
 }
