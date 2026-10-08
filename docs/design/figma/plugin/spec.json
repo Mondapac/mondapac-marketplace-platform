@@ -1,5 +1,5 @@
 {
- "version": "1.8.4",
+ "version": "1.9.0",
  "generated": "2026-10-08",
  "primitives": [
   {
@@ -1973,6 +1973,14 @@
    "name": "size/dialog-md",
    "desktop": 560,
    "touch": 560,
+   "scopes": [
+    "WIDTH_HEIGHT"
+   ]
+  },
+  {
+   "name": "size/form-max",
+   "desktop": 640,
+   "touch": 640,
    "scopes": [
     "WIDTH_HEIGHT"
    ]

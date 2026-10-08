@@ -94,10 +94,20 @@ async function buildActions(page) {
 
 // Input (release 1.7.0 adds the Type axis: Text, Password, Code). Top level, so "Update library" can add the new variants.
 const INPUT_AXES = { Type: ['Text', 'Password', 'Code'], State: ['Default', 'Hover', 'Focus', 'Filled', 'Disabled', 'Error'] };
-const INPUT_OPTS = { width: 1040, colAxis: 'Type', desc: 'Text and search input. Border uses border/input (3:1). Type=Password (1.7.0) adds a show/hide IconButton (exposed as "reveal"; icon eye while the password is hidden, swap it to eye-off while it shows; aria-pressed in code). Type=Code (1.7.0) is one field in the mono text style for a 6-digit code or a backup code: inputmode numeric, autocomplete one-time-code, no auto-advance or auto-submit. Password and Code keep their own text per state, because a TEXT property would force one text on every variant; Value applies to Type=Text.',
-  text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }] };
-const INPUT_DOC = { title: 'Input', summary: 'Search, filters and form fields. Wrap it in Field for a label, helper and error.', use: ['Search inside index pages; filters; form fields inside Field.', 'Type=Password for every password; Type=Code for a one-time code or backup code.'], props: ['Value (text, Type=Text)', 'Leading icon (boolean)', 'Type · State'], a11y: ['Always paired with a visible or visually hidden label (Field).', 'Error state adds a message below; colour is not enough.', 'The show/hide button is named "Show password" or "Hide password" and sits after its field in the focus order.'] };
+// SegmentedControl text before 1.9.0, and the radio-group use 1.9.0 adds (sellers ux.md 10: Yes/No and All/Only-selected).
+const SEG_DESC_170 = 'Period switcher. First segment selected.';
+const SEG_DESC = SEG_DESC_170 + ' Also a question with two or three answers (1.9.0), such as Yes or No: hide segment 3 for two answers; in code it is a radio group.';
+const SEG_A11Y_170 = ['role="group" with aria-pressed on each segment.'];
+const SEG_A11Y = ['As a period switcher: role="group" with aria-pressed on each segment.', 'As a question (Yes or No, All types or Only selected types): role="radiogroup" named by the question, role="radio" with aria-checked on each segment; arrow keys move the choice and Tab leaves the group.'];
+const INPUT_DESC_170 = 'Text and search input. Border uses border/input (3:1). Type=Password (1.7.0) adds a show/hide IconButton (exposed as "reveal"; icon eye while the password is hidden, swap it to eye-off while it shows; aria-pressed in code). Type=Code (1.7.0) is one field in the mono text style for a 6-digit code or a backup code: inputmode numeric, autocomplete one-time-code, no auto-advance or auto-submit. Password and Code keep their own text per state, because a TEXT property would force one text on every variant; Value applies to Type=Text.';
+// 1.9.0 "Seller setup" (sellers ux.md section 4): a fixed prefix before the value, Type=Text only. The shop web address shows the storefront
+// address before the slug; an amount shows the Market's ISO currency code (AUD, never a bare "$"). Left to right, muted, on the logical start side.
+const INPUT_PREFIX = 'mondapac.com.au/shop/';
+const INPUT_OPTS = { width: 1040, colAxis: 'Type', desc: INPUT_DESC_170 + ' Show prefix and Prefix (1.9.0, Type=Text) put fixed text before the value: the storefront address before a shop web address, or the Market\'s ISO currency code before an amount (never a bare "$"). The prefix is dir="ltr", muted, on the start side, and part of the accessible name through the label or help, not announced twice.',
+  text: [{ prop: 'Value', node: 'value', def: 'Order number or product' }, { prop: 'Prefix', node: 'prefix', def: INPUT_PREFIX }], bool: [{ prop: 'Leading icon', node: 'icon-leading', def: true }, { prop: 'Show prefix', node: 'prefix', def: false }] };
+const INPUT_DOC = { title: 'Input', summary: 'Search, filters and form fields. Wrap it in Field for a label, helper and error.', use: ['Search inside index pages; filters; form fields inside Field.', 'Type=Password for every password; Type=Code for a one-time code or backup code.', 'Show prefix (1.9.0) for a shop web address (storefront address before the slug) or an amount (ISO currency code); turn Leading icon off with it.'], props: ['Value (text, Type=Text)', 'Leading icon (boolean)', 'Show prefix (boolean) and Prefix (text), Type=Text', 'Type · State'], a11y: ['Always paired with a visible or visually hidden label (Field).', 'Error state adds a message below; colour is not enough.', 'The show/hide button is named "Show password" or "Hide password" and sits after its field in the focus order.'] };
 const INPUT_ICON = { Text: 'search', Password: 'lock', Code: 'key' };
+function inputPrefix() { const t = text(INPUT_PREFIX, 'Body/Default', 'text/muted', { name: 'prefix' }); t.visible = false; return t; }
 function inputVariant(c, p) {
   const type = p.Type || 'Text';
   const border = p.State === 'Error' ? 'status/critical/solid' : (p.State === 'Focus' ? 'action/primary' : (p.State === 'Hover' ? 'text/muted' : 'border/input'));
@@ -106,7 +116,9 @@ function inputVariant(c, p) {
   if (type === 'Text') value = text(p.State === 'Filled' ? 'MP-10482' : 'Order number or product', 'Body/Default', p.State === 'Filled' ? 'text/primary' : 'text/muted', { name: 'value', sizeH: 'FILL', truncate: true });
   else if (type === 'Password') value = text(filled ? '••••••••••••••••' : '', 'Body/Default', p.State === 'Disabled' ? 'text/muted' : 'text/primary', { name: 'secret', sizeH: 'FILL', truncate: true });
   else value = text(filled ? '482913' : '', 'Mono/Default', p.State === 'Disabled' ? 'text/muted' : 'text/primary', { name: 'code', sizeH: 'FILL', truncate: true });
-  const kids = [icon(INPUT_ICON[type], 'icon/muted', 16), value];
+  const kids = [icon(INPUT_ICON[type], 'icon/muted', 16)];
+  if (type === 'Text') kids.push(inputPrefix());
+  kids.push(value);
   if (type === 'Password') kids.push(inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: p.State === 'Disabled' ? 'Disabled' : 'Default', Icon: { icon: 'eye' } }, { name: 'reveal' }));
   body(c, { dir: 'H', w: 280, h: 'size/control', pad: [0, type === 'Password' ? 'space/0-5' : 'space/2-5', 0, 'space/2-5'], gap: 'space/2', align: 'center', fill: p.State === 'Disabled' ? 'bg/muted' : 'bg/surface', stroke: border, radius: 'radius/control' }, kids);
   c.children[0].name = 'icon-leading';
@@ -118,9 +130,11 @@ async function buildForms(page) {
   const root = pageShell(page, 'Forms & selection', 'Inputs, checkboxes, switches, segmented controls, tabs and filter chips.');
   const input = makeSet('Input', INPUT_AXES, inputVariant, INPUT_OPTS);
   componentBlock(root, input, INPUT_DOC);
+  fieldStatusBlock(root); // 1.9.0: Field holds a FieldStatus line
   fieldBlock(root);
   selectBlock(root);
   textareaBlock(root);
+  formActionBarBlock(root); // 1.9.0
 
   const cb = makeSet('Checkbox', { Value: ['Unchecked', 'Checked', 'Indeterminate'], State: ['Default', 'Focus', 'Disabled'] }, function (c, p) {
     const on = p.Value !== 'Unchecked';
@@ -146,9 +160,9 @@ async function buildForms(page) {
       frame({ name: 'segment-2', dir: 'H', px: 'space/3', align: 'center', stroke: 'border/control', sides: ['left'], sizeV: 'FILL' }, [text('7 days', 'Body/Default', 'text/secondary', { name: 'label-2' })]),
       frame({ name: 'segment-3', dir: 'H', px: 'space/3', align: 'center', stroke: 'border/control', sides: ['left'], sizeV: 'FILL' }, [text('30 days', 'Body/Default', 'text/secondary', { name: 'label-3' })]),
     ]);
-  }, { desc: 'Period switcher. First segment selected.', text: [{ prop: 'Segment 1', node: 'label-1', def: 'Today' }, { prop: 'Segment 2', node: 'label-2', def: '7 days' }, { prop: 'Segment 3', node: 'label-3', def: '30 days' }] });
+  }, { desc: SEG_DESC, text: [{ prop: 'Segment 1', node: 'label-1', def: 'Today' }, { prop: 'Segment 2', node: 'label-2', def: '7 days' }, { prop: 'Segment 3', node: 'label-3', def: '30 days' }] });
   const segWrap = frame({ name: 'SegmentedControl', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(segWrap, seg);
-  componentBlock(root, segWrap, { title: 'SegmentedControl', summary: 'Switch the period of a dashboard.', a11y: ['role="group" with aria-pressed on each segment.'] });
+  componentBlock(root, segWrap, { title: 'SegmentedControl', summary: 'Switch the period of a dashboard.', a11y: SEG_A11Y });
 
   const tab = makeSet('Tab', { Selected: ['True', 'False'] }, function (c, p) {
     const on = p.Selected === 'True';

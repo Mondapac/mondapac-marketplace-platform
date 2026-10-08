@@ -167,9 +167,10 @@ async function build(force) {
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
     const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
-    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below.', list);
+    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below; Seller · Setup (1.9.0: S1 with the sellers steps, S2 to S6) in the rows after them.', list);
     addPanelTemplates(h, 'tpl-seller');
     addPanelTemplates(h, 'tpl-seller', null, panel183Defs, PANEL183_ROWS);
+    addPanelTemplates(h, 'tpl-seller', null, setupDefs, SETUP_ROWS); // 1.9.0 Seller setup: S1 in each seller state, the steps S2 to S6, two state boards, phone frames
     return list;
   });
   const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
@@ -178,8 +179,8 @@ async function build(force) {
     return made.map(function (m) { return m.frame; });
   });
   await onPage(P['tpl-dark'], 'Dark preview', function (h) {
-    const byName = {}; sellerScreens.concat(authScreensBuilt).forEach(function (s) { byName[s.name] = s; });
-    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
+    const byName = {}; sellerScreens.concat(authScreensBuilt, P['tpl-seller'].host.children).forEach(function (s) { byName[s.name] = s; });
+    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.concat(DARK_190).map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
     templatesPage(h, 'Templates · Dark preview', S.modes.color
       ? 'These frames use the Dark mode of the Color collection. Select any frame and switch the mode in the Appearance panel to compare.'
       : 'Starter plan: these copies are bound to the "Color · Dark" collection. Use the plugin buttons Dark theme / Light theme on a selection to switch any frame.', clones);
@@ -475,7 +476,7 @@ async function updateLibrary() {
   const skip = function (name, why) { skipped[name] = 1; log('ℹ skipped ' + why); };
   const missingCombos = function (rec, list) { const have = {}; rec.set.children.forEach(function (c) { have[variantName(sortedProps(c.variantProperties, rec.axes))] = 1; }); return list.filter(function (p) { return !have[variantName(sortedProps(p, rec.axes))]; }); };
   const OLD_DESC = { Button: 'Actions. Primary: one per area. Secondary: supporting actions. Destructive: irreversible actions, label ends with … and opens a confirmation. Ghost: low-emphasis actions like Clear.', Input: 'Text and search input. Border uses border/input (3:1).', ChecklistItem: 'One verification check. Automatic checks show when they ran; manual checks offer Confirm or Flag a problem.', Topbar: 'Breadcrumb, command search (Ctrl K), market context, notifications and the user.' };
-  const NEW_DESC = { Button: BUTTON_OPTS.desc, Input: INPUT_OPTS.desc, ChecklistItem: CHECKLIST_OPTS.desc, Topbar: TOPBAR_DESC };
+  const NEW_DESC = { Button: BUTTON_OPTS.desc, Input: INPUT_DESC_170, ChecklistItem: CHECKLIST_DESC_170, Topbar: TOPBAR_DESC }; // the 1.9.0 step adds its own sentences once it adds the properties
   const refreshDesc = function (name) { const n = S.sets[name].set; if (n.description === OLD_DESC[name]) { n.description = NEW_DESC[name]; added.push('update ' + name + ' description'); } };
   let inputRenamed = 0;
   if (!own('Button')) skip('Button', 'Button variants Link and Loading: the Button set is not the plugin\'s');
@@ -608,9 +609,42 @@ async function updateLibrary() {
   if (S.sets.Field && S.sets.Field.comp && own('Field') && own('Input') && own('Select') && own('Textarea')) {
     const f = S.sets.Field.comp;
     await onPage(pageOf(f), 'Field Control', function () {
-      if (f.description === FIELD_DESC_170) { f.description = FIELD_DESC; added.push('update Field description'); }
+      if (f.description === FIELD_DESC_170) { f.description = FIELD_DESC_180; added.push('update Field description'); }
       prefChanged = fieldPreferred();
       if (prefChanged) added.push('Field Control: preferred values Input, Select, Textarea');
+    });
+  }
+
+  // 2f · release 1.9.0 "Seller setup": FieldStatus, FormActionBar and DataRow are new sets; Field, Input and ChecklistItem get new properties,
+  // their nodes added in place to the plugin's own component (hidden, like their boolean's default), so no existing instance changes.
+  // A component whose structure was changed by hand is reported and left; so is a set of the same name that is not the plugin's.
+  ['FieldStatus', 'FormActionBar', 'DataRow'].forEach(function (n) { if (S.sets[n] && !own(n)) skip(n, 'component ' + n + ': a component named ' + n + ' that is not the plugin\'s already exists in this file'); });
+  const SETUP_DEPS = { FormActionBar: ['Button'], DataRow: ['Badge'] };
+  Object.keys(SETUP_DEPS).forEach(function (n) {
+    if (S.sets[n] || skipped[n]) return;
+    const bad = SETUP_DEPS[n].filter(function (d) { return !own(d); });
+    if (bad.length) skip(n, 'component ' + n + ': it needs the plugin\'s ' + bad.join(', '));
+  });
+  const setupNew = function (list) { return list.filter(function (n) { return !S.sets[n] && !skipped[n]; }); };
+  const formsNew190 = setupNew(['FieldStatus', 'FormActionBar']);
+  if (formsNew190.length) {
+    await onPage(T.forms, 'Seller setup form components', function (host) {
+      const root = docRoot(host, 'Forms & selection', PANEL_SUBTITLE['Forms & selection']);
+      if (formsNew190.indexOf('FieldStatus') >= 0) fieldStatusBlock(root);
+      if (formsNew190.indexOf('FormActionBar') >= 0) formActionBarBlock(root);
+      fitSection(host);
+    });
+    formsNew190.forEach(function (n) { added.push('component ' + n); });
+  }
+  if (setupNew(['DataRow']).length) {
+    await onPage(T.review, 'DataRow', function (host) { dataRowBlock(docRoot(host, 'Review & detail', 'Building blocks of the review workspace: queue summary cards, extracted document fields, checks and the activity timeline.')); fitSection(host); });
+    added.push('component DataRow');
+  }
+  for (const step of propertySteps190(own)) {
+    await onPage(pageOf(step.node), step.label, function () {
+      step.run().forEach(function (a) { added.push(a); });
+      let sec = step.node; while (sec && sec.type !== 'SECTION' && sec.type !== 'PAGE') sec = sec.parent;
+      if (sec && sec.type === 'SECTION') fitSection(sec); // on Starter, a Usage list that grew can push the doc frame past its section
     });
   }
 
@@ -757,6 +791,38 @@ async function updateLibrary() {
     }
   }
 
+  // 3g · 1.9.0 "Seller setup": S1 in each seller state, the steps S2 to S6, their state boards and phone frames, in new rows on Templates · Seller.
+  // Built when every set they place is the plugin's and has the 1.9.0 properties, and only the frames the file does not have yet.
+  const setupBlock = blockedBy(SETUP_TEMPLATE_NEEDS).concat(setupLacks());
+  // The frames place the new sets' variants and set their properties by name; a set changed by hand waits, as in 3e.
+  [['FieldStatus', combos(FIELD_STATUS_AXES), ['Text']], ['DataRow', combos(DATAROW_AXES).filter(function (p) { return !DATAROW_SKIP(p); }), DATAROW_KEYS], ['FormActionBar', combos(FAB_AXES), ['Show status', 'Show secondary']]].forEach(function (d) {
+    const rec = S.sets[d[0]];
+    if (setupBlock.indexOf(d[0]) >= 0 || !rec || !rec.set) return;
+    const miss = missingCombos(rec, d[1]); const keys = d[2].filter(function (k) { return !rec.keys[k]; });
+    if (miss.length) setupBlock.push(d[0] + ' variants (' + miss.map(variantName).join('; ') + ')');
+    if (keys.length) setupBlock.push(d[0] + ' properties (' + keys.join(', ') + ')');
+  });
+  if (setupBlock.length) log('ℹ skipped Seller setup templates: they need the plugin\'s ' + setupBlock.join(', '));
+  else {
+    const present = T['tpl-seller'].host.children.map(function (c) { return c.name; });
+    const missing = setupNames().filter(function (n) { return present.indexOf(n) < 0; });
+    if (missing.length) {
+      let made = null;
+      await onPage(T['tpl-seller'], 'Seller setup templates', function (host) { made = addPanelTemplates(host, 'tpl-seller', missing, setupDefs, SETUP_ROWS); fitSection(host); });
+      added.push('templates Seller setup (' + made.frames + ' frames)');
+    }
+    const dark190 = DARK_190.filter(function (n) { return T['tpl-dark'].host.children.every(function (c) { return c.name !== n + ' · Dark'; }); }).map(function (n) {
+      return T['tpl-seller'].host.children.filter(function (c) { return c.type === 'FRAME' && c.name === n && c.getPluginData(PLUGIN_TAG) === '1'; })[0];
+    }).filter(Boolean);
+    if (dark190.length) {
+      await onPage(T['tpl-dark'], 'Dark preview 1.9.0', function (host) {
+        let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
+        dark190.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
+        fitSection(host);
+      });
+    }
+  }
+
   // 3 · templates
   const tplKeys = Object.keys(PHONE_TEMPLATES);
   for (let i = 0; i < tplKeys.length; i++) {
@@ -822,7 +888,7 @@ async function updateLibrary() {
 
   // 4 · documentation pages (only edits what the release changed)
   const sizeTable = findTable(T.spacing.host, 'Token|Desktop|Touch|Use');
-  const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card', 'size/dialog-sm', 'size/dialog-md'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
+  const newSizes = ['size/bottom-bar', 'size/topbar-phone', 'size/auth-card', 'size/dialog-sm', 'size/dialog-md', 'size/form-max'].map(function (n) { return SPEC.dimension.filter(function (d) { return d.name === n; })[0]; })
     .filter(function (d) { return d && sizeTable && !sizeTable.findOne(function (n) { return n.type === 'TEXT' && n.characters === d.name; }); });
   if (newSizes.length) {
     await onPage(T.spacing, 'Spacing page', function () { newSizes.forEach(function (d) { appendTableRow(sizeTable, [d.name, d.desktop + ' px', d.touch + ' px', SIZE_USE[d.name]], [260, 160, 160, 600]); }); fitSection(T.spacing.host); });
