@@ -140,7 +140,10 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
     it('adds a proposed variant, one event, version raised by one', () => {
       const product = reloaded(configurable());
 
-      expect(product.addVariant(variant(1), 3, T1)).toEqual({ ok: true, value: undefined });
+      expect(product.addVariant(variant(1), 3, T1, 'seller')).toEqual({
+        ok: true,
+        value: undefined,
+      });
 
       expect(product.state.version).toBe(2);
       expect(product.state.lastChangedAt).toBe(T1);
@@ -155,8 +158,8 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
     it('gives each of several events its own version', () => {
       const product = reloaded(configurable());
-      product.addVariant(variant(1), 3, T1);
-      product.addVariant(variant(2), 3, T1);
+      product.addVariant(variant(1), 3, T1, 'seller');
+      product.addVariant(variant(2), 3, T1, 'seller');
 
       expect(product.state.version).toBe(3);
       expect(product.pendingEvents.map((event) => event.aggregateVersion)).toEqual([2, 3]);
@@ -164,15 +167,15 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
     it('refuses a variant beyond the limit, counting only the live ones', () => {
       const product = reloaded(configurable());
-      product.addVariant(variant(1), 2, T1);
-      product.addVariant(variant(2), 2, T1);
+      product.addVariant(variant(1), 2, T1, 'seller');
+      product.addVariant(variant(2), 2, T1, 'seller');
 
-      expect(product.addVariant(variant(3), 2, T1)).toEqual({
+      expect(product.addVariant(variant(3), 2, T1, 'seller')).toEqual({
         ok: false,
         error: { code: 'variant.limit-reached' },
       });
-      expect(product.removeProposedVariant(variant(1), T1).ok).toBe(true);
-      expect(product.addVariant(variant(3), 2, T1).ok).toBe(true);
+      expect(product.removeProposedVariant(variant(1), T1, 'seller').ok).toBe(true);
+      expect(product.addVariant(variant(3), 2, T1, 'seller').ok).toBe(true);
       // The retired id stays in the registry and is never revived.
       expect(product.state.variants.map((v) => [v.id, v.state])).toEqual([
         [variant(1), 'retired'],
@@ -183,18 +186,18 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
     it('announces the removal of a proposed variant, once', () => {
       const product = reloaded(configurable());
-      product.addVariant(variant(1), 3, T1);
-      product.removeProposedVariant(variant(1), T1);
+      product.addVariant(variant(1), 3, T1, 'seller');
+      product.removeProposedVariant(variant(1), T1, 'seller');
 
       expect(product.pendingEvents.map((event) => event.type)).toEqual([
         'catalog.variant-added.v1',
         'catalog.variant-removed.v1',
       ]);
-      expect(product.removeProposedVariant(variant(1), T1)).toEqual({
+      expect(product.removeProposedVariant(variant(1), T1, 'seller')).toEqual({
         ok: false,
         error: { code: 'variant.not-proposed' },
       });
-      expect(product.removeProposedVariant(variant(9), T1)).toEqual({
+      expect(product.removeProposedVariant(variant(9), T1, 'seller')).toEqual({
         ok: false,
         error: { code: 'variant.not-found' },
       });
@@ -203,11 +206,11 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
     it('refuses to add or remove a variant of a Simple product', () => {
       const product = reloaded(simple());
 
-      expect(product.addVariant(variant(2), 3, T1)).toEqual({
+      expect(product.addVariant(variant(2), 3, T1, 'seller')).toEqual({
         ok: false,
         error: { code: 'variant.fixed' },
       });
-      expect(product.removeProposedVariant(variant(1), T1)).toEqual({
+      expect(product.removeProposedVariant(variant(1), T1, 'seller')).toEqual({
         ok: false,
         error: { code: 'variant.fixed' },
       });
@@ -234,10 +237,10 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
     it('retires every live variant of a Configurable draft, one event each, in order', () => {
       const product = reloaded(configurable());
-      product.addVariant(variant(1), 5, T1);
-      product.addVariant(variant(2), 5, T1);
-      product.addVariant(variant(3), 5, T1);
-      product.removeProposedVariant(variant(2), T1);
+      product.addVariant(variant(1), 5, T1, 'seller');
+      product.addVariant(variant(2), 5, T1, 'seller');
+      product.addVariant(variant(3), 5, T1, 'seller');
+      product.removeProposedVariant(variant(2), T1, 'seller');
       const saved = reloaded(product);
 
       saved.discard(T1);
@@ -274,25 +277,25 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
   it('refuses to add or remove a variant once the product is discarded', () => {
     const product = reloaded(configurable());
-    product.addVariant(variant(1), 5, T1);
+    product.addVariant(variant(1), 5, T1, 'seller');
     product.discard(T1);
 
-    expect(product.addVariant(variant(2), 5, T1)).toEqual({
+    expect(product.addVariant(variant(2), 5, T1, 'seller')).toEqual({
       ok: false,
-      error: { code: 'product.not-a-draft' },
+      error: { code: 'product.not-editable' },
     });
-    expect(product.removeProposedVariant(variant(1), T1)).toEqual({
+    expect(product.removeProposedVariant(variant(1), T1, 'seller')).toEqual({
       ok: false,
-      error: { code: 'product.not-a-draft' },
+      error: { code: 'product.not-editable' },
     });
   });
 
   it('refuses a variant id that is already in the registry, retired or not', () => {
     const product = reloaded(configurable());
-    product.addVariant(variant(1), 5, T1);
-    product.removeProposedVariant(variant(1), T1);
+    product.addVariant(variant(1), 5, T1, 'seller');
+    product.removeProposedVariant(variant(1), T1, 'seller');
 
-    expect(product.addVariant(variant(1), 5, T1)).toEqual({
+    expect(product.addVariant(variant(1), 5, T1, 'seller')).toEqual({
       ok: false,
       error: { code: 'variant.id-taken' },
     });
@@ -305,8 +308,8 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
       familyCode: product.state.familyCode,
       variantModel: product.state.variantModel,
     };
-    product.addVariant(variant(1), 5, T1);
-    product.removeProposedVariant(variant(1), T1);
+    product.addVariant(variant(1), 5, T1, 'seller');
+    product.removeProposedVariant(variant(1), T1, 'seller');
     product.discard(T1);
 
     expect({
@@ -318,10 +321,10 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
 
   it('lets a Configurable draft drop its last live variant (the minimum binds at submit and publish)', () => {
     const product = reloaded(configurable());
-    product.addVariant(variant(1), 5, T1);
+    product.addVariant(variant(1), 5, T1, 'seller');
     const saved = reloaded(product);
 
-    expect(saved.removeProposedVariant(variant(1), T1).ok).toBe(true);
+    expect(saved.removeProposedVariant(variant(1), T1, 'seller').ok).toBe(true);
     expect(saved.liveVariants).toEqual([]);
   });
 
@@ -329,9 +332,9 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
     const product = reloaded(configurable());
     const { maxVariants } = FIXTURE_MARKETS.find((entry) => entry.code === MARKET)!;
     for (let n = 1; n <= maxVariants; n++) {
-      expect(product.addVariant(variant(n), maxVariants, T1).ok).toBe(true);
+      expect(product.addVariant(variant(n), maxVariants, T1, 'seller').ok).toBe(true);
     }
-    expect(product.addVariant(variant(maxVariants + 1), maxVariants, T1)).toEqual({
+    expect(product.addVariant(variant(maxVariants + 1), maxVariants, T1, 'seller')).toEqual({
       ok: false,
       error: { code: 'variant.limit-reached' },
     });

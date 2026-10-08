@@ -20,6 +20,27 @@ export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 export const VARIANT_STATES = ['proposed', 'published', 'retired'] as const;
 export type VariantState = (typeof VARIANT_STATES)[number];
 
+/** Who writes content: a PLATFORM product accepts only an admin (CAT-43, AC 3). */
+export type AuthorKind = 'seller' | 'admin';
+
+/** CAT-43 and its mirror: a seller never writes PLATFORM content, an admin never a SELLER draft. */
+function authorRefusal(scope: ProductScope, authorKind: AuthorKind): ProductRefusal | null {
+  if (scope === 'PLATFORM' && authorKind !== 'admin')
+    return { code: 'product.platform-admin-only' };
+  if (scope === 'SELLER' && authorKind !== 'seller') return { code: 'product.seller-only' };
+  return null;
+}
+
+/** A limit that is not a positive safe integer would switch the check off: refuse it loudly. */
+function assertMaxVariants(maxVariants: number): void {
+  if (!Number.isSafeInteger(maxVariants) || maxVariants < 1) {
+    throw new RangeError('Product: maxVariants must be a positive integer');
+  }
+}
+
+/** The statuses whose working copy can still be saved (4.1); the others are terminal. */
+const EDITABLE_STATUSES: readonly ProductStatus[] = ['draft', 'unpublished', 'published'];
+
 export interface VariantRecord {
   readonly id: Id<'Variant'>;
   readonly state: VariantState;
@@ -56,6 +77,10 @@ export interface ProductState {
 export type ProductRefusal =
   | { readonly code: 'product.scope-owner-mismatch' }
   | { readonly code: 'product.not-a-draft' }
+  | { readonly code: 'product.not-editable' }
+  | { readonly code: 'product.platform-admin-only' }
+  | { readonly code: 'product.seller-only' }
+  | { readonly code: 'variant.unknown' }
   | { readonly code: 'variant.fixed' }
   | { readonly code: 'variant.limit-reached' }
   | { readonly code: 'variant.id-taken' }
@@ -182,8 +207,14 @@ export class Product {
     variantId: Id<'Variant'>,
     maxVariants: number,
     now: Temporal.Instant,
+    authorKind: AuthorKind,
   ): Result<void, ProductRefusal> {
-    if (this.#state.status !== 'draft') return err({ code: 'product.not-a-draft' });
+    assertMaxVariants(maxVariants);
+    const refusal = authorRefusal(this.#state.scope, authorKind);
+    if (refusal !== null) return err(refusal);
+    if (!EDITABLE_STATUSES.includes(this.#state.status)) {
+      return err({ code: 'product.not-editable' });
+    }
     if (this.#state.variantModel === 'single') return err({ code: 'variant.fixed' });
     if (this.#state.variants.some((existing) => existing.id === variantId)) {
       return err({ code: 'variant.id-taken' });
@@ -210,8 +241,13 @@ export class Product {
   removeProposedVariant(
     variantId: Id<'Variant'>,
     now: Temporal.Instant,
+    authorKind: AuthorKind,
   ): Result<void, ProductRefusal> {
-    if (this.#state.status !== 'draft') return err({ code: 'product.not-a-draft' });
+    const refusal = authorRefusal(this.#state.scope, authorKind);
+    if (refusal !== null) return err(refusal);
+    if (!EDITABLE_STATUSES.includes(this.#state.status)) {
+      return err({ code: 'product.not-editable' });
+    }
     if (this.#state.variantModel === 'single') return err({ code: 'variant.fixed' });
     const variant = this.#state.variants.find((candidate) => candidate.id === variantId);
     if (variant === undefined) return err({ code: 'variant.not-found' });
@@ -220,6 +256,84 @@ export class Product {
       { definition: VariantRemoved, variantId: variant.id },
     ]);
     return ok(undefined);
+  }
+
+  /**
+   * The variant half of a working-copy save (design 4.2, M-1, Ali B2, Hassan M3). `variantIds`
+   * is the draft's variant list in order: an id the server minted before, or `null` for a new
+   * variant. Every id must be a live variant of this product (`variant.unknown`, the same answer
+   * for a foreign, retired or invented id), and the whole save is refused on the first fault. A
+   * live `proposed` variant the draft leaves out is retired and announced in this unit; a
+   * `published` one stays (its publish retires it). New variants are minted through `newId` and
+   * checked against `maxVariants` after the retirements. A Simple product keeps its one fixed
+   * variant. Returns the ids in the order of the list.
+   */
+  saveWorkingCopy(input: {
+    readonly authorKind: AuthorKind;
+    readonly variantIds: readonly (Id<'Variant'> | null)[];
+    readonly maxVariants: number;
+    readonly newId: () => Id<'Variant'>;
+    readonly now: Temporal.Instant;
+  }): Result<{ readonly variantIds: readonly Id<'Variant'>[] }, ProductRefusal> {
+    assertMaxVariants(input.maxVariants);
+    const state = this.#state;
+    const refusal = authorRefusal(state.scope, input.authorKind);
+    if (refusal !== null) return err(refusal);
+    if (!EDITABLE_STATUSES.includes(state.status)) return err({ code: 'product.not-editable' });
+    const live = this.liveVariants;
+    const kept = new Set<Id<'Variant'>>();
+    for (const id of input.variantIds) {
+      if (id === null) continue;
+      if (!live.some((variant) => variant.id === id) || kept.has(id)) {
+        return err({ code: 'variant.unknown' });
+      }
+      kept.add(id);
+    }
+    if (state.variantModel === 'single') {
+      if (input.variantIds.some((id) => id === null)) return err({ code: 'variant.fixed' });
+      return ok({ variantIds: live.map((variant) => variant.id) });
+    }
+    const removed = live.filter((variant) => variant.state === 'proposed' && !kept.has(variant.id));
+    const added = input.variantIds.filter((id) => id === null).length;
+    if (live.length - removed.length + added > input.maxVariants) {
+      return err({ code: 'variant.limit-reached' });
+    }
+    const createdVariants: VariantRecord[] = [];
+    const resolved = input.variantIds.map((id) => {
+      if (id !== null) return id;
+      const minted = input.newId();
+      createdVariants.push({
+        id: minted,
+        state: 'proposed',
+        createdAt: input.now,
+        publishedAt: null,
+        retiredAt: null,
+      });
+      return minted;
+    });
+    if (removed.length > 0 || createdVariants.length > 0) {
+      this.#apply(
+        input.now,
+        {
+          variants: [
+            ...this.#retire(
+              state.variants,
+              removed.map((variant) => variant.id),
+              input.now,
+            ),
+            ...createdVariants,
+          ],
+        },
+        [
+          ...removed.map((variant) => ({ definition: VariantRemoved, variantId: variant.id })),
+          ...createdVariants.map((variant) => ({
+            definition: VariantAdded,
+            variantId: variant.id,
+          })),
+        ],
+      );
+    }
+    return ok({ variantIds: resolved });
   }
 
   /**
