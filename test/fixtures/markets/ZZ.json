@@ -12,7 +12,11 @@
     "anonymousIdentityPerMinute": 10,
     "defaultPerMinute": 200
   },
-  "allowedOrigins": ["https://storefront.zz.test"],
+  "allowedOrigins": {
+    "admin": ["https://admin.zz.test"],
+    "seller": ["https://seller.zz.test"],
+    "customer": ["https://storefront.zz.test"]
+  },
   "identity": {
     "password": {
       "minLength": 16,

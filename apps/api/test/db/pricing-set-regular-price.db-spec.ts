@@ -230,6 +230,15 @@ describe.each(TEST_MARKETS)(
         ['pricing.regular-price.accepted', 'USER', s.accountId, series[0]!.id],
         ['pricing.regular-price.held', 'USER', s.accountId, series[0]!.id],
       ]);
+      // The stored money form is {amount: "<digits>", currency}; the first price has no anchor.
+      const after = rows.map((r) => r.after as Record<string, unknown>);
+      expect(after[0]).toMatchObject({ amount: { amount: base.toString(), currency } });
+      expect(after[0]!.anchorAmount ?? null).toBeNull();
+      expect(after[1]).toMatchObject({
+        amount: { amount: (base * 4n).toString(), currency },
+        anchorAmount: { amount: base.toString(), currency },
+        direction: 'up',
+      });
     });
 
     it("answers pricing.offer-not-found after a tombstone, with the cause in the audit row only (condition (d): the product id is catalog's)", async () => {

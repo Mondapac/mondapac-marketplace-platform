@@ -13,7 +13,7 @@ import { CSRF_HEADER, csrfTokenFor, csrfTokenMatches, isUnsafeMethod, originRefu
 import { attachActor } from './request-actor';
 import { clearedSessionCookie, readCookie, sessionCookieName } from './session-cookie';
 import { recordSessionCsrfToken } from './session-csrf-token';
-import { SESSION_POPULATION } from './session-population.decorator';
+import { READS_SESSION, routePopulationOf } from './route-population.decorator';
 
 /** The answer codes of this guard (identity design 5.2). */
 export const SESSION_INVALID = 'session.invalid';
@@ -34,14 +34,17 @@ const STATUS: Readonly<Record<Refusal, number>> = {
  *
  * 1. **`Authorization` header** (HF14): any request that carries one is `session.invalid` (401).
  *    Phase 2 issues cookie sessions only; the bearer transport is a later branch here (6.4).
- * 2. **Origin checks** (HF14): a request with an unsafe method, with or without a session, is
- *    `request.csrf` (403) when `Sec-Fetch-Site` is present and not `same-origin`, or `Origin`
- *    is present and not on the Market's `allowedOrigins`.
- * 3. **Session cookie**: a route reads a session only when it names a population with
- *    `@SessionPopulation()`; otherwise its actor is the Market's anonymous actor, whatever
- *    cookie came with it (sign-in and sign-up). The guard reads only the cookie named for that
- *    population and the request's Market; a name that appears twice, or a malformed value, is
- *    `session.invalid` (HF7). No cookie: the anonymous actor, and the use case's rule decides.
+ * 2. **Origin checks** (HF14): the route's population is its controller's `@RoutePopulation`,
+ *    never the session's. A request with an unsafe method, with or without a session, is
+ *    `request.csrf` (403) when its route has no population, when `Sec-Fetch-Site` is present
+ *    and not `same-origin`, or when `Origin` is present and not on the Market's
+ *    `allowedOrigins` of that population. Admin and seller routes also refuse a request
+ *    without either header (`ORIGIN_HEADERS_REQUIRED`).
+ * 3. **Session cookie**: a route reads a session only when it is marked `@ReadsSession()`;
+ *    otherwise its actor is the Market's anonymous actor, whatever cookie came with it (sign-in
+ *    and sign-up). The guard reads only the cookie named for the route's population and the
+ *    request's Market; a name that appears twice, or a malformed value, is `session.invalid`
+ *    (HF7). No cookie: the anonymous actor, and the use case's rule decides.
  * 4. **CSRF token**: with an unsafe method the request must carry `x-csrf-token`, equal to the
  *    HMAC of the session token, compared in constant time before anything is read; otherwise
  *    `request.csrf`.
@@ -71,24 +74,36 @@ export class ActorGuard implements CanActivate {
     const request = http.getRequest<IncomingMessage & { id?: unknown }>();
     const response = http.getResponse<ServerResponse>();
     const market = marketContextOf(request);
-    const population = this.reflector.getAllAndOverride<Population | undefined>(
-      SESSION_POPULATION,
-      [context.getHandler(), context.getClass()],
-    );
+    // The class's own population only (never a method's): the start-up check refuses a
+    // `@RoutePopulation` on a method, and this read ignores one all the same.
+    const population = routePopulationOf(context.getClass());
+    const readsSession =
+      population !== undefined &&
+      this.reflector.getAllAndOverride<boolean | undefined>(READS_SESSION, [
+        context.getHandler(),
+        context.getClass(),
+      ]) === true;
     const refuse = (code: Refusal, reason: string): never =>
-      this.refuse(request, response, market, population, code, reason);
+      this.refuse(request, response, market, population, readsSession, code, reason);
 
     if (request.headers.authorization !== undefined) {
       refuse(SESSION_INVALID, 'authorization-header');
     }
     const unsafe = isUnsafeMethod(request.method);
-    if (
-      unsafe &&
-      originRefused(request.headers, this.markets.get(market.marketId).allowedOrigins)
-    ) {
-      refuse(REQUEST_CSRF, 'origin');
+    if (unsafe) {
+      // Fail closed: an unsafe route with no population has no allow-list to check against.
+      if (population === undefined) return refuse(REQUEST_CSRF, 'no-route-population');
+      if (
+        originRefused(
+          request.headers,
+          population,
+          this.markets.get(market.marketId).allowedOrigins[population],
+        )
+      ) {
+        refuse(REQUEST_CSRF, 'origin');
+      }
     }
-    if (population === undefined) {
+    if (!readsSession || population === undefined) {
       attachActor(request, anonymousActor(market));
       return true;
     }
@@ -135,6 +150,7 @@ export class ActorGuard implements CanActivate {
     response: ServerResponse,
     market: MarketContext,
     population: Population | undefined,
+    readsSession: boolean,
     code: Refusal,
     reason: string,
   ): never {
@@ -146,7 +162,9 @@ export class ActorGuard implements CanActivate {
       marketId: market.marketId,
       correlationId: request.id ?? null,
     });
-    if (code === SESSION_INVALID && population !== undefined) {
+    // Only a route that reads a session clears its cookie (Hassan, Low 3): an `Authorization`
+    // header sent to sign-in must not sign the browser out of the population's session.
+    if (code === SESSION_INVALID && readsSession && population !== undefined) {
       response.setHeader('Set-Cookie', clearedSessionCookie(population, market.marketId));
     }
     throw new HttpException({ statusCode: STATUS[code], code }, STATUS[code]);

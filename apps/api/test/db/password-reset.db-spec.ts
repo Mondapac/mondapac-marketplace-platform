@@ -25,7 +25,7 @@ import {
   type MailTransport,
 } from '../../src/platform/mail/mail-transport';
 import { createTestApp } from '../support/test-app';
-import { TEST_MARKETS } from '../support/test-config';
+import { panelHeaders, TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
 import { passwordTestDatabaseUrl } from './test-database';
 
@@ -110,6 +110,8 @@ describe.each(TEST_MARKETS)(
     beforeEach(async () => {
       ({ app } = await createTestApp({
         env: { DATABASE_URL: passwordTestDatabaseUrl(), API_DOCS_ENABLED: 'true' },
+        // Seller routes need the seller panel's origin on the list (identity design 6.4).
+        panelOrigins: true,
         override: (builder) =>
           builder
             .overrideProvider(CLOCK)
@@ -138,6 +140,9 @@ describe.each(TEST_MARKETS)(
     const systemContext = (m: MarketContext) =>
       testCallContext(m, 'system', `db-password-${randomUUID()}`);
     const http = () => request(app.getHttpServer());
+    /** The seller panel's BFF sends both origin headers (identity design 6.4); a customer none. */
+    const originHeaders = (population: Population): Record<string, string> =>
+      population === 'customer' ? {} : panelHeaders(code, population);
     const post = (
       population: Population,
       path: string,
@@ -146,7 +151,7 @@ describe.each(TEST_MARKETS)(
     ) =>
       http()
         .post(`/identity/${population}/${path}`)
-        .set({ 'x-market-id': code, ...headers })
+        .set({ 'x-market-id': code, ...originHeaders(population), ...headers })
         .send(body);
     const sessionOf = (population: Population, cookie: string) =>
       http().get(`/identity/${population}/session`).set({ 'x-market-id': code, cookie });
@@ -428,7 +433,11 @@ describe.each(TEST_MARKETS)(
         for (const path of ['password-reset-email', 'reset-password', 'change-password']) {
           const notJson = await http()
             .post(`/identity/${population}/${path}`)
-            .set({ 'x-market-id': code, 'content-type': 'text/plain' })
+            .set({
+              'x-market-id': code,
+              ...originHeaders(population),
+              'content-type': 'text/plain',
+            })
             .send('email=someone@example.com');
           expect(notJson.status).toBe(415);
         }

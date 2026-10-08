@@ -29,7 +29,10 @@ import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER, csrfTokenFor } from '../../../platform/call-context/csrf';
 import { clearedSessionCookie, sessionCookie } from '../../../platform/call-context/session-cookie';
 import { SessionCsrfToken } from '../../../platform/call-context/session-csrf-token';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { CompleteAdminSignIn } from '../application/use-cases/complete-admin-sign-in.use-case';
 import { DescribeActor } from '../application/use-cases/describe-actor.use-case';
@@ -65,6 +68,7 @@ import { ApiErrorBody } from './customer-sign-up.dto';
  * code, a token or the address.
  */
 @ApiTags('identity')
+@RoutePopulation('admin')
 @Controller('identity/admin')
 export class AdminSessionController {
   readonly #logger = new Logger('AdminSessionController');
@@ -189,7 +193,7 @@ export class AdminSessionController {
 
   @Post('sign-out')
   @HttpCode(200)
-  @SessionPopulation('admin')
+  @ReadsSession()
   @ApiOperation({
     summary: 'Sign out of the current admin session',
     description: 'Revokes the session of the cookie and clears the cookie.',
@@ -215,7 +219,7 @@ export class AdminSessionController {
   }
 
   @Get('session')
-  @SessionPopulation('admin')
+  @ReadsSession()
   @ApiOperation({
     summary: 'The signed-in admin account and the session',
     description:

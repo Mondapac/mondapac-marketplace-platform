@@ -115,9 +115,7 @@ Each has the trigger that closes it.
   come through `server.mjs`. `apps/admin` adopts the same wrapper in its first real slice.
 - **Host map.** `PANEL_HOSTS` is a hand-kept `origin=MARKET` list. It must be derived from Market
   configuration and checked against `HOSTED_MARKETS` and `allowedOrigins` before the tripwire is removed.
-- **Per-population `allowedOrigins`.** The API supports one list per Market. The BFF's exact Origin
-  check covers this while only the seller panel exists; the API change lands before the first
-  `apps/admin` slice merges.
+- **Per-population `allowedOrigins` (closed by the per-population allowedOrigins slice, 2026-10-08).** The API holds one list per population (`admin`, `seller`, `customer`), disjoint by host name, and checks an unsafe request against the list of its route's `@RoutePopulation`; admin and seller routes also require `Origin` and `Sec-Fetch-Site: same-origin` (identity design 6.4, HF14). AU's lists stay empty until D2.
 - **Correlation.** The BFF logs method, allowlisted path, status and the API's correlation id on
   failures and 4xx/5xx answers; it never logs a body, cookie or CSRF token.
 

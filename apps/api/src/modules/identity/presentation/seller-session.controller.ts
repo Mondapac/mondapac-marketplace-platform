@@ -29,7 +29,10 @@ import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import { clearedSessionCookie } from '../../../platform/call-context/session-cookie';
 import { SessionCsrfToken } from '../../../platform/call-context/session-csrf-token';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from '../application/use-cases/describe-seller-status.use-case';
@@ -63,6 +66,7 @@ import {
  * password, the token or the address.
  */
 @ApiTags('identity')
+@RoutePopulation('seller')
 @Controller('identity/seller')
 export class SellerSessionController {
   readonly #logger = new Logger('SellerSessionController');
@@ -132,7 +136,7 @@ export class SellerSessionController {
 
   @Post('sign-out')
   @HttpCode(200)
-  @SessionPopulation('seller')
+  @ReadsSession()
   @ApiOperation({
     summary: 'Sign out of the current seller session',
     description: 'Revokes the session of the cookie and clears the cookie.',
@@ -158,7 +162,7 @@ export class SellerSessionController {
   }
 
   @Get('session')
-  @SessionPopulation('seller')
+  @ReadsSession()
   @ApiOperation({
     summary: 'The signed-in seller-side account and the session',
     description:
@@ -203,7 +207,7 @@ export class SellerSessionController {
   }
 
   @Get('status')
-  @SessionPopulation('seller')
+  @ReadsSession()
   @ApiOperation({
     summary: "The seller's access status (the status page)",
     description:

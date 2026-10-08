@@ -17,7 +17,10 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { ChangePassword } from '../application/use-cases/change-password.use-case';
 import { RequestPasswordReset } from '../application/use-cases/request-password-reset.use-case';
@@ -54,6 +57,7 @@ import { outcomeOf } from './seller-sign-in.answer';
  * token or the address.
  */
 @ApiTags('identity')
+@RoutePopulation('customer')
 @Controller('identity/customer')
 export class CustomerPasswordController {
   readonly #logger = new Logger('CustomerPasswordController');
@@ -154,7 +158,7 @@ export class CustomerPasswordController {
 
   @Post('change-password')
   @HttpCode(200)
-  @SessionPopulation('customer')
+  @ReadsSession()
   // Hassan L4: each change mails a notice, so the route is under the stricter per-origin class.
   @RateLimit('anonymous-identity')
   @ApiOperation({

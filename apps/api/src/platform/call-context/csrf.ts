@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
+import type { Population } from '@mondapac/shared-kernel';
 
 /** The request header that carries the CSRF token of a cookie session (identity design 6.4). */
 export const CSRF_HEADER = 'x-csrf-token';
@@ -35,19 +36,37 @@ export function csrfTokenMatches(sessionToken: string, presented: unknown): bool
 }
 
 /**
- * The origin checks of HF14 (identity design 6.4), for every request with an unsafe method,
- * with or without a session: refused when `Sec-Fetch-Site` is present and is not `same-origin`,
- * or when `Origin` is present and is not on the Market's configured list. A client that sends
- * neither header (a non-browser client) passes this check; a cookie session still needs its
- * CSRF token.
+ * Whether an unsafe request to a population's routes must carry both origin headers (Ali's
+ * ruling of 2026-10-08; Hassan): the admin and seller panels are reached only through their BFF
+ * (ADR-0034 decision 3), which always sends `Origin` and `Sec-Fetch-Site`, so a request without
+ * them is refused. Customer routes keep accepting a client that sends neither until the
+ * storefront and mobile clients are decided. A security floor in code, never in Market config.
+ */
+export const ORIGIN_HEADERS_REQUIRED: Readonly<Record<Population, boolean>> = Object.freeze({
+  admin: true,
+  seller: true,
+  customer: false,
+});
+
+/**
+ * The origin checks of HF14 (identity design 6.4), for every request with an unsafe method to a
+ * route of `population`, with or without a session: refused when `Sec-Fetch-Site` is present and
+ * is not `same-origin`, or when `Origin` is present and is not on `allowedOrigins`, the route
+ * population's own list. For admin and seller routes a missing header is refused too
+ * ({@link ORIGIN_HEADERS_REQUIRED}); on a customer route a client that sends neither header (a
+ * non-browser client) passes this check, and a cookie session still needs its CSRF token.
  */
 export function originRefused(
   headers: IncomingHttpHeaders,
+  population: Population,
   allowedOrigins: readonly string[],
 ): boolean {
   const fetchSite = headers['sec-fetch-site'];
-  if (fetchSite !== undefined && fetchSite !== 'same-origin') return true;
   const origin = headers.origin;
+  if (ORIGIN_HEADERS_REQUIRED[population] && (fetchSite === undefined || origin === undefined)) {
+    return true;
+  }
+  if (fetchSite !== undefined && fetchSite !== 'same-origin') return true;
   if (origin !== undefined && !allowedOrigins.includes(origin)) return true;
   return false;
 }

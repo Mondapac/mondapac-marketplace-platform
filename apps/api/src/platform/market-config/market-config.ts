@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { parseMarketId } from '@mondapac/shared-kernel';
-import type { MarketId } from '@mondapac/shared-kernel';
+import { parseMarketId, POPULATIONS } from '@mondapac/shared-kernel';
+import type { MarketId, Population } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
@@ -80,8 +80,17 @@ const throttleCounterSchema = z.strictObject({
   blockMinutes: z.number().int().min(0).max(1440),
 });
 
-/** Hosts a browser resolves to this machine only: the one place a plain-http page is allowed. */
+/** Hosts a browser resolves to this machine only: the one place plain http is allowed. */
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Whether a URL host name is a loopback host: `localhost`, `*.localhost`, `127.0.0.1` or
+ * `[::1]`. The one rule for plain http, shared by the link pages and `allowedOrigins` (Hassan,
+ * per-population `allowedOrigins` review (a)), so the two can never drift apart.
+ */
+export function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname) || hostname.endsWith('.localhost');
+}
 
 /**
  * A page a mail links to: an absolute https URL without a fragment (the token goes there) and
@@ -95,9 +104,9 @@ const pageUrl = z
   .refine((value) => {
     try {
       const url = new URL(value);
-      const loopback = LOOPBACK_HOSTS.has(url.hostname) || url.hostname.endsWith('.localhost');
       return (
-        (url.protocol === 'https:' || (url.protocol === 'http:' && loopback)) &&
+        (url.protocol === 'https:' ||
+          (url.protocol === 'http:' && isLoopbackHostname(url.hostname))) &&
         !value.includes('#') &&
         url.username === '' &&
         url.password === ''
@@ -410,10 +419,9 @@ const identitySchema = z
   });
 
 /**
- * The exact origins (`scheme://host[:port]`) whose browsers may send an unsafe request to this
- * Market's routes (identity design 6.4, HF14). A request with an `Origin` header that is not on
- * the list is refused with `request.csrf`. Empty until the panel and storefront hosts are
- * decided (the D2 ADR): until then only requests without an `Origin` header pass.
+ * One exact origin (`scheme://host[:port]`, no path, no credentials) a browser may send an unsafe
+ * request from. https, or plain http only for a loopback host (the rule of the link pages,
+ * through the same {@link isLoopbackHostname}).
  */
 const allowedOrigin = z
   .string()
@@ -421,11 +429,123 @@ const allowedOrigin = z
   .refine((value) => {
     try {
       const url = new URL(value);
-      return (url.protocol === 'https:' || url.protocol === 'http:') && url.origin === value;
+      return (
+        (url.protocol === 'https:' ||
+          (url.protocol === 'http:' && isLoopbackHostname(url.hostname))) &&
+        url.origin === value
+      );
     } catch {
       return false;
     }
-  }, 'must be an exact origin such as "https://panel.example"');
+  }, 'must be an exact https origin (http only for a loopback host) such as "https://panel.example"');
+
+/** One population's list: at most 20 origins, none twice. Empty: every `Origin` is refused. */
+const originList = z
+  .array(allowedOrigin)
+  .max(20)
+  .superRefine((origins, context) => {
+    origins.forEach((origin, index) => {
+      if (origins.indexOf(origin) !== index) {
+        context.addIssue({ code: 'custom', message: 'an origin must not repeat', path: [index] });
+      }
+    });
+  });
+
+/** The host name of an origin or page URL, or null when it does not parse. */
+function hostnameOf(value: string): string | null {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The origins whose browsers may send an unsafe request to this Market's routes, per population
+ * of the route (identity design 6.4, HF14; ADR-0034 decision 3; Ali's ruling of 2026-10-08): an
+ * admin route checks only `admin`, a seller route only `seller`, a customer route only
+ * `customer`. All three keys are required; an empty list fails closed (every request with an
+ * `Origin` header is refused), and admin and seller routes also refuse a request without the
+ * header (in code, `csrf.ts`). The three lists are disjoint by host name, so the same host on
+ * another scheme or port is refused too: `__Host-` cookies are scoped to the host, not the port
+ * (HF7). The hosts wait for D2.
+ */
+const allowedOriginsSchema = z
+  .strictObject({ admin: originList, seller: originList, customer: originList })
+  .superRefine((lists, context) => {
+    POPULATIONS.forEach((population, index) => {
+      const earlier = new Set(
+        POPULATIONS.slice(0, index).flatMap((other) =>
+          lists[other].map(hostnameOf).filter((hostname) => hostname !== null),
+        ),
+      );
+      lists[population].forEach((origin, position) => {
+        const hostname = hostnameOf(origin);
+        if (hostname !== null && earlier.has(hostname)) {
+          context.addIssue({
+            code: 'custom',
+            message: "an origin must not share its host name with another population's origin",
+            path: [population, position],
+          });
+        }
+      });
+    });
+  });
+
+/** The pages of one population's link targets. */
+function linkPagesOf(targets: object | undefined): string[] {
+  return targets === undefined
+    ? []
+    : Object.values(targets).filter((page): page is string => typeof page === 'string');
+}
+
+/**
+ * The cross-check of `allowedOrigins` and the link targets (Mohammad's design 1; Hassan Low 2):
+ * a non-empty list holds the origin of every page its own population's mails link to, so a
+ * linked page can post back; and no list shares a host name with another population's pages.
+ */
+function checkOriginsAgainstLinkTargets(
+  market: {
+    readonly allowedOrigins: Readonly<Record<Population, readonly string[]>>;
+    readonly identity: {
+      readonly links: { readonly targets: Partial<Record<Population, object>> };
+    };
+  },
+  context: z.RefinementCtx,
+): void {
+  const { allowedOrigins, identity } = market;
+  for (const population of POPULATIONS) {
+    const list = allowedOrigins[population];
+    if (list.length > 0) {
+      for (const page of linkPagesOf(identity.links.targets[population])) {
+        const origin = hostOf(page)?.origin;
+        if (origin !== undefined && !list.includes(origin)) {
+          context.addIssue({
+            code: 'custom',
+            message: `must hold the origin of every ${population} link page (${origin})`,
+            path: ['allowedOrigins', population],
+          });
+        }
+      }
+    }
+    const otherHosts = new Set(
+      POPULATIONS.filter((other) => other !== population)
+        .flatMap((other) => linkPagesOf(identity.links.targets[other]))
+        .map(hostnameOf)
+        .filter((hostname) => hostname !== null),
+    );
+    list.forEach((origin, index) => {
+      const hostname = hostnameOf(origin);
+      if (hostname !== null && otherHosts.has(hostname)) {
+        context.addIssue({
+          code: 'custom',
+          message: "an origin must not share its host name with another population's link page",
+          path: ['allowedOrigins', population, index],
+        });
+      }
+    });
+  }
+}
 
 const timeZone = z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone');
 /** A name used as an object key must never be an `Object.prototype` member (`constructor`...). */
@@ -896,7 +1016,7 @@ const marketSchema = z
     /** Fallback only (ADR-0005): sellers, locations and addresses carry their own zone. */
     timezone: z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone'),
     requestLimits: requestLimitsSchema,
-    allowedOrigins: z.array(allowedOrigin).max(20),
+    allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */
     sellers: sellersSchema.optional(),
@@ -910,7 +1030,8 @@ const marketSchema = z
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',
     path: ['supportedLocales'],
-  });
+  })
+  .superRefine(checkOriginsAgainstLinkTargets);
 
 /** Market configuration as code (ADR-0003 decision 5). */
 export type MarketConfig = Readonly<z.infer<typeof marketSchema>>;
