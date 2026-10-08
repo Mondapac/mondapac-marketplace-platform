@@ -8,7 +8,7 @@
 // with the "Upgrade to modes" command.
 
 /* eslint-disable no-undef */
-const SPEC = {"version":"1.10.0","generated":"2026-10-08","primitives":[{"name":"amber/10","hex":"#FFFCF7"},{"name":"amber/20","hex":"#FFF8EF"},{"name":"amber/35","hex":"#FFF1E0"},{"name":"amber/75","hex":"#FBE3C4"},{"name":"amber/105","hex":"#F3D7B0"},{"name":"amber/145","hex":"#F2C894"},{"name":"amber/180","hex":"#F5B65C"},{"name":"amber/290","hex":"#E08A1E"},{"name":"amber/385","hex":"#C46A00"},{"name":"amber/515","hex":"#8F4A00"},{"name":"amber/565","hex":"#6B4A1F"},{"name":"amber/655","hex":"#4A3418"},{"name":"amber/725","hex":"#33240D"},{"name":"amber/775","hex":"#241A0D"},{"name":"amber/780","hex":"#211A10"},{"name":"blue/20","hex":"#F7F9FF"},{"name":"blue/25","hex":"#F3F6FC"},{"name":"blue/30","hex":"#F3F5F8"},{"name":"blue/35","hex":"#EEF3FD"},{"name":"blue/40","hex":"#EDF2FF"},{"name":"blue/45","hex":"#EAF1FB"},{"name":"blue/75","hex":"#DDE7F3"},{"name":"blue/80","hex":"#DCE6FB"},{"name":"blue/95","hex":"#D6E0F2"},{"name":"blue/120","hex":"#C9D7F5"},{"name":"blue/130","hex":"#C7D4F5"},{"name":"blue/165","hex":"#B9C9F2"},{"name":"blue/170","hex":"#B3C8FF"},{"name":"blue/225","hex":"#9DB4F0"},{"name":"blue/235","hex":"#8DB5F2"},{"name":"blue/240","hex":"#8FB0FF"},{"name":"blue/305","hex":"#7096FF"},{"name":"blue/440","hex":"#3D68E6"},{"name":"blue/465","hex":"#4A68B8"},{"name":"blue/490","hex":"#3159D4"},{"name":"blue/510","hex":"#1D4FD7"},{"name":"blue/550","hex":"#1A45BF"},{"name":"blue/555","hex":"#1B45BD"},{"name":"blue/575","hex":"#1F4E8C"},{"name":"blue/580","hex":"#173FB0"},{"name":"blue/620","hex":"#2C3F73"},{"name":"blue/625","hex":"#2B3F6B"},{"name":"blue/665","hex":"#26345A"},{"name":"blue/680","hex":"#22305A"},{"name":"blue/720","hex":"#13284A"},{"name":"blue/725","hex":"#1B2645"},{"name":"blue/735","hex":"#17263A"},{"name":"blue/745","hex":"#18213A"},{"name":"blue/750","hex":"#15213A"},{"name":"blue/775","hex":"#141B2C"},{"name":"blue/780","hex":"#0B1D2E"},{"name":"brown/60","hex":"#F6EADB"},{"name":"brown/180","hex":"#E4BB8E"},{"name":"brown/505","hex":"#865628"},{"name":"brown/730","hex":"#2F2419"},{"name":"coral/55","hex":"#FDE7E3"},{"name":"coral/205","hex":"#F4A595"},{"name":"coral/475","hex":"#B23F2E"},{"name":"coral/735","hex":"#3A1A16"},{"name":"green/30","hex":"#F1F8F3"},{"name":"green/40","hex":"#E7F6EC"},{"name":"green/60","hex":"#DDF2E5"},{"name":"green/95","hex":"#CFE6D7"},{"name":"green/210","hex":"#6CD49A"},{"name":"green/550","hex":"#12663A"},{"name":"green/630","hex":"#1F4A33"},{"name":"green/635","hex":"#1C4A30"},{"name":"green/730","hex":"#0F2E1D"},{"name":"green/765","hex":"#10221A"},{"name":"honey/40","hex":"#FFF0D6"},{"name":"honey/155","hex":"#F3C46A"},{"name":"honey/470","hex":"#9A5A08"},{"name":"honey/720","hex":"#33260F"},{"name":"lime/20","hex":"#F5FAEF"},{"name":"lime/130","hex":"#C8DDB0"},{"name":"lime/180","hex":"#A9D570"},{"name":"lime/245","hex":"#9DBB7A"},{"name":"lime/390","hex":"#6E8F45"},{"name":"lime/545","hex":"#3F6212"},{"name":"lime/600","hex":"#35511F"},{"name":"lime/745","hex":"#1A2812"},{"name":"neutral/0","hex":"#FFFFFF"},{"name":"neutral/15","hex":"#F9FAFB"},{"name":"neutral/25","hex":"#F5F6F8"},{"name":"neutral/45","hex":"#EEF0F3"},{"name":"neutral/50","hex":"#EBEEF2"},{"name":"neutral/60","hex":"#E8EBF0"},{"name":"neutral/75","hex":"#E3E6EB"},{"name":"neutral/130","hex":"#D0D5DD"},{"name":"neutral/165","hex":"#C3C9D3"},{"name":"neutral/295","hex":"#98A1B0"},{"name":"neutral/335","hex":"#8B95A6"},{"name":"neutral/340","hex":"#8A93A3"},{"name":"neutral/380","hex":"#7C8698"},{"name":"neutral/440","hex":"#6B7586"},{"name":"neutral/500","hex":"#5B6475"},{"name":"neutral/565","hex":"#4A525E"},{"name":"neutral/605","hex":"#3F4756"},{"name":"neutral/625","hex":"#3A4250"},{"name":"neutral/690","hex":"#2A303B"},{"name":"neutral/710","hex":"#262C36"},{"name":"neutral/720","hex":"#232933"},{"name":"neutral/725","hex":"#222833"},{"name":"neutral/730","hex":"#232830"},{"name":"neutral/755","hex":"#1B2029"},{"name":"neutral/775","hex":"#181C24"},{"name":"neutral/785","hex":"#161A21"},{"name":"neutral/790","hex":"#111827"},{"name":"neutral/825","hex":"#0E1116"},{"name":"olive/50","hex":"#EAF2DF"},{"name":"olive/165","hex":"#B6D68B"},{"name":"olive/515","hex":"#4C6A1C"},{"name":"olive/730","hex":"#1F2B14"},{"name":"purple/45","hex":"#F1ECFF"},{"name":"purple/225","hex":"#B9A6FF"},{"name":"purple/525","hex":"#5B3CC4"},{"name":"purple/730","hex":"#271E47"},{"name":"red/45","hex":"#FDEBEA"},{"name":"red/125","hex":"#F6C9C5"},{"name":"red/140","hex":"#F3C4C0"},{"name":"red/220","hex":"#F79A90"},{"name":"red/365","hex":"#F04438"},{"name":"red/425","hex":"#D92D20"},{"name":"red/500","hex":"#B42318"},{"name":"red/520","hex":"#A8231A"},{"name":"red/590","hex":"#7A2E28"},{"name":"red/690","hex":"#4F201C"},{"name":"red/745","hex":"#3B1512"},{"name":"teal/20","hex":"#F2FAF8"},{"name":"teal/45","hex":"#E6F4F1"},{"name":"teal/65","hex":"#DCEFEA"},{"name":"teal/130","hex":"#B7DDD5"},{"name":"teal/220","hex":"#5BCFB8"},{"name":"teal/525","hex":"#0B6B5C"},{"name":"teal/615","hex":"#1F4D45"},{"name":"teal/680","hex":"#143A34"},{"name":"teal/700","hex":"#123430"},{"name":"teal/705","hex":"#06352E"},{"name":"teal/740","hex":"#0F2925"}],"color":[{"name":"bg/page","light":"neutral/25","dark":"neutral/825","lightHex":"#F5F6F8","darkHex":"#0E1116","scopes":["FRAME_FILL"],"description":"Page background behind cards"},{"name":"bg/surface","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR","TEXT_FILL"],"description":"Cards, sidebar, top bar"},{"name":"bg/subtle","light":"neutral/15","dark":"neutral/755","lightHex":"#F9FAFB","darkHex":"#1B2029","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Table header, card footers, hover"},{"name":"bg/muted","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Document viewer, neutral fills"},{"name":"bg/selected","light":"blue/40","dark":"blue/725","lightHex":"#EDF2FF","darkHex":"#1B2645","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Active nav item, applied filter, selected segment"},{"name":"bg/row-selected","light":"blue/20","dark":"blue/745","lightHex":"#F7F9FF","darkHex":"#18213A","scopes":["FRAME_FILL"],"description":"Selected table row"},{"name":"bg/row-attention","light":"amber/10","dark":"amber/780","lightHex":"#FFFCF7","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Rows that need action"},{"name":"bg/info-banner","light":"blue/35","dark":"blue/750","lightHex":"#EEF3FD","darkHex":"#15213A","scopes":["FRAME_FILL"],"description":"Info banner"},{"name":"border/default","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Card and section borders"},{"name":"border/row","light":"neutral/45","dark":"neutral/725","lightHex":"#EEF0F3","darkHex":"#222833","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Row dividers"},{"name":"border/control","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","FRAME_FILL"],"description":"Secondary buttons, segmented controls"},{"name":"border/input","light":"neutral/340","dark":"neutral/440","lightHex":"#8A93A3","darkHex":"#6B7586","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Inputs, checkboxes (3:1 on surface)"},{"name":"border/info","light":"blue/120","dark":"blue/625","lightHex":"#C9D7F5","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Info banner border"},{"name":"text/primary","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["TEXT_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Headings, values"},{"name":"text/secondary","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL"],"description":"Body text, labels"},{"name":"text/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Meta text, axis labels"},{"name":"text/link","light":"blue/555","dark":"blue/240","lightHex":"#1B45BD","darkHex":"#8FB0FF","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Links, selected tab"},{"name":"text/link-hover","light":"blue/580","dark":"blue/170","lightHex":"#173FB0","darkHex":"#B3C8FF","scopes":["TEXT_FILL"],"description":"Link hover"},{"name":"text/on-accent","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Text and icons on primary"},{"name":"icon/default","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Default icon colour"},{"name":"icon/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Secondary icons"},{"name":"action/primary","light":"blue/510","dark":"blue/440","lightHex":"#1D4FD7","darkHex":"#3D68E6","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Primary button, focus, selection"},{"name":"action/primary-hover","light":"blue/550","dark":"blue/490","lightHex":"#1A45BF","darkHex":"#3159D4","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Primary button hover"},{"name":"action/primary-disabled","light":"blue/130","dark":"blue/665","lightHex":"#C7D4F5","darkHex":"#26345A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Disabled primary button"},{"name":"focus/ring","light":"blue/510","dark":"blue/240","lightHex":"#1D4FD7","darkHex":"#8FB0FF","scopes":["STROKE_COLOR","EFFECT_COLOR"],"description":"Keyboard focus ring"},{"name":"status/success/bg","light":"green/40","dark":"green/730","lightHex":"#E7F6EC","darkHex":"#0F2E1D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Success badge background"},{"name":"status/success/fg","light":"green/550","dark":"green/210","lightHex":"#12663A","darkHex":"#6CD49A","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Success text and icon"},{"name":"status/success/track","light":"green/60","dark":"green/635","lightHex":"#DDF2E5","darkHex":"#1C4A30","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Success ring track"},{"name":"status/info/bg","light":"blue/45","dark":"blue/720","lightHex":"#EAF1FB","darkHex":"#13284A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Info badge background"},{"name":"status/info/fg","light":"blue/575","dark":"blue/235","lightHex":"#1F4E8C","darkHex":"#8DB5F2","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Info text and icon"},{"name":"status/attention/bg","light":"amber/35","dark":"amber/725","lightHex":"#FFF1E0","darkHex":"#33240D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Attention badge background"},{"name":"status/attention/fg","light":"amber/515","dark":"amber/180","lightHex":"#8F4A00","darkHex":"#F5B65C","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Attention text and icon"},{"name":"status/attention/solid","light":"amber/385","dark":"amber/290","lightHex":"#C46A00","darkHex":"#E08A1E","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter fill, pips"},{"name":"status/attention/track","light":"amber/75","dark":"amber/655","lightHex":"#FBE3C4","darkHex":"#4A3418","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter track"},{"name":"status/attention/border","light":"amber/145","dark":"amber/565","lightHex":"#F2C894","darkHex":"#6B4A1F","scopes":["STROKE_COLOR"],"description":"Attention card border"},{"name":"status/attention/surface","light":"amber/20","dark":"amber/775","lightHex":"#FFF8EF","darkHex":"#241A0D","scopes":["FRAME_FILL"],"description":"Attention panel background"},{"name":"status/critical/bg","light":"red/45","dark":"red/745","lightHex":"#FDEBEA","darkHex":"#3B1512","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Critical badge background"},{"name":"status/critical/fg","light":"red/520","dark":"red/220","lightHex":"#A8231A","darkHex":"#F79A90","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Critical text and icon"},{"name":"status/critical/solid","light":"red/425","dark":"red/365","lightHex":"#D92D20","darkHex":"#F04438","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Urgent card border, red ring"},{"name":"status/critical/meter","light":"red/500","dark":"red/365","lightHex":"#B42318","darkHex":"#F04438","scopes":["SHAPE_FILL","FRAME_FILL"],"description":"Overdue meter fill"},{"name":"status/critical/track","light":"red/125","dark":"red/690","lightHex":"#F6C9C5","darkHex":"#4F201C","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Overdue meter track"},{"name":"status/critical/border","light":"red/140","dark":"red/590","lightHex":"#F3C4C0","darkHex":"#7A2E28","scopes":["STROKE_COLOR"],"description":"Destructive secondary button border"},{"name":"status/neutral/bg","light":"neutral/45","dark":"neutral/710","lightHex":"#EEF0F3","darkHex":"#262C36","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Neutral badge background"},{"name":"status/neutral/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Neutral text"},{"name":"cert/seller/fg","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Seller-level certificate"},{"name":"cert/seller/bg","light":"teal/20","dark":"teal/740","lightHex":"#F2FAF8","darkHex":"#0F2925","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Seller certificate chip"},{"name":"cert/seller/border","light":"teal/130","dark":"teal/615","lightHex":"#B7DDD5","darkHex":"#1F4D45","scopes":["STROKE_COLOR"],"description":"Seller certificate chip border"},{"name":"cert/seller/tile","light":"teal/45","dark":"teal/700","lightHex":"#E6F4F1","darkHex":"#123430","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Teal identity tile"},{"name":"cert/manufacturer/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Manufacturer certificate"},{"name":"cert/manufacturer/bg","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL"],"description":"Manufacturer chip"},{"name":"cert/manufacturer/border","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR"],"description":"Manufacturer chip border"},{"name":"cert/vegan/fg","light":"lime/545","dark":"lime/180","lightHex":"#3F6212","darkHex":"#A9D570","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Vegan certificate"},{"name":"cert/vegan/bg","light":"lime/20","dark":"lime/745","lightHex":"#F5FAEF","darkHex":"#1A2812","scopes":["FRAME_FILL"],"description":"Vegan chip"},{"name":"cert/vegan/border","light":"lime/130","dark":"lime/600","lightHex":"#C8DDB0","darkHex":"#35511F","scopes":["STROKE_COLOR"],"description":"Vegan chip border"},{"name":"cert/vegan/self-declared-border","light":"lime/245","dark":"lime/390","lightHex":"#9DBB7A","darkHex":"#6E8F45","scopes":["STROKE_COLOR"],"description":"Self-declared chip, dashed"},{"name":"tile/purple-bg","light":"purple/45","dark":"purple/730","lightHex":"#F1ECFF","darkHex":"#271E47","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Identity tile: applications"},{"name":"tile/purple-fg","light":"purple/525","dark":"purple/225","lightHex":"#5B3CC4","darkHex":"#B9A6FF","scopes":["TEXT_FILL","SHAPE_FILL"],"description":"Identity tile text"},{"name":"thumb/meat-bg","light":"coral/55","dark":"coral/735","lightHex":"#FDE7E3","darkHex":"#3A1A16","scopes":["FRAME_FILL"],"description":"Product thumbnail: meat"},{"name":"thumb/meat-fg","light":"coral/475","dark":"coral/205","lightHex":"#B23F2E","darkHex":"#F4A595","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Meat glyph"},{"name":"thumb/poultry-bg","light":"honey/40","dark":"honey/720","lightHex":"#FFF0D6","darkHex":"#33260F","scopes":["FRAME_FILL"],"description":"Product thumbnail: poultry"},{"name":"thumb/poultry-fg","light":"honey/470","dark":"honey/155","lightHex":"#9A5A08","darkHex":"#F3C46A","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Poultry glyph"},{"name":"thumb/bakery-bg","light":"brown/60","dark":"brown/730","lightHex":"#F6EADB","darkHex":"#2F2419","scopes":["FRAME_FILL"],"description":"Product thumbnail: bakery"},{"name":"thumb/bakery-fg","light":"brown/505","dark":"brown/180","lightHex":"#865628","darkHex":"#E4BB8E","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Bakery glyph"},{"name":"thumb/pantry-bg","light":"olive/50","dark":"olive/730","lightHex":"#EAF2DF","darkHex":"#1F2B14","scopes":["FRAME_FILL"],"description":"Product thumbnail: pantry"},{"name":"thumb/pantry-fg","light":"olive/515","dark":"olive/165","lightHex":"#4C6A1C","darkHex":"#B6D68B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Pantry glyph"},{"name":"thumb/other-bg","light":"neutral/50","dark":"neutral/730","lightHex":"#EBEEF2","darkHex":"#232830","scopes":["FRAME_FILL"],"description":"Product thumbnail: other"},{"name":"thumb/other-fg","light":"neutral/565","dark":"neutral/165","lightHex":"#4A525E","darkHex":"#C3C9D3","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Other glyph"},{"name":"chart/series-1","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Main series"},{"name":"chart/series-1-soft","light":"blue/165","dark":"blue/620","lightHex":"#B9C9F2","darkHex":"#2C3F73","scopes":["SHAPE_FILL"],"description":"Past periods in bar charts"},{"name":"chart/split-2","light":"blue/225","dark":"blue/465","lightHex":"#9DB4F0","darkHex":"#4A68B8","scopes":["SHAPE_FILL"],"description":"Second part of a split bar"},{"name":"chart/compare","light":"neutral/380","dark":"neutral/335","lightHex":"#7C8698","darkHex":"#8B95A6","scopes":["STROKE_COLOR"],"description":"Comparison series (dashed)"},{"name":"chart/grid","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Gridlines"},{"name":"chart/axis","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Baseline"},{"name":"chart/meter-track","light":"blue/80","dark":"blue/680","lightHex":"#DCE6FB","darkHex":"#22305A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Meter track, accent"},{"name":"chart/donut-track","light":"teal/65","dark":"teal/680","lightHex":"#DCEFEA","darkHex":"#143A34","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Certificate donut track"},{"name":"chart/tooltip-bg","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Chart tooltip background (inverse)"},{"name":"chart/tooltip-fg","light":"neutral/0","dark":"neutral/790","lightHex":"#FFFFFF","darkHex":"#111827","scopes":["TEXT_FILL"],"description":"Chart tooltip value"},{"name":"chart/tooltip-muted","light":"neutral/130","dark":"neutral/605","lightHex":"#D0D5DD","darkHex":"#3F4756","scopes":["TEXT_FILL"],"description":"Chart tooltip label"},{"name":"map/land","light":"blue/30","dark":"neutral/775","lightHex":"#F3F5F8","darkHex":"#181C24","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Map land"},{"name":"map/water","light":"blue/75","dark":"blue/735","lightHex":"#DDE7F3","darkHex":"#17263A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Map water"},{"name":"map/road","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR"],"description":"Map roads"},{"name":"map/seller-pin","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL"],"description":"Seller with open orders"},{"name":"map/courier","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["SHAPE_FILL"],"description":"Courier position"},{"name":"board/action-bg","light":"amber/20","dark":"amber/780","lightHex":"#FFF8EF","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Needs action column"},{"name":"board/action-border","light":"amber/105","dark":"amber/655","lightHex":"#F3D7B0","darkHex":"#4A3418","scopes":["STROKE_COLOR"],"description":"Needs action column border"},{"name":"board/prep-bg","light":"blue/25","dark":"blue/775","lightHex":"#F3F6FC","darkHex":"#141B2C","scopes":["FRAME_FILL"],"description":"Preparing column"},{"name":"board/prep-border","light":"blue/95","dark":"blue/625","lightHex":"#D6E0F2","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Preparing column border"},{"name":"board/ready-bg","light":"green/30","dark":"green/765","lightHex":"#F1F8F3","darkHex":"#10221A","scopes":["FRAME_FILL"],"description":"Ready column"},{"name":"board/ready-border","light":"green/95","dark":"green/630","lightHex":"#CFE6D7","darkHex":"#1F4A33","scopes":["STROKE_COLOR"],"description":"Ready column border"},{"name":"bg/scrim","light":null,"dark":null,"lightHex":"#11182780","darkHex":"#00000099","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Overlay behind drawers and modals; alpha is part of the value"},{"name":"bg/qr","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"QR code plate; white in both themes"},{"name":"bg/auth-showcase-admin","light":"blue/780","dark":"blue/780","lightHex":"#0B1D2E","darkHex":"#0B1D2E","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Auth brand panel, Admin; dark in both themes"},{"name":"bg/auth-showcase-seller","light":"teal/705","dark":"teal/705","lightHex":"#06352E","darkHex":"#06352E","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Auth brand panel, Seller; dark in both themes"},{"name":"text/on-showcase","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","FRAME_FILL","SHAPE_FILL"],"description":"Brand line on the Auth brand panel"},{"name":"text/on-showcase-muted","light":null,"dark":null,"lightHex":"#FFFFFFBD","darkHex":"#FFFFFFBD","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Secondary brand line on the Auth brand panel; alpha is part of the value"}],"dimension":[{"name":"space/0-5","desktop":2,"touch":2,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1","desktop":4,"touch":4,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1-5","desktop":6,"touch":6,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2","desktop":8,"touch":8,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2-5","desktop":10,"touch":10,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3","desktop":12,"touch":12,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3-5","desktop":14,"touch":14,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4","desktop":16,"touch":16,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4-5","desktop":18,"touch":18,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/5","desktop":20,"touch":20,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/6","desktop":24,"touch":24,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/7","desktop":28,"touch":28,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/8","desktop":32,"touch":32,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/10","desktop":40,"touch":40,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"radius/chip","desktop":6,"touch":6,"scopes":["CORNER_RADIUS"]},{"name":"radius/control","desktop":8,"touch":10,"scopes":["CORNER_RADIUS"]},{"name":"radius/card","desktop":12,"touch":12,"scopes":["CORNER_RADIUS"]},{"name":"radius/column","desktop":14,"touch":14,"scopes":["CORNER_RADIUS"]},{"name":"radius/pill","desktop":999,"touch":999,"scopes":["CORNER_RADIUS"]},{"name":"size/control-sm","desktop":32,"touch":44,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control","desktop":36,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control-lg","desktop":44,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/badge","desktop":22,"touch":24,"scopes":["WIDTH_HEIGHT"]},{"name":"size/icon","desktop":18,"touch":20,"scopes":["WIDTH_HEIGHT"]},{"name":"size/thumb","desktop":28,"touch":32,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar","desktop":248,"touch":248,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar-collapsed","desktop":72,"touch":72,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"border/width","desktop":1,"touch":1,"scopes":["STROKE_FLOAT"]},{"name":"border/width-strong","desktop":2,"touch":2,"scopes":["STROKE_FLOAT"]},{"name":"size/bottom-bar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar-phone","desktop":56,"touch":56,"scopes":["WIDTH_HEIGHT"]},{"name":"size/auth-card","desktop":400,"touch":400,"scopes":["WIDTH_HEIGHT"]},{"name":"size/dialog-sm","desktop":400,"touch":400,"scopes":["WIDTH_HEIGHT"]},{"name":"size/dialog-md","desktop":560,"touch":560,"scopes":["WIDTH_HEIGHT"]},{"name":"size/form-max","desktop":640,"touch":640,"scopes":["WIDTH_HEIGHT"]}],"type":[{"name":"Display/Hero","family":"IBM Plex Sans","style":"SemiBold","size":30,"lineHeight":38,"letterSpacing":-0.3,"case":null},{"name":"Heading/H1","family":"IBM Plex Sans","style":"SemiBold","size":24,"lineHeight":32,"letterSpacing":-0.24,"case":null},{"name":"Heading/H2","family":"IBM Plex Sans","style":"SemiBold","size":16,"lineHeight":22,"letterSpacing":0,"case":null},{"name":"Heading/Amount","family":"IBM Plex Sans","style":"SemiBold","size":26,"lineHeight":32,"letterSpacing":-0.2,"case":null},{"name":"Heading/Stat","family":"IBM Plex Sans","style":"SemiBold","size":22,"lineHeight":28,"letterSpacing":0,"case":null},{"name":"Body/Default","family":"IBM Plex Sans","style":"Regular","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Medium","family":"IBM Plex Sans","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Strong","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Small","family":"IBM Plex Sans","style":"Regular","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Body/Small Strong","family":"IBM Plex Sans","style":"SemiBold","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Caption/Default","family":"IBM Plex Sans","style":"Regular","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Strong","family":"IBM Plex Sans","style":"SemiBold","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Overline","family":"IBM Plex Sans","style":"SemiBold","size":11,"lineHeight":16,"letterSpacing":0.77,"case":"UPPER"},{"name":"Label/Button","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Label/Button Small","family":"IBM Plex Sans","style":"SemiBold","size":13,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Touch/Body","family":"IBM Plex Sans","style":"Regular","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Strong","family":"IBM Plex Sans","style":"Bold","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Button","family":"IBM Plex Sans","style":"SemiBold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Title","family":"IBM Plex Sans","style":"Bold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Default","family":"IBM Plex Mono","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Small","family":"IBM Plex Mono","style":"Regular","size":11,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Mono/Touch","family":"IBM Plex Mono","style":"Medium","size":15,"lineHeight":20,"letterSpacing":0,"case":null}],"effects":[{"name":"Elevation/Floating","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.22],"x":0,"y":12,"blur":28,"spread":-8,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":4,"blur":8,"spread":-4,"token":null}],"description":"Floating bulk action bar"},{"name":"Elevation/Document","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":1,"blur":2,"spread":0,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.08],"x":0,"y":8,"blur":16,"spread":0,"token":null}],"description":"Document preview paper"},{"name":"Focus/Ring","layers":[{"type":"DROP_SHADOW","rgba":[255,255,255,1],"x":0,"y":0,"blur":0,"spread":2,"token":"bg/surface"},{"type":"DROP_SHADOW","rgba":[29,79,215,1],"x":0,"y":0,"blur":0,"spread":4,"token":"focus/ring"}],"description":"Keyboard focus ring: 2px gap + 2px blue"},{"name":"Ring/Urgent","layers":[{"type":"DROP_SHADOW","rgba":[253,235,234,1],"x":0,"y":0,"blur":0,"spread":3,"token":"status/critical/bg"}],"description":"Ring around urgent order card"}],"motion":{"duration/fast":120,"duration/base":160,"duration/slow":240}};
+const SPEC = {"version":"1.9.0","generated":"2026-10-08","primitives":[{"name":"amber/10","hex":"#FFFCF7"},{"name":"amber/20","hex":"#FFF8EF"},{"name":"amber/35","hex":"#FFF1E0"},{"name":"amber/75","hex":"#FBE3C4"},{"name":"amber/105","hex":"#F3D7B0"},{"name":"amber/145","hex":"#F2C894"},{"name":"amber/180","hex":"#F5B65C"},{"name":"amber/290","hex":"#E08A1E"},{"name":"amber/385","hex":"#C46A00"},{"name":"amber/515","hex":"#8F4A00"},{"name":"amber/565","hex":"#6B4A1F"},{"name":"amber/655","hex":"#4A3418"},{"name":"amber/725","hex":"#33240D"},{"name":"amber/775","hex":"#241A0D"},{"name":"amber/780","hex":"#211A10"},{"name":"blue/20","hex":"#F7F9FF"},{"name":"blue/25","hex":"#F3F6FC"},{"name":"blue/30","hex":"#F3F5F8"},{"name":"blue/35","hex":"#EEF3FD"},{"name":"blue/40","hex":"#EDF2FF"},{"name":"blue/45","hex":"#EAF1FB"},{"name":"blue/75","hex":"#DDE7F3"},{"name":"blue/80","hex":"#DCE6FB"},{"name":"blue/95","hex":"#D6E0F2"},{"name":"blue/120","hex":"#C9D7F5"},{"name":"blue/130","hex":"#C7D4F5"},{"name":"blue/165","hex":"#B9C9F2"},{"name":"blue/170","hex":"#B3C8FF"},{"name":"blue/225","hex":"#9DB4F0"},{"name":"blue/235","hex":"#8DB5F2"},{"name":"blue/240","hex":"#8FB0FF"},{"name":"blue/305","hex":"#7096FF"},{"name":"blue/440","hex":"#3D68E6"},{"name":"blue/465","hex":"#4A68B8"},{"name":"blue/490","hex":"#3159D4"},{"name":"blue/510","hex":"#1D4FD7"},{"name":"blue/550","hex":"#1A45BF"},{"name":"blue/555","hex":"#1B45BD"},{"name":"blue/575","hex":"#1F4E8C"},{"name":"blue/580","hex":"#173FB0"},{"name":"blue/620","hex":"#2C3F73"},{"name":"blue/625","hex":"#2B3F6B"},{"name":"blue/665","hex":"#26345A"},{"name":"blue/680","hex":"#22305A"},{"name":"blue/720","hex":"#13284A"},{"name":"blue/725","hex":"#1B2645"},{"name":"blue/735","hex":"#17263A"},{"name":"blue/745","hex":"#18213A"},{"name":"blue/750","hex":"#15213A"},{"name":"blue/775","hex":"#141B2C"},{"name":"blue/780","hex":"#0B1D2E"},{"name":"brown/60","hex":"#F6EADB"},{"name":"brown/180","hex":"#E4BB8E"},{"name":"brown/505","hex":"#865628"},{"name":"brown/730","hex":"#2F2419"},{"name":"coral/55","hex":"#FDE7E3"},{"name":"coral/205","hex":"#F4A595"},{"name":"coral/475","hex":"#B23F2E"},{"name":"coral/735","hex":"#3A1A16"},{"name":"green/30","hex":"#F1F8F3"},{"name":"green/40","hex":"#E7F6EC"},{"name":"green/60","hex":"#DDF2E5"},{"name":"green/95","hex":"#CFE6D7"},{"name":"green/210","hex":"#6CD49A"},{"name":"green/550","hex":"#12663A"},{"name":"green/630","hex":"#1F4A33"},{"name":"green/635","hex":"#1C4A30"},{"name":"green/730","hex":"#0F2E1D"},{"name":"green/765","hex":"#10221A"},{"name":"honey/40","hex":"#FFF0D6"},{"name":"honey/155","hex":"#F3C46A"},{"name":"honey/470","hex":"#9A5A08"},{"name":"honey/720","hex":"#33260F"},{"name":"lime/20","hex":"#F5FAEF"},{"name":"lime/130","hex":"#C8DDB0"},{"name":"lime/180","hex":"#A9D570"},{"name":"lime/245","hex":"#9DBB7A"},{"name":"lime/390","hex":"#6E8F45"},{"name":"lime/545","hex":"#3F6212"},{"name":"lime/600","hex":"#35511F"},{"name":"lime/745","hex":"#1A2812"},{"name":"neutral/0","hex":"#FFFFFF"},{"name":"neutral/15","hex":"#F9FAFB"},{"name":"neutral/25","hex":"#F5F6F8"},{"name":"neutral/45","hex":"#EEF0F3"},{"name":"neutral/50","hex":"#EBEEF2"},{"name":"neutral/60","hex":"#E8EBF0"},{"name":"neutral/75","hex":"#E3E6EB"},{"name":"neutral/130","hex":"#D0D5DD"},{"name":"neutral/165","hex":"#C3C9D3"},{"name":"neutral/295","hex":"#98A1B0"},{"name":"neutral/335","hex":"#8B95A6"},{"name":"neutral/340","hex":"#8A93A3"},{"name":"neutral/380","hex":"#7C8698"},{"name":"neutral/440","hex":"#6B7586"},{"name":"neutral/500","hex":"#5B6475"},{"name":"neutral/565","hex":"#4A525E"},{"name":"neutral/605","hex":"#3F4756"},{"name":"neutral/625","hex":"#3A4250"},{"name":"neutral/690","hex":"#2A303B"},{"name":"neutral/710","hex":"#262C36"},{"name":"neutral/720","hex":"#232933"},{"name":"neutral/725","hex":"#222833"},{"name":"neutral/730","hex":"#232830"},{"name":"neutral/755","hex":"#1B2029"},{"name":"neutral/775","hex":"#181C24"},{"name":"neutral/785","hex":"#161A21"},{"name":"neutral/790","hex":"#111827"},{"name":"neutral/825","hex":"#0E1116"},{"name":"olive/50","hex":"#EAF2DF"},{"name":"olive/165","hex":"#B6D68B"},{"name":"olive/515","hex":"#4C6A1C"},{"name":"olive/730","hex":"#1F2B14"},{"name":"purple/45","hex":"#F1ECFF"},{"name":"purple/225","hex":"#B9A6FF"},{"name":"purple/525","hex":"#5B3CC4"},{"name":"purple/730","hex":"#271E47"},{"name":"red/45","hex":"#FDEBEA"},{"name":"red/125","hex":"#F6C9C5"},{"name":"red/140","hex":"#F3C4C0"},{"name":"red/220","hex":"#F79A90"},{"name":"red/365","hex":"#F04438"},{"name":"red/425","hex":"#D92D20"},{"name":"red/500","hex":"#B42318"},{"name":"red/520","hex":"#A8231A"},{"name":"red/590","hex":"#7A2E28"},{"name":"red/690","hex":"#4F201C"},{"name":"red/745","hex":"#3B1512"},{"name":"teal/20","hex":"#F2FAF8"},{"name":"teal/45","hex":"#E6F4F1"},{"name":"teal/65","hex":"#DCEFEA"},{"name":"teal/130","hex":"#B7DDD5"},{"name":"teal/220","hex":"#5BCFB8"},{"name":"teal/525","hex":"#0B6B5C"},{"name":"teal/615","hex":"#1F4D45"},{"name":"teal/680","hex":"#143A34"},{"name":"teal/700","hex":"#123430"},{"name":"teal/705","hex":"#06352E"},{"name":"teal/740","hex":"#0F2925"}],"color":[{"name":"bg/page","light":"neutral/25","dark":"neutral/825","lightHex":"#F5F6F8","darkHex":"#0E1116","scopes":["FRAME_FILL"],"description":"Page background behind cards"},{"name":"bg/surface","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR","TEXT_FILL"],"description":"Cards, sidebar, top bar"},{"name":"bg/subtle","light":"neutral/15","dark":"neutral/755","lightHex":"#F9FAFB","darkHex":"#1B2029","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Table header, card footers, hover"},{"name":"bg/muted","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Document viewer, neutral fills"},{"name":"bg/selected","light":"blue/40","dark":"blue/725","lightHex":"#EDF2FF","darkHex":"#1B2645","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Active nav item, applied filter, selected segment"},{"name":"bg/row-selected","light":"blue/20","dark":"blue/745","lightHex":"#F7F9FF","darkHex":"#18213A","scopes":["FRAME_FILL"],"description":"Selected table row"},{"name":"bg/row-attention","light":"amber/10","dark":"amber/780","lightHex":"#FFFCF7","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Rows that need action"},{"name":"bg/info-banner","light":"blue/35","dark":"blue/750","lightHex":"#EEF3FD","darkHex":"#15213A","scopes":["FRAME_FILL"],"description":"Info banner"},{"name":"border/default","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Card and section borders"},{"name":"border/row","light":"neutral/45","dark":"neutral/725","lightHex":"#EEF0F3","darkHex":"#222833","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Row dividers"},{"name":"border/control","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","FRAME_FILL"],"description":"Secondary buttons, segmented controls"},{"name":"border/input","light":"neutral/340","dark":"neutral/440","lightHex":"#8A93A3","darkHex":"#6B7586","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Inputs, checkboxes (3:1 on surface)"},{"name":"border/info","light":"blue/120","dark":"blue/625","lightHex":"#C9D7F5","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Info banner border"},{"name":"text/primary","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["TEXT_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Headings, values"},{"name":"text/secondary","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL"],"description":"Body text, labels"},{"name":"text/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Meta text, axis labels"},{"name":"text/link","light":"blue/555","dark":"blue/240","lightHex":"#1B45BD","darkHex":"#8FB0FF","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Links, selected tab"},{"name":"text/link-hover","light":"blue/580","dark":"blue/170","lightHex":"#173FB0","darkHex":"#B3C8FF","scopes":["TEXT_FILL"],"description":"Link hover"},{"name":"text/on-accent","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Text and icons on primary"},{"name":"icon/default","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Default icon colour"},{"name":"icon/muted","light":"neutral/500","dark":"neutral/295","lightHex":"#5B6475","darkHex":"#98A1B0","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Secondary icons"},{"name":"action/primary","light":"blue/510","dark":"blue/440","lightHex":"#1D4FD7","darkHex":"#3D68E6","scopes":["FRAME_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Primary button, focus, selection"},{"name":"action/primary-hover","light":"blue/550","dark":"blue/490","lightHex":"#1A45BF","darkHex":"#3159D4","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Primary button hover"},{"name":"action/primary-disabled","light":"blue/130","dark":"blue/665","lightHex":"#C7D4F5","darkHex":"#26345A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Disabled primary button"},{"name":"focus/ring","light":"blue/510","dark":"blue/240","lightHex":"#1D4FD7","darkHex":"#8FB0FF","scopes":["STROKE_COLOR","EFFECT_COLOR"],"description":"Keyboard focus ring"},{"name":"status/success/bg","light":"green/40","dark":"green/730","lightHex":"#E7F6EC","darkHex":"#0F2E1D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Success badge background"},{"name":"status/success/fg","light":"green/550","dark":"green/210","lightHex":"#12663A","darkHex":"#6CD49A","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Success text and icon"},{"name":"status/success/track","light":"green/60","dark":"green/635","lightHex":"#DDF2E5","darkHex":"#1C4A30","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Success ring track"},{"name":"status/info/bg","light":"blue/45","dark":"blue/720","lightHex":"#EAF1FB","darkHex":"#13284A","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Info badge background"},{"name":"status/info/fg","light":"blue/575","dark":"blue/235","lightHex":"#1F4E8C","darkHex":"#8DB5F2","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Info text and icon"},{"name":"status/attention/bg","light":"amber/35","dark":"amber/725","lightHex":"#FFF1E0","darkHex":"#33240D","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Attention badge background"},{"name":"status/attention/fg","light":"amber/515","dark":"amber/180","lightHex":"#8F4A00","darkHex":"#F5B65C","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Attention text and icon"},{"name":"status/attention/solid","light":"amber/385","dark":"amber/290","lightHex":"#C46A00","darkHex":"#E08A1E","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter fill, pips"},{"name":"status/attention/track","light":"amber/75","dark":"amber/655","lightHex":"#FBE3C4","darkHex":"#4A3418","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Attention meter track"},{"name":"status/attention/border","light":"amber/145","dark":"amber/565","lightHex":"#F2C894","darkHex":"#6B4A1F","scopes":["STROKE_COLOR"],"description":"Attention card border"},{"name":"status/attention/surface","light":"amber/20","dark":"amber/775","lightHex":"#FFF8EF","darkHex":"#241A0D","scopes":["FRAME_FILL"],"description":"Attention panel background"},{"name":"status/critical/bg","light":"red/45","dark":"red/745","lightHex":"#FDEBEA","darkHex":"#3B1512","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Critical badge background"},{"name":"status/critical/fg","light":"red/520","dark":"red/220","lightHex":"#A8231A","darkHex":"#F79A90","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Critical text and icon"},{"name":"status/critical/solid","light":"red/425","dark":"red/365","lightHex":"#D92D20","darkHex":"#F04438","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Urgent card border, red ring"},{"name":"status/critical/meter","light":"red/500","dark":"red/365","lightHex":"#B42318","darkHex":"#F04438","scopes":["SHAPE_FILL","FRAME_FILL"],"description":"Overdue meter fill"},{"name":"status/critical/track","light":"red/125","dark":"red/690","lightHex":"#F6C9C5","darkHex":"#4F201C","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Overdue meter track"},{"name":"status/critical/border","light":"red/140","dark":"red/590","lightHex":"#F3C4C0","darkHex":"#7A2E28","scopes":["STROKE_COLOR"],"description":"Destructive secondary button border"},{"name":"status/neutral/bg","light":"neutral/45","dark":"neutral/710","lightHex":"#EEF0F3","darkHex":"#262C36","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Neutral badge background"},{"name":"status/neutral/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Neutral text"},{"name":"cert/seller/fg","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR","FRAME_FILL"],"description":"Seller-level certificate"},{"name":"cert/seller/bg","light":"teal/20","dark":"teal/740","lightHex":"#F2FAF8","darkHex":"#0F2925","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Seller certificate chip"},{"name":"cert/seller/border","light":"teal/130","dark":"teal/615","lightHex":"#B7DDD5","darkHex":"#1F4D45","scopes":["STROKE_COLOR"],"description":"Seller certificate chip border"},{"name":"cert/seller/tile","light":"teal/45","dark":"teal/700","lightHex":"#E6F4F1","darkHex":"#123430","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Teal identity tile"},{"name":"cert/manufacturer/fg","light":"neutral/605","dark":"neutral/165","lightHex":"#3F4756","darkHex":"#C3C9D3","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Manufacturer certificate"},{"name":"cert/manufacturer/bg","light":"neutral/0","dark":"neutral/785","lightHex":"#FFFFFF","darkHex":"#161A21","scopes":["FRAME_FILL"],"description":"Manufacturer chip"},{"name":"cert/manufacturer/border","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR"],"description":"Manufacturer chip border"},{"name":"cert/vegan/fg","light":"lime/545","dark":"lime/180","lightHex":"#3F6212","darkHex":"#A9D570","scopes":["TEXT_FILL","SHAPE_FILL","STROKE_COLOR"],"description":"Vegan certificate"},{"name":"cert/vegan/bg","light":"lime/20","dark":"lime/745","lightHex":"#F5FAEF","darkHex":"#1A2812","scopes":["FRAME_FILL"],"description":"Vegan chip"},{"name":"cert/vegan/border","light":"lime/130","dark":"lime/600","lightHex":"#C8DDB0","darkHex":"#35511F","scopes":["STROKE_COLOR"],"description":"Vegan chip border"},{"name":"cert/vegan/self-declared-border","light":"lime/245","dark":"lime/390","lightHex":"#9DBB7A","darkHex":"#6E8F45","scopes":["STROKE_COLOR"],"description":"Self-declared chip, dashed"},{"name":"tile/purple-bg","light":"purple/45","dark":"purple/730","lightHex":"#F1ECFF","darkHex":"#271E47","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Identity tile: applications"},{"name":"tile/purple-fg","light":"purple/525","dark":"purple/225","lightHex":"#5B3CC4","darkHex":"#B9A6FF","scopes":["TEXT_FILL","SHAPE_FILL"],"description":"Identity tile text"},{"name":"thumb/meat-bg","light":"coral/55","dark":"coral/735","lightHex":"#FDE7E3","darkHex":"#3A1A16","scopes":["FRAME_FILL"],"description":"Product thumbnail: meat"},{"name":"thumb/meat-fg","light":"coral/475","dark":"coral/205","lightHex":"#B23F2E","darkHex":"#F4A595","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Meat glyph"},{"name":"thumb/poultry-bg","light":"honey/40","dark":"honey/720","lightHex":"#FFF0D6","darkHex":"#33260F","scopes":["FRAME_FILL"],"description":"Product thumbnail: poultry"},{"name":"thumb/poultry-fg","light":"honey/470","dark":"honey/155","lightHex":"#9A5A08","darkHex":"#F3C46A","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Poultry glyph"},{"name":"thumb/bakery-bg","light":"brown/60","dark":"brown/730","lightHex":"#F6EADB","darkHex":"#2F2419","scopes":["FRAME_FILL"],"description":"Product thumbnail: bakery"},{"name":"thumb/bakery-fg","light":"brown/505","dark":"brown/180","lightHex":"#865628","darkHex":"#E4BB8E","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Bakery glyph"},{"name":"thumb/pantry-bg","light":"olive/50","dark":"olive/730","lightHex":"#EAF2DF","darkHex":"#1F2B14","scopes":["FRAME_FILL"],"description":"Product thumbnail: pantry"},{"name":"thumb/pantry-fg","light":"olive/515","dark":"olive/165","lightHex":"#4C6A1C","darkHex":"#B6D68B","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Pantry glyph"},{"name":"thumb/other-bg","light":"neutral/50","dark":"neutral/730","lightHex":"#EBEEF2","darkHex":"#232830","scopes":["FRAME_FILL"],"description":"Product thumbnail: other"},{"name":"thumb/other-fg","light":"neutral/565","dark":"neutral/165","lightHex":"#4A525E","darkHex":"#C3C9D3","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Other glyph"},{"name":"chart/series-1","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Main series"},{"name":"chart/series-1-soft","light":"blue/165","dark":"blue/620","lightHex":"#B9C9F2","darkHex":"#2C3F73","scopes":["SHAPE_FILL"],"description":"Past periods in bar charts"},{"name":"chart/split-2","light":"blue/225","dark":"blue/465","lightHex":"#9DB4F0","darkHex":"#4A68B8","scopes":["SHAPE_FILL"],"description":"Second part of a split bar"},{"name":"chart/compare","light":"neutral/380","dark":"neutral/335","lightHex":"#7C8698","darkHex":"#8B95A6","scopes":["STROKE_COLOR"],"description":"Comparison series (dashed)"},{"name":"chart/grid","light":"neutral/45","dark":"neutral/720","lightHex":"#EEF0F3","darkHex":"#232933","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Gridlines"},{"name":"chart/axis","light":"neutral/130","dark":"neutral/625","lightHex":"#D0D5DD","darkHex":"#3A4250","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Baseline"},{"name":"chart/meter-track","light":"blue/80","dark":"blue/680","lightHex":"#DCE6FB","darkHex":"#22305A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Meter track, accent"},{"name":"chart/donut-track","light":"teal/65","dark":"teal/680","lightHex":"#DCEFEA","darkHex":"#143A34","scopes":["STROKE_COLOR","SHAPE_FILL"],"description":"Certificate donut track"},{"name":"chart/tooltip-bg","light":"neutral/790","dark":"neutral/60","lightHex":"#111827","darkHex":"#E8EBF0","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Chart tooltip background (inverse)"},{"name":"chart/tooltip-fg","light":"neutral/0","dark":"neutral/790","lightHex":"#FFFFFF","darkHex":"#111827","scopes":["TEXT_FILL"],"description":"Chart tooltip value"},{"name":"chart/tooltip-muted","light":"neutral/130","dark":"neutral/605","lightHex":"#D0D5DD","darkHex":"#3F4756","scopes":["TEXT_FILL"],"description":"Chart tooltip label"},{"name":"map/land","light":"blue/30","dark":"neutral/775","lightHex":"#F3F5F8","darkHex":"#181C24","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Map land"},{"name":"map/water","light":"blue/75","dark":"blue/735","lightHex":"#DDE7F3","darkHex":"#17263A","scopes":["SHAPE_FILL","STROKE_COLOR"],"description":"Map water"},{"name":"map/road","light":"neutral/75","dark":"neutral/690","lightHex":"#E3E6EB","darkHex":"#2A303B","scopes":["STROKE_COLOR"],"description":"Map roads"},{"name":"map/seller-pin","light":"blue/510","dark":"blue/305","lightHex":"#1D4FD7","darkHex":"#7096FF","scopes":["SHAPE_FILL"],"description":"Seller with open orders"},{"name":"map/courier","light":"teal/525","dark":"teal/220","lightHex":"#0B6B5C","darkHex":"#5BCFB8","scopes":["SHAPE_FILL"],"description":"Courier position"},{"name":"board/action-bg","light":"amber/20","dark":"amber/780","lightHex":"#FFF8EF","darkHex":"#211A10","scopes":["FRAME_FILL"],"description":"Needs action column"},{"name":"board/action-border","light":"amber/105","dark":"amber/655","lightHex":"#F3D7B0","darkHex":"#4A3418","scopes":["STROKE_COLOR"],"description":"Needs action column border"},{"name":"board/prep-bg","light":"blue/25","dark":"blue/775","lightHex":"#F3F6FC","darkHex":"#141B2C","scopes":["FRAME_FILL"],"description":"Preparing column"},{"name":"board/prep-border","light":"blue/95","dark":"blue/625","lightHex":"#D6E0F2","darkHex":"#2B3F6B","scopes":["STROKE_COLOR"],"description":"Preparing column border"},{"name":"board/ready-bg","light":"green/30","dark":"green/765","lightHex":"#F1F8F3","darkHex":"#10221A","scopes":["FRAME_FILL"],"description":"Ready column"},{"name":"board/ready-border","light":"green/95","dark":"green/630","lightHex":"#CFE6D7","darkHex":"#1F4A33","scopes":["STROKE_COLOR"],"description":"Ready column border"},{"name":"bg/scrim","light":null,"dark":null,"lightHex":"#11182780","darkHex":"#00000099","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Overlay behind drawers and modals; alpha is part of the value"},{"name":"bg/qr","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"QR code plate; white in both themes"},{"name":"bg/auth-showcase-admin","light":"blue/780","dark":"blue/780","lightHex":"#0B1D2E","darkHex":"#0B1D2E","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Auth brand panel, Admin; dark in both themes"},{"name":"bg/auth-showcase-seller","light":"teal/705","dark":"teal/705","lightHex":"#06352E","darkHex":"#06352E","scopes":["FRAME_FILL","SHAPE_FILL"],"description":"Auth brand panel, Seller; dark in both themes"},{"name":"text/on-showcase","light":"neutral/0","dark":"neutral/0","lightHex":"#FFFFFF","darkHex":"#FFFFFF","scopes":["TEXT_FILL","FRAME_FILL","SHAPE_FILL"],"description":"Brand line on the Auth brand panel"},{"name":"text/on-showcase-muted","light":null,"dark":null,"lightHex":"#FFFFFFBD","darkHex":"#FFFFFFBD","scopes":["TEXT_FILL","STROKE_COLOR"],"description":"Secondary brand line on the Auth brand panel; alpha is part of the value"}],"dimension":[{"name":"space/0-5","desktop":2,"touch":2,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1","desktop":4,"touch":4,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/1-5","desktop":6,"touch":6,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2","desktop":8,"touch":8,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/2-5","desktop":10,"touch":10,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3","desktop":12,"touch":12,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/3-5","desktop":14,"touch":14,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4","desktop":16,"touch":16,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/4-5","desktop":18,"touch":18,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/5","desktop":20,"touch":20,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/6","desktop":24,"touch":24,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/7","desktop":28,"touch":28,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/8","desktop":32,"touch":32,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"space/10","desktop":40,"touch":40,"scopes":["GAP","WIDTH_HEIGHT"]},{"name":"radius/chip","desktop":6,"touch":6,"scopes":["CORNER_RADIUS"]},{"name":"radius/control","desktop":8,"touch":10,"scopes":["CORNER_RADIUS"]},{"name":"radius/card","desktop":12,"touch":12,"scopes":["CORNER_RADIUS"]},{"name":"radius/column","desktop":14,"touch":14,"scopes":["CORNER_RADIUS"]},{"name":"radius/pill","desktop":999,"touch":999,"scopes":["CORNER_RADIUS"]},{"name":"size/control-sm","desktop":32,"touch":44,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control","desktop":36,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/control-lg","desktop":44,"touch":48,"scopes":["WIDTH_HEIGHT"]},{"name":"size/badge","desktop":22,"touch":24,"scopes":["WIDTH_HEIGHT"]},{"name":"size/icon","desktop":18,"touch":20,"scopes":["WIDTH_HEIGHT"]},{"name":"size/thumb","desktop":28,"touch":32,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar","desktop":248,"touch":248,"scopes":["WIDTH_HEIGHT"]},{"name":"size/sidebar-collapsed","desktop":72,"touch":72,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"border/width","desktop":1,"touch":1,"scopes":["STROKE_FLOAT"]},{"name":"border/width-strong","desktop":2,"touch":2,"scopes":["STROKE_FLOAT"]},{"name":"size/bottom-bar","desktop":64,"touch":64,"scopes":["WIDTH_HEIGHT"]},{"name":"size/topbar-phone","desktop":56,"touch":56,"scopes":["WIDTH_HEIGHT"]},{"name":"size/auth-card","desktop":400,"touch":400,"scopes":["WIDTH_HEIGHT"]},{"name":"size/dialog-sm","desktop":400,"touch":400,"scopes":["WIDTH_HEIGHT"]},{"name":"size/dialog-md","desktop":560,"touch":560,"scopes":["WIDTH_HEIGHT"]},{"name":"size/form-max","desktop":640,"touch":640,"scopes":["WIDTH_HEIGHT"]}],"type":[{"name":"Display/Hero","family":"IBM Plex Sans","style":"SemiBold","size":30,"lineHeight":38,"letterSpacing":-0.3,"case":null},{"name":"Heading/H1","family":"IBM Plex Sans","style":"SemiBold","size":24,"lineHeight":32,"letterSpacing":-0.24,"case":null},{"name":"Heading/H2","family":"IBM Plex Sans","style":"SemiBold","size":16,"lineHeight":22,"letterSpacing":0,"case":null},{"name":"Heading/Amount","family":"IBM Plex Sans","style":"SemiBold","size":26,"lineHeight":32,"letterSpacing":-0.2,"case":null},{"name":"Heading/Stat","family":"IBM Plex Sans","style":"SemiBold","size":22,"lineHeight":28,"letterSpacing":0,"case":null},{"name":"Body/Default","family":"IBM Plex Sans","style":"Regular","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Medium","family":"IBM Plex Sans","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Strong","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Body/Small","family":"IBM Plex Sans","style":"Regular","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Body/Small Strong","family":"IBM Plex Sans","style":"SemiBold","size":12.5,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Caption/Default","family":"IBM Plex Sans","style":"Regular","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Strong","family":"IBM Plex Sans","style":"SemiBold","size":12,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Caption/Overline","family":"IBM Plex Sans","style":"SemiBold","size":11,"lineHeight":16,"letterSpacing":0.77,"case":"UPPER"},{"name":"Label/Button","family":"IBM Plex Sans","style":"SemiBold","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Label/Button Small","family":"IBM Plex Sans","style":"SemiBold","size":13,"lineHeight":18,"letterSpacing":0,"case":null},{"name":"Touch/Body","family":"IBM Plex Sans","style":"Regular","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Strong","family":"IBM Plex Sans","style":"Bold","size":14,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Button","family":"IBM Plex Sans","style":"SemiBold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Touch/Title","family":"IBM Plex Sans","style":"Bold","size":15,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Default","family":"IBM Plex Mono","style":"Medium","size":13.5,"lineHeight":20,"letterSpacing":0,"case":null},{"name":"Mono/Small","family":"IBM Plex Mono","style":"Regular","size":11,"lineHeight":16,"letterSpacing":0,"case":null},{"name":"Mono/Touch","family":"IBM Plex Mono","style":"Medium","size":15,"lineHeight":20,"letterSpacing":0,"case":null}],"effects":[{"name":"Elevation/Floating","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.22],"x":0,"y":12,"blur":28,"spread":-8,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":4,"blur":8,"spread":-4,"token":null}],"description":"Floating bulk action bar"},{"name":"Elevation/Document","layers":[{"type":"DROP_SHADOW","rgba":[17,24,39,0.1],"x":0,"y":1,"blur":2,"spread":0,"token":null},{"type":"DROP_SHADOW","rgba":[17,24,39,0.08],"x":0,"y":8,"blur":16,"spread":0,"token":null}],"description":"Document preview paper"},{"name":"Focus/Ring","layers":[{"type":"DROP_SHADOW","rgba":[255,255,255,1],"x":0,"y":0,"blur":0,"spread":2,"token":"bg/surface"},{"type":"DROP_SHADOW","rgba":[29,79,215,1],"x":0,"y":0,"blur":0,"spread":4,"token":"focus/ring"}],"description":"Keyboard focus ring: 2px gap + 2px blue"},{"name":"Ring/Urgent","layers":[{"type":"DROP_SHADOW","rgba":[253,235,234,1],"x":0,"y":0,"blur":0,"spread":3,"token":"status/critical/bg"}],"description":"Ring around urgent order card"}],"motion":{"duration/fast":120,"duration/base":160,"duration/slow":240}};
 const ICONS = {"home":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z\"></path></svg>","inbox":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 12h-6l-2 3h-4l-2-3H2\"></path><path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"></path></svg>","clipboard":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\"></rect><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"></path><path d=\"M12 11h4\"></path><path d=\"M12 16h4\"></path><path d=\"M8 11h.01\"></path><path d=\"M8 16h.01\"></path></svg>","package":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7.5 4.27 9 5.15\"></path><path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"></path><path d=\"m3.3 7 8.7 5 8.7-5\"></path><path d=\"M12 22V12\"></path></svg>","store":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 9.5 5.5 4h13L20 9.5\"></path><path d=\"M4 9.5h16v1a2.7 2.7 0 0 1-5.3.7 2.7 2.7 0 0 1-5.4 0A2.7 2.7 0 0 1 4 10.5z\"></path><path d=\"M5.5 12.5V20h13v-7.5\"></path><path d=\"M10 20v-4.5h4V20\"></path></svg>","users":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"></path><circle cx=\"9\" cy=\"7\" r=\"4\"></circle><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"></path><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"></path></svg>","wallet":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1\"></path><path d=\"M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4\"></path></svg>","file-text":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"></path><path d=\"M16 13H8\"></path><path d=\"M16 17H8\"></path></svg>","sliders":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h10\"></path><path d=\"M18 6h2\"></path><circle cx=\"16\" cy=\"6\" r=\"2\"></circle><path d=\"M4 12h4\"></path><path d=\"M12 12h8\"></path><circle cx=\"10\" cy=\"12\" r=\"2\"></circle><path d=\"M4 18h12\"></path><circle cx=\"18\" cy=\"18\" r=\"2\"></circle></svg>","shield-check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10\"></path><path d=\"m9 12 2 2 4-4\"></path></svg>","undo":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 14 4 9l5-5\"></path><path d=\"M4 9h10.5a5.5 5.5 0 0 1 0 11H11\"></path></svg>","badge-check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z\"></path><path d=\"m9 12 2 2 4-4\"></path></svg>","message":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"></path></svg>","help-circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"></path><path d=\"M12 17h.01\"></path></svg>","panel-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M9 3v18\"></path></svg>","search":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg>","bell":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"></path><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"></path></svg>","chevron-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"></path></svg>","chevron-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"></path></svg>","chevron-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"></path></svg>","x":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg>","plus":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"></path><path d=\"M5 12h14\"></path></svg>","download":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"></path><path d=\"m7 10 5 5 5-5\"></path><path d=\"M12 15V3\"></path></svg>","columns":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg>","more-vertical":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"12\" cy=\"19\" r=\"1\"></circle></svg>","more-horizontal":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"19\" cy=\"12\" r=\"1\"></circle></svg>","check":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"></path></svg>","minus":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"></path></svg>","alert-circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 8v4\"></path><path d=\"M12 16h.01\"></path></svg>","alert-triangle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z\"></path><path d=\"M12 9v4\"></path><path d=\"M12 17h.01\"></path></svg>","clock":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6l4 2\"></path></svg>","calendar":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"></rect><path d=\"M16 2v4\"></path><path d=\"M8 2v4\"></path><path d=\"M3 10h18\"></path></svg>","zap":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><path d=\"M13 2 4 14h7l-1 8 9-12h-7z\"></path></svg>","volume":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z\"></path><path d=\"M16 9a5 5 0 0 1 0 6\"></path><path d=\"M19.4 18.4a9 9 0 0 0 0-12.8\"></path></svg>","arrow-up":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 19V5\"></path><path d=\"m5 12 7-7 7 7\"></path></svg>","arrow-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"></path><path d=\"m19 12-7 7-7-7\"></path></svg>","arrow-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 12H5\"></path><path d=\"m12 19-7-7 7-7\"></path></svg>","arrow-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"></path><path d=\"m12 5 7 7-7 7\"></path></svg>","external-link":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 3h6v6\"></path><path d=\"M10 14 21 3\"></path><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"></path></svg>","zoom-in":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path><path d=\"M11 8v6\"></path><path d=\"M8 11h6\"></path></svg>","zoom-out":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path><path d=\"M8 11h6\"></path></svg>","leaf":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z\"></path><path d=\"M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12\"></path></svg>","briefcase":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"></rect><path d=\"M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"></path></svg>","ban":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"m4.9 4.9 14.2 14.2\"></path></svg>","printer":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 9V2h12v7\"></path><path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\"></path><rect x=\"6\" y=\"14\" width=\"12\" height=\"8\"></rect></svg>","truck":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2\"></path><path d=\"M15 18H9\"></path><path d=\"M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 9.38a1 1 0 0 0-.78-.38H14\"></path><circle cx=\"17\" cy=\"18\" r=\"2\"></circle><circle cx=\"7\" cy=\"18\" r=\"2\"></circle></svg>","map-pin":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z\"></path><circle cx=\"12\" cy=\"10\" r=\"3\"></circle></svg>","star":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"#3F4756\" stroke=\"none\"><path d=\"m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z\"></path></svg>","file":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"></path><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"></path></svg>","send":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 2-7 20-4-9-9-4z\"></path><path d=\"M22 2 11 13\"></path></svg>","eye":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z\"></path><circle cx=\"12\" cy=\"12\" r=\"3\"></circle></svg>","info":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4\"></path><path d=\"M12 8h.01\"></path></svg>","circle":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle></svg>","menu":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h16\"></path><path d=\"M4 12h16\"></path><path d=\"M4 18h16\"></path></svg>","eye-off":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.7 5.1A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7\"></path><path d=\"M14.1 14.2a3 3 0 0 1-4.2-4.2\"></path><path d=\"M17.5 17.5A10.4 10.4 0 0 1 12 19c-7 0-10-7-10-7a13.2 13.2 0 0 1 4.6-5.5\"></path><path d=\"m2 2 20 20\"></path></svg>","lock":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"11\" width=\"16\" height=\"10\" rx=\"2\"></rect><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"></path></svg>","mail":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"></rect><path d=\"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7\"></path></svg>","key":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"7.5\" cy=\"15.5\" r=\"5.5\"></circle><path d=\"m21 2-9.6 9.6\"></path><path d=\"m15.5 7.5 3 3L22 7l-3-3\"></path></svg>","user":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"8\" r=\"5\"></circle><path d=\"M20 21a8 8 0 0 0-16 0\"></path></svg>","log-out":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"></path><path d=\"m16 17 5-5-5-5\"></path><path d=\"M21 12H9\"></path></svg>","copy":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"8\" width=\"14\" height=\"14\" rx=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path></svg>","smartphone":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"2\"></rect><path d=\"M12 18h.01\"></path></svg>","trash":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6h18\"></path><path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\"></path><path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"></path></svg>","pencil":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z\"></path><path d=\"m15 5 4 4\"></path></svg>","refresh-cw":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"></path><path d=\"M21 3v5h-5\"></path><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"></path><path d=\"M8 16H3v5\"></path></svg>","globe":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path></svg>","product-meat":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6.2 8c2.6-3.2 8.4-3.6 11.3-.1 2.6 3.1 1.6 7.8-2.1 9.8-3.1 1.7-6.8 1-8.8-1.5-1.9-2.3-2.4-5.6-.4-8.2z\"></path><circle cx=\"15\" cy=\"11.2\" r=\"1.7\"></circle></svg>","product-poultry":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15.2 4.2a5 5 0 0 1 4.6 6.2c-.7 2.9-3.7 4.4-6.4 3.7l-3.1 3.1\"></path><path d=\"M15.2 4.2c-2.9.7-4.6 3.6-3.9 6.5l-3.1 3.1\"></path><path d=\"M10.3 17.2a1.9 1.9 0 1 1-2.6 2.5 1.9 1.9 0 1 1 .5-3.6\"></path></svg>","product-bakery":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 13.6c0-4 3.4-6.6 7.5-6.6s7.5 2.6 7.5 6.6V17a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 4.5 17z\"></path><path d=\"m9.2 10.4-1.4 3\"></path><path d=\"m12.7 10-1.4 3.4\"></path><path d=\"m16.1 10.6-1.3 2.8\"></path></svg>","product-pantry":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8.6 6.6h6.8l-1.4 2.6c2.9 1.5 4.5 4.2 4.5 6.9a3.4 3.4 0 0 1-3.4 3.4H8.9a3.4 3.4 0 0 1-3.4-3.4c0-2.7 1.6-5.4 4.5-6.9z\"></path><path d=\"M9.2 4.4h5.6\"></path><path d=\"M9.5 14.2h5\"></path></svg>","product-other":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3F4756\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3.6c1 3 4.6 4.6 4.6 9.1a4.6 4.6 0 0 1-9.2 0c0-2 1-3.4 2-4.4.3 1.5 1 2.4 2 2.7-.5-2.8-.2-5.1.6-7.4z\"></path></svg>"};
 const CONTRAST = [["light","text","text/primary","bg/page",16.41,4.5,true],["light","text","text/primary","bg/surface",17.74,4.5,true],["light","text","text/primary","bg/subtle",16.98,4.5,true],["light","text","text/primary","bg/muted",15.54,4.5,true],["light","text","text/primary","bg/selected",15.84,4.5,true],["dark","text","text/primary","bg/page",15.83,4.5,true],["dark","text","text/primary","bg/surface",14.6,4.5,true],["dark","text","text/primary","bg/subtle",13.67,4.5,true],["dark","text","text/primary","bg/muted",12.23,4.5,true],["dark","text","text/primary","bg/selected",12.46,4.5,true],["light","text","text/secondary","bg/page",8.64,4.5,true],["light","text","text/secondary","bg/surface",9.35,4.5,true],["light","text","text/secondary","bg/subtle",8.94,4.5,true],["light","text","text/secondary","bg/row-selected",8.88,4.5,true],["light","text","text/secondary","bg/row-attention",9.13,4.5,true],["dark","text","text/secondary","bg/page",11.36,4.5,true],["dark","text","text/secondary","bg/surface",10.48,4.5,true],["dark","text","text/secondary","bg/subtle",9.82,4.5,true],["dark","text","text/secondary","bg/row-selected",9.58,4.5,true],["dark","text","text/secondary","bg/row-attention",10.34,4.5,true],["light","text","text/muted","bg/page",5.51,4.5,true],["light","text","text/muted","bg/surface",5.96,4.5,true],["light","text","text/muted","bg/subtle",5.7,4.5,true],["dark","text","text/muted","bg/page",7.26,4.5,true],["dark","text","text/muted","bg/surface",6.7,4.5,true],["dark","text","text/muted","bg/subtle",6.27,4.5,true],["light","text","text/link","bg/surface",7.98,4.5,true],["light","text","text/link","bg/selected",7.12,4.5,true],["light","text","text/link","bg/info-banner",7.17,4.5,true],["dark","text","text/link","bg/surface",8.16,4.5,true],["dark","text","text/link","bg/selected",6.97,4.5,true],["dark","text","text/link","bg/info-banner",7.49,4.5,true],["light","text","text/on-accent","action/primary",6.66,4.5,true],["light","text","text/on-accent","action/primary-hover",7.93,4.5,true],["dark","text","text/on-accent","action/primary",4.86,4.5,true],["dark","text","text/on-accent","action/primary-hover",5.98,4.5,true],["light","badge","status/success/fg","status/success/bg",6.29,4.5,true],["dark","badge","status/success/fg","status/success/bg",8.06,4.5,true],["light","badge","status/info/fg","status/info/bg",7.31,4.5,true],["dark","badge","status/info/fg","status/info/bg",7.01,4.5,true],["light","badge","status/attention/fg","status/attention/bg",6.01,4.5,true],["dark","badge","status/attention/fg","status/attention/bg",8.38,4.5,true],["light","badge","status/critical/fg","status/critical/bg",6.25,4.5,true],["dark","badge","status/critical/fg","status/critical/bg",7.67,4.5,true],["light","badge","status/neutral/fg","status/neutral/bg",8.19,4.5,true],["dark","badge","status/neutral/fg","status/neutral/bg",8.43,4.5,true],["light","text","status/attention/fg","status/attention/surface",6.33,4.5,true],["light","text","status/attention/fg","bg/surface",6.67,4.5,true],["dark","text","status/attention/fg","status/attention/surface",9.55,4.5,true],["dark","text","status/attention/fg","bg/surface",9.74,4.5,true],["light","text","status/critical/fg","bg/surface",7.19,4.5,true],["dark","text","status/critical/fg","bg/surface",8.29,4.5,true],["light","text","status/success/fg","bg/surface",7.03,4.5,true],["dark","text","status/success/fg","bg/surface",9.57,4.5,true],["light","chip","cert/seller/fg","cert/seller/bg",6.05,4.5,true],["dark","chip","cert/seller/fg","cert/seller/bg",8.11,4.5,true],["light","chip","cert/manufacturer/fg","cert/manufacturer/bg",9.35,4.5,true],["dark","chip","cert/manufacturer/fg","cert/manufacturer/bg",10.48,4.5,true],["light","chip","cert/vegan/fg","cert/vegan/bg",6.67,4.5,true],["dark","chip","cert/vegan/fg","cert/vegan/bg",9.17,4.5,true],["light","tile","cert/seller/fg","cert/seller/tile",5.68,4.5,true],["dark","tile","cert/seller/fg","cert/seller/tile",7.09,4.5,true],["light","tile","tile/purple-fg","tile/purple-bg",6.3,4.5,true],["dark","tile","tile/purple-fg","tile/purple-bg",7.31,4.5,true],["light","glyph","thumb/meat-fg","thumb/meat-bg",4.86,3.0,true],["dark","glyph","thumb/meat-fg","thumb/meat-bg",7.96,3.0,true],["light","glyph","thumb/poultry-fg","thumb/poultry-bg",4.87,3.0,true],["dark","glyph","thumb/poultry-fg","thumb/poultry-bg",9.06,3.0,true],["light","glyph","thumb/bakery-fg","thumb/bakery-bg",5.25,3.0,true],["dark","glyph","thumb/bakery-fg","thumb/bakery-bg",8.5,3.0,true],["light","glyph","thumb/pantry-fg","thumb/pantry-bg",5.39,3.0,true],["dark","glyph","thumb/pantry-fg","thumb/pantry-bg",9.18,3.0,true],["light","glyph","thumb/other-fg","thumb/other-bg",6.78,3.0,true],["dark","glyph","thumb/other-fg","thumb/other-bg",8.9,3.0,true],["light","ui-boundary","border/input","bg/surface",3.1,3.0,true],["dark","ui-boundary","border/input","bg/surface",3.75,3.0,true],["light","focus","focus/ring","bg/surface",6.66,3.0,true],["light","focus","focus/ring","bg/page",6.16,3.0,true],["dark","focus","focus/ring","bg/surface",8.16,3.0,true],["dark","focus","focus/ring","bg/page",8.85,3.0,true],["light","graphic","chart/series-1","bg/surface",6.66,3.0,true],["dark","graphic","chart/series-1","bg/surface",6.23,3.0,true],["light","graphic","chart/compare","bg/surface",3.67,3.0,true],["dark","graphic","chart/compare","bg/surface",5.77,3.0,true],["light","graphic","status/critical/solid","bg/surface",4.83,3.0,true],["dark","graphic","status/critical/solid","bg/surface",4.64,3.0,true],["light","graphic","status/attention/solid","bg/surface",3.88,3.0,true],["dark","graphic","status/attention/solid","bg/surface",6.5,3.0,true],["light","graphic","map/seller-pin","map/land",6.1,3.0,true],["dark","graphic","map/seller-pin","map/land",6.09,3.0,true],["light","graphic","map/courier","map/land",5.88,3.0,true],["dark","graphic","map/courier","map/land",8.99,3.0,true],["light","text","chart/tooltip-fg","chart/tooltip-bg",17.74,4.5,true],["dark","text","chart/tooltip-fg","chart/tooltip-bg",14.84,4.5,true],["light","text","chart/tooltip-muted","chart/tooltip-bg",12.03,4.5,true],["dark","text","chart/tooltip-muted","chart/tooltip-bg",7.82,4.5,true],["light","icon","icon/default","bg/surface",9.35,3.0,true],["dark","icon","icon/default","bg/surface",10.48,3.0,true],["light","icon","icon/muted","bg/surface",5.96,3.0,true],["dark","icon","icon/muted","bg/surface",6.7,3.0,true],["light","text","text/on-showcase","bg/auth-showcase-admin",17.08,4.5,true],["light","text","text/on-showcase","bg/auth-showcase-seller",13.49,4.5,true],["dark","text","text/on-showcase","bg/auth-showcase-admin",17.08,4.5,true],["dark","text","text/on-showcase","bg/auth-showcase-seller",13.49,4.5,true],["light","text","text/on-showcase-muted","bg/auth-showcase-admin",9.82,4.5,true],["light","text","text/on-showcase-muted","bg/auth-showcase-seller",8.1,4.5,true],["dark","text","text/on-showcase-muted","bg/auth-showcase-admin",9.82,4.5,true],["dark","text","text/on-showcase-muted","bg/auth-showcase-seller",8.1,4.5,true]];
 const PLUGIN_TAG = 'mondapac-ds';
@@ -805,7 +805,6 @@ const RELEASES = [
   { version: '1.8.3', date: '8 Oct 2026', changes: 'Panel follow-up (planned as 1.2.1 in the Panel spec), templates only. Admin · Sellers (Phase 2) with Menu open, View only, Loading, Empty and Load error, and its phone frame; the dialogs D4 Reject (with its error and the read-only View reason), D5 Suspend and D6 Add seller, and the Reject phone sheet; the role editor for Admin (Custom, Default, System, Duplicate, Errors) and Seller (Custom, Ready-made, Owner, New role) with the seller phone frame; the unsaved-changes dialog. Update library adds the 20 frames and 5 template bodies a file does not have yet, in rows below the existing frames, and changes nothing that exists. No token, component or variant changes.' },
   { version: '1.8.4', date: '8 Oct 2026', changes: 'Fixes from the 1.8.3 run in the real file. The Focus/Ring and Ring/Urgent effect styles get their spread back (2 and 4 px, 3 px): Figma had saved them with spread 0 when their colour was bound to a variable, so focus rings and the urgent ring did not show. The Main area of the plugin phone screens that clip their content (11 in a new build; not the phone role editor or the dialog sheets) scrolls vertically, so a list longer than the screen continues below the fold (the seller Members and Roles phone screens). Audit file lists 25 entries of each kind and counts the rest ("… and N more"), and checks that the effect styles match the spec, ring colours still bound. Update library repairs existing files in place.' },
   { version: '1.9.0', date: '8 Oct 2026', changes: 'Seller setup (planned as 1.3.0 in sellers ux.md 8.1). Token size/form-max (640 px, the widest form column). Icons pencil, refresh-cw, globe. New components FieldStatus (the status line under a field: Checking, Success, Info, Critical), DataRow (Single and Compare; Default, Missing, Blocked, Changed) and FormActionBar (Inline and Sticky; Clean, Dirty, Saving, Error). Field gains Show status (an exposed FieldStatus); Input gains Show prefix and Prefix (Type=Text); ChecklistItem gains Show detail, Detail and Show chevron. Templates Seller · Setup: S1 Your seller account in each seller state (8 frames), the steps S2 Business details, S3 Address and area, S4 Business number, S5 Shop web address and S6 Review and submit with their states, two state boards (S4 results, S5 statuses) and three phone frames. The 1.7.0 S1 frames stay as they are.' },
-  { version: '1.10.0', date: '8 Oct 2026', changes: 'Seller admin (planned as 1.4.0 in sellers ux.md 8.1). New component SettingRow (one setting that saves on its own: Label, Description, Meta, Message, a Control slot for a Switch or a SegmentedControl; Default, Saving, Locked, Error). CheckboxRow gains State=Saving and Show undo (a reviewer check). Templates on Admin: Sellers (Phase 3) with tabs, kind, bulk selection and its 50 cap, empty states and a phone frame; Seller review (P3) for an application and a change request with every register state and each reason Approve is disabled; Seller detail (P2) with edit, history, banners and Admin-only settings (C1); Seller settings (P4); dialogs D3, D4 (three modes), D7, D8 and D10. On Seller: Store profile (S7) with a pending and a not accepted change, Staff, view only, languages and the minimum-order states, the dialogs D9 and the seller D3s, and phone frames. Two dark previews. No new token or icon.' },
 ];
 const RELEASE = RELEASES[RELEASES.length - 1];
 async function pageChangelog(page) {
@@ -1082,7 +1081,6 @@ async function buildForms(page) {
   }, { desc: SEG_DESC, text: [{ prop: 'Segment 1', node: 'label-1', def: 'Today' }, { prop: 'Segment 2', node: 'label-2', def: '7 days' }, { prop: 'Segment 3', node: 'label-3', def: '30 days' }] });
   const segWrap = frame({ name: 'SegmentedControl', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(segWrap, seg);
   componentBlock(root, segWrap, { title: 'SegmentedControl', summary: 'Switch the period of a dashboard.', a11y: SEG_A11Y });
-  settingRowBlock(root); // 1.10.0
 
   const tab = makeSet('Tab', { Selected: ['True', 'False'] }, function (c, p) {
     const on = p.Selected === 'True';
@@ -1316,14 +1314,14 @@ async function buildTables(page) {
     if (p.State === 'Loading') tcSkeleton(p.Type).forEach(function (n) { kids.push(n); }); // 1.8.0: skeleton shapes in bg/muted instead of content
     else if (p.Type === 'Header') kids.push(text('Column', 'Body/Small Strong', 'text/muted', { name: 'label' }), icon('arrow-down', 'icon/muted', 12));
     else if (p.Type === 'Text') kids.push(text('Kuraby QLD 4112', 'Body/Default', 'text/primary', { name: 'label', truncate: true, sizeH: 'FILL' }));
-    else if (p.Type === 'Two-line') kids.push(frame({ name: 'lines', dir: 'V', sizeH: 'FILL' }, [text('Kuraby Fresh', 'Body/Strong', 'text/primary', { name: 'label', truncate: true, sizeH: 'FILL' }), text('kuraby-fresh · Kuraby QLD 4112', 'Caption/Default', 'text/muted', { name: 'meta', truncate: true, sizeH: 'FILL' })]));
+    else if (p.Type === 'Two-line') kids.push(frame({ name: 'lines', dir: 'V', sizeH: 'FILL' }, [text('Kuraby Fresh Halal Meats', 'Body/Strong', 'text/primary', { name: 'label', truncate: true, sizeH: 'FILL' }), text('kuraby-fresh-halal · Kuraby QLD 4112', 'Caption/Default', 'text/muted', { name: 'meta', truncate: true, sizeH: 'FILL' })]));
     else if (p.Type === 'Number') kids.push(text('AUD 86.40', 'Body/Default', 'text/primary', { name: 'label' }));
     else if (p.Type === 'Checkbox') kids.push(inst('Checkbox', { Value: p.State === 'Selected' ? 'Checked' : 'Unchecked', State: 'Default' }));
     else if (p.Type === 'Actions') kids.push(inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default' }));
     body(c, { dir: 'H', w: p.Type === 'Checkbox' || p.Type === 'Actions' ? 56 : 200, h: hdr ? 42 : 56, px: 'space/3', gap: 'space/1', align: 'center', justify: p.Type === 'Number' ? 'end' : (p.Type === 'Checkbox' || p.Type === 'Actions' ? 'center' : 'start'), fill: fill, stroke: hdr ? 'border/default' : 'border/row', sides: ['bottom'] }, kids);
     if (hdr) c.children[1].name = 'sort';
   }, { width: 1040, skip: function (p) { return p.Type === 'Header' && p.State !== 'Default'; }, desc: TABLECELL_DESC,
-    text: [{ prop: 'Text', node: 'label', def: 'Kuraby Fresh' }, { prop: 'Meta', node: 'meta', def: 'kuraby-fresh · Kuraby QLD 4112' }], bool: [{ prop: 'Sorted', node: 'sort', def: false }] });
+    text: [{ prop: 'Text', node: 'label', def: 'Kuraby Fresh Halal Meats' }, { prop: 'Meta', node: 'meta', def: 'kuraby-fresh-halal · Kuraby QLD 4112' }], bool: [{ prop: 'Sorted', node: 'sort', def: false }] });
   componentBlock(root, cell, { title: 'TableCell', summary: 'Header 42 px, rows 56 px. Numbers right-aligned with tabular figures in code. State=Loading (1.8.0) shows skeleton shapes: build 8 skeleton rows while a list loads.', a11y: ['aria-sort on the sorted header.', 'Row checkbox labelled "Select <name>".', 'Loading: the table or list region has aria-busy="true", skeleton cells are aria-hidden, one visually hidden "Loading" text sits in a polite live region, and the header and tabs stay visible.'] });
 
   const card = makeComponent('CardHeader', function (c) {
@@ -1399,7 +1397,7 @@ async function buildNavigation(page) {
     ]));
     if (p.Workspace === 'Seller' && !col) {
       add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 40, px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-        inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh', 'Body/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
+        inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh Halal Meats', 'Body/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
       ])]));
       const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
     }
@@ -1498,7 +1496,7 @@ function buildMobileNav(root, have) {
       ]));
       if (seller) {
         add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 'size/control', px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-          inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh', 'Touch/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
+          inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh Halal Meats', 'Touch/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
         ])]));
         const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
       }
@@ -1600,9 +1598,9 @@ async function buildReview(page) {
     const e = EF[p.Status];
     body(c, { dir: 'V', w: 260, pad: [10, 14, 10, 14], gap: 'space/1', fill: e[2] ? 'bg/row-selected' : 'bg/surface', stroke: e[2] ? 'action/primary' : 'border/row', sides: e[2] ? ['left'] : ['bottom'], strokeW: e[2] ? 3 : 1 }, [
       frame({ name: 'head', dir: 'H', justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Holder', 'Caption/Default', 'text/muted', { name: 'label' }), inst('Badge', { Tone: e[1], Leading: 'None', Label: e[0] })]),
-      text('Kuraby Fresh Pty Ltd', 'Body/Strong', 'text/primary', { name: 'value', sizeH: 'FILL' }),
+      text('Kuraby Fresh Halal Meats Pty Ltd', 'Body/Strong', 'text/primary', { name: 'value', sizeH: 'FILL' }),
     ]);
-  }, { width: 1000, desc: 'A value read from an uploaded document and whether it matches our records.', text: [{ prop: 'Label', node: 'label', def: 'Holder' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Pty Ltd' }] });
+  }, { width: 1000, desc: 'A value read from an uploaded document and whether it matches our records.', text: [{ prop: 'Label', node: 'label', def: 'Holder' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Halal Meats Pty Ltd' }] });
   componentBlock(root, ef, { title: 'ExtractedField', summary: '"Check now" marks the field the reviewer is working on; it matches the highlight on the document.' });
 
   const ck = makeSet('ChecklistItem', CHECKLIST_AXES, checklistVariant, CHECKLIST_OPTS);
@@ -1805,7 +1803,7 @@ function scSparkline(w, h) {
 }
 function showcaseCards(ws) {
   if (ws === 'Admin') {
-    const rows = [['CL', 'Teal', 'Cedar Lane Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['OG', 'Amber', 'Olive Grove Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['RP', 'Neutral', 'Riverbend Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
+    const rows = [['CL', 'Teal', 'Cedar Lane Halal Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['OG', 'Amber', 'Olive Grove Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['RP', 'Neutral', 'Riverbend Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
     return [
       scCard('Review queue', 360, [frame({ name: 'head', dir: 'H', justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Review queue', 'Body/Strong'), inst('Badge', { Tone: 'Attention', Leading: 'Dot', Label: '3 due today' })])].concat(rows.map(function (r) {
         return frame({ name: r[2], dir: 'H', gap: 'space/2-5', align: 'center', pad: [8, 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [inst('IdentityTile', { Tone: r[1], Shape: 'Rounded', Initials: r[0] }), scLines(r[2], r[3]), inst('Badge', { Tone: r[4], Leading: 'None', Label: r[5] })]);
@@ -1920,44 +1918,31 @@ function textareaBlock(root) {
   return ta;
 }
 
-// ---- CheckboxRow (Forms & selection): one permission on the role editor; from 1.10.0 also one reviewer check (P3)
-// 1.10.0 "Seller admin" (sellers ux.md section 4): State=Saving (a check saves the moment it is ticked) and Show undo (a link Button "Undo" at the end
-// of a recorded check). "Required" is the badge slot with Leading None and Label "Required"; "Recorded by {name} on {dateTime}" is the Description.
-const CHECKBOXROW_AXES_180 = { Value: ['Unchecked', 'Checked'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Read-only'] };
-const CHECKBOXROW_AXES = { Value: ['Unchecked', 'Checked'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Read-only', 'Saving'] };
-const CHECKBOXROW_DESC_180 = 'One permission row: a Checkbox, a label, a one-line description and an optional "Protected" Badge (lock icon plus text). The whole row is one <label> (at least 32 px high; 24 px checkbox hit area). Disabled gives the reason in text on the description line (never a tooltip) and stays focusable (aria-disabled). Read-only is for a system or default role where nothing can change: it keeps full contrast, has no hover, and screen readers get "Granted" or "Not granted" as hidden text. Focus puts the Focus/Ring on the row. Group rows per resource in a <fieldset> with a <legend>; the group "Select all in {group}" is a Checkbox with Value=Indeterminate when some rows are on.';
-const CHECKBOXROW_DESC = CHECKBOXROW_DESC_180 + ' From 1.10.0 it is also one reviewer check (P3): the check saves the moment it is ticked, State=Saving shows the new value with "Saving…" in place of the description (aria-busy on the row; the icon is drawn still and never spins under reduced motion), then the description reads "Recorded by {name} on {dateTime}". Show undo shows a link Button "Undo" at the end of a recorded check: it sets the check back to not done, and the approval guard counts it missing again. A required check sets the badge to Leading None and Label "Required" (a nested override of the badge slot).';
-// 1.8.1: columns are the 2 Values (States as rows), so the set is 1176 wide; with State as columns it was 2960 and stuck out of its documentation row.
-const CHECKBOXROW_OPTS = { width: 1280, colAxis: 'Value', desc: CHECKBOXROW_DESC,
-  text: [{ prop: 'Label', node: 'label', def: 'View seller accounts' }, { prop: 'Description', node: 'description', def: 'See sellers, their status and their team.' }], bool: [{ prop: 'Show badge', node: 'badge', def: false }, { prop: 'Show undo', node: 'undo', def: false }] };
-// The 1.10.0 node: the "Undo" link at the end of the row. It starts hidden, like its property.
-function checkboxRowUndo() { const b = inst('Button', { Variant: 'Link', Size: 'Sm', State: 'Default', Label: 'Undo' }, { name: 'undo' }); b.visible = false; return b; }
+// ---- CheckboxRow (Forms & selection): one permission on the role editor
+const CHECKBOXROW_AXES = { Value: ['Unchecked', 'Checked'], State: ['Default', 'Hover', 'Focus', 'Disabled', 'Read-only'] };
+// 1.8.1: columns are the 2 Values (5 States as rows), so the set is 1176 wide; with State as columns it was 2960 and stuck out of its documentation row.
+const CHECKBOXROW_OPTS = { width: 1280, colAxis: 'Value', desc: 'One permission row: a Checkbox, a label, a one-line description and an optional "Protected" Badge (lock icon plus text). The whole row is one <label> (at least 32 px high; 24 px checkbox hit area). Disabled gives the reason in text on the description line (never a tooltip) and stays focusable (aria-disabled). Read-only is for a system or default role where nothing can change: it keeps full contrast, has no hover, and screen readers get "Granted" or "Not granted" as hidden text. Focus puts the Focus/Ring on the row. Group rows per resource in a <fieldset> with a <legend>; the group "Select all in {group}" is a Checkbox with Value=Indeterminate when some rows are on.',
+  text: [{ prop: 'Label', node: 'label', def: 'View seller accounts' }, { prop: 'Description', node: 'description', def: 'See sellers, their status and their team.' }], bool: [{ prop: 'Show badge', node: 'badge', def: false }] };
 function checkboxRowVariant(c, p) {
-  const dis = p.State === 'Disabled'; const saving = p.State === 'Saving';
+  const dis = p.State === 'Disabled';
   const badge = inst('Badge', { Tone: 'Neutral', Leading: 'Icon', Label: 'Protected', Icon: { icon: 'lock' } }, { name: 'badge' });
-  const desc = text(dis ? 'You can’t give a permission you don’t have.' : 'See sellers, their status and their team.', 'Caption/Default', 'text/muted', { name: 'description', sizeH: 'FILL' });
-  const lines = [text('View seller accounts', 'Body/Default', dis ? 'text/muted' : 'text/primary', { name: 'label', sizeH: 'FILL' }), desc];
-  // Saving: "Saving…" with a still icon takes the description's place; the description stays wired, hidden in this state.
-  if (saving) { desc.visible = false; lines.push(frame({ name: 'saving', dir: 'H', gap: 'space/1', align: 'center' }, [icon('refresh-cw', 'icon/muted', 12), text('Saving…', 'Caption/Default', 'text/muted', { name: 'saving-text' })])); }
   body(c, { dir: 'H', w: 560, px: 'space/3', py: 'space/2-5', gap: 'space/3', align: 'start', fill: p.State === 'Hover' ? 'bg/subtle' : null, stroke: 'border/row', sides: ['bottom'] }, [
     inst('Checkbox', { Value: p.Value, State: p.State === 'Focus' ? 'Focus' : (dis ? 'Disabled' : 'Default') }, { name: 'checkbox' }),
-    frame({ name: 'content', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, lines),
+    frame({ name: 'content', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [
+      text('View seller accounts', 'Body/Default', dis ? 'text/muted' : 'text/primary', { name: 'label', sizeH: 'FILL' }),
+      text(dis ? 'You can’t give a permission you don’t have.' : 'See sellers, their status and their team.', 'Caption/Default', 'text/muted', { name: 'description', sizeH: 'FILL' }),
+    ]),
     badge,
-    checkboxRowUndo(),
   ]);
   badge.visible = false;
   if (p.State === 'Focus') focusRing(c);
 }
-const CHECKBOXROW_PROPS_180 = ['Label, Description (text); Show badge (boolean, the "Protected" Badge)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only'];
-const CHECKBOXROW_PROPS = ['Label, Description (text); Show badge (boolean, the "Protected" Badge, or "Required" on a reviewer check); Show undo (boolean, 1.10.0)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only, Saving (1.10.0)'];
-const CHECKBOXROW_A11Y_180 = ['The row is one <label>; disabled rows use aria-disabled and stay focusable with the reason tied by aria-describedby.', 'Read-only keeps the checked state readable ("Granted" or "Not granted" as hidden text).', '"Protected" is text plus the lock icon, never colour alone.', 'A group per resource is a <fieldset> with a <legend>.'];
-const CHECKBOXROW_A11Y = CHECKBOXROW_A11Y_180.concat(['Saving (1.10.0): aria-busy on the row and "Saving…" in a role="status" region, and the checkbox ignores input until the save ends; "Recorded" is announced once. "Undo" is named "Undo {check}", is not rendered when Show undo is off, announces "Set back to not done." and keeps focus on the row after it.']);
 function checkboxRowBlock(root) {
   const cr = makeSet('CheckboxRow', CHECKBOXROW_AXES, checkboxRowVariant, CHECKBOXROW_OPTS);
-  componentBlock(root, cr, { title: 'CheckboxRow', summary: 'One permission on the role editor and later multi-select lists (1.8.0); one reviewer check that saves on its own (1.10.0). 2 values by 6 states.',
-    use: ['A permission with a name and a one-line description. A permission the user cannot give is shown disabled with its reason, not hidden.', 'Read-only on a system or default role.', 'A reviewer check (P3, 1.10.0): ticking saves it at once (Saving), then "Recorded by {name} on {dateTime}" and "Undo".'],
-    props: CHECKBOXROW_PROPS,
-    a11y: CHECKBOXROW_A11Y,
+  componentBlock(root, cr, { title: 'CheckboxRow', summary: 'One permission on the role editor and later multi-select lists (1.8.0). 2 values by 5 states.',
+    use: ['A permission with a name and a one-line description. A permission the user cannot give is shown disabled with its reason, not hidden.', 'Read-only on a system or default role.'],
+    props: ['Label, Description (text); Show badge (boolean, the "Protected" Badge)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only'],
+    a11y: ['The row is one <label>; disabled rows use aria-disabled and stay focusable with the reason tied by aria-describedby.', 'Read-only keeps the checked state readable ("Granted" or "Not granted" as hidden text).', '"Protected" is text plus the lock icon, never colour alone.', 'A group per resource is a <fieldset> with a <legend>.'],
     dont: ['A tooltip for the reason.', 'Hiding a permission the user cannot give.'] });
   return cr;
 }
@@ -2344,128 +2329,6 @@ function setupLacks() {
   return out;
 }
 
-// ==== 36_components_admin.js ====
-// ---------------------------------------------------------------- release 1.10.0 "Seller admin" components (sellers ux.md section 4, planned there as 1.4.0)
-// SettingRow is new; CheckboxRow gains State=Saving and Show undo (34_components_panel.js). Build library makes both on Forms & selection;
-// Update library adds SettingRow and changes the plugin's own CheckboxRow in place (propertySteps1100, below; see 50_main.js step 2g).
-
-// ---- SettingRow (Forms & selection): one setting that saves on its own. C1 Admin-only settings on the seller page (P2), Seller settings (P4)
-// and every later setting (SEL-15). The control is a swap slot: a Switch, or a SegmentedControl for two or three answers.
-const SETTINGROW_AXES = { State: ['Default', 'Saving', 'Locked', 'Error'] };
-// [icon, icon colour, sample message, text colour]: Locked gives the reason, Error says the save failed. The Error text has no copy key yet (sample).
-const SETTINGROW_MSG = { Locked: ['lock', 'icon/muted', 'Your role can view these settings but not change them.', 'text/secondary'], Error: ['alert-circle', 'status/critical/fg', 'We couldn’t save this change. Try again.', 'status/critical/fg'] };
-// Message is one text property for Locked and Error, so its default names both uses; each instance sets the reason or the failure text.
-const SETTINGROW_MSG_DEF = 'Why it’s locked, or that the save failed.';
-const SETTINGROW_KEYS = ['Label', 'Description', 'Meta', 'Message', 'Show meta', 'Control'];
-function settingRowOpts(control) {
-  return { width: 1368, desc: 'One setting that saves on its own (1.10.0): a label, a description, the control and the line "Changed by {name} on {date}" (Meta, read from the setting itself; Show meta off before the first change). Control is a swap slot (default a Switch, preferred Switch and SegmentedControl) and an exposed instance, so its value and segment labels are set from the row. State: Default; Saving while the request runs (the control shows the new value, "Saving…" with a still icon, aria-busy); Locked when the role cannot change it or the feature is not there yet (the control is drawn at 40% and stays focusable with aria-disabled; Message gives the reason in text, never a tooltip); Error when the save failed (the control shows the old value again; Message says so). A change with a consequence goes through a confirm dialog first (D3). A list that follows a choice, such as the CheckboxRow list for "Only selected types", sits under the row, not inside it. Width size/form-max; fill the card in screens.',
-    text: [{ prop: 'Label', node: 'label', def: 'Require approval for new sellers' }, { prop: 'Description', node: 'description', def: 'New sign-ups wait for a person to approve them.' }, { prop: 'Meta', node: 'meta', def: 'Changed by Layla Haddad on 6 Oct 2026' }, { prop: 'Message', node: 'message-text', def: SETTINGROW_MSG_DEF }],
-    bool: [{ prop: 'Show meta', node: 'meta', def: true }], swap: [{ prop: 'Control', node: 'control', comp: control }] };
-}
-function settingRowVariant(c, p) {
-  const m = SETTINGROW_MSG[p.State];
-  const lines = [text('Require approval for new sellers', 'Body/Strong', 'text/primary', { name: 'label', sizeH: 'FILL' }), text('New sign-ups wait for a person to approve them.', 'Body/Small', 'text/secondary', { name: 'description', sizeH: 'FILL' })];
-  if (p.State === 'Saving') lines.push(frame({ name: 'saving', dir: 'H', gap: 'space/1-5', align: 'center' }, [icon('refresh-cw', 'icon/muted', 14), text('Saving…', 'Body/Small', 'text/muted', { name: 'saving-text' })]));
-  if (m) lines.push(frame({ name: 'message', dir: 'H', gap: 'space/1-5', align: 'start', sizeH: 'FILL' }, [frame({ name: 'icon-box', dir: 'H', pad: [1, 0, 0, 0] }, [icon(m[0], m[1], 14)]), text(m[2], 'Body/Small', m[3], { name: 'message-text', sizeH: 'FILL' })]));
-  lines.push(text('Changed by Layla Haddad on 6 Oct 2026', 'Caption/Default', 'text/muted', { name: 'meta', sizeH: 'FILL' }));
-  const control = inst('Switch', { On: 'True', Size: 'Md' }, { name: 'control' });
-  if (p.State === 'Locked') control.opacity = 0.4;
-  body(c, { dir: 'H', w: 'size/form-max', pad: ['space/4', 'space/5', 'space/4', 'space/5'], gap: 'space/4', align: 'start', stroke: 'border/row', sides: ['bottom'] }, [
-    frame({ name: 'content', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, lines),
-    frame({ name: 'control-box', dir: 'H', pad: [2, 0, 0, 0] }, [control]),
-  ]);
-  safe('expose control', function () { control.isExposedInstance = true; });
-}
-// Switch and SegmentedControl are the preferred values of the Control slot.
-function settingRowPreferred(set, key) {
-  const sw = S.sets.Switch, seg = S.sets.SegmentedControl;
-  const want = [];
-  if (sw && sw.set) want.push({ type: 'COMPONENT_SET', key: sw.set.key });
-  if (seg && seg.comp) want.push({ type: 'COMPONENT', key: seg.comp.key });
-  if (want.length) safe('SettingRow preferred controls', function () { set.editComponentProperty(key, { preferredValues: want }); });
-}
-function settingRowBlock(root) {
-  const control = S.sets.Switch.set.children.filter(function (v) { return v.name === 'On=True, Size=Md'; })[0];
-  const set = makeSet('SettingRow', SETTINGROW_AXES, settingRowVariant, settingRowOpts(control));
-  settingRowPreferred(set, S.sets.SettingRow.keys.Control);
-  componentBlock(root, set, { title: 'SettingRow', summary: 'One setting that saves on its own (1.10.0): Admin-only settings on the seller page (C1), Seller settings (P4) and every later setting.',
-    use: ['One setting per row inside a Card; each row saves on its own, after a confirm dialog when the change has a consequence.', 'Control: a Switch for on or off; a SegmentedControl for two or three answers (All types or Only selected types). A list that follows the choice sits under the row.', 'Saving while the request runs; Locked when the role cannot change it or the feature is not there yet; Error when the save failed (the control shows the old value again). Message is one text for Locked and Error, so each use sets it: the reason, or the failure text.', 'Meta is "Changed by {name} on {date}", from the setting itself.'],
-    props: ['Label, Description, Meta, Message (text); Show meta (boolean)', 'Control (instance swap, Switch or SegmentedControl), exposed so its value is set from the row', 'State: Default, Saving, Locked, Error'],
-    a11y: ['The label names the control (role="switch", or a radio group for a SegmentedControl); the description and the meta line are tied with aria-describedby.', 'Locked: the control is aria-disabled and stays focusable; the reason is text beside it, tied with aria-describedby, never a tooltip. The dimmed control is the disabled look of this library (40% opacity).', 'Saving: aria-busy on the row and "Saving…" in a role="status" region. Error is announced once and keeps focus on the control.', 'Every state is words with an icon, never colour alone.'],
-    dont: ['A separate Save button for one setting.', 'Hiding a setting the role cannot change.'] });
-  return set;
-}
-
-// ---- Update library (1.10.0): CheckboxRow State=Saving and Show undo, added in place to the plugin's own set.
-// A first, read-only pass decides what the set needs and reports variants or a Usage panel changed by hand; run() then edits only the set
-// and its documentation block. The undo link is added hidden at the end of each 1.8.0 variant, as Show undo defaults to off.
-const CHECKBOXROW_USE_180 = ['A permission with a name and a one-line description. A permission the user cannot give is shown disabled with its reason, not hidden.', 'Read-only on a system or default role.'];
-const CHECKBOXROW_SUMMARY_180 = 'One permission on the role editor and later multi-select lists (1.8.0). 2 values by 5 states.';
-function checkboxRowDocs(set) {
-  const named = function (n, name) { return n && n.children ? n.children.filter(function (k) { return k.name === name; })[0] : null; };
-  const row = set.parent && set.parent.type === 'FRAME' && set.parent.name === 'Component + usage' ? set.parent : null;
-  const panel = named(row, 'Usage'); const sec = row && row.parent;
-  const head = named(sec, 'Section header'); const summary = head && head.children.filter(function (k) { return k.type === 'TEXT'; })[1];
-  const list = function (g) { const l = named(named(panel, g), 'List'); return l ? l.children : null; };
-  const texts = function (items) { return items ? items.map(function (it) { return it.children[1] && it.children[1].type === 'TEXT' ? it.children[1].characters : null; }) : null; };
-  return { summary: summary, use: list('When to use'), props: list('Properties'), a11y: list('Accessibility'), useList: named(named(panel, 'When to use'), 'List'), a11yList: named(named(panel, 'Accessibility'), 'List'), texts: texts };
-}
-function propertySteps1100(own) {
-  const steps = [];
-  const rec = S.sets.CheckboxRow;
-  if (!rec || !rec.set) return steps;
-  if (!own('CheckboxRow')) { log('ℹ skipped CheckboxRow State=Saving and Show undo: the CheckboxRow set is not the plugin\'s'); return steps; }
-  const deps = ['Button', 'Badge', 'Checkbox'].filter(function (n) { return !own(n); });
-  if (deps.length) { log('ℹ skipped CheckboxRow State=Saving and Show undo: they need the plugin\'s ' + deps.join(', ')); return steps; }
-  const set = rec.set;
-  const lacking = set.children.filter(function (v) { return !v.children.some(function (k) { return k.name === 'undo'; }); });
-  const odd = lacking.filter(function (v) { return v.layoutMode !== 'HORIZONTAL' || v.children.map(function (k) { return k.name; }).join() !== 'checkbox,content,badge'; });
-  if (odd.length) log('ℹ skipped the CheckboxRow undo action in ' + odd.map(function (v) { return v.name; }).join('; ') + ': its layers were changed by hand');
-  const todo = lacking.filter(function (v) { return odd.indexOf(v) < 0; });
-  const have = {}; set.children.forEach(function (v) { have[variantName(sortedProps(v.variantProperties, rec.axes))] = 1; });
-  const saving = combos(CHECKBOXROW_AXES).filter(function (p) { return p.State === 'Saving' && !have[variantName(sortedProps(p, rec.axes))]; });
-  const prop = !rec.keys['Show undo']; const desc = set.description === CHECKBOXROW_DESC_180;
-  // the documentation block: replaced or extended only when it still holds the 1.8.0 text
-  const d = checkboxRowDocs(set); const t = d.texts;
-  const same = function (a, b) { return !!a && a.length === b.length && a.every(function (x, i) { return x === b[i]; }); };
-  const old = d.summary && d.summary.characters === CHECKBOXROW_SUMMARY_180 && same(t(d.use), CHECKBOXROW_USE_180) && same(t(d.props), CHECKBOXROW_PROPS_180) && same(t(d.a11y), CHECKBOXROW_A11Y_180);
-  const done = d.summary && d.summary.characters !== CHECKBOXROW_SUMMARY_180 && same(t(d.props), CHECKBOXROW_PROPS) && same(t(d.a11y), CHECKBOXROW_A11Y);
-  if (!old && !done) log('ℹ skipped CheckboxRow Usage: Saving and Show undo: the documentation block was changed by hand');
-  if (prop || todo.length || saving.length || desc || old) steps.push({ node: set, label: 'CheckboxRow Saving and undo', run: function () {
-    const out = [];
-    if (prop) { rec.keys['Show undo'] = set.addComponentProperty('Show undo', 'BOOLEAN', false); out.push('CheckboxRow property Show undo'); }
-    todo.forEach(function (v) { add(v, checkboxRowUndo()); });
-    set.children.forEach(function (v) { wireVariant(v, rec.keys, { bool: [{ prop: 'Show undo', node: 'undo' }] }); });
-    if (todo.length) out.push('CheckboxRow undo action (' + todo.length + ' variants)');
-    const made = saving.length ? addVariants(rec, saving, checkboxRowVariant, CHECKBOXROW_OPTS, 'Value') : [];
-    if (made.length) out.push('variants added to CheckboxRow (' + made.length + '): State=Saving');
-    if (desc) { set.description = CHECKBOXROW_DESC; out.push('update CheckboxRow description'); }
-    if (old) {
-      const swapText = function (node, from, to) { node.characters = to; if (node.name === from.slice(0, 40)) node.name = to.slice(0, 40); }; // text() names a layer by its first 40 characters
-      swapText(d.summary, CHECKBOXROW_SUMMARY_180, 'One permission on the role editor and later multi-select lists (1.8.0); one reviewer check that saves on its own (1.10.0). 2 values by 6 states.');
-      d.props.forEach(function (it, i) { swapText(it.children[1], CHECKBOXROW_PROPS_180[i], CHECKBOXROW_PROPS[i]); });
-      [[d.useList, 'A reviewer check (P3, 1.10.0): ticking saves it at once (Saving), then "Recorded by {name} on {dateTime}" and "Undo".'], [d.a11yList, CHECKBOXROW_A11Y[CHECKBOXROW_A11Y.length - 1]]].forEach(function (x) {
-        const w = x[0].children[0].children[1].width + 16; const tmp = bullets([x[1]], w); tmp.children.slice().forEach(function (it) { x[0].appendChild(it); }); tmp.remove();
-      });
-      out.push('CheckboxRow Usage: Saving and Show undo');
-    }
-    return out;
-  } });
-  return steps;
-}
-// What the 1.10.0 templates need from CheckboxRow and SettingRow; a file that lacks one gets no Seller admin templates.
-function sellerAdminLacks() {
-  const out = [];
-  const cb = S.sets.CheckboxRow, sr = S.sets.SettingRow;
-  if (cb && cb.set) {
-    if (!cb.keys['Show undo']) out.push('CheckboxRow Show undo');
-    const noUndo = cb.set.children.filter(function (v) { return !v.children.some(function (k) { return k.name === 'undo'; }); }).length;
-    if (noUndo) out.push('CheckboxRow undo action (' + noUndo + (noUndo === 1 ? ' variant' : ' variants') + ' without it)');
-  }
-  if (sr && sr.set) SETTINGROW_KEYS.forEach(function (k) { if (!sr.keys[k]) out.push('SettingRow ' + k); });
-  return out;
-}
-
 // ==== 40_templates.js ====
 // ---------------------------------------------------------------- templates (full screens from instances)
 function prop(setName, propName, value) { const o = {}; o[S.sets[setName].keys[propName]] = value; return o; }
@@ -2548,7 +2411,7 @@ function tplAdminHome() {
     inst('QueueCard', { Tone: 'On track', Title: 'Product revisions', Count: '23', Oldest: 'Oldest 5 h of 1 day' }, { sizeH: 'FILL' }),
     inst('QueueCard', { Tone: 'Due today', Title: 'Refunds for admin', Count: '2', Unit: 'AUD 184.50 incl. GST' }, { sizeH: 'FILL' }),
   ]);
-  const RQ = [['CE', 'Teal', 'Certification', 'Halal certificate, renewal', 'Kuraby Fresh', 'Waiting 2 days 4 h', 'Overdue'], ['RF', 'Amber', 'Refund · order MP-10311', 'Item damaged, AUD 64.50', 'Darra Asian Mart', 'Waiting 4 h', 'Due soon'],
+  const RQ = [['CE', 'Teal', 'Certification', 'Halal certificate, renewal', 'Kuraby Fresh Halal Meats', 'Waiting 2 days 4 h', 'Overdue'], ['RF', 'Amber', 'Refund · order MP-10311', 'Item damaged, AUD 64.50', 'Darra Asian & Halal Mart', 'Waiting 4 h', 'Due soon'],
     ['PR', 'Blue', 'Product revision · price +38%', 'Date & walnut loaf, 800 g', 'Holland Park Bakehouse', 'Waiting 5 h', 'Due soon'], ['MC', 'Teal', 'Manufacturer certificate', 'Covers 14 sealed products', 'Logan Family Grocer', 'Waiting 21 h', 'Upcoming'],
     ['SA', 'Purple', 'Seller application', 'New seller, ABN supplied', 'Sunnybank Spice Market', 'Waiting 1 day', 'Upcoming']];
   const DLL = { 'Overdue': 'Overdue 4 h', 'Due soon': 'Due 5:00 pm', 'Upcoming': 'Due 2 Oct' };
@@ -2571,12 +2434,12 @@ function tplAdminHome() {
   const live = card('Live deliveries', [frame({ name: 'head', dir: 'H', pad: [16, 18, 12, 18], justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Live deliveries', 'Heading/H2'), inst('Badge', { Tone: 'Success', Leading: 'Dot', Label: 'Live · 2:30 pm' })]), map, legend, stats], { sizeH: null, w: 380 });
   const split = frame({ name: 'Queue + map', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [rq, live]);
 
-  const TOP = [['KF', 'Teal', 'Kuraby Fresh', '34 orders · Kuraby', 'AUD 2,146.90'], ['HP', 'Amber', 'Holland Park Bakehouse', '29 orders · Holland Park', 'AUD 1,388.20'], ['DA', 'Blue', 'Darra Asian Mart', '22 orders · Darra', 'AUD 1,204.75'], ['LF', 'Purple', 'Logan Family Grocer', '18 orders · Logan Central', 'AUD 986.40']];
+  const TOP = [['KF', 'Teal', 'Kuraby Fresh Halal Meats', '34 orders · Kuraby', 'AUD 2,146.90'], ['HP', 'Amber', 'Holland Park Bakehouse', '29 orders · Holland Park', 'AUD 1,388.20'], ['DA', 'Blue', 'Darra Asian & Halal Mart', '22 orders · Darra', 'AUD 1,204.75'], ['LF', 'Purple', 'Logan Family Grocer', '18 orders · Logan Central', 'AUD 986.40']];
   const top = card('Top sellers', [header('Top sellers today', 'All sellers'), headerRow([['Seller', 'fill'], ['Today', 100], ['Sales', 120]])].concat(TOP.map(function (t) {
     return row([[[inst('IdentityTile', { Tone: t[1], Shape: 'Rounded', Initials: t[0] }), twoLine(t[2], t[3])], 'fill'], [inst('Sparkline', { Tone: 'Accent' }), 100], [text(t[4], 'Body/Strong'), 120, { justify: 'end' }]]);
   })));
   const certs = card('Certificates', [header('Certificates', null), frame({ name: 'donut-row', dir: 'H', gap: 'space/3-5', pad: [0, 18, 12, 18], align: 'center' }, [inst('DonutProgress', {}), frame({ name: 't', dir: 'V' }, [text('92 of 109 hold a valid certificate', 'Body/Strong'), text('78 seller · 14 manufacturer only', 'Body/Small', 'text/muted')])]),
-    frame({ name: 'list', dir: 'V', pad: [0, 18, 8, 18], sizeH: 'FILL' }, [text('Expiring in 30 days', 'Caption/Overline', 'text/muted')].concat([['Kuraby Fresh', 'Seller', '14 days', 'status/attention/fg'], ['Darra Asian Mart', 'Seller', '22 days', 'text/secondary'], ['Logan Family Grocer', 'Manufacturer', '29 days', 'text/secondary']].map(function (e) {
+    frame({ name: 'list', dir: 'V', pad: [0, 18, 8, 18], sizeH: 'FILL' }, [text('Expiring in 30 days', 'Caption/Overline', 'text/muted')].concat([['Kuraby Fresh Halal Meats', 'Seller', '14 days', 'status/attention/fg'], ['Darra Asian & Halal Mart', 'Seller', '22 days', 'text/secondary'], ['Logan Family Grocer', 'Manufacturer', '29 days', 'text/secondary']].map(function (e) {
       return frame({ name: e[0], dir: 'H', justify: 'between', align: 'center', py: 'space/2-5', stroke: 'border/row', sides: ['bottom'], sizeH: 'FILL' }, [frame({ name: 'l', dir: 'V', gap: 'space/1' }, [text(e[0], 'Body/Strong'), inst('CertChip', { Kind: e[1] })]), text(e[2], 'Body/Small Strong', e[3])]);
     })))], { sizeH: null, w: 340 });
   const payout = card('Payout', [header('Next payout batch', null), frame({ name: 'body', dir: 'V', gap: 'space/3', pad: [0, 18, 18, 18], sizeH: 'FILL' }, [
@@ -2596,13 +2459,13 @@ function tplAdminHome() {
 // ---- Admin · Sellers
 function tplAdminSellers() {
   const S1 = [
-    [true, 'KF', 'Teal', 'Kuraby Fresh', 'kuraby-fresh · Kuraby QLD 4112', ['Success', 'Dot', 'Active'], [['Seller', '· exp 15 Oct']], 'Healthy', '412', '0.8%', '12 Mar 2026'],
+    [true, 'KF', 'Teal', 'Kuraby Fresh Halal Meats', 'kuraby-fresh-halal · Kuraby QLD 4112', ['Success', 'Dot', 'Active'], [['Seller', '· exp 15 Oct']], 'Healthy', '412', '0.8%', '12 Mar 2026'],
     [true, 'SS', 'Purple', 'Sunnybank Spice Market', 'sunnybank-spice · Sunnybank QLD 4109', ['Info', 'Icon', 'Awaiting approval'], [], 'No data', '0', '—', '29 Sep 2026'],
-    [false, 'DA', 'Blue', 'Darra Asian Mart', 'darra-asian-mart · Darra QLD 4076', ['Success', 'Dot', 'Active'], [['Seller', '· exp 23 Oct']], 'At risk', '268', '3.1%', '4 Apr 2026'],
+    [false, 'DA', 'Blue', 'Darra Asian & Halal Mart', 'darra-asian-halal · Darra QLD 4076', ['Success', 'Dot', 'Active'], [['Seller', '· exp 23 Oct']], 'At risk', '268', '3.1%', '4 Apr 2026'],
     [false, 'LF', 'Neutral', 'Logan Family Grocer', 'logan-family-grocer · Logan Central QLD 4114', ['Success', 'Dot', 'Active'], [['Manufacturer']], 'Healthy', '190', '1.2%', '18 May 2026'],
     [false, 'HP', 'Amber', 'Holland Park Bakehouse', 'holland-park-bakehouse · Holland Park QLD 4121', ['Success', 'Dot', 'Active'], [['Seller'], ['Vegan']], 'Healthy', '356', '0.4%', '2 Feb 2026'],
     [false, 'SC', 'Neutral', 'Slacks Creek Butchers', 'slacks-creek-butchers · Slacks Creek QLD 4127', ['Critical', 'Icon', 'Suspended'], [['Revoked']], 'Unhealthy', '12', '9.8%', '20 Jan 2026'],
-    [false, 'WO', 'Teal', 'Woolloongabba Grocers', 'gabba-grocers · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
+    [false, 'WO', 'Teal', 'Woolloongabba Organics', 'gabba-organics · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
   ];
   const tableCard = card('Seller list', [
     frame({ name: 'tabs', dir: 'H', px: 'space/3-5', align: 'center', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [inst('Tab', { Selected: 'True', Label: 'All', Count: '128' }), inst('Tab', { Selected: 'False', Label: 'Awaiting approval', Count: '6' }), inst('Tab', { Selected: 'False', Label: 'Active', Count: '109' }), inst('Tab', { Selected: 'False', Label: 'Certificate expiring', Count: '5' }), inst('Tab', { Selected: 'False', Label: 'Suspended', Count: '3' })]),
@@ -2632,7 +2495,7 @@ function tplAdminReview() {
   add(paper, ellipse({ name: 'seal', w: 52, fill: 'cert/seller/bg', stroke: 'cert/seller/fg', strokeW: 1.6, xy: [154, 36] }));
   add(paper, text('[ ISSUER NAME ]', 'Mono/Small', 'text/muted', { xy: [136, 102] }));
   add(paper, text('HALAL CERTIFICATE', 'Heading/H2', 'cert/seller/fg', { xy: [104, 120] }));
-  [['Certificate no.', '[Certificate number]', 'action/primary'], ['Holder', 'Kuraby Fresh Pty Ltd', 'cert/seller/fg'], ['Premises', 'Kuraby QLD 4112'], ['Scope', 'Fresh meat and poultry'], ['Valid', '10 Sep 2026 to 9 Sep 2027']].forEach(function (r2, i) {
+  [['Certificate no.', '[Certificate number]', 'action/primary'], ['Holder', 'Kuraby Fresh Halal Meats Pty Ltd', 'cert/seller/fg'], ['Premises', 'Kuraby QLD 4112'], ['Scope', 'Fresh meat and poultry'], ['Valid', '10 Sep 2026 to 9 Sep 2027']].forEach(function (r2, i) {
     const y = 190 + i * 26;
     if (r2[2]) add(paper, rect({ name: 'highlight', w: 196, h: 22, fill: r2[2] === 'action/primary' ? 'bg/selected' : 'cert/seller/bg', stroke: r2[2], strokeW: 1.2, radius: 3, xy: [120, y - 3] }));
     add(paper, text(r2[0], 'Caption/Default', 'text/muted', { xy: [40, y] })); add(paper, text(r2[1], 'Caption/Strong', 'text/primary', { xy: [126, y] }));
@@ -2643,7 +2506,7 @@ function tplAdminReview() {
   const fields = frame({ name: 'Read from document', dir: 'V', w: 260, stroke: 'border/default', sides: ['left'], sizeV: 'FILL' }, [
     frame({ name: 'h', dir: 'H', pad: [12, 14, 8, 14] }, [text('Read from document', 'Caption/Overline', 'text/muted')]),
     inst('ExtractedField', { Status: 'Check now', Label: 'Certificate no.', Value: '[Certificate number]' }, { sizeH: 'FILL' }),
-    inst('ExtractedField', { Status: 'Matches', Label: 'Holder', Value: 'Kuraby Fresh Pty Ltd' }, { sizeH: 'FILL' }),
+    inst('ExtractedField', { Status: 'Matches', Label: 'Holder', Value: 'Kuraby Fresh Halal Meats Pty Ltd' }, { sizeH: 'FILL' }),
     inst('ExtractedField', { Status: 'Matches', Label: 'Issuer', Value: '[Issuer name]' }, { sizeH: 'FILL' }),
     inst('ExtractedField', { Status: 'To check', Label: 'Scope', Value: 'Fresh meat and poultry, one premises in Kuraby QLD 4112' }, { sizeH: 'FILL' }),
     inst('ExtractedField', { Status: 'Matches', Label: 'Valid', Value: '10 Sep 2026 to 9 Sep 2027' }, { sizeH: 'FILL' }),
@@ -2677,7 +2540,7 @@ function tplAdminReview() {
   const left = frame({ name: 'Left', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [doc, activity]);
   const right = frame({ name: 'Right', dir: 'V', gap: 'space/4', w: 380 }, [checks, decision]);
   return screen('Admin · Certificate review', 'Admin', 'nav-review', 'Review queue', [
-    frame({ name: 'Header', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text('‹ Review queue', 'Body/Strong', 'text/link'), pageTitle('Halal certificate renewal', 'Kuraby Fresh · submitted 29 Sep 2026, 10:24 am AEST by Yusuf Karimi (Shop owner)', [text('2 of 4 certifications', 'Body/Small', 'text/muted'), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-left' } }), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-right' } })],
+    frame({ name: 'Header', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text('‹ Review queue', 'Body/Strong', 'text/link'), pageTitle('Halal certificate renewal', 'Kuraby Fresh Halal Meats · submitted 29 Sep 2026, 10:24 am AEST by Yusuf Karimi (Shop owner)', [text('2 of 4 certifications', 'Body/Small', 'text/muted'), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-left' } }), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-right' } })],
       frame({ name: 'badges', dir: 'H', gap: 'space/2' }, [inst('StatusBadge', { Status: 'In review' }), inst('Badge', { Tone: 'Critical', Leading: 'Icon', Label: 'Deadline passed 4 h ago', Icon: { icon: 'alert-circle' } })]))]),
     facts, frame({ name: 'Body', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [left, right]),
   ], { gap: 'space/5', pad: [24, 32, 40, 32] });
@@ -3614,7 +3477,7 @@ const P1_ALL = [P1_AWAITING[0],
   { i: 'FN', tone: 'Amber', name: 'Faisal Noor', email: 'faisal@noorpantry.example', status: 'Approved', since: '4 Feb 2026' },
   { i: 'YK', tone: 'Teal', name: 'Yusuf Karimi', email: 'yusuf@kurabyfresh.example', status: 'Approved', since: '12 Mar 2026', reset: true },
   { i: 'KR', tone: 'Neutral', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example', status: 'Suspended', since: '20 Jan 2026' },
-  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbagrocers.example', status: 'Invited', since: '6 Oct 2026' },
+  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbaorganics.example', status: 'Invited', since: '6 Oct 2026' },
 ];
 // Tab counts: [Awaiting approval, Approved, Changes needed, Suspended, Invited, All]; the empty frame has nobody waiting.
 const P1_TABS = ['Awaiting approval', 'Approved', 'Changes needed', 'Suspended', 'Invited', 'All'];
@@ -3729,7 +3592,7 @@ function bodySuspend() { return [text('Everyone on the seller’s team is signed
 function bodyViewReason() { return [inst('ReasonQuote', { Label: 'Reason from MondaPac', Date: 'Written on 3 Oct 2026' }, { name: 'reason', sizeH: 'FILL' }), readOnlyPair('Written by', 'Layla Haddad')]; }
 const D6_NAME_HELP = 'The shop owner’s own name, not the business name. They add the store and business names when they set up.';
 function bodyAddSeller() {
-  return [authField('Owner’s name', { value: 'Rashid Omar', helper: D6_NAME_HELP }), authField('Email', { value: 'rashid@moorookagrocer.example', helper: 'We’ll email them a link to choose their own password. You never see or set it.' }),
+  return [authField('Owner’s name', { value: 'Rashid Omar', helper: D6_NAME_HELP }), authField('Email', { value: 'rashid@moorookahalal.example', helper: 'We’ll email them a link to choose their own password. You never see or set it.' }),
     text('The account still needs approval after they accept.', 'Body/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' })];
 }
 // A scene as tall as its dialogs need (at least 900), so no dialog is cut off.
@@ -4251,650 +4114,6 @@ const SETUP_TEMPLATE_NEEDS = ['Sidebar', 'Topbar', 'PhoneTopbar', 'Button', 'Inp
 // Dark preview copy added in 1.9.0.
 const DARK_190 = [stepName('number', 'Saved'), stepName('submit', 'Missing'), stepName('submit', 'Blocked')];
 
-// ==== 47_templates_seller_admin.js ====
-// ---------------------------------------------------------------- release 1.10.0 templates: Seller admin (planned as 1.4.0 in sellers ux.md 8.1 item 2)
-// Spec: sellers ux.md 3.1 S7 and 3.1a, 3.2 P1 to P4 and C1, 3.2a, 3.4 and section 5 (en-AU copy). Admin frames go to Templates · Admin, the
-// store profile (S7) to Templates · Seller. Every frame is new; Update library builds only the names a file does not have yet, so the
-// Phase 2 sellers list (1.8.3) and the Phase 2 Admin · Sellers frame are not touched. Rule 4 of 3.0: the register name, the business-number
-// label, the address fields, the tax question, the checks and the prepared reasons come from the API; the AU Market's values are shown
-// because AU is the launch Market. Names, numbers, addresses, dates and check names are examples. A text with no key in ux.md section 5 is a
-// sample, listed in docs/design/figma/README.md. Seller states use Badge with an icon (StatusBadge holds order states only).
-
-const SA_STATUS = { 'Awaiting review': ['Info', 'clock'], 'Details needed': ['Neutral', 'clipboard'], 'Ready to submit': ['Info', 'send'], 'Not in your area yet': ['Attention', 'map-pin'], 'Changes needed': ['Attention', 'alert-circle'],
-  'Not approved': ['Critical', 'x'], Approved: ['Success', 'check'], 'Seller approved': ['Success', 'check'], Suspended: ['Critical', 'ban'], Invited: ['Neutral', 'send'] };
-function saBadge(s) { const d = SA_STATUS[s]; return bdg(d[0], 'Icon', s, d[1]); }
-const SA_REVIEWER = 'Layla Haddad';
-const SA_RECORDED = 'Recorded by ' + SA_REVIEWER + ' on 8 Oct 2026, 10:02 AEST';
-const SA_NOT_RECORDED = 'Not recorded yet.'; // no key yet (sample)
-const SA_MARKET = 'Australia';
-const SA_SELLERS = {
-  sunnybank: { i: 'SS', tone: 'Purple', store: 'Sunnybank Spice Market', slug: 'sunnybank-spice', name: 'Hana Yusuf', email: 'hana@sunnybankspice.example' },
-  darra: { i: 'DA', tone: 'Blue', store: 'Darra Asian Mart', slug: 'darra-asian-mart', name: 'Bilal Ahmed', email: 'bilal@darraasianmart.example' },
-  kuraby: { i: 'KF', tone: 'Teal', store: SETUP.store, slug: SETUP.slug, name: 'Yusuf Karimi', email: SETUP.signIn },
-  logan: { i: 'LF', tone: 'Amber', store: 'Logan Family Grocer', slug: 'logan-family-grocer', name: 'Ibrahim Musa', email: 'ibrahim@loganfamilygrocer.example' },
-  holland: { i: 'HP', tone: 'Neutral', store: 'Holland Park Bakehouse', slug: 'holland-park-bakehouse', name: 'Mariam Khalil', email: 'mariam@hollandparkbakehouse.example' },
-  toowoomba: { i: 'TS', tone: 'Blue', store: 'Toowoomba Spice House', slug: 'toowoomba-spice', name: 'Omar Farouk', email: 'omar@toowoombaspice.example' },
-  goldcoast: { i: 'GP', tone: 'Purple', store: 'Gold Coast Pantry', slug: 'gold-coast-pantry', name: 'Aisha Rahman', email: 'aisha@goldcoastpantry.example' },
-  noor: { i: 'NP', tone: 'Amber', store: 'Noor Pantry', slug: 'noor-pantry', name: 'Faisal Noor', email: 'faisal@noorpantry.example' },
-  gabba: { i: 'WO', tone: 'Teal', store: 'Woolloongabba Grocers', slug: 'gabba-grocers', name: 'Zainab Ali', email: 'zainab@gabbagrocers.example' },
-  moorooka: { i: 'MG', tone: 'Blue', store: 'Moorooka Grocer', slug: 'moorooka-grocer', name: 'Rashid Omar', email: 'rashid@moorookagrocer.example' },
-  slacks: { i: 'SC', tone: 'Neutral', store: 'Slacks Creek Butchers', slug: 'slacks-creek-butchers', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example' },
-};
-// An InfoBanner with a title only (the body layer is hidden), for the one-sentence messages of section 5. An Info banner here shows the
-// info icon (an override in this instance): the InfoBanner's own Info icon is badge-check, the certificate chip's glyph, which would read as
-// "verified" next to a register result or the certificate slot.
-function saBanner(tone, title, action, name) {
-  const p = { Tone: tone, Title: title, Body: ' ', 'Show action': !!action }; if (action) p.Action = action;
-  const b = inst('InfoBanner', p, { name: name || 'banner', sizeH: 'FILL' });
-  const bodyT = b.findOne(function (n) { return n.name === 'body'; }); if (bodyT) bodyT.visible = false;
-  if (tone === 'Info') infoIcon(b);
-  return b;
-}
-function infoIcon(b) {
-  const ic = b.findOne(function (n) { return n.type === 'INSTANCE' && n.name === 'icon-badge-check'; }); if (!ic) return;
-  ic.swapComponent(S.icons.info); ic.name = 'icon-info'; recolor(ic, 'text/link');
-}
-function saLine(s, name, color) { return text(s, 'Body/Small', color || 'text/muted', { name: name || 'note', sizeH: 'FILL' }); }
-function linkBtn(label, ic, name) { const p = { Variant: 'Link', Size: 'Sm', State: 'Default', Label: label }; if (ic) { p['Leading icon'] = true; p.Icon = { icon: ic }; } return inst('Button', p, { name: name || 'link' }); }
-function backTo(label) { return inst('Button', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Label: label, 'Leading icon': true, Icon: { icon: 'chevron-left' } }, { name: 'back' }); }
-// A card with a CardHeader and a padded body.
-function saCard(title, kids, o) { o = o || {}; return card(title, [header(title, o.action || null), frame({ name: 'body', dir: 'V', gap: o.gap || 'space/3', pad: [0, 'space/5', 'space/5', 'space/5'], sizeH: 'FILL' }, kids)], o.w ? { sizeH: null, w: o.w } : undefined); }
-
-// A DataRow: o = { label, value, compare, valueLabel, compareLabel, state, narrow, note, flag: [tone, leading, label, icon], action, second }
-function saRow(o) {
-  const p = { Layout: o.compare !== undefined ? 'Compare' : 'Single', Width: o.narrow ? 'Narrow' : 'Wide', State: o.state || 'Default', Label: o.label, 'Show action': !!o.action, 'Show flag': !!o.flag, 'Show note': !!o.note, 'Show second action': !!o.second };
-  if (o.value !== undefined) p.Value = o.value;
-  if (o.compare !== undefined) { p['Compare value'] = o.compare; p['Value label'] = o.valueLabel; p['Compare label'] = o.compareLabel; }
-  if (o.note) p.Note = o.note;
-  const r = inst('DataRow', p, { name: 'row · ' + o.label, sizeH: 'FILL' });
-  if (o.flag) setNested(r, 'flag', Object.assign({ Tone: o.flag[0], Leading: o.flag[1] }, prop('Badge', 'Label', o.flag[2]), o.flag[3] ? prop('Badge', 'Icon', S.icons[o.flag[3]].id) : {}));
-  if (o.action) setNested(r, 'action', prop('Button', 'Label', o.action));
-  if (o.second) setNested(r, 'second-action', prop('Button', 'Label', o.second));
-  return r;
-}
-const FLAG = { matches: ['Success', 'Icon', 'Matches', 'check'], differs: ['Attention', 'Icon', 'Differs', 'alert-circle'], notCompared: ['Neutral', 'None', 'Not compared'], waiting: ['Info', 'Icon', 'Waiting for review', 'clock'], notAccepted: ['Critical', 'Icon', 'Not accepted', 'x'] };
-// A reviewer check (CheckboxRow, 1.10.0): c = { label, desc, value, state, required, undo }; "Required" is the row's badge.
-function reviewCheck(c) {
-  const r = inst('CheckboxRow', { Value: c.value || 'Unchecked', State: c.state || 'Default', Label: c.label, Description: c.desc || SA_NOT_RECORDED, 'Show badge': !!c.required, 'Show undo': !!c.undo }, { name: 'check · ' + c.label, sizeH: 'FILL' });
-  if (c.required) setNested(r, 'badge', Object.assign({ Tone: 'Neutral', Leading: 'None' }, prop('Badge', 'Label', 'Required')));
-  return r;
-}
-// A SettingRow (1.10.0): o = { label, desc, state, meta, msg, seg: [segment 1, segment 2], off }
-function settingRow(o) {
-  const p = { State: o.state || 'Default', Label: o.label, 'Show meta': !!o.meta };
-  if (o.desc) p.Description = o.desc;
-  if (o.meta) p.Meta = o.meta;
-  if (o.msg || SETTINGROW_MSG[p.State]) p.Message = o.msg || SETTINGROW_MSG[p.State][2];
-  if (o.seg) p.Control = { comp: S.sets.SegmentedControl.comp };
-  const r = inst('SettingRow', p, { name: 'setting · ' + o.label, sizeH: 'FILL' });
-  if (!o.desc) { const d = r.findOne(function (n) { return n.name === 'description'; }); if (d) d.visible = false; }
-  if (o.seg) {
-    setNested(r, 'control', Object.assign(prop('SegmentedControl', 'Segment 1', o.seg[0]), prop('SegmentedControl', 'Segment 2', o.seg[1])));
-    const third = r.findOne(function (n) { return n.name === 'segment-3'; }); if (third) third.visible = false;
-  } else if (o.off) setNested(r, 'control', { On: 'False' });
-  return r;
-}
-function confirmDlg(name, title, body, primary, o) { o = o || {}; return dlg({ name: name, title: title, text: body, primary: primary, secondary: o.secondary || 'Cancel', tone: o.tone, size: o.size, focusCancel: o.tone === 'Destructive' }); }
-
-// ---- P1 Sellers (Phase 3 frame; ux.md 3.2 P1, F16, F17)
-const P1P3_NAME = 'Admin · Sellers (Phase 3)';
-const P1P3_TABS = ['Awaiting review', 'Incomplete', 'Changes needed', 'Not approved', 'Approved', 'Suspended', 'Invited', 'All'];
-const P1P3_COUNTS = ['5', '2', '1', '1', '3', '1', '1', '13'];
-// Awaiting review, oldest first: [seller, kind, since, status, flags]; Since is the date of the current submission. flags: locked (a change
-// request, not selectable), busy (a decision is being recorded). All counts each seller once: Kuraby's change request is an approved seller's row.
-const P1P3_AWAITING = [['darra', 'New application', '2 Oct 2026'], ['logan', 'New application', '5 Oct 2026'], ['sunnybank', 'New application', '6 Oct 2026'],
-  ['kuraby', 'Change request', '7 Oct 2026', 'Approved', { locked: true }], ['holland', 'New application', '7 Oct 2026', null, { busy: true }]];
-const P1P3_SELECTED = [0, 1, 2];
-const P1P3_INCOMPLETE = [['toowoomba', null, '4 Oct 2026', 'Not in your area yet'], ['goldcoast', null, '6 Oct 2026', 'Not in your area yet']];
-const P1P3_APPROVED = [['kuraby', null, '12 Mar 2026', 'Approved'], ['noor', null, '4 Feb 2026', 'Approved'], ['gabba', null, '7 Jul 2026', 'Approved']];
-const P1P3_ALL = [['sunnybank', null, '6 Oct 2026', 'Awaiting review'], ['toowoomba', null, '4 Oct 2026', 'Not in your area yet'], ['moorooka', null, '5 Oct 2026', 'Not approved'],
-  ['kuraby', null, '12 Mar 2026', 'Approved'], ['slacks', null, '20 Jan 2026', 'Suspended'], ['gabba', null, '6 Oct 2026', 'Invited']];
-const SEARCH_HELP = 'Store name, shop web address, or the full ' + SETUP.idLabel + '.';
-const SEARCH_DISABLED = 'Search works on All, Awaiting review and Incomplete.';
-const BULK_CAP = 'You can select up to 50 sellers at a time.';
-const CHANGE_LOCKED = 'Change requests are decided one at a time.';
-function p1p3Search(disabled, touch) {
-  return frame({ name: 'search', dir: 'V', gap: 'space/1', w: touch ? undefined : 360, sizeH: touch ? 'FILL' : null }, [
-    inst('Input', { Type: 'Text', State: disabled ? 'Disabled' : 'Default', Value: 'Search sellers' }, { name: 'search-input', sizeH: 'FILL' }),
-    text(disabled ? SEARCH_DISABLED : SEARCH_HELP, 'Caption/Default', 'text/muted', { name: 'search-help', sizeH: 'FILL' }),
-  ]);
-}
-function p1p3SellerCell(m, extra) {
-  const lines = [text(m.store, 'Body/Strong', 'text/primary', { name: 'store', sizeH: 'FILL', truncate: true }), text(m.slug, 'Caption/Default', 'text/muted', { name: 'slug', sizeH: 'FILL', truncate: true }),
-    text(m.name + ' · ' + m.email, 'Caption/Default', 'text/muted', { name: 'owner', sizeH: 'FILL', truncate: true })];
-  if (extra) lines.push(text(extra, 'Caption/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' }));
-  return [inst('IdentityTile', { Tone: m.tone, Shape: 'Rounded', Initials: m.i }), frame({ name: 'seller', dir: 'V', sizeH: 'FILL' }, lines)];
-}
-function addChip(label, name) {
-  const c = inst('FilterChip', { Type: 'Add' }, { name: name });
-  const t = c.findOne(function (n) { return n.name === 'add-label'; }); if (t) t.characters = '+ ' + label;
-  return c;
-}
-function selectHeader(value, state) { return frame({ name: 'th select', dir: 'H', w: 56, h: 42, align: 'center', justify: 'center', fill: 'bg/subtle', stroke: 'border/default', sides: ['bottom'] }, [inst('Checkbox', { Value: value, State: state || 'Default' }, { name: 'select-all' })]); }
-// o: { tab, rows, selected (indexes), select (checkbox column), viewOnly }
-function p1p3Table(o) {
-  const awaiting = o.tab === 'Awaiting review';
-  const cols = [['Seller', 'fill'], ['Status', 200]].concat(awaiting ? [['Kind', 160]] : [], [['Since', 130], ['', 56]]);
-  const head = headerRow(cols);
-  if (o.select) {
-    const sel = (o.selected || []).length; const free = o.rows.filter(function (r) { return !(r[4] && (r[4].locked || r[4].busy)); }).length;
-    head.insertChild(0, selectHeader(sel === 0 ? 'Unchecked' : (sel === free ? 'Checked' : 'Indeterminate'), o.viewOnly ? 'Disabled' : 'Default'));
-  }
-  const kids = [head];
-  o.rows.forEach(function (r, i) {
-    const m = SA_SELLERS[r[0]]; const f = r[4] || {}; const on = (o.selected || []).indexOf(i) >= 0;
-    const cells = [];
-    if (o.select) cells.push([inst('Checkbox', { Value: on ? 'Checked' : 'Unchecked', State: o.viewOnly || f.locked || f.busy ? 'Disabled' : 'Default' }, { name: 'select' }), 56, { justify: 'center' }]);
-    cells.push([p1p3SellerCell(m, f.locked ? CHANGE_LOCKED : null), 'fill']);
-    cells.push([f.busy ? frame({ name: 'status', dir: 'V', gap: 'space/1' }, [saBadge(r[3] || 'Awaiting review'), text('Decision being recorded', 'Caption/Default', 'text/secondary', { name: 'busy' })]) : saBadge(r[3] || 'Awaiting review'), 200]);
-    if (awaiting) cells.push([text(r[1], 'Body/Default'), 160]);
-    cells.push([text(r[2], 'Body/Default'), 130], [f.busy ? null : rowAction(), 56, { justify: 'center' }]);
-    kids.push(row(cells, on, false, f.locked ? 96 : 80));
-  });
-  return card('Seller list', kids);
-}
-function bulkBar(count, cap) {
-  const bar = inst('BulkActionBar', {}, { name: 'BulkActionBar' });
-  setNested(bar, 'count-badge', prop('CountBadge', 'Count', count));
-  setNested(bar, 'action-3', prop('Button', 'Label', 'Reject…'));
-  const two = bar.findOne(function (n) { return n.name === 'action-2'; }); if (two) two.visible = false;
-  const kids = [bar];
-  if (cap) kids.push(frame({ name: 'cap', dir: 'H', gap: 'space/1-5', align: 'center' }, [icon('info', 'status/attention/fg', 16), text(BULK_CAP, 'Body/Small Strong', 'status/attention/fg', { name: 'cap-text' })]));
-  return frame({ name: 'bulk-wrap', dir: 'H', gap: 'space/3', align: 'center', justify: 'center', sizeH: 'FILL' }, kids);
-}
-// state: null (Awaiting review), Selected, Selection limit, Incomplete, Approved, View only
-function tplP1P3(state) {
-  const tab = { Incomplete: 'Incomplete', Approved: 'Approved', 'View only': 'All' }[state] || 'Awaiting review';
-  const view = state === 'View only', limit = state === 'Selection limit';
-  const counts = limit ? ['64'].concat(P1P3_COUNTS.slice(1, 7), ['72']) : P1P3_COUNTS;
-  const kids = [pageTitle('Sellers', (limit ? '72' : '13') + ' sellers in the ' + SA_MARKET + ' market', [primaryHeaderButton('Add seller', view ? 'Disabled' : 'Default')])];
-  if (view) kids.push(text(SELLERS_VIEW_ONLY, 'Body/Small', 'text/muted', { name: 'view-only-help', sizeH: 'FILL' }));
-  const chips = [];
-  if (tab === 'Awaiting review') chips.push(addChip('Kind', 'kind-filter'));
-  if (tab === 'All') chips.push(addChip('Needs a check', 'needs-check-filter'));
-  if (tab === 'Incomplete') chips.push(inst('FilterChip', { Type: 'Applied', Label: 'Outside service area' }, { name: 'outside-filter' }));
-  kids.push(frame({ name: 'filters', dir: 'H', gap: 'space/3', align: 'start', sizeH: 'FILL' }, [p1p3Search(tab === 'Approved')].concat(chips)));
-  kids.push(tabsBar(P1P3_TABS.map(function (t, i) { return [t, counts[i], t === tab]; })));
-  const rows = { Incomplete: P1P3_INCOMPLETE, Approved: P1P3_APPROVED, All: P1P3_ALL }[tab] || P1P3_AWAITING;
-  const selected = state === 'Selected' ? P1P3_SELECTED : (limit ? P1P3_SELECTED : []);
-  kids.push(p1p3Table({ tab: tab, rows: rows, select: tab === 'Awaiting review', selected: selected }));
-  if (state === 'Selected' || limit) kids.push(bulkBar(limit ? '50' : '3', limit));
-  const scr = screen(P1P3_NAME + (state ? ' · ' + state : ''), 'Admin', 'nav-sellers', 'Sellers', kids, { minH: PANEL_MIN_H, gap: 'space/5' });
-  // View only (All tab): the menu of an approved seller; viewing stays, the identity actions are disabled with the reason (ux.md 3.0 rule 6).
-  if (view) openUnderRow(scr, 3, actionMenu([['Default', 'Open', 'eye'], ['Disabled', 'Reset owner’s two-step verification…', 'smartphone', SELLERS_VIEW_ONLY], ['Disabled', 'Suspend…', 'ban', SELLERS_VIEW_ONLY]]));
-  return scr;
-}
-// Empty per tab (ux.md 3.5); a sentence is split into title and body where it has two.
-const P1P3_EMPTY = { 'Awaiting review': ['check', 'No sellers are waiting', 'You’re up to date.'], Incomplete: ['clipboard', 'No incomplete applications.'], 'Changes needed, Not approved, Approved, Suspended, Invited': ['users', 'No sellers here.'],
-  'Outside service area': ['map-pin', 'No sellers are outside the service area.'], 'Search with no result': ['search', 'No sellers match.', null, 'Clear search'] };
-function p1p3Empty(s) {
-  const d = P1P3_EMPTY[s];
-  const es = inst('EmptyState', { Size: 'Card', Icon: { icon: d[0] }, Title: d[1], Body: d[2] || ' ', 'Show action': !!d[3] }, { name: 'empty-state', sizeH: 'FILL' });
-  if (!d[2]) { const b = es.findOne(function (n) { return n.name === 'body'; }); if (b) b.visible = false; }
-  if (d[3]) setNested(es, 'action', prop('Button', 'Label', d[3]));
-  return es;
-}
-function tplP1P3Empty() { return stateBoard(P1P3_NAME + ' · Empty states', 'Sellers: empty states', 'The table body when a tab, the outside-area filter or a search has nothing (ux.md 3.5). The tabs, search and header stay. A list that cannot load is the Critical banner with "Try again", not an empty state.', Object.keys(P1P3_EMPTY), p1p3Empty); }
-// Below 760 px each row is a card with the same actions menu and no bulk selection (ux.md 6).
-function tplP1P3Phone() {
-  const kids = [text('Sellers', 'Heading/H1', 'text/primary', { sizeH: 'FILL' }), fullButton('Add seller'), p1p3Search(false, true), panelField('Status', { select: { state: 'Filled', value: 'Awaiting review (5)' } })];
-  P1P3_AWAITING.slice(0, 3).forEach(function (r) {
-    const m = SA_SELLERS[r[0]];
-    kids.push(frame({ name: m.store, dir: 'V', gap: 'space/3', pad: 'space/4', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', sizeH: 'FILL' }, [
-      frame({ name: 'head', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [inst('IdentityTile', { Tone: m.tone, Shape: 'Rounded', Initials: m.i }), frame({ name: 'seller', dir: 'V', sizeH: 'FILL' }, [text(m.store, 'Body/Strong', 'text/primary', { sizeH: 'FILL' }), text(m.name + ' · ' + m.email, 'Caption/Default', 'text/muted', { sizeH: 'FILL', truncate: true })]), rowAction(true)]),
-      frame({ name: 'status', dir: 'H', gap: 'space/2', align: 'center', wrap: true, rowGap: 'space/1', sizeH: 'FILL' }, [saBadge(r[3] || 'Awaiting review'), text(r[1] + ' · Since ' + r[2], 'Caption/Default', 'text/muted')]),
-    ]));
-  });
-  const scr = phoneScreen(P1P3_NAME + ' (phone)', 'Admin', kids, null);
-  applyDensity(scr, 'touch');
-  return scr;
-}
-
-// ---- P3 Review a submission (ux.md 3.2 P3 and 3.2a, F16)
-const P3_NAME = 'Admin · Seller review';
-const P3_APP = { seller: 'sunnybank', business: 'Sunnybank Spice Market Pty Ltd', register: 'SUNNYBANK SPICE MARKET PTY LTD', abn: '51 824 753 556', street: '12 Mains Road', locality: 'Sunnybank', postcode: '4109', registerPostcode: '4110',
-  phone: '0423 456 789', contact: 'hello@sunnybankspice.example', submission: '2', submitted: '6 Oct 2026, 9:40 AEST', queue: '2 days in the queue' };
-// The approved seller behind the change request (the S2 to S6 sample values).
-const P3_CHANGE = { seller: 'kuraby', business: SETUP.business, register: 'KURABY FRESH PTY LTD', abn: SETUP.abn, street: SETUP.street, locality: SETUP.locality, postcode: SETUP.postcode, registerPostcode: SETUP.postcode, phone: SETUP.phone };
-const STORE_CHECK = 'Store name makes no certification claim and doesn’t imitate another brand.';
-const MANUAL_CHECK = 'Record a manual register check';
-// Market-configured checks (samples, except the store-name check, which ux.md names): [label, required]
-const P3_CHECKS = [[STORE_CHECK, true], ['Business name matches the official register', true], ['Called the business phone number', false]];
-const REGISTER = {
-  active: ['Info', 'The official register lists this number as active.'], negative: ['Critical', 'The register doesn’t list this number as active.'], 'not-performed': ['Attention', 'Lookup not performed.'],
-  unavailable: ['Attention', 'The register couldn’t be reached.'], stale: ['Attention', 'The last lookup is out of date.'], none: ['Info', 'This Market has no register lookup. Record a manual check.'] };
-const APPROVE_BLOCK = { 'checks-missing': 'Record 2 required checks first.', 'register-blocks': 'Approve is unavailable while the register result is negative.', 'register-lookup': 'Look it up again or record a manual check first.',
-  'not-current-revision': 'This isn’t the current submission.', 'identifier-held': 'Another approved or suspended seller already holds this number.', 'decision-in-progress': 'A decision is being recorded.' };
-// The register banner and what goes with it: "Look up again" with the time of the last lookup, or the manual link (admins only, server-built, new tab).
-function registerBlock(state) {
-  const r = REGISTER[state];
-  const kids = [saBanner(r[0], r[1], null, 'register-banner')];
-  const tools = state === 'none' ? [] : [inst('Button', { Variant: 'Secondary', Size: 'Sm', State: 'Default', Label: 'Look up again', 'Leading icon': true, Icon: { icon: 'refresh-cw' } }, { name: 'look-up-again' })];
-  if (state === 'active' || state === 'negative') tools.push(saLine('Looked up on 6 Oct 2026, 9:41 AEST', 'looked-up'));
-  if (state === 'not-performed' || state === 'unavailable' || state === 'stale' || state === 'none') tools.push(linkBtn('Open the register’s search page', 'external-link', 'manual-link'));
-  kids.push(frame({ name: 'register-tools', dir: 'H', gap: 'space/3', align: 'center', wrap: true, rowGap: 'space/2', sizeH: 'FILL' }, tools));
-  return frame({ name: 'register', dir: 'V', gap: 'space/3', pad: [0, 'space/5', 'space/3', 'space/5'], sizeH: 'FILL' }, kids);
-}
-function compareRow(label, value, register, flag, note, changed) { return saRow({ label: label, value: value, compare: register, valueLabel: 'Seller entered', compareLabel: 'Official register', flag: flag, note: note, state: changed ? 'Changed' : 'Default' }); }
-function registerCard(o) {
-  const a = o.change ? P3_CHANGE : P3_APP; const m = SA_SELLERS[a.seller]; const nc = FLAG.notCompared;
-  const rows = [];
-  if (o.register === 'active') {
-    rows.push(compareRow('Business name', a.business, a.register, FLAG.matches, null, !o.change));
-    rows.push(compareRow(SETUP.taxQuestion, 'Yes, from ' + SETUP.taxFrom, 'Registered from ' + SETUP.taxFrom, FLAG.matches));
-    rows.push(a.postcode === a.registerPostcode ? compareRow('Postcode', a.postcode, a.registerPostcode, FLAG.matches) : compareRow('Postcode', a.postcode, a.registerPostcode, FLAG.differs, 'Differs from the register. Check before you approve.'));
-  } else rows.push(saRow({ label: 'Business name', value: a.business, flag: nc, state: o.change ? 'Default' : 'Changed' }));
-  rows.push(saRow({ label: 'Store name', value: m.store, flag: nc }), saRow({ label: SETUP.idLabel, value: a.abn, flag: nc }), saRow({ label: 'Operating address', value: a.street + ', ' + a.locality + ' ' + SETUP.region + ' ' + a.postcode, flag: nc }),
-    saRow({ label: 'Phone', value: a.phone, flag: nc }), saRow({ label: 'Shop web address', value: SETUP.storefront + m.slug, flag: nc }));
-  return card('Details against the register', [header('Details against the register', null), registerBlock(o.register)].concat(rows, [
-    frame({ name: 'disclaimer', dir: 'H', pad: ['space/3', 'space/5', 'space/4', 'space/5'], sizeH: 'FILL' }, [saLine('A match doesn’t prove the applicant controls the business.', 'disclaimer-text')])]));
-}
-// o.checks: per check [value, state] in P3_CHECKS order; o.manual adds the manual register check; o.readOnly for a withdrawn or decided submission.
-function checksCard(o) {
-  const rows = P3_CHECKS.map(function (c, i) {
-    const s = (o.checks || [])[i] || ['Unchecked', 'Default']; const rec = s[0] === 'Checked' && s[1] !== 'Saving';
-    return reviewCheck({ label: c[0], required: c[1], value: s[0], state: o.readOnly ? 'Read-only' : s[1], desc: rec ? SA_RECORDED : SA_NOT_RECORDED, undo: rec && !o.readOnly });
-  });
-  if (o.manual) rows.push(reviewCheck({ label: MANUAL_CHECK, required: true, desc: 'Check the number on the register’s search page, then record it here.' }));
-  const done = (o.checks || []).filter(function (s) { return s[0] === 'Checked' && s[1] !== 'Saving'; }).length;
-  return card('Checks', [frame({ name: 'card-header', dir: 'H', justify: 'between', align: 'center', pad: [16, 18, 12, 18], sizeH: 'FILL' }, [text('Checks', 'Heading/H2'), text(done + ' of ' + rows.length + ' recorded', 'Body/Small', 'text/muted', { name: 'progress' })])].concat(rows));
-}
-function changesCard() {
-  return card('Changes since the last submission', [header('Changes since the last submission', null), saRow({ label: 'Business name', value: P3_APP.business, state: 'Changed', note: 'Before: Sunnybank Spice Pty Ltd' })]);
-}
-function historyCard(events, empty) {
-  const body = empty ? [saLine(empty, 'empty')] : events.map(function (e) { const p = { Tone: e[0], Who: e[1], What: e[2], When: e[3], 'Show quote': !!e[4] }; if (e[4]) p.Quote = e[4]; return inst('TimelineItem', p, { sizeH: 'FILL' }); });
-  return card('History', [header('History', null), frame({ name: 'events', dir: 'V', pad: [0, 18, 6, 18], sizeH: 'FILL' }, body)]);
-}
-const P3_HISTORY = [['Teal', 'Hana Yusuf', 'submitted again', P3_APP.submitted], ['Blue', SA_REVIEWER, 'asked for changes', '3 Oct 2026, 11:05 AEST', 'Use the legal name of your business, then submit again.'],
-  ['Teal', 'Hana Yusuf', 'submitted the application', '29 Sep 2026, 9:40 AEST']];
-function sideCard(title, kids) { return card(title, [header(title, null), frame({ name: 'body', dir: 'V', gap: 'space/3', pad: [0, 18, 18, 18], sizeH: 'FILL' }, kids)]); }
-function otherSellers(list) {
-  if (!list.length) return [saLine('None found.', 'none')];
-  return list.map(function (o) { return frame({ name: o[0], dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [frame({ name: 'seller', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text(o[0], 'Body/Strong', 'text/primary', { sizeH: 'FILL' }), saBadge(o[1])]), linkBtn('Open', null, 'open')]); });
-}
-function p3Side(o) {
-  return frame({ name: 'Side', dir: 'V', gap: 'space/4', w: 360 }, [
-    sideCard('Status', [saBadge(o.status || 'Awaiting review'), readOnlyPair('Email confirmed', 'Yes'), readOnlyPair('Time in the queue', o.queue || P3_APP.queue)]),
-    sideCard('Service area and time zone', [readOnlyPair('Service area', 'Greater Brisbane'), readOnlyPair('Work time zone', SETUP.zone + ' (' + SETUP.zoneId + ')')]),
-    sideCard('Other sellers with this ' + SETUP.idLabel, otherSellers(o.others || [])),
-  ]);
-}
-// The decision buttons; a disabled Approve names the missing item beside it, in text (ux.md 3.2a).
-function decisionButtons(o) {
-  const approve = btn(o.change ? 'Approve change' : 'Approve', 'Primary', 'Md', { State: o.block || o.busy ? 'Disabled' : 'Default' });
-  const reject = btn(o.change ? 'Reject change…' : 'Reject…', 'Destructive', 'Md', { State: o.busy ? 'Disabled' : 'Default' });
-  return [reject, approve];
-}
-function blockReason(text_, link) {
-  return frame({ name: 'decision-reason', dir: 'H', gap: 'space/1-5', align: 'center', justify: 'end', sizeH: 'FILL' }, [icon('info', 'icon/muted', 16), text(text_, 'Body/Small Strong', 'text/secondary', { name: 'reason-text' }), link ? linkBtn(link, null, 'reason-link') : null]);
-}
-// o: { register, checks, manual, block, change, withdrawn, others, history }
-function tplP3(state, o) {
-  const m = SA_SELLERS[o.change ? 'kuraby' : P3_APP.seller];
-  const kind = bdg('Neutral', 'None', o.change ? 'Change request' : 'New application');
-  const meta = 'Submission ' + (o.change ? '4' : P3_APP.submission) + ' · Submitted on ' + (o.change ? '7 Oct 2026, 8:15 AEST' : P3_APP.submitted) + ' · Submitted by the seller · ' + (o.change ? '1 day in the queue' : P3_APP.queue);
-  const head = [backTo('Sellers'), pageTitle('Review ' + m.store, meta, o.withdrawn ? [] : decisionButtons(o), kind)];
-  if (o.block) head.push(blockReason(APPROVE_BLOCK[o.block]));
-  const kids = [frame({ name: 'Header', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, head)];
-  if (o.withdrawn) kids.push(saBanner('Info', 'This submission was withdrawn.', 'Back to sellers', 'withdrawn'));
-  const main = [];
-  if (o.change) main.push(card('Requested change', [header('Requested change', null), saRow({ label: 'Store name', value: SETUP.store, compare: 'Kuraby Fresh Grocers', valueLabel: 'Current', compareLabel: 'Requested', state: 'Changed' })]));
-  main.push(registerCard(o), checksCard(o));
-  if (!o.change) main.push(changesCard());
-  main.push(o.change ? historyCard([['Teal', 'Yusuf Karimi', 'asked to change the store name', '7 Oct 2026, 8:15 AEST'], ['Blue', SA_REVIEWER, 'approved the seller', '12 Mar 2026, 10:02 AEST']]) : historyCard(P3_HISTORY));
-  kids.push(frame({ name: 'Body', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [frame({ name: 'Main column', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, main),
-    p3Side({ others: o.others, status: o.change ? 'Approved' : (o.withdrawn ? 'Ready to submit' : 'Awaiting review'), queue: o.change ? '1 day' : null })]));
-  return screen(P3_NAME + ' · ' + state, 'Admin', 'nav-sellers', 'Sellers', kids, { minH: PANEL_MIN_H, gap: 'space/5', pad: [24, 32, 40, 32] });
-}
-const P3_ALL_DONE = [['Checked', 'Default'], ['Checked', 'Default'], ['Unchecked', 'Default']];
-const P3_OTHERS = [['Sunnybank Spice Co', 'Not approved']];
-const P3_FRAMES = [
-  ['Application', { register: 'active', checks: P3_ALL_DONE, others: P3_OTHERS }],
-  ['Checks missing', { register: 'active', checks: [['Checked', 'Saving'], ['Unchecked', 'Default'], ['Unchecked', 'Default']], block: 'checks-missing', others: P3_OTHERS }],
-  ['Register negative', { register: 'negative', checks: P3_ALL_DONE, block: 'register-blocks', others: [] }],
-  ['Lookup not performed', { register: 'not-performed', checks: P3_ALL_DONE, manual: true, block: 'register-lookup', others: [] }],
-  ['Change request', { register: 'active', checks: [['Checked', 'Default'], ['Checked', 'Default'], ['Unchecked', 'Default']], change: true, others: [] }],
-  ['Withdrawn', { register: 'active', checks: P3_ALL_DONE, withdrawn: true, readOnly: true, others: P3_OTHERS }],
-];
-// Every register state of 3.2a: the banner, its tools and what it does to Approve.
-const REGISTER_EFFECT = { active: 'Mismatches are flagged on the rows. Approve is allowed.', negative: 'Approve is disabled: "' + APPROVE_BLOCK['register-blocks'] + '" Reject is allowed.', 'not-performed': 'Approve is disabled until a lookup succeeds or a manual check is recorded: "' + APPROVE_BLOCK['register-lookup'] + '"',
-  unavailable: 'As Lookup not performed.', stale: 'A result older than the maximum age (30 days) counts as not performed.', none: 'The Market has no register adapter; the manual link shows when the Market has one. Approve needs the manual check.' };
-function tplP3Register() {
-  return stateBoard(P3_NAME + ' · Register states', 'Seller review: register states', 'The banner at the top of "Details against the register" for each register state (ux.md 3.2a). Admins only; the register\'s values never reach a seller screen.', Object.keys(REGISTER), function (s) {
-    return frame({ name: 'state', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [registerBlock(s), saLine(REGISTER_EFFECT[s], 'effect', 'text/secondary')]);
-  });
-}
-function tplP3Blocked() {
-  const links = { 'identifier-held': 'Open that seller' };
-  return stateBoard(P3_NAME + ' · Approve disabled', 'Seller review: Approve disabled', 'Approve is disabled when the API\'s denial code says so; the missing item is text beside the button, never a tooltip (ux.md 3.2a). During a decision both buttons are disabled.', Object.keys(APPROVE_BLOCK), function (s) {
-    const busy = s === 'decision-in-progress';
-    return frame({ name: 'state', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [frame({ name: 'buttons', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, decisionButtons({ block: s, busy: busy })), blockReason(APPROVE_BLOCK[s], links[s])]);
-  });
-}
-
-// ---- P2 Seller page (ux.md 3.2 P2, F18, C1 and P2-H)
-const P2_NAME = 'Admin · Seller detail';
-const P2_AI_HELP = 'Turns AI suggestions on or off for this shop. AI never decides approvals, certificates or payments.';
-const C1_LOCK_ROLE = 'Your role can view these settings but not change them.';
-const C1_LOCK_TYPES = 'Restricting types arrives with the product catalog.';
-const C1_META = 'Changed by ' + SA_REVIEWER + ' on 6 Oct 2026';
-function certSlot() { return frame({ name: 'certification-slot', dir: 'H', px: 'space/2', py: 'space/1', stroke: 'border/input', dash: [4, 4], radius: 'radius/pill' }, [text('Certificate chip (certification)', 'Caption/Default', 'text/muted')]); }
-// C1 Admin-only settings: o.locked (role), o.state per row
-function c1Rows(o) {
-  o = o || {};
-  const lock = o.locked ? { state: 'Locked', msg: C1_LOCK_ROLE } : {};
-  return [
-    settingRow({ label: 'Allowed product types', seg: ['All types', 'Only selected types'], state: 'Locked', msg: o.locked ? C1_LOCK_ROLE : C1_LOCK_TYPES }),
-    settingRow(Object.assign({ label: 'Category proposals', desc: 'Lets this seller suggest categories.', off: true, meta: C1_META }, lock)),
-    settingRow(Object.assign({ label: 'AI features', desc: P2_AI_HELP, off: true }, lock)),
-  ];
-}
-function c1Card(o) {
-  return card('Admin-only settings', [frame({ name: 'card-header', dir: 'V', gap: 'space/0-5', pad: [16, 18, 8, 18], sizeH: 'FILL' }, [text('Admin-only settings', 'Heading/H2'), text('The seller can’t change these.', 'Body/Small', 'text/muted', { name: 'subtitle' })])].concat(c1Rows(o)));
-}
-function businessCard(s) {
-  return card('Business details', [header('Business details', null)].concat(s.rows.map(function (r) { return saRow({ label: r[0], value: r[1] }); })));
-}
-const P2_KURABY = { seller: 'kuraby', status: 'Seller approved', since: 'Approved on 12 Mar 2026, 10:02 AEST', rows: [['Store name', SETUP.store], ['Business name', SETUP.business], [SETUP.idLabel, SETUP.abn],
-  ['Operating address', SETUP.street + ', ' + SETUP.locality + ' ' + SETUP.region + ' ' + SETUP.postcode], ['Phone', SETUP.phone], ['Contact email', SETUP.contact], ['Work time zone', SETUP.zone + ' (' + SETUP.zoneId + ')'],
-  ['Shop web address', SETUP.storefront + SETUP.slug], [SETUP.taxQuestion, 'Yes, from ' + SETUP.taxFrom], ['Created', '3 Mar 2026'], ['Origin', 'Self-registered']] };
-const P2_MOOROOKA = { seller: 'moorooka', status: 'Not approved', since: 'Not approved on 5 Oct 2026, 15:20 AEST', rows: [['Store name', 'Moorooka Grocer'], ['Business name', 'Moorooka Grocer Pty Ltd'], [SETUP.idLabel, '83 914 562 007'],
-  ['Operating address', '88 Beaudesert Road, Moorooka ' + SETUP.region + ' 4105'], ['Phone', '0431 222 908'], ['Work time zone', SETUP.zone + ' (' + SETUP.zoneId + ')'], ['Shop web address', SETUP.storefront + 'moorooka-grocer'], ['Created', '28 Sep 2026'], ['Origin', 'Invited by MondaPac']],
-  reason: 'The business details you gave don’t meet our requirements for new shops.' };
-function p2Header(s, o) {
-  const m = SA_SELLERS[s.seller];
-  const edit = function () { return btn('Edit details', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'pencil' } }); };
-  let actions = [];
-  if (o.viewOnly || o.edit) actions = [];
-  else if (s.status === 'Not approved') actions = [edit(), btn('Allow one more application', 'Primary', 'Md')];
-  else actions = [edit(), btn('Change web address', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'globe' } }), btn('Correct time zone', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'clock' } })];
-  const kids = [backTo('Sellers'), pageTitle(m.store, m.name + ' · ' + m.email, actions, frame({ name: 'badges', dir: 'H', gap: 'space/2', align: 'center' }, [saBadge(s.status), certSlot()]))];
-  if (o.viewOnly) kids.push(text(SELLERS_VIEW_ONLY, 'Body/Small', 'text/muted', { name: 'view-only-help', sizeH: 'FILL' }));
-  return frame({ name: 'Header', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, kids);
-}
-function p2Side(s) {
-  const kids = [saBadge(s.status), saLine(s.since, 'since', 'text/secondary')];
-  if (s.reason) kids.push(inst('ReasonQuote', { Label: 'Reason sent to the seller', Reason: s.reason, Date: 'Written on 5 Oct 2026' }, { name: 'reason', sizeH: 'FILL' }));
-  kids.push(readOnlyPair('Decisions', s.reason ? '1 change request, 1 not approved' : '1 approval'), linkBtn('Open the last review', null, 'last-review'));
-  return frame({ name: 'Side', dir: 'V', gap: 'space/4', w: 360 }, [sideCard('Status', kids)]);
-}
-function certificatesSlot() {
-  return card('Certificates', [header('Certificates', null), frame({ name: 'slot', dir: 'H', pad: [0, 18, 18, 18], sizeH: 'FILL' }, [frame({ name: 'certification-slot', dir: 'H', px: 'space/3', py: 'space/4', stroke: 'border/input', dash: [4, 4], radius: 'radius/control', sizeH: 'FILL' }, [text('Slot for the certificates card (owned by certification)', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })])])]);
-}
-// state: null, Edit, Not approved, View only, History
-function tplP2(state) {
-  const s = state === 'Not approved' ? P2_MOOROOKA : P2_KURABY; const view = state === 'View only', edit = state === 'Edit';
-  const kids = [p2Header(s, { viewOnly: view, edit: edit })];
-  if (!edit) kids.push(tabsBar([['Overview', null, state !== 'History'], ['History', null, state === 'History']]));
-  let main;
-  if (state === 'History') main = [p2History()];
-  else if (edit) main = p2Edit();
-  else main = [businessCard(s), c1Card({ locked: view }), certificatesSlot()];
-  kids.push(frame({ name: 'Body', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [frame({ name: 'Main column', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, main), p2Side(s)]));
-  return screen(P2_NAME + (state ? ' · ' + state : ''), 'Admin', 'nav-sellers', 'Sellers', kids, { minH: PANEL_MIN_H, gap: 'space/5', pad: [24, 32, 40, 32] });
-}
-// Edit an approved seller (F18 steps 1 and 2): the S2 to S5 fields, the checks and the register state of P3, one save that applies at once.
-function p2Edit() {
-  const checks = card('Checks', [header('Checks', null), reviewCheck({ label: STORE_CHECK, required: true, value: 'Checked', desc: SA_RECORDED, undo: true }), reviewCheck({ label: P3_CHECKS[1][0], required: true })]);
-  const bar = setupBar({ primary: 'Save changes', secondary: 'Cancel', state: 'Dirty', disabled: true });
-  return [saBanner('Info', 'Changes to business identity apply at once and the owner is emailed.', null, 'edit-banner'),
-    setupCard('Business details', [setupField('Store name', { value: SETUP.store, helper: STORE_HELP }), setupField('Business name', { value: 'Kuraby Fresh Grocers Pty Ltd' }), setupField('Phone', { value: SETUP.phone }), setupField('Contact email', { value: SETUP.contact, optional: true })]),
-    setupCard('Address and area', addressFields(false)), setupCard('Business number', [numberField('Matched')]),
-    card('Register', [header('Details against the register', null), registerBlock('active')]), checks,
-    frame({ name: 'save', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [blockReason('Record 1 required check first.'), saLine('Changes to business identity apply at once and the owner is emailed.', 'save-note', 'text/secondary'), bar])];
-}
-// P2-H: revisions with their values hidden until "Show values" (protected permission; each reveal is recorded).
-function p2History() {
-  const cols = [['Date', 220], ['Kind', 200], ['Author', 160], ['Result', 'fill']];
-  const rows = [['12 Mar 2026, 10:02 AEST', 'Decision', 'Admin', 'Approved'], ['11 Mar 2026, 16:40 AEST', 'Submission', 'Seller', 'Submitted again'], ['6 Mar 2026, 11:05 AEST', 'Decision', 'Admin', 'Changes needed'], ['4 Mar 2026, 9:12 AEST', 'Submission', 'Seller', 'Submitted']];
-  return card('History', [frame({ name: 'card-header', dir: 'H', gap: 'space/3', align: 'center', pad: [16, 18, 12, 18], sizeH: 'FILL' }, [text('History', 'Heading/H2'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), saLine('Viewing this is recorded.', 'reveal-notice'), btn('Show values', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye' } })]),
-    headerRow(cols)].concat(rows.map(function (r) { return row([[text(r[0], 'Body/Default'), 220], [text(r[1], 'Body/Default'), 200], [text(r[2], 'Body/Default'), 160], [text(r[3], 'Body/Default'), 'fill']]); })));
-}
-const P2_BANNERS = { 'Invited, not accepted': ['Info', 'This seller hasn’t accepted the invitation yet.'], Suspended: ['Critical', 'This seller is suspended.', 'View reason'],
-  'Needs a check': ['Critical', 'This seller is approved but has no reviewed details. They can’t sell until this is checked.'], 'Decision under way': ['Attention', 'A decision is being recorded for this seller. Refresh in a moment.'] };
-const P2_EDIT_BANNERS = { Approved: ['Info', 'Changes to business identity apply at once and the owner is emailed.'], 'Awaiting review': ['Attention', 'Saving withdraws the pending submission.'],
-  Suspended: ['Attention', 'This seller is suspended. Your edit changes business data only.'], Invited: ['Info', 'This seller hasn’t accepted the invitation yet. Your edit changes their saved details.'],
-  'Only seller.edit': ['Attention', 'You also need permission to approve identity changes.'], 'Change pending': ['Attention', 'A change request is waiting. Decide it first.', 'Open the request'] };
-function tplP2Banners() { return stateBoard(P2_NAME + ' · Banners', 'Seller page: banners', 'One banner under the summary bar by the seller\'s state (ux.md 3.2 P2, F18 step 7). "Needs a check" has no action until a mini-review designs one.', Object.keys(P2_BANNERS), function (s) { const b = P2_BANNERS[s]; return saBanner(b[0], b[1], b[2]); }); }
-function tplP2EditBanners() { return stateBoard(P2_NAME + ' · Edit banners', 'Seller page: edit banners', 'The banner at the top of the edit form (F18 steps 1 and 2). With only the edit permission, Save stays disabled with the same text beside it and nothing is sent.', Object.keys(P2_EDIT_BANNERS), function (s) { const b = P2_EDIT_BANNERS[s]; return saBanner(b[0], b[1], b[2]); }); }
-const C1_STATES = { Default: { label: 'Category proposals', desc: 'Lets this seller suggest categories.', off: true }, Saving: { label: 'Category proposals', desc: 'Lets this seller suggest categories.', state: 'Saving' },
-  'Saved, with who and when': { label: 'AI features', desc: P2_AI_HELP, meta: C1_META }, 'Locked by role': { label: 'Category proposals', desc: 'Lets this seller suggest categories.', off: true, state: 'Locked', msg: C1_LOCK_ROLE },
-  'Locked until the catalog': { label: 'Allowed product types', seg: ['All types', 'Only selected types'], state: 'Locked', msg: C1_LOCK_TYPES }, 'Save failed': { label: 'Category proposals', desc: 'Lets this seller suggest categories.', off: true, state: 'Error' } };
-function tplC1States() { return stateBoard(P2_NAME + ' · Admin-only settings states', 'Admin-only settings: row states', 'Each row saves on its own after a confirm dialog (F19). A failed save puts the old value back and says so; a locked row gives its reason in text.', Object.keys(C1_STATES), function (s) { return settingRow(C1_STATES[s]); }); }
-
-// ---- P4 Seller settings (Market; ux.md 3.2 P4, F20)
-const P4_NAME = 'Shared · Settings · Seller settings';
-function p4Row(o) { return settingRow(Object.assign({ label: 'Require approval for new sellers', desc: 'New sign-ups wait for a person to approve them.', meta: C1_META }, o || {})); }
-function tplP4(state) {
-  const view = state === 'View only';
-  return screen(P4_NAME + (state ? ' · ' + state : ''), 'Admin', 'nav-settings', 'Settings', [
-    pageTitle('Seller settings', SA_MARKET, []),
-    frame({ name: 'content', dir: 'V', gap: 'space/3', w: 'size/form-max' }, [card('Seller settings', [p4Row(view ? { state: 'Locked', msg: C1_LOCK_ROLE } : null)]), saLine('Applies to new sign-ups in ' + SA_MARKET + ' only.', 'market-note')]),
-  ], { minH: PANEL_MIN_H });
-}
-function tplP4States() {
-  const st = { Default: {}, Saving: { state: 'Saving', off: true }, 'Locked (view only)': { state: 'Locked', msg: C1_LOCK_ROLE }, 'Save failed': { state: 'Error' } };
-  return stateBoard(P4_NAME + ' · States', 'Seller settings: states', 'Turning approval off opens a destructive confirm dialog with its consequences; turning it on, a plain one (ux.md 3.4). A failed save puts the old value back.', Object.keys(st), function (s) { return p4Row(st[s]); });
-}
-
-// ---- Dialogs (ux.md 3.4): D3 uses, D4 modes, D7, D8, D9, D10
-const PREPARED = 'Business details incomplete';
-const PREPARED_TEXT = 'Some of the business details you gave are incomplete. Check them and submit again.';
-function preparedSelect(state, value) { return panelField('Prepared reason', { select: { state: state, value: value } }); }
-function preview(label, value) { return frame({ name: 'preview', dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(label, 'Caption/Default', 'text/muted'), text(value, 'Body/Default', 'text/primary', { name: 'preview-text', sizeH: 'FILL' })]); }
-function bodyRejectApplication() {
-  const ta = S.sets.Textarea.set.children.filter(function (c) { return c.name === 'State=Default'; })[0];
-  const f = inst('Field', { Label: 'Reason for the seller', Helper: REASON_HELP + ' Don’t copy values from the official register.', 'Show helper': true, 'Show counter': true, Counter: REASON_COUNTER, 'Show error': false, Control: { comp: ta } }, { name: 'field-reason-for-the-seller', sizeH: 'FILL' });
-  return [preparedSelect('Default', 'Choose a prepared reason (optional)'), f];
-}
-function bodyRejectBulk() { return [preparedSelect('Filled', PREPARED), preview('The shop owner sees the text of this reason.', PREPARED_TEXT)]; }
-function bodyRejectChange() { return [preparedSelect('Filled', 'Store name not accepted'), preview('The shop owner sees the text of this reason.', 'We couldn’t accept this store name. Use the name customers know your shop by.')]; }
-function bodyBulkResult() {
-  const count = function (ic, token, s) { return frame({ name: s, dir: 'H', gap: 'space/2', align: 'center' }, [icon(ic, token, 16), text(s, 'Body/Strong')]); };
-  const item = function (store, why) { return frame({ name: store, dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text(store, 'Body/Strong', 'text/primary', { sizeH: 'FILL' }), text(why, 'Body/Small', 'text/secondary', { sizeH: 'FILL' })]); };
-  return [frame({ name: 'counts', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [count('check', 'status/success/fg', '1 done'), count('minus', 'icon/muted', '1 skipped'), count('x', 'status/critical/fg', '1 refused')]),
-    text('Skipped: no current submission, or a decision is under way.', 'Body/Small', 'text/muted', { name: 'skipped-help', sizeH: 'FILL' }),
-    item('Darra Asian Mart', 'Skipped: this isn’t the current submission.'), item('Logan Family Grocer', 'Refused: record 2 required checks first.')];
-}
-function bodySlug() { return [readOnlyPair('Current address', SETUP.storefront + SETUP.slug), setupField('Shop web address', { value: 'kuraby-fresh-grocers', prefix: SETUP.storefront, helper: SLUG_HELP, status: ['Success', 'Available now.'] }), saBanner('Attention', 'The old address is retired and can never be used again.', null, 'warning')]; }
-function bodyZone() { return [readOnlyPair('Current time zone', SETUP.zone + ' (' + SETUP.zoneId + ')'), panelField('Time zone', { select: { state: 'Filled', value: 'Sydney time (Australia/Sydney)' }, helper: 'This changes cut-off and expiry times for this seller. The change is recorded.' })]; }
-function bodyConfirmYou() { return [text('Enter your password to change your business details.', 'Body/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' }), authField('Password', { type: 'Password', filled: true }), authField('6-digit code', { type: 'Code', filled: true })]; }
-function tplDialogsReview() {
-  const b4 = tplBody('Template body · D4 Reject (application)', bodyRejectApplication);
-  const b4b = tplBody('Template body · D4 Reject (bulk)', bodyRejectBulk);
-  const b4c = tplBody('Template body · D4 Reject (change request)', bodyRejectChange);
-  const b10 = tplBody('Template body · D10 Bulk result', bodyBulkResult);
-  return tallScene('Dialogs · Seller review · Admin', [
-    confirmDlg('D3 Approve', 'Approve this seller?', SA_SELLERS.sunnybank.store + ' gets full access to the seller panel and an email.', 'Approve seller'),
-    confirmDlg('D3 Approve change', 'Approve this change?', 'The new details go live at once and the owner is emailed.', 'Approve change'),
-    confirmDlg('D3 Approve selected', 'Approve 3 sellers?', 'Sellers without a current submission are skipped.', 'Approve 3 sellers'),
-    dlg({ name: 'D4 Reject (application)', size: 'Md', tone: 'Destructive', title: 'Reject this application?', primary: 'Reject application', secondary: 'Cancel', content: b4, focusCancel: true }),
-    dlg({ name: 'D4 Reject (bulk)', size: 'Md', tone: 'Destructive', title: 'Reject 3 applications?', primary: 'Reject 3 applications', secondary: 'Cancel', content: b4b, focusCancel: true }),
-    dlg({ name: 'D4 Reject (change request)', size: 'Md', tone: 'Destructive', title: 'Not accept this change?', primary: 'Not accept change', secondary: 'Cancel', content: b4c, focusCancel: true }),
-    dlg({ name: 'D10 Bulk result', title: 'Result', primary: 'Close', hideSecondary: true, content: b10 }),
-  ]);
-}
-function tplDialogsDetail() {
-  const b7 = tplBody('Template body · D7 Change shop web address', bodySlug);
-  const b8 = tplBody('Template body · D8 Correct time zone', bodyZone);
-  return tallScene('Dialogs · Seller detail · Admin', [
-    confirmDlg('D3 Submit for this seller', 'Submit these details for this seller?', 'It’s recorded as submitted by MondaPac.', 'Submit for this seller'),
-    confirmDlg('D3 Save and withdraw the submission', 'Save and withdraw the submission?', 'The pending submission leaves the review queue and the owner is told.', 'Save and withdraw'),
-    confirmDlg('D3 Allow one more application', 'Allow one more application?', 'The owner can submit again and is emailed.', 'Allow one more application'),
-    dlg({ name: 'D7 Change shop web address', size: 'Md', title: 'Change shop web address', primary: 'Change address', secondary: 'Cancel', content: b7 }),
-    dlg({ name: 'D8 Correct time zone', title: 'Correct time zone', primary: 'Correct time zone', secondary: 'Cancel', content: b8 }),
-  ]);
-}
-function tplDialogsSettings() {
-  return tallScene('Dialogs · Seller settings · Admin', [
-    confirmDlg('D3 Restrict product types', 'Only allow selected types?', 'Offers of a type that’s no longer allowed are taken off sale.', 'Only allow selected types', { tone: 'Destructive' }),
-    confirmDlg('D3 Turn off category proposals', 'Turn off category proposals?', 'Suggestions waiting for a decision are closed.', 'Turn off', { tone: 'Destructive' }),
-    confirmDlg('D3 Turn on AI features', 'Turn on AI features?', 'We’ll email the shop owner that AI is on for their shop.', 'Turn on'),
-    confirmDlg('D3 Turn off approval', 'Turn off approval?', 'New sign-ups in ' + SA_MARKET + ' won’t need a person to approve them. A seller whose details are complete, and whose business number the register lists as active with no differences, is approved automatically. Everyone else still goes to a person. Sellers already waiting aren’t approved.', 'Turn off approval', { tone: 'Destructive', size: 'Md' }),
-    confirmDlg('D3 Require approval', 'Require approval?', 'New sign-ups will wait for approval.', 'Require approval'),
-  ]);
-}
-function tplDialogsSellerDetails() {
-  const b9 = tplBody('Template body · D9 Confirm it’s you', bodyConfirmYou);
-  return tallScene('Dialogs · Seller details · Seller', [
-    dlg({ name: 'D9 Confirm it’s you', title: 'Confirm it’s you', primary: 'Continue', secondary: 'Cancel', content: b9 }),
-    confirmDlg('D3 Cancel change request', 'Cancel this request?', 'Your current details stay as they are.', 'Cancel request', { tone: 'Destructive', secondary: 'Keep request' }),
-    confirmDlg('D3 Withdraw submission', 'Withdraw your submission?', 'It leaves MondaPac’s review queue. Your details stay saved.', 'Withdraw submission', { tone: 'Destructive' }),
-    confirmDlg('D3 Save and withdraw', 'Save and withdraw your submission?', 'Your details will be saved and your submission withdrawn. Submit again when you’re ready.', 'Save and withdraw'),
-  ]);
-}
-function tplSheetConfirmYou() {
-  const b9 = tplBody('Template body · D9 Confirm it’s you', bodyConfirmYou);
-  return sheetScene('Dialog sheet · Confirm it’s you (phone)', dlg({ name: 'D9 Confirm it’s you (sheet)', layout: 'Sheet', title: 'Confirm it’s you', primary: 'Continue', secondary: 'Cancel', content: b9 }));
-}
-
-// ---- S7 Store profile (ux.md 3.1 S7 and 3.1a, F21), full seller shell
-const S7_NAME = 'Seller · Store profile';
-const S7_REQUESTED = 'Kuraby Fresh Grocers';
-const S7_REJECTED = 'We couldn’t accept this store name. Use the name customers know your shop by.';
-const PLAIN_TEXT = 'Plain text only. Web addresses and formatting are shown as typed.';
-// The AU Market's sample money values: the currency code and tax phrase come from Market configuration, amounts are formatted with Intl.
-const MIN_CURRENCY = 'AUD';
-const MIN_MONEY = { saved: 'A$50.00', latest: 'A$40.00', example: 'A$25.00' };
-const MIN_UNIT = 'Amount in ' + MIN_CURRENCY + ', including GST';
-const ACTING_AS = 'You’re signed in as this seller. Edit their details from the seller’s page.';
-const MIN_APPLIES = 'Customers can’t check out your items with less than this. Shipping isn’t counted. A change applies at once, including to open carts.';
-function s7Field(label, value, o) {
-  o = o || {};
-  if (!o.area) return setupField(label, { value: value, helper: o.helper, optional: o.optional, state: o.readOnly ? 'Disabled' : null });
-  const ta = S.sets.Textarea.set.children.filter(function (c) { return c.name === (o.readOnly ? 'State=Disabled' : (value ? 'State=Filled' : 'State=Default')); })[0];
-  const p = { Label: label, Helper: o.helper || PLAIN_TEXT, 'Show helper': true, 'Show counter': true, Counter: o.counter || (value.length + ' / 2000'), 'Show error': false, Control: { comp: ta } };
-  const f = inst('Field', p, { name: 'field-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), sizeH: 'FILL' });
-  if (value) setNested(f, 'control', prop('Textarea', 'Value', value));
-  return f;
-}
-function saveBar(state) { return setupBar({ primary: 'Save', secondary: null, state: state || 'Clean' }); }
-// The identity rows: owner (Request a change), Staff (the reason instead), pending or not accepted (the store name as a Compare row).
-const S7_OWNER_ONLY = 'Only the shop owner can change these details.';
-const S7_PENDING = 'Another change request is waiting. Cancel it or wait for the decision.';
-// A DataRow "Request a change" that is disabled, with its reason as the row's note.
-function askOff(r) { setNested(r, 'action', { State: 'Disabled' }); return r; }
-function identityRows(o) {
-  const ask = o.readOnly ? null : 'Request a change'; const off = o.staff || o.pending; const note = o.staff ? S7_OWNER_ONLY : (o.pending ? S7_PENDING : null);
-  let store;
-  if (o.pending) store = saRow({ label: 'Store name', value: SETUP.store, compare: S7_REQUESTED, valueLabel: 'Current', compareLabel: 'Requested', flag: FLAG.waiting, action: 'Cancel request', note: 'Your current details stay in use until MondaPac reviews this.' });
-  else if (o.notAccepted) store = saRow({ label: 'Store name', value: SETUP.store, compare: S7_REQUESTED, valueLabel: 'Current', compareLabel: 'Requested', flag: FLAG.notAccepted, action: 'Request a change', note: S7_REJECTED });
-  else store = saRow({ label: 'Store name', value: SETUP.store, action: ask, note: note, narrow: o.narrow });
-  const rows = [saRow({ label: 'Business name', value: SETUP.business, action: ask, note: note, narrow: o.narrow }), saRow({ label: SETUP.idLabel, value: SETUP.abn, action: ask, note: note, narrow: o.narrow })];
-  if (off && ask) { if (o.staff) askOff(store); rows.forEach(askOff); }
-  return [store].concat(rows);
-}
-function s7General(o) {
-  const kids = [header('General', null), frame({ name: 'locked-note', dir: 'H', pad: [0, 'space/5', 'space/2', 'space/5'], sizeH: 'FILL' }, [saLine('These details need a review before they change.', 'identity-note')])].concat(identityRows(o));
-  if (o.readOnly) kids.push(saRow({ label: 'Phone', value: SETUP.phone, narrow: o.narrow }), saRow({ label: 'Contact email', value: SETUP.contact, narrow: o.narrow }));
-  kids.push(saRow({ label: 'Sign-in email', value: SETUP.signIn, note: 'To change it, contact us.', narrow: o.narrow }));
-  if (!o.readOnly) {
-    const form = [setupField('Phone', { value: SETUP.phone }), setupField('Contact email', { value: SETUP.contact, optional: true, helper: CONTACT_HELP })];
-    if (o.ai) form.push(saLine('AI is on for your shop.', 'ai-on', 'text/secondary'));
-    if (!o.narrow) form.push(saveBar());
-    kids.push(frame({ name: 'body', dir: 'V', gap: 'space/4', pad: ['space/4', 'space/5', 'space/5', 'space/5'], sizeH: 'FILL' }, form));
-  }
-  return card('General', kids);
-}
-function s7Address(o) {
-  const ask = o.readOnly ? null : 'Request a change';
-  const where = saRow({ label: 'Where your shop works from', value: SETUP.street + ', ' + SETUP.locality + ' ' + SETUP.region + ' ' + SETUP.postcode, action: ask, note: o.staff ? S7_OWNER_ONLY : (o.pending ? S7_PENDING : null), narrow: o.narrow });
-  if (ask && (o.staff || o.pending)) askOff(where);
-  return card('Address', [header('Address', null), where,
-    saRow({ label: 'Work time zone', value: SETUP.zone + ' (' + SETUP.zoneId + ')', note: 'To change this, contact us.', narrow: o.narrow }), saRow({ label: 'Shop web address', value: SETUP.storefront + SETUP.slug, note: 'To change this, contact us.', narrow: o.narrow })]);
-}
-const S7_TEXTS = { description: 'Fresh lamb, beef and poultry, cut to order in Kuraby since 2009. Order by 2 pm for same-day pickup.', policies: 'Unopened items can be returned within 7 days. Chilled items can’t be returned once collected.' };
-function s7Texts(o) {
-  const ro = o.readOnly;
-  const cards = [];
-  if (o.langs) cards.push(tabsBar([['English', null, true], ['Persian', null, false]]));
-  cards.push(setupCard('Description', [s7Field('Shop description', S7_TEXTS.description, { area: true, readOnly: ro })]),
-    setupCard('Policies', [s7Field('Returns and refunds', S7_TEXTS.policies, { area: true, readOnly: ro })]),
-    setupCard('SEO', [s7Field('Search title', 'Kuraby Fresh: fresh meat in Kuraby', { readOnly: ro }), s7Field('Keywords', 'lamb, beef, chicken, Kuraby', { readOnly: ro }), s7Field('Search description', 'Fresh lamb, beef and poultry, cut to order.', { area: true, counter: '43 / 160', readOnly: ro })]),
-    setupCard('Social', [s7Field('Instagram', 'https://instagram.com/kurabyfresh', { helper: 'Links to facebook.com, instagram.com or youtube.com only.', readOnly: ro }), s7Field('Facebook', '', { optional: true, readOnly: ro })]));
-  if (!ro) cards.push(saveBar('Dirty'));
-  return frame({ name: 'texts', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, cards);
-}
-function s7Tax(o) { return card('Tax registration', [header('Tax registration', null), saRow({ label: SETUP.taxQuestion, value: 'Yes, from ' + SETUP.taxFrom, action: o.readOnly ? null : 'Record a change', note: 'MondaPac doesn’t decide whether you must register.' })]); }
-// The Settings card: the minimum order in each state of 3.1a.
-const MIN_STATES = ['None', 'Set', 'Dirty', 'Saving', 'Removed', 'Invalid amount', 'Wrong currency', 'Save conflict', 'Load error', 'No edit permission', 'Acting-as'];
-function minField(value, error) { return setupField('Minimum order (optional)', { value: value, prefix: MIN_CURRENCY, helper: error ? null : MIN_UNIT, error: error }); }
-function minOrder(state) {
-  const kids = [];
-  if (state === 'Load error') return [saBanner('Critical', 'We couldn’t load this card.', 'Try again', 'load-error')];
-  if (state === 'No edit permission') return [saRow({ label: 'Minimum order', value: MIN_MONEY.saved })];
-  if (state === 'Acting-as') return [saBanner('Attention', ACTING_AS, null, 'acting-as'), saRow({ label: 'Minimum order', value: MIN_MONEY.saved })];
-  if (state === 'Invalid amount') kids.push(saBanner('Critical', 'Check the details below', null, 'error-summary'));
-  if (state === 'Wrong currency') kids.push(saBanner('Attention', 'This amount isn’t in ' + MIN_CURRENCY + '. Reload the page and try again.', 'Reload', 'currency'));
-  if (state === 'Save conflict') kids.push(saBanner('Attention', 'This setting was changed somewhere else. The latest value is ' + MIN_MONEY.latest + '. Check it and save again.', null, 'conflict'));
-  const value = { None: '', Removed: '', Dirty: '60.00', Saving: '60.00', 'Invalid amount': '0', 'Save conflict': '60.00', 'Wrong currency': '60' }[state];
-  kids.push(minField(value === undefined ? '50.00' : value, state === 'Invalid amount' ? 'Enter an amount greater than zero, for example ' + MIN_MONEY.example + '.' : null), setupNote(MIN_APPLIES, 'applies'));
-  if (state === 'None' || state === 'Removed') kids.push(setupNote('No minimum. Customers can order any amount.', 'none'));
-  else kids.push(frame({ name: 'current', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [saLine('Current minimum: ' + (state === 'Save conflict' ? MIN_MONEY.latest : MIN_MONEY.saved), 'current-text', 'text/secondary'), linkBtn('Remove minimum', null, 'remove')]));
-  const bar = { None: ['Clean', true, true], Set: ['Clean'], Dirty: ['Dirty'], Saving: ['Saving'], Removed: ['Clean'], 'Invalid amount': ['Error'], 'Wrong currency': ['Dirty'], 'Save conflict': ['Dirty'] }[state];
-  kids.push(setupBar({ primary: 'Save', secondary: null, state: bar[0], disabled: bar[1], noStatus: bar[2] }));
-  if (state === 'Removed') kids.push(inst('Toast', { Tone: 'Success', Message: 'Minimum removed.', 'Show action': false }, { name: 'Toast' }));
-  return kids;
-}
-function s7Settings(o) { return setupCard('Settings', o.readOnly ? minOrder('No edit permission') : minOrder('None')); }
-// o: { pending, notAccepted, staff, readOnly, langs, ai }
-function s7Content(o) {
-  const kids = [pageTitle('Store profile', null, [])];
-  if (o.readOnly) kids.push(saBanner('Info', 'You can view this page but not change it.', null, 'view-only'));
-  kids.push(s7General(o), s7Address(o), s7Texts(o), s7Tax(o), s7Settings(o));
-  return kids;
-}
-function shopSwitcher(scr) { // the sample shop name of 1.10.0 frames, also in a file whose Sidebar still has an older sample
-  const t = scr.findOne(function (n) { return n.type === 'TEXT' && n.parent && n.parent.name === 'button' && n.parent.parent && n.parent.parent.name === 'shop-switcher'; });
-  if (t && t.characters !== SETUP.store) t.characters = SETUP.store;
-}
-function tplS7(state, o) {
-  const scr = screen(S7_NAME + (state ? ' · ' + state : ''), 'Seller', 'nav-settings', 'Store profile', [frame({ name: 'content', dir: 'V', gap: 'space/5', w: 760 }, s7Content(o || {}))], { minH: PANEL_MIN_H });
-  shopSwitcher(scr);
-  return scr;
-}
-function tplS7Min() { return stateBoard(S7_NAME + ' · Minimum order states', 'Store profile: minimum order', 'The Settings card in each state of ux.md 3.1a. The prefix is the Market\'s ISO currency code, never a bare "$"; amounts are formatted with Intl in the page locale. No view permission is B5, as for the whole page.', MIN_STATES, function (s) { return frame({ name: 'card-body', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, minOrder(s)); }); }
-function tplS7Phone() {
-  const o = { narrow: true };
-  const scr = phoneScreen(S7_NAME + ' (phone)', 'Seller', [text('Store profile', 'Heading/H1', 'text/primary', { sizeH: 'FILL' }), s7General(o), s7Address(o), s7Settings(o)], 'More');
-  applyDensity(scr, 'touch');
-  return scr;
-}
-
-// ---- the list of 1.10.0 frames: [group, name, make]
-// At most six desktop frames per row, so Templates · Admin keeps the width the earlier rows gave it; the admin state boards share one row.
-const SELLER_ADMIN_ROWS = ['sa-sellers', 'sa-review', 'sa-detail', 'sa-settings', 'sa-boards', 'sa-profile', 'sa-dialogs', 'sa-phone'];
-function sellerAdminDefs() {
-  const p1 = function (s) { return ['sa-sellers', P1P3_NAME + (s ? ' · ' + s : ''), function () { return tplP1P3(s); }]; };
-  const p2 = function (s) { return ['sa-detail', P2_NAME + (s ? ' · ' + s : ''), function () { return tplP2(s); }]; };
-  return {
-    'tpl-admin': [p1(null), p1('Selected'), p1('Selection limit'), p1('Incomplete'), p1('Approved'), p1('View only'), ['sa-boards', P1P3_NAME + ' · Empty states', tplP1P3Empty]]
-      .concat(P3_FRAMES.map(function (f) { return ['sa-review', P3_NAME + ' · ' + f[0], function () { return tplP3(f[0], f[1]); }]; }), [
-        ['sa-boards', P3_NAME + ' · Register states', tplP3Register], ['sa-boards', P3_NAME + ' · Approve disabled', tplP3Blocked],
-        p2(null), p2('Edit'), p2('Not approved'), p2('View only'), p2('History'),
-        ['sa-boards', P2_NAME + ' · Banners', tplP2Banners], ['sa-boards', P2_NAME + ' · Edit banners', tplP2EditBanners], ['sa-boards', P2_NAME + ' · Admin-only settings states', tplC1States],
-        ['sa-settings', P4_NAME, function () { return tplP4(null); }], ['sa-settings', P4_NAME + ' · View only', function () { return tplP4('View only'); }], ['sa-boards', P4_NAME + ' · States', tplP4States],
-        ['sa-dialogs', 'Dialogs · Seller review · Admin', tplDialogsReview], ['sa-dialogs', 'Dialogs · Seller detail · Admin', tplDialogsDetail], ['sa-dialogs', 'Dialogs · Seller settings · Admin', tplDialogsSettings],
-        ['sa-phone', P1P3_NAME + ' (phone)', tplP1P3Phone],
-      ]),
-    'tpl-seller': [
-      ['sa-profile', S7_NAME, function () { return tplS7(null, { ai: true }); }], ['sa-profile', S7_NAME + ' · Pending change', function () { return tplS7('Pending change', { pending: true }); }],
-      ['sa-profile', S7_NAME + ' · Not accepted', function () { return tplS7('Not accepted', { notAccepted: true }); }], ['sa-profile', S7_NAME + ' · Staff', function () { return tplS7('Staff', { staff: true }); }],
-      ['sa-profile', S7_NAME + ' · View only', function () { return tplS7('View only', { readOnly: true }); }], ['sa-profile', S7_NAME + ' · Languages', function () { return tplS7('Languages', { langs: true }); }],
-      ['sa-profile', S7_NAME + ' · Minimum order states', tplS7Min],
-      ['sa-dialogs', 'Dialogs · Seller details · Seller', tplDialogsSellerDetails],
-      ['sa-phone', S7_NAME + ' (phone)', tplS7Phone], ['sa-phone', 'Dialog sheet · Confirm it’s you (phone)', tplSheetConfirmYou],
-    ],
-  };
-}
-function sellerAdminNames(key) { return sellerAdminDefs()[key].map(function (d) { return d[1]; }); }
-// The sets the 1.10.0 templates place (a template is built only when each one is the plugin's own).
-const SELLER_ADMIN_TEMPLATE_NEEDS = ['Sidebar', 'Topbar', 'PhoneTopbar', 'BottomTabBar', 'Button', 'IconButton', 'Input', 'Field', 'FieldStatus', 'Select', 'Textarea', 'Badge', 'CountBadge', 'InfoBanner', 'CardHeader', 'TableCell',
-  'Checkbox', 'CheckboxRow', 'SettingRow', 'SegmentedControl', 'Switch', 'Tab', 'FilterChip', 'IdentityTile', 'Menu', 'MenuItem', 'BulkActionBar', 'DataRow', 'FormActionBar', 'EmptyState', 'ReasonQuote', 'TimelineItem', 'Dialog', 'DialogBody', 'Toast'];
-// Dark preview copies added in 1.10.0.
-const DARK_1100 = [P3_NAME + ' · Application', S7_NAME + ' · Pending change'];
-
 // ==== 50_main.js ====
 // ---------------------------------------------------------------- pages & orchestration
 const PAGES = [
@@ -5061,16 +4280,14 @@ async function build(force) {
     templatesPage(h, 'Templates · Admin', 'Full screens built only from library instances. Copy a template to start a new Admin screen; never detach the shell.', list);
     addPanelTemplates(h, 'tpl-admin'); // 1.8.0 Panel: Members, Roles, No access, Account security, dialogs (one canvas row per group, below the first row)
     addPanelTemplates(h, 'tpl-admin', null, panel183Defs, PANEL183_ROWS); // 1.8.3: Sellers list (P1), role editor, dialogs D4 to D6, unsaved changes
-    addPanelTemplates(h, 'tpl-admin', null, sellerAdminDefs, SELLER_ADMIN_ROWS); // 1.10.0 Seller admin: Sellers (Phase 3), Seller review, Seller detail, Seller settings, dialogs
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
     const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
-    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below; Seller · Setup (1.9.0: S1 with the sellers steps, S2 to S6) in the rows after them, then Seller · Store profile (1.10.0, S7).', list);
+    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below; Seller · Setup (1.9.0: S1 with the sellers steps, S2 to S6) in the rows after them.', list);
     addPanelTemplates(h, 'tpl-seller');
     addPanelTemplates(h, 'tpl-seller', null, panel183Defs, PANEL183_ROWS);
     addPanelTemplates(h, 'tpl-seller', null, setupDefs, SETUP_ROWS); // 1.9.0 Seller setup: S1 in each seller state, the steps S2 to S6, two state boards, phone frames
-    addPanelTemplates(h, 'tpl-seller', null, sellerAdminDefs, SELLER_ADMIN_ROWS); // 1.10.0: Store profile (S7), its dialogs and phone frames
     return list;
   });
   const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
@@ -5079,8 +4296,8 @@ async function build(force) {
     return made.map(function (m) { return m.frame; });
   });
   await onPage(P['tpl-dark'], 'Dark preview', function (h) {
-    const byName = {}; sellerScreens.concat(authScreensBuilt, P['tpl-seller'].host.children, P['tpl-admin'].host.children).forEach(function (s) { byName[s.name] = s; });
-    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.concat(DARK_190, DARK_1100).map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
+    const byName = {}; sellerScreens.concat(authScreensBuilt, P['tpl-seller'].host.children).forEach(function (s) { byName[s.name] = s; });
+    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.concat(DARK_190).map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
     templatesPage(h, 'Templates · Dark preview', S.modes.color
       ? 'These frames use the Dark mode of the Color collection. Select any frame and switch the mode in the Appearance panel to compare.'
       : 'Starter plan: these copies are bound to the "Color · Dark" collection. Use the plugin buttons Dark theme / Light theme on a selection to switch any frame.', clones);
@@ -5548,25 +4765,6 @@ async function updateLibrary() {
     });
   }
 
-  // 2g · release 1.10.0 "Seller admin": SettingRow is a new set (its Control slot prefers Switch and SegmentedControl); CheckboxRow gets
-  // State=Saving and Show undo in place (propertySteps1100: the undo link is added hidden, so no existing instance changes).
-  if (S.sets.SettingRow && !own('SettingRow')) skip('SettingRow', 'component SettingRow: a component named SettingRow that is not the plugin\'s already exists in this file');
-  else if (!S.sets.SettingRow) {
-    const bad = ['Switch', 'SegmentedControl'].filter(function (d) { return !own(d); });
-    if (bad.length) skip('SettingRow', 'component SettingRow: it needs the plugin\'s ' + bad.join(', '));
-    else {
-      await onPage(T.forms, 'SettingRow', function (host) { settingRowBlock(docRoot(host, 'Forms & selection', PANEL_SUBTITLE['Forms & selection'])); fitSection(host); });
-      added.push('component SettingRow');
-    }
-  }
-  for (const step of propertySteps1100(own)) {
-    await onPage(pageOf(step.node), step.label, function () {
-      step.run().forEach(function (a) { added.push(a); });
-      let sec = step.node; while (sec && sec.type !== 'SECTION' && sec.type !== 'PAGE') sec = sec.parent;
-      if (sec && sec.type === 'SECTION') fitSection(sec);
-    });
-  }
-
   // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
   // A template is built only when every component it places is the plugin's (made earlier or in this run).
   const blockedBy = function (names) { return names.filter(function (n) { return skipped[n] || !own(n); }); };
@@ -5658,10 +4856,8 @@ async function updateLibrary() {
   const cbRec = S.sets.CheckboxRow;
   if (cbRec && cbRec.set && own('CheckboxRow') && cbRec.set.width > CHECKBOXROW_OPTS.width + 0.5) {
     const cs = cbRec.set, row = cs.parent, doc = row && row.name === 'Component + usage' && row.type === 'FRAME';
-    // the ten 1.8.0 variants, and the two State=Saving variants when 1.10.0 (step 2g) added them in this run or before
     const names = cs.children.map(function (c) { return c.name; });
-    const base = combos(CHECKBOXROW_AXES_180).map(variantName), all = combos(CHECKBOXROW_AXES).map(variantName);
-    const ok = doc && names.length === new Set(names).size && base.every(function (nm) { return names.indexOf(nm) >= 0; }) && names.every(function (nm) { return all.indexOf(nm) >= 0; });
+    const ok = doc && names.length === 10 && names.every(function (nm) { return /^Value=(Unchecked|Checked), State=(Default|Hover|Focus|Disabled|Read-only)$/.test(nm); });
     if (ok) fix181.cb = true; else log('ℹ skipped CheckboxRow layout: the set or its documentation row was changed by hand');
   }
   if (fix181.minH.length) {
@@ -5695,7 +4891,7 @@ async function updateLibrary() {
   const p183Block = blockedBy(PANEL183_TEMPLATE_NEEDS); if (!tcLoading) p183Block.push('TableCell State=Loading');
   // The frames place these variants by name; a set whose variants were renamed or removed by hand waits.
   const dialog183 = [['Md', 'Destructive', 'Centred'], ['Md', 'Default', 'Centred'], ['Sm', 'Default', 'Centred'], ['Sm', 'Destructive', 'Centred'], ['Sm', 'Destructive', 'Sheet']].map(function (v) { return { Size: v[0], Tone: v[1], Layout: v[2] }; });
-  [['CheckboxRow', combos(CHECKBOXROW_AXES_180)], ['Textarea', combos(TEXTAREA_AXES)], ['Dialog', dialog183]].forEach(function (d) {
+  [['CheckboxRow', combos(CHECKBOXROW_AXES)], ['Textarea', combos(TEXTAREA_AXES)], ['Dialog', dialog183]].forEach(function (d) {
     const rec = S.sets[d[0]];
     if (p183Block.indexOf(d[0]) < 0 && rec && rec.set && missingCombos(rec, d[1]).length) p183Block.push(d[0] + ' variants (' + missingCombos(rec, d[1]).map(variantName).join('; ') + ')');
   });
@@ -5739,39 +4935,6 @@ async function updateLibrary() {
       await onPage(T['tpl-dark'], 'Dark preview 1.9.0', function (host) {
         let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
         dark190.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
-        fitSection(host);
-      });
-    }
-  }
-
-  // 3h · 1.10.0 "Seller admin": Sellers (Phase 3), Seller review, Seller detail, Seller settings and their dialogs on Templates · Admin, the store
-  // profile on Templates · Seller, and two dark previews. Built when every set they place is the plugin's with its 1.9.0 and 1.10.0 parts.
-  const adminBlock = blockedBy(SELLER_ADMIN_TEMPLATE_NEEDS).concat(setupLacks(), sellerAdminLacks());
-  [['CheckboxRow', combos(CHECKBOXROW_AXES)], ['SettingRow', combos(SETTINGROW_AXES)], ['Dialog', combos(DIALOG_AXES).filter(function (p) { return !(p.Layout === 'Sheet' && p.Size === 'Md'); })],
-    ['DataRow', combos(DATAROW_AXES).filter(function (p) { return !DATAROW_SKIP(p); })], ['FormActionBar', combos(FAB_AXES)]].forEach(function (d) {
-    const rec = S.sets[d[0]];
-    if (adminBlock.indexOf(d[0]) >= 0 || !rec || !rec.set) return;
-    const miss = missingCombos(rec, d[1]);
-    if (miss.length) adminBlock.push(d[0] + ' variants (' + miss.map(variantName).join('; ') + ')');
-  });
-  if (adminBlock.length) log('ℹ skipped Seller admin templates: they need the plugin\'s ' + adminBlock.join(', '));
-  else {
-    const keys = ['tpl-admin', 'tpl-seller'];
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i]; const present = T[key].host.children.map(function (c) { return c.name; });
-      const missing = sellerAdminNames(key).filter(function (n) { return present.indexOf(n) < 0; });
-      if (!missing.length) continue;
-      let made = null;
-      await onPage(T[key], key === 'tpl-admin' ? 'Seller admin templates · Admin' : 'Seller admin templates · Seller', function (host) { made = addPanelTemplates(host, key, missing, sellerAdminDefs, SELLER_ADMIN_ROWS); fitSection(host); });
-      added.push('templates Seller admin · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + (made.frames === 1 ? ' frame' : ' frames') + (made.bodies ? ', ' + made.bodies + (made.bodies === 1 ? ' template body' : ' template bodies') : '') + ')');
-    }
-    const dark1100 = DARK_1100.filter(function (n) { return T['tpl-dark'].host.children.every(function (c) { return c.name !== n + ' · Dark'; }); }).map(function (n) {
-      return T['tpl-admin'].host.children.concat(T['tpl-seller'].host.children).filter(function (c) { return c.type === 'FRAME' && c.name === n && c.getPluginData(PLUGIN_TAG) === '1'; })[0];
-    }).filter(Boolean);
-    if (dark1100.length) {
-      await onPage(T['tpl-dark'], 'Dark preview 1.10.0', function (host) {
-        let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
-        dark1100.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
         fitSection(host);
       });
     }
