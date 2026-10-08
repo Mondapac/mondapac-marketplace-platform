@@ -314,7 +314,7 @@ through the PK.
 | `sensitive` | `boolean` | no | Classification at submit (D 4.3) |
 | `sensitive_reasons` | `text[]` | no | CHECK `<@ ARRAY['platform-categories','tax-category','name','primary-image','image-added-or-replaced','variant-removed','never-published','approval-required']` (D 9.2a codes); CHECK `sensitive OR cardinality(sensitive_reasons) = 0` |
 | `content_schema_version` | `smallint` | no | |
-| `content_hash` | `text` | no | `ContentHash` over the frozen content (ADR-0009). Plain SHA-256 is enough: the content is public business content, not personal (ADR-0009 d6 applies to personal fields). CHECK length 1 to 128 until `ContentHash` fixes the format |
+| `content_hash` | `text` | no | `ContentHash` over the frozen content (ADR-0009). Plain SHA-256 is enough: the content is public business content, not personal (ADR-0009 d6 applies to personal fields). CHECK `content_hash ~ '^sha256:[0-9a-f]{64}$'` (`ContentHash`, `docs/design/domain/platform-audit.md` 6.3; replaces the length 1 to 128 placeholder; the plain kind only, as this row says; signed off by Mojtaba 2026-10-08) |
 | `author_kind` | `text` | no | CHECK `seller`, `admin` |
 | `author_account_id` | `uuid` | no | C4 |
 | `acting_admin_account_id` | `uuid` | yes | Acting-as (IMP-06); CHECK `acting_admin_account_id IS NULL OR author_kind = 'seller'` |

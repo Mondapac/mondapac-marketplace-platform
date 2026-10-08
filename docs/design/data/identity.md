@@ -582,9 +582,11 @@ without a session (D 10.1), so the writer can only see the anonymous actor; `USE
 second way to name an actor, which that rule forbids.
 
 Conditions: an `ANONYMOUS` row is written only for a **successful** action whose credential
-binds exactly one account or invitation, named in `target_id`; failed attempts go to
-`sign_in_records`, so no attacker-driven volume enters a table that is never pruned (my concern
-in I8). `audit_log_actor_check` already forces `actor_id` to be NULL for every type but `USER`,
+binds exactly one account or invitation; the bound subject is named in `target_id` or in
+`after.boundSubjectId` (A3 as amended 2026-10-08 by Hassan's M3 and PA W4a: every action that
+allows `anonymous` declares `boundSubjectId`, and the writer refuses an `ANONYMOUS` entry without
+it). Failed attempts go to `sign_in_records`, so no attacker-driven volume enters a table that is
+never pruned (my concern in I8). `audit_log_actor_check` already forces `actor_id` to be NULL for every type but `USER`,
 and `audit_log_acting_as_check` then forces `acting_as_id` to be NULL: neither changes.
 
 ```sql
@@ -598,6 +600,19 @@ ALTER TABLE "platform"."audit_log"
 
 No grant changes. The append-only triggers do not fire on `ALTER TABLE`. After slice 6 has
 written rows the same change would need `NOT VALID` and `VALIDATE`; that is why it lands first.
+It is part of the migration `platform_audit_seal` of slice 6a (`platform.md` 11.10), not a
+migration of its own.
+
+**Founding rows** (Q1 of `docs/design/domain/platform-audit.md`, decided by Ali 2026-10-08). The
+Seller Owner's email verification, the unit that records `seller-registered`, writes three
+`ANONYMOUS` rows: `identity.seller-access.founded` and `identity.seller-member.added` (target: the
+seller access record) and `identity.account-role.assigned` (target: the account). Each `after`
+holds `sellerId`, `accountId` and `boundSubjectId` (the account), so the founding can be followed
+from the row alone. They are written at verification because the membership and the assignment
+take effect only then. Unverified sign-ups and the purge of unverified accounts write no row, and
+there is no backfill: sellers verified before slice 6b get no row after the fact. This adds no
+column or constraint here: the rows are ids and codes only, inside the 8 KB cap of `platform.md`
+11.2.
 
 ## 7. Grants
 
@@ -645,7 +660,7 @@ Api and worker share the group `mondapac_app` (platform.md 10.1), so the api als
 | 4 | 2 | `identity_sessions` | `sessions`, `sign_in_throttles`, `sign_in_records` |
 | 5 | 3 | `platform_event_delivery`, then `identity_links_inbox` | Two migrations in one PR: `event_delivery`; `one_time_links`, `inbox` |
 | 6 | 5 | `identity_seller_access_roles` | `seller_access`, `seller_memberships`, `roles`, `role_permissions`, `role_assignments`; the foreign key `sessions.seller_id` |
-| 7 | 6 | `platform_audit_anonymous` | Section 6, next to the audit design's own tables |
+| 7 | 6a | `platform_audit_seal` (`platform.md` 11.10) | Section 6, in the audit design's own migration |
 | 8 | 7 | `identity_second_factor_invitations` | `second_factors`, `recovery_codes`, `sign_in_challenges`, `invitations` |
 | 9 | 9 | `identity_access_decisions` | `access_decisions` |
 

@@ -2,10 +2,12 @@
 
 **Author:** Mojtaba (database-designer) — 2026-10-01
 **Status:** Approved by the CTO at the Phase 1 review, 2026-10-01 (ADR-0015). The migration
-was generated before that approval; design approval comes first from now on.
+was generated before that approval; design approval comes first from now on. Section 10 and
+section 11 (audit seal, revised 2026-10-08) carry their own status lines.
 **Ground truth:** ADR-0004 (decisions 4, 6, 7), ADR-0003, ADR-0005, ADR-0006, ADR-0009
 (pattern V4, decisions 6 and 8); IMP-10, IMP-06, CERT-32, SEL-08, VER-08.
-**Prisma model:** `prisma/schema/platform.prisma` (`AuditLog`).
+**Prisma model:** `prisma/schema/platform.prisma` (`AuditLog`; `AuditLogSeal` and
+`AuditChainCheckpoint` in section 11).
 
 ## 1. Baseline scope — verdict
 
@@ -108,6 +110,7 @@ it weakens "no UPDATE ever" to "one carefully-permitted UPDATE", doubles the wri
 row (dead tuple per sealed row), and forces hash columns to be designed before the
 canonical hashing is specified. Cost of the chosen option: the sealer finds unsealed rows
 by anti-join, which needs a bounded scan window; that is designed with the sealer.
+Designed in section 11 (2026-10-08): the direction holds; the columns differ from this working list.
 
 ### 3.6 Deliberately not included
 - `recorded_at` (database clock): `@default(dbgenerated("now()"))` produces permanent
@@ -218,7 +221,8 @@ version-specific.
   Phase 1; the orchestrator's scope is "table only, no writer". Recommendation: ship the
   table now, and the seal table together with the writer and sealer (canonical row
   encoding and hash need software-architect and security-tester input). Confirm, and
-  confirm the separate-seal-table direction (3.5).
+  confirm the separate-seal-table direction (3.5). Answered by section 11 (slice 6a) once it
+  is approved.
 - **Q2 — Stack-level audit events.** Are there audited actions with no market (creating a
   Market, Region Stack configuration)? Current design says no (`market_id` NOT NULL).
 - **Q3 — Database roles.** Closed by section 10: separate migration and application roles
@@ -230,7 +234,8 @@ version-specific.
 - **Q5 — Retention.** How long must audit rows be kept per Market (AU tax/consumer-law
   records)? Needed before partitioning/retention is designed, not before this migration.
 - **Q6 — `actor_type` values.** `USER` / `SYSTEM` only. If API clients or service
-  accounts become first-class principals, a new value is a small CHECK migration.
+  accounts become first-class principals, a new value is a small CHECK migration. `ANONYMOUS`
+  was decided in `docs/design/data/identity.md` 6 and lands in section 11.2.
 
 ## 8. Sign-off checklist for the generated migration
 
@@ -583,7 +588,7 @@ stricter list: Hassan's five checks plus Ali's ownership of the database.
 | `owner_membership` | is, or is a member of, the owner of the database or of any schema, relation or function outside PostgreSQL's own schemas (this also covers connecting as the owner itself, which `role_membership` passes as "itself"; widened in item 7 from Hassan's review, was the database and `platform.audit_log` only) | `pg_has_role` on `pg_database.datdba`, `pg_namespace.nspowner`, `pg_class.relowner` and `pg_proc.proowner` |
 | `create_on_database`, `create_on_schema` | has `CREATE` on the database or on any schema | `has_database_privilege`; `has_schema_privilege` over `pg_namespace` |
 | `temporary_on_database` | has `TEMPORARY` on the database (added in item 7, Mojtaba and Hassan: closes 10.5 gap 5 in deployed environments too) | `has_database_privilege(…, 'TEMPORARY')` |
-| `audit_log_privilege` | holds `UPDATE`, `DELETE`, `TRUNCATE` or `TRIGGER` on `platform.audit_log`, a column-level `UPDATE` included, or `MAINTAIN` on PostgreSQL 17 and later (it allows `LOCK TABLE`; added in item 7 from Hassan's review) | `has_table_privilege(…, 'UPDATE, DELETE, TRUNCATE, TRIGGER')` or `has_any_column_privilege(…, 'UPDATE')`; `has_table_privilege` alone misses a column-level `UPDATE` (measured) |
+| `audit_log_privilege` | holds `UPDATE`, `DELETE`, `TRUNCATE` or `TRIGGER` on `platform.audit_log`, a column-level `UPDATE` included, or `MAINTAIN` on PostgreSQL 17 and later (it allows `LOCK TABLE`; added in item 7 from Hassan's review) | `has_table_privilege(…, 'UPDATE, DELETE, TRUNCATE, TRIGGER')` or `has_any_column_privilege(…, 'UPDATE')`; `has_table_privilege` alone misses a column-level `UPDATE` (measured). Section 11.6 widens it to `platform.audit_log_seal` and `platform.audit_chain_checkpoint` |
 | `role_timeouts` | has, in its own `pg_roles.rolconfig`, no `statement_timeout`, `lock_timeout` or `idle_in_transaction_session_timeout`, or one that is zero or above its ceiling (30 s, 3 s, 60 s; spike 6, K1a). Presence and ceiling only: the value is not compared for equality. A database-level setting (`ALTER DATABASE ... SET`) does not satisfy it, by design: the role model of 10.7 stays the single place for these settings | `SELECT rolconfig FROM pg_roles WHERE rolname = current_user`; parse the `name=value` entries (units `ms`, `s`, `min`) |
 
 ### 10.9 Prepared statements and partial indexes (spike 6, 2026-10-07)
@@ -606,3 +611,538 @@ warm on these statements (1.3 ms for a connection's first plan); that is the acc
 Tests: a unit test of the PrismaService factory asserts there is no `statementNameGenerator`. The
 role-settings test of 10.4 (K1a, identity data design 11.4) asserts `plan_cache_mode = auto` on the
 application login. A module design that relies on a partial index cites this section.
+
+## 11. Audit seal: hash chain and checkpoints (identity slice 6a)
+
+**Author:** Mojtaba (database-designer), 2026-10-08.
+**Status:** Revised 2026-10-08 after Ali's ruling and Hassan's review of PA (PA 18); signed off by
+Mojtaba as the data design of slice 6a; Ali approves. Still open: Hassan confirms F4 and F7 at the 6a
+review (11.12). Closes Q1 and the actor-type part of Q6 (section 7) once approved.
+**Ground truth:** `docs/design/domain/platform-audit.md` (cited as **PA**; sections 6, 7, 9.1, 11, 12,
+13 and 18 are its data inputs); ADR-0004 decision 7; ADR-0009 V4 and decisions 6 and 8; ADR-0015
+decision 2; ADR-0025; `docs/design/data/identity.md` 6 (`ANONYMOUS`) and 8.2; sections 3.4, 3.5, 5, 6
+and 10 of this file; P (PM6, PH4, 7).
+**Prisma models:** `AuditLogSeal` and `AuditChainCheckpoint` (new), and one change to `AuditLog`, in
+`prisma/schema/platform.prisma` (11.10).
+"Measured" refers to 11.11. **The hardening trigger** (Ali, 2026-10-08), used below: any non-local
+environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside
+the dev team.
+
+### 11.1 Scope
+
+One migration, `platform_audit_seal`, in slice 6a (PA 13, PA 15). It:
+- widens `audit_log_actor_type_check` to `ANONYMOUS` (identity data 6) and adds three CHECKs to
+  `audit_log`: whole milliseconds on `occurred_at`, and a size cap on `before` and `after` (11.2);
+- turns the existing time index of `audit_log` into a unique index, so that it can be the target of
+  the seal's foreign key (11.2);
+- creates `platform.audit_log_seal` (11.3) and `platform.audit_chain_checkpoint` (11.4), both
+  append-only (11.5), with `SELECT, INSERT` for `mondapac_app` (11.6), and both carrying the chain
+  `epoch` from the first version (11.13).
+
+No other schema changes. No backfill: `audit_log` is empty in every database, because no writer
+exists before slice 6.
+
+Before the hardening trigger, and not in this migration: the worker-only `INSERT` group (11.6), the
+epoch table and recovery command (11.13), and `transaction_timeout` on the login roles (11.14).
+
+```
+platform.audit_log                     platform.audit_log_seal                   platform.audit_chain_checkpoint
+  id (PK)                                (market_id, epoch, chain_seq) (PK)        (market_id, epoch, chain_seq) (PK)
+  UNIQUE (market_id, occurred_at, id) <── FK (market_id, audit_occurred_at,        chain_hash, hash_version,
+  ...                                         audit_log_id)                         created_at
+                                          UNIQUE (market_id, epoch,              (no FK to the seal: 11.4)
+                                            audit_occurred_at, audit_log_id)
+                                          row_hash, chain_hash, late,
+                                          hash_version, sealed_at
+```
+
+### 11.2 Changes to `platform.audit_log`
+
+| Change | Decision | Invariant it backs up |
+|---|---|---|
+| `audit_log_actor_type_check` | `actor_type IN ('USER', 'SYSTEM', 'ANONYMOUS')`, exactly as identity data 6. `audit_log_actor_check` and `audit_log_acting_as_check` stay, so an `ANONYMOUS` row has no `actor_id` and no `acting_as_id` (measured: `23514`) | PA W2: the actor is derived from the `CallContext`; `anonymous` maps to `ANONYMOUS` |
+| `audit_log_occurred_at_check` (new) | `occurred_at = date_trunc('milliseconds', occurred_at, 'UTC')`. The three-argument `date_trunc` is `IMMUTABLE` (the two-argument form on `timestamptz` is only `STABLE`). The column stays `timestamptz(6)` | PA W3 and 6.2: the row hash encodes `occurredAt` with exactly three fractional digits, so a stored microsecond would make the row unverifiable. A JavaScript `Date` already has millisecond precision, so the Prisma path always passes; the CHECK refuses a raw insert with microseconds (measured: `23514`), for example a hand-made backdated row (Hassan M2) |
+| `audit_log_before_size_check`, `audit_log_after_size_check` (new) | `octet_length(before::text) <= 8192`, and the same for `after` (NULL passes) | Hassan L3: a cap on what one row can hold. See the note under this table for why the text length and not `pg_column_size` |
+| `audit_log_market_id_occurred_at_id_idx` becomes `audit_log_market_id_occurred_at_id_key` | The same three columns, now `UNIQUE` (`@@unique` in Prisma). The id is the primary key, so uniqueness costs nothing logically, and the writer keeps three secondary indexes, not four | It is the referenced key of the seal's foreign key (11.3). It still serves the admin list (section 4) and the sealer's scan (11.7). It contains `occurred_at`, which a future range partition on `occurred_at` needs in every unique key (section 5; Ali's note, PA 11) |
+
+**Size cap: text length, not `pg_column_size`** (the review note asked for `pg_column_size(...) <=
+8192`). The writer caps the canonical JSON of each field at 4 KB (PA W4), and the database cap must
+never refuse what the writer accepts, or an audited action fails. Measured on 4 KB canonical JSON:
+
+| Shape (about 4 096 bytes canonical) | `pg_column_size` of the jsonb | `octet_length(jsonb::text)` |
+|---|---|---|
+| array of 2 045 zeros | 24 562 | 6 142 |
+| 400 short keys with small integers | 7 570 | 3 964 |
+| array of 105 UUID strings | 4 224 | 4 207 |
+| array of 240 safe-integer maxima | 4 822 | 4 327 |
+| array of 818 `true` | 3 296 | 4 915 |
+
+The binary size of jsonb can be six times the canonical text, so `pg_column_size <= 8192` would
+refuse a writer-valid entry. The text form adds at most one space per separator to the canonical form
+(numbers are safe integers only, PA 3.2 and 8 (k)), so it stays under 1.5 times the canonical size and
+under 8 192 for every entry the writer accepts. `pg_column_size` would also measure a compressed value
+when a row is copied with `INSERT ... SELECT` from another table, so its result would depend on how the
+value arrived. The cast costs microseconds at this size. Measured: the 4 KB array of zeros is accepted,
+an 8 200-character value in `before` or in `after` is refused with `23514`.
+
+PA 13 asked for a unique `(market_id, id)` as the referenced key. Not added: it would be a fourth index
+on the writer's path, and the existing time index carries the foreign key instead. The seal stores
+`audit_occurred_at` anyway, for its watermark (11.8), so the foreign key over `(market_id,
+audit_occurred_at, audit_log_id)` also proves that this copy equals the row's `occurred_at`.
+
+### 11.3 Table `platform.audit_log_seal`
+
+Versioning pattern: V4 append-only. Market-scoped. One row per audit row sealed in an epoch; the rows
+of one Market and epoch form one chain (PA 6.2, 9.1).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `market_id` | `varchar(8)` | no | Part of the PK and of the foreign key (PM6) |
+| `tenant_id` | `text` | no | Seam (ADR-0001), from the sealer's context. Not compared with the audit row's tenant in the database; the row hash covers the row's `tenantId` |
+| `epoch` | `integer` | no | Chain epoch (11.13). 1 from the first seal; a new epoch only through the recovery command of PA 9.1. No default: the sealer writes it |
+| `chain_seq` | `bigint` | no | 1, 2, 3, ... per Market and epoch. Prisma `BigInt` (a JavaScript `bigint`: log lines must turn it into a string) |
+| `audit_log_id` | `uuid` | no | The sealed row |
+| `audit_occurred_at` | `timestamptz(6)` | no | Copy of the row's `occurred_at`. Kept equal by the foreign key, never by code. Reason: the watermark and the late-row scan read the seal by time (11.8), and a later time partition of the seal needs it (11.9) |
+| `row_hash` | `bytea` | no | 32 bytes, SHA-256 of PA 6.2 |
+| `chain_hash` | `bytea` | no | 32 bytes, SHA-256 of PA 6.2, with `hash_version` and `epoch` in its input |
+| `late` | `boolean` | no | Sealed below the watermark (PA 6.1 option A); part of the chain hash |
+| `hash_version` | `smallint` | no | 1 today (PA 6.2) |
+| `sealed_at` | `timestamptz(6)` | no | From the sealer's `Clock`. Not part of any hash; for operations only |
+
+**Not stored: `prev_chain_hash`** (F4). It always equals the `chain_hash` of `chain_seq - 1` in the same
+Market and epoch (or, for `chain_seq = 1`, the epoch's genesis value, 11.13), so it is a copy with nothing
+to keep it equal. The link check reads the predecessor's `chain_hash`, and after a retention drop the
+first retained link starts from the anchored checkpoint (PA 8, 11). One copy fewer is also one tamper
+target fewer.
+
+**Hash columns: `bytea`, not text** (F8). The database holds the 32 raw bytes, with `octet_length(...) =
+32` as the CHECK. The `ContentHash` text form (`sha256:` plus 64 lowercase hex, PA 6.3) is used at the
+boundaries only: the anchor, the log lines and the operator commands. Two hashes take 33 bytes each
+instead of 72 as text (about 78 bytes a row less, estimated), and the verifier compares bytes. The
+sellers, catalog and certification `content_hash` columns stay text in `ContentHash` form (PA 6.3):
+they are part of their aggregates and travel through events.
+
+| Key or constraint | Definition | Invariant |
+|---|---|---|
+| `audit_log_seal_pkey` | `PRIMARY KEY (market_id, epoch, chain_seq)` | One chain position is taken once per Market and epoch. Two sealers that read the same head collide here (11.8) |
+| `audit_log_seal_market_id_epoch_occurred_at_id_key` | `UNIQUE (market_id, epoch, audit_occurred_at, audit_log_id)`. The name is shortened from the convention, which would exceed 63 characters | Each audit row is sealed at most once **per epoch**. Within an epoch this is the `UNIQUE (market_id, audit_log_id)` of PA 7.2: `audit_log.id` is the primary key, so an id has one `occurred_at`, and the foreign key forces that value, so two seals of one row in one epoch carry equal keys (measured: `23505`). Per epoch and not global on purpose (F13): a row that only a foreign or rejected seal covers must be sealable again in the next epoch. With a global key, the new epoch's batch would select that row above its starting watermark, fail with `23505` on this key and stall as `audit.seal.duplicate-row` on every run; and one forged seal, in any epoch number, would keep that row out of every valid chain for good (measured: the same row seals in epoch 2). The epoch leads after the Market, so the watermark of an epoch is one backward probe and the anti-join probe matches the whole key |
+| `audit_log_seal_market_id_audit_occurred_at_audit_log_id_fkey` | `FOREIGN KEY (market_id, audit_occurred_at, audit_log_id) REFERENCES audit_log (market_id, occurred_at, id) ON DELETE RESTRICT ON UPDATE RESTRICT`, never `CASCADE` (Hassan I2) | A seal names an existing row of the same Market with its true time (PM6; measured: another Market or another time gives `23503`) |
+| `audit_log_seal_market_id_check` | `market_id ~ '^[A-Z][A-Z0-9_]{1,7}$'` | As every newer table (identity data C1) |
+| `audit_log_seal_tenant_id_check` | `tenant_id ~ '^[a-z][a-z0-9-]{1,31}$'` | As above |
+| `audit_log_seal_epoch_check` | `epoch >= 1` | Epochs start at 1 (Ali) |
+| `audit_log_seal_chain_seq_check` | `chain_seq >= 1` | Each epoch's chain starts at 1 (PA 6.2, 8 (a)) |
+| `audit_log_seal_genesis_check` | `epoch > 1 OR chain_seq > 1 OR NOT late` | The first seal of epoch 1 cannot be late: there is no watermark below it. A later epoch starts behind a watermark, so its first seal may be late |
+| `audit_log_seal_row_hash_check`, `audit_log_seal_chain_hash_check` | `octet_length(...) = 32` | SHA-256 length |
+| `audit_log_seal_hash_version_check` | `hash_version IN (1)` | A new hash version is a code and design change; widening this list is its small migration |
+
+The relation is one-to-many in Prisma (`AuditLog.seals`), because the unique key includes the epoch. The
+sealer's anti-join filters on the current epoch (11.8); a reader that wants the seal of a row takes the
+one of the newest epoch.
+
+Gaps in `chain_seq` are not refused by the database. A self-referencing foreign key on `chain_seq - 1`
+would do it, but it would block every future retention drop of the oldest seals (11.9). The verifier's
+check (a) covers gaps (PA 8).
+
+### 11.4 Table `platform.audit_chain_checkpoint`
+
+Versioning pattern: V4 append-only. Market-scoped. A few rows a day per Market.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `market_id` | `varchar(8)` | no | |
+| `tenant_id` | `text` | no | |
+| `epoch` | `integer` | no | The epoch of the checkpointed seal |
+| `chain_seq` | `bigint` | no | The head at checkpoint time |
+| `chain_hash` | `bytea` | no | 32 bytes; the `chain_hash` of that seal |
+| `hash_version` | `smallint` | no | |
+| `created_at` | `timestamptz(6)` | no | From the sealer's `Clock` |
+
+Keys and CHECKs: `audit_chain_checkpoint_pkey` `PRIMARY KEY (market_id, epoch, chain_seq)`;
+`_market_id_check`, `_tenant_id_check`, `_epoch_check` (`>= 1`), `_chain_seq_check` (`>= 1`),
+`_chain_hash_check` (`octet_length = 32`) and `_hash_version_check` (`IN (1)`), each prefixed
+`audit_chain_checkpoint`, with the same expressions as 11.3.
+
+- **One checkpoint per chain position, only when the head moved** (F2, PA 7.1 steps 5 and 6). The daily
+  heartbeat is an anchor object and log line, never a row here.
+- **No foreign key to the seal**, deliberately. Checkpoints are never dropped, while old seals are (PA
+  11). A foreign key would block that drop. The verifier's check (e) compares each checkpoint with the
+  chain.
+- **An epoch's genesis is not a checkpoint row** (`chain_seq >= 1`). It is recorded by the epoch table
+  of 11.13, together with the recovery command.
+
+### 11.5 Append-only enforcement
+
+As section 3.4, for both tables: a row trigger refuses `UPDATE` and `DELETE` and a statement trigger
+refuses `TRUNCATE`, for every role including the owner (`23001`), and the application has `SELECT,
+INSERT` only. One new trigger function, `platform.audit_chain_reject_mutation()`, names the table from
+`TG_TABLE_SCHEMA` and `TG_TABLE_NAME`. `platform.audit_log_reject_mutation()` stays unchanged: its
+message names `audit_log`, and changing it would need `CREATE OR REPLACE` and a matching restore in
+`down.sql`. Trigger functions get no grant (10.2).
+
+The limits of 3.4 apply unchanged: the owner can drop a trigger, and the anchors of PA 8 are the
+control against a rewritten chain, not these triggers.
+
+### 11.6 Grants, privilege map and self-check
+
+Privileges line of both tables, in slice 6a: `mondapac_app`: **`SELECT, INSERT`** (10.2, append-only
+table).
+
+| Item | Change in the same PR |
+|---|---|
+| `migration.sql` | `GRANT SELECT, INSERT ON TABLE "platform"."audit_log_seal" TO "mondapac_app";` and the same for `"platform"."audit_chain_checkpoint"` (11.10). Schema `USAGE` exists since `app_role_grants` |
+| `down.sql` | The two `REVOKE`s first, in reverse order |
+| Expected map (10.5 guard 1, `apps/api/test/db/expected-privileges.ts`) | `'platform.audit_log_seal'` and `'platform.audit_chain_checkpoint'`, each `{ table: ['INSERT', 'SELECT'], columnUpdate: [] }` |
+| Role test (10.4) | The case for `audit_log` runs on all three tables: `INSERT` and `SELECT` succeed; `UPDATE`, `DELETE`, `TRUNCATE`, `SELECT ... FOR UPDATE` and `FOR SHARE` fail with `42501` (measured on both new tables); as owner, `UPDATE`, `DELETE` and `TRUNCATE` fail with `23001` (measured) |
+| Start-up self-check `audit_log_privilege` (10.8) | Widened to the three tables, with the table in the second column. The reason code stays the same |
+
+```sql
+SELECT 'audit_log_privilege', t.name
+  FROM (VALUES ('platform.audit_log'), ('platform.audit_log_seal'), ('platform.audit_chain_checkpoint')) AS v(name)
+  CROSS JOIN LATERAL (SELECT v.name, pg_catalog.to_regclass(v.name) AS rel) AS t
+ WHERE t.rel IS NOT NULL
+   AND (pg_catalog.has_table_privilege(t.rel, 'UPDATE, DELETE, TRUNCATE, TRIGGER')
+        OR pg_catalog.has_any_column_privilege(t.rel, 'UPDATE')
+        OR CASE WHEN pg_catalog.current_setting('server_version_num')::int >= 170000
+                THEN pg_catalog.has_table_privilege(t.rel, 'MAINTAIN')
+                ELSE false END)
+```
+
+Measured: no row for the application login, three rows for the owner.
+
+The foreign key needs no privilege on `audit_log` beyond the existing ones: PostgreSQL runs the
+referential check as the owner of the referenced table (measured: the application login inserts
+seals). The check takes a `FOR KEY SHARE` row lock on the referenced audit row. That conflicts only
+with `UPDATE` and `DELETE`, which never happen, so the writer is never blocked by the sealer.
+
+**Worker-only `INSERT` group, before the hardening trigger** (Hassan M4; PA 13). Shape, to be built with
+Kazem as part of PH4:
+- a second fixed-name group, `mondapac_worker` (`NOLOGIN`, the attributes of `mondapac_app`, member of
+  `mondapac_app`), created by the cluster bootstrap as in 10.7, never by a migration;
+- the worker login is a member of `mondapac_worker`, the api login of `mondapac_app` only;
+- one migration revokes `INSERT` on both tables from `mondapac_app` and grants it to
+  `mondapac_worker`; the outbox `UPDATE (published_at)` and the delivery columns move with it (PH4);
+- the expected map of 10.5, the role test of 10.4 (per login) and the self-check of 10.8 learn the
+  second group: the api login must have no `INSERT` on the seal tables, and a `role_membership` rule
+  that names the allowed groups per `APP_ROLE`.
+This changes 10.1 ("`api` and `worker` share `mondapac_app`"), so it is recorded there when built. It
+is defence in depth; the anchors are the control.
+
+### 11.7 Access paths
+
+Volume used: 1.1 × 10⁶ audit rows (10⁶ AU over 100 days, which is the top of PA 12's planning range
+at 10⁴ a day, and 10⁵ ZZ), all but the last 10 minutes sealed in epoch 1. PostgreSQL 16.15.
+
+| Query (PA) | Index | Measured |
+|---|---|---|
+| Head and its predecessor (7.1 step 1): `WHERE market_id = $1 AND epoch = $current ORDER BY chain_seq DESC LIMIT 2` (the current epoch comes from 11.8, never from the seals) | `audit_log_seal_pkey`, backward | 4 buffers, 0.09 ms (measured with `ORDER BY epoch DESC, chain_seq DESC`, the same index path) |
+| Watermark (7.1 step 2; 11.8): `WHERE market_id = $1 AND epoch = $e ORDER BY audit_occurred_at DESC, audit_log_id DESC LIMIT 1` | the seal's unique key, backward, index only | 4 buffers, 0.04 ms |
+| Settled batch (7.1 step 3), 500 rows, shape of 11.8 | `audit_log_market_id_occurred_at_id_key`, forward range | 30 buffers, 0.44 ms |
+| Insert of 500 seals (`createMany`) | the PK, the unique key, and the foreign-key probe | 12.8 ms; 5.0 ms without the foreign key (F7). Measured before `epoch` was added; the index sizes are unchanged with it (alignment), so the figure stands |
+| Late-row scan (7.1 step 4) over 24 hours, Prisma's form (`seals: { none: { epoch: $e } }` becomes a correlated `NOT EXISTS`, planned as an anti-join) | the time index of `audit_log`, then one index-only probe per row into the seal's unique key | 21 to 27 ms and about 30 000 buffers for 9 919 rows: linear in the window, so about 0.2 s at 10⁵ rows a day; hence its cadence (11.8) |
+| Verifier batch (8): 1 000 seals by `chain_seq` range with their audit rows | `audit_log_seal_pkey` range, then `audit_log_pkey` per row | 2.4 ms, 4 000 buffers |
+| Verifier check (d), whole Market, one statement | hash anti-join, 100 MB spilled to disk at the default `work_mem` | 0.42 s. Run it in time slices of one day (PA 8), not as one statement |
+| Latest checkpoint; earliest retained checkpoint | `audit_chain_checkpoint_pkey`, backward or forward | not measured; one probe on a table of a few rows a day |
+| History of one target with `chain_seq` and `late` (PA 10, `AuditTrailReader`) | the existing target index, then the seal's unique key | not measured; one probe per row and epoch |
+
+Not added, on purpose:
+- No index on `audit_log_seal (market_id, sealed_at)` or on `late`. The lag alert (7.1 step 7) uses the
+  watermark and the first settled row above it; late rows are found by the scan, not by an index.
+- No partial index on non-late seals for the watermark: 11.8 reads it from the unique key.
+- No index on the checkpoint table beyond its PK.
+- On `audit_log`, nothing beyond the unique swap of 11.2. The writer's index count is unchanged.
+
+All indexes lead with `market_id`; every sealer and verifier statement has `market_id` at the top level
+and runs through the guarded `tx(market)`.
+
+### 11.8 The sealer's statements and concurrency
+
+| Topic | Decision |
+|---|---|
+| Isolation | READ COMMITTED (ADR-0025), one read-write unit per batch. The head is read again at the start of every batch, never carried over from the previous unit |
+| Current epoch | **Never read from the seals** (F12): the application can insert a seal with any `epoch`, so `max(epoch)` would let one forged row move the sealer to an epoch of the attacker's choice. Until the recovery command exists it is the constant 1 in code; afterwards it is the latest row of the epoch table (11.13), which only the operator command writes. A seal in an epoch that the epoch table does not know is ignored by the sealer and reported by the verifier as a foreign seal |
+| Watermark | **The greatest `(audit_occurred_at, audit_log_id)` sealed in the current epoch of the Market**, read from the unique key (11.7), never derived from the head (F1, Hassan M1; PA 7.1 step 2). Non-late seals ascend in `(occurred_at, id)` and late seals are always below them, so this maximum is the key of the last non-late seal. While a new epoch has no seal yet, the watermark is the epoch's starting key from the epoch table (11.13) |
+| Settled batch | Prisma has no row comparison, so the keyset is written as `marketId = $m AND occurredAt >= $wT AND (occurredAt > $wT OR id > $wId) AND occurredAt <= $settledUntil`, ordered by `occurredAt, id`, `take: 500`. The plain `OR` form (`occurredAt > $wT OR (occurredAt = $wT AND id > $wId)`) was measured at a `BitmapOr` plus a sort; this form is one index range. `$settledUntil` is `Clock.now() - S`, a parameter, never SQL `now()` |
+| Chain position | `epoch` = the current epoch; `chain_seq` of the batch's rows = head + 1, head + 2, ... in `(occurred_at, id)` order, late rows included, all from the head read in this unit |
+| Late-row scan | The relation filter `seals: { none: { epoch: $current } }` (no raw SQL), window `[max(watermark - 24 h, epoch start key), watermark]`: below an epoch's start, rows were sealed in the previous epoch and are not late. **At most once every 5 minutes per Market, plus once on the first run after the worker starts** (F3, accepted by Ali). Older backdated rows are found by the daily full verification, check (d) |
+| Two sealers | No row lock is possible or needed: the application role cannot `SELECT ... FOR UPDATE` or `FOR SHARE` on these tables (`42501`, measured). Serialisation comes from the PK `(market_id, epoch, chain_seq)`: any commit by another sealer between this unit's head read and its insert occupies `head + 1`, so the insert fails. Measured with two sessions: the second waited for the first's commit (1.3 s) and then failed with `23505`. If the first unit runs longer than `lock_timeout` (3 s) the second gets `55P03`. Both insert in ascending `chain_seq`, and the PK is checked before the other unique index (it is created first), so a deadlock is not expected; `40P01` is handled the same way. These mean "another sealer won": roll back, end this Market's run, log at info, never `audit.chain.broken` (F5) |
+| Which duplicate | PA 7.1 tells a lost race from a re-selected row by the constraint: `audit_log_seal_pkey` is a lost race; `audit_log_seal_market_id_epoch_occurred_at_id_key` is a sealed row selected again (`audit.seal.duplicate-row`). The SQLSTATE is `23505` for both, so the code must read the constraint name. Hossein checks that the conflict classifier gets it from the Prisma adapter's error (`P2002` with the constraint or its fields) and adds a database test for each of the two |
+| Job lock | The scheduler's `pg_try_advisory_xact_lock` per job (P 7) avoids wasted work across processes. It is not a correctness control, and no per-Market advisory lock is added |
+| Checkpoint | Inserted in the unit of the batch that moved the head, after its seals, at the new head and its epoch (11.4). The previous checkpoint is read from the checkpoint PK |
+| Settle window S | Agreed: 5 minutes with the test of PA 7.2. The database-side bound is 11.14. Runbook note (F6): with synchronous replication, a commit stays invisible to other sessions while it waits for the standby, with no timeout; a replication stall longer than the margin produces late rows that are false alarms |
+
+### 11.9 Volume, growth and retention
+
+- **Size, measured:** the seal row is 152 bytes on average (`pg_column_size` of the row). Heap plus
+  both indexes is about 240 bytes a row (heap 165 MB, PK 33 MB, unique key 52 MB for 1.08 × 10⁶ rows,
+  with and without `epoch`), so about 0.25 GB per million seals, as PA 12 estimated. At 10⁴ audit rows
+  a day per Market that is about 0.9 GB a year per Market, beside about 2 GB a year of `audit_log` at
+  that rate (heap 318 MB and indexes 322 MB for 1.1 × 10⁶ rows; the synthetic `after` is larger than a
+  real one). Checkpoints are negligible.
+- **Write cost:** nothing added to the writer's path (11.2) except the two size CHECKs (a cast of at
+  most a few kilobytes). The sealer touches each audit row once more for the foreign key's `FOR KEY
+  SHARE` lock, which writes a lock-only `xmax` on the audit row's page: measured about twice the WAL of
+  a sealer insert without the foreign key (412 kB against 225 kB for 500 rows right after a checkpoint,
+  full-page images included). No dead tuples; autovacuum defaults stay sufficient (section 5).
+- **No partitioning in slice 6.** Both tables are insert-only and far below the threshold of section 5.
+- **Retention (Q5, not part of slice 6).** Constraints this design leaves for that design:
+  - the seal's foreign key points at `(market_id, occurred_at, id)`, which contains the partition key,
+    so a time-partitioned `audit_log` can still be referenced (Ali's note);
+  - the foreign key means a seal must go before its audit row, so seal and audit partitions are dropped
+    together, seal first;
+  - a late seal has a high `chain_seq` but an old `audit_occurred_at`. Partitioning the seal by
+    `audit_occurred_at` would drop it from the middle of the retained chain, and partitioning it by
+    `chain_seq` would keep it while its audit partition goes, which the foreign key refuses. The
+    retention design must keep the audit partitions that late seals above the retention checkpoint
+    still reference. The foreign key makes a mistake here fail loudly instead of leaving a broken chain;
+  - checkpoints and epochs are never dropped (PA 11), which is why checkpoints have no foreign key.
+
+### 11.10 Migration `<timestamp>_platform_audit_seal`
+
+Created with `pnpm db:migrate:dev --name platform_audit_seal` after the Prisma change below. Measured:
+`prisma migrate diff` from the current schema to this one generates exactly the statements of the first
+block, and the database migrated with both blocks shows no drift against the schema.
+
+Prisma (`platform.prisma`), the delta only:
+
+```prisma
+model AuditLog {
+  // ... unchanged columns ...
+  /// Seals of this row, at most one per chain epoch (docs/design/data/platform.md 11.3).
+  seals AuditLogSeal[]
+
+  // the two other @@index lines unchanged; this one replaces the @@index on the same columns:
+  /// Admin audit list and the sealer's keyset on (occurred_at, id); referenced by the seal's foreign key.
+  @@unique([marketId, occurredAt, id], map: "audit_log_market_id_occurred_at_id_key")
+}
+
+model AuditLogSeal {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  epoch           Int
+  chainSeq        BigInt   @map("chain_seq")
+  auditLogId      String   @map("audit_log_id") @db.Uuid
+  auditOccurredAt DateTime @map("audit_occurred_at") @db.Timestamptz(6)
+  rowHash         Bytes    @map("row_hash")
+  chainHash       Bytes    @map("chain_hash")
+  late            Boolean
+  hashVersion     Int      @map("hash_version") @db.SmallInt
+  sealedAt        DateTime @map("sealed_at") @db.Timestamptz(6)
+  auditLog        AuditLog @relation(fields: [marketId, auditOccurredAt, auditLogId], references: [marketId, occurredAt, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, epoch, chainSeq], map: "audit_log_seal_pkey")
+  @@unique([marketId, epoch, auditOccurredAt, auditLogId], map: "audit_log_seal_market_id_epoch_occurred_at_id_key")
+  @@map("audit_log_seal")
+  @@schema("platform")
+}
+
+model AuditChainCheckpoint {
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  epoch       Int
+  chainSeq    BigInt   @map("chain_seq")
+  chainHash   Bytes    @map("chain_hash")
+  hashVersion Int      @map("hash_version") @db.SmallInt
+  createdAt   DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@id([marketId, epoch, chainSeq], map: "audit_chain_checkpoint_pkey")
+  @@map("audit_chain_checkpoint")
+  @@schema("platform")
+}
+```
+
+Model doc comments as in the existing models (append-only, no personal data, hand-written CHECKs and
+triggers). The schema checks of P 9 pass: both models are scoped, every key contains `marketId`, and
+the relation has `marketId` first in `fields` and `references` (PM6). The map-driven PM6 database case
+(P 13) then covers this foreign key: an AU seal naming a ZZ audit row fails with `23503` (measured in
+SQL).
+
+Generated by Prisma (expected, in this order): `DROP INDEX "platform"."audit_log_market_id_occurred_at_id_idx"`;
+`CREATE TABLE` for both tables with their PKs; `CREATE UNIQUE INDEX` for the seal's key and for
+`audit_log_market_id_occurred_at_id_key`; `ALTER TABLE ... ADD CONSTRAINT
+"audit_log_seal_market_id_audit_occurred_at_audit_log_id_fkey" ... ON DELETE RESTRICT ON UPDATE
+RESTRICT`. Appended to it, unchanged:
+
+```sql
+-- Hand-written (database-designer): docs/design/data/platform.md 11.2 and identity.md 6. The table is
+-- empty in every database: no audit writer exists before this slice.
+ALTER TABLE "platform"."audit_log"
+  DROP CONSTRAINT "audit_log_actor_type_check",
+  ADD CONSTRAINT "audit_log_actor_type_check" CHECK ("actor_type" IN ('USER', 'SYSTEM', 'ANONYMOUS')),
+  ADD CONSTRAINT "audit_log_occurred_at_check" CHECK ("occurred_at" = date_trunc('milliseconds', "occurred_at", 'UTC')),
+  ADD CONSTRAINT "audit_log_before_size_check" CHECK (octet_length("before"::text) <= 8192),
+  ADD CONSTRAINT "audit_log_after_size_check" CHECK (octet_length("after"::text) <= 8192);
+
+-- Hand-written (database-designer): docs/design/data/platform.md 11.3 and 11.4.
+ALTER TABLE "platform"."audit_log_seal"
+  ADD CONSTRAINT "audit_log_seal_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "audit_log_seal_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "audit_log_seal_epoch_check" CHECK ("epoch" >= 1),
+  ADD CONSTRAINT "audit_log_seal_chain_seq_check" CHECK ("chain_seq" >= 1),
+  ADD CONSTRAINT "audit_log_seal_genesis_check" CHECK ("epoch" > 1 OR "chain_seq" > 1 OR NOT "late"),
+  ADD CONSTRAINT "audit_log_seal_row_hash_check" CHECK (octet_length("row_hash") = 32),
+  ADD CONSTRAINT "audit_log_seal_chain_hash_check" CHECK (octet_length("chain_hash") = 32),
+  ADD CONSTRAINT "audit_log_seal_hash_version_check" CHECK ("hash_version" IN (1));
+
+ALTER TABLE "platform"."audit_chain_checkpoint"
+  ADD CONSTRAINT "audit_chain_checkpoint_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "audit_chain_checkpoint_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "audit_chain_checkpoint_epoch_check" CHECK ("epoch" >= 1),
+  ADD CONSTRAINT "audit_chain_checkpoint_chain_seq_check" CHECK ("chain_seq" >= 1),
+  ADD CONSTRAINT "audit_chain_checkpoint_chain_hash_check" CHECK (octet_length("chain_hash") = 32),
+  ADD CONSTRAINT "audit_chain_checkpoint_hash_version_check" CHECK ("hash_version" IN (1));
+
+-- Hand-written (database-designer): append-only enforcement for the seal and the checkpoints
+-- (ADR-0004 decision 7, ADR-0009 V4; docs/design/data/platform.md 11.5).
+CREATE FUNCTION "platform"."audit_chain_reject_mutation"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION '%.% is append-only: % is not allowed', TG_TABLE_SCHEMA, TG_TABLE_NAME, TG_OP
+    USING ERRCODE = 'restrict_violation';
+END;
+$$;
+
+CREATE TRIGGER "audit_log_seal_no_update_delete"
+  BEFORE UPDATE OR DELETE ON "platform"."audit_log_seal"
+  FOR EACH ROW EXECUTE FUNCTION "platform"."audit_chain_reject_mutation"();
+
+CREATE TRIGGER "audit_log_seal_no_truncate"
+  BEFORE TRUNCATE ON "platform"."audit_log_seal"
+  FOR EACH STATEMENT EXECUTE FUNCTION "platform"."audit_chain_reject_mutation"();
+
+CREATE TRIGGER "audit_chain_checkpoint_no_update_delete"
+  BEFORE UPDATE OR DELETE ON "platform"."audit_chain_checkpoint"
+  FOR EACH ROW EXECUTE FUNCTION "platform"."audit_chain_reject_mutation"();
+
+CREATE TRIGGER "audit_chain_checkpoint_no_truncate"
+  BEFORE TRUNCATE ON "platform"."audit_chain_checkpoint"
+  FOR EACH STATEMENT EXECUTE FUNCTION "platform"."audit_chain_reject_mutation"();
+
+-- Grants (database-designer): docs/design/data/platform.md section 11.6.
+GRANT SELECT, INSERT ON TABLE "platform"."audit_log_seal" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "platform"."audit_chain_checkpoint" TO "mondapac_app";
+```
+
+Complete `down.sql`:
+
+```sql
+-- Reverses <timestamp>_platform_audit_seal (docs/design/data/platform.md 11.10): grants first, then the
+-- triggers and tables, the function, the audit_log CHECKs, and last the index swap (the unique index
+-- can go only after the foreign key that depends on it). Fails once an ANONYMOUS row exists, which is
+-- correct (identity data 8.2).
+REVOKE SELECT, INSERT ON TABLE "platform"."audit_chain_checkpoint" FROM "mondapac_app";
+REVOKE SELECT, INSERT ON TABLE "platform"."audit_log_seal" FROM "mondapac_app";
+DROP TRIGGER "audit_chain_checkpoint_no_truncate" ON "platform"."audit_chain_checkpoint";
+DROP TRIGGER "audit_chain_checkpoint_no_update_delete" ON "platform"."audit_chain_checkpoint";
+DROP TRIGGER "audit_log_seal_no_truncate" ON "platform"."audit_log_seal";
+DROP TRIGGER "audit_log_seal_no_update_delete" ON "platform"."audit_log_seal";
+DROP TABLE "platform"."audit_chain_checkpoint";
+DROP TABLE "platform"."audit_log_seal";
+DROP FUNCTION "platform"."audit_chain_reject_mutation"();
+ALTER TABLE "platform"."audit_log"
+  DROP CONSTRAINT "audit_log_after_size_check",
+  DROP CONSTRAINT "audit_log_before_size_check",
+  DROP CONSTRAINT "audit_log_occurred_at_check",
+  DROP CONSTRAINT "audit_log_actor_type_check",
+  ADD CONSTRAINT "audit_log_actor_type_check" CHECK ("actor_type" IN ('USER', 'SYSTEM'));
+DROP INDEX "platform"."audit_log_market_id_occurred_at_id_key";
+CREATE INDEX "audit_log_market_id_occurred_at_id_idx" ON "platform"."audit_log"("market_id", "occurred_at", "id");
+```
+
+| Safety topic | Decision |
+|---|---|
+| Lock impact | `ALTER TABLE audit_log` (CHECKs) takes `ACCESS EXCLUSIVE`, and `DROP INDEX` and `CREATE UNIQUE INDEX` take their usual locks, for milliseconds on an empty table, in a database with no deployed environment. The new tables are new. On a live table the same change would be `CREATE UNIQUE INDEX CONCURRENTLY` in a hand-written migration of its own, then the CHECKs as `NOT VALID` and `VALIDATE` |
+| Reversibility | Measured: up, down, up on a database with all current migrations; the schema dump after up and down equals the dump before up (grants included). `pnpm db:check-reversible` runs the same in CI |
+| Order | The only migration PR open while it is open (`docs/process/parallel-tracks.md` rule 6), after identity slice 5 (PA 15) |
+| Not in it | No `CONCURRENTLY`, no data change, no role statement, no `SECURITY DEFINER`; nothing of 11.13 beyond the column, nothing of 11.14, no second group (11.6) |
+
+**Sign-off checklist** (in addition to section 8 and the five review points of 10.2):
+1. `migration.sql` = Prisma output for the delta above plus the hand-written block verbatim; nothing else.
+2. Column types, nullability and names as 11.3 and 11.4, `epoch` included; no column defaults; no
+   `prev_chain_hash`.
+3. `down.sql` equals this section.
+4. Drift check empty; the partial-index catalog test unchanged (no partial index here).
+5. Expected privilege map, role test and self-check changed as 11.6.
+6. Database tests of PA 16 run for AU and ZZ, plus: an `ANONYMOUS` row is accepted and with an `actor_id`
+   refused; a microsecond `occurred_at` is refused (`23514`); a `before` or `after` over the cap is
+   refused and a 4 KB writer-valid array of small integers is accepted; a seal with another Market's or
+   another time's audit row is refused (`23503`); a second seal of one audit row in one epoch is refused
+   (`23505`) and in the next epoch accepted; `epoch = 0`, a late first seal of epoch 1 and a 31-byte hash
+   are refused (`23514`); two concurrent sealers give `23505` or `55P03` to one of them and a contiguous
+   chain; the two `23505` cases are told apart by constraint (11.8).
+
+### 11.11 Evidence
+
+Measured on 2026-10-08 on PostgreSQL 16.15 with Prisma 7.10.0, in throwaway databases
+`mj_scratch_audit` and `mj_scratch_audit2` (dropped afterwards), created by `mondapac_migrator` with
+every migration up to `sellers_files` applied in order, then the SQL of 11.10 (first without, then with
+`epoch` and the size CHECKs; both versions passed up, down, up with an identical schema dump). Data: 1.1 ×
+10⁶ synthetic audit rows with UUIDv7-shaped ids, sealed in epoch 1 with synthetic hashes. Application
+role: `mondapac_api` from the local `.env`. The Prisma query shapes came from a client generated for
+these three models in a scratch folder, with query logging. The size comparison of 11.2 used JSON built
+by `JSON.stringify` and cast to `jsonb` in the same cluster. Not measured: PostgreSQL 17 (Compose and CI;
+nothing in the migration is version-specific, and the first green CI run closes it, as in section 9);
+`transaction_timeout` (11.14, 17 only); the hashing and JSON canonicalisation time in Node, which
+dominates PA 12's estimate of 20 to 60 s for a full verification of a million rows (the database part
+was about 2.4 s at 2.4 ms per 1 000 seals).
+
+### 11.12 Points on the logical design (PA) and their status
+
+| # | Severity | Where | Problem | Status |
+|---|---|---|---|---|
+| F1 | High | PA 7.1 step 2 | A watermark taken from the head goes backwards after a late seal; the sealer then fails with `23505` on every run | Fixed in PA 7.1 (greatest sealed key; per epoch here, 11.8) |
+| F2 | Medium | PA 7.1 step 4 | A daily checkpoint with an unmoved head repeats the key | Fixed in PA 7.1 steps 5 and 6 |
+| F3 | Medium | PA 7.1 step 3 | The 24-hour late scan on every 10-second tick | Accepted by Ali: at most every 5 minutes per Market, plus once on the first run after worker start |
+| F4 | Low | PA 13, 6.2 | `prev_chain_hash` duplicates the predecessor's `chain_hash` | Removed in PA 6.2 and here; Hassan confirms at the 6a review |
+| F5 | Low | PA 7.2 | Losing sealer outcomes | Fixed in PA 7.2 and 9 |
+| F6 | Low | PA 7.2 | Synchronous replication delays visibility | Runbook note (Kazem) |
+| F7 | Info | PA 13, 12 | Key shape through `audit_occurred_at`; no fourth writer index | Applied in PA 7.2 and 13; Hassan confirms at the 6a review |
+| F8 | Info | PA 13 | Hash column type | `bytea`, applied in PA 6.3 |
+| F9 | Medium | PA 13 (open note), Hassan L3 | `pg_column_size(...) <= 8192` can refuse writer-valid entries (24 562 bytes of jsonb for 4 KB canonical JSON) | Decided here: `octet_length(...::text) <= 8192` (11.2). PA 13 should cite this form |
+| F10 | Low | PA 9.1, 8 (d) | After a new epoch, rows sealed in the previous epoch below the start look unsealed to the new epoch's late scan and to check (d) | The late-scan window starts at the epoch's start key (11.8); check (d) must judge each row against the epoch that covers its key. For Mohammad, with the command's design |
+| F11 | Low | PA 7.2 (L4) | `transaction_timeout` would end the scheduler's 60-second job-lock transaction | `SET LOCAL transaction_timeout = 0` in that transaction, which writes nothing; to be measured on PostgreSQL 17 (11.14) |
+| F12 | Medium | PA 7.1 step 1 ("the highest `chain_seq` of the current epoch") | If the current epoch were taken from the seals, one seal forged with a high `epoch` would move the sealer to that epoch | The current epoch is 1 in code until the epoch table exists, then that table's latest row; seals of unknown epochs are a verifier finding (11.8). PA 7.1 step 1 and 9.1 should say so |
+| F13 | Medium | PA 9.1 ("the seal's unique key covers the whole Market, so such a row cannot be sealed again"), PA 7.1 duplicates and 13 (unique key without `epoch`) | A Market-wide unique key would make the recovered epoch stall on the first row that holds a rejected seal | Decided here: the unique key is per epoch (11.3); rows holding a rejected seal are sealed again in the new epoch and the rejected seal stays as evidence (`audit.seal.rejected-row` still lists it). The api role cannot change an audit row, so re-sealing it covers the original content. PA 7.1, 7.2, 9.1 and 13 should cite `(market_id, epoch, audit_occurred_at, audit_log_id)` |
+
+Option rejected for F7: no foreign key, with the anti-join done as two keyset range reads (audit rows
+and seals of the window) compared in memory. Cheaper for the sealer (5 ms instead of 13 ms per 500
+seals, half the WAL), but nothing in the database ties a seal to a real row or `audit_occurred_at` to
+`occurred_at`, and the verifier would have to prove both. Kept: the foreign key.
+### 11.13 Chain epoch (Hassan M4, Ali 2026-10-08)
+
+**Decided now, in the 6a migration:** `epoch integer NOT NULL`, `CHECK (epoch >= 1)`, no default, on
+both tables, in both primary keys and in the seal's unique key (11.3, 11.4). Every seal and checkpoint
+of epoch 1 is written by the normal sealer. Mohammad's PA 6.2 adds `uint32be(epoch)` to the
+`chain_hash` input, so an `integer` column (at most 2³¹ - 1) fits the encoding; the sealer refuses a
+value below 1, which the CHECK also refuses (measured: `epoch = 0` gives `23514` on both tables).
+
+Reasons for putting it in now: the tables are empty, so it costs one column and no rewrite (4 bytes,
+absorbed by alignment: the measured sizes did not change); a primary-key change on a live chain later
+would be a table rewrite under a lock, and the sealer's queries would change after the fact.
+
+**Before the hardening trigger, with the recovery command of PA 9.1** (Mohammad designs the command,
+Hossein builds it, I design and review the migration). Proposed shape, decided with the command's
+design:
+- a table `platform.audit_chain_epochs`, append-only like the seal: `market_id`, `tenant_id`, `epoch`
+  (PK `(market_id, epoch)`), `reason_code` (CHECK on the codes of PA 9.1), `opened_at`, the genesis
+  input (`genesis_prev_hash bytea` = the anchored `chain_hash` it continues from, and the epoch and
+  `chain_seq` of that seal), and the starting watermark (`start_occurred_at`, `start_audit_log_id`);
+- epoch 1 has an implicit genesis (32 zero bytes, no watermark), so the table can stay empty until the
+  first break, and no migration has to know the hosted Markets;
+- a foreign key from the seal's `(market_id, epoch)` to this table for `epoch > 1` cannot be partial in
+  PostgreSQL, so either epoch 1 gets a row too (written by the sealer on the first seal of a Market) or
+  the link is checked by the verifier only. Decided with the command, by measurement, not now;
+- grants: `SELECT, INSERT` for the group that runs the command (an api-image operator command, so not
+  the worker group of 11.6): decided with that group.
+
+### 11.14 `transaction_timeout` on the login roles (Hassan L4; before the hardening trigger)
+
+| Topic | Decision |
+|---|---|
+| What | `ALTER ROLE <login> SET transaction_timeout = '<n>s'` on every application login, in the bootstrap with the K1a settings (10.7), never on `mondapac_app` (its settings do not reach members) and never on the migration role |
+| Value | At or below `MAX_UNIT_TIMEOUT` plus a margin, and above the longest legitimate unit: today 30 s plus 10 s, so `40s`, below `idle_in_transaction_session_timeout` (60 s). The S assertion of PA 7.2 then uses `transaction_timeout` as the bound of a unit's life, and the test fails when S is below four times it |
+| Long transactions that are not units | The scheduler's job-lock transaction (P 7) holds `pg_try_advisory_xact_lock` for a whole run (`maxRunMs`, 60 s for the sealer) and already sets `SET LOCAL idle_in_transaction_session_timeout = 0`. It must also `SET LOCAL transaction_timeout = 0`. That is safe for S, because that transaction writes nothing: no audit row and no business row may be written in it (a test asserts it). Not measured: whether `SET LOCAL` inside an open transaction cancels the running timer on PostgreSQL 17 (the session's cluster is 16). Measure it before relying on it; if it does not, the job lock moves to a session lock on a dedicated connection |
+| Version | The parameter exists only from PostgreSQL 17. Compose and CI run 17; a native PostgreSQL 16 cluster refuses `ALTER ROLE ... SET` of an unknown parameter, so the bootstrap guards that statement on `server_version_num >= 170000` |
+| Checked | The role-settings test (10.4) and the self-check `role_timeouts` (10.8) gain `transaction_timeout`: present, non-zero, at most the ceiling, on PostgreSQL 17 and later |
+| Owners | Kazem (bootstrap and Phase 7 logins), Mojtaba (10.4, 10.8 and this section), Hossein (the job lock) |
+
