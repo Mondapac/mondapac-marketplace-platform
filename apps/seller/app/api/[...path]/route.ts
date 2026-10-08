@@ -8,4 +8,4 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
   return relay(panelConfig(), request, path);
 }
 
-export { handle as GET, handle as POST };
+export { handle as GET, handle as POST, handle as PUT };

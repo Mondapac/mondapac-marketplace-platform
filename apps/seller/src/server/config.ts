@@ -19,6 +19,8 @@ export interface PanelConfig {
   /** Shown beside the brand, for example "Australia" (a Market display name). */
   readonly marketName: string;
   readonly supportEmail: string;
+  /** The storefront address shown before the shop slug, for example `mondapac.com.au/shop/`. */
+  readonly storefrontAddress: string | null;
   /** This panel's key for the signed client address (ADR-0037); null when it is not set. */
   readonly clientAddressKey: ClientAddressKey | null;
 }
@@ -95,6 +97,7 @@ export function parsePanelConfig(env: Readonly<Record<string, string | undefined
     passwordMaxLength,
     marketName: required(env, 'PANEL_MARKET_NAME'),
     supportEmail: required(env, 'PANEL_SUPPORT_EMAIL'),
+    storefrontAddress: env['PANEL_STOREFRONT_ADDRESS']?.trim() || null,
     clientAddressKey: parseClientAddressKey(env),
   };
 }
