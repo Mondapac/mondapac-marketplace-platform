@@ -904,6 +904,13 @@ in the expected map, so a new insert-only table without the trigger fails the te
 | 10 | 16 | `certification_ai_fill` | `draft_field_provenance`, `field_provenance`; `ai_field_suggestions`; `ai-fill.seller.day` in the counter CHECK (`DROP` and `ADD … NOT VALID`, then `VALIDATE`) |
 | 11 | 17 | `certification_ai_reading` | `ai_reading_results` |
 
+Applied choices of the first migration (Hossein, 2026-10-08; Mojtaba signs either): `issuers` is
+created complete in migration 1 (all its columns and rules), because the submissions' issuer key
+(CE4) needs it and a column split would cost two `ALTER`s on a table with a foreign key; migration
+2 then adds only `issuer_contact_channels`. `change_reason_ciphertext` of `certification_type_revisions`
+arrives in migration 2 as designed. The partial index of the pending queue and the approved-pointer
+unique (A5, A8) wait for migration 6, as listed; migration 1 carries T1 and A9 only.
+
 No migration: slices 3, 8, 10, 11, 12, 15. This matches D 14.1 (1, 2, 4, 5, 6, 7, 9, 13, 14) plus
 16 and 17. The status-history table moves from slice 7 to slice 5, so the first submission already
 writes its history row; no deployed environment exists in between.
