@@ -536,3 +536,7 @@ This document changes no other file. After G2:
 | `prisma/schema/base.prisma`, `inventory.prisma`; migrations 1 to 5 with `down.sql` | As specified; each needs my sign-off | Per slice; Hossein |
 | The privilege map and catalog tests of `pnpm test:db` | Section 7 with its column lists; the partial-index list of 8.4 | With each migration; Hossein |
 | `config/markets/*.json` and its validation | The keys of D 8 (C1) | Before slice 2; shared-file PR |
+
+## 13. As built
+
+**Migration 2, `inventory_stock` (slice 2, part 1; no application code yet).** Creates `outbox`, `stock_items`, `stock_movements`, `availability_signals` and `retirements` exactly as 3.1, 3.4, 3.5, 3.9 and 3.10 specify, with every CHECK of those sections, the three partial indexes of 8.4 that belong to them (the relay's claim and the two tombstone keys) and the grants of section 7. `re-key` is among the ledger reasons from the start (V-1), so the re-key handler adds no migration. The privilege map, the partial-index catalog and `inventory-stock-constraints.db-spec.ts` (both Market fixtures) cover it. Not in this migration: reservations (migration 3), the raw helper and `lockTimeoutMs` (a platform change that lands with the first use case that locks), the use cases and handlers (slice 2, parts 2 to 4). Mojtaba's sign-off on the migration is recorded on the PR.
