@@ -33,6 +33,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     identity: ['USAGE'],
     inventory: ['USAGE'],
     platform: ['USAGE'],
+    catalog: ['USAGE'],
     sellers: ['USAGE'],
   },
   tables: {
@@ -126,6 +127,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['address', 'name', 'priority', 'time_zone'],
     },
+    // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
+    // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
+    // status and a retired variant). The identity columns of a product and a variant never change.
+    'catalog.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'catalog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.products': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'discarded_at',
+        'last_changed_at',
+        'matched_into_product_id',
+        'owner_seller_id',
+        'own_brand',
+        'promoted_at',
+        'retired_at',
+        'scope',
+        'status',
+        'version',
+        'withdrawn_at',
+      ],
+    },
+    'catalog.product_variants': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_at', 'retired_at', 'state'],
+    },
+    'catalog.product_code_counters': { table: ['INSERT', 'SELECT'], columnUpdate: ['next_value'] },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {
