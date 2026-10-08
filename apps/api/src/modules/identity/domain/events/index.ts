@@ -68,6 +68,30 @@ export const AccountEmailVerified = defineEvent({
   },
 });
 
+/** The origins of a seller (identity design 2.1): self-registration or an owner invitation. */
+export const SELLER_ORIGINS = ['self', 'invitation'] as const;
+
+/** The access states of a seller (identity design 3.3). */
+export const SELLER_ACCESS_STATES = ['pending', 'approved', 'rejected', 'suspended'] as const;
+
+/**
+ * A seller exists for other modules (identity design 8.2; ADR-0022): published at the owner's
+ * email verification for a self-registration, as the `SellerAccess` version step that sets
+ * `registeredAt` (M4), so no consumer sees a seller the 7-day purge may still delete; at
+ * creation for an invitation (slice 8). `sellers` creates its record under the same id when it
+ * consumes it. Ids and codes only: no name, no email.
+ */
+export const SellerRegistered = defineEvent({
+  type: 'identity.seller-registered.v1',
+  aggregateType: 'seller-access',
+  payload: {
+    sellerId: eventField.id(),
+    ownerAccountId: eventField.optional(eventField.id()),
+    origin: eventField.enumOf(SELLER_ORIGINS),
+    accessState: eventField.enumOf(SELLER_ACCESS_STATES),
+  },
+});
+
 /**
  * Every event identity publishes, declared with `defineEvent` (platform persistence design
  * 5.3; identity design 8.2) and registered with the event catalogue by `IdentityModule`. Each
@@ -78,4 +102,5 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   SignUpRepeated,
   OneTimeLinkRequested,
   AccountEmailVerified,
+  SellerRegistered,
 ];

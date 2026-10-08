@@ -51,6 +51,8 @@ export function openSession(input: {
   readonly marketId: MarketId;
   readonly accountId: Id<'Account'>;
   readonly population: Population;
+  /** Required for, and only for, the seller population (`sessions_seller_id_check`). */
+  readonly sellerId?: Id<'Seller'> | null;
   readonly transport: SessionTransport;
   readonly lifetime: SessionLifetime;
   readonly now: Temporal.Instant;
@@ -64,16 +66,17 @@ export function openSession(input: {
   ) {
     throw new SessionLifetimeError();
   }
-  if (input.population === 'seller') {
-    // A seller session carries its seller (slice 5); none can be opened before it exists.
-    throw new TypeError('openSession: seller sessions arrive with slice 5');
+  const sellerId = input.sellerId ?? null;
+  if ((input.population === 'seller') !== (sellerId !== null)) {
+    // A seller session carries its seller, and only a seller session has one (slice 5).
+    throw new TypeError('openSession: a seller id is required for, and only for, a seller');
   }
   return Object.freeze({
     id: input.id,
     marketId: input.marketId,
     accountId: input.accountId,
     population: input.population,
-    sellerId: null,
+    sellerId,
     transport: input.transport,
     createdAt: now,
     lastSeenAt: now,

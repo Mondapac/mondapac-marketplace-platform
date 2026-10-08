@@ -104,6 +104,40 @@ export class Account {
     return account;
   }
 
+  /**
+   * Seller sign-up (identity design 3.1; slice 5): an active, unverified seller account with
+   * the display name the caller parsed (`parseDisplayName`, HF13). No event: 8.2 has none for a
+   * seller account; the seller is published by its `SellerAccess` at the email verification.
+   */
+  static registerSeller(input: {
+    readonly id: Id<'Account'>;
+    readonly marketId: MarketId;
+    readonly email: EmailAddress;
+    readonly displayName: string;
+    readonly passwordHash: string;
+    readonly now: Temporal.Instant;
+  }): Account {
+    const { id, marketId, email, displayName, passwordHash, now } = input;
+    if (displayName.trim() === '') throw new AccountInvariantError('display-name-required');
+    return new Account(
+      {
+        id,
+        marketId,
+        population: 'seller',
+        email: Object.freeze({ typed: email.typed, normalized: email.normalized }),
+        displayName,
+        status: 'active',
+        emailVerifiedAt: null,
+        existingAccountNoticeAt: null,
+        signedUpAt: now,
+        createdAt: now,
+        version: 1,
+        credential: Object.freeze({ passwordHash, changedAt: now }),
+      },
+      null,
+    );
+  }
+
   /** An account read from the store. Checks the invariants again. */
   static restore(state: AccountState): Account {
     return new Account(state, state.version);
@@ -143,11 +177,14 @@ export class Account {
    *   item 3). A notice the counters refused is not recorded, so the next sign-up may send it.
    *
    * The caller hashed the new password before reading the account (HF12), whichever branch
-   * follows. A seller's name is replaced too, from slice 5. The verification link is the
-   * caller's: it requests it again in the same unit (3.7).
+   * follows. On an unverified seller-side account the display name given now replaces the old
+   * one too (6.7); a customer account never takes one. The verification link is the caller's:
+   * it requests it again in the same unit (3.7).
    */
   signUpAgain(input: {
     readonly passwordHash: string;
+    /** The parsed name of a seller sign-up; ignored for a customer account. */
+    readonly displayName?: string;
     readonly now: Temporal.Instant;
     readonly noticeHours: number;
     readonly mailAllowed: boolean;
@@ -155,8 +192,15 @@ export class Account {
     const { passwordHash, now, noticeHours, mailAllowed } = input;
     const state = this.#state;
     if (state.emailVerifiedAt === null) {
+      const name =
+        state.population !== 'customer' &&
+        input.displayName !== undefined &&
+        input.displayName.trim() !== ''
+          ? { displayName: input.displayName }
+          : {};
       this.change(
         {
+          ...name,
           signedUpAt: now,
           credential: Object.freeze({ passwordHash, changedAt: now }),
         },
