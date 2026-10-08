@@ -1,6 +1,14 @@
 import { Temporal } from '@mondapac/shared-kernel';
+import { money } from '@mondapac/shared-kernel';
 import { SequenceIdGenerator } from '@mondapac/shared-kernel/testing';
-import { effectiveRegular, jumpAnchor } from './price-series';
+import { priceAmount } from './price-amount';
+import { createPricingPolicy } from './pricing-policy';
+import {
+  InvalidPriceSeriesStateError,
+  PriceSeries as PriceSeriesAggregate,
+  effectiveRegular,
+  jumpAnchor,
+} from './price-series';
 import type { PriceSeries, RegularPriceRecord } from './price-series';
 import {
   PRICING_FIXTURES,
@@ -198,7 +206,7 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
       advance(1000);
       const second = (outcomeOf(set(fixture.base + 1n)) as { record: RegularPriceRecord }).record;
       const edge = second.effectiveFrom as Temporal.Instant;
-      const exactly = edge.add({ milliseconds: policy.jumpWindow.milliseconds });
+      const exactly = edge.add({ milliseconds: policy.jumpWindowMs });
       expect(jumpAnchor(series.state.regular, exactly, policy)?.id).toBe(second.id);
       expect(
         jumpAnchor(series.state.regular, exactly.subtract({ milliseconds: 1 }), policy)?.id,
@@ -207,7 +215,7 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
 
     it('keeps the window record when the approved record is older than it', () => {
       const { series, set } = setup();
-      const windowMs = policy.jumpWindow.milliseconds;
+      const windowMs = policy.jumpWindowMs;
       const first = (outcomeOf(set(fixture.base)) as { record: RegularPriceRecord }).record;
       advance(windowMs / 4);
       const second = (outcomeOf(set(fixture.base + 1n)) as { record: RegularPriceRecord }).record;
@@ -239,7 +247,7 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
 
     it('moves the baseline once the window has passed, so a slow drift is accepted', () => {
       const { set } = setup();
-      const windowMs = policy.jumpWindow.milliseconds;
+      const windowMs = policy.jumpWindowMs;
       set(fixture.base);
       advance(windowMs / 2);
       set(fixture.base + (fixture.base * n) / d / 2n);
@@ -293,6 +301,126 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
       expect(series.retire('offer-removed', clock.now())).toEqual([]);
       expect(series.state.retireCause).toBe('variant-removed');
       expect(series.state.version).toBe(version);
+    });
+  });
+
+  describe('the domain re-checks what the caller built (Hassan M1)', () => {
+    it('refuses an amount in another currency, even one that equals the price in force', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      const other = PRICING_FIXTURES.find(
+        (f) => f.code !== fixture.code,
+      ) as (typeof PRICING_FIXTURES)[number];
+      const foreign = amountOf(other, fixture.base);
+      const result = series.setRegularPrice({
+        recordId: ids.next<'RegularPriceRecord'>(),
+        amount: foreign,
+        submittedBy: account,
+        taxInclusive: fixture.taxInclusive,
+        now: clock.now(),
+        policy,
+      });
+      expect(result).toEqual({ ok: false, error: { code: 'pricing.currency-mismatch' } });
+      expect(series.state.regular).toHaveLength(1);
+    });
+
+    it("refuses an amount above this policy's maximum", () => {
+      const { series } = setup();
+      const wide = createPricingPolicy({
+        marketId: policy.marketId,
+        currency: policy.currency,
+        maxUnitPriceMinor: policy.maxUnitPrice.amount * 10n,
+        thresholdNumerator: policy.thresholdNumerator,
+        thresholdDenominator: policy.thresholdDenominator,
+        jumpDirections: policy.jumpDirections,
+        jumpWindow: 'P3D',
+      });
+      const tooBig = priceAmount(money(policy.maxUnitPrice.amount + 1n, policy.currency), wide);
+      if (!tooBig.ok) throw new Error('fixture');
+      expect(
+        series.setRegularPrice({
+          recordId: ids.next<'RegularPriceRecord'>(),
+          amount: tooBig.value,
+          submittedBy: account,
+          taxInclusive: fixture.taxInclusive,
+          now: clock.now(),
+          policy,
+        }),
+      ).toEqual({ ok: false, error: { code: 'pricing.amount-out-of-range' } });
+    });
+
+    it('refuses a policy of another Market', () => {
+      const { series } = setup();
+      const other = PRICING_FIXTURES.find(
+        (f) => f.code !== fixture.code,
+      ) as (typeof PRICING_FIXTURES)[number];
+      expect(
+        series.setRegularPrice({
+          recordId: ids.next<'RegularPriceRecord'>(),
+          amount: amountOf(other, 1000n),
+          submittedBy: account,
+          taxInclusive: fixture.taxInclusive,
+          now: clock.now(),
+          policy: other.policy,
+        }),
+      ).toEqual({ ok: false, error: { code: 'pricing.policy-market-mismatch' } });
+    });
+  });
+
+  describe('restore', () => {
+    it('rebuilds a series with frozen records and no shared references', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      set(heldUp(fixture.base));
+      const restored = PriceSeriesAggregate.restore({
+        ...series.state,
+        regular: [...series.state.regular],
+      });
+      for (const record of restored.state.regular) {
+        expect(Object.isFrozen(record)).toBe(true);
+        expect(Object.isFrozen(record.amount)).toBe(true);
+      }
+      expect(restored.state.regular.map((r) => r.id)).toEqual(
+        series.state.regular.map((r) => r.id),
+      );
+    });
+
+    it.each([
+      [
+        'two pending records',
+        (r: RegularPriceRecord[]) => [
+          ...r,
+          { ...(r[1] as RegularPriceRecord), id: ids.next<'RegularPriceRecord'>() },
+        ],
+      ],
+      [
+        'a pending record with an effective start',
+        (r: RegularPriceRecord[]) =>
+          r.map((x) =>
+            x.status === 'PENDING_REVIEW' ? { ...x, effectiveFrom: x.submittedAt } : x,
+          ),
+      ],
+      [
+        'a gap between priced records',
+        (r: RegularPriceRecord[]) => r.map((x, i) => (i === 0 ? { ...x, effectiveTo: null } : x)),
+      ],
+    ])('refuses %s', (_name, corrupt) => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      set(fixture.base + 1n);
+      advance(1000);
+      set(heldUp(fixture.base + 1n));
+      const regular = corrupt([...series.state.regular]);
+      expect(() => PriceSeriesAggregate.restore({ ...series.state, regular })).toThrow(
+        InvalidPriceSeriesStateError,
+      );
+    });
+
+    it('does not leak the creation instant into the state', () => {
+      const { series } = setup();
+      expect(Object.keys(series.state)).not.toContain('now');
     });
   });
 

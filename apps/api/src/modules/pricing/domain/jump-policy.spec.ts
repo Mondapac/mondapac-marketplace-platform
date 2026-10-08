@@ -34,6 +34,7 @@ describe.each(PRICING_FIXTURES)('measureJump in market $code', (fixture) => {
 
   it('is exact for amounts beyond the float range', () => {
     const wide = createPricingPolicy({
+      marketId: policy.marketId,
       currency: policy.currency,
       maxUnitPriceMinor: BigInt(Number.MAX_SAFE_INTEGER),
       thresholdNumerator: n,

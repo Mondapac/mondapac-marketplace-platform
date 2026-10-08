@@ -1,5 +1,5 @@
 import { minorUnitExponent, money, Temporal } from '@mondapac/shared-kernel';
-import type { Money } from '@mondapac/shared-kernel';
+import type { MarketId, Money } from '@mondapac/shared-kernel';
 
 /** Which way a regular price may move before it is held for review (VER-03, brief Q9). */
 export type JumpDirections = 'up' | 'down' | 'both';
@@ -11,6 +11,10 @@ export type JumpDirections = 'up' | 'down' | 'both';
  * a Vertical override plugs in there without changing callers.
  */
 export interface PricingPolicy {
+  /** Only `createPricingPolicy` makes one: a literal does not type-check (brand). */
+  readonly __pricingPolicy: true;
+  /** The Market this policy belongs to; a series refuses another Market's policy. */
+  readonly marketId: MarketId;
   /** The Market currency: every price is in it (ADR-0002 decision 4). */
   readonly currency: string;
   /** The most one unit may cost, in the Market currency (brief Q10). */
@@ -18,8 +22,8 @@ export interface PricingPolicy {
   readonly thresholdNumerator: bigint;
   readonly thresholdDenominator: bigint;
   readonly jumpDirections: JumpDirections;
-  /** The jump window W: how far back the anchor of design 2.4 looks. Exact hours, no calendar units. */
-  readonly jumpWindow: Temporal.Duration;
+  /** The jump window W in whole milliseconds: how far back the anchor of design 2.4 looks. */
+  readonly jumpWindowMs: number;
 }
 
 export type PricingPolicyError =
@@ -41,6 +45,7 @@ const MAX_FRACTION_PART = 2n ** 31n;
 const MAX_WINDOW_HOURS = 24 * 90;
 
 export interface PricingPolicyInput {
+  readonly marketId: MarketId;
   readonly currency: string;
   /** Minor units of `currency`. */
   readonly maxUnitPriceMinor: bigint;
@@ -111,18 +116,19 @@ export function createPricingPolicy(input: PricingPolicyInput): PricingPolicy {
   if (window.sign < 0 || hours < 1 || hours > MAX_WINDOW_HOURS) {
     throw new InvalidPricingPolicyError({ code: 'pricing-policy.window-invalid' });
   }
-  // Normalised to whole milliseconds so `Instant.subtract` never meets a calendar unit.
   return Object.freeze({
+    __pricingPolicy: true as const,
+    marketId: input.marketId,
     currency: input.currency,
     maxUnitPrice: money(input.maxUnitPriceMinor, input.currency),
     thresholdNumerator: n,
     thresholdDenominator: d,
     jumpDirections: input.jumpDirections,
-    jumpWindow: Temporal.Duration.from({ milliseconds: Math.round(hours * 3_600_000) }),
+    jumpWindowMs: Math.round(hours * 3_600_000),
   });
 }
 
 /** The instant `window` before `now`. */
 export function windowStart(now: Temporal.Instant, policy: PricingPolicy): Temporal.Instant {
-  return now.subtract({ milliseconds: policy.jumpWindow.milliseconds });
+  return now.subtract({ milliseconds: policy.jumpWindowMs });
 }

@@ -1,3 +1,4 @@
+import { testMarketId } from './test-config';
 import { Temporal, money } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -27,6 +28,7 @@ export const PRICING_FIXTURES: readonly PricingMarketFixture[] = [
     taxInclusive: true,
     base: 10000n,
     policy: createPricingPolicy({
+      marketId: testMarketId('AU'),
       currency: 'AUD',
       maxUnitPriceMinor: 500000n,
       thresholdNumerator: 1n,
@@ -40,6 +42,7 @@ export const PRICING_FIXTURES: readonly PricingMarketFixture[] = [
     taxInclusive: false,
     base: 1000n,
     policy: createPricingPolicy({
+      marketId: testMarketId('ZZ'),
       currency: 'JPY',
       maxUnitPriceMinor: 2000000n,
       thresholdNumerator: 1n,

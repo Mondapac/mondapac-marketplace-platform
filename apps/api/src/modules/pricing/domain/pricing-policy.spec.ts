@@ -1,7 +1,9 @@
 import { InvalidPricingPolicyError, createPricingPolicy, windowStart } from './pricing-policy';
+import { testMarketId } from '../../../../test/support/test-config';
 import { T0 } from '../../../../test/support/pricing-fixtures';
 
 const VALID = {
+  marketId: testMarketId('AU'),
   currency: 'AUD',
   maxUnitPriceMinor: 500000n,
   thresholdNumerator: 1n,
@@ -16,6 +18,7 @@ describe('createPricingPolicy', () => {
     expect(Object.isFrozen(policy)).toBe(true);
     expect(policy.maxUnitPrice).toEqual({ amount: 500000n, currency: 'AUD' });
     expect(windowStart(T0, policy).toString()).toBe('2026-10-01T10:00:00Z');
+    expect(policy.jumpWindowMs).toBe(7 * 24 * 3600_000);
   });
 
   it.each([

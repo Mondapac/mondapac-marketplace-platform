@@ -1,7 +1,8 @@
-import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import { compareMoney, err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, Result } from '@mondapac/shared-kernel';
 import { measureJump } from './jump-policy';
-import type { PriceAmount } from './price-amount';
+import { priceAmount } from './price-amount';
+import type { PriceAmount, PriceAmountError } from './price-amount';
 import { windowStart } from './pricing-policy';
 import type { PricingPolicy } from './pricing-policy';
 
@@ -83,7 +84,18 @@ export type SetRegularPriceOutcome =
       readonly superseded: readonly RegularPriceRecord[];
     };
 
-export type SetRegularPriceError = { readonly code: 'pricing.series-retired' };
+export type SetRegularPriceError =
+  | { readonly code: 'pricing.series-retired' }
+  | { readonly code: 'pricing.policy-market-mismatch' }
+  | PriceAmountError;
+
+/** A stored series that breaks an invariant of design 2.1: refused on load, never repaired. */
+export class InvalidPriceSeriesStateError extends Error {
+  constructor(readonly reason: string) {
+    super(`invalid price series state: ${reason}`);
+    this.name = 'InvalidPriceSeriesStateError';
+  }
+}
 
 const ONE_MS = { milliseconds: 1 };
 
@@ -168,7 +180,12 @@ export class PriceSeries {
     readonly now: Temporal.Instant;
   }): PriceSeries {
     return new PriceSeries({
-      ...input,
+      id: input.id,
+      marketId: input.marketId,
+      offerId: input.offerId,
+      variantId: input.variantId,
+      productId: input.productId,
+      sellerId: input.sellerId,
       createdAt: input.now,
       retiredAt: null,
       retireCause: null,
@@ -179,6 +196,7 @@ export class PriceSeries {
 
   /** Rebuilds a stored series; used by the repository. */
   static restore(state: PriceSeriesState): PriceSeries {
+    checkStoredState(state);
     return new PriceSeries(state);
   }
 
@@ -199,13 +217,20 @@ export class PriceSeries {
   ): Result<SetRegularPriceOutcome, SetRegularPriceError> {
     const state = this.#state;
     if (state.retiredAt !== null) return err({ code: 'pricing.series-retired' });
+    if (input.policy.marketId !== state.marketId) {
+      return err({ code: 'pricing.policy-market-mismatch' });
+    }
+    // The domain is the last control for the currency and the maximum (design 4.4): the amount
+    // is checked again against the policy of this write, whoever built it.
+    const checked = priceAmount(input.amount, input.policy);
+    if (!checked.ok) return err(checked.error);
 
     const latest = latestPriced(state.regular);
     const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');
 
     // Compared with the latest priced record, not the one in force at `now`: a record queued
     // 1 ms ahead by an earlier write of the same instant is the seller's current intent.
-    if (latest !== null && latest.amount.amount === input.amount.amount) {
+    if (latest !== null && compareMoney(latest.amount, input.amount) === 0) {
       const superseded = pending.map((r) => supersede(r, null, input.now));
       this.#commit(replace(state.regular, superseded));
       return ok({ kind: 'unchanged', superseded });
@@ -319,6 +344,55 @@ function replace(
   return records.map((r) => changed.find((c) => c.id === r.id) ?? r);
 }
 
+function freezeRecord(record: RegularPriceRecord): RegularPriceRecord {
+  return Object.freeze({
+    ...record,
+    amount: Object.freeze({ ...record.amount }),
+    anchor:
+      record.anchor === null
+        ? null
+        : Object.freeze({
+            recordId: record.anchor.recordId,
+            amount: Object.freeze({ ...record.anchor.amount }),
+          }),
+  });
+}
+
 function freezeState(state: PriceSeriesState): PriceSeriesState {
-  return Object.freeze({ ...state, regular: Object.freeze([...state.regular]) });
+  return Object.freeze({ ...state, regular: Object.freeze(state.regular.map(freezeRecord)) });
+}
+
+// Fail fast on a stored series that no write could have produced (design 2.1). The database
+// constraints are the main control; this is defence in depth against a corrupt row.
+function checkStoredState(state: PriceSeriesState): void {
+  const bad = (reason: string): never => {
+    throw new InvalidPriceSeriesStateError(reason);
+  };
+  const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');
+  if (pending.length > 1) bad('more than one pending record');
+  if (pending.some((r) => r.effectiveFrom !== null || r.anchor === null)) {
+    bad('a pending record must have an anchor and no effective start');
+  }
+  const priced = state.regular.filter(isPriced);
+  if (priced.some((r) => r.effectiveFrom === null)) bad('a priced record has no effective start');
+  const byStart = [...priced].sort((a, b) =>
+    Temporal.Instant.compare(
+      a.effectiveFrom as Temporal.Instant,
+      b.effectiveFrom as Temporal.Instant,
+    ),
+  );
+  byStart.forEach((record, index) => {
+    const next = byStart[index + 1];
+    if (next === undefined) {
+      if (record.effectiveTo !== null) bad('the latest priced record must be open');
+      return;
+    }
+    if (
+      record.effectiveTo === null ||
+      Temporal.Instant.compare(record.effectiveTo, next.effectiveFrom as Temporal.Instant) !== 0
+    ) {
+      bad('priced records must be contiguous and must not overlap');
+    }
+  });
+  if (state.retiredAt !== null && state.retireCause === null) bad('a retired series needs a cause');
 }
