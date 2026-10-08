@@ -1,0 +1,13 @@
+{
+  "identity.mail.confirm-email.customer.subject": "Confirm your email for your MondaPac customer account",
+  "identity.mail.confirm-email.customer.heading": "Confirm your email",
+  "identity.mail.confirm-email.customer.body": "Open the link below and enter your password to confirm your email and sign in. The link works for {duration} and only once.",
+  "identity.mail.confirm-email.customer.action": "Confirm email",
+  "identity.mail.existing-account.customer.subject": "You already have a MondaPac customer account",
+  "identity.mail.existing-account.customer.heading": "You already have an account",
+  "identity.mail.existing-account.customer.body": "Someone tried to create a MondaPac customer account with this email. You already have one, so nothing was changed. If you forgot your password, you can reset it on the sign-in page.",
+  "identity.mail.existing-account.customer.action": "Sign in",
+  "identity.mail.common.account-line.customer": "This email is about your customer account. A seller account with the same email is separate.",
+  "identity.mail.common.ignore": "If you didn't ask for this, you can ignore this email.",
+  "identity.mail.common.footer": "This is an automatic message from MondaPac. Replies are not read."
+}

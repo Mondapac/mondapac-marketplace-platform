@@ -26,14 +26,29 @@ import {
   type ThrottleCounter,
   type ThrottleRepository,
 } from '../../src/modules/identity/application/ports/throttle.repository';
+import {
+  ONE_TIME_LINK_REPOSITORY,
+  type OneTimeLinkRepository,
+} from '../../src/modules/identity/application/ports/one-time-link.repository';
 import { Account, type AccountState } from '../../src/modules/identity/domain/account';
+import {
+  OneTimeLink,
+  type OneTimeLinkState,
+} from '../../src/modules/identity/domain/one-time-link';
 import type { Session } from '../../src/modules/identity/domain/session';
 import {
   windowRestartBefore,
   type ThrottleReservation,
 } from '../../src/modules/identity/domain/throttle';
 import { OUTBOX_WRITER, type OutboxWriter } from '../../src/platform/events/outbox-writer';
+import {
+  MAIL_TRANSPORT,
+  type MailMessage,
+  type MailTransport,
+} from '../../src/platform/mail/mail-transport';
+import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { fakeRunOnce } from './fake-run-once';
 
 // In-memory fakes of identity's database ports, for the HTTP suites of `pnpm test` (no
 // database). Units are not isolated: `run` calls `work` once. The fakes keep the rules the
@@ -51,9 +66,16 @@ export class IdentityFakes {
   readonly throttles = new Map<string, ThrottleReservation & { accountKey: string | null }>();
   readonly records: (SignInRecord & { marketId: string })[] = [];
   readonly events: PendingEvent[] = [];
+  readonly links = new Map<string, OneTimeLinkState>();
+  /** Mails the fake transport accepted, in order. */
+  readonly mails: MailMessage[] = [];
+  /** Makes the fake transport refuse every send. */
+  mailDown = false;
   hashed = 0;
   verified = 0;
   busy = false;
+  /** Makes every correct verification ask for a re-hash (older parameters). */
+  needsRehash = false;
   /** Makes the reservation unit fail, as an unreachable counter table would. */
   throttlesDown = false;
 
@@ -63,9 +85,14 @@ export class IdentityFakes {
     this.throttles.clear();
     this.records.length = 0;
     this.events.length = 0;
+    this.links.clear();
+    this.mails.length = 0;
+    this.mailDown = false;
+    this.inbox.clear();
     this.hashed = 0;
     this.verified = 0;
     this.busy = false;
+    this.needsRehash = false;
     this.throttlesDown = false;
   }
 
@@ -74,8 +101,12 @@ export class IdentityFakes {
     this.accounts.set(state.id, state);
   }
 
+  /** The inbox of identity's handlers: `(Market, eventId, subscriber)` keys. */
+  readonly inbox = new Set<string>();
+
   readonly unitOfWork: UnitOfWork = {
     run: <T, E>(_market: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+    runOnce: fakeRunOnce(this.inbox),
   };
 
   readonly accountRepository: AccountRepository = {
@@ -99,7 +130,95 @@ export class IdentityFakes {
       return Promise.resolve(ok(undefined));
     },
     save: (_market: MarketContext, account: Account) => {
+      // As the repository: the stored version must be the one read (StaleAggregateError).
+      if (account.state.version === account.persistedVersion) return Promise.resolve();
+      const stored = this.accounts.get(account.state.id);
+      if (stored === undefined || stored.version !== account.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('account', account.state.id));
+      }
       this.accounts.set(account.state.id, account.state);
+      return Promise.resolve();
+    },
+    unverifiedSignedUpBefore: (market, before, limit) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.emailVerifiedAt === null &&
+              Temporal.Instant.compare(a.signedUpAt, before) < 0,
+          )
+          .sort((a, b) => Temporal.Instant.compare(a.signedUpAt, b.signedUpAt))
+          .slice(0, limit)
+          .map((a) => a.id),
+      ),
+    remove: (_market: MarketContext, account: Account) => {
+      this.accounts.delete(account.state.id);
+      for (const [id, link] of this.links) {
+        if (link.accountId === account.state.id) this.links.delete(id);
+      }
+      return Promise.resolve();
+    },
+  };
+
+  readonly linkRepository: OneTimeLinkRepository = {
+    findById: (market, id) => {
+      const state = this.links.get(id);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId
+          ? null
+          : OneTimeLink.restore(state),
+      );
+    },
+    findFor: (market, accountId, purpose) => {
+      const state = [...this.links.values()].find(
+        (l) => l.marketId === market.marketId && l.accountId === accountId && l.purpose === purpose,
+      );
+      return Promise.resolve(state === undefined ? null : OneTimeLink.restore(state));
+    },
+    findByTokenHash: (market, tokenHash) => {
+      const state = [...this.links.values()].find(
+        (l) =>
+          l.marketId === market.marketId &&
+          l.tokenHash !== null &&
+          hex(l.tokenHash) === hex(tokenHash),
+      );
+      return Promise.resolve(state === undefined ? null : OneTimeLink.restore(state));
+    },
+    add: (_market, link) => {
+      this.links.set(link.state.id, link.state);
+      return Promise.resolve();
+    },
+    save: (_market, link) => {
+      const stored = this.links.get(link.state.id);
+      if (stored === undefined || stored.version !== link.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('one-time-link', link.state.id));
+      }
+      this.links.set(link.state.id, link.state);
+      return Promise.resolve();
+    },
+    consume: (market, id, expectedVersion, now) => {
+      const stored = this.links.get(id);
+      if (
+        stored === undefined ||
+        stored.marketId !== market.marketId ||
+        stored.version !== expectedVersion ||
+        stored.consumedAt !== null ||
+        stored.expiresAt === null ||
+        Temporal.Instant.compare(stored.expiresAt, now) <= 0
+      ) {
+        return Promise.resolve(false);
+      }
+      this.links.set(id, { ...stored, consumedAt: now, version: stored.version + 1 });
+      return Promise.resolve(true);
+    },
+    purgeSpent: () => Promise.resolve(0),
+  };
+
+  readonly mailTransport: MailTransport = {
+    send: (message) => {
+      if (this.mailDown) return Promise.reject(new Error('mail transport down'));
+      this.mails.push(message);
       return Promise.resolve();
     },
   };
@@ -246,7 +365,10 @@ export class IdentityFakes {
       if (this.busy) return Promise.resolve(err({ code: 'request.busy', retryAfterSeconds: 1 }));
       this.verified += 1;
       return Promise.resolve(
-        ok({ matches: stored !== null && stored === fakeHashOf(plain), needsRehash: false }),
+        ok({
+          matches: stored !== null && stored === fakeHashOf(plain),
+          needsRehash: this.needsRehash && stored === fakeHashOf(plain),
+        }),
       );
     },
   };
@@ -266,6 +388,10 @@ export class IdentityFakes {
       .useValue(this.recordRepository)
       .overrideProvider(OUTBOX_WRITER)
       .useValue(this.outbox)
+      .overrideProvider(ONE_TIME_LINK_REPOSITORY)
+      .useValue(this.linkRepository)
+      .overrideProvider(MAIL_TRANSPORT)
+      .useValue(this.mailTransport)
       .overrideProvider(PASSWORD_HASHER)
       .useValue(this.hasher);
   }

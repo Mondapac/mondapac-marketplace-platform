@@ -51,6 +51,8 @@ export default async function globalSetup(): Promise<void> {
 
   await createCopy(name, 'LOCKING');
   await createCopy(name, 'RELAY');
+  await createCopy(name, 'DELIVERY');
+  await createCopy(name, 'MAIL');
 }
 
 /**
@@ -58,10 +60,17 @@ export default async function globalSetup(): Promise<void> {
  * - `locking`: unit-of-work.db-spec.ts takes table locks and changes triggers on
  *   `platform.audit_log`, so no other file meets those locks, whatever the role's lock_timeout;
  * - `relay`: relay.db-spec.ts claims and marks every unpublished outbox row and starts a worker,
- *   so it never publishes a row another file wrote and still reads as unpublished.
+ *   so it never publishes a row another file wrote and still reads as unpublished;
+ * - `delivery`: event-delivery.db-spec.ts relays and dispatches every pending row of a Market
+ *   with test subscriptions, so it never claims a row another file wrote;
+ * - `mail`: email-verification.db-spec.ts relays and dispatches identity's own events to its
+ *   mail handlers, for the same reason.
  * Copied before any test connects, since a template must have no other session.
  */
-async function createCopy(template: string, kind: 'LOCKING' | 'RELAY'): Promise<void> {
+async function createCopy(
+  template: string,
+  kind: 'LOCKING' | 'RELAY' | 'DELIVERY' | 'MAIL',
+): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
   await admin.connect();

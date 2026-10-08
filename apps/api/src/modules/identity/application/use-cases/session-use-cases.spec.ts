@@ -25,6 +25,7 @@ import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-i
 import { IdentityFacadeImplementation } from '../../presentation/identity.facade';
 import { DescribeActor } from './describe-actor.use-case';
 import {
+  LINK_KEPT_AFTER_SPENT_HOURS,
   MAX_RECORD_DAYS_PER_RUN,
   PurgeExpired,
   SESSION_KEPT_AFTER_EXPIRY_HOURS,
@@ -191,6 +192,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         sessions: fakes.sessionRepository,
         throttles: fakes.throttleRepository,
         records: fakes.recordRepository,
+        links: fakes.linkRepository,
         policy,
         clock,
       });
@@ -212,6 +214,11 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         sessions: [],
         throttles: [],
         records: [],
+        links: [],
+      };
+      fakes.linkRepository.purgeSpent = (_m, before) => {
+        cutoffs.links!.push(before);
+        return Promise.resolve(4);
       };
       fakes.sessionRepository.purgeExpired = (_m, before) => {
         cutoffs.sessions!.push(before);
@@ -234,26 +241,29 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           units += 1;
           return fakes.unitOfWork.run(m, work);
         },
+        runOnce: (m, delivery, work, options) =>
+          fakes.unitOfWork.runOnce(m, delivery, work, options),
       };
 
       await expect(purge(counting).execute(testCallContext(market, 'system'), {})).resolves.toEqual(
         {
           ok: true,
-          value: { sessions: 2, throttles: 3, signInRecords: 2 },
+          value: { sessions: 2, throttles: 3, signInRecords: 2, links: 4 },
         },
       );
       expect(cutoffs.sessions).toEqual([
         START.subtract({ hours: SESSION_KEPT_AFTER_EXPIRY_HOURS }),
       ]);
       expect(cutoffs.throttles).toEqual([START.subtract({ hours: THROTTLE_KEPT_HOURS })]);
+      expect(cutoffs.links).toEqual([START.subtract({ hours: LINK_KEPT_AFTER_SPENT_HOURS })]);
       expect(cutoffs.records).toEqual([
         cutoff.subtract({ hours: 36 }),
         cutoff.subtract({ hours: 12 }),
         cutoff.subtract({ hours: 12 }),
         cutoff,
       ]);
-      // sessions, throttles, the oldest record, two days of records.
-      expect(units).toBe(5);
+      // sessions, throttles, the oldest record, two days of records, links.
+      expect(units).toBe(6);
     });
 
     it('bounds the record deletes of one run', async () => {

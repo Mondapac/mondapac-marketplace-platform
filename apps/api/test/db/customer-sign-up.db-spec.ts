@@ -15,6 +15,7 @@ import {
   HmacThrottleKeys,
   localThrottleSecret,
 } from '../../src/modules/identity/infrastructure/sessions/hmac-throttle-keys';
+import { PrismaOneTimeLinkRepository } from '../../src/modules/identity/infrastructure/links/prisma-one-time-link.repository';
 import { PrismaThrottleRepository } from '../../src/modules/identity/infrastructure/sessions/prisma-throttle.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
@@ -86,6 +87,7 @@ describe('customer sign-up (database integration)', () => {
     useCase = new RegisterCustomer(createUseCaseGate(markets, null), {
       unitOfWork: db.unitOfWork,
       accounts: repository,
+      links: new PrismaOneTimeLinkRepository(db.service),
       throttles: new PrismaThrottleRepository(db.service),
       keys,
       outbox: new PrismaOutboxWriterFactory(

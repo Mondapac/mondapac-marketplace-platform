@@ -71,6 +71,7 @@ function setUp() {
       steps.push('unit');
       return fakes.unitOfWork.run(market, work);
     },
+    runOnce: (m, delivery, work, options) => fakes.unitOfWork.runOnce(m, delivery, work, options),
   };
   const hasher: PasswordHasher = {
     hash: (plain) => {

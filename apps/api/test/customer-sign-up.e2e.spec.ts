@@ -12,10 +12,12 @@ import {
   type PasswordHasher,
   type PasswordHasherBusy,
 } from '../src/modules/identity/application/ports/password-hasher';
+import { ONE_TIME_LINK_REPOSITORY } from '../src/modules/identity/application/ports/one-time-link.repository';
 import { THROTTLE_REPOSITORY } from '../src/modules/identity/application/ports/throttle.repository';
 import { Account, type AccountState } from '../src/modules/identity/domain/account';
 import { OUTBOX_WRITER, type OutboxWriter } from '../src/platform/events/outbox-writer';
 import { UNIT_OF_WORK, type UnitOfWork } from '../src/platform/unit-of-work/unit-of-work';
+import { noRunOnce } from './support/fake-run-once';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
@@ -38,6 +40,7 @@ const state = {
 
 const fakeUnitOfWork: UnitOfWork = {
   run: <T, E>(_market: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+  runOnce: noRunOnce,
 };
 const fakeAccounts: AccountRepository = {
   findByEmail: (market, population, email) => {
@@ -51,6 +54,8 @@ const fakeAccounts: AccountRepository = {
     return Promise.resolve(ok(undefined));
   },
   save: () => Promise.resolve(),
+  unverifiedSignedUpBefore: () => Promise.reject(new Error('sign-up lists no account')),
+  remove: () => Promise.reject(new Error('sign-up removes no account')),
 };
 const fakeOutbox: OutboxWriter = {
   append: (_context, events) => {
@@ -74,6 +79,8 @@ const override = (builder: TestingModuleBuilder) =>
   builder
     .overrideProvider(THROTTLE_REPOSITORY)
     .useValue(mailCounters.throttleRepository)
+    .overrideProvider(ONE_TIME_LINK_REPOSITORY)
+    .useValue(mailCounters.linkRepository)
     .overrideProvider(UNIT_OF_WORK)
     .useValue(fakeUnitOfWork)
     .overrideProvider(ACCOUNT_REPOSITORY)
@@ -138,9 +145,12 @@ describe('POST /identity/customer/sign-up (integration)', () => {
       expect(first.headers['cache-control']).toBe('no-store');
       const [account] = [...state.accounts.values()];
       expect(account).toMatchObject({ marketId: code, displayName: null });
+      // Each sign-up of the unverified address requests its verification link (slice 3).
       expect(state.events.map((e) => e.type)).toEqual([
         'identity.customer-account-registered.v1',
+        'identity.one-time-link-requested.v1',
         'identity.sign-up-repeated.v1',
+        'identity.one-time-link-requested.v1',
       ]);
       expect(state.hashed).toBe(2);
     },

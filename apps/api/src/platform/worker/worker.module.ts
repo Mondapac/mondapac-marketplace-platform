@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OUTBOX_RELAY, type OutboxRelay } from '../events/event-bus';
+import { EVENT_DISPATCHER, type EventDispatcher } from '../events/event-delivery';
 import { Scheduler } from '../scheduler/scheduler';
 import { WorkerRuntime } from './worker-runtime';
 
@@ -11,8 +12,9 @@ import { WorkerRuntime } from './worker-runtime';
   providers: [
     {
       provide: WorkerRuntime,
-      inject: [OUTBOX_RELAY, Scheduler],
-      useFactory: (relay: OutboxRelay, scheduler: Scheduler) => new WorkerRuntime(relay, scheduler),
+      inject: [OUTBOX_RELAY, Scheduler, EVENT_DISPATCHER],
+      useFactory: (relay: OutboxRelay, scheduler: Scheduler, dispatcher: EventDispatcher) =>
+        new WorkerRuntime(relay, scheduler, dispatcher),
     },
   ],
   exports: [WorkerRuntime],

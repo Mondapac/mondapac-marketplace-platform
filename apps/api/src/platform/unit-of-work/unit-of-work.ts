@@ -1,4 +1,5 @@
 import type { MarketContext, Result } from '@mondapac/shared-kernel';
+import type { EventDelivery } from '../events/event-delivery';
 
 /**
  * Options of one unit (platform persistence design, "P", 3.1). Defaults: read-write, READ
@@ -34,7 +35,27 @@ export interface UnitOfWork {
     work: () => Promise<Result<T, E>>,
     options?: UnitOfWorkOptions,
   ): Promise<Result<T, E>>;
+
+  /**
+   * The unit of an event-handling use case (P 6.4; ADR-0006 decision 5): one read-write unit
+   * that inserts `(eventId, subscriber)` into the subscriber's module inbox, runs `work` only
+   * when that row is new, and marks the delivery delivered, all in one transaction. A
+   * repeated delivery therefore commits nothing but the mark and answers `{ handled: false }`.
+   * `err` and an exception commit nothing, so the delivery comes due again. External work (a
+   * mail) is done before `runOnce`, never inside it (P 3.1 row 5). The delivery must be one the
+   * dispatcher handed out, for this Market; anything else throws. A read-only unit is refused.
+   */
+  runOnce<T, E>(
+    market: MarketContext,
+    delivery: EventDelivery,
+    work: () => Promise<Result<T, E>>,
+    options?: Omit<UnitOfWorkOptions, 'readOnly'>,
+  ): Promise<Result<HandledOnce<T>, E>>;
 }
+
+/** What `runOnce` did: ran the work, or found the event already handled by this subscriber. */
+export type HandledOnce<T> =
+  { readonly handled: true; readonly value: T } | { readonly handled: false };
 
 /** Nest injection token of the {@link UnitOfWork} port. */
 export const UNIT_OF_WORK = Symbol('UNIT_OF_WORK');

@@ -9,6 +9,7 @@ import pino from 'pino';
 import { AppModule } from '../../src/app.module';
 import { CORE_MODULES } from '../../src/modules';
 import { compareWithSnapshot, EventCatalogue } from '../../src/platform/events/event-catalogue';
+import { SubscriptionRegistry } from '../../src/platform/events/event-subscriptions';
 import { OUTBOX_WRITER } from '../../src/platform/events/outbox-writer';
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { JobRegistry } from '../../src/platform/scheduler/job-registry';
@@ -69,6 +70,20 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
 
     expect(worker.get(EventCatalogue).snapshot()).toEqual(api.get(EventCatalogue).snapshot());
     expect(worker.get(JobRegistry).names()).toEqual(api.get(JobRegistry).names());
+    expect(worker.get(SubscriptionRegistry).names()).toEqual(api.get(SubscriptionRegistry).names());
+  });
+
+  it("registers identity's mail subscriptions and seals the registry (P 6.4; identity design 9)", () => {
+    const subscriptions = graphs.get('worker')!.get(SubscriptionRegistry);
+
+    expect(subscriptions.names()).toEqual(['identity.existing-account-mail', 'identity.link-mail']);
+    expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
+      'identity.link-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.sign-up-repeated.v1')).toEqual([
+      'identity.existing-account-mail',
+    ]);
+    expect(subscriptions.sealed).toBe(true);
   });
 
   it('has the worker runtime in both graphs, started by neither', () => {

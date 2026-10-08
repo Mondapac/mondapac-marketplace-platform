@@ -1,7 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Population } from '@mondapac/shared-kernel';
 import type { EmailAddress } from './email-address';
-import { CustomerAccountRegistered, SignUpRepeated } from './events';
+import { AccountEmailVerified, CustomerAccountRegistered, SignUpRepeated } from './events';
 
 /** The password credential, an entity of the account: a PHC string and when it was set. */
 export interface PasswordCredential {
@@ -138,17 +138,21 @@ export class Account {
    *   the address can always take it back from a squatter; the older link becomes void when
    *   links exist (slice 3);
    * - verified: nothing of the account changes; the holder is told "you already have an
-   *   account", at most once per `noticeHours` (the Market's policy, 24 hours).
+   *   account", at most once per `noticeHours` (the Market's policy, 24 hours), and only when
+   *   `mailAllowed`: the request's verdict on the mail counters (identity design 6.8; Mojtaba
+   *   item 3). A notice the counters refused is not recorded, so the next sign-up may send it.
    *
    * The caller hashed the new password before reading the account (HF12), whichever branch
-   * follows. A seller's name is replaced too, from slice 5.
+   * follows. A seller's name is replaced too, from slice 5. The verification link is the
+   * caller's: it requests it again in the same unit (3.7).
    */
   signUpAgain(input: {
     readonly passwordHash: string;
     readonly now: Temporal.Instant;
     readonly noticeHours: number;
+    readonly mailAllowed: boolean;
   }): SignUpAgainOutcome {
-    const { passwordHash, now, noticeHours } = input;
+    const { passwordHash, now, noticeHours, mailAllowed } = input;
     const state = this.#state;
     if (state.emailVerifiedAt === null) {
       this.change(
@@ -162,11 +166,34 @@ export class Account {
       return 'unverified-replaced';
     }
     const last = state.existingAccountNoticeAt;
-    if (last !== null && Temporal.Instant.compare(now, last.add({ hours: noticeHours })) < 0) {
+    if (
+      !mailAllowed ||
+      (last !== null && Temporal.Instant.compare(now, last.add({ hours: noticeHours })) < 0)
+    ) {
       return 'unchanged';
     }
     this.change({ existingAccountNoticeAt: now }, now, 'verified-notice');
     return 'verified-notice';
+  }
+
+  /**
+   * The email is confirmed (identity design 3.2): by the link and the account's password, in
+   * the closing unit of the confirmation (6.3). Records `identity.account-email-verified.v1`.
+   * An account already verified does not change; the answer says whether this call verified it.
+   */
+  verifyEmail(now: Temporal.Instant): boolean {
+    if (this.#state.emailVerifiedAt !== null) return false;
+    const version = this.#state.version + 1;
+    this.#state = Object.freeze({ ...this.#state, emailVerifiedAt: now, version });
+    this.#events.push(
+      AccountEmailVerified.record({
+        aggregateId: this.#state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: this.#state.id, population: this.#state.population },
+      }),
+    );
+    return true;
   }
 
   /**

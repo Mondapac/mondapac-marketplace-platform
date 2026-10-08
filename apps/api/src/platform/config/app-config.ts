@@ -9,6 +9,7 @@ const DEFAULT_SERVICE_AREA_CONFIG_DIR = path.resolve(
   __dirname,
   '../../../../../config/service-areas',
 );
+const DEFAULT_LOCALE_CONFIG_DIR = path.resolve(__dirname, '../../../../../config/locales');
 
 /** A Market code as used in `market_id` columns (ADR-0004), by the kernel's single rule. */
 const marketCode = z.string().transform((value, context) => {
@@ -45,11 +46,16 @@ const envSchema = z.object({
   API_DOCS_ENABLED: z.enum(['true', 'false']).default('false'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   SERVICE_AREA_CONFIG_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_CONFIG_DIR),
+  LOCALE_CONFIG_DIR: z.string().min(1).default(DEFAULT_LOCALE_CONFIG_DIR),
   DATABASE_URL: z
     .string({ error: 'DATABASE_URL is required' })
     .regex(/^postgres(ql)?:\/\/\S+$/, 'must be a postgresql:// connection URL'),
   // Kazem, spike 6 decision 2: an explicit pool maximum per process, 10 unless set.
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  // Identity design 9: the local mail catcher's HTTP base URL (Mailpit's UI/API port).
+  MAIL_CATCHER_URL: z
+    .url({ protocol: /^https?$/, error: 'must be an http(s) URL such as http://localhost:8025' })
+    .optional(),
 });
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
@@ -78,6 +84,11 @@ export interface AppConfig {
   readonly marketConfigDirs: readonly string[];
   /** Directories holding `<MARKET>.json` ServiceArea postcode sets (ADR-0005 decision 7). */
   readonly serviceAreaConfigDirs: readonly string[];
+  /**
+   * Directories holding translation catalogues, `<locale>/<module>.json` (INTL-11; identity
+   * design 9). `LOCALE_CONFIG_DIR`, default `config/locales`.
+   */
+  readonly localeConfigDirs: readonly string[];
   /** PostgreSQL connection URL. Contains credentials: never log it. */
   readonly databaseUrl: string;
   /**
@@ -85,6 +96,12 @@ export interface AppConfig {
    * `DATABASE_POOL_MAX`, 1 to 100, default 10.
    */
   readonly databasePoolMax: number;
+  /**
+   * The local mail catcher's base URL (`MAIL_CATCHER_URL`), or null: then every mail send
+   * fails and its delivery is retried and dead-lettered (identity design 9). Set, it is refused
+   * unless `NODE_ENV` is explicitly `development` or `test` (`platform/mail/`).
+   */
+  readonly mailCatcherUrl: string | null;
 }
 
 export class InvalidConfigError extends Error {
@@ -123,7 +140,9 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     serviceAreaConfigDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_CONFIG_DIR)]),
+    localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
+    mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
   });
 }

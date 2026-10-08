@@ -22,13 +22,16 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { TransactionConflictError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import { Account, type AccountState } from '../../domain/account';
+import { OneTimeLink, type LinkPurpose, type OneTimeLinkState } from '../../domain/one-time-link';
 import type { PasswordRules } from '../../domain/password-policy';
 import type { AccountAddRefused, AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import { RegisterCustomer } from './register-customer.use-case';
+import { noRunOnce } from '../../../../../test/support/fake-run-once';
 
 // identity design 3.2, 6.5, 6.7 (HF12), 8.6 row 1; slice 1d. Both Market fixtures, with the
 // password rules of their configuration files (AU 15..128, ZZ 16..100; notice 24 h and 12 h).
@@ -44,7 +47,7 @@ const COMMON = 'iloveyouiloveyou';
 const ORIGIN = '203.0.113.7';
 
 /** Everything the fakes did, in order, so a test can check that the hash came first. */
-type Step = 'hash' | 'unit' | 'reserve' | 'find' | 'add' | 'save' | 'append';
+type Step = 'hash' | 'unit' | 'reserve' | 'find' | 'add' | 'save' | 'link' | 'append';
 
 class Recorder {
   readonly steps: Step[] = [];
@@ -56,6 +59,8 @@ class FakeStore {
   staged: Map<string, AccountState> | null = null;
   committedEvents: PendingEvent[] = [];
   stagedEvents: PendingEvent[] = [];
+  committedLinks = new Map<string, OneTimeLinkState>();
+  stagedLinks: Map<string, OneTimeLinkState> | null = null;
 
   static key(market: MarketContext, population: Population, email: string): string {
     return `${market.marketId}|${population}|${email}`;
@@ -65,10 +70,16 @@ class FakeStore {
     if (this.staged === null) throw new Error('outside a unit');
     return this.staged;
   }
+
+  currentLinks(): Map<string, OneTimeLinkState> {
+    if (this.stagedLinks === null) throw new Error('outside a unit');
+    return this.stagedLinks;
+  }
 }
 
 class FakeUnitOfWork implements UnitOfWork {
   readonly options: (UnitOfWorkOptions | undefined)[] = [];
+  readonly runOnce = noRunOnce;
   constructor(
     private readonly store: FakeStore,
     private readonly recorder: Recorder,
@@ -82,16 +93,19 @@ class FakeUnitOfWork implements UnitOfWork {
     this.recorder.steps.push('unit');
     this.options.push(options);
     this.store.staged = new Map(this.store.committed);
+    this.store.stagedLinks = new Map(this.store.committedLinks);
     this.store.stagedEvents = [];
     try {
       const result = await work();
       if (result.ok) {
         this.store.committed = this.store.staged;
+        this.store.committedLinks = this.store.stagedLinks;
         this.store.committedEvents.push(...this.store.stagedEvents);
       }
       return result;
     } finally {
       this.store.staged = null;
+      this.store.stagedLinks = null;
     }
   }
 }
@@ -111,6 +125,14 @@ class FakeAccounts implements AccountRepository {
 
   findById(): never {
     throw new Error('sign-up reads no account by id');
+  }
+
+  unverifiedSignedUpBefore(): never {
+    throw new Error('sign-up lists no account');
+  }
+
+  remove(): never {
+    throw new Error('sign-up removes no account');
   }
 
   add(market: MarketContext, account: Account): Promise<Result<void, AccountAddRefused>> {
@@ -139,9 +161,52 @@ class FakeAccounts implements AccountRepository {
   }
 }
 
+/** The links of the fake store, keyed by account and purpose (M8: one row each). */
+class FakeLinks implements OneTimeLinkRepository {
+  constructor(
+    private readonly store: FakeStore,
+    private readonly recorder: Recorder,
+  ) {}
+
+  findById(): never {
+    throw new Error('sign-up reads no link by id');
+  }
+
+  findFor(_market: MarketContext, accountId: string, purpose: LinkPurpose) {
+    this.recorder.steps.push('link');
+    const state = this.store.currentLinks().get(`${accountId}|${purpose}`);
+    return Promise.resolve(state === undefined ? null : OneTimeLink.restore(state));
+  }
+
+  findByTokenHash(): never {
+    throw new Error('sign-up reads no link by token');
+  }
+
+  add(_market: MarketContext, link: OneTimeLink): Promise<void> {
+    this.recorder.steps.push('link');
+    const { state } = link;
+    this.store.currentLinks().set(`${state.accountId}|${state.purpose}`, state);
+    return Promise.resolve();
+  }
+
+  save(market: MarketContext, link: OneTimeLink): Promise<void> {
+    return this.add(market, link);
+  }
+
+  consume(): never {
+    throw new Error('sign-up consumes no link');
+  }
+
+  purgeSpent(): never {
+    throw new Error('sign-up purges no link');
+  }
+}
+
 /** Records the counters each committed unit reserved (the mail counters of 6.8, L4). */
 class FakeThrottles implements ThrottleRepository {
   readonly committed: string[][] = [];
+  /** The attempts every reservation reports, so a test can put the mail over its limit. */
+  attempts = 1;
   constructor(private readonly recorder: Recorder) {}
 
   reserve(_market: MarketContext, counters: readonly ThrottleCounter[]) {
@@ -153,7 +218,7 @@ class FakeThrottles implements ThrottleRepository {
       counters.map((c) => ({
         kind: c.kind,
         keyHash: c.keyHash,
-        attempts: 1,
+        attempts: this.attempts,
         windowStartedAt: START,
         blockedUntil: null,
       })),
@@ -225,6 +290,9 @@ const policy: IdentityMarketPolicy = {
   },
   mailThrottles: () => ({ account: MAIL, origin: MAIL }),
   signInRecordRetentionDays: () => 90,
+  linkLifetimeMinutes: () => 1440,
+  unverifiedAccountRetentionDays: () => 7,
+  mailSender: () => ({ address: 'no-reply@example.test', name: 'Test' }),
 };
 
 function setUp() {
@@ -233,6 +301,7 @@ function setUp() {
   const clock = new FixedClock(START);
   const unitOfWork = new FakeUnitOfWork(store, recorder);
   const accounts = new FakeAccounts(store, recorder);
+  const links = new FakeLinks(store, recorder);
   const outbox = new FakeOutbox(store, recorder);
   const hasher = new FakeHasher(recorder);
   const throttles = new FakeThrottles(recorder);
@@ -243,6 +312,7 @@ function setUp() {
   const useCase = new RegisterCustomer(gate, {
     unitOfWork,
     accounts,
+    links,
     throttles,
     keys,
     outbox,
@@ -257,16 +327,24 @@ function setUp() {
 
 const accepted = { ok: true, value: { code: 'sign-up.accepted' } };
 const stored = (store: FakeStore) => [...store.committed.values()];
+const storedLinks = (store: FakeStore) => [...store.committedLinks.values()];
+const types = (store: FakeStore) => store.committedEvents.map((event) => event.type);
 
 describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
   const context = testCallContext(market, 'anonymous');
   let warnings: jest.SpyInstance;
 
+  let lines: jest.SpyInstance;
+
   beforeEach(() => {
     warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    lines = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
   });
-  afterEach(() => warnings.mockRestore());
+  afterEach(() => {
+    warnings.mockRestore();
+    lines.mockRestore();
+  });
 
   it('declares the anonymous rule under its catalogue name', () => {
     expect(RegisterCustomer.access).toEqual({
@@ -313,13 +391,46 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
       });
 
       const [account] = stored(store);
-      expect(store.committedEvents).toHaveLength(1);
+      const [link] = storedLinks(store);
+      expect(store.committedEvents).toHaveLength(2);
       expect(store.committedEvents[0]).toMatchObject({
         type: 'identity.customer-account-registered.v1',
         aggregateId: account!.id,
         payload: { accountId: account!.id },
       });
+      expect(store.committedEvents[1]).toMatchObject({
+        type: 'identity.one-time-link-requested.v1',
+        aggregateId: link!.id,
+        aggregateVersion: 1,
+        payload: { linkId: link!.id, accountId: account!.id, purpose: 'verify-email' },
+      });
+      expect(link).toMatchObject({ accountId: account!.id, tokenHash: null, version: 1 });
       expect(outbox.contexts).toEqual([context]);
+    });
+
+    it('requests the link but records no link event when the mail is over its limit (Mojtaba 3)', async () => {
+      const { useCase, store, throttles } = setUp();
+      throttles.attempts = MAIL.limit + 1;
+
+      await expect(
+        useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        }),
+      ).resolves.toEqual(accepted);
+
+      expect(stored(store)).toHaveLength(1);
+      expect(storedLinks(store)).toEqual([
+        expect.objectContaining({ tokenHash: null, version: 1 }),
+      ]);
+      expect(types(store)).toEqual(['identity.customer-account-registered.v1']);
+      // A structured line with no address (identity design 6.8; P 12.3).
+      expect(lines).toHaveBeenCalledWith({
+        msg: 'identity.register-customer.mail-throttled',
+        marketId: code,
+        correlationId: context.correlationId,
+      });
     });
 
     it('hashes before any read, counts the mail, then runs one serializable unit (HF12)', async () => {
@@ -331,7 +442,16 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
         password: GOOD_PASSWORD,
       });
 
-      expect(recorder.steps).toEqual(['hash', 'unit', 'reserve', 'unit', 'find', 'add', 'append']);
+      expect(recorder.steps).toEqual([
+        'hash',
+        'unit',
+        'reserve',
+        'unit',
+        'find',
+        'add',
+        'link',
+        'append',
+      ]);
       expect(unitOfWork.options).toEqual([undefined, { isolation: 'serializable' }]);
     });
 
@@ -358,9 +478,11 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
         [code, 1],
         [other, 1],
       ]);
-      expect(store.committedEvents.map((e) => e.type)).toEqual([
+      expect(types(store)).toEqual([
         'identity.customer-account-registered.v1',
+        'identity.one-time-link-requested.v1',
         'identity.customer-account-registered.v1',
+        'identity.one-time-link-requested.v1',
       ]);
     });
   });
@@ -390,11 +512,74 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
         signedUpAt: clock.now(),
         credential: { passwordHash: '$argon2id$v=19$fake-2', changedAt: clock.now() },
       });
-      expect(store.committedEvents.at(-1)).toMatchObject({
-        type: 'identity.sign-up-repeated.v1',
-        payload: { accountId: account!.id, cause: 'unverified-replaced' },
+      expect(store.committedEvents.slice(-2)).toEqual([
+        expect.objectContaining({
+          type: 'identity.sign-up-repeated.v1',
+          payload: { accountId: account!.id, cause: 'unverified-replaced' },
+        }),
+        expect.objectContaining({
+          type: 'identity.one-time-link-requested.v1',
+          aggregateVersion: 2,
+          occurredAt: clock.now(),
+        }),
+      ]);
+      // 3.2: the same link row is requested again (the older token, if any, is void).
+      expect(storedLinks(store)).toEqual([
+        expect.objectContaining({ requestedAt: clock.now(), tokenHash: null, version: 2 }),
+      ]);
+      expect(recorder.steps).toEqual([
+        'hash',
+        'unit',
+        'reserve',
+        'unit',
+        'find',
+        'save',
+        'link',
+        'link',
+        'append',
+      ]);
+    });
+
+    it('unverified, mail over its limit: the password is replaced, the link voided, no link event', async () => {
+      const { useCase, store, clock, throttles } = setUp();
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
       });
-      expect(recorder.steps).toEqual(['hash', 'unit', 'reserve', 'unit', 'find', 'save', 'append']);
+      clock.advance(Temporal.Duration.from({ hours: 1 }));
+      throttles.attempts = MAIL.limit + 1;
+
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: `${GOOD_PASSWORD}!`,
+      });
+
+      expect(stored(store)[0]).toMatchObject({ version: 2, signedUpAt: clock.now() });
+      expect(storedLinks(store)).toEqual([
+        expect.objectContaining({ version: 2, tokenHash: null }),
+      ]);
+      expect(types(store).slice(-1)).toEqual(['identity.sign-up-repeated.v1']);
+    });
+
+    it('unverified without a link row (an account from before slice 3): a link is requested', async () => {
+      const { useCase, store } = setUp();
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
+      store.committedLinks.clear();
+
+      await useCase.execute(context, {
+        origin: ORIGIN,
+        email: 'a@example.com',
+        password: GOOD_PASSWORD,
+      });
+
+      expect(storedLinks(store)).toEqual([expect.objectContaining({ version: 1 })]);
+      expect(types(store).slice(-1)).toEqual(['identity.one-time-link-requested.v1']);
     });
 
     describe('verified', () => {
@@ -432,6 +617,29 @@ describe.each(TEST_MARKETS)('RegisterCustomer in market %s', (code) => {
         });
         // The new password was hashed all the same (HF12), then thrown away.
         expect(hasher.count).toBe(2);
+      });
+
+      it('records no notice when the mail is over its limit (Mojtaba item 3)', async () => {
+        const { useCase, store, throttles } = setUp();
+        await useCase.execute(context, {
+          origin: ORIGIN,
+          email: 'a@example.com',
+          password: GOOD_PASSWORD,
+        });
+        verify(store);
+        const events = store.committedEvents.length;
+        throttles.attempts = MAIL.limit + 1;
+
+        await expect(
+          useCase.execute(context, {
+            origin: ORIGIN,
+            email: 'a@example.com',
+            password: GOOD_PASSWORD,
+          }),
+        ).resolves.toEqual(accepted);
+
+        expect(stored(store)[0]).toMatchObject({ version: 1, existingAccountNoticeAt: null });
+        expect(store.committedEvents).toHaveLength(events);
       });
 
       it("records at most one notice per the Market's interval", async () => {

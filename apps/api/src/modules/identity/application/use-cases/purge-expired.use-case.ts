@@ -3,6 +3,7 @@ import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleRepository } from '../ports/throttle.repository';
@@ -11,6 +12,8 @@ import type { ThrottleRepository } from '../ports/throttle.repository';
 export const SESSION_KEPT_AFTER_EXPIRY_HOURS = 30 * 24;
 /** Throttle rows whose window started more than 48 hours ago and that are not blocked (3.5). */
 export const THROTTLE_KEPT_HOURS = 48;
+/** Links leave a day after they were consumed or expired (data design 9; slice 3). */
+export const LINK_KEPT_AFTER_SPENT_HOURS = 24;
 /** At most this many one-day deletes of sign-in records per run; the next run continues. */
 export const MAX_RECORD_DAYS_PER_RUN = 400;
 
@@ -18,6 +21,7 @@ export interface PurgeExpiredOutput {
   readonly sessions: number;
   readonly throttles: number;
   readonly signInRecords: number;
+  readonly links: number;
 }
 
 export type PurgeExpiredFailure = { readonly code: 'access.denied' };
@@ -27,6 +31,7 @@ export interface PurgeExpiredDependencies {
   readonly sessions: SessionRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly links: OneTimeLinkRepository;
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
 }
@@ -38,7 +43,8 @@ export interface PurgeExpiredDependencies {
  * - sessions 30 days past their absolute expiry;
  * - throttle counters whose window started more than 48 hours ago and that are not blocked;
  * - sign-in records older than the Market's retention (H3: 90 days), one day of `occurred_at`
- *   per statement, from the oldest.
+ *   per statement, from the oldest;
+ * - one-time links consumed or expired for a day (slice 3).
  *
  * Each statement runs in its own short unit. Rule `system`: run by the hourly job only.
  */
@@ -64,7 +70,7 @@ export class PurgeExpired extends UseCase<
   ): Promise<Result<PurgeExpiredOutput, PurgeExpiredFailure>> {
     const { market } = context;
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
-    const { unitOfWork, sessions, throttles, records, clock } = this.deps;
+    const { unitOfWork, sessions, throttles, records, links, clock } = this.deps;
     const now = clock.now();
 
     const purgedSessions = await unitOfWork.run(market, async () =>
@@ -100,10 +106,15 @@ export class PurgeExpired extends UseCase<
       from = to;
     }
 
+    const purgedLinks = await unitOfWork.run(market, async () =>
+      ok(await links.purgeSpent(market, now.subtract({ hours: LINK_KEPT_AFTER_SPENT_HOURS }))),
+    );
+
     return ok({
       sessions: purgedSessions.ok ? purgedSessions.value : 0,
       throttles: purgedThrottles.ok ? purgedThrottles.value : 0,
       signInRecords: purgedRecords,
+      links: purgedLinks.ok ? purgedLinks.value : 0,
     });
   }
 }

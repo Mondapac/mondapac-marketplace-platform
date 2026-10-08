@@ -1,4 +1,4 @@
-import type { Id, MarketContext, Population, Result } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Population, Result, Temporal } from '@mondapac/shared-kernel';
 import type { Account } from '../../domain/account';
 
 /**
@@ -38,6 +38,24 @@ export interface AccountRepository {
    * when the credential changed (Mojtaba N-b).
    */
   save(market: MarketContext, account: Account): Promise<void>;
+
+  /**
+   * Up to `limit` ids of never-verified accounts whose latest sign-up is before `before`, oldest
+   * first (the unverified purge; data design 3.3, its partial index).
+   */
+  unverifiedSignedUpBefore(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<Id<'Account'>[]>;
+
+  /**
+   * Erases a loaded account (data design 3.3, A2 under H5): destroys its data key, then deletes
+   * the row, which takes its credential, sessions and links with it (C8). The delete is
+   * conditional on the version read; otherwise `StaleAggregateError`, so the unit rolls back and
+   * the key survives. In Phase 2 only the unverified purge calls it.
+   */
+  remove(market: MarketContext, account: Account): Promise<void>;
 }
 
 /** Nest token of the {@link AccountRepository}. */

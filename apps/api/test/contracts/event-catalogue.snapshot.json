@@ -1,9 +1,26 @@
 [
   {
+    "type": "identity.account-email-verified.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
     "type": "identity.customer-account-registered.v1",
     "aggregateType": "account",
     "fields": {
       "accountId": "id"
+    }
+  },
+  {
+    "type": "identity.one-time-link-requested.v1",
+    "aggregateType": "one-time-link",
+    "fields": {
+      "linkId": "id",
+      "accountId": "id",
+      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset)"
     }
   },
   {

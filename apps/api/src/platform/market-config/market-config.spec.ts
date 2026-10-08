@@ -38,6 +38,17 @@ const VALID = {
       origin: { limit: 10, windowMinutes: 60, blockMinutes: 0 },
     },
     signInRecordRetentionDays: 90,
+    links: {
+      lifetimeMinutes: { 'verify-email': 1440 },
+      targets: {
+        customer: {
+          'verify-email': 'https://shop.qq.test/confirm-email',
+          'sign-in': 'https://shop.qq.test/sign-in',
+        },
+      },
+    },
+    unverifiedAccountRetentionDays: 7,
+    mail: { fromAddress: 'no-reply@qq.test', fromName: 'QQ' },
   },
 };
 const IDENTITY = VALID.identity;
@@ -138,6 +149,89 @@ describe('loadMarketConfigs', () => {
     ],
     ['an unknown identity field', { identity: { ...IDENTITY, pepper: 'x' } }, /identity/],
     [
+      'a link page with a fragment',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: { ...IDENTITY.links.targets.customer, 'verify-email': 'https://a.test/#x' },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.verify-email/,
+    ],
+    [
+      'a link page that is not http(s)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: { ...IDENTITY.links.targets.customer, 'sign-in': 'javascript:alert(1)' },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.sign-in/,
+    ],
+    [
+      'a link page on plain http to a non-loopback host (Hassan L4)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: {
+                ...IDENTITY.links.targets.customer,
+                'verify-email': 'http://shop.qq.test/confirm-email',
+              },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.verify-email/,
+    ],
+    [
+      'a verification link living longer than 24 hours (Hassan L3)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 1441 } },
+        },
+      },
+      /identity\.links\.lifetimeMinutes\.verify-email/,
+    ],
+    [
+      'a link lifetime of zero',
+      {
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 0 } },
+        },
+      },
+      /identity\.links\.lifetimeMinutes/,
+    ],
+    [
+      'a sender name with a line break',
+      { identity: { ...IDENTITY, mail: { fromAddress: 'a@qq.test', fromName: 'QQ\nBcc: x' } } },
+      /identity\.mail\.fromName/,
+    ],
+    [
+      'a sender address that is not an email',
+      { identity: { ...IDENTITY, mail: { fromAddress: 'not-an-email', fromName: 'QQ' } } },
+      /identity\.mail\.fromAddress/,
+    ],
+    [
+      'an unverified retention above 30 days',
+      { identity: { ...IDENTITY, unverifiedAccountRetentionDays: 31 } },
+      /identity\.unverifiedAccountRetentionDays/,
+    ],
+    [
       'an idle timeout longer than the absolute lifetime',
       {
         identity: {
@@ -176,6 +270,25 @@ describe('loadMarketConfigs', () => {
 
     expect(() => loadMarketConfigs([directory], [QQ])).toThrow(InvalidMarketConfigError);
     expect(() => loadMarketConfigs([directory], [QQ])).toThrow(message);
+  });
+
+  it.each([
+    'http://localhost:3001/confirm-email',
+    'http://storefront.localhost/confirm-email',
+    'http://127.0.0.1:3001/confirm-email',
+    'http://[::1]:3001/confirm-email',
+    'https://shop.qq.test/confirm-email',
+  ])('accepts the link page %s, with a 24-hour verification link', (page) => {
+    const identity = {
+      ...IDENTITY,
+      links: {
+        lifetimeMinutes: { 'verify-email': 1440 },
+        targets: { customer: { ...IDENTITY.links.targets.customer, 'verify-email': page } },
+      },
+    };
+    const directory = directoryWith({ 'QQ.json': { ...VALID, identity } });
+
+    expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links).toEqual(identity.links);
   });
 
   describe('the sellers section', () => {

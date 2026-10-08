@@ -52,7 +52,27 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // docs/design/data/identity.md section 7 (PM2): the envelope is immutable to the application.
     'identity.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // docs/design/data/identity.md section 7 (slice 3): a link row is reused per account and
+    // purpose and purged when consumed or expired; the inbox gets DELETE with its prune job.
+    'identity.one_time_links': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
+    // the application; DELETE arrives with the prune job.
+    'platform.event_delivery': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'attempts',
+        'dead_at',
+        'delivered_at',
+        'error_code',
+        'next_attempt_at',
+        'status',
+      ],
+    },
     // docs/design/data/identity.md section 7 (PF 4): a tombstone, no DELETE; the identity
     // columns are frozen by the trigger as well.
     'platform.subject_keys': {
