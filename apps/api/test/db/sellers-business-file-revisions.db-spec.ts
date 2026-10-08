@@ -536,6 +536,27 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
       );
       expect(deleted.rowCount).toBe(1);
     });
+
+    it('refuses to delete a retired or ever-public shop slug', async () => {
+      const sellerId = await newFile();
+      for (const [state, everPublic] of [
+        ['retired', true],
+        ['held', true],
+      ] as const) {
+        const slug = `slug-${randomUUID().slice(0, 8)}`;
+        await sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state, ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $6 = 'retired' THEN $8::timestamptz END, 1, $8)`,
+          [randomUUID(), code, market.tenantId, slug, sellerId, state, everPublic, T0.toString()],
+        );
+        await expect(
+          sql.query('DELETE FROM sellers.shop_slugs WHERE market_id = $1 AND slug = $2', [
+            code,
+            slug,
+          ]),
+        ).rejects.toMatchObject({ code: '23001' });
+      }
+    });
   });
 
   describe('PrismaBusinessFileRevisionRepository', () => {

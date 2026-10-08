@@ -1488,12 +1488,9 @@ that is a separate, additive step.
 
 **Open points (for Mojtaba, Hassan and Hadi; none blocks 5a):**
 
-1. **`DELETE` on `shop_slugs` has no database guard on which rows.** The grant is table-level, as
-   section 8 says, and `shop_slugs_one_way` does not fire on `DELETE`. The rule "only a held,
-   never-public row is deleted" is the application's. A `BEFORE DELETE` trigger refusing
-   `state = 'retired' OR ever_public` (for every role) would match 3.5 ("a retired slug outlives
-   the purge") and cost one function. Not added, because 3.5 and 8 do not ask for it; Mojtaba to
-   decide before 5b uses the grant.
+1. **`DELETE` on `shop_slugs` guard (Mojtaba C1, resolved in 5a).** The migration adds a
+   `BEFORE DELETE` trigger `shop_slugs_no_delete_public` that refuses `state = 'retired' OR
+   ever_public` for every role (3.5: a retired slug outlives the purge). A db test covers it.
 2. **The pointer and the status are two facts.** Nothing in the database requires the revision the
    pointer names to be `approved`; the pointer FK only requires it to belong to this seller. The
    move of the pointer (7a-decide) must set status and pointer in one unit, and a test there asserts
@@ -1537,3 +1534,9 @@ races of Hassan's condition at repository level); the four rate-counter kinds.
    fixture approved revision; the ordering and caller-independence tests re-run with real rows; no
    identity-approved seller answers `null` after the backfill (7.1a row 2, Ali F2); the A18 plans
    recorded (12, Mojtaba F4).
+
+**Carried to 5b and 7a (Mojtaba C2, Hassan L1, I2):** 7a-decide sets status and pointer in one unit
+(a test asserts the pair; consider a deferred constraint trigger and a one-way status trigger
+there). 5b and 7a update revision status with `WHERE status = <from>` and check the row count.
+5b makes `register_checks` writes version-monotonic (`WHERE compared_file_version <= :new`; a
+lower version never clears `definite_negative_at`), with a db test for the out-of-order case.

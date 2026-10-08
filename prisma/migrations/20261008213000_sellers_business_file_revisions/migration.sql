@@ -151,3 +151,21 @@ CREATE INDEX "business_file_revisions_market_id_kind_created_at_pending_idx" ON 
 -- first slice that holds a slug is the first that can release one.
 GRANT SELECT, INSERT, UPDATE ("status", "status_changed_at", "decided_at", "decided_by_account_id", "identity_decision_id", "reject_reason_code", "withdraw_cause", "withdrawn_by_kind", "withdrawn_at") ON TABLE "sellers"."business_file_revisions" TO "mondapac_app";
 GRANT DELETE ON TABLE "sellers"."shop_slugs" TO "mondapac_app";
+
+-- Hand-written (database-designer, condition C1): a retired or ever-public slug outlives every
+-- role's DELETE (docs/design/data/sellers.md 3.5). Only a held, never-public row can be released.
+CREATE FUNCTION "sellers"."shop_slugs_guard_delete"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."state" = 'retired' OR OLD."ever_public" THEN
+    RAISE EXCEPTION 'sellers.shop_slugs: a retired or ever-public slug is never deleted'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER "shop_slugs_no_delete_public"
+  BEFORE DELETE ON "sellers"."shop_slugs"
+  FOR EACH ROW EXECUTE FUNCTION "sellers"."shop_slugs_guard_delete"();

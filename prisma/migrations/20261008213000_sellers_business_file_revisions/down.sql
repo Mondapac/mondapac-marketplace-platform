@@ -3,6 +3,8 @@
 -- revisions); then the new table (its CHECKs, indexes, keys and its own foreign key go with it);
 -- then the columns and the CHECK added to existing tables. For an empty or development database
 -- only: it drops the revisions, the pointer column and the compared file versions.
+DROP TRIGGER "shop_slugs_no_delete_public" ON "sellers"."shop_slugs";
+DROP FUNCTION "sellers"."shop_slugs_guard_delete"();
 REVOKE DELETE ON TABLE "sellers"."shop_slugs" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("status", "status_changed_at", "decided_at", "decided_by_account_id", "identity_decision_id", "reject_reason_code", "withdraw_cause", "withdrawn_by_kind", "withdrawn_at") ON TABLE "sellers"."business_file_revisions" FROM "mondapac_app";
 ALTER TABLE "sellers"."seller_files" DROP CONSTRAINT "seller_files_market_id_seller_id_approved_revision_id_fkey";
