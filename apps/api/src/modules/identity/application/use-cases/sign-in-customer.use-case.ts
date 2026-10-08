@@ -228,21 +228,24 @@ export class SignInCustomer extends UseCase<
     );
     if (!verified.ok) {
       // Nothing was verified: the reservation is given back.
-      await unitOfWork.run(market, async () => {
-        await throttles.release(
-          market,
-          reserved.map((r) => r.reservation),
-        );
-        await this.record(
-          context,
-          input.client,
-          account?.state.id ?? null,
-          'request.busy',
-          null,
-          this.deps.clock.now(),
-        );
-        return ok(undefined);
-      });
+      const released = await this.#failClosed(context, 'release', () =>
+        unitOfWork.run(market, async () => {
+          await throttles.release(
+            market,
+            reserved.map((r) => r.reservation),
+          );
+          await this.record(
+            context,
+            input.client,
+            account?.state.id ?? null,
+            'request.busy',
+            null,
+            this.deps.clock.now(),
+          );
+          return ok(undefined);
+        }),
+      );
+      if (!released.ok) return err(UNAVAILABLE);
       return err(verified.error);
     }
     const matches = account !== null && verified.value.matches;
@@ -252,68 +255,70 @@ export class SignInCustomer extends UseCase<
     const issued = matches ? this.deps.tokens.issue() : null;
 
     // Step 4: the closing unit (HF11).
-    const closed = await unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
-      const now = this.deps.clock.now();
-      const current = account === null ? null : await accounts.findById(market, account.state.id);
-      if (
-        !matches ||
-        account === null ||
-        issued === null ||
-        current === null ||
-        current.state.credential.passwordHash !== account.state.credential.passwordHash
-      ) {
-        const blocks = reserved.flatMap(({ reservation: r, rule }) => {
-          const until = blockAfterFailure(r, rule, now);
-          return until === null ? [] : [{ reservation: r, until }];
-        });
-        if (blocks.length > 0) await throttles.block(market, blocks);
-        await this.record(
-          context,
-          input.client,
-          account?.state.id ?? null,
-          'credentials.invalid',
-          null,
-          now,
+    const closed = await this.#failClosed(context, 'closing', () =>
+      unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
+        const now = this.deps.clock.now();
+        const current = account === null ? null : await accounts.findById(market, account.state.id);
+        if (
+          !matches ||
+          account === null ||
+          issued === null ||
+          current === null ||
+          current.state.credential.passwordHash !== account.state.credential.passwordHash
+        ) {
+          const blocks = reserved.flatMap(({ reservation: r, rule }) => {
+            const until = blockAfterFailure(r, rule, now);
+            return until === null ? [] : [{ reservation: r, until }];
+          });
+          if (blocks.length > 0) await throttles.block(market, blocks);
+          await this.record(
+            context,
+            input.client,
+            account?.state.id ?? null,
+            'credentials.invalid',
+            null,
+            now,
+          );
+          return ok({ kind: 'refused', code: 'credentials.invalid' });
+        }
+        await throttles.release(
+          market,
+          reserved.map((r) => r.reservation),
         );
-        return ok({ kind: 'refused', code: 'credentials.invalid' });
-      }
-      await throttles.release(
-        market,
-        reserved.map((r) => r.reservation),
-      );
-      const accountId = current.state.id;
-      if (!current.isEmailVerified) {
-        await this.record(
-          context,
-          input.client,
+        const accountId = current.state.id;
+        if (!current.isEmailVerified) {
+          await this.record(
+            context,
+            input.client,
+            accountId,
+            'email-verification-required',
+            null,
+            now,
+          );
+          return ok({ kind: 'refused', code: 'email-verification-required' });
+        }
+        if (current.state.status !== 'active') {
+          await this.record(context, input.client, accountId, 'account.disabled', null, now);
+          return ok({ kind: 'refused', code: 'account.disabled' });
+        }
+        if (rehashed !== null && rehashed.ok) {
+          current.rehashPassword(rehashed.value);
+          await accounts.save(market, current);
+        }
+        const session = openSession({
+          id: this.deps.ids.next<'Session'>(),
+          marketId: market.marketId,
           accountId,
-          'email-verification-required',
-          null,
+          population: 'customer',
+          transport: 'cookie',
+          lifetime,
           now,
-        );
-        return ok({ kind: 'refused', code: 'email-verification-required' });
-      }
-      if (current.state.status !== 'active') {
-        await this.record(context, input.client, accountId, 'account.disabled', null, now);
-        return ok({ kind: 'refused', code: 'account.disabled' });
-      }
-      if (rehashed !== null && rehashed.ok) {
-        current.rehashPassword(rehashed.value);
-        await accounts.save(market, current);
-      }
-      const session = openSession({
-        id: this.deps.ids.next<'Session'>(),
-        marketId: market.marketId,
-        accountId,
-        population: 'customer',
-        transport: 'cookie',
-        lifetime,
-        now,
-      });
-      await this.deps.sessions.add(market, session, issued.tokenHash);
-      await this.record(context, input.client, accountId, 'signed-in', session.id, now);
-      return ok({ kind: 'signed-in', session });
-    });
+        });
+        await this.deps.sessions.add(market, session, issued.tokenHash);
+        await this.record(context, input.client, accountId, 'signed-in', session.id, now);
+        return ok({ kind: 'signed-in', session });
+      }),
+    );
     if (!closed.ok) return err(UNAVAILABLE);
     const outcome = closed.value;
     if (outcome.kind === 'refused') return err({ code: outcome.code });
@@ -322,6 +327,28 @@ export class SignInCustomer extends UseCase<
       token: issued!.token,
       absoluteLifetimeSeconds: lifetime.absoluteLifetimeSeconds,
     });
+  }
+
+  /**
+   * Runs a unit after the reservation and answers access.unavailable when it throws, like the
+   * reservation unit does (6.8): no session is opened and the attempt stays counted.
+   */
+  async #failClosed<T, E>(
+    context: CallContext,
+    unit: 'release' | 'closing',
+    run: () => Promise<Result<T, E>>,
+  ): Promise<Result<T, E | 'unavailable'>> {
+    try {
+      return await run();
+    } catch {
+      this.#logger.warn({
+        msg: 'identity.sign-in.unit-unavailable',
+        unit,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err('unavailable');
+    }
   }
 
   /** One sign-in record (identity design 10.2): never the typed email. */

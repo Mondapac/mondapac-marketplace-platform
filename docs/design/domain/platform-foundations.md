@@ -505,7 +505,7 @@ Deferred by the reviews of item 4 (W1 to W6 Hassan, B1 Bagher), each with its tr
 | W3 | Split `attachMarketContext` into a file that only the guard may import | Slice 1, when the actor is attached |
 | W4 | Wall-clock forms that rule 4 misses in `domain/` and `application/`: `new globalThis.Date()`, `const D = Date`, `Date['now']()`, `Reflect.construct(Date, [])`, `performance.*`, `new Intl.DateTimeFormat().format()`, `const { Now } = Temporal`; through `no-restricted-properties` and `no-restricted-globals` | Slice 1, the first domain code with an expiry |
 | W5 | `linterOptions.noInlineConfig` for `src/`, so a disable comment cannot switch a boundary rule off | Slice 1 |
-| W6 | The "aliased" exemption of `kernel-only-through-package-entries` trusts `apps/api/tsconfig.json`'s two `paths` entries; review it if `tsconfig.build.json` ever gains `paths` | Any `paths` change in the API's tsconfig files |
+| W6 | The "aliased" exemption of `kernel-only-through-package-entries` trusts `apps/api/tsconfig.json`'s `@mondapac/shared-kernel*` `paths` entries; review it if `tsconfig.build.json` ever gains `paths` | Any `paths` change in the API's tsconfig files |
 | W7 | The first PR that adds a facade implementation, or an event or job handler, inside a module puts that file in the `use-case-entry-is-the-gate` handle selector's scope (by its folder or a `*.facade.ts` / `*.handler.ts` naming rule) and adds a fixture for it (Ali, review of identity slice 1c) | The first facade implementation, event handler or job handler in a module |
 | W8 | Widen the `use-case-entry-is-the-gate` `handle` selector to all of `src/modules/**`, and make it also refuse `'handle'` as the property argument of `Reflect.*` and `Object.getOwnPropertyDescriptor(s)`, and `Object.entries` / `Object.values` over a `.prototype` (or any `.prototype` member access on an imported use-case class); or, instead, a discovery check that fails on any `handle` identifier or string outside a use case's own method declaration (Hassan, re-review of slice 1c, N1, Low) | Before the first facade, job or event handler exists (slice 2) |
 | B1 | Extend `no-wall-clock` to `src/verticals/` | Slice 1, or earlier when the first code lands in `src/verticals/` |
@@ -540,7 +540,7 @@ and also refuses a destructured `handle`, `'handle'` as an argument of `Reflect.
 reflection over a class's methods in a module: `.prototype`, `__proto__`,
 `Object.getPrototypeOf` and `Object.getOwnPropertyDescriptor(s)` (so `Object.entries` or
 `Object.values` over a prototype is caught by its `.prototype`). A handler object in a module
-names its method something else. Fixtures: `calls-handler-object.ts` (now a violation),
+names its method something else. Instead of reflection, module code uses `Object.hasOwn`, or a platform helper for plain-object checks; NestJS interceptors (`CallHandler.handle`) live in `platform/`. Accepted residual (Ali, 2026-10-08): a computed key held in a variable (`x[name]`, `Reflect.get(x, 'han' + 'dle')`) and values typed `any` still pass the lint; H1 (an own non-writable `handle` per instance) is the run-time control. A module that needs reflection asks Ali for a named, file-scoped exemption in a shared-file change. Fixtures: `calls-handler-object.ts` (now a violation),
 `calls-handle.facade.ts` and `reflects-handle.ts`. Rule 5 also names the kernel's
 `authenticatedActor` (entry `@mondapac/shared-kernel/authenticated-actor`): refused in every
 module file except identity's `application/access/session-authenticator.ts`, which keeps every

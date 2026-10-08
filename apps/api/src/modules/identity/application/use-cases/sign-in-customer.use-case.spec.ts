@@ -353,6 +353,39 @@ describe.each(TEST_MARKETS)('SignInCustomer in market %s', (code) => {
     });
   });
 
+  it('fails closed with access.unavailable when the closing unit throws, opening no session', async () => {
+    const { useCase, fakes } = setUp();
+    fakes.seedAccount(accountState(code));
+    fakes.sessionRepository.add = () => Promise.reject(new Error('session table unreachable'));
+
+    await expect(useCase.execute(context, input())).resolves.toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+    expect(warnings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: 'identity.sign-in.unit-unavailable',
+        unit: 'closing',
+        marketId: code,
+      }),
+    );
+  });
+
+  it('fails closed with access.unavailable when the busy-path release unit throws', async () => {
+    const { useCase, fakes } = setUp();
+    fakes.seedAccount(accountState(code));
+    fakes.busy = true;
+    fakes.throttleRepository.release = () => Promise.reject(new Error('counter table unreachable'));
+
+    await expect(useCase.execute(context, input())).resolves.toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+    expect(warnings).toHaveBeenCalledWith(
+      expect.objectContaining({ msg: 'identity.sign-in.unit-unavailable', unit: 'release' }),
+    );
+  });
+
   it('answers request.busy when the hash queue is full and gives the reservation back', async () => {
     const { useCase, fakes } = setUp();
     fakes.seedAccount(accountState(code));

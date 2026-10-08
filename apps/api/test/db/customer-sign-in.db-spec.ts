@@ -478,6 +478,57 @@ describe('customer sign-in (database integration)', () => {
       ).toBe('sign_in_records_outcome_check');
     });
 
+    it.each(TEST_MARKETS)('refuses malformed session rows in %s', async (code) => {
+      // CHECK constraints fire before the foreign key, so the account need not exist.
+      const insertSession = (overrides: {
+        population?: string;
+        sellerId?: string | null;
+        tokenHash?: Buffer;
+        transport?: string;
+        expiresInSeconds?: number;
+        revokedAt?: string | null;
+        revokedReason?: string | null;
+      }) =>
+        sql.query(
+          `INSERT INTO identity.sessions (id, market_id, tenant_id, account_id, population, seller_id,
+             token_hash, transport, created_at, last_seen_at, idle_timeout_seconds, absolute_expires_at,
+             revoked_at, revoked_reason)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, $7, now(), now(), 600,
+             now() + make_interval(secs => $8), $9, $10)`,
+          [
+            randomUUID(),
+            code,
+            randomUUID(),
+            overrides.population ?? 'customer',
+            overrides.sellerId === undefined ? null : overrides.sellerId,
+            overrides.tokenHash ?? Buffer.alloc(32, 1),
+            overrides.transport ?? 'cookie',
+            overrides.expiresInSeconds ?? 3600,
+            overrides.revokedAt === undefined ? null : overrides.revokedAt,
+            overrides.revokedReason === undefined ? null : overrides.revokedReason,
+          ],
+        );
+
+      expect(await violated(insertSession({ sellerId: randomUUID() }))).toBe(
+        'sessions_seller_id_check',
+      );
+      expect(await violated(insertSession({ population: 'seller' }))).toBe(
+        'sessions_seller_id_check',
+      );
+      expect(await violated(insertSession({ revokedAt: new Date().toISOString() }))).toBe(
+        'sessions_revoked_check',
+      );
+      expect(await violated(insertSession({ tokenHash: Buffer.alloc(31, 1) }))).toBe(
+        'sessions_token_hash_check',
+      );
+      expect(await violated(insertSession({ expiresInSeconds: 0 }))).toBe(
+        'sessions_absolute_expires_at_check',
+      );
+      expect(await violated(insertSession({ transport: 'header' }))).toBe(
+        'sessions_transport_check',
+      );
+    });
+
     it('gives the application no UPDATE on sign-in records (append-only)', async () => {
       expect(
         await violated(
