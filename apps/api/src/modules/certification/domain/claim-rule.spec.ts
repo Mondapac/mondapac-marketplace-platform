@@ -19,7 +19,10 @@ const now = Temporal.Instant.from('2027-01-01T00:00:00Z');
 const facts = (over: Partial<ClaimFacts> = {}): ClaimFacts => ({
   type: { publishedRevisionId: id('tr1'), defaultBasis: 'SELLER_REQUIRED' },
   policy: null,
-  sellerZones: { zone: 'Australia/Sydney' as TimeZoneId, addressZone: 'Australia/Sydney' as TimeZoneId },
+  sellerZones: {
+    zone: 'Australia/Sydney' as TimeZoneId,
+    addressZone: 'Australia/Sydney' as TimeZoneId,
+  },
   sellerCertificate: {
     certificateId: id('c1'),
     status: 'approved',

@@ -9,7 +9,10 @@ const BRISBANE = z('Australia/Brisbane');
 const SYDNEY = z('Australia/Sydney');
 // ZZ: the synthetic Market's zone, far from AU (CLAUDE.md: two market fixtures).
 const ZZ = z('Pacific/Auckland');
-const both = (zone: TimeZoneId, addressZone: TimeZoneId = zone): SellerZones => ({ zone, addressZone });
+const both = (zone: TimeZoneId, addressZone: TimeZoneId = zone): SellerZones => ({
+  zone,
+  addressZone,
+});
 
 const cert = (
   over: Partial<NonNullable<SellerCertificationView['approved']>> = {},
@@ -39,7 +42,11 @@ describe('sellerCertificateValidAt', () => {
 
   it('is invalid at the boundary, whatever the stored status says', () => {
     for (const status of ['approved', 'expired'] as const) {
-      const v = sellerCertificateValidAt(cert({}, status), both(SYDNEY), at('2027-03-31T13:00:00Z'));
+      const v = sellerCertificateValidAt(
+        cert({}, status),
+        both(SYDNEY),
+        at('2027-03-31T13:00:00Z'),
+      );
       expect(v).toEqual({ valid: false, reason: 'expired' });
     }
   });
@@ -83,7 +90,9 @@ describe('sellerCertificateValidAt', () => {
   it('works in the synthetic Market zone', () => {
     const boundary = expiryBoundary(Temporal.PlainDate.from('2027-03-31'), ZZ);
     const c = cert({ zoneAtApproval: ZZ });
-    expect(sellerCertificateValidAt(c, both(ZZ), boundary.subtract({ seconds: 1 })).valid).toBe(true);
+    expect(sellerCertificateValidAt(c, both(ZZ), boundary.subtract({ seconds: 1 })).valid).toBe(
+      true,
+    );
     expect(sellerCertificateValidAt(c, both(ZZ), boundary).valid).toBe(false);
   });
 
@@ -109,7 +118,9 @@ describe('sellerCertificateValidAt', () => {
       status: 'approved',
       approved: null,
     };
-    expect(sellerCertificateValidAt(none, both(SYDNEY), at('2027-01-01T00:00:00Z')).valid).toBe(false);
+    expect(sellerCertificateValidAt(none, both(SYDNEY), at('2027-01-01T00:00:00Z')).valid).toBe(
+      false,
+    );
     const d = cert({ issuerState: 'derecognised' });
     expect(sellerCertificateValidAt(d, both(SYDNEY), at('2027-01-01T00:00:00Z')).valid).toBe(false);
   });
@@ -131,7 +142,11 @@ describe('sellerCertificateValidAt', () => {
 
   it('fails closed when expiry is required but missing', () => {
     expect(
-      sellerCertificateValidAt(cert({ expiryDate: null }), both(SYDNEY), at('2027-01-01T00:00:00Z')),
+      sellerCertificateValidAt(
+        cert({ expiryDate: null }),
+        both(SYDNEY),
+        at('2027-01-01T00:00:00Z'),
+      ),
     ).toEqual({
       valid: false,
       reason: 'expiry-missing',

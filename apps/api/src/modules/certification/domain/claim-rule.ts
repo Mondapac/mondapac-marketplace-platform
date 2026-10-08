@@ -1,10 +1,5 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
-import type {
-  ClaimBasisRequirement,
-  ClaimDecision,
-  ClaimQuery,
-  ClaimReason,
-} from './claim-types';
+import type { ClaimBasisRequirement, ClaimDecision, ClaimQuery, ClaimReason } from './claim-types';
 import { sellerCertificateValidAt } from './validity';
 import type { SellerCertificationView, SellerZones } from './validity';
 
