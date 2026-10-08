@@ -29,7 +29,10 @@ import { Call } from '../../../platform/call-context/call-context.decorator';
 import { csrfTokenFor, CSRF_HEADER } from '../../../platform/call-context/csrf';
 import { clearedSessionCookie, sessionCookie } from '../../../platform/call-context/session-cookie';
 import { SessionCsrfToken } from '../../../platform/call-context/session-csrf-token';
-import { SessionPopulation } from '../../../platform/call-context/session-population.decorator';
+import {
+  ReadsSession,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
@@ -69,7 +72,7 @@ const outcomeOf = (outcome: { code: string } | HttpException): string =>
  * slice 2). Thin adapters: the `CallContext` comes from `@Call()`, each route calls one use case
  * through its gate and maps the answer to the error format of 5.2.
  *
- * - `POST sign-in` reads no session (no `@SessionPopulation`), so its actor is anonymous; the
+ * - `POST sign-in` reads no session (no `@ReadsSession`), so its actor is anonymous; the
  *   stricter per-origin limit applies. On success it sets the `__Host-` session cookie with the
  *   absolute lifetime as `Max-Age`; the token is never in the body.
  * - `POST sign-out` and `GET session` read the customer session cookie of the request's Market.
@@ -78,6 +81,7 @@ const outcomeOf = (outcome: { code: string } | HttpException): string =>
  * the token or the address.
  */
 @ApiTags('identity')
+@RoutePopulation('customer')
 @Controller('identity/customer')
 export class CustomerSessionController {
   readonly #logger = new Logger('CustomerSessionController');
@@ -138,7 +142,7 @@ export class CustomerSessionController {
 
   @Post('sign-out')
   @HttpCode(200)
-  @SessionPopulation('customer')
+  @ReadsSession()
   @ApiOperation({
     summary: 'Sign out of the current customer session',
     description: 'Revokes the session of the cookie and clears the cookie.',
@@ -164,7 +168,7 @@ export class CustomerSessionController {
   }
 
   @Get('session')
-  @SessionPopulation('customer')
+  @ReadsSession()
   @ApiOperation({
     summary: 'The signed-in customer and the session',
     description:

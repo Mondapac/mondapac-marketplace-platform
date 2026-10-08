@@ -12,7 +12,11 @@
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300
   },
-  "allowedOrigins": [],
+  "allowedOrigins": {
+    "admin": [],
+    "seller": [],
+    "customer": []
+  },
   "identity": {
     "password": {
       "minLength": 15,

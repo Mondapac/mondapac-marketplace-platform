@@ -7,11 +7,9 @@ import { HOLD_DIRECTIONS } from '../events';
 // AUDIT_WRITER in the unit of the change. Ids, codes and instants only. Every new or changed
 // action changes the checked-in catalogue snapshot, for the security review.
 //
-// Amounts: design 8 lists the regular and anchor amounts on `.accepted` and `.held`. The audit
-// vocabulary has no `money` kind yet (platform-audit 3.2: "money joins the vocabulary when Money
-// lands", a kernel change with Hassan's review), so these rows name the immutable records
-// (`recordId`, `anchorRecordId`) whose amounts never change (append-only, PD3 and the content
-// triggers). When the kernel gains `money`, the amounts join these rows (a snapshot change).
+// Amounts: design 8 lists the regular and anchor amounts on `.accepted` and `.held`; they use the
+// kernel's `money` kind (platform-audit 3.2). Only regular prices are audited here: Cost never
+// appears in an audit row of this module (ADR-0024; the catalogue contract test checks it).
 //
 // Slice 1, part 3b: the seller's regular-price write and its refusals. Later parts add the
 // decisions (slice 4), the retirement and re-key rows (system actor) and Cost (slice 3).
@@ -52,8 +50,10 @@ export const RegularPriceAccepted = defineAuditAction({
     offerId: auditField.id(),
     variantId: auditField.id(),
     recordId: auditField.id(),
+    amount: auditField.money(),
     /** Null for the first price of a series, which is never measured. */
     anchorRecordId: auditField.optional(auditField.id()),
+    anchorAmount: auditField.optional(auditField.money()),
     /** The record whose effective period this one closed; null for the first price. */
     previousRecordId: auditField.optional(auditField.id()),
     effectiveFrom: auditField.instant(),
@@ -69,7 +69,9 @@ export const RegularPriceHeld = defineAuditAction({
     offerId: auditField.id(),
     variantId: auditField.id(),
     recordId: auditField.id(),
+    amount: auditField.money(),
     anchorRecordId: auditField.id(),
+    anchorAmount: auditField.money(),
     direction: auditField.enumOf(HOLD_DIRECTIONS),
   },
 });

@@ -187,7 +187,9 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
             offerId: t.offerId,
             variantId: t.variantId,
             recordId: output.recordId,
+            amount: { amount: fixture.max, currency: fixture.currency },
             anchorRecordId: null,
+            anchorAmount: null,
             previousRecordId: null,
             effectiveFrom: t.clock.now(),
           },
@@ -255,14 +257,16 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
         [
           'pricing.regular-price.accepted',
           expect.objectContaining({
+            amount: { amount: fixture.base + 1n, currency: fixture.currency },
             anchorRecordId: first.recordId,
+            anchorAmount: { amount: fixture.base, currency: fixture.currency },
             previousRecordId: first.recordId,
           }),
         ],
       ]);
     });
 
-    it('holds a jump: pending-review is a success, with the hold audit row and event, no amount', async () => {
+    it('holds a jump: pending-review is a success, with the hold audit row (amounts) and an event without an amount', async () => {
       const { t, first } = await priced();
       const output = valueOf(
         await t.useCase.execute(t.context, t.input(fixture.held, first.seriesVersion)),
@@ -281,7 +285,9 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
             offerId: t.offerId,
             variantId: t.variantId,
             recordId: output.recordId,
+            amount: { amount: fixture.held, currency: fixture.currency },
             anchorRecordId: first.recordId,
+            anchorAmount: { amount: fixture.base, currency: fixture.currency },
             direction: 'up',
           },
         ],
@@ -307,7 +313,9 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
               offerId: t.offerId,
               variantId: t.variantId,
               recordId: output.recordId,
+              amount: { amount: fixture.dropped, currency: fixture.currency },
               anchorRecordId: first.recordId,
+              anchorAmount: { amount: fixture.base, currency: fixture.currency },
               direction: 'down',
             },
           ],

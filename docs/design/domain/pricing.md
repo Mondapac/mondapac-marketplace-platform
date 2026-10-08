@@ -247,7 +247,7 @@ type PriceAnswer =
 | `pricing.price-hold-decided.v1` | price-series | `offerId`, `variantId`, `recordId`, `kind`, `outcome` (`approved`, `rejected`, `superseded`) |
 
 - The `cause` list is frozen once the first consumer of `effective-price-changed` is merged: a cause added after that is a new event version (`.v2`), never a new value in `.v1` (Ali).
-- No amount is in any event. The vocabulary has no money kind, and consumers (search in Phase 6, notifications) read the facade. If a consumer later needs amounts, a `money` kind is a kernel change with Hassan's review.
+- No amount is in any event (the audit rows carry amounts through the kernel's `money` kind, section 21 condition (h); events do not), and consumers (search in Phase 6, notifications) read the facade. If a consumer later needs amounts, a `money` kind is a kernel change with Hassan's review.
 - Cost changes publish no event.
 - No actor in any payload (ADR-0018 decision 4).
 
@@ -525,7 +525,7 @@ Deferred: the route and its per-account rate limit (19 (b)), the read facade (sl
 Open for Mohammad and Hassan: (1) amounts in the `.accepted` and `.held` rows: answered by condition (h) below. (2) The lock order and the slot give-back above: a `test:db` case holds an (actor, Offer) row in one transaction and shows that a refusal queued behind it already holds the actor row (Sajad M2).
 
 **Conditions carried to part 3c (review of part 3b, 2026-10-08)**
-- (h) A `money` field kind joins the kernel's audit vocabulary (platform-audit 3.2) in a separate kernel PR, reviewed by Hassan, before part 3c (the route) merges. Then `pricing.regular-price.accepted` gains `amount` and an optional `anchorAmount` (none for the first price), and `pricing.regular-price.held` gains `amount` and `anchorAmount` (a catalogue snapshot change). The audit catalogue contract test gains a line: no `pricing.cost.*` action declares a `money` field (Cost never enters the audit log, ADR-0024) (Mohammad).
+- (h) DONE (kernel PR merged; the audit rows now carry the amounts, with the allow-list and Cost-leak contract test). A `money` field kind joins the kernel's audit vocabulary (platform-audit 3.2) in a separate kernel PR, reviewed by Hassan, before part 3c (the route) merges. Then `pricing.regular-price.accepted` gains `amount` and an optional `anchorAmount` (none for the first price), and `pricing.regular-price.held` gains `amount` and `anchorAmount` (a catalogue snapshot change). The audit catalogue contract test gains a line: no `pricing.cost.*` action declares a `money` field (Cost never enters the audit log, ADR-0024) (Mohammad).
 - (i) Acting-as (Hassan L2): `AuthenticatedActor` has no acting-as field until SEL-08. A compile-time test in pricing (`set-regular-price.acting-as.spec.ts`) fails as soon as the actor type gains or loses a key, so the SEL-08 change must add the explicit acting-as refusal (5.4) to every pricing write, with its test, before it updates the test's list.
 - (j) The `key-retired` path runs two more units (the existing-series unit and the creating unit) than the refusal causes decided from catalog's answer, and a stored series of another seller (`not-yours`, L3) one more, before the same refusal unit, so their answers can take longer (Mohammad C3). Hassan confirms with the route's per-account rate limit (19 (b)) whether this timing needs padding.
 - (k) Any future `forOffer` or Vertical policy override is applied only after the ownership check, from the vertical in catalog's answer, never keyed on the input id (Hassan L1; doc comment of `PricingPolicyProvider`).

@@ -44,6 +44,7 @@ import { MarketConfigIdentityPolicy } from '../src/modules/identity/infrastructu
 import { loadMarketConfigs } from '../src/platform/market-config/market-config';
 import { MarketRegistry } from '../src/platform/market-config/market-registry';
 import {
+  panelHeaders,
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
   TEST_MARKETS,
@@ -108,12 +109,14 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
   ) =>
     http()
       .post(`/identity/admin/${path}`)
-      .set({ 'x-market-id': market, ...headers })
+      .set({ 'x-market-id': market, ...panelHeaders(market, 'admin'), ...headers })
       .send(body as object);
 
   async function boot(options: { readonly withoutAdminKeys?: boolean } = {}) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info' },
+      // Admin routes need the admin panel's origin on the list (identity design 6.4).
+      panelOrigins: true,
       override: (builder) => {
         const built = fakes.override(builder).overrideProvider(CLOCK).useValue(clock);
         return options.withoutAdminKeys === true

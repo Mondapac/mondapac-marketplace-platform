@@ -8,7 +8,7 @@ import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
-import { testAppConfig } from './test-config';
+import { panelOriginMarketConfigDirs, testAppConfig } from './test-config';
 
 // nestjs-pino builds its pino-http instance once per module registry, so in one Jest test
 // file only the first application's log destination receives lines. A spec file that
@@ -38,6 +38,12 @@ export interface TestAppOptions {
   readonly controllers?: readonly Type[];
   /** Replaces providers before compiling (e.g. fakes of the database ports in a no-database suite). */
   readonly override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
+  /**
+   * Loads the Market configuration with the admin and seller panel origins filled where the
+   * checked-in file leaves them empty ({@link panelOriginMarketConfigDirs}), for suites that
+   * send unsafe requests to admin or seller routes with `panelHeaders`.
+   */
+  readonly panelOrigins?: boolean;
 }
 
 /**
@@ -55,8 +61,12 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     },
   });
 
+  const base = testAppConfig(options.env);
+  const config = options.panelOrigins
+    ? { ...base, marketConfigDirs: panelOriginMarketConfigDirs() }
+    : base;
   const builder = Test.createTestingModule({
-    imports: [AppModule.register({ config: testAppConfig(options.env), logDestination })],
+    imports: [AppModule.register({ config, logDestination })],
     controllers: [...(options.controllers ?? [])],
   });
   const moduleRef = await (options.override ? options.override(builder) : builder).compile();

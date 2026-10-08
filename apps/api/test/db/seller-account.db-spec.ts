@@ -29,7 +29,7 @@ import {
 } from '../../src/platform/mail/mail-transport';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { createTestApp } from '../support/test-app';
-import { TEST_MARKETS } from '../support/test-config';
+import { panelHeaders, TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
 import { sellerTestDatabaseUrl } from './test-database';
 
@@ -77,6 +77,8 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
   beforeEach(async () => {
     ({ app } = await createTestApp({
       env: { DATABASE_URL: sellerTestDatabaseUrl() },
+      // Seller routes need the seller panel's origin on the list (identity design 6.4).
+      panelOrigins: true,
       override: (builder) =>
         builder
           .overrideProvider(CLOCK)
@@ -113,7 +115,7 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
   const post = (path: string, body: object, headers: Record<string, string> = {}) =>
     http()
       .post(`/identity/seller/${path}`)
-      .set({ 'x-market-id': code, ...headers })
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers })
       .send(body);
   const signUp = (email: string) =>
     post('sign-up', { displayName: NAME, email, password: PASSWORD });
