@@ -1,5 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import type { Role, RoleAssignment, RoleScope } from '../../domain/role';
+import type { Role, RoleAssignment, RoleScope, SeedUpgrade } from '../../domain/role';
 import type { SellerMembership } from '../../domain/seller-membership';
 
 /**
@@ -26,7 +26,9 @@ export interface SellerMembershipRepository {
 }
 
 /**
- * Roles (identity design 2.1, 5.6; data design 3.9). Slice 5 reads and seeds the system roles.
+ * Roles (identity design 2.1, 5.6; data design 3.9). Slice 5 reads and seeds the system roles;
+ * slice 8a-1 the default roles, their stored keys (`role_permissions`) and seed upgrades. Every
+ * role read loads its stored keys.
  */
 export interface RoleRepository {
   /** The system role of this scope in this Market, or null when the seed has not run. */
@@ -35,11 +37,22 @@ export interface RoleRepository {
   /** The role with this id, or null. */
   findById(market: MarketContext, id: Id<'Role'>): Promise<Role | null>;
 
+  /** The seeded role of this scope and seed code (the seed routine's key, 8.3), or null. */
+  findBySeedCode(market: MarketContext, scope: RoleScope, seedCode: string): Promise<Role | null>;
+
   /**
-   * Stores a seeded role unless a role with its scope and seed code exists; answers whether it
-   * stored it. A concurrent seed run converges (data design 8.3): the loser stores nothing.
+   * Stores a seeded role, with its stored keys, unless a role with its scope and seed code (or
+   * a second system role of the scope) exists; answers whether it stored it. A concurrent seed
+   * run converges (data design 8.3): the loser stores nothing.
    */
   addSeeded(market: MarketContext, role: Role): Promise<boolean>;
+
+  /**
+   * Stores a seed upgrade (5.6): the role's `seed_version` and version at the version read
+   * (else `StaleAggregateError`, so a concurrent run converges), then the added key rows
+   * and the removed ones, key by key (`role_permissions` rows are never updated).
+   */
+  applySeed(market: MarketContext, upgrade: SeedUpgrade): Promise<void>;
 }
 
 /** The role assignments (identity design 2.1, 2.3; data design 3.9). */

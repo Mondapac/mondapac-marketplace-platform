@@ -3,17 +3,18 @@ import type { CallContext, Id, Population, Result } from '@mondapac/shared-kerne
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
+import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
-import type { RoleAssignmentRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 
 /**
  * The actor's own summary (identity design 8.1 `describeActor`, 8.6 rows 2 and 9). The ids and
  * codes are what the facade returns; `email` and `displayName` are personal data for the HTTP
  * summary only and never go into an event, a log or an audit row. The role and the seller's
- * access state are read from slice 5; permission keys and the second factor arrive with slices
- * 8a and 7, until then empty and false.
+ * access state are read from slice 5; the effective permission keys from slice 8a-1, by the
+ * gate's own resolver; the second factor arrives with slice 7, until then false.
  */
 export interface ActorSummary {
   readonly accountId: Id<'Account'>;
@@ -21,6 +22,7 @@ export interface ActorSummary {
   readonly sellerId: Id<'Seller'> | null;
   /** The account's one role (Phase 2); null for a customer, who never has one (R2). */
   readonly roleId: string | null;
+  /** The effective keys (`effectiveKeysOf`), sorted. A hint: the gate also checks the seller state. */
   readonly permissionKeys: readonly string[];
   /** The seller's access state for a seller-side actor (3.3); null otherwise. */
   readonly sellerAccessState: SellerAccessStateCode | null;
@@ -42,15 +44,18 @@ export interface DescribeActorDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
-  readonly assignments: RoleAssignmentRepository;
   readonly sellerAccess: SellerAccessRepository;
+  readonly grants: RoleGrantReader;
+  /** The resolver of `EFFECTIVE_KEY_RESOLVER`, the gate's (N-1). */
+  readonly effectiveKeys: EffectiveKeyResolver;
 }
 
 /**
  * Describes the calling actor (identity design 8.1, 8.6). Rule `own-resources`, allowed for a
- * seller that is not approved (5.2). Reads the account, the session, the account's role
- * assignment and, for a seller-side actor, its seller's access state, in one read-only unit;
- * the actor's ids come from the context, never from input.
+ * seller that is not approved (5.2). Reads the account, the session, the account's role grant
+ * (the gate's grant read: one probe of the assignment gives both the role id and the keys, from
+ * one snapshot; Mojtaba N1) and, for a seller-side actor, its seller's access state, in one
+ * read-only unit; the actor's ids come from the context, never from input.
  */
 export class DescribeActor extends UseCase<
   Record<string, never>,
@@ -81,7 +86,9 @@ export class DescribeActor extends UseCase<
         ok({
           account: await this.deps.accounts.findById(market, actor.accountId),
           session: await this.deps.sessions.findById(market, actor.sessionId),
-          assignment: await this.deps.assignments.findByAccount(market, actor.accountId),
+          grant:
+            (await this.deps.grants.grantsOf(market, [actor.accountId])).get(actor.accountId) ??
+            null,
           seller:
             actor.sellerId === null
               ? null
@@ -90,7 +97,7 @@ export class DescribeActor extends UseCase<
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
-    const { account, session, assignment, seller } = read.value;
+    const { account, session, seller, grant } = read.value;
     if (account === null || session === null || session.accountId !== actor.accountId) {
       return err({ code: 'access.denied' });
     }
@@ -98,8 +105,15 @@ export class DescribeActor extends UseCase<
       accountId: actor.accountId,
       population: actor.population,
       sellerId: actor.sellerId,
-      roleId: assignment?.state.roleId ?? null,
-      permissionKeys: [],
+      roleId: grant?.roleId ?? null,
+      permissionKeys: [
+        ...this.deps.effectiveKeys({
+          population: actor.population,
+          accountId: actor.accountId,
+          sellerId: actor.sellerId,
+          grant,
+        }),
+      ].sort(),
       sellerAccessState: seller?.state.state ?? null,
       secondFactorActive: false,
       email: account.state.email.typed,

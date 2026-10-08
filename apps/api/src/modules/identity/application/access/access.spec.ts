@@ -9,15 +9,29 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import {
+  realEffectiveKeys,
+  realPermissionRegistry,
+} from '../../../../../test/support/permission-registry';
 import { TEST_MARKETS } from '../../../../../test/support/test-config';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
+import {
+  SELLER_ACCESS_APPROVE,
+  SELLER_ACCESS_VIEW,
+  TEAM_MEMBER_INVITE,
+  TEAM_MEMBER_VIEW,
+} from '../../contracts/permissions';
 import type { AccountState } from '../../domain/account';
+import type { RoleKind, RoleScope } from '../../domain/role';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import { openSession, type Session } from '../../domain/session';
 import type { SessionTokens } from '../ports/session-secrets';
 import { AccountAuthorisationCheck } from './account-authorisation-check';
 import { SessionAuthenticator } from './session-authenticator';
+
+// sellers' key by its literal: identity's tests never import another module's contracts.
+const SELLERS_BUSINESS_IDENTITY_EDIT = { key: 'sellers.business-identity.edit' } as const;
 
 // identity design 4, 5.2, 6.2 (slice 2): the Authenticator and the AuthorisationCheck, for both
 // Market fixtures.
@@ -35,6 +49,47 @@ const ACCOUNT_ID = id<'Account'>('01990000-0000-7000-8000-000000000001');
 const SESSION_ID = id<'Session'>('01990000-0000-7000-8000-00000000a001');
 const SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-00000000b001');
 const OTHER_SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-00000000b002');
+const ROLE_ID = id<'Role'>('01990000-0000-7000-8000-00000000d001');
+const ASSIGNMENT_ID = id<'RoleAssignment'>('01990000-0000-7000-8000-00000000e001');
+
+/**
+ * Gives {@link ACCOUNT_ID} a role, as a test fixture: the role row and the assignment written
+ * through the fakes. Admin fixture accounts exist only in tests (PA 14 condition 1).
+ */
+function grantRole(
+  fakes: IdentityFakes,
+  code: string,
+  role: {
+    readonly scope: RoleScope;
+    readonly kind: RoleKind;
+    readonly keys?: readonly string[];
+    readonly sellerId?: Id<'Seller'> | null;
+  },
+): void {
+  const marketId = code as AccountState['marketId'];
+  const seeded = role.kind !== 'custom';
+  fakes.seedRole({
+    id: ROLE_ID,
+    marketId,
+    scope: role.scope,
+    kind: role.kind,
+    seedCode: seeded ? 'fixture-role' : null,
+    seedVersion: seeded ? 1 : null,
+    sellerId: role.sellerId ?? null,
+    permissionKeys: role.keys ?? [],
+    version: 1,
+    createdAt: START,
+  });
+  fakes.seedAssignment({
+    id: ASSIGNMENT_ID,
+    marketId,
+    accountId: ACCOUNT_ID,
+    roleId: ROLE_ID,
+    assignedByAccountId: null,
+    assignedAt: START,
+    version: 1,
+  });
+}
 
 const tokens: SessionTokens = {
   issue: () => {
@@ -304,7 +359,15 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
         accounts: fakes.accountRepository,
         memberships: fakes.membershipRepository,
         sellerAccess: fakes.sellerAccessRepository,
+        grants: fakes.grantReader,
+        effectiveKeys: realEffectiveKeys(),
       });
+    const needs = (...keys: string[]) => ({
+      name: 'identity.anything',
+      rule: { kind: 'permissions' as const, allOf: keys as never },
+    });
+    const ALLOWED = { allowed: true };
+    const DENIED = { allowed: false, denial: { code: 'access.denied' } };
     const actorContext = (population: 'customer' | 'admin' = 'customer') =>
       testCallContext(
         market,
@@ -338,14 +401,101 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
       });
     });
 
-    it('denies a permissions rule until slice 8a brings the registry', async () => {
-      await expect(
-        check().check(actorContext(), {
-          name: 'identity.anything',
-          rule: { kind: 'permissions', allOf: ['identity.role.view'] as never },
-        }),
-      ).resolves.toEqual({ allowed: false, denial: { code: 'access.denied' } });
+    it('denies a permissions rule to a customer before any read: a customer holds no key (R2)', async () => {
+      await expect(check().check(actorContext(), needs(SELLER_ACCESS_VIEW.key))).resolves.toEqual(
+        DENIED,
+      );
       expect(units).toEqual([]);
+    });
+
+    describe('the permission path for an admin fixture account (slice 8a-1)', () => {
+      beforeEach(() =>
+        fakes.seedAccount(account(code, { population: 'admin', displayName: 'Admin' })),
+      );
+
+      it('the Platform Administrator holds every platform key of the registry, read in one read-only unit', async () => {
+        grantRole(fakes, code, { scope: 'platform', kind: 'system' });
+        const registry = realPermissionRegistry();
+        for (const { key } of registry.list('platform')) {
+          await expect(check().check(actorContext('admin'), needs(key))).resolves.toEqual(ALLOWED);
+        }
+        await expect(
+          check().check(
+            actorContext('admin'),
+            needs(...registry.list('platform').map((d) => d.key)),
+          ),
+        ).resolves.toEqual(ALLOWED);
+        expect(units.length).toBeGreaterThan(0);
+        expect(units.every((u) => u?.readOnly === true)).toBe(true);
+      });
+
+      it('a default role holds its stored keys only, and allOf needs every key', async () => {
+        grantRole(fakes, code, {
+          scope: 'platform',
+          kind: 'default',
+          keys: [SELLER_ACCESS_VIEW.key, SELLER_ACCESS_APPROVE.key],
+        });
+        await expect(
+          check().check(actorContext('admin'), needs(SELLER_ACCESS_APPROVE.key)),
+        ).resolves.toEqual(ALLOWED);
+        await expect(
+          check().check(
+            actorContext('admin'),
+            needs(SELLER_ACCESS_APPROVE.key, 'identity.customer-account.view'),
+          ),
+        ).resolves.toEqual(DENIED);
+      });
+
+      it('R7: a stored key the registry does not declare grants nothing', async () => {
+        grantRole(fakes, code, {
+          scope: 'platform',
+          kind: 'custom',
+          keys: ['identity.seller-access.approve-all'],
+        });
+        await expect(
+          check().check(actorContext('admin'), needs('identity.seller-access.approve-all')),
+        ).resolves.toEqual(DENIED);
+      });
+
+      it('R2: a key of the seller scope is never held by an admin, even the Platform Administrator', async () => {
+        grantRole(fakes, code, { scope: 'platform', kind: 'system' });
+        await expect(
+          check().check(actorContext('admin'), needs(TEAM_MEMBER_VIEW.key)),
+        ).resolves.toEqual(DENIED);
+        // A seller-scope role assigned to an admin (a corrupt row) grants nothing either.
+        grantRole(fakes, code, { scope: 'seller', kind: 'system' });
+        await expect(
+          check().check(actorContext('admin'), needs(TEAM_MEMBER_VIEW.key)),
+        ).resolves.toEqual(DENIED);
+      });
+
+      it('no role, no key; and a disabled admin is denied whatever its role', async () => {
+        await expect(
+          check().check(actorContext('admin'), needs(SELLER_ACCESS_VIEW.key)),
+        ).resolves.toEqual(DENIED);
+        grantRole(fakes, code, { scope: 'platform', kind: 'system' });
+        fakes.seedAccount(
+          account(code, { population: 'admin', displayName: 'Admin', status: 'disabled' }),
+        );
+        await expect(
+          check().check(actorContext('admin'), needs(SELLER_ACCESS_VIEW.key)),
+        ).resolves.toEqual(DENIED);
+      });
+
+      it('R4: reads the role on every call, so a removed role takes effect at once', async () => {
+        grantRole(fakes, code, {
+          scope: 'platform',
+          kind: 'default',
+          keys: [SELLER_ACCESS_VIEW.key],
+        });
+        await expect(
+          check().check(actorContext('admin'), needs(SELLER_ACCESS_VIEW.key)),
+        ).resolves.toEqual(ALLOWED);
+        fakes.assignments.clear();
+        await expect(
+          check().check(actorContext('admin'), needs(SELLER_ACCESS_VIEW.key)),
+        ).resolves.toEqual(DENIED);
+      });
     });
 
     describe('for the seller population (slice 5)', () => {
@@ -412,20 +562,76 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
         ).resolves.toMatchObject({ allowed: false });
       });
 
-      it('decides the seller state first under a permissions rule, then denies until slice 8a', async () => {
-        const permissions = {
-          name: 'identity.anything',
-          rule: { kind: 'permissions' as const, allOf: ['identity.role.view'] as never },
-        };
+      it('decides the seller state first under a permissions rule, then the keys', async () => {
+        grantRole(fakes, code, { scope: 'seller', kind: 'system' });
         seedSeller(fakes, code, 'pending');
-        await expect(check().check(sellerContext(), permissions)).resolves.toMatchObject({
-          denial: { code: 'access.seller-not-approved' },
+        await expect(
+          check().check(sellerContext(), needs(TEAM_MEMBER_VIEW.key)),
+        ).resolves.toMatchObject({ denial: { code: 'access.seller-not-approved' } });
+        seedSeller(fakes, code, 'approved');
+        await expect(check().check(sellerContext(), needs(TEAM_MEMBER_VIEW.key))).resolves.toEqual(
+          ALLOWED,
+        );
+      });
+
+      it('the Seller Owner holds every seller key of every module, protected ones too (R3)', async () => {
+        grantRole(fakes, code, { scope: 'seller', kind: 'system' });
+        seedSeller(fakes, code, 'approved');
+        for (const key of [
+          TEAM_MEMBER_VIEW.key,
+          TEAM_MEMBER_INVITE.key,
+          SELLERS_BUSINESS_IDENTITY_EDIT.key,
+        ]) {
+          await expect(check().check(sellerContext(), needs(key))).resolves.toEqual(ALLOWED);
+        }
+        await expect(
+          check().check(sellerContext(), needs(SELLER_ACCESS_VIEW.key)),
+        ).resolves.toEqual(DENIED);
+      });
+
+      it('a Staff member holds its default role keys only', async () => {
+        grantRole(fakes, code, {
+          scope: 'seller',
+          kind: 'default',
+          keys: [TEAM_MEMBER_VIEW.key, 'identity.seller-role.view'],
         });
         seedSeller(fakes, code, 'approved');
-        await expect(check().check(sellerContext(), permissions)).resolves.toEqual({
-          allowed: false,
-          denial: { code: 'access.denied' },
+        await expect(check().check(sellerContext(), needs(TEAM_MEMBER_VIEW.key))).resolves.toEqual(
+          ALLOWED,
+        );
+        await expect(
+          check().check(sellerContext(), needs(SELLERS_BUSINESS_IDENTITY_EDIT.key)),
+        ).resolves.toEqual(DENIED);
+      });
+
+      it("R9: a custom role of another seller grants nothing to this seller's member", async () => {
+        seedSeller(fakes, code, 'approved');
+        grantRole(fakes, code, {
+          scope: 'seller',
+          kind: 'custom',
+          keys: [TEAM_MEMBER_VIEW.key],
+          sellerId: OTHER_SELLER_ID,
         });
+        await expect(check().check(sellerContext(), needs(TEAM_MEMBER_VIEW.key))).resolves.toEqual(
+          DENIED,
+        );
+        grantRole(fakes, code, {
+          scope: 'seller',
+          kind: 'custom',
+          keys: [TEAM_MEMBER_VIEW.key],
+          sellerId: SELLER_ID,
+        });
+        await expect(check().check(sellerContext(), needs(TEAM_MEMBER_VIEW.key))).resolves.toEqual(
+          ALLOWED,
+        );
+      });
+
+      it('a suspended seller is denied even with the system role', async () => {
+        grantRole(fakes, code, { scope: 'seller', kind: 'system' });
+        seedSeller(fakes, code, 'suspended');
+        await expect(check().check(sellerContext(), needs(TEAM_MEMBER_VIEW.key))).resolves.toEqual(
+          DENIED,
+        );
       });
     });
   });

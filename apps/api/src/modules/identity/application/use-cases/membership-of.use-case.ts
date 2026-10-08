@@ -29,8 +29,8 @@ export interface MembershipOfDependencies {
  * `membershipOf` (identity design 8.1; slice 5): the active membership of an account, with its
  * role. Rule `own-resources`, allowed when the seller is not approved, **for oneself only**: an
  * account id other than the actor's is `access.denied`, whoever asks (R6). The variant for
- * other accounts, under `identity.team-member.view`, waits for slice 8a and the registry
- * (decided by Ali; ADR-0018 decision 6). One read-only unit.
+ * other accounts is `TeamMembershipOf`, under `identity.team-member.view` (slice 8a-1); the
+ * facade chooses between the two by the id. One read-only unit.
  */
 export class MembershipOf extends UseCase<MembershipOfInput, Membership, MembershipOfFailure> {
   static override readonly access: AccessDeclaration = {
