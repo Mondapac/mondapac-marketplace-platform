@@ -14,6 +14,12 @@ import {
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 
+/** The most texts one `claim-text.check` call may carry (design 8.4, proposed). */
+export const MAX_CHECK_ENDPOINT_TEXTS = 50;
+
+/** A variant, option or attribute id or code: bounded, so a verdict never echoes a payload. */
+const REF = /^[A-Za-z0-9_-]{1,64}$/;
+
 /** The most texts one check call may carry: the panel checks one form, not a catalogue. */
 export const MAX_CHECK_TEXTS = 500;
 
@@ -77,9 +83,9 @@ export interface CheckClaimTextDependencies {
  * and 7) and `claim-text.check` declare their access rule and call it, so it carries no access
  * declaration of its own and derives everything about the caller from the {@link CallContext}.
  *
- * 1. Only a seller (with a seller id) or an admin may ask; the check limit (30 a minute, 1,000 a
- *    day per account) is reserved before any work, and a store that cannot answer refuses with
- *    `access.unavailable`, never a pass.
+ * 1. Only a seller (with a seller id) or an admin may ask. The check limit (30 a minute, 1,000 a
+ *    day per account) belongs to the use case `claim-text.check` alone: it calls
+ *    {@link reserveCheckLimit} first; saves, submits and approvals do not spend it.
  * 2. The request is checked as a whole before anything runs: registered fields only, supported
  *    locales, texts of at most 20,000 characters, at most {@link MAX_CHECK_TEXTS} of them.
  * 3. Per text: a hidden character is refused first (`text.invisible-character`, 6.3), then the
@@ -103,9 +109,6 @@ export class CheckClaimText {
 
     const invalid = this.#validate(context, texts);
     if (invalid !== null) return err(invalid);
-
-    const throttled = await this.#reserve(context, accountId);
-    if (throttled !== null) return err(throttled);
 
     const verdicts: (ClaimTextVerdict | null)[] = texts.map(() => null);
     const toMatch: number[] = [];
@@ -155,24 +158,34 @@ export class CheckClaimText {
     batch: readonly CheckedText[],
   ): Promise<readonly (readonly ClaimTextMatch[])[] | null> {
     try {
-      const answer = await this.deps.matcher.match(
+      const answer: unknown = await this.deps.matcher.match(
         context,
         batch.map(({ locale, text }) => ({ locale, text })),
       );
-      if (!answer.ok) return null;
-      const lists: unknown = answer.value;
-      if (!Array.isArray(lists) || lists.length !== batch.length) return null;
+      const refused = (reason: 'refused' | 'shape'): null => {
+        this.#logger.error({
+          msg: 'catalog.claim-text.matcher-failed',
+          reason,
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+        });
+        return null;
+      };
+      const { ok: answered, value } = answer as { ok?: unknown; value?: unknown };
+      if (answered !== true) return refused('refused');
+      if (!Array.isArray(value) || value.length !== batch.length) return refused('shape');
       const typed: (readonly ClaimTextMatch[])[] = [];
-      for (const list of lists as readonly unknown[]) {
-        if (!Array.isArray(list) || !(list as readonly unknown[]).every(isMatch)) return null;
-        typed.push(
-          (list as readonly ClaimTextMatch[]).map(({ typeCode, span }) => ({ typeCode, span })),
-        );
+      for (const list of value as readonly unknown[]) {
+        if (!Array.isArray(list) || list.length > MAX_HITS_PER_TEXT) return refused('shape');
+        const hits = Array.from(list as readonly unknown[]);
+        if (!hits.every(isMatch)) return refused('shape');
+        typed.push(hits.map(cleanMatch));
       }
       return typed;
     } catch {
       this.#logger.error({
         msg: 'catalog.claim-text.matcher-failed',
+        reason: 'threw',
         marketId: context.market.marketId,
         correlationId: context.correlationId,
       });
@@ -204,8 +217,9 @@ export class CheckClaimText {
       if (typeof entry !== 'object' || entry === null) return fail(path, 'type');
       const item = entry as Record<string, unknown>;
       if (!isClaimCheckedFieldId(item['field'])) return fail(`${path}.field`, 'unknown');
-      if (item['ref'] !== null && typeof item['ref'] !== 'string') {
-        return fail(`${path}.ref`, 'type');
+      const itemRef = item['ref'];
+      if (itemRef !== null && (typeof itemRef !== 'string' || !REF.test(itemRef))) {
+        return fail(`${path}.ref`, 'format');
       }
       const itemLocale = item['locale'];
       if (typeof itemLocale !== 'string' || !supported.includes(itemLocale)) {
@@ -218,14 +232,33 @@ export class CheckClaimText {
     return null;
   }
 
-  async #reserve(
+  /**
+   * Counts one `claim-text.check` call against the account's limit (design 6.6, 8.4: 30 a minute,
+   * 1,000 a day) and answers the refusal, or `null` when the call may go on. Only the use case
+   * `claim-text.check` calls it, before {@link execute}: the checks inside saves, submits and
+   * approvals have limits of their own and do not spend this one. A store that cannot answer is
+   * `access.unavailable`, never a pass.
+   */
+  async reserveCheckLimit(
     context: CallContext,
-    accountId: Id<'Account'>,
+    textCount: number,
   ): Promise<
+    | { readonly code: 'access.denied' }
     | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
     | { readonly code: 'access.unavailable' }
+    | {
+        readonly code: 'validation.failed';
+        readonly fields: readonly { readonly path: string; readonly code: string }[];
+      }
     | null
   > {
+    const accountId = accountOf(context);
+    if (accountId === null) return { code: 'access.denied' };
+    // The limit counts calls, so a call is capped in texts too: the endpoint is no probe of the
+    // vocabulary at 500 texts a call (Hassan M2). The number is a proposal for design 8.4.
+    if (!Number.isInteger(textCount) || textCount < 0 || textCount > MAX_CHECK_ENDPOINT_TEXTS) {
+      return { code: 'validation.failed', fields: [{ path: 'texts', code: 'too-many' }] };
+    }
     const { market } = context;
     try {
       const counters = CLAIM_TEXT_CHECK_LIMITS.map((limit) => ({
@@ -265,14 +298,32 @@ function unavailableAt(item: CheckedText): ClaimTextVerdict {
   return { ...placeOf(item), code: 'claim-text.check-unavailable' };
 }
 
+/** At most this many hits per text; a longer answer is not a matcher's answer. */
+const MAX_HITS_PER_TEXT = 100;
+
 function isMatch(value: unknown): value is ClaimTextMatch {
   if (typeof value !== 'object' || value === null) return false;
   const { typeCode, span } = value as { typeCode?: unknown; span?: unknown };
-  if (typeof typeCode !== 'string') return false;
+  if (typeof typeCode !== 'string' || typeCode.length === 0) return false;
   if (span === null) return true;
   if (typeof span !== 'object' || span === undefined) return false;
   const { fromToken, toToken } = span as { fromToken?: unknown; toToken?: unknown };
-  return Number.isInteger(fromToken) && Number.isInteger(toToken);
+  return (
+    typeof fromToken === 'number' &&
+    typeof toToken === 'number' &&
+    Number.isInteger(fromToken) &&
+    Number.isInteger(toToken) &&
+    fromToken >= 0 &&
+    toToken >= fromToken
+  );
+}
+
+/** Copies only the two fields the contract has, so nothing else a matcher adds reaches a seller. */
+function cleanMatch({ typeCode, span }: ClaimTextMatch): ClaimTextMatch {
+  return {
+    typeCode,
+    span: span === null ? null : { fromToken: span.fromToken, toToken: span.toToken },
+  };
 }
 
 /** The account of a seller (with a seller id) or an admin; anyone else is nobody here. */

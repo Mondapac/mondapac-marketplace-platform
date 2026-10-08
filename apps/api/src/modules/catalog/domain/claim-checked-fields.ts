@@ -133,3 +133,48 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   CATEGORY_NAME_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
 };
+
+/**
+ * Every exported content type of `domain/` and `contracts/`, classified: it has a field table
+ * above, or it holds no text a customer reads (with the reason). A spec scans the sources for
+ * exported interfaces and fails on one that is missing here, so a new content type cannot arrive
+ * unclassified (AC 21, design 6.2). Codes of families, groups and attributes are internal: no
+ * page shows them and none is put in an address.
+ */
+export const CONTENT_TYPE_CLASSIFICATION: Readonly<
+  Record<string, { readonly table: string } | { readonly noCustomerText: string }>
+> = {
+  AttributeBounds: { noCustomerText: 'numbers' },
+  AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
+  AttributeFamilyState: { noCustomerText: 'internal codes only; no name or label' },
+  AttributeOption: { table: 'ATTRIBUTE_OPTION_FIELDS' },
+  CatalogBatchTooLarge: { noCustomerText: 'refusal code' },
+  CatalogFacade: { noCustomerText: 'interface of methods' },
+  CatalogValidationFailed: { noCustomerText: 'refusal code with fixed paths' },
+  Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
+  CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
+  FamilyAttribute: { noCustomerText: 'internal code and flags' },
+  FamilyGroup: { noCustomerText: 'internal code; the panel names a group by its own label key' },
+  FreezeInput: { noCustomerText: 'working input of the freeze; its texts are checked as content' },
+  FreezeIssue: { noCustomerText: 'issue code with a fixed path' },
+  OutcomeInput: { noCustomerText: 'ids and a decision code' },
+  OfferSellUnits: { noCustomerText: 'sell units, numbers and ids' },
+  PlatformCategoryState: { table: 'PLATFORM_CATEGORY_FIELDS' },
+  ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
+  ProductTypeHandler: { noCustomerText: 'interface of methods' },
+  RateReservation: { noCustomerText: 'numbers and times' },
+  RateLimit: { noCustomerText: 'numbers' },
+  RevisionSummary: {
+    noCustomerText: 'a comparison view of RevisionContent; its names are checked content',
+  },
+  RevisionContent: { table: 'REVISION_CONTENT_FIELDS' },
+  RevisionText: { table: 'REVISION_TEXT_FIELDS' },
+  RevisionVariantContent: { table: 'REVISION_VARIANT_FIELDS' },
+  SellUnit: { noCustomerText: 'numbers and ids' },
+  SensitiveChangesPolicy: { noCustomerText: 'flags per change kind' },
+  StoredRevision: { noCustomerText: 'record around the content; the texts are RevisionContent' },
+  VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },
+  VariantIssue: { noCustomerText: 'issue code with a fixed path' },
+  VariantRecord: { noCustomerText: 'ids and times' },
+  WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
+};

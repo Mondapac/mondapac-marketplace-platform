@@ -13,5 +13,7 @@ describe('catalogProviders', () => {
     expect(bound).toHaveLength(1);
     const [provider] = bound as ClassProvider[];
     expect(provider?.useClass).toBe(UnavailableClaimTextMatcher);
+    // Nothing but `useClass`: no factory, value or alias that could choose another answer.
+    expect(Object.keys(provider ?? {}).sort()).toEqual(['provide', 'useClass']);
   });
 });

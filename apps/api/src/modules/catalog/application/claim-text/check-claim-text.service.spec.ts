@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
@@ -279,7 +280,8 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
       ['an unsupported locale', [text('a', { locale: 'fr' })], 'texts[0].locale', 'unsupported'],
       ['a too long text', [text('a'.repeat(20_001))], 'texts[0].text', 'too-long'],
       ['a non-string text', [text(7 as unknown as string)], 'texts[0].text', 'type'],
-      ['a non-string ref', [text('a', { ref: 4 as unknown as string })], 'texts[0].ref', 'type'],
+      ['a non-string ref', [text('a', { ref: 4 as unknown as string })], 'texts[0].ref', 'format'],
+      ['a ref with a payload', [text('a', { ref: '<x>'.repeat(30) })], 'texts[0].ref', 'format'],
       ['a non-object item', [null as unknown as CheckedText], 'texts[0]', 'type'],
     ])('refuses %s with a fixed path', async (_name, request, path, reason) => {
       const { service, calls } = rig();
@@ -309,32 +311,194 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     });
   });
 
-  describe('the check limit (L6)', () => {
+  describe('the check limit (L6), spent by claim-text.check alone', () => {
     it('allows 30 checks a minute per account and throttles the 31st', async () => {
-      const { service, calls } = rig();
+      const { service } = rig();
       const context = contextOf('seller');
       for (let attempt = 0; attempt < 30; attempt += 1) {
+        expect(await service.reserveCheckLimit(context, 1)).toBeNull();
+      }
+      expect(await service.reserveCheckLimit(context, 1)).toEqual({
+        code: 'request.throttled',
+        retryAfterSeconds: 60,
+      });
+    });
+
+    it('does not spend the limit when a save-side check runs', async () => {
+      const { service } = rig();
+      const context = contextOf('seller');
+      for (let attempt = 0; attempt < 40; attempt += 1) {
         expect((await service.execute(context, [text('a')])).ok).toBe(true);
       }
-      const refused = await service.execute(context, [text('a')]);
-      expect(refused).toEqual(err({ code: 'request.throttled', retryAfterSeconds: 60 }));
-      expect(calls).toHaveLength(30);
+      expect(await service.reserveCheckLimit(context, 1)).toBeNull();
     });
 
     it('counts per account', async () => {
       const { service } = rig();
       const first = contextOf('seller');
-      for (let attempt = 0; attempt < 31; attempt += 1) await service.execute(first, [text('a')]);
-      expect((await service.execute(contextOf('seller'), [text('a')])).ok).toBe(true);
+      for (let attempt = 0; attempt < 31; attempt += 1) await service.reserveCheckLimit(first, 1);
+      expect(await service.reserveCheckLimit(contextOf('seller'), 1)).toBeNull();
+    });
+
+    it('caps a call at 50 texts without spending the limit', async () => {
+      const { service } = rig();
+      const context = contextOf('seller');
+      expect(await service.reserveCheckLimit(context, 51)).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'texts', code: 'too-many' }],
+      });
+      expect(await service.reserveCheckLimit(context, 50)).toBeNull();
+    });
+
+    it('is access.denied for a customer', async () => {
+      const { service } = rig();
+      expect(await service.reserveCheckLimit(contextOf('customer'), 1)).toEqual({
+        code: 'access.denied',
+      });
     });
 
     it('is access.unavailable, never a pass, when the counters cannot be reserved', async () => {
-      const { service, calls, store } = rig();
+      const { service, store } = rig();
       store.down = true;
-      await expect(service.execute(contextOf('seller'), [text('a')])).resolves.toEqual(
-        err({ code: 'access.unavailable' }),
+      expect(await service.reserveCheckLimit(contextOf('seller'), 1)).toEqual({
+        code: 'access.unavailable',
+      });
+    });
+  });
+
+  describe('what the matcher may say', () => {
+    const answerWith = (value: unknown) =>
+      rig({ matcher: { match: () => Promise.resolve(ok(value as []) as Answer) } });
+
+    it('passes on only the type code and the span, whatever else the matcher adds', async () => {
+      const { service } = answerWith([
+        [{ typeCode: 'type-a', term: 'secret', span: { fromToken: 1, toToken: 2, text: 'x' } }],
+      ]);
+      const result = await service.execute(contextOf('seller'), [text('a')]);
+      expect(result.ok && result.value[0]).toMatchObject({
+        code: 'claim-text.found',
+        hits: [{ typeCode: 'type-a', span: { fromToken: 1, toToken: 2 } }],
+      });
+      expect(JSON.stringify(result)).not.toContain('secret');
+      expect(JSON.stringify(result)).not.toContain('"text":"x"');
+    });
+
+    it('passes a separator-removed hit with no span', async () => {
+      const { service } = answerWith([[{ typeCode: 'type-a', span: null }]]);
+      const result = await service.execute(contextOf('seller'), [text('a')]);
+      expect(result.ok && result.value[0]).toMatchObject({ hits: [{ span: null }] });
+    });
+
+    it('passes several hits of several types', async () => {
+      const hits = [
+        { typeCode: 'type-a', span: { fromToken: 0, toToken: 0 } },
+        { typeCode: 'type-b', span: null },
+      ];
+      const { service } = answerWith([hits]);
+      const result = await service.execute(contextOf('seller'), [text('a')]);
+      expect(result.ok && result.value[0]).toMatchObject({ hits });
+    });
+
+    it.each([
+      ['an empty type code', [[{ typeCode: '', span: null }]]],
+      ['an inverted span', [[{ typeCode: 'a', span: { fromToken: 3, toToken: 1 } }]]],
+      ['a negative span', [[{ typeCode: 'a', span: { fromToken: -1, toToken: 1 } }]]],
+      ['a list element that is not an array', [null]],
+      [
+        'more hits than a text can hold',
+        [Array.from({ length: 101 }, () => ({ typeCode: 'a', span: null }))],
+      ],
+    ])('treats %s as unavailable', async (_name, value) => {
+      const { service } = answerWith(value);
+      const result = await service.execute(contextOf('seller'), [text('a')]);
+      expect(result.ok && result.value[0]?.code).toBe('claim-text.check-unavailable');
+    });
+
+    it.each([
+      [
+        'a synchronous throw',
+        () => {
+          throw new Error('boom');
+        },
+      ],
+      ['no Result at all', () => Promise.resolve(undefined)],
+      ['null', () => Promise.resolve(null)],
+    ])('treats %s as unavailable', async (_name, match) => {
+      const { service } = rig({ matcher: { match } as unknown as ClaimTextMatcher });
+      const result = await service.execute(contextOf('seller'), [text('a')]);
+      expect(result.ok && result.value[0]?.code).toBe('claim-text.check-unavailable');
+    });
+
+    it('maps verdicts to the right texts across batches with hidden characters between', async () => {
+      let call = 0;
+      const { service } = rig({
+        matcher: {
+          match: (_c, texts) => {
+            call += 1;
+            if (call === 2) return Promise.reject(new Error('boom'));
+            return Promise.resolve(ok(texts.map(() => [])));
+          },
+        },
+      });
+      const request = Array.from({ length: 205 }, (_, index) =>
+        text(index % 50 === 0 ? `a\u202Eb${index}` : `t${index}`),
       );
-      expect(calls).toHaveLength(0);
+      const result = await service.execute(contextOf('seller'), request);
+      const codes = result.ok ? result.value.map((verdict) => verdict.code) : [];
+      expect(codes).toHaveLength(205);
+      request.forEach((item, index) => {
+        if (item.text.includes('\u202E')) expect(codes[index]).toBe('text.invisible-character');
+        else expect(['clean', 'claim-text.check-unavailable']).toContain(codes[index]);
+      });
+      expect(codes.filter((value) => value === 'claim-text.check-unavailable').length).toBe(100);
+    });
+  });
+
+  describe('more hidden characters and boundaries', () => {
+    it.each([
+      ['a ZWJ in Latin', 'ab\u200Dcd', 'ZWJ', 2],
+      ['a ZWNJ at the start', '\u200Cabc', 'ZWNJ', 0],
+      ['a zero width space', 'ab\u200Bcd', 'other', 2],
+      ['a byte order mark', 'ab\uFEFFcd', 'other', 2],
+      ['a word joiner', 'ab\u2060cd', 'other', 2],
+      ['a character after an astral one', '\u{1F600}x\u200Bz', 'other', 3],
+    ])('refuses %s at its UTF-16 offset', async (_name, value, character, offset) => {
+      const { service } = rig();
+      const result = await service.execute(contextOf('seller'), [text(value)]);
+      expect(result.ok && result.value[0]).toMatchObject({
+        code: 'text.invisible-character',
+        character,
+        offset,
+      });
+    });
+
+    it('accepts a ZWJ between Devanagari letters and keeps the text byte-identical', async () => {
+      const { service, calls } = rig();
+      const word = '\u0915\u094D\u200D\u0937';
+      const result = await service.execute(contextOf('seller'), [text(word)]);
+      expect(result.ok && result.value[0]?.code).toBe('clean');
+      expect(calls[0]?.texts[0]?.text).toBe(word);
+    });
+
+    it('accepts exactly 500 texts and exactly 20,000 characters', async () => {
+      const { service, calls } = rig();
+      const many = Array.from({ length: MAX_CHECK_TEXTS }, () => text('a'));
+      expect((await service.execute(contextOf('seller'), many)).ok).toBe(true);
+      expect(calls).toHaveLength(5);
+      expect((await service.execute(contextOf('seller'), [text('a'.repeat(20_000))])).ok).toBe(
+        true,
+      );
+    });
+
+    it('logs counts only, never a text', async () => {
+      const logs: string[] = [];
+      const spy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation((message: unknown) => void logs.push(JSON.stringify(message)));
+      const { service } = rig();
+      await service.execute(contextOf('seller'), [text('very secret halal words')]);
+      spy.mockRestore();
+      expect(logs.join('')).not.toContain('secret');
     });
   });
 });

@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   CLAIM_CHECKED_FIELD_IDS,
+  CONTENT_TYPE_CLASSIFICATION,
   FIELD_TABLES,
   isClaimCheckedFieldId,
   type FieldDisposition,
@@ -66,5 +69,37 @@ describe('ClaimCheckedFields', () => {
   it('refuses an unregistered field id', () => {
     expect(isClaimCheckedFieldId('product.sku')).toBe(false);
     expect(isClaimCheckedFieldId(7)).toBe(false);
+  });
+
+  describe('default-deny over the content types (AC 21, design 6.2)', () => {
+    const root = join(__dirname, '..');
+    const exported = (dir: string): string[] =>
+      readdirSync(join(root, dir))
+        .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
+        .flatMap((file) =>
+          [
+            ...readFileSync(join(root, dir, file), 'utf8').matchAll(/^export interface (\w+)/gm),
+          ].map((match) => match[1]!),
+        );
+    const found = [...exported('domain'), ...exported('contracts')];
+
+    it('finds the exported content types', () => {
+      expect(found.length).toBeGreaterThan(20);
+    });
+
+    it('classifies every exported interface; an unlisted new one fails here', () => {
+      const missing = found.filter((name) => !(name in CONTENT_TYPE_CLASSIFICATION));
+      expect(missing).toEqual([]);
+    });
+
+    it('keeps no entry for a type that is gone, and points every table at a real one', () => {
+      expect(
+        Object.keys(CONTENT_TYPE_CLASSIFICATION).filter((name) => !found.includes(name)),
+      ).toEqual([]);
+      for (const value of Object.values(CONTENT_TYPE_CLASSIFICATION)) {
+        if ('table' in value) expect(Object.keys(FIELD_TABLES)).toContain(value.table);
+        else expect(value.noCustomerText.length).toBeGreaterThan(0);
+      }
+    });
   });
 });
