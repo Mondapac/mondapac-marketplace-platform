@@ -1,5 +1,5 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
-import type { AuditActionDefinition } from '@mondapac/shared-kernel';
+import type { AuditActionDefinition, AuditEntry, Id } from '@mondapac/shared-kernel';
 import { SELLER_ACCESS_STATES, SELLER_ORIGINS } from '../events';
 import { ROLE_KINDS, ROLE_SCOPES } from '../role';
 
@@ -102,13 +102,20 @@ export const SellerMemberAdded = defineAuditAction({
   },
 });
 
-/** The founding assignment of the seller's system role (see {@link SellerAccessFounded}). */
+/**
+ * A role assigned to an account (identity design 5.3; PA 5 rows 6b, 7, 8a-2, 11). Target: the
+ * account. `sellerId` names the seller of a seller-scope assignment and is null for a
+ * platform-scope one (an admin's role, slice 7; Mohammad, 6b review 11): build the entry with
+ * {@link accountRoleAssigned}, which refuses any other pairing. The founding assignment of a
+ * self-registered seller (see {@link SellerAccessFounded}) is the first writer; an admin
+ * invitation's acceptance (slice 7b) is the second.
+ */
 export const AccountRoleAssigned = defineAuditAction({
   action: 'identity.account-role.assigned',
   targetType: 'identity.account',
   actors: ['anonymous'],
   after: {
-    sellerId: auditField.id(),
+    sellerId: auditField.optional(auditField.id()),
     accountId: auditField.id(),
     boundSubjectId: auditField.id(),
     roleId: auditField.id(),
@@ -116,6 +123,31 @@ export const AccountRoleAssigned = defineAuditAction({
     founding: auditField.boolean(),
   },
 });
+
+/** The `after` side of {@link AccountRoleAssigned}. */
+export type AccountRoleAssignedAfter = Parameters<typeof AccountRoleAssigned.entry>[1]['after'];
+
+/** An assignment whose `sellerId` does not match its scope: a programming error, never data. */
+export class AccountRoleAssignedScopeError extends Error {
+  override readonly name = 'AccountRoleAssignedScopeError';
+  constructor() {
+    super('identity.account-role.assigned: sellerId is required for, and only for, seller scope');
+  }
+}
+
+/**
+ * The only way to build an {@link AccountRoleAssigned} entry: a seller-scope assignment names its
+ * seller, a platform-scope one names none (the seller-scope rule of the slice 7 reshape).
+ */
+export function accountRoleAssigned(
+  accountId: Id<'Account'>,
+  after: AccountRoleAssignedAfter,
+): AuditEntry {
+  if ((after.scope === 'seller') !== (after.sellerId !== null)) {
+    throw new AccountRoleAssignedScopeError();
+  }
+  return AccountRoleAssigned.entry(accountId, { after });
+}
 
 /** Every audited action of identity, for its module's registration. */
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([

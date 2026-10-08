@@ -12,7 +12,7 @@ import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { Account } from '../../domain/account';
-import { AccountRoleAssigned, SellerAccessFounded, SellerMemberAdded } from '../../domain/audit';
+import { accountRoleAssigned, SellerAccessFounded, SellerMemberAdded } from '../../domain/audit';
 import type { EmailAddress } from '../../domain/email-address';
 import type { OneTimeLink } from '../../domain/one-time-link';
 import type { SellerAccess, SellerAccessStateCode } from '../../domain/seller-access';
@@ -505,7 +505,7 @@ export class SignInFlow {
     );
     await audit.record(
       context,
-      AccountRoleAssigned.entry(accountId, { after: { ...named, roleId, scope, founding: true } }),
+      accountRoleAssigned(accountId, { ...named, roleId, scope, founding: true }),
     );
   }
 

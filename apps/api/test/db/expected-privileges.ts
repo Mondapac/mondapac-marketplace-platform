@@ -34,6 +34,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     inventory: ['USAGE'],
     platform: ['USAGE'],
     catalog: ['USAGE'],
+    pricing: ['USAGE'],
     sellers: ['USAGE'],
   },
   tables: {
@@ -75,6 +76,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'identity.roles': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'identity.role_permissions': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'identity.role_assignments': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    // docs/design/data/identity.md section 7 (slice 7): ordinary tables; recovery codes are
+    // replaced at regeneration (DELETE), voided challenges and a reset factor are deleted.
+    'identity.second_factors': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.recovery_codes': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.sign_in_challenges': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'identity.invitations': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
@@ -209,6 +228,43 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.rate_counters': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
+    },
+    // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
+    // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
+    // and currency never change; a regular record's content never changes (only its status,
+    // decision, supersede and period-end columns, once each, under the write-once trigger);
+    // tombstones are insert-only; the refusal counters are purged.
+    'pricing.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'pricing.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'pricing.price_series': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['retire_cause', 'retired_at', 'version'],
+    },
+    'pricing.regular_price_records': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_note',
+        'decision_reason_code',
+        'effective_from',
+        'effective_to',
+        'status',
+        'supersede_cause',
+        'superseded_at',
+        'superseded_by_record_id',
+      ],
+    },
+    'pricing.retired_offers': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'pricing.retired_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'pricing.write_refusal_throttles': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['window_started_at'],
+    },
+    // The per-actor counter of M7 (pricing-data 12.1: a proposed shape, pending sign-off).
+    'pricing.write_refusal_actor_throttles': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['recorded_count', 'suppressed_count', 'window_started_at'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

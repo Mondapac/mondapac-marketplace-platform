@@ -67,6 +67,7 @@ export interface ClaimDecision {
   } | null;
   readonly policyRevisionId: Id | null;
   readonly badge: BadgeData | null;
-  readonly inputs: ClaimQuery;
+  /** The query echoed, normalised; `null` only for `input-invalid`, which has none to echo. */
+  readonly inputs: ClaimQuery | null;
   readonly evaluatedAt: Temporal.Instant;
 }

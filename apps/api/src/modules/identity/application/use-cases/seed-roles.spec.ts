@@ -93,12 +93,13 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       kind: 'default',
       sellerId: null,
-      seedVersion: 1,
+      seedVersion: 2,
       permissionKeys: [
         'identity.seller-access.approve',
         'identity.seller-access.suspend',
         'identity.seller-access.view',
         'identity.seller-account.create',
+        'sellers.seller-file.review',
       ],
     });
     expect(roleOf('seller', 'store-manager').permissionKeys).toEqual([
@@ -125,6 +126,47 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect([...fakes.roles.values()].filter((r) => r.marketId === market.marketId)).toHaveLength(
       12,
     );
+  });
+
+  it('upgrades onboarding-compliance from version 1 to 2: adds sellers.seller-file.review, one seed-applied row, other roles untouched', async () => {
+    const REVIEW = 'sellers.seller-file.review';
+    // The previous build's definition: version 1 without the sellers key.
+    const v1 = seedWith((role) =>
+      role.seedCode === 'onboarding-compliance'
+        ? {
+            ...role,
+            seedVersion: 1,
+            permissionKeys: role.permissionKeys.filter((key) => key !== REVIEW),
+          }
+        : role,
+    );
+    await seedRoles(v1).execute(system, {});
+    const before = roleOf('platform', 'onboarding-compliance');
+    expect(before.permissionKeys).not.toContain(REVIEW);
+    const viewerBefore = roleOf('platform', 'viewer');
+    fakes.audits.length = 0;
+
+    await expect(seedRoles().execute(system, {})).resolves.toEqual({
+      ok: true,
+      value: { created: 0, upgraded: 1 },
+    });
+
+    expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
+      id: before.id,
+      seedVersion: 2,
+      permissionKeys: [...before.permissionKeys, REVIEW].sort(),
+    });
+    expect(roleOf('platform', 'viewer')).toEqual(viewerBefore);
+    expect(fakes.audits).toEqual([
+      {
+        ...RoleSeedApplied.entry(before.id, {
+          before: { seedVersion: 1 },
+          after: { seedVersion: 2, addedKeys: [REVIEW], removedKeys: [] },
+        }),
+        actor: 'system',
+        marketId: code,
+      },
+    ]);
   });
 
   it('upgrades a default role key by key, with one seed-applied row (Ali 2026-10-08)', async () => {

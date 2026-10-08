@@ -24,6 +24,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { AccountState } from '../../domain/account';
+import type { SecondFactorState } from '../../domain/second-factor';
 import { openSession } from '../../domain/session';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer, formatDuration } from '../../infrastructure/mail/mail-catalogue';
@@ -162,6 +163,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         ...common,
         links: fakes.linkRepository,
         sessions: fakes.sessionRepository,
+        challenges: fakes.challengeRepository,
         records: fakes.recordRepository,
         ids,
         linkTokens,
@@ -171,6 +173,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       change: new ChangePassword(gate, {
         ...common,
         sessions: fakes.sessionRepository,
+        challenges: fakes.challengeRepository,
         links: fakes.linkRepository,
         records: fakes.recordRepository,
         ids,
@@ -424,7 +427,71 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
     });
   });
 
+  /**
+   * An open challenge of the account and one of another account, and a stored factor, so a test
+   * sees what the closing unit voids (HF11; Hassan I2 (d)) and what it keeps (Hassan I2 (a)).
+   */
+  function openChallengesAndFactor(accountId: Id<'Account'>, other: Id<'Account'>): void {
+    for (const [n, owner] of [
+      [1, accountId],
+      [2, other],
+    ] as const) {
+      fakes.challenges.set(`challenge-${n}`, {
+        challenge: {
+          id: id<'SignInChallenge'>(`01990000-0000-7000-8000-0000000c000${n}`),
+          marketId: market.marketId,
+          accountId: owner,
+          purpose: 'second-factor',
+          attempts: 0,
+          credentialChangedAt: clock.now(),
+          expiresAt: clock.now().add({ minutes: 5 }),
+          consumedAt: null,
+          createdAt: clock.now(),
+        },
+        tokenHash: `${n}`.repeat(64),
+      });
+    }
+    const factor: SecondFactorState = {
+      id: id<'SecondFactor'>('01990000-0000-7000-8000-0000000d0001'),
+      marketId: market.marketId,
+      accountId,
+      state: 'active',
+      secretCiphertext: 'ciphertext',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: clock.now(),
+      lockedAt: null,
+      createdAt: clock.now(),
+      recoveryCodes: [],
+      version: 1,
+    };
+    fakes.factors.set(accountId, factor);
+  }
+  const otherAccount = (population: 'customer' | 'seller') =>
+    population === 'customer' ? SELLER_ACCOUNT_ID : CUSTOMER_ID;
+  const openChallengeOwners = () =>
+    [...fakes.challenges.values()].map((e) => e.challenge.accountId);
+
   describe('ResetPassword (3.5, 3.7; AC 8, AC 13, AC 18, AC 19)', () => {
+    it.each(['customer', 'seller'] as const)(
+      "for a %s: voids the account's open challenges and keeps its second factor (HF11; Hassan I2 (a), (d))",
+      async (population) => {
+        seed(population);
+        const u = useCases();
+        const token = await mailedResetToken(u, population);
+        openChallengesAndFactor(accountIdOf(population), otherAccount(population));
+
+        await expect(
+          u.reset.execute(anonymous, { population, token, password: NEW_PASSWORD, client: CLIENT }),
+        ).resolves.toEqual({ ok: true, value: { code: 'password-changed' } });
+
+        expect(openChallengeOwners()).toEqual([otherAccount(population)]);
+        expect(fakes.factors.get(accountIdOf(population))?.state).toBe('active');
+        // No session is opened: the next sign-in still asks for the factor.
+        expect(fakes.sessions.size).toBe(0);
+      },
+    );
+
     it.each(['customer', 'seller'] as const)(
       'replaces a %s password, revokes every session, clears the counters and needs a new sign-in',
       async (population) => {
@@ -561,6 +628,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
           accounts: fakes.accountRepository,
           links: fakes.linkRepository,
           sessions: fakes.sessionRepository,
+          challenges: fakes.challengeRepository,
           throttles: fakes.throttleRepository,
           records: fakes.recordRepository,
           keys,
@@ -843,6 +911,27 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         expect(fakes.accounts.get(accountIdOf(population))!.credential.passwordHash).toBe(
           fakeHashOf(NEW_PASSWORD),
         );
+      },
+    );
+
+    it.each(['customer', 'seller'] as const)(
+      "for a %s: voids the account's open challenges and keeps its second factor (HF11; Hassan I2 (d))",
+      async (population) => {
+        seed(population);
+        const u = useCases();
+        const current = sessionOf(population, 1);
+        openChallengesAndFactor(accountIdOf(population), otherAccount(population));
+
+        await expect(
+          u.change.execute(testCallContext(market, actorOf(population, current.session.id)), {
+            currentPassword: OLD_PASSWORD,
+            newPassword: NEW_PASSWORD,
+            client: CLIENT,
+          }),
+        ).resolves.toMatchObject({ ok: true });
+
+        expect(openChallengeOwners()).toEqual([otherAccount(population)]);
+        expect(fakes.factors.get(accountIdOf(population))?.state).toBe('active');
       },
     );
 

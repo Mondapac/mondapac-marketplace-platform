@@ -1,0 +1,27 @@
+{
+  "name": "@mondapac/seller",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MondaPac seller panel (ADR-0034). Thin Next.js app; shared components live in @mondapac/ui.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start --port 3001",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mondapac/ui": "workspace:*",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "~6.0.3"
+  }
+}

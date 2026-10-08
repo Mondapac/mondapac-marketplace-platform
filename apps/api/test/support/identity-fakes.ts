@@ -59,6 +59,25 @@ import {
   type RoleRepository,
   type SellerMembershipRepository,
 } from '../../src/modules/identity/application/ports/seller-team.repository';
+import {
+  INVITATION_REPOSITORY,
+  InvitationAlreadyPendingError,
+  type InvitationRepository,
+} from '../../src/modules/identity/application/ports/invitation.repository';
+import {
+  SECOND_FACTOR_REPOSITORY,
+  type SecondFactorRepository,
+} from '../../src/modules/identity/application/ports/second-factor.repository';
+import {
+  SIGN_IN_CHALLENGE_REPOSITORY,
+  type SignInChallengeRepository,
+} from '../../src/modules/identity/application/ports/sign-in-challenge.repository';
+import { Invitation, type InvitationState } from '../../src/modules/identity/domain/invitation';
+import {
+  SecondFactor,
+  type SecondFactorState,
+} from '../../src/modules/identity/domain/second-factor';
+import type { SignInChallenge } from '../../src/modules/identity/domain/sign-in-challenge';
 import { Account, type AccountState } from '../../src/modules/identity/domain/account';
 import {
   Role,
@@ -117,6 +136,11 @@ export class IdentityFakes {
   readonly memberships = new Map<string, SellerMembershipState>();
   readonly roles = new Map<string, RoleState>();
   readonly assignments = new Map<string, RoleAssignmentState>();
+  /** Second factors by account id (slice 7). */
+  readonly factors = new Map<string, SecondFactorState>();
+  /** Sign-in challenges by id, with the hex of their token hash (slice 7). */
+  readonly challenges = new Map<string, { challenge: SignInChallenge; tokenHash: string }>();
+  readonly invitations = new Map<string, InvitationState>();
   /** Subject keys created and destroyed, by subject id (accounts and sellers). */
   readonly subjectKeys = new Map<string, 'live' | 'destroyed'>();
   /** Every account whose credential lock was taken, in order (N1). */
@@ -146,6 +170,9 @@ export class IdentityFakes {
     this.roles.clear();
     this.assignments.clear();
     this.subjectKeys.clear();
+    this.factors.clear();
+    this.challenges.clear();
+    this.invitations.clear();
     this.credentialLocks.length = 0;
     this.mails.length = 0;
     this.mailDown = false;
@@ -733,6 +760,191 @@ export class IdentityFakes {
     deleteBetween: () => Promise.resolve(0),
   };
 
+  readonly factorRepository: SecondFactorRepository = {
+    findByAccount: (market, accountId) => {
+      const state = this.factors.get(accountId);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId
+          ? null
+          : SecondFactor.restore(state),
+      );
+    },
+    add: (_market, factor) => {
+      const state = factor.state;
+      if (this.factors.has(state.accountId)) {
+        return Promise.reject(new StaleAggregateError('second-factor', state.id));
+      }
+      this.factors.set(state.accountId, state);
+      return Promise.resolve();
+    },
+    save: (_market, factor) => {
+      const state = factor.state;
+      if (state.version === factor.persistedVersion) return Promise.resolve();
+      const stored = this.factors.get(state.accountId);
+      if (stored?.id !== state.id || stored.version !== factor.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('second-factor', state.id));
+      }
+      this.factors.set(state.accountId, state);
+      return Promise.resolve();
+    },
+    acceptStep: (market, id, step) => {
+      const stored = [...this.factors.values()].find(
+        (state) => state.id === id && state.marketId === market.marketId,
+      );
+      if (
+        stored?.state !== 'active' ||
+        (stored.lastAcceptedStep !== null && stored.lastAcceptedStep >= step)
+      ) {
+        return Promise.resolve(false);
+      }
+      this.factors.set(stored.accountId, {
+        ...stored,
+        lastAcceptedStep: step,
+        version: stored.version + 1,
+      });
+      return Promise.resolve(true);
+    },
+    useRecoveryCode: (market, id, codeHash, now) => {
+      const stored = [...this.factors.values()].find(
+        (state) => state.id === id && state.marketId === market.marketId,
+      );
+      const wanted = hex(codeHash);
+      const code = stored?.recoveryCodes.find(
+        (candidate) => candidate.usedAt === null && hex(candidate.codeHash) === wanted,
+      );
+      if (stored?.state !== 'active' || code === undefined) return Promise.resolve(false);
+      this.factors.set(stored.accountId, {
+        ...stored,
+        recoveryCodes: stored.recoveryCodes.map((candidate) =>
+          candidate.position === code.position ? { ...candidate, usedAt: now } : candidate,
+        ),
+        version: stored.version + 1,
+      });
+      return Promise.resolve(true);
+    },
+    removeOf: (market, accountId) => {
+      const stored = this.factors.get(accountId);
+      if (stored === undefined || stored.marketId !== market.marketId) {
+        return Promise.resolve(false);
+      }
+      this.factors.delete(accountId);
+      return Promise.resolve(true);
+    },
+    activeAmong: (market, accountIds) =>
+      Promise.resolve(
+        new Set(
+          accountIds.filter((accountId) => {
+            const stored = this.factors.get(accountId);
+            return stored?.state === 'active' && stored.marketId === market.marketId;
+          }),
+        ),
+      ),
+  };
+
+  readonly challengeRepository: SignInChallengeRepository = {
+    add: (_market, challenge, tokenHash) => {
+      this.challenges.set(challenge.id, { challenge, tokenHash: hex(tokenHash) });
+      return Promise.resolve();
+    },
+    findByTokenHash: (market, tokenHash) => {
+      const wanted = hex(tokenHash);
+      const found = [...this.challenges.values()].find(
+        (entry) => entry.tokenHash === wanted && entry.challenge.marketId === market.marketId,
+      );
+      return Promise.resolve(found?.challenge ?? null);
+    },
+    reserveAttempt: (market, id, maxAttempts, now) => {
+      const entry = this.challenges.get(id);
+      const challenge = entry?.challenge;
+      if (
+        entry === undefined ||
+        challenge === undefined ||
+        challenge.marketId !== market.marketId ||
+        challenge.consumedAt !== null ||
+        challenge.attempts >= maxAttempts ||
+        Temporal.Instant.compare(challenge.expiresAt, now) <= 0
+      ) {
+        return Promise.resolve(false);
+      }
+      entry.challenge = { ...challenge, attempts: challenge.attempts + 1 };
+      return Promise.resolve(true);
+    },
+    consume: (market, id, now) => {
+      const entry = this.challenges.get(id);
+      const challenge = entry?.challenge;
+      if (
+        entry === undefined ||
+        challenge === undefined ||
+        challenge.marketId !== market.marketId ||
+        challenge.consumedAt !== null ||
+        Temporal.Instant.compare(challenge.expiresAt, now) <= 0
+      ) {
+        return Promise.resolve(false);
+      }
+      entry.challenge = { ...challenge, consumedAt: now };
+      return Promise.resolve(true);
+    },
+    voidAllOf: (market, accountId) => {
+      let count = 0;
+      for (const [id, entry] of this.challenges) {
+        if (
+          entry.challenge.accountId === accountId &&
+          entry.challenge.marketId === market.marketId
+        ) {
+          this.challenges.delete(id);
+          count += 1;
+        }
+      }
+      return Promise.resolve(count);
+    },
+    purgeExpired: () => Promise.resolve(0),
+  };
+
+  readonly invitationRepository: InvitationRepository = {
+    findById: (market, id) => {
+      const state = this.invitations.get(id);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId
+          ? null
+          : Invitation.restore(state),
+      );
+    },
+    findByTokenHash: (market, tokenHash) => {
+      const wanted = hex(tokenHash);
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.tokenHash !== null &&
+          hex(candidate.tokenHash) === wanted,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
+    add: (_market, invitation) => {
+      const state = invitation.state;
+      const clash = [...this.invitations.values()].some(
+        (other) =>
+          other.state === 'pending' &&
+          other.marketId === state.marketId &&
+          other.sellerId === state.sellerId &&
+          ((other.email !== null && other.email.normalized === state.email?.normalized) ||
+            (state.kind === 'seller-owner' && other.kind === 'seller-owner')),
+      );
+      if (clash) return Promise.reject(new InvitationAlreadyPendingError());
+      this.invitations.set(state.id, state);
+      return Promise.resolve();
+    },
+    save: (_market, invitation) => {
+      const state = invitation.state;
+      if (state.version === invitation.persistedVersion) return Promise.resolve();
+      if (this.invitations.get(state.id)?.version !== invitation.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('invitation', state.id));
+      }
+      this.invitations.set(state.id, state);
+      return Promise.resolve();
+    },
+    purge: () => Promise.resolve(0),
+  };
+
   readonly outbox: OutboxWriter = {
     append: (_context, events) => {
       this.events.push(...events);
@@ -807,6 +1019,12 @@ export class IdentityFakes {
       .useValue(this.assignmentRepository)
       .overrideProvider(ROLE_GRANT_READER)
       .useValue(this.grantReader)
+      .overrideProvider(SECOND_FACTOR_REPOSITORY)
+      .useValue(this.factorRepository)
+      .overrideProvider(SIGN_IN_CHALLENGE_REPOSITORY)
+      .useValue(this.challengeRepository)
+      .overrideProvider(INVITATION_REPOSITORY)
+      .useValue(this.invitationRepository)
       .overrideProvider(MAIL_TRANSPORT)
       .useValue(this.mailTransport)
       .overrideProvider(PASSWORD_HASHER)

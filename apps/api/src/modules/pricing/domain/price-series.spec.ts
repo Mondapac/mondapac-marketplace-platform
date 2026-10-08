@@ -68,6 +68,7 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
       status: 'ACCEPTED',
       taxInclusive: fixture.taxInclusive,
       anchor: null,
+      supersedeCause: null,
     });
     expect(record.effectiveFrom?.epochMilliseconds).toBe(clock.now().epochMilliseconds);
     expect(effectiveRegular(series.state, clock.now())?.id).toBe(record.id);
@@ -367,7 +368,135 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
     });
   });
 
+  describe('what persistence needs (slice 1, part 2; pricing-data 3.2, 3.3)', () => {
+    it('records the series currency at creation (pricing-data P2)', () => {
+      const { series } = setup();
+      expect(series.state.currency).toBe(policy.currency);
+    });
+
+    it('refuses an amount in another currency than the series, even under a policy that allows it', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      const otherCurrency = policy.currency === 'JPY' ? 'AUD' : 'JPY';
+      const drifted = createPricingPolicy({
+        marketId: policy.marketId,
+        currency: otherCurrency,
+        maxUnitPriceMinor: policy.maxUnitPrice.amount,
+        thresholdNumerator: policy.thresholdNumerator,
+        thresholdDenominator: policy.thresholdDenominator,
+        jumpDirections: policy.jumpDirections,
+        jumpWindow: 'P3D',
+      });
+      const amount = priceAmount(money(fixture.base + 1n, otherCurrency), drifted);
+      if (!amount.ok) throw new Error('fixture');
+      expect(
+        series.setRegularPrice({
+          recordId: ids.next<'RegularPriceRecord'>(),
+          amount: amount.value,
+          submittedBy: account,
+          taxInclusive: fixture.taxInclusive,
+          now: clock.now(),
+          policy: drifted,
+        }),
+      ).toEqual({ ok: false, error: { code: 'pricing.currency-mismatch' } });
+      expect(series.state.regular).toHaveLength(1);
+    });
+
+    it('stores the anchor on an accepted record that was measured, and none on the first price', () => {
+      const { set } = setup();
+      const first = (outcomeOf(set(fixture.base)) as { record: RegularPriceRecord }).record;
+      advance(1000);
+      const second = (outcomeOf(set(fixture.base + 1n)) as { record: RegularPriceRecord }).record;
+
+      expect(first.anchor).toBeNull();
+      expect(second).toMatchObject({ status: 'ACCEPTED', heldDirection: null });
+      expect(second.anchor).toEqual({ recordId: first.id, amount: first.amount });
+    });
+
+    it('names the cause of every supersede: replaced, cancelled, or the retirement cause', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      const replaced = (outcomeOf(set(heldUp(fixture.base))) as { record: RegularPriceRecord })
+        .record;
+      advance(1000);
+      const replacing = (
+        outcomeOf(set(heldUp(fixture.base) + 1n)) as { record: RegularPriceRecord }
+      ).record;
+      advance(1000);
+      set(fixture.base);
+      advance(1000);
+      const retired = (outcomeOf(set(heldUp(fixture.base))) as { record: RegularPriceRecord })
+        .record;
+      series.retire('variant-removed', clock.now());
+      const byId = (id: string) => series.state.regular.find((r) => r.id === id);
+
+      expect(byId(replaced.id)).toMatchObject({
+        status: 'SUPERSEDED',
+        supersedeCause: 'replaced',
+        supersededBy: replacing.id,
+      });
+      expect(byId(replacing.id)).toMatchObject({ supersedeCause: 'cancelled', supersededBy: null });
+      expect(byId(retired.id)).toMatchObject({
+        supersedeCause: 'variant-removed',
+        supersededBy: null,
+      });
+      expect(series.state.regular.filter((r) => r.status !== 'SUPERSEDED')).toEqual(
+        series.state.regular.filter((r) => r.supersedeCause === null),
+      );
+    });
+
+    it('remembers the stored state: none for a new series, the restored one, then what was stored', () => {
+      const { series, set } = setup();
+      expect(series.persistedVersion).toBeNull();
+      expect(series.storedState).toBeNull();
+
+      series.markStored();
+      expect(series.persistedVersion).toBe(1);
+      set(fixture.base);
+      expect(series.persistedVersion).toBe(1);
+      expect(series.storedState?.regular).toEqual([]);
+
+      const restored = PriceSeriesAggregate.restore(series.state);
+      expect(restored.persistedVersion).toBe(2);
+      expect(restored.storedState).toBe(restored.state);
+    });
+  });
+
   describe('restore', () => {
+    it('refuses a record in another currency than the series', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      const otherCurrency = policy.currency === 'JPY' ? 'AUD' : 'JPY';
+      const regular = series.state.regular.map((r) => ({
+        ...r,
+        amount: { ...r.amount, currency: otherCurrency },
+      })) as unknown as RegularPriceRecord[];
+      expect(() => PriceSeriesAggregate.restore({ ...series.state, regular })).toThrow(
+        InvalidPriceSeriesStateError,
+      );
+    });
+
+    it('refuses a superseded record without its cause, or a replaced one without its successor', () => {
+      const { series, set } = setup();
+      set(fixture.base);
+      advance(1000);
+      set(heldUp(fixture.base));
+      advance(1000);
+      set(fixture.base + 1n);
+      const corrupt = (change: Partial<RegularPriceRecord>) =>
+        series.state.regular.map((r) => (r.status === 'SUPERSEDED' ? { ...r, ...change } : r));
+      expect(() =>
+        PriceSeriesAggregate.restore({
+          ...series.state,
+          regular: corrupt({ supersedeCause: null }),
+        }),
+      ).toThrow(InvalidPriceSeriesStateError);
+      expect(() =>
+        PriceSeriesAggregate.restore({ ...series.state, regular: corrupt({ supersededBy: null }) }),
+      ).toThrow(InvalidPriceSeriesStateError);
+    });
+
     it('rebuilds a series with frozen records and no shared references', () => {
       const { series, set } = setup();
       set(fixture.base);

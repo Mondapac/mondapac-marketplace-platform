@@ -73,5 +73,16 @@
     "entry": "seller:bookkeeper@1",
     "kind": "default",
     "permissionKeys": []
+  },
+  {
+    "entry": "platform:onboarding-compliance@2",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.seller-access.approve",
+      "identity.seller-access.suspend",
+      "identity.seller-access.view",
+      "identity.seller-account.create",
+      "sellers.seller-file.review"
+    ]
   }
 ]

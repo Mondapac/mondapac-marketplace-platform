@@ -72,6 +72,8 @@ model IdentityAccount {
   oneTimeLinks            IdentityOneTimeLink[]
   sellerMemberships       IdentitySellerMembership[]
   roleAssignments         IdentityRoleAssignment[]
+  secondFactor            IdentitySecondFactor?
+  signInChallenges        IdentitySignInChallenge[]
 
   /// ADR-0018 decision 3: one account per Market, population and normalised email.
   @@unique([marketId, population, emailNormalized])
@@ -271,6 +273,7 @@ model IdentitySellerAccess {
   memberships    IdentitySellerMembership[]
   roles          IdentityRole[]
   sessions       IdentitySession[]
+  invitations    IdentityInvitation[]
 
   /// The target of composite foreign keys (data design C3).
   @@unique([marketId, sellerId])
@@ -384,5 +387,141 @@ model IdentityRoleAssignment {
   /// Holders of a role (LastHolderPolicy, role.in-use, HF5 (b)).
   @@index([marketId, roleId])
   @@map("role_assignments")
+  @@schema("identity")
+}
+
+/// The second factor of an account (identity design 2.1, 3.6, 7; data design 3.10): one per
+/// account, a new id at every enrolment (M3); `none` is no row. The TOTP secret is ciphertext
+/// under the account's subject key (label `identity.second-factor.secret`, D 7.5), never in
+/// clear; a replacement device's secret waits beside the active one until its first valid code
+/// (M13). A time step is accepted once: a guarded update on `last_accepted_step` that raises the
+/// version (C5). The CHECKs and the grants are hand-written in the migration.
+model IdentitySecondFactor {
+  /// UUIDv7, new for every enrolment (M3).
+  id                      String                 @id @db.Uuid
+  marketId                String                 @map("market_id") @db.VarChar(8)
+  tenantId                String                 @map("tenant_id")
+  accountId               String                 @map("account_id") @db.Uuid
+  /// pending | active.
+  state                   String
+  /// The TOTP secret, encrypted with the account's subject key.
+  secretCiphertext        String                 @map("secret_ciphertext")
+  /// A replacement device's secret, same key and label, until its first valid code (M13).
+  pendingSecretCiphertext String?                @map("pending_secret_ciphertext")
+  /// The last accepted 30-second time step; a step is accepted once (D 7.1).
+  lastAcceptedStep        Int?                   @map("last_accepted_step")
+  /// Set if and only if the state is active.
+  activatedAt             DateTime?              @map("activated_at") @db.Timestamptz(6)
+  /// The instant of the last HF2 lock (the lock itself is the second-factor.account counter).
+  lockedAt                DateTime?              @map("locked_at") @db.Timestamptz(6)
+  createdAt               DateTime               @map("created_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate (P 10); 1 at insert.
+  version                 Int
+  account                 IdentityAccount        @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+  recoveryCodes           IdentityRecoveryCode[]
+
+  /// One factor per account (D 2.1).
+  @@unique([marketId, accountId])
+  /// The target of composite foreign keys (data design C3).
+  @@unique([marketId, id])
+  @@map("second_factors")
+  @@schema("identity")
+}
+
+/// One of the ten single-use recovery codes of a second factor (identity design 7.3; data
+/// design 3.10): only `SubjectKeyService.hmac` of the code under the account's key (H2), never
+/// the code. "At most ten" is the primary key with its position CHECK. Removed with the factor.
+model IdentityRecoveryCode {
+  marketId       String               @map("market_id") @db.VarChar(8)
+  tenantId       String               @map("tenant_id")
+  secondFactorId String               @map("second_factor_id") @db.Uuid
+  /// 1 to 10.
+  position       Int                  @db.SmallInt
+  /// HMAC-SHA-256 under the account's subject key (32 bytes).
+  codeHash       Bytes                @map("code_hash")
+  usedAt         DateTime?            @map("used_at") @db.Timestamptz(6)
+  secondFactor   IdentitySecondFactor @relation(fields: [marketId, secondFactorId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, secondFactorId, position])
+  @@map("recovery_codes")
+  @@schema("identity")
+}
+
+/// The state between a correct password and a session or an active factor (identity design
+/// 2.1, 6.3; data design 3.10): never a credential and never an actor. Not versioned (M1): it
+/// changes only by single guarded statements (an attempt reserved before the code is checked,
+/// HF1; the consumption). Rows live minutes and are purged hourly. Only the SHA-256 of its
+/// token is stored. The CHECKs and the grants are hand-written in the migration.
+model IdentitySignInChallenge {
+  /// UUIDv7.
+  id                  String          @id @db.Uuid
+  marketId            String          @map("market_id") @db.VarChar(8)
+  tenantId            String          @map("tenant_id")
+  accountId           String          @map("account_id") @db.Uuid
+  /// second-factor | second-factor-enrolment.
+  purpose             String
+  /// SHA-256 of the token (32 bytes).
+  tokenHash           Bytes           @map("token_hash")
+  /// Reserved attempts; the limit of five is policy (D 6.8).
+  attempts            Int             @db.SmallInt
+  /// The credential's changed_at at issue, compared by the closing unit (HF11).
+  credentialChangedAt DateTime        @map("credential_changed_at") @db.Timestamptz(6)
+  expiresAt           DateTime        @map("expires_at") @db.Timestamptz(6)
+  consumedAt          DateTime?       @map("consumed_at") @db.Timestamptz(6)
+  createdAt           DateTime        @map("created_at") @db.Timestamptz(6)
+  account             IdentityAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  /// The lookup when a token is presented.
+  @@unique([marketId, tokenHash])
+  /// Voiding the open challenges of an account (HF11); the cascade from accounts.
+  @@index([marketId, accountId])
+  @@map("sign_in_challenges")
+  @@schema("identity")
+}
+
+/// An invitation (identity design 2.1, 3.4; data design 3.10): kind admin (slice 7), seller-owner
+/// (slice 9) or staff (slice 11). The invited address is personal and plain, present only while
+/// pending; acceptance and revocation clear it. `expired` is not stored: a pending row past
+/// `expires_at`. Only the SHA-256 of the token is stored, set at dispatch. `role_id` is a plain
+/// id that may dangle by design (R12). The CHECKs, the three partial unique indexes and the
+/// grants are hand-written in the migration.
+model IdentityInvitation {
+  /// UUIDv7.
+  id                 String                @id @db.Uuid
+  marketId           String                @map("market_id") @db.VarChar(8)
+  tenantId           String                @map("tenant_id")
+  /// seller-owner | staff | admin.
+  kind               String
+  /// Personal. As typed, trimmed; NULL once decided.
+  email              String?
+  /// Personal. Trimmed, NFC, lower-cased; NULL once decided.
+  emailNormalized    String?               @map("email_normalized")
+  /// Personal. Only on a pending seller-owner invitation (D 3.4, ux.md D6).
+  displayName        String?               @map("display_name")
+  /// Plain id (C4): the role may be deleted meanwhile, and acceptance refuses (R12).
+  roleId             String                @map("role_id") @db.Uuid
+  /// The seller of a seller-owner or staff invitation; NULL for admin.
+  sellerId           String?               @map("seller_id") @db.Uuid
+  /// Plain id (C4); NULL for the first-admin routine (HF5 (b)).
+  invitedByAccountId String?               @map("invited_by_account_id") @db.Uuid
+  /// SHA-256 of the token; set with expires_at at dispatch, replaced by a re-send.
+  tokenHash          Bytes?                @map("token_hash")
+  expiresAt          DateTime?             @map("expires_at") @db.Timestamptz(6)
+  /// pending | accepted | revoked.
+  state              String
+  decidedAt          DateTime?             @map("decided_at") @db.Timestamptz(6)
+  /// Plain id; set if and only if accepted.
+  acceptedAccountId  String?               @map("accepted_account_id") @db.Uuid
+  /// Optimistic version of the aggregate (P 10); 1 at insert.
+  version            Int
+  createdAt          DateTime              @map("created_at") @db.Timestamptz(6)
+  sellerAccess       IdentitySellerAccess? @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// Acceptance and the preview (D 8.6 row 5); NULLs do not collide.
+  @@unique([marketId, tokenHash])
+  /// The RESTRICT check PostgreSQL runs when the serializable purge deletes a seller_access row
+  /// (Mojtaba R1, data design 3.10): without it a seq scan and a relation-level predicate lock.
+  @@index([marketId, sellerId])
+  @@map("invitations")
   @@schema("identity")
 }

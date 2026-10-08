@@ -43,11 +43,11 @@
 | inventory | A | ۴ | [`inventory/brief.md`](inventory/brief.md) | تأیید (2026-10-07) | تأیید با شرط (2026-10-07، PR #43)؛ UI: در انتظار ux.md رضا |
 | pricing | A | ۴ | [`pricing/brief.md`](pricing/brief.md) | تأیید (2026-10-07) | تأیید با شرط (2026-10-07، PR #44)؛ UI: در انتظار ux.md رضا |
 | cart | B | ۴ | [`cart/brief.md`](cart/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید (2026-10-07) | بخش طراحی: تأیید با شرط (2026-10-07، PR #45)؛ UI: در انتظار ux.md رضا |
-| ordering | A | ۵ | — | — | — |
-| payments | A | ۵ | — | — | — |
-| commission-payouts | A | ۵ | — | — | — |
-| tax | A | ۵ | — | — | — |
-| shipping | B | ۶ | — | — | — |
+| ordering | A | ۵ | [`ordering/brief.md`](ordering/brief.md) | تأیید (2026-10-08) | — |
+| payments | A | ۵ | [`payments/brief.md`](payments/brief.md) | تأیید (2026-10-08) | — |
+| commission-payouts | A | ۵ | [`commission-payouts/brief.md`](commission-payouts/brief.md) | تأیید (2026-10-08) | — |
+| tax | A | ۵ | [`tax/brief.md`](tax/brief.md) | تأیید (2026-10-08) | — |
+| shipping | B | ۵ (فقط SHP-01) و ۶ | [`shipping/brief.md`](shipping/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید محصولی برای SHP-01 (2026-10-08)؛ بقیهٔ ماژول فاز ۶ | بخش طراحی: در انتظار |
 | notifications | B | ۶ | — | — | — |
 | search | B | ۶ | — | — | — |
 | content (CMS، بلاگ) | B | قبل از راه‌اندازی | — | — | — |
