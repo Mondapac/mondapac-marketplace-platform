@@ -338,4 +338,167 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       sql.query('UPDATE sellers.seller_files SET version = 0 WHERE seller_id = $1', [sellerId]),
     ).rejects.toMatchObject({ code: '23514', constraint: 'seller_files_version_check' });
   });
+
+  // Slice 2 (migration sellers_file_details; data design 3.1, 3.5, 3.11): what the database holds.
+  describe('slice 2 columns, shop slugs and rate counters', () => {
+    const refuses = (statement: string, params: unknown[], constraint: string) =>
+      expect(sql.query(statement, params)).rejects.toMatchObject({ code: '23514', constraint });
+    const update = (sellerId: string, set: string, params: unknown[] = []) =>
+      sql.query(`UPDATE sellers.seller_files SET ${set} WHERE seller_id = $1`, [
+        sellerId,
+        ...params,
+      ]);
+
+    it('holds a complete draft and refuses what its CHECKs refuse', async () => {
+      const sellerId = await registerSeller(code);
+      const zone = code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo';
+
+      await update(
+        sellerId,
+        `store_name = 'Al Noor', store_name_key = 'al noor', business_name_ciphertext = 'x',
+         phone_ciphertext = 'x', address_ciphertext = 'x', service_area_code = 'greater-brisbane',
+         operating_timezone = $2, address_timezone = $2, timezone_source = 'default'`,
+        [zone],
+      );
+
+      const bad: [string, unknown[], string][] = [
+        ["store_name = ' padded', store_name_key = 'padded'", [], 'seller_files_store_name_check'],
+        ["store_name = 'a' || chr(1), store_name_key = 'a'", [], 'seller_files_store_name_check'],
+        [
+          "store_name = repeat('a', 101), store_name_key = 'a'",
+          [],
+          'seller_files_store_name_check',
+        ],
+        ['store_name = NULL', [], 'seller_files_store_name_key_pair_check'],
+        ["store_name_key = 'Upper'", [], 'seller_files_store_name_key_check'],
+        ["store_name_key = ' al noor'", [], 'seller_files_store_name_key_check'],
+        ["store_name_key = repeat('a', 401)", [], 'seller_files_store_name_key_check'],
+        ["phone_ciphertext = ''", [], 'seller_files_phone_ciphertext_check'],
+        [
+          "business_name_ciphertext = repeat('x', 2049)",
+          [],
+          'seller_files_business_name_ciphertext_check',
+        ],
+        ["service_area_code = 'Bad Code'", [], 'seller_files_service_area_code_check'],
+        ["operating_timezone = '+10:00'", [], 'seller_files_operating_timezone_check'],
+        ["timezone_source = 'gps'", [], 'seller_files_timezone_source_check'],
+        ['timezone_source = NULL', [], 'seller_files_timezone_set_check'],
+        [
+          "timezone_source = 'default', operating_timezone = 'Pacific/Auckland'",
+          [],
+          'seller_files_timezone_default_check',
+        ],
+        ['address_ciphertext = NULL', [], 'seller_files_timezone_address_check'],
+      ];
+      for (const [set, params, constraint] of bad) {
+        await refuses(
+          `UPDATE sellers.seller_files SET ${set} WHERE seller_id = $1`,
+          [sellerId, ...params],
+          constraint,
+        );
+      }
+      // A chosen zone may differ from the address zone once the source says so.
+      await update(sellerId, `operating_timezone = 'Pacific/Auckland', timezone_source = 'seller'`);
+    });
+
+    it('stores slugs with the C collation, unique per Market, one held per seller, never deleted', async () => {
+      const sellerId = await registerSeller(code);
+      const insert = (market: string, slug: string, seller: string, state = 'held', ever = false) =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, now(),
+                   CASE WHEN $5 = 'retired' THEN now() END, 1, now())`,
+          [randomUUID(), market, slug, seller, state, ever],
+        );
+      const slug = `shop-${randomUUID().slice(0, 8)}`;
+
+      await insert(code, slug, sellerId);
+      await expect(insert(code, slug, randomUUID())).rejects.toMatchObject({
+        code: '23505',
+        constraint: 'shop_slugs_market_id_slug_key',
+      });
+      await expect(insert(code, `${slug}x`, sellerId)).rejects.toMatchObject({
+        code: '23505',
+        constraint: 'shop_slugs_market_id_seller_id_held_key',
+      });
+      // The same slug in the other Market is another key.
+      await insert(other, slug, randomUUID());
+      for (const [bad, constraint] of [
+        ['Has-Upper', 'shop_slugs_slug_check'],
+        ['ab', 'shop_slugs_slug_check'],
+        ['a--b', 'shop_slugs_slug_check'],
+        ['-abc', 'shop_slugs_slug_check'],
+      ] as const) {
+        await expect(insert(code, bad, randomUUID())).rejects.toMatchObject({ constraint });
+      }
+      // Only a slug that was ever public can be retired.
+      await expect(insert(code, `${slug}r`, randomUUID(), 'retired', false)).rejects.toMatchObject({
+        constraint: 'shop_slugs_ever_public_check',
+      });
+      await insert(code, `${slug}r`, randomUUID(), 'retired', true);
+      await expect(
+        sql.query('DELETE FROM sellers.shop_slugs WHERE slug = $1', [slug]),
+      ).rejects.toMatchObject({ code: '42501' });
+      await expect(
+        sql.query('UPDATE sellers.shop_slugs SET slug = $2 WHERE slug = $1', [slug, 'other']),
+      ).rejects.toMatchObject({ code: '42501' });
+      const collation = await owner.query(
+        `SELECT a.attname, c.collname FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+           JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_collation c ON c.oid = a.attcollation
+          WHERE n.nspname = 'sellers' AND ((t.relname = 'shop_slugs' AND a.attname = 'slug')
+             OR (t.relname = 'seller_files' AND a.attname = 'store_name_key'))
+          ORDER BY a.attname`,
+      );
+      expect(collation.rows.map((row: { collname: string }) => row.collname)).toEqual(['C', 'C']);
+    });
+
+    it('counts in rate_counters with the closed kind list, a 32-byte key and a guarded decrement', async () => {
+      const key = Buffer.alloc(32, 7);
+      const reserve = (kind: string, hash: Buffer = key) =>
+        sql.query<{ count: number }>(
+          `INSERT INTO sellers.rate_counters (market_id, tenant_id, kind, key_hash, window_started_at, count)
+           VALUES ($1, 'default', $2, $3, now(), 1)
+           ON CONFLICT (market_id, kind, key_hash) DO UPDATE SET count = sellers.rate_counters.count + 1
+           RETURNING count`,
+          [code, kind, hash],
+        );
+      const kinds = [
+        'slug-check.account.minute',
+        'slug-check.account.day',
+        'save.account.minute',
+        'save.account.day',
+        'lookup.account',
+        'lookup.origin',
+        'lookup.market',
+        'lookup.admin',
+        'submit.file',
+        'withdraw.file',
+        'bulk.admin',
+        'reviewer-notice.seller',
+        'reviewer-notice.market',
+      ];
+      for (const kind of kinds) expect((await reserve(kind)).rows[0]!.count).toBe(1);
+      expect((await reserve('save.account.day')).rows[0]!.count).toBe(2);
+      await expect(reserve('unknown.kind')).rejects.toMatchObject({
+        constraint: 'rate_counters_kind_check',
+      });
+      await expect(reserve('save.account.day', Buffer.alloc(31))).rejects.toMatchObject({
+        constraint: 'rate_counters_key_hash_check',
+      });
+      // The guarded decrement never goes below zero.
+      const release = () =>
+        sql.query(
+          `UPDATE sellers.rate_counters SET count = count - 1
+            WHERE market_id = $1 AND kind = 'reviewer-notice.seller' AND key_hash = $2 AND count > 0`,
+          [code, key],
+        );
+      expect((await release()).rowCount).toBe(1);
+      expect((await release()).rowCount).toBe(0);
+      await expect(
+        sql.query(`UPDATE sellers.rate_counters SET count = -1 WHERE kind = 'submit.file'`),
+      ).rejects.toMatchObject({ constraint: 'rate_counters_count_check' });
+      await sql.query(`DELETE FROM sellers.rate_counters WHERE market_id = $1`, [code]);
+    });
+  });
 });

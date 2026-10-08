@@ -106,6 +106,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // docs/design/data/sellers.md section 8 (slice 2): a slug and its holder never change, only
+    // its state (DELETE arrives in slice 5, Q-M21); rate counters are reserved, released (the
+    // two reviewer-notice kinds, 3.11) and purged after 48 hours.
+    'sellers.shop_slugs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
+    },
+    'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
     // the key columns and the Default flag are immutable, so UPDATE is by column.
