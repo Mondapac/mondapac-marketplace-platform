@@ -69,6 +69,7 @@ describe.each(TEST_MARKETS)(
         counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(9)),
         policy: {
           taxCategoryCodes: () => [],
+          locales: () => ({ default: 'en', supported: ['en'] }),
           sensitiveChanges: () => {
             throw new Error('not used');
           },
@@ -378,6 +379,7 @@ describe.each(TEST_MARKETS)(
           counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(9)),
           policy: {
             taxCategoryCodes: () => [],
+            locales: () => ({ default: 'en', supported: ['en'] }),
             sensitiveChanges: () => {
               throw new Error('not used');
             },
@@ -439,6 +441,7 @@ describe.each(TEST_MARKETS)(
           counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(9)),
           policy: {
             taxCategoryCodes: () => [],
+            locales: () => ({ default: 'en', supported: ['en'] }),
             sensitiveChanges: () => {
               throw new Error('not used');
             },

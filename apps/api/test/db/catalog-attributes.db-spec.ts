@@ -11,7 +11,8 @@ import {
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { marketOf } from './persistence-support';
+import { PrismaAttributeRepository } from '../../src/modules/catalog/infrastructure/prisma-attribute.repository';
+import { createPersistence, marketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Catalog slice 3 on PostgreSQL (catalog data design 3.3, 5.1, 7), for both Market fixtures: the
@@ -312,5 +313,34 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     expect(Number(options.rows[0]?.n)).toBe(
       ZZ_ATTRIBUTE_DEFINITIONS.reduce((sum, entry) => sum + entry.options.length, 0),
     );
+  });
+
+  it('builds the schema of a seeded family from the published revisions, and none for an unknown one (4c-5b)', async () => {
+    await app.get(SeedAttributes).execute(seedContext(), {});
+    const persistence = createPersistence();
+    try {
+      const attributes = new PrismaAttributeRepository(persistence.service);
+      const load = (familyCode: string) =>
+        persistence.unitOfWork
+          .run(market, async () => ({
+            ok: true as const,
+            value: await attributes.loadSchema(market, familyCode),
+          }))
+          .then((result) => (result.ok ? result.value : null));
+      expect(await load('no-such-family')).toBeNull();
+      const seeded = ZZ_ATTRIBUTE_FAMILIES[0]!;
+      const schema = await load(seeded.code);
+      if (code !== 'ZZ') {
+        expect(schema).toBeNull();
+        return;
+      }
+      expect(schema?.schemaRef.familyCode).toBe(seeded.code);
+      expect(schema?.fields.map((field) => field.code).sort()).toEqual(
+        seeded.groups.flatMap((group) => group.attributes.map((entry) => entry.code)).sort(),
+      );
+      expect(schema?.schemaRef.definitionRevisionIds).toHaveLength(schema?.fields.length ?? -1);
+    } finally {
+      await persistence.close();
+    }
   });
 });

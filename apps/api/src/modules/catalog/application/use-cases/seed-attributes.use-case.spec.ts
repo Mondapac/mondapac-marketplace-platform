@@ -29,6 +29,10 @@ class MemoryAttributes implements AttributeRepository {
   readonly families = new Map<string, Id<'AttributeFamily'>>();
   readonly order: string[] = [];
 
+  loadSchema() {
+    return Promise.resolve(null);
+  }
+
   definitionIdByCode(_m: MarketContext, code: string) {
     return Promise.resolve(this.definitions.get(code) ?? null);
   }

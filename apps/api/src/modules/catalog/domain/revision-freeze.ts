@@ -22,6 +22,8 @@ export interface FreezeInput {
   /** The working copy's `content` (schema version 1). */
   readonly content: Readonly<Record<string, unknown>>;
   readonly defaultLocale: string;
+  /** The Market's locales; a text in any other locale is refused. */
+  readonly supportedLocales: readonly string[];
   /** The Market's tax category codes (`catalog.taxCategories`). */
   readonly taxCategoryCodes: readonly string[];
   /** `single`: the product's one variant, implicit in the draft; `options`: named by the draft. */
@@ -56,6 +58,7 @@ export function optionKeyOf(optionValues: Readonly<Record<string, string>>): str
 function parseTexts(
   raw: unknown,
   defaultLocale: string,
+  supportedLocales: readonly string[],
   issues: FreezeIssue[],
 ): Record<string, RevisionText> {
   const texts: Record<string, RevisionText> = {};
@@ -66,6 +69,10 @@ function parseTexts(
   for (const [locale, entry] of Object.entries(raw)) {
     if (NO_PROTOTYPE_KEYS.has(locale)) {
       issues.push({ path: `texts.${locale}`, code: 'invalid' });
+      continue;
+    }
+    if (!supportedLocales.includes(locale)) {
+      issues.push({ path: `texts.${locale}`, code: 'unknown' });
       continue;
     }
     if (!isObject(entry)) {
@@ -224,7 +231,7 @@ export function freezeWorkingCopy(
 ): Result<RevisionContent, readonly FreezeIssue[]> {
   const issues: FreezeIssue[] = [];
   const { content } = input;
-  const texts = parseTexts(content['texts'], input.defaultLocale, issues);
+  const texts = parseTexts(content['texts'], input.defaultLocale, input.supportedLocales, issues);
   const categoryIds = parseIdList(content['categoryIds'], 'categoryIds', issues);
   if (categoryIds.length === 0 && !issues.some((issue) => issue.path.startsWith('categoryIds'))) {
     issues.push({ path: 'categoryIds', code: 'required' });

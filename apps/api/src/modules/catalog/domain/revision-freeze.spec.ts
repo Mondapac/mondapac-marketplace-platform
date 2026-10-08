@@ -21,6 +21,7 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       imageIds: [],
     },
     defaultLocale: locale,
+    supportedLocales: [locale],
     taxCategoryCodes: tax,
     variantModel: 'single',
     liveVariantIds: [v(1)],
@@ -66,6 +67,7 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
   it('requires a name in the default locale only', () => {
     const found = issues(base({ content: { ...base().content, texts: { other: { name: 'x' } } } }));
     expect(found).toContainEqual({ path: `texts.${locale}.name`, code: 'required' });
+    expect(found).toContainEqual({ path: 'texts.other', code: 'unknown' });
   });
 
   it('rejects duplicate categories and prototype-polluting keys', () => {
