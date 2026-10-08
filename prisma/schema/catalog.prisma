@@ -136,3 +136,96 @@ model CatalogProductCodeCounter {
   @@map("product_code_counters")
   @@schema("catalog")
 }
+
+/// The version of a Market's platform category tree (data design 3.4): one row per Market. Every
+/// structural change raises it with a guarded `updateMany ... where version`, which serialises
+/// edits (two moves that would form a cycle together cannot both commit) and keys the in-process
+/// copy of the tree. The CHECKs and the grants are hand-written in the migration.
+model CatalogCategoryTree {
+  marketId String @id @map("market_id") @db.VarChar(8)
+  tenantId String @map("tenant_id")
+  version  Int
+
+  @@map("category_trees")
+  @@schema("catalog")
+}
+
+/// A node of the platform category tree (catalog design 2.1, 4.6; data design 3.4). Name and
+/// parent live in insert-only revisions; this root holds the lifecycle, the slug and the pointer
+/// to the current revision. The CHECKs, the no-cycle trigger and the grants are hand-written.
+model CatalogPlatformCategory {
+  id                  String                            @id @db.Uuid
+  marketId            String                            @map("market_id") @db.VarChar(8)
+  tenantId            String                            @map("tenant_id")
+  /// Null for a root of the tree; never equal to the id (CHECK).
+  parentId            String?                           @map("parent_id") @db.Uuid
+  /// Optional Vertical root marker (CA4); only on a root (CHECK).
+  verticalRootCode    String?                           @map("vertical_root_code")
+  /// Case-sensitive collation "C" is set in the migration; unique per Market.
+  slug                String
+  /// active | merged | archived.
+  status              String
+  mergedIntoId        String?                           @map("merged_into_id") @db.Uuid
+  /// The current revision; null only inside the creating unit (Q-K10).
+  publishedRevisionId String?                           @map("published_revision_id") @db.Uuid
+  /// seed | admin; never updated.
+  createdByKind       String                            @map("created_by_kind")
+  version             Int
+  createdAt           DateTime                          @map("created_at") @db.Timestamptz(6)
+  parent              CatalogPlatformCategory?          @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  children            CatalogPlatformCategory[]         @relation("CategoryParent")
+  mergedInto          CatalogPlatformCategory?          @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom          CatalogPlatformCategory[]         @relation("CategoryMerge")
+  revisions           CatalogPlatformCategoryRevision[] @relation("CategoryRevisions")
+  publishedRevision   CatalogPlatformCategoryRevision?  @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// One slug per Market (D 17.1).
+  @@unique([marketId, slug])
+  /// The child lists of the tree editor.
+  @@index([marketId, parentId])
+  @@map("platform_categories")
+  @@schema("catalog")
+}
+
+/// A revision of a category's name and parent (V1, insert-only: CA3). The parent has no foreign
+/// key: history may name an archived id (C4).
+model CatalogPlatformCategoryRevision {
+  id              String                                @id @db.Uuid
+  marketId        String                                @map("market_id") @db.VarChar(8)
+  tenantId        String                                @map("tenant_id")
+  categoryId      String                                @map("category_id") @db.Uuid
+  revisionNo      Int                                   @map("revision_no")
+  parentId        String?                               @map("parent_id") @db.Uuid
+  /// created | renamed | moved | merged | archived.
+  changeKind      String                                @map("change_kind")
+  /// seed | admin.
+  authorKind      String                                @map("author_kind")
+  /// Null exactly when the author is the seed.
+  authorAccountId String?                               @map("author_account_id") @db.Uuid
+  createdAt       DateTime                              @map("created_at") @db.Timestamptz(6)
+  category        CatalogPlatformCategory               @relation("CategoryRevisions", fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  published       CatalogPlatformCategory[]             @relation("CategoryPublished")
+  names           CatalogPlatformCategoryRevisionName[]
+
+  @@unique([marketId, categoryId, revisionNo])
+  /// The target of the category's published-revision pointer and of the name rows.
+  @@unique([marketId, categoryId, id])
+  @@unique([marketId, id])
+  @@map("platform_category_revisions")
+  @@schema("catalog")
+}
+
+/// The name of a revision in one locale (a row per locale: CA6; insert-only).
+model CatalogPlatformCategoryRevisionName {
+  marketId   String                          @map("market_id") @db.VarChar(8)
+  tenantId   String                          @map("tenant_id")
+  revisionId String                          @map("revision_id") @db.Uuid
+  locale     String
+  name       String
+  revision   CatalogPlatformCategoryRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, locale])
+  @@map("platform_category_revision_names")
+  @@schema("catalog")
+}
