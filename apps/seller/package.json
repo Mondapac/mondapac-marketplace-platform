@@ -5,13 +5,14 @@
   "description": "MondaPac seller panel (ADR-0034). Thin Next.js app; shared components live in @mondapac/ui.",
   "license": "UNLICENSED",
   "scripts": {
-    "dev": "next dev --port 3001",
+    "dev": "node server.mjs --dev",
     "build": "next build",
-    "start": "next start --port 3001",
+    "start": "node server.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@mondapac/panel-server": "workspace:*",
     "@mondapac/ui": "workspace:*",
     "next": "16.4.0",
     "next-intl": "4.14.9",
