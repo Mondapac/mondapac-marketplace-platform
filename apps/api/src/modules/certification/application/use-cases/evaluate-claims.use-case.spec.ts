@@ -54,15 +54,18 @@ interface World {
   /** Answers of the right count whose keys are not the requested ones (a reordered read). */
   shuffledAnswers: boolean;
   wrongSellerCertificates: boolean;
+  wrongTypeCertificates: boolean;
 }
 const POLICY_REVISION = '0197f2a0-0000-7000-8000-0000000000aa' as Id;
 let world: World;
 const calls = { policies: 0, certificates: 0, zones: 0 };
 let zoneRequests: string[][] = [];
+let policyRequests: { typeCode: string; categoryIds: readonly string[]; handling: string }[] = [];
 
 const facts: ClaimFactsReader = {
   typesAndPolicies: (_m, requests) => {
     calls.policies += 1;
+    policyRequests = requests.map((r) => ({ ...r }));
     if (world.failRead) return Promise.reject(new Error('db down'));
     const list = requests.map((r): TypeAndPolicy => ({
       typeCode: r.typeCode,
@@ -94,7 +97,9 @@ const facts: ClaimFactsReader = {
         ? list.slice(1)
         : world.wrongSellerCertificates
           ? list.map((a) => ({ ...a, sellerId: ids.next<'Seller'>() }))
-          : list,
+          : world.wrongTypeCertificates
+            ? list.map((a) => ({ ...a, typeCode: code('some-other-type') }))
+            : list,
     );
   },
 };
@@ -176,8 +181,10 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
       misalignedCertificates: false,
       shuffledAnswers: false,
       wrongSellerCertificates: false,
+      wrongTypeCertificates: false,
     };
     zoneRequests = [];
+    policyRequests = [];
     calls.policies = calls.certificates = calls.zones = 0;
   });
 
@@ -421,6 +428,68 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     const r = await facade.evaluateClaims(anonymous(), [query()]);
     expect(r.ok && r.value[0]).toEqual(
       expect.objectContaining({ allowed: false, reason: 'unavailable' }),
+    );
+  });
+
+  it('fails closed when a certificate answer carries another type than requested', async () => {
+    world.wrongTypeCertificates = true;
+    const r = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(r.ok && r.value[0]).toEqual(
+      expect.objectContaining({ allowed: false, reason: 'unavailable' }),
+    );
+  });
+
+  it('asks the policy read per valid query in order: the union of all paths, deduplicated, with handling', async () => {
+    const [root, a, b] = [ids.next<'Category'>(), ids.next<'Category'>(), ids.next<'Category'>()];
+    const multi = query({
+      handling: 'REPACKED',
+      platformCategoryPaths: [
+        [root, a],
+        [root, b],
+      ],
+    });
+    const single = query();
+    await facade.evaluateClaims(anonymous(), [null as never, multi, single]);
+    expect(policyRequests).toHaveLength(2);
+    expect(policyRequests[0]).toEqual({
+      typeCode: fx.type,
+      categoryIds: [root, a, b],
+      handling: 'REPACKED',
+    });
+    expect(policyRequests[1]).toEqual({
+      typeCode: fx.type,
+      categoryIds: single.platformCategoryPaths[0],
+      handling: 'SEALED_ORIGINAL',
+    });
+  });
+
+  it('bounds the category paths: 50 paths and depth 12 pass, 51 and 13 do not', async () => {
+    const path = (n: number): Id<'Category'>[] =>
+      Array.from({ length: n }, () => ids.next<'Category'>());
+    const reasons = async (over: Partial<ClaimQuery>): Promise<string> => {
+      const r = await facade.evaluateClaims(anonymous(), [query(over)]);
+      return r.ok ? r.value[0]!.reason : 'refused';
+    };
+    expect(
+      await reasons({ platformCategoryPaths: Array.from({ length: 50 }, () => path(1)) }),
+    ).toBe('allowed');
+    expect(await reasons({ platformCategoryPaths: [path(12)] })).toBe('allowed');
+    expect(
+      await reasons({ platformCategoryPaths: Array.from({ length: 51 }, () => path(1)) }),
+    ).toBe('input-invalid');
+    expect(await reasons({ platformCategoryPaths: [path(13)] })).toBe('input-invalid');
+    expect(await reasons({ platformCategoryPaths: ['x'] as never })).toBe('input-invalid');
+    expect(await reasons({ platformCategoryPaths: [['not-an-id']] as never })).toBe(
+      'input-invalid',
+    );
+  });
+
+  it('keeps a SELLER_OR_MANUFACTURER policy on the seller path until the manufacturer step lands', async () => {
+    world.rows = [{ basis: 'SELLER_OR_MANUFACTURER' }];
+    world.certificate = null;
+    const r = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(r.ok && r.value[0]).toEqual(
+      expect.objectContaining({ allowed: false, reason: 'no-valid-seller-certificate' }),
     );
   });
 

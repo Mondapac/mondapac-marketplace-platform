@@ -1,7 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import type { TimeZoneId } from './claim-types';
-import { expiryBoundary, sellerCertificateValidAt } from './validity';
+import { expiryBoundary, isUsableZone, sellerCertificateValidAt } from './validity';
 import type { SellerCertificationView, SellerZones } from './validity';
 
 const z = (s: string): TimeZoneId => s as TimeZoneId;
@@ -210,4 +210,34 @@ describe('sellerCertificateValidAt', () => {
     expect(v('closed-to-new' as never)).toBe(true);
     expect(v('active' as never)).toBe(true);
   });
+});
+
+describe('isUsableZone', () => {
+  it.each([SYDNEY, BRISBANE, ZZ, 'UTC', 'australia/sydney'])('accepts %s', (zone) => {
+    expect(isUsableZone(zone)).toBe(true);
+  });
+
+  it.each([
+    ['an unknown name', 'Mars/Olympus'],
+    ['an empty string', ''],
+    ['an offset', '+10:00'],
+    ['a negative offset', '-03:00'],
+    ['an ISO date-time with an offset', '2026-01-01T00:00:00+05:00'],
+    ['an ISO date-time in brackets', '2026-01-01T00:00[+10:00]'],
+    ['an ISO date-time in Z', '2026-01-01T00:00Z'],
+    ['65 characters', 'A'.repeat(65)],
+    ['a number', 42],
+    ['null', null],
+  ])('refuses %s', (_n, zone) => {
+    expect(isUsableZone(zone)).toBe(false);
+  });
+
+  it.each(['zone', 'addressZone'] as const)(
+    'gives seller-zone-missing for an unusable %s on a certificate with an expiry',
+    (field) => {
+      const zones = { ...both(SYDNEY), [field]: 'Not/AZone' as never };
+      const v = sellerCertificateValidAt(cert(), zones, at('2027-01-01T00:00:00Z'));
+      expect(v).toEqual({ valid: false, reason: 'seller-zone-missing' });
+    },
+  );
 });
