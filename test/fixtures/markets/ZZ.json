@@ -216,7 +216,9 @@
       "variantRemoved": false
     },
     "maxVariantsPerProduct": 3,
-    "approvalRequired": false
+    "approvalRequired": false,
+    "productTypes": ["simple"],
+    "defaultFamily": "default"
   },
   "pricing": {
     "maxUnitPriceMinor": 2000000,
