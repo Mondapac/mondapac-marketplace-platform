@@ -1,0 +1,128 @@
+{
+  "panel": {
+    "name": "Admin",
+    "market": "MondaPac {marketName}",
+    "support": "Need help? Email {supportEmail}."
+  },
+  "nav": {
+    "home": "Home"
+  },
+  "home": {
+    "title": "Home",
+    "empty": "Your admin workspace is being set up.",
+    "signed-in-as": "Signed in as {name}",
+    "sign-out": "Sign out",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
+    "user-menu": "Account"
+  },
+  "showcase": {
+    "title": "The whole marketplace, at a glance.",
+    "cards": {
+      "one": {
+        "name": "Cedar Lane Halal Meats",
+        "detail": "Certificate under review"
+      },
+      "two": {
+        "name": "Olive Grove Bakehouse",
+        "detail": "Seller application waiting"
+      },
+      "three": {
+        "name": "Riverbend Poultry Co.",
+        "detail": "Certificate expires in 30 days"
+      }
+    }
+  },
+  "identity": {
+    "common": {
+      "account-type": {
+        "admin": "Admin account"
+      },
+      "label": {
+        "email": "Email",
+        "password": "Password"
+      },
+      "action": {
+        "show-password": "Show password",
+        "hide-password": "Hide password",
+        "back-to-sign-in": "Back to sign in"
+      }
+    },
+    "error": {
+      "credentials": {
+        "invalid": "Email or password is incorrect. Check both and try again."
+      },
+      "request": {
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "csrf": "Refresh the page and try again."
+      },
+      "account": {
+        "disabled": {
+          "admin": "This admin account has been deactivated. Ask another admin if you think this is a mistake."
+        }
+      },
+      "validation": {
+        "email": {
+          "required": "Enter your email.",
+          "format": "Enter an email address like name@example.com."
+        },
+        "password": {
+          "required": "Enter your password."
+        },
+        "code": {
+          "required": "Enter the code."
+        }
+      },
+      "second-factor": {
+        "code-rejected": "That code didn't work. Enter the newest code from your app.",
+        "challenge-ended": "Too many wrong codes. Sign in again to try once more.",
+        "locked": "Too many wrong codes. Two-step sign-in is paused for 24 hours. Reset your password to try again sooner."
+      },
+      "access": {
+        "denied": "You don't have permission to do that."
+      },
+      "unknown": "Something went wrong on our side. Try again.",
+      "network": "You're offline or the connection dropped. Check it and try again.",
+      "market": "This page isn't available."
+    },
+    "sign-in": {
+      "page-title": "Sign in – Admin account – MondaPac",
+      "title": "Sign in to your admin account",
+      "action": {
+        "submit": "Sign in"
+      },
+      "help": {
+        "throttled": "You can still reset your password."
+      },
+      "banner": {
+        "session-ended": "Your session has ended. Sign in again to continue.",
+        "signed-out": "You're signed out.",
+        "password-changed": "Password changed. Sign in with your new password.",
+        "account-ready": "Your account is ready. Sign in."
+      }
+    },
+    "two-step": {
+      "title": "Enter your 6-digit code",
+      "body": "Open your authenticator app and enter the code for MondaPac.",
+      "label": {
+        "code": "6-digit code",
+        "backup-code": "Backup code"
+      },
+      "action": {
+        "verify": "Verify",
+        "use-backup": "Use a backup code instead",
+        "use-app": "Use your authenticator app instead"
+      },
+      "title-backup": "Enter a backup code",
+      "body-backup": "Each backup code works once.",
+      "help": {
+        "admin": "No phone and no backup codes? Ask another admin who manages admin accounts to reset it."
+      }
+    },
+    "check-email": {
+      "title": "Check your email",
+      "body": {
+        "re-enrol": "Your two-step verification was reset. We've sent a link to your email to set it up again. The link works for 60 minutes."
+      }
+    }
+  }
+}
