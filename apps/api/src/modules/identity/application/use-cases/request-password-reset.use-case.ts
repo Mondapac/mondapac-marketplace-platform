@@ -20,7 +20,7 @@ export interface RequestPasswordResetInput {
   /** The population of the route (the customer or the seller panel's "Forgot password?"). */
   readonly population: SignInPopulation;
   readonly email: string;
-  /** The IPv4 address or the IPv6 /64 of the client, from the socket: the `mail.origin` key. */
+  /** The IPv4 address or the IPv6 /64 of the client (ADR-0037 resolver): the `mail.origin` key. */
   readonly origin: string;
 }
 

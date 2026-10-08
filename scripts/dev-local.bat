@@ -18,6 +18,12 @@ if not exist ".env" (
   echo Creating .env from .env.example
   copy /y ".env.example" ".env" >nul
 )
+rem An older .env may lack variables added since (for example MIGRATION_DATABASE_URL).
+findstr /b /c:"MIGRATION_DATABASE_URL=" ".env" >nul 2>nul || (
+  echo .env has no MIGRATION_DATABASE_URL: keeping it as .env.old and creating a new one from .env.example
+  move /y ".env" ".env.old" >nul
+  copy /y ".env.example" ".env" >nul
+)
 if not exist "apps\seller\.env.local" (
   echo Creating apps\seller\.env.local from apps\seller\.env.example
   copy /y "apps\seller\.env.example" "apps\seller\.env.local" >nul

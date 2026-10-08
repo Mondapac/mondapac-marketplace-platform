@@ -57,9 +57,24 @@ describe('ConfigPricingPolicyProvider', () => {
   });
 
   it('refuses a Market that is not hosted', () => {
-    expect(() => provider.forMarket(testMarketContext('QQ', 'default'))).toThrow(
+    const qq = testMarketContext('QQ', 'default');
+    expect(() => provider.forMarket(qq)).toThrow(PricingNotConfiguredError);
+    expect(() => provider.forOffer(qq, '0190a000-0000-7000-8000-000000000001' as never)).toThrow(
       PricingNotConfiguredError,
     );
+    expect(() => provider.pricesIncludeTax(qq)).toThrow(PricingNotConfiguredError);
+  });
+
+  it("answers the Market's policy for any Offer (no Vertical override yet, design 4.6)", () => {
+    const offer = '0190a000-0000-7000-8000-000000000001' as never;
+    expect(provider.forOffer(au, offer)).toBe(provider.forMarket(au));
+    expect(provider.forOffer(zz, offer)).toBe(provider.forMarket(zz));
+  });
+
+  it("answers each Market's price convention from its MarketConfig (design 4.5)", () => {
+    expect(provider.pricesIncludeTax(au)).toBe(configs.get(au.marketId)!.pricesIncludeTax);
+    expect(provider.pricesIncludeTax(zz)).toBe(configs.get(zz.marketId)!.pricesIncludeTax);
+    expect(provider.pricesIncludeTax(au)).not.toBe(provider.pricesIncludeTax(zz));
   });
 
   it('refuses to start when a hosted Market has no pricing section, naming it', () => {

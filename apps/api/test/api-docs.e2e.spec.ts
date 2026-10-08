@@ -57,4 +57,23 @@ describe('API docs (integration)', () => {
       expect.objectContaining({ name: 'x-market-id' }),
     );
   });
+
+  it('documents the optional x-client-address of ADR-0037 next to x-market-id, not on /health', async () => {
+    const response = await request(app.getHttpServer()).get('/docs-json').expect(200);
+
+    const document = response.body as {
+      paths: Record<string, { get: { parameters?: { name: string; in: string }[] } }>;
+    };
+    expect(document.paths['/test/market']?.get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'x-client-address',
+        in: 'header',
+        required: false,
+        description: expect.stringContaining('client-address.untrusted') as unknown,
+      }),
+    );
+    expect(document.paths['/health']?.get.parameters ?? []).not.toContainEqual(
+      expect.objectContaining({ name: 'x-client-address' }),
+    );
+  });
 });

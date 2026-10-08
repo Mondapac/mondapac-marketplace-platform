@@ -784,7 +784,7 @@ describe('the audit chain on the database (slice 6b)', () => {
           ).rows[0]!.count,
         );
       expect(await countRoles()).toBe(0);
-      const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+      const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER, { strict: true });
       const refusing = jest
         .spyOn(writer, 'record')
         .mockRejectedValue(new AuditWriteRefusedError('entry-invalid', 'after'));

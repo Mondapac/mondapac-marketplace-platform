@@ -1,5 +1,10 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import {
+  OFFER_SELL_UNITS_SOURCE,
+  type OfferSellUnitsSource,
+} from '../application/ports/offer-sell-units';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   PRICE_SERIES_REPOSITORY,
@@ -17,15 +22,17 @@ import {
   PRICING_POLICY_PROVIDER,
   type PricingPolicyProvider,
 } from '../application/ports/pricing-policy-provider';
+import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
 import { ConfigPricingPolicyProvider } from './config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from './prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from './prisma-retirement-tombstone.repository';
 import { PrismaWriteRefusalThrottleRepository } from './prisma-write-refusal-throttle.repository';
 
 /**
- * Binds the persistence ports of slice 1 (part 2). They live in `infrastructure/` because only
- * this layer may reach `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
- * The module registers them with its use cases in part 3; until then nothing injects them.
+ * Binds the ports of slice 1: persistence (part 2; in `infrastructure/` because only this layer
+ * may reach `PrismaService`, dependency-cruiser `persistence-internals-are-private`), the Market
+ * policy (part 3a) and catalog's `offerSellUnits` behind pricing's own port (part 3b; catalog's
+ * production binding is its fail-closed placeholder until catalog slice 7, ADR-0031 decision 6).
  */
 export const pricingProviders: readonly FactoryProvider[] = [
   {
@@ -45,6 +52,12 @@ export const pricingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): WriteRefusalThrottleRepository =>
       new PrismaWriteRefusalThrottleRepository(prisma),
+  },
+  {
+    provide: OFFER_SELL_UNITS_SOURCE,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): OfferSellUnitsSource =>
+      new CatalogOfferSellUnits(catalog),
   },
   {
     provide: PRICING_POLICY_PROVIDER,
