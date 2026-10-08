@@ -24,6 +24,7 @@ export const MY_FILE_STATUS = {
   'file.change-request-required': 409,
   'conflict.stale': 409,
   'request.throttled': 429,
+  'lookup.limit': 429,
   'sellers.unavailable': 503,
   'access.unavailable': 503,
 } as const;
@@ -37,11 +38,14 @@ export function fail(status: number, code: string, details?: object): HttpExcept
 export type MyFileError =
   | AccessDenied
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldProblem[] }
-  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
+  | {
+      readonly code: 'request.throttled' | 'lookup.limit';
+      readonly retryAfterSeconds: number;
+    }
   | {
       readonly code: Exclude<
         keyof typeof MY_FILE_STATUS,
-        'validation.failed' | 'request.throttled'
+        'validation.failed' | 'request.throttled' | 'lookup.limit'
       >;
     };
 
@@ -51,6 +55,7 @@ export function errorOf(error: MyFileError, response: Response): HttpException {
     case 'validation.failed':
       return fail(MY_FILE_STATUS[error.code], error.code, { fields: error.fields });
     case 'request.throttled':
+    case 'lookup.limit':
       response.setHeader('Retry-After', String(error.retryAfterSeconds));
       return fail(MY_FILE_STATUS[error.code], error.code, {
         retryAfterSeconds: error.retryAfterSeconds,

@@ -119,6 +119,7 @@ model SellersSellerFile {
   adminSettings                    SellersSellerAdminSettings?
   taxProfile                       SellersSellerTaxProfile?
   storeProfile                     SellersStoreProfile?
+  registerChecks                   SellersRegisterCheck[]
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
@@ -247,6 +248,38 @@ model SellersTaxRegistrationPeriod {
   /// "As of an instant" (ADR-0007 decision 7), led by market_id (C7).
   @@index([marketId, sellerId, validFrom])
   @@map("tax_registration_periods")
+  @@schema("sellers")
+}
+
+/// The latest register result for one file and one identifier value (data design 3.4, slice 4a;
+/// sellers design 3.4, 7.7). One row per (file, value): results are never shared across sellers.
+/// "Not performed" is the absence of a row. Outcome, flags and instants are results, kept in
+/// clear (Q-M8); the register's raw answer is never kept. The CHECKs and the grants are
+/// hand-written in the migration.
+model SellersRegisterCheck {
+  marketId                 String            @map("market_id") @db.VarChar(8)
+  tenantId                 String            @map("tenant_id")
+  sellerId                 String            @map("seller_id") @db.Uuid
+  /// Personal (pseudonymous), S5: the file's IdentifierIndex for the value that was checked.
+  identifierIndex          Bytes             @map("identifier_index")
+  /// active | not-found | cancelled | unavailable (CHECK).
+  outcome                  String
+  /// Subset of business-name, indirect-tax-registration, postcode (CHECK); empty unless active.
+  mismatches               String[]
+  /// The first definite negative for this value; kept while later answers are `unavailable`.
+  definiteNegativeAt       DateTime?         @map("definite_negative_at") @db.Timestamptz(6)
+  /// Personal, Enc, label sellers.register-check.compared-values. Not written in slice 4a: the
+  /// register's agreement is not reviewed yet (data design 3.4; sellers design 7.7).
+  comparedValuesCiphertext String?           @map("compared_values_ciphertext")
+  checkedAt                DateTime          @map("checked_at") @db.Timestamptz(6)
+  /// seller | reviewer | job (CHECK).
+  checkedByKind            String            @map("checked_by_kind")
+  /// A plain id (C4); NULL exactly for the job.
+  checkedByAccountId       String?           @map("checked_by_account_id") @db.Uuid
+  sellerFile               SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, identifierIndex])
+  @@map("register_checks")
   @@schema("sellers")
 }
 

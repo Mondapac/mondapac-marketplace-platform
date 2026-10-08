@@ -9,10 +9,13 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
 import { BUSINESS_IDENTIFIER_SCHEMES } from './application/ports/business-identifier-scheme';
+import { BUSINESS_REGISTER_LOOKUPS } from './application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX } from './application/ports/identifier-index';
 import { LOCATION_TIMEZONE_RESOLVER } from './application/ports/location-timezone-resolver';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
+import { REGISTER_CHECK_REPOSITORY } from './application/ports/register-check.repository';
+import { REGISTER_LOOKUP_POLICY } from './application/ports/register-lookup-policy';
 import { REGISTERED_SELLER_SOURCE } from './application/ports/registered-seller-source';
 import { SELLER_FILE_CIPHER } from './application/ports/seller-file-cipher';
 import { SELLER_FILE_REPOSITORY } from './application/ports/seller-file.repository';
@@ -23,6 +26,7 @@ import {
 } from './application/ports/seller-market-formats';
 import { SELLER_MARKET_POLICY } from './application/ports/seller-market-policy';
 import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
+import { TAX_PROFILE_REPOSITORY } from './application/ports/tax-profile.repository';
 import { ApprovedSellerZonesSystem } from './application/use-cases/approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './application/use-cases/approved-seller-zones.use-case';
 import { BackfillSellerFiles } from './application/use-cases/backfill-seller-files.use-case';
@@ -35,6 +39,7 @@ import { MyFileSaveIdentifier } from './application/use-cases/my-file-save-ident
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
+import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
@@ -48,6 +53,7 @@ import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-files.job';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
 import { MyFileController } from './presentation/my-file.controller';
+import { ReviewRegisterCheckController } from './presentation/review-register-check.controller';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
 /**
@@ -70,6 +76,10 @@ const PORT = {
   locationZones: LOCATION_TIMEZONE_RESOLVER,
   identifierSchemes: BUSINESS_IDENTIFIER_SCHEMES,
   identifierIndex: IDENTIFIER_INDEX,
+  registerChecks: REGISTER_CHECK_REPOSITORY,
+  registerLookups: BUSINESS_REGISTER_LOOKUPS,
+  registerPolicy: REGISTER_LOOKUP_POLICY,
+  taxProfiles: TAX_PROFILE_REPOSITORY,
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -108,7 +118,7 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [MyFileController],
+  controllers: [MyFileController, ReviewRegisterCheckController],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
@@ -144,6 +154,9 @@ function useCaseProvider<D, U>(
       addressFormats: true,
       zones: true,
       areas: true,
+      registerChecks: true,
+      registerPolicy: true,
+      clock: true,
     }),
     useCaseProvider(MyFileSaveGeneral, {
       unitOfWork: true,
@@ -193,6 +206,8 @@ function useCaseProvider<D, U>(
       counterKeys: true,
       clock: true,
     }),
+    // Slice 4a: the save also asks the Market's register (design 7.7); the reviewer reads the
+    // state of a file's current identifier (no call, no decryption).
     useCaseProvider(MyFileSaveIdentifier, {
       unitOfWork: true,
       files: true,
@@ -202,6 +217,18 @@ function useCaseProvider<D, U>(
       cipher: true,
       counters: true,
       counterKeys: true,
+      registerChecks: true,
+      registerLookups: true,
+      registerPolicy: true,
+      taxProfiles: true,
+      addressFormats: true,
+      clock: true,
+    }),
+    useCaseProvider(ReviewRegisterCheckRead, {
+      unitOfWork: true,
+      files: true,
+      registerChecks: true,
+      registerPolicy: true,
       clock: true,
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),

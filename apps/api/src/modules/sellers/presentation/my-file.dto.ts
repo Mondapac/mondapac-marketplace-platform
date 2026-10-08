@@ -132,6 +132,24 @@ export class DraftSavedBody {
   missing!: readonly string[];
 }
 
+/** What the register said, as the seller may see it (brief s5): never a register value. */
+const REGISTER_RESULTS = ['matched', 'not-matched', 'could-not-be-checked'] as const;
+
+/** The answer of `PUT my-file/identifier`: a draft save and the register result of the number. */
+export class IdentifierSavedBody extends DraftSavedBody {
+  @ApiProperty({
+    type: String,
+    enum: REGISTER_RESULTS,
+    nullable: true,
+    description:
+      'What the official register said about the saved number: matched, not-matched (one ' +
+      'message for not found and cancelled) or could-not-be-checked (a reviewer will check). ' +
+      'Null when the Market has no register lookup, the number was cleared or no current result ' +
+      'exists. Never a register value, never "verified".',
+  })
+  registerResult!: (typeof REGISTER_RESULTS)[number] | null;
+}
+
 class ServiceAreaBody {
   @ApiProperty()
   code!: string;
@@ -244,6 +262,17 @@ export class MyFileBody {
   })
   identifier!: IdentifierView | null;
 
+  @ApiProperty({
+    type: String,
+    enum: REGISTER_RESULTS,
+    nullable: true,
+    description:
+      'What the official register said about the saved number: matched, not-matched or ' +
+      'could-not-be-checked; null when the Market has no register lookup, no number is saved ' +
+      'or no current result exists. Never a register value.',
+  })
+  registerResult!: (typeof REGISTER_RESULTS)[number] | null;
+
   @ApiProperty({ type: [String] })
   zoneOptions!: readonly string[];
 }
@@ -339,7 +368,7 @@ export class SellersErrorBody {
     additionalProperties: true,
     description:
       'Closed per code: validation.failed has fields (paths and codes, never values); ' +
-      'request.throttled has retryAfterSeconds.',
+      'request.throttled and lookup.limit have retryAfterSeconds.',
   })
   details?: Record<string, unknown>;
 }

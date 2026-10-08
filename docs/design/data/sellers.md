@@ -5,7 +5,7 @@
 and Hassan (accept with changes); Mohammad answered section 13 in D 14.3. Nothing here exists yet;
 this document is the specification the `sellers` migrations are written from, and each migration
 still needs my sign-off. Open points: sections 13 and 14.
-**Implemented:** slice 1 (2026-10-08) created `sellers.outbox`, `inbox`, `seller_files`, `seller_admin_settings`, `seller_tax_profiles` and `store_profiles` in migration `20261008074339_sellers_files`. Slice 2b (2026-10-08) added the slice-2 columns of `seller_files` (with `timezone_source` and `address_timezone` of the spike 3 record), `shop_slugs` and `rate_counters` in migration `20261008130000_sellers_file_details` (section 18).
+**Implemented:** slice 1 (2026-10-08) created `sellers.outbox`, `inbox`, `seller_files`, `seller_admin_settings`, `seller_tax_profiles` and `store_profiles` in migration `20261008074339_sellers_files`. Slice 2b (2026-10-08) added the slice-2 columns of `seller_files` (with `timezone_source` and `address_timezone` of the spike 3 record), `shop_slugs` and `rate_counters` in migration `20261008130000_sellers_file_details` (section 18). Slice 4a (2026-10-08) added `register_checks` in migration `20261008180000_sellers_register_checks` (section 21).
 **Ground truth:** `docs/design/domain/sellers.md` (revised at G2, 2026-10-07, cited as **D**, for
 example "D 7.3"); `docs/modules/sellers/brief.md` (G1 approved 2026-10-03; sections 5, 6, 7 and 11
 read directly at G2, cited as "brief s5"; O9 closed, 14); the G2 review items
@@ -737,7 +737,7 @@ Aligned with D 11.1 as revised at G2 (slices P1 and P2, 7a-read, 7a-decide, 7a-a
 | 3 | 2 | `sellers_file_details` | The slice-2 columns of `seller_files` (`timezone_source` and `address_timezone` included, spike 3 record) and their CHECKs; `(market_id, store_name_key)`; `shop_slugs`; `rate_counters`. **Implemented in slice 2b:** `20261008130000_sellers_file_details` (18) |
 | 3a | 2 (Q-M25) | `sellers_draft_slug` | `seller_files.draft_slug` (`ADD COLUMN`, nullable, no default, `COLLATE "C"`) and `seller_files_draft_slug_check` (`NOT VALID` then `VALIDATE`, under `lock_timeout`); no index, no unique key, no grant change (the table-level grant covers it), no data change. **Implemented:** `20261008150000_sellers_draft_slug` (19) |
 | 4 | 3 | `sellers_identifier_tax` | The identifier columns, their CHECK and partial index; `tax_registration_periods` with its exclusion constraint |
-| 5 | 4a | `sellers_register_checks` | `register_checks` |
+| 5 | 4a | `sellers_register_checks` | `register_checks`. **Implemented in slice 4a:** `20261008180000_sellers_register_checks` (21) |
 | 6 | 5 | `sellers_business_file_revisions` | `business_file_revisions` (withdrawal columns included; nullable clear `address_timezone` with its zone CHECK `business_file_revisions_address_timezone_check`, NULL or a valid IANA zone) with its partial uniques and queue index; `seller_files.approved_revision_id` and its FK; `GRANT DELETE` on `shop_slugs` (Q-M21) |
 | 7 | 6 | `sellers_list_index` | Partial `(market_id, last_changed_at, seller_id) WHERE approved_revision_id IS NULL` (9.3 decides whether `CONCURRENTLY`) |
 | 8 | 7a-read | `sellers_review_checks` | `review_checks`; the partial `identifier_index` index on `business_file_revisions` |
@@ -1262,3 +1262,68 @@ periods table; `42501` for an update of any column but `valid_to`; a repository 
 closes the open period, answers "as of" an instant and keeps the local date and zone; a cancellation
 that re-opens the previous period; a lost race on the root's version changes nothing, and of two
 parallel recordings exactly one commits.
+
+## 21. Slice 4a migration `20261008180000_sellers_register_checks` (2026-10-08)
+
+| Reviewer | Verdict | Date |
+|---|---|---|
+| Mojtaba (database-designer) | Pending: sign-off requested with this PR | |
+
+Written by Hossein from 3.4, 3.11, 4.5 and 8 (the table by `prisma migrate diff`, the rest by hand;
+`pnpm db:check-reversible` runs up, down, up and the drift check, and passes on PostgreSQL 16). It
+has no dependency on an earlier migration beyond `seller_files`.
+
+| Object | What it adds |
+|---|---|
+| `register_checks` (new) | The columns of 3.4 plus `market_id` and `tenant_id` (C1). Primary key `(market_id, seller_id, identifier_index)`; composite FK `(market_id, seller_id)` to `seller_files`, `RESTRICT` (so a result is never written under another Market's file, and a file with results is not deleted from under them). CHECKs `_market_id_check`, `_tenant_id_check`, `_identifier_index_check` (`octet_length = 32`), `_outcome_check`, `_mismatches_check`, `_definite_negative_check`, `_compared_values_ciphertext_check`, `_checked_by_kind_check`, `_checked_by_account_id_check` |
+| Grants | `register_checks`: `SELECT, INSERT, UPDATE` to `mondapac_app` (section 8; `DELETE` stays with slice 18). The privilege map of `pnpm test:db` is updated in the same PR. No other grant changes; no index beyond the primary key (A9 is a primary key probe; A15 adds `(market_id, checked_at)` in slice 11) |
+
+Decisions taken here (for Mojtaba to confirm):
+
+- **`mismatches` is `NOT NULL`**, as 3.4 says, by a hand-written `ALTER COLUMN … SET NOT NULL`: Prisma
+  emits a scalar list without it, and the drift check accepts the stricter column (measured).
+- **`_definite_negative_check` is stricter than 3.4.** 3.4 requires the mark on a negative outcome;
+  the CHECK also requires **no** mark on an `active` outcome. A successful lookup replaces a definite
+  negative (the register is the authority; "Only after a successful re-lookup", D 3.4), and a later
+  `unavailable` keeps it (AC 31). The domain's `registerCheckAfter` and the repository write exactly
+  this; the CHECK is the backstop.
+- **`compared_values_ciphertext` is never written in slice 4a.** The register's agreement is not
+  reviewed (D 7.7, 16.2 item 3), so the column stays NULL and no field label
+  `sellers.register-check.compared-values` exists in code yet. Its CHECK is in place: NULL or the
+  envelope shape with `BETWEEN 41 AND 2048` (a 200-character business name and a postcode in a JSON
+  wrapper at four bytes a character, rounded up to the next power of two, 4.5).
+- **The sticky negative is kept without a read-modify-write.** `PrismaRegisterCheckRepository.record`
+  inserts the row if absent (`createMany … skipDuplicates`), sets the mark only where it is still
+  NULL, and then writes the latest answer (touching the mark again only to clear it for `active`).
+  Each statement is atomic and every CHECK holds after each one (the mark is set before a negative
+  outcome is written). Tested with parallel writers.
+- **Quotas, in code and not in this migration.** The three `lookup.*` kinds were already in the slice-2
+  CHECK (11). Each is reserved in a unit of its own that holds one counter, in the order account,
+  origin, Market, stopping at the first refusal, so a refused attempt does not spend the next counter
+  (D 7.7 describes one unit with all three; the Market budget therefore counts calls that were made,
+  and a refused account cannot burn the Market budget). No unit holds two counter locks.
+- **`down.sql`** revokes the grant and drops the table (its CHECKs, the primary key and the foreign
+  key go with it).
+
+Tests (`apps/api/test/db/sellers-files.db-spec.ts`, section "slice 4a", both Market fixtures;
+`privileges.db-spec.ts` through `expected-privileges.ts`): every CHECK with accepted and refused rows
+(outcome, flags, the mark on negative and active, checker kind and account, index length, ciphertext
+bounds and shape, Market and tenant patterns, the NULL list); the primary key, the foreign key to a
+missing file and to another Market, `RESTRICT` on the file, two sellers holding one value; `42501` on
+`DELETE`; the repository round trip, the sticky negative through unavailable, a second negative and an
+active answer, and three parallel writers on four values; no read or write across Markets; the
+seller's save, read and the reviewer's read against PostgreSQL with the `fake` adapter (outcome, flags
+and instants only in the row, the three quota counters, `lookup.limit` writing nothing, the `none`
+Market reserving and writing nothing). No partial index and no exclusion constraint are added, so
+`outbox-catalog.db-spec.ts` needed no change.
+
+**Not built in slice 4a (waits for a shared-file change):** the `sellers.registerLookup` keys of
+Market configuration (D 4.1) are not in the schema of `platform/market-config` yet. The lookup is
+built against a `RegisterLookupPolicy` port; until the keys land the provisional adapter answers
+`none` for every Market, so no deployed Market reaches a register. The shape the configuration needs:
+`sellers.registerLookup = { adapter, manualLinkTemplate?, maxResultAge (days), perAccountLimit,
+perOriginLimit, marketDailyBudget, reviewerLimit, recheckInterval, legalSuffixes[] }`, with `adapter`
+`none` as the default and checked at start-up against the adapters of `infrastructure/register-lookups/`
+(`legalSuffixes` is not in the D 4.1 table: the name comparison of D 7.7 says "legal suffix list from
+configuration").
+
