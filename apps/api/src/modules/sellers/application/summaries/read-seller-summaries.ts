@@ -10,12 +10,12 @@ export type { SellerSummary };
 /** At most this many ids per call (sellers design 7.1; Hassan L4). */
 export const MAX_SELLER_SUMMARY_IDS = 100;
 
-export type SellerSummariesFailure =
-  | {
-      readonly code: 'validation.failed';
-      readonly fields: readonly { readonly path: string; readonly code: string }[];
-    }
-  | { readonly code: 'sellers.unavailable' };
+export interface SellerIdsRefused {
+  readonly code: 'validation.failed';
+  readonly fields: readonly { readonly path: string; readonly code: string }[];
+}
+
+export type SellerSummariesFailure = SellerIdsRefused | { readonly code: 'sellers.unavailable' };
 
 export interface SellerSummariesDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -23,6 +23,28 @@ export interface SellerSummariesDependencies {
 }
 
 const logger = new Logger('SellerSummaries');
+
+/**
+ * The shared request check of the facade methods that take a set of seller ids (sellers design
+ * 7.1, 7.2): at most 100 ids, each a well-formed Seller id, duplicates collapsed in the order of
+ * first occurrence. A larger or malformed call is refused whole, before any read.
+ */
+export function parseSellerIds(
+  sellerIds: readonly string[],
+): Result<Set<Id<'Seller'>>, SellerIdsRefused> {
+  if (!Array.isArray(sellerIds) || sellerIds.length > MAX_SELLER_SUMMARY_IDS) {
+    return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'length' }] });
+  }
+  const ids = new Set<Id<'Seller'>>();
+  for (const value of sellerIds as readonly unknown[]) {
+    const parsed = typeof value === 'string' ? parseId<'Seller'>(value) : null;
+    if (parsed === null || !parsed.ok) {
+      return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'format' }] });
+    }
+    ids.add(parsed.value);
+  }
+  return ok(ids);
+}
 
 /**
  * The read behind `sellerSummaries` (sellers design 7.1), shared by its two use cases
@@ -38,17 +60,9 @@ export async function readSellerSummaries(
   context: CallContext,
   sellerIds: readonly string[],
 ): Promise<Result<readonly SellerSummary[], SellerSummariesFailure>> {
-  if (!Array.isArray(sellerIds) || sellerIds.length > MAX_SELLER_SUMMARY_IDS) {
-    return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'length' }] });
-  }
-  const ids = new Set<Id<'Seller'>>();
-  for (const value of sellerIds as readonly unknown[]) {
-    const parsed = typeof value === 'string' ? parseId<'Seller'>(value) : null;
-    if (parsed === null || !parsed.ok) {
-      return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'format' }] });
-    }
-    ids.add(parsed.value);
-  }
+  const parsed = parseSellerIds(sellerIds);
+  if (!parsed.ok) return parsed;
+  const ids = parsed.value;
   if (ids.size === 0) return ok([]);
   const { market } = context;
   try {

@@ -295,6 +295,23 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     expect(JSON.stringify(asSystem)).toBe(JSON.stringify(asAnonymous));
   });
 
+  it('answers sellingEligibility false for everyone, whoever calls (stand-in until slice 9)', async () => {
+    const sellerId = await registerSeller(code);
+    const never = new SequenceIdGenerator(clock).next<'Seller'>();
+
+    for (const context of [anonymousContext(code), systemContext(code)]) {
+      const result = await facade().sellingEligibility(context, [sellerId, never]);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect([...result.value]).toEqual([
+          [sellerId, { eligible: false }],
+          [never, { eligible: false }],
+        ]);
+      }
+    }
+  });
+
   it('refuses what the database must refuse: another module`s event type, a file in another Market', async () => {
     const sellerId = await registerSeller(code);
 

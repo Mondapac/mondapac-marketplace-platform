@@ -1,9 +1,12 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
+import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
   SellersFacade,
+  SellingEligibilityMap,
   SellersUnavailable,
   SellersValidationFailed,
 } from '../contracts/sellers.facade';
@@ -13,6 +16,8 @@ import type { SellerSummary } from '../domain/seller-summary';
 export interface SellersFacadeUseCases {
   readonly sellerSummaries: SellerSummaries;
   readonly sellerSummariesSystem: SellerSummariesSystem;
+  readonly sellingEligibility: SellingEligibility;
+  readonly sellingEligibilitySystem: SellingEligibilitySystem;
 }
 
 /**
@@ -34,6 +39,17 @@ export class SellersFacadeImplementation implements SellersFacade {
       context.actor.kind === 'system'
         ? this.useCases.sellerSummariesSystem
         : this.useCases.sellerSummaries;
+    return useCase.execute(context, { sellerIds });
+  }
+
+  sellingEligibility(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed>> {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.sellingEligibilitySystem
+        : this.useCases.sellingEligibility;
     return useCase.execute(context, { sellerIds });
   }
 }
