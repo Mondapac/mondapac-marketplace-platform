@@ -10,10 +10,12 @@ import { DatabaseProbe } from './platform/persistence/database-probe';
 
 /**
  * The operator command `audit-verify --market <id> [--full]` of the api image
- * (docs/design/domain/platform-audit.md 8): `node dist/audit-verify.js --market AU --full`.
- * It builds the same module graph as the api, runs the start-up self-checks, verifies the
- * named Market's audit chain once (incremental unless `--full`) and exits 0 when clean, 2
- * with findings (each also an alert line in the log), 1 when refused. Nothing is written to
+ * (docs/design/domain/platform-audit.md 8):
+ * `APP_ROLE=api node dist/audit-verify.js --market AU --full`. It loads the api's
+ * configuration (so `APP_ROLE` is required, with no default), builds the same module graph,
+ * runs the start-up self-checks, verifies the named Market's audit chain once (incremental
+ * unless `--full`) and exits 0 when clean, 2 with findings (each also an alert line in the
+ * log), 1 when refused. Nothing is written to
  * the database. No HTTP listener, no worker runtime.
  */
 async function main(): Promise<number> {

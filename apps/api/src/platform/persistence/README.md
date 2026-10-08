@@ -157,8 +157,9 @@ Rows, values and SQL are never logged.
   recomputes every link and row hash and runs checks (a) to (k) of PA 8. Each finding is one
   error line with `alert: true`, the Market, epoch, `chainSeq` (text) and audit id: never
   row content. It changes nothing.
-- Operator command: `node dist/audit-verify.js --market <id> [--full]` (incremental unless
-  `--full`). It prints one JSON line of positions and codes and exits 0 when clean, 2 with
+- Operator command: `APP_ROLE=api node dist/audit-verify.js --market <id> [--full]`
+  (incremental unless `--full`; it loads the same configuration as the api, so `APP_ROLE`
+  is required as everywhere). It prints one JSON line of positions and codes and exits 0 when clean, 2 with
   findings, 1 when refused (usage, a Market this stack does not host, a failed start).
 - Tests: unit specs over `test/support/in-memory-audit-chain.ts`;
   `test/db/platform-audit-chain.db-spec.ts` runs on its own database copy (`audit`), where
