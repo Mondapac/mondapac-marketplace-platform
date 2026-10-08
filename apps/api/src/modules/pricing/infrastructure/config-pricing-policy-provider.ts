@@ -1,0 +1,60 @@
+import type { MarketContext, MarketId } from '@mondapac/shared-kernel';
+import type { MarketRegistry } from '../../../platform/market-config/market-registry';
+import {
+  PricingNotConfiguredError,
+  type PricingPolicyProvider,
+} from '../application/ports/pricing-policy-provider';
+import { createPricingPolicy, type PricingPolicy } from '../domain/pricing-policy';
+
+/** A hosted Market whose `pricing` section is missing or does not make a valid policy. */
+export class PricingMarketConfigError extends Error {
+  override readonly name = 'PricingMarketConfigError';
+}
+
+/**
+ * Builds the policy of every hosted Market from its `pricing` section when it is constructed
+ * (pricing design 4.6, 15; Ali A2), so a Region Stack with a missing or unsafe value refuses to
+ * start instead of failing on a seller's first price. There is no default for a missing section.
+ */
+export class ConfigPricingPolicyProvider implements PricingPolicyProvider {
+  private readonly policies = new Map<MarketId, PricingPolicy>();
+
+  constructor(markets: MarketRegistry) {
+    const problems: string[] = [];
+    for (const marketId of markets.hostedMarketIds()) {
+      const config = markets.get(marketId);
+      const section = config.pricing;
+      if (section === undefined) {
+        problems.push(`${marketId}: no "pricing" section in config/markets/`);
+        continue;
+      }
+      try {
+        this.policies.set(
+          marketId,
+          createPricingPolicy({
+            marketId,
+            currency: config.defaultCurrency,
+            maxUnitPriceMinor: BigInt(section.maxUnitPriceMinor),
+            thresholdNumerator: BigInt(section.jumpThreshold.numerator),
+            thresholdDenominator: BigInt(section.jumpThreshold.denominator),
+            jumpDirections: section.jumpDirections,
+            jumpWindow: section.jumpWindow,
+          }),
+        );
+      } catch (error) {
+        const reason =
+          error instanceof Error && 'reason' in error
+            ? JSON.stringify((error as { reason: unknown }).reason)
+            : 'invalid';
+        problems.push(`${marketId}: invalid pricing policy ${reason}`);
+      }
+    }
+    if (problems.length > 0) throw new PricingMarketConfigError(problems.join('; '));
+  }
+
+  forMarket(market: MarketContext): PricingPolicy {
+    const policy = this.policies.get(market.marketId);
+    if (policy === undefined) throw new PricingNotConfiguredError(market.marketId);
+    return policy;
+  }
+}

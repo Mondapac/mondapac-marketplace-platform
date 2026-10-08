@@ -962,6 +962,54 @@ describe('loadMarketConfigs', () => {
     });
   });
 
+  describe('the pricing section', () => {
+    const GOOD = {
+      maxUnitPriceMinor: 500000,
+      jumpThreshold: { numerator: 1, denominator: 2 },
+      jumpDirections: 'both',
+      jumpWindow: 'P7D',
+    };
+    const withPricing = (pricing: unknown) => directoryWith({ 'QQ.json': { ...VALID, pricing } });
+
+    it('is optional for a Market that does not host pricing', () => {
+      expect(
+        loadMarketConfigs([directoryWith({ 'QQ.json': VALID })], [QQ]).get(QQ)?.pricing,
+      ).toBeUndefined();
+    });
+
+    it('carries the policy values', () => {
+      expect(loadMarketConfigs([withPricing(GOOD)], [QQ]).get(QQ)?.pricing).toEqual(GOOD);
+    });
+
+    it('gives the two Market fixtures different policies', () => {
+      const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const directions = TEST_MARKET_IDS.map((id) => configs.get(id)?.pricing?.jumpDirections);
+
+      expect(Object.fromEntries(TEST_MARKET_IDS.map((id, i) => [id, directions[i]]))).toEqual({
+        AU: 'both',
+        ZZ: 'up',
+      });
+    });
+
+    it.each([
+      ['a missing maximum', { ...GOOD, maxUnitPriceMinor: undefined }],
+      ['a zero maximum', { ...GOOD, maxUnitPriceMinor: 0 }],
+      ['an unsafe maximum', { ...GOOD, maxUnitPriceMinor: 2 ** 53 }],
+      ['a string maximum', { ...GOOD, maxUnitPriceMinor: '500000' }],
+      ['a threshold above one', { ...GOOD, jumpThreshold: { numerator: 3, denominator: 2 } }],
+      ['a zero denominator', { ...GOOD, jumpThreshold: { numerator: 1, denominator: 0 } }],
+      ['a decimal threshold', { ...GOOD, jumpThreshold: 0.5 }],
+      ['an unknown direction', { ...GOOD, jumpDirections: 'sideways' }],
+      ['a missing window', { ...GOOD, jumpWindow: undefined }],
+      ['a window that is not a duration', { ...GOOD, jumpWindow: '7 days' }],
+      ['an unknown key', { ...GOOD, specialsEnabled: true }],
+    ])('rejects %s', (_case, pricing) => {
+      expect(() => loadMarketConfigs([withPricing(pricing)], [QQ])).toThrow(
+        InvalidMarketConfigError,
+      );
+    });
+  });
+
   describe('the catalog section', () => {
     const VALID_CATALOG = {
       taxCategories: [{ code: 'standard', labelKey: 'catalog.tax.standard' }],
