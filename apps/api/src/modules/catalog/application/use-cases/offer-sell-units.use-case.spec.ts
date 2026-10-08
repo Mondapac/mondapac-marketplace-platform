@@ -1,5 +1,9 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
@@ -45,6 +49,22 @@ describe.each(TEST_MARKETS)('offerSellUnits stand-in in market %s', (code) => {
       offerId(1),
       offerId(2),
     ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.size).toBe(0);
+  });
+
+  it('answers an authenticated seller the same: every key absent', async () => {
+    const seller = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: '01990000-0000-7000-8000-00000000a002' as Id<'Account'>,
+        sessionId: '01990000-0000-7000-8000-00000000a001' as Id<'Session'>,
+        sellerId: '01990000-0000-7000-8000-00000000a003' as Id<'Seller'>,
+      }),
+      'offer-units-0005',
+    );
+    const result = await facade.offerSellUnits(seller, [offerId(1)]);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.size).toBe(0);
   });
