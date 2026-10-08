@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS, type AccessDenied } from '../../../platform/authz';
 import { csrfTokenFor } from '../../../platform/call-context/csrf';
 import { sessionCookie } from '../../../platform/call-context/session-cookie';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import type { FieldProblem } from '../application/use-cases/register-customer.use-case';
 import type {
@@ -75,7 +76,7 @@ type SellerSignInFailure = SignInSellerFailure | { readonly code: 'link.rejected
 
 /**
  * The shared answer of seller sign-in and email confirmation (identity design 6.2 to 6.4): the
- * body's shape, the client's origin and address from the socket (never a forwarded header,
+ * body's shape, the client's origin and address from the resolved client address (ADR-0037; never a forwarded header,
  * Hassan I4), one use case, then the `__Host-session-seller-<MARKET>` cookie on success. The
  * default seller session is a browser-session cookie (no `Max-Age`); "keep me signed in" gives
  * it the absolute lifetime (6.1). The token is never in the body or a log.
@@ -95,8 +96,8 @@ export async function answerSellerSignIn<const F extends string>(
   }
   const input = parseWithKeepSignedIn(body, fields);
   if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-  const origin = clientOriginOf(request.socket.remoteAddress);
-  const address = clientAddressOf(request.socket.remoteAddress);
+  const origin = clientOriginOf(clientAddressFrom(request));
+  const address = clientAddressOf(clientAddressFrom(request));
   if (origin === null || address === null) return fail(503, 'access.unavailable');
 
   const result = await run({ ...(input as SellerSignInBody<F>), client: { origin, address } });
