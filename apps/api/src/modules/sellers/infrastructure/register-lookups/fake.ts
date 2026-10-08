@@ -50,10 +50,17 @@ export class FakeRegisterLookup implements BusinessRegisterLookup {
   readonly calls: { readonly marketId: MarketId; readonly scheme: string }[] = [];
   /** Set to make the next call reject, as a broken adapter would. */
   failWith: Error | null = null;
+  /** Test hook: runs while the call is "waiting" on the register, before it answers. */
+  whileWaiting: (() => void | Promise<void>) | null = null;
 
   constructor(private readonly answers: ReadonlyMap<string, RegisterAnswer> = new Map()) {}
 
-  lookup(request: RegisterLookupRequest): Promise<RegisterAnswer> {
+  async lookup(request: RegisterLookupRequest): Promise<RegisterAnswer> {
+    await this.whileWaiting?.();
+    return this.answer(request);
+  }
+
+  private answer(request: RegisterLookupRequest): Promise<RegisterAnswer> {
     this.calls.push({ marketId: request.market.marketId, scheme: request.scheme });
     if (this.failWith !== null) return Promise.reject(this.failWith);
     const configured = this.answers.get(request.identifier);

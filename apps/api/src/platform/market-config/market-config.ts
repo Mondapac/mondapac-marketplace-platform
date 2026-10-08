@@ -56,6 +56,20 @@ const sessionLifetimeSchema = z
   });
 
 /**
+ * The admin session (identity design 6.1; HF6): at most 30 minutes idle and 12 hours absolute,
+ * the ceilings of Hassan's numbers, never persistent (no `keepSignedInSessions.admin` exists).
+ */
+const adminSessionLifetimeSchema = z
+  .strictObject({
+    idleTimeoutMinutes: z.number().int().min(1).max(30),
+    absoluteLifetimeMinutes: z.number().int().min(1).max(720),
+  })
+  .refine((lifetime) => lifetime.idleTimeoutMinutes <= lifetime.absoluteLifetimeMinutes, {
+    message: 'idleTimeoutMinutes must not exceed absoluteLifetimeMinutes',
+    path: ['idleTimeoutMinutes'],
+  });
+
+/**
  * One throttle counter of identity design 6.8: at most `limit` attempts in a fixed window of
  * `windowMinutes`; a failure that reaches the limit blocks the counter for `blockMinutes` (0:
  * no block, the window alone refuses until it ends).
@@ -103,6 +117,14 @@ function hostOf(page: string): { readonly origin: string; readonly hostname: str
   }
 }
 
+/** The admin panel's sign-in pages (slice 7b): all four, or none. */
+const ADMIN_SIGN_IN_PAGES = [
+  'sign-in',
+  'accept-invitation',
+  'enrol-second-factor',
+  'reset-password',
+] as const;
+
 /**
  * The page a mail links to, per population and page (identity design 9, `LinkTargets`). Each
  * population has its own set of pages: `seller-review-queue` exists only for `admin` (identity
@@ -124,7 +146,19 @@ const linkTargetsSchema = z
      * review" queue the reviewer notice links to: the queue only, never a seller id or a query
      * built from data (Ali C8, Q6). Required whenever `seller` is present.
      */
-    admin: z.strictObject({ 'seller-review-queue': pageUrl }).optional(),
+    admin: z
+      .strictObject({
+        'seller-review-queue': pageUrl,
+        /**
+         * The admin sign-in pages of slice 7b (identity design 6.6, 7.2, 7.3): the four are given
+         * together or not at all; without them the Market offers no admin sign-in.
+         */
+        'sign-in': pageUrl.optional(),
+        'accept-invitation': pageUrl.optional(),
+        'enrol-second-factor': pageUrl.optional(),
+        'reset-password': pageUrl.optional(),
+      })
+      .optional(),
   })
   .superRefine((targets, context) => {
     if (targets.seller !== undefined && targets.admin === undefined) {
@@ -135,6 +169,28 @@ const linkTargetsSchema = z
       });
     }
     if (targets.admin === undefined) return;
+    const signInPages = ADMIN_SIGN_IN_PAGES.filter((page) => targets.admin![page] !== undefined);
+    if (signInPages.length > 0 && signInPages.length < ADMIN_SIGN_IN_PAGES.length) {
+      context.addIssue({
+        code: 'custom',
+        message: `admin pages ${ADMIN_SIGN_IN_PAGES.join(', ')} are given together or not at all`,
+        path: ['admin'],
+      });
+    }
+    // Every admin page is on the origin of the review queue (scheme, host and port; Hassan,
+    // PR #157): an admin token is only ever mailed to our own admin panel.
+    const queue = hostOf(targets.admin['seller-review-queue']);
+    for (const page of ADMIN_SIGN_IN_PAGES) {
+      const url = targets.admin[page];
+      if (url === undefined || queue === null) continue;
+      if (hostOf(url)?.origin !== queue.origin) {
+        context.addIssue({
+          code: 'custom',
+          message: 'an admin page must have the origin of seller-review-queue',
+          path: ['admin', page],
+        });
+      }
+    }
     // The admin panel is a host of its own (HF7): a mail must never send an admin to a page on
     // the seller panel or the storefront, nor the other way round (Hassan I1). Origins and host
     // names both: another scheme or port on the same host is the same host (Hassan I-1, R-3).
@@ -145,6 +201,7 @@ const linkTargetsSchema = z
     const origins = new Set(others.map((host) => host.origin));
     const hostnames = new Set(others.map((host) => host.hostname));
     for (const [page, url] of Object.entries(targets.admin)) {
+      if (url === undefined) continue;
       const host = hostOf(url);
       if (host === null) continue;
       if (origins.has(host.origin)) {
@@ -171,74 +228,186 @@ const linkTargetsSchema = z
  * unverified accounts and the mail sender; slice 5 the seller lifetimes ("approval required"
  * lives in the `sellers` section); slice 7 the admin lifetime.
  */
-const identitySchema = z.strictObject({
-  password: z
-    .strictObject({
-      /** Code points after NFKC; never below 15 (NIST SP 800-63B-4, single factor). */
-      minLength: z.number().int().min(15).max(128),
-      /** Code points after NFKC; at most 128, so the raw-input bound of 1024 bytes holds. */
-      maxLength: z.number().int().min(64).max(128),
-    })
-    .refine((password) => password.minLength <= password.maxLength, {
-      message: 'minLength must not exceed maxLength',
-      path: ['minLength'],
+const identitySchema = z
+  .strictObject({
+    password: z
+      .strictObject({
+        /** Code points after NFKC; never below 15 (NIST SP 800-63B-4, single factor). */
+        minLength: z.number().int().min(15).max(128),
+        /** Code points after NFKC; at most 128, so the raw-input bound of 1024 bytes holds. */
+        maxLength: z.number().int().min(64).max(128),
+      })
+      .refine((password) => password.minLength <= password.maxLength, {
+        message: 'minLength must not exceed maxLength',
+        path: ['minLength'],
+      }),
+    /**
+     * The "you already have an account" notice goes to one account at most once in this many
+     * hours (identity design 6.7: 24).
+     */
+    existingAccountNoticeHours: z.number().int().min(1).max(168),
+    /** Per population; a population without a lifetime here cannot open a session. */
+    sessions: z.strictObject({
+      customer: sessionLifetimeSchema,
+      /** Seller side, default (6.1: 12 hours idle, 24 absolute; a cookie without Max-Age). */
+      seller: sessionLifetimeSchema.optional(),
+      /** Admin side (6.1: 30 minutes idle, 12 hours absolute; slice 7b). */
+      admin: adminSessionLifetimeSchema.optional(),
     }),
-  /**
-   * The "you already have an account" notice goes to one account at most once in this many
-   * hours (identity design 6.7: 24).
-   */
-  existingAccountNoticeHours: z.number().int().min(1).max(168),
-  /** Per population; a population without a lifetime here cannot open a session. */
-  sessions: z.strictObject({
-    customer: sessionLifetimeSchema,
-    /** Seller side, default (6.1: 12 hours idle, 24 absolute; a cookie without Max-Age). */
-    seller: sessionLifetimeSchema.optional(),
-  }),
-  /**
-   * "Keep me signed in" (identity design 6.1, 14.4): per population that offers it, opt-in at
-   * sign-in. Seller side only (14 days idle, 30 absolute); a population absent here never gets it.
-   */
-  keepSignedInSessions: z.strictObject({ seller: sessionLifetimeSchema.optional() }),
-  /** The sign-in counters of 6.8, per Market (A6). */
-  signInThrottles: z.strictObject({
-    /** `sign-in.account-origin`: failed sign-ins per address and origin (AC 13). */
-    accountOrigin: throttleCounterSchema,
-    /** `sign-in.account`: failed sign-ins per address, all origins. */
-    account: throttleCounterSchema,
-    /** `sign-in.origin` (HF3): failed sign-ins per origin, any address. */
-    origin: throttleCounterSchema,
-  }),
-  /** The mail counters of 6.8: sign-up, reset, verification re-send, enrolment, invitation. */
-  mailThrottles: z.strictObject({ account: throttleCounterSchema, origin: throttleCounterSchema }),
-  /** Sign-in records are deleted this many days after the attempt (H3: 90). */
-  signInRecordRetentionDays: z.number().int().min(1).max(3650),
-  /**
-   * One-time links (identity design 6.6, 9; slices 3 and 4). `lifetimeMinutes` per purpose,
-   * from the issue (HF15: verification 24 hours; SEL-05 and ACC-04: a reset link exactly 60
-   * minutes, in every Market); a purpose without one is never issued. `targets`: the page a mail
-   * links to, per population and page (`LinkTargets`; hosts wait for D2).
-   */
-  links: z.strictObject({
-    lifetimeMinutes: z.strictObject({
-      // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
-      'verify-email': z.number().int().min(1).max(1440),
-      // SEL-05, ACC-04: "exactly 60 minutes", the same rule in every Market (slice 4).
-      'reset-password': z.literal(60),
+    /**
+     * "Keep me signed in" (identity design 6.1, 14.4): per population that offers it, opt-in at
+     * sign-in. Seller side only (14 days idle, 30 absolute); a population absent here never gets it.
+     */
+    keepSignedInSessions: z.strictObject({ seller: sessionLifetimeSchema.optional() }),
+    /** The sign-in counters of 6.8, per Market (A6). */
+    signInThrottles: z.strictObject({
+      /** `sign-in.account-origin`: failed sign-ins per address and origin (AC 13). */
+      accountOrigin: throttleCounterSchema,
+      /** `sign-in.account`: failed sign-ins per address, all origins. */
+      account: throttleCounterSchema,
+      /** `sign-in.origin` (HF3): failed sign-ins per origin, any address. */
+      origin: throttleCounterSchema,
     }),
-    targets: linkTargetsSchema,
-  }),
-  /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
-  unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
-  /** The sender of the Market's mail (identity design 9). */
-  mail: z.strictObject({
-    fromAddress: z.email().max(254),
-    fromName: z
-      .string()
-      .min(1)
-      .max(64)
-      .regex(/^[^\p{Cc}\p{Cf}"<>]+$/u, 'must be plain text without control or format characters'),
-  }),
-});
+    /** The mail counters of 6.8: sign-up, reset, verification re-send, enrolment, invitation. */
+    mailThrottles: z.strictObject({
+      account: throttleCounterSchema,
+      origin: throttleCounterSchema,
+    }),
+    /** Sign-in records are deleted this many days after the attempt (H3: 90). */
+    signInRecordRetentionDays: z.number().int().min(1).max(3650),
+    /**
+     * One-time links (identity design 6.6, 9; slices 3 and 4). `lifetimeMinutes` per purpose,
+     * from the issue (HF15: verification 24 hours; SEL-05 and ACC-04: a reset link exactly 60
+     * minutes, in every Market); a purpose without one is never issued. `targets`: the page a mail
+     * links to, per population and page (`LinkTargets`; hosts wait for D2).
+     */
+    links: z.strictObject({
+      lifetimeMinutes: z.strictObject({
+        // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
+        'verify-email': z.number().int().min(1).max(1440),
+        // SEL-05, ACC-04: "exactly 60 minutes", the same rule in every Market (slice 4).
+        'reset-password': z.literal(60),
+        // Slice 7b: the admin's enrolment link, at most 60 minutes (identity design 6.6).
+        'enrol-second-factor': z.number().int().min(1).max(60).optional(),
+      }),
+      targets: linkTargetsSchema,
+    }),
+    /**
+     * Invitations (identity design 3.4, 6.6; slice 7b): the lifetime per kind from the dispatch,
+     * and the age at which a never-dispatched one is purged (Ali's ruling 4). HF15: an admin
+     * invitation lives at most 72 hours, the others at most 7 days. A kind without one is never
+     * issued.
+     */
+    invitations: z
+      .strictObject({
+        lifetimeMinutes: z.strictObject({
+          admin: z
+            .number()
+            .int()
+            .min(1)
+            .max(72 * 60)
+            .optional(),
+          'seller-owner': z
+            .number()
+            .int()
+            .min(1)
+            .max(7 * 24 * 60)
+            .optional(),
+          staff: z
+            .number()
+            .int()
+            .min(1)
+            .max(7 * 24 * 60)
+            .optional(),
+        }),
+      })
+      .optional(),
+    /**
+     * The sign-in challenge of the code step (identity design 2.1, 6.8; slice 7b): at most 5 code
+     * checks and 5 minutes.
+     */
+    challenges: z
+      .strictObject({
+        maxAttempts: z.number().int().min(1).max(5),
+        lifetimeSeconds: z.number().int().min(30).max(300),
+      })
+      .optional(),
+    /**
+     * The `second-factor.account` counter (identity design 6.8, HF2; slice 7b): at most 10 failed
+     * codes in a window of at least 24 hours, then a block of at least 24 hours (never 0: the block
+     * is the lock), both at most 7 days.
+     */
+    secondFactorThrottles: z
+      .strictObject({
+        account: z.strictObject({
+          limit: z.number().int().min(1).max(10),
+          windowMinutes: z
+            .number()
+            .int()
+            .min(24 * 60)
+            .max(7 * 24 * 60),
+          blockMinutes: z
+            .number()
+            .int()
+            .min(24 * 60)
+            .max(7 * 24 * 60),
+        }),
+      })
+      .optional(),
+    /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
+    unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
+    /** The sender of the Market's mail (identity design 9). */
+    mail: z.strictObject({
+      fromAddress: z.email().max(254),
+      fromName: z
+        .string()
+        .min(1)
+        .max(64)
+        .regex(/^[^\p{Cc}\p{Cf}"<>]+$/u, 'must be plain text without control or format characters'),
+    }),
+  })
+  .superRefine((identity, context) => {
+    // 1-B (Hassan, PR #157): "keep me signed in" lasts longer than the default seller session, so
+    // a kept session is always told apart from a default one by its lifetime.
+    const kept = identity.keepSignedInSessions.seller;
+    const standard = identity.sessions.seller;
+    if (
+      kept !== undefined &&
+      standard !== undefined &&
+      kept.absoluteLifetimeMinutes <= standard.absoluteLifetimeMinutes
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'keepSignedInSessions.seller.absoluteLifetimeMinutes must be greater than sessions.seller.absoluteLifetimeMinutes',
+        path: ['keepSignedInSessions', 'seller', 'absoluteLifetimeMinutes'],
+      });
+    }
+    // Admin sign-in is configured whole or not at all (slice 7b): an admin session needs the
+    // challenge, the second-factor counter, the enrolment link and the admin pages.
+    if (identity.sessions.admin !== undefined) {
+      const missing = [
+        identity.challenges === undefined ? 'challenges' : null,
+        identity.secondFactorThrottles === undefined ? 'secondFactorThrottles' : null,
+        identity.links.lifetimeMinutes['enrol-second-factor'] === undefined
+          ? 'links.lifetimeMinutes.enrol-second-factor'
+          : null,
+        identity.links.targets.admin?.['sign-in'] === undefined
+          ? 'links.targets.admin.sign-in'
+          : null,
+        identity.invitations?.lifetimeMinutes.admin === undefined
+          ? 'invitations.lifetimeMinutes.admin'
+          : null,
+      ].filter((key) => key !== null);
+      if (missing.length > 0) {
+        context.addIssue({
+          code: 'custom',
+          message: `sessions.admin needs ${missing.join(', ')}`,
+          path: ['sessions', 'admin'],
+        });
+      }
+    }
+  });
 
 /**
  * The exact origins (`scheme://host[:port]`) whose browsers may send an unsafe request to this

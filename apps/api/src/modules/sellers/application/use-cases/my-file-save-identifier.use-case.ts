@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { err, ok } from '@mondapac/shared-kernel';
+import { Temporal, err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -42,6 +42,7 @@ import {
   type RegisterLookupDependencies,
 } from '../register/register-lookup';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
+import type { SellerFile } from '../../domain/seller-file';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import type { SellerMarketPolicy } from '../ports/seller-market-policy';
 
@@ -244,7 +245,9 @@ export class MyFileSaveIdentifier extends UseCase<
     // Reserve before the work (design 7.7, ADR-0023 decision 1): a reached account limit refuses
     // the save of a new value and creates no result; a spent Market budget writes no result.
     const due: LookupPlan | null =
-      plan !== null && parsed !== null && lookupDue(existing, clock.now(), plan.settings)
+      plan !== null &&
+      parsed !== null &&
+      lookupDue(existing, clock.now(), plan.settings, current.state.lastChangedAt)
         ? plan
         : null;
     let verdict: QuotaVerdict = 'go';
@@ -259,6 +262,11 @@ export class MyFileSaveIdentifier extends UseCase<
       verdict = quota.value;
     }
 
+    // The file's last change as this save leaves it: a result is current only if made after it.
+    let changedAt = current.state.lastChangedAt;
+    // The file as this save leaves it, and when it was read: what the comparison is made against.
+    let snapshot: SellerFile = current;
+    let snapshotAt = clock.now();
     const saved = await unitOfWork.run<DraftSaved, MyFileSaveIdentifierFailure>(
       market,
       async () => {
@@ -266,6 +274,10 @@ export class MyFileSaveIdentifier extends UseCase<
         if (file === null) return err({ code: 'file.not-found' });
         const applied = file.saveIdentifier(identifier, clock.now(), requirements);
         if (!applied.ok) return applied;
+        changedAt = file.state.lastChangedAt;
+        snapshot = file;
+        snapshotAt = clock.now();
+        if (Temporal.Instant.compare(snapshotAt, changedAt) < 0) snapshotAt = changedAt;
         if (file.state.version === file.persistedVersion) {
           return ok(draftSaved(file, requirements));
         }
@@ -288,7 +300,8 @@ export class MyFileSaveIdentifier extends UseCase<
               scheme: parsed.value.scheme,
               identifier: parsed.value.value,
               index,
-              file: current,
+              file: snapshot,
+              snapshotAt,
               by,
             })
           : // A spent Market budget writes no result row: the state stays as it was and the
@@ -300,7 +313,7 @@ export class MyFileSaveIdentifier extends UseCase<
     }
     return ok({
       ...saved.value,
-      registerResult: sellerResultOf(check, clock.now(), plan.settings),
+      registerResult: sellerResultOf(check, clock.now(), plan.settings, changedAt),
     });
   }
 }

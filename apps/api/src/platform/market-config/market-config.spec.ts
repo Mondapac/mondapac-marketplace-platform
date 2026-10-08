@@ -439,7 +439,7 @@ describe('loadMarketConfigs', () => {
       ],
       [
         'a seller page under the admin population',
-        { seller: SELLER_PAGES, admin: { 'seller-review-queue': QUEUE, 'sign-in': QUEUE } },
+        { seller: SELLER_PAGES, admin: { 'seller-review-queue': QUEUE, 'verify-email': QUEUE } },
         /identity\.links\.targets\.admin/,
       ],
       [
@@ -491,6 +491,383 @@ describe('loadMarketConfigs', () => {
 
       expect(() => loadMarketConfigs([directory], [QQ])).toThrow(InvalidMarketConfigError);
       expect(() => loadMarketConfigs([directory], [QQ])).toThrow(message);
+    });
+  });
+
+  describe('the admin sign-in keys (identity slice 7b; identity design 6.1, 6.6, 6.8)', () => {
+    const ADMIN_PAGES = {
+      'seller-review-queue': 'https://admin.qq.test/sellers/awaiting-review',
+      'sign-in': 'https://admin.qq.test/sign-in',
+      'accept-invitation': 'https://admin.qq.test/accept-invitation',
+      'enrol-second-factor': 'https://admin.qq.test/second-factor/enrol',
+      'reset-password': 'https://admin.qq.test/reset-password',
+    };
+    /** A Market with admin sign-in configured whole, at Hassan's ceilings. */
+    const ADMIN_IDENTITY = {
+      ...IDENTITY,
+      sessions: {
+        ...IDENTITY.sessions,
+        admin: { idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 720 },
+      },
+      links: {
+        lifetimeMinutes: { ...IDENTITY.links.lifetimeMinutes, 'enrol-second-factor': 60 },
+        targets: { ...IDENTITY.links.targets, admin: ADMIN_PAGES },
+      },
+      invitations: { lifetimeMinutes: { admin: 4320, 'seller-owner': 10080, staff: 10080 } },
+      challenges: { maxAttempts: 5, lifetimeSeconds: 300 },
+      secondFactorThrottles: {
+        account: { limit: 10, windowMinutes: 1440, blockMinutes: 1440 },
+      },
+    };
+    type Node = Record<string, unknown>;
+    const load = (identity: Node) =>
+      loadMarketConfigs([directoryWith({ 'QQ.json': { ...VALID, identity } })], [QQ]).get(QQ)!
+        .identity;
+    const change = (edit: (copy: Node) => void): Node => {
+      const copy = structuredClone(ADMIN_IDENTITY) as Node;
+      edit(copy);
+      return copy;
+    };
+    const at = (copy: Node, ...keys: string[]): Node =>
+      keys.reduce((node, key) => node[key] as Node, copy);
+
+    it('carries the AU values of identity design 6.1, 6.6 and 6.8, and other valid values for ZZ', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const au = markets.get(testMarketId('AU'))!.identity;
+      const zz = markets.get(testMarketId('ZZ'))!.identity;
+
+      expect(au.sessions.admin).toEqual({ idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 720 });
+      expect(au.links.lifetimeMinutes['enrol-second-factor']).toBe(60);
+      expect(au.invitations).toEqual({
+        lifetimeMinutes: { admin: 72 * 60, 'seller-owner': 7 * 24 * 60, staff: 7 * 24 * 60 },
+      });
+      expect(au.challenges).toEqual({ maxAttempts: 5, lifetimeSeconds: 300 });
+      expect(au.secondFactorThrottles).toEqual({
+        account: { limit: 10, windowMinutes: 24 * 60, blockMinutes: 24 * 60 },
+      });
+      for (const identity of [au, zz]) {
+        expect(Object.keys(identity.links.targets.admin!).sort()).toEqual(
+          Object.keys(ADMIN_PAGES).sort(),
+        );
+      }
+      // ZZ differs in every value, so nothing passes only for AU.
+      expect(zz.sessions.admin!.idleTimeoutMinutes).not.toBe(au.sessions.admin!.idleTimeoutMinutes);
+      expect(zz.sessions.admin!.absoluteLifetimeMinutes).not.toBe(
+        au.sessions.admin!.absoluteLifetimeMinutes,
+      );
+      expect(zz.links.lifetimeMinutes['enrol-second-factor']).not.toBe(
+        au.links.lifetimeMinutes['enrol-second-factor'],
+      );
+      for (const kind of ['admin', 'seller-owner', 'staff'] as const) {
+        expect(zz.invitations!.lifetimeMinutes[kind]).not.toBe(
+          au.invitations!.lifetimeMinutes[kind],
+        );
+      }
+      expect(zz.challenges!.maxAttempts).not.toBe(au.challenges!.maxAttempts);
+      expect(zz.challenges!.lifetimeSeconds).not.toBe(au.challenges!.lifetimeSeconds);
+      for (const field of ['limit', 'windowMinutes', 'blockMinutes'] as const) {
+        expect(zz.secondFactorThrottles!.account[field]).not.toBe(
+          au.secondFactorThrottles!.account[field],
+        );
+      }
+    });
+
+    it('accepts admin sign-in configured whole, at the ceilings, and a Market without it', () => {
+      expect(load(ADMIN_IDENTITY)).toEqual(ADMIN_IDENTITY);
+      const without = load(IDENTITY);
+      expect(without.sessions.admin).toBeUndefined();
+      expect(without.invitations).toBeUndefined();
+      expect(without.challenges).toBeUndefined();
+      expect(without.secondFactorThrottles).toBeUndefined();
+    });
+
+    it.each<[string, (copy: Node) => void, RegExp]>([
+      [
+        'an admin session idle for more than 30 minutes',
+        (c) => (at(c, 'sessions', 'admin').idleTimeoutMinutes = 31),
+        /identity\.sessions\.admin\.idleTimeoutMinutes/,
+      ],
+      [
+        'an admin session of more than 12 hours',
+        (c) => (at(c, 'sessions', 'admin').absoluteLifetimeMinutes = 721),
+        /identity\.sessions\.admin\.absoluteLifetimeMinutes/,
+      ],
+      [
+        'an admin session idle longer than its absolute lifetime',
+        (c) => (at(c, 'sessions').admin = { idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 20 }),
+        /identity\.sessions\.admin\.idleTimeoutMinutes/,
+      ],
+      [
+        '"keep me signed in" for the admin population (an admin session is never persistent)',
+        (c) =>
+          (c.keepSignedInSessions = {
+            admin: { idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 720 },
+          }),
+        /identity\.keepSignedInSessions/,
+      ],
+      [
+        'an enrolment link of more than 60 minutes',
+        (c) => (at(c, 'links', 'lifetimeMinutes')['enrol-second-factor'] = 61),
+        /identity\.links\.lifetimeMinutes\.enrol-second-factor/,
+      ],
+      [
+        'an enrolment link of 0 minutes',
+        (c) => (at(c, 'links', 'lifetimeMinutes')['enrol-second-factor'] = 0),
+        /identity\.links\.lifetimeMinutes\.enrol-second-factor/,
+      ],
+      [
+        'an admin invitation of more than 72 hours (HF15)',
+        (c) => (at(c, 'invitations', 'lifetimeMinutes').admin = 72 * 60 + 1),
+        /identity\.invitations\.lifetimeMinutes\.admin/,
+      ],
+      [
+        'a seller-owner invitation of more than 7 days',
+        (c) => (at(c, 'invitations', 'lifetimeMinutes')['seller-owner'] = 10_081),
+        /identity\.invitations\.lifetimeMinutes\.seller-owner/,
+      ],
+      [
+        'a staff invitation of more than 7 days',
+        (c) => (at(c, 'invitations', 'lifetimeMinutes').staff = 10_081),
+        /identity\.invitations\.lifetimeMinutes\.staff/,
+      ],
+      [
+        'an invitation kind that does not exist',
+        (c) => (at(c, 'invitations', 'lifetimeMinutes').customer = 60),
+        /identity\.invitations\.lifetimeMinutes/,
+      ],
+      [
+        'a challenge of more than 5 attempts',
+        (c) => (at(c, 'challenges').maxAttempts = 6),
+        /identity\.challenges\.maxAttempts/,
+      ],
+      [
+        'a challenge of 0 attempts',
+        (c) => (at(c, 'challenges').maxAttempts = 0),
+        /identity\.challenges\.maxAttempts/,
+      ],
+      [
+        'a challenge of more than 5 minutes',
+        (c) => (at(c, 'challenges').lifetimeSeconds = 301),
+        /identity\.challenges\.lifetimeSeconds/,
+      ],
+      [
+        'a challenge of less than 30 seconds',
+        (c) => (at(c, 'challenges').lifetimeSeconds = 29),
+        /identity\.challenges\.lifetimeSeconds/,
+      ],
+      [
+        'more than 10 failed codes before the lock (HF2)',
+        (c) => (at(c, 'secondFactorThrottles', 'account').limit = 11),
+        /identity\.secondFactorThrottles\.account\.limit/,
+      ],
+      [
+        'a second-factor window shorter than 24 hours',
+        (c) => (at(c, 'secondFactorThrottles', 'account').windowMinutes = 1439),
+        /identity\.secondFactorThrottles\.account\.windowMinutes/,
+      ],
+      [
+        'a second-factor block of 0 (the block is the lock)',
+        (c) => (at(c, 'secondFactorThrottles', 'account').blockMinutes = 0),
+        /identity\.secondFactorThrottles\.account\.blockMinutes/,
+      ],
+      [
+        'a second-factor block longer than 7 days',
+        (c) => (at(c, 'secondFactorThrottles', 'account').blockMinutes = 10_081),
+        /identity\.secondFactorThrottles\.account\.blockMinutes/,
+      ],
+      [
+        'an admin session without the challenge policy',
+        (c) => delete c.challenges,
+        /identity\.sessions\.admin: sessions\.admin needs challenges/,
+      ],
+      [
+        'an admin session without the second-factor counter',
+        (c) => delete c.secondFactorThrottles,
+        /identity\.sessions\.admin: sessions\.admin needs secondFactorThrottles/,
+      ],
+      [
+        'an admin session without the enrolment link lifetime',
+        (c) => delete at(c, 'links', 'lifetimeMinutes')['enrol-second-factor'],
+        /sessions\.admin needs links\.lifetimeMinutes\.enrol-second-factor/,
+      ],
+      [
+        'an admin session without the admin invitation lifetime',
+        (c) => delete at(c, 'invitations', 'lifetimeMinutes').admin,
+        /sessions\.admin needs invitations\.lifetimeMinutes\.admin/,
+      ],
+      [
+        'an admin session without the admin sign-in pages',
+        (c) =>
+          (at(c, 'links', 'targets').admin = {
+            'seller-review-queue': ADMIN_PAGES['seller-review-queue'],
+          }),
+        /sessions\.admin needs links\.targets\.admin\.sign-in/,
+      ],
+      [
+        'an admin sign-in page on the storefront origin (Hassan I1)',
+        (c) => (at(c, 'links', 'targets', 'admin')['sign-in'] = 'https://shop.qq.test/admin'),
+        /identity\.links\.targets\.admin\.sign-in: an admin page must not share its origin/,
+      ],
+      [
+        'an admin sign-in page with a fragment',
+        (c) =>
+          (at(c, 'links', 'targets', 'admin')['accept-invitation'] = 'https://admin.qq.test/a#x'),
+        /identity\.links\.targets\.admin\.accept-invitation/,
+      ],
+    ])('rejects %s', (_case, edit, message) => {
+      const identity = change(edit);
+      expect(() => load(identity)).toThrow(InvalidMarketConfigError);
+      expect(() => load(identity)).toThrow(message);
+    });
+
+    const SIGN_IN_PAGES = [
+      'sign-in',
+      'accept-invitation',
+      'enrol-second-factor',
+      'reset-password',
+    ] as const;
+
+    it.each(SIGN_IN_PAGES)(
+      'rejects the admin sign-in pages without %s (all four or none)',
+      (page) => {
+        const identity = change((c) => delete at(c, 'links', 'targets', 'admin')[page]);
+        expect(() => load(identity)).toThrow(
+          /identity\.links\.targets\.admin: admin pages sign-in, accept-invitation, enrol-second-factor, reset-password are given together/,
+        );
+      },
+    );
+
+    // Hassan, PR #157: an admin token is only ever mailed to the origin of the admin panel.
+    it.each(
+      SIGN_IN_PAGES.flatMap((page) => [
+        [page, 'a foreign host', 'https://evil.example/admin/page'],
+        [page, 'another port of the admin host', 'https://admin.qq.test:8443/page'],
+      ]),
+    )('rejects the admin page %s on %s', (page, _case, url) => {
+      const identity = change((c) => (at(c, 'links', 'targets', 'admin')[page] = url));
+      expect(() => load(identity)).toThrow(
+        new RegExp(
+          `identity\\.links\\.targets\\.admin\\.${page}: an admin page must have the origin of seller-review-queue`,
+        ),
+      );
+    });
+
+    it('rejects every admin sign-in page when the review queue moves to another origin', () => {
+      const identity = change(
+        (c) =>
+          (at(c, 'links', 'targets', 'admin')['seller-review-queue'] =
+            'https://admin.qq.test:9443/sellers/awaiting-review'),
+      );
+      for (const page of SIGN_IN_PAGES) {
+        expect(() => load(identity)).toThrow(
+          new RegExp(`identity\\.links\\.targets\\.admin\\.${page}: an admin page must have`),
+        );
+      }
+    });
+
+    // Sajad, PR #157: each numeric key at its bounds, the value outside refused and the bound
+    // itself accepted.
+    it.each<[string, string[], number, number, ((c: Node) => void)?]>([
+      ['the admin idle timeout', ['sessions', 'admin', 'idleTimeoutMinutes'], 0, 1],
+      [
+        'the admin absolute lifetime',
+        ['sessions', 'admin', 'absoluteLifetimeMinutes'],
+        0,
+        1,
+        (c) => (at(c, 'sessions', 'admin').idleTimeoutMinutes = 1),
+      ],
+      ['the enrolment link', ['links', 'lifetimeMinutes', 'enrol-second-factor'], 0, 1],
+      ['the admin invitation', ['invitations', 'lifetimeMinutes', 'admin'], 0, 1],
+      ['the seller-owner invitation', ['invitations', 'lifetimeMinutes', 'seller-owner'], 0, 1],
+      ['the staff invitation', ['invitations', 'lifetimeMinutes', 'staff'], 0, 1],
+      ['the challenge attempts', ['challenges', 'maxAttempts'], 0, 1],
+      ['the challenge lifetime', ['challenges', 'lifetimeSeconds'], 29, 30],
+      ['the second-factor limit', ['secondFactorThrottles', 'account', 'limit'], 0, 1],
+      [
+        'the second-factor window (lower bound)',
+        ['secondFactorThrottles', 'account', 'windowMinutes'],
+        1439,
+        1440,
+      ],
+      [
+        'the second-factor window (upper bound)',
+        ['secondFactorThrottles', 'account', 'windowMinutes'],
+        10_081,
+        10_080,
+      ],
+      [
+        'the second-factor block (lower bound)',
+        ['secondFactorThrottles', 'account', 'blockMinutes'],
+        1439,
+        1440,
+      ],
+    ])('bounds %s', (...[, keys, refused, accepted, prepare]) => {
+      // A rest parameter: Jest would take a fifth named parameter for a done callback.
+      const parent = keys.slice(0, -1);
+      const key = keys.at(-1)!;
+      const valued = (value: number) =>
+        change((c) => {
+          prepare?.(c);
+          at(c, ...parent)[key] = value;
+        });
+      const pattern = new RegExp(`identity\\.${keys.join('\\.')}`);
+
+      expect(() => load(valued(refused))).toThrow(InvalidMarketConfigError);
+      expect(() => load(valued(refused))).toThrow(pattern);
+      expect(at(load(valued(accepted)) as unknown as Node, ...parent)[key]).toBe(accepted);
+    });
+
+    describe('the 1-B guard: "keep me signed in" lasts longer than the default seller session', () => {
+      const withSeller = (keptAbsolute: number) => ({
+        ...IDENTITY,
+        sessions: {
+          ...IDENTITY.sessions,
+          seller: { idleTimeoutMinutes: 720, absoluteLifetimeMinutes: 1440 },
+        },
+        keepSignedInSessions: {
+          seller: { idleTimeoutMinutes: 720, absoluteLifetimeMinutes: keptAbsolute },
+        },
+        links: {
+          ...IDENTITY.links,
+          targets: {
+            ...IDENTITY.links.targets,
+            seller: {
+              'verify-email': 'https://seller.qq.test/confirm-email',
+              'sign-in': 'https://seller.qq.test/sign-in',
+              'reset-password': 'https://seller.qq.test/reset-password',
+            },
+            admin: { 'seller-review-queue': 'https://admin.qq.test/queue' },
+          },
+        },
+      });
+
+      it.each([
+        ['equal to', 1440],
+        ['lower than', 1439],
+      ])('rejects a kept absolute lifetime %s the default one', (_case, kept) => {
+        expect(() => load(withSeller(kept))).toThrow(
+          /identity\.keepSignedInSessions\.seller\.absoluteLifetimeMinutes: keepSignedInSessions\.seller\.absoluteLifetimeMinutes must be greater than sessions\.seller\.absoluteLifetimeMinutes/,
+        );
+      });
+
+      it('accepts a kept absolute lifetime greater than the default one', () => {
+        expect(load(withSeller(1441)).keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBe(
+          1441,
+        );
+        expect(load(withSeller(43_200)).keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBe(
+          43_200,
+        );
+      });
+
+      it('holds for both Market fixtures', () => {
+        const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+        for (const market of markets.values()) {
+          const { sessions, keepSignedInSessions } = market.identity;
+          expect(keepSignedInSessions.seller!.absoluteLifetimeMinutes).toBeGreaterThan(
+            sessions.seller!.absoluteLifetimeMinutes,
+          );
+        }
+      });
     });
   });
 

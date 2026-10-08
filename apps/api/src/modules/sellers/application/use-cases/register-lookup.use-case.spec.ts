@@ -24,6 +24,8 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { addressToJson, parseAddress } from '../../domain/address';
 import { identifierIndexKeyOf } from '../../domain/business-identifier';
 import type { RateReservation } from '../../domain/rate-limits';
+import { registerCheckAfter } from '../../domain/register-check';
+import { registerCheckIsCurrent } from '../register/register-lookup';
 import type { Sealed, SealedField } from '../../domain/sealed';
 import { SellerFile } from '../../domain/seller-file';
 import { SellerTaxProfile } from '../../domain/tax-registration';
@@ -742,6 +744,173 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       const row = await t.registerChecks.find(market(code), sellerId, indexOf(t, code, number!));
       expect(row?.mismatches).toEqual([]);
     });
+
+    describe('a draft that changed after the check (Hassan M1)', () => {
+      const edit = (t: Setup, sellerId: Id<'Seller'>, name: string, at: Temporal.Instant) => {
+        const key = `${code}|${sellerId}`;
+        const state = t.files.stored.get(key)!;
+        const sealed =
+          `v1.${code}.${sellerId}.business-name.${Buffer.from(name).toString('base64url')}` as Sealed<'business-name'>;
+        t.files.stored.set(key, {
+          ...state,
+          draft: { ...state.draft, businessName: sealed },
+          lastChangedAt: at,
+          version: state.version + 1,
+        });
+      };
+
+      it('is not a clean active: the check made with a blank name goes stale, blocks approval and shows no flag to the seller', async () => {
+        const [number] = activeNumbers(code, 1);
+        const t = setUp(code);
+        const { sellerId, context } = seller(t, code);
+        await save(t, context, number);
+        const clean = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(clean.ok && clean.value).toMatchObject({ state: 'active', blocksApproval: false });
+
+        t.clock.set(START.add({ hours: 1 }));
+        edit(t, sellerId, 'Some Other Trader Pty Ltd', t.clock.now());
+
+        const view = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(view.ok && view.value).toMatchObject({
+          state: 'stale',
+          staleReason: 'draft-changed',
+          mismatches: [],
+          blocksSubmit: false,
+          blocksApproval: true,
+        });
+        const text = JSON.stringify(view);
+        expect(text).not.toContain('Fake Trading');
+        expect(text).not.toContain(number!);
+        const read = await t.read.execute(context, {});
+        expect(read.ok && read.value.registerResult).toBeNull();
+      });
+
+      it('is stale when a name is saved while the register call is waiting (the race)', async () => {
+        const [number] = activeNumbers(code, 1);
+        const t = setUp(code);
+        const { sellerId, context } = seller(t, code);
+        t.fake.whileWaiting = () => {
+          t.clock.set(START.add({ minutes: 1 }));
+          edit(t, sellerId, 'Some Other Trader Pty Ltd', t.clock.now());
+          t.clock.set(START.add({ minutes: 2 }));
+        };
+
+        const saved = await save(t, context, number);
+
+        expect(saved.ok).toBe(true);
+        const view = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(view.ok && view.value).toMatchObject({
+          state: 'stale',
+          staleReason: 'draft-changed',
+          mismatches: [],
+          blocksApproval: true,
+        });
+        const file = t.files.stored.get(`${code}|${sellerId}`)!;
+        const row = await t.registerChecks.find(market(code), sellerId, indexOf(t, code, number!));
+        expect(row?.outcome).toBe('active');
+        expect(Temporal.Instant.compare(row!.checkedAt, file.lastChangedAt)).toBeLessThan(0);
+      });
+
+      it('asks again on the next save of the same value, with the same quotas, and now flags the name', async () => {
+        const [number] = activeNumbers(code, 1);
+        const t = setUp(code);
+        const { sellerId, context } = seller(t, code);
+        await save(t, context, number);
+        t.clock.set(START.add({ hours: 1 }));
+        edit(t, sellerId, 'Some Other Trader Pty Ltd', t.clock.now());
+
+        const again = await save(t, context, number);
+
+        expect(again.ok && again.value.registerResult).toBe('matched');
+        expect(t.fake.calls).toHaveLength(2);
+        expect(t.counters.top('lookup.account')).toBe(2);
+        const row = await t.registerChecks.find(market(code), sellerId, indexOf(t, code, number!));
+        expect(row?.mismatches).toEqual(['business-name']);
+        const view = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(view.ok && view.value).toMatchObject({ state: 'active', staleReason: null });
+        // Unchanged since the second check: no third call.
+        await save(t, context, number);
+        expect(t.fake.calls).toHaveLength(2);
+      });
+
+      it('leaves a definite negative sticky and an unavailable result as it was', async () => {
+        const t = setUp(code);
+        const a = seller(t, code);
+        await save(t, a.context, notFoundNumber(code));
+        const b = seller(t, code);
+        await save(t, b.context, unavailableNumber(code));
+        t.clock.set(START.add({ hours: 1 }));
+        edit(t, a.sellerId, 'Some Other Trader Pty Ltd', t.clock.now());
+        edit(t, b.sellerId, 'Some Other Trader Pty Ltd', t.clock.now());
+        const calls = t.fake.calls.length;
+
+        await save(t, a.context, notFoundNumber(code));
+        await save(t, b.context, unavailableNumber(code));
+
+        expect(t.fake.calls).toHaveLength(calls);
+        const negative = await t.review.execute(reviewer(t, code), { sellerId: a.sellerId });
+        const unavailable = await t.review.execute(reviewer(t, code), { sellerId: b.sellerId });
+        expect(negative.ok && negative.value).toMatchObject({
+          state: 'negative',
+          staleReason: null,
+        });
+        expect(unavailable.ok && unavailable.value).toMatchObject({ state: 'unavailable' });
+      });
+    });
+  });
+
+  describe('registerCheckIsCurrent (slice 5 reads it) and its boundary', () => {
+    const settingsOf = SETTINGS[code];
+    const checkOf = (
+      outcome: 'active' | 'not-found' | 'unavailable',
+      checkedAt: Temporal.Instant,
+    ) => registerCheckAfter(null, outcome, [], checkedAt, { kind: 'job', accountId: null });
+    const fileChangedAt = (t: Setup, at: Temporal.Instant) => {
+      const { sellerId } = seller(t, code);
+      return SellerFile.restore({
+        ...t.files.stored.get(`${code}|${sellerId}`)!,
+        lastChangedAt: at,
+      });
+    };
+
+    it('is true for a fresh active result and for a definite negative', () => {
+      const t = setUp(code);
+      const file = fileChangedAt(t, START);
+      expect(registerCheckIsCurrent(file, checkOf('active', START), START, settingsOf)).toBe(true);
+      expect(registerCheckIsCurrent(file, checkOf('not-found', START), START, settingsOf)).toBe(
+        true,
+      );
+      // A negative never ages and is not moved by an edit.
+      const much = START.add({ hours: settingsOf.maxResultAgeDays * 24 * 10 });
+      const edited = fileChangedAt(t, START.add({ hours: 1 }));
+      expect(registerCheckIsCurrent(edited, checkOf('not-found', START), much, settingsOf)).toBe(
+        true,
+      );
+    });
+
+    it('is false with no result, for unavailable, for an aged result and for a changed draft', () => {
+      const t = setUp(code);
+      const file = fileChangedAt(t, START);
+      expect(registerCheckIsCurrent(file, null, START, settingsOf)).toBe(false);
+      expect(registerCheckIsCurrent(file, checkOf('unavailable', START), START, settingsOf)).toBe(
+        false,
+      );
+      const aged = START.add({ hours: settingsOf.maxResultAgeDays * 24, seconds: 1 });
+      expect(registerCheckIsCurrent(file, checkOf('active', START), aged, settingsOf)).toBe(false);
+      const edited = fileChangedAt(t, START.add({ hours: 1 }));
+      expect(registerCheckIsCurrent(edited, checkOf('active', START), START, settingsOf)).toBe(
+        false,
+      );
+    });
+
+    it('counts a change at the very instant of the check as current, and one nanosecond later as stale', () => {
+      const t = setUp(code);
+      const check = checkOf('active', START);
+      const equal = fileChangedAt(t, START);
+      const later = fileChangedAt(t, START.add({ nanoseconds: 1 }));
+      expect(registerCheckIsCurrent(equal, check, START, settingsOf)).toBe(true);
+      expect(registerCheckIsCurrent(later, check, START, settingsOf)).toBe(false);
+    });
   });
 
   describe('the seller view (my-file.read)', () => {
@@ -883,6 +1052,7 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
           identifierSaved: false,
           state: 'not-performed',
           mismatches: [],
+          staleReason: null,
           checkedAt: null,
           checkedBy: null,
           blocksSubmit: false,
@@ -900,6 +1070,7 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
           identifierSaved: true,
           state: 'active',
           mismatches: [],
+          staleReason: null,
           checkedAt: START.toString(),
           checkedBy: 'seller',
           blocksSubmit: false,
@@ -940,6 +1111,7 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       const stale = await t.review.execute(reviewer(t, code), { sellerId: b.sellerId });
       expect(stale.ok && stale.value).toMatchObject({
         state: 'stale',
+        staleReason: 'aged',
         blocksSubmit: false,
         blocksApproval: true,
       });
