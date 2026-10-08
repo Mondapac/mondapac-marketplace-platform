@@ -232,6 +232,107 @@ describe('classifyTypeRevision', () => {
   });
 });
 
+describe('classifyTypeRevision, further cases (Sajad)', () => {
+  it('does not flag the tightening direction of the other settings', () => {
+    expect(
+      classifyTypeRevision(zz(), zz({ autoApproveSelfDeclaration: false })).relaxations,
+    ).toEqual([]);
+    expect(classifyTypeRevision(base({ requiresExpiry: false }), base()).relaxations).toEqual([]);
+    expect(
+      classifyTypeRevision(base({ requiresIssuerRegistry: false }), base()).relaxations,
+    ).toEqual([]);
+  });
+
+  it('flags a swapped term as a removal and a change, on AU and ZZ', () => {
+    const swapped = base({
+      locales: {
+        en: { ...base().locales.en!, claimTerms: ['halal', 'zabiha'] },
+        ar: base().locales.ar!,
+      },
+    });
+    expect(classifyTypeRevision(base(), swapped)).toEqual({
+      relaxations: ['claim-term-removed'],
+      claimTermsChanged: true,
+    });
+    const zzSwap = zz({
+      locales: { zz: { ...zz().locales.zz!, claimTerms: ['zedpure', 'зед ясно'] } },
+    });
+    expect(classifyTypeRevision(zz(), zzSwap).relaxations).toEqual(['claim-term-removed']);
+  });
+
+  it('treats a full-width and a Cyrillic case edit as no removal', () => {
+    const fw = base({
+      locales: {
+        en: { ...base().locales.en!, claimTerms: ['ｈａｌａｌ', 'halal certified'] },
+        ar: base().locales.ar!,
+      },
+    });
+    expect(classifyTypeRevision(base(), fw).relaxations).toEqual([]);
+    const cy = zz({
+      locales: { zz: { ...zz().locales.zz!, claimTerms: ['zedpure', 'ЗЕД ЧИСТО'] } },
+    });
+    expect(classifyTypeRevision(zz(), cy)).toEqual({ relaxations: [], claimTermsChanged: false });
+  });
+
+  it('reports a dropped locale: with terms is a change, without terms is not', () => {
+    const noAr = base({ locales: { en: base().locales.en! } });
+    expect(classifyTypeRevision(base(), noAr).claimTermsChanged).toBe(true);
+    const emptyAr = base({
+      locales: { en: base().locales.en!, ar: { ...base().locales.ar!, claimTerms: [] } },
+    });
+    const c = classifyTypeRevision(emptyAr, noAr);
+    expect(c.relaxations).toEqual(['locale-dropped']);
+    expect(c.claimTermsChanged).toBe(false);
+    const zzTwo = zz({ locales: { ...zz().locales, aa: zz().locales.zz! } });
+    expect(classifyTypeRevision(zzTwo, zz()).relaxations).toEqual(['locale-dropped']);
+  });
+});
+
+describe('validateTypeRevision, further cases (Sajad)', () => {
+  const problems = (
+    c: TypeRevisionContent,
+    locales = LOCALES,
+    prev: TypeRevisionContent | null = null,
+  ) => {
+    const r = validateTypeRevision(c, locales, prev);
+    return r.ok ? [] : r.error.map((p) => p.code);
+  };
+  const withEn = (over: Partial<TypeRevisionContent['locales'][string]>): TypeRevisionContent =>
+    base({ locales: { en: { ...base().locales.en!, ...over }, ar: base().locales.ar! } });
+
+  it('enforces the text limits', () => {
+    expect(problems(withEn({ name: 'x'.repeat(81) }))).toContain('type.text-invalid');
+    expect(problems(withEn({ name: 'x'.repeat(80) }))).toEqual([]);
+    expect(problems(withEn({ customerDescription: 'x'.repeat(501) }))).toContain(
+      'type.text-invalid',
+    );
+    expect(problems(withEn({ customerDescription: ' ' }))).toContain('type.text-invalid');
+    expect(problems(withEn({ claimTerms: ['x'.repeat(101)] }))).toContain('type.text-invalid');
+    expect(
+      problems(withEn({ claimTerms: Array.from({ length: 201 }, (_, i) => `term${i}`) })),
+    ).toContain('type.text-invalid');
+  });
+
+  it('refuses an unknown verification mode', () => {
+    expect(problems(base({ verificationMode: 'OTHER' as never }))).toContain(
+      'type.verification-mode-invalid',
+    );
+  });
+
+  it('keeps the mode when unchanged and refuses the change in both directions', () => {
+    expect(problems(base(), LOCALES, base())).toEqual([]);
+    expect(problems(zz(), ['zz'], zz())).toEqual([]);
+    expect(problems(base({ locales: zz().locales }), ['zz'], zz())).toContain(
+      'type.verification-mode-immutable',
+    );
+  });
+
+  it('accepts NOT_APPLICABLE as a default and a valid ZZ revision', () => {
+    expect(problems(base({ defaultBasis: 'NOT_APPLICABLE' }))).toEqual([]);
+    expect(problems(zz(), ['zz'])).toEqual([]);
+  });
+});
+
 describe('assertSecondAdmin', () => {
   it('refuses the author and accepts another admin', () => {
     expect(assertSecondAdmin('a1', 'a1')).toEqual({

@@ -62,6 +62,24 @@ describe('issuer state machine', () => {
     expect(code(derecognise(d, 0, 0))).toBe('issuer.transition-forbidden');
   });
 
+  it('refuses derecognition with a count above the actual, NaN or an unsafe integer', () => {
+    expect(code(derecognise(active(), 4, 3))).toBe('issuer.confirmation-count-mismatch');
+    expect(code(derecognise(active(), NaN, NaN))).toBe('issuer.confirmation-count-mismatch');
+    const big = Number.MAX_SAFE_INTEGER + 2;
+    expect(code(derecognise(active(), big, big))).toBe('issuer.confirmation-count-mismatch');
+  });
+
+  it('allows no other path back to active than reactivation by a second admin', () => {
+    const closed = val(closeToNew(active()));
+    expect(code(activate(closed, ref('doc-2')))).toBe('issuer.transition-forbidden');
+    for (const s of [newIssuer(), val(derecognise(active(), 0, 0))]) {
+      expect(code(requestReactivation(s, 'a1', ref('doc-2')))).toBe('issuer.transition-forbidden');
+      expect(code(approveReactivation(s, 'a2'))).toBe('issuer.transition-forbidden');
+    }
+    const pending = val(requestReactivation(closed, 'a1', ref('doc-2')));
+    expect(code(approveReactivation(pending, ' '))).toBe('approval.same-admin');
+  });
+
   describe('reactivation by a second admin (H1)', () => {
     const closed = (): IssuerRecord => val(closeToNew(active()));
 
