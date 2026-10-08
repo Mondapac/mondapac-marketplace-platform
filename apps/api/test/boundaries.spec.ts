@@ -145,6 +145,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'prisma-only-in-infrastructure',
         'repositories-stay-behind-use-cases',
         'request-actor-is-attached-by-the-actor-guard',
+        'seller-access-contract-is-for-sellers',
         'subject-keys-only-in-infrastructure',
         'subject-keys-only-through-the-port',
         'temporal-only-through-kernel',
@@ -195,6 +196,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
         'repositories-stay-behind-use-cases: src/modules/alpha/presentation/jobs/reaches-repository.ts',
         'request-actor-is-attached-by-the-actor-guard: src/modules/alpha/presentation/attaches-actor.ts',
+        'seller-access-contract-is-for-sellers: src/modules/alpha/application/reads-seller-access.ts',
         'subject-keys-only-in-infrastructure: src/modules/alpha/application/uses-subject-keys.ts',
         'subject-keys-only-through-the-port: src/modules/alpha/infrastructure/reaches-key-wrapper.ts',
         'temporal-only-through-kernel: src/platform/uses-js-temporal-polyfill.ts',
@@ -233,6 +235,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/alpha/presentation/market-controller.ts',
       // identity may import its own files.
       'src/modules/identity/application/uses-own-domain.ts',
+      // sellers consumes identity's seller-access contract (ADR-0022 decision 6).
+      'src/modules/sellers/application/reads-seller-access.ts',
       // identity's Authenticator alone builds authenticated actors (slice 2).
       'src/modules/identity/application/access/session-authenticator.ts',
       // A module's infrastructure reaches the database through PrismaService only.

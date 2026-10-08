@@ -66,6 +66,7 @@ import { SignInCustomer } from './application/use-cases/sign-in-customer.use-cas
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
+import { SELLER_ACCESS_CONTRACT } from './contracts/seller-access.contract';
 import { IDENTITY_EVENTS } from './domain/events';
 import { accountRepositoryProvider } from './infrastructure/account-repository.provider';
 import { linkProviders } from './infrastructure/links/link-providers';
@@ -78,6 +79,7 @@ import { CustomerEmailVerificationController } from './presentation/customer-ema
 import { CustomerSessionController } from './presentation/customer-session.controller';
 import { CustomerSignUpController } from './presentation/customer-sign-up.controller';
 import { IdentityFacadeImplementation } from './presentation/identity.facade';
+import { SellerAccessContractImplementation } from './presentation/seller-access.contract';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified-accounts.job';
 import { seedSystemRolesJob } from './presentation/jobs/seed-system-roles.job';
@@ -387,23 +389,22 @@ function useCaseProvider<D, U>(
     }),
     {
       provide: IDENTITY_FACADE,
-      inject: [
-        DescribeActor,
-        MembershipOf,
-        SellerAccessOf,
-        SellerAccessOfSystem,
-        ListRegisteredSellers,
-      ],
+      inject: [DescribeActor, MembershipOf],
+      useFactory: (describeActor: DescribeActor, membershipOf: MembershipOf) =>
+        new IdentityFacadeImplementation({ describeActor, membershipOf }),
+    },
+    {
+      // The two calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
+      // imported through a contract file that is not in index.ts and that a boundary rule
+      // limits to modules/sellers/.
+      provide: SELLER_ACCESS_CONTRACT,
+      inject: [SellerAccessOf, SellerAccessOfSystem, ListRegisteredSellers],
       useFactory: (
-        describeActor: DescribeActor,
-        membershipOf: MembershipOf,
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
         listRegisteredSellers: ListRegisteredSellers,
       ) =>
-        new IdentityFacadeImplementation({
-          describeActor,
-          membershipOf,
+        new SellerAccessContractImplementation({
           sellerAccessOf,
           sellerAccessOfSystem,
           listRegisteredSellers,
@@ -432,6 +433,6 @@ function useCaseProvider<D, U>(
       ) => identityMailSubscriptions(sendLinkMail, sendExistingAccountMail, sendWelcomeMail),
     ),
   ],
-  exports: [AUTHENTICATOR, AUTHORISATION_CHECK, IDENTITY_FACADE],
+  exports: [AUTHENTICATOR, AUTHORISATION_CHECK, IDENTITY_FACADE, SELLER_ACCESS_CONTRACT],
 })
 export class IdentityModule {}

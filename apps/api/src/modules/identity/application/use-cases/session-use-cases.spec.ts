@@ -144,9 +144,6 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
       new IdentityFacadeImplementation({
         describeActor: describe,
         membershipOf: undefined as never,
-        sellerAccessOf: undefined as never,
-        sellerAccessOfSystem: undefined as never,
-        listRegisteredSellers: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

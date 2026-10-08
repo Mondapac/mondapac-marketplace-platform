@@ -24,7 +24,6 @@
     "keepSignedInSessions": {
       "seller": { "idleTimeoutMinutes": 10080, "absoluteLifetimeMinutes": 20160 }
     },
-    "sellerApprovalRequired": false,
     "signInThrottles": {
       "accountOrigin": { "limit": 4, "windowMinutes": 10, "blockMinutes": 20 },
       "account": { "limit": 15, "windowMinutes": 60, "blockMinutes": 30 },
@@ -55,6 +54,7 @@
     }
   },
   "sellers": {
+    "approvalRequired": false,
     "address": {
       "fields": [
         {

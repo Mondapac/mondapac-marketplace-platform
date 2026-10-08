@@ -73,13 +73,14 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(worker.get(SubscriptionRegistry).names()).toEqual(api.get(SubscriptionRegistry).names());
   });
 
-  it("registers identity's mail subscriptions and seals the registry (P 6.4; identity design 9)", () => {
+  it("registers identity's mail subscriptions, sellers' file creation and seals the registry (P 6.4)", () => {
     const subscriptions = graphs.get('worker')!.get(SubscriptionRegistry);
 
     expect(subscriptions.names()).toEqual([
       'identity.existing-account-mail',
       'identity.link-mail',
       'identity.welcome-mail',
+      'sellers.create-file',
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
       'identity.link-mail',
@@ -89,6 +90,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',
+      'sellers.create-file',
     ]);
     expect(subscriptions.sealed).toBe(true);
   });

@@ -40,7 +40,9 @@ function exported(
     | 'TEST_RELAY_DATABASE_URL'
     | 'TEST_DELIVERY_DATABASE_URL'
     | 'TEST_MAIL_DATABASE_URL'
-    | 'TEST_SELLER_DATABASE_URL',
+    | 'TEST_SELLER_DATABASE_URL'
+    | 'TEST_SELLER_FILES_DATABASE_URL'
+    | 'TEST_SELLER_FILES_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -95,6 +97,18 @@ export function mailTestDatabaseUrl(): string {
 /** The copy that seller-account.db-spec.ts relays and dispatches on, likewise. */
 export function sellerTestDatabaseUrl(): string {
   return exported('TEST_SELLER_DATABASE_URL');
+}
+
+/**
+ * The copy that sellers-files.db-spec.ts relays and dispatches on, likewise, as the application
+ * login and as its owner (the owner removes a file to rehearse the backfill).
+ */
+export function sellerFilesTestDatabaseUrl(): string {
+  return exported('TEST_SELLER_FILES_DATABASE_URL');
+}
+
+export function sellerFilesOwnerTestDatabaseUrl(): string {
+  return exported('TEST_SELLER_FILES_OWNER_DATABASE_URL');
 }
 
 export { REPO_ROOT };

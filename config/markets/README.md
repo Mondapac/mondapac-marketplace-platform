@@ -32,9 +32,7 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   Market's `defaultLocale`. Slice 5 adds `sessions.seller` (the seller side's default session,
   12 hours idle and 24 absolute for AU; identity design 6.1), `keepSignedInSessions.seller`
   ("keep me signed in", opt-in at seller sign-in: 14 days idle and 30 absolute for AU; a
-  population absent here is never offered it), `sellerApprovalRequired` (required: `true` makes
-  a self-registered seller start `pending` until an admin approves it, `false` makes it start
-  `approved`; true for AU; identity design 3.3, SEL-03) and `links.targets.seller` (the seller
+  population absent here is never offered it) and `links.targets.seller` (the seller
   panel's pages, as for the customer). A Market without `sessions.seller` or
   `links.targets.seller` offers no seller sign-up: it answers `access.unavailable`. Later
   identity slices add their values here.
@@ -50,9 +48,15 @@ that own them, after their readiness gates (ADR-0013).
 ## `sellers` section (optional)
 
 Owned by the `sellers` module (`docs/design/domain/sellers.md` 4.1). A Market without it is valid
-but cannot take seller addresses. It starts with what slice 2 needs; later slices add the rest of
+but cannot take seller addresses. It starts with what slices 1 and 2 need; later slices add the rest of
 4.1 here.
 
+- `approvalRequired` (required; sellers slice 1): `true` makes a self-registered seller start
+  `pending` until an admin approves it, `false` makes it start `approved`; true for AU
+  (identity design 3.3, SEL-03). It moved here from `identity.sellerApprovalRequired`, which no
+  longer exists. It seeds the ADR-0026 setting `sellers.approval-required`; `identity` and
+  `sellers` both read it from this path. A Market with no `sellers` section gets the safe value
+  `true` from both.
 - `address`: the `fields` of an address in order (`key`, `labelKey`, `required`, `maxLength` up to
   120), which of them is the `postcodeField` and the optional `regionField`, the
   `postcodePattern` (a regular expression) and the `regions` list. `regionField` and a non-empty

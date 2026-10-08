@@ -5,10 +5,6 @@ export { IDENTITY_EVENTS, SellerRegistered } from '../domain/events';
 export {
   IDENTITY_FACADE,
   type ActorDescription,
-  type FacadeValidationFailed,
   type IdentityFacade,
-  type RegisteredSellerPage,
-  type SellerAccessState,
-  type SellerAccessSummary,
   type SellerMembershipSummary,
 } from './identity.facade';

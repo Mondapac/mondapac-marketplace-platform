@@ -32,6 +32,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     extensions: [],
     identity: ['USAGE'],
     platform: ['USAGE'],
+    sellers: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -95,6 +96,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['wrapped_key', 'wrapping_key_id', 'rewrapped_at', 'destroyed_at'],
     },
+    // docs/design/data/sellers.md section 8 (slice 1): the outbox is immutable to the application
+    // but for the relay's mark; the inbox gets DELETE with the prune job; the four roots have no
+    // DELETE until the purge of slice 18.
+    'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {

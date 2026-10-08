@@ -1,0 +1,140 @@
+// The sellers module (schema "sellers"). Physical design: docs/design/data/sellers.md; every
+// model is named Sellers<Name> (its S2) and mapped to its table with @@map. Slice 1 creates
+// the outbox, the inbox and the four roots that share the seller id (S3); later slices add
+// columns and tables, each in its own migration (data design 9.1).
+
+/// Events of the sellers module (ADR-0006 decisions 1 and 2; data design 3.12, PM1). Written
+/// only by the platform OutboxWriter in the unit of the state change, read and marked only by
+/// the relay (platform/persistence/outbox/). Every outbox of every module has exactly these
+/// fields. The CHECKs, the partial claim index and the grants are hand-written in the migration.
+/// Payloads hold ids, codes, booleans and instants only (P 5.3); no personal data in any column.
+model SellersOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "sellers.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
+  @@schema("sellers")
+}
+
+/// Events sellers' subscribers have handled (ADR-0006 decision 5; data design 3.12, PM4):
+/// `runOnce` inserts (event_id, handler) in the handler's own unit and skips the work when the
+/// row exists. Written only by platform/persistence/outbox/. The CHECKs and the grants are
+/// hand-written in the migration.
+model SellersInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "sellers.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("sellers")
+}
+
+/// The file of one seller (sellers design 2.1; data design 3.1): created by the handler of
+/// `identity.seller-registered.v1` or by the backfill, under the id identity minted (ADR-0022
+/// decision 1). Slice 1 holds the columns every later slice builds on; the details, the
+/// identifier and the approved-revision pointer arrive as nullable columns in slices 2 to 7.
+/// The CHECKs are hand-written in the migration.
+model SellersSellerFile {
+  /// UUIDv7 minted by identity (S3); also the subject id of the seller's data key.
+  sellerId                         String                    @id @map("seller_id") @db.Uuid
+  marketId                         String                    @map("market_id") @db.VarChar(8)
+  tenantId                         String                    @map("tenant_id")
+  /// self | invitation.
+  origin                           String
+  /// The Market policy read in the creating unit (D 7.5); a missing row gives true.
+  approvalRequiredAtRegistration   Boolean                   @map("approval_required_at_registration")
+  /// Written by the aggregate on every save: false at creation.
+  draftComplete                    Boolean                   @map("draft_complete")
+  /// Every change of the file; equals created_at at creation.
+  lastChangedAt                    DateTime                  @map("last_changed_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate (P 10); 1 at insert.
+  version                          Int
+  createdAt                        DateTime                  @map("created_at") @db.Timestamptz(6)
+  adminSettings                    SellersSellerAdminSettings?
+  taxProfile                       SellersSellerTaxProfile?
+  storeProfile                     SellersStoreProfile?
+
+  /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
+  @@unique([marketId, sellerId])
+  @@map("seller_files")
+  @@schema("sellers")
+}
+
+/// The admin's per-seller settings (data design 3.9): allowed product types, category proposals,
+/// the AI switch. No column default (C2): the creating handler writes true, false, false, so a
+/// missing row is a fault and never silently a default.
+model SellersSellerAdminSettings {
+  sellerId                           String            @id @map("seller_id") @db.Uuid
+  marketId                           String            @map("market_id") @db.VarChar(8)
+  tenantId                           String            @map("tenant_id")
+  allProductTypesAllowed             Boolean           @map("all_product_types_allowed")
+  allProductTypesChangedAt           DateTime?         @map("all_product_types_changed_at") @db.Timestamptz(6)
+  allProductTypesChangedByAccountId  String?           @map("all_product_types_changed_by_account_id") @db.Uuid
+  categoryProposalsAllowed           Boolean           @map("category_proposals_allowed")
+  categoryProposalsChangedAt         DateTime?         @map("category_proposals_changed_at") @db.Timestamptz(6)
+  categoryProposalsChangedByAccountId String?          @map("category_proposals_changed_by_account_id") @db.Uuid
+  aiEnabled                          Boolean           @map("ai_enabled")
+  aiEnabledChangedAt                 DateTime?         @map("ai_enabled_changed_at") @db.Timestamptz(6)
+  aiEnabledChangedByAccountId        String?           @map("ai_enabled_changed_by_account_id") @db.Uuid
+  version                            Int
+  createdAt                          DateTime          @map("created_at") @db.Timestamptz(6)
+  sellerFile                         SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, sellerId])
+  @@map("seller_admin_settings")
+  @@schema("sellers")
+}
+
+/// The root of a seller's tax registration periods (data design 3.7; V2): it exists so that a
+/// recorded period raises one version. The periods arrive in slice 3.
+model SellersSellerTaxProfile {
+  sellerId   String            @id @map("seller_id") @db.Uuid
+  marketId   String            @map("market_id") @db.VarChar(8)
+  tenantId   String            @map("tenant_id")
+  version    Int
+  createdAt  DateTime          @map("created_at") @db.Timestamptz(6)
+  sellerFile SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, sellerId])
+  @@map("seller_tax_profiles")
+  @@schema("sellers")
+}
+
+/// The root of a seller's public store profile (data design 3.8; V1), created empty. The
+/// published-revision pointer arrives in slice 12 and the minimum order in slice 20.
+model SellersStoreProfile {
+  sellerId   String            @id @map("seller_id") @db.Uuid
+  marketId   String            @map("market_id") @db.VarChar(8)
+  tenantId   String            @map("tenant_id")
+  version    Int
+  createdAt  DateTime          @map("created_at") @db.Timestamptz(6)
+  sellerFile SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, sellerId])
+  @@map("store_profiles")
+  @@schema("sellers")
+}
