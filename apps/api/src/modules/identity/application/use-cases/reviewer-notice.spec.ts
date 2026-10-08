@@ -29,11 +29,22 @@ import { SellerAccessContractImplementation } from '../../presentation/seller-ac
 import {
   AccountAccessReviewers,
   isAccessReviewer,
+  type ReviewerRule,
   SELLER_ACCESS_APPROVE,
 } from '../access/account-access-reviewers';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
-import { effectiveKeysOf, holdsEvery } from '../access/effective-keys';
-import type { AccessReviewer, AccessReviewers } from '../ports/access-reviewers';
+import {
+  effectiveKeysOf,
+  holdsEvery,
+  type EffectiveKeyResolver,
+  type PermissionRegistryView,
+  type RoleGrant,
+} from '../access/effective-keys';
+import type {
+  AccessReviewer,
+  AccessReviewers,
+  ReviewerCandidateReader,
+} from '../ports/access-reviewers';
 import { AccessReviewersUnavailableError } from '../ports/access-reviewers';
 import { ListRegisteredSellers } from './list-registered-sellers.use-case';
 import {
@@ -71,7 +82,6 @@ const SESSION_ID = id<'Session'>('01990000-0000-7000-8000-00000000a001');
 // Canaries: seller data that must never reach the notice, its headers or a log line.
 const CANARY_NAME = 'Canary Owner Zebra';
 const CANARY_EMAIL = 'canary.owner@seller-canary.test';
-const CANARY_STORE = 'Canary Store Quokka';
 
 const reviewer = (n: number): AccessReviewer => ({
   accountId: id<'Account'>(`01990000-0000-7000-8000-${String(0xd000 + n).padStart(12, '0')}`),
@@ -277,7 +287,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
     );
     expect(expected.text).toContain(queue());
     const everything = JSON.stringify(transport.attempts);
-    for (const canary of [CANARY_NAME, CANARY_EMAIL, CANARY_STORE, SELLER_ID, OWNER_ID]) {
+    for (const canary of [CANARY_NAME, CANARY_EMAIL, SELLER_ID, OWNER_ID]) {
       expect(everything).not.toContain(canary);
     }
     for (const mail of transport.attempts) expect(mail.to).not.toContain(',');
@@ -537,6 +547,28 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  it('counts the budget from the start: reads that use it up mean unavailable and no send (Hassan L-A)', async () => {
+    jest.useFakeTimers();
+    const slowRead: AccessReviewers = {
+      reviewersOf: () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve([reviewer(1), reviewer(2)]), REVIEWER_NOTICE_BUDGET_MS),
+        ),
+    };
+    const s = setUp({ reviewers: slowRead });
+
+    const pending = s.notify.execute(system, { sellerId: SELLER_ID });
+    await jest.advanceTimersByTimeAsync(REVIEWER_NOTICE_BUDGET_MS);
+
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      error: { code: 'reviewer-notice.unavailable' },
+    });
+    expect((s.transport as ScriptedTransport).attempts).toEqual([]);
+    expect(logOf('identity.reviewer-notice.unavailable')).toMatchObject({ reason: 'budget-spent' });
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   describe('the recipient read (Hassan M2): SQL narrows, effectiveKeysOf decides', () => {
     function seedAdmins(fakes: IdentityFakes) {
       const n = (k: number) =>
@@ -607,7 +639,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       );
     });
 
-    it('holds no key for any population until 8a-1, so no admin is a reviewer', () => {
+    it('holds no key for any population until 8a-1, so no admin is a reviewer by default', () => {
       for (const population of ['customer', 'seller', 'admin'] as const) {
         expect([...effectiveKeysOf({ population, accountId: reviewer(1).accountId })]).toEqual([]);
       }
@@ -615,41 +647,178 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       expect(isAccessReviewer(reviewer(1))).toBe(false);
     });
 
-    it('agrees with the gate for every fixture account: a recipient exactly when permissions [approve] is allowed', async () => {
-      const s = setUp();
-      const { all } = seedAdmins(s.fakes);
-      const check = new AccountAuthorisationCheck({
-        unitOfWork: s.unitOfWork,
-        accounts: s.fakes.accountRepository,
-        memberships: s.fakes.membershipRepository,
-        sellerAccess: s.fakes.sellerAccessRepository,
-      });
-      const recipients = new Set(
-        (
-          await new AccountAccessReviewers({
-            unitOfWork: s.unitOfWork,
-            candidates: s.fakes.reviewerCandidateReader,
-          }).reviewersOf(market)
-        ).map((r) => r.accountId),
-      );
-      const approve: AccessDeclaration = {
-        name: 'identity.approve-anything',
-        rule: { kind: 'permissions', allOf: [SELLER_ACCESS_APPROVE as never] },
-      };
+    it('never treats an empty requirement as held (Hassan I-2)', () => {
+      expect(holdsEvery(new Set([SELLER_ACCESS_APPROVE]), [])).toBe(false);
+      expect(holdsEvery(new Set(), [])).toBe(false);
+    });
 
-      for (const row of all.filter((a) => a.marketId === code && a.population !== 'seller')) {
-        const context = testCallContext(
-          market,
-          testAuthenticatedActor(market, {
-            population: row.population,
-            accountId: row.id,
-            sessionId: SESSION_ID,
-            sellerId: null,
-          }),
-        );
-        const allowed = (await check.check(context, approve)).allowed;
-        expect([row.id, recipients.has(row.id)]).toEqual([row.id, allowed]);
+    // K5 with fakes (Sajad F1): fixture grants, factors and registry, through the one rule.
+    describe('with fixture roles, factors and registry (K5)', () => {
+      const n = (k: number) =>
+        id<'Account'>(`01990000-0000-7000-8000-${String(0xf000 + k).padStart(12, '0')}`);
+      const ADMINISTRATOR = n(1);
+      const CUSTOM_APPROVER = n(2);
+      const NO_FACTOR = n(3);
+      const CUSTOM_WITHOUT_KEY = n(4);
+      const UNKNOWN_STORED_KEY = n(5);
+      const NO_ROLE = n(6);
+      const DISABLED = n(7);
+      const UNVERIFIED = n(8);
+      const SELLER_SIDE = n(9);
+      const OTHER_MARKET = n(10);
+      const system: RoleGrant = { kind: 'system', scope: 'platform', storedKeys: [] };
+      const approver: RoleGrant = {
+        kind: 'custom',
+        scope: 'platform',
+        storedKeys: ['identity.role.view', SELLER_ACCESS_APPROVE],
+      };
+      const grants = new Map<string, RoleGrant>([
+        [ADMINISTRATOR, system],
+        [CUSTOM_APPROVER, approver],
+        [NO_FACTOR, system],
+        [
+          CUSTOM_WITHOUT_KEY,
+          { kind: 'custom', scope: 'platform', storedKeys: ['identity.role.view'] },
+        ],
+        [
+          UNKNOWN_STORED_KEY,
+          { kind: 'custom', scope: 'platform', storedKeys: ['identity.seller-access.approve-all'] },
+        ],
+        [DISABLED, system],
+        [UNVERIFIED, system],
+        [SELLER_SIDE, { kind: 'system', scope: 'seller', storedKeys: [] }],
+        [OTHER_MARKET, system],
+      ]);
+      const registry = (keys: readonly string[]): PermissionRegistryView => ({
+        keysOf: (scope) => new Set(scope === 'platform' ? keys : ['catalog.offer.edit']),
+      });
+      const withFactor = new Set<string>([
+        ADMINISTRATOR,
+        CUSTOM_APPROVER,
+        CUSTOM_WITHOUT_KEY,
+        UNKNOWN_STORED_KEY,
+        NO_ROLE,
+        DISABLED,
+        UNVERIFIED,
+        SELLER_SIDE,
+        OTHER_MARKET,
+      ]);
+      const ruleWith = (declared: readonly string[]): ReviewerRule => {
+        const keys: EffectiveKeyResolver = (subject) =>
+          effectiveKeysOf(
+            { ...subject, grant: grants.get(subject.accountId) ?? null },
+            registry(declared),
+          );
+        return { factors: { hasActiveFactor: (accountId) => withFactor.has(accountId) }, keys };
+      };
+      const DECLARED = ['identity.role.view', SELLER_ACCESS_APPROVE];
+
+      function seed(fakes: IdentityFakes): AccountState[] {
+        const rows = [
+          accountState(code, { id: ADMINISTRATOR }),
+          accountState(code, { id: CUSTOM_APPROVER }),
+          accountState(code, { id: NO_FACTOR }),
+          accountState(code, { id: CUSTOM_WITHOUT_KEY }),
+          accountState(code, { id: UNKNOWN_STORED_KEY }),
+          accountState(code, { id: NO_ROLE }),
+          accountState(code, { id: DISABLED, status: 'disabled' }),
+          accountState(code, { id: UNVERIFIED, emailVerifiedAt: null }),
+          accountState(code, { id: SELLER_SIDE, population: 'seller' }),
+          accountState(otherCode, { id: OTHER_MARKET }),
+        ];
+        rows.forEach((row) => fakes.seedAccount(row));
+        return rows;
       }
+
+      it('includes the Platform Administrator and a custom role holding the key, by account id', async () => {
+        const s = setUp();
+        seed(s.fakes);
+        // The candidate read answers in reverse order: the resolver still answers by id (F2).
+        const reversed: ReviewerCandidateReader = {
+          activeVerifiedAdmins: async (m, limit) =>
+            (await s.fakes.reviewerCandidateReader.activeVerifiedAdmins(m, limit)).reverse(),
+        };
+
+        const reviewers = await new AccountAccessReviewers({
+          unitOfWork: s.unitOfWork,
+          candidates: reversed,
+          rule: ruleWith(DECLARED),
+        }).reviewersOf(market);
+
+        // Excluded: no active factor, a role without the key, a stored key the registry does not
+        // know, no role; disabled, unverified, seller-side and other-Market accounts never reach
+        // the rule (the SQL narrowing).
+        expect(reviewers.map((r) => r.accountId)).toEqual([ADMINISTRATOR, CUSTOM_APPROVER]);
+      });
+
+      it('drops a stored approve key once the registry no longer declares it (R7)', async () => {
+        const s = setUp();
+        seed(s.fakes);
+
+        const reviewers = await new AccountAccessReviewers({
+          unitOfWork: s.unitOfWork,
+          candidates: s.fakes.reviewerCandidateReader,
+          rule: ruleWith(['identity.role.view']),
+        }).reviewersOf(market);
+
+        expect(reviewers).toEqual([]);
+      });
+
+      it('equivalence (Hassan L-B): for every fixture account that passes the SQL narrowing and has an active factor, a recipient exactly when the gate allows permissions [approve]', async () => {
+        const s = setUp();
+        const rows = seed(s.fakes);
+        const rule = ruleWith(DECLARED);
+        const check = new AccountAuthorisationCheck({
+          unitOfWork: s.unitOfWork,
+          accounts: s.fakes.accountRepository,
+          memberships: s.fakes.membershipRepository,
+          sellerAccess: s.fakes.sellerAccessRepository,
+          keys: rule.keys,
+        });
+        const recipients = new Set(
+          (
+            await new AccountAccessReviewers({
+              unitOfWork: s.unitOfWork,
+              candidates: s.fakes.reviewerCandidateReader,
+              rule,
+            }).reviewersOf(market)
+          ).map((r) => r.accountId),
+        );
+        const narrowed = new Set(
+          (await s.fakes.reviewerCandidateReader.activeVerifiedAdmins(market, 1000)).map(
+            (c) => c.accountId,
+          ),
+        );
+        const approve: AccessDeclaration = {
+          name: 'identity.approve-anything',
+          rule: { kind: 'permissions', allOf: [SELLER_ACCESS_APPROVE as never] },
+        };
+
+        const compared: [string, boolean][] = [];
+        for (const row of rows.filter((a) => narrowed.has(a.id) && withFactor.has(a.id))) {
+          const context = testCallContext(
+            market,
+            testAuthenticatedActor(market, {
+              population: row.population,
+              accountId: row.id,
+              sessionId: SESSION_ID,
+              sellerId: null,
+            }),
+          );
+          const allowed = (await check.check(context, approve)).allowed;
+          expect([row.id, recipients.has(row.id)]).toEqual([row.id, allowed]);
+          compared.push([row.id, allowed]);
+        }
+        // Non-vacuous: both answers occur.
+        expect(compared.some(([, allowed]) => allowed)).toBe(true);
+        expect(compared.some(([, allowed]) => !allowed)).toBe(true);
+
+        // Separately: no account without a verified email or an active factor is a recipient,
+        // even when the gate would allow it the key.
+        for (const row of rows.filter((a) => a.emailVerifiedAt === null || !withFactor.has(a.id))) {
+          expect([row.id, recipients.has(row.id)]).toEqual([row.id, false]);
+        }
+      });
     });
   });
 });

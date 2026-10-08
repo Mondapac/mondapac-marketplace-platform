@@ -36,7 +36,7 @@
   "identity.mail.password-changed.seller.body": "The password for your seller account was changed on {time}. Your other open sessions have been signed out.",
   "identity.mail.reviewer-notice.admin.subject": "A seller application is waiting for review",
   "identity.mail.reviewer-notice.admin.heading": "A seller application is waiting for review",
-  "identity.mail.reviewer-notice.admin.body": "A seller has sent an application for review. Open the review queue to see the applications waiting for a decision.",
+  "identity.mail.reviewer-notice.admin.body": "A seller has submitted an application for review. Open the review queue to see the applications waiting for a decision.",
   "identity.mail.reviewer-notice.admin.action": "Open the review queue",
   "identity.mail.common.account-line.customer": "This email is about your customer account. A seller account with the same email is separate.",
   "identity.mail.common.account-line.seller": "This email is about your seller account. A customer account with the same email is separate.",

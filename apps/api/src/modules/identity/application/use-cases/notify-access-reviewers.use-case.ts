@@ -16,8 +16,8 @@ export const MAX_REVIEWER_RECIPIENTS = 50;
 /** One send may take this long; then it counts as failed and the next one starts (Hassan L2). */
 export const REVIEWER_NOTICE_SEND_TIMEOUT_MS = 5_000;
 /**
- * The whole fan-out may take this long, below the caller's 30-second deadline (sellers 7.3;
- * Hassan L2). When it runs out no further send starts.
+ * The whole call, from its start, reads included, may take this long: below the caller's
+ * 30-second deadline (sellers 7.3; Hassan L2, L-A). When it runs out no further send starts.
  */
 export const REVIEWER_NOTICE_BUDGET_MS = 20_000;
 
@@ -72,8 +72,9 @@ const UNAVAILABLE = Object.freeze({ code: 'reviewer-notice.unavailable' as const
  *
  * It writes nothing: two read-only units and the sends, outside any unit; no inbox, outbox or
  * audit row (8.7; Hassan Q8). It is not idempotent by itself: the caller coalesces. Sends run one
- * after another, each bounded by {@link REVIEWER_NOTICE_SEND_TIMEOUT_MS}, all of them by
- * {@link REVIEWER_NOTICE_BUDGET_MS}; when the budget runs out no further send starts. At least
+ * after another, each bounded by {@link REVIEWER_NOTICE_SEND_TIMEOUT_MS}; the whole call, reads
+ * included, by {@link REVIEWER_NOTICE_BUDGET_MS}, counted from its start: when it runs out no
+ * further send starts, and none starts if the reads used it up (`unavailable`). At least
  * one send accepted is `sent`, none is `unavailable`. Logs carry ids, codes and counts only.
  */
 export class NotifyAccessReviewers extends UseCase<
@@ -104,7 +105,21 @@ export class NotifyAccessReviewers extends UseCase<
     if (!parsed.ok) {
       return err({ code: 'validation.failed', fields: [{ path: 'sellerId', code: 'format' }] });
     }
-    const sellerId = parsed.value;
+    // The 20-second budget starts here, so the reads count against it too (Hassan L-A).
+    const budget = new AbortController();
+    const budgetTimer = setTimeout(() => budget.abort(), REVIEWER_NOTICE_BUDGET_MS);
+    try {
+      return await this.notify(context, parsed.value, budget.signal);
+    } finally {
+      clearTimeout(budgetTimer);
+    }
+  }
+
+  private async notify(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    budget: AbortSignal,
+  ): Promise<Result<NotifyAccessReviewersOutput, NotifyAccessReviewersFailure>> {
     const { market } = context;
 
     let seller: SellerAccess | null;
@@ -153,6 +168,8 @@ export class NotifyAccessReviewers extends UseCase<
       });
     }
     const recipients = reviewers.slice(0, MAX_REVIEWER_RECIPIENTS);
+    // The reads used the whole budget: no send starts (Hassan L-A).
+    if (budget.aborted) return this.unavailable(context, sellerId, 'budget-spent');
 
     const url = this.deps.targets.target(market, 'admin', 'seller-review-queue');
     if (url === null) return this.unavailable(context, sellerId, 'no-review-queue-page');
@@ -164,6 +181,7 @@ export class NotifyAccessReviewers extends UseCase<
     const from = this.deps.policy.mailSender(market);
 
     const counts = await this.fanOut(
+      budget,
       recipients.map((recipient) => ({
         to: recipient.email,
         from,
@@ -195,28 +213,24 @@ export class NotifyAccessReviewers extends UseCase<
   }
 
   /**
-   * Sends one message after another within the budget (Hassan L2). A send that has not settled
-   * within its timeout counts as failed and is no longer awaited; once the budget is spent no
-   * further send starts, and every timer is cleared before this returns.
+   * Sends one message after another within what is left of the budget, which started with the
+   * call (Hassan L2, L-A). A send that has not settled within its timeout counts as failed and is
+   * no longer awaited; once the budget is spent no further send starts, and every timer is
+   * cleared before the call returns.
    */
   private async fanOut(
+    budget: AbortSignal,
     messages: readonly MailMessage[],
   ): Promise<{ sent: number; failed: number; notAttempted: number }> {
-    const budget = new AbortController();
-    const budgetTimer = setTimeout(() => budget.abort(), REVIEWER_NOTICE_BUDGET_MS);
     let sent = 0;
     let failed = 0;
     let attempted = 0;
-    try {
-      for (const message of messages) {
-        if (budget.signal.aborted) break;
-        attempted += 1;
-        const outcome = await this.sendWithin(message, budget.signal);
-        if (outcome === 'sent') sent += 1;
-        else failed += 1;
-      }
-    } finally {
-      clearTimeout(budgetTimer);
+    for (const message of messages) {
+      if (budget.aborted) break;
+      attempted += 1;
+      const outcome = await this.sendWithin(message, budget);
+      if (outcome === 'sent') sent += 1;
+      else failed += 1;
     }
     return { sent, failed, notAttempted: messages.length - attempted };
   }
@@ -261,7 +275,8 @@ export class NotifyAccessReviewers extends UseCase<
   private unavailable(
     context: CallContext,
     sellerId: Id<'Seller'>,
-    reason: 'seller-read-failed' | 'recipients-read-failed' | 'no-review-queue-page',
+    reason:
+      'seller-read-failed' | 'recipients-read-failed' | 'no-review-queue-page' | 'budget-spent',
   ): Result<never, NotifyAccessReviewersFailure> {
     this.#logger.error({
       msg: 'identity.reviewer-notice.unavailable',

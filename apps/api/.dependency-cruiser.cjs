@@ -310,8 +310,8 @@ module.exports = {
     {
       name: 'seller-access-contract-is-for-sellers',
       comment:
-        "Only the sellers module imports identity's seller-access contract (sellerAccessOf and " +
-        'listRegisteredSellers): every other consumer of seller access would bypass the one ' +
+        "Only the sellers module imports identity's seller-access contract (sellerAccessOf, " +
+        'listRegisteredSellers and notifyAccessReviewers): every other consumer of seller access would bypass the one ' +
         "may-sell contract that sellers owns (ADR-0022 decision 6). identity's index.ts does " +
         'not export the contract file.',
       severity: 'error',

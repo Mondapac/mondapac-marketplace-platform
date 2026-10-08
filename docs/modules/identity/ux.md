@@ -83,7 +83,7 @@ Text templates, outside Figma. Every email names its account type (criterion 3).
 |---|---|---|---|---|---|
 | E1 | Confirm your email | New seller or customer account | 3 | 16, 19 | no feature ID |
 | E2 | Welcome | Seller, after the email is confirmed | 5 | 4 | P0 (SEL-02) |
-| E3 | A seller is waiting for approval | Admins who may approve, after a seller's submission for review: at most once per seller per 6 hours and once per Market per 15 minutes; a submission needs a confirmed email (identity design 8.7) | R-3 | 16 | P0 (SEL-02) |
+| E3 | A seller application is waiting for review | Admins who may approve, after a seller's submission for review: at most once per seller per 6 hours and once per Market per 15 minutes; a submission needs a confirmed email (identity design 8.7) | R-3 | 16 | P0 (SEL-02) |
 | E4 | Seller approved | Seller Owner | 9 | 4 | P0 (SEL-02) |
 | E5 | Application needs changes, with the reason | Seller Owner only | 9 | 6 | P1 (SEL-13), needed by decision 9 |
 | E6 | Account suspended, with the reason | Seller Owner only | 9 | 14 | P1 (SEL-13) |
@@ -380,7 +380,7 @@ One layout: subject; heading; an account-type line; two or three sentences; one 
 lifetime as a duration, not a clock time; "If you didn't ask for this, you can ignore this email";
 footer (L); always a plain-text part. Subjects carry no personal data and no reason text. E5 and E6
 quote the reason in the body and go to the Seller Owner only. E2 has two bodies, by whether approval
-is required. E3 carries no seller name or email, only a link to P1. E13, E14 and E17 are notices
+is required. E3 is fixed text: no seller name, store name, email, id or count; no link lifetime and no "ignore this" line, because it answers no request of the reader; its one button opens P1, the review queue. E13, E14 and E17 are notices
 without a button: what changed or happened, when, and "if this wasn't you, reset your password"
 (Hassan confirmed). E15's button opens A11; E16's opens A8. Names and role names are escaped
 (Hassan 13). Lifetimes: E1 24 hours; E8 and E16 60 minutes; E9 and E10 7 days; E11 72 hours; E15

@@ -162,6 +162,22 @@ describe('CatalogueMailComposer (identity design 9; ux.md E1, E12)', () => {
     },
   );
 
+  it('gives the reviewer notice no field for seller data (Jafar: canary seller)', () => {
+    const canary = { sellerName: 'Canary Seller Wombat', sellerEmail: 'canary@seller.test' };
+    const mail = composer.compose(testMarketContext('AU', 'default'), {
+      template: 'reviewer-notice',
+      population: 'admin',
+      url: 'https://admin.au.mondapac.test/sellers/awaiting-review',
+      // @ts-expect-error E3 carries no seller data: the mail type has no such field.
+      sellerName: canary.sellerName,
+    });
+
+    for (const value of Object.values(canary)) {
+      expect(mail.subject).not.toContain(value);
+      expect(mail.text).not.toContain(value);
+    }
+  });
+
   it('refuses a population without a mail', () => {
     expect(() =>
       composer.compose(testMarketContext('AU', 'default'), {

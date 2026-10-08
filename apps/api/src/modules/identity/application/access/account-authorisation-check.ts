@@ -9,7 +9,7 @@ import type {
 import type { AccountRepository } from '../ports/account.repository';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
 import type { SellerMembershipRepository } from '../ports/seller-team.repository';
-import { effectiveKeysOf, holdsEvery } from './effective-keys';
+import { effectiveKeysOf, holdsEvery, type EffectiveKeyResolver } from './effective-keys';
 
 const ALLOWED: AccessDecision = Object.freeze({ allowed: true });
 const DENIED: AccessDecision = Object.freeze({
@@ -22,6 +22,11 @@ export interface AccountAuthorisationCheckDependencies {
   readonly accounts: AccountRepository;
   readonly memberships: SellerMembershipRepository;
   readonly sellerAccess: SellerAccessRepository;
+  /**
+   * The effective-key resolver; {@link effectiveKeysOf} by default, the one definition the
+   * reviewer rule uses too. Tests pass `effectiveKeysOf` with fixture grants and registry.
+   */
+  readonly keys?: EffectiveKeyResolver;
 }
 
 /**
@@ -58,7 +63,10 @@ export class AccountAuthorisationCheck implements AuthorisationCheck {
     const holdsRequired =
       required === null ||
       holdsEvery(
-        effectiveKeysOf({ population: actor.population, accountId: actor.accountId }),
+        (this.deps.keys ?? effectiveKeysOf)({
+          population: actor.population,
+          accountId: actor.accountId,
+        }),
         required,
       );
     if (!seller && !holdsRequired) return DENIED;

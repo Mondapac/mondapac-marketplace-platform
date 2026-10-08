@@ -878,12 +878,22 @@ waits for Hassan, Hadi, Reza and Jafar.
   email, by id, at most 1,000 rows (a guard: a Market holds 10² admin accounts or fewer, so no new
   index; the unique index on Market, population and email serves the prefix). The active factor
   and the key are evaluated in code (`isAccessReviewer`).
-- **Until slices 7 and 8a-1 the answer is an explicit empty set** (fail closed, tested): there is
-  no factor store before 7 and no key before 8a-1. Slice 7, the slice that first creates admin
-  accounts, adds the active-factor condition; 8a-1 adds the non-empty equivalence test (12.1).
-  When admins arrive, those two slices change the resolver; nothing else changes.
-- **Equivalence test:** for every fixture account, "is a recipient" holds exactly when the gate
-  allows `permissions [identity.seller-access.approve]` (both false today; non-empty from 8a-1).
+- **Ports (Sajad F1):** `AccountAccessReviewers` takes the active-factor lookup and the
+  effective-key resolver as ports. The production defaults are today's behaviour: no factor store
+  (a frozen empty set) and the shared `effectiveKeysOf`. `effectiveKeysOf` itself takes the
+  account's role grant and the registry (a system role holds every key the registry declares in
+  its scope; a custom role its stored keys that the registry still declares; R7), and the gate
+  takes the same resolver port, so tests drive both through the one rule with fixture grants,
+  factors and registry. `holdsEvery` never treats an empty requirement as held (Hassan I-2).
+- **Until slices 7 and 8a-1 the production answer is an explicit empty set** (fail closed,
+  tested): there is no factor store before 7 and no grant or registry before 8a-1. Slice 7, the
+  slice that first creates admin accounts, binds the factor lookup; 8a-1 binds the grant read
+  and the registry. Nothing else changes.
+- **Equivalence (Hassan L-B):** for every fixture account that passes the SQL narrowing and has
+  an active factor, "is a recipient" holds exactly when the gate allows
+  `permissions [identity.seller-access.approve]`; separately, no account without a verified
+  email or an active factor is a recipient. Tested now with fixture grants, factors and registry
+  (both answers occur); 8a-1 repeats it on the real registry.
 - **Cap:** 50 recipients in account-id order. Above it, the error log
   `identity.reviewer-notice.recipients-capped` with the count only.
 - **No recipients:** `skipped / recipients.none` and the warning
@@ -905,7 +915,7 @@ waits for Hassan, Hadi, Reza and Jafar.
 | 2 | **Content:** fixed subject and body, one button, no "ignore this" line (a notice answers no request of the reader). No seller name, store name, business name, email, seller id or count (Jafar's condition, sellers `ux.md`). The en-AU text is a draft for Reza and Jafar |
 | 3 | **Delivery:** one mail per recipient, one address in `To`; sender `policy.mailSender(market)`; outside any unit |
 | 4 | **Link (Q6):** the queue page only, built from configuration by `LinkTargets.target(market, 'admin', 'seller-review-queue')`. Link pages are typed per population (`LinkPages`), and the Market file holds `links.targets.admin['seller-review-queue']`, which boot requires whenever `links.targets.seller` is present, and whose origin must differ from every seller and customer page origin (Hassan I1). No seller id, no query built from data |
-| 5 | **Bounded fan-out (L2):** sends run one after another; each send has 5 s, the whole fan-out 20 s, below the caller's 30 s. A send past its timeout counts as failed and is no longer awaited (the transport's own timeout ends the request; the port has no cancel); when the budget is spent no further send starts, and no timer survives the call. At least one send accepted is `sent`; none, or a failed read, is `unavailable` and the caller retries |
+| 5 | **Bounded fan-out (L2, L-A):** sends run one after another; each send has 5 s, and the whole call, counted from its start with the reads included, 20 s, below the caller's 30 s; if the reads use it up, no send starts and the answer is `unavailable`. A transport adapter's own timeout must not exceed 5 s (Hassan I-3; the `MailTransport` port says so). A send past its timeout counts as failed and is no longer awaited (the transport's own timeout ends the request; the port has no cancel); when the budget is spent no further send starts, and no timer survives the call. At least one send accepted is `sent`; none, or a failed read, is `unavailable` and the caller retries |
 | 6 | **Logs:** `identity.reviewer-notice.sent` (info, or warn when some failed or were not attempted), `.skipped`, `.unavailable` (with a reason code), `.no-recipients`, `.recipients-capped`: the code, Market, seller id, the recipient, sent, failed and not-attempted counts and the correlation id. Never an address, a name or the body |
 
 **G. The switch-off, as built**
@@ -933,10 +943,13 @@ R-3 does not depend on 6a or 6b.
 two reviewers, one address each, the queue link, seller canaries absent from subject, body and
 headers; every non-system actor refused with no mail; the three `seller.unknown` cases
 byte-identical; the three non-pending states; no recipients; all sends failed and one of two
-failed; read failure; nothing written (read-only units only, no `runOnce`, no event, no inbox
+failed; read failure; a budget used up by the reads; nothing written (read-only units only, no `runOnce`, no event, no inbox
 row) and no address in a log; a malformed id not echoed; the cap; a slow send, an exhausted
 budget with and without a send accepted (fake timers); the resolver's SQL narrowing, explicit
-empty set, read failure and the equivalence with the gate. `seller-use-cases.spec.ts`: the
+empty set and read failure; K5 with fixture grants, factors and registry (Platform Administrator
+and a custom approver included in id order; no factor, a role without the key, an undeclared
+stored key and no role excluded) and the equivalence of Hassan L-B. `mail-catalogue.spec.ts` also
+checks that the E3 mail type has no field for seller data (Jafar). `seller-use-cases.spec.ts`: the
 switch-off test and the subscription snapshot. `mail-catalogue.spec.ts`: the E3 text in en-AU
 and ja-JP. `market-config-identity-policy.spec.ts` and `market-config.spec.ts`: the queue page
 resolves only for `admin`, and boot refuses a missing page or a shared origin.
@@ -1018,8 +1031,8 @@ review every slice of this module gets.
 | R-3 | Reviewer notice (sellers request R-3; mini-review 3) | S/M | **Δ 2026-10-08** After 5 and the Market-config PR (`links.targets.admin['seller-review-queue']`); **no migration**, nothing under `prisma/` or in the shared kernel; independent of 6a, 6b, 7, 8a-1 and 8a-2 (an empty recipient set is the designed behaviour until 7 and 8a-1), so it may merge before 6a; merges before `sellers` slice 5. `notifyAccessReviewers` in the sellers-only contract, the shared `effectiveKeysOf`, the recipient read, the `reviewer-notice` mail (8.7) | Mandatory review (auth area): Hassan M2, L2 |
 | 6a | Audit writer (tests only), kernel `ContentHash` and `canonicalJson`, the `platform_audit_seal` migration | L | **Δ** Designed in `docs/design/domain/platform-audit.md` (15). 6a and 6b are one slice set (ADR-0015 decision 1). 6a binds no `AUDIT_WRITER` provider into any module, proved by a test; it carries the only migration, and no other migration PR is open while it is; the kernel change is announced on the board (sellers slice 5 waits on it) | Mandatory review; PA M2, L3 |
 | 6b | Sealer, verifier, checkpoints, log anchor; the identity retrofit (seed and founding rows) | L | **Δ** Merges before any other slice that writes an audit row (7, 8a-1, sellers, certification) | Mandatory review; PA M1, M3, L1, L2 |
-| 7 | Admin account, first admin, second factor, admin sign-in | L | TOTP, challenge, recovery codes, operator routine, the enrolment link. The `Invitation` aggregate (kind `admin`, acceptance with enrolment) lands here because the first admin is invited. **Acceptance from slice 4 (Hassan I2):** (a) a password reset never removes or bypasses the second factor (it opens no session; sign-in with the factor stays the only way in); (b) an admin's password change needs the current password and a code; (c) decide whether a seller's reset or change ends admins' Login-as-Seller sessions over that seller (they sit on the admin's account, so `revokeAllOf` does not reach them); (d) a reset cancels open second-factor challenges. **R-3 (Hassan M2):** in this slice, the one that first creates admin accounts, the reviewer-notice resolver gets its active-second-factor condition from the factor store (8.7) | HF2, HF6 |
-| 8a-1 | Registry, catalogue, default roles, permission path | L | **Δ** split from 8a (Ali 2026-10-08), right after 6b and before 7. `GrantPolicy`, `LastHolderPolicy`, the permission path of `AuthorisationCheck`; `membershipOf` for other accounts; the default-role seed and the audited seed-version upgrade of system roles; `NO_PERMISSION_KEYS` swapped for the registry in the outbox and the audit writer in the same PR. Admin fixture accounts exist only in tests: no seed, dev route or script creates an admin before slice 7. **R-3 (Hassan M2):** `effectiveKeysOf` gets the registry and role keys here, and the non-empty equivalence test is added: for every fixture account, "is a reviewer-notice recipient" holds exactly when the gate allows `permissions [identity.seller-access.approve]` (8.7) | HF5, R7 |
+| 7 | Admin account, first admin, second factor, admin sign-in | L | TOTP, challenge, recovery codes, operator routine, the enrolment link. The `Invitation` aggregate (kind `admin`, acceptance with enrolment) lands here because the first admin is invited. **Acceptance from slice 4 (Hassan I2):** (a) a password reset never removes or bypasses the second factor (it opens no session; sign-in with the factor stays the only way in); (b) an admin's password change needs the current password and a code; (c) decide whether a seller's reset or change ends admins' Login-as-Seller sessions over that seller (they sit on the admin's account, so `revokeAllOf` does not reach them); (d) a reset cancels open second-factor challenges. **R-3 (Hassan M2, L-B):** in this slice, the one that first creates admin accounts, the reviewer-notice resolver's factor port is bound to the factor store, and the equivalence test of 8.7 runs with real factors. **Sajad F4:** add the acting-as case to the reviewer-notice actor tests when that actor kind exists (`actingAs`, SEL-08) | HF2, HF6 |
+| 8a-1 | Registry, catalogue, default roles, permission path | L | **Δ** split from 8a (Ali 2026-10-08), right after 6b and before 7. `GrantPolicy`, `LastHolderPolicy`, the permission path of `AuthorisationCheck`; `membershipOf` for other accounts; the default-role seed and the audited seed-version upgrade of system roles; `NO_PERMISSION_KEYS` swapped for the registry in the outbox and the audit writer in the same PR. Admin fixture accounts exist only in tests: no seed, dev route or script creates an admin before slice 7. **R-3 (Hassan M2, L-B):** the grant read and the registry are bound to `effectiveKeysOf` here, for the gate and the reviewer rule alike, and the equivalence test of 8.7 runs on the real registry: for every fixture account that passes the SQL narrowing and has an active factor, a recipient exactly when the gate allows `permissions [identity.seller-access.approve]`. The factor half stays stubbed (no admin has a factor) until slice 7 binds the factor store | HF5, R7 |
 | 8a-2 | Assign an admin's role | M | **Δ** After 7, with 8b: needs admin accounts and sessions. Admin invitation and role grants still come after admin sign-in with a second factor (brief s11) | HF8, with the serializable race test |
 | 8b | Admin invitation, disabling accounts, admin second-factor reset | M | **Δ** Uses 8a-1; ships with 8a-2, after 7 | — |
 | 9 | Approve, reject, suspend, reinstate, seller by invitation | L | Decisions with encrypted reasons, the decision mails, re-apply behind the facade. **Δ 2026-10-08:** no reviewer mail and no subscriber for E3 here (the R-3 slice, 8.7) | HF13 |
