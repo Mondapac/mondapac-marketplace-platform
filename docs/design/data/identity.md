@@ -852,9 +852,8 @@ and password only (brief flow «د» item 1; `ux.md` A2, F1 step 2). Found by Ho
 | b1 (chosen). `display_name` nullable; `accounts_display_name_required_check`: `population = 'customer' OR display_name IS NOT NULL`; `accounts_display_name_check` unchanged | One column, one extra CHECK; the rule for seller-side and admin accounts stays in the database; no migration later if customers gain an optional name | Prisma types the field as optional for every population; the domain factories carry the rule in code |
 | b2 (rejected). A separate nullable column or table for customer names, or a placeholder value | — | A second place for one fact; a placeholder is fake personal data that would reach mails and lists |
 
-Proceeding on b1 with the owner's card still open (Ali); if the owner chooses otherwise, migration
-`identity_accounts` does not merge and this row is reversed. Mohammad (D 2.1) and Mojtaba
-(this document) agreed; brief change-log row of 2026-10-07.
+The owner chose "no name" for customers on 2026-10-08, confirming b1. Mohammad (D 2.1) and
+Mojtaba (this document) agreed; brief change-log row of 2026-10-07.
 
 ## 12. Follow-up changes
 
