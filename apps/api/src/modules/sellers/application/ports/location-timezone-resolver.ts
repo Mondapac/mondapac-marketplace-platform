@@ -17,7 +17,8 @@ export interface DevicePosition {
  * it beyond the region list of the address (the address wins; `zoneAfterAddressSave`).
  *
  * Only `my-file.save-address` may import this port (a `pnpm boundaries` rule, to be added with
- * the first real adapter). The adapter per Market is chosen by configuration
+ * the first real adapter). In an acting-as (Login as Seller) session the hint must never be
+ * computed (to be enforced with the acting-as slice). The adapter per Market is chosen by configuration
  * (`sellers.locationTimezone.adapter`, default `none`) once that key exists; until then the
  * module binds `none`.
  */

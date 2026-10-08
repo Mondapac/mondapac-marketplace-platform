@@ -162,16 +162,16 @@ export class MyFileSaveAddress extends UseCase<
 
     const area = areas.areaFor(market, operating.value.postcode);
     const regionZones = zones.zonesOf(market, operating.value.region);
+    if (!(await fileExists(this.deps, context, owner.sellerId))) {
+      return err({ code: 'file.not-found' });
+    }
     // Only when the request makes no choice of its own and the region has a list: the hint can
     // never apply otherwise, so the resolver is not asked (nor the position handled) for nothing.
+    // Asked only after the file is known to exist, so a missing file costs no resolver call.
     const suggestedZone =
       regionZones !== null && (input.timezone === undefined || input.timezone === null)
         ? await suggestedZoneFor(this.deps.locationZones, market, input.location)
         : null;
-
-    if (!(await fileExists(this.deps, context, owner.sellerId))) {
-      return err({ code: 'file.not-found' });
-    }
     const sealed = await this.seal(market, owner.sellerId, operating.value, registered.value);
     if (!sealed.ok) return sealed;
 

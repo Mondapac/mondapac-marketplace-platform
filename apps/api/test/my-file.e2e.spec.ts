@@ -389,6 +389,26 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(stubs.address.calls).toHaveLength(1);
     });
 
+    it('refuses a location in the address body as an unknown field and never calls the use case', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.address.next = { ok: true, value: SAVED };
+
+      const refused = await http()
+        .put('/sellers/my-file/address')
+        .set(session.headers)
+        .send({
+          address: { line1: '1 George St', postcode: '4000' },
+          location: { latitude: -27.47, longitude: 153.03 },
+        });
+
+      expect(refused.status).toBe(400);
+      expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      expect(detailsOf(refused)).toEqual({ fields: [{ path: 'location', code: 'unknown-field' }] });
+      expect(JSON.stringify(refused.body)).not.toMatch(/27\.47|153\.03/);
+      expect(stubs.address.calls).toHaveLength(0);
+    });
+
     it('checks a slug from a POST body', async () => {
       await boot(true);
       const session = await signedIn(code);

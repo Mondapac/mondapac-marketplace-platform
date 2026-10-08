@@ -899,7 +899,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     it('purges counters whose window started before the cut-off, in this Market only', async () => {
       const old = newKey();
       const kept = newKey();
+      const edge = newKey();
       const elsewhere = newKey();
+      await reserve(code, SAVE_LIMITS, edge, T0.subtract({ hours: 48 }));
       await reserve(code, SAVE_LIMITS, old, T0.subtract({ hours: 49 }));
       await reserve(code, SAVE_LIMITS, kept, T0.subtract({ hours: 47 }));
       await reserve(other, SAVE_LIMITS, elsewhere, T0.subtract({ hours: 49 }));
@@ -930,6 +932,8 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       expect(await purge(code)).toBeGreaterThanOrEqual(2);
       expect(await remaining(old, code)).toBe(0);
       expect(await remaining(kept, code)).toBe(2);
+      // Exactly 48 hours old is not before the cut-off: kept.
+      expect(await remaining(edge, code)).toBe(2);
       expect(await remaining(elsewhere, other)).toBe(2);
       expect(await purge(code)).toBe(0);
       expect(await purge(other)).toBeGreaterThanOrEqual(2);
