@@ -5,7 +5,8 @@
     "support": "Need help? Email {supportEmail}."
   },
   "nav": {
-    "home": "Home"
+    "home": "Home",
+    "team": "Roles & permissions"
   },
   "home": {
     "title": "Home",
@@ -122,6 +123,49 @@
         "re-enrol": "Your two-step verification was reset. We've sent a link to {email} to set it up again. The link works for 60 minutes. Signing in again sends a new one."
       },
       "page-title": "Check your email – Admin account – MondaPac"
+    },
+    "members": {
+      "title": {
+        "admin": "Roles & permissions"
+      },
+      "tab": {
+        "admins": "Admins"
+      },
+      "table-caption": "Admins and pending invitations",
+      "label": {
+        "person": "Person",
+        "role": "Role",
+        "status": "Status",
+        "you": "You"
+      },
+      "status": {
+        "active": "Active",
+        "invited": "Invited",
+        "expired": "Invitation expired",
+        "deactivated": "Deactivated"
+      },
+      "role": {
+        "none": "No role",
+        "custom": "Custom role",
+        "system": "(system role)"
+      },
+      "empty": {
+        "title": "It's just you so far",
+        "body": "Invite the people who help run the platform. Each person gets their own sign-in."
+      },
+      "next-page": "Next page",
+      "no-access": {
+        "title": "You don't have access to this page",
+        "body": "Your role doesn't include it. Ask an admin who manages roles."
+      }
+    },
+    "role": {
+      "platform-administrator": "Platform Administrator",
+      "onboarding-compliance": "Onboarding & compliance",
+      "catalogue-moderator": "Catalogue moderator",
+      "operations-support": "Operations & support",
+      "finance": "Finance",
+      "viewer": "Viewer"
     }
   }
 }
