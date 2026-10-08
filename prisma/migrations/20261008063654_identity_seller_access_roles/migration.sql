@@ -160,7 +160,7 @@ ALTER TABLE "identity"."roles"
   ADD CONSTRAINT "roles_name_check" CHECK (
     char_length("name") BETWEEN 1 AND 80
     AND "name" = btrim("name")
-    AND "name" !~ '[\u0001-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]'),
+    AND "name" !~ '[\u0001-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]'),
   ADD CONSTRAINT "roles_name_normalized_check" CHECK (
     "name_normalized" = lower("name_normalized" COLLATE "C")
     AND "name_normalized" = btrim("name_normalized")
