@@ -113,7 +113,7 @@ function makeFigma(opts) {
   // ------------------------------------------------------------ styles
   const STYLES = new Map();
   class TextStyle {
-    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'TEXT'; this.name = 'Text style'; this.description = ''; this._font = { family: 'Inter', style: 'Regular' }; this.fontSize = 12; this.lineHeight = { unit: 'AUTO' }; this.letterSpacing = { unit: 'PIXELS', value: 0 }; this.textCase = 'ORIGINAL'; this._bv = {}; STYLES.set(this.id, this); }
+    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'TEXT'; this.name = 'Text style'; this.description = ''; this._font = { family: 'Inter', style: 'Regular' }; this.fontSize = 12; this.lineHeight = { unit: 'AUTO' }; this.letterSpacing = { unit: 'PIXELS', value: 0 }; this.textCase = 'ORIGINAL'; this._bv = {}; this._spd = {}; STYLES.set(this.id, this); }
     get fontName() { return Object.assign({}, this._font); }
     set fontName(f) { if (!loaded.has(fk(f))) fail('TextStyle.fontName: font ' + fk(f) + ' is not loaded'); this._font = Object.assign({}, f); }
     get boundVariables() { return deep(this._bv); }
@@ -126,12 +126,16 @@ function makeFigma(opts) {
       this._bv[field] = alias(v);
     }
     remove() { STYLES.delete(this.id); this.removed = true; }
+    setPluginData(k, v) { if (typeof v !== 'string') fail('setPluginData value must be a string'); this._spd[k] = v; }
+    getPluginData(k) { return this._spd[k] || ''; }
   }
   class EffectStyle {
-    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'EFFECT'; this.name = 'Effect style'; this.description = ''; this._effects = []; STYLES.set(this.id, this); }
+    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'EFFECT'; this.name = 'Effect style'; this.description = ''; this._effects = []; this._spd = {}; STYLES.set(this.id, this); }
     get effects() { return deep(this._effects); }
     set effects(a) { if (!Array.isArray(a)) fail('effects must be array'); a.forEach(checkEffect); this._effects = deep(a); }
     remove() { STYLES.delete(this.id); this.removed = true; }
+    setPluginData(k, v) { if (typeof v !== 'string') fail('setPluginData value must be a string'); this._spd[k] = v; }
+    getPluginData(k) { return this._spd[k] || ''; }
   }
 
   // ------------------------------------------------------------ nodes
@@ -189,7 +193,7 @@ function makeFigma(opts) {
       this._fills = []; this._strokes = []; this._effects = []; this._bv = {}; this._refs = null; this._modes = {};
       this.strokeWeight = 1; this._strokeAlign = 'INSIDE'; this.dashPattern = []; this.opacity = 1; this.constraints = { horizontal: 'MIN', vertical: 'MIN' }; this._rot = 0;
       this._layoutPositioning = 'AUTO'; this._fillH = false; this._fillV = false;
-      ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_minH', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
+      ['strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight', '_style', '_effectStyle', '_cap', '_join', '_radius', 'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', '_minW', '_minH', '_ovf', '_abb', '_exposed', '_arc', '_ls', '_case', '_dec', '_align', '_src'].forEach((k) => { this[k] = undefined; });
       if (AUTO.has(type)) Object.assign(this, { _layoutMode: 'NONE', _pAxis: 'FIXED', _cAxis: 'FIXED', paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0, itemSpacing: 0, _counterAxisSpacing: 0, _wrap: 'NO_WRAP', _pAlign: 'MIN', _cAlign: 'MIN', clipsContent: true });
     }
     _isAuto() { return AUTO.has(this.type) && this.layoutMode !== 'NONE'; }
@@ -202,10 +206,16 @@ function makeFigma(opts) {
     set fills(a) { if (a === MIXED) fail('Cannot set fills to mixed'); if (!Array.isArray(a)) fail('fills must be an array'); a.forEach(checkPaint); this._fills = deep(a); }
     get strokes() { return Object.freeze(deep(this._strokes)); }
     set strokes(a) { if (!Array.isArray(a)) fail('strokes must be an array'); a.forEach(checkPaint); this._strokes = deep(a); }
+    // The mock does not lay out, so a node has no absolute bounds unless a test gives them (node._abb = { x, y, width, height }).
+    get absoluteBoundingBox() { return this._abb ? deep(this._abb) : null; }
+    // Prototype scrolling: frames, components and instances only.
+    get overflowDirection() { return AUTO.has(this.type) ? this._ovf || 'NONE' : undefined; }
+    set overflowDirection(v) { if (!AUTO.has(this.type) || this.type === 'COMPONENT_SET') fail('overflowDirection not supported on ' + this.type); if (['NONE', 'HORIZONTAL', 'VERTICAL', 'BOTH'].indexOf(v) < 0) fail('overflowDirection ' + v); this._ovf = v; }
     get strokeAlign() { return this._strokeAlign; }
     set strokeAlign(v) { if (['INSIDE', 'OUTSIDE', 'CENTER'].indexOf(v) < 0) fail('strokeAlign ' + v); this._strokeAlign = v; }
-    get effects() { return deep(this._effects); }
-    set effects(a) { if (!Array.isArray(a)) fail('effects must be an array'); a.forEach(checkEffect); this._effects = deep(a); }
+    // A node with an effect style shows the style's effects, so a change to the style reaches every node (as in Figma); setting effects detaches it.
+    get effects() { const st = this._effectStyle && STYLES.get(this._effectStyle); return deep(st ? st._effects : this._effects); }
+    set effects(a) { if (!Array.isArray(a)) fail('effects must be an array'); a.forEach(checkEffect); this._effects = deep(a); this._effectStyle = undefined; }
     setEffectStyleIdAsync(id) { return Promise.resolve().then(() => { this._checkLive(); const s = STYLES.get(id); if (!s || s.type !== 'EFFECT') fail('No effect style ' + id); this._effectStyle = id; this._effects = s.effects; }); }
     set effectStyleId(v) { fail('Cannot set effectStyleId with documentAccess: dynamic-page. Use setEffectStyleIdAsync'); }
     get cornerRadius() { return this._radius === undefined ? 0 : this._radius; }
@@ -612,7 +622,11 @@ function makeFigma(opts) {
       },
       setBoundVariableForEffect(e, field, v) {
         if (['color', 'radius', 'spread', 'offsetX', 'offsetY'].indexOf(field) < 0) fail('setBoundVariableForEffect field'); needVar(v, field === 'color' ? 'COLOR' : 'FLOAT', 'setBoundVariableForEffect');
-        const out = deep(e); out.boundVariables = Object.assign({}, out.boundVariables || {}); out.boundVariables[field] = alias(v); return out;
+        const out = deep(e); out.boundVariables = Object.assign({}, out.boundVariables || {}); out.boundVariables[field] = alias(v);
+        // Like Figma: the returned copy has spread 0, whatever the effect had (forum.figma.com/t/setboundvariableforeffect-bug/59788;
+        // the owner's file had Focus/Ring and Ring/Urgent at spread 0 after 1.8.3). Writing the copy back with a spread keeps that spread.
+        if (out.type === 'DROP_SHADOW' || out.type === 'INNER_SHADOW') out.spread = 0;
+        return out;
       },
     },
   };
