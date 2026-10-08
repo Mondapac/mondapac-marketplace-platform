@@ -1,4 +1,5 @@
 import { measureJump } from './jump-policy';
+import { createPricingPolicy } from './pricing-policy';
 import { PRICING_FIXTURES, amountOf } from '../../../../test/support/pricing-fixtures';
 
 // AU: T = 1/2, both ways. ZZ: T = 1/4, up only.
@@ -32,8 +33,22 @@ describe.each(PRICING_FIXTURES)('measureJump in market $code', (fixture) => {
   });
 
   it('is exact for amounts beyond the float range', () => {
-    const big = amountOf(fixture, policy.maxUnitPrice.amount);
-    const nearBig = amountOf(fixture, policy.maxUnitPrice.amount - 1n);
-    expect(measureJump(big, nearBig, policy)).toEqual({ kind: 'within' });
+    const wide = createPricingPolicy({
+      currency: policy.currency,
+      maxUnitPriceMinor: BigInt(Number.MAX_SAFE_INTEGER),
+      thresholdNumerator: n,
+      thresholdDenominator: d,
+      jumpDirections: policy.jumpDirections,
+      jumpWindow: 'P3D',
+    });
+    const top = amountOf({ ...fixture, policy: wide }, BigInt(Number.MAX_SAFE_INTEGER));
+    const near = amountOf({ ...fixture, policy: wide }, BigInt(Number.MAX_SAFE_INTEGER) - 1n);
+    expect(measureJump(top, near, wide)).toEqual({ kind: 'within' });
+    // One minor unit past T of a 2^53 - 1 anchor: floats cannot tell these apart.
+    const base = BigInt(Number.MAX_SAFE_INTEGER) / 4n;
+    const anchorBig = amountOf({ ...fixture, policy: wide }, base);
+    const limit = (base * (d + n)) / d;
+    const candidate = amountOf({ ...fixture, policy: wide }, limit + 1n);
+    expect(measureJump(anchorBig, candidate, wide)).toEqual({ kind: 'held', direction: 'up' });
   });
 });

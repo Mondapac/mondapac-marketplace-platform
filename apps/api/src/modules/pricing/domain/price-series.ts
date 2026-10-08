@@ -200,11 +200,12 @@ export class PriceSeries {
     const state = this.#state;
     if (state.retiredAt !== null) return err({ code: 'pricing.series-retired' });
 
-    const inForce = regularInForce(state.regular, input.now);
     const latest = latestPriced(state.regular);
     const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');
 
-    if (inForce !== null && inForce.amount.amount === input.amount.amount) {
+    // Compared with the latest priced record, not the one in force at `now`: a record queued
+    // 1 ms ahead by an earlier write of the same instant is the seller's current intent.
+    if (latest !== null && latest.amount.amount === input.amount.amount) {
       const superseded = pending.map((r) => supersede(r, null, input.now));
       this.#commit(replace(state.regular, superseded));
       return ok({ kind: 'unchanged', superseded });

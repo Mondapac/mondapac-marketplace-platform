@@ -171,7 +171,56 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
     expect(series.state.regular).toHaveLength(1);
   });
 
+  it('lets the last write of one instant win, even when an earlier one is queued 1 ms ahead', () => {
+    const { series, set } = setup();
+    set(fixture.base);
+    set(fixture.base + 1n);
+    const outcome = outcomeOf(set(fixture.base));
+
+    expect(outcome.kind).toBe('accepted');
+    advance(5);
+    expect(effectiveRegular(series.state, clock.now())?.amount.amount).toBe(fixture.base);
+  });
+
+  it('treats a repeat of the latest queued price as unchanged', () => {
+    const { series, set } = setup();
+    set(fixture.base);
+    set(fixture.base + 1n);
+    const count = series.state.regular.length;
+    expect(outcomeOf(set(fixture.base + 1n)).kind).toBe('unchanged');
+    expect(series.state.regular).toHaveLength(count);
+  });
+
   describe('the anchor (pricing design 2.4, option A)', () => {
+    it('counts a record that starts exactly at now - W as the record in effect then', () => {
+      const { series, set } = setup();
+      const first = (outcomeOf(set(fixture.base)) as { record: RegularPriceRecord }).record;
+      advance(1000);
+      const second = (outcomeOf(set(fixture.base + 1n)) as { record: RegularPriceRecord }).record;
+      const edge = second.effectiveFrom as Temporal.Instant;
+      const exactly = edge.add({ milliseconds: policy.jumpWindow.milliseconds });
+      expect(jumpAnchor(series.state.regular, exactly, policy)?.id).toBe(second.id);
+      expect(
+        jumpAnchor(series.state.regular, exactly.subtract({ milliseconds: 1 }), policy)?.id,
+      ).toBe(first.id);
+    });
+
+    it('keeps the window record when the approved record is older than it', () => {
+      const { series, set } = setup();
+      const windowMs = policy.jumpWindow.milliseconds;
+      const first = (outcomeOf(set(fixture.base)) as { record: RegularPriceRecord }).record;
+      advance(windowMs / 4);
+      const second = (outcomeOf(set(fixture.base + 1n)) as { record: RegularPriceRecord }).record;
+      advance(windowMs);
+      set(fixture.base + 2n);
+      const approvedFirst = series.state.regular.map((r) =>
+        r.id === first.id ? { ...r, status: 'APPROVED' as const } : r,
+      );
+      advance(1000);
+      const anchor = jumpAnchor(approvedFirst, clock.now(), policy);
+      expect(anchor?.id).toBe(second.id);
+    });
+
     it('catches several small steps whose sum exceeds the threshold inside the window', () => {
       const { set } = setup();
       let price = fixture.base;
