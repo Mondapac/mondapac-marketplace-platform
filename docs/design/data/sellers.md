@@ -1370,8 +1370,21 @@ answered. The write unit reads the file again: if its version is no longer the s
 is stored already stale (stamped one nanosecond before that edit). `registerStateOf`, `lookupDue` and
 `registerCheckIsCurrent` share one rule (`last_changed_at > checked_at` means stale). Residual: an edit
 whose stamp was taken before the snapshot read but that commits after the write unit's re-read is not
-seen; closing it needs a file-row lock or a version column on `register_checks`, which the file's
-version already gives to a future slice that wants it.
+seen (also an edit stamped in the same millisecond as the snapshot, or on an instance whose clock is
+behind). Timestamps cannot detect these, and a row lock at submit alone does not close them either.
+
+**Slice 5 security condition (Hassan M1 residual; blocks the slice 5 merge).** The register result is
+bound to the file version it was compared against. Add `compared_file_version` to `register_checks`
+(migration signed off by database-designer). `runLookup` writes the snapshot's version and the write unit
+keeps the existing re-read. `registerCheckIsCurrent` returns true for an `active` result only if
+`compared_file_version` equals the file's current `version` and the age rule holds; a definite negative
+keeps its behaviour. Submit evaluates `registerCheckIsCurrent` in the same transaction as the submit
+transition, with the file row locked or under the submit's own version CAS on the version it checked. If
+the result is not current, submit continues as "not performed" (manual check needed, `blocksApproval`
+true) and never treats it as a clean `active`. Required tests on AU and ZZ: (a) a no-change identifier
+save racing a general save that commits after the re-read; (b) an edit stamped in the same millisecond as
+the snapshot; (c) an edit committed between the currency check and the submit transition. All three end
+with the result not current.
 
 Notes for later slices:
 
