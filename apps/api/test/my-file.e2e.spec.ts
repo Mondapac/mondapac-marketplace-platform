@@ -448,6 +448,7 @@ describe('the seller draft over HTTP (integration)', () => {
       ['slug.format', 400],
       ['slug.reserved', 400],
       ['slug.taken', 409],
+      ['file.not-found', 404],
       ['file.change-request-required', 409],
       ['conflict.stale', 409],
     ] as const)('maps the slug save failure %s to %i', async (failure, status) => {

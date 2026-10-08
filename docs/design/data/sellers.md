@@ -1202,3 +1202,13 @@ Market fixtures): `attcollation` `C` for `draft_slug`; the CHECK accepts `abc`, 
 characters, refuses 2 and 51 characters, upper case, a leading or trailing hyphen, a double hyphen
 and non-ASCII; two files may hold the same draft slug; no index names the column; a repository
 round trip; a write over a stale version changes 0 rows; the privilege map is unchanged.
+
+The migration changes no data on purpose. `draft_complete` is consumed only at submission (slice 5),
+which re-checks completeness against the current Market configuration (section 6), and no real
+seller drafts exist before this slice; existing development rows stay stale (a draft with no slug
+reads `draft_complete = false` or a value computed without the slug) until their next save, which
+recomputes it. `BackfillSellerFiles` (the sellers job that fills missing files) was checked: it
+creates files through `SellerFile.create`, which sets `draft_complete = false`, and never sets it to
+true. Slice 2 tests also cover a deterministic lost-update case (the version bumped by another unit
+between load and save changes 0 rows, `conflict.stale`) and a retired slug, own or another
+seller's, read as `taken` through the Prisma `findBySlug` mapping.

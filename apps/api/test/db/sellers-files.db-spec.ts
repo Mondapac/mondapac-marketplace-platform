@@ -19,6 +19,10 @@ import { MyFileCheckSlug } from '../../src/modules/sellers/application/use-cases
 import { MyFileRead } from '../../src/modules/sellers/application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
 import { MyFileSaveGeneral } from '../../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
+import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
+import { PrismaShopSlugRepository } from '../../src/modules/sellers/infrastructure/prisma-shop-slug.repository';
+import { reservedWordsOf } from '../../src/modules/sellers/domain/reserved-words';
+import { parseShopSlug } from '../../src/modules/sellers/domain/shop-slug';
 import { PrismaRateCounterRepository } from '../../src/modules/sellers/infrastructure/prisma-rate-counter.repository';
 import {
   RATE_COUNTER_KINDS,
@@ -51,6 +55,7 @@ import { sellerFilesOwnerTestDatabaseUrl, sellerFilesTestDatabaseUrl } from './t
 // and the constraints are checked on the same rows. This file runs on its own copy of the run
 // database (global-setup.ts): the relay and the dispatcher claim every due row of a Market.
 
+const NO_WORDS = reservedWordsOf({ slugs: [], claimWords: [] });
 const PASSWORD = 'correct horse battery staple';
 const TOKEN_IN_URL = /#(ml1_[A-Za-z0-9_-]{43})$/m;
 
@@ -390,10 +395,6 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         ...params,
       ]);
 
-    /**
-     * A well-formed placeholder ciphertext of `length` characters: the v1 envelope shape
-     * ("v1." and base64url; 41 characters is the envelope of an empty plaintext, data design 4.5).
-     */
     const draftSlugOf = async (sellerId: string) =>
       (
         await sql.query<{ draft_slug: string | null }>(
@@ -402,6 +403,10 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         )
       ).rows[0]!.draft_slug;
 
+    /**
+     * A well-formed placeholder ciphertext of `length` characters: the v1 envelope shape
+     * ("v1." and base64url; 41 characters is the envelope of an empty plaintext, data design 4.5).
+     */
     const ciphertext = (length: number) => `v1.${'A'.repeat(length - 3)}`;
 
     it('holds a complete draft and refuses what its CHECKs refuse', async () => {
@@ -1015,7 +1020,8 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       ]) {
         const value = stored[column] as string;
         expect(value).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
-        for (const text of clear) expect(value).not.toContain(text);
+        // Short values (a postcode, a region code) can appear in random ciphertext by chance.
+        for (const text of clear.filter((t) => t.length >= 8)) expect(value).not.toContain(text);
       }
 
       const read = await app.get(MyFileRead).execute(context, {});
@@ -1219,6 +1225,70 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       expect(await save('admin')).toEqual({ ok: false, error: { code: 'slug.reserved' } });
       expect(await save('a--b')).toEqual({ ok: false, error: { code: 'slug.format' } });
       expect(await row(sellerId)).toMatchObject({ draft_slug: `noor-${suffix}`, version: 3 });
+    });
+
+    it('saves nothing when another unit bumped the version after the file was loaded (deterministic stale)', async () => {
+      const { sellerId } = await draftSeller();
+      const marketContext = marketOf(code);
+      const files = new PrismaSellerFileRepository(app.get(PrismaService));
+      const slug = parseShopSlug(`stale-${randomUUID().slice(0, 8)}`, NO_WORDS);
+      if (!slug.ok) throw new Error('the test slug is well formed');
+
+      const saved = await app
+        .get<UnitOfWork>(UNIT_OF_WORK)
+        .run<boolean, never>(marketContext, async () => {
+          const file = await files.findById(marketContext, sellerId);
+          // Another unit commits a save after this one read the file.
+          await sql.query(
+            'UPDATE sellers.seller_files SET version = version + 1 WHERE seller_id = $1',
+            [sellerId],
+          );
+          const applied = file!.saveSlug(slug.value, clock.now());
+          if (!applied.ok) throw new Error('the slug is accepted by the aggregate');
+          return ok(await files.saveDraft(marketContext, file!));
+        });
+      expect(saved).toEqual({ ok: true, value: false });
+      expect(await row(sellerId)).toMatchObject({ draft_slug: null, version: 2 });
+    });
+
+    it("reads a retired slug, own or another seller's, as taken through the repository mapping", async () => {
+      const { sellerId, context } = await draftSeller();
+      const suffix = randomUUID().slice(0, 8);
+      const slugs = new PrismaShopSlugRepository(app.get(PrismaService));
+      const retire = (slug: string, seller: string) =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, 'retired', true, now(), now(), 1, now())`,
+          [randomUUID(), code, slug, seller],
+        );
+      await retire(`own-${suffix}`, sellerId);
+      await retire(`other-${suffix}`, randomUUID());
+      const marketContext = marketOf(code);
+      const lookup = async (value: string) => {
+        const parsed = parseShopSlug(value, NO_WORDS);
+        if (!parsed.ok) throw new Error('the test slug is well formed');
+        return app
+          .get<UnitOfWork>(UNIT_OF_WORK)
+          .run(marketContext, async () => ok(await slugs.findBySlug(marketContext, parsed.value)));
+      };
+      const own = await lookup(`own-${suffix}`);
+      expect(own.ok && own.value).toMatchObject({ sellerId, state: 'retired' });
+      const other = await lookup(`other-${suffix}`);
+      expect(other.ok && other.value).toMatchObject({ state: 'retired' });
+
+      expect(await app.get(MyFileCheckSlug).execute(context, { slug: `own-${suffix}` })).toEqual({
+        ok: true,
+        value: { code: 'slug.taken' },
+      });
+      expect(await app.get(MyFileSaveSlug).execute(context, { slug: `other-${suffix}` })).toEqual({
+        ok: false,
+        error: { code: 'slug.taken' },
+      });
+      expect(await app.get(MyFileSaveSlug).execute(context, { slug: `own-${suffix}` })).toEqual({
+        ok: false,
+        error: { code: 'slug.taken' },
+      });
     });
 
     it('lets parallel slug saves have one winner per version, never a lost update', async () => {
