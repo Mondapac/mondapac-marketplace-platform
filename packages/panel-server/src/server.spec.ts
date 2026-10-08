@@ -322,7 +322,10 @@ describe('the upgrade handler (dev hot reload)', () => {
     created.emit(
       'upgrade',
       upgradeRequest('127.0.0.1', []),
-      { end: () => undefined, destroy: () => (destroyed = true) },
+      {
+        end: (_data: string, done: () => void) => done(),
+        destroy: () => (destroyed = true),
+      },
       Buffer.alloc(0),
     );
     expect(destroyed).toBe(true);

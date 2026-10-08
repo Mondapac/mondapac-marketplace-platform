@@ -44,8 +44,12 @@ export function createPanelServer({
     server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       if (!applyClientAddress(request, source, refuse)) {
         // Written before closing so a client sees why; the body names no value.
-        socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-        socket.destroy();
+        socket.end(
+          'HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n',
+          () => {
+            socket.destroy();
+          },
+        );
         return;
       }
       void handleUpgrade(request, socket, head);
