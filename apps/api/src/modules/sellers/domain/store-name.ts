@@ -73,18 +73,38 @@ const DIGIT_LOOK_ALIKES: Readonly<Record<string, string>> = {
   '8': 'b',
 };
 
+/** Letters with a stroke, which NFKD does not decompose, and a few more look-alikes (Hassan N1). */
+const STROKE_LETTERS: Readonly<Record<string, string>> = {
+  ł: 'l',
+  ŀ: 'l',
+  ħ: 'h',
+  ø: 'o',
+  đ: 'd',
+  ǀ: 'l',
+  ӏ: 'l',
+  η: 'h',
+  '9': 'g',
+};
+
 /**
- * The forms a token can take once accents, look-alike letters and look-alike digits are folded.
- * `1` reads as `l` or `i`, so both forms are returned (Hassan M1).
+ * The forms a name can take once accents, look-alike letters and look-alike digits are folded.
+ * The whole name is folded before it is split, so a stray mark inside a word does not cut it.
+ * `1` reads as `l` or `i`, and a capital I reads as `l`, so each reading is its own form.
  */
-function foldedForms(token: string): readonly string[] {
-  const base = token
+function foldedForms(name: string): readonly string[] {
+  const base = name
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
     .toLowerCase();
-  const letters = [...base].map((c) => LOOK_ALIKES[c] ?? DIGIT_LOOK_ALIKES[c] ?? c).join('');
-  return [letters.replaceAll('1', 'l'), letters.replaceAll('1', 'i')];
+  const letters = [...base]
+    .map((c) => LOOK_ALIKES[c] ?? STROKE_LETTERS[c] ?? DIGIT_LOOK_ALIKES[c] ?? c)
+    .join('');
+  const forms = [letters.replaceAll('1', 'l'), letters.replaceAll('1', 'i')];
+  return [...forms, ...forms.map((form) => form.replaceAll('i', 'l'))];
 }
+
+/** Claim words at least this long are also looked for inside the joined name (`HalalMart`). */
+const SUBSTRING_MIN_LENGTH = 5;
 
 /**
  * A store name (design 6.3, Q-M11): kept as typed after trimming; 1 to 100 characters after
@@ -115,16 +135,20 @@ export function parseStoreName(raw: unknown): Result<StoreName, StoreNameInvalid
 
 /**
  * The claim words found in a store name: a reviewer flag, never a refusal (3.5). The name is
- * split on anything that is not a letter or digit, and each token is folded (accents, look-alike
- * letters and digits) before it is compared, so `Halal!`, `(Halal)` and `H4LAL` are found.
+ * folded (accents, look-alike letters and digits), split on anything that is not a letter or
+ * digit, and each token is compared whole. A claim word of five letters or more is also looked
+ * for inside the joined tokens, so `HalalMart` and `H.a.l.a.l` are found; an honest name that
+ * contains one only costs the reviewer a look.
  */
 export function claimWordsIn(name: string, reserved: ReservedWords): readonly string[] {
-  const tokens = storeNameKey(name)
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((token) => token.length > 0);
   const found = new Set<string>();
-  for (const token of tokens) {
-    for (const form of foldedForms(token)) if (reserved.claimWords.has(form)) found.add(form);
+  for (const form of foldedForms(storeNameKey(name))) {
+    const tokens = form.split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 0);
+    const joined = tokens.join('');
+    for (const word of reserved.claimWords) {
+      if (tokens.includes(word)) found.add(word);
+      else if (word.length >= SUBSTRING_MIN_LENGTH && joined.includes(word)) found.add(word);
+    }
   }
   return [...found];
 }

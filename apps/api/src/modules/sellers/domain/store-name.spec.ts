@@ -44,9 +44,9 @@ describe('parseStoreName', () => {
 });
 
 describe('claimWordsIn', () => {
-  it('finds claim words per token and never as substrings', () => {
+  it('finds claim words per token; a long one also inside the joined name', () => {
     expect(claimWordsIn('Halal  Official-Meats', RESERVED_WORDS)).toEqual(['halal', 'official']);
-    expect(claimWordsIn('Halalfoods', RESERVED_WORDS)).toEqual([]);
+    expect(claimWordsIn('Halalfoods', RESERVED_WORDS)).toEqual(['halal']);
     expect(claimWordsIn('Fresh Fish', RESERVED_WORDS)).toEqual([]);
   });
 });
@@ -110,5 +110,27 @@ describe('parseStoreName: further rules (Hassan L1 to L3, Sajad)', () => {
 
   it('does not echo the name in an error', () => {
     expect(JSON.stringify(parseStoreName('secret\u0000'))).not.toContain('secret');
+  });
+});
+
+describe('claimWordsIn: split, joined and stroke forms (Hassan N1, N2)', () => {
+  it.each([
+    'Ha\u0331lal',
+    'Hal\u0336al',
+    'HalalMart',
+    'H.a.l.a.l',
+    'H a l a l',
+    'Hałal',
+    'ĦALAL',
+    'HaIal',
+    'Ηalal',
+  ])('flags %j', (name) => {
+    expect(claimWordsIn(name, RESERVED_WORDS)).toContain('halal');
+  });
+
+  it('does not flag honest names', () => {
+    for (const name of ['Pure Foods', 'Shop 4 All', 'Allah Bakery', 'Fresh 1', 'Sea Salt 7']) {
+      expect(claimWordsIn(name, RESERVED_WORDS)).toEqual([]);
+    }
   });
 });

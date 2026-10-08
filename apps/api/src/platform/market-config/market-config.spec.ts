@@ -407,7 +407,7 @@ describe('loadMarketConfigs', () => {
       [
         'a hyphenated claim word, which could never match a token',
         (c: typeof SELLERS) => void c.reservedWords.claimWords.push('non-gmo'),
-        /lower-case letters and digits, no hyphen/,
+        /lower-case letters only/,
       ],
       [
         'an empty claim word list, which would switch the claim check off',
@@ -442,7 +442,7 @@ describe('loadMarketConfigs', () => {
       [
         'a claim word with upper case',
         (c: typeof SELLERS) => void c.reservedWords.claimWords.push('Gold2'),
-        /lower-case letters and digits, no hyphen/,
+        /lower-case letters only/,
       ],
       [
         'no approval policy: a Market never defaults it',

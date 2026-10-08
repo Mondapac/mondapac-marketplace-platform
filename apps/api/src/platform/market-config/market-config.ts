@@ -373,7 +373,7 @@ const reservedWordsSchema = z.strictObject({
     .array(
       z
         .string()
-        .regex(/^[a-z0-9]+$/, 'must be lower-case letters and digits, no hyphen')
+        .regex(/^[a-z]+$/, 'must be lower-case letters only (no digit, no hyphen)')
         .max(50),
     )
     .min(1)

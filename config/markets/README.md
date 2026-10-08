@@ -76,11 +76,11 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
 - `reservedWords` (required; sellers slice 2b): `slugs` are whole shop slugs that are never held (site
   routes, platform names) and `claimWords` are the words a seller may not claim (certification
   words and the platform's own name). A `slugs` entry is lower-case letters, digits and single
-  hyphens; a `claimWords` entry is lower-case letters and digits only (no hyphen, because it is
-  compared with one token), at least one entry, none repeated, each at most 50 characters. In a
+  hyphens; a `claimWords` entry is lower-case letters only (no digit or hyphen, because it is
+  compared with folded tokens), at least one entry, none repeated, each at most 50 characters. In a
   slug a claim word as a hyphen-separated token makes it `slug.reserved`. In a store name the
   name is split on anything that is not a letter or digit and each token is folded (accents,
-  look-alike letters and digits) before the comparison; a hit is a reviewer flag that also
+  look-alike letters and digits) before the comparison, and a claim word of five letters or more is also looked for inside the joined tokens (`HalalMart`); a hit is a reviewer flag that also
   blocks the automatic approval. The lists are Market data, not literals in `sellers`' code
   (sellers design 3.5, Ali change 3); the claim group moves to a `certification` port later.
 
