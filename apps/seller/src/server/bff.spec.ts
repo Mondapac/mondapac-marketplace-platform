@@ -27,6 +27,60 @@ function post(path: string, headers: Record<string, string> = sameOrigin, body =
 const upstreamOk = () =>
   vi.fn<typeof fetch>(() => Promise.resolve(new Response('{"code":"signed-in"}', { status: 200 })));
 
+describe('relay logging', () => {
+  it('logs the status and the API correlation id for an error answer, and nothing secret', async () => {
+    const log = vi.fn();
+    const upstream = new Response('{"code":"credentials.invalid"}', {
+      status: 401,
+      headers: { 'x-correlation-id': 'abc-123' },
+    });
+    await relay(
+      config,
+      post(
+        'identity/seller/sign-in',
+        { ...sameOrigin, cookie: 'secret=1' },
+        '{"password":"hunter2"}',
+      ),
+      ['identity', 'seller', 'sign-in'],
+      () => Promise.resolve(upstream),
+      log,
+    );
+    expect(log).toHaveBeenCalledWith({
+      msg: 'panel.relay.error-answer',
+      method: 'POST',
+      path: 'identity/seller/sign-in',
+      status: 401,
+      marketId: 'AU',
+      correlationId: 'abc-123',
+    });
+    expect(JSON.stringify(log.mock.calls)).not.toContain('hunter2');
+    expect(JSON.stringify(log.mock.calls)).not.toContain('secret=1');
+  });
+
+  it('logs an unreachable API and stays quiet on success', async () => {
+    const log = vi.fn();
+    await relay(
+      config,
+      post('identity/seller/sign-in'),
+      ['identity', 'seller', 'sign-in'],
+      () => Promise.reject(new Error('down')),
+      log,
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ msg: 'panel.relay.upstream-unreachable' }),
+    );
+    const quiet = vi.fn();
+    await relay(
+      config,
+      post('identity/seller/sign-in'),
+      ['identity', 'seller', 'sign-in'],
+      () => Promise.resolve(new Response('{}', { status: 200 })),
+      quiet,
+    );
+    expect(quiet).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay', () => {
   it('answers 404 for a host that is not listed', async () => {
     const fetchImpl = upstreamOk();

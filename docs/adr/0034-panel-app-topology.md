@@ -1,9 +1,7 @@
 # ADR-0034: Panel App Topology (D2)
 
-**Status:** Proposed — 2026-10-08. For Ali (cto) and Mohammad (software-architect); Hassan
-(security-tester) must confirm decisions 2 to 4 (hosts, cookies, CSRF, session), decision 6 (CSP, HSTS)
-and the client-address gate in decision 3 before the first
-sign-in slice merges.
+**Status:** Accepted — 2026-10-08 (Ali, cto), with the deployment gates and known interim deviations
+below.
 **Amends:** ADR-0008 (layout block: adds `apps/seller`, `apps/admin`, `packages/ui`).
 **Relates to:** ADR-0008 (repository structure; `apps/web`), ADR-0018 and
 `docs/design/domain/identity.md` 6.4 (cookie, CSRF, HF7), ADR-0020 decision 3
@@ -32,13 +30,16 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
    `seller.localhost` and `admin.localhost` (never two ports of one host); an XSS in one panel
    can then neither read the other's CSRF token nor use its cookie (HF7). Hosts multiply by
    Market; the naming scheme and certificate (wildcard per Market) belong to the DevOps slice.
-   Identity spike 5 (`__Host-` on plain http, Safari) is a prerequisite of the sign-in slice.
+   **Deployment gate:** identity spike 5 (`__Host-` cookie in Safari and WebKit on plain-http
+   `*.localhost`, and over https on a real host) must pass before the first non-local environment.
+   Chromium was verified on 2026-10-08 (sign-up, mail link, confirm, sign-out, sign-in against the
+   real API). Any fallback keeps the `__Host-` prefix and `Secure`.
 3. **The panel server is the BFF.** The browser talks only to its own host. A Next.js route
    handler relays an **allowlist** of API paths (only the panel's own population routes under
    `identity/<population>` and later the routes its screens use; never swagger or health;
    `..` and encoded dots rejected). Rules:
    - **Market:** it **sets** `x-market-id` from the normalised request host (lower case, no
-     port, no trailing dot; `X-Forwarded-Host` is read only when the edge is a configured
+     trailing dot; the port stays and `host:port` is compared exactly, which is stricter; `X-Forwarded-Host` is read only when the edge is a configured
      trusted hop) through a map that is **derived from Market configuration** (`HOSTED_MARKETS`
      and `allowedOrigins`) and checked against them at start-up, not a second hand-kept list.
      It drops any `x-market-id` from the browser. An unknown host answers 404. No default Market.
@@ -101,6 +102,21 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
 - Hosts multiply by panel and Market; a wildcard certificate per Market covers them, and locally `*.localhost` needs no hosts file.
 - Two Next.js servers cost more to run than one; accepted for the isolation Hassan asked for.
 
+## Known interim deviations
+Each has the trigger that closes it.
+- **Client address.** The panel does not yet forward the browser's address, so every user would share
+  one per-origin throttle bucket on the API. A start-up tripwire (`assertClientAddressForwarding`,
+  `apps/seller/src/server/config.ts`) refuses any host that is not `*.localhost`, whatever
+  `NODE_ENV` says. It is removed only in the PR that adopts the ADR-0037 signed client-address
+  header, together with a test that the header is sent.
+- **Host map.** `PANEL_HOSTS` is a hand-kept `origin=MARKET` list. It must be derived from Market
+  configuration and checked against `HOSTED_MARKETS` and `allowedOrigins` before the tripwire is removed.
+- **Per-population `allowedOrigins`.** The API supports one list per Market. The BFF's exact Origin
+  check covers this while only the seller panel exists; the API change lands before the first
+  `apps/admin` slice merges.
+- **Correlation.** The BFF logs method, allowlisted path, status and the API's correlation id on
+  failures and 4xx/5xx answers; it never logs a body, cookie or CSRF token.
+
 ## Alternatives considered
 - **One app with route groups:** one origin for both panels breaks HF7.
 - **Browser calls the API directly with CORS:** needs credentialed CORS and exposes the
@@ -109,4 +125,4 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
   panels; an admin-only dependency would ship to sellers.
 
 ## Reviews
-Ali (cto), Mohammad (software-architect) and Hassan (security-tester) reviewed on 2026-10-08; their should-fix items are applied above. Hassan: no blockers; would sign off on Accepted with the Origin, per-population `allowedOrigins` and trusted-hop rules written in (done). Open gates for the sign-in slice: identity spike 5 and Hassan's confirmation of client-address handling. Sajad (QA) and Bagher (QC) checked consistency on 2026-10-08. Acceptance by Ali is still to be recorded here.
+Ali (cto), Mohammad (software-architect) and Hassan (security-tester) reviewed on 2026-10-08; their should-fix items are applied above. Hassan: no blockers; would sign off on Accepted with the Origin, per-population `allowedOrigins` and trusted-hop rules written in (done). Sajad (QA) and Bagher (QC) checked consistency on 2026-10-08. On PR #160 Hassan approved the sign-in slice with the start-up tripwire as the interim client-address control; Ali accepted this ADR on 2026-10-08 and made spike 5 a deployment gate. No non-local panel environment until spike 5 has passed and the ADR-0037 signer has replaced the tripwire (Kazem).

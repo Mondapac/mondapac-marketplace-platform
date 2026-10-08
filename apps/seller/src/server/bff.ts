@@ -33,6 +33,13 @@ const FORWARDED_REQUEST_HEADERS = [
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'retry-after'] as const;
 
+/** The API issues the correlation id and returns it in this header (ADR-0034 decision 3). */
+const CORRELATION_HEADER = 'x-correlation-id';
+
+/** One structured line per failed relay: ids and codes only, never a body, cookie or token. */
+export type RelayLog = (line: Record<string, string | number>) => void;
+const stdoutLog: RelayLog = (line) => console.log(JSON.stringify(line));
+
 const MAX_BODY_BYTES = 16 * 1024;
 
 /** Lower case, no trailing dot on the host name; the port stays. */
@@ -97,6 +104,7 @@ export async function relay(
   request: Request,
   path: readonly string[],
   fetchImpl: typeof fetch = fetch,
+  log: RelayLog = stdoutLog,
 ): Promise<Response> {
   const host = panelHostFor(config, request.headers.get('host'));
   if (host === undefined) return notFound();
@@ -128,7 +136,23 @@ export async function relay(
       cache: 'no-store',
     });
   } catch {
+    log({
+      msg: 'panel.relay.upstream-unreachable',
+      method: request.method,
+      path: target,
+      marketId: host.marketId,
+    });
     return jsonError(503, 'access.unavailable');
+  }
+  if (upstream.status >= 400) {
+    log({
+      msg: 'panel.relay.error-answer',
+      method: request.method,
+      path: target,
+      status: upstream.status,
+      marketId: host.marketId,
+      correlationId: upstream.headers.get(CORRELATION_HEADER) ?? '',
+    });
   }
   const headers = new Headers();
   for (const name of FORWARDED_RESPONSE_HEADERS) {
