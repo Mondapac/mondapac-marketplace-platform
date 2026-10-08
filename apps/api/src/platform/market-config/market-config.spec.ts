@@ -887,6 +887,15 @@ describe('loadMarketConfigs', () => {
       },
       reservedWords: { slugs: ['admin'], claimWords: ['gold'] },
       businessIdentifier: { scheme: 'nz-nzbn', required: false, labelKey: 'k.identifier' },
+      registerLookup: {
+        adapter: 'none',
+        manualLinkTemplate: 'https://register.example.test/find/{identifier}',
+        maxResultAgeDays: 30,
+        perAccountLimit: 5,
+        perOriginLimit: 30,
+        marketDailyBudget: 1000,
+        legalSuffixes: ['ltd', 'limited'],
+      },
       timezones: {
         countries: ['NZ'],
         byRegion: {
@@ -940,6 +949,22 @@ describe('loadMarketConfigs', () => {
           (zones) => zones.selectable.length > 1,
         ),
       ).toBe(true);
+    });
+
+    it('has a different register adapter and different limits in the two Market fixtures', () => {
+      const [first, second] = [
+        ...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values(),
+      ];
+
+      expect(first?.sellers?.registerLookup.adapter).not.toBe(
+        second?.sellers?.registerLookup.adapter,
+      );
+      expect(first?.sellers?.registerLookup.marketDailyBudget).not.toBe(
+        second?.sellers?.registerLookup.marketDailyBudget,
+      );
+      expect(first?.sellers?.registerLookup.legalSuffixes).not.toEqual(
+        second?.sellers?.registerLookup.legalSuffixes,
+      );
     });
 
     it('lists different reserved words in the two Market fixtures', () => {
@@ -1032,6 +1057,73 @@ describe('loadMarketConfigs', () => {
         'an unknown key in businessIdentifier',
         (c: typeof SELLERS) =>
           void ((c.businessIdentifier as Record<string, unknown>).extra = true),
+        /unrecognized/i,
+      ],
+      [
+        'no registerLookup: a Market never defaults its register',
+        (c: typeof SELLERS) => void delete (c as { registerLookup?: unknown }).registerLookup,
+        /registerLookup/,
+      ],
+      [
+        'an adapter with upper case',
+        (c: typeof SELLERS) => void (c.registerLookup.adapter = 'ABR'),
+        /lower-case adapter token/,
+      ],
+      [
+        'a manual link that is not https',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'http://r.example.test/{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a manual link without the placeholder',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'https://r.example.test/find'),
+        /https URL/,
+      ],
+      [
+        'a manual link with the placeholder twice',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate =
+            'https://r.example.test/{identifier}/{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a manual link whose host is the placeholder',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate = 'https://{identifier}.example.test/'),
+        /https URL/,
+      ],
+      [
+        'a manual link with credentials',
+        (c: typeof SELLERS) =>
+          void (c.registerLookup.manualLinkTemplate =
+            'https://user:pw@r.example.test/{identifier}'),
+        /https URL/,
+      ],
+      [
+        'a result age of zero days',
+        (c: typeof SELLERS) => void (c.registerLookup.maxResultAgeDays = 0),
+        /maxResultAgeDays|>=1/,
+      ],
+      [
+        'a per-account limit that is not an integer',
+        (c: typeof SELLERS) => void (c.registerLookup.perAccountLimit = 2.5),
+        /perAccountLimit|integer/,
+      ],
+      [
+        'a Market budget of zero',
+        (c: typeof SELLERS) => void (c.registerLookup.marketDailyBudget = 0),
+        /marketDailyBudget|>=1/,
+      ],
+      [
+        'a legal suffix repeated',
+        (c: typeof SELLERS) => void c.registerLookup.legalSuffixes.push('ltd'),
+        /must not repeat an entry/,
+      ],
+      [
+        'an unknown key in registerLookup',
+        (c: typeof SELLERS) => void ((c.registerLookup as Record<string, unknown>).extra = 1),
         /unrecognized/i,
       ],
       [

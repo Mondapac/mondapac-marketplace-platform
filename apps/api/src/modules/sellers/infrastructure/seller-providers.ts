@@ -72,7 +72,7 @@ import { HmacIdentifierIndex } from './hmac-identifier-index';
 import { HmacRateCounterKeys, localSellersSecret } from './hmac-rate-counter-keys';
 import { MarketConfigIdentifierSchemes } from './identifier-schemes';
 import { NoneLocationTimezoneResolver } from './location-timezone-resolvers';
-import { NoRegisterLookupPolicy } from './none-register-lookup-policy';
+import { MarketConfigRegisterLookupPolicy } from './market-config-register-lookup-policy';
 import { PrismaRegisterCheckRepository } from './prisma-register-check.repository';
 import {
   fakeRegisterLookupAllowed,
@@ -101,6 +101,11 @@ const SELLERS_SECRET = Symbol('SELLERS_SECRET');
  * (dependency-cruiser `persistence-internals-are-private`, `subject-keys-only-in-infrastructure`,
  * `seller-access-contract-is-for-sellers`).
  */
+/** The register adapters this environment has: the `fake` only on an explicit dev or test start. */
+function availableRegisterAdapters(config: AppConfig): ReadonlySet<string> {
+  return new Set(fakeRegisterLookupAllowed(config) ? [FAKE_REGISTER_ADAPTER] : []);
+}
+
 export const sellerProviders: readonly FactoryProvider[] = [
   {
     provide: SELLER_FILE_REPOSITORY,
@@ -193,10 +198,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
       new PrismaRegisterCheckRepository(prisma),
   },
   {
-    // `none` for every Market until Market configuration carries `sellers.registerLookup`
-    // (design 4.1; a shared-file change, slice 4a note in the data design).
+    // The start-up check of design 4.2 (Hassan L3): a hosted Market naming a register adapter this
+    // environment does not have throws here, so the Region Stack does not start.
     provide: REGISTER_LOOKUP_POLICY,
-    useFactory: (): RegisterLookupPolicy => new NoRegisterLookupPolicy(),
+    inject: [MarketRegistry, APP_CONFIG],
+    useFactory: (markets: MarketRegistry, config: AppConfig): RegisterLookupPolicy =>
+      new MarketConfigRegisterLookupPolicy(markets, availableRegisterAdapters(config)),
   },
   {
     // The adapters of this environment: the `fake` only where a development or test start is
@@ -206,7 +213,7 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [REGISTER_LOOKUP_POLICY, APP_CONFIG],
     useFactory: (policy: RegisterLookupPolicy, config: AppConfig): BusinessRegisterLookups => {
       const adapters = new Map<string, BusinessRegisterLookup>();
-      if (fakeRegisterLookupAllowed(config)) {
+      if (availableRegisterAdapters(config).has(FAKE_REGISTER_ADAPTER)) {
         adapters.set(FAKE_REGISTER_ADAPTER, new FakeRegisterLookup());
       }
       return new MarketConfigRegisterLookups(policy, adapters);

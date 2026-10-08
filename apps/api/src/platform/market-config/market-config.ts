@@ -626,8 +626,7 @@ const reservedWordsSchema = z.strictObject({
  * scheme the Market uses, whether a seller must give one, and the translation key of its label.
  * `scheme` names an adapter in `sellers/infrastructure/identifier-schemes/` (a file per scheme);
  * that the name is a known adapter is checked by `sellers` at start-up, not here, because the
- * platform does not know the module's adapters. The register-lookup keys (`registerLookup.*`)
- * join in slice 4a.
+ * platform does not know the module's adapters.
  */
 const businessIdentifierSchema = z.strictObject({
   scheme: z
@@ -637,6 +636,72 @@ const businessIdentifierSchema = z.strictObject({
   /** Required: a Market never defaults it (design 4.1; AC 5, AC 12). */
   required: z.boolean(),
   labelKey: z.string().min(1).max(64),
+});
+
+/** The placeholder a manual register link carries exactly once (sellers design 4.1). */
+const IDENTIFIER_PLACEHOLDER = '{identifier}';
+
+/**
+ * A manual register link: https, no credentials, the placeholder exactly once and only after the
+ * host (so a value can never choose the host). The reviewer's page builds the link by code.
+ */
+function isManualLinkTemplate(template: string): boolean {
+  if (template.split(IDENTIFIER_PLACEHOLDER).length !== 2) return false;
+  try {
+    const probe = 'zzidentifierzz';
+    const url = new URL(template.replace(IDENTIFIER_PLACEHOLDER, probe));
+    return (
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      !url.host.includes(probe)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** A legal suffix such as "pty ltd": letters, digits, spaces and dots, folded before compare. */
+const legalSuffixSchema = z
+  .string()
+  .min(1)
+  .max(40)
+  .regex(/^[^\p{C}<>]+$/u, 'must be printable text without angle brackets');
+
+/**
+ * The `registerLookup` of the `sellers` section (sellers design 4.1, 6.5; data design 21):
+ * the business register a Market checks a seller against. Required, because a Market never
+ * defaults it; `adapter` is `none` for a Market with no register (AC 34), and then the other
+ * values are unused but still validated, so switching the adapter on is a one-word change.
+ * `adapter` names a file in `sellers/infrastructure/register-lookups/`; that the name is a known
+ * adapter is checked by `sellers` at start-up, not here. The three limits are per 24 hours.
+ */
+const registerLookupSchema = z.strictObject({
+  adapter: z
+    .string()
+    .max(32)
+    .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, 'must be a lower-case adapter token such as "abr"'),
+  /** The register's public search page, for the reviewer's manual check (design 7.7). */
+  manualLinkTemplate: z
+    .string()
+    .max(300)
+    .refine(
+      isManualLinkTemplate,
+      'must be an https URL with {identifier} exactly once, after the host',
+    ),
+  /** How old a register answer may be when a file is approved, in whole days. */
+  maxResultAgeDays: z.number().int().min(1).max(365),
+  /** New identifier values one account may look up per 24 hours. */
+  perAccountLimit: z.number().int().min(1).max(1000),
+  /** Lookups one origin (client address) may make per 24 hours. */
+  perOriginLimit: z.number().int().min(1).max(10000),
+  /** Lookups a whole Market may make per 24 hours (the register's quota). */
+  marketDailyBudget: z.number().int().min(1).max(1000000),
+  /** Legal suffixes dropped from business names before they are compared (design 3.4). */
+  legalSuffixes: z
+    .array(legalSuffixSchema)
+    .max(50)
+    .refine((list) => new Set(list).size === list.length, 'must not repeat an entry'),
 });
 
 /**
@@ -650,6 +715,8 @@ const sellersSchema = z
     reservedWords: reservedWordsSchema,
     /** Required: a Market never defaults its identifier scheme (sellers slice 3). */
     businessIdentifier: businessIdentifierSchema,
+    /** Required: a Market never defaults its register (sellers slice 4a; `none` is a value). */
+    registerLookup: registerLookupSchema,
     /**
      * Whether a new seller starts `pending` (true) or `approved` (false) (sellers design 4.1;
      * identity design 3.3, SEL-03, AC 5). Required: a Market never defaults it. It is the seed
