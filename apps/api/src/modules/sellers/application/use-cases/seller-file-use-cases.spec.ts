@@ -62,6 +62,14 @@ class FakeFiles implements SellerFileRepository {
     return Promise.resolve(true);
   }
 
+  findById(): Promise<SellerFile | null> {
+    return Promise.reject(new Error('not used by slice 1'));
+  }
+
+  saveDraft(): Promise<boolean> {
+    return Promise.reject(new Error('not used by slice 1'));
+  }
+
   existingIds(market: MarketContext, ids: readonly Id<'Seller'>[]) {
     this.reads += 1;
     return Promise.resolve(
@@ -259,6 +267,7 @@ describe('the Market policy of sellers (design 14.1)', () => {
         approvalRequired: () => {
           throw new Error('policy unreadable');
         },
+        reservedWords: () => null,
       },
       outbox: { append: () => Promise.resolve() },
       clock: new FixedClock(START),
