@@ -3,7 +3,7 @@ import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { MarketContextFactory, type MarketContextError } from './market-context.factory';
 import { MARKET_ID_HEADER } from './market-id-header';
-import { attachMarketContext } from './market.decorator';
+import { attachMarketContext } from './attached-market-context';
 import { MARKET_CONTEXT_EXEMPTION } from './no-market-context.decorator';
 
 /**

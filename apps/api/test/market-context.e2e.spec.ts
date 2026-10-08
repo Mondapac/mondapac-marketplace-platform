@@ -12,6 +12,8 @@ import { UuidV7IdGenerator } from '../src/platform/ids/uuid-v7-id-generator';
 import { MarketContextFactory } from '../src/platform/market-context/market-context.factory';
 import { MarketContextGuard } from '../src/platform/market-context/market-context.guard';
 import { MarketContextModule } from '../src/platform/market-context/market-context.module';
+import { RateLimitGuard } from '../src/platform/rate-limit/rate-limit.guard';
+import { ActorGuard } from '../src/platform/call-context/actor.guard';
 import {
   ExemptMarketReaderController,
   MarketEchoController,
@@ -205,8 +207,8 @@ describe('market resolution (HTTP, platform-foundations 5.1)', () => {
   });
 
   describe('composition root', () => {
-    it('registers MarketContextGuard as the first and only global guard, in AppModule only', () => {
-      expect(GLOBAL_GUARDS).toEqual([MarketContextGuard]);
+    it('registers MarketContextGuard, RateLimitGuard and ActorGuard, in order, in AppModule only', () => {
+      expect(GLOBAL_GUARDS).toEqual([MarketContextGuard, RateLimitGuard, ActorGuard]);
 
       const declared: { module: string; guard: unknown }[] = [];
       for (const moduleRef of app.get(ModulesContainer).values()) {

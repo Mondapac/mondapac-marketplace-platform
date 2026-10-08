@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { Writable } from 'node:stream';
 import type { INestApplication, Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
@@ -36,6 +36,8 @@ export interface TestAppOptions {
   readonly env?: Record<string, string>;
   /** Test-only controllers registered next to the application's own. */
   readonly controllers?: readonly Type[];
+  /** Replaces providers before compiling (e.g. fakes of the database ports in a no-database suite). */
+  readonly override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
 }
 
 /**
@@ -53,10 +55,11 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     },
   });
 
-  const moduleRef = await Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [AppModule.register({ config: testAppConfig(options.env), logDestination })],
     controllers: [...(options.controllers ?? [])],
-  }).compile();
+  });
+  const moduleRef = await (options.override ? options.override(builder) : builder).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
   app.useLogger(app.get(Logger));
   configureApp(app);

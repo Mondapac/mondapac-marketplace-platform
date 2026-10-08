@@ -85,6 +85,36 @@ module.exports = {
       },
     },
     {
+      // W3 of platform-foundations 8.2 (identity slice 1d).
+      name: 'market-context-is-attached-by-the-guard',
+      comment:
+        'The request-to-Market map is imported only by MarketContextGuard, which attaches a ' +
+        "request's Market, and by the @Market() decorator file, which reads it.",
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/market-context/market-context\\.guard\\.ts$',
+          '^src/platform/market-context/market\\.decorator\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/market-context/attached-market-context\\.ts$' },
+    },
+    {
+      // Platform-foundations 5.2 rule 4 (identity slice 1d), the same shape as W3.
+      name: 'request-actor-is-attached-by-the-actor-guard',
+      comment:
+        "The request-to-actor map is imported only by ActorGuard, which attaches a request's " +
+        'actor, and by the @Call() decorator file, which builds the CallContext from it.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/call-context/actor\\.guard\\.ts$',
+          '^src/platform/call-context/call-context\\.decorator\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/call-context/request-actor\\.ts$' },
+    },
+    {
       // Rule 8.
       name: 'kernel-testing-only-in-tests',
       comment:

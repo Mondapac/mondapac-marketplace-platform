@@ -6,6 +6,17 @@
   "defaultCurrency": "JPY",
   "settlementCurrency": "JPY",
   "timezone": "Asia/Tokyo",
+  "requestLimits": {
+    "anonymousIdentityPerMinute": 10,
+    "defaultPerMinute": 200
+  },
+  "identity": {
+    "password": {
+      "minLength": 16,
+      "maxLength": 100
+    },
+    "existingAccountNoticeHours": 12
+  },
   "sellers": {
     "address": {
       "fields": [

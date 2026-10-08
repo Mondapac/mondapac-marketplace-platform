@@ -19,7 +19,10 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fromApi = createRequire(path.join(root, 'apps/api/package.json'));
 // The built platform code that attaches a request's MarketContext after an isMinted check.
-const platformFile = path.join(root, 'apps/api/dist/platform/market-context/market.decorator.js');
+const platformFile = path.join(
+  root,
+  'apps/api/dist/platform/market-context/attached-market-context.js',
+);
 // Both market fixtures (ADR-0003 decision 9): the launch Market and the synthetic one.
 const markets = ['AU', 'ZZ'];
 const problems = [];
