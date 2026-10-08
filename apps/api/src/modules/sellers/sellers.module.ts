@@ -36,6 +36,7 @@ import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-files.job';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
+import { MyFileController } from './presentation/my-file.controller';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
 /**
@@ -90,6 +91,7 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [IdentityModule],
+  controllers: [MyFileController],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
@@ -110,8 +112,9 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(SellerSummaries, { unitOfWork: true, files: true }),
-    // Slice 2, the seller's draft (design 6.2). Not over HTTP yet; the permission key is held
-    // once identity slice 8a brings the registry and role keys (until then the check refuses).
+    // Slice 2, the seller's draft (design 6.2), over HTTP through MyFileController. The
+    // permission key is held once identity slice 8a brings the registry and role keys (until
+    // then the gate refuses every route with access.denied).
     useCaseProvider(MyFileRead, {
       unitOfWork: true,
       files: true,
