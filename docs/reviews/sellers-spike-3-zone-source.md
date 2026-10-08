@@ -39,10 +39,10 @@ legal counsel's reading differs. Hossein is not a lawyer; this is a reading of t
 Spike 3 itself (a postcode table from a licensed source) is closed: no usable source, and with a
 seller-chosen zone the table is not needed (`postcodeExceptions` can be dropped).
 
-## Proposed design (reviewed by Mohammad and Hassan, 2026-10-08; not yet an approved amendment)
-This reverses 16.2 item 4 and 7.1a row 9 of `docs/design/domain/sellers.md`, so it is a sellers
-mini-review (rule 10) for Ali, Hassan, Mojtaba and Hadi. Nothing in `sellers.md` or the data design
-is changed by this PR.
+## Design (reviewed by Mohammad and Hassan; accepted with changes by the sellers mini-review, 2026-10-08)
+This reverses 16.2 item 4 and 7.1a row 9 of `docs/design/domain/sellers.md`, so it was a sellers
+mini-review (rule 10) for Ali, Hassan, Mojtaba and Hadi; the result is in "Mini-review result" below.
+Nothing in `sellers.md` or the data design is changed by this PR; Mohammad and Mojtaba apply the amendments.
 
 **Rule (Mohammad).** Config 4.1: `timezones.byRegion` becomes, per region, `{ default, selectable[] }`
 with `default` in `selectable`, checked against the runtime zone database at boot. The lists come
@@ -55,7 +55,7 @@ zone change withdraws it like any reviewed field. An approved revision never cha
 After approval (Mohammad's option B): a `zone-change` revision written and approved automatically
 in one unit, allowed only when the zone is the only change, is on the list for the approved address's
 region and no revision is pending; it needs the 10-minute re-confirmation, is refused in acting-as,
-is rate limited, audited, and mails the owner; the pointer moves so `approvedSellerZones` answers
+is rate limited, audited, and mails the Seller Owner; the pointer moves so `approvedSellerZones` answers
 the new zone at once. An address change also carries a chosen zone.
 
 **Guardrails (Hassan; 1, 2, 3 and 6 block merge).**
@@ -112,7 +112,22 @@ design (revision `kind` gets `zone-change`; a `timezone_source` column; Mojtaba 
 (S3, S7, D8, F18; a zone picker, Figma first per ADR-0017); `certification.md` 4.2 rule 2 / T2.
 Slices: 2 (config, picker, ZZ), 5 (withdraw and reviewer marker), 10 (`zone-change` revision), 8, 17.
 
-**Open (not decided here).** Option B lets a change take effect without a reviewer, which 3.1 removed
-at G2 (Ali and Hassan); whether an admin may pick any zone of the Market; the rate-limit numbers
-(Hassan); whether open orders keep their cut-off (the `ordering` design); whether
-Australia/Lindeman is listed for QLD (Hadi).
+## Mini-review result (2026-10-08, rule 10)
+All four reviewers: **accept with changes**. The changes below are required in the amendments; none was applied to `sellers.md` or the data design by this PR.
+
+**Rulings that replace the "Open" list.**
+- **Option B is decided (Ali, with Hassan's conditions).** A post-approval zone change needs no reviewer because a chosen zone can only bring a certificate's expiry forward (guardrail 3). It is a narrow exception to 3.1 (G2). Conditions: Seller Owner only, through the protected `sellers.business-identity.edit` key; the notice goes to the sign-in address, not the contact email; refused in acting-as; the 10-minute re-confirmation. The `zone-change` revision is byte-identical to the previous approved revision except the zone and its source (domain rule plus test), is approved by the rule `zone-change.auto` (never counted as a human review) and inherits its parent's approval facts (so a closed ServiceArea cannot block an existing seller, 7.2 row 2 joins the amendments list).
+- **Admins use the same per-region list as sellers (Ali, Hassan).** A zone outside the list goes only through `seller.edit-approved-identity` (reviewed). Each admin choice has source `admin` and is audited.
+- **Server-side checks in one unit (Hassan).** The zone-change use case checks "only the zone differs" (content hash), "no revision pending" and "zone on the approved address's region list" against the stored approved revision, in the same unit as the pointer move, with an optimistic version on `SellerFile`; a test covers the race with `request-change`.
+- **Boot fails** (not warns) when a listed zone is not a canonical `zone1970.tab` ID (no `backward` links such as `Australia/NSW`), is `Etc/*`, does not belong to the Market, or `default` is not in `selectable`. `chooseZone` compares exact strings and never normalises.
+- **Guardrail 3 contract (Hassan, Ali).** `approvedSellerZones` returns `{ zone, addressZone }`; the key-set test and the byte-identical test across caller kinds (7.1a rows 5 and 10, AU and ZZ) cover both; a missing `addressZone` gives `seller-zone-missing`. Certification uses the earliest of: the boundary stored at approval, the chosen zone's and the address zone's boundary. Test: a Sydney-address seller choosing `Australia/Broken_Hill` never gains the 30 minutes. This is a **fixed-contract change**: the certification amendment (4.2 rule 2, T2, ADR-0028 decision 8) must merge **before** any seller-chosen zone can reach an approved revision, that is before sellers slice 2.
+- **Hints (Hassan, Ali).** One server-side order: region default, then the browser zone or the GPS zone, only for a draft whose zone nobody has set; then the seller or an admin may change it. All hints are untrusted text (at most 64 characters), pass the region list and the address-wins rule, and are dropped silently otherwise. The browser zone has its own source value `browser`, never `location`. The server rounds coordinates to 2 decimals itself; the later location slice redacts coordinates from request logs, errors and APM, never echoes them in validation errors, and has a canary-coordinate log test. IP lookup stays unbuilt (new privacy review and licence check).
+- **Rate limits (Hassan).** Post-approval `zone-change`: 1 per 24 h and 3 per rolling 90 days per seller file, also counted in the 5 per 24 h submission limit, checked inside the unit (Mojtaba: count `zone-change` revisions in the unit under the version lock, no new counter). Draft zone saves: the existing saves limit. Admin corrections: 30 per admin per 24 h. Location or IP lookups (later): 10 per minute and 50 per 24 h per account.
+- **Lindeman (Hadi).** QLD is `{ default: Australia/Brisbane, selectable: [Brisbane, Lindeman] }`; the list is whatever `zone1970.tab` gives for the region and the boot check confirms it. A seller who does nothing gets the region default, so "can sell" is never blocked (owner to confirm).
+- **Open-order cut-offs** go to the `ordering` design; guardrail 8 is enough for now. A real Broken Hill seller loses 30 minutes of certificate validity; this fails closed and goes in the brief's risks.
+
+**Data design changes (Mojtaba), made in the migration of the slice that first creates each column.** `business_file_revisions.kind` allows `zone-change` and a CHECK keeps it `approved`/`superseded`; a zone-change is a full snapshot; `timezone_source` (`default`, `browser`, `location`, `seller`, `admin`) on `seller_files` (slice 2) and on revisions (slice 5), with CHECKs; a clear `address_timezone` column on both (the address is encrypted and the zero-unwrap rule forbids decrypting it to derive the zone); no column for coordinates, ever; `sellers.timezone.changed` audit row with codes and ids only. Open for Ali, Hassan and Hadi before slice 5's CHECKs: an admin's post-approval correction uses `zone-change` with `author_kind = 'admin'` (Mojtaba's recommendation) or the existing admin `identity-change`.
+
+**Slices (Hadi).** 2a: config `{ default, selectable[] }`, boot check, picker, domain rule, AC 8 (rewritten) on AU and ZZ. 2b: the `LocationTimezoneResolver` port with `none` and `fake` adapters and the `suggestedZone` rule; no coordinates over HTTP yet. The browser pre-fill is part of the UI step (Figma first, ADR-0017). Slice 10 (`zone-change`) comes after the certification amendment. The real GPS adapter is a later tier-A slice (Hassan reviews; ODbL licence check and counsel on the privacy notice).
+
+**Approvals still needed in the amendments:** Hassan on guardrails 1, 2, 3 and 6; Mojtaba on the `kind` and `timezone_source` columns; Hadi on the Lindeman listing, AC 8 and the owner-facing text; the brief change log, brief line 162 (ADR-0005 decisions 1 and 2) and `sellers.md` 19 record the owner's decision of 2026-10-08.
