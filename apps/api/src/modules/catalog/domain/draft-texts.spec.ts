@@ -56,6 +56,23 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     if (!result.ok) expect(result.error.code).toBe('working-copy.invalid-content');
   });
 
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'refuses %s as an attribute code, option code or variant id',
+    (name) => {
+      expect(
+        read(JSON.parse(`{"attributeValues":{"${name}":"x"}}`) as Record<string, unknown>).ok,
+      ).toBe(false);
+      expect(read({ variants: [{ variantId: name }] }).ok).toBe(false);
+      expect(read({ variants: [{ variantId: 'v1', optionValues: { [name]: 'a' } }] }).ok).toBe(
+        false,
+      );
+    },
+  );
+
+  it('does not read a property every object has as a stored value', () => {
+    expect(valueAt({ attributeValues: {} }, ['attributeValues', 'toString'])).toBeUndefined();
+  });
+
   it('accepts an empty draft', () => {
     expect(read({})).toEqual({ ok: true, value: [] });
   });
@@ -130,7 +147,7 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
       const all = read(content);
       if (!all.ok) throw new Error('shape');
       const refusedPaths = all.value.filter((t) => t.text.includes('halal')).map((t) => t.path);
-      const restored = restoreRefused(content, stored, refusedPaths);
+      const restored = restoreRefused(content, stored, refusedPaths)!;
       expect(valueAt(restored, ['texts', first, 'name'])).toBe('Old name');
       expect(valueAt(restored, ['texts', first, 'description'])).toBe('fine');
       expect(valueAt(restored, ['attributeValues', 'colour'])).toBe('red');
@@ -145,6 +162,13 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
       const content = { texts: { [first]: { name: 'halal' } } };
       const restored = restoreRefused(content, null, [['texts', first, 'name']]);
       expect(valueAt(restored, ['texts', first, 'name'])).toBeUndefined();
+    });
+
+    it('fails closed when a refused place cannot be found', () => {
+      const content = { texts: { [first]: { name: 'halal' } } };
+      expect(
+        restoreRefused(content, null, [['variants', { variantId: 'v9' }, 'labels', first]]),
+      ).toBeNull();
     });
   });
 });

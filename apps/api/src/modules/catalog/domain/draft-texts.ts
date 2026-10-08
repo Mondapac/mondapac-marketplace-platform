@@ -25,6 +25,9 @@ export interface DraftText {
 
 /** A code, an id or a locale key as the draft may hold it: bounded, no free text. */
 const KEY = /^[A-Za-z0-9_-]{1,64}$/;
+/** Names every object already has; a code or id with one would read or write the prototype. */
+const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const isKey = (value: string): boolean => KEY.test(value) && !RESERVED_KEYS.has(value);
 const MAX_LIST = 500;
 const TOP_KEYS = [
   'texts',
@@ -69,7 +72,7 @@ export function draftTextsOf(
   if (!closedKeys(content, TOP_KEYS)) return invalid;
   if (!idList(content['categoryIds']) || !idList(content['imageIds'])) return invalid;
   const tax = content['taxCategoryCode'];
-  if (tax !== undefined && (typeof tax !== 'string' || !KEY.test(tax))) return invalid;
+  if (tax !== undefined && (typeof tax !== 'string' || !isKey(tax))) return invalid;
 
   const texts = content['texts'];
   if (texts !== undefined) {
@@ -102,7 +105,7 @@ export function draftTextsOf(
   if (attributes !== undefined) {
     if (!isObject(attributes) || Object.keys(attributes).length > MAX_LIST) return invalid;
     for (const [code, value] of Object.entries(attributes)) {
-      if (!KEY.test(code)) return invalid;
+      if (!isKey(code)) return invalid;
       const path = ['attributeValues', code];
       const place = (locale: string, text: string): DraftText => ({
         field: 'product.attribute-text-value',
@@ -136,7 +139,7 @@ export function draftTextsOf(
         return invalid;
       }
       const variantId = variant['variantId'];
-      if (typeof variantId !== 'string' || !KEY.test(variantId)) return invalid;
+      if (typeof variantId !== 'string' || !isKey(variantId)) return invalid;
       // A path names a variant by id, so a repeated id would hide the second one's texts from the check.
       if (seenIds.has(variantId)) return invalid;
       seenIds.add(variantId);
@@ -144,7 +147,7 @@ export function draftTextsOf(
       if (options !== undefined) {
         if (!isObject(options)) return invalid;
         for (const [code, option] of Object.entries(options)) {
-          if (!KEY.test(code) || typeof option !== 'string' || !KEY.test(option)) return invalid;
+          if (!isKey(code) || typeof option !== 'string' || !isKey(option)) return invalid;
         }
       }
       const labels = variant['labels'];
@@ -167,7 +170,8 @@ export function draftTextsOf(
 }
 
 function child(parent: unknown, step: DraftStep): unknown {
-  if (typeof step === 'string') return isObject(parent) ? parent[step] : undefined;
+  if (typeof step === 'string')
+    return isObject(parent) && Object.hasOwn(parent, step) ? parent[step] : undefined;
   return Array.isArray(parent)
     ? (parent as unknown[]).find((item) => isObject(item) && item['variantId'] === step.variantId)
     : undefined;
@@ -193,21 +197,21 @@ export function changedTexts(
 /**
  * A copy of the draft in which each refused place keeps its last saved value, or has none when
  * nothing was saved there: a refused text is never written (design 6.1). The input is not
- * changed.
+ * changed. `null` when a refused place cannot be found (the caller then refuses the whole save).
  */
 export function restoreRefused(
   content: Readonly<Record<string, unknown>>,
   stored: Readonly<Record<string, unknown>> | null,
   refused: readonly (readonly DraftStep[])[],
-): Record<string, unknown> {
+): Record<string, unknown> | null {
   const copy = JSON.parse(JSON.stringify(content)) as Record<string, unknown>;
   for (const path of refused) {
     const last = path[path.length - 1];
-    if (last === undefined) continue;
+    // A place that cannot be found is never skipped: the refused text would then be written.
+    if (last === undefined || typeof last !== 'string') return null; // a variant step is never the last one
     const parent = valueAt(copy, path.slice(0, -1));
     const before = stored === null ? undefined : valueAt(stored, path);
-    if (typeof last !== 'string') continue; // a variant step is never the last one
-    if (!isObject(parent)) continue;
+    if (!isObject(parent)) return null;
     if (before === undefined) delete parent[last];
     else parent[last] = JSON.parse(JSON.stringify(before)) as unknown;
   }

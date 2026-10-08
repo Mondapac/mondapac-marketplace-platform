@@ -397,5 +397,30 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
       ok: false,
       error: { code: 'request.throttled', retryAfterSeconds: 60 },
     });
+    // The limit is spent before the check: a throttled save costs the matcher nothing.
+    r.matched.length = 0;
+    await r.useCase.execute(
+      admin,
+      request(product.state.id, { texts: { [locale]: { name: 'Dates' } } }),
+    );
+    expect(r.matched).toHaveLength(0);
+  });
+
+  it('refuses a draft that repeats a variant id before anything is checked or written', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const saved = await r.useCase.execute(
+      contextOf('admin'),
+      request(product.state.id, {
+        variants: [
+          { variantId: 'v1', labels: { [locale]: 'Large' } },
+          { variantId: 'v1', labels: { [locale]: 'halal' } },
+        ],
+      }),
+    );
+    expect(saved).toEqual({ ok: false, error: { code: 'working-copy.invalid-content' } });
+    expect(r.matched).toHaveLength(0);
+    expect(r.copies.has(product.state.id)).toBe(false);
   });
 });

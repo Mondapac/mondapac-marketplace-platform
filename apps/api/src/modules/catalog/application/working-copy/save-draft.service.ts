@@ -92,6 +92,11 @@ export class SaveDraft {
     const texts = draftTextsOf(content, locales.supported, locales.default);
     if (!texts.ok) return err(texts.error);
 
+    // The saves limit is spent before the read and the check, so a throttled account costs the
+    // matcher nothing (Hassan M2).
+    const throttled = await this.deps.save.reserveSaves(context);
+    if (throttled !== null) return err(throttled);
+
     // A read-only unit opens no transaction (ADR-0025); the save below opens its own.
     const read = await this.deps.unitOfWork.run(
       market,
@@ -128,14 +133,16 @@ export class SaveDraft {
         refusedPaths.push(changed[index]!.path);
       });
       refused = list;
-      amended = restoreRefused(content, stored?.content ?? null, refusedPaths);
+      const restored = restoreRefused(content, stored?.content ?? null, refusedPaths);
+      if (restored === null) return err({ code: 'working-copy.invalid-content' });
+      amended = restored;
     }
 
-    const saved = await this.deps.save.execute(context, {
-      productId: input.productId,
-      content: amended,
-      variantIds: input.variantIds,
-    });
+    const saved = await this.deps.save.execute(
+      context,
+      { productId: input.productId, content: amended, variantIds: input.variantIds },
+      { savesReserved: true },
+    );
     if (!saved.ok) return saved;
     return ok({ ...saved.value, refusedFields: refused });
   }

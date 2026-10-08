@@ -68,6 +68,11 @@ export interface SaveWorkingCopyDependencies {
  * Concurrent saves of the same draft are last-write-wins on `content`: the product version only
  * moves when the variant registry changes.
  */
+type SaveWorkingCopyReserveFailure =
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
+  | { readonly code: 'access.unavailable' };
+
 export class SaveWorkingCopy {
   readonly #logger = new Logger('SaveWorkingCopy');
 
@@ -76,14 +81,18 @@ export class SaveWorkingCopy {
   async execute(
     context: CallContext,
     input: SaveWorkingCopyInput,
+    options: { readonly savesReserved?: boolean } = {},
   ): Promise<Result<SaveWorkingCopyOutput, SaveWorkingCopyFailure>> {
     const author = authorOf(context);
     if (author === null) return err({ code: 'access.denied' });
     if (!isStorableContent(input.content)) return err({ code: 'working-copy.invalid-content' });
     const content = input.content;
 
-    const throttled = await this.#reserve(context, author.accountId);
-    if (throttled !== null) return err(throttled);
+    // A caller that spent the limit itself (SaveDraft, before its claim check) says so here.
+    if (options.savesReserved !== true) {
+      const throttled = await this.#reserve(context, author.accountId);
+      if (throttled !== null) return err(throttled);
+    }
 
     const { market } = context;
     const { unitOfWork, products, workingCopies, outbox, clock, ids } = this.deps;
@@ -143,6 +152,13 @@ export class SaveWorkingCopy {
       if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
       throw error;
     }
+  }
+
+  /** Spends one save from the account's limits; `null` when allowed. */
+  async reserveSaves(context: CallContext): Promise<SaveWorkingCopyReserveFailure | null> {
+    const author = authorOf(context);
+    if (author === null) return { code: 'access.denied' };
+    return this.#reserve(context, author.accountId);
   }
 
   async #reserve(
