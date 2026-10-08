@@ -31,6 +31,7 @@ import { DescribeActor } from './describe-actor.use-case';
 import {
   LINK_KEPT_AFTER_SPENT_HOURS,
   MAX_RECORD_DAYS_PER_RUN,
+  INVITATION_KEPT_AFTER_DECISION_HOURS,
   PurgeExpired,
   SESSION_KEPT_AFTER_EXPIRY_HOURS,
   THROTTLE_KEPT_HOURS,
@@ -333,6 +334,8 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         throttles: fakes.throttleRepository,
         records: fakes.recordRepository,
         links: fakes.linkRepository,
+        challenges: fakes.challengeRepository,
+        invitations: fakes.invitationRepository,
         policy,
         clock,
       });
@@ -355,6 +358,16 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         throttles: [],
         records: [],
         links: [],
+        challenges: [],
+        invitations: [],
+      };
+      fakes.challengeRepository.purgeExpired = (_m, before) => {
+        cutoffs.challenges!.push(before);
+        return Promise.resolve(5);
+      };
+      fakes.invitationRepository.purge = (_m, now, decidedBefore) => {
+        cutoffs.invitations!.push(now, decidedBefore);
+        return Promise.resolve(6);
       };
       fakes.linkRepository.purgeSpent = (_m, before) => {
         cutoffs.links!.push(before);
@@ -388,7 +401,14 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
       await expect(purge(counting).execute(testCallContext(market, 'system'), {})).resolves.toEqual(
         {
           ok: true,
-          value: { sessions: 2, throttles: 3, signInRecords: 2, links: 4 },
+          value: {
+            sessions: 2,
+            throttles: 3,
+            signInRecords: 2,
+            links: 4,
+            challenges: 5,
+            invitations: 6,
+          },
         },
       );
       expect(cutoffs.sessions).toEqual([
@@ -402,8 +422,14 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         cutoff.subtract({ hours: 12 }),
         cutoff,
       ]);
-      // sessions, throttles, the oldest record, two days of records, links.
-      expect(units).toBe(6);
+      expect(cutoffs.challenges).toEqual([START]);
+      expect(cutoffs.invitations).toEqual([
+        START,
+        START.subtract({ hours: INVITATION_KEPT_AFTER_DECISION_HOURS }),
+      ]);
+      // sessions, throttles, the oldest record, two days of records, links, challenges,
+      // invitations.
+      expect(units).toBe(8);
     });
 
     it('bounds the record deletes of one run', async () => {
