@@ -7,6 +7,12 @@ import type {
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
+const assertWindow = (name: string, windowMs: number): void => {
+  if (!Number.isInteger(windowMs) || windowMs <= 0) {
+    throw new RangeError(`${name}: windowMs must be a positive integer`);
+  }
+};
+
 /**
  * {@link WriteRefusalThrottleRepository} on `pricing.write_refusal_throttles` and
  * `pricing.write_refusal_actor_throttles` (pricing-data 3.8, the pattern of identity's
@@ -25,6 +31,7 @@ export class PrismaWriteRefusalThrottleRepository implements WriteRefusalThrottl
     now: Temporal.Instant,
     windowMs: number,
   ): Promise<boolean> {
+    assertWindow('claimOfferWindow', windowMs);
     const tx = this.prisma.tx(market);
     const expired = new Date(now.epochMilliseconds - windowMs);
     const renewed = await tx.pricingWriteRefusalThrottle.updateMany({
@@ -59,6 +66,7 @@ export class PrismaWriteRefusalThrottleRepository implements WriteRefusalThrottl
     windowMs: number,
     cap: number,
   ): Promise<ActorRefusalSlot> {
+    assertWindow('countActorRefusal', windowMs);
     if (!Number.isInteger(cap) || cap < 1) throw new RangeError('countActorRefusal: cap >= 1');
     const tx = this.prisma.tx(market);
     const key = { marketId: market.marketId, actorAccountId };

@@ -299,10 +299,13 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
       before.get(record.id)?.effectiveFrom === null && record.effectiveFrom !== null;
     const ordered = [...changed.filter((record) => !starts(record)), ...changed.filter(starts)];
     for (const record of ordered) {
-      await tx.pricingRegularPriceRecord.updateMany({
+      const updated = await tx.pricingRegularPriceRecord.updateMany({
         where: { marketId: market.marketId, seriesId: next.id, id: record.id },
         data: recordChanges(record),
       });
+      if (updated.count !== 1) {
+        throw new Error('save: a stored record was not updated exactly once');
+      }
     }
 
     const added = next.regular.filter((record) => !before.has(record.id));

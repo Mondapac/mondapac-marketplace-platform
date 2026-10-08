@@ -1,5 +1,5 @@
 import { ok, Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { PrismaWriteRefusalThrottleRepository } from '../../src/modules/pricing/infrastructure/prisma-write-refusal-throttle.repository';
@@ -605,6 +605,12 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
         await count(3),
         await count(4),
       ]).toEqual(['record', 'record', 'summarise', 'suppress', 'suppress']);
+      const before = await app.query(
+        `SELECT recorded_count, suppressed_count FROM pricing.write_refusal_actor_throttles
+          WHERE market_id = $1 AND actor_account_id = $2`,
+        [code, actor],
+      );
+      expect(before.rows).toEqual([{ recorded_count: 2, suppressed_count: 3 }]);
       expect(await count(60)).toBe('record');
       const { rows } = await app.query(
         `SELECT recorded_count, suppressed_count FROM pricing.write_refusal_actor_throttles
@@ -624,6 +630,11 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
       });
 
       expect(failed.ok).toBe(false);
+      const leaked = await app.query(
+        `SELECT 1 FROM pricing.write_refusal_actor_throttles WHERE market_id = $1 AND actor_account_id = $2`,
+        [code, actor],
+      );
+      expect(leaked.rows).toEqual([]);
       expect(
         await inUnit(() => throttles.claimOfferWindow(market, actor, offer, t(1), MINUTE)),
       ).toBe(true);
@@ -633,21 +644,96 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
     });
 
     it('purges counters whose window started before the horizon, in this Market only', async () => {
-      const actor = ids.next<'Account'>();
-      await inUnit(() =>
-        throttles.claimOfferWindow(market, actor, ids.next<'Offer'>(), t(-7200), MINUTE),
-      );
-      await inUnit(() => throttles.countActorRefusal(market, actor, t(-7200), MINUTE, 20));
+      const other = marketOf(otherCode);
+      const old = ids.next<'Account'>();
+      const fresh = ids.next<'Account'>();
+      const foreign = ids.next<'Account'>();
+      const seed = (target: MarketContext, actor: Id<'Account'>, s: number) =>
+        inUnit(async () => {
+          await throttles.claimOfferWindow(target, actor, ids.next<'Offer'>(), t(s), MINUTE);
+          await throttles.countActorRefusal(target, actor, t(s), MINUTE, 20);
+        }, target);
+      await seed(market, old, -7200);
+      await seed(market, fresh, -3600); // at the horizon: kept (strictly before is purged)
+      await seed(other, foreign, -7200);
 
-      expect(
-        await inUnit(() => throttles.purgeStartedBefore(market, t(-3600))),
-      ).toBeGreaterThanOrEqual(2);
-      const { rows } = await app.query(
-        `SELECT 1 FROM pricing.write_refusal_actor_throttles WHERE market_id = $1 AND actor_account_id = $2`,
-        [code, actor],
+      const accounts = [old, fresh, foreign];
+      const remaining = async () => {
+        const rows = await Promise.all(
+          ['write_refusal_throttles', 'write_refusal_actor_throttles'].map((table) =>
+            app.query<{ market_id: string; actor_account_id: string }>(
+              `SELECT market_id, actor_account_id FROM pricing.${table} WHERE actor_account_id = ANY($1)`,
+              [accounts],
+            ),
+          ),
+        );
+        return rows.flatMap((r) => r.rows.map((row) => `${row.market_id}:${row.actor_account_id}`));
+      };
+      // Other cases of this suite may have left older rows: the expected count is what the
+      // table holds before the purge, strictly before the horizon, in this Market.
+      const due = await Promise.all(
+        ['write_refusal_throttles', 'write_refusal_actor_throttles'].map((table) =>
+          app.query<{ n: string }>(
+            `SELECT count(*) AS n FROM pricing.${table} WHERE market_id = $1 AND window_started_at < $2`,
+            [code, t(-3600).toString()],
+          ),
+        ),
       );
-      expect(rows).toEqual([]);
+      const expected = due.reduce((sum, r) => sum + Number(r.rows[0]?.n), 0);
+      expect(expected).toBeGreaterThanOrEqual(2);
+      expect(await inUnit(() => throttles.purgeStartedBefore(market, t(-3600)))).toBe(expected);
+      const left = await remaining();
+      expect(left.sort()).toEqual(
+        [
+          `${code}:${fresh}`,
+          `${code}:${fresh}`,
+          `${otherCode}:${foreign}`,
+          `${otherCode}:${foreign}`,
+        ].sort(),
+      );
     });
+
+    it('rejects a window that is not a positive integer', async () => {
+      const actor = ids.next<'Account'>();
+      for (const bad of [0, -1, 1.5, Number.NaN]) {
+        await expect(
+          inUnit(() => throttles.claimOfferWindow(market, actor, ids.next<'Offer'>(), t(0), bad)),
+        ).rejects.toThrow(RangeError);
+        await expect(
+          inUnit(() => throttles.countActorRefusal(market, actor, t(0), bad, 2)),
+        ).rejects.toThrow(RangeError);
+      }
+    });
+
+    it.each([code, otherCode])(
+      'concurrent callers never both win a window or a slot (%s)',
+      async (marketCode) => {
+        const target = marketOf(marketCode);
+        const actor = ids.next<'Account'>();
+        const offer = ids.next<'Offer'>();
+        const claims = await Promise.all(
+          Array.from({ length: 12 }, () =>
+            inUnit(() => throttles.claimOfferWindow(target, actor, offer, t(0), MINUTE), target),
+          ),
+        );
+        expect(claims.filter(Boolean)).toHaveLength(1);
+
+        const counts = await Promise.all(
+          Array.from({ length: 12 }, () =>
+            inUnit(() => throttles.countActorRefusal(target, actor, t(0), MINUTE, 2), target),
+          ),
+        );
+        expect(counts.filter((c) => c === 'record')).toHaveLength(2);
+        expect(counts.filter((c) => c === 'summarise')).toHaveLength(1);
+        expect(counts.filter((c) => c === 'suppress')).toHaveLength(9);
+        const { rows } = await app.query(
+          `SELECT recorded_count, suppressed_count FROM pricing.write_refusal_actor_throttles
+            WHERE market_id = $1 AND actor_account_id = $2`,
+          [marketCode, actor],
+        );
+        expect(rows).toEqual([{ recorded_count: 2, suppressed_count: 10 }]);
+      },
+    );
 
     it('gives the application only the counter columns to update (42501 otherwise)', async () => {
       expect(
