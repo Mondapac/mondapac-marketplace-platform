@@ -39,6 +39,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX sessions_market_id_seller_id_seller_idx ON identity.sessions USING btree (market_id, seller_id) WHERE (seller_id IS NOT NULL)',
   'inventory.sources_market_id_seller_id_default_key':
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
+  // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
+  // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
+  'pricing.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON pricing.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'pricing.regular_price_records_effective_period_excl':
+    "CREATE INDEX regular_price_records_effective_period_excl ON pricing.regular_price_records USING gist (market_id, series_id, tstzrange(effective_from, effective_to, '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
+  'pricing.regular_price_records_market_id_series_id_pending_key':
+    "CREATE UNIQUE INDEX regular_price_records_market_id_series_id_pending_key ON pricing.regular_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_files_market_id_identifier_index_idx':
@@ -132,7 +140,10 @@ describe('outbox tables and partial indexes (database catalog)', () => {
     );
 
     // docs/design/data/sellers.md 3.7 and 9.5: no two periods of one seller overlap.
+    // docs/design/data/pricing.md 3.3 (PD1): no two effective regular periods of a series overlap.
     expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual({
+      'pricing.regular_price_records_effective_period_excl':
+        "EXCLUDE USING gist (market_id WITH =, series_id WITH =, tstzrange(effective_from, effective_to, '[)'::text) WITH &&) WHERE ((status = ANY (ARRAY['accepted'::text, 'approved'::text])))",
       'sellers.tax_registration_periods_no_overlap_excl':
         "EXCLUDE USING gist (market_id WITH =, seller_id WITH =, tstzrange(valid_from, valid_to, '[)'::text) WITH &&)",
     });
