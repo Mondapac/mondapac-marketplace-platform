@@ -1,4 +1,9 @@
-import { auditField, defineAuditAction, Temporal } from '@mondapac/shared-kernel';
+import {
+  auditField,
+  defineAuditAction,
+  parseCorrelationId,
+  Temporal,
+} from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Clock, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -18,6 +23,12 @@ import { NO_PERMISSION_KEYS, type PermissionKeyLookup } from '../../events/outbo
 import { PLATFORM_TENANT_ID } from '../../market-context/tenant';
 import { OpenUnit, unitStorage } from '../unit-store';
 import { createAuditWriter } from './prisma-audit-writer';
+
+// The kernel as it is, with its correlation-id parser wrapped so one test can make it refuse.
+jest.mock('@mondapac/shared-kernel', () => {
+  const actual = jest.requireActual<Record<string, unknown>>('@mondapac/shared-kernel');
+  return { ...actual, parseCorrelationId: jest.fn(actual.parseCorrelationId as () => unknown) };
+});
 
 // The writer of docs/design/domain/platform-audit.md 3.1 without a database: the open unit is
 // a fake whose `auditLog.create` records the row. Every case runs for both Market fixtures.
@@ -602,43 +613,68 @@ describe.each(MARKETS)('the audit writer in market %s (platform-audit.md 3.1)', 
       ).resolves.toEqual(['after-invalid', 'addedKeys']);
     });
 
-    it('accepts a side of exactly 4 KB of canonical JSON and refuses one byte more', async () => {
-      const sized = defineAuditAction({
-        action: 'identity.role.sized',
-        targetType: 'identity.role',
-        actors: ['system'],
-        after: {
+    it.each(['after', 'before'] as const)(
+      'accepts %s of exactly 4 KB of canonical JSON and refuses one byte more',
+      async (side) => {
+        const fields = {
           ids: auditField.listOf(auditField.id(), 256),
           extra: auditField.integer(),
           more: auditField.integer(),
-        },
-      });
-      const catalogue = new AuditActionCatalogue();
-      catalogue.register('identity', [sized]);
-      catalogue.seal();
-      // {"extra":N,"ids":[...],"more":0} in canonical order: 104 ids (39 bytes each with the
-      // comma) leave room for a 13-digit N.
-      const ids = Array.from({ length: 104 }, () => ROLE);
-      const fill = MAX_AUDIT_SIDE_BYTES - JSON.stringify({ extra: 0, ids, more: 0 }).length;
-      const exact = 10 ** fill;
-      const h = harness({ catalogue });
+        };
+        const sized = defineAuditAction({
+          action: 'identity.role.sized',
+          targetType: 'identity.role',
+          actors: ['system'],
+          before: fields,
+          after: fields,
+        });
+        const catalogue = new AuditActionCatalogue();
+        catalogue.register('identity', [sized]);
+        catalogue.seal();
+        // {"extra":N,"ids":[...],"more":0} in canonical order: 104 ids (39 bytes each with the
+        // comma) leave room for a 13-digit N.
+        const ids = Array.from({ length: 104 }, () => ROLE);
+        const fill = MAX_AUDIT_SIDE_BYTES - JSON.stringify({ extra: 0, ids, more: 0 }).length;
+        const exact = 10 ** fill;
+        const small = { ids: [ROLE], extra: 0, more: 0 };
+        const entryWith = (extra: number) => {
+          const big = { ids, extra, more: 0 };
+          return sized.entry(TARGET, {
+            before: side === 'before' ? big : small,
+            after: side === 'after' ? big : small,
+          });
+        };
+        const h = harness({ catalogue });
 
-      expect(JSON.stringify({ extra: exact, ids, more: 0 })).toHaveLength(MAX_AUDIT_SIDE_BYTES);
-      expect(Number.isSafeInteger(exact * 10)).toBe(true);
-      await h.inUnit(market, () =>
-        h.writer.record(system(), sized.entry(TARGET, { after: { ids, extra: exact, more: 0 } })),
-      );
+        expect(JSON.stringify({ extra: exact, ids, more: 0 })).toHaveLength(MAX_AUDIT_SIDE_BYTES);
+        expect(Number.isSafeInteger(exact * 10)).toBe(true);
+        await h.inUnit(market, () => h.writer.record(system(), entryWith(exact)));
+        await expect(
+          refusalOf(h.inUnit(market, () => h.writer.record(system(), entryWith(exact * 10)))),
+        ).resolves.toEqual([side === 'before' ? 'before-too-large' : 'after-too-large', null]);
+        expect(h.rows).toHaveLength(1);
+      },
+    );
+
+    it('refuses a context whose correlation id does not parse (Sajad L1)', async () => {
+      // A minted context always holds a parsed id; the writer checks it again (defence in
+      // depth), so the kernel's parser is made to refuse it once here.
+      jest
+        .mocked(parseCorrelationId)
+        .mockReturnValueOnce({ ok: false, error: { code: 'correlation-id.invalid' } });
+      const h = harness();
+
       await expect(
         refusalOf(
           h.inUnit(market, () =>
             h.writer.record(
               system(),
-              sized.entry(TARGET, { after: { ids, extra: exact * 10, more: 0 } }),
+              seedApplied.entry(TARGET, { after: { seedVersion: 1, addedKeys: [] } }),
             ),
           ),
         ),
-      ).resolves.toEqual(['after-too-large', null]);
-      expect(h.rows).toHaveLength(1);
+      ).resolves.toEqual(['correlation-id-invalid', null]);
+      expect(h.rows).toEqual([]);
     });
 
     it('carries no value in its message', async () => {

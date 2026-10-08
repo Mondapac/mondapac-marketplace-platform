@@ -18,6 +18,10 @@ export function sha256ContentHash(bytes: Uint8Array): ContentHash {
  * `hmac-sha256:<hex>` of personal content (sellers, certification; ADR-0009 decision 6): wraps
  * the lowercase hex that `SubjectKeyService.hmac` returns, so the hash is keyed by the subject
  * and dies with the subject's key. Anything but 64 lowercase hex digits is a programmer error.
+ *
+ * Pass it only the output of `SubjectKeyService.hmac` (Hassan I1 on slice 6a). It checks the
+ * form, not the origin: given `sha256` hex, or hex of any other unkeyed digest, it would label
+ * a hash anyone can recompute as keyed personal content, which crypto-shredding cannot erase.
  */
 export function hmacContentHash(hex: string): ContentHash {
   const parsed = parseContentHash(`hmac-sha256:${hex}`);

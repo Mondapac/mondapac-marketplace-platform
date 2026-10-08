@@ -152,6 +152,7 @@ describe('platform persistence (database integration)', () => {
       });
       await expect(owner.query('TRUNCATE platform.audit_log CASCADE')).rejects.toMatchObject({
         code: RESTRICT_VIOLATION,
+        message: expect.stringContaining('platform.audit_log is append-only') as unknown,
       });
 
       await expect(root.auditLog.count({ where: { id: row.id } })).resolves.toBe(1);

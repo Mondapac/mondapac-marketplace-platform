@@ -185,19 +185,26 @@ describe('platform audit writer and seal tables (database integration, slice 6a)
   }
 
   function insertCheckpoint(
-    checkpoint: { marketId: string; epoch: number; chainSeq: number; chainHash?: Buffer },
+    checkpoint: {
+      marketId: string;
+      epoch: number;
+      chainSeq: number;
+      chainHash?: Buffer;
+      hashVersion?: number;
+    },
     client: Client = sql,
   ) {
     return client.query(
       `INSERT INTO platform.audit_chain_checkpoint
          (market_id, tenant_id, epoch, chain_seq, chain_hash, hash_version, created_at)
-       VALUES ($1, $2, $3, $4, $5, 1, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         checkpoint.marketId,
         PLATFORM_TENANT_ID,
         checkpoint.epoch,
         checkpoint.chainSeq,
         checkpoint.chainHash ?? hash(),
+        checkpoint.hashVersion ?? 1,
         START.toString(),
       ],
     );
@@ -573,6 +580,12 @@ describe('platform audit writer and seal tables (database integration, slice 6a)
           'a 31-byte chain hash',
           { chainHash: hash(31) },
           'audit_chain_checkpoint_chain_hash_check',
+        ],
+        ['hash version 2', { hashVersion: 2 }, 'audit_chain_checkpoint_hash_version_check'],
+        [
+          'a lower-case Market id',
+          { marketId: code.toLowerCase() },
+          'audit_chain_checkpoint_market_id_check',
         ],
       ])('refuses a checkpoint with %s (23514)', async (_case, overrides, constraint) => {
         await expect(
