@@ -94,7 +94,10 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
 
     expect(policy.linkLifetimeMinutes(au, 'verify-email')).toBe(1440);
     expect(policy.linkLifetimeMinutes(zz, 'verify-email')).toBe(720);
-    expect(policy.linkLifetimeMinutes(au, 'reset-password')).toBeNull();
+    // SEL-05, ACC-04: exactly 60 minutes in every Market (slice 4).
+    expect(policy.linkLifetimeMinutes(au, 'reset-password')).toBe(60);
+    expect(policy.linkLifetimeMinutes(zz, 'reset-password')).toBe(60);
+    expect(policy.linkLifetimeMinutes(au, 'enrol-second-factor')).toBeNull();
     expect(policy.unverifiedAccountRetentionDays(au)).toBe(7);
     expect(policy.unverifiedAccountRetentionDays(zz)).toBe(5);
     expect(policy.mailSender(au)).toEqual({

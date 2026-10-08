@@ -34,7 +34,10 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   ("keep me signed in", opt-in at seller sign-in: 14 days idle and 30 absolute for AU; a
   population absent here is never offered it) and `links.targets.seller` (the seller
   panel's pages, as for the customer). A Market without `sessions.seller` or
-  `links.targets.seller` offers no seller sign-up: it answers `access.unavailable`. Later
+  `links.targets.seller` offers no seller sign-up: it answers `access.unavailable`. Slice 4
+  adds `links.lifetimeMinutes.reset-password` (required, and exactly 60 in every Market: SEL-05
+  and ACC-04 fix it) and the `reset-password` page in `links.targets.customer` and
+  `links.targets.seller` (the page of the reset mail; the token goes into its fragment). Later
   identity slices add their values here.
 - `allowedOrigins`: the browser origins (`scheme://host[:port]`, no path) that may send a
   request with an unsafe method to this Market (identity design 6.4, HF14). A request whose

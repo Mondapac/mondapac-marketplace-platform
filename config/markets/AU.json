@@ -35,15 +35,17 @@
     },
     "signInRecordRetentionDays": 90,
     "links": {
-      "lifetimeMinutes": { "verify-email": 1440 },
+      "lifetimeMinutes": { "verify-email": 1440, "reset-password": 60 },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
-          "sign-in": "https://storefront.au.mondapac.test/account/sign-in"
+          "sign-in": "https://storefront.au.mondapac.test/account/sign-in",
+          "reset-password": "https://storefront.au.mondapac.test/account/reset-password"
         },
         "seller": {
           "verify-email": "https://seller.au.mondapac.test/confirm-email",
-          "sign-in": "https://seller.au.mondapac.test/sign-in"
+          "sign-in": "https://seller.au.mondapac.test/sign-in",
+          "reset-password": "https://seller.au.mondapac.test/reset-password"
         }
       }
     },

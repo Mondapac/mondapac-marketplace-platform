@@ -35,15 +35,17 @@
     },
     "signInRecordRetentionDays": 60,
     "links": {
-      "lifetimeMinutes": { "verify-email": 720 },
+      "lifetimeMinutes": { "verify-email": 720, "reset-password": 60 },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.zz.test/konto/bestaetigen?ref=mail",
-          "sign-in": "https://storefront.zz.test/konto/anmelden"
+          "sign-in": "https://storefront.zz.test/konto/anmelden",
+          "reset-password": "https://storefront.zz.test/konto/passwort?ref=mail"
         },
         "seller": {
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
-          "sign-in": "https://seller.zz.test/konto/anmelden"
+          "sign-in": "https://seller.zz.test/konto/anmelden",
+          "reset-password": "https://seller.zz.test/konto/passwort?ref=mail"
         }
       }
     },
