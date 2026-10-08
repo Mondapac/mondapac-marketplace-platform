@@ -42,7 +42,7 @@ export class PlatformProductSaveDraft extends UseCase<
   PlatformProductSaveDraftFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.save-platform-product-draft',
+    name: 'catalog.platform-product-save-draft',
     rule: { kind: 'permissions', allOf: [CATALOG_PLATFORM_PRODUCT_EDIT.key] },
   };
 
