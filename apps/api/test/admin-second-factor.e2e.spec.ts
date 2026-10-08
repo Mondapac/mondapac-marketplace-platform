@@ -30,17 +30,27 @@ import { TOTP } from '../src/modules/identity/domain/totp';
 import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
-import { ADMIN_MARKET_FIXTURE, overrideAdminMarketPolicy } from './support/admin-market-fixture';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
-import { TEST_MARKETS } from './support/test-config';
+import {
+  IDENTITY_MARKET_POLICY,
+  type IdentityMarketPolicy,
+} from '../src/modules/identity/application/ports/identity-market-policy';
+import { MarketConfigIdentityPolicy } from '../src/modules/identity/infrastructure/market-config-identity-policy';
+import { loadMarketConfigs } from '../src/platform/market-config/market-config';
+import { MarketRegistry } from '../src/platform/market-config/market-registry';
+import {
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_MARKETS,
+  testMarketId,
+} from './support/test-config';
 
 // Admin sign-in with its second factor, the first-admin invitation, enrolment, devices and the
 // break-glass reset (identity design 3.4 to 3.7, 6.1 to 6.8, 7.2 to 7.4; slice 7b items A to I
 // and Hassan I-1 to I-7): the real guards, controllers and use cases, with identity's database
-// ports and the mail transport as in-memory fakes and a fixed clock. The admin keys of the
-// Market configuration are not there yet (another track adds them), so the AU and ZZ values come
-// from ADMIN_MARKET_FIXTURE. The anonymous HTTP limit of ZZ is 10 a minute, so each case sends
+// ports and the mail transport as in-memory fakes and a fixed clock. The admin values are AU's
+// and ZZ's own Market configuration. The anonymous HTTP limit of ZZ is 10 a minute, so each case sends
 // only the requests it is about over HTTP and prepares the rest through the use cases.
 
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
@@ -50,6 +60,27 @@ const PASSWORD = 'correct horse battery staple';
 const NEW_PASSWORD = 'a different long passphrase';
 const CLIENT = { origin: '203.0.113.7', address: '203.0.113.7' };
 const STEP = Temporal.Duration.from({ seconds: TOTP.periodSeconds });
+
+const MARKETS = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+
+/** The slice 7b values of a Market, as config/markets/AU.json or the ZZ fixture holds them. */
+function adminConfigOf(code: string) {
+  const identity = MARKETS.get(testMarketId(code))!.identity;
+  const pages = identity.links.targets.admin!;
+  return {
+    pages: {
+      'accept-invitation': pages['accept-invitation']!,
+      'enrol-second-factor': pages['enrol-second-factor']!,
+    },
+    adminSession: { idleTimeoutSeconds: identity.sessions.admin!.idleTimeoutMinutes * 60 },
+    secondFactorThrottle: identity.secondFactorThrottles!.account,
+    invitationMinutes: {
+      admin: identity.invitations!.lifetimeMinutes.admin!,
+      'seller-owner': identity.invitations!.lifetimeMinutes['seller-owner']!,
+      staff: identity.invitations!.lifetimeMinutes.staff!,
+    },
+  };
+}
 
 const fakes = new IdentityFakes();
 let clock: FixedClock;
@@ -75,12 +106,33 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       .set({ 'x-market-id': market, ...headers })
       .send(body as object);
 
-  async function boot() {
+  async function boot(options: { readonly withoutAdminKeys?: boolean } = {}) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info' },
-      override: (builder) =>
-        overrideAdminMarketPolicy(fakes.override(builder)).overrideProvider(CLOCK).useValue(clock),
+      override: (builder) => {
+        const built = fakes.override(builder).overrideProvider(CLOCK).useValue(clock);
+        return options.withoutAdminKeys === true
+          ? built
+              .overrideProvider(IDENTITY_MARKET_POLICY)
+              .useFactory({ factory: withoutAdminKeys, inject: [MarketRegistry] })
+          : built;
+      },
     }));
+  }
+
+  /**
+   * The real policy of a Market whose configuration holds none of the slice 7b keys, as a
+   * Market that offers no admin sign-in: every admin read answers null.
+   */
+  function withoutAdminKeys(markets: MarketRegistry): IdentityMarketPolicy {
+    const base = new MarketConfigIdentityPolicy(markets);
+    return Object.assign(Object.create(base) as IdentityMarketPolicy, {
+      sessionLifetime: (m: never, population: never, keep?: boolean) =>
+        population === 'admin' ? null : base.sessionLifetime(m, population, keep),
+      invitationLifetimeMinutes: () => null,
+      challengePolicy: () => null,
+      secondFactorThrottle: () => null,
+    });
   }
 
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -224,7 +276,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
-    const fixture = ADMIN_MARKET_FIXTURE[code];
+    const fixture = adminConfigOf(code);
     const cookieName = `__Host-session-admin-${code}`;
 
     it('accepts the first-admin invitation, then signs in with a code into a browser-session cookie', async () => {
@@ -471,13 +523,11 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
           aggregateVersion: requested.aggregateVersion,
         });
         tokens.push(/#(ml1_[A-Za-z0-9_-]{43})/.exec(fakes.mails.at(-1)!.text)![1]!);
-        const started = await app
-          .get(StartSecondFactorEnrolment)
-          .execute(anonymousOf(code), {
-            token: tokens[round]!,
-            password: PASSWORD,
-            client: CLIENT,
-          });
+        const started = await app.get(StartSecondFactorEnrolment).execute(anonymousOf(code), {
+          token: tokens[round]!,
+          password: PASSWORD,
+          client: CLIENT,
+        });
         expect(started).toMatchObject({ ok: true });
       }
       const factor = fakes.factors.get(adminAccount().id)!;
@@ -620,6 +670,20 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       await expect(
         app.get(IssueFirstAdminInvitation).execute(systemOf(code), { email: EMAIL }),
       ).resolves.toMatchObject({ ok: true, value: { replaced: true } });
+    });
+
+    it('fails closed in a Market without the admin keys: no invitation, no admin sign-in', async () => {
+      await boot({ withoutAdminKeys: true });
+      await app.get(SeedRoles).execute(systemOf(code), {});
+
+      await expect(
+        app.get(IssueFirstAdminInvitation).execute(systemOf(code), { email: EMAIL }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(fakes.invitations.size).toBe(0);
+      const signIn = await post('sign-in', code, { email: EMAIL, password: PASSWORD });
+      expect(signIn.status).toBe(503);
+      expect(signIn.body).toEqual({ statusCode: 503, code: 'access.unavailable' });
+      expect(fakes.sessions.size).toBe(0);
     });
 
     it('refuses a first admin once one exists', async () => {

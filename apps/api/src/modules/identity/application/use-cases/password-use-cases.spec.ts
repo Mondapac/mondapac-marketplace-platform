@@ -10,7 +10,6 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
-import { adminMarketPolicy } from '../../../../../test/support/admin-market-fixture';
 import {
   TEST_LOCALE_CONFIG_DIRS,
   TEST_MARKET_CONFIG_DIRS,
@@ -27,6 +26,7 @@ import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { AccountState } from '../../domain/account';
 import type { SecondFactorState } from '../../domain/second-factor';
 import { openSession } from '../../domain/session';
+import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer, formatDuration } from '../../infrastructure/mail/mail-catalogue';
 import { RandomSessionTokens } from '../../infrastructure/sessions/random-session-tokens';
@@ -59,8 +59,7 @@ const CUSTOMER_ID = id<'Account'>('01990000-0000-7000-8000-000000000001');
 const SELLER_ACCOUNT_ID = id<'Account'>('01990000-0000-7000-8000-000000000002');
 const SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-0000000000f1');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-// Slice 7b's admin keys are not in the Market configuration yet: AU and ZZ values from the tests.
-const policy = adminMarketPolicy(markets);
+const policy = new MarketConfigIdentityPolicy(markets);
 const composer = new CatalogueMailComposer(markets, loadLocaleCatalogues(TEST_LOCALE_CONFIG_DIRS));
 const allow: AuthorisationCheck = {
   check: (): Promise<AccessDecision> => Promise.resolve({ allowed: true }),
