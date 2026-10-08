@@ -25,7 +25,7 @@ export interface MailThrottleRules {
  *
  * Slice 1d reads the password rules and the notice interval; slice 2 the session lifetimes, the
  * throttles and the retention of sign-in records; slice 3 the link lifetimes, the retention of
- * unverified accounts and the mail sender; slice 5 adds "approval required".
+ * unverified accounts and the mail sender; slice 5 "approval required" and the seller lifetimes.
  */
 export interface IdentityMarketPolicy {
   passwordRules(market: MarketContext): PasswordRules;
@@ -33,9 +33,16 @@ export interface IdentityMarketPolicy {
   existingAccountNoticeHours(market: MarketContext): number;
   /**
    * The lifetimes of a population's sessions (identity design 6.1), or null when the Market
-   * configures none for it: such a population cannot open a session.
+   * configures none for it: such a population cannot open a session. `keepSignedIn` asks for the
+   * "keep me signed in" lifetimes (seller side only, 14.4): null where the Market offers none.
    */
-  sessionLifetime(market: MarketContext, population: Population): SessionLifetime | null;
+  sessionLifetime(
+    market: MarketContext,
+    population: Population,
+    keepSignedIn?: boolean,
+  ): SessionLifetime | null;
+  /** Whether a new seller starts `pending` (identity design 3.3, 15; SEL-03, AC 5). */
+  sellerApprovalRequired(market: MarketContext): boolean;
   signInThrottles(market: MarketContext): SignInThrottleRules;
   mailThrottles(market: MarketContext): MailThrottleRules;
   /** Sign-in records are deleted this many days after the attempt (H3). */

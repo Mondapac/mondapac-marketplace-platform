@@ -18,8 +18,13 @@
     },
     "existingAccountNoticeHours": 24,
     "sessions": {
-      "customer": { "idleTimeoutMinutes": 20160, "absoluteLifetimeMinutes": 43200 }
+      "customer": { "idleTimeoutMinutes": 20160, "absoluteLifetimeMinutes": 43200 },
+      "seller": { "idleTimeoutMinutes": 720, "absoluteLifetimeMinutes": 1440 }
     },
+    "keepSignedInSessions": {
+      "seller": { "idleTimeoutMinutes": 20160, "absoluteLifetimeMinutes": 43200 }
+    },
+    "sellerApprovalRequired": true,
     "signInThrottles": {
       "accountOrigin": { "limit": 5, "windowMinutes": 15, "blockMinutes": 15 },
       "account": { "limit": 20, "windowMinutes": 60, "blockMinutes": 60 },
@@ -36,6 +41,10 @@
         "customer": {
           "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
           "sign-in": "https://storefront.au.mondapac.test/account/sign-in"
+        },
+        "seller": {
+          "verify-email": "https://seller.au.mondapac.test/confirm-email",
+          "sign-in": "https://seller.au.mondapac.test/sign-in"
         }
       }
     },
