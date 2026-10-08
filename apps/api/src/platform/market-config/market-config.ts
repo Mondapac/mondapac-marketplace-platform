@@ -544,6 +544,65 @@ const inventorySchema = z.strictObject({
   maxSourcesPerSeller: z.number().int().min(1).max(4),
 });
 
+/**
+ * The `catalog` section of a Market file (catalog design 7.1). It starts with what slice 4 needs;
+ * later slices add the conditions, review reasons, photo limits and the rest of 7.1.
+ */
+const catalogSchema = z
+  .strictObject({
+    /**
+     * The tax categories a product may carry (catalog design 4.2): a code and a label key. At
+     * least one; no code repeated. The AU codes wait for the tax adviser (ADR-0007 decision 5).
+     */
+    taxCategories: z
+      .array(
+        z.strictObject({
+          code: z.string().regex(/^[a-z][a-z0-9_]{1,31}$/),
+          labelKey: z.string().min(1).max(100),
+        }),
+      )
+      .min(1)
+      .max(20),
+    /**
+     * Which changes to a published product go to review (catalog design 4.3). Every flag is
+     * required: a Market never defaults one. `anyImage` is kept for the shape; an added or
+     * replaced image always goes to review (Hassan H1).
+     */
+    sensitiveChanges: z.strictObject({
+      platformCategories: z.boolean(),
+      taxCategory: z.boolean(),
+      name: z.boolean(),
+      primaryImage: z.boolean(),
+      anyImage: z.boolean(),
+      variantRemoved: z.boolean(),
+    }),
+    /**
+     * The most non-retired variants one product may hold (catalog design 2.1; AU 100). Bounded
+     * above because the re-key of a moved Offer locks that many variants in every source
+     * (inventory design 3.6): 100 x 4 x 2 = 800 stays under the 1,000-item cap with held items.
+     */
+    maxVariantsPerProduct: z.number().int().min(1).max(100),
+    /**
+     * Whether a new product revision waits for review (true) or publishes at once when the
+     * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
+     * setting `catalog.approval-required` until that store lands (catalog slice 10).
+     */
+    approvalRequired: z.boolean(),
+  })
+  .superRefine((catalog, context) => {
+    const seen = new Set<string>();
+    catalog.taxCategories.forEach((category, index) => {
+      if (seen.has(category.code)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['taxCategories', index, 'code'],
+          message: 'a tax category code must not repeat',
+        });
+      }
+      seen.add(category.code);
+    });
+  });
+
 const marketSchema = z
   .strictObject({
     code: marketCode,
@@ -572,6 +631,8 @@ const marketSchema = z
     sellers: sellersSchema.optional(),
     /** Owned by `inventory`; optional here, checked for every hosted Market at start-up by it. */
     inventory: inventorySchema.optional(),
+    /** Owned by `catalog`; optional here, checked for every hosted Market at start-up by it. */
+    catalog: catalogSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',
