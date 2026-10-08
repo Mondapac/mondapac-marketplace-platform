@@ -82,8 +82,10 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
 
   /** `LinkTargets` (identity design 9): the page per population and page, or null. */
   target(market: MarketContext, population: Population, page: LinkPage): string | null {
-    const targets: Partial<Record<Population, Partial<Record<LinkPage, string>>>> =
-      this.markets.get(market.marketId).identity.links.targets;
+    // Each population has its own pages in the Market file (the admin panel's differ).
+    const targets: Partial<Record<Population, Partial<Record<string, string>>>> = this.markets.get(
+      market.marketId,
+    ).identity.links.targets;
     const pages = Object.hasOwn(targets, population) ? targets[population] : undefined;
     if (pages === undefined) return null;
     return (Object.hasOwn(pages, page) ? pages[page] : undefined) ?? null;
