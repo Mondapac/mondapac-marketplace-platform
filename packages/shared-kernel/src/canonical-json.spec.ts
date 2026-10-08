@@ -1,6 +1,7 @@
 import { canonicalJson } from './canonical-json';
 
-// Every non-ASCII character in this file is written as an escape, so the source stays ASCII.
+// Every non-ASCII character in this file is built from its code point or written as an escape,
+// so the source stays ASCII.
 
 const canonical = (value: unknown): string => {
   const result = canonicalJson(value);
@@ -21,9 +22,22 @@ const fromBits = (hex: string): number => {
 };
 
 describe('canonicalJson (RFC 8785; platform-audit.md 6.3)', () => {
+  // Non-ASCII characters are built from their code points, so this source stays ASCII.
+  const EURO = String.fromCodePoint(0x20ac);
+  const DALET = String.fromCodePoint(0xfb33);
+  const GRINNING = String.fromCodePoint(0x1f600); // a surrogate pair: 0xd83d 0xde00
+  const C1_CONTROL = String.fromCodePoint(0x80);
+  const O_DIAERESIS = String.fromCodePoint(0xf6);
+  const E_ACUTE = String.fromCodePoint(0xe9);
+  const HAN = String.fromCodePoint(0x4e2d);
+  const PRIVATE_USE = String.fromCodePoint(0xe000);
+  const LAST_BEFORE_SURROGATES = String.fromCodePoint(0xd7ff);
+  const DEL = String.fromCodePoint(0x7f);
+  const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+
   it('canonicalises the example of RFC 8785 section 3.2.2', () => {
-    // {"numbers": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
-    //  "string": "€$\u000F\u000aA'B"\\\\"\/", "literals": [null, true, false]}
+    // The input of the RFC, with its JSON escapes of U+20AC, U+000F, U+000A, U+0042 (B),
+    // U+0022 (quote) and U+005C (backslash), an escaped backslash, an escaped quote and a solidus.
     const input = JSON.parse(
       '{"numbers":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001],' +
         '"string":"\\u20ac$\\u000F\\u000aA\'\\u0042\\u0022\\u005c\\\\\\"\\/",' +
@@ -33,36 +47,41 @@ describe('canonicalJson (RFC 8785; platform-audit.md 6.3)', () => {
     expect(canonical(input)).toBe(
       '{"literals":[null,true,false],' +
         '"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27],' +
-        '"string":"€$\\u000f\\nA\'B\\"\\\\\\\\\\"/"}',
+        `"string":"${EURO}$\\u000f\\nA'B\\"\\\\\\\\\\"/"}`,
     );
   });
 
   it('sorts keys by UTF-16 code unit, astral characters before U+FB33 (RFC 8785 3.2.3)', () => {
     const input = {
-      '€': 'Euro Sign',
+      [EURO]: 'Euro Sign',
       '\r': 'Carriage Return',
-      דּ: 'Hebrew Letter Dalet With Dagesh',
+      [DALET]: 'Hebrew Letter Dalet With Dagesh',
       '1': 'One',
-      '😀': 'Emoji: Grinning Face',
-      '\u0080': 'Control',
-      ö: 'Latin Small Letter O With Diaeresis',
+      [GRINNING]: 'Emoji: Grinning Face',
+      [C1_CONTROL]: 'Control',
+      [O_DIAERESIS]: 'Latin Small Letter O With Diaeresis',
     };
 
     expect(canonical(input)).toBe(
-      '{"\\r":"Carriage Return","1":"One","\u0080":"Control",' +
-        '"ö":"Latin Small Letter O With Diaeresis","€":"Euro Sign",' +
-        '"😀":"Emoji: Grinning Face","דּ":"Hebrew Letter Dalet With Dagesh"}',
+      `{"\\r":"Carriage Return","1":"One","${C1_CONTROL}":"Control",` +
+        `"${O_DIAERESIS}":"Latin Small Letter O With Diaeresis","${EURO}":"Euro Sign",` +
+        `"${GRINNING}":"Emoji: Grinning Face","${DALET}":"Hebrew Letter Dalet With Dagesh"}`,
     );
   });
 
   it('orders by code unit, not by code point: U+1F600 sorts before U+E000 and after U+D7FF', () => {
-    const astral = '😀';
-    expect(canonical({ '': 1, [astral]: 2, '퟿': 3 })).toBe(`{"퟿":3,"${astral}":2,"":1}`);
+    expect(GRINNING.charCodeAt(0)).toBe(0xd83d);
+    expect(canonical({ [PRIVATE_USE]: 1, [GRINNING]: 2, [LAST_BEFORE_SURROGATES]: 3 })).toBe(
+      `{"${LAST_BEFORE_SURROGATES}":3,"${GRINNING}":2,"${PRIVATE_USE}":1}`,
+    );
   });
 
   it('writes non-ASCII text as itself and escapes only what JSON.stringify escapes', () => {
-    expect(canonical('café 中 😀')).toBe('"café 中 😀"');
-    expect(canonical('\u0000\u001f\u007f ')).toBe('"\\u0000\\u001f\u007f "');
+    const text = `caf${E_ACUTE} ${HAN} ${GRINNING}`;
+    expect(canonical(text)).toBe(`"${text}"`);
+    // U+0000 and U+001F are escaped; DEL and U+2028 are written as themselves.
+    const controls = String.fromCodePoint(0x0, 0x1f) + DEL + LINE_SEPARATOR;
+    expect(canonical(controls)).toBe(`"\\u0000\\u001f${DEL}${LINE_SEPARATOR}"`);
   });
 
   it.each([
