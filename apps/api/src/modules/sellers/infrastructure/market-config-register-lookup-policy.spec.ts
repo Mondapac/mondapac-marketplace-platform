@@ -37,16 +37,15 @@ describe('MarketConfigRegisterLookupPolicy', () => {
   });
 
   it('refuses to start when a hosted Market names an adapter this environment lacks', () => {
-    expect(
-      () =>
-        new MarketConfigRegisterLookupPolicy(registryHosting(TEST_MARKET_IDS), new Set<string>()),
-    ).toThrow(
-      expect.objectContaining({
-        name: 'UnknownRegisterLookupAdapterError',
-        marketId: synthetic,
-        adapter: 'fake',
-      }),
-    );
+    let thrown: unknown;
+    try {
+      new MarketConfigRegisterLookupPolicy(registryHosting(TEST_MARKET_IDS), new Set<string>());
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(UnknownRegisterLookupAdapterError);
+    expect(thrown).toMatchObject({ marketId: synthetic, adapter: 'fake' });
   });
 
   it.each([
