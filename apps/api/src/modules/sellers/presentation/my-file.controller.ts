@@ -18,6 +18,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import {
   ReadsSession,
@@ -376,8 +377,9 @@ export class MyFileController {
       body,
       parseIdentifierSaveBody,
     );
-    // The origin comes from the socket only, never from the body or a header (identity HF3).
-    const input = { ...shaped, origin: clientOriginOf(request.socket.remoteAddress) };
+    // The origin is the resolved client address (ADR-0037), never the body or a forwarded
+    // header (identity HF3).
+    const input = { ...shaped, origin: clientOriginOf(clientAddressFrom(request)) };
     const result = await this.saveIdentifier.execute(context, input);
     return this.settle('sellers.my-file-save-identifier', context, response, result, 'saved');
   }

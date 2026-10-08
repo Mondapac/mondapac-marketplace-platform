@@ -390,7 +390,7 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
     await settle();
     const token = tokenOf(transport.to(email)[0]!);
     // The writer refuses the second founding row: the first one must roll back with it.
-    const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER);
+    const writer = app.select(IdentityModule).get<AuditWriter>(AUDIT_WRITER, { strict: true });
     const record = writer.record.bind(writer);
     const refusing = jest
       .spyOn(writer, 'record')

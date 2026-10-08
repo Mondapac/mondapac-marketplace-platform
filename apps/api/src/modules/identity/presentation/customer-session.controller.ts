@@ -33,6 +33,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { DescribeActor } from '../application/use-cases/describe-actor.use-case';
@@ -215,9 +216,9 @@ export class CustomerSessionController {
     }
     const input = parseSignUpBody(body);
     if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
-    // From the socket only: forwarded headers are never trusted (Hassan I4).
-    const origin = clientOriginOf(request.socket.remoteAddress);
-    const address = clientAddressOf(request.socket.remoteAddress);
+    // The resolved client address (ADR-0037): forwarded headers are never trusted (Hassan I4).
+    const origin = clientOriginOf(clientAddressFrom(request));
+    const address = clientAddressOf(clientAddressFrom(request));
     if (origin === null || address === null) return fail(503, 'access.unavailable');
 
     const fields = input as { email: string; password: string };

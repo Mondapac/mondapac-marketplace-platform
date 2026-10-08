@@ -308,18 +308,6 @@ const CLIENT_ADDRESS_RESOLVER = [
   'apps/api/src/platform/http/client-address.ts',
   `${FIXTURES}/src/platform/http/client-address.ts`,
 ];
-// Temporary: the readers of the socket address on main when this rule landed. The slice
-// feat/platform-bff-client-address moves them to the resolver and deletes this list.
-const SOCKET_READERS_BEFORE_ADR_0037 = [
-  'apps/api/src/platform/rate-limit/rate-limit.guard.ts',
-  'apps/api/src/modules/identity/presentation/customer-email-verification.controller.ts',
-  'apps/api/src/modules/identity/presentation/customer-session.controller.ts',
-  'apps/api/src/modules/identity/presentation/customer-sign-up.controller.ts',
-  'apps/api/src/modules/identity/presentation/password.answer.ts',
-  'apps/api/src/modules/identity/presentation/seller-sign-in.answer.ts',
-  'apps/api/src/modules/identity/presentation/seller-sign-up.controller.ts',
-  'apps/api/src/modules/sellers/presentation/my-file.controller.ts',
-];
 
 // The selector groups of the modules block and of the domain and application block.
 const MODULE_SYNTAX = [
@@ -494,8 +482,8 @@ export default tseslint.config(
     rules: { 'no-restricted-properties': ['error', CLIENT_ADDRESS_IS_RESOLVED_ONCE] },
   },
   {
-    // The resolver alone reads the socket's address (and the temporary list above).
-    files: [...CLIENT_ADDRESS_RESOLVER, ...SOCKET_READERS_BEFORE_ADR_0037],
+    // The resolver alone reads the socket's address.
+    files: CLIENT_ADDRESS_RESOLVER,
     rules: { 'no-restricted-properties': ['error', APP_ROLE_IS_READ_IN_TWO_PLACES] },
   },
   {

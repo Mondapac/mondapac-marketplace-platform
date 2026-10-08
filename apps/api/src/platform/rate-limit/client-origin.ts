@@ -4,15 +4,16 @@ import { isIPv4, isIPv6 } from 'node:net';
  * The origin a per-origin counter is kept for (identity design 6.8, HF3): the IPv4 address, or
  * the IPv6 /64, so rotating through one network's addresses does not multiply the limit.
  *
- * It is read from the socket only. `X-Forwarded-For`, `Forwarded` and `X-Real-IP` are never
- * read: no proxy is trusted until the trust-proxy hop count is decided with the front tier
- * (PF 7 item 6; `configureApp` sets `trust proxy` to false). Answers `null` when the socket has
- * no usable address, which the caller treats as "cannot be evaluated" (fail closed).
+ * Its input is the client address resolved once per request by `platform/http/client-address.ts`
+ * (`clientAddressFrom`): the socket's address, or the address a BFF proved (ADR-0037).
+ * `X-Forwarded-For`, `Forwarded` and `X-Real-IP` are never read; `configureApp` sets `trust
+ * proxy` to false. Answers `null` when there is no usable address, which the caller treats as
+ * "cannot be evaluated" (fail closed).
  */
-export function clientOriginOf(remoteAddress: string | undefined): string | null {
-  if (typeof remoteAddress !== 'string' || remoteAddress.length === 0) return null;
+export function clientOriginOf(clientAddress: string | undefined): string | null {
+  if (typeof clientAddress !== 'string' || clientAddress.length === 0) return null;
   // A zone index (`fe80::1%eth0`) names the local interface, not the peer.
-  const address = remoteAddress.split('%', 1)[0]!;
+  const address = clientAddress.split('%', 1)[0]!;
   if (isIPv4(address)) return address;
   if (!isIPv6(address)) return null;
 
@@ -32,12 +33,12 @@ export function clientOriginOf(remoteAddress: string | undefined): string | null
 /**
  * The full client address, as stored in a sign-in record (identity design 10.2; data design 3.6,
  * `inet`): the IPv4 address, an IPv4-mapped IPv6 address as its IPv4 peer, or the IPv6 address in
- * its canonical text form. From the socket only, like {@link clientOriginOf}; `null` when the
- * socket has no usable address.
+ * its canonical text form. From the resolved client address, like {@link clientOriginOf};
+ * `null` when there is no usable address.
  */
-export function clientAddressOf(remoteAddress: string | undefined): string | null {
-  if (typeof remoteAddress !== 'string' || remoteAddress.length === 0) return null;
-  const address = remoteAddress.split('%', 1)[0]!;
+export function clientAddressOf(clientAddress: string | undefined): string | null {
+  if (typeof clientAddress !== 'string' || clientAddress.length === 0) return null;
+  const address = clientAddress.split('%', 1)[0]!;
   if (isIPv4(address)) return address;
   if (!isIPv6(address)) return null;
   const groups = expandIPv6(address);
@@ -49,8 +50,11 @@ export function clientAddressOf(remoteAddress: string | undefined): string | nul
   return groups.map((group) => group.toString(16)).join(':');
 }
 
-/** The eight 16-bit groups of a valid IPv6 address, with an embedded IPv4 tail converted. */
-function expandIPv6(address: string): number[] | null {
+/**
+ * The eight 16-bit groups of a valid IPv6 address, with an embedded IPv4 tail converted. Also
+ * used by the CIDR matching of ADR-0037 (`platform/http/client-address-trust.ts`).
+ */
+export function expandIPv6(address: string): number[] | null {
   let text = address.toLowerCase();
   const tail = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(text);
   if (tail !== null) {
