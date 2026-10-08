@@ -61,8 +61,14 @@ export class FreezeRevision {
     copy: WorkingCopy,
   ): Promise<Result<FrozenRevision, FreezeRevisionFailure>> {
     const state = product.state;
+    // Defence in depth: the caller loaded both under the ownership check, in this unit.
+    if (state.marketId !== market.marketId || copy.productId !== state.id) {
+      throw new Error('FreezeRevision: the product and the working copy do not belong together');
+    }
     const handler = this.deps.handlerFor(state.typeCode);
-    if (handler === undefined) return err({ code: 'revision.type-unknown' });
+    if (handler === undefined || handler.variantModel !== state.variantModel) {
+      return err({ code: 'revision.type-unknown' });
+    }
     const schema = await this.deps.attributes.loadSchema(market, state.familyCode);
     if (schema === null) return err({ code: 'revision.schema-unavailable' });
 
@@ -95,7 +101,8 @@ export class FreezeRevision {
     if (!attributes.ok) {
       issues.push(...attributes.error.map((issue) => ({ path: issue.path, code: issue.code })));
     }
-    if (frozen.ok && state.variantModel === 'options') {
+    if (frozen.ok) {
+      // A Simple product's one variant carries no options; the handler still sees it (CC2).
       const drafts: VariantDraft[] = frozen.value.variants.map((variant) => ({
         optionValues: variant.optionValues,
       }));

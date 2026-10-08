@@ -67,7 +67,7 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
   it('requires a name in the default locale only', () => {
     const found = issues(base({ content: { ...base().content, texts: { other: { name: 'x' } } } }));
     expect(found).toContainEqual({ path: `texts.${locale}.name`, code: 'required' });
-    expect(found).toContainEqual({ path: 'texts.other', code: 'unknown' });
+    expect(found).toContainEqual({ path: 'texts', code: 'unknown' });
   });
 
   it('rejects duplicate categories and prototype-polluting keys', () => {
@@ -81,7 +81,7 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       }),
     );
     expect(found).toContainEqual({ path: 'categoryIds.1', code: 'duplicate' });
-    expect(found).toContainEqual({ path: 'texts.__proto__', code: 'invalid' });
+    expect(found).toContainEqual({ path: 'texts', code: 'unknown' });
   });
 
   describe('Configurable variants', () => {
@@ -152,22 +152,22 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       const bad = (entry: Record<string, unknown>) =>
         issues(configurable([{ variantId: v(1), ...entry }]));
       expect(bad({ optionValues: { a: 'b;c=d' } })).toContainEqual({
-        path: 'variants.0.optionValues.a',
+        path: 'variants.0.optionValues',
         code: 'invalid',
       });
       expect(bad({ optionValues: { 'a=b': 'c' } })).toContainEqual({
-        path: 'variants.0.optionValues.a=b',
+        path: 'variants.0.optionValues',
         code: 'invalid',
       });
       expect(bad({ optionValues: JSON.parse('{"__proto__": "x"}') })).toContainEqual({
-        path: 'variants.0.optionValues.__proto__',
+        path: 'variants.0.optionValues',
         code: 'invalid',
       });
       expect(
         bad({ optionValues: { a: 'b' }, labels: JSON.parse('{"constructor": "x"}') }),
       ).toContainEqual({
-        path: 'variants.0.labels.constructor',
-        code: 'invalid',
+        path: 'variants.0.labels',
+        code: 'unknown',
       });
     });
 

@@ -186,7 +186,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       copyOf(ready({ texts: { [locale]: { name: 'Dates' }, xx: { name: 'x' } } })),
     );
     if (result.ok || result.error.code !== 'revision.not-ready') throw new Error('expected issues');
-    expect(result.error.issues).toContainEqual({ path: 'texts.xx', code: 'unknown' });
+    expect(result.error.issues).toContainEqual({ path: 'texts', code: 'unknown' });
   });
 
   it('requires a localizable attribute in the Market default locale, whatever its list position', async () => {
@@ -257,6 +257,36 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     // ZZ allows 3 variants: four is too many. AU allows 100: only the repeated option sets fail.
     expect(found.includes('too-many')).toBe(max === 3);
     expect(found.includes('duplicate')).toBe(max !== 3);
+  });
+
+  it('refuses a working copy of another product and a handler of another variant model (L3, L4)', async () => {
+    await expect(
+      service.freeze(market, product('simple'), {
+        ...copyOf(ready()),
+        productId: 'other' as Id<'Product'>,
+      }),
+    ).rejects.toThrow(/do not belong together/);
+    const mismatched = new FreezeRevision({
+      attributes: {
+        loadSchema: () => Promise.resolve(schemaOf()),
+      } as unknown as AttributeRepository,
+      policy: {} as CatalogMarketPolicy,
+      handlerFor: () => configurableProductType,
+    });
+    expect(await mismatched.freeze(market, product('simple'), copyOf(ready()))).toEqual({
+      ok: false,
+      error: { code: 'revision.type-unknown' },
+    });
+  });
+
+  it('does not echo a key the seller typed (L-1)', async () => {
+    const result = await service.freeze(
+      market,
+      product('simple'),
+      copyOf(ready({ texts: { [locale]: { name: 'Dates' }, ['x'.repeat(300)]: { name: 'x' } } })),
+    );
+    if (result.ok || result.error.code !== 'revision.not-ready') throw new Error('expected issues');
+    expect(JSON.stringify(result.error.issues)).not.toContain('xxxx');
   });
 
   it('fails closed when the schema or the type handler is missing', async () => {

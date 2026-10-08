@@ -67,12 +67,11 @@ function parseTexts(
     return texts;
   }
   for (const [locale, entry] of Object.entries(raw)) {
-    if (NO_PROTOTYPE_KEYS.has(locale)) {
-      issues.push({ path: `texts.${locale}`, code: 'invalid' });
-      continue;
-    }
+    // A key the seller typed is never echoed in a path until it matched the Market's list.
     if (!supportedLocales.includes(locale)) {
-      issues.push({ path: `texts.${locale}`, code: 'unknown' });
+      if (!issues.some((issue) => issue.path === 'texts' && issue.code === 'unknown')) {
+        issues.push({ path: 'texts', code: 'unknown' });
+      }
       continue;
     }
     if (!isObject(entry)) {
@@ -188,7 +187,7 @@ function parseVariants(
         OPTION_SEPARATORS.test(code) ||
         OPTION_SEPARATORS.test(value)
       ) {
-        issues.push({ path: `${path}.optionValues.${code}`, code: 'invalid' });
+        issues.push({ path: `${path}.optionValues`, code: 'invalid' });
         return;
       }
       optionValues[code] = value;
@@ -207,7 +206,11 @@ function parseVariants(
         return;
       }
       for (const [locale, label] of Object.entries(rawLabels)) {
-        if (NO_PROTOTYPE_KEYS.has(locale) || !isNonBlank(label)) {
+        if (!input.supportedLocales.includes(locale)) {
+          issues.push({ path: `${path}.labels`, code: 'unknown' });
+          return;
+        }
+        if (!isNonBlank(label)) {
           issues.push({ path: `${path}.labels.${locale}`, code: 'invalid' });
           return;
         }
