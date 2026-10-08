@@ -1273,7 +1273,9 @@ async function updateScenario(label, opts, from) {
     // a new build: rings with their spread, scrolling phone screens
     const Q = start(STARTER);
     r = await send(Q, { type: 'build' });
+    const styles = [...Q.STYLES.values()].filter((st) => !st.removed && (st.type === 'TEXT' || st.type === 'EFFECT'));
     check(!r.err && ringStyles(Q).every((st) => spreads(st) === RINGS[st.name].join()) && phoneMains(Q).length >= 10 && phoneMains(Q).every((m) => m.overflowDirection === 'VERTICAL'), 'a new 1.8.4 build has the ring spreads and scrolling phone screens');
+    check(styles.length > 20 && styles.every((st) => st.getPluginData('mondapac-ds') === '1'), 'its text and effect styles carry the plugin tag (' + styles.length + ')');
     // Audit: an entry past the 25th is announced, and a layer sticking out sideways from a scrolling Main is still counted
     const wide = Q.figma.createFrame(); wide.name = 'too wide'; wide.fills = []; wide.resize(500, 20); sellerPhoneMain(Q).appendChild(wide);
     sellerPhoneMain(Q)._abb = { x: 0, y: 56, width: 360, height: 660 }; wide._abb = { x: 16, y: 100, width: 500, height: 20 };
@@ -1295,10 +1297,27 @@ async function updateScenario(label, opts, from) {
     mains[1].parent.setPluginData('mondapac-ds', ''); const foreignName = mains[1].parent.name;
     r = await send(Q, { type: 'update' });
     const rp = r.done ? r.done.report : []; const ad = r.done ? r.done.added : [];
-    check(!r.err && rp.includes('ℹ skipped effect style Ring/Urgent: it differs from the spec in more than the spread (layer 1 blur 6, spec 0)') && spreads(urgent) === '0' && urgent.effects[0].radius === 6 && ad.includes('fix effect style Focus/Ring: spread 2 and 4 px') && !ad.some((l) => /Ring\/Urgent/.test(l)), 'a ring style changed by hand keeps its shape and is reported; the other one is repaired' + (r.err ? ': ' + r.err.message : ''));
+    check(!r.err && rp.includes('ℹ skipped effect style Ring/Urgent: it was changed by hand (layer 1 blur 6, spec 0; layer 1 spread 0, spec 3)') && spreads(urgent) === '0' && urgent.effects[0].radius === 6 && ad.includes('fix effect style Focus/Ring: spread 2 and 4 px') && !ad.some((l) => /Ring\/Urgent/.test(l)), 'a ring style changed by hand keeps its shape and is reported; the other one is repaired' + (r.err ? ': ' + r.err.message : ''));
     check(rp.includes('ℹ skipped scrolling of ' + sideName + ': its Main frame was changed by hand') && mains[0].overflowDirection === 'HORIZONTAL' && mains[1].overflowDirection === 'NONE' && !rp.some((l) => l.indexOf(foreignName) >= 0) && ad.includes('fix phone screens: Main scrolls vertically (' + (ph - 2) + ' frames)'), 'a phone Main that scrolls sideways is reported and kept; a phone screen that is not the plugin\'s is left alone');
     r = await send(Q, { type: 'audit' }); const ar = r.done ? r.done.report : [];
     check(ar.includes('⚠ Effect styles that differ from the library spec: 1 (1 unique)') && ar.includes('    Ring/Urgent (layer 1 blur 6, spec 0; layer 1 spread 0, spec 3)'), 'Audit file still names the hand-edited ring style');
+  }
+  {
+    // only the mark of Figma's bug is repaired: a ring spread set by hand (colours still bound) and an Elevation style changed by hand stay as they are
+    const Q = start(STARTER, CODE_183);
+    r = await send(Q, { type: 'build' }); load(Q, CODE);
+    const focus = ringStyles(Q).find((st) => st.name === 'Focus/Ring'); focus.effects = focus.effects.map((e, i) => Object.assign({}, e, { spread: [1, 3][i] }));
+    const floating = [...Q.STYLES.values()].find((st) => st.type === 'EFFECT' && st.name === 'Elevation/Floating'); floating.effects = floating.effects.map((e, i) => Object.assign({}, e, { spread: i ? e.spread : -6 }));
+    r = await send(Q, { type: 'update' }); let rp = r.done ? r.done.report : []; let ad = r.done ? r.done.added : [];
+    check(!r.err && rp.includes('ℹ skipped effect style Focus/Ring: it was changed by hand (layer 1 spread 1, spec 2; layer 2 spread 3, spec 4)') && spreads(focus) === '1,3' && spreads(floating) === '-6,-4' && !rp.concat(ad).some((l) => /Elevation/.test(l)) && ad.includes('fix effect style Ring/Urgent: spread 3 px') && !ad.some((l) => /Focus\/Ring/.test(l)), 'a ring spread set by hand and an Elevation style changed by hand are left and the first is reported; the ring with Figma\'s spread 0 is repaired' + (r.err ? ': ' + r.err.message : ''));
+    r = await send(Q, { type: 'audit' }); const ar = r.done ? r.done.report : [];
+    check(ar.includes('⚠ Effect styles that differ from the library spec: 2 (2 unique)') && ar.includes('    Elevation/Floating (layer 1 spread -6, spec -8)') && ar.includes('    Focus/Ring (layer 1 spread 1, spec 2; layer 2 spread 3, spec 4)'), 'Audit file names both hand-edited styles');
+    // two effect styles with a ring's name: neither is touched
+    const G = start(STARTER, CODE_183);
+    r = await send(G, { type: 'build' }); load(G, CODE);
+    const urgent = ringStyles(G).find((st) => st.name === 'Ring/Urgent'); const twin = G.figma.createEffectStyle(); twin.name = 'Ring/Urgent'; twin.effects = urgent.effects;
+    r = await send(G, { type: 'update' }); rp = r.done ? r.done.report : []; ad = r.done ? r.done.added : [];
+    check(!r.err && rp.includes('ℹ skipped effect style Ring/Urgent: the file has 2 effect styles with that name') && spreads(urgent) === '0' && spreads(twin) === '0' && ad.includes('fix effect style Focus/Ring: spread 2 and 4 px'), 'two effect styles named Ring/Urgent: neither is repaired, and the report says why' + (r.err ? ': ' + r.err.message : ''));
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));

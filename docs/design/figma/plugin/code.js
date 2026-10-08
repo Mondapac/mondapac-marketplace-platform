@@ -199,6 +199,7 @@ async function buildStyles() {
       st.setBoundVariable('lineHeight', S.typeVars['font/line-height/' + key]);
       st.setBoundVariable('fontFamily', S.typeVars[t.family === 'IBM Plex Mono' ? 'font/family/mono' : 'font/family/sans']);
     });
+    tag(st); // 1.8.4: styles carry the plugin tag, so a later repair can tell them from a style of the same name made by hand
     S.ts[t.name] = st;
   }
   for (let ei = 0; ei < SPEC.effects.length; ei++) {
@@ -213,6 +214,7 @@ async function buildStyles() {
     if (e.layers.some(function (l) { return l.token; })) {
       await safe('bind effect ' + e.name, function () { st.effects = bindEffectColours(layers, e); });
     }
+    tag(st);
     S.es[e.name] = st;
   }
   log('✓ Styles: ' + SPEC.type.length + ' text styles, ' + SPEC.effects.length + ' effect styles.');
@@ -4280,17 +4282,23 @@ async function updateLibrary() {
 
   // 3f · release 1.8.4 "Fixes from the 1.8.3 real-Figma run": two in-place repairs; a node or style changed by hand is reported and left as it is.
   // (a) Effect styles whose colour is bound (Focus/Ring, Ring/Urgent) were saved with spread 0 by Figma's setBoundVariableForEffect, so the rings
-  //     did not show. A style that matches the spec apart from the spread gets the spec spread back; its colour bindings stay.
-  const fx184 = [];
+  //     did not show. Only the layers that carry that bug's mark (colour bound, spread 0 where the spec has one) get the spec spread back, their
+  //     binding kept, and only when that makes the whole style match the spec. A style that differs in any other way, a spread set by hand
+  //     included, or a name held by more than one effect style, is reported and left. Styles without a bound colour never met the bug.
+  const fx184 = []; const estyles = await figma.getLocalEffectStylesAsync();
   SPEC.effects.forEach(function (e) {
-    const st = S.es[e.name];
-    if (!st || !effectDiff(st.effects, e)) return;
-    const shape = effectDiff(st.effects.map(function (fx, i) { return e.layers[i] ? Object.assign({}, fx, { spread: e.layers[i].spread }) : fx; }), e);
-    if (shape) { log('ℹ skipped effect style ' + e.name + ': it differs from the spec in more than the spread (' + shape + ')'); return; }
-    fx184.push({ st: st, e: e });
+    if (!e.layers.some(function (l) { return l.token; })) return;
+    const named = estyles.filter(function (st) { return st.name === e.name; });
+    if (!named.length || named.every(function (st) { return !effectDiff(st.effects, e); })) return;
+    if (named.length > 1) { log('ℹ skipped effect style ' + e.name + ': the file has ' + named.length + ' effect styles with that name'); return; }
+    const st = named[0], cur = st.effects;
+    const bugged = function (fx, l) { return !!(l && l.token && l.spread && fx.type === l.type && fx.boundVariables && fx.boundVariables.color && !fx.spread); };
+    const next = cur.map(function (fx, i) { return bugged(fx, e.layers[i]) ? Object.assign({}, fx, { spread: e.layers[i].spread }) : fx; });
+    if (effectDiff(next, e)) { log('ℹ skipped effect style ' + e.name + ': it was changed by hand (' + effectDiff(cur, e) + ')'); return; }
+    fx184.push({ st: st, e: e, next: next });
   });
   fx184.forEach(function (f) {
-    f.st.effects = f.st.effects.map(function (fx, i) { return Object.assign({}, fx, { spread: f.e.layers[i].spread }); });
+    f.st.effects = f.next;
     const left = effectDiff(f.st.effects, f.e);
     if (left) log('⚠ effect style ' + f.e.name + ' still differs from the spec after the repair (' + left + '): set the spread in the style editor by hand');
     else added.push('fix effect style ' + f.e.name + ': spread ' + f.e.layers.map(function (l) { return l.spread; }).join(' and ') + ' px');

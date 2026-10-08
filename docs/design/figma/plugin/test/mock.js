@@ -113,7 +113,7 @@ function makeFigma(opts) {
   // ------------------------------------------------------------ styles
   const STYLES = new Map();
   class TextStyle {
-    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'TEXT'; this.name = 'Text style'; this.description = ''; this._font = { family: 'Inter', style: 'Regular' }; this.fontSize = 12; this.lineHeight = { unit: 'AUTO' }; this.letterSpacing = { unit: 'PIXELS', value: 0 }; this.textCase = 'ORIGINAL'; this._bv = {}; STYLES.set(this.id, this); }
+    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'TEXT'; this.name = 'Text style'; this.description = ''; this._font = { family: 'Inter', style: 'Regular' }; this.fontSize = 12; this.lineHeight = { unit: 'AUTO' }; this.letterSpacing = { unit: 'PIXELS', value: 0 }; this.textCase = 'ORIGINAL'; this._bv = {}; this._spd = {}; STYLES.set(this.id, this); }
     get fontName() { return Object.assign({}, this._font); }
     set fontName(f) { if (!loaded.has(fk(f))) fail('TextStyle.fontName: font ' + fk(f) + ' is not loaded'); this._font = Object.assign({}, f); }
     get boundVariables() { return deep(this._bv); }
@@ -126,12 +126,16 @@ function makeFigma(opts) {
       this._bv[field] = alias(v);
     }
     remove() { STYLES.delete(this.id); this.removed = true; }
+    setPluginData(k, v) { if (typeof v !== 'string') fail('setPluginData value must be a string'); this._spd[k] = v; }
+    getPluginData(k) { return this._spd[k] || ''; }
   }
   class EffectStyle {
-    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'EFFECT'; this.name = 'Effect style'; this.description = ''; this._effects = []; STYLES.set(this.id, this); }
+    constructor() { this.id = 'S:' + (idc++).toString(16) + ','; this.type = 'EFFECT'; this.name = 'Effect style'; this.description = ''; this._effects = []; this._spd = {}; STYLES.set(this.id, this); }
     get effects() { return deep(this._effects); }
     set effects(a) { if (!Array.isArray(a)) fail('effects must be array'); a.forEach(checkEffect); this._effects = deep(a); }
     remove() { STYLES.delete(this.id); this.removed = true; }
+    setPluginData(k, v) { if (typeof v !== 'string') fail('setPluginData value must be a string'); this._spd[k] = v; }
+    getPluginData(k) { return this._spd[k] || ''; }
   }
 
   // ------------------------------------------------------------ nodes

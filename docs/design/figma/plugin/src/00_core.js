@@ -198,6 +198,7 @@ async function buildStyles() {
       st.setBoundVariable('lineHeight', S.typeVars['font/line-height/' + key]);
       st.setBoundVariable('fontFamily', S.typeVars[t.family === 'IBM Plex Mono' ? 'font/family/mono' : 'font/family/sans']);
     });
+    tag(st); // 1.8.4: styles carry the plugin tag, so a later repair can tell them from a style of the same name made by hand
     S.ts[t.name] = st;
   }
   for (let ei = 0; ei < SPEC.effects.length; ei++) {
@@ -212,6 +213,7 @@ async function buildStyles() {
     if (e.layers.some(function (l) { return l.token; })) {
       await safe('bind effect ' + e.name, function () { st.effects = bindEffectColours(layers, e); });
     }
+    tag(st);
     S.es[e.name] = st;
   }
   log('✓ Styles: ' + SPEC.type.length + ' text styles, ' + SPEC.effects.length + ' effect styles.');
