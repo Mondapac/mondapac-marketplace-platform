@@ -454,6 +454,27 @@ describe('loadMarketConfigs', () => {
         /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its origin/,
       ],
       [
+        'an admin page on the seller host under another port (Hassan I-1)',
+        {
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'https://seller.qq.test:8443/admin/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its host name/,
+      ],
+      [
+        'an admin page on a loopback storefront host under another port (Hassan I-1)',
+        {
+          customer: {
+            'verify-email': 'http://localhost:3001/confirm-email',
+            'sign-in': 'http://localhost:3001/sign-in',
+            'reset-password': 'http://localhost:3001/reset-password',
+          },
+          seller: SELLER_PAGES,
+          admin: { 'seller-review-queue': 'http://localhost:3002/queue' },
+        },
+        /identity\.links\.targets\.admin\.seller-review-queue: an admin page must not share its host name/,
+      ],
+      [
         'an admin page with a fragment',
         { seller: SELLER_PAGES, admin: { 'seller-review-queue': 'https://admin.qq.test/q#x' } },
         /identity\.links\.targets\.admin\.seller-review-queue/,

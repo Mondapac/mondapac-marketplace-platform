@@ -18,6 +18,7 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { AccountAuthorisationCheck } from './application/access/account-authorisation-check';
 import { SessionAuthenticator } from './application/access/session-authenticator';
+import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
 import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
 import { COMMON_PASSWORD_LIST } from './application/ports/common-password-list';
 import { IDENTITY_MAIL_COMPOSER } from './application/ports/identity-mails';
@@ -51,6 +52,7 @@ import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
+import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { PurgeUnverifiedAccounts } from './application/use-cases/purge-unverified-accounts.use-case';
 import { RegisterCustomer } from './application/use-cases/register-customer.use-case';
@@ -77,6 +79,7 @@ import { linkProviders } from './infrastructure/links/link-providers';
 import { MarketConfigIdentityPolicy } from './infrastructure/market-config-identity-policy';
 import { Argon2idPasswordHasher } from './infrastructure/passwords/argon2id-password-hasher';
 import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-common-passwords';
+import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
@@ -106,6 +109,7 @@ const PORT = {
   records: SIGN_IN_RECORD_REPOSITORY,
   links: ONE_TIME_LINK_REPOSITORY,
   sellerAccess: SELLER_ACCESS_REPOSITORY,
+  reviewers: ACCESS_REVIEWERS,
   memberships: SELLER_MEMBERSHIP_REPOSITORY,
   roles: ROLE_REPOSITORY,
   assignments: ROLE_ASSIGNMENT_REPOSITORY,
@@ -169,6 +173,9 @@ function useCaseProvider<D, U>(
  *
  * Slice 4 binds the password reset request, the reset with a link and the signed-in change, with
  * one controller per population, and the "password changed" mail handler.
+ *
+ * R-3 binds the reviewer read and the reviewer notice behind the seller-access contract
+ * (identity design 8.7). No subscription sends it: only `sellers` calls it, after a submission.
  */
 @Module({
   controllers: [
@@ -194,6 +201,7 @@ function useCaseProvider<D, U>(
     ...sessionProviders,
     ...linkProviders,
     ...sellerProviders,
+    ...reviewerProviders,
     {
       provide: AUTHENTICATOR,
       inject: [UNIT_OF_WORK, SESSION_REPOSITORY, SESSION_TOKENS, CLOCK],
@@ -383,6 +391,15 @@ function useCaseProvider<D, U>(
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(SellerAccessOfSystem, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(ListRegisteredSellers, { unitOfWork: true, sellerAccess: true }),
+    useCaseProvider(NotifyAccessReviewers, {
+      unitOfWork: true,
+      sellerAccess: true,
+      reviewers: true,
+      targets: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
     useCaseProvider(SeedSystemRoles, {
       unitOfWork: true,
       roles: true,
@@ -455,20 +472,22 @@ function useCaseProvider<D, U>(
         new IdentityFacadeImplementation({ describeActor, membershipOf }),
     },
     {
-      // The two calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
+      // The calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
       // imported through a contract file that is not in index.ts and that a boundary rule
       // limits to modules/sellers/.
       provide: SELLER_ACCESS_CONTRACT,
-      inject: [SellerAccessOf, SellerAccessOfSystem, ListRegisteredSellers],
+      inject: [SellerAccessOf, SellerAccessOfSystem, ListRegisteredSellers, NotifyAccessReviewers],
       useFactory: (
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
         listRegisteredSellers: ListRegisteredSellers,
+        notifyAccessReviewers: NotifyAccessReviewers,
       ) =>
         new SellerAccessContractImplementation({
           sellerAccessOf,
           sellerAccessOfSystem,
           listRegisteredSellers,
+          notifyAccessReviewers,
         }),
     },
     registerJobsFrom(

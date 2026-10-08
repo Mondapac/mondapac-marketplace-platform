@@ -2,6 +2,10 @@ import type { TestingModuleBuilder } from '@nestjs/testing';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, PendingEvent, Population, Result } from '@mondapac/shared-kernel';
 import {
+  REVIEWER_CANDIDATE_READER,
+  type ReviewerCandidateReader,
+} from '../../src/modules/identity/application/ports/access-reviewers';
+import {
   ACCOUNT_REPOSITORY,
   type AccountRepository,
 } from '../../src/modules/identity/application/ports/account.repository';
@@ -232,6 +236,24 @@ export class IdentityFakes {
       }
       return Promise.resolve();
     },
+  };
+
+  /** The SQL narrowing of the reviewer read (identity design 8.7), over the fake accounts. */
+  readonly reviewerCandidateReader: ReviewerCandidateReader = {
+    activeVerifiedAdmins: (market, limit) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.population === 'admin' &&
+              a.status === 'active' &&
+              a.emailVerifiedAt !== null,
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit)
+          .map((a) => ({ accountId: a.id, email: a.email.typed })),
+      ),
   };
 
   readonly sellerAccessRepository: SellerAccessRepository = {
@@ -696,6 +718,8 @@ export class IdentityFakes {
       .useValue(this.linkRepository)
       .overrideProvider(SELLER_ACCESS_REPOSITORY)
       .useValue(this.sellerAccessRepository)
+      .overrideProvider(REVIEWER_CANDIDATE_READER)
+      .useValue(this.reviewerCandidateReader)
       .overrideProvider(SELLER_MEMBERSHIP_REPOSITORY)
       .useValue(this.membershipRepository)
       .overrideProvider(ROLE_REPOSITORY)

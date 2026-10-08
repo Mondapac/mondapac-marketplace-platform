@@ -34,8 +34,13 @@
   "identity.mail.password-changed.seller.subject": "出品者アカウントのパスワードが変更されました",
   "identity.mail.password-changed.seller.heading": "パスワードが変更されました",
   "identity.mail.password-changed.seller.body": "出品者アカウントのパスワードが{time}に変更されました。ほかの端末のセッションはサインアウトされました。",
+  "identity.mail.reviewer-notice.admin.subject": "審査待ちの出品者申請があります",
+  "identity.mail.reviewer-notice.admin.heading": "審査待ちの出品者申請があります",
+  "identity.mail.reviewer-notice.admin.body": "出品者から審査の申請が届きました。審査キューを開いて、判断を待っている申請を確認してください。",
+  "identity.mail.reviewer-notice.admin.action": "審査キューを開く",
   "identity.mail.common.account-line.customer": "このメールはお客様アカウントについてです。同じメールアドレスの出品者アカウントとは別です。",
   "identity.mail.common.account-line.seller": "このメールは出品者アカウントについてです。同じメールアドレスのお客様アカウントとは別です。",
+  "identity.mail.common.account-line.admin": "このメールは管理者アカウントについてです。",
   "identity.mail.common.ignore": "心当たりがない場合は、このメールを無視してください。",
   "identity.mail.common.not-you": "心当たりがない場合は、すぐにサインインページからパスワードを再設定してください。",
   "identity.mail.common.footer": "このメールは自動送信です。返信は読まれません。"
