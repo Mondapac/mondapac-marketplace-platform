@@ -379,6 +379,7 @@ describe('loadMarketConfigs', () => {
         postcodePattern: '^[0-9]{5}$',
         regions: ['N', 'S'],
       },
+      reservedWords: { slugs: ['admin'], claimWords: ['gold'] },
       timezones: {
         countries: ['NZ'],
         byRegion: {
@@ -434,7 +435,63 @@ describe('loadMarketConfigs', () => {
       ).toBe(true);
     });
 
+    it('lists different reserved words in the two Market fixtures', () => {
+      const [first, second] = [
+        ...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values(),
+      ];
+
+      expect(first?.sellers?.reservedWords.claimWords.length).toBeGreaterThan(0);
+      expect(first?.sellers?.reservedWords.claimWords).not.toEqual(
+        second?.sellers?.reservedWords.claimWords,
+      );
+    });
+
     it.each([
+      [
+        'no reserved words: a Market never defaults them',
+        (c: typeof SELLERS) => void delete (c as { reservedWords?: unknown }).reservedWords,
+        /reservedWords/,
+      ],
+      [
+        'a hyphenated claim word, which could never match a token',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('non-gmo'),
+        /lower-case letters only/,
+      ],
+      [
+        'an empty claim word list, which would switch the claim check off',
+        (c: typeof SELLERS) => void (c.reservedWords.claimWords = []),
+        /expected array to have >=1 items/,
+      ],
+      [
+        'a repeated claim word',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('gold'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a repeated reserved slug',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('admin'),
+        /must not repeat an entry/,
+      ],
+      [
+        'a reserved slug longer than 50 characters',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('a'.repeat(51)),
+        /too big|<=50/,
+      ],
+      [
+        'an unknown key in reservedWords',
+        (c: typeof SELLERS) => void ((c.reservedWords as Record<string, unknown>).extra = []),
+        /unrecognized/i,
+      ],
+      [
+        'a reserved word that is not a slug token',
+        (c: typeof SELLERS) => void c.reservedWords.slugs.push('Not A Token'),
+        /lower-case letters, digits and single hyphens/,
+      ],
+      [
+        'a claim word with upper case',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('Gold2'),
+        /lower-case letters only/,
+      ],
       [
         'no approval policy: a Market never defaults it',
         (c: typeof SELLERS) => void delete (c as { approvalRequired?: boolean }).approvalRequired,

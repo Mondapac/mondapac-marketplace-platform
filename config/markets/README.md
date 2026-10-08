@@ -76,12 +76,16 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   when the runtime moves. Never an offset (ADR-0005). The seller chooses within the list (sellers
   spike 3 record, mini-review 2026-10-08); there is no postcode-exception table and no
   Google-derived data. The lists are reviewed like any config change.
-
-`postcodePattern` runs on user input, so it must be anchored with `^` and `$`, at most 64
-characters, with no `*`, `+`, lookaround or back-reference and only bounded `{n}` or `{n,m}`
-repeats. Field keys and region names must not be `Object.prototype` members. The postcode and
-region fields must be required and different, and arrays and strings have size caps. Slice 2
-makes `sellers` mandatory for a `soft_launch` or `active` Market when it adds its first reader.
+- `reservedWords` (required; sellers slice 2b): `slugs` are whole shop slugs that are never held (site
+  routes, platform names) and `claimWords` are the words a seller may not claim (certification
+  words and the platform's own name). A `slugs` entry is lower-case letters, digits and single
+  hyphens; a `claimWords` entry is lower-case letters only (no digit or hyphen, because it is
+  compared with folded tokens), at least one entry, none repeated, each at most 50 characters. In a
+  slug a claim word as a hyphen-separated token makes it `slug.reserved`. In a store name the
+  name is split on anything that is not a letter or digit and each token is folded (accents,
+  look-alike letters and digits) before the comparison, and a claim word of five letters or more is also looked for inside the joined tokens (`HalalMart`); a hit is a reviewer flag that also
+  blocks the automatic approval. The lists are Market data, not literals in `sellers`' code
+  (sellers design 3.5, Ali change 3); the claim group moves to a `certification` port later.
 
 ## `inventory` section (optional)
 

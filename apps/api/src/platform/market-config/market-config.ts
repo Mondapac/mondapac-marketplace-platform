@@ -361,6 +361,37 @@ function zonesOfCountry(country: string): readonly string[] {
   return locale.getTimeZones?.() ?? [];
 }
 
+/** A reserved slug or claim word as a slug token (sellers design 3.5): lower-case a-z and 0-9. */
+const reservedToken = z
+  .string()
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'must be lower-case letters, digits and single hyphens')
+  .max(50);
+
+/**
+ * The reserved words of a Market (sellers design 3.5; Ali change 3): checked-in data, never
+ * literals in the module. `slugs` are whole slugs never held (site routes, platform names);
+ * `claimWords` are matched per token in a slug (refused) and in a store name (reviewer flag),
+ * until `certification` supplies the claim group through a port (design 16.2 item 6).
+ */
+const reservedWordsSchema = z.strictObject({
+  slugs: z
+    .array(reservedToken)
+    .max(500)
+    .refine((list) => new Set(list).size === list.length, 'must not repeat an entry'),
+  // No hyphen: a claim word is matched against one token, so a hyphenated entry could never
+  // match. At least one, so a Market file cannot quietly switch the claim check off.
+  claimWords: z
+    .array(
+      z
+        .string()
+        .regex(/^[a-z]+$/, 'must be lower-case letters only (no digit, no hyphen)')
+        .max(50),
+    )
+    .min(1)
+    .max(200)
+    .refine((list) => new Set(list).size === list.length, 'must not repeat an entry'),
+});
+
 /**
  * The `sellers` section of a Market file. It starts with what slice 2 (complete details) needs;
  * later slices add the rest of design 4.1 here, each with its own readiness gate (ADR-0013).
@@ -369,6 +400,7 @@ const sellersSchema = z
   .strictObject({
     address: addressFormatSchema,
     timezones: sellerTimezonesSchema,
+    reservedWords: reservedWordsSchema,
     /**
      * Whether a new seller starts `pending` (true) or `approved` (false) (sellers design 4.1;
      * identity design 3.3, SEL-03, AC 5). Required: a Market never defaults it. It is the seed

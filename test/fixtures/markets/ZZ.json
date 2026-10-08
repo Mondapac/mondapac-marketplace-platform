@@ -89,6 +89,10 @@
       "postcodePattern": "^[0-9]{7}$",
       "regions": ["ZA", "ZB"]
     },
+    "reservedWords": {
+      "slugs": ["admin", "api", "zz-staff", "zzmart"],
+      "claimWords": ["zzmart", "blessed", "genuine", "pure"]
+    },
     "timezones": {
       "countries": ["JP", "NZ"],
       "byRegion": {
