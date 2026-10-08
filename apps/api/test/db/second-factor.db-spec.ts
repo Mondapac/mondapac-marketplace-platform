@@ -34,7 +34,10 @@ import { PrismaSignInChallengeRepository } from '../../src/modules/identity/infr
 import { SubjectKeySecondFactorSecrets } from '../../src/modules/identity/infrastructure/second-factor/subject-key-second-factor-secrets';
 import { hotp } from '../../src/modules/identity/infrastructure/second-factor/totp';
 import { PrismaSellerAccessRepository } from '../../src/modules/identity/infrastructure/sellers/prisma-seller-access.repository';
-import { PrismaSellerMembershipRepository } from '../../src/modules/identity/infrastructure/sellers/prisma-seller-team.repository';
+import {
+  PrismaRoleAssignmentRepository,
+  PrismaSellerMembershipRepository,
+} from '../../src/modules/identity/infrastructure/sellers/prisma-seller-team.repository';
 import { realEffectiveKeys } from '../support/permission-registry';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -983,5 +986,89 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
     // Separately: an account the gate would allow but without an active factor is never one.
     expect(recipients.has(noFactor)).toBe(false);
     expect(recipients.has(pendingFactor)).toBe(false);
+  });
+  // Slice 7b item H (Mojtaba): the seller access row's lock, taken by the unit that opens a seller
+  // session before it reads the seller's state; a unit that holds it makes the next one wait.
+  it('lockForSession: false for an unknown seller or another Market; a second holder waits for the first unit (item H)', async () => {
+    const access = new PrismaSellerAccessRepository(db.service, subjectKeys);
+    const sellerId = randomUUID() as Id<'Seller'>;
+    await sql.query(
+      `INSERT INTO identity.seller_access (seller_id, market_id, tenant_id, origin, state,
+         state_changed_at, reapply_count, registered_at, version, created_at)
+       VALUES ($1, $2, 'default', 'self', 'approved', $3, 0, $3, 1, $3)`,
+      [sellerId, code, CREATED],
+    );
+    await expect(
+      unit(() => access.lockForSession(market, randomUUID() as Id<'Seller'>)),
+    ).resolves.toBe(false);
+    await expect(unit(() => access.lockForSession(other, sellerId), other)).resolves.toBe(false);
+
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let signal!: () => void;
+    const locked = new Promise<void>((resolve) => (signal = resolve));
+    const first = unit(async () => {
+      expect(await access.lockForSession(market, sellerId)).toBe(true);
+      signal();
+      await held;
+      order.push('first-ends');
+    });
+    await locked;
+    const second = unit(async () => {
+      expect(await access.lockForSession(market, sellerId)).toBe(true);
+      order.push('second-locked');
+    });
+    // Well under lock_timeout (3 s): the second unit is still waiting when the first is released.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    order.push('released');
+    release();
+    await Promise.all([first, second]);
+
+    expect(order).toEqual(['released', 'first-ends', 'second-locked']);
+    // The lock changes no value.
+    const { rows } = await sql.query<{ version: number }>(
+      'SELECT version FROM identity.seller_access WHERE seller_id = $1',
+      [sellerId],
+    );
+    expect(rows).toEqual([{ version: 1 }]);
+  });
+
+  // HF5 (b): an admin invitation without an inviter is refused once the role has a holder that
+  // can sign in (an active account with a verified email), in this Market only.
+  it('hasActiveHolder: only an active, verified holder of the role in this Market counts (HF5)', async () => {
+    const assignments = new PrismaRoleAssignmentRepository(db.service);
+    const roleId = randomUUID() as Id<'Role'>;
+    const name = `holders ${roleId}`;
+    await sql.query(
+      `INSERT INTO identity.roles (id, market_id, tenant_id, scope, kind, name,
+       name_normalized, version, created_at)
+       VALUES ($1, $2, 'default', 'platform', 'custom', $3, $3, 1, $4)`,
+      [roleId, code, name, CREATED],
+    );
+    const assign = (account: string) =>
+      sql.query(
+        `INSERT INTO identity.role_assignments (id, market_id, tenant_id, account_id, role_id,
+         assigned_at, version) VALUES ($1, $2, 'default', $3, $4, $5, 1)`,
+        [randomUUID(), code, account, roleId, CREATED],
+      );
+    const holds = () => unit(() => assignments.hasActiveHolder(market, roleId));
+
+    await expect(holds()).resolves.toBe(false);
+    const disabled = await insertAdmin();
+    await sql.query(`UPDATE identity.accounts SET status = 'disabled' WHERE id = $1`, [disabled]);
+    await assign(disabled);
+    await expect(holds()).resolves.toBe(false);
+    const unverified = await insertAdmin();
+    await sql.query('UPDATE identity.accounts SET email_verified_at = NULL WHERE id = $1', [
+      unverified,
+    ]);
+    await assign(unverified);
+    await expect(holds()).resolves.toBe(false);
+    await assign(await insertAdmin());
+    await expect(holds()).resolves.toBe(true);
+    await expect(unit(() => assignments.hasActiveHolder(other, roleId), other)).resolves.toBe(
+      false,
+    );
   });
 });
