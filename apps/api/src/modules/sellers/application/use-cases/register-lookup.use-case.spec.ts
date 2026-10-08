@@ -133,7 +133,13 @@ class FakeFiles implements SellerFileRepository {
     const state = this.stored.get(`${market.marketId}|${sellerId}`);
     return Promise.resolve(state === undefined ? null : SellerFile.restore(state));
   }
+  /** When set, the next `saveDraft` loses to a concurrent writer (optimistic version check). */
+  conflictOnNextSave = false;
   saveDraft(market: MarketContext, file: SellerFile): Promise<boolean> {
+    if (this.conflictOnNextSave) {
+      this.conflictOnNextSave = false;
+      return Promise.resolve(false);
+    }
     const key = `${market.marketId}|${file.state.sellerId}`;
     const current = this.stored.get(key);
     if (current === undefined || current.version !== file.persistedVersion) {
@@ -608,7 +614,7 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       expect(t.registerChecks.count(market(code))).toBe(0);
     });
 
-    it('gives unavailable, with no call, once the Market budget is spent, and logs the 80% alert once', async () => {
+    it('writes no result and makes no call once the Market budget is spent, and logs the 80% alert once', async () => {
       const budget = 5;
       const t = setUp(code, {
         settings: {
@@ -635,7 +641,7 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
         over.sellerId,
         indexOf(t, code, numbers.at(-1)!),
       );
-      expect(row).toMatchObject({ outcome: 'unavailable', checkedBy: { kind: 'seller' } });
+      expect(row).toBeNull();
     });
 
     it('spends no quota on a save the aggregate refuses (an approved file)', async () => {
@@ -774,6 +780,93 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
       await save(t, a.context, number);
       const read = await t.read.execute(b.context, {});
       expect(read.ok && read.value.registerResult).toBeNull();
+    });
+  });
+
+  describe('who may read or save (the gate, ownership and a lost race)', () => {
+    /** A check that admits only an admin account holding the reviewer permission. */
+    const holders = new Set<string>();
+    const strict: AuthorisationCheck = {
+      check: (context) =>
+        Promise.resolve(
+          context.actor.kind === 'authenticated' &&
+            context.actor.population === 'admin' &&
+            holders.has(context.actor.accountId)
+            ? { allowed: true }
+            : { allowed: false, denial: { code: 'access.denied' } },
+        ),
+    };
+    const strictReview = (t: Setup) =>
+      new ReviewRegisterCheckRead(createUseCaseGate(markets, strict), {
+        unitOfWork: { run: (_market, work) => work(), runOnce: noRunOnce },
+        files: t.files,
+        registerChecks: t.registerChecks,
+        registerPolicy: new FixedRegisterLookupPolicy({ [code]: SETTINGS[code] }),
+        clock: t.clock,
+      });
+    const actorOf = (t: Setup, population: 'admin' | 'customer') =>
+      testCallContext(
+        market(code),
+        testAuthenticatedActor(market(code), {
+          population,
+          accountId: t.ids.next<'Account'>(),
+          sessionId: t.ids.next<'Session'>(),
+          sellerId: null,
+        }),
+      );
+
+    it('refuses a customer session and an admin session without the reviewer permission', async () => {
+      const t = setUp(code);
+      const owner = seller(t, code);
+      await save(t, owner.context, activeNumbers(code, 1)[0]);
+      const review = strictReview(t);
+
+      for (const population of ['customer', 'admin'] as const) {
+        const denied = await review.execute(actorOf(t, population), { sellerId: owner.sellerId });
+        expect(denied).toEqual({ ok: false, error: { code: 'access.denied' } });
+      }
+      const holder = actorOf(t, 'admin');
+      holders.add(holder.actor.kind === 'authenticated' ? holder.actor.accountId : '');
+      const allowed = await review.execute(holder, { sellerId: owner.sellerId });
+      expect(allowed.ok && allowed.value.state).toBe('active');
+    });
+
+    it("does not let one seller's account save an identifier on a file it does not own", async () => {
+      const t = setUp(code);
+      const victim = seller(t, code);
+      const intruder = seller(t, code);
+      // The intruder's session names a seller that has no file: nothing is created or touched.
+      const stray = testCallContext(
+        market(code),
+        testAuthenticatedActor(market(code), {
+          population: 'seller',
+          accountId: intruder.accountId,
+          sessionId: t.ids.next<'Session'>(),
+          sellerId: t.ids.next<'Seller'>(),
+        }),
+      );
+
+      const saved = await save(t, stray, activeNumbers(code, 1)[0]);
+
+      expect(saved).toEqual({ ok: false, error: { code: 'file.not-found' } });
+      expect(t.fake.calls).toHaveLength(0);
+      expect(t.registerChecks.count(market(code))).toBe(0);
+      const untouched = await t.files.findById(market(code), victim.sellerId);
+      expect(untouched?.state.version).toBe(1);
+    });
+
+    it('keeps the spent quota and writes no result when the save loses to conflict.stale', async () => {
+      const t = setUp(code);
+      const { context } = seller(t, code);
+      t.files.conflictOnNextSave = true;
+
+      const saved = await save(t, context, activeNumbers(code, 1)[0]);
+
+      expect(saved).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(t.counters.top('lookup.account')).toBe(1);
+      expect(t.counters.top('lookup.origin')).toBe(1);
+      expect(t.fake.calls).toHaveLength(0);
+      expect(t.registerChecks.count(market(code))).toBe(0);
     });
   });
 

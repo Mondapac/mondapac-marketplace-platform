@@ -33,7 +33,6 @@ import type { IdentifierIndex } from '../ports/identifier-index';
 import {
   lookupDue,
   lookupPlanOf,
-  recordResult,
   reserveLookupQuota,
   runLookup,
   sellerResultOf,
@@ -243,7 +242,7 @@ export class MyFileSaveIdentifier extends UseCase<
     if (!dryRun.ok) return dryRun;
 
     // Reserve before the work (design 7.7, ADR-0023 decision 1): a reached account limit refuses
-    // the save of a new value and creates no result; a spent Market budget gives `unavailable`.
+    // the save of a new value and creates no result; a spent Market budget writes no result.
     const due: LookupPlan | null =
       plan !== null && parsed !== null && lookupDue(existing, clock.now(), plan.settings)
         ? plan
@@ -292,13 +291,9 @@ export class MyFileSaveIdentifier extends UseCase<
               file: current,
               by,
             })
-          : await recordResult(
-              this.deps,
-              context,
-              { sellerId: owner.sellerId, index, by },
-              'unavailable',
-              [],
-            );
+          : // A spent Market budget writes no result row: the state stays as it was and the
+            // next save tries again (counted and logged by the quota reservation).
+            existing;
       // A result that could not be stored is not claimed: the file stays "not performed" and a
       // reviewer checks the number (AC 32); the seller is told it could not be checked.
       if (check === null) return ok({ ...saved.value, registerResult: 'could-not-be-checked' });
