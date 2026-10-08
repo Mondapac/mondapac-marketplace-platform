@@ -124,6 +124,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'application-does-not-know-delivery',
+        'authenticated-actor-is-built-by-the-authenticator',
         'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
         'database-driver-only-in-infrastructure',
@@ -157,6 +158,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
     it('reports every deliberate violation in the fixtures, and nothing else', () => {
       expect(found).toEqual([
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
+        'authenticated-actor-is-built-by-the-authenticator: src/modules/identity/application/mints-authenticated-actor.ts',
+        'authenticated-actor-is-built-by-the-authenticator: src/platform/mints-authenticated-actor.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/builds-call-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
@@ -230,6 +233,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/alpha/presentation/market-controller.ts',
       // identity may import its own files.
       'src/modules/identity/application/uses-own-domain.ts',
+      // identity's Authenticator alone builds authenticated actors (slice 2).
+      'src/modules/identity/application/access/session-authenticator.ts',
       // A module's infrastructure reaches the database through PrismaService only.
       'src/modules/alpha/infrastructure/uses-prisma-service.ts',
       // A platform entry adapter builds actors and call contexts (identity slice 1c).

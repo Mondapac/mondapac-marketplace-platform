@@ -4,6 +4,9 @@
 // a deliberate violation in test/boundary-fixtures/, asserted by test/boundaries.spec.ts.
 // The rule numbers in comments are those of platform-foundations design 8.2.
 
+// The one file that builds authenticated actors (identity design 4 rule 1; slice 2).
+const AUTHENTICATOR_FILE = 'src/modules/identity/application/access/session-authenticator\\.ts';
+
 // Modules that `identity` may import, through their index.ts only. Empty by decision
 // (ADR-0018 decision 4, ADR-0020 A9): `legal` joins only by a named decision at its gate.
 const IDENTITY_MAY_IMPORT = [];
@@ -136,15 +139,16 @@ module.exports = {
       // Not in 8.2: Bagher's (qc-release-manager) condition (a) for slice 0 item 4.
       name: 'kernel-only-through-package-entries',
       comment:
-        'Outside the kernel, code reaches it only by its package names @mondapac/shared-kernel ' +
-        'and @mondapac/shared-kernel/testing, never by a path into its src/ or dist/ and never ' +
-        'by a deeper subpath: minting must stay inside the kernel, in one copy per process.',
+        'Outside the kernel, code reaches it only by its package names (@mondapac/shared-kernel ' +
+        'and its /testing, /contexts and /authenticated-actor entries), never by a path into ' +
+        'its src/ or dist/ and never by a deeper subpath: minting must stay inside the kernel, ' +
+        'in one copy per process.',
       severity: 'error',
       from: { pathNot: 'packages/shared-kernel/' },
       to: {
         path: [
           'packages/shared-kernel/(src|dist)/',
-          '^@mondapac/shared-kernel/(?!(testing|contexts)$)',
+          '^@mondapac/shared-kernel/(?!(testing|contexts|authenticated-actor)$)',
         ],
         // The package names resolve through tsconfig.json's paths, which marks them aliased.
         dependencyTypesNot: ['aliased'],
@@ -166,6 +170,26 @@ module.exports = {
           'packages/shared-kernel/src/contexts\\.ts$',
           'packages/shared-kernel/dist/contexts\\.(js|d\\.ts)$',
           '^@mondapac/shared-kernel/contexts$',
+        ],
+      },
+    },
+    {
+      // Rule 5 of 8.2 for the authenticated actor (identity slice 2; identity design 4 rule 1,
+      // foundations 3.7): "built only by identity's Authenticator (one file)".
+      name: 'authenticated-actor-is-built-by-the-authenticator',
+      comment:
+        "Only identity's Authenticator, the one file that builds actors from a valid session, " +
+        'imports @mondapac/shared-kernel/authenticated-actor. No other module, no other file ' +
+        'of identity and no platform code mints an authenticated actor.',
+      severity: 'error',
+      from: {
+        pathNot: [`^${AUTHENTICATOR_FILE}$`, 'packages/shared-kernel/'],
+      },
+      to: {
+        path: [
+          'packages/shared-kernel/src/authenticated-actor\\.ts$',
+          'packages/shared-kernel/dist/authenticated-actor\\.(js|d\\.ts)$',
+          '^@mondapac/shared-kernel/authenticated-actor$',
         ],
       },
     },

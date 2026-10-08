@@ -12,6 +12,9 @@ module.exports = {
     '^@mondapac/shared-kernel/testing$': '<rootDir>/../../packages/shared-kernel/src/testing.ts',
     // The actor and call-context constructors (identity slice 1c): platform entry adapters only.
     '^@mondapac/shared-kernel/contexts$': '<rootDir>/../../packages/shared-kernel/src/contexts.ts',
+    // The authenticated-actor constructor (identity slice 2): identity's Authenticator only.
+    '^@mondapac/shared-kernel/authenticated-actor$':
+      '<rootDir>/../../packages/shared-kernel/src/authenticated-actor.ts',
   },
   collectCoverageFrom: ['src/**/*.ts'],
   coverageDirectory: './coverage',

@@ -14,7 +14,7 @@ import type { MarketContext, MarketId } from './market-context';
  *
  * All three kinds are minted. The anonymous and system actors are built by the platform's
  * entry adapters through the `@mondapac/shared-kernel/contexts` entry; the authenticated
- * actor only by `identity`'s `Authenticator` (identity slice 2).
+ * actor only by `identity`'s `Authenticator`, through the `/authenticated-actor` entry.
  */
 export type ActorContext = AnonymousActor | SystemActor | AuthenticatedActor;
 
@@ -74,11 +74,11 @@ export function systemActor(market: MarketContext): SystemActor {
 }
 
 /**
- * Kernel-internal until identity slice 2, which exports it as `authenticatedActor` for the one
- * file of `identity` that builds actors from a session (foundations 3.7). Today only the
- * `/testing` builders call it. Every field is checked again at run time: the brands are
- * compile-time only, and the constructor throws when `sellerId` and `population` disagree.
- * Only the declared fields are copied.
+ * Exported as `authenticatedActor` on the `@mondapac/shared-kernel/authenticated-actor` entry
+ * (identity slice 2), for the one file of `identity` that builds actors from a session, its
+ * `Authenticator` (foundations 3.7), and called by the `/testing` builders. Every field is
+ * checked again at run time: the brands are compile-time only, and the constructor throws when
+ * `sellerId` and `population` disagree. Only the declared fields are copied.
  */
 export function mintAuthenticatedActor(
   market: MarketContext,
