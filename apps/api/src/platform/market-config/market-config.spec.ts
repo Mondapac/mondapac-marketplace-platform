@@ -40,11 +40,12 @@ const VALID = {
     },
     signInRecordRetentionDays: 90,
     links: {
-      lifetimeMinutes: { 'verify-email': 1440 },
+      lifetimeMinutes: { 'verify-email': 1440, 'reset-password': 60 },
       targets: {
         customer: {
           'verify-email': 'https://shop.qq.test/confirm-email',
           'sign-in': 'https://shop.qq.test/sign-in',
+          'reset-password': 'https://shop.qq.test/reset-password',
         },
       },
     },
@@ -202,17 +203,64 @@ describe('loadMarketConfigs', () => {
       {
         identity: {
           ...IDENTITY,
-          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 1441 } },
+          links: {
+            ...IDENTITY.links,
+            lifetimeMinutes: { 'verify-email': 1441, 'reset-password': 60 },
+          },
         },
       },
       /identity\.links\.lifetimeMinutes\.verify-email/,
+    ],
+    [
+      'a reset link that is not exactly 60 minutes (SEL-05, ACC-04)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            lifetimeMinutes: { 'verify-email': 1440, 'reset-password': 30 },
+          },
+        },
+      },
+      /identity\.links\.lifetimeMinutes\.reset-password/,
+    ],
+    [
+      'no reset link lifetime',
+      {
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 1440 } },
+        },
+      },
+      /identity\.links\.lifetimeMinutes\.reset-password/,
+    ],
+    [
+      'no reset page for the customer',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: {
+                'verify-email': 'https://shop.qq.test/confirm-email',
+                'sign-in': 'https://shop.qq.test/sign-in',
+              },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.reset-password/,
     ],
     [
       'a link lifetime of zero',
       {
         identity: {
           ...IDENTITY,
-          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 0 } },
+          links: {
+            ...IDENTITY.links,
+            lifetimeMinutes: { 'verify-email': 0, 'reset-password': 60 },
+          },
         },
       },
       /identity\.links\.lifetimeMinutes/,
@@ -308,7 +356,7 @@ describe('loadMarketConfigs', () => {
     const identity = {
       ...IDENTITY,
       links: {
-        lifetimeMinutes: { 'verify-email': 1440 },
+        lifetimeMinutes: { 'verify-email': 1440, 'reset-password': 60 },
         targets: { customer: { ...IDENTITY.links.targets.customer, 'verify-email': page } },
       },
     };

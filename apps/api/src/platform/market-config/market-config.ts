@@ -143,17 +143,28 @@ const identitySchema = z.strictObject({
   /** Sign-in records are deleted this many days after the attempt (H3: 90). */
   signInRecordRetentionDays: z.number().int().min(1).max(3650),
   /**
-   * One-time links (identity design 6.6, 9; slice 3). `lifetimeMinutes` per purpose, from the
-   * issue (HF15: verification 24 hours); a purpose without one is never issued. `targets`: the
-   * page a mail links to, per population and page (`LinkTargets`; hosts wait for D2).
+   * One-time links (identity design 6.6, 9; slices 3 and 4). `lifetimeMinutes` per purpose,
+   * from the issue (HF15: verification 24 hours; SEL-05 and ACC-04: a reset link exactly 60
+   * minutes, in every Market); a purpose without one is never issued. `targets`: the page a mail
+   * links to, per population and page (`LinkTargets`; hosts wait for D2).
    */
   links: z.strictObject({
-    // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
-    lifetimeMinutes: z.strictObject({ 'verify-email': z.number().int().min(1).max(1440) }),
+    lifetimeMinutes: z.strictObject({
+      // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
+      'verify-email': z.number().int().min(1).max(1440),
+      // SEL-05, ACC-04: "exactly 60 minutes", the same rule in every Market (slice 4).
+      'reset-password': z.literal(60),
+    }),
     targets: z.strictObject({
-      customer: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }),
+      customer: z.strictObject({
+        'verify-email': pageUrl,
+        'sign-in': pageUrl,
+        'reset-password': pageUrl,
+      }),
       /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
-      seller: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }).optional(),
+      seller: z
+        .strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl, 'reset-password': pageUrl })
+        .optional(),
     }),
   }),
   /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
