@@ -56,6 +56,18 @@ module.exports = {
       },
     },
     {
+      // Catalog design 15.1 slice P1 (ADR-0024 decision 5): "sellable now" is composed by cart
+      // and ordering, never by catalog.
+      name: 'catalog-imports-neither-pricing-nor-inventory',
+      comment:
+        'catalog imports neither pricing nor inventory, not even through their index.ts ' +
+        '(ADR-0024 decision 5, catalog design 9.1): no price, stock or "sellable now" in any ' +
+        'catalog answer. Those modules consume catalog events and its facade instead.',
+      severity: 'error',
+      from: { path: '^src/modules/catalog/' },
+      to: { path: '^src/modules/(pricing|inventory)/' },
+    },
+    {
       // Rule 3.
       name: 'temporal-only-through-kernel',
       comment:

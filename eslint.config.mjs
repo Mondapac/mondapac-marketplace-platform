@@ -7,7 +7,10 @@ import tseslint from 'typescript-eslint';
 // Market and vertical identifiers that must never appear as literals in core code: they
 // belong in Market/Vertical configuration or a strategy implementation (ADR-0001 decision 5,
 // ADR-0003 decision 2, ADR-0008 decision 6). Extend the list when a market or vertical is added.
-const MARKET_OR_VERTICAL_LITERAL = '\\b(AU|AUD|en-AU|[Hh]alal|HALAL)\\b';
+// Certification type names are listed too (catalog design 3.1 row 5, AC 5 and AC 18): a type
+// is data of `certification`, never a branch in core code.
+const MARKET_OR_VERTICAL_LITERAL =
+  '\\b(AU|AUD|en-AU|[Hh]alal|HALAL|[Kk]osher|KOSHER|[Vv]egan|VEGAN)\\b';
 const noMarketOrVerticalLiterals = [
   {
     selector: `Literal[value=/${MARKET_OR_VERTICAL_LITERAL}/]`,

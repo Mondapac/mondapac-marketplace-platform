@@ -71,3 +71,25 @@ export type {
   PermissionKeyKind,
   RecordInput,
 } from './domain-event';
+
+export { parsePlainText } from './plain-text';
+export type { InvisibleCharacterKind, PlainText, PlainTextError } from './plain-text';
+
+export {
+  ATTRIBUTE_DATA_TYPES,
+  ATTRIBUTE_ISSUE_CODES,
+  validateAttributeValues,
+} from './attribute-schema';
+export type {
+  AttributeDataType,
+  AttributeField,
+  AttributeIssue,
+  AttributeIssueCode,
+  AttributeSchema,
+  AttributeSchemaRef,
+  AttributeValue,
+  AttributeValues,
+  Locale,
+  OptionRef,
+  ValidationResult,
+} from './attribute-schema';
