@@ -276,6 +276,16 @@ describe.each([
     });
   });
 
+  it('never writes a clean active when the file changed later than the check, same version', () => {
+    const check = registerCheckAfter(null, 'active', [], T0, by, V);
+    const later = T0.add({ seconds: 1 });
+    expect(registerSnapshotOf(check, later, max, later, V)).toEqual({
+      outcome: 'not-performed',
+      mismatches: [],
+      checkedAt: null,
+    });
+  });
+
   it('writes not-performed for an aged active result', () => {
     const check = registerCheckAfter(null, 'active', [], T0, by, V);
     const aged = T0.add({ hours: max * 24, seconds: 1 });

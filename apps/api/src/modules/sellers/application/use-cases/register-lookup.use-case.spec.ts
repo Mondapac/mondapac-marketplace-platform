@@ -829,6 +829,32 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
         expect(Temporal.Instant.compare(row!.checkedAt, file.lastChangedAt)).toBeLessThan(0);
       });
 
+      it('is stale when only the file version differs (same instant, same content timestamps)', async () => {
+        const [number] = activeNumbers(code, 1);
+        const t = setUp(code);
+        const { sellerId, context } = seller(t, code);
+        await save(t, context, number);
+        const clean = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(clean.ok && clean.value).toMatchObject({ state: 'active', blocksApproval: false });
+        const cleanRead = await t.read.execute(context, {});
+        expect(cleanRead.ok && cleanRead.value.registerResult).toBe('matched');
+
+        const key = `${code}|${sellerId}`;
+        const state = t.files.stored.get(key)!;
+        // An edit the instants cannot see: the version moves, lastChangedAt does not.
+        t.files.stored.set(key, { ...state, version: state.version + 1 });
+
+        const view = await t.review.execute(reviewer(t, code), { sellerId });
+        expect(view.ok && view.value).toMatchObject({
+          state: 'stale',
+          staleReason: 'draft-changed',
+          mismatches: [],
+          blocksApproval: true,
+        });
+        const read = await t.read.execute(context, {});
+        expect(read.ok && read.value.registerResult).toBeNull();
+      });
+
       it('asks again on the next save of the same value, with the same quotas, and now flags the name', async () => {
         const [number] = activeNumbers(code, 1);
         const t = setUp(code);

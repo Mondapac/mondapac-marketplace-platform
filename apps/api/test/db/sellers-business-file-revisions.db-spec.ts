@@ -924,7 +924,11 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
             ? generalSave(sellerId, snapshot.state.lastChangedAt)
             : record(sellerId, compared, snapshot.state.lastChangedAt),
         ]);
-        expect(outcomes).toBeDefined();
+        const saveOutcome = lead ? outcomes[1] : outcomes[0];
+        const recordOutcome = lead ? outcomes[0] : outcomes[1];
+        // The general save committed in either order; the record kept the version it compared.
+        expect(saveOutcome).toBe(true);
+        expect(recordOutcome).toMatchObject({ comparedFileVersion: compared });
         const file = (await inUnit(code, () => files.findById(market, sellerId)))!;
         // Whatever the interleaving, the general save committed and no clean active survives.
         expect(file.state.version).toBe(3);
@@ -958,12 +962,16 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
 
     it('keeps a definite negative current whatever the version, and never an unavailable result', async () => {
       const sellerId = await newFile();
-      await withIdentifier(sellerId);
-      await inUnit(code, () => checks.record(market, sellerId, index, write(1, 'not-found')));
+      const negativeFile = await withIdentifier(sellerId);
+      await inUnit(code, () =>
+        checks.record(market, sellerId, index, write(negativeFile.state.version, 'not-found')),
+      );
       expect(await currentness(sellerId, T0.add({ hours: 24 * 400 }))).toBe(true);
       const other2 = await newFile();
-      await withIdentifier(other2);
-      await inUnit(code, () => checks.record(market, other2, index, write(2, 'unavailable')));
+      const unavailableFile = await withIdentifier(other2);
+      await inUnit(code, () =>
+        checks.record(market, other2, index, write(unavailableFile.state.version, 'unavailable')),
+      );
       expect(await currentness(other2)).toBe(false);
     });
   });
