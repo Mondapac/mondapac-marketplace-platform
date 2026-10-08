@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------- release 1.8.0 templates: Members, Roles, No access, Not found, Account security and the dialogs D1 to D3
 // Spec: figma-1.2.0-spec.md (renumbered 1.8.0) section 3 and identity ux.md section 5 (en-AU copy). Names, emails and role names are
 // examples (the ready-made role set is not approved yet, DD 14.4). Admin frames go to Templates · Admin, Seller frames to Templates · Seller.
-// Not in 1.8.0 (they are 1.8.1): the Sellers list (P1), the role editor (B3), dialogs D4 to D6 and the unsaved-changes dialog.
+// Not in 1.8.0 (they are 1.8.3, 45_templates_panel_183.js): the Sellers list (P1), the role editor (B3), dialogs D4 to D6 and the unsaved-changes dialog.
 // No Sidebar item is active on these pages: the nav-config release adds "Team & roles" (seller) and "Roles & permissions" (admin).
 const VIEW_ONLY = 'Your role can view people and roles but not change them.';
 const NOT_HELD = 'You can’t give a permission you don’t have.';
@@ -69,11 +69,12 @@ const SELLER_MEMBERS = [
   { i: 'AR', tone: 'Amber', name: 'Amina Rahman', email: 'amina.rahman@kurabyfresh.example', role: 'Order packer', two: 'Off', status: 'Active' },
   { i: 'TN', tone: 'Blue', name: 'Tariq Nasser', email: 'tariq.nasser@kurabyfresh.example', role: 'Order packer', two: null, status: 'Invited' },
 ];
+// A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
+function listLoadError() { return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' }); }
 function membersTable(ws, state) {
   const admin = ws === 'Admin';
   const cols = admin ? [['Person', 'fill'], ['Role', 220], ['Status', 170], ['', 56]] : [['Person', 'fill'], ['Role', 200], ['Two-step verification', 200], ['Status', 150], ['', 56]];
-  // A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
-  if (state === 'Load error') return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' });
+  if (state === 'Load error') return listLoadError();
   const kids = [headerRow(cols)];
   if (state === 'Loading') return card('Member list', kids.concat(loadingRows(admin ? [['Two-line', 'fill'], ['Text', 220], ['Text', 170], ['Actions', 56]] : [['Two-line', 'fill'], ['Text', 200], ['Text', 200], ['Text', 150], ['Actions', 56]])));
   if (state === 'Empty') return card('Member list', kids.concat([inst('EmptyState', { Size: 'Card', Icon: { icon: 'users' }, Title: 'It’s just you so far', Body: 'Invite the people who help run your shop. Each person gets their own sign-in.' }, { name: 'empty-state', sizeH: 'FILL' })]));
@@ -397,9 +398,10 @@ function panelShellNames(key) { return panelDefs()[key].filter(function (d) { re
 function panelNames(key) { return panelDefs()[key].map(function (d) { return d[1]; }); }
 // Build the frames in `names` (all when omitted), one canvas row per group below what the host already holds, then the template bodies
 // that were made on the way. Returns how many of each were made.
-function addPanelTemplates(host, key, names) {
-  const defs = panelDefs()[key].filter(function (d) { return !names || names.indexOf(d[1]) >= 0; });
-  const rows = PANEL_ROWS.map(function (g) { return defs.filter(function (d) { return d[0] === g; }).map(function (d) { return d[2](); }); });
+// 1.8.3 passes its own list (panel183Defs, PANEL183_ROWS); its rows go below the 1.8.0 ones.
+function addPanelTemplates(host, key, names, defsOf, groups) {
+  const defs = (defsOf || panelDefs)()[key].filter(function (d) { return !names || names.indexOf(d[1]) >= 0; });
+  const rows = (groups || PANEL_ROWS).map(function (g) { return defs.filter(function (d) { return d[0] === g; }).map(function (d) { return d[2](); }); });
   const y = placeRows(host, rows, bottomEdge(host) + 240);
   const bodies = PANEL_BODIES.length;
   let x = 0; PANEL_BODIES.forEach(function (c) { host.appendChild(c); c.x = x; c.y = y; x += c.width + 80; });

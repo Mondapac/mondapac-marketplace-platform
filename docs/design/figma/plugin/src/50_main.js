@@ -162,12 +162,14 @@ async function build(force) {
     const list = [tplAdminHome(), tplAdminSellers(), tplAdminReview(), tplAdminPhoneMenu()];
     templatesPage(h, 'Templates · Admin', 'Full screens built only from library instances. Copy a template to start a new Admin screen; never detach the shell.', list);
     addPanelTemplates(h, 'tpl-admin'); // 1.8.0 Panel: Members, Roles, No access, Account security, dialogs (one canvas row per group, below the first row)
+    addPanelTemplates(h, 'tpl-admin', null, panel183Defs, PANEL183_ROWS); // 1.8.3: Sellers list (P1), role editor, dialogs D4 to D6, unsaved changes
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
     const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
     templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below.', list);
     addPanelTemplates(h, 'tpl-seller');
+    addPanelTemplates(h, 'tpl-seller', null, panel183Defs, PANEL183_ROWS);
     return list;
   });
   const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
@@ -731,6 +733,28 @@ async function updateLibrary() {
       const host = T.forms.host; fitSection(host);
     });
     added.push('fix CheckboxRow layout (Value in columns, State in rows)');
+  }
+
+  // 3e · 1.8.3 templates: the Sellers list (P1), the role editor (B3), dialogs D4 to D6, the unsaved-changes dialog and their phone frames.
+  // New frames only, in rows below what each templates host holds; built when every set they place is the plugin's, and only the names the file does not have yet.
+  const p183Block = blockedBy(PANEL183_TEMPLATE_NEEDS); if (!tcLoading) p183Block.push('TableCell State=Loading');
+  // The frames place these variants by name; a set whose variants were renamed or removed by hand waits.
+  const dialog183 = [['Md', 'Destructive', 'Centred'], ['Md', 'Default', 'Centred'], ['Sm', 'Default', 'Centred'], ['Sm', 'Destructive', 'Centred'], ['Sm', 'Destructive', 'Sheet']].map(function (v) { return { Size: v[0], Tone: v[1], Layout: v[2] }; });
+  [['CheckboxRow', combos(CHECKBOXROW_AXES)], ['Textarea', combos(TEXTAREA_AXES)], ['Dialog', dialog183]].forEach(function (d) {
+    const rec = S.sets[d[0]];
+    if (p183Block.indexOf(d[0]) < 0 && rec && rec.set && missingCombos(rec, d[1]).length) p183Block.push(d[0] + ' variants (' + missingCombos(rec, d[1]).map(variantName).join('; ') + ')');
+  });
+  if (p183Block.length) log('ℹ skipped Panel 1.8.3 templates: they need the plugin\'s ' + p183Block.join(', '));
+  else {
+    const keys = ['tpl-admin', 'tpl-seller'];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]; const present = T[key].host.children.map(function (c) { return c.name; });
+      const missing = panel183Defs()[key].map(function (d) { return d[1]; }).filter(function (n) { return present.indexOf(n) < 0; });
+      if (!missing.length) continue;
+      let made = null;
+      await onPage(T[key], key === 'tpl-admin' ? 'Admin panel templates 1.8.3' : 'Seller panel templates 1.8.3', function (host) { made = addPanelTemplates(host, key, missing, panel183Defs, PANEL183_ROWS); fitSection(host); });
+      added.push('templates Panel 1.8.3 · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + ' frames' + (made.bodies ? ', ' + made.bodies + ' template bodies' : '') + ')');
+    }
   }
 
   // 3 · templates
