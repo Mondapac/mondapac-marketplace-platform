@@ -15,6 +15,41 @@
     }
   },
   {
+    "action": "identity.admin-session.opened",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "boundSubjectId": "id",
+      "sessionId": "id"
+    }
+  },
+  {
+    "action": "identity.invitation.accepted",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "accountId": "id",
+      "boundSubjectId": "id",
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "roleId": "id"
+    }
+  },
+  {
+    "action": "identity.invitation.issued",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "roleId": "id"
+    }
+  },
+  {
     "action": "identity.role.seed-applied",
     "targetType": "identity.role",
     "targetId": "id",
@@ -38,6 +73,49 @@
       "kind": "enumOf(system|default|custom)",
       "scope": "enumOf(platform|seller)",
       "seedVersion": "integer"
+    }
+  },
+  {
+    "action": "identity.second-factor.activated",
+    "targetType": "identity.second-factor",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "accountId": "id",
+      "boundSubjectId": "id"
+    }
+  },
+  {
+    "action": "identity.second-factor.recovery-codes-regenerated",
+    "targetType": "identity.second-factor",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "accountId": "id"
+    }
+  },
+  {
+    "action": "identity.second-factor.replaced",
+    "targetType": "identity.second-factor",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "accountId": "id"
+    }
+  },
+  {
+    "action": "identity.second-factor.reset",
+    "targetType": "identity.second-factor",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": {
+      "state": "enumOf(pending|active)"
+    },
+    "after": {
+      "accountId": "id"
     }
   },
   {

@@ -1,10 +1,11 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketId, Result } from '@mondapac/shared-kernel';
+import type { Id, MarketId, PendingEvent, Result } from '@mondapac/shared-kernel';
 import { parseDisplayName } from './display-name';
 import type { EmailAddress } from './email-address';
+import { INVITATION_KINDS, InvitationAccepted, InvitationIssued } from './events';
 
 /** The three kinds (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
-export const INVITATION_KINDS = ['seller-owner', 'staff', 'admin'] as const;
+export { INVITATION_KINDS };
 export type InvitationKind = (typeof INVITATION_KINDS)[number];
 
 /** Stored states (data design 3.10); `expired` is never stored, it is read from the clock. */
@@ -66,10 +67,16 @@ export class InvitationInvariantError extends Error {
  *
  * The email, role, seller and kind never change: a different one is a new invitation (3.4).
  * Times come from the caller's `Clock`; every change raises the version by one (C5). Events
- * (`identity.invitation-*.v1`, 8.2) are recorded by the use cases of slice 7b.
+ * (8.2, slice 7b): `identity.invitation-issued.v1` at issue (the mail handler dispatches on it)
+ * and `identity.invitation-accepted.v1` at acceptance; a dispatch records none.
+ *
+ * - `replaceableAt`: whether an issue for the same address and scope may replace this pending
+ *   invitation (M7; item G, Ali 2026-10-08): it is past its expiry, or it was never dispatched
+ *   and is older than its kind's lifetime, so a lost mail never blocks a new invitation.
  */
 export class Invitation {
   #state: InvitationState;
+  #events: PendingEvent[] = [];
 
   private constructor(
     state: InvitationState,
@@ -93,7 +100,7 @@ export class Invitation {
     readonly invitedByAccountId: Id<'Account'> | null;
     readonly now: Temporal.Instant;
   }): Invitation {
-    return new Invitation(
+    const invitation = new Invitation(
       {
         id: input.id,
         marketId: input.marketId,
@@ -113,6 +120,16 @@ export class Invitation {
       },
       null,
     );
+    const { id, kind, sellerId } = invitation.#state;
+    invitation.#events.push(
+      InvitationIssued.record({
+        aggregateId: id,
+        aggregateVersion: 1,
+        occurredAt: input.now,
+        payload: { invitationId: id, kind, sellerId },
+      }),
+    );
+    return invitation;
   }
 
   static restore(state: InvitationState): Invitation {
@@ -121,6 +138,26 @@ export class Invitation {
 
   get state(): InvitationState {
     return this.#state;
+  }
+
+  /** Events recorded since the invitation was built or restored. */
+  get pendingEvents(): readonly PendingEvent[] {
+    return [...this.#events];
+  }
+
+  /**
+   * Whether an issue may replace this invitation at `now` (M7; item G): it is pending and either
+   * past its expiry, or never dispatched and created at least `lifetimeMinutes` (its kind's
+   * lifetime) ago. A decided invitation is never in the way: its address is gone.
+   */
+  replaceableAt(now: Temporal.Instant, lifetimeMinutes: number): boolean {
+    if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
+      throw new RangeError('replaceableAt: a positive whole lifetime in minutes is required');
+    }
+    if (this.#state.state !== 'pending') return false;
+    if (this.#state.tokenHash !== null) return this.statusAt(now) === 'expired';
+    const cutoff = this.#state.createdAt.add({ minutes: lifetimeMinutes });
+    return Temporal.Instant.compare(now, cutoff) >= 0;
   }
 
   statusAt(now: Temporal.Instant): InvitationStatus {
@@ -166,6 +203,20 @@ export class Invitation {
       email: null,
       displayName: null,
     });
+    const { id, kind, sellerId, version } = this.#state;
+    this.#events.push(
+      InvitationAccepted.record({
+        aggregateId: id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: {
+          invitationId: id,
+          kind,
+          sellerId,
+          accountId,
+        },
+      }),
+    );
     return ok(undefined);
   }
 

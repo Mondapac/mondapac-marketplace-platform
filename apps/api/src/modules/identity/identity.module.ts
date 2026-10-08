@@ -53,10 +53,30 @@ import {
   THROTTLE_KEYS,
   type SessionTokens,
 } from './application/ports/session-secrets';
+import {
+  CHALLENGE_TOKENS,
+  ENROLMENT_SECRET_TAGS,
+  INVITATION_TOKENS,
+} from './application/ports/second-factor-tokens';
+import { SECOND_FACTOR_SECRETS } from './application/ports/second-factor-secrets';
+import { SECOND_FACTOR_REPOSITORY } from './application/ports/second-factor.repository';
 import { SIGN_IN_CHALLENGE_REPOSITORY } from './application/ports/sign-in-challenge.repository';
 import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.repository';
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
+import { AcceptAdminInvitation } from './application/use-cases/accept-admin-invitation.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
+import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
+import { ConfirmSecondFactorEnrolment } from './application/use-cases/confirm-second-factor-enrolment.use-case';
+import { IssueFirstAdminInvitation } from './application/use-cases/issue-first-admin-invitation.use-case';
+import { ResetAdminSecondFactor } from './application/use-cases/reset-admin-second-factor.use-case';
+import { CompleteSecondFactorReplacement } from './application/use-cases/complete-second-factor-replacement.use-case';
+import { RegenerateRecoveryCodes } from './application/use-cases/regenerate-recovery-codes.use-case';
+import { StartSecondFactorReplacement } from './application/use-cases/start-second-factor-replacement.use-case';
+import { SendInvitationMail } from './application/use-cases/send-invitation-mail.use-case';
+import { SendSecondFactorMail } from './application/use-cases/send-second-factor-mail.use-case';
+import { SignInAdmin } from './application/use-cases/sign-in-admin.use-case';
+import { StartAdminInvitationAcceptance } from './application/use-cases/start-admin-invitation-acceptance.use-case';
+import { StartSecondFactorEnrolment } from './application/use-cases/start-second-factor-enrolment.use-case';
 import { ConfirmCustomerEmail } from './application/use-cases/confirm-customer-email.use-case';
 import { ConfirmSellerEmail } from './application/use-cases/confirm-seller-email.use-case';
 import { DescribeActor } from './application/use-cases/describe-actor.use-case';
@@ -98,6 +118,9 @@ import { roleProviders } from './infrastructure/roles/role-providers';
 import { secondFactorProviders } from './infrastructure/second-factor/second-factor-providers';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
+import { AdminPasswordController } from './presentation/admin-password.controller';
+import { AdminSecondFactorController } from './presentation/admin-second-factor.controller';
+import { AdminSessionController } from './presentation/admin-session.controller';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
 import { CustomerPasswordController } from './presentation/customer-password.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
@@ -148,6 +171,11 @@ const PORT = {
   policy: IDENTITY_MARKET_POLICY,
   clock: CLOCK,
   ids: ID_GENERATOR,
+  factors: SECOND_FACTOR_REPOSITORY,
+  secrets: SECOND_FACTOR_SECRETS,
+  challengeTokens: CHALLENGE_TOKENS,
+  invitationTokens: INVITATION_TOKENS,
+  enrolmentTags: ENROLMENT_SECRET_TAGS,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -218,6 +246,9 @@ function useCaseProvider<D, U>(
     SellerSessionController,
     CustomerPasswordController,
     SellerPasswordController,
+    AdminSessionController,
+    AdminSecondFactorController,
+    AdminPasswordController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('identity'),
@@ -310,6 +341,7 @@ function useCaseProvider<D, U>(
       sellerAccess: true,
       grants: true,
       effectiveKeys: true,
+      factors: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,
@@ -487,6 +519,7 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       challenges: true,
+      factors: true,
       links: true,
       sessions: true,
       throttles: true,
@@ -504,6 +537,8 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       challenges: true,
+      factors: true,
+      secrets: true,
       sessions: true,
       links: true,
       throttles: true,
@@ -518,6 +553,185 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(SendPasswordChangedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
+    // Slice 7b: admin sign-in with its second factor, enrolment, devices, invitations.
+    useCaseProvider(SignInAdmin, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      throttles: true,
+      records: true,
+      hasher: true,
+      tokens: true,
+      keys: true,
+      policy: true,
+      clock: true,
+      ids: true,
+      factors: true,
+      challenges: true,
+      links: true,
+      outbox: true,
+      challengeTokens: true,
+    }),
+    useCaseProvider(CompleteAdminSignIn, {
+      unitOfWork: true,
+      accounts: true,
+      challenges: true,
+      factors: true,
+      throttles: true,
+      records: true,
+      keys: true,
+      secrets: true,
+      challengeTokens: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      sessions: true,
+      tokens: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(StartSecondFactorEnrolment, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      factors: true,
+      challenges: true,
+      throttles: true,
+      records: true,
+      keys: true,
+      linkTokens: true,
+      challengeTokens: true,
+      secrets: true,
+      hasher: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ConfirmSecondFactorEnrolment, {
+      unitOfWork: true,
+      accounts: true,
+      challenges: true,
+      factors: true,
+      throttles: true,
+      records: true,
+      keys: true,
+      secrets: true,
+      challengeTokens: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      sessions: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(StartSecondFactorReplacement, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(CompleteSecondFactorReplacement, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      sessions: true,
+      challenges: true,
+      tokens: true,
+    }),
+    useCaseProvider(RegenerateRecoveryCodes, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(IssueFirstAdminInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      invitations: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(StartAdminInvitationAcceptance, {
+      unitOfWork: true,
+      invitations: true,
+      throttles: true,
+      keys: true,
+      invitationTokens: true,
+      secrets: true,
+      enrolmentTags: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(AcceptAdminInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      roles: true,
+      assignments: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      invitationTokens: true,
+      enrolmentTags: true,
+      secrets: true,
+      hasher: true,
+      commonPasswords: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ResetAdminSecondFactor, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendInvitationMail, {
+      unitOfWork: true,
+      invitations: true,
+      invitationTokens: true,
+      targets: true,
+      composer: true,
+      transport: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(SendSecondFactorMail, {
       unitOfWork: true,
       accounts: true,
       composer: true,
@@ -563,18 +777,29 @@ function useCaseProvider<D, U>(
     ),
     registerSubscriptionsFrom(
       'identity',
-      [SendLinkMail, SendExistingAccountMail, SendWelcomeMail, SendPasswordChangedMail],
+      [
+        SendLinkMail,
+        SendExistingAccountMail,
+        SendWelcomeMail,
+        SendPasswordChangedMail,
+        SendInvitationMail,
+        SendSecondFactorMail,
+      ],
       (
         sendLinkMail: SendLinkMail,
         sendExistingAccountMail: SendExistingAccountMail,
         sendWelcomeMail: SendWelcomeMail,
         sendPasswordChangedMail: SendPasswordChangedMail,
+        sendInvitationMail: SendInvitationMail,
+        sendSecondFactorMail: SendSecondFactorMail,
       ) =>
         identityMailSubscriptions(
           sendLinkMail,
           sendExistingAccountMail,
           sendWelcomeMail,
           sendPasswordChangedMail,
+          sendInvitationMail,
+          sendSecondFactorMail,
         ),
     ),
   ],

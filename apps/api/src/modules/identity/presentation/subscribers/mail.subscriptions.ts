@@ -3,12 +3,16 @@ import {
   type RegisteredSubscription,
 } from '../../../../platform/events/event-subscriptions';
 import type { SendExistingAccountMail } from '../../application/use-cases/send-existing-account-mail.use-case';
+import type { SendInvitationMail } from '../../application/use-cases/send-invitation-mail.use-case';
 import type { SendLinkMail } from '../../application/use-cases/send-link-mail.use-case';
 import type { SendPasswordChangedMail } from '../../application/use-cases/send-password-changed-mail.use-case';
+import type { SendSecondFactorMail } from '../../application/use-cases/send-second-factor-mail.use-case';
 import type { SendWelcomeMail } from '../../application/use-cases/send-welcome-mail.use-case';
 import {
   AccountPasswordChanged,
+  InvitationIssued,
   OneTimeLinkRequested,
+  SecondFactorChanged,
   SellerRegistered,
   SignUpRepeated,
 } from '../../domain/events';
@@ -18,6 +22,9 @@ export const LINK_MAIL_SUBSCRIBER = 'identity.link-mail';
 export const EXISTING_ACCOUNT_MAIL_SUBSCRIBER = 'identity.existing-account-mail';
 export const WELCOME_MAIL_SUBSCRIBER = 'identity.welcome-mail';
 export const PASSWORD_CHANGED_MAIL_SUBSCRIBER = 'identity.password-changed-mail';
+/** Slice 7b: the invitation mail and the second-factor notice. */
+export const INVITATION_MAIL_SUBSCRIBER = 'identity.invitation-mail';
+export const SECOND_FACTOR_MAIL_SUBSCRIBER = 'identity.second-factor-mail';
 
 /**
  * Identity's subscriptions to its own events for mail (identity design 8, 9; decided by Ali,
@@ -31,6 +38,8 @@ export function identityMailSubscriptions(
   sendExistingAccountMail: SendExistingAccountMail,
   sendWelcomeMail: SendWelcomeMail,
   sendPasswordChangedMail: SendPasswordChangedMail,
+  sendInvitationMail: SendInvitationMail,
+  sendSecondFactorMail: SendSecondFactorMail,
 ): RegisteredSubscription[] {
   return [
     subscription({
@@ -74,6 +83,35 @@ export function identityMailSubscriptions(
           accessState: event.payload.accessState,
         });
         if (!result.ok) throw new Error(`${WELCOME_MAIL_SUBSCRIBER} refused: ${result.error.code}`);
+      },
+    }),
+    subscription({
+      name: INVITATION_MAIL_SUBSCRIBER,
+      event: InvitationIssued,
+      async handle(event, delivery, context) {
+        const result = await sendInvitationMail.execute(context, {
+          delivery,
+          invitationId: event.payload.invitationId,
+          aggregateVersion: event.aggregateVersion,
+        });
+        if (!result.ok) {
+          throw new Error(`${INVITATION_MAIL_SUBSCRIBER} refused: ${result.error.code}`);
+        }
+      },
+    }),
+    subscription({
+      name: SECOND_FACTOR_MAIL_SUBSCRIBER,
+      event: SecondFactorChanged,
+      async handle(event, delivery, context) {
+        const result = await sendSecondFactorMail.execute(context, {
+          delivery,
+          accountId: event.payload.accountId,
+          change: event.payload.change,
+          occurredAt: event.occurredAt,
+        });
+        if (!result.ok) {
+          throw new Error(`${SECOND_FACTOR_MAIL_SUBSCRIBER} refused: ${result.error.code}`);
+        }
       },
     }),
     subscription({

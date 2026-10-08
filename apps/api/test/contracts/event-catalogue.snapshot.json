@@ -94,12 +94,39 @@
     }
   },
   {
+    "type": "identity.invitation-accepted.v1",
+    "aggregateType": "invitation",
+    "fields": {
+      "invitationId": "id",
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "sellerId": "optional(id)",
+      "accountId": "id"
+    }
+  },
+  {
+    "type": "identity.invitation-issued.v1",
+    "aggregateType": "invitation",
+    "fields": {
+      "invitationId": "id",
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
     "type": "identity.one-time-link-requested.v1",
     "aggregateType": "one-time-link",
     "fields": {
       "linkId": "id",
       "accountId": "id",
       "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset)"
+    }
+  },
+  {
+    "type": "identity.second-factor-changed.v1",
+    "aggregateType": "second-factor",
+    "fields": {
+      "accountId": "id",
+      "change": "enumOf(activated|replaced|recovery-codes-regenerated|reset|locked)"
     }
   },
   {

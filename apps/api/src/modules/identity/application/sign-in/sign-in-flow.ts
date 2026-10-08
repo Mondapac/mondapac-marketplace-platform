@@ -37,6 +37,11 @@ import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
+import type {
+  AdminSecondStep,
+  AdminSecondStepOutcome,
+  AdminSecondStepPolicy,
+} from './admin-second-step';
 
 /** Where the request came from, as resolved per ADR-0037 (never a forwarded header). */
 export interface SignInClient {
@@ -57,6 +62,9 @@ export type SignInIdentifier =
 
 /** The populations that sign in with a password alone in Phase 2 (admins need a factor, slice 7). */
 export type SignInPopulation = 'customer' | 'seller';
+
+/** The populations this sequence runs for: an admin's ends at step 5, never in a session. */
+type FlowPopulation = SignInPopulation | 'admin';
 
 /** A new session. The token goes into the cookie only, never a body or a log. */
 export interface SignedIn {
@@ -148,7 +156,13 @@ type Closed =
       readonly session: Session;
       readonly sellerAccess: SellerAccessStateCode | null;
     }
+  | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome }
   | { readonly kind: 'refused'; readonly code: Refused };
+
+/** What the reservation and closing units of one attempt produce, for every population. */
+type Outcome =
+  | { readonly kind: 'signed-in'; readonly value: SignedIn }
+  | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome };
 
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
@@ -194,19 +208,32 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  *
  * Refusals are `ok` outcomes of their units, so the counters, the record and the block commit
  * (PN1).
+ *
+ * **Admins (slice 7b).** The same sequence through {@link runAdmin}, which ends at step 5 of 6.3
+ * ({@link AdminSecondStep}): a correct password leads to a challenge, an enrolment link or the
+ * HF2 lock answer, decided before the account's state is told, and never to a session (AC 10).
+ *
+ * **Item H (slice 7b; Mojtaba, tracked items of slice 4).** The closing unit takes the seller
+ * access row's lock (`SellerAccessRepository.lockForSession`) before it reads the seller's state,
+ * so a suspension that commits meanwhile either is seen here, or revokes the session this unit
+ * opens.
  */
 export class SignInFlow {
   readonly #logger = new Logger('SignIn');
 
   constructor(
-    private readonly population: SignInPopulation,
+    private readonly population: FlowPopulation,
     private readonly deps: SignInDependencies,
     private readonly linkDeps: LinkSignInDependencies | null = null,
     private readonly sellerDeps: SellerSignInDependencies | null = null,
     private readonly foundingDeps: FoundingDependencies | null = null,
+    private readonly adminStep: AdminSecondStep | null = null,
   ) {
     if (population === 'seller' && sellerDeps === null) {
       throw new Error('SignInFlow: the seller population needs the seller dependencies');
+    }
+    if ((population === 'admin') !== (adminStep !== null)) {
+      throw new Error('SignInFlow: the admin step is for, and only for, the admin population');
     }
   }
 
@@ -217,19 +244,66 @@ export class SignInFlow {
     client: SignInClient,
     options: SignInOptions = {},
   ): Promise<Result<SignedIn, SignInRefusal>> {
+    if (this.population === 'admin') {
+      throw new Error('SignInFlow: an admin signs in through runAdmin (AC 10)');
+    }
+    const outcome = await this.#run(context, identifier, password, client, options, null);
+    if (!outcome.ok) return outcome;
+    if (outcome.value.kind !== 'signed-in') throw new Error('SignInFlow: an admin step');
+    return ok(outcome.value.value);
+  }
+
+  /**
+   * An admin's password step (identity design 6.3 steps 1 to 5; slice 7b): the outcome of
+   * {@link AdminSecondStep}, or a refusal of steps 1 to 4. `adminPolicy` was read before any unit.
+   */
+  async runAdmin(
+    context: CallContext,
+    email: EmailAddress,
+    password: string,
+    client: SignInClient,
+    adminPolicy: AdminSecondStepPolicy,
+  ): Promise<Result<AdminSecondStepOutcome, SignInRefusal>> {
+    if (this.population !== 'admin') throw new Error('SignInFlow: runAdmin is for admins');
+    const outcome = await this.#run(
+      context,
+      { kind: 'email', email },
+      password,
+      client,
+      {},
+      adminPolicy,
+    );
+    if (!outcome.ok) return outcome;
+    if (outcome.value.kind !== 'admin-step') throw new Error('SignInFlow: an admin session');
+    return ok(outcome.value.step);
+  }
+
+  async #run(
+    context: CallContext,
+    identifier: SignInIdentifier,
+    password: string,
+    client: SignInClient,
+    options: SignInOptions,
+    adminPolicy: AdminSecondStepPolicy | null,
+  ): Promise<Result<Outcome, SignInRefusal>> {
     const { market } = context;
     const { policy, keys, unitOfWork, throttles, accounts, hasher } = this.deps;
     const population = this.population;
     if (identifier.kind === 'link' && this.linkDeps === null) {
       throw new Error('SignInFlow: the link variant needs the link dependencies');
     }
-    // 6.1: "keep me signed in" is seller side only, and only where the Market offers it.
+    if (population === 'admin' && (identifier.kind !== 'email' || adminPolicy === null)) {
+      throw new Error('SignInFlow: an admin signs in with an email and the admin policy');
+    }
+    // 6.1: "keep me signed in" is seller side only, and only where the Market offers it. An
+    // admin's password opens no session; its lifetime is read where the session is opened.
     const kept =
       population === 'seller' && options.keepSignedIn === true
         ? policy.sessionLifetime(market, population, true)
         : null;
-    const lifetime = kept ?? policy.sessionLifetime(market, population);
-    if (lifetime === null) return err(UNAVAILABLE);
+    const lifetime =
+      population === 'admin' ? null : (kept ?? policy.sessionLifetime(market, population));
+    if (population !== 'admin' && lifetime === null) return err(UNAVAILABLE);
     const persistent = population === 'customer' || kept !== null;
     const rules = policy.signInThrottles(market);
     const originCounter: ThrottleCounter = {
@@ -346,7 +420,12 @@ export class SignInFlow {
     const matches = account !== null && verified.value.matches;
     // Slow work before the closing unit: the new hash (older parameters) and the token.
     const rehashed = matches && verified.value.needsRehash ? await hasher.hash(password) : null;
-    const issued = matches ? this.deps.tokens.issue() : null;
+    // An admin gets a challenge token in place of a session token (6.3 step 5).
+    const issued = !matches
+      ? null
+      : this.adminStep !== null
+        ? this.adminStep.issueToken()
+        : this.deps.tokens.issue();
 
     // Step 4: the closing unit (HF11).
     const closed = await this.#failClosed(context, 'closing', () =>
@@ -399,6 +478,17 @@ export class SignInFlow {
         if (link === null && !current.isEmailVerified) {
           return refuse('email-verification-required');
         }
+        // Step 5 for an admin (slice 7b), before the account's state is told (6.3): a password
+        // alone never opens an admin session (AC 10).
+        if (this.adminStep !== null && adminPolicy !== null) {
+          if (rehashed !== null && rehashed.ok) current.rehashPassword(rehashed.value);
+          if (current.state.version !== current.persistedVersion) {
+            await accounts.save(market, current);
+          }
+          const step = await this.adminStep.decide(context, current, adminPolicy, issued, now);
+          await this.record(context, client, accountId, step.code, null, now);
+          return ok({ kind: 'admin-step', step });
+        }
         if (current.state.status !== 'active') return refuse('account.disabled');
         // Step 6 for the seller side (3.3): an active membership and a seller not suspended.
         // Read before a link is consumed, so a refused link stays unused.
@@ -406,8 +496,12 @@ export class SignInFlow {
         if (population === 'seller') {
           const { memberships, sellerAccess } = this.sellerDeps!;
           const membership = await memberships.findActiveByAccount(market, accountId);
+          // Item H: the seller's row lock first, then its state, as the credential lock above.
+          const locked =
+            membership !== null &&
+            (await sellerAccess.lockForSession(market, membership.state.sellerId));
           seller =
-            membership === null
+            membership === null || !locked
               ? null
               : await sellerAccess.findById(market, membership.state.sellerId);
           if (seller === null) return refuse('membership.none');
@@ -442,6 +536,7 @@ export class SignInFlow {
         if (events.length > 0) await this.linkDeps!.outbox.append(context, events);
         // 5.5 (slice 6b): the founding takes effect now, so its rows are written now, once.
         if (founded && seller !== null) await this.#recordFounding(context, seller, accountId);
+        if (lifetime === null) throw new Error('SignInFlow: no lifetime for a session');
         const session = openSession({
           id: this.deps.ids.next<'Session'>(),
           marketId: market.marketId,
@@ -460,12 +555,16 @@ export class SignInFlow {
     if (!closed.ok) return err(UNAVAILABLE);
     const outcome = closed.value;
     if (outcome.kind === 'refused') return err({ code: outcome.code });
+    if (outcome.kind === 'admin-step') return ok({ kind: 'admin-step', step: outcome.step });
     return ok({
-      code: 'signed-in',
-      token: issued!.token,
-      absoluteLifetimeSeconds: lifetime.absoluteLifetimeSeconds,
-      persistent,
-      sellerAccess: outcome.sellerAccess,
+      kind: 'signed-in',
+      value: {
+        code: 'signed-in',
+        token: issued!.token,
+        absoluteLifetimeSeconds: lifetime!.absoluteLifetimeSeconds,
+        persistent,
+        sellerAccess: outcome.sellerAccess,
+      },
     });
   }
 
