@@ -74,7 +74,7 @@ export type {
   RecordInput,
 } from './domain-event';
 
-export { canonicalJson } from './canonical-json';
+export { canonicalJson, MAX_CANONICAL_JSON_DEPTH } from './canonical-json';
 export type { CanonicalJsonError } from './canonical-json';
 
 export { CONTENT_HASH_PATTERN, parseContentHash } from './content-hash';

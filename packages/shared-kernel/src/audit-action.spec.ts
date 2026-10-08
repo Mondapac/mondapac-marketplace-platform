@@ -231,6 +231,176 @@ describe('encodeAuditFields (W4)', () => {
   it('accepts a list exactly at its maximum', () => {
     expect(encodeAuditFields(fields, { ...valid, ids: [ID, ID, ID] }, KNOWN_KEYS).ok).toBe(true);
   });
+
+  describe('an instant is written by the prototype, not by the value (Hassan L1)', () => {
+    const only = { at: auditField.instant() };
+    const WHOLE = '2026-10-08T01:02:03.004Z';
+
+    it('ignores the toString and epochNanoseconds of a subclass', () => {
+      class Forged extends Temporal.Instant {
+        override toString(): string {
+          return 'not an instant';
+        }
+        override get epochNanoseconds(): bigint {
+          return 0n;
+        }
+      }
+      const whole = new Forged(Temporal.Instant.from(WHOLE).epochNanoseconds);
+      // A sub-millisecond instant whose getter claims a whole millisecond.
+      const fine = new Forged(1_000_000_001n);
+
+      expect(encodeAuditFields(only, { at: whole }, KNOWN_KEYS)).toEqual({
+        ok: true,
+        value: { at: WHOLE },
+      });
+      expect(encodeAuditFields(only, { at: fine }, KNOWN_KEYS)).toEqual({
+        ok: false,
+        error: { code: 'audit-fields.invalid', field: 'at', problem: 'invalid' },
+      });
+    });
+
+    it('refuses an object that only inherits from Temporal.Instant.prototype', () => {
+      const fake = Object.create(Temporal.Instant.prototype, {
+        toString: { value: () => WHOLE },
+        epochNanoseconds: { value: 0n },
+      }) as unknown;
+      expect(fake instanceof Temporal.Instant).toBe(true);
+
+      expect(encodeAuditFields(only, { at: fake }, KNOWN_KEYS)).toEqual({
+        ok: false,
+        error: { code: 'audit-fields.invalid', field: 'at', problem: 'invalid' },
+      });
+    });
+  });
+
+  describe('a list is copied once, then checked and encoded (Hassan L2)', () => {
+    const only = { ids: auditField.listOf(auditField.id(), 2) };
+
+    it('checks and encodes the same items however often a Proxy is read', () => {
+      let reads = 0;
+      // Two items at the first read of each index, a malformed id at any later read.
+      const shifty = new Proxy([ID, OTHER_ID], {
+        get(target, property, receiver) {
+          if (property === '0' || property === '1') {
+            reads += 1;
+            return reads <= 2 ? (Reflect.get(target, property, receiver) as unknown) : 'not-an-id';
+          }
+          return Reflect.get(target, property, receiver) as unknown;
+        },
+      });
+
+      expect(encodeAuditFields(only, { ids: shifty }, KNOWN_KEYS)).toEqual({
+        ok: true,
+        value: { ids: [ID, OTHER_ID] },
+      });
+      expect(reads).toBe(2);
+    });
+
+    it('cannot be grown past the maximum by a length that changes between reads', () => {
+      let lengthReads = 0;
+      const growing = new Proxy([ID], {
+        get(target, property, receiver) {
+          if (property === 'length') {
+            lengthReads += 1;
+            return lengthReads === 1 ? 1 : 1_000_000;
+          }
+          return property === '0' || /^\d+$/.test(String(property))
+            ? ID
+            : (Reflect.get(target, property, receiver) as unknown);
+        },
+      });
+
+      // One read of the length: the copy holds one item.
+      expect(encodeAuditFields(only, { ids: growing }, KNOWN_KEYS)).toEqual({
+        ok: true,
+        value: { ids: [ID] },
+      });
+    });
+
+    it('stops copying at the maximum plus one for a huge reported length', () => {
+      const huge = new Proxy([] as string[], {
+        get(target, property, receiver) {
+          if (property === 'length') return 2 ** 32 - 1;
+          return /^\d+$/.test(String(property))
+            ? ID
+            : (Reflect.get(target, property, receiver) as unknown);
+        },
+      });
+
+      expect(encodeAuditFields(only, { ids: huge }, KNOWN_KEYS)).toEqual({
+        ok: false,
+        error: { code: 'audit-fields.invalid', field: 'ids', problem: 'too-long' },
+      });
+    });
+  });
+});
+
+describe('a definition stores frozen kinds of its own (Hassan L3)', () => {
+  /** Every object reachable from `value` through own properties is frozen. */
+  function deeplyFrozen(value: unknown, seen = new Set<unknown>()): boolean {
+    if ((typeof value !== 'object' && typeof value !== 'function') || value === null) return true;
+    if (seen.has(value)) return true;
+    seen.add(value);
+    if (!Object.isFrozen(value)) return false;
+    return Reflect.ownKeys(value).every((key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, key)!;
+      return 'value' in descriptor ? deeplyFrozen(descriptor.value, seen) : true;
+    });
+  }
+
+  it('rebuilds kinds written as mutable literals, and the caller cannot change them later', () => {
+    const values = ['open', 'closed'];
+    const state = { kind: 'enumOf', values };
+    const list = { kind: 'listOf', of: { kind: 'id' }, max: 4 };
+    const target = { kind: 'enumOf', values: ['first-key', 'second-key'] };
+    const definition = defineAuditAction({
+      action: 'identity.market-setting.changed',
+      targetType: 'identity.market-setting',
+      targetId: target,
+      actors: ['system'],
+      before: { state, ids: list, maybe: { kind: 'optional', of: { kind: 'boolean' } } },
+      after: { state: auditField.enumOf(['open', 'closed'] as const) },
+    } as unknown as Parameters<typeof defineAuditAction>[0]);
+
+    values.push('Free Text');
+    state.kind = 'text';
+    list.max = 1_000_000;
+    target.values.push('Third');
+
+    expect(deeplyFrozen(definition)).toBe(true);
+    expect(definition.before).not.toBe(null);
+    expect(definition.before?.state).not.toBe(state);
+    expect(definition.before).toEqual({
+      state: { kind: 'enumOf', values: ['open', 'closed'] },
+      ids: { kind: 'listOf', of: { kind: 'id' }, max: 4 },
+      maybe: { kind: 'optional', of: { kind: 'boolean' } },
+    });
+    expect(definition.targetId).toEqual({ kind: 'enumOf', values: ['first-key', 'second-key'] });
+  });
+
+  it('reads a getter kind once and keeps what it read', () => {
+    let reads = 0;
+    const flipping = {
+      get kind() {
+        reads += 1;
+        return reads === 1 ? 'id' : 'text';
+      },
+    };
+    const definition = defineAuditAction({
+      action: 'identity.role.renamed',
+      targetType: 'identity.role',
+      actors: ['system'],
+      after: { roleId: flipping },
+    } as unknown as Parameters<typeof defineAuditAction>[0]);
+
+    expect(reads).toBe(1);
+    expect(definition.after).toEqual({ roleId: { kind: 'id' } });
+    expect(deeplyFrozen(definition)).toBe(true);
+  });
+
+  it('is deeply frozen for every kind of the vocabulary', () => {
+    expect(deeplyFrozen(roleAssigned)).toBe(true);
+  });
 });
 
 describe('describeAuditAction (the catalogue snapshot)', () => {

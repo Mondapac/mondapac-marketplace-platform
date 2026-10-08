@@ -14,6 +14,7 @@ describe('the public surface of the kernel', () => {
       'ContextMismatchError',
       'MAX_AGGREGATE_VERSION',
       'MAX_AUDIT_LIST_LENGTH',
+      'MAX_CANONICAL_JSON_DEPTH',
       'POPULATIONS',
       'Temporal',
       'auditField',

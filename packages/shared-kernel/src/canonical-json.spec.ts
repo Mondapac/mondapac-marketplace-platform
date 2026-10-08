@@ -1,4 +1,4 @@
-import { canonicalJson } from './canonical-json';
+import { canonicalJson, MAX_CANONICAL_JSON_DEPTH } from './canonical-json';
 
 // Every non-ASCII character in this file is built from its code point or written as an escape,
 // so the source stays ASCII.
@@ -93,6 +93,8 @@ describe('canonicalJson (RFC 8785; platform-audit.md 6.3)', () => {
     ['ffefffffffffffff', '-1.7976931348623157e+308'],
     ['4340000000000000', '9007199254740992'],
     ['c340000000000000', '-9007199254740992'],
+    ['4340000000000001', '9007199254740994'],
+    ['4340000000000002', '9007199254740996'],
     ['4430000000000000', '295147905179352830000'],
     ['44b52d02c7e14af5', '9.999999999999997e+22'],
     ['44b52d02c7e14af6', '1e+23'],
@@ -180,6 +182,44 @@ describe('canonicalJson (RFC 8785; platform-audit.md 6.3)', () => {
 
       expect(refusalOf(value)).toBe('unsupported-type');
       expect(get).not.toHaveBeenCalled();
+    });
+
+    describe('nesting depth (Hassan M2, Sajad L3)', () => {
+      /** `levels` arrays (or objects) nested in each other, the innermost holding `1`. */
+      const nested = (levels: number, as: 'array' | 'object' = 'array'): unknown => {
+        let value: unknown = 1;
+        for (let level = 0; level < levels; level += 1) {
+          value = as === 'array' ? [value] : { a: value };
+        }
+        return value;
+      };
+
+      it('accepts exactly MAX_CANONICAL_JSON_DEPTH levels, of arrays and of objects', () => {
+        expect(MAX_CANONICAL_JSON_DEPTH).toBe(64);
+        expect(canonical(nested(64))).toBe(`${'['.repeat(64)}1${']'.repeat(64)}`);
+        expect(refusalOf(nested(64, 'object'))).toBe('accepted');
+      });
+
+      it.each([
+        ['65 arrays', nested(65)],
+        ['65 objects', nested(65, 'object')],
+        ['an object of 64 nested arrays', { a: nested(64) }],
+      ])('refuses %s as too-deep', (_case, value) => {
+        expect(refusalOf(value)).toBe('too-deep');
+      });
+
+      it('refuses about 4 000 nested arrays (8 KB of text, the database cap) as a value, without throwing', () => {
+        const deep = nested(4000);
+        // Its JSON text fits the 8 192-byte cap of the audit columns.
+        expect(JSON.stringify(deep).length).toBeLessThan(8192);
+
+        expect(() => canonicalJson(deep)).not.toThrow();
+        expect(canonicalJson(deep)).toEqual({
+          ok: false,
+          error: { code: 'canonical-json.refused', problem: 'too-deep' },
+        });
+        expect(refusalOf(nested(100_000))).toBe('too-deep');
+      });
     });
 
     it('carries a code and the problem only, never the value', () => {

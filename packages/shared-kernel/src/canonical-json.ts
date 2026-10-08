@@ -9,8 +9,22 @@ import type { Result } from './result';
 export interface CanonicalJsonError {
   readonly code: 'canonical-json.refused';
   readonly problem:
-    'non-finite-number' | 'undefined' | 'bigint' | 'unsupported-type' | 'cycle' | 'lone-surrogate';
+    | 'non-finite-number'
+    | 'undefined'
+    | 'bigint'
+    | 'unsupported-type'
+    | 'cycle'
+    | 'lone-surrogate'
+    | 'too-deep';
 }
+
+/**
+ * The deepest nesting of arrays and objects {@link canonicalJson} accepts; the top-level
+ * array or object is level 1 (Hassan M2 on slice 6a). Deeper input is refused with
+ * `too-deep` before the walk can exhaust the call stack: an audit side holds at most a list
+ * inside an object, and the database cap (8 192 bytes) allows about 4 000 levels.
+ */
+export const MAX_CANONICAL_JSON_DEPTH = 64;
 
 // In a `u` regular expression a well-formed surrogate pair is one code point, so only a lone
 // surrogate is of category Cs.
@@ -57,6 +71,8 @@ function serialise(value: unknown, ancestors: Set<object>): string {
   }
   if (value === null) return 'null';
   if (ancestors.has(value)) throw new Refusal('cycle');
+  // `ancestors` holds exactly the arrays and objects above this one.
+  if (ancestors.size >= MAX_CANONICAL_JSON_DEPTH) throw new Refusal('too-deep');
 
   if (Array.isArray(value)) {
     if (Object.getPrototypeOf(value) !== Array.prototype) throw new Refusal('unsupported-type');
@@ -101,8 +117,8 @@ function serialise(value: unknown, ancestors: Set<object>): string {
  * Refused (Hassan I1), as a value and never by throwing: non-finite numbers, `undefined`
  * (array holes included) and `BigInt`; anything but plain objects, arrays and primitives
  * (`Date`, `Map`, `Set`, class instances, functions, symbols, objects with `toJSON`, symbol
- * keys or accessors); cycles; strings and keys with a lone surrogate. A value shared by two
- * branches is not a cycle.
+ * keys or accessors); cycles; strings and keys with a lone surrogate; nesting deeper than
+ * {@link MAX_CANONICAL_JSON_DEPTH}. A value shared by two branches is not a cycle.
  */
 export function canonicalJson(value: unknown): Result<string, CanonicalJsonError> {
   try {

@@ -9,7 +9,7 @@
 // no kind accepts free text, so a reason, a name or an email cannot be declared (ADR-0009
 // decision 6, R5; PA 3.2). `listOf` takes a required maximum length (Hassan L3). A new kind
 // is a kernel change reviewed by the security-tester.
-import { eventField } from './domain-event';
+import { eventField, instantText } from './domain-event';
 import type {
   BooleanKind,
   EnumKind,
@@ -24,7 +24,7 @@ import { parseId } from './id';
 import type { Id } from './id';
 import { err, ok } from './result';
 import type { Result } from './result';
-import { Temporal } from './time';
+import type { Temporal } from './time';
 
 // ---------------------------------------------------------------------------------------------
 // Field kinds
@@ -178,19 +178,35 @@ function fail(message: string): never {
   throw new TypeError(`defineAuditAction: ${message}`);
 }
 
-function checkPlainKind(kind: unknown): void {
-  const candidate = kind as Partial<AuditFieldKind> | null;
-  switch (candidate?.kind) {
+/**
+ * The kind rebuilt through its {@link auditField} constructor (Hassan L3 on slice 6a): the
+ * definition stores only frozen objects made here, never the caller's, so a kind written as
+ * an object literal, a getter or a Proxy cannot change after the checks. Each property of the
+ * caller's object is read once.
+ */
+function tagOf(kind: unknown): unknown {
+  return (kind as { readonly kind?: unknown } | null)?.kind;
+}
+
+function rebuildPlainKind(kind: unknown, tag: unknown = tagOf(kind)): AuditPlainKind {
+  switch (tag) {
     case 'id':
+      return auditField.id();
     case 'boolean':
+      return auditField.boolean();
     case 'integer':
+      return auditField.integer();
     case 'instant':
+      return auditField.instant();
     case 'permissionKey':
-      return;
-    case 'enumOf':
-      // Re-check: a kind written as an object literal never went through enumOf.
-      eventField.enumOf((candidate as EnumKind).values as unknown as [string, ...string[]]);
-      return;
+      return auditField.permissionKey();
+    case 'enumOf': {
+      const values = (kind as { readonly values?: unknown }).values;
+      if (!Array.isArray(values)) return fail('enumOf needs a list of values');
+      // enumOf checks and freezes a copy of the values.
+      const copy = Array.prototype.slice.call(values) as unknown as [string, ...string[]];
+      return auditField.enumOf(copy);
+    }
     case 'listOf':
     case 'optional':
       return fail('optional and listOf apply to a plain kind only');
@@ -199,17 +215,24 @@ function checkPlainKind(kind: unknown): void {
   }
 }
 
-function checkKind(kind: unknown): void {
-  const candidate = kind as Partial<AuditFieldKind> | null;
-  if (candidate?.kind === 'listOf') {
-    const { max, of } = candidate as AuditListKind;
-    if (!Number.isInteger(max) || max < 1 || max > MAX_AUDIT_LIST_LENGTH) {
+function rebuildKind(kind: unknown): AuditFieldKind {
+  const tag = tagOf(kind);
+  if (tag === 'listOf') {
+    const { max, of } = kind as { readonly max?: unknown; readonly of?: unknown };
+    if (
+      typeof max !== 'number' ||
+      !Number.isInteger(max) ||
+      max < 1 ||
+      max > MAX_AUDIT_LIST_LENGTH
+    ) {
       fail(`listOf needs a maximum length from 1 to ${MAX_AUDIT_LIST_LENGTH}`);
     }
-    return checkPlainKind(of);
+    return auditField.listOf(rebuildPlainKind(of), max);
   }
-  if (candidate?.kind === 'optional') return checkPlainKind((candidate as AuditOptionalKind).of);
-  return checkPlainKind(kind);
+  if (tag === 'optional') {
+    return auditField.optional(rebuildPlainKind((kind as { readonly of?: unknown }).of));
+  }
+  return rebuildPlainKind(kind, tag);
 }
 
 function checkFields(side: 'before' | 'after', fields: unknown): AuditFields | null {
@@ -220,8 +243,7 @@ function checkFields(side: 'before' | 'after', fields: unknown): AuditFields | n
   const checked: Record<string, AuditFieldKind> = {};
   for (const [name, kind] of entries) {
     if (!FIELD_NAME.test(name)) fail('a field name must be camelCase letters and digits');
-    checkKind(kind);
-    checked[name] = kind as AuditFieldKind;
+    checked[name] = rebuildKind(kind);
   }
   return Object.freeze(checked);
 }
@@ -263,11 +285,12 @@ export function defineAuditAction<
   ) {
     fail(`the target type must read "${owner}.<type>"`);
   }
-  const targetId = (declaration.targetId ?? eventField.id()) as T;
-  if (targetId.kind !== 'id' && targetId.kind !== 'enumOf') {
+  const declaredTargetId: unknown = declaration.targetId ?? auditField.id();
+  const targetTag = tagOf(declaredTargetId);
+  if (targetTag !== 'id' && targetTag !== 'enumOf') {
     fail('the target id is an id or an enumOf of natural keys');
   }
-  checkPlainKind(targetId);
+  const targetId = rebuildPlainKind(declaredTargetId, targetTag) as T;
 
   // `Array.isArray` narrows a readonly array to `any[]`; check a copy of the declared type.
   const actorList: readonly AuditActorKind[] = Array.isArray(actors) ? actors : [];
@@ -290,16 +313,19 @@ export function defineAuditAction<
     actors: Object.freeze([...actorList].sort()),
     before,
     after,
-    entry(target: AuditTargetValue<T>, values: AuditEntryValues<B, F>): AuditEntry<A> {
-      const given = (values ?? {}) as { readonly before?: unknown; readonly after?: unknown };
-      return Object.freeze({
-        action,
-        targetType,
-        targetId: target,
-        before: given.before ?? null,
-        after: given.after ?? null,
-      });
-    },
+    // Frozen too, so the definition is frozen all the way down (Hassan L3).
+    entry: Object.freeze(
+      (target: AuditTargetValue<T>, values: AuditEntryValues<B, F>): AuditEntry<A> => {
+        const given = (values ?? {}) as { readonly before?: unknown; readonly after?: unknown };
+        return Object.freeze({
+          action,
+          targetType,
+          targetId: target,
+          before: given.before ?? null,
+          after: given.after ?? null,
+        });
+      },
+    ),
   }) as unknown as AuditActionDefinition<A, B, F, T>;
   DEFINED.add(definition);
   return definition;
@@ -340,11 +366,12 @@ function encodePlain(kind: AuditPlainKind, value: unknown, options: AuditFieldCh
       return typeof value === 'boolean' ? { ok: true as const, value } : invalid;
     case 'integer':
       return Number.isSafeInteger(value) ? { ok: true as const, value: value as number } : invalid;
-    case 'instant':
-      // Whole milliseconds, written with exactly three fractional digits, like occurredAt.
-      return value instanceof Temporal.Instant && value.epochNanoseconds % 1_000_000n === 0n
-        ? { ok: true as const, value: value.toString({ fractionalSecondDigits: 3 }) }
-        : invalid;
+    case 'instant': {
+      // Whole milliseconds, written with exactly three fractional digits, like occurredAt;
+      // through the prototype's own methods, so a subclass cannot choose the text (Hassan L1).
+      const text = instantText(value, true);
+      return text === undefined ? invalid : { ok: true as const, value: text };
+    }
     case 'permissionKey':
       return typeof value === 'string' && options.isKnownPermissionKey(value)
         ? { ok: true as const, value }
@@ -355,10 +382,19 @@ function encodePlain(kind: AuditPlainKind, value: unknown, options: AuditFieldCh
 function encodeValue(kind: AuditFieldKind, value: unknown, options: AuditFieldCheckOptions) {
   if (kind.kind === 'listOf') {
     if (!Array.isArray(value)) return invalid;
-    if (value.length > kind.max) return { ok: false, tooLong: true } as Encoded;
+    // One copy, taken first, is checked and encoded (Hassan L2): a Proxy or an accessor cannot
+    // answer the length check with one list and the encoding with another. The copy stops at
+    // the maximum plus one, so a Proxy that reports a huge length cannot make it large.
+    let copy: unknown[];
+    try {
+      copy = Array.prototype.slice.call(value, 0, kind.max + 1) as unknown[];
+    } catch {
+      return invalid;
+    }
+    if (copy.length > kind.max) return { ok: false, tooLong: true } as Encoded;
     const items: JsonValue[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const encoded = encodePlain(kind.of, value[index], options);
+    for (let index = 0; index < copy.length; index += 1) {
+      const encoded = encodePlain(kind.of, copy[index], options);
       if (!encoded.ok) return invalid;
       items.push(encoded.value);
     }
