@@ -791,12 +791,14 @@ async function updateLibrary() {
     if (effectDiff(next, e)) { log('ℹ skipped effect style ' + e.name + ': it was changed by hand (' + effectDiff(cur, e) + ')'); return; }
     fx184.push({ st: st, e: e, next: next });
   });
-  fx184.forEach(function (f) {
-    f.st.effects = f.next;
+  // The mock cannot show how Figma takes a bound effect written back, so a refused write is reported and the run goes on,
+  // and the style is read back: a spread or a colour binding Figma did not keep is reported, not counted as fixed.
+  for (const f of fx184) {
+    if (!(await safe('repair effect style ' + f.e.name, function () { f.st.effects = f.next; return true; }))) continue;
     const left = effectDiff(f.st.effects, f.e);
-    if (left) log('⚠ effect style ' + f.e.name + ' still differs from the spec after the repair (' + left + '): set the spread in the style editor by hand');
+    if (left) log('⚠ effect style ' + f.e.name + ' still differs from the spec after the repair (' + left + '): fix it in the style editor by hand');
     else added.push('fix effect style ' + f.e.name + ': spread ' + f.e.layers.map(function (l) { return l.spread; }).join(' and ') + ' px');
-  });
+  }
   // (b) The Main frame of the plugin's phone screens scrolls vertically (as phoneScreen now makes it), so a list longer than the screen
   //     continues below the fold instead of sticking out (the seller Members and Roles phone screens in the real-Figma Audit).
   const phones184 = {}; const seen184 = {}; let nPhones = 0;
@@ -807,8 +809,8 @@ async function updateLibrary() {
     host.children.forEach(function (scr) {
       if (scr.type !== 'FRAME' || scr.getPluginData(PLUGIN_TAG) !== '1' || !/\(phone\)$/.test(scr.name)) return;
       const main = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Main'; })[0];
-      // Dialog sheet scenes have no Main; the phone role editor hugs the whole page, so its Main clips nothing.
-      if (!main || !main.clipsContent || main.overflowDirection === 'VERTICAL') return;
+      // Dialog sheet scenes have no Main; the phone role editor hugs the whole page, so its Main clips nothing. BOTH scrolls vertically too.
+      if (!main || !main.clipsContent || main.overflowDirection === 'VERTICAL' || main.overflowDirection === 'BOTH') return;
       if (main.layoutMode !== 'VERTICAL' || (main.overflowDirection && main.overflowDirection !== 'NONE')) { log('ℹ skipped scrolling of ' + scr.name + ': its Main frame was changed by hand'); return; }
       (phones184[key] = phones184[key] || []).push(main); nPhones++;
     });
@@ -948,7 +950,7 @@ const AUDIT_LIST = 25;
 // What differs between an effect style's effects and its spec layers: '' when they match. Colours are left out (a ring's colour is bound
 // to a variable and changes with the theme); the shape is compared: layer count, type, offset, blur and spread.
 function effectDiff(effects, e) {
-  if (effects.length !== e.layers.length) return effects.length + ' layers, the spec has ' + e.layers.length;
+  if (effects.length !== e.layers.length) return effects.length + (effects.length === 1 ? ' layer' : ' layers') + ', the spec has ' + e.layers.length;
   const out = [];
   e.layers.forEach(function (l, i) {
     const fx = effects[i];
@@ -956,6 +958,8 @@ function effectDiff(effects, e) {
     [['x', fx.offset.x, l.x], ['y', fx.offset.y, l.y], ['blur', fx.radius, l.blur], ['spread', fx.spread || 0, l.spread]].forEach(function (f) {
       if (Math.abs(f[1] - f[2]) > 0.01) out.push('layer ' + (i + 1) + ' ' + f[0] + ' ' + num(f[1]) + ', spec ' + f[2]);
     });
+    // A layer whose colour comes from a token must keep its binding, or the ring stops following the theme.
+    if (l.token && !(fx.boundVariables && fx.boundVariables.color)) out.push('layer ' + (i + 1) + ' colour not bound, spec ' + l.token);
   });
   return out.join('; ');
 }

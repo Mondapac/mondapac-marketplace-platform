@@ -213,6 +213,9 @@ async function buildStyles() {
     if (e.layers.some(function (l) { return l.token; })) {
       await safe('bind effect ' + e.name, function () { st.effects = bindEffectColours(layers, e); });
     }
+    // Read the style back: a spread or a binding Figma did not keep shows here rather than as a missing ring later.
+    const left = effectDiff(st.effects, e);
+    if (left) log('⚠ effect style ' + e.name + ' differs from the spec after the build (' + left + '): fix it in the style editor by hand');
     tag(st);
     S.es[e.name] = st;
   }

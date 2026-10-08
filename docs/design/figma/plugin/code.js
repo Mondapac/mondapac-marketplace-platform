@@ -214,6 +214,9 @@ async function buildStyles() {
     if (e.layers.some(function (l) { return l.token; })) {
       await safe('bind effect ' + e.name, function () { st.effects = bindEffectColours(layers, e); });
     }
+    // Read the style back: a spread or a binding Figma did not keep shows here rather than as a missing ring later.
+    const left = effectDiff(st.effects, e);
+    if (left) log('⚠ effect style ' + e.name + ' differs from the spec after the build (' + left + '): fix it in the style editor by hand');
     tag(st);
     S.es[e.name] = st;
   }
@@ -800,7 +803,7 @@ const RELEASES = [
   { version: '1.8.1', date: '7 Oct 2026', changes: 'Audit fixes for the Panel pages. Panel desktop pages are at least 900 px high, so the Sidebar holds its own items on short pages; the admin phone members screen shows the 3 cards that fit; the CheckboxRow set puts Value in columns and State in rows, so it no longer sticks out of its documentation row. Update library repairs the frames and the CheckboxRow set of a 1.8.0 file in place (nothing is deleted except the two member cards that did not fit). Update library no longer moves existing frames; overlaps are reported. No token, component or variant changes.' },
   { version: '1.8.2', date: '7 Oct 2026', changes: 'Layout fixes from the real-Figma Audit after 1.7.0. Input variants are laid out with Type in columns and AuthShowcase with one variant per row, so both sets and their documentation blocks fit the 1440 px page. On Starter files, a section that an update made larger no longer covers the sections after it: Update library moves an overlapping section past the one before it and leaves sections that do not overlap where they are. Nothing is renamed, rebuilt or deleted.' },
   { version: '1.8.3', date: '8 Oct 2026', changes: 'Panel follow-up (planned as 1.2.1 in the Panel spec), templates only. Admin · Sellers (Phase 2) with Menu open, View only, Loading, Empty and Load error, and its phone frame; the dialogs D4 Reject (with its error and the read-only View reason), D5 Suspend and D6 Add seller, and the Reject phone sheet; the role editor for Admin (Custom, Default, System, Duplicate, Errors) and Seller (Custom, Ready-made, Owner, New role) with the seller phone frame; the unsaved-changes dialog. Update library adds the 20 frames and 5 template bodies a file does not have yet, in rows below the existing frames, and changes nothing that exists. No token, component or variant changes.' },
-  { version: '1.8.4', date: '8 Oct 2026', changes: 'Fixes from the 1.8.3 run in the real file. The Focus/Ring and Ring/Urgent effect styles get their spread back (2 and 4 px, 3 px): Figma had saved them with spread 0 when their colour was bound to a variable, so focus rings and the urgent ring did not show. The Main area of every phone screen scrolls vertically, so a list longer than the screen continues below the fold (the seller Members and Roles phone screens). Audit file lists every entry ("… and N more" after 25) and checks that the effect styles match the spec. Update library repairs existing files in place.' },
+  { version: '1.8.4', date: '8 Oct 2026', changes: 'Fixes from the 1.8.3 run in the real file. The Focus/Ring and Ring/Urgent effect styles get their spread back (2 and 4 px, 3 px): Figma had saved them with spread 0 when their colour was bound to a variable, so focus rings and the urgent ring did not show. The Main area of the plugin phone screens that clip their content (11 in a new build; not the phone role editor or the dialog sheets) scrolls vertically, so a list longer than the screen continues below the fold (the seller Members and Roles phone screens). Audit file lists every entry ("… and N more" after 25) and checks that the effect styles match the spec, ring colours still bound. Update library repairs existing files in place.' },
 ];
 const RELEASE = RELEASES[RELEASES.length - 1];
 async function pageChangelog(page) {
@@ -4297,12 +4300,14 @@ async function updateLibrary() {
     if (effectDiff(next, e)) { log('ℹ skipped effect style ' + e.name + ': it was changed by hand (' + effectDiff(cur, e) + ')'); return; }
     fx184.push({ st: st, e: e, next: next });
   });
-  fx184.forEach(function (f) {
-    f.st.effects = f.next;
+  // The mock cannot show how Figma takes a bound effect written back, so a refused write is reported and the run goes on,
+  // and the style is read back: a spread or a colour binding Figma did not keep is reported, not counted as fixed.
+  for (const f of fx184) {
+    if (!(await safe('repair effect style ' + f.e.name, function () { f.st.effects = f.next; return true; }))) continue;
     const left = effectDiff(f.st.effects, f.e);
-    if (left) log('⚠ effect style ' + f.e.name + ' still differs from the spec after the repair (' + left + '): set the spread in the style editor by hand');
+    if (left) log('⚠ effect style ' + f.e.name + ' still differs from the spec after the repair (' + left + '): fix it in the style editor by hand');
     else added.push('fix effect style ' + f.e.name + ': spread ' + f.e.layers.map(function (l) { return l.spread; }).join(' and ') + ' px');
-  });
+  }
   // (b) The Main frame of the plugin's phone screens scrolls vertically (as phoneScreen now makes it), so a list longer than the screen
   //     continues below the fold instead of sticking out (the seller Members and Roles phone screens in the real-Figma Audit).
   const phones184 = {}; const seen184 = {}; let nPhones = 0;
@@ -4313,8 +4318,8 @@ async function updateLibrary() {
     host.children.forEach(function (scr) {
       if (scr.type !== 'FRAME' || scr.getPluginData(PLUGIN_TAG) !== '1' || !/\(phone\)$/.test(scr.name)) return;
       const main = scr.children.filter(function (n) { return n.type === 'FRAME' && n.name === 'Main'; })[0];
-      // Dialog sheet scenes have no Main; the phone role editor hugs the whole page, so its Main clips nothing.
-      if (!main || !main.clipsContent || main.overflowDirection === 'VERTICAL') return;
+      // Dialog sheet scenes have no Main; the phone role editor hugs the whole page, so its Main clips nothing. BOTH scrolls vertically too.
+      if (!main || !main.clipsContent || main.overflowDirection === 'VERTICAL' || main.overflowDirection === 'BOTH') return;
       if (main.layoutMode !== 'VERTICAL' || (main.overflowDirection && main.overflowDirection !== 'NONE')) { log('ℹ skipped scrolling of ' + scr.name + ': its Main frame was changed by hand'); return; }
       (phones184[key] = phones184[key] || []).push(main); nPhones++;
     });
@@ -4454,7 +4459,7 @@ const AUDIT_LIST = 25;
 // What differs between an effect style's effects and its spec layers: '' when they match. Colours are left out (a ring's colour is bound
 // to a variable and changes with the theme); the shape is compared: layer count, type, offset, blur and spread.
 function effectDiff(effects, e) {
-  if (effects.length !== e.layers.length) return effects.length + ' layers, the spec has ' + e.layers.length;
+  if (effects.length !== e.layers.length) return effects.length + (effects.length === 1 ? ' layer' : ' layers') + ', the spec has ' + e.layers.length;
   const out = [];
   e.layers.forEach(function (l, i) {
     const fx = effects[i];
@@ -4462,6 +4467,8 @@ function effectDiff(effects, e) {
     [['x', fx.offset.x, l.x], ['y', fx.offset.y, l.y], ['blur', fx.radius, l.blur], ['spread', fx.spread || 0, l.spread]].forEach(function (f) {
       if (Math.abs(f[1] - f[2]) > 0.01) out.push('layer ' + (i + 1) + ' ' + f[0] + ' ' + num(f[1]) + ', spec ' + f[2]);
     });
+    // A layer whose colour comes from a token must keep its binding, or the ring stops following the theme.
+    if (l.token && !(fx.boundVariables && fx.boundVariables.color)) out.push('layer ' + (i + 1) + ' colour not bound, spec ' + l.token);
   });
   return out.join('; ');
 }
