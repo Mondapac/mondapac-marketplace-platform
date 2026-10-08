@@ -51,6 +51,9 @@ interface World {
   failCertificates: boolean;
   failZones: boolean;
   misalignedCertificates: boolean;
+  /** Answers of the right count whose keys are not the requested ones (a reordered read). */
+  shuffledAnswers: boolean;
+  wrongSellerCertificates: boolean;
 }
 const POLICY_REVISION = '0197f2a0-0000-7000-8000-0000000000aa' as Id;
 let world: World;
@@ -62,20 +65,37 @@ const facts: ClaimFactsReader = {
     calls.policies += 1;
     if (world.failRead) return Promise.reject(new Error('db down'));
     const list = requests.map((r): TypeAndPolicy => ({
+      typeCode: r.typeCode,
       type: world.typeOf.has(r.typeCode) ? (world.typeOf.get(r.typeCode) ?? null) : world.type,
       policy:
         world.rows.length > 0 ? { revisionId: POLICY_REVISION, matchedRows: world.rows } : null,
     }));
-    return Promise.resolve(world.misaligned ? list.slice(1) : list);
+    return Promise.resolve(
+      world.misaligned
+        ? list.slice(1)
+        : world.shuffledAnswers
+          ? list.map((a) => ({ ...a, typeCode: code('some-other-type') }))
+          : list,
+    );
   },
   sellerCertificates: (_m, requests) => {
     calls.certificates += 1;
     if (world.failCertificates) return Promise.reject(new Error('db down'));
     const list = requests.map((r) => {
       const key = `${r.sellerId}|${r.typeCode}`;
-      return world.certOf.has(key) ? (world.certOf.get(key) ?? null) : world.certificate;
+      return {
+        sellerId: r.sellerId,
+        typeCode: r.typeCode,
+        certificate: world.certOf.has(key) ? (world.certOf.get(key) ?? null) : world.certificate,
+      };
     });
-    return Promise.resolve(world.misalignedCertificates ? list.slice(1) : list);
+    return Promise.resolve(
+      world.misalignedCertificates
+        ? list.slice(1)
+        : world.wrongSellerCertificates
+          ? list.map((a) => ({ ...a, sellerId: ids.next<'Seller'>() }))
+          : list,
+    );
   },
 };
 const zones: SellerZonesSource = {
@@ -154,6 +174,8 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
       failCertificates: false,
       failZones: false,
       misalignedCertificates: false,
+      shuffledAnswers: false,
+      wrongSellerCertificates: false,
     };
     zoneRequests = [];
     calls.policies = calls.certificates = calls.zones = 0;
@@ -386,6 +408,63 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
       [false, 'unavailable'],
       [false, 'unavailable'],
     ]);
+  });
+
+  it('fails the batch closed when policy answers carry another type than requested (a reordered read)', async () => {
+    world.shuffledAnswers = true;
+    const r = await facade.evaluateClaims(anonymous(), [query(), query()]);
+    expect(r.ok && r.value.every((d) => !d.allowed && d.reason === 'unavailable')).toBe(true);
+  });
+
+  it('fails closed when a certificate answer carries another seller than requested', async () => {
+    world.wrongSellerCertificates = true;
+    const r = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(r.ok && r.value[0]).toEqual(
+      expect.objectContaining({ allowed: false, reason: 'unavailable' }),
+    );
+  });
+
+  it.each([
+    ['an unknown zone name', 'Mars/Olympus'],
+    ['an empty zone', ''],
+    ['an offset', '+10:00'],
+    ['a non-string', 42],
+  ] as const)(
+    'denies with seller-zone-missing for %s on a certificate with no expiry',
+    async (_n, bad) => {
+      world.certificate = {
+        ...approved('2027-01-31'),
+        approved: { ...approved('2027-01-31').approved!, requiresExpiry: false, expiryDate: null },
+      };
+      world.zones = { zone: bad as never, addressZone: bad as never };
+      const r = await facade.evaluateClaims(anonymous(), [query()]);
+      expect(r.ok && r.value[0]).toEqual(
+        expect.objectContaining({ allowed: false, reason: 'seller-zone-missing' }),
+      );
+    },
+  );
+
+  it('answers input-invalid, with null inputs, for a throwing getter and a revoked proxy', async () => {
+    const thrower = {
+      get sellerId(): never {
+        throw new Error('boom');
+      },
+    };
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+    const r = await facade.evaluateClaims(anonymous(), [thrower, revoked.proxy, query()] as never);
+    expect(r.ok && r.value.map((d) => [d.reason, d.inputs === null])).toEqual([
+      ['input-invalid', true],
+      ['input-invalid', true],
+      ['allowed', false],
+    ]);
+  });
+
+  it('refuses a query with no platform category path', async () => {
+    const r = await facade.evaluateClaims(anonymous(), [query({ platformCategoryPaths: [] })]);
+    expect(r.ok && r.value[0]).toEqual(
+      expect.objectContaining({ reason: 'input-invalid', inputs: null }),
+    );
   });
 
   it('resolves the strictest of all matching rows and reports the policy revision', async () => {

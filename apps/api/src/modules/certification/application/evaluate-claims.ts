@@ -30,6 +30,15 @@ type Parsed = { readonly query: ClaimQuery } | { readonly invalid: true };
 
 /** Step 0 for one query: every id parses, the enums are in their lists, the paths are bounded. */
 function parseQuery(raw: unknown): Parsed {
+  try {
+    return parseQueryUnsafe(raw);
+  } catch {
+    // A throwing getter or a revoked proxy is a malformed query, not a crash.
+    return { invalid: true };
+  }
+}
+
+function parseQueryUnsafe(raw: unknown): Parsed {
   if (typeof raw !== 'object' || raw === null) return { invalid: true };
   // Each field is read once.
   const q = raw as Record<string, unknown>;
@@ -51,17 +60,18 @@ function parseQuery(raw: unknown): Parsed {
     return { invalid: true };
   }
   if (typeof attestationRecorded !== 'boolean') return { invalid: true };
-  if (!Array.isArray(platformCategoryPaths) || platformCategoryPaths.length > MAX_PATHS) {
-    return { invalid: true };
-  }
+  if (!Array.isArray(platformCategoryPaths)) return { invalid: true };
+  const pathCount = platformCategoryPaths.length;
+  // A published revision has at least one platform category (catalog CAT-31).
+  if (pathCount < 1 || pathCount > MAX_PATHS) return { invalid: true };
   const paths: Id<'Category'>[][] = [];
-  for (let i = 0; i < platformCategoryPaths.length; i += 1) {
+  for (let i = 0; i < pathCount; i += 1) {
     const path: unknown = platformCategoryPaths[i];
-    if (!Array.isArray(path) || path.length === 0 || path.length > MAX_PATH_DEPTH) {
-      return { invalid: true };
-    }
+    if (!Array.isArray(path)) return { invalid: true };
+    const depth = path.length;
+    if (depth === 0 || depth > MAX_PATH_DEPTH) return { invalid: true };
     const ids: Id<'Category'>[] = [];
-    for (let j = 0; j < path.length; j += 1) {
+    for (let j = 0; j < depth; j += 1) {
       const id: unknown = path[j];
       const parsed = typeof id === 'string' ? parseId<'Category'>(id) : null;
       if (!parsed?.ok) return { invalid: true };
@@ -83,7 +93,7 @@ function parseQuery(raw: unknown): Parsed {
   };
 }
 
-function refused(raw: unknown, at: Temporal.Instant): ClaimDecision {
+function refused(at: Temporal.Instant): ClaimDecision {
   return {
     allowed: false,
     basis: null,
@@ -91,8 +101,8 @@ function refused(raw: unknown, at: Temporal.Instant): ClaimDecision {
     certificate: null,
     policyRevisionId: null,
     badge: null,
-    // Echoed as received: the caller's own value, never read for a decision.
-    inputs: raw as ClaimQuery,
+    // Nothing is echoed: a malformed value is never handed back (Hassan L2).
+    inputs: null,
     evaluatedAt: at,
   };
 }
@@ -126,16 +136,27 @@ export async function evaluateClaimsFor(
   context: CallContext,
   queries: readonly unknown[],
 ): Promise<Result<readonly ClaimDecision[], CertificationValidationFailed>> {
-  if (!Array.isArray(queries)) {
+  let count: number;
+  try {
+    if (!Array.isArray(queries)) throw new TypeError('not an array');
+    count = queries.length;
+  } catch {
     return err({ code: 'validation.failed', fields: [{ path: 'queries', code: 'format' }] });
   }
-  const count = queries.length;
   if (count < 1 || count > MAX_CLAIM_QUERIES) {
     return err({ code: 'validation.failed', fields: [{ path: 'queries', code: 'length' }] });
   }
   const at = deps.now();
   const parsed: Parsed[] = [];
-  for (let i = 0; i < count; i += 1) parsed.push(parseQuery(queries[i]));
+  for (let i = 0; i < count; i += 1) {
+    let raw: unknown;
+    try {
+      raw = queries[i];
+    } catch {
+      raw = undefined;
+    }
+    parsed.push(parseQuery(raw));
+  }
   const valid = parsed.flatMap((p, index) => ('query' in p ? [{ index, query: p.query }] : []));
 
   const decisions = new Map<number, ClaimDecision>();
@@ -152,6 +173,9 @@ export async function evaluateClaimsFor(
             })),
           );
     if (policies.length !== valid.length) throw new Error('policy read misaligned');
+    valid.forEach(({ query }, k) => {
+      if (policies[k]!.typeCode !== query.typeCode) throw new Error('policy answer out of order');
+    });
 
     // Only seller-basis queries need the seller's certificate and zones (design 4.2 step 1):
     // not an unknown type and not a NOT_APPLICABLE requirement, which `decide` denies anyway.
@@ -171,6 +195,12 @@ export async function evaluateClaimsFor(
             undecided.map(({ query }) => ({ sellerId: query.sellerId, typeCode: query.typeCode })),
           );
     if (certificates.length !== undecided.length) throw new Error('certificate read misaligned');
+    undecided.forEach(({ query }, k) => {
+      const answer = certificates[k]!;
+      if (answer.sellerId !== query.sellerId || answer.typeCode !== query.typeCode) {
+        throw new Error('certificate answer out of order');
+      }
+    });
     const sellerIds = [...new Set(undecided.map(({ query }) => query.sellerId))];
     const zoneAnswer: SellerZoneAnswer =
       sellerIds.length === 0 ? new Map() : await deps.zones.zonesOf(context, sellerIds);
@@ -182,7 +212,7 @@ export async function evaluateClaimsFor(
     valid.forEach(({ index, query }, k) => {
       const typeAndPolicy: TypeAndPolicy = policies[k]!;
       const seller = needsSeller[k] === true;
-      const certificate = seller ? (certificates[u] ?? null) : null;
+      const certificate = seller ? (certificates[u]?.certificate ?? null) : null;
       const zone = seller ? zoneAnswer.get(query.sellerId) : undefined;
       if (seller) u += 1;
       const sellerZones: SellerZones | null =
@@ -203,15 +233,11 @@ export async function evaluateClaimsFor(
   } catch (error) {
     // The class of the failure only; never ids or values.
     logger.error(`evaluateClaims failed: ${error instanceof Error ? error.name : 'unknown'}`);
-    return ok(
-      parsed.map((p, index) =>
-        'query' in p ? unavailable(p.query, at) : refused(queries[index], at),
-      ),
-    );
+    return ok(parsed.map((p) => ('query' in p ? unavailable(p.query, at) : refused(at))));
   }
   return ok(
     parsed.map((p, index) =>
-      'query' in p ? (decisions.get(index) as ClaimDecision) : refused(queries[index], at),
+      'query' in p ? (decisions.get(index) as ClaimDecision) : refused(at),
     ),
   );
 }
