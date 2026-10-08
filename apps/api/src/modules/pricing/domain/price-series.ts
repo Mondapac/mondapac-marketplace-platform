@@ -12,6 +12,13 @@ export type RegularRecordStatus =
 /** Why a series stopped taking prices (pricing design 6.4). */
 export type RetireCause = 'offer-removed' | 'variant-removed';
 
+/**
+ * Why a pending record was superseded (pricing design 3.1 row 5; pricing-data 3.3, M6): a new
+ * seller write replaced it, a write equal to the price in force cancelled it, or the series was
+ * retired.
+ */
+export type SupersedeCause = 'replaced' | 'cancelled' | RetireCause;
+
 /** The record a held price was measured against (design 2.4), copied so it never changes. */
 export interface JumpAnchor {
   readonly recordId: Id<'RegularPriceRecord'>;
@@ -34,11 +41,17 @@ export interface RegularPriceRecord {
   readonly effectiveFrom: Temporal.Instant | null;
   /** Closed when the next record becomes effective. */
   readonly effectiveTo: Temporal.Instant | null;
+  /**
+   * The record this one was measured against (design 2.1, 2.4), held or not. Null only for a
+   * record that was not measured: the first price of a series.
+   */
   readonly anchor: JumpAnchor | null;
   readonly heldDirection: 'up' | 'down' | null;
-  /** Set when a pending record is replaced; the record that replaced it, or null for a system cause. */
+  /** Set when a pending record is replaced; the record that replaced it, or null for another cause. */
   readonly supersededBy: Id<'RegularPriceRecord'> | null;
   readonly supersededAt: Temporal.Instant | null;
+  /** Set with `SUPERSEDED`; `replaced` exactly when `supersededBy` names the successor. */
+  readonly supersedeCause: SupersedeCause | null;
 }
 
 export interface PriceSeriesState {
@@ -48,6 +61,11 @@ export interface PriceSeriesState {
   readonly variantId: Id<'Variant'>;
   readonly productId: Id<'Product'>;
   readonly sellerId: Id<'Seller'>;
+  /**
+   * The Market's currency when the series was created, written once (pricing-data P2): every
+   * record of the series is in it.
+   */
+  readonly currency: string;
   readonly createdAt: Temporal.Instant;
   readonly retiredAt: Temporal.Instant | null;
   readonly retireCause: RetireCause | null;
@@ -165,9 +183,12 @@ export function jumpAnchor(
  */
 export class PriceSeries {
   #state: PriceSeriesState;
+  /** The state as last read from or written to storage; null for a series never stored. */
+  #stored: PriceSeriesState | null;
 
-  private constructor(state: PriceSeriesState) {
+  private constructor(state: PriceSeriesState, stored: boolean) {
     this.#state = freezeState(state);
+    this.#stored = stored ? this.#state : null;
   }
 
   static create(input: {
@@ -177,31 +198,55 @@ export class PriceSeries {
     readonly variantId: Id<'Variant'>;
     readonly productId: Id<'Product'>;
     readonly sellerId: Id<'Seller'>;
+    /** The Market's currency (`PricingPolicy.currency`). */
+    readonly currency: string;
     readonly now: Temporal.Instant;
   }): PriceSeries {
-    return new PriceSeries({
-      id: input.id,
-      marketId: input.marketId,
-      offerId: input.offerId,
-      variantId: input.variantId,
-      productId: input.productId,
-      sellerId: input.sellerId,
-      createdAt: input.now,
-      retiredAt: null,
-      retireCause: null,
-      version: 1,
-      regular: [],
-    });
+    return new PriceSeries(
+      {
+        id: input.id,
+        marketId: input.marketId,
+        offerId: input.offerId,
+        variantId: input.variantId,
+        productId: input.productId,
+        sellerId: input.sellerId,
+        currency: input.currency,
+        createdAt: input.now,
+        retiredAt: null,
+        retireCause: null,
+        version: 1,
+        regular: [],
+      },
+      false,
+    );
   }
 
   /** Rebuilds a stored series; used by the repository. */
   static restore(state: PriceSeriesState): PriceSeries {
     checkStoredState(state);
-    return new PriceSeries(state);
+    return new PriceSeries(state, true);
   }
 
   get state(): PriceSeriesState {
     return this.#state;
+  }
+
+  /**
+   * The state as last read from or written to storage, or null for a series never stored. The
+   * repository writes the difference between it and {@link state} (pricing-data P7).
+   */
+  get storedState(): PriceSeriesState | null {
+    return this.#stored;
+  }
+
+  /** The version the series had in storage, or null for a series never stored (P 10). */
+  get persistedVersion(): number | null {
+    return this.#stored?.version ?? null;
+  }
+
+  /** Called by the repository once it has written the current state; nothing else calls it. */
+  markStored(): void {
+    this.#stored = this.#state;
   }
 
   /**
@@ -224,6 +269,9 @@ export class PriceSeries {
     // is checked again against the policy of this write, whoever built it.
     const checked = priceAmount(input.amount, input.policy);
     if (!checked.ok) return err(checked.error);
+    // A series keeps the currency it was created in (pricing-data P2); a policy whose currency
+    // drifted from it is refused here, before the database's foreign key would refuse it.
+    if (input.amount.currency !== state.currency) return err({ code: 'pricing.currency-mismatch' });
 
     const latest = latestPriced(state.regular);
     const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');
@@ -231,7 +279,7 @@ export class PriceSeries {
     // Compared with the latest priced record, not the one in force at `now`: a record queued
     // 1 ms ahead by an earlier write of the same instant is the seller's current intent.
     if (latest !== null && compareMoney(latest.amount, input.amount) === 0) {
-      const superseded = pending.map((r) => supersede(r, null, input.now));
+      const superseded = pending.map((r) => supersede(r, 'cancelled', null, input.now));
       this.#commit(replace(state.regular, superseded));
       return ok({ kind: 'unchanged', superseded });
     }
@@ -242,7 +290,12 @@ export class PriceSeries {
         ? ({ kind: 'within' } as const)
         : measureJump(anchorRecord.amount, input.amount, input.policy);
 
-    if (verdict.kind === 'held' && anchorRecord !== null) {
+    const anchor: JumpAnchor | null =
+      anchorRecord === null
+        ? null
+        : Object.freeze({ recordId: anchorRecord.id, amount: anchorRecord.amount });
+
+    if (verdict.kind === 'held' && anchor !== null) {
       const record: RegularPriceRecord = Object.freeze({
         id: input.recordId,
         amount: input.amount,
@@ -252,12 +305,13 @@ export class PriceSeries {
         submittedBy: input.submittedBy,
         effectiveFrom: null,
         effectiveTo: null,
-        anchor: Object.freeze({ recordId: anchorRecord.id, amount: anchorRecord.amount }),
+        anchor,
         heldDirection: verdict.direction,
         supersededBy: null,
         supersededAt: null,
+        supersedeCause: null,
       });
-      const superseded = pending.map((r) => supersede(r, record.id, input.now));
+      const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
       this.#commit([...replace(state.regular, superseded), record]);
       return ok({ kind: 'held', record, superseded });
     }
@@ -272,12 +326,13 @@ export class PriceSeries {
       submittedBy: input.submittedBy,
       effectiveFrom: start,
       effectiveTo: null,
-      anchor: null,
+      anchor,
       heldDirection: null,
       supersededBy: null,
       supersededAt: null,
+      supersedeCause: null,
     });
-    const superseded = pending.map((r) => supersede(r, record.id, input.now));
+    const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
     const closed = latest === null ? null : Object.freeze({ ...latest, effectiveTo: start });
     const next = replace(replace(state.regular, superseded), closed === null ? [] : [closed]);
     this.#commit([...next, record]);
@@ -294,7 +349,7 @@ export class PriceSeries {
     if (state.retiredAt !== null) return [];
     const superseded = state.regular
       .filter((r) => r.status === 'PENDING_REVIEW')
-      .map((r) => supersede(r, null, now));
+      .map((r) => supersede(r, cause, null, now));
     this.#state = freezeState({
       ...state,
       regular: replace(state.regular, superseded),
@@ -326,6 +381,7 @@ function effectiveStart(
 
 function supersede(
   record: RegularPriceRecord,
+  cause: SupersedeCause,
   by: Id<'RegularPriceRecord'> | null,
   at: Temporal.Instant,
 ): RegularPriceRecord {
@@ -334,6 +390,7 @@ function supersede(
     status: 'SUPERSEDED' as const,
     supersededBy: by,
     supersededAt: at,
+    supersedeCause: cause,
   });
 }
 
@@ -368,6 +425,19 @@ function checkStoredState(state: PriceSeriesState): void {
   const bad = (reason: string): never => {
     throw new InvalidPriceSeriesStateError(reason);
   };
+  const foreign = (r: RegularPriceRecord): boolean =>
+    r.amount.currency !== state.currency ||
+    (r.anchor !== null && r.anchor.amount.currency !== state.currency);
+  if (state.regular.some(foreign)) bad('a record is in another currency than the series');
+  for (const r of state.regular) {
+    const superseded = r.status === 'SUPERSEDED';
+    if (superseded !== (r.supersedeCause !== null) || superseded !== (r.supersededAt !== null)) {
+      bad('a superseded record needs its cause and instant, and only it');
+    }
+    if ((r.supersedeCause === 'replaced') !== (r.supersededBy !== null)) {
+      bad('a replaced record names its successor, and only it');
+    }
+  }
   const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');
   if (pending.length > 1) bad('more than one pending record');
   if (pending.some((r) => r.effectiveFrom !== null || r.anchor === null)) {
