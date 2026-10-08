@@ -104,6 +104,7 @@ READ COMMITTED (S9). The certification-specific readings:
 | CE4 | **Same-parent FKs carry the discriminating column.** A child that must agree with its parent on a third column references a unique key that includes it: a submission's issuer must be of the submission's type (`(market_id, issuer_id, type_id)` → `issuers`), a type revision must belong to the type (`(market_id, type_id, type_revision_id)`), a pointer must name a child **of this root** (`(market_id, id, approved_submission_id)` → `(market_id, seller_certification_id, id)`), a coverage row's type equals its revision's. Each such key costs one extra unique index on a small table; each turns a cross-row rule of D into a constraint (measured, 12) |
 | CE5 | **Values of contract enums keep the domain's spelling**: `SELLER_REQUIRED`, `SELLER_OR_MANUFACTURER`, `NOT_APPLICABLE`, `THIRD_PARTY_DOCUMENT`, `SELF_DECLARATION`, `SEALED_ORIGINAL`, `REPACKED`, `PREPARED`, `FRESH` (ADR-0012, ADR-0028 d1). States and kinds are lowercase kebab, as D writes them |
 | CE6 | **Local dates are `date`**, never instants (issue and expiry dates, the issuer confirmation date): ADR-0005 decision 3. Every boundary derived from them is stored beside them as `timestamptz` with the IANA zone it was computed in (`text`, CHECK as `sellers.seller_files.operating_timezone`) |
+| CE8 | **Per-reason subject (Hassan L5, decided 2026-10-08).** The optional admin change reason is a ciphertext under its own key: the subject id is the id of the row that holds it (the type revision, policy revision or reactivation proposal). `SubjectKeyService.createKey` and `encrypt` run in the save's unit, only when a reason is given; the plaintext checks (1 to 500 characters, S7 class) run in the domain value object. Destroying that key (the deferred `change-reason.erase` use case, 15) makes the reason unreadable and history shows an "erased" placeholder. The reason is left out of every `content_hash` input |
 | CE7 | **Platform key.** Manufacturer certificate numbers, documents and the expert reference of an issuer are encrypted under a **platform subject** per Market, not a seller (ruling; D 10.1). The subject id is kept in `certification.platform_subjects` (3.22; Ali's ruling on Q-C3, Hassan M-b). Manufacturer document files (`owner_seller_id` NULL) wrap their data key under it too (Hassan L-d) |
 
 ## 3. Tables
@@ -138,7 +139,7 @@ deleted (CERT-03): no `DELETE` grant.
 | `default_basis` | `text` | no | CHECK `SELLER_REQUIRED`, `NOT_APPLICABLE`: **never** `SELLER_OR_MANUFACTURER` (brief s5, AC 4) |
 | `auto_approve_self_declaration` | `boolean` | no | CHECK `NOT auto_approve_self_declaration OR verification_mode = 'SELF_DECLARATION'` (CERT-11) |
 | `badge_icon_key` | `text` | no | Design-system icon key (ADR-0017), CHECK `^[a-z][a-z0-9-]{0,63}$`. Never an uploaded file |
-| `change_reason` | `text` | yes | Optional admin text, at most 500 characters (D 3.7, Hadi; D 16.1 item 11). CHECK `char_length BETWEEN 1 AND 500` and the S7 class (no control or bidi character). Admin-written, never seller data. Applied here as well as on policy revisions: Q-C9 |
+| `change_reason_ciphertext` | `text` | yes | Optional admin text, at most 500 characters in plaintext, stored as a ciphertext under its own subject key (CE8; D 3.7, Hadi; D 16.1 item 11). CHECK `char_length` within the ciphertext bound only (O6); the 500-character and S7 checks (no control or bidi character) run on the plaintext in the domain value object. Admin-written, never seller data. Applied here as well as on policy revisions: Q-C9 |
 | `author_account_id` | `uuid` | no | C4 |
 | `created_at` | `timestamptz(6)` | no | |
 
@@ -394,7 +395,7 @@ history and can be deleted (3.4). Q-C1.
 type); `published_revision_id`, FK `(market_id, id, published_revision_id)` → revisions of this
 policy; `version`; `created_at`.
 
-`claim_policy_revisions`: `id` PK; `policy_id` FK; `revision_no` unique per policy; `change_reason`
+`claim_policy_revisions`: `id` PK; `policy_id` FK; `revision_no` unique per policy; `change_reason_ciphertext`
 (as 3.2, D 3.7); `author_account_id`; `created_at`. Unique `(market_id, policy_id, id)`. Insert-only.
 
 `claim_policy_rows`:
@@ -556,11 +557,9 @@ codes and enums only (D 8.3). Added to the "every outbox has the same columns" t
 `certification` audit row holds free text (amended 2026-10-08, Q3 of
 `docs/design/domain/platform-audit.md`, Ali; D 3.7): the change reason is stored only on the
 revision (3.2) or on the relaxation proposal (3.20), and the audit row carries that revision or
-proposal id and `reasonGiven` (boolean). The stored reason is still insert-only text that cannot be
-erased (Hassan L5): before slice 2, the first slice that writes a reason, merges, either the column
-becomes a ciphertext under a destroyable key or the owner accepts the residual risk through counsel
-(D 3.7). If it becomes a ciphertext, `change_reason` turns into `change_reason_ciphertext` in 3.2
-and 3.20 with the S7 checks on the plaintext in the domain layer.
+proposal id and `reasonGiven` (boolean). The stored reason is insert-only, so it is
+a ciphertext under its own destroyable key (Hassan L5, decided 2026-10-08 by the owner; CE8):
+`change_reason_ciphertext` in 3.2 and 3.20, with the S7 checks on the plaintext in the domain layer.
 
 ### 3.20 `relaxation_proposals` (slice 2; subjects added in 12 and 13; D 7.6, 16.1 items 3 and 11)
 
@@ -577,7 +576,7 @@ and 3.20 with the S7 checks on the plaintext in the domain layer.
 | `proposed_at` | `timestamptz(6)` | no | |
 | `decided_by_account_id` | `uuid` | yes | C4. **CHECK `decided_by_account_id IS NULL OR decided_by_account_id <> proposer_account_id`**: a second admin (H1). CHECK `(state IN ('approved', 'rejected')) = (decided_by_account_id IS NOT NULL)` |
 | `decided_at` | `timestamptz(6)` | yes | CHECK `(state = 'pending') = (decided_at IS NULL)` |
-| `change_reason` | `text` | yes | As 3.2 (≤ 500 characters) |
+| `change_reason_ciphertext` | `text` | yes | As 3.2 (≤ 500 characters in plaintext, CE8) |
 | `version`, `created_at` | | no | |
 
 - **Partial unique `(market_id, subject_kind, subject_id) WHERE state = 'pending'`**: one pending
@@ -636,6 +635,7 @@ human-versus-AI record of brief s5 (R12) is the submission's `field_provenance` 
 | Certificate number, self-declaration note, reason and note texts, location and scope as read, issuer-confirmation reference, issuer-request typed name, AI suggestions | Seller certificate tables | Enc, seller's subject key |
 | Document and preview bytes, draft files included | Object storage | Encrypted per file; the data key wrapped under the seller's key in `data_key_envelope` (T6 A, M7) |
 | Manufacturer certificate number and documents (the files' data keys wrapped under the platform subject, Hassan L-d); issuer expert reference | Manufacturer tables, issuers, `uploaded_documents.data_key_envelope` | Enc, the Market's platform subject (CE7, 3.22) |
+| Admin change reason (type revisions, policy revisions, reactivation proposals) | `change_reason_ciphertext` | Enc, a per-reason subject key (CE8); destroyed by `change-reason.erase` |
 | Certificate-number and document HMAC indexes | 3.17 | Keyed HMAC under the stack secret; deleted on erasure |
 | Content hashes | Submissions, revisions | `SubjectKeyService.hmac` (seller) or platform key (manufacturer) |
 
@@ -893,7 +893,7 @@ in the expected map, so a new insert-only table without the trigger fails the te
 | # | Slice | Migration | Contains |
 |---|---|---|---|
 | 1 | 1 | `certification_claims_core` | `CREATE SCHEMA "certification"`; `reject_mutation()`; `outbox`, `inbox`; `certification_types`; `certification_type_revisions`; `seller_certifications` (slice-1 columns, T1 partial unique, A9 partial index); `seller_certification_submissions`; `seller_submission_decisions`; `issuers` minimal (S1 joins it; registry fields in 2) — or S1 without the issuer join in slice 1: Hossein's choice at the slice, I sign off either; triggers; grants |
-| 2 | 2 | `certification_types_registry` | `type_revision_texts`, `claim_terms`, `change_reason`; the rest of `issuers`, `issuer_contact_channels`; `relaxation_proposals`; `platform_subjects` (the seed creates the row and key) |
+| 2 | 2 | `certification_types_registry` | `type_revision_texts`, `claim_terms`, `change_reason_ciphertext`; the rest of `issuers`, `issuer_contact_channels`; `relaxation_proposals`; `platform_subjects` (the seed creates the row and key) |
 | 3 | 4 | `certification_documents` | `uploaded_documents` with its guard trigger and function; `document_previews`; `seller_draft_quotas`; `rate_counters` |
 | 4 | 5 | `certification_drafts_submissions` | Draft columns of `seller_certifications` and their CHECKs and FKs; `seller_certification_draft_documents`; `seller_submission_documents`; `seller_certification_history`; `DELETE` on the root; root lists indexes (A4, A7, A14) |
 | 5 | 6 | `certification_issuer_requests` | `issuer_requests`, `issuer_request_documents` |
@@ -1073,6 +1073,7 @@ distributions.
 | `docs/adr/0030-…` (amends ADR-0025 1(b)); `docs/design/domain/platform-persistence-and-events.md` 4.2 | The raw read helper port and its three statements (7.2) | Mohammad, before slice 1 merges |
 | `SubjectKeyService` (PF 4) | `destroyKey` refuses a platform subject (3.22) | With slice 2 |
 | `.env.example` | The HMAC index secret | Slice 7; shared-file PR |
+| `change-reason.erase` use case (destroys the per-reason key, writes an audit row, history shows "erased") | Deferred (ADR-0015 style): built when a privacy request names text in a reason, or seller data is found in one; the key design (CE8) makes it possible without a migration | Trigger-based; Hassan reviews |
 
 ## 16. Rulings and hand-offs applied
 

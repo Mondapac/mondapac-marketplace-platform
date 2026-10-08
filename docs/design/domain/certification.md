@@ -372,12 +372,15 @@ ruling). The same optional reason applies to type revisions and to issuer and ty
 reactivation, on its relaxation proposal, 7.6), never in an audit row. The audit row carries the
 revision or proposal id and `reasonGiven` (boolean), so `certification` audit rows hold no free
 text at all. The reason is still captured, stored and shown in the policy history; only where it
-is stored changed. **Erasure residual (Hassan L5):** the revision is insert-only (data design
-CE3), so the stored text still cannot be erased. Before slice 2 (the first slice that writes a
-reason) merges, one of two is decided and recorded here: the reason is encrypted under a key that
-can be destroyed, or the owner accepts the residual risk explicitly through counsel (with Q5 of
-`platform-audit.md`). Either way the input shows a hint not to include personal data (Reza).
-Owner: Mohammad proposes, Mojtaba (data), Hassan reviews.
+is stored changed. **Erasure residual (Hassan L5), decided 2026-10-08 by the owner:** the revision is insert-only
+(data design CE3), so the reason is stored as a ciphertext under its own key: one subject per reason,
+the id of the row that holds it (the type revision, policy revision or reactivation proposal), created
+and used through `SubjectKeyService` in the save's unit and only when a reason is given (data design
+CE8). The platform subject is not used, because its key is never destroyed. A deferred use case
+`change-reason.erase` destroys that key and writes an audit row; it is built when a privacy request
+names text in a reason or seller data is found in one (ADR-0015 trigger). A destroyed reason shows an
+"erased" placeholder in the history. The input shows a hint not to include personal data (Reza).
+Owner: Mohammad, Mojtaba (data), Hassan reviews.
 
 **Retired categories** (B2; ADR-0028 d5 and d9). `catalog`'s move, merge and archive of a platform
 category first call `assertCategoriesRetirable` (8.1). It refuses (`category.referenced-by-policy`,
@@ -1065,8 +1068,8 @@ and the default".
     decider columns, state; the optional change reason (≤ 500 characters) on policy revisions, type
     revisions and reactivation proposals only, never in the audit row (3.7; Ali, 2026-10-08). The
     data design's remark that the reason is "the one free-text value in a `certification` audit
-    row" (its 3.19) is withdrawn; L5's decision (encryption under a destroyable key, or explicit
-    risk acceptance) is recorded before slice 2.
+    row" (its 3.19) is withdrawn; L5 is decided: a per-reason
+    subject key (3.7; data design CE8).
 
 ### 16.2 For Reza (`docs/modules/certification/ux.md`)
 The screens of brief s12. From the API: the status codes of 3.3; refusal codes (`file.*` of 3.8,
