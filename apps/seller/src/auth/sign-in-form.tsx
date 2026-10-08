@@ -4,7 +4,8 @@ import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+import { useFocusFirstInvalid } from './use-focus-first-invalid.ts';
 import { callApi } from '../api/client.ts';
 import { fieldErrorKeys, formErrorKey } from './messages-for-errors.ts';
 import { rememberEmail } from './pending-email.ts';
@@ -14,6 +15,7 @@ export type SignInNotice = 'session-ended' | 'signed-out' | 'password-changed' |
 
 export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
   const t = useTranslations('identity');
+  const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const throttle = useThrottle();
   const [email, setEmail] = useState('');
@@ -26,6 +28,8 @@ export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
   } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
   const [throttled, setThrottled] = useState(false);
+
+  useFocusFirstInvalid(formRef, fieldErrors);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -43,13 +47,14 @@ export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
       router.refresh();
       return;
     }
-    setPending(false);
     const { failure } = result;
     if (failure.code === 'email-verification-required') {
+      // Stay pending: the page is about to change.
       rememberEmail(email.trim());
       router.push('/check-email?from=sign-in');
       return;
     }
+    setPending(false);
     if (failure.code === 'validation.failed') {
       setFieldErrors(fieldErrorKeys(failure, ['email', 'password']));
       return;
@@ -63,7 +68,12 @@ export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-5">
+    <form
+      ref={formRef}
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      className="flex flex-col gap-5"
+    >
       {notice ? <Banner tone="info">{t(`sign-in.banner.${notice}`)}</Banner> : null}
       {formError ? (
         <Banner tone="critical">

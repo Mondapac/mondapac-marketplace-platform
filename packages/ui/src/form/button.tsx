@@ -25,13 +25,16 @@ export function Button({
   disabled,
   children,
   type = 'button',
+  onClick,
   ...rest
 }: ButtonProps) {
   const size = variant === 'link' ? '' : 'h-(--mp-size-control) px-4';
   return (
     <button
       type={type}
-      disabled={disabled || loading}
+      // Loading keeps the button focusable (aria-disabled, not disabled) so focus is not lost.
+      disabled={disabled}
+      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
       className={[
         'inline-flex items-center justify-center rounded-md font-medium',
@@ -42,6 +45,13 @@ export function Button({
       ]
         .filter(Boolean)
         .join(' ')}
+      onClick={(event) => {
+        if (loading) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
       {...rest}
     >
       {children}

@@ -89,6 +89,8 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
+  const declared = Number(request.headers.get('content-length') ?? 0);
+  if (declared > MAX_BODY_BYTES) return jsonError(413, 'request.too-large');
   let body: string | undefined;
   if (request.method !== 'GET') {
     body = await request.text();

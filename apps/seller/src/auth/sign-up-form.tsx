@@ -4,7 +4,8 @@ import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+import { useFocusFirstInvalid } from './use-focus-first-invalid.ts';
 import { callApi } from '../api/client.ts';
 import { fieldErrorKeys, formErrorKey, passwordRuleKey } from './messages-for-errors.ts';
 import { rememberEmail } from './pending-email.ts';
@@ -17,6 +18,7 @@ export function SignUpForm({
   readonly passwordMax: number;
 }) {
   const t = useTranslations('identity');
+  const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,6 +29,8 @@ export function SignUpForm({
     values?: Record<string, string | number>;
   } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
+
+  useFocusFirstInvalid(formRef, fieldErrors);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -57,7 +61,12 @@ export function SignUpForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-5">
+    <form
+      ref={formRef}
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      className="flex flex-col gap-5"
+    >
       <p className="text-sm text-fg-secondary">{t('sign-up.body')}</p>
       {formError ? (
         <Banner tone="critical">{t(`error.${formError.key}`, formError.values)}</Banner>

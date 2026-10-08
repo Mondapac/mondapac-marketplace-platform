@@ -4,6 +4,7 @@ import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { FocusHeading } from './focus-heading.tsx';
 import { callApi } from '../api/client.ts';
 import { useLinkToken } from './link-token.ts';
 import { formErrorKey } from './messages-for-errors.ts';
@@ -93,7 +94,7 @@ function LinkRejected() {
 
   return (
     <form onSubmit={(event) => void sendNew(event)} noValidate className="flex flex-col gap-5">
-      <h2 className="text-lg font-semibold text-fg">{t('link.title.rejected')}</h2>
+      <FocusHeading>{t('link.title.rejected')}</FocusHeading>
       <p className="text-fg-secondary">{t('link.body.rejected')}</p>
       {sent ? <Banner tone="success">{t('link.status.sent')}</Banner> : null}
       {error ? <Banner tone="critical">{t(`error.${error.key}`, error.values)}</Banner> : null}

@@ -58,7 +58,7 @@ export function TextField({
           <button
             type="button"
             onClick={() => setRevealed((value) => !value)}
-            aria-pressed={revealed}
+            aria-controls={id}
             className="absolute inset-y-0 end-0 px-3 text-sm font-medium text-link"
           >
             {revealed ? hideLabel : showLabel}

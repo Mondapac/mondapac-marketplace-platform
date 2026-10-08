@@ -19,7 +19,15 @@ export async function GET(request: Request): Promise<Response> {
       cache: 'no-store',
       redirect: 'manual',
     });
-    for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);
+    const cookies = upstream.headers.getSetCookie();
+    // The session is fine after all (for example a link followed from another site): no notice.
+    if (upstream.ok && cookies.length === 0) {
+      return new Response(null, {
+        status: 303,
+        headers: { location: `${host.origin}/`, 'cache-control': 'private, no-store' },
+      });
+    }
+    for (const cookie of cookies) headers.append('set-cookie', cookie);
   } catch {
     // The API is unreachable: the notice still tells the truth about the page the user left.
   }

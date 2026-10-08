@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@mondapac/ui';
+import { Banner, Button } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -16,19 +16,28 @@ export function UserMenu({
   const t = useTranslations('home');
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   async function signOut() {
     setPending(true);
-    await callApi('POST', 'identity/seller/sign-out', {}, csrfToken);
-    // Signed out or already ended: either way the next stop is the sign-in page.
-    router.replace('/sign-in?notice=signed-out');
-    router.refresh();
+    setFailed(false);
+    const result = await callApi('POST', 'identity/seller/sign-out', {}, csrfToken);
+    // Signed out, or the session was already gone: both end on the sign-in page. Anything else
+    // means the session may still be live, so the page says so and stays.
+    if (result.ok || result.failure.status === 401) {
+      router.replace('/sign-in?notice=signed-out');
+      router.refresh();
+      return;
+    }
+    setPending(false);
+    setFailed(true);
   }
 
   return (
     <div className="flex items-center gap-3" role="group" aria-label={t('user-menu')}>
+      {failed ? <Banner tone="critical">{t('sign-out-failed')}</Banner> : null}
       <span className="text-sm text-fg-secondary">{t('signed-in-as', { name })}</span>
-      <Button variant="secondary" onClick={() => void signOut()} disabled={pending}>
+      <Button variant="secondary" onClick={() => void signOut()} loading={pending}>
         {t('sign-out')}
       </Button>
     </div>

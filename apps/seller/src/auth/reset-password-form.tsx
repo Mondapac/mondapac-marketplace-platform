@@ -4,7 +4,9 @@ import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { FocusHeading } from './focus-heading.tsx';
+import { useFocusFirstInvalid } from './use-focus-first-invalid.ts';
 import { callApi } from '../api/client.ts';
 import { useLinkToken } from './link-token.ts';
 import { formErrorKey, passwordRuleKey } from './messages-for-errors.ts';
@@ -17,6 +19,7 @@ export function ResetPasswordForm({
   readonly passwordMax: number;
 }) {
   const t = useTranslations('identity');
+  const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const link = useLinkToken();
   const [password, setPassword] = useState('');
@@ -27,6 +30,13 @@ export function ResetPasswordForm({
     values?: Record<string, string | number>;
   } | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const invalid = useMemo<Record<string, string>>(() => {
+    const errors: Record<string, string> = {};
+    if (passwordError) errors['password'] = passwordError;
+    return errors;
+  }, [passwordError]);
+  useFocusFirstInvalid(formRef, invalid);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,7 +79,7 @@ export function ResetPasswordForm({
   if (link.state === 'missing' || rejected) {
     return (
       <div className="flex flex-col gap-5">
-        <h2 className="text-lg font-semibold text-fg">{t('link.title.rejected')}</h2>
+        <FocusHeading>{t('link.title.rejected')}</FocusHeading>
         <p className="text-fg-secondary">{t('link.body.rejected')}</p>
         <Link href="/forgot-password" className="text-sm text-link hover:underline">
           {t('forgot-password.action.submit')}
@@ -78,7 +88,12 @@ export function ResetPasswordForm({
     );
   }
   return (
-    <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-5">
+    <form
+      ref={formRef}
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      className="flex flex-col gap-5"
+    >
       <p className="text-fg-secondary">{t('reset-password.body')}</p>
       {error ? <Banner tone="critical">{t(`error.${error.key}`, error.values)}</Banner> : null}
       <TextField

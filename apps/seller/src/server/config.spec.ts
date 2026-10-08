@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePanelConfig, parsePanelHosts } from './config.ts';
+import { assertClientAddressForwarding, parsePanelConfig, parsePanelHosts } from './config.ts';
 
 describe('parsePanelHosts', () => {
   it('parses origin=MARKET pairs', () => {
@@ -43,4 +43,43 @@ describe('parsePanelConfig', () => {
       expect(() => parsePanelConfig({ ...env, [name]: undefined })).toThrow();
     },
   );
+});
+
+describe('assertClientAddressForwarding', () => {
+  const base = {
+    API_BASE_URL: 'http://localhost:3000',
+    PANEL_PASSWORD_LENGTH: '15-128',
+    PANEL_MARKET_NAME: 'Australia',
+    PANEL_SUPPORT_EMAIL: 'support@example.com',
+  };
+  const configFor = (hosts: string) => parsePanelConfig({ ...base, PANEL_HOSTS: hosts });
+
+  it('refuses a production start on a real host', () => {
+    expect(() =>
+      assertClientAddressForwarding(configFor('https://sell.example.com=AU'), {
+        NODE_ENV: 'production',
+      }),
+    ).toThrow('client-address forwarding');
+  });
+
+  it('allows a production-mode start on *.localhost hosts only', () => {
+    const env = { NODE_ENV: 'production' };
+    expect(() =>
+      assertClientAddressForwarding(configFor('http://seller.localhost:3001=AU'), env),
+    ).not.toThrow();
+    expect(() =>
+      assertClientAddressForwarding(
+        configFor('http://seller.localhost:3001=AU,https://sell.example.com=NZ'),
+        env,
+      ),
+    ).toThrow();
+  });
+
+  it('does nothing outside production', () => {
+    expect(() =>
+      assertClientAddressForwarding(configFor('https://sell.example.com=AU'), {
+        NODE_ENV: 'development',
+      }),
+    ).not.toThrow();
+  });
 });

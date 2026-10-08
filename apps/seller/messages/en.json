@@ -10,6 +10,7 @@
     "empty": "Your seller workspace is being set up.",
     "signed-in-as": "Signed in as {name}",
     "sign-out": "Sign out",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
     "user-menu": "Account"
   },
   "showcase": {
