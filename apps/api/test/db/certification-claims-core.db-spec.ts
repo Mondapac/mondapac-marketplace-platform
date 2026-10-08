@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
 import { EXPECTED_PRIVILEGES } from './expected-privileges';
+import { registerTypesRegistrySuite } from './certification-types-registry.db-suite';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Certification migration 1 on PostgreSQL (docs/design/data/certification.md 3.1, 3.2, 3.4 to
@@ -64,8 +65,44 @@ it('has exactly the row and the statement trigger on every insert-only table of 
     // tgtype bits: 1 row, 2 before, 8 delete, 16 update, 32 truncate.
     const ROW_UPDATE_DELETE = 1 | 2 | 8 | 16;
     const STATEMENT_TRUNCATE = 2 | 32;
+    // Guard triggers other than the pair (before-update and before-insert rules of the columns
+    // that do change), listed one by one: [table, trigger, tgtype, function].
+    const GUARDS = [
+      [
+        'claim_terms',
+        'claim_terms_revision_open',
+        7,
+        'certification.revision_content_guard_insert',
+      ],
+      [
+        'issuer_contact_channels',
+        'issuer_contact_channels_retire_once',
+        19,
+        'certification.issuer_contact_channels_guard_update',
+      ],
+      [
+        'relaxation_proposals',
+        'relaxation_proposals_one_way',
+        19,
+        'certification.relaxation_proposals_guard_update',
+      ],
+      [
+        'type_revision_texts',
+        'type_revision_texts_revision_open',
+        7,
+        'certification.revision_content_guard_insert',
+      ],
+    ];
+    const guardNames = new Set(GUARDS.map((g) => g[1]));
+    expect(
+      rows.filter((r) => guardNames.has(r.tgname)).map((r) => [r.table, r.tgname, r.tgtype, r.fn]),
+    ).toEqual(GUARDS);
+    expect(rows.filter((r) => guardNames.has(r.tgname)).every((r) => r.tgenabled === 'O')).toBe(
+      true,
+    );
+    const pairs = rows.filter((r) => !guardNames.has(r.tgname));
     const byTable = new Map<string, typeof rows>();
-    for (const row of rows) byTable.set(row.table, [...(byTable.get(row.table) ?? []), row]);
+    for (const row of pairs) byTable.set(row.table, [...(byTable.get(row.table) ?? []), row]);
     // Every trigger of the schema is one of the pair, on a listed table.
     expect([...byTable.keys()].sort()).toEqual(insertOnlyTables());
     for (const table of insertOnlyTables()) {
@@ -1111,16 +1148,19 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     const sub = await submission(cert, typeId, revisionId);
     await insert('seller_submission_decisions', decision(sub));
     // A row in each table of migration 2 that the trigger guards.
+    const draftRevision = await revision(typeId, 'THIRD_PARTY_DOCUMENT', uuid7(), {
+      revision_no: 2,
+    });
     await insert('type_revision_texts', {
       ...base(),
-      type_revision_id: revisionId,
+      type_revision_id: draftRevision,
       locale: 'en',
       name: 'Halal',
       customer_description: 'Certified halal.',
     });
     await insert('claim_terms', {
       ...base(),
-      type_revision_id: revisionId,
+      type_revision_id: draftRevision,
       locale: 'en',
       phrase: 'halal',
     });
@@ -1211,3 +1251,6 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
 function typeId7(): string {
   return uuid7().slice(-8);
 }
+
+// Migration 2 runs in this worker (see the suite's header).
+registerTypesRegistrySuite();

@@ -92,7 +92,8 @@ ALTER TABLE "certification"."claim_terms" ADD CONSTRAINT "claim_terms_market_id_
 ALTER TABLE "certification"."issuer_contact_channels" ADD CONSTRAINT "issuer_contact_channels_market_id_issuer_id_fkey" FOREIGN KEY ("market_id", "issuer_id") REFERENCES "certification"."issuers"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- Hand-written (database-designer): docs/design/data/certification.md sections 2, 3.2, 3.3, 3.7,
--- 3.20, 3.22, 6.1 and 8. Only new tables and one new nullable column, so nothing is NOT VALID.
+-- 3.20, 3.22, 6.1 and 8. Only new tables and one new nullable column, so nothing is NOT VALID (the CHECK on the new
+-- column of certification_type_revisions is plain: all NULL, no deployed environment; 9.1).
 -- Clear free text (S7): no outer spaces, no C0/C1 control or bidi formatting character.
 -- Ciphertext bounds: data design 4.4 (the change reason and the expert reference are 500 characters).
 ALTER TABLE "certification"."certification_type_revisions"
@@ -182,6 +183,71 @@ CREATE TRIGGER "claim_terms_no_update_delete"
 CREATE TRIGGER "claim_terms_no_truncate"
   BEFORE TRUNCATE ON "certification"."claim_terms"
   FOR EACH STATEMENT EXECUTE FUNCTION "certification"."reject_mutation"();
+
+-- Hand-written guards (Hassan M1, M2, L1; database-designer). A proposal is decided once and a
+-- decided row is frozen for every role, the owner included; the version moves by one. A
+-- channel is retired once, never revived or back-dated. Texts and claim terms join a revision
+-- only before it is pointed at: the published pointer of a type or the proposed revision of a
+-- proposal (3.20: a save is a new revision).
+CREATE FUNCTION "certification"."relaxation_proposals_guard_update"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."state" <> 'pending' THEN
+    RAISE EXCEPTION 'certification.relaxation_proposals: a decided proposal is frozen'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW."state" = 'pending' OR NEW."version" <> OLD."version" + 1 THEN
+    RAISE EXCEPTION 'certification.relaxation_proposals: a pending proposal moves to a final state, version + 1'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "relaxation_proposals_one_way"
+  BEFORE UPDATE ON "certification"."relaxation_proposals"
+  FOR EACH ROW EXECUTE FUNCTION "certification"."relaxation_proposals_guard_update"();
+
+CREATE FUNCTION "certification"."issuer_contact_channels_guard_update"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."retired_at" IS NOT NULL OR NEW."retired_at" IS NULL THEN
+    RAISE EXCEPTION 'certification.issuer_contact_channels: a channel is retired once, never revived'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "issuer_contact_channels_retire_once"
+  BEFORE UPDATE ON "certification"."issuer_contact_channels"
+  FOR EACH ROW EXECUTE FUNCTION "certification"."issuer_contact_channels_guard_update"();
+
+CREATE FUNCTION "certification"."revision_content_guard_insert"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF EXISTS (
+       SELECT 1 FROM "certification"."certification_types" t
+        WHERE t."market_id" = NEW."market_id" AND t."published_revision_id" = NEW."type_revision_id")
+     OR EXISTS (
+       SELECT 1 FROM "certification"."relaxation_proposals" p
+        WHERE p."market_id" = NEW."market_id" AND p."proposed_revision_id" = NEW."type_revision_id") THEN
+    RAISE EXCEPTION 'certification.%: the revision is published or proposed, a change is a new revision', TG_TABLE_NAME
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "type_revision_texts_revision_open"
+  BEFORE INSERT ON "certification"."type_revision_texts"
+  FOR EACH ROW EXECUTE FUNCTION "certification"."revision_content_guard_insert"();
+CREATE TRIGGER "claim_terms_revision_open"
+  BEFORE INSERT ON "certification"."claim_terms"
+  FOR EACH ROW EXECUTE FUNCTION "certification"."revision_content_guard_insert"();
 
 -- Grants (database-designer): docs/design/data/certification.md section 8. The new column of
 -- certification_type_revisions is covered by its existing table-level INSERT and SELECT.
