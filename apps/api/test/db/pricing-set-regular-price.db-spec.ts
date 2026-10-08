@@ -219,7 +219,12 @@ describe.each(TEST_MARKETS)(
         ['pricing.price-hold-opened.v1', 3],
       ]);
       // No amount in any event (design 6.3).
-      expect(JSON.stringify(events)).not.toContain((base * 4n).toString());
+      // Match the amount only as a whole JSON value (not inside a random UUID).
+      const serialized = JSON.stringify(events.map((e) => e.payload));
+      expect(serialized).not.toMatch(/"amount"/u);
+      expect(serialized).not.toMatch(
+        new RegExp(`[:\\[,]"?${(base * 4n).toString()}"?[,}\\]]`, 'u'),
+      );
       const rows = await auditRows(s.correlationId);
       expect(rows.map((r) => [r.action, r.actor_type, r.actor_id, r.target_id])).toEqual([
         ['pricing.regular-price.accepted', 'USER', s.accountId, series[0]!.id],
