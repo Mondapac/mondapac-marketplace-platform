@@ -186,5 +186,80 @@ describe.each(FIXTURE_MARKETS)(
         expect(save(configurable('SELLER', status), [null]).ok).toBe(true);
       }
     });
+
+    it('orders retirements before additions, one version per event (Q-K3)', () => {
+      const product = configurable();
+      save(product, [null, null, null].slice(0, Math.min(3, maxVariants)));
+      const saved = Product.restore(product.state);
+      const base = saved.state.version;
+
+      expect(save(saved, [null, null]).ok).toBe(true);
+      expect(saved.pendingEvents.map((event) => event.type)).toEqual([
+        'catalog.variant-removed.v1',
+        'catalog.variant-removed.v1',
+        'catalog.variant-removed.v1',
+        'catalog.variant-added.v1',
+        'catalog.variant-added.v1',
+      ]);
+      expect(saved.pendingEvents.map((event) => event.aggregateVersion)).toEqual([
+        base + 1,
+        base + 2,
+        base + 3,
+        base + 4,
+        base + 5,
+      ]);
+      expect(saved.state.version).toBe(base + 5);
+    });
+
+    it('retires every proposed variant on an empty list, in creation order', () => {
+      const product = configurable();
+      save(product, [null, null]);
+      const saved = Product.restore(product.state);
+
+      expect(save(saved, [])).toEqual({ ok: true, value: { variantIds: [] } });
+      expect(saved.pendingEvents).toMatchObject([
+        { payload: { variantId: v(101) }, aggregateVersion: saved.state.version - 1 },
+        { payload: { variantId: v(102) }, aggregateVersion: saved.state.version },
+      ]);
+      expect(saved.liveVariants).toEqual([]);
+    });
+
+    it('refuses a repeated id and mints nothing', () => {
+      const product = configurable();
+      save(product, [null]);
+      const saved = Product.restore(product.state);
+      const mint = jest.fn(newId);
+
+      expect(
+        saved.saveWorkingCopy({
+          authorKind: 'seller',
+          variantIds: [v(101), v(101), null],
+          maxVariants,
+          newId: mint,
+          now: T1,
+        }),
+      ).toEqual({ ok: false, error: { code: 'variant.unknown' } });
+      expect(mint).not.toHaveBeenCalled();
+      expect(saved.pendingEvents).toEqual([]);
+    });
+
+    it('returns the ids in the order of the list, minting in list order', () => {
+      const product = configurable();
+      save(product, [null, null]);
+      const saved = Product.restore(product.state);
+      const wanted = maxVariants >= 3 ? [v(101), null, v(102)] : [v(101), null];
+
+      expect(save(saved, wanted)).toEqual({
+        ok: true,
+        value: { variantIds: wanted.length === 3 ? [v(101), v(103), v(102)] : [v(101), v(103)] },
+      });
+    });
+
+    it('adds and removes a variant on a published product, and discard still wants a draft', () => {
+      const published = configurable('SELLER', 'published');
+      expect(published.addVariant(v(7), maxVariants, T1).ok).toBe(true);
+      expect(published.removeProposedVariant(v(7), T1).ok).toBe(true);
+      expect(published.discard(T1)).toEqual({ ok: false, error: { code: 'product.not-a-draft' } });
+    });
   },
 );
