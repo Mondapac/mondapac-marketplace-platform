@@ -10,7 +10,6 @@ import {
   TEST_CORRELATION_ID,
 } from '@mondapac/shared-kernel/testing';
 import {
-  panelOriginMarketConfigDirs,
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
   TEST_MARKETS,
@@ -153,9 +152,29 @@ class FakeAuthenticator implements Authenticator {
 
 /** The checked-in configuration: AU's three lists are empty until D2. */
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-/** The same, with the admin and seller lists filled with their panels' link-page origins. */
+/**
+ * The same, with an empty admin or seller list filled with that population's link-page origin
+ * (the value D2 is expected to set). Built here, in memory: no file under `src/` imports the
+ * test-only overlay of `test/support` (Ali, PR #179).
+ */
 const panelMarkets = new MarketRegistry(
-  loadMarketConfigs(panelOriginMarketConfigDirs(), TEST_MARKET_IDS),
+  new Map(
+    TEST_MARKET_IDS.map((marketId) => {
+      const config = markets.get(marketId);
+      const filled = (population: 'admin' | 'seller'): readonly string[] => {
+        const list = config.allowedOrigins[population];
+        if (list.length > 0) return list;
+        const pages = Object.values<string>(config.identity.links.targets[population] ?? {});
+        return [...new Set(pages.map((page) => new URL(page).origin))];
+      };
+      const allowedOrigins = {
+        ...config.allowedOrigins,
+        admin: filled('admin'),
+        seller: filled('seller'),
+      };
+      return [marketId, { ...config, allowedOrigins } as typeof config] as const;
+    }),
+  ),
 );
 
 describe.each(TEST_MARKETS)('the actor and CallContext of a request in %s', (code) => {

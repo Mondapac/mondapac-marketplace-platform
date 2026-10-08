@@ -58,10 +58,13 @@ let panelDirs: readonly string[] | undefined;
  * Test-only Market configuration for HTTP tests of admin and seller routes (identity design 6.4,
  * Ali's ruling of 2026-10-08). Admin and seller routes refuse every unsafe request whose
  * `Origin` is not on the population's list, and AU's lists stay empty until D2, so the real AU
- * file refuses them all (tested in `call-context.spec.ts` and `panel-origins.e2e.spec.ts`).
- * Here an empty admin or seller list is filled with the origin of that population's own link
- * pages, the value D2 is expected to configure; every other value is the checked-in one, and a
- * list that is already set (ZZ) is kept. Written once per test process to a temporary folder.
+ * file refuses them all (tested against the checked-in files in
+ * `src/platform/call-context/call-context.spec.ts`, "is refused with the checked-in
+ * configuration while its list is empty", and `test/route-population.e2e.spec.ts`, "applies
+ * the checked-in list"). Here an empty admin or seller list is filled with the origin of that
+ * population's own link pages, the value D2 is expected to configure; every other value is the
+ * checked-in one, and a list that is already set (ZZ) is kept. Written once per test process to
+ * a temporary folder. Tests only: no path under `src/` may import it (Ali, PR #179).
  */
 export function panelOriginMarketConfigDirs(): readonly string[] {
   if (panelDirs !== undefined) return panelDirs;

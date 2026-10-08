@@ -7,6 +7,7 @@
 //   MARKET_CONFIG_DIR=.local/markets pnpm dev
 //
 // The Market code is required: there is no default Market (ADR-0020 decision 3).
+// DEV_MARKETS_OUT_DIR changes the output folder (a test writes to a temporary one).
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -27,11 +28,21 @@ for (const [page, url] of Object.entries(targets.seller)) {
 for (const [page, url] of Object.entries(targets.admin)) {
   targets.admin[page] = `${adminOrigin}${new URL(url).pathname}`;
 }
-config.allowedOrigins = [sellerOrigin, adminOrigin];
+// One list per route population (identity design 6.4): each panel's origin on its own list; the
+// customer list stays as committed when it is a list of origins (the storefront is not served
+// locally), and is empty otherwise (Hassan, PR #179 L1).
+const committedCustomer = config.allowedOrigins?.customer;
+config.allowedOrigins = {
+  admin: [adminOrigin],
+  seller: [sellerOrigin],
+  customer:
+    Array.isArray(committedCustomer) &&
+    committedCustomer.every((origin) => typeof origin === 'string')
+      ? committedCustomer
+      : [],
+};
 
-const directory = resolve('.local/markets');
+const directory = resolve(process.env.DEV_MARKETS_OUT_DIR ?? '.local/markets');
 await mkdir(directory, { recursive: true });
 await writeFile(resolve(directory, `${code}.json`), `${JSON.stringify(config, null, 2)}\n`);
-console.log(
-  `wrote .local/markets/${code}.json; start the API with MARKET_CONFIG_DIR=.local/markets`,
-);
+console.log(`wrote ${directory}/${code}.json; start the API with MARKET_CONFIG_DIR=${directory}`);
