@@ -45,7 +45,7 @@ describe('claim text matcher', () => {
     it('does not match a word that only contains the term (token pass)', () => {
       // "vegano" is not a token match; the compact pass is the one that may flag it.
       const m = matchClaimTerms(['vegano'], prepareVocabulary(AU))[0]!;
-      expect(m.every((x) => x.pass === 'compact')).toBe(true);
+      expect(m.map((x) => `${x.typeCode}:${x.pass}`)).toEqual(['vegan:compact']);
     });
 
     it('returns an empty answer for text with no claim word, per text in order', () => {
@@ -179,6 +179,14 @@ describe('claim text matcher', () => {
       expect(run(ZZ, 'halal')).toEqual([]); // AU words mean nothing to ZZ
     });
 
+    it('applies the compact pass, leet, look-alikes and ignorables on the ZZ vocabulary', () => {
+      expect(run(ZZ, 'зед-чисто')).toEqual(['zed-pure:token']);
+      expect(run(ZZ, 'z3dpure')).toEqual(['zed-pure:compact']);
+      expect(run(ZZ, 'zеdрure')).toEqual(['zed-pure:token']); // Cyrillic е and р
+      expect(run(ZZ, 'зе\u200bд чисто')).toEqual(['zed-pure:token']);
+      expect(run(ZZ, 'g r e e n-l e a f')).toEqual(['zed-green:compact']);
+    });
+
     it('answers several types for one text', () => {
       expect(run(AU, 'halal and vegan').sort()).toEqual(['halal:token', 'vegan:token']);
     });
@@ -199,6 +207,24 @@ describe('claim text matcher', () => {
           prepareVocabulary(AU),
         ),
       ).toThrow(RangeError);
+    });
+
+    it('accepts exactly the caps (20000 characters, 100 texts)', () => {
+      const vocab = prepareVocabulary(AU);
+      expect(() => matchClaimTerms(['a'.repeat(20_000)], vocab)).not.toThrow();
+      expect(() =>
+        matchClaimTerms(
+          Array.from({ length: 100 }, () => 'x'),
+          vocab,
+        ),
+      ).not.toThrow();
+    });
+
+    it('handles empty inputs: empty text, empty vocabulary, no texts', () => {
+      expect(run(AU, '')).toEqual([]);
+      expect(run([], 'halal')).toEqual([]);
+      expect(matchClaimTerms([], prepareVocabulary(AU))).toEqual([]);
+      expect(run([{ typeCode: code('x'), terms: [] }], 'halal')).toEqual([]);
     });
 
     it('throws for a term with no matchable content', () => {
