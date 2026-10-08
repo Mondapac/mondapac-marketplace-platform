@@ -2114,10 +2114,11 @@ function fieldStatusVariant(c, p) {
     text('Checking…', 'Body/Small', t[2], { name: 'status-text', sizeH: 'FILL' }),
   ]);
 }
+const FIELD_STATUS_AXES = { Tone: Object.keys(FIELD_STATUS) };
 function fieldStatusBlock(root) {
-  const set = makeSet('FieldStatus', { Tone: Object.keys(FIELD_STATUS) }, fieldStatusVariant, FIELD_STATUS_OPTS);
+  const set = makeSet('FieldStatus', FIELD_STATUS_AXES, fieldStatusVariant, FIELD_STATUS_OPTS);
   componentBlock(root, set, { title: 'FieldStatus', summary: 'The result line of a check on one field (1.9.0). Field places it under the control with Show status.',
-    use: ['Business number: Checking, Matched (Success), Could not be checked (Info), Not matched (Critical).', 'Shop web address: Checking, Available (Success), Not available (Critical).', 'A format error stays the Field error, not a status.'],
+    use: ['Business number: Checking, Matched (Success), Could not be checked (Info), Not matched (Critical).', 'Shop web address: Checking, Available (Success), Not available (Critical).', 'A format error stays the Field error, not a status: a field shows its error or its status, never both.'],
     props: ['Tone: Checking, Success, Info, Critical', 'Text (text)'],
     a11y: ['Checking is a role="status" region; the result replaces it in the same region.', 'Icon and words for every tone, never colour alone.'],
     dont: ['A spinner that keeps turning under reduced motion.', 'Words such as "verified" or "already registered".'] });
@@ -2127,51 +2128,56 @@ function fieldStatusBlock(root) {
 function fieldStatusSlot() { const i = inst('FieldStatus', { Tone: 'Checking' }, { name: 'status', sizeH: 'FILL' }); i.visible = false; return i; }
 
 // ---- DataRow (Review & detail): a label and a read-only value, or two values to compare. S6 summary, S7, P2 and P3.
-const DATAROW_AXES = { Layout: ['Single', 'Compare'], State: ['Default', 'Missing', 'Blocked', 'Changed'] };
-// Missing and Blocked belong to the summary before a submission (S6), so a Compare row has neither.
-const DATAROW_SKIP = function (p) { return p.Layout === 'Compare' && (p.State === 'Missing' || p.State === 'Blocked'); };
-const DATAROW_OPTS = { width: 1440, colAxis: 'Layout', skip: DATAROW_SKIP, // Layout in 2 columns, State in rows: 1368 px wide, so the block fits the page
-  desc: 'A label and a read-only value (1.9.0). Layout=Compare shows two values side by side with their own labels (Current and Requested for a change request; Submitted and Register for an admin). State=Missing replaces the value with "Missing" (an empty required value); State=Blocked keeps the value and adds "Blocked" (outside the service area, time zone not found, a definite register negative); State=Changed adds the Changed badge. Show note adds a line under the value (the reason a row is blocked); Show flag adds a Badge (exposed as "flag": Waiting for review, Matches, Differs); Show action and Action add a text action (Edit, Request a change). Values are plain text shown with dir="auto"; never a register value to a seller.',
-  text: [{ prop: 'Label', node: 'label', def: 'Store name' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Halal Meats' }, { prop: 'Compare value', node: 'compare-value', def: 'Kuraby Fresh Meats' },
-    { prop: 'Value label', node: 'value-label', def: 'Current' }, { prop: 'Compare label', node: 'compare-label', def: 'Requested' }, { prop: 'Note', node: 'note', def: 'We’re not in your area yet.' }, { prop: 'Action', node: 'action', def: 'Edit' }],
-  bool: [{ prop: 'Show note', node: 'note', def: false }, { prop: 'Show flag', node: 'flag', def: false }, { prop: 'Show action', node: 'action', def: true }] };
+// Width=Narrow (below 760 px) puts the label above the value, so a phone row keeps the value's width.
+const DATAROW_AXES = { Layout: ['Single', 'Compare'], Width: ['Wide', 'Narrow'], State: ['Default', 'Missing', 'Blocked', 'Changed'] };
+// Missing and Blocked belong to the summary before a submission (S6), so a Compare row has neither. Compare has no Narrow layout yet:
+// its screens (S7, P2, P3) wait for the mobile navigation (D16) on phones.
+const DATAROW_SKIP = function (p) { return p.Layout === 'Compare' && (p.State === 'Missing' || p.State === 'Blocked' || p.Width === 'Narrow'); };
+const DATAROW_KEYS = ['Label', 'Value', 'Compare value', 'Value label', 'Compare label', 'Note', 'Show note', 'Show flag', 'Show action', 'Show second action'];
+const DATAROW_OPTS = { width: 1440, colAxis: 'Layout', skip: DATAROW_SKIP, // Layout in 2 columns, Width and State in rows: 1368 px wide, so the block fits the page
+  desc: 'A label and a read-only value (1.9.0). Layout=Compare shows two values side by side with their own labels (Current and Requested for a change request; Submitted and Register for an admin). Width=Narrow, below 760 px, puts the label above the value. State=Missing replaces the value with "Missing" (an empty required value); State=Blocked keeps the value and adds "Blocked" (outside the service area, time zone not found, a definite register negative), with the reason in the note and "Contact us" as the second action. State=Changed adds the Changed badge. Show note adds a line under the value; Show flag adds a Badge (exposed as "flag": Waiting for review, Matches, Differs); Show action and Show second action show link Buttons (exposed as "action" and "second-action": Edit, Request a change, Contact us). Values are plain text shown with dir="auto"; never a register value to a seller.',
+  text: [{ prop: 'Label', node: 'label', def: 'Store name' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh' }, { prop: 'Compare value', node: 'compare-value', def: 'Kuraby Fresh Grocers' },
+    { prop: 'Value label', node: 'value-label', def: 'Current' }, { prop: 'Compare label', node: 'compare-label', def: 'Requested' }, { prop: 'Note', node: 'note', def: 'We’re not in your area yet.' }],
+  bool: [{ prop: 'Show note', node: 'note', def: false }, { prop: 'Show flag', node: 'flag', def: false }, { prop: 'Show action', node: 'action', def: true }, { prop: 'Show second action', node: 'second-action', def: false }] };
 function rowMarker(ic, token, word) { return frame({ name: 'marker', dir: 'H', gap: 'space/1-5', align: 'center' }, [icon(ic, token, 16), text(word, 'Body/Small Strong', token, { name: 'marker-text' })]); }
 function dataRowVariant(c, p) {
+  const narrow = p.Width === 'Narrow';
   const value = function (node, str, strong) { return text(str, strong ? 'Body/Strong' : 'Body/Default', 'text/primary', { name: node, sizeH: 'FILL' }); };
-  const note = text('We’re not in your area yet.', 'Body/Small', p.State === 'Blocked' ? 'status/critical/fg' : 'text/secondary', { name: 'note', sizeH: 'FILL' }); note.visible = false;
+  const note = text('We’re not in your area yet.', 'Body/Small', 'text/secondary', { name: 'note', sizeH: 'FILL' }); note.visible = false;
   let values;
   if (p.Layout === 'Compare') {
     values = frame({ name: 'values', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
       frame({ name: 'pair', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [
-        frame({ name: 'current', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Current', 'Caption/Default', 'text/muted', { name: 'value-label' }), value('value', 'Kuraby Fresh Halal Meats')]),
-        frame({ name: 'requested', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Requested', 'Caption/Default', 'text/muted', { name: 'compare-label' }), value('compare-value', 'Kuraby Fresh Meats', true)]),
+        frame({ name: 'current', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Current', 'Caption/Default', 'text/muted', { name: 'value-label' }), value('value', 'Kuraby Fresh')]),
+        frame({ name: 'requested', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Requested', 'Caption/Default', 'text/muted', { name: 'compare-label' }), value('compare-value', 'Kuraby Fresh Grocers', true)]),
       ]),
       note,
     ]);
   } else {
     const kids = [];
     if (p.State === 'Missing') kids.push(rowMarker('alert-circle', 'status/attention/fg', 'Missing'));
-    else kids.push(value('value', 'Kuraby Fresh Halal Meats'));
-    if (p.State === 'Blocked') kids.push(rowMarker('ban', 'status/critical/fg', 'Blocked'));
+    else kids.push(value('value', 'Kuraby Fresh'));
+    if (p.State === 'Blocked') kids.push(rowMarker('alert-triangle', 'status/attention/fg', 'Blocked'));
     kids.push(note);
     values = frame({ name: 'values', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, kids);
   }
   const flag = inst('Badge', { Tone: 'Neutral', Leading: 'None', Label: 'Waiting for review' }, { name: 'flag' }); flag.visible = false;
-  body(c, { dir: 'H', w: 'size/form-max', pad: [12, 16, 12, 16], gap: 'space/4', align: 'start', fill: 'bg/surface', stroke: 'border/row', sides: ['bottom'] }, [
-    text('Store name', 'Body/Small', 'text/muted', { name: 'label', w: 168 }),
-    values,
-    p.State === 'Changed' ? inst('Badge', { Tone: 'Info', Leading: 'None', Label: 'Changed' }, { name: 'changed' }) : null,
-    flag,
-    text('Edit', 'Body/Small Strong', 'text/link', { name: 'action' }),
-  ]);
-  safe('expose flag', function () { flag.isExposedInstance = true; });
+  const action = inst('Button', { Variant: 'Link', Size: 'Sm', State: 'Default', Label: 'Edit' }, { name: 'action' });
+  const second = inst('Button', { Variant: 'Link', Size: 'Sm', State: 'Default', Label: 'Contact us' }, { name: 'second-action' }); second.visible = false;
+  const changed = p.State === 'Changed' ? inst('Badge', { Tone: 'Info', Leading: 'None', Label: 'Changed' }, { name: 'changed' }) : null;
+  const actions = frame({ name: 'actions', dir: 'H', gap: 'space/3', align: 'center' }, [action, second]);
+  const label = text('Store name', 'Body/Small', 'text/muted', narrow ? { name: 'label', sizeH: 'FILL' } : { name: 'label', w: 168 });
+  const box = { pad: ['space/3', 'space/4', 'space/3', 'space/4'], fill: 'bg/surface', stroke: 'border/row', sides: ['bottom'] };
+  if (narrow) body(c, Object.assign({ dir: 'V', w: 360, gap: 'space/1' }, box), [label, values, frame({ name: 'meta', dir: 'H', gap: 'space/3', align: 'center', wrap: true, rowGap: 'space/1' }, [changed, flag, actions])]);
+  else body(c, Object.assign({ dir: 'H', w: 'size/form-max', gap: 'space/4', align: 'start' }, box), [label, values, changed, flag, actions]);
+  safe('expose flag and actions', function () { flag.isExposedInstance = true; action.isExposedInstance = true; second.isExposedInstance = true; });
 }
 function dataRowBlock(root) {
   const set = makeSet('DataRow', DATAROW_AXES, dataRowVariant, DATAROW_OPTS);
-  componentBlock(root, set, { title: 'DataRow', summary: 'Read-only values with an optional flag and action (1.9.0): the summary before a seller submits (S6), the store profile (S7), the seller page and the review page (P2, P3).',
-    use: ['Layout=Single for one value; Compare for current against requested, or submitted against the register (admins only).', 'Missing for an empty required value, Blocked for a value that stops the submission, Changed for a value changed since the last submission.', 'Stack rows inside a Card; the last row keeps its border (the Card clips it).'],
-    props: ['Layout · State (Compare has Default and Changed)', 'Label, Value, Compare value, Value label, Compare label, Note, Action (text)', 'Show note, Show flag, Show action (boolean); flag is an exposed Badge'],
-    a11y: ['A row is a <div> pair in a description list (<dl>: <dt> label, <dd> value).', '"Missing" and "Blocked" are words with an icon, never colour alone.', 'The action names its row: "Edit store name".'],
+  componentBlock(root, set, { title: 'DataRow', summary: 'Read-only values with an optional flag and actions (1.9.0): the summary before a seller submits (S6), the store profile (S7), the seller page and the review page (P2, P3).',
+    use: ['Layout=Single for one value; Compare for current against requested, or submitted against the register (admins only).', 'Width=Narrow below 760 px: the label goes above the value.', 'Missing for an empty required value, Blocked for a value that stops the submission (its reason in the note, "Contact us" as the second action), Changed for a value changed since the last submission.', 'Stack rows inside a Card; the last row keeps its border (the Card clips it).'],
+    props: ['Layout · Width · State (Compare has Wide only, with Default and Changed)', 'Label, Value, Compare value, Value label, Compare label, Note (text)', 'Show note, Show flag, Show action, Show second action (boolean); flag, action and second-action are exposed instances (Badge, link Buttons)'],
+    a11y: ['A row is a <div> pair in a description list (<dl>: <dt> label, <dd> value).', '"Missing" and "Blocked" are words with an icon, never colour alone. Blocked is Attention, like the outside-area banner; a definite register negative keeps its Critical line on S4.', 'The actions are link Buttons with a focus state and 48 px targets in Touch density; each names its row: "Edit store name".'],
     dont: ['A register value shown to a seller.', 'Truncating a value: it wraps.'] });
   return set;
 }
@@ -2187,8 +2193,9 @@ function formActionBarVariant(c, p) {
   const status = frame({ name: 'status', dir: 'H', gap: 'space/1-5', align: 'center' }, [icon(st[0], st[1], 16), text(st[2], 'Body/Small Strong', st[3], { name: 'status-text' })]);
   const secondary = inst('Button', { Variant: 'Secondary', Size: size, State: 'Default', Label: 'Back to checklist' }, { name: 'secondary', sizeH: sticky ? 'FILL' : null });
   const primary = inst('Button', { Variant: 'Primary', Size: size, State: p.State === 'Saving' ? 'Loading' : 'Default', Label: 'Save and continue' }, { name: 'primary', sizeH: sticky ? 'FILL' : null });
-  if (sticky) body(c, { dir: 'V', w: 360, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', sides: ['top'] }, [status, primary, secondary]);
-  else body(c, { dir: 'H', w: 'size/form-max', pad: [16, 0, 0, 0], gap: 'space/3', align: 'center', stroke: 'border/row', sides: ['top'] }, [status, frame({ name: 'spacer', dir: 'H', h: 1, sizeH: 'FILL' }), secondary, primary]);
+  // one order in both layouts (status, secondary, primary), so the visual order is the DOM and focus order
+  if (sticky) body(c, { dir: 'V', w: 360, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', sides: ['top'] }, [status, secondary, primary]);
+  else body(c, { dir: 'H', w: 'size/form-max', pad: ['space/4', 0, 0, 0], gap: 'space/3', align: 'center', stroke: 'border/row', sides: ['top'] }, [status, frame({ name: 'spacer', dir: 'H', h: 1, sizeH: 'FILL' }), secondary, primary]);
   safe('expose buttons', function () { secondary.isExposedInstance = true; primary.isExposedInstance = true; });
 }
 function formActionBarBlock(root) {
@@ -2196,7 +2203,7 @@ function formActionBarBlock(root) {
   componentBlock(root, set, { title: 'FormActionBar', summary: 'One save bar for forms in both panels (1.9.0): the seller setup steps (Save and continue, Back to checklist), the store profile cards and later every settings form.',
     use: ['One bar per form or card group; one primary action.', 'Layout=Sticky below 760 px, so the primary action stays in reach while the form scrolls.', 'The status text is a role="status" region; Error goes with the error summary at the top of the form.'],
     props: ['Layout: Inline, Sticky', 'State: Clean, Dirty, Saving, Error', 'Show status, Show secondary (boolean); primary and secondary are exposed Buttons'],
-    a11y: ['The primary keeps its width while it shows Loading, so the bar does not jump.', 'Focus stays on the primary after a save.', 'Sticky: the bar never covers the focused field (scroll-padding in code).'],
+    a11y: ['DOM, focus and visual order are the same in both layouts: status, secondary, primary (the primary is last, nearest the thumb on a phone).', 'Saving: the primary shows Loading at the same width with aria-busy="true", not disabled, so focus stays on it; focus stays on the primary after a save.', 'A disabled primary stays focusable and names its reason with aria-describedby; the reason is text beside it.', 'Show status is off until the form has been saved once: a form never saved shows no "Saved".', 'Sticky: the bar never covers the focused field (scroll-padding in code).'],
     dont: ['Two primary actions.', 'A status shown by colour alone.'] });
   return set;
 }
@@ -2272,7 +2279,7 @@ function propertySteps190(own) {
       if (!has || props || desc) steps.push({ node: f, label: 'Field status', run: function () {
         const out = [];
         let st = has;
-        if (!st) { st = fieldStatusSlot(); add(f, st); f.insertChild(f.children.indexOf(ctl) + 1, st); st.isExposedInstance = true; out.push('Field status line (an exposed FieldStatus)'); }
+        if (!st) { st = fieldStatusSlot(); add(f, st); f.insertChild(f.children.indexOf(ctl) + 1, st); safe('expose Field status', function () { st.isExposedInstance = true; }); out.push('Field status line (an exposed FieldStatus)'); }
         if (props) { fr.keys['Show status'] = f.addComponentProperty('Show status', 'BOOLEAN', false); out.push('Field property Show status'); }
         st.componentPropertyReferences = Object.assign({}, st.componentPropertyReferences || {}, { visible: fr.keys['Show status'] });
         if (desc) { f.description = FIELD_DESC; out.push('update Field description'); }
@@ -2291,12 +2298,12 @@ function propertySteps190(own) {
     const first = items.length && items[0].children[1];
     const note = items.length === 1 && first && first.type === 'TEXT' && first.characters === SEG_A11Y_170[0];
     const done = items.length === SEG_A11Y.length && items.every(function (it, i) { return it.children[1] && it.children[1].characters === SEG_A11Y[i]; });
-    if (!note && !done && list) log('ℹ skipped SegmentedControl radio-group note in its Usage panel: the panel was changed by hand');
+    if (!note && !done) log('ℹ skipped SegmentedControl radio-group note in its Usage panel: the panel was changed by hand');
     const desc = sc.description === SEG_DESC_170;
     if (note || desc) steps.push({ node: sc, label: 'SegmentedControl radio group', run: function () {
       const out = [];
       if (note) {
-        first.characters = SEG_A11Y[0];
+        first.characters = SEG_A11Y[0]; if (first.name === SEG_A11Y_170[0].slice(0, 40)) first.name = SEG_A11Y[0].slice(0, 40); // text() names a layer by its first 40 characters
         const tmp = bullets(SEG_A11Y.slice(1), 312); tmp.children.slice().forEach(function (it) { list.appendChild(it); }); tmp.remove();
         out.push('SegmentedControl Usage: radio-group semantics');
       }
@@ -3772,8 +3779,8 @@ const PANEL183_TEMPLATE_NEEDS = PANEL_TEMPLATE_NEEDS.concat(['Textarea', 'Checkb
 // labels, the business-number label and help, the tax question and the storefront address come from the API; the AU Market's values are
 // shown because AU is the launch Market. Names, numbers, addresses and dates are examples.
 
-const SETUP = { store: 'Kuraby Fresh Halal Meats', business: 'Kuraby Fresh Pty Ltd', phone: '0412 345 678', contact: 'hello@kurabyfresh.example', signIn: 'yusuf@kurabyfresh.example',
-  street: '45 Station Road', locality: 'Kuraby', region: 'Queensland', postcode: '4112', zone: 'Brisbane time', zoneId: 'Australia/Brisbane', localTime: '10:14 am',
+const SETUP = { store: 'Kuraby Fresh', business: 'Kuraby Fresh Pty Ltd', phone: '0412 345 678', contact: 'hello@kurabyfresh.example', signIn: 'yusuf@kurabyfresh.example',
+  street: '45 Station Road', locality: 'Kuraby', region: 'Queensland', postcode: '4112', zone: 'Brisbane time', zoneId: 'Australia/Brisbane', localTime: '10:14 AEST',
   idLabel: 'ABN', idHelp: '11 digits', abn: '12 345 678 901', taxQuestion: 'Is your business registered for GST?', taxFrom: '1 Jul 2024',
   storefront: 'mondapac.com.au/shop/', slug: 'kuraby-fresh', slugMin: 3, slugMax: 40, submitted: '6 Oct 2026, 10:14 AEST', withdrawn: '7 Oct 2026' };
 // [screen id, title, step number]; S2 to S6 are steps 1 to 5.
@@ -3782,9 +3789,10 @@ const SETUP_TOTAL = 5;
 const STORE_HELP = 'Customers see this name. Don’t use words that claim a certification, and don’t copy another brand.';
 const CONTACT_HELP = 'For customers and MondaPac to reach your business. You still sign in with ' + SETUP.signIn + '.';
 const ZONE_HELP = 'We use this to work out your local time for cut-offs and certificate dates. Only MondaPac can change it.';
-const OUTSIDE_AREA = ['We’re not in your area yet', 'We’ve saved your details. You can submit once we open there.'];
-const EDIT_WARNING = 'Your application is waiting for review. If you change anything, your submission is withdrawn and you’ll need to submit again.';
+const OUTSIDE_AREA = ['We’re not in your area yet.', 'We’ve saved your details. You can submit once we open there.']; // error.address.outside-service-area, split into title and body
+const EDIT_WARNING = ['Your application is waiting for review.', 'If you change anything, your submission is withdrawn and you’ll need to submit again.']; // edit-warning.banner, split
 const SLUG_HELP = 'Lowercase letters, numbers and hyphens. ' + SETUP.slugMin + ' to ' + SETUP.slugMax + ' characters.';
+const SLUG_SUGGESTED = 'Suggested from your store name. You can change it.'; // F13 step 5; no key yet (Jafar's wording)
 const NUMBER_STATUS = {
   Checking: ['Checking', 'Checking with the official register…'],
   Matched: ['Success', 'Matched with the official register'],
@@ -3833,11 +3841,14 @@ function setupBar(o, sticky) {
   if (o.secondary) setNested(bar, 'secondary', prop('Button', 'Label', o.secondary));
   return bar;
 }
-// Desktop step page: limited shell, form column at most size/form-max (3.0 rules 1 and 2).
-function setupPage(name, kids, w) {
+// Desktop step page: limited shell, form column at most size/form-max (3.0 rules 1 and 2). touch: the step pages S2 to S6 have 48 px
+// targets at every width (ux.md 6, Touch density as on Auth), so their Main takes the Touch dimension mode; the shell stays Desktop.
+function setupPage(name, kids, w, touch) {
+  const main = frame({ name: 'Main', dir: 'V', pad: ['space/7', 'space/8', 'space/10', 'space/8'], sizeH: 'FILL' }, [frame({ name: 'content', dir: 'V', gap: 'space/5', w: w || 'size/form-max' }, kids)]);
+  if (touch) applyDensity(main, 'touch');
   const col = frame({ name: 'Column', dir: 'V', sizeH: 'FILL' }, [
     inst('Topbar', { Workspace: 'Seller', Crumb: 'Your seller account', 'Show search': false, 'Show notifications': false }, { name: 'Topbar', sizeH: 'FILL' }),
-    frame({ name: 'Main', dir: 'V', pad: [28, 32, 40, 32], sizeH: 'FILL' }, [frame({ name: 'content', dir: 'V', gap: 'space/5', w: w || 'size/form-max' }, kids)]),
+    main,
   ]);
   const scr = frame({ name: name, dir: 'H', w: 1440, fill: 'bg/page', clip: true }, [limitedSidebar(), col]);
   scr.minHeight = PANEL_MIN_H;
@@ -3861,15 +3872,15 @@ const S1_SETUP = {
     steps: [['Done', 'Done'], ['To do', 'To do', '4 fields left'], ['To do', 'To do', '2 fields left'], ['To do', 'To do', '1 field left']], submit: ['Waiting', 'Waiting'], review: ['To do', 'To do'] },
   'Ready to submit': { badge: ['Info', 'send'], banner: ['Info', 'Your details are ready', 'Submit them for review when you’re ready.', 'Review and submit'],
     steps: [['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done']], submit: ['To do', 'To do'], review: ['To do', 'To do'] },
-  'Not in your area yet': { badge: ['Attention', 'map-pin'], banner: ['Attention', OUTSIDE_AREA[0], 'Your details are saved. You can submit once we open there.', 'Contact us'],
+  'Not in your area yet': { badge: ['Attention', 'map-pin'], banner: ['Attention', 'We’re not in your area yet', 'Your details are saved. You can submit once we open there.', 'Contact us'],
     steps: [['Done', 'Done'], ['Needs attention', 'Not in your area yet'], ['Done', 'Done'], ['Done', 'Done']], submit: ['Waiting', 'Waiting'], review: ['To do', 'To do'] },
   'Awaiting review': { badge: ['Info', 'clock'], banner: ['Info', 'We’re reviewing your application', 'We’ll email you when there’s a decision. Until then you can’t sell. Changing your details withdraws your submission.'],
-    steps: [['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done']], submit: ['Done', 'Done'], review: ['Waiting', 'Waiting'], submitted: 'Submitted on ' + SETUP.submitted, withdraw: true },
+    steps: [['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done']], submit: ['Done', 'Done'], review: ['Waiting', 'In progress'], submitted: 'Submitted on ' + SETUP.submitted, withdraw: true },
   'Changes needed': { badge: ['Attention', 'alert-circle'], banner: ['Attention', 'Your application needs changes', 'Read the reason, update your details and submit again.'],
-    reason: 'The business name doesn’t match the name registered for your ABN. Check the business name on step 1, then submit again.',
-    steps: [['Needs attention', 'Needs attention'], ['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done']], submit: ['To do', 'To do'], review: ['Needs attention', 'Changes needed'] },
+    reason: 'We couldn’t accept the business name you gave. Use the legal name of your business, then submit again.',
+    steps: [['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done']], submit: ['To do', 'To do'], review: ['Needs attention', 'Needs changes'] }, // a reason carries no step data, so every step stays Done
   'Not approved': { badge: ['Critical', 'x'], banner: ['Critical', 'Your application wasn’t approved', 'You’ve reached the limit for new applications. Contact us if you have questions.', 'Contact us'],
-    reason: 'We can only accept shops that sell food and groceries in Australia. Your application lists clothing only.',
+    reason: 'The business details you gave don’t meet our requirements for new shops.',
     steps: [['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done'], ['Done', 'Done']], submit: ['Done', 'Done'], review: ['Needs attention', 'Not approved'] },
 };
 // Two frames reuse a state with another line (ux.md 3.1 S1): after MondaPac withdrew the submission, and when MondaPac submitted for the seller.
@@ -3910,32 +3921,35 @@ function tplS1Setup(state, variant) { return setupPage(s1SetupName(state, varian
 function tplS1SetupPhone(state) { return setupPhone(s1SetupName(state, null, true), s1SetupContent(state), null); }
 
 // ---- S2 Business details
+// o.fresh: a new file, nothing saved yet (ux.md 3.5: empty fields, no "Saved").
 function s2Content(o) {
   o = o || {};
-  const st = o.readOnly ? 'Disabled' : null;
+  const st = o.readOnly ? 'Disabled' : null; const v = function (x) { return o.fresh ? '' : x; };
   const kids = [];
-  if (o.errors) kids.push(setupBanner('Critical', 'Check the details below', 'Phone: enter a phone number.'));
-  if (o.awaiting) kids.push(setupBanner('Attention', 'Changing your details withdraws your submission', EDIT_WARNING));
-  if (o.readOnly) kids.push(setupBanner('Attention', 'MondaPac is recording a decision', 'Try again in a moment.'));
+  if (o.errors) kids.push(setupBanner('Critical', 'Check the details below', 'Enter a phone number.'));
+  if (o.awaiting) kids.push(setupBanner('Attention', EDIT_WARNING[0], EDIT_WARNING[1]));
+  if (o.readOnly) kids.push(setupBanner('Attention', 'MondaPac is recording a decision.', 'Try again in a moment.'));
   kids.push(setupCard('Your shop', [
-    setupField('Store name', { value: SETUP.store, helper: STORE_HELP, state: st }),
-    setupField('Business name', { value: SETUP.business, helper: 'The legal name of your business.', state: st }),
-    o.errors ? setupField('Phone', { value: '', error: 'Enter a phone number.' }) : setupField('Phone', { value: SETUP.phone, state: st }),
-    setupField('Contact email', { value: SETUP.contact, helper: CONTACT_HELP, optional: true, state: st }),
+    setupField('Store name', { value: v(SETUP.store), helper: STORE_HELP, state: st }),
+    setupField('Business name', { value: v(SETUP.business), helper: 'The legal name of your business.', state: st }),
+    o.errors ? setupField('Phone', { value: '', error: 'Enter a phone number.' }) : setupField('Phone', { value: v(SETUP.phone), state: st }),
+    setupField('Contact email', { value: v(SETUP.contact), helper: CONTACT_HELP, optional: true, state: st }),
     readOnlyPair('Sign-in email', SETUP.signIn),
   ]));
   return kids;
 }
-function s2Bar(o, sticky) { o = o || {}; return setupBar({ state: o.errors ? 'Error' : (o.awaiting ? 'Dirty' : 'Clean'), secondary: 'Back to checklist', disabled: o.readOnly }, sticky); } // awaiting review: the button keeps "Save and continue"; D3 carries "Save and withdraw" (ux.md flow F14 step 2)
-function tplS2(state, o) { return setupPage(stepName('business', state), [stepHeader('business')].concat(s2Content(o), [s2Bar(o)])); }
+function s2Bar(o, sticky) { o = o || {}; return setupBar({ state: o.errors ? 'Error' : (o.awaiting ? 'Dirty' : 'Clean'), secondary: 'Back to checklist', disabled: o.readOnly, noStatus: o.fresh }, sticky); } // awaiting review: the button keeps "Save and continue"; D3 carries "Save and withdraw" (ux.md flow F14 step 2)
+function tplS2(state, o) { return setupPage(stepName('business', state), [stepHeader('business')].concat(s2Content(o), [s2Bar(o)]), null, true); }
 function tplS2Phone() { return setupPhone(stepName('business', null, true), [stepHeader('business', true)].concat(s2Content()), s2Bar({}, true)); }
 
 // ---- S3 Address and area
-function addressFields(prefix) {
+// The AU Market's address fields in its order (from the API). On a phone the Suburb and Postcode pair stacks (ux.md 6).
+function addressFields(registered, fresh) {
+  const v = function (x, y) { return fresh ? '' : (registered ? y : x); };
   return [
-    setupField('Street address', { value: prefix ? '2/18 Logan Road' : SETUP.street }),
-    frame({ name: 'locality-row', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [setupField('Suburb', { value: prefix ? 'Woolloongabba' : SETUP.locality }), setupField('Postcode', { value: prefix ? '4102' : SETUP.postcode })]),
-    panelField('State', { select: { state: 'Filled', value: SETUP.region } }),
+    setupField('Street address', { value: v(SETUP.street, '2/18 Logan Road') }),
+    frame({ name: 'locality-row', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [setupField('Suburb', { value: v(SETUP.locality, 'Woolloongabba') }), setupField('Postcode', { value: v(SETUP.postcode, '4102') })]),
+    panelField('State', { select: fresh ? { state: 'Default', value: 'Select a state' } : { state: 'Filled', value: SETUP.region } }),
   ];
 }
 function zoneResult() {
@@ -3948,32 +3962,42 @@ function s3Content(o) {
   o = o || {};
   const kids = [];
   if (o.outside) kids.push(setupBanner('Attention', OUTSIDE_AREA[0], OUTSIDE_AREA[1]));
-  if (o.unresolved) kids.push(setupBanner('Attention', 'We couldn’t work out your time zone', 'Check the address, or contact us.', 'Contact us'));
+  if (o.unresolved) kids.push(setupBanner('Attention', 'We couldn’t work out your time zone from this address.', 'Check the address, or contact us.', 'Contact us')); // error.timezone.unresolved, split
   const check = inst('CheckboxRow', { Value: o.registered ? 'Checked' : 'Unchecked', State: 'Default', Label: 'My registered business address is different', Description: 'Only the address where your shop works from sets your service area and time zone.' }, { name: 'registered-different', sizeH: 'FILL' });
-  const body = addressFields().concat([check]);
-  if (!o.outside && !o.unresolved && !o.registered) body.push(zoneResult());
+  const body = addressFields(false, o.fresh).concat([check]);
+  if (!o.fresh && !o.outside && !o.unresolved && !o.registered) body.push(zoneResult());
   kids.push(setupCard('Where your shop works from', body));
   if (o.registered) kids.push(setupCard('Registered business address', addressFields(true)));
   return kids;
 }
-function tplS3(state, o) { return setupPage(stepName('address', state), [stepHeader('address')].concat(s3Content(o), [setupBar({ state: o && o.registered ? 'Dirty' : 'Clean', secondary: 'Back to checklist' })])); }
+function tplS3(state, o) { o = o || {}; return setupPage(stepName('address', state), [stepHeader('address')].concat(s3Content(o), [setupBar({ state: o.registered ? 'Dirty' : 'Clean', secondary: 'Back to checklist', noStatus: o.fresh })]), null, true); }
 
 // ---- S4 Business number and tax registration
 function numberField(state) {
+  if (state === 'Empty') return setupField(SETUP.idLabel, { value: '', helper: SETUP.idHelp });
   if (state === 'Format error') return setupField(SETUP.idLabel, { value: '12 345 678', helper: SETUP.idHelp, error: 'That doesn’t look like a valid ' + SETUP.idLabel + '. Check the number and try again.' });
   const s = NUMBER_STATUS[state];
   return setupField(SETUP.idLabel, { value: SETUP.abn, helper: SETUP.idHelp, status: s ? [s[0], s[1]] : null });
 }
-function taxCard() {
+// The tax answer is required and never preselected: before an answer no segment is selected (an override of segment 1 in this
+// instance; the SegmentedControl component always draws its first segment selected). "Registered from" follows a Yes.
+function segNone(seg) {
+  const s1 = seg.findOne(function (n) { return n.name === 'segment-1'; }); if (s1) s1.fills = [];
+  const l1 = seg.findOne(function (n) { return n.name === 'label-1'; });
+  if (l1) { S.pending.push(l1.setTextStyleIdAsync(S.ts['Body/Default'].id)); l1.fills = [paint('text/secondary')]; }
+}
+function taxCard(answered) {
   const seg = inst('SegmentedControl', { 'Segment 1': 'Yes', 'Segment 2': 'No' }, { name: 'tax-answer' });
   const third = seg.findOne(function (n) { return n.name === 'segment-3'; }); if (third) third.visible = false;
-  return setupCard('Tax registration', [
-    frame({ name: 'question', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text(SETUP.taxQuestion, 'Body/Strong', 'text/primary', { name: 'tax-question', sizeH: 'FILL' }), seg, setupNote('MondaPac doesn’t decide whether you must register.', 'tax-help')]),
-    setupField('Registered from', { value: SETUP.taxFrom }),
-  ]);
+  if (!answered) segNone(seg);
+  const kids = [frame({ name: 'question', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text(SETUP.taxQuestion, 'Body/Strong', 'text/primary', { name: 'tax-question', sizeH: 'FILL' }), seg, setupNote('MondaPac doesn’t decide whether you must register.', 'tax-help')])];
+  if (answered) kids.push(setupField('Registered from', { value: SETUP.taxFrom }));
+  return setupCard('Tax registration', kids);
 }
-function s4Content(state) { return [setupCard('Business number', [numberField(state)]), taxCard()]; }
-function tplS4() { return setupPage(stepName('number'), [stepHeader('number')].concat(s4Content('Matched'), [setupBar({ secondary: 'Back to checklist' })])); }
+function s4Content(state) { return [setupCard('Business number', [numberField(state)]), taxCard(state !== 'Empty')]; }
+// First visit: nothing saved, no result line, the tax question unanswered. Saved: the number matched and the answer Yes.
+function tplS4() { return setupPage(stepName('number'), [stepHeader('number')].concat(s4Content('Empty'), [setupBar({ secondary: 'Back to checklist', noStatus: true })]), null, true); }
+function tplS4Saved() { return setupPage(stepName('number', 'Saved'), [stepHeader('number')].concat(s4Content('Matched'), [setupBar({ secondary: 'Back to checklist' })]), null, true); }
 // One board with the business-number field in each result state (ux.md 3.1 S4), as the frontend builds them.
 const NUMBER_BOARD = ['Checking', 'Matched', 'Not matched', 'Could not be checked', 'Limit reached', 'Format error', 'No register lookup'];
 const SLUG_BOARD = ['Idle', 'Checking', 'Available', 'Not available', 'Format error', 'Throttled'];
@@ -3993,8 +4017,14 @@ function slugField(state) {
   const s = SLUG_STATUS[state];
   return setupField('Shop web address', { value: SETUP.slug, prefix: SETUP.storefront, helper: SLUG_HELP, status: s ? [s[0], s[1]] : null });
 }
-function s5Content(state) { return [setupCard('Shop web address', [slugField(state), setupNote('You can only change this later by asking MondaPac.', 'help-later')])]; }
-function tplS5() { return setupPage(stepName('slug'), [stepHeader('slug')].concat(s5Content('Available'), [setupBar({ secondary: 'Back to checklist' })])); }
+// First visit: the field is prefilled by code from the store name (not AI), editable and marked as a suggestion (F13 step 5); nothing is saved yet.
+function s5Content(state) {
+  const kids = [slugField(state)];
+  if (state === 'Idle') kids.push(setupNote(SLUG_SUGGESTED, 'suggestion'));
+  kids.push(setupNote('You can only change this later by asking MondaPac.', 'help-later'));
+  return [setupCard('Shop web address', kids)];
+}
+function tplS5() { return setupPage(stepName('slug'), [stepHeader('slug')].concat(s5Content('Idle'), [setupBar({ secondary: 'Back to checklist', noStatus: true })]), null, true); }
 function tplS5States() {
   return stateBoard(stepName('slug', 'Statuses'), 'Shop web address: statuses', 'Checked on blur and after 600 ms without typing, one request at a time; no check for a format error, which is local (ux.md 3.1 S5). Taken and reserved show the same text.', SLUG_BOARD, slugField);
 }
@@ -4006,20 +4036,23 @@ function s6Rows(o) {
   return [
     ['Business details', 'Store name', SETUP.store], ['Business details', 'Business name', SETUP.business], ['Business details', 'Phone', SETUP.phone, o.missing ? 'Missing' : null], ['Business details', 'Contact email', SETUP.contact],
     ['Address and area', 'Where your shop works from', SETUP.street + ', ' + SETUP.locality + ' ' + SETUP.region + ' ' + SETUP.postcode, o.blocked ? 'Blocked' : null, o.blocked ? 'We’re not in your area yet.' : null], ['Address and area', 'Work time zone', SETUP.zone + ' (' + SETUP.zoneId + ')'],
-    ['Business number', SETUP.idLabel, SETUP.abn], ['Business number', 'Registered for GST', 'Yes, from ' + SETUP.taxFrom],
+    ['Business number', SETUP.idLabel, SETUP.abn, o.blocked ? 'Blocked' : null, o.blocked ? 'We couldn’t match this number with the official register.' : null], ['Business number', SETUP.taxQuestion, 'Yes'], ['Business number', 'Registered from', SETUP.taxFrom],
     ['Shop web address', 'Shop web address', SETUP.storefront + SETUP.slug, o.missing ? 'Missing' : null],
   ];
 }
-function dataRow(r, readOnly) {
-  const p = { Layout: 'Single', State: r[3] || 'Default', Label: r[1], 'Show action': !readOnly, Action: 'Edit' };
+// A blocked row carries its reason in the note and "Contact us" as the second action (F13 step 6); a phone uses Width=Narrow.
+function dataRow(r, readOnly, narrow) {
+  const p = { Layout: 'Single', Width: narrow ? 'Narrow' : 'Wide', State: r[3] || 'Default', Label: r[1], 'Show action': !readOnly };
   if (r[3] !== 'Missing') p.Value = r[2];
   if (r[4]) { p['Show note'] = true; p.Note = r[4]; }
+  if (r[3] === 'Blocked') p['Show second action'] = true;
   return inst('DataRow', p, { name: 'row · ' + r[1], sizeH: 'FILL' });
 }
 function s6Cards(o) {
+  o = o || {};
   const rows = s6Rows(o); const groups = [];
   rows.forEach(function (r) { if (groups.indexOf(r[0]) < 0) groups.push(r[0]); });
-  return groups.map(function (g) { return card(g, [header(g, null)].concat(rows.filter(function (r) { return r[0] === g; }).map(function (r) { return dataRow(r, o && o.awaiting); }))); });
+  return groups.map(function (g) { return card(g, [header(g, null)].concat(rows.filter(function (r) { return r[0] === g; }).map(function (r) { return dataRow(r, o.awaiting, o.touch); }))); });
 }
 function s6Content(o) {
   o = o || {};
@@ -4030,8 +4063,7 @@ function s6Content(o) {
     setNested(kids[kids.length - 1], 'action', prop('Button', 'Label', 'Business details'));
     return kids;
   }
-  if (o.blocked) kids.push(setupBanner('Attention', OUTSIDE_AREA[0], OUTSIDE_AREA[1], 'Contact us'));
-  else if (o.awaiting) kids.push(setupBanner('Info', 'We’re reviewing your application', 'Submitted on ' + SETUP.submitted + '. Changing your details withdraws your submission.'));
+  if (o.awaiting) kids.push(setupBanner('Info', 'We’re reviewing your application', 'Submitted on ' + SETUP.submitted + '. Changing your details withdraws your submission.'));
   else kids.push(setupBanner('Info', 'Before you submit', 'MondaPac reviews these details before you can sell. You’ll get an email when there’s a decision.'));
   return kids.concat(s6Cards(o));
 }
@@ -4039,26 +4071,29 @@ function s6Bar(o, sticky) {
   o = o || {};
   if (o.awaiting) return frame({ name: 'withdraw', dir: 'H', sizeH: 'FILL' }, [btn('Withdraw submission', 'Secondary', sticky ? 'Touch' : 'Md')]);
   const bar = setupBar({ primary: o.again ? 'Submit again' : 'Submit for review', secondary: null, noStatus: true, disabled: o.missing || o.blocked }, sticky);
-  if (!o.missing) return bar;
-  // "Finish {n} items first", linking to the first missing item, beside the disabled button.
+  if (!o.missing && !o.blocked) return bar;
+  // "Finish {n} items first" (submit.help.blocked), linking to the first missing or blocked item, beside the disabled button.
   return frame({ name: 'submit', dir: 'V', gap: 'space/2', align: 'end', sizeH: 'FILL' }, [inst('Button', { Variant: 'Link', Size: sticky ? 'Touch' : 'Sm', State: 'Default', Label: 'Finish 2 items first.' }, { name: 'blocked-reason' }), bar]);
 }
-function tplS6(state, o) { o = o || {}; const kids = s6Content(o); if (!o.empty) kids.push(s6Bar(o)); return setupPage(stepName('submit', state), kids); }
+function tplS6(state, o) { o = o || {}; const kids = s6Content(o); if (!o.empty) kids.push(s6Bar(o)); return setupPage(stepName('submit', state), kids, null, true); }
 function tplS6Phone() { return setupPhone(stepName('submit', null, true), s6Content({ touch: true }), s6Bar({}, true)); }
 
 // ---- the list of 1.9.0 frames: [group, name, make], all on Templates · Seller
 const SETUP_ROWS = ['setup-account', 'setup-details', 'setup-number', 'setup-submit', 'setup-phone'];
 function setupDefs() {
   return { 'tpl-seller': S1_SETUP_FRAMES.map(function (f) { return ['setup-account', s1SetupName(f[0], f[1]), function () { return tplS1Setup(f[0], f[1]); }]; }).concat([
-    ['setup-details', stepName('business'), function () { return tplS2(null); }],
+    ['setup-details', stepName('business'), function () { return tplS2(null, { fresh: true }); }],
+    ['setup-details', stepName('business', 'Saved'), function () { return tplS2('Saved'); }],
     ['setup-details', stepName('business', 'Errors'), function () { return tplS2('Errors', { errors: true }); }],
     ['setup-details', stepName('business', 'Awaiting review'), function () { return tplS2('Awaiting review', { awaiting: true }); }],
     ['setup-details', stepName('business', 'Decision in progress'), function () { return tplS2('Decision in progress', { readOnly: true }); }],
-    ['setup-details', stepName('address'), function () { return tplS3(null); }],
+    ['setup-details', stepName('address'), function () { return tplS3(null, { fresh: true }); }],
+    ['setup-details', stepName('address', 'Saved'), function () { return tplS3('Saved'); }],
     ['setup-details', stepName('address', 'Registered address'), function () { return tplS3('Registered address', { registered: true }); }],
     ['setup-details', stepName('address', 'Outside area'), function () { return tplS3('Outside area', { outside: true }); }],
     ['setup-details', stepName('address', 'Time zone unresolved'), function () { return tplS3('Time zone unresolved', { unresolved: true }); }],
     ['setup-number', stepName('number'), tplS4],
+    ['setup-number', stepName('number', 'Saved'), tplS4Saved],
     ['setup-number', stepName('number', 'Result states'), tplS4States],
     ['setup-number', stepName('slug'), tplS5],
     ['setup-number', stepName('slug', 'Statuses'), tplS5States],
@@ -4077,7 +4112,7 @@ function setupNames() { return setupDefs()['tpl-seller'].map(function (d) { retu
 // The sets the 1.9.0 templates place (a template is built only when each one is the plugin's own).
 const SETUP_TEMPLATE_NEEDS = ['Sidebar', 'Topbar', 'PhoneTopbar', 'Button', 'Input', 'Field', 'FieldStatus', 'Select', 'Badge', 'InfoBanner', 'CardHeader', 'ChecklistItem', 'ReasonQuote', 'CheckboxRow', 'SegmentedControl', 'DataRow', 'FormActionBar', 'EmptyState'];
 // Dark preview copy added in 1.9.0.
-const DARK_190 = [stepName('number')];
+const DARK_190 = [stepName('number', 'Saved'), stepName('submit', 'Missing'), stepName('submit', 'Blocked')];
 
 // ==== 50_main.js ====
 // ---------------------------------------------------------------- pages & orchestration
@@ -4723,7 +4758,11 @@ async function updateLibrary() {
     added.push('component DataRow');
   }
   for (const step of propertySteps190(own)) {
-    await onPage(pageOf(step.node), step.label, function () { step.run().forEach(function (a) { added.push(a); }); });
+    await onPage(pageOf(step.node), step.label, function () {
+      step.run().forEach(function (a) { added.push(a); });
+      let sec = step.node; while (sec && sec.type !== 'SECTION' && sec.type !== 'PAGE') sec = sec.parent;
+      if (sec && sec.type === 'SECTION') fitSection(sec); // on Starter, a Usage list that grew can push the doc frame past its section
+    });
   }
 
   // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
@@ -4872,6 +4911,14 @@ async function updateLibrary() {
   // 3g · 1.9.0 "Seller setup": S1 in each seller state, the steps S2 to S6, their state boards and phone frames, in new rows on Templates · Seller.
   // Built when every set they place is the plugin's and has the 1.9.0 properties, and only the frames the file does not have yet.
   const setupBlock = blockedBy(SETUP_TEMPLATE_NEEDS).concat(setupLacks());
+  // The frames place the new sets' variants and set their properties by name; a set changed by hand waits, as in 3e.
+  [['FieldStatus', combos(FIELD_STATUS_AXES), ['Text']], ['DataRow', combos(DATAROW_AXES).filter(function (p) { return !DATAROW_SKIP(p); }), DATAROW_KEYS], ['FormActionBar', combos(FAB_AXES), ['Show status', 'Show secondary']]].forEach(function (d) {
+    const rec = S.sets[d[0]];
+    if (setupBlock.indexOf(d[0]) >= 0 || !rec || !rec.set) return;
+    const miss = missingCombos(rec, d[1]); const keys = d[2].filter(function (k) { return !rec.keys[k]; });
+    if (miss.length) setupBlock.push(d[0] + ' variants (' + miss.map(variantName).join('; ') + ')');
+    if (keys.length) setupBlock.push(d[0] + ' properties (' + keys.join(', ') + ')');
+  });
   if (setupBlock.length) log('ℹ skipped Seller setup templates: they need the plugin\'s ' + setupBlock.join(', '));
   else {
     const present = T['tpl-seller'].host.children.map(function (c) { return c.name; });

@@ -641,7 +641,11 @@ async function updateLibrary() {
     added.push('component DataRow');
   }
   for (const step of propertySteps190(own)) {
-    await onPage(pageOf(step.node), step.label, function () { step.run().forEach(function (a) { added.push(a); }); });
+    await onPage(pageOf(step.node), step.label, function () {
+      step.run().forEach(function (a) { added.push(a); });
+      let sec = step.node; while (sec && sec.type !== 'SECTION' && sec.type !== 'PAGE') sec = sec.parent;
+      if (sec && sec.type === 'SECTION') fitSection(sec); // on Starter, a Usage list that grew can push the doc frame past its section
+    });
   }
 
   // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
@@ -790,6 +794,14 @@ async function updateLibrary() {
   // 3g · 1.9.0 "Seller setup": S1 in each seller state, the steps S2 to S6, their state boards and phone frames, in new rows on Templates · Seller.
   // Built when every set they place is the plugin's and has the 1.9.0 properties, and only the frames the file does not have yet.
   const setupBlock = blockedBy(SETUP_TEMPLATE_NEEDS).concat(setupLacks());
+  // The frames place the new sets' variants and set their properties by name; a set changed by hand waits, as in 3e.
+  [['FieldStatus', combos(FIELD_STATUS_AXES), ['Text']], ['DataRow', combos(DATAROW_AXES).filter(function (p) { return !DATAROW_SKIP(p); }), DATAROW_KEYS], ['FormActionBar', combos(FAB_AXES), ['Show status', 'Show secondary']]].forEach(function (d) {
+    const rec = S.sets[d[0]];
+    if (setupBlock.indexOf(d[0]) >= 0 || !rec || !rec.set) return;
+    const miss = missingCombos(rec, d[1]); const keys = d[2].filter(function (k) { return !rec.keys[k]; });
+    if (miss.length) setupBlock.push(d[0] + ' variants (' + miss.map(variantName).join('; ') + ')');
+    if (keys.length) setupBlock.push(d[0] + ' properties (' + keys.join(', ') + ')');
+  });
   if (setupBlock.length) log('ℹ skipped Seller setup templates: they need the plugin\'s ' + setupBlock.join(', '));
   else {
     const present = T['tpl-seller'].host.children.map(function (c) { return c.name; });

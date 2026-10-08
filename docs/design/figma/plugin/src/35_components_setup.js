@@ -20,10 +20,11 @@ function fieldStatusVariant(c, p) {
     text('Checking…', 'Body/Small', t[2], { name: 'status-text', sizeH: 'FILL' }),
   ]);
 }
+const FIELD_STATUS_AXES = { Tone: Object.keys(FIELD_STATUS) };
 function fieldStatusBlock(root) {
-  const set = makeSet('FieldStatus', { Tone: Object.keys(FIELD_STATUS) }, fieldStatusVariant, FIELD_STATUS_OPTS);
+  const set = makeSet('FieldStatus', FIELD_STATUS_AXES, fieldStatusVariant, FIELD_STATUS_OPTS);
   componentBlock(root, set, { title: 'FieldStatus', summary: 'The result line of a check on one field (1.9.0). Field places it under the control with Show status.',
-    use: ['Business number: Checking, Matched (Success), Could not be checked (Info), Not matched (Critical).', 'Shop web address: Checking, Available (Success), Not available (Critical).', 'A format error stays the Field error, not a status.'],
+    use: ['Business number: Checking, Matched (Success), Could not be checked (Info), Not matched (Critical).', 'Shop web address: Checking, Available (Success), Not available (Critical).', 'A format error stays the Field error, not a status: a field shows its error or its status, never both.'],
     props: ['Tone: Checking, Success, Info, Critical', 'Text (text)'],
     a11y: ['Checking is a role="status" region; the result replaces it in the same region.', 'Icon and words for every tone, never colour alone.'],
     dont: ['A spinner that keeps turning under reduced motion.', 'Words such as "verified" or "already registered".'] });
@@ -33,51 +34,56 @@ function fieldStatusBlock(root) {
 function fieldStatusSlot() { const i = inst('FieldStatus', { Tone: 'Checking' }, { name: 'status', sizeH: 'FILL' }); i.visible = false; return i; }
 
 // ---- DataRow (Review & detail): a label and a read-only value, or two values to compare. S6 summary, S7, P2 and P3.
-const DATAROW_AXES = { Layout: ['Single', 'Compare'], State: ['Default', 'Missing', 'Blocked', 'Changed'] };
-// Missing and Blocked belong to the summary before a submission (S6), so a Compare row has neither.
-const DATAROW_SKIP = function (p) { return p.Layout === 'Compare' && (p.State === 'Missing' || p.State === 'Blocked'); };
-const DATAROW_OPTS = { width: 1440, colAxis: 'Layout', skip: DATAROW_SKIP, // Layout in 2 columns, State in rows: 1368 px wide, so the block fits the page
-  desc: 'A label and a read-only value (1.9.0). Layout=Compare shows two values side by side with their own labels (Current and Requested for a change request; Submitted and Register for an admin). State=Missing replaces the value with "Missing" (an empty required value); State=Blocked keeps the value and adds "Blocked" (outside the service area, time zone not found, a definite register negative); State=Changed adds the Changed badge. Show note adds a line under the value (the reason a row is blocked); Show flag adds a Badge (exposed as "flag": Waiting for review, Matches, Differs); Show action and Action add a text action (Edit, Request a change). Values are plain text shown with dir="auto"; never a register value to a seller.',
-  text: [{ prop: 'Label', node: 'label', def: 'Store name' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Halal Meats' }, { prop: 'Compare value', node: 'compare-value', def: 'Kuraby Fresh Meats' },
-    { prop: 'Value label', node: 'value-label', def: 'Current' }, { prop: 'Compare label', node: 'compare-label', def: 'Requested' }, { prop: 'Note', node: 'note', def: 'We’re not in your area yet.' }, { prop: 'Action', node: 'action', def: 'Edit' }],
-  bool: [{ prop: 'Show note', node: 'note', def: false }, { prop: 'Show flag', node: 'flag', def: false }, { prop: 'Show action', node: 'action', def: true }] };
+// Width=Narrow (below 760 px) puts the label above the value, so a phone row keeps the value's width.
+const DATAROW_AXES = { Layout: ['Single', 'Compare'], Width: ['Wide', 'Narrow'], State: ['Default', 'Missing', 'Blocked', 'Changed'] };
+// Missing and Blocked belong to the summary before a submission (S6), so a Compare row has neither. Compare has no Narrow layout yet:
+// its screens (S7, P2, P3) wait for the mobile navigation (D16) on phones.
+const DATAROW_SKIP = function (p) { return p.Layout === 'Compare' && (p.State === 'Missing' || p.State === 'Blocked' || p.Width === 'Narrow'); };
+const DATAROW_KEYS = ['Label', 'Value', 'Compare value', 'Value label', 'Compare label', 'Note', 'Show note', 'Show flag', 'Show action', 'Show second action'];
+const DATAROW_OPTS = { width: 1440, colAxis: 'Layout', skip: DATAROW_SKIP, // Layout in 2 columns, Width and State in rows: 1368 px wide, so the block fits the page
+  desc: 'A label and a read-only value (1.9.0). Layout=Compare shows two values side by side with their own labels (Current and Requested for a change request; Submitted and Register for an admin). Width=Narrow, below 760 px, puts the label above the value. State=Missing replaces the value with "Missing" (an empty required value); State=Blocked keeps the value and adds "Blocked" (outside the service area, time zone not found, a definite register negative), with the reason in the note and "Contact us" as the second action. State=Changed adds the Changed badge. Show note adds a line under the value; Show flag adds a Badge (exposed as "flag": Waiting for review, Matches, Differs); Show action and Show second action show link Buttons (exposed as "action" and "second-action": Edit, Request a change, Contact us). Values are plain text shown with dir="auto"; never a register value to a seller.',
+  text: [{ prop: 'Label', node: 'label', def: 'Store name' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh' }, { prop: 'Compare value', node: 'compare-value', def: 'Kuraby Fresh Grocers' },
+    { prop: 'Value label', node: 'value-label', def: 'Current' }, { prop: 'Compare label', node: 'compare-label', def: 'Requested' }, { prop: 'Note', node: 'note', def: 'We’re not in your area yet.' }],
+  bool: [{ prop: 'Show note', node: 'note', def: false }, { prop: 'Show flag', node: 'flag', def: false }, { prop: 'Show action', node: 'action', def: true }, { prop: 'Show second action', node: 'second-action', def: false }] };
 function rowMarker(ic, token, word) { return frame({ name: 'marker', dir: 'H', gap: 'space/1-5', align: 'center' }, [icon(ic, token, 16), text(word, 'Body/Small Strong', token, { name: 'marker-text' })]); }
 function dataRowVariant(c, p) {
+  const narrow = p.Width === 'Narrow';
   const value = function (node, str, strong) { return text(str, strong ? 'Body/Strong' : 'Body/Default', 'text/primary', { name: node, sizeH: 'FILL' }); };
-  const note = text('We’re not in your area yet.', 'Body/Small', p.State === 'Blocked' ? 'status/critical/fg' : 'text/secondary', { name: 'note', sizeH: 'FILL' }); note.visible = false;
+  const note = text('We’re not in your area yet.', 'Body/Small', 'text/secondary', { name: 'note', sizeH: 'FILL' }); note.visible = false;
   let values;
   if (p.Layout === 'Compare') {
     values = frame({ name: 'values', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
       frame({ name: 'pair', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [
-        frame({ name: 'current', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Current', 'Caption/Default', 'text/muted', { name: 'value-label' }), value('value', 'Kuraby Fresh Halal Meats')]),
-        frame({ name: 'requested', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Requested', 'Caption/Default', 'text/muted', { name: 'compare-label' }), value('compare-value', 'Kuraby Fresh Meats', true)]),
+        frame({ name: 'current', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Current', 'Caption/Default', 'text/muted', { name: 'value-label' }), value('value', 'Kuraby Fresh')]),
+        frame({ name: 'requested', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Requested', 'Caption/Default', 'text/muted', { name: 'compare-label' }), value('compare-value', 'Kuraby Fresh Grocers', true)]),
       ]),
       note,
     ]);
   } else {
     const kids = [];
     if (p.State === 'Missing') kids.push(rowMarker('alert-circle', 'status/attention/fg', 'Missing'));
-    else kids.push(value('value', 'Kuraby Fresh Halal Meats'));
-    if (p.State === 'Blocked') kids.push(rowMarker('ban', 'status/critical/fg', 'Blocked'));
+    else kids.push(value('value', 'Kuraby Fresh'));
+    if (p.State === 'Blocked') kids.push(rowMarker('alert-triangle', 'status/attention/fg', 'Blocked'));
     kids.push(note);
     values = frame({ name: 'values', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, kids);
   }
   const flag = inst('Badge', { Tone: 'Neutral', Leading: 'None', Label: 'Waiting for review' }, { name: 'flag' }); flag.visible = false;
-  body(c, { dir: 'H', w: 'size/form-max', pad: [12, 16, 12, 16], gap: 'space/4', align: 'start', fill: 'bg/surface', stroke: 'border/row', sides: ['bottom'] }, [
-    text('Store name', 'Body/Small', 'text/muted', { name: 'label', w: 168 }),
-    values,
-    p.State === 'Changed' ? inst('Badge', { Tone: 'Info', Leading: 'None', Label: 'Changed' }, { name: 'changed' }) : null,
-    flag,
-    text('Edit', 'Body/Small Strong', 'text/link', { name: 'action' }),
-  ]);
-  safe('expose flag', function () { flag.isExposedInstance = true; });
+  const action = inst('Button', { Variant: 'Link', Size: 'Sm', State: 'Default', Label: 'Edit' }, { name: 'action' });
+  const second = inst('Button', { Variant: 'Link', Size: 'Sm', State: 'Default', Label: 'Contact us' }, { name: 'second-action' }); second.visible = false;
+  const changed = p.State === 'Changed' ? inst('Badge', { Tone: 'Info', Leading: 'None', Label: 'Changed' }, { name: 'changed' }) : null;
+  const actions = frame({ name: 'actions', dir: 'H', gap: 'space/3', align: 'center' }, [action, second]);
+  const label = text('Store name', 'Body/Small', 'text/muted', narrow ? { name: 'label', sizeH: 'FILL' } : { name: 'label', w: 168 });
+  const box = { pad: ['space/3', 'space/4', 'space/3', 'space/4'], fill: 'bg/surface', stroke: 'border/row', sides: ['bottom'] };
+  if (narrow) body(c, Object.assign({ dir: 'V', w: 360, gap: 'space/1' }, box), [label, values, frame({ name: 'meta', dir: 'H', gap: 'space/3', align: 'center', wrap: true, rowGap: 'space/1' }, [changed, flag, actions])]);
+  else body(c, Object.assign({ dir: 'H', w: 'size/form-max', gap: 'space/4', align: 'start' }, box), [label, values, changed, flag, actions]);
+  safe('expose flag and actions', function () { flag.isExposedInstance = true; action.isExposedInstance = true; second.isExposedInstance = true; });
 }
 function dataRowBlock(root) {
   const set = makeSet('DataRow', DATAROW_AXES, dataRowVariant, DATAROW_OPTS);
-  componentBlock(root, set, { title: 'DataRow', summary: 'Read-only values with an optional flag and action (1.9.0): the summary before a seller submits (S6), the store profile (S7), the seller page and the review page (P2, P3).',
-    use: ['Layout=Single for one value; Compare for current against requested, or submitted against the register (admins only).', 'Missing for an empty required value, Blocked for a value that stops the submission, Changed for a value changed since the last submission.', 'Stack rows inside a Card; the last row keeps its border (the Card clips it).'],
-    props: ['Layout · State (Compare has Default and Changed)', 'Label, Value, Compare value, Value label, Compare label, Note, Action (text)', 'Show note, Show flag, Show action (boolean); flag is an exposed Badge'],
-    a11y: ['A row is a <div> pair in a description list (<dl>: <dt> label, <dd> value).', '"Missing" and "Blocked" are words with an icon, never colour alone.', 'The action names its row: "Edit store name".'],
+  componentBlock(root, set, { title: 'DataRow', summary: 'Read-only values with an optional flag and actions (1.9.0): the summary before a seller submits (S6), the store profile (S7), the seller page and the review page (P2, P3).',
+    use: ['Layout=Single for one value; Compare for current against requested, or submitted against the register (admins only).', 'Width=Narrow below 760 px: the label goes above the value.', 'Missing for an empty required value, Blocked for a value that stops the submission (its reason in the note, "Contact us" as the second action), Changed for a value changed since the last submission.', 'Stack rows inside a Card; the last row keeps its border (the Card clips it).'],
+    props: ['Layout · Width · State (Compare has Wide only, with Default and Changed)', 'Label, Value, Compare value, Value label, Compare label, Note (text)', 'Show note, Show flag, Show action, Show second action (boolean); flag, action and second-action are exposed instances (Badge, link Buttons)'],
+    a11y: ['A row is a <div> pair in a description list (<dl>: <dt> label, <dd> value).', '"Missing" and "Blocked" are words with an icon, never colour alone. Blocked is Attention, like the outside-area banner; a definite register negative keeps its Critical line on S4.', 'The actions are link Buttons with a focus state and 48 px targets in Touch density; each names its row: "Edit store name".'],
     dont: ['A register value shown to a seller.', 'Truncating a value: it wraps.'] });
   return set;
 }
@@ -93,8 +99,9 @@ function formActionBarVariant(c, p) {
   const status = frame({ name: 'status', dir: 'H', gap: 'space/1-5', align: 'center' }, [icon(st[0], st[1], 16), text(st[2], 'Body/Small Strong', st[3], { name: 'status-text' })]);
   const secondary = inst('Button', { Variant: 'Secondary', Size: size, State: 'Default', Label: 'Back to checklist' }, { name: 'secondary', sizeH: sticky ? 'FILL' : null });
   const primary = inst('Button', { Variant: 'Primary', Size: size, State: p.State === 'Saving' ? 'Loading' : 'Default', Label: 'Save and continue' }, { name: 'primary', sizeH: sticky ? 'FILL' : null });
-  if (sticky) body(c, { dir: 'V', w: 360, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', sides: ['top'] }, [status, primary, secondary]);
-  else body(c, { dir: 'H', w: 'size/form-max', pad: [16, 0, 0, 0], gap: 'space/3', align: 'center', stroke: 'border/row', sides: ['top'] }, [status, frame({ name: 'spacer', dir: 'H', h: 1, sizeH: 'FILL' }), secondary, primary]);
+  // one order in both layouts (status, secondary, primary), so the visual order is the DOM and focus order
+  if (sticky) body(c, { dir: 'V', w: 360, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', sides: ['top'] }, [status, secondary, primary]);
+  else body(c, { dir: 'H', w: 'size/form-max', pad: ['space/4', 0, 0, 0], gap: 'space/3', align: 'center', stroke: 'border/row', sides: ['top'] }, [status, frame({ name: 'spacer', dir: 'H', h: 1, sizeH: 'FILL' }), secondary, primary]);
   safe('expose buttons', function () { secondary.isExposedInstance = true; primary.isExposedInstance = true; });
 }
 function formActionBarBlock(root) {
@@ -102,7 +109,7 @@ function formActionBarBlock(root) {
   componentBlock(root, set, { title: 'FormActionBar', summary: 'One save bar for forms in both panels (1.9.0): the seller setup steps (Save and continue, Back to checklist), the store profile cards and later every settings form.',
     use: ['One bar per form or card group; one primary action.', 'Layout=Sticky below 760 px, so the primary action stays in reach while the form scrolls.', 'The status text is a role="status" region; Error goes with the error summary at the top of the form.'],
     props: ['Layout: Inline, Sticky', 'State: Clean, Dirty, Saving, Error', 'Show status, Show secondary (boolean); primary and secondary are exposed Buttons'],
-    a11y: ['The primary keeps its width while it shows Loading, so the bar does not jump.', 'Focus stays on the primary after a save.', 'Sticky: the bar never covers the focused field (scroll-padding in code).'],
+    a11y: ['DOM, focus and visual order are the same in both layouts: status, secondary, primary (the primary is last, nearest the thumb on a phone).', 'Saving: the primary shows Loading at the same width with aria-busy="true", not disabled, so focus stays on it; focus stays on the primary after a save.', 'A disabled primary stays focusable and names its reason with aria-describedby; the reason is text beside it.', 'Show status is off until the form has been saved once: a form never saved shows no "Saved".', 'Sticky: the bar never covers the focused field (scroll-padding in code).'],
     dont: ['Two primary actions.', 'A status shown by colour alone.'] });
   return set;
 }
@@ -178,7 +185,7 @@ function propertySteps190(own) {
       if (!has || props || desc) steps.push({ node: f, label: 'Field status', run: function () {
         const out = [];
         let st = has;
-        if (!st) { st = fieldStatusSlot(); add(f, st); f.insertChild(f.children.indexOf(ctl) + 1, st); st.isExposedInstance = true; out.push('Field status line (an exposed FieldStatus)'); }
+        if (!st) { st = fieldStatusSlot(); add(f, st); f.insertChild(f.children.indexOf(ctl) + 1, st); safe('expose Field status', function () { st.isExposedInstance = true; }); out.push('Field status line (an exposed FieldStatus)'); }
         if (props) { fr.keys['Show status'] = f.addComponentProperty('Show status', 'BOOLEAN', false); out.push('Field property Show status'); }
         st.componentPropertyReferences = Object.assign({}, st.componentPropertyReferences || {}, { visible: fr.keys['Show status'] });
         if (desc) { f.description = FIELD_DESC; out.push('update Field description'); }
@@ -197,12 +204,12 @@ function propertySteps190(own) {
     const first = items.length && items[0].children[1];
     const note = items.length === 1 && first && first.type === 'TEXT' && first.characters === SEG_A11Y_170[0];
     const done = items.length === SEG_A11Y.length && items.every(function (it, i) { return it.children[1] && it.children[1].characters === SEG_A11Y[i]; });
-    if (!note && !done && list) log('ℹ skipped SegmentedControl radio-group note in its Usage panel: the panel was changed by hand');
+    if (!note && !done) log('ℹ skipped SegmentedControl radio-group note in its Usage panel: the panel was changed by hand');
     const desc = sc.description === SEG_DESC_170;
     if (note || desc) steps.push({ node: sc, label: 'SegmentedControl radio group', run: function () {
       const out = [];
       if (note) {
-        first.characters = SEG_A11Y[0];
+        first.characters = SEG_A11Y[0]; if (first.name === SEG_A11Y_170[0].slice(0, 40)) first.name = SEG_A11Y[0].slice(0, 40); // text() names a layer by its first 40 characters
         const tmp = bullets(SEG_A11Y.slice(1), 312); tmp.children.slice().forEach(function (it) { list.appendChild(it); }); tmp.remove();
         out.push('SegmentedControl Usage: radio-group semantics');
       }
