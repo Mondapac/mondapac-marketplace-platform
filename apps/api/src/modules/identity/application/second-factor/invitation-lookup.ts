@@ -5,10 +5,11 @@ import type { Invitation } from '../../domain/invitation';
 export const ENROLMENT_SECRET_MINUTES = 15;
 
 /**
- * Whether an invitation can be accepted through the admin path of slice 7b (identity design 3.4,
- * 7.4): dispatched, pending and unexpired at `now`, of the `admin` kind, with no inviter. An
- * admin invitation with an inviter needs the inviter re-checked (Hassan, 14.2), which comes with
- * the admin team of slice 8b; until then it is refused like any other unusable invitation.
+ * Whether an invitation can be accepted through the admin path (identity design 3.4, 7.4):
+ * dispatched, pending and unexpired at `now`, of the `admin` kind. Both the first-admin
+ * invitation (no inviter, slice 7b) and one issued by an admin (slice 8b) pass here; the closing
+ * unit of the acceptance then applies the guards of each: HF5 for the first, and for the second
+ * the inviter still active and still able to grant the role (Hassan, 14.2).
  */
 export function acceptableAdminInvitation(
   invitation: Invitation | null,
@@ -18,7 +19,6 @@ export function acceptableAdminInvitation(
     invitation !== null &&
     invitation.usableAt(now) &&
     invitation.state.kind === 'admin' &&
-    invitation.state.invitedByAccountId === null &&
     invitation.state.email !== null
   );
 }

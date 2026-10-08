@@ -117,4 +117,6 @@ export type SessionRevokedReason =
   | 'password-changed'
   | 'second-factor-activated'
   | 'second-factor-replaced'
-  | 'second-factor-reset';
+  | 'second-factor-reset'
+  /** An admin disabled the account (3.1; slice 8b). */
+  | 'account-disabled';

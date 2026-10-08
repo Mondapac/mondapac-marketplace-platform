@@ -213,7 +213,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
     expect(worker.snapshot()).toEqual(api.snapshot());
   });
 
-  it("holds identity's actions of slices 6b, 8a-1 and 7b (PA 5)", () => {
+  it("holds identity's actions of slices 6b, 8a-1, 7b, 8a-2 and 8b (PA 5)", () => {
     const actions = graphs
       .get('api')!
       .get(AuditActionCatalogue)
@@ -223,9 +223,14 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
 
     expect(actions).toEqual([
       'identity.account-role.assigned',
+      'identity.account-role.changed',
+      'identity.account.disabled',
+      'identity.account.enabled',
       'identity.admin-session.opened',
       'identity.invitation.accepted',
       'identity.invitation.issued',
+      'identity.invitation.reissued',
+      'identity.invitation.revoked',
       'identity.role.seed-applied',
       'identity.role.seeded',
       'identity.second-factor.activated',

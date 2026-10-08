@@ -15,6 +15,45 @@
     }
   },
   {
+    "action": "identity.account-role.changed",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "roleId": "id"
+    },
+    "after": {
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "action": "identity.account.disabled",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|disabled)"
+    },
+    "after": {
+      "population": "enumOf(admin|customer)",
+      "status": "enumOf(active|disabled)"
+    }
+  },
+  {
+    "action": "identity.account.enabled",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|disabled)"
+    },
+    "after": {
+      "population": "enumOf(admin|customer)",
+      "status": "enumOf(active|disabled)"
+    }
+  },
+  {
     "action": "identity.admin-session.opened",
     "targetType": "identity.account",
     "targetId": "id",
@@ -42,7 +81,29 @@
     "action": "identity.invitation.issued",
     "targetType": "identity.invitation",
     "targetId": "id",
-    "actors": ["system"],
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "roleId": "id"
+    }
+  },
+  {
+    "action": "identity.invitation.reissued",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "roleId": "id"
+    }
+  },
+  {
+    "action": "identity.invitation.revoked",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
     "before": null,
     "after": {
       "kind": "enumOf(seller-owner|staff|admin)",
@@ -110,7 +171,7 @@
     "action": "identity.second-factor.reset",
     "targetType": "identity.second-factor",
     "targetId": "id",
-    "actors": ["system"],
+    "actors": ["authenticated", "system"],
     "before": {
       "state": "enumOf(pending|active)"
     },
