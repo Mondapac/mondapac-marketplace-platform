@@ -224,7 +224,11 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
 `one_time_links`.
 - **Rule:** every unit that opens a session after checking the credential (the sign-in closing
   unit, the link variant included) or that replaces the credential and revokes sessions (reset,
-  change) takes it first, at READ COMMITTED. Either the session commits first and the revocation
+  change) takes it first, at READ COMMITTED. Since slice 8b the units that disable or enable an
+  account (admin or customer) and the reset of another admin's second factor take it first too,
+  in their serializable unit (5.1), then read the actor, the grants and the holders, then write
+  the account, sessions, challenges and `second_factors`, then outbox and audit (Mojtaba, PR
+  #187). Either the session commits first and the revocation
   ends it, or the other side waits and then reads the new hash.
 - **Lock order** in those units: account (this lock) first; then `seller_access` (the seller
   sign-in's `lockForSession`, slice 7b item H); then that unit's link, session, credential,
@@ -472,6 +476,12 @@ constraint; `assigned_by_account_id` (C4, NULL for a founding assignment); `assi
 - `(market_id, role_id)`: holders of a role (`LastHolderPolicy`, `role.in-use`, and HF5 (b): an
   active Platform Administrator exists), each followed by `accounts_pkey`; for a seller, the
   active members on `(market_id, seller_id, state)`, then this table on `(market_id, account_id)`.
+  Two reads use it: `hasActiveHolder` (HF5 (b), an `EXISTS`) and, since slices 8a-2 and 8b,
+  `activeHoldersOf` (the ids of the active, verified holders that `LastHolderPolicy` counts in the
+  serializable unit). Both join `accounts` with `market_id` in its predicate. **Platform roles
+  only** (Mojtaba F2, PR #187): measured on 2026-10-08, a role with 3.7k holders switched the plan
+  to a parallel full scan of `accounts` (4,930 buffers, 31.8 ms) and a predicate lock on the whole
+  table; seller holders go through memberships as above.
 - One Seller Owner per seller (HF5 (c)) is not a constraint: the seller system role is one row per
   Market, and an assignment carries no seller id (5).
 
@@ -622,6 +632,16 @@ then fail with `40001`, and the UnitOfWork runs the work again, three attempts i
 sign-in's closing unit write none of the three tables and stay READ COMMITTED. Since slice 4 the
 sign-in closing unit writes the account row (`version + 0`, the credential lock of 3.3) and stays
 READ COMMITTED.
+
+**Writers added in slices 8a-2 and 8b** (Mojtaba F3, PR #187), each in one `serializable` unit:
+an admin's role change (`role_assignments`); disabling and enabling an admin or a customer
+account (`accounts.status`); the reset of another admin's second factor (it counts no holder but
+takes the account lock and revokes sessions in the same unit); and the admin invitation
+acceptance with an inviter (as the first-admin acceptance, 3.10). Each re-reads its actor (or the
+inviter) in the unit, so a disable or demotion that commits first refuses it on the retry. The
+races are tested in `apps/api/test/db/admin-roles.db-spec.ts`: two mutual disables, two mutual
+demotions, and a disable against a demotion. Exactly one commits, and one active, verified
+administrator remains.
 
 ## 6. `platform.audit_log`: the `ANONYMOUS` actor type
 
