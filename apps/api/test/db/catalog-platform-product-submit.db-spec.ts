@@ -59,6 +59,8 @@ describe.each(TEST_MARKETS)(
         variantRemoved: true,
       }),
       maxVariantsPerProduct: () => 10,
+      productTypes: () => ['simple', 'configurable'],
+      defaultFamily: () => 'default',
       approvalRequired: () => Promise.resolve(true),
     };
 

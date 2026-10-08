@@ -136,6 +136,8 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => 100,
+      productTypes: () => ['simple', 'configurable'],
+      defaultFamily: () => 'default',
       approvalRequired: () => Promise.resolve(true),
     };
     const outbox: OutboxWriter = { append: () => Promise.resolve() };

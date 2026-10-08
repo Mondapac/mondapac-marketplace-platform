@@ -1122,8 +1122,8 @@ only the purge job deletes accounts.
 ### 12.1 Order, relative size and security gates
 The order of brief s11 is confirmed with the changes marked **Δ**, decided by Ali (14.1-7). One
 slice is one branch and one PR (rule 13), so slice 1 is built as 1a to 1d, slice 6 as 6a and 6b,
-and slice 8 as 8a-1, 8a-2 and 8b. **Δ 2026-10-08 (Ali, on `platform-audit.md` 14 and 15):** the
-order from slice 6 on is **6a → 6b → 8a-1 → 7 → 8a-2 with 8b**, then 9 to 12. Sizes are relative and for the backend: S = one use case on existing mechanisms; M = a few
+and slice 8 as 8a-1, 8a-2, 8b, 8c and 8d. **Δ 2026-10-08 (Ali, on `platform-audit.md` 14 and 15; slice table ruling on PR #187):** the
+order from slice 6 on is **6a → 6b → 8a-1 → 7 → 8a-2 with 8b → 8c**, then 9 to 12; **8d** after the "find and deactivate a customer" mini-review. Sizes are relative and for the backend: S = one use case on existing mechanisms; M = a few
 use cases or one new aggregate; L = a new security-relevant mechanism; XL = several. The last
 column is what Hassan checks at that slice's review (HF numbers, 14.2), on top of the security
 review every slice of this module gets.
@@ -1146,6 +1146,8 @@ review every slice of this module gets.
 | 8a-1 | Registry, catalogue, default roles, permission path | L | **Δ** split from 8a (Ali 2026-10-08), right after 6b and before 7. `GrantPolicy`, `LastHolderPolicy`, the permission path of `AuthorisationCheck`; `membershipOf` for other accounts; the default-role seed and the audited seed-version upgrade of system roles; `NO_PERMISSION_KEYS` swapped for the registry in the outbox and the audit writer in the same PR. Admin fixture accounts exist only in tests: no seed, dev route or script creates an admin before slice 7. **R-3 (Hassan M2, L-B):** the grant read and the registry are bound to `effectiveKeysOf` here, for the gate and the reviewer rule alike, and the equivalence test of 8.7 runs on the real registry: for every fixture account that passes the SQL narrowing and has an active factor, a recipient exactly when the gate allows `permissions [identity.seller-access.approve]`. The factor half stays stubbed (no admin has a factor) until slice 7 binds the factor store. **Built (branch `feat/identity-slice8a1-permission-registry`, 2026-10-08), no migration:** see the as-built note in 6.7 | HF5, R7 |
 | 8a-2 | Assign an admin's role | M | **Δ** After 7, with 8b: needs admin accounts and sessions. Admin invitation and role grants still come after admin sign-in with a second factor (brief s11). **Built with 8b** (branch `feat/identity-slice8a2-8b-admin-roles`, 2026-10-08), no migration: see the 8a-2 and 8b as-built note in 6.7 | HF8, with the serializable race test |
 | 8b | Admin invitation, disabling accounts, admin second-factor reset | M | **Δ** Uses 8a-1; ships with 8a-2, after 7. **Built with 8a-2** (same branch), no migration | — |
+| 8c | Admin team list | S/M | **Δ** Ali 2026-10-08, no rule-10 mini-review (both keys are in 5.3, the hints in 8.6 row 6). After 8a-2 with 8b, before 9; merges before any slice 13 Team screen that calls the 8a-2/8b commands; does not block 9. `identity.admin-account.view`: admin accounts with their roles, open invitations and the per-row `allowed`/denial hints from `GrantPolicy` and `LastHolderPolicy`. Read-only over existing tables, no migration expected (if an index or column is needed, it goes to Mojtaba first, and this row and the estimate change) | Each hint comes from the same policies that guard the commands, with no second implementation, and is advisory only: the command re-checks in its own unit; no hint leaks state the actor's keys do not cover; the list returns no invitation token or hash and no second-factor secret or recovery data |
+| 8d | Customer lookup by exact email | S | **Δ** Ali 2026-10-08. Waits on the open board mini-review "find and deactivate a customer" (the rule-10 vehicle; no new one). `identity.customer-account.view`: one customer and its status. Merges before the Customers screen and before the first real customer; not on the path to 9 to 12 | Exact match only, on the email normalised as at sign-in, no partial or prefix search; the same answer for an unknown email and one outside the Market; the response carries only the fields the mini-review approves; the searched email is not written to logs; an audit of the lookup if the mini-review asks for it |
 | 9 | Approve, reject, suspend, reinstate, seller by invitation | L | Decisions with encrypted reasons, the decision mails, re-apply behind the facade. **Δ 2026-10-08:** no reviewer mail and no subscriber for E3 here (the R-3 slice, 8.7) | HF13 |
 | 10 | Role editor (both scopes) | M | Three use cases on 8a | — |
 | 11 | Seller team | M | Staff invitation and acceptance, role change, removal | HF5, HF8 |
@@ -1153,8 +1155,8 @@ review every slice of this module gets.
 | 13 | Panel screens | XL | Sized by the frontend track; blocked on D1, D2 and F0; parallel from slice 5 | — |
 
 **Estimate for the owner** (Ali, 2026-10-03; **updated 2026-10-08** for the 6a/6b and 8a-1/8a-2
-splits; **again 2026-10-08** for the 7a/7b split). Identity is 20 backend steps: slices 0 to 12, with slice 1 in four parts, slices 6 and 7 in two
-and slice 8 in three. That is about 28 pull requests, plus the R-3 slice (no migration) and the Market-config PR that 7b waits for (catalog's). Nine of them carry
+splits; **again 2026-10-08** for the 7a/7b split). Identity is 21 backend steps (**Δ 2026-10-08**, Ali: 8c and 8d added): slices 0 to 12, with slice 1 in four parts, slices 6 and 7 in two
+and slice 8 in four (8a-1, 8a-2 with 8b in one PR, 8c, 8d). That is about 29 pull requests, plus the R-3 slice (no migration) and the Market-config PR that 7b waits for (catalog's). Nine of them carry
 identity's database migrations (slices 1b, 1c, 1d, 2, 3, 5, 6a, 7a and 9: data design 8.1), which
 must merge one at a time, and every one needs a security review. The panel screens come on top of
 that. The riskiest steps are slice 2 (sign-in and sessions), slices 8a and 10 (permissions and
@@ -1362,4 +1364,4 @@ the final pass, `docs/design/domain/platform-foundations.md` (15.1); `ux.md` is 
 | Board | Mini-review: approve and reject enter through `sellers`, and AC 5 changes (automatic approval only after `sellers`' checks; 8.4 points 4 and 5) | 14.1-12; with the `sellers` slice that adds its review |
 | Board | Mini-review: re-confirmation moves from Phase 5 to Phase 3 (8.5) | 14.1-12; before `sellers` slice 10 |
 | Board | Mini-review: the reviewer notification follows a submission, not the email confirmation (8.5) | 14.1-12; with the `sellers` submission slice |
-| Board | Mini-review "find and deactivate a customer": the use case and its permissions exist, the screen does not (`ux.md` 1.3) | Jafar's answer 5; before the first real customer |
+| Board | Mini-review "find and deactivate a customer": the permissions exist (5.3); the lookup is slice 8d, which waits on this review as its rule-10 vehicle (Ali 2026-10-08); the screen does not exist (`ux.md` 1.3) | Jafar's answer 5; Hadi and Jafar set a target date; before 8d and the first real customer |

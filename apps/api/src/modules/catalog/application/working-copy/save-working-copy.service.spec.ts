@@ -134,6 +134,8 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
         if (policy === 'throws') throw new Error('policy down');
         return maxVariants;
       },
+      productTypes: () => ['simple', 'configurable'],
+      defaultFamily: () => 'default',
       approvalRequired: () => Promise.resolve(true),
     };
     const outbox: OutboxWriter = {
