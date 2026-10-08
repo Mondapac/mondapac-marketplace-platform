@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { Id, MarketId, Result, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
+import { SecondFactorChanged, type SecondFactorChange } from './events';
 import { RECOVERY_CODES } from './recovery-code';
 import { stepIsFresh } from './totp';
 
@@ -69,12 +70,18 @@ const refused = (reason: SecondFactorRefused['reason']): SecondFactorRefused =>
  * - `regenerateRecoveryCodes`: ten new codes; the old ones stop working.
  * - `recordLock`: the instant of an HF2 lock, so its event can send the alert (6.8).
  *
+ * - `recordReset`: the last version step of a factor that a reset removes (3.6 `active` →
+ *   `none`); the repository then deletes the row.
+ *
  * Secrets never enter this class in clear: it holds ciphertext and keyed hashes only. Every
- * change raises the version by one (C5). Events (`identity.second-factor-changed.v1`, 8.2) are
- * recorded by the use cases that change a factor, from slice 7b.
+ * change raises the version by one (C5). `identity.second-factor-changed.v1` (8.2, slice 7b) is
+ * recorded on the steps the holder must know of: `activated`, `replaced`,
+ * `recovery-codes-regenerated`, `reset` and `locked`; a spent step or code, a waiting
+ * replacement and its clearing record none.
  */
 export class SecondFactor {
   #state: SecondFactorState;
+  #events: PendingEvent[] = [];
 
   private constructor(
     state: SecondFactorState,
@@ -99,7 +106,7 @@ export class SecondFactor {
     if (!stepIsFresh(input.acceptedStep, null)) {
       throw new SecondFactorInvariantError('an accepted step is a whole number from 0');
     }
-    return new SecondFactor(
+    const factor = new SecondFactor(
       {
         id: input.id,
         marketId: input.marketId,
@@ -116,6 +123,8 @@ export class SecondFactor {
       },
       null,
     );
+    factor.record('activated', input.now);
+    return factor;
   }
 
   /** A pending factor: the secret is stored, the device not yet proved (3.6 `none` → `pending`). */
@@ -157,6 +166,11 @@ export class SecondFactor {
     return this.#state.state === 'active';
   }
 
+  /** Events recorded since the factor was built or restored. */
+  get pendingEvents(): readonly PendingEvent[] {
+    return [...this.#events];
+  }
+
   /** The unused recovery codes, by position. */
   get unusedRecoveryCodes(): readonly StoredRecoveryCode[] {
     return this.#state.recoveryCodes.filter((code) => code.usedAt === null);
@@ -178,6 +192,7 @@ export class SecondFactor {
       activatedAt: input.now,
       recoveryCodes: freshCodes(input.recoveryCodeHashes),
     });
+    this.record('activated', input.now);
     return ok(undefined);
   }
 
@@ -215,7 +230,7 @@ export class SecondFactor {
    * The first valid code of the new device swaps the secrets in one change (M13): the old
    * secret is void. `step` is the step of that code, spent like any other.
    */
-  completeReplacement(step: number): Result<void, SecondFactorRefused> {
+  completeReplacement(step: number, now: Temporal.Instant): Result<void, SecondFactorRefused> {
     const { state, pendingSecretCiphertext, lastAcceptedStep } = this.#state;
     if (state !== 'active') return err(refused('wrong-state'));
     if (pendingSecretCiphertext === null) return err(refused('no-replacement'));
@@ -225,6 +240,7 @@ export class SecondFactor {
       pendingSecretCiphertext: null,
       lastAcceptedStep: step,
     });
+    this.record('replaced', now);
     return ok(undefined);
   }
 
@@ -236,15 +252,42 @@ export class SecondFactor {
   }
 
   /** Ten new codes; every earlier one stops working (3.6). */
-  regenerateRecoveryCodes(hashes: readonly Uint8Array[]): Result<void, SecondFactorRefused> {
+  regenerateRecoveryCodes(
+    hashes: readonly Uint8Array[],
+    now: Temporal.Instant,
+  ): Result<void, SecondFactorRefused> {
     if (this.#state.state !== 'active') return err(refused('wrong-state'));
     this.change({ recoveryCodes: freshCodes(hashes) });
+    this.record('recovery-codes-regenerated', now);
     return ok(undefined);
   }
 
   /** The instant of an HF2 lock (6.8): the counter is the lock; this drives the alert. */
   recordLock(now: Temporal.Instant): void {
     this.change({ lockedAt: now });
+    this.record('locked', now);
+  }
+
+  /**
+   * A reset returns the factor to `none` (3.6, 7.3): the repository deletes the row in the same
+   * unit. This is its last version step, so the event names a version the factor never had
+   * before, and the next enrolment gets a new id (M3).
+   */
+  recordReset(now: Temporal.Instant): void {
+    this.change({});
+    this.record('reset', now);
+  }
+
+  private record(change: SecondFactorChange, now: Temporal.Instant): void {
+    const { id, accountId, version } = this.#state;
+    this.#events.push(
+      SecondFactorChanged.record({
+        aggregateId: id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId, change },
+      }),
+    );
   }
 
   private change(fields: Partial<SecondFactorState>): void {

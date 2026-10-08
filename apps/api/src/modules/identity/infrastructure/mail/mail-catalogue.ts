@@ -48,6 +48,26 @@ export const MAIL_KEYS = [
   'identity.mail.reviewer-notice.admin.heading',
   'identity.mail.reviewer-notice.admin.body',
   'identity.mail.reviewer-notice.admin.action',
+  'identity.mail.reset-password.admin.subject',
+  'identity.mail.reset-password.admin.heading',
+  'identity.mail.reset-password.admin.body',
+  'identity.mail.reset-password.admin.action',
+  'identity.mail.password-changed.admin.subject',
+  'identity.mail.password-changed.admin.heading',
+  'identity.mail.password-changed.admin.body',
+  'identity.mail.enrol-second-factor.admin.subject',
+  'identity.mail.enrol-second-factor.admin.heading',
+  'identity.mail.enrol-second-factor.admin.body',
+  'identity.mail.enrol-second-factor.admin.action',
+  'identity.mail.invitation.admin.subject',
+  'identity.mail.invitation.admin.heading',
+  'identity.mail.invitation.admin.body',
+  'identity.mail.invitation.admin.action',
+  'identity.mail.second-factor-changed.admin.subject',
+  'identity.mail.second-factor-changed.admin.heading',
+  'identity.mail.second-factor-changed.admin.body.replaced',
+  'identity.mail.second-factor-changed.admin.body.reset',
+  'identity.mail.second-factor-changed.admin.body.locked',
   'identity.mail.common.account-line.customer',
   'identity.mail.common.account-line.seller',
   'identity.mail.common.account-line.admin',
@@ -111,10 +131,17 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       return name as MailKey;
     };
     const values: Record<string, string> = {};
-    if (mail.template === 'confirm-email' || mail.template === 'reset-password') {
+    if (
+      mail.template === 'confirm-email' ||
+      mail.template === 'reset-password' ||
+      mail.template === 'enrol-second-factor' ||
+      mail.template === 'invitation'
+    ) {
       values['duration'] = formatDuration(locale, mail.lifetimeMinutes);
     }
-    if (mail.template === 'password-changed') {
+    const notice =
+      mail.template === 'password-changed' || mail.template === 'second-factor-changed';
+    if (notice) {
       // A notice says when (`ux.md` 3.4): in the Market's zone, the fallback of ADR-0005, since
       // an account has no zone of its own; the zone's name is written with the time.
       const timezone = this.markets.get(market.marketId).timezone;
@@ -134,19 +161,22 @@ export class CatalogueMailComposer implements IdentityMailComposer {
     if (!(MAIL_KEYS as readonly string[]).includes(accountLine)) {
       throw new Error(`identity has no account line for the ${mail.population} population`);
     }
-    // E2 has two bodies, by whether the seller waits for approval (`ux.md` 3.4).
+    // E2 has two bodies, by whether the seller waits for approval (`ux.md` 3.4); the
+    // second-factor notice one per change (slice 7b).
     const body =
-      mail.template === 'welcome' && !mail.approvalRequired ? 'body.no-approval' : 'body';
-    // E13 is a notice without a button: "if this wasn't you" in place of "ignore this" (3.4).
-    const action =
-      mail.template === 'password-changed' ? [] : [`${line(key('action'))}: ${mail.url}`];
+      mail.template === 'welcome' && !mail.approvalRequired
+        ? 'body.no-approval'
+        : mail.template === 'second-factor-changed'
+          ? `body.${mail.change}`
+          : 'body';
+    // E13 and the factor notice have no button: "if this wasn't you" in place of "ignore this".
+    const action = notice ? [] : [`${line(key('action'))}: ${(mail as { url: string }).url}`];
     // E3 answers no request of the reader, so "ignore this" does not fit it (identity design 8.7).
-    const closing: MailKey[] =
-      mail.template === 'password-changed'
-        ? ['identity.mail.common.not-you']
-        : mail.template === 'reviewer-notice'
-          ? []
-          : ['identity.mail.common.ignore'];
+    const closing: MailKey[] = notice
+      ? ['identity.mail.common.not-you']
+      : mail.template === 'reviewer-notice'
+        ? []
+        : ['identity.mail.common.ignore'];
     const text = [
       line(key('heading')),
       line(key(body)),

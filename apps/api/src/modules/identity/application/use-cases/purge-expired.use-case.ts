@@ -2,6 +2,7 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { INVITATION_KINDS, type InvitationKind } from '../../domain/invitation';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
@@ -54,7 +55,9 @@ export interface PurgeExpiredDependencies {
  *   per statement, from the oldest;
  * - one-time links consumed or expired for a day (slice 3);
  * - sign-in challenges past their expiry; pending invitations past their expiry; accepted and
- *   revoked invitations 30 days after the decision (slice 7).
+ *   revoked invitations 30 days after the decision (slice 7); pending invitations never
+ *   dispatched, once older than their kind's lifetime from Market configuration (slice 7b, Ali's
+ *   ruling 4; a kind without a configured lifetime is left alone).
  *
  * Each statement runs in its own short unit. Rule `system`: run by the hourly job only.
  */
@@ -123,12 +126,20 @@ export class PurgeExpired extends UseCase<
     const purgedChallenges = await unitOfWork.run(market, async () =>
       ok(await this.deps.challenges.purgeExpired(market, now)),
     );
+    // Ali's ruling 4 (slice 7b, item G): a never-dispatched pending invitation goes once it is
+    // older than its kind's lifetime; a kind the Market does not configure is left alone.
+    const undispatchedCreatedBefore: Partial<Record<InvitationKind, Temporal.Instant>> = {};
+    for (const kind of INVITATION_KINDS) {
+      const minutes = this.deps.policy.invitationLifetimeMinutes(market, kind);
+      if (minutes !== null) undispatchedCreatedBefore[kind] = now.subtract({ minutes });
+    }
     const purgedInvitations = await unitOfWork.run(market, async () =>
       ok(
         await this.deps.invitations.purge(
           market,
           now,
           now.subtract({ hours: INVITATION_KEPT_AFTER_DECISION_HOURS }),
+          undispatchedCreatedBefore,
         ),
       ),
     );

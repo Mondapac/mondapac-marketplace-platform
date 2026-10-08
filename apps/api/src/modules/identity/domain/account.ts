@@ -150,6 +150,46 @@ export class Account {
     );
   }
 
+  /**
+   * Acceptance of an invitation (identity design 3.1, 3.2, 3.4; AC 22, AC 29; slice 7b for
+   * admins): an active account, verified now because the invitation's link proved the mailbox,
+   * with exactly the invited address and the display name the caller parsed (HF13). Seller-side
+   * and admin accounts only: a customer is never invited. No event: the invitation's
+   * `identity.invitation-accepted.v1` names the account (8.2).
+   */
+  static acceptInvitation(input: {
+    readonly id: Id<'Account'>;
+    readonly marketId: MarketId;
+    readonly population: 'admin' | 'seller';
+    readonly email: EmailAddress;
+    readonly displayName: string;
+    readonly passwordHash: string;
+    readonly now: Temporal.Instant;
+  }): Account {
+    const { id, marketId, population, email, displayName, passwordHash, now } = input;
+    if (population !== 'admin' && population !== 'seller') {
+      throw new TypeError('Account.acceptInvitation: only seller-side and admin accounts');
+    }
+    if (displayName.trim() === '') throw new AccountInvariantError('display-name-required');
+    return new Account(
+      {
+        id,
+        marketId,
+        population,
+        email: Object.freeze({ typed: email.typed, normalized: email.normalized }),
+        displayName,
+        status: 'active',
+        emailVerifiedAt: now,
+        existingAccountNoticeAt: null,
+        signedUpAt: now,
+        createdAt: now,
+        version: 1,
+        credential: Object.freeze({ passwordHash, changedAt: now }),
+      },
+      null,
+    );
+  }
+
   /** An account read from the store. Checks the invariants again. */
   static restore(state: AccountState): Account {
     return new Account(state, state.version);

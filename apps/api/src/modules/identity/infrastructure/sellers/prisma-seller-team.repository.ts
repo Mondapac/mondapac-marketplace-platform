@@ -316,6 +316,18 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
     });
   }
 
+  async hasActiveHolder(market: MarketContext, roleId: Id<'Role'>): Promise<boolean> {
+    const row = await this.prisma.tx(market).identityRoleAssignment.findFirst({
+      where: {
+        marketId: market.marketId,
+        roleId,
+        account: { status: 'active', emailVerifiedAt: { not: null } },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async add(market: MarketContext, assignment: RoleAssignment): Promise<void> {
     const state = assignment.state;
     await this.prisma.tx(market).identityRoleAssignment.create({

@@ -141,6 +141,16 @@ export class PrismaSellerAccessRepository implements SellerAccessRepository {
     });
   }
 
+  async lockForSession(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean> {
+    // As AccountRepository.lockCredential: an UPDATE that changes no value takes the row's write
+    // lock until the unit ends (item H); a concurrent holder makes it wait, under lock_timeout.
+    const { count } = await this.prisma.tx(market).identitySellerAccess.updateMany({
+      where: { marketId: market.marketId, sellerId },
+      data: { version: { increment: 0 } },
+    });
+    return count === 1;
+  }
+
   async save(market: MarketContext, access: SellerAccess): Promise<void> {
     const state = access.state;
     const expected = access.persistedVersion;
