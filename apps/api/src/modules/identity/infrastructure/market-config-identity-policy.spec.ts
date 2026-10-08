@@ -41,7 +41,16 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
       idleTimeoutSeconds: 7 * 86_400,
       absoluteLifetimeSeconds: 14 * 86_400,
     });
-    expect(policy.sessionLifetime(testMarketContext('ZZ', 'default'), 'admin')).toBeNull();
+    // Slice 7b: the admin session (30 minutes idle and 12 hours for AU), never kept.
+    expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'admin')).toEqual({
+      idleTimeoutSeconds: 30 * 60,
+      absoluteLifetimeSeconds: 12 * 3600,
+    });
+    expect(policy.sessionLifetime(testMarketContext('ZZ', 'default'), 'admin')).toEqual({
+      idleTimeoutSeconds: 20 * 60,
+      absoluteLifetimeSeconds: 8 * 3600,
+    });
+    expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'admin', true)).toBeNull();
     expect(policy.sessionLifetime(testMarketContext('AU', 'default'), 'customer', true)).toBeNull();
   });
 
@@ -98,7 +107,9 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     // SEL-05, ACC-04: exactly 60 minutes in every Market (slice 4).
     expect(policy.linkLifetimeMinutes(au, 'reset-password')).toBe(60);
     expect(policy.linkLifetimeMinutes(zz, 'reset-password')).toBe(60);
-    expect(policy.linkLifetimeMinutes(au, 'enrol-second-factor')).toBeNull();
+    // Slice 7b: the admin's enrolment link.
+    expect(policy.linkLifetimeMinutes(au, 'enrol-second-factor')).toBe(60);
+    expect(policy.linkLifetimeMinutes(zz, 'enrol-second-factor')).toBe(45);
     expect(policy.unverifiedAccountRetentionDays(au)).toBe(7);
     expect(policy.unverifiedAccountRetentionDays(zz)).toBe(5);
     expect(policy.mailSender(au)).toEqual({
