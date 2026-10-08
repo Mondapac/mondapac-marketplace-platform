@@ -118,6 +118,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
+    // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
+    // closed (valid_to is the only column that changes) and, while it has not started, deleted.
+    'sellers.tax_registration_periods': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['valid_to'],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,

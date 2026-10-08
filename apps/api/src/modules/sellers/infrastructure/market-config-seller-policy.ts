@@ -1,6 +1,9 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
-import type { SellerMarketPolicy } from '../application/ports/seller-market-policy';
+import type {
+  BusinessIdentifierRule,
+  SellerMarketPolicy,
+} from '../application/ports/seller-market-policy';
 import { reservedWordsOf, type ReservedWords } from '../domain/reserved-words';
 
 /**
@@ -29,5 +32,12 @@ export class MarketConfigSellerPolicy implements SellerMarketPolicy {
       this.#reserved.set(market.marketId, words);
     }
     return words;
+  }
+
+  businessIdentifier(market: MarketContext): BusinessIdentifierRule | null {
+    const identifier = this.markets.get(market.marketId).sellers?.businessIdentifier;
+    if (identifier === undefined) return null;
+    const { scheme, required, labelKey } = identifier;
+    return { scheme, required, labelKey };
   }
 }

@@ -105,6 +105,14 @@ model SellersSellerFile {
   /// and the CHECK `seller_files_draft_slug_check` are hand-written in the migration. No unique key
   /// and no index: uniqueness is decided when the first submission holds the slug in shop_slugs (T1).
   draftSlug                        String?                   @map("draft_slug")
+  /// Slice 3. Clear scheme code from Market configuration; the three identifier columns are all
+  /// NULL or all set (CHECK seller_files_identifier_set_check, hand-written).
+  identifierScheme                 String?                   @map("identifier_scheme")
+  /// Slice 3. Personal, S4. The normalised identifier; label sellers.seller-file.identifier.
+  identifierCiphertext             String?                   @map("identifier_ciphertext")
+  /// Slice 3. Personal (pseudonymous), S5: IdentifierIndex.of(market, scheme, normalised), 32
+  /// bytes. The partial index (market_id, identifier_index) WHERE NOT NULL is hand-written.
+  identifierIndex                  Bytes?                    @map("identifier_index")
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                          Int
   createdAt                        DateTime                  @map("created_at") @db.Timestamptz(6)
@@ -197,17 +205,48 @@ model SellersSellerAdminSettings {
 }
 
 /// The root of a seller's tax registration periods (data design 3.7; V2): it exists so that a
-/// recorded period raises one version. The periods arrive in slice 3.
+/// recorded period raises one version.
 model SellersSellerTaxProfile {
-  sellerId   String            @id @map("seller_id") @db.Uuid
-  marketId   String            @map("market_id") @db.VarChar(8)
-  tenantId   String            @map("tenant_id")
+  sellerId   String                        @id @map("seller_id") @db.Uuid
+  marketId   String                        @map("market_id") @db.VarChar(8)
+  tenantId   String                        @map("tenant_id")
   version    Int
-  createdAt  DateTime          @map("created_at") @db.Timestamptz(6)
-  sellerFile SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  createdAt  DateTime                      @map("created_at") @db.Timestamptz(6)
+  sellerFile SellersSellerFile             @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  periods    SellersTaxRegistrationPeriod[]
 
   @@unique([marketId, sellerId])
   @@map("seller_tax_profiles")
+  @@schema("sellers")
+}
+
+/// One period of a seller's indirect-tax registration (data design 3.7; sellers design 2.4 rule 4;
+/// ADR-0009 V2). Half-open: valid_from inclusive, valid_to exclusive, NULL = open. The no-overlap
+/// rule is `tax_registration_periods_no_overlap_excl` (EXCLUDE USING gist, hand-written in the
+/// migration: Prisma does not model it) and the CHECKs and grants are hand-written too. The
+/// application may only INSERT, close (UPDATE valid_to) and DELETE a period that has not started.
+model SellersTaxRegistrationPeriod {
+  id                         String                  @id @db.Uuid
+  marketId                   String                  @map("market_id") @db.VarChar(8)
+  tenantId                   String                  @map("tenant_id")
+  sellerId                   String                  @map("seller_id") @db.Uuid
+  /// Clear; the platform decides nothing from it (ADR-0007 decision 6).
+  registeredForIndirectTax   Boolean                 @map("registered_for_indirect_tax")
+  /// The local date the person entered (or the recording instant's local date).
+  effectiveFromLocal         DateTime                @map("effective_from_local") @db.Date
+  /// IANA zone that turned the local date into valid_from (ADR-0005 decision 3).
+  effectiveZone              String                  @map("effective_zone")
+  validFrom                  DateTime                @map("valid_from") @db.Timestamptz(6)
+  validTo                    DateTime?               @map("valid_to") @db.Timestamptz(6)
+  /// seller | admin.
+  recordedByKind             String                  @map("recorded_by_kind")
+  recordedByAccountId        String                  @map("recorded_by_account_id") @db.Uuid
+  recordedAt                 DateTime                @map("recorded_at") @db.Timestamptz(6)
+  taxProfile                 SellersSellerTaxProfile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// "As of an instant" (ADR-0007 decision 7), led by market_id (C7).
+  @@index([marketId, sellerId, validFrom])
+  @@map("tax_registration_periods")
   @@schema("sellers")
 }
 

@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
+import { sameIdentifier, type DraftIdentifier } from './business-identifier';
 import { SellerFileCreated } from './events';
 import type { Sealed } from './sealed';
 import type { ShopSlug } from './shop-slug';
@@ -29,6 +30,8 @@ export interface SellerFileDraft {
   readonly zone: ZoneState | null;
   /** The shop slug the seller chose (Q-M25): parsed, not held; the first submission holds it. */
   readonly slug: ShopSlug | null;
+  /** The business identifier: scheme (clear), sealed normalised value and its keyed index. */
+  readonly identifier: DraftIdentifier | null;
 }
 
 export const EMPTY_DRAFT: SellerFileDraft = Object.freeze({
@@ -41,6 +44,7 @@ export const EMPTY_DRAFT: SellerFileDraft = Object.freeze({
   serviceAreaCode: null,
   zone: null,
   slug: null,
+  identifier: null,
 });
 
 export interface SellerFileState {
@@ -91,16 +95,34 @@ export type DraftRefused =
   | { readonly code: 'phone.required' }
   | { readonly code: 'timezone.not-selectable' };
 
-/** The mandatory parts of a complete draft (brief AC 5), in the order of the form. */
+/**
+ * The parts of a complete draft (brief AC 5), in the order of the form: details, address, number,
+ * slug. The identifier is a part only when the Market requires it (design 3.1, Q3).
+ */
 export const DRAFT_PARTS = [
   'storeName',
   'businessName',
   'phone',
   'address',
   'timezone',
+  'identifier',
   'slug',
 ] as const;
 export type DraftPart = (typeof DRAFT_PARTS)[number];
+
+/**
+ * What the Market's current configuration asks of a draft (design 3.1, 4.1). Every save and
+ * every reading of the missing parts takes it explicitly: there is no default, so a Market that
+ * requires an identifier is never judged by another Market's rule.
+ */
+export interface DraftRequirements {
+  readonly identifierRequired: boolean;
+  /**
+   * The Market's current scheme code. A stored identifier of another scheme (the Market changed
+   * its scheme after the seller saved) does not count: it is not valid for this Market (AC 3).
+   */
+  readonly identifierScheme: string;
+}
 
 /**
  * The defaults the creating handler writes into the seller's admin settings (sellers design
@@ -197,12 +219,16 @@ export class SellerFile {
   }
 
   /** The mandatory parts the draft does not hold yet, in the order of the form. */
-  missing(): readonly DraftPart[] {
-    return missingParts(this.#state.draft);
+  missing(requirements: DraftRequirements): readonly DraftPart[] {
+    return missingParts(this.#state.draft, requirements);
   }
 
   /** Saves the General group (store name, business name, phone, contact email). */
-  saveGeneral(input: GeneralDraftInput, now: Temporal.Instant): Result<void, DraftRefused> {
+  saveGeneral(
+    input: GeneralDraftInput,
+    now: Temporal.Instant,
+    requirements: DraftRequirements,
+  ): Result<void, DraftRefused> {
     if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
     if (input.phone === null) return err({ code: 'phone.required' });
     this.apply(
@@ -214,6 +240,7 @@ export class SellerFile {
         contactEmail: input.contactEmail,
       },
       now,
+      requirements,
     );
     return ok(undefined);
   }
@@ -223,7 +250,11 @@ export class SellerFile {
    * the ServiceArea code the operating postcode fell in, and the zone (`zoneAfterAddressSave`).
    * An address outside every area is still saved (brief s7: the seller learns at once).
    */
-  saveAddress(input: AddressDraftInput, now: Temporal.Instant): Result<void, DraftRefused> {
+  saveAddress(
+    input: AddressDraftInput,
+    now: Temporal.Instant,
+    requirements: DraftRequirements,
+  ): Result<void, DraftRefused> {
     if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
     const zone = zoneAfterAddressSave(this.#state.draft.zone, input.zones, input.zone);
     if (!zone.ok) return zone;
@@ -236,6 +267,7 @@ export class SellerFile {
         zone: zone.value,
       },
       now,
+      requirements,
     );
     return ok(undefined);
   }
@@ -248,31 +280,60 @@ export class SellerFile {
   saveSlug(
     slug: ShopSlug,
     now: Temporal.Instant,
+    requirements: DraftRequirements,
   ): Result<void, { readonly code: 'file.change-request-required' }> {
     if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
     if (this.#state.draft.slug === slug) return ok(undefined);
-    this.apply({ ...this.#state.draft, slug }, now);
+    this.apply({ ...this.#state.draft, slug }, now, requirements);
     return ok(undefined);
   }
 
-  private apply(draft: SellerFileDraft, now: Temporal.Instant): void {
+  /**
+   * Saves the business identifier (design 3.1, 4.2; slice 3), already parsed against the Market's
+   * scheme by the use case: the draft keeps the scheme code, the sealed normalised value and its
+   * keyed index, all three or none (the database CHECK repeats it). `null` clears it, which is
+   * only complete again for a Market that does not require one. Saving the value the draft
+   * already holds, of the same scheme, changes nothing (no version bump, the old ciphertext stays).
+   */
+  saveIdentifier(
+    identifier: DraftIdentifier | null,
+    now: Temporal.Instant,
+    requirements: DraftRequirements,
+  ): Result<void, { readonly code: 'file.change-request-required' }> {
+    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+    if (sameIdentifier(this.#state.draft.identifier, identifier)) return ok(undefined);
+    this.apply({ ...this.#state.draft, identifier }, now, requirements);
+    return ok(undefined);
+  }
+
+  private apply(
+    draft: SellerFileDraft,
+    now: Temporal.Instant,
+    requirements: DraftRequirements,
+  ): void {
     this.#state = Object.freeze({
       ...this.#state,
       draft: Object.freeze(draft),
-      draftComplete: missingParts(draft).length === 0,
+      draftComplete: missingParts(draft, requirements).length === 0,
       lastChangedAt: now,
       version: this.#state.version + 1,
     });
   }
 }
 
-function missingParts(draft: SellerFileDraft): readonly DraftPart[] {
+function missingParts(
+  draft: SellerFileDraft,
+  requirements: DraftRequirements,
+): readonly DraftPart[] {
   const present: Record<DraftPart, boolean> = {
     storeName: draft.storeName !== null,
     businessName: draft.businessName !== null,
     phone: draft.phone !== null,
     address: draft.address !== null,
     timezone: draft.zone !== null,
+    identifier:
+      !requirements.identifierRequired ||
+      draft.identifier?.scheme === requirements.identifierScheme,
     slug: draft.slug !== null,
   };
   return DRAFT_PARTS.filter((part) => !present[part]);

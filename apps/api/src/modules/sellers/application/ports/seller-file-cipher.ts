@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { Address } from '../../domain/address';
+import type { NormalisedIdentifier } from '../../domain/business-identifier';
 import type { BusinessName, ContactEmail, Phone } from '../../domain/draft-fields';
 import type { Sealed, SealedField } from '../../domain/sealed';
 
@@ -10,6 +11,8 @@ export interface SealedFieldValues {
   readonly 'contact-email': ContactEmail;
   readonly address: Address;
   readonly 'registered-address': Address;
+  /** The normalised identifier text; its scheme is a clear column beside it. */
+  readonly identifier: NormalisedIdentifier;
 }
 
 /** The seller's key was destroyed (erasure, PF 4 row 6): the values are gone for good. */

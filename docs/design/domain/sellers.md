@@ -784,6 +784,14 @@ has the measured pace of identity's slices.
 | 2 | Cost of the list page: one page of rows plus one `identity` call and one key unwrap per row, with Mojtaba |
 | 3 | The AU zone table: postcodes whose zone differs from their state's, from a source whose licence allows a checked-in file |
 
+### 11.4 Slice 3 as built (business identifier, tax registration periods)
+- `EffectivePeriod` helpers (`contains`, `overlaps`, `isWellFormed`) live in `sellers/domain/effective-period.ts`; they move to the shared kernel when a second consumer appears (the kernel is a shared file).
+- `BusinessIdentifierScheme` is a port with one adapter file per scheme; the Market config names the scheme and an unknown token fails at start-up. The scheme token is data, never a branch in core code.
+- `DraftRequirements {identifierRequired, identifierScheme}` is passed into the draft methods; an identifier sealed under a scheme other than the Market's current one does not count as present. A blank value clears the identifier; saving the same value is a no-op.
+- Routes: `POST /sellers/my-file/identifier-check` (validate only, counts against the saves limit) and `PUT /sellers/my-file/identifier`. The form descriptor carries `{scheme, labelKey, required, maxLength}`.
+- `SellerTaxProfile` holds the periods; a date must lie between 1970-01-01 and one year ahead (typo guard); "not registered" starts at the recording instant. `TaxRegistrationRecorded` is also emitted on cancel and carries the seller id only.
+- Not built: `my-tax-registration.record` and cancel use cases (they need a sellers audit writer and the acting-as flag in the context) and `taxProfileOf` (Phase 5).
+
 ## 12. Dependencies (for the owner's bundled list, ADR-0018 decision 8)
 | Need | Standard library? | Recommendation |
 |---|---|---|

@@ -78,5 +78,12 @@
     "fields": {
       "sellerId": "id"
     }
+  },
+  {
+    "type": "sellers.tax-registration-recorded.v1",
+    "aggregateType": "seller-tax-profile",
+    "fields": {
+      "sellerId": "id"
+    }
   }
 ]

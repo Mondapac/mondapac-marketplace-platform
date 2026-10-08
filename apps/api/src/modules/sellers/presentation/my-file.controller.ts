@@ -23,23 +23,30 @@ import { FormDescriptorsRead } from '../application/use-cases/form-descriptors-r
 import { MyFileCheckSlug } from '../application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveIdentifier } from '../application/use-cases/my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from '../application/use-cases/my-file-save-slug.use-case';
+import { MyFileValidateIdentifier } from '../application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from '../application/use-cases/my-file-save-general.use-case';
 import { errorOf, fail, type MyFileError } from './my-file.answer';
 import {
   parseAddressBody,
   parseGeneralBody,
+  parseIdentifierCheckBody,
+  parseIdentifierSaveBody,
   parseSlugBody,
   type FieldProblem,
 } from './my-file.body';
 import {
   AddressSavedBody,
+  CheckIdentifierRequest,
   CheckSlugRequest,
   DraftSavedBody,
   FormDescriptorsBody,
+  IdentifierCheckBody,
   MyFileBody,
   SaveAddressRequest,
   SaveGeneralRequest,
+  SaveIdentifierRequest,
   SaveSlugRequest,
   SellersErrorBody,
   SlugCheckBody,
@@ -74,6 +81,8 @@ export class MyFileController {
     private readonly saveAddress: MyFileSaveAddress,
     private readonly saveSlug: MyFileSaveSlug,
     private readonly checkSlug: MyFileCheckSlug,
+    private readonly saveIdentifier: MyFileSaveIdentifier,
+    private readonly validateIdentifier: MyFileValidateIdentifier,
     private readonly formDescriptors: FormDescriptorsRead,
   ) {}
 
@@ -301,6 +310,110 @@ export class MyFileController {
     const input = this.shapeOf('sellers.my-file-check-slug', context, request, body, parseSlugBody);
     const result = await this.checkSlug.execute(context, input);
     return this.settle('sellers.my-file-check-slug', context, response, result, 'checked');
+  }
+
+  @Put('identifier')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Save the business identifier of the draft',
+    description:
+      "The business number in the Market's scheme (the scheme is the Market's, never sent). " +
+      'Format and checksum are checked; there is no register lookup yet. An absent, null or ' +
+      'blank value clears it. Saving the same number again changes nothing. Refused on a file ' +
+      'with an approved revision. Counted against the save limit. The body is never logged.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiBody({ type: SaveIdentifierRequest })
+  @ApiOkResponse({ type: DraftSavedBody })
+  @ApiBadRequestResponse({
+    type: SellersErrorBody,
+    description:
+      'validation.failed (details.fields), identifier.format or identifier.checksum (codes only)',
+  })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiConflictResponse({
+    type: SellersErrorBody,
+    description: 'file.change-request-required or conflict.stale (read again and retry)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async putIdentifier(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<DraftSavedBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    const input = this.shapeOf(
+      'sellers.my-file-save-identifier',
+      context,
+      request,
+      body,
+      parseIdentifierSaveBody,
+    );
+    const result = await this.saveIdentifier.execute(context, input);
+    return this.settle('sellers.my-file-save-identifier', context, response, result, 'saved');
+  }
+
+  @Post('identifier-check')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Check a business identifier against the Market scheme',
+    description:
+      'A POST so the number stays out of URLs and logs. Format and checksum only: no register ' +
+      'lookup, nothing stored, no file read. Counted against the save limit of the account. ' +
+      'The answer is the display form, or identifier.format / identifier.checksum.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiBody({ type: CheckIdentifierRequest })
+  @ApiOkResponse({ type: IdentifierCheckBody })
+  @ApiBadRequestResponse({
+    type: SellersErrorBody,
+    description:
+      'validation.failed (details.fields), identifier.format or identifier.checksum (codes only)',
+  })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async postIdentifierCheck(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<IdentifierCheckBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    const input = this.shapeOf(
+      'sellers.my-file-validate-identifier',
+      context,
+      request,
+      body,
+      parseIdentifierCheckBody,
+    );
+    const result = await this.validateIdentifier.execute(context, input);
+    return this.settle('sellers.my-file-validate-identifier', context, response, result, 'valid');
   }
 
   @Get('form-descriptors')

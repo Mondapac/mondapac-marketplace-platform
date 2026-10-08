@@ -160,6 +160,8 @@ encrypted column under S4.
   holds `draft_slug`; `my-file.save-slug` with a different value deletes the never-public held row
   in the same unit (slice 5); the admin `seller.change-slug` writes both; the purge deletes both.
   Until slice 5 no held row exists, so the invariant holds trivially.
+- **Implemented in slice 3** (migration `20261008160000_sellers_identifier_tax`, 2026-10-08, section
+  20): the three identifier columns, their CHECKs and the partial index above.
 - **Implemented in slice 2b** (migration `20261008130000_sellers_file_details`, 2026-10-08): the
   slice-2 rows above, their CHECKs and `(market_id, store_name_key)`; constraint names in 18.
 
@@ -346,6 +348,9 @@ ALTER TABLE "sellers"."tax_registration_periods"
   cancelled: a `DELETE` of that row only, audited, under the root's version, which also re-opens
   the previous period (its `valid_to` back to NULL) (D 14.3 Q-M13). "Not started" is a time rule
   against `Clock`, so the use case enforces it; `DELETE` is granted from slice 3.
+
+**Implemented in slice 3** (section 20): the table, its CHECKs, the exclusion constraint and the
+grant `SELECT, INSERT, UPDATE (valid_to), DELETE`.
 
 ### 3.8 `sellers.store_profiles` and `sellers.store_profile_revisions` (slices 1 and 12; V1)
 
@@ -1212,3 +1217,42 @@ creates files through `SellerFile.create`, which sets `draft_complete = false`, 
 true. Slice 2 tests also cover a deterministic lost-update case (the version bumped by another unit
 between load and save changes 0 rows, `conflict.stale`) and a retired slug, own or another
 seller's, read as `taken` through the Prisma `findBySlug` mapping.
+
+## 20. Slice 3 migration `20261008160000_sellers_identifier_tax` (2026-10-08)
+
+Written by Hossein from 3.1, 3.7, 4.5, 8 and 9 (the Prisma part by hand, because the schema change is
+two columns' worth of model and one table; `pnpm db:check-reversible` runs up, down, up and the drift
+check, and passes on PostgreSQL 16); for Mojtaba's sign-off. It depends on the P2 migration
+(`btree_gist` in schema `extensions`).
+
+| Object | What it adds |
+|---|---|
+| `seller_files` (existing; columns nullable, no default: a catalog change, 9.3) | `identifier_scheme`, `identifier_ciphertext`, `identifier_index` (`bytea`). `seller_files_identifier_scheme_check` (pattern of 3.1), `_identifier_ciphertext_check` (envelope shape and `BETWEEN 41 AND 512`), `_identifier_index_check` (`octet_length = 32`), `_identifier_set_check` (all three NULL or all set). Each CHECK is added `NOT VALID` and then `VALIDATE`d in the same file (9.3). Partial index `seller_files_market_id_identifier_index_idx (market_id, identifier_index) WHERE identifier_index IS NOT NULL` (plain `CREATE INDEX`: no deployed environment holds rows, 9.3) |
+| `tax_registration_periods` (new) | The columns of 3.7 plus `market_id` and `tenant_id` (C1). Primary key `id`; composite FK `(market_id, seller_id)` to `seller_tax_profiles`, `RESTRICT`; index `(market_id, seller_id, valid_from)`; CHECKs `_market_id_check`, `_tenant_id_check`, `_effective_zone_check` (the `operating_timezone` pattern, at most 64), `_valid_to_check` (`valid_to IS NULL OR valid_to > valid_from`), `_recorded_by_kind_check` (`seller`, `admin`); exclusion constraint `tax_registration_periods_no_overlap_excl` exactly as 3.7 |
+| Grants | `tax_registration_periods`: `SELECT, INSERT, UPDATE (valid_to), DELETE` to `mondapac_app` (section 8; `DELETE` arrives here because the cancellation of a period that has not started is slice 3's, Q-M13). Nothing else changes |
+
+Decisions taken here, for Mojtaba to confirm or change:
+
+- **Ciphertext bound 512** for `identifier_ciphertext`. A normalised identifier is at most 64
+  characters (the application's input bound, `IDENTIFIER_INPUT_MAX_LENGTH`; the real schemes are 9 to
+  11) of at most 4 bytes, so at most 382 characters in the `v1` envelope (4.5); 512 is the bound of
+  `phone_ciphertext` and the next power of two.
+- **The exclusion constraint's `market_id WITH =`** is on a `varchar(8)`: it needed no operator-class
+  name, the default class is found by type (9.2). Measured by the db test below on both Market
+  fixtures.
+- **No unique key on `identifier_index`**: a draft gives no right to a number (brief s7). The claim
+  is slice 7a-decide's `identifier_claims`.
+- **`down.sql`** revokes the grant, drops the index and the four CHECKs, drops the table (its CHECKs,
+  the exclusion constraint, the index and the FK go with it) and then the three columns.
+
+Tests (`apps/api/test/db/sellers-files.db-spec.ts`, both Market fixtures; `outbox-catalog.db-spec.ts`;
+`privileges.db-spec.ts` through `expected-privileges.ts`): every CHECK of the three columns with
+accepted and refused rows (envelope shape, 41 and 512, scheme pattern, index length, all-or-none);
+the partial index by `pg_indexes` and in the checked-in list; two files may hold one index; the
+exclusion constraint refuses overlapping, nested, open-with-open and one-millisecond overlaps and
+accepts an adjacent period and another seller's identical span, and is in the catalog test of
+exclusion constraints by name and definition (`contype = 'x'`); every CHECK and the foreign key of the
+periods table; `42501` for an update of any column but `valid_to`; a repository round trip that
+closes the open period, answers "as of" an instant and keeps the local date and zone; a cancellation
+that re-opens the previous period; a lost race on the root's version changes nothing, and of two
+parallel recordings exactly one commits.
