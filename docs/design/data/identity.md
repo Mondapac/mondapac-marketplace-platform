@@ -240,6 +240,13 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
   every unit that voids challenges and writes throttles: reset and change release or clear their
   counters before `voidAllOf`; activation and device replacement release the attempt before
   their `voidAllOf`; the break-glass reset writes no throttle.
+- **Signed-in code steps** (slice 7b item E: starting and completing a device replacement,
+  regenerating the recovery codes; Mojtaba, PR #162 round 2). Their closing unit takes the
+  account lock first, as the challenge code step does. Its success path then writes
+  `second_factors` (the spend) before releasing the throttle row, and its failure path blocks the
+  throttle row before locking the factor (`recordCodeFailure`); both run under the account lock,
+  so the two orders never meet in a cycle. Their reservation unit only reads the account and the
+  factor and reserves the counter.
 - **Accepted conflicts:** clearing an address's sign-in counters in a reset can meet a
   reservation of the same address in the other order and fail with `40P01`; the unit of work
   retries it. A serializable writer of `accounts` (the purge, 5.1) can meet the lock and get one
