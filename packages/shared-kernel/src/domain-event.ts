@@ -286,6 +286,37 @@ export interface PayloadCheckOptions {
 type Encoded = { readonly ok: true; readonly value: JsonValue } | { readonly ok: false };
 const invalid: Encoded = { ok: false };
 
+// Taken once, when the module loads, so a later change to the prototype cannot reach them.
+const INSTANT_TO_STRING: (
+  this: Temporal.Instant,
+  options?: Parameters<Temporal.Instant['toString']>[0],
+) => string = Reflect.get(Temporal.Instant.prototype, 'toString');
+const INSTANT_EPOCH_NANOSECONDS = Reflect.get(
+  Reflect.getOwnPropertyDescriptor(Temporal.Instant.prototype, 'epochNanoseconds')!,
+  'get',
+) as (this: Temporal.Instant) => bigint;
+
+/**
+ * Internal (not exported from the kernel): the RFC 3339 UTC text of a genuine
+ * `Temporal.Instant`, through the prototype's own `toString` and `epochNanoseconds`
+ * (Hassan L1 on slice 6a), so a subclass or an object that only inherits from the prototype
+ * cannot choose its text. `wholeMilliseconds` accepts only a whole millisecond and writes
+ * exactly three fractional digits. `undefined` when the value is refused.
+ */
+export function instantText(value: unknown, wholeMilliseconds: boolean): string | undefined {
+  if (!(value instanceof Temporal.Instant)) return undefined;
+  try {
+    // Both throw a TypeError for an object without the Instant's internal slots.
+    const nanoseconds = INSTANT_EPOCH_NANOSECONDS.call(value);
+    if (wholeMilliseconds && nanoseconds % 1_000_000n !== 0n) return undefined;
+    return wholeMilliseconds
+      ? INSTANT_TO_STRING.call(value, { fractionalSecondDigits: 3 })
+      : INSTANT_TO_STRING.call(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function encodeValue(kind: FieldKind, value: unknown, options: PayloadCheckOptions): Encoded {
   switch (kind.kind) {
     case 'id':
@@ -298,8 +329,10 @@ function encodeValue(kind: FieldKind, value: unknown, options: PayloadCheckOptio
       return typeof value === 'boolean' ? { ok: true, value } : invalid;
     case 'integer':
       return Number.isSafeInteger(value) ? { ok: true, value: value as number } : invalid;
-    case 'instant':
-      return value instanceof Temporal.Instant ? { ok: true, value: value.toString() } : invalid;
+    case 'instant': {
+      const text = instantText(value, false);
+      return text === undefined ? invalid : { ok: true, value: text };
+    }
     case 'permissionKey':
       return typeof value === 'string' && options.isKnownPermissionKey(value)
         ? { ok: true, value }

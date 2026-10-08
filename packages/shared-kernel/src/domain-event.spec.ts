@@ -256,6 +256,27 @@ describe('encodePayload: the run-time check and the jsonb form (5.3)', () => {
     }
   });
 
+  it('writes an instant through the prototype, not the value (Hassan L1 on slice 6a)', () => {
+    class Forged extends Temporal.Instant {
+      override toString(): string {
+        return 'not an instant';
+      }
+    }
+    const fake = Object.create(Temporal.Instant.prototype, {
+      toString: { value: () => '2026-10-07T01:02:03.004Z' },
+    }) as unknown;
+    const only = { changedAt: eventField.instant() };
+
+    expect(encodePayload(only, { changedAt: new Forged(AT.epochNanoseconds) }, known)).toEqual({
+      ok: true,
+      value: { changedAt: '2026-10-07T01:02:03.004Z' },
+    });
+    expect(encodePayload(only, { changedAt: fake }, known)).toEqual({
+      ok: false,
+      error: { code: 'event-payload.invalid', field: 'changedAt', problem: 'invalid' },
+    });
+  });
+
   it('refuses every permission key when no registry knows one (fail closed)', () => {
     const result = encodePayload(accountChanged.fields, validPayload, {
       isKnownPermissionKey: () => false,

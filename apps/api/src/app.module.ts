@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
 import { CORE_MODULES } from './modules';
 import { IdentityModule } from './modules/identity';
+import { AuditModule } from './platform/audit/audit.module';
 import { AuthzModule } from './platform/authz/authz.module';
 import { ActorGuard } from './platform/call-context/actor.guard';
 import { ClockModule } from './platform/clock/clock.module';
@@ -67,6 +68,7 @@ export class AppModule {
         PersistenceModule,
         SubjectKeysModule,
         EventsModule,
+        AuditModule,
         ExtensionsModule,
         MailModule,
         SchedulerModule,
