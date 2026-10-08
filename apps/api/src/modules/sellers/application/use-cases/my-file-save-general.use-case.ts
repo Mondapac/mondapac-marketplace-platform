@@ -108,7 +108,8 @@ function parseGeneral(input: MyFileSaveGeneralInput): Result<ParsedGeneral, Draf
  * 1. the owner is `ActorContext.sellerId` (AC 18);
  * 2. the saves limit of 6.5 is reserved before any work (60 a minute, 1,000 a day per account);
  *    a store that cannot answer refuses with `access.unavailable`;
- * 3. the values are parsed (paths and codes only); a save without a phone is `phone.required`;
+ * 3. the values are parsed (paths and codes only); a save without a phone is `phone.required`,
+ *    decided by the aggregate after `file.not-found` and `file.change-request-required`;
  * 4. the personal fields are sealed under the seller's key, outside the unit;
  * 5. one read-write unit loads the file, applies the save (completeness recomputed, version +1)
  *    and writes it over the version it read; a lost race is `conflict.stale`. A file with an
@@ -164,7 +165,6 @@ export class MyFileSaveGeneral extends UseCase<
 
     const parsed = parseGeneral(input ?? {});
     if (!parsed.ok) return parsed;
-    if (parsed.value.phone === null) return err({ code: 'phone.required' });
 
     if (!(await fileExists(this.deps, context, owner.sellerId))) {
       return err({ code: 'file.not-found' });

@@ -18,6 +18,16 @@ import { MyFileCheckSlug } from '../../src/modules/sellers/application/use-cases
 import { MyFileRead } from '../../src/modules/sellers/application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
 import { MyFileSaveGeneral } from '../../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
+import { PrismaRateCounterRepository } from '../../src/modules/sellers/infrastructure/prisma-rate-counter.repository';
+import {
+  RATE_COUNTER_KINDS,
+  SAVE_LIMITS,
+  rateVerdict,
+} from '../../src/modules/sellers/domain/rate-limits';
+import type { RateCounter } from '../../src/modules/sellers/application/ports/rate-counter.repository';
+import { PrismaService } from '../../src/platform/persistence/prisma.service';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { ok } from '@mondapac/shared-kernel';
 import { AUTHORISATION_CHECK, type AuthorisationCheck } from '../../src/platform/authz';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
@@ -734,6 +744,118 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     });
   });
 
+  describe('PrismaRateCounterRepository (real counters, injected now)', () => {
+    const T0 = Temporal.Instant.from('2026-10-08T12:00:00Z');
+    const keys: Buffer[] = [];
+    const newKey = (): Buffer => {
+      const key = Buffer.from(
+        randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+        'hex',
+      );
+      keys.push(key);
+      return key;
+    };
+    afterEach(async () => {
+      if (keys.length === 0) return;
+      await sql.query('DELETE FROM sellers.rate_counters WHERE key_hash = ANY($1::bytea[])', [
+        keys,
+      ]);
+      keys.length = 0;
+    });
+
+    const reserve = (
+      marketCode: string,
+      limits: typeof SAVE_LIMITS,
+      key: Buffer,
+      now: Temporal.Instant,
+    ) => {
+      const counters: RateCounter[] = limits.map((limit) => ({ limit, keyHash: key }));
+      const marketContext = marketOf(marketCode);
+      return app
+        .get<UnitOfWork>(UNIT_OF_WORK)
+        .run(marketContext, async () =>
+          ok(
+            await new PrismaRateCounterRepository(app.get(PrismaService)).reserve(
+              marketContext,
+              counters,
+              now,
+            ),
+          ),
+        )
+        .then((result) => {
+          if (!result.ok) throw new Error('the reservation unit failed');
+          return result.value;
+        });
+    };
+    const count = (reservations: Awaited<ReturnType<typeof reserve>>, kind: string) =>
+      reservations.find((reservation) => reservation.kind === kind)!.count;
+
+    it('refuses over the limit, restarts the window, and keeps minute and day apart', async () => {
+      expect(RATE_COUNTER_KINDS).toContain('save.account.minute');
+      const key = newKey();
+      let last = await reserve(code, SAVE_LIMITS, key, T0);
+      for (let attempt = 2; attempt <= 60; attempt += 1) {
+        last = await reserve(code, SAVE_LIMITS, key, T0);
+        expect(rateVerdict(SAVE_LIMITS, last, T0)).toEqual({ allowed: true });
+      }
+      expect(count(last, 'save.account.minute')).toBe(60);
+      const refused = await reserve(code, SAVE_LIMITS, key, T0);
+      expect(count(refused, 'save.account.minute')).toBe(61);
+      expect(rateVerdict(SAVE_LIMITS, refused, T0)).toEqual({
+        allowed: false,
+        retryAfterSeconds: 60,
+      });
+
+      // One window later the minute counter restarts at 1; the day counter keeps counting.
+      const later = T0.add({ minutes: 1 });
+      const restarted = await reserve(code, SAVE_LIMITS, key, later);
+      expect(count(restarted, 'save.account.minute')).toBe(1);
+      expect(count(restarted, 'save.account.day')).toBe(62);
+      expect(rateVerdict(SAVE_LIMITS, restarted, later)).toEqual({ allowed: true });
+
+      // A day later both restart.
+      const nextDay = T0.add({ hours: 24 });
+      const fresh = await reserve(code, SAVE_LIMITS, key, nextDay);
+      expect(count(fresh, 'save.account.minute')).toBe(1);
+      expect(count(fresh, 'save.account.day')).toBe(1);
+    });
+
+    it('counts every one of N parallel reservations exactly once', async () => {
+      const key = newKey();
+      const n = 12;
+      const results = await Promise.all(
+        Array.from({ length: n }, () => reserve(code, SAVE_LIMITS, key, T0)),
+      );
+      expect(
+        results.map((result) => count(result, 'save.account.minute')).sort((a, b) => a - b),
+      ).toEqual(Array.from({ length: n }, (_, index) => index + 1));
+      const { rows } = await sql.query<{ kind: string; count: number }>(
+        'SELECT kind, count FROM sellers.rate_counters WHERE market_id = $1 AND key_hash = $2 ORDER BY kind',
+        [code, key],
+      );
+      expect(rows).toEqual([
+        { kind: 'save.account.day', count: n },
+        { kind: 'save.account.minute', count: n },
+      ]);
+    });
+
+    it('does not throttle another account, nor the same account in another Market', async () => {
+      const a = newKey();
+      const b = newKey();
+      for (let attempt = 0; attempt < 61; attempt += 1) await reserve(code, SAVE_LIMITS, a, T0);
+      const atLimit = await reserve(code, SAVE_LIMITS, a, T0);
+      expect(rateVerdict(SAVE_LIMITS, atLimit, T0).allowed).toBe(false);
+
+      const otherAccount = await reserve(code, SAVE_LIMITS, b, T0);
+      expect(count(otherAccount, 'save.account.minute')).toBe(1);
+      expect(rateVerdict(SAVE_LIMITS, otherAccount, T0)).toEqual({ allowed: true });
+
+      const otherMarket = await reserve(other, SAVE_LIMITS, a, T0);
+      expect(count(otherMarket, 'save.account.minute')).toBe(1);
+      expect(rateVerdict(SAVE_LIMITS, otherMarket, T0)).toEqual({ allowed: true });
+    });
+  });
+
   // Slice 2 part c-1 (sellers design 3.1, 3.5, 4.2, 4.3, 6.2, 6.5, 8.1; data design 3.1, 3.5,
   // 3.11, 4): the draft use cases on PostgreSQL with the real subject keys and identity.
   describe('slice 2 draft use cases', () => {
@@ -924,7 +1046,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       expect((await row(sellerId)).version).toBe(5);
     });
 
-    it('writes only over the version it read: concurrent saves never lose an update', async () => {
+    it('proves only the read-to-write guard: a save writes over the version it read, a lost race is conflict.stale', async () => {
       const { sellerId, context } = await draftSeller();
       const results = await Promise.all(
         Array.from({ length: 5 }, (_, index) =>
@@ -993,6 +1115,78 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         [(context.actor as { accountId: string }).accountId],
       );
       expect(leaked).toEqual([]);
+    });
+
+    it('stores a seller zone choice, and a refused zone changes nothing', async () => {
+      const { sellerId, context } = await draftSeller();
+      const addressKey = Object.keys(FIXTURE.address)[0] as keyof typeof FIXTURE.address;
+      const chosen = await app.get(MyFileSaveAddress).execute(context, {
+        address: FIXTURE.address,
+        timezone: FIXTURE.zones[1],
+      });
+      expect(chosen.ok && chosen.value.timezone).toMatchObject({
+        operatingTimezone: FIXTURE.zones[1],
+        timezoneSource: 'seller',
+      });
+      const before = await row(sellerId);
+      expect(before).toMatchObject({
+        operating_timezone: FIXTURE.zones[1],
+        timezone_source: 'seller',
+      });
+
+      for (const timezone of ['Etc/UTC', '+10:00', '', 123]) {
+        const refused = await app.get(MyFileSaveAddress).execute(context, {
+          address: { ...FIXTURE.address, [addressKey]: 'Changed 99' },
+          timezone,
+        });
+        expect(refused).toEqual({ ok: false, error: { code: 'timezone.not-selectable' } });
+        const after = await row(sellerId);
+        expect(after.version).toBe(before.version);
+        expect(after.address_ciphertext).toBe(before.address_ciphertext);
+        expect(after.operating_timezone).toBe(before.operating_timezone);
+        expect(after.timezone_source).toBe(before.timezone_source);
+        expect(after.address_timezone).toBe(before.address_timezone);
+        expect(after).toEqual(before);
+      }
+    });
+
+    it('keeps a single winner when general and address saves race', async () => {
+      const { sellerId, context } = await draftSeller();
+      const addressKey = Object.keys(FIXTURE.address)[0] as keyof typeof FIXTURE.address;
+      const generals = Array.from({ length: 4 }, (_, index) => `Racing Business ${index}`);
+      const addresses = Array.from({ length: 4 }, (_, index) => `${index + 1} Racing Rd`);
+      const results = await Promise.all([
+        ...generals.map((businessName) =>
+          app.get(MyFileSaveGeneral).execute(context, { ...GENERAL, businessName }),
+        ),
+        ...addresses.map((line) =>
+          app
+            .get(MyFileSaveAddress)
+            .execute(context, { address: { ...FIXTURE.address, [addressKey]: line } }),
+        ),
+      ]);
+      const saved = results.filter((result) => result.ok).length;
+      expect(saved).toBeGreaterThanOrEqual(1);
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      expect((await row(sellerId)).version).toBe(1 + saved);
+
+      // Every sealed column opens (one coherent state), and each holds a value one saved call sent.
+      const read = await app.get(MyFileRead).execute(context, {});
+      expect(read.ok).toBe(true);
+      if (!read.ok) return;
+      const winnerName = read.value.general.businessName;
+      expect(winnerName === null || generals.includes(winnerName)).toBe(true);
+      const winnerAddress = read.value.address;
+      expect(winnerAddress === null || addresses.includes(winnerAddress[addressKey] ?? '')).toBe(
+        true,
+      );
+      // A value is present only if a call that sent it succeeded.
+      const generalWins = results.slice(0, 4).filter((result) => result.ok).length;
+      const addressWins = results.slice(4).filter((result) => result.ok).length;
+      expect(winnerName === null).toBe(generalWins === 0);
+      expect(winnerAddress === null).toBe(addressWins === 0);
     });
 
     it('fails closed with access.unavailable when the counter store errors', async () => {

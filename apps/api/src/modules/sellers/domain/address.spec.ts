@@ -51,6 +51,7 @@ describe('parseAddress', () => {
         state: 'XX',
         postcode: '40000',
         unknown: 'x',
+        'other<script>': 'y',
         line2: 'flat\u202e2',
       },
       FIVE_FIELDS,
@@ -59,7 +60,7 @@ describe('parseAddress', () => {
     expect(parsed).toEqual({
       ok: false,
       error: [
-        { path: 'address.unknown', code: 'unknown' },
+        { path: 'address', code: 'unknown' },
         { path: 'address.line1', code: 'required' },
         { path: 'address.line2', code: 'characters' },
         { path: 'address.suburb', code: 'length' },

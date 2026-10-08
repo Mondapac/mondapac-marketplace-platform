@@ -61,6 +61,8 @@ const FIXTURES = {
     zones: ['Australia/Brisbane', 'Australia/Lindeman'],
     otherZones: ['Australia/Sydney', 'Australia/Broken_Hill', 'Australia/Lord_Howe'],
     badPostcode: { postcode: '40000' },
+    // A valid-format postcode in the same region that no ServiceArea lists.
+    noArea: { line1: '5 Far St', suburb: 'Mount Isa', state: 'QLD', postcode: '4825' },
   },
   ZZ: {
     address: { street: '1 Main', district: 'Central', prefecture: 'ZB', postalCode: '1000001' },
@@ -69,6 +71,7 @@ const FIXTURES = {
     zones: ['Pacific/Auckland', 'Pacific/Chatham'],
     otherZones: ['Asia/Tokyo'],
     badPostcode: { postalCode: '10-0001' },
+    noArea: { street: '3 Far', district: 'Remote', prefecture: 'ZB', postalCode: '3000000' },
   },
 } as const;
 
@@ -311,10 +314,6 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
     it('refuses a first save without a phone, and invalid fields by path and code only', async () => {
       const t = setUp();
       const { sellerId, context } = seller(t, code);
-      expect(await t.saveGeneral.execute(context, { ...GENERAL, phone: '  ' })).toEqual({
-        ok: false,
-        error: { code: 'phone.required' },
-      });
       const refused = await t.saveGeneral.execute(context, {
         storeName: 'x'.repeat(101),
         businessName: 'Bad‮Name',
@@ -336,6 +335,51 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       expect(JSON.stringify(refused)).not.toContain('not-an-email');
       expect(t.files.stored.get(`${code}|${sellerId}`)!.version).toBe(1);
       expect(t.cipher.sealed).toBe(0);
+      expect(await t.saveGeneral.execute(context, { ...GENERAL, phone: '  ' })).toEqual({
+        ok: false,
+        error: { code: 'phone.required' },
+      });
+      expect(t.files.stored.get(`${code}|${sellerId}`)!.version).toBe(1);
+    });
+
+    it('decides file.not-found, then file.change-request-required, then phone.required', async () => {
+      const t = setUp();
+      const missing = ownerContext(t, code, t.ids.next<'Seller'>());
+      const noPhone = { ...GENERAL, phone: undefined };
+      expect(await t.saveGeneral.execute(missing, noPhone)).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      const frozen = seller(t, code, true);
+      expect(await t.saveGeneral.execute(frozen.context, noPhone)).toEqual({
+        ok: false,
+        error: { code: 'file.change-request-required' },
+      });
+      const open = seller(t, code);
+      expect(await t.saveGeneral.execute(open.context, noPhone)).toEqual({
+        ok: false,
+        error: { code: 'phone.required' },
+      });
+      expect(t.files.stored.get(`${code}|${open.sellerId}`)!.version).toBe(1);
+    });
+
+    it('refuses a first save whose phone is omitted or null, and changes nothing', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const withoutPhone = { ...GENERAL } as Partial<typeof GENERAL>;
+      delete withoutPhone.phone;
+      for (const input of [
+        withoutPhone,
+        { ...GENERAL, phone: undefined },
+        { ...GENERAL, phone: null },
+      ]) {
+        expect(await t.saveGeneral.execute(context, input)).toEqual({
+          ok: false,
+          error: { code: 'phone.required' },
+        });
+      }
+      expect(t.files.stored.get(`${code}|${sellerId}`)!.version).toBe(1);
+      expect(t.files.stored.get(`${code}|${sellerId}`)!.draft.phone).toBeNull();
     });
 
     it('refuses every draft change on a file with an approved revision, and changes nothing', async () => {
@@ -512,11 +556,150 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         timezoneSource: 'seller',
         addressTimezone: fixture.zones[0],
       });
-      for (const timezone of [fixture.otherZones[0], 'Etc/UTC', '+10:00', 'UTC']) {
+      for (const timezone of [fixture.otherZones[0], 'Etc/UTC', '+10:00', 'UTC', '', 123]) {
         expect(
           await t.saveAddress.execute(context, { address: fixture.address, timezone }),
         ).toEqual({ ok: false, error: { code: 'timezone.not-selectable' } });
       }
+    });
+
+    it('writes nothing after timezone.not-selectable', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      await t.saveAddress.execute(context, {
+        address: fixture.address,
+        timezone: fixture.zones[1],
+      });
+      const key = `${code}|${sellerId}`;
+      const before = t.files.stored.get(key)!;
+      const sealedBefore = t.cipher.sealed;
+      const refused = await t.saveAddress.execute(context, {
+        address: fixture.otherRegion,
+        registeredAddress: fixture.address,
+        timezone: 'Etc/UTC',
+      });
+      expect(refused).toEqual({ ok: false, error: { code: 'timezone.not-selectable' } });
+      expect(t.files.stored.get(key)).toBe(before);
+      expect(t.files.stored.get(key)).toEqual(before);
+      expect(t.files.stored.get(key)!.version).toBe(before.version);
+      // Nothing reached the store; only the in-flight sealing happened before the unit.
+      expect(t.cipher.sealed).toBeGreaterThanOrEqual(sealedBefore);
+    });
+
+    it('treats a null or absent timezone as no choice, and drops a non-string browser hint', async () => {
+      const t = setUp();
+      const { context } = seller(t, code);
+      for (const timezone of [null, undefined]) {
+        const saved = await t.saveAddress.execute(context, { address: fixture.address, timezone });
+        expect(saved.ok && saved.value.timezone?.timezoneSource).toBe('default');
+      }
+      const hinted = await t.saveAddress.execute(context, {
+        address: fixture.address,
+        browserTimezone: 123,
+      });
+      expect(hinted.ok && hinted.value.timezone?.timezoneSource).toBe('default');
+    });
+
+    it('saves a valid-format postcode that no ServiceArea lists, and clears an earlier area', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const key = `${code}|${sellerId}`;
+      await t.saveAddress.execute(context, { address: fixture.address });
+      expect(t.files.stored.get(key)!.draft.serviceAreaCode).toBe(fixture.area.code);
+
+      const saved = await t.saveAddress.execute(context, { address: fixture.noArea });
+      expect(saved.ok).toBe(true);
+      if (!saved.ok) return;
+      expect(saved.value.serviceArea).toBeNull();
+      expect(saved.value.outsideServiceArea).toBe(true);
+      expect(t.files.stored.get(key)!.draft.serviceAreaCode).toBeNull();
+
+      const read = await t.read.execute(context, {});
+      expect(read.ok && read.value.address).toEqual(fixture.noArea);
+      expect(read.ok && read.value.serviceArea).toBeNull();
+      expect(read.ok && read.value.outsideServiceArea).toBe(true);
+    });
+
+    it('stores a null area code for a first address outside every area', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const saved = await t.saveAddress.execute(context, { address: fixture.noArea });
+      expect(saved.ok && saved.value.serviceArea).toBeNull();
+      expect(saved.ok && saved.value.outsideServiceArea).toBe(true);
+      expect(t.files.stored.get(`${code}|${sellerId}`)!.draft.serviceAreaCode).toBeNull();
+    });
+
+    it('refuses a stale address write when another save changed the file first', async () => {
+      const t = setUp();
+      const { sellerId, context } = seller(t, code);
+      const key = `${code}|${sellerId}`;
+      t.files.beforeWrite = () => {
+        const current = t.files.stored.get(key)!;
+        t.files.stored.set(key, { ...current, version: current.version + 1 });
+        t.files.beforeWrite = null;
+      };
+      expect(await t.saveAddress.execute(context, { address: fixture.address })).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      expect(t.files.stored.get(key)!.draft.address).toBeNull();
+    });
+
+    it('lets one of a general save and an address save win a race, never a mix', async () => {
+      // General save loses to an address save that commits between its read and its write.
+      const a = setUp();
+      const first = seller(a, code);
+      const keyA = `${code}|${first.sellerId}`;
+      a.files.beforeWrite = () => {
+        a.files.beforeWrite = null;
+        const file = SellerFile.restore(a.files.stored.get(keyA)!);
+        file.saveAddress(
+          {
+            address: 'v1.winner-address' as Sealed<'address'>,
+            registeredAddress: null,
+            serviceAreaCode: null,
+            zones: null,
+            zone: { chosen: undefined, hint: undefined },
+          },
+          START,
+        );
+        a.files.stored.set(keyA, file.state);
+      };
+      expect(await a.saveGeneral.execute(first.context, GENERAL)).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      const afterA = a.files.stored.get(keyA)!;
+      expect(afterA.draft.address).toBe('v1.winner-address');
+      expect(afterA.draft.phone).toBeNull();
+      expect(afterA.version).toBe(2);
+
+      // Address save loses to a general save that commits between its read and its write.
+      const b = setUp();
+      const second = seller(b, code);
+      const keyB = `${code}|${second.sellerId}`;
+      b.files.beforeWrite = () => {
+        b.files.beforeWrite = null;
+        const file = SellerFile.restore(b.files.stored.get(keyB)!);
+        file.saveGeneral(
+          {
+            storeName: null,
+            businessName: null,
+            phone: 'v1.winner-phone' as Sealed<'phone'>,
+            contactEmail: null,
+          },
+          START,
+        );
+        b.files.stored.set(keyB, file.state);
+      };
+      expect(await b.saveAddress.execute(second.context, { address: fixture.address })).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      const afterB = b.files.stored.get(keyB)!;
+      expect(afterB.draft.phone).toBe('v1.winner-phone');
+      expect(afterB.draft.address).toBeNull();
+      expect(afterB.version).toBe(2);
     });
 
     it('takes a browser hint only for a zone nobody set, and drops one off the list', async () => {
@@ -557,11 +740,12 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         registeredAddress: { nope: 'x' },
       });
       expect(refused.ok).toBe(false);
+      expect(JSON.stringify(refused)).not.toContain('nope');
       if (refused.ok || refused.error.code !== 'validation.failed') return;
       expect(refused.error.fields.map((field) => field.path)).toEqual(
         expect.arrayContaining([
           `address.${Object.keys(fixture.badPostcode)[0]}`,
-          'registeredAddress.nope',
+          'registeredAddress',
         ]),
       );
     });
@@ -647,6 +831,26 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       expect(await check('admin')).toEqual({ ok: true, value: { code: 'slug.reserved' } });
       expect(await check('a--b')).toEqual({ ok: true, value: { code: 'slug.format' } });
       expect(await check(undefined)).toEqual({ ok: true, value: { code: 'slug.format' } });
+    });
+
+    it('refuses a file with an approved revision after a counter is consumed, without a slug lookup', async () => {
+      const t = setUp();
+      const { context } = seller(t, code, true);
+      const lookups: string[] = [];
+      const original = t.slugRows.get.bind(t.slugRows);
+      t.slugRows.get = (key: string) => {
+        lookups.push(key);
+        return original(key);
+      };
+      expect(await t.checkSlug.execute(context, { slug: 'al-noor' })).toEqual({
+        ok: false,
+        error: { code: 'file.change-request-required' },
+      });
+      expect(lookups).toEqual([]);
+      const minute = [...t.counters.rows].find(([key]) =>
+        key.includes('slug-check.account.minute'),
+      );
+      expect(minute?.[1].count).toBe(1);
     });
 
     it('never sees a slug of another Market', async () => {

@@ -50,7 +50,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * A field that is absent, null or blank is "not entered"; required fields must be entered. Each
  * value follows the single-line text rule (`parseLine`); the postcode must match the Market's
  * pattern, and the region must be exactly one of the Market's regions. A key the format does
- * not list is refused (`unknown`), so nothing else is ever stored in the ciphertext.
+ * not list is refused (one `unknown` entry on the address path, never the key), so nothing else is ever stored in the ciphertext.
  */
 export function parseAddress(
   raw: unknown,
@@ -59,9 +59,10 @@ export function parseAddress(
 ): Result<Address, readonly FieldProblem[]> {
   if (!isRecord(raw)) return err([{ path, code: 'format' }]);
   const known = new Set(format.fields.map((field) => field.key));
-  const problems: FieldProblem[] = Object.keys(raw)
-    .filter((key) => !known.has(key))
-    .map((key) => ({ path: `${path}.${key}`, code: 'unknown' }));
+  // One entry for any number of unknown keys: no key text from the caller reaches an error path.
+  const problems: FieldProblem[] = Object.keys(raw).some((key) => !known.has(key))
+    ? [{ path, code: 'unknown' }]
+    : [];
   const fields: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const field of format.fields) {
     const value = Object.hasOwn(raw, field.key) ? raw[field.key] : undefined;
