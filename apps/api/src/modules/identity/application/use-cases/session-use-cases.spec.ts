@@ -144,6 +144,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         sellerAccess: fakes.sellerAccessRepository,
         grants: fakes.grantReader,
         effectiveKeys: realEffectiveKeys(),
+        factors: fakes.factorRepository,
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>

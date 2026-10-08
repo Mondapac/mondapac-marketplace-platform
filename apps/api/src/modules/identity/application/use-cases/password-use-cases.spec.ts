@@ -26,9 +26,9 @@ import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { AccountState } from '../../domain/account';
 import type { SecondFactorState } from '../../domain/second-factor';
 import { openSession } from '../../domain/session';
+import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer, formatDuration } from '../../infrastructure/mail/mail-catalogue';
-import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { RandomSessionTokens } from '../../infrastructure/sessions/random-session-tokens';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import { ChangePassword } from './change-password.use-case';
@@ -164,6 +164,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         links: fakes.linkRepository,
         sessions: fakes.sessionRepository,
         challenges: fakes.challengeRepository,
+        factors: fakes.factorRepository,
         records: fakes.recordRepository,
         ids,
         linkTokens,
@@ -178,6 +179,8 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         records: fakes.recordRepository,
         ids,
         tokens: sessionTokens,
+        factors: fakes.factorRepository,
+        secrets: fakes.secrets,
         hasher: fakes.hasher,
         commonPasswords,
       }),
@@ -462,7 +465,12 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       activatedAt: clock.now(),
       lockedAt: null,
       createdAt: clock.now(),
-      recoveryCodes: [],
+      // An active factor holds all ten codes (data design 3.10).
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
       version: 1,
     };
     fakes.factors.set(accountId, factor);
@@ -629,6 +637,7 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
           links: fakes.linkRepository,
           sessions: fakes.sessionRepository,
           challenges: fakes.challengeRepository,
+          factors: fakes.factorRepository,
           throttles: fakes.throttleRepository,
           records: fakes.recordRepository,
           keys,
@@ -1074,10 +1083,24 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         sessionId: id<'Session'>('01990000-0000-7000-8000-00000000a009'),
         sellerId: null,
       });
+      // An admin's change always carries a code (Hassan I2 (b)): without one it is refused as input.
       await expect(
         u.change.execute(testCallContext(market, admin), {
           currentPassword: OLD_PASSWORD,
           newPassword: NEW_PASSWORD,
+          client: CLIENT,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] },
+      });
+      // With a code but no active factor, the admin is refused before any password is compared.
+      seed('customer');
+      await expect(
+        u.change.execute(testCallContext(market, admin), {
+          currentPassword: OLD_PASSWORD,
+          newPassword: NEW_PASSWORD,
+          code: '123456',
           client: CLIENT,
         }),
       ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });

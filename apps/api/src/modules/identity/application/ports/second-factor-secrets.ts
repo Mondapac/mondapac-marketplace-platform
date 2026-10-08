@@ -25,8 +25,9 @@ export interface SecondFactorSecrets {
    * The first of `steps` (in the order given) at which `code` is the TOTP of the stored secret,
    * or null when none is (7.1). The secret is decrypted here and nowhere else; its decoded bytes
    * are zeroed after use (best effort: the decrypted text is a string, which cannot be). A
-   * destroyed key answers null: no code matches an erased account. A ciphertext that does not
-   * open under this account's key and label throws `SubjectKeyIntegrityError`; it never matches.
+   * destroyed key throws {@link SecondFactorKeyUnavailableError} (slice 7b): no code matches an
+   * erased account, and the caller alarms on it (Hassan I-3). A ciphertext that does not open
+   * under this account's key and label throws `SubjectKeyIntegrityError`; it never matches.
    */
   matchStored(
     market: MarketContext,

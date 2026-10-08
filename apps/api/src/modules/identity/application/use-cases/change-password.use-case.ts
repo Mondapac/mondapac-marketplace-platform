@@ -27,12 +27,27 @@ import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repos
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
+import type { SecondFactorSecrets } from '../ports/second-factor-secrets';
+import type { SecondFactorRepository } from '../ports/second-factor.repository';
+import {
+  checkPresentedCode,
+  codeProven,
+  parsePresentedCode,
+  recordCodeFailure,
+  reserveSecondFactor,
+  secondFactorCounter,
+  spendCode,
+  type CodeCheck,
+  type ReservedAttempt,
+} from '../second-factor/code-check';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
 
 export interface ChangePasswordInput {
   readonly currentPassword: string;
   readonly newPassword: string;
+  /** Required for an admin (Hassan I2 (b)): a code from the app or a recovery code. */
+  readonly code?: string;
   readonly client: SignInClient;
 }
 
@@ -55,6 +70,8 @@ export type ChangePasswordFailure =
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | PasswordHasherBusy
   | { readonly code: 'session.invalid' }
+  | { readonly code: 'second-factor.invalid' }
+  | { readonly code: 'second-factor.locked'; readonly retryAfterSeconds: number }
   | { readonly code: 'access.denied' }
   | { readonly code: 'access.unavailable' };
 
@@ -75,6 +92,9 @@ export interface ChangePasswordDependencies {
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** Slice 7b: an admin's code (I2 (b)) and a waiting replacement cleared (item B). */
+  readonly factors: SecondFactorRepository;
+  readonly secrets: SecondFactorSecrets;
 }
 
 type Reserved = { readonly reservation: ThrottleReservation; readonly rule: ThrottleRule };
@@ -82,7 +102,14 @@ type Reserved = { readonly reservation: ThrottleReservation; readonly rule: Thro
 /** What the closing unit decided. */
 type Closed =
   | { readonly kind: 'changed'; readonly session: Session; readonly revokedSessions: number }
-  | { readonly kind: 'refused'; readonly code: 'password.current-incorrect' | 'session.invalid' };
+  | {
+      readonly kind: 'refused';
+      readonly code:
+        | 'password.current-incorrect'
+        | 'session.invalid'
+        | 'second-factor.invalid'
+        | 'second-factor.locked';
+    };
 
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
@@ -145,21 +172,19 @@ export class ChangePassword extends UseCase<
   ): Promise<Result<ChangePasswordOutput, ChangePasswordFailure>> {
     const { market, actor } = context;
     const { unitOfWork, accounts, throttles, keys, policy, hasher } = this.deps;
-    // The gate admits only an authenticated actor under own-resources. An admin needs a code
-    // with the password (6.5; Hassan I2 (b)), which slice 7b brings: refused until then.
-    if (actor.kind !== 'authenticated' || actor.population === 'admin') {
-      return err({ code: 'access.denied' });
-    }
+    // The gate admits only an authenticated actor under own-resources.
+    if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
     const population = actor.population;
     const tooLong = (['currentPassword', 'newPassword'] as const).filter(
       (field) => Buffer.byteLength(input[field], 'utf8') > MAX_PASSWORD_BYTES,
     );
-    if (tooLong.length > 0) {
-      return err({
-        code: 'validation.failed',
-        fields: tooLong.map((path) => ({ path, code: 'length' })),
-      });
-    }
+    // Hassan I2 (b), slice 7b: an admin also presents a code (app or recovery code).
+    const presented = population === 'admin' ? parsePresentedCode(input.code ?? '') : null;
+    const fields: FieldProblem[] = tooLong.map((path) => ({ path, code: 'length' }));
+    if (population === 'admin' && presented === null) fields.push({ path: 'code', code: 'format' });
+    if (fields.length > 0) return err({ code: 'validation.failed', fields });
+    const factorRule = population === 'admin' ? policy.secondFactorThrottle(market) : null;
+    if (population === 'admin' && factorRule === null) return err(UNAVAILABLE);
     const rules = policy.signInThrottles(market);
 
     // 1. The reservation unit (HF1): count the attempt, read the actor's account.
@@ -167,13 +192,18 @@ export class ChangePassword extends UseCase<
       readonly reserved: readonly Reserved[];
       readonly account: Account | null;
       readonly throttled: number | null;
+      /** An admin's factor and its reserved `second-factor.account` attempt (HF2). */
+      readonly factor: { readonly secret: string; readonly attempt: ReservedAttempt } | null;
+      readonly factorLocked: number | null;
     };
     let reserved: Reservation;
     try {
       const run = await unitOfWork.run(market, async (): Promise<Result<Reservation, never>> => {
         const now = this.deps.clock.now();
         const account = await accounts.findById(market, actor.accountId);
-        if (account === null) return ok({ reserved: [], account, throttled: null });
+        if (account === null) {
+          return ok({ reserved: [], account, throttled: null, factor: null, factorLocked: null });
+        }
         const email = account.state.email.normalized;
         const accountKey = keys.account(market, population, email);
         const counters: readonly ThrottleCounter[] = [
@@ -197,10 +227,23 @@ export class ChangePassword extends UseCase<
           rule: counters[index]!.rule,
         }));
         const verdict = reservationVerdict(reserved, now);
+        let factor: Reservation['factor'] = null;
+        let factorLocked: number | null = null;
+        if (factorRule !== null && verdict.allowed) {
+          const active = await this.deps.factors.findByAccount(market, actor.accountId);
+          if (active !== null && active.isActive) {
+            const counter = secondFactorCounter(keys, market, population, email, factorRule);
+            const attempt = await reserveSecondFactor(throttles, market, counter, now);
+            if (attempt.kind === 'locked') factorLocked = attempt.retryAfterSeconds;
+            else factor = { secret: active.state.secretCiphertext, attempt: attempt.reserved };
+          }
+        }
         return ok({
           reserved,
           account,
           throttled: verdict.allowed ? null : verdict.retryAfterSeconds,
+          factor,
+          factorLocked,
         });
       });
       if (!run.ok) return err(UNAVAILABLE);
@@ -215,7 +258,20 @@ export class ChangePassword extends UseCase<
     if (reserved.throttled !== null) {
       return err({ code: 'request.throttled', retryAfterSeconds: reserved.throttled });
     }
-    const reservations = reserved.reserved.map((r) => r.reservation);
+    const signInReservations = reserved.reserved.map((r) => r.reservation);
+    const factorAttempt = reserved.factor?.attempt ?? null;
+    if (population === 'admin' && factorAttempt === null) {
+      // HF2 lock, or an admin session without an active factor (3.5 forbids one): no change.
+      await this.releasing(context, signInReservations, UNAVAILABLE);
+      return reserved.factorLocked === null
+        ? err({ code: 'access.denied' })
+        : err({ code: 'second-factor.locked', retryAfterSeconds: reserved.factorLocked });
+    }
+    // Given back on every path where no code was tried.
+    const reservations =
+      factorAttempt === null
+        ? signInReservations
+        : [...signInReservations, factorAttempt.reservation];
 
     // 2. The new password's rules; the current password verified outside any unit; the hash.
     const checked = checkNewPassword(
@@ -240,6 +296,8 @@ export class ChangePassword extends UseCase<
             return until === null ? [] : [{ reservation, until }];
           });
           if (blocks.length > 0) await throttles.block(market, blocks);
+          // No code was tried: the factor's attempt is given back.
+          if (factorAttempt !== null) await throttles.release(market, [factorAttempt.reservation]);
           await this.record(context, input.client, 'password.current-incorrect', now);
           return ok(undefined);
         }),
@@ -248,14 +306,48 @@ export class ChangePassword extends UseCase<
       this.log('identity.change-password.current-incorrect', context, {});
       return err({ code: 'password.current-incorrect' });
     }
+    // An admin's code, outside any unit (I-2, I-3); spent in the closing unit (I-1).
+    let check: CodeCheck | null = null;
+    if (factorAttempt !== null && presented !== null && reserved.factor !== null) {
+      check = await checkPresentedCode(
+        { secrets: this.deps.secrets, clock: this.deps.clock },
+        this.#logger,
+        context,
+        actor.accountId,
+        reserved.factor.secret,
+        presented,
+      );
+      if (check.kind === 'no-match') {
+        const failed = await this.codeFailed(
+          context,
+          input.client,
+          signInReservations,
+          factorAttempt,
+        );
+        return err(failed);
+      }
+    }
+    // Whether the last run of the closing unit spent the admin's code (a retried unit starts
+    // again).
+    let spentInUnit = false;
+    /**
+     * What is given back when the work after the code check fails and keeps nothing: the
+     * sign-in counters (the current password matched) and the factor's attempt only for a code
+     * proven correct (`codeProven`; Hassan, PR #162). A wrong recovery code stays counted.
+     */
+    const refundable = (): readonly ThrottleReservation[] =>
+      factorAttempt === null || (check !== null && !codeProven(check, spentInUnit))
+        ? signInReservations
+        : reservations;
     const hashed = await hasher.hash(input.newPassword);
-    if (!hashed.ok) return this.releasing(context, reservations, hashed.error);
+    if (!hashed.ok) return this.releasing(context, refundable(), hashed.error);
     const issued = this.deps.tokens.issue();
     const verifiedHash = account.state.credential.passwordHash;
 
     // 3. The closing unit.
-    const closed = await this.closing(context, reservations, () =>
+    const closed = await this.closing(context, refundable, () =>
       unitOfWork.run(market, async (): Promise<Result<Closed, never>> => {
+        spentInUnit = false;
         const now = this.deps.clock.now();
         const locked = await accounts.lockCredential(market, actor.accountId);
         const current = locked ? await accounts.findById(market, actor.accountId) : null;
@@ -265,6 +357,32 @@ export class ChangePassword extends UseCase<
           await throttles.release(market, reservations);
           await this.record(context, input.client, 'password.current-incorrect', now);
           return ok({ kind: 'refused', code: 'password.current-incorrect' });
+        }
+        // An admin's code is spent here, after the credential lock (I-1): a replayed or
+        // concurrent code stays counted and changes nothing else (HF2).
+        if (factorAttempt !== null && check !== null) {
+          const factor = await this.deps.factors.findByAccount(market, actor.accountId);
+          const spent =
+            factor !== null &&
+            factor.isActive &&
+            factor.state.secretCiphertext === reserved.factor!.secret &&
+            (await spendCode(this.deps.factors, market, factor.state.id, check, now));
+          spentInUnit = spent;
+          if (!spent) {
+            const lockedNow = await recordCodeFailure(
+              { throttles, factors: this.deps.factors, outbox: this.deps.outbox },
+              context,
+              factorAttempt,
+              actor.accountId,
+              now,
+            );
+            await throttles.release(market, signInReservations);
+            await this.record(context, input.client, 'second-factor.invalid', now);
+            return ok({
+              kind: 'refused',
+              code: lockedNow ? 'second-factor.locked' : 'second-factor.invalid',
+            });
+          }
         }
         const replaced = current.replacePassword({
           passwordHash: hashed.value,
@@ -283,8 +401,15 @@ export class ChangePassword extends UseCase<
         await accounts.save(market, current);
         // Hassan L2: a reset link requested before the change stops working with it.
         await this.deps.links.cancelUnused(market, actor.accountId, 'reset-password');
+        // Throttle rows before challenge rows (data design 3.3; Mojtaba, PR #162).
+        await throttles.release(market, reservations);
         // HF11, Hassan I2 (d): a challenge opened with the old password can never complete.
         await this.deps.challenges.voidAllOf(market, actor.accountId);
+        // Slice 7b item B (3.6): a waiting replacement secret is dropped; the factor stays.
+        const factor = await this.deps.factors.findByAccount(market, actor.accountId);
+        if (factor !== null && factor.clearReplacement()) {
+          await this.deps.factors.save(market, factor);
+        }
         const revokedSessions = await sessions.revokeAllOf(
           market,
           actor.accountId,
@@ -292,7 +417,6 @@ export class ChangePassword extends UseCase<
           now,
           actor.sessionId,
         );
-        await throttles.release(market, reservations);
         await this.record(context, input.client, 'password-changed', now);
         await this.deps.outbox.append(context, current.pendingEvents);
         return ok({ kind: 'changed', session, revokedSessions });
@@ -302,6 +426,12 @@ export class ChangePassword extends UseCase<
     const outcome = closed.value;
     if (outcome.kind === 'refused') {
       this.log('identity.change-password.refused', context, { reason: outcome.code });
+      if (outcome.code === 'second-factor.locked') {
+        return err({
+          code: outcome.code,
+          retryAfterSeconds: (factorAttempt?.rule.blockMinutes ?? 0) * 60,
+        });
+      }
       return err({ code: outcome.code });
     }
     this.log('identity.change-password.done', context, {
@@ -321,6 +451,9 @@ export class ChangePassword extends UseCase<
    * it never outlives the session's absolute expiry, which never moves (3.5).
    */
   private cookieMaxAge(context: CallContext, session: Session): number | null {
+    // An admin session is never persistent (6.1; Hassan L1, PR #162): no inference from a
+    // lifetime, which a later change of `sessions.admin` could make look "kept".
+    if (session.population === 'admin') return null;
     const standard = this.deps.policy.sessionLifetime(context.market, session.population);
     const lifetime = session.createdAt.until(session.absoluteExpiresAt).total({ unit: 'seconds' });
     const persistent =
@@ -333,18 +466,20 @@ export class ChangePassword extends UseCase<
 
   /**
    * Runs the closing unit. When it throws (a lock timeout, exhausted retries, a lost connection)
-   * nothing of it was kept, so the reservation is given back, best effort, before the error goes
-   * on to its usual answer (Mojtaba, slice 4).
+   * nothing of it was kept, so the refundable reservations (read after the unit: a code proven
+   * correct only) are given back, best effort, before the error goes on to its usual answer
+   * (Mojtaba, slice 4; Hassan, PR #162).
    */
   private async closing<T>(
     context: CallContext,
-    reservations: readonly ThrottleReservation[],
+    refundable: () => readonly ThrottleReservation[],
     run: () => Promise<Result<T, never>>,
   ): Promise<Result<T, never>> {
     try {
       return await run();
     } catch (error) {
       this.log('identity.change-password.closing-failed', context, {});
+      const reservations = refundable();
       await this.failClosed(context, () =>
         this.deps.unitOfWork.run(context.market, async () => {
           await this.deps.throttles.release(context.market, reservations);
@@ -362,11 +497,11 @@ export class ChangePassword extends UseCase<
   private async record(
     context: CallContext,
     client: SignInClient,
-    outcome: 'password.current-incorrect' | 'password-changed',
+    outcome: 'password.current-incorrect' | 'password-changed' | 'second-factor.invalid',
     now: Temporal.Instant,
   ): Promise<void> {
     const actor = context.actor;
-    if (actor.kind !== 'authenticated' || actor.population === 'admin') return;
+    if (actor.kind !== 'authenticated') return;
     await this.deps.records.add(context.market, {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: actor.population,
@@ -377,6 +512,42 @@ export class ChangePassword extends UseCase<
       sessionId: actor.sessionId,
       correlationId: context.correlationId,
     });
+  }
+
+  /**
+   * An admin's code matched nothing (HF2): the attempt stays counted, the one that reaches the
+   * limit blocks the counter and locks the factor; the password was right, so the sign-in
+   * reservation is given back. Answers the refusal.
+   */
+  private async codeFailed(
+    context: CallContext,
+    client: SignInClient,
+    signInReservations: readonly ThrottleReservation[],
+    attempt: ReservedAttempt,
+  ): Promise<ChangePasswordFailure> {
+    const actor = context.actor;
+    if (actor.kind !== 'authenticated') return { code: 'access.denied' };
+    let lockedNow = false;
+    const done = await this.failClosed(context, () =>
+      this.deps.unitOfWork.run(context.market, async () => {
+        const now = this.deps.clock.now();
+        lockedNow = await recordCodeFailure(
+          { throttles: this.deps.throttles, factors: this.deps.factors, outbox: this.deps.outbox },
+          context,
+          attempt,
+          actor.accountId,
+          now,
+        );
+        await this.deps.throttles.release(context.market, signInReservations);
+        await this.record(context, client, 'second-factor.invalid', now);
+        return ok(undefined);
+      }),
+    );
+    if (!done) return UNAVAILABLE;
+    this.log('identity.change-password.code-invalid', context, {});
+    return lockedNow
+      ? { code: 'second-factor.locked', retryAfterSeconds: attempt.rule.blockMinutes * 60 }
+      : { code: 'second-factor.invalid' };
   }
 
   /** Gives the reservation back (nothing was guessed) and answers `failure`. */

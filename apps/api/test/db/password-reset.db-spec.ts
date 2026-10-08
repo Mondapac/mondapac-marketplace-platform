@@ -223,12 +223,22 @@ describe.each(TEST_MARKETS)(
          VALUES ($1, $2, 'default', $3, 'second-factor', $4, 0, $5, $6, NULL, $5)`,
         [uuidV7(Date.now(), randomBytes(10)), code, accountId, randomBytes(32), now, expires],
       );
+      const factorId = uuidV7(Date.now(), randomBytes(10));
       await sql.query(
         `INSERT INTO identity.second_factors (id, market_id, tenant_id, account_id, state,
            secret_ciphertext, last_accepted_step, activated_at, created_at, version)
          VALUES ($1, $2, 'default', $3, 'active', 'ciphertext', NULL, $4, $4, 1)`,
-        [uuidV7(Date.now(), randomBytes(10)), code, accountId, now],
+        [factorId, code, accountId, now],
       );
+      // An active factor holds all ten codes (data design 3.10): slice 7b's reset and change load
+      // the factor to clear a waiting replacement, and the aggregate refuses one without them.
+      for (let position = 1; position <= 10; position += 1) {
+        await sql.query(
+          `INSERT INTO identity.recovery_codes (market_id, tenant_id, second_factor_id, position,
+             code_hash) VALUES ($1, 'default', $2, $3, $4)`,
+          [code, factorId, position, randomBytes(32)],
+        );
+      }
     }
 
     const challengesAndFactors = async (accountId: string) =>

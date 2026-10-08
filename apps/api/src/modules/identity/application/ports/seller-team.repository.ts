@@ -62,6 +62,14 @@ export interface RoleAssignmentRepository {
 
   add(market: MarketContext, assignment: RoleAssignment): Promise<void>;
 
+  /**
+   * Whether this role has a holder that can sign in: an active account with a verified email
+   * (identity design 5.5, R3 "can sign in"; HF5 (b): an admin invitation without an inviter is
+   * refused once the Market has an active Platform Administrator). One read on the
+   * `(market_id, role_id)` index with a filter on the account.
+   */
+  hasActiveHolder(market: MarketContext, roleId: Id<'Role'>): Promise<boolean>;
+
   /** Deletes an assignment with the version read (the unverified purge); else stale. */
   remove(market: MarketContext, assignment: RoleAssignment): Promise<void>;
 }
