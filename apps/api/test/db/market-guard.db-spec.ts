@@ -1,5 +1,8 @@
 import { ok } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
+import { AUDIT_PROPERTIES } from '../../src/platform/persistence/guarded-client';
+import type { MarketContext } from '@mondapac/shared-kernel';
 import { MarketGuardError, NoUnitOfWorkError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -53,9 +56,14 @@ describe('market guard (database integration)', () => {
 
     describe.each(scopedModels)('scoped model %s', (_model, entry) => {
       const delegateIn = (tx: unknown) => (tx as Record<string, Delegate>)[entry.clientProperty]!;
+      /** The audit models are only in the writer's view (Hassan M1 on slice 6a). */
+      const viewOf = (market: MarketContext): unknown =>
+        (AUDIT_PROPERTIES as readonly string[]).includes(entry.clientProperty)
+          ? auditTx(market)
+          : db.service.tx(market);
       const runWith = (call: (delegate: Delegate) => Promise<unknown>) =>
         db.unitOfWork.run(market, async () => {
-          await call(delegateIn(db.service.tx(market)));
+          await call(delegateIn(viewOf(market)));
           return ok(undefined);
         });
       /** A row the guard must refuse before it reaches the database. */
@@ -135,7 +143,7 @@ describe('market guard (database integration)', () => {
           market,
           async () =>
             ok(
-              (await delegateIn(db.service.tx(market)).findMany!({
+              (await delegateIn(viewOf(market)).findMany!({
                 where: { marketId: market.marketId },
                 take: 50,
               })) as { marketId: string }[],

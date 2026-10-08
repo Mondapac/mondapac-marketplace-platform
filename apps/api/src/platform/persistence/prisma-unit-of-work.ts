@@ -19,7 +19,13 @@ import {
   type UnitOfWorkOptions,
 } from '../unit-of-work/unit-of-work';
 import { classifyConflict } from './conflict-classifier';
-import { modelDelegatesOf, type GuardedClient, type MarketTransaction } from './guarded-client';
+import {
+  auditDelegatesOf,
+  modelDelegatesOf,
+  type AuditTransaction,
+  type GuardedClient,
+  type MarketTransaction,
+} from './guarded-client';
 import type { ModelMap } from './model-map';
 import {
   issuedDeliveryFor,
@@ -75,6 +81,7 @@ export function checkUnitOfWorkOptions(options: UnitOfWorkOptions): void {
  */
 export class PrismaUnitOfWork implements UnitOfWork {
   private readonly readOnlyView: MarketTransaction;
+  private readonly readOnlyAuditView: AuditTransaction;
 
   constructor(
     private readonly client: GuardedClient,
@@ -82,6 +89,7 @@ export class PrismaUnitOfWork implements UnitOfWork {
     private readonly pause: RetryPause = randomPause,
   ) {
     this.readOnlyView = modelDelegatesOf(client, map);
+    this.readOnlyAuditView = auditDelegatesOf(client, map);
   }
 
   async run<T, E>(
@@ -136,7 +144,7 @@ export class PrismaUnitOfWork implements UnitOfWork {
     market: MarketContext,
     work: () => Promise<Result<T, E>>,
   ): Promise<Result<T, E>> {
-    const unit = new OpenUnit(market, true, this.readOnlyView);
+    const unit = new OpenUnit(market, true, this.readOnlyView, this.readOnlyAuditView);
     try {
       return await unitStorage.run(unit, async () => await work());
     } catch (error) {
@@ -165,7 +173,12 @@ export class PrismaUnitOfWork implements UnitOfWork {
       let unit: OpenUnit | undefined;
       try {
         return await this.client.$transaction(async (transaction) => {
-          unit = new OpenUnit(market, false, modelDelegatesOf(transaction, this.map));
+          unit = new OpenUnit(
+            market,
+            false,
+            modelDelegatesOf(transaction, this.map),
+            auditDelegatesOf(transaction, this.map),
+          );
           const current = unit;
           try {
             const result = await unitStorage.run(current, async () => await work());

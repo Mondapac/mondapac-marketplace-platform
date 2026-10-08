@@ -17,6 +17,11 @@ export class OpenUnit implements GuardUnit {
     readonly market: MarketContext,
     readonly readOnly: boolean,
     readonly view: object,
+    /**
+     * The audit models of the same client (Hassan M1 on slice 6a): read only by `auditTx` in
+     * `platform/persistence/audit/`; `PrismaService.tx` hands out `view`, which lacks them.
+     */
+    readonly auditView: object,
   ) {
     Object.freeze(this);
   }

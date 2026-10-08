@@ -8,7 +8,7 @@ import type { MarketTransaction } from '../../src/platform/persistence/prisma.se
 declare const tx: MarketTransaction;
 
 /** The model delegates are there. */
-export const delegates = [tx.auditLog.findMany, tx.auditLog.create] as const;
+export const delegates = [tx.subjectKey.findMany, tx.subjectKey.create] as const;
 
 /** Every client-level member is absent. */
 export const absent = [
@@ -34,20 +34,33 @@ export const absent = [
   tx.$extends,
 ] as const;
 
+/**
+ * The audit models are not in the view (Hassan M1 on slice 6a): only the AuditWriter reaches
+ * them, through `auditTx` in platform/persistence/audit/.
+ */
+export const auditAbsent = [
+  // @ts-expect-error no audit_log: write it through the AuditWriter
+  tx.auditLog,
+  // @ts-expect-error no audit_log_seal
+  tx.auditLogSeal,
+  // @ts-expect-error no audit_chain_checkpoint
+  tx.auditChainCheckpoint,
+] as const;
+
 /** A delegate holds its guarded operations only: not the client it came from (Hassan, H1). */
 export const delegateAbsent = [
   // @ts-expect-error no $parent: it is the unguarded client
-  tx.auditLog.$parent,
+  tx.subjectKey.$parent,
   // @ts-expect-error no $name
-  tx.auditLog.$name,
+  tx.subjectKey.$name,
   // @ts-expect-error no field references
-  tx.auditLog.fields,
+  tx.subjectKey.fields,
 ] as const;
 
 /** The view cannot be written to. */
-export function assign(other: MarketTransaction['auditLog']): void {
+export function assign(other: MarketTransaction['subjectKey']): void {
   // @ts-expect-error readonly
-  tx.auditLog = other;
+  tx.subjectKey = other;
 }
 
 /** Prisma's own transaction client is not a MarketTransaction, and the reverse. */

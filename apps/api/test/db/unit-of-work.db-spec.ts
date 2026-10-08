@@ -7,10 +7,10 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { databaseIsolationAccepted } from '../../src/check-database-role';
 import { Market } from '../../src/platform/market-context/market.decorator';
+import { auditTx } from '../../src/platform/persistence/audit/audit-transaction';
 import { DatabaseProbe } from '../../src/platform/persistence/database-probe';
 import { GUARDED_OPERATIONS } from '../../src/platform/persistence/market-guard';
 import { PrismaRoot } from '../../src/platform/persistence/prisma-root';
-import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import {
   InvalidUnitOfWorkOptionsError,
   MarketGuardError,
@@ -120,7 +120,7 @@ describe('UnitOfWork (database integration)', () => {
   const rowExists = async (id: string) => (await db.root.auditLog.count({ where: { id } })) === 1;
 
   const insert = (market: MarketContext, row: ReturnType<typeof auditRow>) =>
-    db.service.tx(market).auditLog.create({ data: row });
+    auditTx(market).auditLog.create({ data: row });
 
   describe.each(TEST_MARKETS)('in a unit for %s', (code) => {
     const market = marketOf(code);
@@ -173,7 +173,7 @@ describe('UnitOfWork (database integration)', () => {
 
         await db.unitOfWork.run(market, async () => {
           await insert(market, row);
-          const tx = db.service.tx(market);
+          const tx = auditTx(market);
           seen.push(
             (await tx.auditLog.count({ where: { marketId: market.marketId, id: row.id } })) === 1,
           );
@@ -239,7 +239,7 @@ describe('UnitOfWork (database integration)', () => {
         await db.unitOfWork.run(
           market,
           inline(() => {
-            late = db.service.tx(market).auditLog.create({ data: row });
+            late = auditTx(market).auditLog.create({ data: row });
             return ok(undefined);
           }),
         );
@@ -252,9 +252,9 @@ describe('UnitOfWork (database integration)', () => {
     describe('isolation (P 3.1 row 6, ADR-0025 decision 2)', () => {
       it('sends no SET TRANSACTION for a default unit, and Serializable when asked', async () => {
         const read = async () => {
-          await db.service
-            .tx(market)
-            .auditLog.count({ where: { marketId: market.marketId, targetId: 'isolation' } });
+          await auditTx(market).auditLog.count({
+            where: { marketId: market.marketId, targetId: 'isolation' },
+          });
           return ok(undefined);
         };
 
@@ -298,7 +298,7 @@ describe('UnitOfWork (database integration)', () => {
             market,
             async () => {
               attempts += 1;
-              const tx = retrying.service.tx(market);
+              const tx = auditTx(market);
               const seen = await tx.auditLog.count({
                 where: { marketId: market.marketId, targetId },
               });
@@ -339,7 +339,7 @@ describe('UnitOfWork (database integration)', () => {
             const run = retrying.unitOfWork.run(market, async () => {
               const row = auditRow(market, { action });
               ids.push(row.id);
-              await retrying.service.tx(market).auditLog.create({ data: row });
+              await auditTx(market).auditLog.create({ data: row });
               return ok(undefined);
             });
 
@@ -364,7 +364,7 @@ describe('UnitOfWork (database integration)', () => {
           await owner.query('LOCK TABLE platform.audit_log IN ACCESS EXCLUSIVE MODE');
           const run = locked.unitOfWork.run(market, async () => {
             attempts += 1;
-            await locked.service.tx(market).auditLog.create({ data: auditRow(market) });
+            await auditTx(market).auditLog.create({ data: auditRow(market) });
             return ok(undefined);
           });
 
@@ -416,7 +416,7 @@ describe('UnitOfWork (database integration)', () => {
           const holding = gate();
           const held = gate();
           const holder = small.unitOfWork.run(market, async () => {
-            await small.service.tx(market).auditLog.count({ where: { marketId: market.marketId } });
+            await auditTx(market).auditLog.count({ where: { marketId: market.marketId } });
             held.open();
             await holding.opened;
             return ok(undefined);
@@ -428,9 +428,7 @@ describe('UnitOfWork (database integration)', () => {
                 market,
                 async () =>
                   ok(
-                    await small.service
-                      .tx(market)
-                      .auditLog.count({ where: { marketId: market.marketId } }),
+                    await auditTx(market).auditLog.count({ where: { marketId: market.marketId } }),
                   ),
                 options,
               ),
@@ -492,17 +490,25 @@ describe('UnitOfWork (database integration)', () => {
         return names;
       }
 
+      const auditProperties = ['auditChainCheckpoint', 'auditLog', 'auditLogSeal'];
+      const moduleProperties = Object.values(modelMap.models)
+        .map((entry) => entry.clientProperty)
+        .filter((property) => !auditProperties.includes(property))
+        .sort();
+
       it.each([
-        ['a read-write unit', {}],
-        ['a read-only unit', { readOnly: true }],
-      ] as [string, UnitOfWorkOptions][])(
-        'in %s: frozen, no prototype, the guarded operations only, no way to the client',
-        async (_case, options) => {
+        ['a read-write unit', 'tx', {}],
+        ['a read-only unit', 'tx', { readOnly: true }],
+        ['a read-write unit', 'auditTx', {}],
+        ['a read-only unit', 'auditTx', { readOnly: true }],
+      ] as [string, 'tx' | 'auditTx', UnitOfWorkOptions][])(
+        'in %s, %s: frozen, no prototype, the guarded operations only, no way to the client',
+        async (_case, which, options) => {
           let view: unknown;
           await db.unitOfWork.run(
             market,
             inline(() => {
-              view = db.service.tx(market);
+              view = which === 'tx' ? db.service.tx(market) : auditTx(market);
               return ok(undefined);
             }),
             options,
@@ -511,16 +517,18 @@ describe('UnitOfWork (database integration)', () => {
 
           expect(Object.isFrozen(view)).toBe(true);
           expect(Object.getPrototypeOf(view)).toBeNull();
-          // One delegate per model of the map: the outbox models too, which only
-          // platform/persistence/outbox/ may name (pnpm boundaries).
+          // tx(market): one delegate per model of the map except the audit models (Hassan M1
+          // on slice 6a), the outbox models included, which only platform/persistence/outbox/
+          // may name (pnpm boundaries). auditTx(market): the audit models and nothing else.
           expect([...Reflect.ownKeys(view)].sort()).toEqual(
-            Object.values(modelMap.models)
-              .map((entry) => entry.clientProperty)
-              .sort(),
+            which === 'tx' ? moduleProperties : auditProperties,
           );
           for (const member of CLIENT_MEMBERS) expect(member in view).toBe(false);
 
-          const delegate = Reflect.get(view, 'auditLog') as Record<string, unknown>;
+          const delegate = Reflect.get(view, which === 'tx' ? 'subjectKey' : 'auditLog') as Record<
+            string,
+            unknown
+          >;
           expect(Object.isFrozen(delegate)).toBe(true);
           expect(Object.getPrototypeOf(delegate)).toBeNull();
           expect([...Reflect.ownKeys(delegate)].sort()).toEqual([...GUARDED_OPERATIONS].sort());
@@ -536,8 +544,24 @@ describe('UnitOfWork (database integration)', () => {
           for (const member of ['$parent', '$queryRawUnsafe', '$transaction', '$disconnect']) {
             expect(reachable.has(member)).toBe(false);
           }
+          if (which === 'tx') {
+            for (const property of auditProperties) expect(reachable.has(property)).toBe(false);
+          }
         },
       );
+
+      it('auditTx(market) has the checks of tx(market): no unit, and the other Market', async () => {
+        expect(() => auditTx(market)).toThrow(NoUnitOfWorkError);
+        const run = db.unitOfWork.run(
+          market,
+          inline(() => {
+            auditTx(other);
+            return ok(undefined);
+          }),
+        );
+
+        await expect(run).rejects.toThrow(MarketMismatchError);
+      });
 
       it('the operations of the view still reach the database through the guard', async () => {
         const row = auditRow(market);
@@ -550,9 +574,9 @@ describe('UnitOfWork (database integration)', () => {
           market,
           async () =>
             ok(
-              await db.service
-                .tx(market)
-                .auditLog.findMany({ where: { marketId: market.marketId, id: row.id } }),
+              await auditTx(market).auditLog.findMany({
+                where: { marketId: market.marketId, id: row.id },
+              }),
             ),
           { readOnly: true },
         );
@@ -560,8 +584,7 @@ describe('UnitOfWork (database integration)', () => {
         await expect(
           db.unitOfWork.run(
             market,
-            async () =>
-              ok(await db.service.tx(market).auditLog.findMany({ where: { id: row.id } })),
+            async () => ok(await auditTx(market).auditLog.findMany({ where: { id: row.id } })),
             { readOnly: true },
           ),
         ).rejects.toBeInstanceOf(MarketGuardError);
@@ -576,7 +599,7 @@ describe('UnitOfWork (database integration)', () => {
           db.unitOfWork.run(
             market,
             async () => {
-              const tx = db.service.tx(market);
+              const tx = auditTx(market);
               const where = { marketId: market.marketId, targetId: 'read-only' };
               await tx.auditLog.count({ where });
               await tx.auditLog.findMany({ where, take: 1 });
@@ -604,11 +627,7 @@ describe('UnitOfWork (database integration)', () => {
             unit = probe.unitOfWork.run(
               market,
               async () =>
-                ok(
-                  await probe.service
-                    .tx(market)
-                    .auditLog.count({ where: { marketId: market.marketId } }),
-                ),
+                ok(await auditTx(market).auditLog.count({ where: { marketId: market.marketId } })),
               isReadOnly ? readOnly : {},
             );
             let blocked: { same_start: boolean }[] = [];
@@ -649,7 +668,7 @@ describe('UnitOfWork (database integration)', () => {
         const run = db.unitOfWork.run(
           market,
           async () => {
-            const delegate = db.service.tx(market).auditLog as unknown as Record<
+            const delegate = auditTx(market).auditLog as unknown as Record<
               string,
               (a: unknown) => Promise<unknown>
             >;
@@ -674,11 +693,7 @@ describe('UnitOfWork (database integration)', () => {
         const run = db.unitOfWork.run(
           market,
           async () =>
-            ok(
-              await db.service
-                .tx(market)
-                .auditLog.findMany({ where: { marketId: other.marketId } }),
-            ),
+            ok(await auditTx(market).auditLog.findMany({ where: { marketId: other.marketId } })),
           readOnly,
         );
 
@@ -706,7 +721,7 @@ describe('UnitOfWork (database integration)', () => {
         await db.unitOfWork.run(
           market,
           inline(() => {
-            const tx = db.service.tx(market);
+            const tx = auditTx(market);
             late = tx.auditLog.count({ where: { marketId: market.marketId } });
             // A callback scheduled inside the unit keeps its store, which is closed by then.
             deferred = new Promise((resolve, reject) => {
@@ -741,16 +756,13 @@ describe('UnitOfWork (database integration)', () => {
   describe('HTTP: a conflict answers 409 conflict.retry (P 10)', () => {
     @Controller('test/unit-of-work')
     class ConflictProbeController {
-      constructor(
-        @Inject(UNIT_OF_WORK) private readonly unitOfWork: UnitOfWork,
-        private readonly prisma: PrismaService,
-      ) {}
+      constructor(@Inject(UNIT_OF_WORK) private readonly unitOfWork: UnitOfWork) {}
 
       @Get('conflict')
       async conflict(@Market() market: MarketContext): Promise<{ status: string }> {
         await this.unitOfWork.run(market, async () => {
           const row = auditRow(market, { action: CONFLICT_AT_COMMIT });
-          await this.prisma.tx(market).auditLog.create({ data: row });
+          await auditTx(market).auditLog.create({ data: row });
           return ok(undefined);
         });
         return { status: 'saved' };
