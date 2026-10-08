@@ -2,6 +2,21 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Invitation, InvitationKind } from '../../domain/invitation';
 
 /**
+ * A pending admin invitation as the admin team list reads it (slice 8c): no token hash, no
+ * decision fields. The invited address is personal data, never logged.
+ */
+export interface PendingAdminInvitation {
+  readonly id: Id<'Invitation'>;
+  readonly state: 'pending';
+  /** As typed. */
+  readonly email: string;
+  readonly roleId: Id<'Role'>;
+  readonly invitedByAccountId: Id<'Account'> | null;
+  readonly expiresAt: Temporal.Instant | null;
+  readonly createdAt: Temporal.Instant;
+}
+
+/**
  * The invitations of `identity` (identity design 3.4; data design 3.10). Every method runs in
  * the caller's open unit and takes the `MarketContext` only. A token is never passed in, only
  * its SHA-256. The invited address is personal data: it is never logged here.
@@ -22,6 +37,18 @@ export interface InvitationRepository {
     sellerId: Id<'Seller'> | null,
     emailNormalized: string,
   ): Promise<Invitation | null>;
+
+  /**
+   * Up to `limit` pending admin invitations of this Market (platform scope, `seller_id` NULL),
+   * expired ones included, whose id is greater than `after` (all when null), by id: the open
+   * invitations of the admin team list (slice 8c), as a summary without the token hash (Hassan
+   * L1 on PR #196). Served by the partial index `invitations_market_id_email_pending_platform_key`.
+   */
+  pendingAdminInvitations(
+    market: MarketContext,
+    after: Id<'Invitation'> | null,
+    limit: number,
+  ): Promise<PendingAdminInvitation[]>;
 
   /**
    * Stores a new invitation. A pending invitation for the same address and scope, or a second

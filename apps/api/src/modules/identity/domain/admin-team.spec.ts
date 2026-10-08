@@ -1,8 +1,8 @@
 import { parseId, parseMarketId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, Population } from '@mondapac/shared-kernel';
-import { Account } from './account';
+import { Account, statusChangeRefusal } from './account';
 import { parseEmailAddress } from './email-address';
-import { Invitation } from './invitation';
+import { Invitation, invitationReissuableAt, invitationStatusAt } from './invitation';
 import { Role, RoleAssignment, RoleInvariantError } from './role';
 
 // Slice 8a-2 and 8b in the domain (identity design 3.1, 3.4, 5.5, 8.2): disabling and enabling an
@@ -127,6 +127,21 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       });
       expect(seller.state.status).toBe('active');
       expect(seller.pendingEvents).toEqual([]);
+    });
+  });
+
+  describe('statusChangeRefusal (slice 8c: the one answer of disable, enable and the hint)', () => {
+    it('answers what disable and enable answer, for every population and status', () => {
+      for (const population of ['admin', 'customer', 'seller'] as const) {
+        for (const status of ['active', 'disabled'] as const) {
+          for (const to of ['active', 'disabled'] as const) {
+            const account = accountOf(population, status);
+            const changed = to === 'disabled' ? account.disable(LATER) : account.enable(LATER);
+            const refusal = statusChangeRefusal(population, status, to);
+            expect(refusal).toEqual(changed.ok ? null : changed.error);
+          }
+        }
+      }
     });
   });
 
@@ -379,6 +394,36 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       expect(late.pendingEvents).toEqual([]);
       expect(late.state.tokenHash).not.toBeNull();
       expect(() => dispatched().reissue(NOW, 0)).toThrow(RangeError);
+    });
+
+    it('reissuableAt answers what reissue answers, and changes nothing (slice 8c hint)', () => {
+      const lastMinute = NOW.add({ minutes: LIFETIME - 1 });
+      const cutoff = NOW.add({ minutes: LIFETIME });
+      const invitation = dispatched();
+
+      expect(invitation.reissuableAt(lastMinute, LIFETIME)).toBe(true);
+      expect(invitation.reissuableAt(cutoff, LIFETIME)).toBe(false);
+      expect(invitation.state.version).toBe(2);
+      expect(invitation.pendingEvents).toEqual([]);
+      const revoked = dispatched();
+      revoked.revoke(LATER);
+      expect(Invitation.restore(revoked.state).reissuableAt(LATER, LIFETIME)).toBe(false);
+      expect(() => invitation.reissuableAt(NOW, 0)).toThrow(RangeError);
+    });
+
+    it('the pure rules answer what the aggregate answers, from the summary fields (slice 8c)', () => {
+      const at = [NOW, NOW.add({ minutes: 61 }), NOW.add({ minutes: LIFETIME })];
+      const revoked = dispatched();
+      revoked.revoke(LATER);
+      for (const invitation of [dispatched(), issued(), Invitation.restore(revoked.state)]) {
+        const { state, expiresAt, createdAt } = invitation.state;
+        for (const now of at) {
+          expect(invitationStatusAt({ state, expiresAt }, now)).toBe(invitation.statusAt(now));
+          expect(invitationReissuableAt({ state, createdAt }, now, LIFETIME)).toBe(
+            invitation.reissuableAt(now, LIFETIME),
+          );
+        }
+      }
     });
 
     it('revokes: the address cleared, version +1 and invitation-revoked', () => {
