@@ -277,6 +277,19 @@ UPDATE platform.event_delivery d
 RETURNING d.*;
 ```
 
+**6.4 as built in identity slice 3 (Hossein, 2026-10-08): confirmed, with these details.**
+The fan-out is a raw `INSERT … ON CONFLICT DO NOTHING` through the relay's transaction
+(`platform/persistence/outbox/in-process-event-bus.ts`). The claim also filters on the Market's
+tenant, as the relay does, and caps the back-off exponent. The worker runs the dispatcher in a
+second loop beside the relay, with the same idle pause, and stop ends both loops. Delivery is
+dead at once for an unknown subscriber, a type that is not the subscription's, an envelope
+that does not parse and a payload that does not decode against the subscription's definition.
+It is retried for a handler that throws or one that returns without a committed `runOnce`. The
+delivery a handler receives is a frozen handle: `runOnce` refuses a copy, one from another
+Market and a work result that is an error, which rolls back. Still to come: the requeue
+routine, and pruning of `delivered` rows (the application has no DELETE on
+`platform.event_delivery`; Mojtaba to size it before production).
+
 ### 6.5 What Phase 2 builds
 | Part | Slice 1b | Later |
 |---|---|---|
