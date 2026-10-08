@@ -195,7 +195,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
     });
     await inUnit(() => repository.add(market, created));
     const first = (await inUnit(() => repository.findById(market, created.state.id)))!;
-    for (let n = 0; n < 3; n++) first.addVariant(uuid7() as Id<'Variant'>, 5, T1);
+    for (let n = 0; n < 3; n++) first.addVariant(uuid7() as Id<'Variant'>, 5, T1, 'seller');
     await inUnit(() => repository.save(market, first));
 
     const stored = (await inUnit(() => repository.findById(market, created.state.id)))!;
@@ -223,9 +223,9 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
 
     const loaded = (await inUnit(() => repository.findById(market, created.state.id)))!;
     const [a, b] = [uuid7() as Id<'Variant'>, uuid7() as Id<'Variant'>];
-    loaded.addVariant(a, 5, T1);
-    loaded.addVariant(b, 5, T1);
-    loaded.removeProposedVariant(a, T1);
+    loaded.addVariant(a, 5, T1, 'seller');
+    loaded.addVariant(b, 5, T1, 'seller');
+    loaded.removeProposedVariant(a, T1, 'seller');
     await inUnit(() => repository.save(market, loaded));
 
     const again = (await inUnit(() => repository.findById(market, created.state.id)))!;

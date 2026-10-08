@@ -257,9 +257,58 @@ describe.each(FIXTURE_MARKETS)(
 
     it('adds and removes a variant on a published product, and discard still wants a draft', () => {
       const published = configurable('SELLER', 'published');
-      expect(published.addVariant(v(7), maxVariants, T1).ok).toBe(true);
-      expect(published.removeProposedVariant(v(7), T1).ok).toBe(true);
+      expect(published.addVariant(v(7), maxVariants, T1, 'seller').ok).toBe(true);
+      expect(published.removeProposedVariant(v(7), T1, 'seller').ok).toBe(true);
       expect(published.discard(T1)).toEqual({ ok: false, error: { code: 'product.not-a-draft' } });
+    });
+
+    it('refuses a seller on PLATFORM and an admin on SELLER, for every variant command (CAT-43)', () => {
+      for (const status of ['draft', 'unpublished', 'published']) {
+        const platform = configurable('PLATFORM', status);
+        expect(platform.addVariant(v(7), maxVariants, T1, 'seller')).toEqual({
+          ok: false,
+          error: { code: 'product.platform-admin-only' },
+        });
+        expect(platform.removeProposedVariant(v(7), T1, 'seller')).toEqual({
+          ok: false,
+          error: { code: 'product.platform-admin-only' },
+        });
+        const owned = configurable('SELLER', status);
+        expect(save(owned, [null], 'admin')).toEqual({
+          ok: false,
+          error: { code: 'product.seller-only' },
+        });
+        expect(owned.addVariant(v(7), maxVariants, T1, 'admin').ok).toBe(false);
+      }
+    });
+
+    it('refuses add and remove on every status that is not editable', () => {
+      for (const status of ['discarded', 'matched', 'withdrawn', 'retired']) {
+        const product = configurable('SELLER', status);
+        expect(product.addVariant(v(7), maxVariants, T1, 'seller')).toEqual({
+          ok: false,
+          error: { code: 'product.not-editable' },
+        });
+        expect(product.removeProposedVariant(v(7), T1, 'seller')).toEqual({
+          ok: false,
+          error: { code: 'product.not-editable' },
+        });
+      }
+    });
+
+    it('throws on a limit that would switch the check off', () => {
+      for (const bad of [Number.NaN, 0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+        expect(() =>
+          configurable().saveWorkingCopy({
+            authorKind: 'seller',
+            variantIds: [null],
+            maxVariants: bad,
+            newId,
+            now: T1,
+          }),
+        ).toThrow(RangeError);
+        expect(() => configurable().addVariant(v(7), bad, T1, 'seller')).toThrow(RangeError);
+      }
     });
   },
 );

@@ -23,6 +23,21 @@ export type VariantState = (typeof VARIANT_STATES)[number];
 /** Who writes content: a PLATFORM product accepts only an admin (CAT-43, AC 3). */
 export type AuthorKind = 'seller' | 'admin';
 
+/** CAT-43 and its mirror: a seller never writes PLATFORM content, an admin never a SELLER draft. */
+function authorRefusal(scope: ProductScope, authorKind: AuthorKind): ProductRefusal | null {
+  if (scope === 'PLATFORM' && authorKind !== 'admin')
+    return { code: 'product.platform-admin-only' };
+  if (scope === 'SELLER' && authorKind !== 'seller') return { code: 'product.seller-only' };
+  return null;
+}
+
+/** A limit that is not a positive safe integer would switch the check off: refuse it loudly. */
+function assertMaxVariants(maxVariants: number): void {
+  if (!Number.isSafeInteger(maxVariants) || maxVariants < 1) {
+    throw new RangeError('Product: maxVariants must be a positive integer');
+  }
+}
+
 /** The statuses whose working copy can still be saved (4.1); the others are terminal. */
 const EDITABLE_STATUSES: readonly ProductStatus[] = ['draft', 'unpublished', 'published'];
 
@@ -64,6 +79,7 @@ export type ProductRefusal =
   | { readonly code: 'product.not-a-draft' }
   | { readonly code: 'product.not-editable' }
   | { readonly code: 'product.platform-admin-only' }
+  | { readonly code: 'product.seller-only' }
   | { readonly code: 'variant.unknown' }
   | { readonly code: 'variant.fixed' }
   | { readonly code: 'variant.limit-reached' }
@@ -191,7 +207,11 @@ export class Product {
     variantId: Id<'Variant'>,
     maxVariants: number,
     now: Temporal.Instant,
+    authorKind: AuthorKind,
   ): Result<void, ProductRefusal> {
+    assertMaxVariants(maxVariants);
+    const refusal = authorRefusal(this.#state.scope, authorKind);
+    if (refusal !== null) return err(refusal);
     if (!EDITABLE_STATUSES.includes(this.#state.status)) {
       return err({ code: 'product.not-editable' });
     }
@@ -221,7 +241,10 @@ export class Product {
   removeProposedVariant(
     variantId: Id<'Variant'>,
     now: Temporal.Instant,
+    authorKind: AuthorKind,
   ): Result<void, ProductRefusal> {
+    const refusal = authorRefusal(this.#state.scope, authorKind);
+    if (refusal !== null) return err(refusal);
     if (!EDITABLE_STATUSES.includes(this.#state.status)) {
       return err({ code: 'product.not-editable' });
     }
@@ -252,10 +275,10 @@ export class Product {
     readonly newId: () => Id<'Variant'>;
     readonly now: Temporal.Instant;
   }): Result<{ readonly variantIds: readonly Id<'Variant'>[] }, ProductRefusal> {
+    assertMaxVariants(input.maxVariants);
     const state = this.#state;
-    if (state.scope === 'PLATFORM' && input.authorKind !== 'admin') {
-      return err({ code: 'product.platform-admin-only' });
-    }
+    const refusal = authorRefusal(state.scope, input.authorKind);
+    if (refusal !== null) return err(refusal);
     if (!EDITABLE_STATUSES.includes(state.status)) return err({ code: 'product.not-editable' });
     const live = this.liveVariants;
     const kept = new Set<Id<'Variant'>>();
