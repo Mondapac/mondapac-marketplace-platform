@@ -608,7 +608,7 @@ human-versus-AI record of brief s5 (R12) is the submission's `field_provenance` 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `market_id` | `varchar(8)` | no | PK `(market_id)`: one row per Market |
-| `subject_id` | `uuid` | no | A random UUIDv7 minted by `IdGenerator`, never derived from the Market code. Unique `(subject_id)` |
+| `subject_id` | `uuid` | no | A random UUIDv7 minted by `IdGenerator`, never derived from the Market code. No unique beyond the primary key (see 9.1); the global key of `platform.subject_keys` stops a second use |
 | `created_at` | `timestamptz(6)` | no | |
 
 - Created by the certification Market-activation seed (D 5.2), as the system actor, inside an open
@@ -676,6 +676,7 @@ rounded up to a power of two. The plaintext limit itself is checked in the domai
 | `seller_submission_decisions.reason_text_ciphertext` | 1,000 | 5,374 | 8192 | 1 |
 | `issuers.expert_reference_ciphertext` | 500 | 2,707 | 4096 | 1 |
 | `change_reason_ciphertext` (type revisions, policy revisions, reactivation proposals; CE8) | 500 | 2,707 | 4096 | 2, 7 |
+| `relaxation_proposals.proposed_expert_reference_ciphertext` | 500 | 2,707 | 4096 | 2 |
 
 Columns added later take their row here in the same PR as their migration. The boundary test
 (40 refused, 41 and the bound accepted, bound + 1 refused) is written once per bound value, not
@@ -931,6 +932,29 @@ created complete in migration 1 (all its columns and rules), because the submiss
 2 then adds only `issuer_contact_channels`. `change_reason_ciphertext` of `certification_type_revisions`
 arrives in migration 2 as designed. The partial index of the pending queue and the approved-pointer
 unique (A5, A8) wait for migration 6, as listed; migration 1 carries T1 and A9 only.
+
+Applied choices of the second migration (Hossein, 2026-10-08; Mojtaba signs): the free-text CHECKs use
+the `\uXXXX` regular-expression escapes of the sellers migrations, never literal bidi characters in the
+SQL file. The partial unique of one pending proposal per subject (D 7.6) is hand-written and listed in
+the partial-index catalog test; `relaxation_proposals` carries no foreign key because its subject id
+is polymorphic (a type, a claim policy or an issuer; the revision itself is `proposed_revision_id`, and the one-pending index only works when `subject_id` is the type, policy or issuer). The application may
+update only `state`, `decided_by_account_id`, `decided_at` and `version` there, and only `retired_at`
+on a contact channel. Guards added after review (Hassan M1, M2, L1): a before-update trigger freezes a decided
+proposal for every role and moves the version by one; a trigger lets a channel be retired once and never
+revived; a before-insert trigger refuses texts and claim terms unless the revision row was inserted by the same
+transaction (its `xmin` is the current transaction id; the revision insert must therefore not sit inside a
+savepoint), and also for a revision that is a type's published revision or a proposal's proposed revision (a
+change is a new revision; Hassan M2 and its superseded-revision and race residuals). Accepted (Hassan I-a, I-b,
+I-c): the owner role may change other columns in the single decision update; an application insert may create
+a proposal already decided (part of L2); a first retirement may carry any time at or after creation. The CHECK on
+`certification_type_revisions.change_reason_ciphertext` is added plain on an existing table (not NOT VALID):
+the column is new and all NULL, and no environment is deployed. Accepted risk (Hassan L2): the database does
+not tie `proposer_account_id` to the revision author, nor publication to an approved proposal; the domain
+aggregate and its slice 2 tests carry that rule until migration 8 can add it. Contact channel `value` has
+no per-kind format check yet (Hassan L3); the admin panel must build links in code. One pending proposal is
+per subject and kind (a pending `type-revision` and a pending `type-reactivation` may coexist; to be
+confirmed by Hadi). `platform_subjects` has no extra unique on `subject_id` (the Market is its primary key; the Prisma boundary check refuses a unique key without `market_id`; the id is an opaque random UUIDv7). It is insert-only by grant but has no trigger (the seed owns it;
+the owner may delete it in tests).
 
 No migration: slices 3, 8, 10, 11, 12, 15. This matches D 14.1 (1, 2, 4, 5, 6, 7, 9, 13, 14) plus
 16 and 17. The status-history table moves from slice 7 to slice 5, so the first submission already

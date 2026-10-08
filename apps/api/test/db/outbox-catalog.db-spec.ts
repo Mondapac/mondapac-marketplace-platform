@@ -25,6 +25,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX products_market_id_published_revision_id_key ON catalog.products USING btree (market_id, published_revision_id) WHERE (published_revision_id IS NOT NULL)',
   'certification.issuers_market_id_type_id_accreditation_number_key':
     'CREATE UNIQUE INDEX issuers_market_id_type_id_accreditation_number_key ON certification.issuers USING btree (market_id, type_id, accreditation_number) WHERE (accreditation_number IS NOT NULL)',
+  'certification.relaxation_proposals_market_id_subject_pending_key':
+    "CREATE UNIQUE INDEX relaxation_proposals_market_id_subject_pending_key ON certification.relaxation_proposals USING btree (market_id, subject_kind, subject_id) WHERE (state = 'pending'::text)",
   'certification.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON certification.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'certification.seller_certifications_market_id_approved_boundary_at_idx':

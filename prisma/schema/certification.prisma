@@ -2,7 +2,8 @@
 // docs/design/data/certification.md; every model is named Certification<Name> (its CE2) and
 // mapped to its table with @@map. Migration 1 (slice 1) creates the outbox, the inbox, the type
 // root and its revisions, the issuers, the seller certificate root, its submissions and their
-// decision rows; later migrations add the other tables (data design 9.1). Every CHECK, the
+// decision rows; migration 2 (slice 2) adds the texts, claim terms, issuer contact channels, relaxation proposals
+// and platform subjects; later migrations add the other tables (data design 9.1). Every CHECK, the
 // partial indexes, the append-only triggers and the grants are hand-written in the migration.
 
 /// Events of the certification module (ADR-0006 decisions 1 and 2; data design 3.19, PM1).
@@ -106,11 +107,15 @@ model CertificationTypeRevision {
   autoApproveSelfDeclaration   Boolean           @map("auto_approve_self_declaration")
   /// A design-system icon key (ADR-0017), never an uploaded file.
   badgeIconKey                 String            @map("badge_icon_key")
+  /// Optional admin text, a ciphertext under its own destroyable subject key (CE8); never in a
+  /// content hash, an event, a log or a model input.
+  changeReasonCiphertext       String?           @map("change_reason_ciphertext")
   authorAccountId              String            @map("author_account_id") @db.Uuid
   createdAt                    DateTime          @map("created_at") @db.Timestamptz(6)
   type                         CertificationType @relation("TypeRevisions", fields: [marketId, typeId, verificationMode], references: [marketId, id, verificationMode], onDelete: Restrict, onUpdate: Restrict)
   publishedOf                  CertificationType[] @relation("TypePublished")
   submissions                  CertificationSellerCertificationSubmission[]
+  texts                        CertificationTypeRevisionText[]
 
   @@unique([marketId, id])
   /// The target of the published pointer and of the submission foreign key (CE4).
@@ -145,6 +150,7 @@ model CertificationIssuer {
   createdAt               DateTime               @map("created_at") @db.Timestamptz(6)
   type                    CertificationType      @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   submissions             CertificationSellerCertificationSubmission[]
+  channels                CertificationIssuerContactChannel[]
 
   @@unique([marketId, id])
   /// The target of every issuer foreign key, which carries the type (CE4).
@@ -261,5 +267,102 @@ model CertificationSellerSubmissionDecision {
 
   @@id([marketId, submissionId])
   @@map("seller_submission_decisions")
+  @@schema("certification")
+}
+
+/// The public name and description of a type revision in one locale (data design 3.3). Insert-only
+/// (CE3). Membership of the locale in the Market's supportedLocales is the aggregate's rule.
+model CertificationTypeRevisionText {
+  marketId            String                    @map("market_id") @db.VarChar(8)
+  tenantId            String                    @map("tenant_id")
+  typeRevisionId      String                    @map("type_revision_id") @db.Uuid
+  /// BCP 47 shape, CHECKed.
+  locale              String
+  name                String
+  customerDescription String                    @map("customer_description")
+  revision            CertificationTypeRevision @relation(fields: [marketId, typeRevisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  terms               CertificationClaimTerm[]
+
+  @@id([marketId, typeRevisionId, locale])
+  @@map("type_revision_texts")
+  @@schema("certification")
+}
+
+/// A claim phrase a revision names in a locale (data design 3.3): human-written (R10), stored as
+/// written; the matcher normalises in code. Insert-only (CE3). No regular expression column.
+model CertificationClaimTerm {
+  marketId       String                        @map("market_id") @db.VarChar(8)
+  tenantId       String                        @map("tenant_id")
+  typeRevisionId String                        @map("type_revision_id") @db.Uuid
+  locale         String
+  phrase         String
+  text           CertificationTypeRevisionText @relation(fields: [marketId, typeRevisionId, locale], references: [marketId, typeRevisionId, locale], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, typeRevisionId, locale, phrase])
+  @@map("claim_terms")
+  @@schema("certification")
+}
+
+/// A registered contact channel of an issuer (data design 3.7): a channel that a confirmation
+/// names is retired, never deleted or rewritten.
+model CertificationIssuerContactChannel {
+  id        String              @id @db.Uuid
+  marketId  String              @map("market_id") @db.VarChar(8)
+  tenantId  String              @map("tenant_id")
+  issuerId  String              @map("issuer_id") @db.Uuid
+  /// email-domain | phone | web-page
+  kind      String
+  value     String
+  retiredAt DateTime?           @map("retired_at") @db.Timestamptz(6)
+  createdAt DateTime            @map("created_at") @db.Timestamptz(6)
+  issuer    CertificationIssuer @relation(fields: [marketId, issuerId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// The target of the confirmation foreign key (migration with slice 7).
+  @@unique([marketId, issuerId, id])
+  @@map("issuer_contact_channels")
+  @@schema("certification")
+}
+
+/// A pending relaxation that needs a second admin (data design 3.20, D 7.6): a type revision, a
+/// claim policy revision, or the reactivation of an issuer or a type. One pending proposal per
+/// subject. The subject is a type, policy or issuer id: three possible parents, so no foreign key
+/// (C4). The content never changes after the insert; only the decision columns do.
+model CertificationRelaxationProposal {
+  id                                 String    @id @db.Uuid
+  marketId                           String    @map("market_id") @db.VarChar(8)
+  tenantId                           String    @map("tenant_id")
+  /// type-revision | claim-policy-revision | issuer-reactivation | type-reactivation
+  subjectKind                        String    @map("subject_kind")
+  subjectId                          String    @map("subject_id") @db.Uuid
+  basedOnRevisionId                  String?   @map("based_on_revision_id") @db.Uuid
+  proposedRevisionId                 String?   @map("proposed_revision_id") @db.Uuid
+  /// Issuer reactivation only: the new expert reference, under the platform key (CE7).
+  proposedExpertReferenceCiphertext  String?   @map("proposed_expert_reference_ciphertext")
+  /// pending | approved | rejected | withdrawn | superseded
+  state                              String
+  proposerAccountId                  String    @map("proposer_account_id") @db.Uuid
+  proposedAt                         DateTime  @map("proposed_at") @db.Timestamptz(6)
+  /// A second admin: never the proposer (H1).
+  decidedByAccountId                 String?   @map("decided_by_account_id") @db.Uuid
+  decidedAt                          DateTime? @map("decided_at") @db.Timestamptz(6)
+  changeReasonCiphertext             String?   @map("change_reason_ciphertext")
+  version                            Int
+  createdAt                          DateTime  @map("created_at") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@map("relaxation_proposals")
+  @@schema("certification")
+}
+
+/// The Market's platform subject for platform-key encryption (data design 3.22, CE7): one row per
+/// Market, never updated or deleted. The id is an opaque random UUIDv7, not the Market code.
+model CertificationPlatformSubject {
+  marketId  String   @id @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  subjectId String   @map("subject_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@map("platform_subjects")
   @@schema("certification")
 }
