@@ -5,6 +5,7 @@
 and Hassan (accept with changes); Mohammad answered section 13 in D 14.3. Nothing here exists yet;
 this document is the specification the `sellers` migrations are written from, and each migration
 still needs my sign-off. Open points: sections 13 and 14.
+**Implemented:** slice 1 (2026-10-08) created `sellers.outbox`, `inbox`, `seller_files`, `seller_admin_settings`, `seller_tax_profiles` and `store_profiles` in migration `20261008074339_sellers_files`.
 **Ground truth:** `docs/design/domain/sellers.md` (revised at G2, 2026-10-07, cited as **D**, for
 example "D 7.3"); `docs/modules/sellers/brief.md` (G1 approved 2026-10-03; sections 5, 6, 7 and 11
 read directly at G2, cited as "brief s5"; O9 closed, 14); the G2 review items

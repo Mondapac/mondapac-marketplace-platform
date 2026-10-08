@@ -426,6 +426,17 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
     expect(t.units.at(-1)).toEqual({ readOnly: true });
   });
 
+  it('accepts exactly 100 ids, the upper bound', async () => {
+    const t = setUp();
+    const known = t.ids.next<'Seller'>();
+
+    const result = await t.summaries.execute(anonymous(code), {
+      sellerIds: [known, ...Array.from({ length: 99 }, () => t.ids.next<'Seller'>())],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('answers an empty list without reading', async () => {
     const t = setUp();
 
