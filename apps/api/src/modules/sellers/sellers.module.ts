@@ -46,11 +46,13 @@ import { SellerSummaries } from './application/use-cases/seller-summaries.use-ca
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
 import { SellingEligibility } from './application/use-cases/selling-eligibility.use-case';
 import { SELLERS_PERMISSIONS } from './contracts/permissions';
+import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contract';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-files.job';
+import { ApprovedSellerZonesReaderImplementation } from './presentation/approved-seller-zones.reader';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
 import { MyFileController } from './presentation/my-file.controller';
 import { ReviewRegisterCheckController } from './presentation/review-register-check.controller';
@@ -252,22 +254,30 @@ function useCaseProvider<D, U>(
         SellerSummariesSystem,
         SellingEligibility,
         SellingEligibilitySystem,
-        ApprovedSellerZones,
-        ApprovedSellerZonesSystem,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
         sellerSummariesSystem: SellerSummariesSystem,
         sellingEligibility: SellingEligibility,
         sellingEligibilitySystem: SellingEligibilitySystem,
-        approvedSellerZones: ApprovedSellerZones,
-        approvedSellerZonesSystem: ApprovedSellerZonesSystem,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
           sellerSummariesSystem,
           sellingEligibility,
           sellingEligibilitySystem,
+        }),
+    },
+    // The zone contract is a provider of its own (not a facade method) and is imported by
+    // certification's application layer only (dependency-cruiser).
+    {
+      provide: APPROVED_SELLER_ZONES,
+      inject: [ApprovedSellerZones, ApprovedSellerZonesSystem],
+      useFactory: (
+        approvedSellerZones: ApprovedSellerZones,
+        approvedSellerZonesSystem: ApprovedSellerZonesSystem,
+      ) =>
+        new ApprovedSellerZonesReaderImplementation({
           approvedSellerZones,
           approvedSellerZonesSystem,
         }),
@@ -285,6 +295,6 @@ function useCaseProvider<D, U>(
       sellerFileSubscriptions(createFile),
     ),
   ],
-  exports: [SELLERS_FACADE],
+  exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES],
 })
 export class SellersModule {}

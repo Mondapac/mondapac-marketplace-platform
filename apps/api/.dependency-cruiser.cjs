@@ -17,6 +17,12 @@ const IDENTITY_MAY_IMPORT = [];
 const SELLER_ACCESS_CONTRACT_FILE =
   '^src/modules/identity/contracts/seller-access\\.contract\\.ts$';
 
+// The approved-seller-zones contract of sellers (ApprovedSellerZonesReader, APPROVED_SELLER_ZONES):
+// the second file besides index.ts that another module may import, and only certification's
+// application layer does (sellers design 7.1a; Hassan L4). It is not exported by sellers' index.ts.
+const APPROVED_SELLER_ZONES_CONTRACT_FILE =
+  '^src/modules/sellers/contracts/approved-seller-zones\\.contract\\.ts$';
+
 // The file of `@NoMarketContext()` and the only files that may import it (design 8.2 rule 6,
 // CTO decision of slice 0 item 3): the guard reads the exemption, the health controller uses
 // it. Both files export only their own names (asserted in boundaries.spec.ts).
@@ -304,6 +310,7 @@ module.exports = {
           '^src/modules/$1/',
           '^src/modules/[^/]+/index\\.ts$',
           SELLER_ACCESS_CONTRACT_FILE,
+          APPROVED_SELLER_ZONES_CONTRACT_FILE,
         ],
       },
     },
@@ -317,6 +324,19 @@ module.exports = {
       severity: 'error',
       from: { pathNot: ['^src/modules/identity/', '^src/modules/sellers/'] },
       to: { path: SELLER_ACCESS_CONTRACT_FILE },
+    },
+    {
+      name: 'approved-seller-zones-contract-is-for-certification',
+      comment:
+        "Only certification's application layer imports sellers' approved-seller-zones contract " +
+        '(APPROVED_SELLER_ZONES): its anonymous/system use-case pair answers every caller the ' +
+        "same way and must stay out of every other path (sellers design 7.1a; Hassan L4). sellers' " +
+        'index.ts does not export the contract file.',
+      severity: 'error',
+      from: {
+        pathNot: ['^src/modules/sellers/', '^src/modules/certification/application/'],
+      },
+      to: { path: APPROVED_SELLER_ZONES_CONTRACT_FILE },
     },
     {
       name: 'module-internals-are-private',

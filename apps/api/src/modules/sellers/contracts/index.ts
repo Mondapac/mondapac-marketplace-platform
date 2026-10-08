@@ -8,9 +8,11 @@ export {
   SELLERS_PERMISSIONS,
   SELLERS_SELLER_FILE_REVIEW,
 } from './permissions';
+// The approved-seller-zones contract file (reader interface and token) is deliberately not
+// exported: only certification's application layer imports it by path (dependency-cruiser).
+export type { ApprovedSellerZonesMap } from './approved-seller-zones.contract';
 export {
   SELLERS_FACADE,
-  type ApprovedSellerZonesMap,
   type SellersFacade,
   type SellersUnavailable,
   type SellersValidationFailed,
