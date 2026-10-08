@@ -36,6 +36,12 @@ export interface JobDefinition {
    * unit, conditional updates, no step that assumes it still holds the lock.
    */
   readonly maxRunMs?: number;
+  /**
+   * Whether the first tick runs as soon as the worker starts instead of after a random part of
+   * the interval: for a job that brings a Market's state up to date at worker start, such as a
+   * seed (identity design 5.6). Default false.
+   */
+  readonly runAtStart?: boolean;
   /** May outlive the lock after `maxRunMs` (see there); must be idempotent (P 7). */
   run(context: JobContext): Promise<void>;
 }
