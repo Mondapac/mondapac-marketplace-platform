@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -48,6 +49,8 @@ export class ListRegisteredSellers extends UseCase<
     rule: { kind: 'system' },
   };
 
+  readonly #logger = new Logger('ListRegisteredSellers');
+
   constructor(
     gate: UseCaseGate,
     private readonly deps: ListRegisteredSellersDependencies,
@@ -73,15 +76,24 @@ export class ListRegisteredSellers extends UseCase<
       after = parsed.value;
     }
     const { market } = context;
+    // One row more than the page tells whether another page exists, so the last page, even one
+    // exactly `limit` long, answers `next: null` (Sajad gap 3).
     const read = await this.deps.unitOfWork.run(
       market,
-      async () => ok(await this.deps.sellerAccess.listRegistered(market, after, limit)),
+      async () => ok(await this.deps.sellerAccess.listRegistered(market, after, limit + 1)),
       { readOnly: true },
     );
-    const items = read.ok ? read.value : [];
-    return ok({
-      items,
-      next: items.length === limit ? items[items.length - 1]!.sellerId : null,
-    });
+    if (!read.ok) {
+      // Fails closed (an empty last page), but never silently (Mojtaba, slice 5 review).
+      this.#logger.warn({
+        msg: 'identity.list-registered-sellers.read-failed',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return ok({ items: [], next: null });
+    }
+    const more = read.value.length > limit;
+    const items = more ? read.value.slice(0, limit) : read.value;
+    return ok({ items, next: more ? items[items.length - 1]!.sellerId : null });
   }
 }

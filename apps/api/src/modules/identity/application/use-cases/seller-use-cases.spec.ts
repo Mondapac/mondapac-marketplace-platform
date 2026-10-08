@@ -340,6 +340,7 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
   describe('RegisterSeller', () => {
     it('answers access.unavailable and writes nothing before the system roles are seeded', async () => {
       const s = setUp();
+      const errors = jest.spyOn(Logger.prototype, 'error');
 
       await expect(
         s.register.execute(anonymous, {
@@ -351,6 +352,13 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
       ).resolves.toEqual({ ok: false, error: { code: 'access.unavailable' } });
       expect(s.fakes.accounts.size).toBe(0);
       expect(s.fakes.sellerAccess.size).toBe(0);
+      // A distinct reason, so an operator tells a missing seed from an outage (Ali 2a).
+      expect(errors).toHaveBeenCalledWith({
+        msg: 'identity.register-seller.unavailable',
+        reason: 'roles-not-seeded',
+        marketId: code,
+        correlationId: 'seller-test-0001',
+      });
     });
 
     it('creates the seller, its owner, membership and founding assignment in one serializable unit', async () => {
@@ -727,6 +735,48 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
         error: { code: 'validation.failed' },
       });
       await expect(s.list.execute(anonymous, { limit: 1 })).resolves.toMatchObject({ ok: false });
+
+      // A last page exactly `limit` long says so: no empty extra page (Sajad gap 3).
+      await expect(s.list.execute(system, { limit: 2 })).resolves.toEqual({
+        ok: true,
+        value: {
+          items: [
+            { sellerId: ids[1], origin: 'self' },
+            { sellerId: ids[0], origin: 'self' },
+          ],
+          next: null,
+        },
+      });
+    });
+
+    it('a failed read fails closed and logs a warning, for both reads', async () => {
+      const s = setUp();
+      const failing: UnitOfWork = {
+        run: () => Promise.resolve({ ok: false, error: 'read failed' }) as never,
+        runOnce: () => Promise.reject(new Error('not used')),
+      };
+      const gate = createUseCaseGate(markets, null);
+      const deps = { unitOfWork: failing, sellerAccess: s.fakes.sellerAccessRepository };
+      const warnings = jest.spyOn(Logger.prototype, 'warn');
+
+      await expect(
+        new ListRegisteredSellers(gate, deps).execute(system, { limit: 5 }),
+      ).resolves.toEqual({ ok: true, value: { items: [], next: null } });
+      await expect(
+        new SellerAccessOfSystem(gate, deps).execute(system, {
+          sellerIds: ['01990000-0000-7000-8000-00000000000a'],
+        }),
+      ).resolves.toEqual({ ok: true, value: [] });
+
+      expect(warnings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'identity.list-registered-sellers.read-failed',
+          marketId: code,
+        }),
+      );
+      expect(warnings).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: 'identity.seller-access-of.read-failed', marketId: code }),
+      );
     });
   });
 

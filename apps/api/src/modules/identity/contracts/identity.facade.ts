@@ -74,6 +74,10 @@ export interface IdentityFacade {
    * The access of up to 100 sellers (slice 5; ADR-0022 decision 2): only registered sellers of
    * the context's Market are answered. Two use cases behind this method: `anonymous` for a
    * request actor (the gate passes the anonymous actor), `system` for the system actor.
+   *
+   * Consumers must reduce the answer to may-sell or may-not-sell (an absent seller may not
+   * sell) and never show the state or `stateChangedAt` to a buyer, nor put them in a buyer
+   * response, event or log (Hassan I1, slice 5 review).
    */
   sellerAccessOf(
     context: CallContext,

@@ -124,6 +124,12 @@ export class RegisterSeller extends UseCase<
       policy.sessionLifetime(market, 'seller') === null ||
       policy.linkLifetimeMinutes(market, 'verify-email') === null
     ) {
+      this.#logger.error({
+        msg: 'identity.register-seller.unavailable',
+        reason: 'seller-sign-up-not-configured',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
       return err(UNAVAILABLE);
     }
     // 6.5: the password may contain neither the email nor the name.
@@ -166,7 +172,8 @@ export class RegisterSeller extends UseCase<
       if (!stored.ok) {
         if (stored.error === 'unavailable') {
           this.#logger.error({
-            msg: 'identity.register-seller.system-role-missing',
+            msg: 'identity.register-seller.unavailable',
+            reason: 'roles-not-seeded',
             marketId: market.marketId,
             correlationId: context.correlationId,
           });

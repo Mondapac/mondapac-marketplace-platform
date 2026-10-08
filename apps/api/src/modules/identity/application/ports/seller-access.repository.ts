@@ -28,7 +28,8 @@ export interface SellerAccessRepository {
 
   /**
    * Up to `limit` registered sellers with an id after `after` (null: from the start), by id
-   * (sellers design R-6, the system read of its backfill).
+   * (sellers design R-6, the system read of its backfill). The use case asks for one more than
+   * its page to know whether a next page exists.
    */
   listRegistered(
     market: MarketContext,

@@ -1,8 +1,11 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
+
+const logger = new Logger('SellerAccessOf');
 
 /** At most this many ids per call (identity design 8.1; the batch of sellers design 7.1). */
 export const MAX_SELLER_IDS = 100;
@@ -55,7 +58,15 @@ export async function readSellerAccess(
     async () => ok(await deps.sellerAccess.findRegistered(market, [...ids])),
     { readOnly: true },
   );
-  if (!read.ok) return ok([]);
+  if (!read.ok) {
+    // Fails closed (no seller may sell), but never silently (Mojtaba, slice 5 review).
+    logger.warn({
+      msg: 'identity.seller-access-of.read-failed',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return ok([]);
+  }
   return ok(
     read.value.map((access) => ({
       sellerId: access.state.sellerId,
