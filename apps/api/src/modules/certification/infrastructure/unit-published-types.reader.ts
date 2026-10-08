@@ -10,7 +10,9 @@ import type { ClaimVocabularyEntry } from '../domain/claim-text-matcher';
  * (ADR-0025: no transaction, a guarded client, bound to the request's Market). The use cases
  * call a reader outside any unit, so each call runs in one unit of its own. The inner reader
  * only throws on a fault, so `work` never answers `err`; a rejection passes through unchanged
- * and the caller answers `unavailable`.
+ * and the caller answers `unavailable`. A caller already inside a unit would meet
+ * `NestedUnitOfWorkError`, which also answers `unavailable` (fail closed): call the facade
+ * before opening a unit.
  */
 export class UnitPublishedTypesReader implements PublishedTypesReader {
   constructor(
