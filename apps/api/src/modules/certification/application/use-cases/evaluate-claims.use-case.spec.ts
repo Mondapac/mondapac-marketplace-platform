@@ -44,31 +44,53 @@ interface World {
   failRead: boolean;
   misaligned: boolean;
   extraZoneKey: boolean;
+  /** Per-request overrides, keyed by type code / `seller|type` / seller id. */
+  typeOf: Map<string, TypeAndPolicy['type']>;
+  certOf: Map<string, SellerCertificationView | null>;
+  zonesOf: Map<string, { zone: string | null; addressZone: string | null }>;
+  failCertificates: boolean;
+  failZones: boolean;
+  misalignedCertificates: boolean;
 }
+const POLICY_REVISION = '0197f2a0-0000-7000-8000-0000000000aa' as Id;
 let world: World;
 const calls = { policies: 0, certificates: 0, zones: 0 };
+let zoneRequests: string[][] = [];
 
 const facts: ClaimFactsReader = {
   typesAndPolicies: (_m, requests) => {
     calls.policies += 1;
     if (world.failRead) return Promise.reject(new Error('db down'));
-    const one: TypeAndPolicy = {
-      type: world.type,
-      policy: world.rows.length > 0 ? { revisionId: ids.next(), matchedRows: world.rows } : null,
-    };
-    const list = requests.map(() => one);
+    const list = requests.map((r): TypeAndPolicy => ({
+      type: world.typeOf.has(r.typeCode) ? (world.typeOf.get(r.typeCode) ?? null) : world.type,
+      policy:
+        world.rows.length > 0 ? { revisionId: POLICY_REVISION, matchedRows: world.rows } : null,
+    }));
     return Promise.resolve(world.misaligned ? list.slice(1) : list);
   },
   sellerCertificates: (_m, requests) => {
     calls.certificates += 1;
-    return Promise.resolve(requests.map(() => world.certificate));
+    if (world.failCertificates) return Promise.reject(new Error('db down'));
+    const list = requests.map((r) => {
+      const key = `${r.sellerId}|${r.typeCode}`;
+      return world.certOf.has(key) ? (world.certOf.get(key) ?? null) : world.certificate;
+    });
+    return Promise.resolve(world.misalignedCertificates ? list.slice(1) : list);
   },
 };
 const zones: SellerZonesSource = {
   zonesOf: (_c, sellerIds) => {
     calls.zones += 1;
+    zoneRequests.push([...sellerIds]);
+    if (world.failZones) return Promise.reject(new Error('sellers unavailable'));
     const answer = new Map(
-      sellerIds.map((id) => [id, world.zones === 'absent' ? undefined : world.zones] as const),
+      sellerIds.map(
+        (id) =>
+          [
+            id,
+            world.zones === 'absent' ? undefined : (world.zonesOf.get(id) ?? world.zones),
+          ] as const,
+      ),
     ) as unknown as Map<Id<'Seller'>, { zone: string | null; addressZone: string | null }>;
     if (world.zones === 'absent') answer.clear();
     if (world.extraZoneKey) answer.set(ids.next<'Seller'>(), { zone: null, addressZone: null });
@@ -126,7 +148,14 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
       failRead: false,
       misaligned: false,
       extraZoneKey: false,
+      typeOf: new Map(),
+      certOf: new Map(),
+      zonesOf: new Map(),
+      failCertificates: false,
+      failZones: false,
+      misalignedCertificates: false,
     };
+    zoneRequests = [];
     calls.policies = calls.certificates = calls.zones = 0;
   });
 
@@ -205,9 +234,9 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   });
 
   it('applies the expiry boundary of the seller zone through the use case (the zone maths are in validity.spec)', async () => {
-    // Expiry date is today in the later zone; the boundary of the earlier zone has passed.
-    const day = '2026-10-08';
-    world.certificate = approved(day);
+    // An expiry date of today is valid until the start of tomorrow in the seller's zone; a date
+    // of yesterday is over for every zone at this instant.
+    world.certificate = approved('2026-10-08');
     world.zones = { zone: fx.zone, addressZone: fx.other };
     const r = await facade.evaluateClaims(anonymous(), [query()]);
     expect(r.ok && r.value[0]!.allowed).toBe(true); // the day after is still ahead of 10:00Z
@@ -255,10 +284,10 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     expect(b.ok && b.value[0]!.reason).toBe('unavailable');
   });
 
-  it('asks sellers for zones only when a query can still be decided by a certificate', async () => {
+  it('asks for certificates and zones only when a query has a seller basis to decide', async () => {
     world.type = null;
     await facade.evaluateClaims(anonymous(), [query(), query()]);
-    expect(calls).toEqual({ policies: 1, certificates: 1, zones: 0 });
+    expect(calls).toEqual({ policies: 1, certificates: 0, zones: 0 });
   });
 
   it('refuses an empty batch, 101 queries and a non-array, and accepts exactly 100', async () => {
@@ -272,6 +301,149 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     );
     expect(hundred.ok && hundred.value.length).toBe(100);
     expect(calls.policies).toBe(1); // one statement per batch, not per query
+  });
+
+  it('keeps order and alignment in a mixed batch (allowed, unknown type, invalid, not applicable, zone missing)', async () => {
+    const allowedQ = query();
+    const unknownQ = query({ typeCode: code('unknown-type') });
+    const naQ = query({ typeCode: code('na-type') });
+    const noZoneQ = query();
+    const lateAllowedQ = query();
+    world.typeOf.set('unknown-type', null);
+    world.typeOf.set('na-type', {
+      publishedRevisionId: ids.next(),
+      defaultBasis: 'NOT_APPLICABLE',
+    });
+    world.zonesOf.set(noZoneQ.sellerId, { zone: null, addressZone: fx.zone });
+    const r = await facade.evaluateClaims(anonymous(), [
+      unknownQ,
+      allowedQ,
+      null as never,
+      naQ,
+      noZoneQ,
+      lateAllowedQ,
+    ]);
+    expect(r.ok && r.value.map((d) => d.reason)).toEqual([
+      'type-unknown',
+      'allowed',
+      'input-invalid',
+      'policy-not-applicable',
+      'seller-zone-missing',
+      'allowed',
+    ]);
+    // Only the three seller-basis queries asked for certificates and zones.
+    expect(zoneRequests).toEqual([[allowedQ.sellerId, noZoneQ.sellerId, lateAllowedQ.sellerId]]);
+    expect(r.ok && r.value[1]!.inputs).toEqual(allowedQ);
+  });
+
+  it('asks the zones once for distinct sellers, decides duplicates alike and sellers by their own zone', async () => {
+    const a = query();
+    const twin = query({ sellerId: a.sellerId });
+    const b = query();
+    world.zonesOf.set(b.sellerId, { zone: null, addressZone: null });
+    const r = await facade.evaluateClaims(system(), [a, twin, b]);
+    expect(zoneRequests).toEqual([[a.sellerId, b.sellerId]]);
+    expect(r.ok && r.value.map((d) => d.reason)).toEqual([
+      'allowed',
+      'allowed',
+      'seller-zone-missing',
+    ]);
+  });
+
+  it('makes no certificate or zone call when nothing needs a seller basis', async () => {
+    world.rows = [{ basis: 'NOT_APPLICABLE' }];
+    await facade.evaluateClaims(anonymous(), [query(), query()]);
+    expect(calls).toEqual({ policies: 1, certificates: 0, zones: 0 });
+    calls.policies = 0;
+    const invalid = await facade.evaluateClaims(anonymous(), [null as never, 'x' as never]);
+    expect(invalid.ok && invalid.value.every((d) => d.reason === 'input-invalid')).toBe(true);
+    expect(calls).toEqual({ policies: 0, certificates: 0, zones: 0 });
+  });
+
+  it.each([
+    [
+      'the certificate read throws',
+      (): void => {
+        world.failCertificates = true;
+      },
+    ],
+    [
+      'the zone read throws',
+      (): void => {
+        world.failZones = true;
+      },
+    ],
+    [
+      'the certificate read is misaligned',
+      (): void => {
+        world.misalignedCertificates = true;
+      },
+    ],
+  ] as const)('fails the batch closed when %s', async (_n, arrange) => {
+    arrange();
+    const r = await facade.evaluateClaims(anonymous(), [query(), query()]);
+    expect(r.ok && r.value.map((d) => [d.allowed, d.reason])).toEqual([
+      [false, 'unavailable'],
+      [false, 'unavailable'],
+    ]);
+  });
+
+  it('resolves the strictest of all matching rows and reports the policy revision', async () => {
+    world.rows = [
+      { basis: 'SELLER_REQUIRED' },
+      { basis: 'NOT_APPLICABLE' },
+      { basis: 'SELLER_OR_MANUFACTURER' },
+    ];
+    const strict = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(strict.ok && strict.value[0]).toEqual(
+      expect.objectContaining({
+        reason: 'policy-not-applicable',
+        policyRevisionId: POLICY_REVISION,
+      }),
+    );
+    // The default is used only when no row matches: a lenient row never beats a stricter default.
+    world.type = { publishedRevisionId: ids.next(), defaultBasis: 'NOT_APPLICABLE' };
+    world.rows = [{ basis: 'SELLER_REQUIRED' }];
+    const eased = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(eased.ok && eased.value[0]).toEqual(
+      expect.objectContaining({ allowed: true, policyRevisionId: POLICY_REVISION }),
+    );
+    world.rows = [];
+    const dflt = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(dflt.ok && dflt.value[0]).toEqual(
+      expect.objectContaining({ reason: 'policy-not-applicable', policyRevisionId: null }),
+    );
+  });
+
+  it.each(['draft', 'in-review', 'changes-needed', 'declined', 'expired', 'revoked'] as const)(
+    'denies a certificate with status %s',
+    async (status) => {
+      world.certificate = { ...approved('2027-01-31'), status };
+      const r = await facade.evaluateClaims(anonymous(), [query()]);
+      expect(r.ok && r.value[0]!.allowed).toBe(false);
+    },
+  );
+
+  it('allows a closed-to-new issuer, denies an unresolvable zone, and never caches', async () => {
+    world.certificate = approved('2027-01-31', 'closed-to-new');
+    const q = query();
+    const first = await facade.evaluateClaims(anonymous(), [q]);
+    expect(first.ok && first.value[0]!.allowed).toBe(true);
+    world.zones = { zone: 'Not/AZone', addressZone: fx.zone };
+    const bad = await facade.evaluateClaims(anonymous(), [q]);
+    expect(bad.ok && bad.value[0]).toEqual(
+      expect.objectContaining({ allowed: false, reason: 'seller-zone-missing' }),
+    );
+    world.zones = { zone: fx.zone, addressZone: fx.zone };
+    world.certificate = null;
+    const none = await facade.evaluateClaims(anonymous(), [q]);
+    expect(none.ok && none.value[0]!.allowed).toBe(false);
+    expect(calls.policies).toBe(3);
+  });
+
+  it('gives every decision of a batch one evaluation instant', async () => {
+    const r = await facade.evaluateClaims(anonymous(), [query(), null as never, query()]);
+    expect(r.ok && new Set(r.value.map((d) => d.evaluatedAt.toString())).size).toBe(1);
   });
 
   it('gates the pair and reads no actor: every request actor gets the same bytes, system is refused', async () => {

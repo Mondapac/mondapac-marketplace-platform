@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { CertificationValidationFailed } from '../contracts/certification.facade';
-import { decide, type ClaimFacts } from '../domain/claim-rule';
+import { decide, resolveRequirement, type ClaimFacts } from '../domain/claim-rule';
 import {
   HANDLING_VALUES,
   type ClaimDecision,
@@ -140,22 +140,36 @@ export async function evaluateClaimsFor(
 
   const decisions = new Map<number, ClaimDecision>();
   try {
-    const policies = await deps.facts.typesAndPolicies(
-      context.market,
-      valid.map(({ query }) => ({
-        typeCode: query.typeCode,
-        categoryIds: categoryIdsOf(query),
-        handling: query.handling,
-      })),
-    );
+    const policies =
+      valid.length === 0
+        ? []
+        : await deps.facts.typesAndPolicies(
+            context.market,
+            valid.map(({ query }) => ({
+              typeCode: query.typeCode,
+              categoryIds: categoryIdsOf(query),
+              handling: query.handling,
+            })),
+          );
     if (policies.length !== valid.length) throw new Error('policy read misaligned');
 
-    // Only queries that can still be allowed need the seller's certificate and zones.
-    const undecided = valid.filter((_, k) => policies[k]!.type !== null);
-    const certificates = await deps.facts.sellerCertificates(
-      context.market,
-      undecided.map(({ query }) => ({ sellerId: query.sellerId, typeCode: query.typeCode })),
-    );
+    // Only seller-basis queries need the seller's certificate and zones (design 4.2 step 1):
+    // not an unknown type and not a NOT_APPLICABLE requirement, which `decide` denies anyway.
+    const needsSeller = valid.map((_, k) => {
+      const { type, policy } = policies[k]!;
+      return (
+        type !== null &&
+        resolveRequirement(type.defaultBasis, policy?.matchedRows ?? []) !== 'NOT_APPLICABLE'
+      );
+    });
+    const undecided = valid.filter((_, k) => needsSeller[k]);
+    const certificates =
+      undecided.length === 0
+        ? []
+        : await deps.facts.sellerCertificates(
+            context.market,
+            undecided.map(({ query }) => ({ sellerId: query.sellerId, typeCode: query.typeCode })),
+          );
     if (certificates.length !== undecided.length) throw new Error('certificate read misaligned');
     const sellerIds = [...new Set(undecided.map(({ query }) => query.sellerId))];
     const zoneAnswer: SellerZoneAnswer =
@@ -167,10 +181,10 @@ export async function evaluateClaimsFor(
     let u = 0;
     valid.forEach(({ index, query }, k) => {
       const typeAndPolicy: TypeAndPolicy = policies[k]!;
-      const known = typeAndPolicy.type !== null;
-      const certificate = known ? (certificates[u] ?? null) : null;
-      const zone = known ? zoneAnswer.get(query.sellerId) : undefined;
-      if (known) u += 1;
+      const seller = needsSeller[k] === true;
+      const certificate = seller ? (certificates[u] ?? null) : null;
+      const zone = seller ? zoneAnswer.get(query.sellerId) : undefined;
+      if (seller) u += 1;
       const sellerZones: SellerZones | null =
         zone?.zone != null && zone.addressZone != null
           ? {
