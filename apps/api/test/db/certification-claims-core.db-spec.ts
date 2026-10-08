@@ -2,6 +2,7 @@ import { uuidV7 } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
+import { EXPECTED_PRIVILEGES } from './expected-privileges';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Certification migration 1 on PostgreSQL (docs/design/data/certification.md 3.1, 3.2, 3.4 to
@@ -15,6 +16,65 @@ const CIPHERTEXT = `v1.${'A'.repeat(48)}`;
 let sequence = 0;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
+
+/**
+ * The insert-only tables of the schema (CE3), read from the expected privileges: a table of the
+ * schema that the application may only SELECT and INSERT, except the outbox and the inbox, which
+ * are queues. A new table of this shape without the two triggers fails the catalog test below.
+ */
+function insertOnlyTables(): string[] {
+  return Object.entries(EXPECTED_PRIVILEGES.tables)
+    .filter(
+      ([name, grant]) =>
+        name.startsWith('certification.') &&
+        grant.table.join() === 'INSERT,SELECT' &&
+        grant.columnUpdate.length === 0 &&
+        !['certification.outbox', 'certification.inbox'].includes(name),
+    )
+    .map(([name]) => name.slice('certification.'.length))
+    .sort();
+}
+
+it('has exactly the row and the statement trigger on every insert-only table of the schema, and only there (CE3)', async () => {
+  const client = new Client({ connectionString: testDatabaseUrl() });
+  await client.connect();
+  try {
+    const { rows } = await client.query<{
+      table: string;
+      tgname: string;
+      tgtype: number;
+      tgenabled: string;
+      fn: string;
+    }>(
+      `SELECT c.relname AS "table", t.tgname, t.tgtype::int AS tgtype, t.tgenabled::text AS tgenabled,
+              pn.nspname || '.' || p.proname AS fn
+         FROM pg_trigger t
+         JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         JOIN pg_proc p ON p.oid = t.tgfoid
+         JOIN pg_namespace pn ON pn.oid = p.pronamespace
+        WHERE n.nspname = 'certification' AND NOT t.tgisinternal
+        ORDER BY c.relname, t.tgname`,
+    );
+    // tgtype bits: 1 row, 2 before, 8 delete, 16 update, 32 truncate.
+    const ROW_UPDATE_DELETE = 1 | 2 | 8 | 16;
+    const STATEMENT_TRUNCATE = 2 | 32;
+    const byTable = new Map<string, typeof rows>();
+    for (const row of rows) byTable.set(row.table, [...(byTable.get(row.table) ?? []), row]);
+    // Every trigger of the schema is one of the pair, on a listed table.
+    expect([...byTable.keys()].sort()).toEqual(insertOnlyTables());
+    for (const table of insertOnlyTables()) {
+      expect(
+        (byTable.get(table) ?? []).map((r) => [r.tgname, r.tgtype, r.tgenabled, r.fn]),
+      ).toEqual([
+        [`${table}_no_truncate`, STATEMENT_TRUNCATE, 'O', 'certification.reject_mutation'],
+        [`${table}_no_update_delete`, ROW_UPDATE_DELETE, 'O', 'certification.reject_mutation'],
+      ]);
+    }
+  } finally {
+    await client.end();
+  }
+});
 
 describe.each(TEST_MARKETS)('certification claims core in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -163,11 +223,17 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     overrides: Record<string, unknown> = {},
   ): Promise<string> {
     const id = uuid7();
+    const sellerId = (
+      await sql.query<{ seller_id: string }>(
+        `SELECT seller_id FROM certification.seller_certifications WHERE id = $1`,
+        [certificationId],
+      )
+    ).rows[0]!.seller_id;
     await insert('seller_certification_submissions', {
       id,
       ...base(),
       seller_certification_id: certificationId,
-      seller_id: uuid7(),
+      seller_id: sellerId,
       type_id: typeId,
       type_revision_id: typeRevisionId,
       submission_no: 1,
@@ -420,11 +486,17 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     const cert = await certificate(a.typeId);
     const issuerA = await issuer(a.typeId);
     const issuerB = await issuer(b.typeId);
+    const certSeller = (
+      await sql.query<{ seller_id: string }>(
+        `SELECT seller_id FROM certification.seller_certifications WHERE id = $1`,
+        [cert],
+      )
+    ).rows[0]!.seller_id;
     const row = (overrides: Record<string, unknown>) => ({
       id: uuid7(),
       ...base(),
       seller_certification_id: cert,
-      seller_id: uuid7(),
+      seller_id: certSeller,
       type_id: a.typeId,
       type_revision_id: a.revisionId,
       submission_no: 1,
@@ -462,6 +534,66 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     ).toBeNull();
   });
 
+  it('ties the seller of a submission to its certificate and fixes the certificate’s seller (M-1)', async () => {
+    const { typeId, revisionId } = await type();
+    const cert = await certificate(typeId);
+    // A submission of another seller than its certificate's is refused.
+    expect(
+      await insertState('seller_certification_submissions', {
+        id: uuid7(),
+        ...base(),
+        seller_certification_id: cert,
+        seller_id: uuid7(),
+        type_id: typeId,
+        type_revision_id: revisionId,
+        submission_no: 1,
+        kind: 'initial',
+        content_schema_version: 1,
+        content_hash: HASH,
+        submitted_zone: 'Australia/Sydney',
+        submitted_at: T0,
+        submitted_by_account_id: uuid7(),
+      }),
+    ).toBe('23503');
+    // Once a submission exists, the certificate cannot move to another seller.
+    await submission(cert, typeId, revisionId);
+    expect(
+      await sqlState(
+        sql,
+        `UPDATE certification.seller_certifications SET seller_id = $1 WHERE id = $2`,
+        [uuid7(), cert],
+      ),
+    ).toBe('23503');
+  });
+
+  it('refuses a submission and an issuer that name rows of another Market', async () => {
+    const { typeId, revisionId } = await type();
+    const cert = await certificate(typeId);
+    expect(
+      await insertState('seller_certification_submissions', {
+        id: uuid7(),
+        ...base(other.marketId, other.tenantId),
+        seller_certification_id: cert,
+        seller_id: uuid7(),
+        type_id: typeId,
+        type_revision_id: revisionId,
+        submission_no: 1,
+        kind: 'initial',
+        content_schema_version: 1,
+        content_hash: HASH,
+        submitted_zone: 'Australia/Sydney',
+        submitted_at: T0,
+        submitted_by_account_id: uuid7(),
+      }),
+    ).toBe('23503');
+    expect(
+      await issuer(typeId, base(other.marketId, other.tenantId)).then(
+        () => null,
+        (error: { code?: string }) => error.code,
+      ),
+    ).toBe('23503');
+  });
+
   it('checks the submission content: hash shape, ciphertext shape, dates, kind, zone', async () => {
     const { typeId, revisionId } = await type();
     const cert = await certificate(typeId);
@@ -484,6 +616,79 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     expect(await fail({ issue_date: '2026-01-02', expiry_date: '2027-01-01' })).toBeNull();
     expect(await fail({ submitted_zone: '+10:00' })).toBe('23514');
     expect(await fail({ content_schema_version: 0 })).toBe('23514');
+  });
+
+  it('bounds a ciphertext column by the envelope and its limit: 40 refused, 41 and 512 accepted, 513 refused', async () => {
+    const { typeId, revisionId } = await type();
+    const cert = await certificate(typeId);
+    const withNumber = async (length: number): Promise<string | null> => {
+      try {
+        await submission(cert, typeId, revisionId, {
+          submission_no: sequence++ + 10,
+          certificate_number_ciphertext: `v1.${'A'.repeat(length - 3)}`,
+        });
+        return null;
+      } catch (error) {
+        return (error as { code?: string }).code ?? 'unknown';
+      }
+    };
+    expect(await withNumber(40)).toBe('23514');
+    expect(await withNumber(41)).toBeNull();
+    expect(await withNumber(512)).toBeNull();
+    expect(await withNumber(513)).toBe('23514');
+  });
+
+  it('checks the remaining rules of the decision and issuer rows and the version floor', async () => {
+    const { typeId, revisionId } = await type();
+    const cert = await certificate(typeId);
+    const sub = async (): Promise<string> =>
+      submission(await certificate(typeId), typeId, revisionId);
+    const decide = async (overrides: Record<string, unknown>): Promise<string | null> =>
+      insertState('seller_submission_decisions', decision(await sub(), overrides));
+    // A boundary only on an approval; a reason only on a negative outcome; a cause only on a withdrawal.
+    expect(
+      await decide({
+        outcome: 'declined',
+        approved_zone: null,
+        reason_code: 'not-valid',
+        expiry_boundary_at: '2027-01-01T00:00:00Z',
+      }),
+    ).toBe('23514');
+    expect(await decide({ approved_zone: 'Mars Olympus' })).toBe('23514');
+    expect(await decide({ reason_text_ciphertext: 'plain text' })).toBe('23514');
+    expect(await decide({ actor_kind: 'robot' })).toBe('23514');
+    expect(
+      await decide({ outcome: 'declined', approved_zone: null, reason_code: 'Bad Code' }),
+    ).toBe('23514');
+    expect(
+      await decide({
+        outcome: 'changes-requested',
+        approved_zone: null,
+        reason_code: 'needs-document',
+        reason_text_ciphertext: CIPHERTEXT,
+      }),
+    ).toBeNull();
+    expect(
+      await decide({ outcome: 'withdrawn', approved_zone: null, withdraw_cause: 'edited' }),
+    ).toBeNull();
+    // Issuer rows: states, key normalisation, control characters, expert reference shape.
+    const issuerState = (overrides: Record<string, unknown>) =>
+      issuer(typeId, overrides).then(
+        () => null,
+        (error: { code?: string }) => error.code ?? 'unknown',
+      );
+    expect(await issuerState({ state: 'retired' })).toBe('23514');
+    expect(await issuerState({ display_name_key: 'ﬁne' })).toBe('23514'); // not NFKC
+    expect(await issuerState({ display_name: 'Bad\u202ename' })).toBe('23514');
+    expect(await issuerState({ expert_reference_ciphertext: 'plain text' })).toBe('23514');
+    // The version of every root starts at 1.
+    expect(
+      await sqlState(
+        sql,
+        `UPDATE certification.seller_certifications SET version = 0 WHERE id = $1`,
+        [cert],
+      ),
+    ).toBe('23514');
   });
 
   it('keeps the issuer registry rules: no active issuer without an expert reference, unique names', async () => {
@@ -601,11 +806,14 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
     const cert = await certificate(typeId);
     const sub = await submission(cert, typeId, revisionId);
     await insert('seller_submission_decisions', decision(sub));
-    const tables = [
-      'certification_type_revisions',
-      'seller_certification_submissions',
-      'seller_submission_decisions',
-    ];
+    const tables = insertOnlyTables();
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        'certification_type_revisions',
+        'seller_certification_submissions',
+        'seller_submission_decisions',
+      ]),
+    );
     for (const table of tables) {
       expect(
         await sqlState(sql, `UPDATE certification.${table} SET market_id = market_id WHERE false`),

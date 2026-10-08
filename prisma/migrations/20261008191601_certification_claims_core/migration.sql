@@ -188,6 +188,9 @@ CREATE UNIQUE INDEX "seller_certifications_market_id_id_key" ON "certification".
 CREATE UNIQUE INDEX "seller_certifications_market_id_id_type_id_key" ON "certification"."seller_certifications"("market_id", "id", "type_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "seller_certifications_market_id_id_type_id_seller_id_key" ON "certification"."seller_certifications"("market_id", "id", "type_id", "seller_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "seller_certification_submissions_market_id_id_key" ON "certification"."seller_certification_submissions"("market_id", "id");
 
 -- CreateIndex
@@ -218,7 +221,7 @@ ALTER TABLE "certification"."seller_certifications" ADD CONSTRAINT "seller_certi
 ALTER TABLE "certification"."seller_certifications" ADD CONSTRAINT "seller_certifications_market_id_id_approved_submission_id_fkey" FOREIGN KEY ("market_id", "id", "approved_submission_id") REFERENCES "certification"."seller_certification_submissions"("market_id", "seller_certification_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE "certification"."seller_certification_submissions" ADD CONSTRAINT "seller_certification_submissions_market_id_seller_certific_fkey" FOREIGN KEY ("market_id", "seller_certification_id", "type_id") REFERENCES "certification"."seller_certifications"("market_id", "id", "type_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "certification"."seller_certification_submissions" ADD CONSTRAINT "seller_certification_submissions_market_id_seller_certific_fkey" FOREIGN KEY ("market_id", "seller_certification_id", "type_id", "seller_id") REFERENCES "certification"."seller_certifications"("market_id", "id", "type_id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE "certification"."seller_certification_submissions" ADD CONSTRAINT "seller_certification_submissions_market_id_type_id_type_re_fkey" FOREIGN KEY ("market_id", "type_id", "type_revision_id") REFERENCES "certification"."certification_type_revisions"("market_id", "type_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -232,7 +235,9 @@ ALTER TABLE "certification"."seller_submission_decisions" ADD CONSTRAINT "seller
 -- Hand-written (database-designer): docs/design/data/certification.md sections 2 (C1, CE1 to CE6),
 -- 3.1, 3.2, 3.4 to 3.7 and 3.19. Only new tables, so nothing here is NOT VALID.
 -- Ciphertext columns: the v<N>. envelope and base64url, at least 41 characters (the v1 envelope
--- of an empty plaintext); the upper bounds are the plaintext limit through sealField (O6).
+-- of an empty plaintext); the upper bounds follow sellers.md 4.5: 3 + ceil((4N + 28) * 4 / 3) characters for N plaintext
+-- characters, rounded up to a power of two. Limits: certificate number 64 (512), notes and reasons
+-- 1,000 (8192), expert reference 500 (4096); Mohammad confirms them in the value objects.
 -- Clear free text (S7): no outer spaces, no C0/C1 control or bidi formatting character.
 ALTER TABLE "certification"."outbox"
   ADD CONSTRAINT "outbox_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
@@ -320,10 +325,10 @@ ALTER TABLE "certification"."seller_certification_submissions"
     "kind" IN ('initial', 'resubmission', 'renewal')),
   ADD CONSTRAINT "seller_certification_submissions_dates_check" CHECK (
     "issue_date" IS NULL OR "expiry_date" IS NULL OR "issue_date" <= "expiry_date"),
-  ADD CONSTRAINT "seller_certification_submissions_certificate_number_ciphertext_check" CHECK (
+  ADD CONSTRAINT "seller_certification_submissions_cert_number_ciphertext_check" CHECK (
     "certificate_number_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
-    AND char_length("certificate_number_ciphertext") BETWEEN 41 AND 2048),
-  ADD CONSTRAINT "seller_certification_submissions_self_declaration_note_ciphertext_check" CHECK (
+    AND char_length("certificate_number_ciphertext") BETWEEN 41 AND 512),
+  ADD CONSTRAINT "seller_certification_submissions_note_ciphertext_check" CHECK (
     "self_declaration_note_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
     AND char_length("self_declaration_note_ciphertext") BETWEEN 41 AND 8192),
   ADD CONSTRAINT "seller_certification_submissions_content_schema_version_check" CHECK (
@@ -349,7 +354,7 @@ ALTER TABLE "certification"."seller_submission_decisions"
   ADD CONSTRAINT "seller_submission_decisions_reason_code_check" CHECK (
     ("reason_code" IS NOT NULL) = ("outcome" IN ('changes-requested', 'declined'))),
   ADD CONSTRAINT "seller_submission_decisions_reason_code_shape_check" CHECK (
-    "reason_code" ~ '^[a-z][a-z0-9-]{1,63}$'),
+    "reason_code" ~ '^[a-z][a-z0-9-]{0,63}$'),
   ADD CONSTRAINT "seller_submission_decisions_reason_text_ciphertext_check" CHECK (
     "reason_text_ciphertext" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
     AND char_length("reason_text_ciphertext") BETWEEN 41 AND 8192),

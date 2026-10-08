@@ -120,8 +120,8 @@ model CertificationTypeRevision {
   @@schema("certification")
 }
 
-/// The registry of issuers of a type (data design 3.7). Never deleted (CERT-04). The contact
-/// channels and the full registry rules arrive with migration 2.
+/// The registry of issuers of a type (data design 3.7). Never deleted (CERT-04). Only the
+/// contact channels (issuer_contact_channels) arrive with migration 2.
 model CertificationIssuer {
   id                      String                 @id @db.Uuid
   marketId                String                 @map("market_id") @db.VarChar(8)
@@ -182,8 +182,11 @@ model CertificationSellerCertification {
   approvedSubmission   CertificationSellerCertificationSubmission?  @relation("CertificateApproved", fields: [marketId, id, approvedSubmissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, id])
-  /// The target of the submission foreign key, which carries the type (CE4).
+  /// The target of the type foreign keys of later tables (CE4).
   @@unique([marketId, id, typeId])
+  /// The target of the submission foreign key, which carries the type and the seller, so a
+  /// submission's seller is its certificate's and the certificate's seller never moves (Hassan M-1).
+  @@unique([marketId, id, typeId, sellerId], map: "seller_certifications_market_id_id_type_id_seller_id_key")
   @@map("seller_certifications")
   @@schema("certification")
 }
@@ -217,7 +220,7 @@ model CertificationSellerCertificationSubmission {
   submittedZone                String                             @map("submitted_zone")
   submittedAt                  DateTime                           @map("submitted_at") @db.Timestamptz(6)
   submittedByAccountId         String                             @map("submitted_by_account_id") @db.Uuid
-  certificate                  CertificationSellerCertification   @relation("CertificateSubmissions", fields: [marketId, sellerCertificationId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
+  certificate                  CertificationSellerCertification   @relation("CertificateSubmissions", fields: [marketId, sellerCertificationId, typeId, sellerId], references: [marketId, id, typeId, sellerId], onDelete: Restrict, onUpdate: Restrict)
   typeRevision                 CertificationTypeRevision          @relation(fields: [marketId, typeId, typeRevisionId], references: [marketId, typeId, id], onDelete: Restrict, onUpdate: Restrict)
   issuer                       CertificationIssuer?               @relation(fields: [marketId, issuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
   pendingOf                    CertificationSellerCertification[] @relation("CertificatePending")
