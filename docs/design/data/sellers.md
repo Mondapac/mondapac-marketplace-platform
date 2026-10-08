@@ -1401,8 +1401,8 @@ Notes for later slices:
 
 | Reviewer | Verdict | Date |
 |---|---|---|
-| Mojtaba (database-designer) | Pending | |
-| Hassan (security-tester), the register version binding | Pending | |
+| Mojtaba (database-designer) | Approved with conditions: C1 done in this migration (`BEFORE DELETE` guard on `shop_slugs`), C2 carried to 7a-decide | 2026-10-08 |
+| Hassan (security-tester), the register version binding | Pass with conditions: L1 and I2 carried to 5b | 2026-10-08 |
 
 Written by Hossein from 3.1, 3.2, 3.4, 3.11, 4.5, 8 and 9 (the table and the two columns by
 `prisma migrate diff`, the rest by hand; `pnpm db:check-reversible` runs up, down, up and the drift
