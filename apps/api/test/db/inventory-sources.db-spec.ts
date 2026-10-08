@@ -525,7 +525,7 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
       ).toEqual({ ok: false, error: { code: 'inventory.source.not-found' } });
     });
 
-    it('lets a reorder race an add: one wins, the other is stale, no partial positions remain', async () => {
+    it('lets a reorder race an edit at the same version: one wins, the other is stale, no partial positions remain', async () => {
       const sellerId = newSeller();
       await registered(code, sellerId);
       const uc = useCases();
@@ -536,13 +536,16 @@ describe.each(TEST_MARKETS)('inventory sources in market %s (database integratio
           ...body('A'),
         }),
       );
-      if (withTwo.max < 3) return;
       const results = await Promise.all([
         uc.reorder.execute(asSeller(sellerId), {
           expectedVersion: withTwo.version,
           orderedSourceIds: withTwo.sources.map((x) => x.id).reverse(),
         }),
-        uc.create.execute(asSeller(sellerId), { expectedVersion: withTwo.version, ...body('B') }),
+        uc.edit.execute(asSeller(sellerId), {
+          expectedVersion: withTwo.version,
+          sourceId: withTwo.sources[0]!.id,
+          ...body('Renamed'),
+        }),
       ]);
       expect(results.filter((r) => r.ok)).toHaveLength(1);
       expect(results.filter((r) => !r.ok)).toEqual([
