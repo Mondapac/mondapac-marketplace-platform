@@ -43,6 +43,8 @@ import {
   SlugCheckBody,
 } from './my-file.dto';
 
+// Shape is checked before the gate: a malformed body answers 400 to any signed-in caller. That
+// reveals only the published schema (OpenAPI); identity does the same.
 const NO_STORE = 'no-store';
 
 /**

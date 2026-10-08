@@ -129,14 +129,20 @@ function addressObject(
     problems.push({ path, code: 'length' });
     return undefined;
   }
-  const out: Record<string, string> = {};
+  // No prototype, so a `__proto__` key stays an own entry and the domain refuses it as unknown.
+  const out: Record<string, string> = Object.create(null) as Record<string, string>;
+  // Like the domain: one entry at the object's path, never the caller's key text.
+  const seen = new Set<string>();
+  const problem = (code: string) => {
+    if (seen.has(code)) return;
+    seen.add(code);
+    problems.push({ path, code });
+  };
   for (const key of keys) {
     const item = value[key];
-    const itemPath = `${path}.${echoedFieldName(key)}`;
-    if (length(key) > BODY_LIMITS.addressKey) problems.push({ path, code: 'length' });
-    else if (typeof item !== 'string') problems.push({ path: itemPath, code: 'type' });
-    else if (length(item) > BODY_LIMITS.addressValue)
-      problems.push({ path: itemPath, code: 'length' });
+    if (length(key) > BODY_LIMITS.addressKey) problem('length');
+    else if (typeof item !== 'string') problem('type');
+    else if (length(item) > BODY_LIMITS.addressValue) problem('length');
     else out[key] = item;
   }
   return out;

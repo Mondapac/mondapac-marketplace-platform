@@ -63,9 +63,9 @@ describe('the seller draft over HTTP (integration)', () => {
   };
   const http = () => request(app.getHttpServer());
 
-  async function boot(stubbed: boolean) {
+  async function boot(stubbed: boolean, env: Record<string, string> = {}) {
     ({ app, logLines } = await createTestApp({
-      env: { LOG_LEVEL: 'info' },
+      env: { LOG_LEVEL: 'info', ...env },
       override: (builder) => {
         const faked = fakes.override(builder);
         return stubbed
@@ -161,6 +161,48 @@ describe('the seller draft over HTTP (integration)', () => {
     const all = JSON.stringify(logLines);
     expect(all).not.toContain(CANARY);
     expect(all).not.toContain('Secret Pty Ltd');
+  });
+
+  it('never puts a canary in a response or a log line, on the failure paths and the other routes', async () => {
+    await boot(true);
+    const session = await signedIn('AU');
+    const canaryKey = `${CANARY}-KEY`;
+    const responses: { body: unknown; text: string }[] = [];
+    const keep = (r: { body: unknown; text: string }) => responses.push(r);
+
+    stubs.general.next = { ok: false, error: { code: 'request.throttled', retryAfterSeconds: 5 } };
+    stubs.slug.next = { ok: true, value: { code: 'slug.available', slug: 'x' } };
+    stubs.address.next = { ok: true, value: SAVED };
+    const put = (path: string) => http().put(path).set(session.headers);
+    keep(await put('/sellers/my-file/general').send({ [canaryKey]: CANARY }));
+    keep(
+      await put('/sellers/my-file/general')
+        .set('content-type', 'application/json')
+        .send(`{"phone": "${CANARY}"`),
+    );
+    keep(
+      await put('/sellers/my-file/general')
+        .set('content-type', 'text/plain')
+        .send(`phone=${CANARY}`),
+    );
+    keep(await put('/sellers/my-file/general').send({ phone: CANARY }));
+    keep(await put('/sellers/my-file/address').send({ address: { [canaryKey]: 1 } }));
+    keep(await put('/sellers/my-file/address').send({ address: { line1: CANARY } }));
+    keep(
+      await http()
+        .post('/sellers/my-file/slug-check')
+        .set(session.headers)
+        .send({ slug: CANARY, [canaryKey]: CANARY }),
+    );
+
+    expect(responses.every((r) => r.text.length > 0)).toBe(true);
+    // A top-level unknown field name is echoed to its own sender by design (bounded, sanitised,
+    // design 8.3); a nested address key and every value never are, and no log line holds any.
+    const echoed = responses.map((r) => r.text).join('\n');
+    expect(echoed).not.toContain(`${CANARY}"`);
+    expect(echoed).not.toContain('address.CANARY');
+    expect(echoed.replaceAll(canaryKey, '')).not.toContain('CANARY-PHONE');
+    expect(JSON.stringify(logLines)).not.toContain('CANARY-PHONE');
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -331,8 +373,8 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(detailsOf(badNested)).toEqual({
         fields: [
           { path: 'sellerId', code: 'unknown-field' },
-          { path: 'address.line1', code: 'type' },
-          { path: 'address.postcode', code: 'length' },
+          { path: 'address', code: 'type' },
+          { path: 'address', code: 'length' },
         ],
       });
       expect(stubs.address.calls).toHaveLength(1);
@@ -408,6 +450,108 @@ describe('the seller draft over HTTP (integration)', () => {
         code: 'request.throttled',
         details: { retryAfterSeconds: 42 },
       });
+    });
+
+    it.each([
+      ['put', '/sellers/my-file/general', { phone: '0400' }],
+      ['put', '/sellers/my-file/address', { address: { line1: 'x' } }],
+      ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
+    ] as const)(
+      '%s %s: a missing or invalid CSRF token answers 403 request.csrf, no-store, without a call',
+      async (method, path, body) => {
+        await boot(true);
+        const session = await signedIn(code);
+        const withoutToken = {
+          'x-market-id': session.headers['x-market-id'],
+          cookie: session.headers.cookie,
+        };
+        const missing = await http()[method](path).set(withoutToken).send(body);
+        const invalid = await http()
+          [method](path)
+          .set({ ...session.headers, 'x-csrf-token': 'not-the-token' })
+          .send(body);
+
+        for (const response of [missing, invalid]) {
+          expect(response.status).toBe(403);
+          expect(response.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+          expect(response.headers['cache-control']).toBe('no-store');
+        }
+        expect(Object.values(stubs).flatMap((stub) => stub.calls)).toHaveLength(0);
+      },
+    );
+
+    it.each([
+      ['put', '/sellers/my-file/general', { phone: '0400' }, 'general'],
+      ['put', '/sellers/my-file/address', { address: { line1: 'x' } }, 'address'],
+    ] as const)(
+      '%s %s: request.throttled answers 429 with Retry-After',
+      async (method, path, body, stub) => {
+        await boot(true);
+        const session = await signedIn(code);
+        stubs[stub].next = {
+          ok: false,
+          error: { code: 'request.throttled', retryAfterSeconds: 7 },
+        };
+
+        const response = await http()[method](path).set(session.headers).send(body);
+
+        expect(response.status).toBe(429);
+        expect(response.headers['retry-after']).toBe('7');
+        expect(response.headers['cache-control']).toBe('no-store');
+      },
+    );
+
+    it('content-type edges: charset accepted, vendor JSON 415, empty body, {} and over-size body', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.general.next = { ok: true, value: SAVED };
+      const put = () => http().put('/sellers/my-file/general').set(session.headers);
+
+      const charset = await put()
+        .set('content-type', 'application/json; charset=utf-8')
+        .send('{"phone":"0400"}');
+      const vendor = await put().set('content-type', 'application/vnd.api+json').send('{}');
+      const empty = await put().send();
+      const emptyObject = await put().send({});
+      const calls = stubs.general.calls.length;
+      const huge = await put()
+        .set('content-type', 'application/json')
+        .send(JSON.stringify({ phone: 'x'.repeat(70_000) }));
+
+      expect(charset.status).toBe(200);
+      expect(vendor.status).toBe(415);
+      expect(vendor.body).toEqual({ statusCode: 415, code: 'request.body-unsupported' });
+      expect([empty.status, emptyObject.status]).toEqual([415, 200]);
+      expect(empty.body).toEqual({ statusCode: 415, code: 'request.body-unsupported' });
+      expect(calls).toBe(2);
+      expect(huge.status).toBe(413);
+      expect(huge.body).toEqual({ statusCode: 413, code: 'request.body-too-large' });
+      expect(stubs.general.calls).toHaveLength(calls);
+    });
+
+    it('is in the OpenAPI document with its five routes, the CSRF header, 415 and 429', async () => {
+      await boot(true, { API_DOCS_ENABLED: 'true' });
+
+      const response = await http().get('/docs-json').expect(200);
+
+      type Operation = {
+        parameters?: { name: string }[];
+        responses: Record<string, unknown>;
+      };
+      const paths = (response.body as { paths: Record<string, Record<string, Operation>> }).paths;
+      const routes = [
+        ['get', '/sellers/my-file'],
+        ['get', '/sellers/my-file/form-descriptors'],
+        ['put', '/sellers/my-file/general'],
+        ['put', '/sellers/my-file/address'],
+        ['post', '/sellers/my-file/slug-check'],
+      ] as const;
+      for (const [method, path] of routes) expect(paths[path]?.[method]).toBeDefined();
+      for (const [method, path] of routes.slice(2)) {
+        const operation = paths[path]![method]!;
+        expect(operation.parameters?.map((p) => p.name.toLowerCase())).toContain('x-csrf-token');
+        expect(Object.keys(operation.responses)).toEqual(expect.arrayContaining(['415', '429']));
+      }
     });
 
     it('maps the read failures (404, 503)', async () => {

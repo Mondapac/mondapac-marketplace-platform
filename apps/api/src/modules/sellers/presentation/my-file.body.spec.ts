@@ -45,12 +45,34 @@ describe('parseAddressBody', () => {
   it('requires an address object of strings', () => {
     expect(parseAddressBody({})).toEqual([{ path: 'address', code: 'required' }]);
     expect(parseAddressBody({ address: 'x' })).toEqual([{ path: 'address', code: 'type' }]);
-    expect(parseAddressBody({ address: { a: 1 } })).toEqual([{ path: 'address.a', code: 'type' }]);
+    expect(parseAddressBody({ address: { a: 1 } })).toEqual([{ path: 'address', code: 'type' }]);
   });
 
   it('bounds the number of address fields', () => {
     const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, 'v']));
     expect(parseAddressBody({ address: many })).toEqual([{ path: 'address', code: 'length' }]);
+  });
+
+  it('never echoes a caller key: a control-character or 65-code-point key', () => {
+    const odd = `bad${String.fromCharCode(7)}key`;
+    const long = 'k'.repeat(65);
+    const problems = parseAddressBody({
+      address: { [odd]: 1, [long]: 'v' },
+      registeredAddress: { [odd]: 'x'.repeat(300) },
+    });
+    expect(problems).toEqual([
+      { path: 'address', code: 'type' },
+      { path: 'address', code: 'length' },
+      { path: 'registeredAddress', code: 'length' },
+    ]);
+    expect(JSON.stringify(problems)).not.toContain('bad');
+  });
+
+  it('keeps a __proto__ key as an own entry for the domain to refuse', () => {
+    const body = JSON.parse('{"address":{"__proto__":"x","line1":"y"}}') as unknown;
+    const parsed = parseAddressBody(body) as { address: Record<string, string> };
+    expect(Object.keys(parsed.address).sort()).toEqual(['__proto__', 'line1']);
+    expect(Object.getPrototypeOf(parsed.address)).toBeNull();
   });
 
   it('omits what the body does not carry', () => {
