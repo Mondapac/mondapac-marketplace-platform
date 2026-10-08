@@ -507,6 +507,7 @@ describe('loadMarketConfigs', () => {
         regions: ['N', 'S'],
       },
       reservedWords: { slugs: ['admin'], claimWords: ['gold'] },
+      businessIdentifier: { scheme: 'nz-nzbn', required: false, labelKey: 'k.identifier' },
       timezones: {
         countries: ['NZ'],
         byRegion: {
@@ -573,7 +574,87 @@ describe('loadMarketConfigs', () => {
       );
     });
 
+    it('has a different identifier scheme and requirement in the two Market fixtures', () => {
+      const [first, second] = [
+        ...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values(),
+      ];
+
+      expect(first?.sellers?.businessIdentifier.scheme).not.toBe(
+        second?.sellers?.businessIdentifier.scheme,
+      );
+      expect(first?.sellers?.businessIdentifier.required).not.toBe(
+        second?.sellers?.businessIdentifier.required,
+      );
+      expect(first?.sellers?.businessIdentifier.labelKey).not.toBe(
+        second?.sellers?.businessIdentifier.labelKey,
+      );
+    });
+
     it.each([
+      [
+        'no identifier section: a Market never defaults its scheme',
+        (c: typeof SELLERS) =>
+          void delete (c as { businessIdentifier?: unknown }).businessIdentifier,
+        /businessIdentifier/,
+      ],
+      [
+        'a scheme with upper case',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = 'ABN'),
+        /lower-case scheme token/,
+      ],
+      [
+        'a scheme with a double hyphen',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = 'a--b'),
+        /lower-case scheme token/,
+      ],
+      [
+        'a scheme that starts with a digit',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = '1abn'),
+        /lower-case scheme token/,
+      ],
+      [
+        'a scheme longer than 32 characters',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = 'a'.repeat(33)),
+        /too big|<=32/,
+      ],
+      [
+        'no required flag',
+        (c: typeof SELLERS) =>
+          void delete (c.businessIdentifier as { required?: boolean }).required,
+        /required/,
+      ],
+      [
+        'an empty label key',
+        (c: typeof SELLERS) => void (c.businessIdentifier.labelKey = ''),
+        /labelKey/,
+      ],
+      [
+        'an empty scheme',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = ''),
+        /lower-case scheme token|scheme/,
+      ],
+      [
+        'a scheme with a trailing hyphen',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = 'abn-'),
+        /lower-case scheme token/,
+      ],
+      [
+        'a required flag that is not a boolean',
+        (c: typeof SELLERS) =>
+          void ((c.businessIdentifier as { required: unknown }).required = 'yes'),
+        /required/,
+      ],
+      [
+        'a label key longer than 64 characters',
+        (c: typeof SELLERS) => void (c.businessIdentifier.labelKey = 'k'.repeat(65)),
+        /too big|<=64|labelKey/,
+      ],
+      [
+        'an unknown key in businessIdentifier',
+        (c: typeof SELLERS) =>
+          void ((c.businessIdentifier as Record<string, unknown>).extra = true),
+        /unrecognized/i,
+      ],
       [
         'no reserved words: a Market never defaults them',
         (c: typeof SELLERS) => void delete (c as { reservedWords?: unknown }).reservedWords,

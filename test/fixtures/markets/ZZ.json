@@ -60,6 +60,11 @@
   },
   "sellers": {
     "approvalRequired": false,
+    "businessIdentifier": {
+      "scheme": "zz-corp-no",
+      "required": false,
+      "labelKey": "sellers.business-identifier.zz-corp-no"
+    },
     "address": {
       "fields": [
         {
