@@ -1,0 +1,135 @@
+import type { AttributeDefinitionState, AttributeOption } from './attribute-definition';
+import type { CategoryName, PlatformCategoryState } from './platform-category';
+import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
+
+/**
+ * The claim-checked fields (catalog design 6.2, AC 21): every customer- or search-visible text
+ * field of the content types that exist today, and the default-deny that keeps it complete. A
+ * field id names a place a claim text can sit; the matcher is called on exactly these.
+ *
+ * Fields of a later slice (image alt text, URL key, Offer description, seller category names and
+ * descriptions, proposal texts, SEO and brand fields) join this list in the slice that adds the
+ * content type, in the same change as the type.
+ */
+export const CLAIM_CHECKED_FIELD_IDS = [
+  'attribute-definition.name',
+  'attribute-definition.option-label',
+  'platform-category.name',
+  'platform-category.slug',
+  'product.attribute-text-value',
+  'product.description',
+  'product.name',
+  'product.short-description',
+  'product.variant-label',
+] as const;
+export type ClaimCheckedFieldId = (typeof CLAIM_CHECKED_FIELD_IDS)[number];
+
+export function isClaimCheckedFieldId(value: unknown): value is ClaimCheckedFieldId {
+  return (
+    typeof value === 'string' && (CLAIM_CHECKED_FIELD_IDS as readonly string[]).includes(value)
+  );
+}
+
+/** Why a field is not matched: it holds no seller- or admin-written text a customer reads. */
+export type ExemptReason = 'identifier' | 'internal-code' | 'number' | 'timestamp' | 'reference';
+
+/**
+ * What a content type's key is: a checked text field, an exempt one with its reason, or a nested
+ * content type that has its own table below.
+ */
+export type FieldDisposition =
+  | { readonly checked: ClaimCheckedFieldId }
+  | { readonly exempt: ExemptReason }
+  | { readonly nested: string };
+
+const exempt = (reason: ExemptReason): FieldDisposition => ({ exempt: reason });
+const checked = (field: ClaimCheckedFieldId): FieldDisposition => ({ checked: field });
+const nested = (table: string): FieldDisposition => ({ nested: table });
+
+// Each table is a `Record` over the keys of its content type, so a new key is a compile error
+// until it is classified here: a field is checked by default or named exempt by a person.
+
+export const REVISION_TEXT_FIELDS: Record<keyof RevisionText, FieldDisposition> = {
+  name: checked('product.name'),
+  shortDescription: checked('product.short-description'),
+  description: checked('product.description'),
+};
+
+export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, FieldDisposition> = {
+  variantId: exempt('identifier'),
+  position: exempt('number'),
+  optionKey: exempt('internal-code'),
+  // Attribute code to option code: the codes are internal, the labels live on the definition.
+  optionValues: exempt('internal-code'),
+  labels: checked('product.variant-label'),
+};
+
+export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {
+  texts: nested('REVISION_TEXT_FIELDS'),
+  categoryIds: exempt('reference'),
+  taxCategoryCode: exempt('internal-code'),
+  attributeValues: checked('product.attribute-text-value'),
+  variants: nested('REVISION_VARIANT_FIELDS'),
+  imageIds: exempt('reference'),
+  schemaRef: exempt('reference'),
+  contentSchemaVersion: exempt('number'),
+};
+
+export const ATTRIBUTE_OPTION_FIELDS: Record<keyof AttributeOption, FieldDisposition> = {
+  code: exempt('internal-code'),
+  labels: checked('attribute-definition.option-label'),
+  active: exempt('internal-code'),
+  position: exempt('number'),
+};
+
+export const ATTRIBUTE_DEFINITION_FIELDS: Record<keyof AttributeDefinitionState, FieldDisposition> =
+  {
+    id: exempt('identifier'),
+    marketId: exempt('identifier'),
+    code: exempt('internal-code'),
+    dataType: exempt('internal-code'),
+    localizable: exempt('internal-code'),
+    status: exempt('internal-code'),
+    createdByKind: exempt('internal-code'),
+    revisionId: exempt('identifier'),
+    revisionNo: exempt('number'),
+    material: exempt('internal-code'),
+    isVariantOption: exempt('internal-code'),
+    bounds: exempt('number'),
+    names: checked('attribute-definition.name'),
+    options: nested('ATTRIBUTE_OPTION_FIELDS'),
+    version: exempt('number'),
+    createdAt: exempt('timestamp'),
+  };
+
+export const CATEGORY_NAME_FIELDS: Record<keyof CategoryName, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('platform-category.name'),
+};
+
+export const PLATFORM_CATEGORY_FIELDS: Record<keyof PlatformCategoryState, FieldDisposition> = {
+  id: exempt('identifier'),
+  marketId: exempt('identifier'),
+  parentId: exempt('reference'),
+  verticalRootCode: exempt('internal-code'),
+  // The slug is shown in the address, so it is a customer-visible text.
+  slug: checked('platform-category.slug'),
+  status: exempt('internal-code'),
+  createdByKind: exempt('internal-code'),
+  revisionId: exempt('identifier'),
+  revisionNo: exempt('number'),
+  names: nested('CATEGORY_NAME_FIELDS'),
+  version: exempt('number'),
+  createdAt: exempt('timestamp'),
+};
+
+/** Every table above by name, so the schema test can walk them and follow `nested`. */
+export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, FieldDisposition>>>> = {
+  REVISION_TEXT_FIELDS,
+  REVISION_VARIANT_FIELDS,
+  REVISION_CONTENT_FIELDS,
+  ATTRIBUTE_OPTION_FIELDS,
+  ATTRIBUTE_DEFINITION_FIELDS,
+  CATEGORY_NAME_FIELDS,
+  PLATFORM_CATEGORY_FIELDS,
+};

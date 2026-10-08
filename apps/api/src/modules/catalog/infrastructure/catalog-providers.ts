@@ -1,4 +1,4 @@
-import type { FactoryProvider } from '@nestjs/common';
+import type { Provider } from '@nestjs/common';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -34,6 +34,8 @@ import {
   WORKING_COPY_REPOSITORY,
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
+import { CLAIM_TEXT_MATCHER } from '../application/ports/claim-text-matcher';
+import { UnavailableClaimTextMatcher } from './placeholders/unavailable-claim-text-matcher';
 import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
@@ -51,7 +53,10 @@ const CATALOG_SECRET = Symbol('CATALOG_SECRET');
  * Binds the ports of slices 1 to 3. They live in `infrastructure/` because only this layer may reach
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
-export const catalogProviders: readonly FactoryProvider[] = [
+export const catalogProviders: readonly Provider[] = [
+  // ADR-0031: the fail-closed stand-in of `certification.matchClaimTerms`, bound with `useClass`
+  // and nothing else until the binding PR replaces it with the real facade.
+  { provide: CLAIM_TEXT_MATCHER, useClass: UnavailableClaimTextMatcher },
   {
     provide: CATALOG_MARKET_POLICY,
     inject: [MarketRegistry],
