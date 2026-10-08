@@ -1138,7 +1138,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       expect(storedOf(t, sellerId).version).toBe(1);
     });
 
-    it('is the actor’s own file: no file, another Market and a non-seller are refused', async () => {
+    it("is the actor's own file: no file, another Market and a non-seller are refused", async () => {
       const t = setUp();
       const stranger = ownerContext(t, code, t.ids.next<'Seller'>());
       expect(await t.saveIdentifier.execute(stranger, { identifier: own.typed })).toEqual({

@@ -244,7 +244,9 @@ export class SellerTaxProfile {
       previous.validTo !== null &&
       Temporal.Instant.compare(previous.validTo, period.validFrom) === 0
     ) {
-      this.#close(previous, null);
+      // Re-open up to the next remaining period (if any), never over it.
+      const next = this.#periods[index];
+      this.#close(previous, next === undefined ? null : next.validFrom);
     }
     this.#changed(now);
     return ok(undefined);

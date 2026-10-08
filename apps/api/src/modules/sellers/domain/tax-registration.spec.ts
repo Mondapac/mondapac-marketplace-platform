@@ -81,6 +81,18 @@ describe.each(FIXTURES)('SellerTaxProfile in $marketId (zone $zone)', ({ marketI
     expect(profile.pendingEvents).toEqual([]);
   });
 
+  it('accepts exactly 1970-01-01 and refuses the day before, in the owning zone', () => {
+    expect(newProfile().record(registered('1970-01-01')).ok).toBe(true);
+    expect(newProfile().record(registered('1969-12-31')).ok).toBe(false);
+  });
+
+  it('bounds the future by the local date of the owning zone, not the UTC date', () => {
+    // 20:00 UTC on 7 October is already 8 October in both fixture zones.
+    const now = Temporal.Instant.from('2026-10-07T20:00:00Z');
+    expect(newProfile().record(registered('2027-10-08', now)).ok).toBe(true);
+    expect(newProfile().record(registered('2027-10-09', now)).ok).toBe(false);
+  });
+
   it('refuses a date before 1970 or more than a year ahead (typo guard)', () => {
     const profile = newProfile();
     expect(profile.record(registered('1969-12-31')).ok).toBe(false);
@@ -202,6 +214,34 @@ describe.each(FIXTURES)('SellerTaxProfile in $marketId (zone $zone)', ({ marketI
       expect(profile.pendingEvents).toHaveLength(1);
     });
 
+    it('re-opens the previous period only up to the next remaining one (three periods)', () => {
+      const stored = newProfile();
+      stored.record(registered('2026-01-01'));
+      stored.record(registered('2027-02-01', NOW.add({ minutes: 1 })));
+      stored.record(registered('2027-06-01', NOW.add({ minutes: 2 })));
+      const profile = SellerTaxProfile.restore({
+        sellerId: SELLER,
+        marketId,
+        version: 4,
+        periods: stored.periods,
+      });
+      const [a, b, c] = profile.periods;
+      expect(profile.cancel(b!.id, NOW.add({ hours: 48 })).ok).toBe(true);
+      expect(profile.periods.map((p) => p.id)).toEqual([a!.id, c!.id]);
+      expect(profile.periods[0]!.validTo).toEqual(c!.validFrom);
+      expect(profile.periods[1]!.validTo).toBeNull();
+      expect(profile.changes.validToChanged).toEqual([{ id: a!.id, validTo: c!.validFrom }]);
+      // No overlap: the chain restores.
+      expect(() =>
+        SellerTaxProfile.restore({
+          sellerId: SELLER,
+          marketId,
+          version: 5,
+          periods: profile.periods,
+        }),
+      ).not.toThrow();
+    });
+
     it('refuses a period that has started, and an unknown one', () => {
       const profile = withFuture();
       const [first, future] = profile.periods;
@@ -254,6 +294,30 @@ describe.each(FIXTURES)('SellerTaxProfile in $marketId (zone $zone)', ({ marketI
         periods: [{ ...period, validTo: period.validFrom }],
       }),
     ).toThrow(RangeError);
+  });
+});
+
+describe('SellerTaxProfile in a zone that skips midnight', () => {
+  // Cuba starts daylight saving at 00:00 on 2026-03-08, so that local day begins at 01:00.
+  const zone = 'America/Havana';
+  it('starts a registered period at the first instant of the local day', () => {
+    const profile = SellerTaxProfile.restore({
+      sellerId: SELLER,
+      marketId: 'AU' as MarketId,
+      version: 1,
+      periods: [],
+    });
+    const result = profile.record({
+      periodId: idOf(900),
+      registeredForIndirectTax: true,
+      effectiveFromLocal: date('2026-03-08'),
+      zone,
+      by: { kind: 'admin', accountId: ACCOUNT },
+      now: NOW,
+    });
+    const period = (result as { value: TaxRegistrationPeriod }).value;
+    expect(period.validFrom).toEqual(Temporal.Instant.from('2026-03-08T05:00:00Z'));
+    expect(period.validFrom.toZonedDateTimeISO(zone).toPlainDate().toString()).toBe('2026-03-08');
   });
 });
 

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -98,6 +99,8 @@ export class MyFileSaveIdentifier extends UseCase<
     whenSellerNotApproved: 'allow',
   };
 
+  readonly #logger = new Logger('MyFileSaveIdentifier');
+
   constructor(
     gate: UseCaseGate,
     private readonly deps: MyFileSaveIdentifierDependencies,
@@ -156,7 +159,13 @@ export class MyFileSaveIdentifier extends UseCase<
           sealed: sealed.value,
           index: identifierIndex.of(market, code, value),
         };
-      } catch {
+      } catch (error) {
+        // Name and correlation id only: never the message or the value (Hassan L2).
+        this.#logger.error({
+          msg: 'sellers.my-file-save-identifier.unavailable',
+          error: error instanceof Error ? error.name : 'unknown',
+          correlationId: context.correlationId,
+        });
         return err({ code: 'sellers.unavailable' });
       }
     }

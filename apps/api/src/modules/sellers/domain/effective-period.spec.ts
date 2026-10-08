@@ -56,6 +56,14 @@ describe('EffectivePeriod (sellers design 2.4 rule 4)', () => {
     expect(startOfLocalDate(date, 'America/New_York')).toEqual(at('2026-03-10T04:00:00Z'));
   });
 
+  it('gives the first instant of a local day whose midnight does not exist (DST at 00:00)', () => {
+    const date = Temporal.PlainDate.from('2026-03-08');
+    expect(startOfLocalDate(date, 'America/Havana')).toEqual(at('2026-03-08T05:00:00Z'));
+    expect(localDateOf(startOfLocalDate(date, 'America/Havana'), 'America/Havana').toString()).toBe(
+      '2026-03-08',
+    );
+  });
+
   it('reads the local date of an instant in a zone', () => {
     expect(localDateOf(at('2026-03-09T14:00:00Z'), 'Australia/Brisbane').toString()).toBe(
       '2026-03-10',

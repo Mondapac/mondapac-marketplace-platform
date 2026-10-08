@@ -3,7 +3,10 @@ import type { MarketId } from '@mondapac/shared-kernel';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
-import { parseBusinessIdentifier } from '../../domain/business-identifier';
+import {
+  IDENTIFIER_INPUT_MAX_LENGTH,
+  parseBusinessIdentifier,
+} from '../../domain/business-identifier';
 import { abnScheme } from './abn';
 import {
   IDENTIFIER_SCHEME_ADAPTERS,
@@ -149,5 +152,26 @@ describe('MarketConfigIdentifierSchemes (start-up check, design 4.2)', () => {
   it('answers null for a Market the registry does not know and never falls back', () => {
     const schemes = new MarketConfigIdentifierSchemes(registry);
     expect(schemes.schemeOf(testMarketContext('QQ', 'default'))).toBeNull();
+  });
+});
+
+describe('scheme contract: the normalised value fits the ciphertext bound', () => {
+  // identifier_ciphertext is sized for IDENTIFIER_INPUT_MAX_LENGTH characters (data design 4.5).
+  const samples = [
+    '51824753556',
+    '123456782',
+    '046454286',
+    '９'.repeat(IDENTIFIER_INPUT_MAX_LENGTH),
+    '1'.repeat(IDENTIFIER_INPUT_MAX_LENGTH),
+    '1 '.repeat(IDENTIFIER_INPUT_MAX_LENGTH / 2),
+    '😀'.repeat(IDENTIFIER_INPUT_MAX_LENGTH),
+  ];
+  it.each([...IDENTIFIER_SCHEME_ADAPTERS.entries()])('%s', (_code, scheme) => {
+    for (const text of samples) {
+      const parsed = parseBusinessIdentifier(text, scheme);
+      if (parsed.ok) {
+        expect([...parsed.value.value].length).toBeLessThanOrEqual(IDENTIFIER_INPUT_MAX_LENGTH);
+      }
+    }
   });
 });
