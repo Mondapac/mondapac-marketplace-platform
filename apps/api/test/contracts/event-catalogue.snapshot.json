@@ -1,5 +1,12 @@
 [
   {
+    "type": "catalog.platform-category-created.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id"
+    }
+  },
+  {
     "type": "catalog.variant-added.v1",
     "aggregateType": "product",
     "fields": {

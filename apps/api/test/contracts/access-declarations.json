@@ -1,4 +1,5 @@
 [
+  { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },
   { "name": "identity.confirm-seller-email", "rule": "anonymous" },
@@ -32,6 +33,27 @@
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
+  {
+    "name": "sellers.form-descriptors-read",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "sellers.my-file-check-slug",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "sellers.my-file-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "sellers.my-file-save-address",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "sellers.my-file-save-general",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },

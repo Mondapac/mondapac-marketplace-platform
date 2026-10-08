@@ -18,6 +18,20 @@ export interface SellerFileRepository {
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlySet<Id<'Seller'>>>;
+
+  /**
+   * The file of this seller in the Market with its draft (ciphertext as stored), or null: a
+   * seller of another Market is null, exactly like an unknown id (AC 1). The seller id comes
+   * from the actor, never from a request (AC 18).
+   */
+  findById(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerFile | null>;
+
+  /**
+   * Writes the draft columns, `draft_complete`, `last_changed_at` and the new version, only
+   * where the stored version is still `file.persistedVersion` (optimistic, P 10). Answers false
+   * and writes nothing when another unit changed the file first.
+   */
+  saveDraft(market: MarketContext, file: SellerFile): Promise<boolean>;
 }
 
 export const SELLER_FILE_REPOSITORY = Symbol('SELLER_FILE_REPOSITORY');

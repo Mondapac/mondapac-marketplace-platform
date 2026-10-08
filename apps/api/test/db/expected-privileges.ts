@@ -157,6 +157,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_at', 'retired_at', 'state'],
     },
     'catalog.product_code_counters': { table: ['INSERT', 'SELECT'], columnUpdate: ['next_value'] },
+    // docs/design/data/catalog.md section 7 (slice 2): the tree is never deleted from; a category's
+    // slug and creator kind never change; revisions and their names are insert-only.
+    'catalog.category_trees': { table: ['INSERT', 'SELECT'], columnUpdate: ['version'] },
+    'catalog.platform_categories': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['merged_into_id', 'parent_id', 'published_revision_id', 'status', 'version'],
+    },
+    'catalog.platform_category_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.platform_category_revision_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {

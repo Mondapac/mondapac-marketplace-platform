@@ -2,13 +2,33 @@ import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
-import { FixedClock, SequenceIdGenerator, testCallContext } from '@mondapac/shared-kernel/testing';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
+import {
+  FixedClock,
+  SequenceIdGenerator,
+  testAuthenticatedActor,
+  testCallContext,
+} from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import request from 'supertest';
 import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
 import { SELLERS_FACADE, type SellersFacade } from '../../src/modules/sellers';
 import { BackfillSellerFiles } from '../../src/modules/sellers/application/use-cases/backfill-seller-files.use-case';
+import { MyFileCheckSlug } from '../../src/modules/sellers/application/use-cases/my-file-check-slug.use-case';
+import { MyFileRead } from '../../src/modules/sellers/application/use-cases/my-file-read.use-case';
+import { MyFileSaveAddress } from '../../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveGeneral } from '../../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
+import { PrismaRateCounterRepository } from '../../src/modules/sellers/infrastructure/prisma-rate-counter.repository';
+import {
+  RATE_COUNTER_KINDS,
+  SAVE_LIMITS,
+  rateVerdict,
+} from '../../src/modules/sellers/domain/rate-limits';
+import type { RateCounter } from '../../src/modules/sellers/application/ports/rate-counter.repository';
+import { PrismaService } from '../../src/platform/persistence/prisma.service';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { ok } from '@mondapac/shared-kernel';
+import { AUTHORISATION_CHECK, type AuthorisationCheck } from '../../src/platform/authz';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -48,6 +68,24 @@ const tokenOf = (mail: MailMessage): string => {
   return match[1]!;
 };
 
+/**
+ * Stands in for identity slice 8a (the permission registry and role keys): until then identity's
+ * check refuses every `permissions` rule. The Seller Owner system role holds every seller key, so
+ * this admits an authenticated seller actor under a `permissions` rule and nothing else; the
+ * sellers use cases still check ownership and the access state themselves.
+ */
+const sellerOwnerCheck: AuthorisationCheck = {
+  check: (context, declaration) =>
+    Promise.resolve(
+      context.actor.kind === 'authenticated' &&
+        context.actor.population === 'seller' &&
+        context.actor.sellerId !== null &&
+        declaration.rule.kind === 'permissions'
+        ? { allowed: true }
+        : { allowed: false, denial: { code: 'access.denied' } },
+    ),
+};
+
 describe.each(TEST_MARKETS)('sellers files in market %s (database integration)', (code) => {
   const market = marketOf(code);
   const other = code === 'AU' ? 'ZZ' : 'AU';
@@ -85,7 +123,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           .overrideProvider(CLOCK)
           .useValue(clock)
           .overrideProvider(MAIL_TRANSPORT)
-          .useValue(transport),
+          .useValue(transport)
+          .overrideProvider(AUTHORISATION_CHECK)
+          .useValue(sellerOwnerCheck),
     }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
@@ -701,6 +741,476 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           [code, other, key],
         );
       }
+    });
+  });
+
+  describe('PrismaRateCounterRepository (real counters, injected now)', () => {
+    const T0 = Temporal.Instant.from('2026-10-08T12:00:00Z');
+    const keys: Buffer[] = [];
+    const newKey = (): Buffer => {
+      const key = Buffer.from(
+        randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+        'hex',
+      );
+      keys.push(key);
+      return key;
+    };
+    afterEach(async () => {
+      if (keys.length === 0) return;
+      await sql.query('DELETE FROM sellers.rate_counters WHERE key_hash = ANY($1::bytea[])', [
+        keys,
+      ]);
+      keys.length = 0;
+    });
+
+    const reserve = (
+      marketCode: string,
+      limits: typeof SAVE_LIMITS,
+      key: Buffer,
+      now: Temporal.Instant,
+    ) => {
+      const counters: RateCounter[] = limits.map((limit) => ({ limit, keyHash: key }));
+      const marketContext = marketOf(marketCode);
+      return app
+        .get<UnitOfWork>(UNIT_OF_WORK)
+        .run(marketContext, async () =>
+          ok(
+            await new PrismaRateCounterRepository(app.get(PrismaService)).reserve(
+              marketContext,
+              counters,
+              now,
+            ),
+          ),
+        )
+        .then((result) => {
+          if (!result.ok) throw new Error('the reservation unit failed');
+          return result.value;
+        });
+    };
+    const count = (reservations: Awaited<ReturnType<typeof reserve>>, kind: string) =>
+      reservations.find((reservation) => reservation.kind === kind)!.count;
+
+    it('refuses over the limit, restarts the window, and keeps minute and day apart', async () => {
+      expect(RATE_COUNTER_KINDS).toContain('save.account.minute');
+      const key = newKey();
+      let last = await reserve(code, SAVE_LIMITS, key, T0);
+      for (let attempt = 2; attempt <= 60; attempt += 1) {
+        last = await reserve(code, SAVE_LIMITS, key, T0);
+        expect(rateVerdict(SAVE_LIMITS, last, T0)).toEqual({ allowed: true });
+      }
+      expect(count(last, 'save.account.minute')).toBe(60);
+      const refused = await reserve(code, SAVE_LIMITS, key, T0);
+      expect(count(refused, 'save.account.minute')).toBe(61);
+      expect(rateVerdict(SAVE_LIMITS, refused, T0)).toEqual({
+        allowed: false,
+        retryAfterSeconds: 60,
+      });
+
+      // One window later the minute counter restarts at 1; the day counter keeps counting.
+      const later = T0.add({ minutes: 1 });
+      const restarted = await reserve(code, SAVE_LIMITS, key, later);
+      expect(count(restarted, 'save.account.minute')).toBe(1);
+      expect(count(restarted, 'save.account.day')).toBe(62);
+      expect(rateVerdict(SAVE_LIMITS, restarted, later)).toEqual({ allowed: true });
+
+      // A day later both restart.
+      const nextDay = T0.add({ hours: 24 });
+      const fresh = await reserve(code, SAVE_LIMITS, key, nextDay);
+      expect(count(fresh, 'save.account.minute')).toBe(1);
+      expect(count(fresh, 'save.account.day')).toBe(1);
+    });
+
+    it('counts every one of N parallel reservations exactly once', async () => {
+      const key = newKey();
+      const n = 12;
+      const results = await Promise.all(
+        Array.from({ length: n }, () => reserve(code, SAVE_LIMITS, key, T0)),
+      );
+      expect(
+        results.map((result) => count(result, 'save.account.minute')).sort((a, b) => a - b),
+      ).toEqual(Array.from({ length: n }, (_, index) => index + 1));
+      const { rows } = await sql.query<{ kind: string; count: number }>(
+        'SELECT kind, count FROM sellers.rate_counters WHERE market_id = $1 AND key_hash = $2 ORDER BY kind',
+        [code, key],
+      );
+      expect(rows).toEqual([
+        { kind: 'save.account.day', count: n },
+        { kind: 'save.account.minute', count: n },
+      ]);
+    });
+
+    it('does not throttle another account, nor the same account in another Market', async () => {
+      const a = newKey();
+      const b = newKey();
+      for (let attempt = 0; attempt < 61; attempt += 1) await reserve(code, SAVE_LIMITS, a, T0);
+      const atLimit = await reserve(code, SAVE_LIMITS, a, T0);
+      expect(rateVerdict(SAVE_LIMITS, atLimit, T0).allowed).toBe(false);
+
+      const otherAccount = await reserve(code, SAVE_LIMITS, b, T0);
+      expect(count(otherAccount, 'save.account.minute')).toBe(1);
+      expect(rateVerdict(SAVE_LIMITS, otherAccount, T0)).toEqual({ allowed: true });
+
+      const otherMarket = await reserve(other, SAVE_LIMITS, a, T0);
+      expect(count(otherMarket, 'save.account.minute')).toBe(1);
+      expect(rateVerdict(SAVE_LIMITS, otherMarket, T0)).toEqual({ allowed: true });
+    });
+  });
+
+  // Slice 2 part c-1 (sellers design 3.1, 3.5, 4.2, 4.3, 6.2, 6.5, 8.1; data design 3.1, 3.5,
+  // 3.11, 4): the draft use cases on PostgreSQL with the real subject keys and identity.
+  describe('slice 2 draft use cases', () => {
+    const ids = new SequenceIdGenerator(clock);
+    const FIXTURE = {
+      AU: {
+        address: { line1: '1 George St', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+        area: 'greater-brisbane',
+        zones: ['Australia/Brisbane', 'Australia/Lindeman'],
+      },
+      ZZ: {
+        address: { street: '1 Main', district: 'Central', prefecture: 'ZB', postalCode: '1000001' },
+        area: 'zz-central',
+        zones: ['Pacific/Auckland', 'Pacific/Chatham'],
+      },
+    }[code];
+    const GENERAL = {
+      storeName: 'Al Noor Grocer',
+      businessName: 'Al Noor Trading Pty Ltd',
+      phone: '+61 7 3000 0000',
+      contactEmail: 'shop.canary@example.com',
+    };
+
+    /** Sets identity's access state directly (as the migration role): it must not freeze the draft. */
+    const setAccessState = (sellerId: string, state: string) =>
+      owner.query(
+        `UPDATE identity.seller_access SET state = $2 WHERE market_id = $1 AND seller_id = $3`,
+        [code, state, sellerId],
+      );
+
+    /** A registered seller (AU: `pending`; ZZ: `approved` at registration) and its owner's context. */
+    async function draftSeller(): Promise<{ sellerId: Id<'Seller'>; context: CallContext }> {
+      const sellerId = await registerSeller(code);
+      return { sellerId, context: await ownerContext(code, sellerId) };
+    }
+
+    async function ownerContext(marketCode: string, sellerId: string): Promise<CallContext> {
+      const { rows } = await sql.query<{ account_id: string }>(
+        `SELECT account_id FROM identity.seller_memberships WHERE seller_id = $1`,
+        [sellerId],
+      );
+      const market = marketOf(marketCode);
+      return testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: rows[0]!.account_id as Id<'Account'>,
+          sessionId: ids.next<'Session'>(),
+          sellerId: sellerId as Id<'Seller'>,
+        }),
+        `db-sellers-${randomUUID()}`,
+      );
+    }
+
+    const row = async (sellerId: string) =>
+      (
+        await sql.query<Record<string, unknown>>(
+          `SELECT store_name, store_name_key, business_name_ciphertext, phone_ciphertext,
+                  contact_email_ciphertext, address_ciphertext, registered_address_ciphertext,
+                  service_area_code, operating_timezone, timezone_source, address_timezone,
+                  draft_complete, version
+             FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+          [code, sellerId],
+        )
+      ).rows[0]!;
+
+    it('saves the draft encrypted at rest under the seller`s key and reads it back', async () => {
+      const { sellerId, context } = await draftSeller();
+
+      expect(await app.get(MyFileSaveGeneral).execute(context, GENERAL)).toEqual({
+        ok: true,
+        value: { version: 2, draftComplete: false, missing: ['address', 'timezone'] },
+      });
+      const saved = await app.get(MyFileSaveAddress).execute(context, {
+        address: FIXTURE.address,
+        timezone: FIXTURE.zones[1],
+      });
+      expect(saved.ok && saved.value.draftComplete).toBe(true);
+
+      const stored = await row(sellerId);
+      expect(stored).toMatchObject({
+        store_name: 'Al Noor Grocer',
+        store_name_key: 'al noor grocer',
+        registered_address_ciphertext: null,
+        service_area_code: FIXTURE.area,
+        operating_timezone: FIXTURE.zones[1],
+        timezone_source: 'seller',
+        address_timezone: FIXTURE.zones[0],
+        draft_complete: true,
+        version: 3,
+      });
+      const clear = [
+        GENERAL.businessName,
+        '+61730000000',
+        GENERAL.contactEmail,
+        ...(Object.values(FIXTURE.address) as string[]),
+      ];
+      for (const column of [
+        'business_name_ciphertext',
+        'phone_ciphertext',
+        'contact_email_ciphertext',
+        'address_ciphertext',
+      ]) {
+        const value = stored[column] as string;
+        expect(value).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
+        for (const text of clear) expect(value).not.toContain(text);
+      }
+
+      const read = await app.get(MyFileRead).execute(context, {});
+      expect(read.ok && read.value.general).toEqual({
+        storeName: 'Al Noor Grocer',
+        businessName: GENERAL.businessName,
+        phone: '+61730000000',
+        contactEmail: GENERAL.contactEmail,
+      });
+      expect(read.ok && read.value.address).toEqual(FIXTURE.address);
+      expect(read.ok && read.value.zoneOptions).toEqual(FIXTURE.zones);
+
+      // Bound to its label: a value copied into another column does not decrypt.
+      await owner.query(
+        `UPDATE sellers.seller_files SET phone_ciphertext = business_name_ciphertext
+          WHERE market_id = $1 AND seller_id = $2`,
+        [code, sellerId],
+      );
+      expect(await app.get(MyFileRead).execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
+    it('keeps sellers and Markets apart: ownership from the actor, ciphertext bound to its seller', async () => {
+      const a = await draftSeller();
+      const b = await draftSeller();
+      await app.get(MyFileSaveGeneral).execute(a.context, GENERAL);
+      await app
+        .get(MyFileSaveGeneral)
+        .execute(b.context, { ...GENERAL, businessName: 'Other Business Ltd' });
+      const readB = await app.get(MyFileRead).execute(b.context, {});
+      expect(readB.ok && readB.value.general.businessName).toBe('Other Business Ltd');
+
+      // A's ciphertext copied into B's row does not open under B's key.
+      await owner.query(
+        `UPDATE sellers.seller_files SET business_name_ciphertext =
+           (SELECT business_name_ciphertext FROM sellers.seller_files WHERE seller_id = $2)
+          WHERE market_id = $1 AND seller_id = $3`,
+        [code, a.sellerId, b.sellerId],
+      );
+      expect(await app.get(MyFileRead).execute(b.context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+
+      // An actor of the other Market carrying A's seller id finds nothing and changes nothing.
+      const elsewhere = await ownerContext(other, a.sellerId);
+      expect(await app.get(MyFileRead).execute(elsewhere, {})).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      expect(await app.get(MyFileSaveGeneral).execute(elsewhere, GENERAL)).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      expect((await row(a.sellerId)).version).toBe(2);
+    });
+
+    it('lets a seller complete the draft whatever identity reports: no approved revision, no freeze', async () => {
+      const { sellerId, context } = await draftSeller();
+      // ZZ approves at registration (approvalRequired false): `file-check-needed` (D 3.3), and
+      // the details must still be completable. AU starts pending.
+      const { rows } = await sql.query<{ state: string }>(
+        'SELECT state FROM identity.seller_access WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(rows[0]!.state).toBe(approvalRequired(code) ? 'pending' : 'approved');
+      expect((await app.get(MyFileSaveGeneral).execute(context, GENERAL)).ok).toBe(true);
+      expect(
+        (await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address })).ok,
+      ).toBe(true);
+      expect((await app.get(MyFileCheckSlug).execute(context, { slug: 'al-noor' })).ok).toBe(true);
+      expect(await row(sellerId)).toMatchObject({ draft_complete: true, version: 3 });
+
+      // `suspended` and `approved` do not freeze the draft by themselves either. (A suspended
+      // seller has no session in identity; the draft rule is the file's alone.)
+      for (const state of ['approved', 'suspended']) {
+        await setAccessState(sellerId, state);
+        expect((await app.get(MyFileSaveGeneral).execute(context, GENERAL)).ok).toBe(true);
+      }
+      expect((await row(sellerId)).version).toBe(5);
+    });
+
+    it('proves only the read-to-write guard: a save writes over the version it read, a lost race is conflict.stale', async () => {
+      const { sellerId, context } = await draftSeller();
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, index) =>
+          app
+            .get(MyFileSaveGeneral)
+            .execute(context, { ...GENERAL, businessName: `Business ${index}` }),
+        ),
+      );
+      const saved = results.filter((result) => result.ok).length;
+      expect(saved).toBeGreaterThanOrEqual(1);
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      expect((await row(sellerId)).version).toBe(1 + saved);
+    });
+
+    it('answers slug availability from shop_slugs, and limits checks to 30 a minute', async () => {
+      const { sellerId, context } = await draftSeller();
+      const suffix = randomUUID().slice(0, 8);
+      const insert = (slug: string, seller: string, state: 'held' | 'retired') =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, now(),
+                   CASE WHEN $5 = 'retired' THEN now() END, 1, now())`,
+          [randomUUID(), code, slug, seller, state, state === 'retired'],
+        );
+      await insert(`taken-${suffix}`, randomUUID(), 'held');
+      await insert(`mine-${suffix}`, sellerId, 'held');
+      await insert(`gone-${suffix}`, sellerId, 'retired');
+      const check = (slug: string) => app.get(MyFileCheckSlug).execute(context, { slug });
+
+      expect(await check(`Free-${suffix}`)).toEqual({
+        ok: true,
+        value: { code: 'slug.available', slug: `free-${suffix}` },
+      });
+      expect(await check(`taken-${suffix}`)).toEqual({ ok: true, value: { code: 'slug.taken' } });
+      expect(await check(`mine-${suffix}`)).toEqual({
+        ok: true,
+        value: { code: 'slug.available', slug: `mine-${suffix}` },
+      });
+      expect(await check(`gone-${suffix}`)).toEqual({ ok: true, value: { code: 'slug.taken' } });
+      expect(await check('admin')).toEqual({ ok: true, value: { code: 'slug.reserved' } });
+      expect(await check('a--b')).toEqual({ ok: true, value: { code: 'slug.format' } });
+      for (let attempt = 6; attempt < 30; attempt += 1) {
+        expect((await check(`free-${suffix}`)).ok).toBe(true);
+      }
+      expect(await check(`free-${suffix}`)).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+
+      // Two counters for this account, keyed by an HMAC (no id in clear), the minute one at 31.
+      const { rows } = await sql.query<{ kind: string; count: number; bytes: number }>(
+        `SELECT kind, count, octet_length(key_hash) AS bytes FROM sellers.rate_counters
+          WHERE market_id = $1 AND kind LIKE 'slug-check.%' AND count >= 31 ORDER BY kind`,
+        [code],
+      );
+      expect(rows).toEqual([
+        { kind: 'slug-check.account.day', count: 31, bytes: 32 },
+        { kind: 'slug-check.account.minute', count: 31, bytes: 32 },
+      ]);
+      const { rows: leaked } = await sql.query(
+        `SELECT 1 FROM sellers.rate_counters
+          WHERE position(convert_to($1, 'UTF8') IN key_hash) > 0`,
+        [(context.actor as { accountId: string }).accountId],
+      );
+      expect(leaked).toEqual([]);
+    });
+
+    it('stores a seller zone choice, and a refused zone changes nothing', async () => {
+      const { sellerId, context } = await draftSeller();
+      const addressKey = Object.keys(FIXTURE.address)[0] as keyof typeof FIXTURE.address;
+      const chosen = await app.get(MyFileSaveAddress).execute(context, {
+        address: FIXTURE.address,
+        timezone: FIXTURE.zones[1],
+      });
+      expect(chosen.ok && chosen.value.timezone).toMatchObject({
+        operatingTimezone: FIXTURE.zones[1],
+        timezoneSource: 'seller',
+      });
+      const before = await row(sellerId);
+      expect(before).toMatchObject({
+        operating_timezone: FIXTURE.zones[1],
+        timezone_source: 'seller',
+      });
+
+      for (const timezone of ['Etc/UTC', '+10:00', '', 123]) {
+        const refused = await app.get(MyFileSaveAddress).execute(context, {
+          address: { ...FIXTURE.address, [addressKey]: 'Changed 99' },
+          timezone,
+        });
+        expect(refused).toEqual({ ok: false, error: { code: 'timezone.not-selectable' } });
+        const after = await row(sellerId);
+        expect(after.version).toBe(before.version);
+        expect(after.address_ciphertext).toBe(before.address_ciphertext);
+        expect(after.operating_timezone).toBe(before.operating_timezone);
+        expect(after.timezone_source).toBe(before.timezone_source);
+        expect(after.address_timezone).toBe(before.address_timezone);
+        expect(after).toEqual(before);
+      }
+    });
+
+    it('keeps a single winner when general and address saves race', async () => {
+      const { sellerId, context } = await draftSeller();
+      const addressKey = Object.keys(FIXTURE.address)[0] as keyof typeof FIXTURE.address;
+      const generals = Array.from({ length: 4 }, (_, index) => `Racing Business ${index}`);
+      const addresses = Array.from({ length: 4 }, (_, index) => `${index + 1} Racing Rd`);
+      const results = await Promise.all([
+        ...generals.map((businessName) =>
+          app.get(MyFileSaveGeneral).execute(context, { ...GENERAL, businessName }),
+        ),
+        ...addresses.map((line) =>
+          app
+            .get(MyFileSaveAddress)
+            .execute(context, { address: { ...FIXTURE.address, [addressKey]: line } }),
+        ),
+      ]);
+      const saved = results.filter((result) => result.ok).length;
+      expect(saved).toBeGreaterThanOrEqual(1);
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      expect((await row(sellerId)).version).toBe(1 + saved);
+
+      // Every sealed column opens (one coherent state), and each holds a value one saved call sent.
+      const read = await app.get(MyFileRead).execute(context, {});
+      expect(read.ok).toBe(true);
+      if (!read.ok) return;
+      const winnerName = read.value.general.businessName;
+      expect(winnerName === null || generals.includes(winnerName)).toBe(true);
+      const winnerAddress = read.value.address;
+      expect(winnerAddress === null || addresses.includes(winnerAddress[addressKey] ?? '')).toBe(
+        true,
+      );
+      // A value is present only if a call that sent it succeeded.
+      const generalWins = results.slice(0, 4).filter((result) => result.ok).length;
+      const addressWins = results.slice(4).filter((result) => result.ok).length;
+      expect(winnerName === null).toBe(generalWins === 0);
+      expect(winnerAddress === null).toBe(addressWins === 0);
+    });
+
+    it('fails closed with access.unavailable when the counter store errors', async () => {
+      const { sellerId, context } = await draftSeller();
+      // A constraint no counter row can meet makes every reservation fail in the database.
+      await owner.query(
+        `ALTER TABLE sellers.rate_counters
+           ADD CONSTRAINT rate_counters_test_refuse CHECK (count < 0) NOT VALID`,
+      );
+      try {
+        expect(await app.get(MyFileSaveGeneral).execute(context, GENERAL)).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+        expect(await app.get(MyFileCheckSlug).execute(context, { slug: 'al-noor' })).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+      } finally {
+        await owner.query(
+          'ALTER TABLE sellers.rate_counters DROP CONSTRAINT rate_counters_test_refuse',
+        );
+      }
+      expect((await row(sellerId)).version).toBe(1);
     });
   });
 });
