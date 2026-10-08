@@ -346,7 +346,11 @@ A key is three lower-case segments (`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){2}$`); 
 declaring module's name. No Market, no vertical (R7) and no display text: labels are translation
 keys derived from the key (INTL-11). A permission needed in both panels is two declarations.
 Declarations are constants in the owning module's `contracts/`, made through one helper that
-validates and brands the keys; use cases refer to the constants, never to literals.
+validates and brands the keys; use cases refer to the constants, never to literals. A key is at
+most 128 characters, the limit of the stored key column (`identity.role_permissions`);
+`definePermission` refuses a longer key at boot. No other module-wide length limit applies: a
+consumer that needs a tighter bound (for example an audit row that lists keys) enforces its own
+budget where it builds the row.
 
 | # | Guarantee of `PermissionRegistry` (`register(module, declarations)`, `get(key)`, `list(scope?)`) |
 |---|---|
