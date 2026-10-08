@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { RoleSeeded } from '../../domain/audit';
 import { Role } from '../../domain/role';
 import type { RoleSeed } from '../ports/role-seed';
 import type { RoleRepository } from '../ports/seller-team.repository';
@@ -20,6 +22,7 @@ export interface SeedSystemRolesDependencies {
   readonly seed: RoleSeed;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  readonly audit: AuditWriter;
 }
 
 /**
@@ -28,9 +31,10 @@ export interface SeedSystemRolesDependencies {
  * carry `marketId` (R9), so rows cannot come from a migration (I9). For each system role of the
  * checked-in seed whose scope has none in this Market, one unit creates it; a concurrent or
  * repeated run converges on the unique keys (data design 8.3) and creates nothing. A system role
- * is never changed: it stores no keys (R3). Default roles, their newer versions and the audit
- * row per change join with slice 8a and the audit writer (slice 6); until then each creation is
- * logged with ids and codes only.
+ * is never changed: it stores no keys (R3). Each creation writes `identity.role.seeded` in its
+ * unit (slice 6b; `platform-audit.md` 5): a run that creates nothing writes nothing, and roles
+ * seeded before 6b get no row (no backfill). Default roles and their newer versions join with
+ * slice 8a-1. Each creation is also logged with ids and codes only.
  */
 export class SeedSystemRoles extends UseCase<
   Record<string, never>,
@@ -69,7 +73,19 @@ export class SeedSystemRoles extends UseCase<
           seedVersion: seeded.seedVersion,
           now: this.deps.clock.now(),
         });
-        return ok((await this.deps.roles.addSeeded(market, role)) ? role : null);
+        if (!(await this.deps.roles.addSeeded(market, role))) return ok(null);
+        // In the unit of the change; a refusal throws, so the role is not created either.
+        await this.deps.audit.record(
+          context,
+          RoleSeeded.entry(role.state.id, {
+            after: {
+              scope: role.state.scope,
+              kind: role.state.kind,
+              seedVersion: seeded.seedVersion,
+            },
+          }),
+        );
+        return ok(role);
       });
       if (done.ok && done.value !== null) {
         created += 1;
