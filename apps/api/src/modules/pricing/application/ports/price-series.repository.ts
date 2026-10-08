@@ -44,7 +44,9 @@ export interface PriceSeriesRepository {
    * records, in the statement order of pricing-data P7.
    *
    * The caller's unit must be `serializable` (pricing-data 5.1): only then can a concurrent
-   * retirement handler not leave a live series after its tombstone. Throws `StaleAggregateError`
+   * retirement handler not leave a live series after its tombstone. Fails closed (Hassan M1):
+   * outside a unit opened by `runSerializable` it throws `SerializableUnitRequiredError` before
+   * any statement. Throws `StaleAggregateError`
    * when the key already has a series in the Market (the unique key decides a creation race,
    * P 10), and the unit retries a `40001`.
    */
