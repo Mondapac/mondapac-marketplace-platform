@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
@@ -14,6 +15,8 @@ import { CompleteAdminSignIn } from '../src/modules/identity/application/use-cas
 import { CompleteSecondFactorReplacement } from '../src/modules/identity/application/use-cases/complete-second-factor-replacement.use-case';
 import { ConfirmSecondFactorEnrolment } from '../src/modules/identity/application/use-cases/confirm-second-factor-enrolment.use-case';
 import { IssueFirstAdminInvitation } from '../src/modules/identity/application/use-cases/issue-first-admin-invitation.use-case';
+import { RequestPasswordReset } from '../src/modules/identity/application/use-cases/request-password-reset.use-case';
+import { ResetPassword } from '../src/modules/identity/application/use-cases/reset-password.use-case';
 import { PurgeExpired } from '../src/modules/identity/application/use-cases/purge-expired.use-case';
 import { RegenerateRecoveryCodes } from '../src/modules/identity/application/use-cases/regenerate-recovery-codes.use-case';
 import { ResetAdminSecondFactor } from '../src/modules/identity/application/use-cases/reset-admin-second-factor.use-case';
@@ -28,6 +31,7 @@ import { StartSecondFactorReplacement } from '../src/modules/identity/applicatio
 import { decodeBase32Secret } from '../src/modules/identity/domain/otpauth';
 import { TOTP } from '../src/modules/identity/domain/totp';
 import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp';
+import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { IdentityFakes } from './support/identity-fakes';
@@ -74,6 +78,7 @@ function adminConfigOf(code: string) {
     },
     adminSession: { idleTimeoutSeconds: identity.sessions.admin!.idleTimeoutMinutes * 60 },
     secondFactorThrottle: identity.secondFactorThrottles!.account,
+    challengeLifetimeSeconds: identity.challenges!.lifetimeSeconds,
     invitationMinutes: {
       admin: identity.invitations!.lifetimeMinutes.admin!,
       'seller-owner': identity.invitations!.lifetimeMinutes['seller-owner']!,
@@ -154,11 +159,9 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
     [...fakes.accounts.values()].find((account) => account.population === 'admin')!;
 
   /** Seeds the roles, issues the first-admin invitation and runs its mail; answers the token. */
-  async function invited(code: string): Promise<string> {
+  async function invited(code: string, email = EMAIL): Promise<string> {
     await app.get(SeedRoles).execute(systemOf(code), {});
-    const issued = await app.get(IssueFirstAdminInvitation).execute(systemOf(code), {
-      email: EMAIL,
-    });
+    const issued = await app.get(IssueFirstAdminInvitation).execute(systemOf(code), { email });
     expect(issued).toMatchObject({ ok: true, value: { code: 'invitation.issued' } });
     const event = eventsOf('identity.invitation-issued.v1').at(-1)!;
     const sent = await app.get(SendInvitationMail).execute(systemOf(code), {
@@ -765,6 +768,605 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         staff: START.subtract({ minutes: fixture.invitationMinutes.staff }).toString(),
       });
       purge.mockRestore();
+    });
+  });
+
+  // PR #162 round 1: boundaries, I-3, I-4, I-6, HF5, L3, B, and the refusals of the signed-in
+  // steps (Sajad gaps 1 to 7, Hassan L2 and L3).
+  describe.each(TEST_MARKETS)('in market %s, at the edges (PR #162)', (code) => {
+    const fixture = adminConfigOf(code);
+    const other = TEST_MARKETS.find((m) => m !== code)!;
+    const SECOND = Temporal.Duration.from({ seconds: 1 });
+
+    /** The attempts on the account's `second-factor.account` counter (HF2). */
+    const secondFactorAttempts = () =>
+      [...fakes.throttles.values()]
+        .filter((row) => row.kind === 'second-factor.account')
+        .reduce((sum, row) => sum + row.attempts, 0);
+
+    /** A sealed secret that no longer opens (I-3). */
+    const tamperSecret = () => {
+      const factor = fakes.factors.get(adminAccount().id)!;
+      fakes.factors.set(factor.accountId, { ...factor, secretCiphertext: 'fake1|tampered' });
+    };
+
+    const complete = (challengeToken: string, appCode: string) =>
+      app
+        .get(CompleteAdminSignIn)
+        .execute(anonymousOf(code), { challengeToken, code: appCode, client: CLIENT });
+
+    /** Wrong codes until the counter reaches the Market limit, which locks the factor (HF2). */
+    async function lockFactor() {
+      while (secondFactorAttempts() < fixture.secondFactorThrottle.limit) {
+        await complete(await challenge(code), '000000');
+      }
+      expect(fakes.factors.get(adminAccount().id)?.lockedAt).not.toBeNull();
+    }
+
+    /** A password-reset link of the admin, as the mail carries it. */
+    async function resetLink(): Promise<string> {
+      await app
+        .get(RequestPasswordReset)
+        .execute(anonymousOf(code), { population: 'admin', email: EMAIL, origin: CLIENT.origin });
+      const requested = eventsOf('identity.one-time-link-requested.v1').at(-1)!;
+      const payload = requested.payload as { linkId: Id; accountId: Id; purpose: string };
+      expect(payload.purpose).toBe('reset-password');
+      await app.get(SendLinkMail).execute(systemOf(code), {
+        delivery: delivery('identity.link-mail'),
+        linkId: payload.linkId,
+        accountId: payload.accountId,
+        purpose: 'reset-password',
+        aggregateVersion: requested.aggregateVersion,
+      });
+      return /#(ml1_[A-Za-z0-9_-]{43})/.exec(fakes.mails.at(-1)!.text)![1]!;
+    }
+
+    /** Starts the acceptance now; `accept` sends it later with `expiresAt` as `shift` makes it. */
+    async function acceptAt(token: string, shift: (expiresAt: string) => string) {
+      const ready = await app
+        .get(StartAdminInvitationAcceptance)
+        .execute(anonymousOf(code), { token, client: CLIENT });
+      if (!ready.ok) throw new Error(ready.error.code);
+      const value = ready.value;
+      return {
+        ready: value,
+        accept: () =>
+          app.get(AcceptAdminInvitation).execute(anonymousOf(code), {
+            token,
+            displayName: NAME,
+            password: PASSWORD,
+            secret: value.secret,
+            tag: value.tag,
+            expiresAt: shift(value.expiresAt.toString()),
+            code: codeFor(value.secret),
+            client: CLIENT,
+          }),
+      };
+    }
+    const asIssued = (expiresAt: string) => expiresAt;
+
+    it('one wrong code below the limit does not lock; the block holds to its end and then lifts', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const { limit, blockMinutes } = fixture.secondFactorThrottle;
+      for (let attempt = 0; attempt < limit - 1; attempt += 1) {
+        await expect(complete(await challenge(code), '000000')).resolves.toEqual({
+          ok: false,
+          error: { code: 'second-factor.invalid' },
+        });
+      }
+      expect(fakes.factors.get(adminAccount().id)?.lockedAt).toBeNull();
+      expect(secondFactorAttempts()).toBe(limit - 1);
+
+      // The attempt that reaches the limit locks.
+      await expect(complete(await challenge(code), '000000')).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'second-factor.locked', retryAfterSeconds: blockMinutes * 60 },
+      });
+      const lockedAt = fakes.factors.get(adminAccount().id)!.lockedAt!;
+      expect(lockedAt.toString()).toBe(clock.now().toString());
+
+      // One second before the block ends it still holds.
+      clock.advance(Temporal.Duration.from({ minutes: blockMinutes }).subtract(SECOND));
+      await expect(
+        app
+          .get(SignInAdmin)
+          .execute(anonymousOf(code), { email: EMAIL, password: PASSWORD, client: CLIENT }),
+      ).resolves.toMatchObject({ ok: true, value: { code: 'second-factor.locked' } });
+
+      // Once it ended, a correct code signs in.
+      clock.advance(SECOND);
+      const challengeToken = await challenge(code);
+      await expect(complete(challengeToken, codeFor(secret))).resolves.toMatchObject({
+        ok: true,
+        value: { code: 'signed-in' },
+      });
+    });
+
+    it('accepts a challenge up to its last second and refuses it at and after its expiry', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const lifetime = Temporal.Duration.from({ seconds: fixture.challengeLifetimeSeconds });
+
+      const first = await challenge(code);
+      clock.advance(lifetime.subtract(SECOND));
+      await expect(complete(first, codeFor(secret))).resolves.toMatchObject({
+        ok: true,
+        value: { code: 'signed-in' },
+      });
+
+      // An expired challenge after the password step: exactly at its expiry, then after it.
+      const second = await challenge(code);
+      clock.advance(lifetime);
+      await expect(complete(second, codeFor(secret))).resolves.toEqual({
+        ok: false,
+        error: { code: 'challenge.rejected' },
+      });
+      clock.advance(SECOND);
+      await expect(complete(second, codeFor(secret))).resolves.toEqual({
+        ok: false,
+        error: { code: 'challenge.rejected' },
+      });
+      expect(fakes.sessions.size).toBe(1);
+    });
+
+    it('accepts the code of the previous time step and refuses one two steps back (I-2)', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const challengeToken = await challenge(code);
+      // Steps never accepted before, so a refusal is the window, not a replay.
+      clock.advance(STEP);
+      clock.advance(STEP);
+      clock.advance(STEP);
+      const twoBack = codeFor(secret, clock.now().subtract(STEP).subtract(STEP));
+      const previous = codeFor(secret, clock.now().subtract(STEP));
+      expect(twoBack).not.toBe(previous);
+
+      await expect(complete(challengeToken, twoBack)).resolves.toEqual({
+        ok: false,
+        error: { code: 'second-factor.invalid' },
+      });
+      await expect(complete(challengeToken, previous)).resolves.toMatchObject({
+        ok: true,
+        value: { code: 'signed-in' },
+      });
+    });
+
+    it('refuses a challenge and an invitation of one Market in the other Market', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const challengeToken = await challenge(code);
+      await expect(
+        app
+          .get(CompleteAdminSignIn)
+          .execute(anonymousOf(other), { challengeToken, code: codeFor(secret), client: CLIENT }),
+      ).resolves.toEqual({ ok: false, error: { code: 'challenge.rejected' } });
+      expect(fakes.sessions.size).toBe(0);
+
+      fakes.reset();
+      const token = await invited(code);
+      await expect(
+        app
+          .get(StartAdminInvitationAcceptance)
+          .execute(anonymousOf(other), { token, client: CLIENT }),
+      ).resolves.toEqual({ ok: false, error: { code: 'invitation.rejected' } });
+    });
+
+    it('accepts the enrolment secret up to 15 minutes and refuses it at exactly 15 minutes', async () => {
+      await boot();
+      const token = await invited(code);
+      const early = await acceptAt(token, asIssued);
+      expect(early.ready.expiresAt.toString()).toBe(START.add({ minutes: 15 }).toString());
+
+      clock.advance(Temporal.Duration.from({ minutes: 15 }));
+      await expect(early.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.enrolment-expired' },
+      });
+      expect(fakes.accounts.size).toBe(0);
+
+      const late = await acceptAt(token, asIssued);
+      clock.advance(Temporal.Duration.from({ minutes: 15 }).subtract(SECOND));
+      await expect(late.accept()).resolves.toMatchObject({ ok: true });
+    });
+
+    it('refuses an expiresAt moved later without its tag (the tag binds it)', async () => {
+      await boot();
+      const token = await invited(code);
+      const moved = await acceptAt(token, (expiresAt) =>
+        Temporal.Instant.from(expiresAt).add({ hours: 1 }).toString(),
+      );
+      await expect(moved.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.enrolment-expired' },
+      });
+      expect(fakes.accounts.size).toBe(0);
+    });
+
+    it('refuses an invitation at exactly its lifetime and uses it one second before', async () => {
+      await boot();
+      const token = await invited(code);
+      const lifetime = Temporal.Duration.from({ minutes: fixture.invitationMinutes.admin });
+
+      // Started one minute before the end and sent exactly at it: the invitation decides.
+      clock.advance(lifetime.subtract({ minutes: 1 }));
+      const started = await acceptAt(token, asIssued);
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      await expect(started.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      await expect(
+        app
+          .get(StartAdminInvitationAcceptance)
+          .execute(anonymousOf(code), { token, client: CLIENT }),
+      ).resolves.toEqual({ ok: false, error: { code: 'invitation.rejected' } });
+      expect(fakes.accounts.size).toBe(0);
+
+      // A new invitation, one second before its end: still usable.
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      const again = await invited(code);
+      clock.advance(lifetime.subtract(SECOND));
+      const ready = await acceptAt(again, asIssued);
+      await expect(ready.accept()).resolves.toMatchObject({ ok: true });
+    });
+
+    it('refuses the acceptance when the invited role is no longer the Market system role (I-6)', async () => {
+      await boot();
+      const token = await invited(code);
+      const ready = await acceptAt(token, asIssued);
+      const invitation = [...fakes.invitations.values()].at(-1)!;
+      const role = fakes.roles.get(invitation.roleId)!;
+
+      // The role read in this Market's context is not found when it belongs to another Market.
+      fakes.roles.set(role.id, { ...role, marketId: other as typeof role.marketId });
+      await expect(ready.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      // A role that is no longer a system role is refused too.
+      fakes.roles.set(role.id, { ...role, kind: 'custom', seedCode: null, seedVersion: null });
+      await expect(ready.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      fakes.roles.delete(role.id);
+      await expect(ready.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      expect(fakes.accounts.size).toBe(0);
+      expect(eventsOf('identity.invitation-accepted.v1')).toHaveLength(0);
+    });
+
+    it('refuses a second acceptance once the Market has an active admin (HF5) or any admin account (L3)', async () => {
+      await boot();
+      // Two first-admin invitations pending at once, as the READ COMMITTED race could leave them.
+      const first = await invited(code);
+      const [firstId, firstState] = [...fakes.invitations.entries()].at(-1)!;
+      fakes.invitations.delete(firstId);
+      const second = await invited(code, 'second.admin@example.com');
+      fakes.invitations.set(firstId, firstState);
+
+      const one = await acceptAt(first, asIssued);
+      const two = await acceptAt(second, asIssued);
+      await expect(one.accept()).resolves.toMatchObject({ ok: true });
+
+      // HF5 alone: the admin-account check answers no, the active holder still refuses.
+      const exists = jest
+        .spyOn(fakes.accountRepository, 'existsInPopulation')
+        .mockResolvedValue(false);
+      const holder = jest.spyOn(fakes.assignmentRepository, 'hasActiveHolder');
+      clock.advance(STEP);
+      await expect(two.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      await expect(holder.mock.results.at(-1)!.value).resolves.toBe(true);
+      exists.mockRestore();
+      holder.mockRestore();
+
+      // L3 alone: the first admin is disabled (no active holder); its account still refuses.
+      const admin = adminAccount();
+      fakes.accounts.set(admin.id, { ...admin, status: 'disabled', version: admin.version + 1 });
+      clock.advance(STEP);
+      await expect(two.accept()).resolves.toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      expect(
+        [...fakes.accounts.values()].filter((account) => account.population === 'admin'),
+      ).toHaveLength(1);
+    });
+
+    it('answers a secret that cannot be opened as a wrong code, counts it and alarms (I-3)', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const context = await signedIn(code, secret);
+      const alarms = jest.spyOn(Logger.prototype, 'error');
+      const integrityAlarms = () =>
+        alarms.mock.calls.filter(
+          ([line]) =>
+            typeof line === 'object' &&
+            line !== null &&
+            (line as { alarm?: string }).alarm === 'integrity',
+        ).length;
+      tamperSecret();
+
+      const challengeToken = await challenge(code);
+      await expect(complete(challengeToken, codeFor(secret))).resolves.toEqual({
+        ok: false,
+        error: { code: 'second-factor.invalid' },
+      });
+      expect(secondFactorAttempts()).toBe(1);
+      expect(integrityAlarms()).toBe(1);
+
+      clock.advance(STEP);
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: codeFor(secret) }),
+      ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
+      expect(secondFactorAttempts()).toBe(2);
+      expect(integrityAlarms()).toBe(2);
+
+      clock.advance(STEP);
+      await expect(
+        app.get(ChangePassword).execute(context, {
+          currentPassword: PASSWORD,
+          newPassword: NEW_PASSWORD,
+          code: codeFor(secret),
+          client: CLIENT,
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: 'second-factor.invalid' } });
+      expect(secondFactorAttempts()).toBe(3);
+      expect(integrityAlarms()).toBe(3);
+      expect(JSON.stringify(alarms.mock.calls)).not.toContain(secret);
+      alarms.mockRestore();
+    });
+
+    it('a password reset and a change drop a waiting replacement and keep the counter (B, I-4)', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      let context = await signedIn(code, secret);
+      const pending = () => fakes.factors.get(adminAccount().id)!.pendingSecretCiphertext;
+
+      // One wrong code stays counted through both.
+      clock.advance(STEP);
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: '000000' }),
+      ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
+      expect(secondFactorAttempts()).toBe(1);
+
+      clock.advance(STEP);
+      await expect(
+        app.get(StartSecondFactorReplacement).execute(context, { code: codeFor(secret) }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(pending()).not.toBeNull();
+
+      const token = await resetLink();
+      await expect(
+        app.get(ResetPassword).execute(anonymousOf(code), {
+          population: 'admin',
+          token,
+          password: NEW_PASSWORD,
+          client: CLIENT,
+        }),
+      ).resolves.toEqual({ ok: true, value: { code: 'password-changed' } });
+      expect(pending()).toBeNull();
+      expect(fakes.factors.get(adminAccount().id)?.state).toBe('active');
+      expect(secondFactorAttempts()).toBe(1);
+
+      // Signed in again with the new password, a replacement started, then the password changed.
+      const challengeToken = await challenge(code, NEW_PASSWORD);
+      await expect(complete(challengeToken, codeFor(secret))).resolves.toMatchObject({ ok: true });
+      const session = [...fakes.sessions.values()].at(-1)!.session;
+      context = testCallContext(
+        marketOf(code),
+        testAuthenticatedActor(marketOf(code), {
+          population: 'admin',
+          accountId: adminAccount().id,
+          sessionId: session.id,
+          sellerId: null,
+        }),
+        'admin-e2e-0004',
+      );
+      clock.advance(STEP);
+      await expect(
+        app.get(StartSecondFactorReplacement).execute(context, { code: codeFor(secret) }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(pending()).not.toBeNull();
+      // Hassan L1: even a session that looks longer than the Market's admin lifetime keeps a
+      // browser-session cookie; an admin cookie is never persistent.
+      const stored = fakes.sessions.get(session.id)!;
+      fakes.sessions.set(session.id, {
+        ...stored,
+        session: {
+          ...stored.session,
+          absoluteExpiresAt: stored.session.absoluteExpiresAt.add({ hours: 24 }),
+        },
+      });
+      clock.advance(STEP);
+      await expect(
+        app.get(ChangePassword).execute(context, {
+          currentPassword: NEW_PASSWORD,
+          newPassword: PASSWORD,
+          code: codeFor(secret),
+          client: CLIENT,
+        }),
+      ).resolves.toMatchObject({ ok: true, value: { cookieMaxAgeSeconds: null } });
+      expect(pending()).toBeNull();
+      expect(secondFactorAttempts()).toBe(1);
+    });
+
+    it('a locked factor stays locked after a password reset (I-4)', async () => {
+      await boot();
+      await acceptedAdmin(code);
+      await lockFactor();
+      const attempts = secondFactorAttempts();
+
+      const token = await resetLink();
+      await expect(
+        app.get(ResetPassword).execute(anonymousOf(code), {
+          population: 'admin',
+          token,
+          password: NEW_PASSWORD,
+          client: CLIENT,
+        }),
+      ).resolves.toEqual({ ok: true, value: { code: 'password-changed' } });
+      expect(secondFactorAttempts()).toBe(attempts);
+
+      clock.advance(STEP);
+      await expect(
+        app
+          .get(SignInAdmin)
+          .execute(anonymousOf(code), { email: EMAIL, password: NEW_PASSWORD, client: CLIENT }),
+      ).resolves.toMatchObject({ ok: true, value: { code: 'second-factor.locked' } });
+    });
+
+    it('refuses a password change with a wrong code or a locked factor', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const context = await signedIn(code, secret);
+      const change = (appCode: string) =>
+        app.get(ChangePassword).execute(context, {
+          currentPassword: PASSWORD,
+          newPassword: NEW_PASSWORD,
+          code: appCode,
+          client: CLIENT,
+        });
+
+      clock.advance(STEP);
+      await expect(change('000000')).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'second-factor.invalid' },
+      });
+      expect(secondFactorAttempts()).toBe(1);
+      // The password is unchanged: the old one still opens the password step.
+      clock.advance(STEP);
+      await expect(
+        app
+          .get(SignInAdmin)
+          .execute(anonymousOf(code), { email: EMAIL, password: PASSWORD, client: CLIENT }),
+      ).resolves.toMatchObject({ ok: true, value: { code: 'second-factor-required' } });
+
+      await lockFactor();
+      clock.advance(STEP);
+      await expect(change(codeFor(secret))).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'second-factor.locked' },
+      });
+    });
+
+    it('refuses a replacement and a regeneration with a wrong code, and to a non-admin', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const context = await signedIn(code, secret);
+
+      clock.advance(STEP);
+      await expect(
+        app.get(StartSecondFactorReplacement).execute(context, { code: '000000' }),
+      ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: '000000' }),
+      ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
+      const started = await app
+        .get(StartSecondFactorReplacement)
+        .execute(context, { code: codeFor(secret) });
+      if (!started.ok) throw new Error(started.error.code);
+      // The completion takes only the new device's code: the current one is a wrong code.
+      clock.advance(STEP);
+      await expect(
+        app.get(CompleteSecondFactorReplacement).execute(context, { code: codeFor(secret) }),
+      ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
+      expect(secondFactorAttempts()).toBe(3);
+      expect(fakes.factors.get(adminAccount().id)?.pendingSecretCiphertext).not.toBeNull();
+
+      const market = marketOf(code);
+      const customer = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'customer',
+          accountId: adminAccount().id,
+          sessionId: [...fakes.sessions.values()].at(-1)!.session.id,
+          sellerId: null,
+        }),
+        'admin-e2e-0005',
+      );
+      for (const run of [
+        () => app.get(StartSecondFactorReplacement).execute(customer, { code: codeFor(secret) }),
+        () => app.get(CompleteSecondFactorReplacement).execute(customer, { code: '000000' }),
+        () => app.get(RegenerateRecoveryCodes).execute(customer, { code: codeFor(secret) }),
+      ]) {
+        await expect(run()).resolves.toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
+      expect(secondFactorAttempts()).toBe(3);
+    });
+
+    it('keeps a wrong code counted when its closing unit fails, and gives back a matched one (Mojtaba)', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const context = await signedIn(code, secret);
+      /** The closing unit's first read fails once; the reservation unit's read goes through. */
+      const failClosingRead = () => {
+        const original = fakes.factorRepository.findByAccount.bind(fakes.factorRepository);
+        let reads = 0;
+        return jest
+          .spyOn(fakes.factorRepository, 'findByAccount')
+          .mockImplementation((market, accountId) => {
+            reads += 1;
+            return reads === 2
+              ? Promise.reject(new Error('unit failed'))
+              : original(market, accountId);
+          });
+      };
+
+      clock.advance(STEP);
+      let spy = failClosingRead();
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: '000000' }),
+      ).rejects.toThrow('unit failed');
+      spy.mockRestore();
+      expect(secondFactorAttempts()).toBe(1);
+
+      clock.advance(STEP);
+      spy = failClosingRead();
+      await expect(
+        app.get(RegenerateRecoveryCodes).execute(context, { code: codeFor(secret) }),
+      ).rejects.toThrow('unit failed');
+      spy.mockRestore();
+      expect(secondFactorAttempts()).toBe(1);
+    });
+
+    it('refuses the signed-in steps over HTTP without the CSRF token', async () => {
+      await boot();
+      const { secret } = await acceptedAdmin(code);
+      const challengeToken = await challenge(code);
+      const done = await complete(challengeToken, codeFor(secret));
+      if (!done.ok) throw new Error(done.error.code);
+      const cookie = `__Host-session-admin-${code}=${done.value.token}`;
+
+      for (const path of [
+        'second-factor/replacement',
+        'second-factor/replacement/confirm',
+        'second-factor/recovery-codes',
+      ]) {
+        const refused = await post(path, code, { code: '000000' }, { cookie });
+        expect(refused.status).toBe(403);
+        expect(refused.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      }
+      expect(secondFactorAttempts()).toBe(0);
+
+      // With the token, the same request reaches the use case.
+      const wrong = await post(
+        'second-factor/replacement',
+        code,
+        { code: '000000' },
+        { cookie, 'x-csrf-token': csrfTokenFor(done.value.token) },
+      );
+      expect(wrong.status).toBe(400);
+      expect(wrong.body).toMatchObject({ code: 'second-factor.invalid' });
     });
   });
 });
