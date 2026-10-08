@@ -101,7 +101,13 @@ describe('issuer state machine', () => {
           'issuer.expert-approval-not-new',
         );
       }
+      for (const r of ['doc\u200b-1', 'doc\u00ad-1', 'doc-1\u200b']) {
+        expect(requestReactivation(closed(), 'a1', ref(r)).ok).toBe(false);
+      }
       expect(code(requestReactivation(closed(), ' ', ref('doc-2')))).toBe('approval.same-admin');
+      expect(code(requestReactivation(closed(), 'a1', ref('do\u200bc-2')))).toBe(
+        'issuer.expert-approval-required',
+      );
       const p = val(requestReactivation(closed(), 'a1', ref(' doc-2 ')));
       expect(p.reactivation?.expertApproval.reference).toBe('doc-2');
     });

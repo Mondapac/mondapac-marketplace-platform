@@ -56,8 +56,11 @@ export const MIN_CLAIM_TERM_COMPACT_LENGTH = 3;
 function termMatchable(term: string): boolean {
   try {
     const normalised = normaliseClaimText(term);
+    const tokens = tokenise(normalised);
+    // The minimum applies to the plain letters too: leet punctuation ("a!!") must not pad it.
     return (
-      tokenise(normalised).length > 0 &&
+      tokens.length > 0 &&
+      [...tokens.join('')].length >= MIN_CLAIM_TERM_COMPACT_LENGTH &&
       [...compactForm(normalised)].length >= MIN_CLAIM_TERM_COMPACT_LENGTH
     );
   } catch {
@@ -69,11 +72,17 @@ export function isCertificationTypeCode(value: unknown): value is CertificationT
   return typeof value === 'string' && CODE_PATTERN.test(value);
 }
 
-// Plain text: no markup, no control characters (brief s5).
+// Plain text: no markup, control or invisible characters (brief s5). The zero-width non-joiner
+// and joiner stay allowed: Persian, Arabic and Indic scripts need them to spell words.
 const hasMarkupOrControl = (s: string): boolean =>
-  /[<>\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}]/u.test(s);
+  /[<>\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}\u3164\uffa0\u2800]|\p{M}{4}/u.test(
+    s,
+  );
 const textOk = (s: unknown, max: number): boolean =>
-  typeof s === 'string' && s.trim().length > 0 && s.length <= max && !hasMarkupOrControl(s);
+  typeof s === 'string' &&
+  s.length <= max &&
+  /[\p{L}\p{N}]/u.test(s) &&
+  !hasMarkupOrControl(s.replace(/[\u200c\u200d]/gu, ''));
 
 /**
  * Validates a revision against the Market's `supportedLocales` and, when there is a previous
@@ -203,8 +212,8 @@ export function assertSecondAdmin(
   authorAccountId: string,
   approverAccountId: string,
 ): Result<true, SecondAdminProblem> {
-  if (!authorAccountId.trim() || !approverAccountId.trim()) {
-    return err({ code: 'approval.same-admin' });
-  }
-  return authorAccountId === approverAccountId ? err({ code: 'approval.same-admin' }) : ok(true);
+  const a = authorAccountId.trim().toLowerCase();
+  const b = approverAccountId.trim().toLowerCase();
+  if (a === '' || b === '') return err({ code: 'approval.same-admin' });
+  return a === b ? err({ code: 'approval.same-admin' }) : ok(true);
 }

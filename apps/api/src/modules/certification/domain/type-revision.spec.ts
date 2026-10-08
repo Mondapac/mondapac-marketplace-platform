@@ -132,6 +132,38 @@ describe('validateTypeRevision', () => {
     }
   });
 
+  it('refuses terms padded by leet punctuation, and invisible or blank text (Hassan M1, L1)', () => {
+    const withTerm = (term: string): TypeRevisionContent =>
+      base({
+        locales: {
+          en: { ...base().locales.en!, claimTerms: ['halal', term] },
+          ar: base().locales.ar!,
+        },
+      });
+    for (const bad of ['a!!', 'a $$', 'a ##', 'a@@', '1 !!', 'à!!']) {
+      expect([bad, problems(withTerm(bad)).length > 0]).toEqual([bad, true]);
+    }
+    for (const bad of ['\u3164', '\uffa0', '\u2800', 'Hal\u034fal', 'a\u0301\u0302\u0303\u0304b']) {
+      const c = base({
+        locales: { en: { ...base().locales.en!, name: bad }, ar: base().locales.ar! },
+      });
+      expect([bad, problems(c).length > 0]).toEqual([bad, true]);
+    }
+  });
+
+  it('keeps the zero-width non-joiner Persian and Arabic need', () => {
+    const fa = zz({
+      locales: {
+        zz: {
+          name: 'می\u200cخواهم',
+          customerDescription: 'نیم\u200cفاصله',
+          claimTerms: ['می\u200cخواهم'],
+        },
+      },
+    });
+    expect(problems(fa, ['zz'])).toEqual([]);
+  });
+
   it('refuses a bad icon key', () => {
     expect(problems(base({ badgeIconKey: '<svg>' }))).toContain('type.badge-icon-invalid');
   });
@@ -342,5 +374,6 @@ describe('assertSecondAdmin', () => {
     expect(assertSecondAdmin('a1', 'a2').ok).toBe(true);
     expect(assertSecondAdmin('', 'a2').ok).toBe(false);
     expect(assertSecondAdmin('a1', ' ').ok).toBe(false);
+    expect(assertSecondAdmin('a1', 'A1 ').ok).toBe(false);
   });
 });

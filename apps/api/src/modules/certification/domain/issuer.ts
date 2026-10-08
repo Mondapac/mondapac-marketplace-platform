@@ -32,11 +32,20 @@ export type IssuerProblem =
   | { readonly code: 'issuer.reactivation-pending' }
   | { readonly code: 'approval.same-admin' };
 
-const hasText = (s: unknown): s is string => typeof s === 'string' && s.trim().length > 0;
 const approvalValid = (a: ExpertApproval | null | undefined): a is ExpertApproval =>
-  a !== null && a !== undefined && hasText(a.confirmedBy) && hasText(a.reference);
+  a !== null && a !== undefined && cleanText(a.confirmedBy) && cleanText(a.reference);
 
-const refKey = (r: string): string => r.normalize('NFKC').trim().toLowerCase();
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu;
+const refKey = (r: string): string =>
+  r
+    .normalize('NFKC')
+    .replace(INVISIBLE, '')
+    .replace(/\p{Pd}/gu, '-')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLowerCase();
+const cleanText = (s: unknown): s is string =>
+  typeof s === 'string' && s.trim().length > 0 && !new RegExp(INVISIBLE.source, 'u').test(s);
 const sameReference = (a: string, b: string | undefined): boolean =>
   b !== undefined && refKey(a) === refKey(b);
 
@@ -95,7 +104,7 @@ export function requestReactivation(
   if (i.state !== 'closed-to-new') return forbidden(i.state, 'active');
   if (i.reactivation !== null) return err({ code: 'issuer.reactivation-pending' });
   if (!approvalValid(approval)) return err({ code: 'issuer.expert-approval-required' });
-  if (!hasText(requestedBy)) return err({ code: 'approval.same-admin' });
+  if (!cleanText(requestedBy)) return err({ code: 'approval.same-admin' });
   if (sameReference(approval.reference, i.expertApproval?.reference)) {
     return err({ code: 'issuer.expert-approval-not-new' });
   }
