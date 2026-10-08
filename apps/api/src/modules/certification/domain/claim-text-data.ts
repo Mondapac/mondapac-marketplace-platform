@@ -51,6 +51,16 @@ export const PRE_FOLD_MAP: Readonly<Record<string, string>> = Object.freeze({
  * the controls; the claim guard stays deterministic defence in depth (ADR-0019 R1).
  */
 export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
+  // `i` and `l` share one skeleton letter (the capital I rule in PRE_FOLD_MAP puts capital I on l),
+  // so a capitals-only text such as ORGANIC meets the lower-case term.
+  i: 'l',
+  հ: 'h',
+  օ: 'o',
+  ɦ: 'h',
+  ʋ: 'v',
+  σ: 'o',
+  ڶ: 'ل',
+  ݪ: 'ل',
   // Cyrillic
   а: 'a',
   е: 'e',
@@ -59,7 +69,7 @@ export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
   с: 'c',
   у: 'y',
   х: 'x',
-  і: 'i',
+  і: 'l',
   ј: 'j',
   ѕ: 's',
   һ: 'h',
@@ -76,7 +86,7 @@ export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
   // Greek
   α: 'a',
   ε: 'e',
-  ι: 'i',
+  ι: 'l',
   κ: 'k',
   ο: 'o',
   ρ: 'p',
@@ -90,7 +100,7 @@ export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
   ƅ: 'b',
   ǀ: 'l',
   ⅼ: 'l',
-  ⅰ: 'i',
+  ⅰ: 'l',
   ό: 'o',
   // Arabic and Persian letter variants (one skeleton per visual letter)
   ي: 'ی',
@@ -111,7 +121,7 @@ export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
   ᴅ: 'd',
   ᴇ: 'e',
   ɢ: 'g',
-  ɪ: 'i',
+  ɪ: 'l',
   ᴋ: 'k',
   ᴍ: 'm',
   ɴ: 'n',
@@ -152,6 +162,7 @@ const DIGIT_BLOCK_STARTS: readonly number[] = [
 /** ASCII for a non-ASCII decimal digit or a regional-indicator letter (🇦 to 🇿); else `null`. */
 export function numericOrIndicatorToAscii(cp: number): string | null {
   if (cp >= 0x1f1e6 && cp <= 0x1f1ff) return String.fromCharCode(0x61 + cp - 0x1f1e6);
+  if (cp >= 0x1f170 && cp <= 0x1f189) return String.fromCharCode(0x61 + cp - 0x1f170);
   for (const start of DIGIT_BLOCK_STARTS) {
     if (cp >= start && cp < start + 10) return String(cp - start);
   }
@@ -173,6 +184,7 @@ export const LEET_MAP: Readonly<Record<string, string>> = Object.freeze({
   '8': 'b',
   '2': 'z',
   '!': 'l',
+  '#': 'h',
 });
 
 /** At most this many texts per call (Hassan: no unbounded work per request). */

@@ -90,6 +90,19 @@ describe('claim text matcher', () => {
       expect(run(AU, 'ΗΑLΑL')).toEqual(['halal:token']);
     });
 
+    it('matches capitals-only text for terms containing i (the I rule must not split them)', () => {
+      const organic = [{ typeCode: code('organic'), terms: ['organic', 'organic certified'] }];
+      expect(run(organic, 'ORGANIC')).toEqual(['organic:token']);
+      expect(run(organic, 'Organic Certified')).toEqual(['organic:token']);
+      expect(run(AU, 'HALAL CERTIFIED')).toEqual(['halal:token']);
+      expect(run(organic, 'ORGANlC')).toEqual(['organic:token']);
+      expect(run(organic, 'orgаnіc')).toEqual(['organic:token']); // Cyrillic а and і
+    });
+
+    it('maps squared letters', () => {
+      expect(run(AU, '🅷🅰🅻🅰🅻')).toEqual(['halal:token']);
+    });
+
     it('maps other-script digits and regional indicators', () => {
       expect(run(AU, 'ha१al')).toEqual(['halal:compact']); // Devanagari 1
       expect(run(AU, '🇭🇦🇱🇦🇱')).toEqual(['halal:token']);
