@@ -117,6 +117,7 @@ export type {
   AuditFieldsError,
   AuditFieldValue,
   AuditListKind,
+  AuditMoneyKind,
   AuditOptionalKind,
   AuditPlainKind,
   AuditTargetValue,

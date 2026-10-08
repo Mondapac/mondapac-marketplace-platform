@@ -7,8 +7,10 @@
 //
 // `before` and `after` fields come from the closed payload vocabulary of P 5.3, as events do:
 // no kind accepts free text, so a reason, a name or an email cannot be declared (ADR-0009
-// decision 6, R5; PA 3.2). `listOf` takes a required maximum length (Hassan L3). A new kind
-// is a kernel change reviewed by the security-tester.
+// decision 6, R5; PA 3.2). `listOf` takes a required maximum length (Hassan L3). `money` is the
+// one kind of audit rows only (pricing condition (h)): a `Money` written as a digit string of
+// minor units and its currency, never a float. A new kind is a kernel change reviewed by the
+// security-tester.
 import { copyListOnce, eventField, instantText, MAX_ENUM_VALUES } from './domain-event';
 import type {
   BooleanKind,
@@ -22,6 +24,8 @@ import type {
 } from './domain-event';
 import { parseId } from './id';
 import type { Id } from './id';
+import { MAX_WIRE_AMOUNT_DIGITS, parseMinorUnits, parseMoney } from './money';
+import type { Money } from './money';
 import { err, ok } from './result';
 import type { Result } from './result';
 import type { Temporal } from './time';
@@ -43,9 +47,18 @@ export interface AuditOptionalKind<K extends AuditPlainKind = AuditPlainKind> {
   readonly of: K;
 }
 
+/**
+ * An amount of money: a `Money` whose amount is above zero and has at most 16 digits
+ * (`MAX_WIRE_AMOUNT_DIGITS`), in a known ISO 4217 currency. Its jsonb form is
+ * `{"amount": "<minor units as digits>", "currency": "<code>"}` (PA 3.2).
+ */
+export interface AuditMoneyKind {
+  readonly kind: 'money';
+}
+
 /** The kinds `listOf` and `optional` may wrap. */
 export type AuditPlainKind =
-  IdKind | EnumKind | BooleanKind | IntegerKind | InstantKind | PermissionKeyKind;
+  IdKind | EnumKind | BooleanKind | IntegerKind | InstantKind | PermissionKeyKind | AuditMoneyKind;
 
 /** The closed vocabulary of `before` and `after` fields (PA 3.2). */
 export type AuditFieldKind = AuditPlainKind | AuditListKind | AuditOptionalKind;
@@ -69,6 +82,7 @@ export const auditField = Object.freeze({
   integer: eventField.integer,
   instant: eventField.instant,
   permissionKey: eventField.permissionKey,
+  money: (): AuditMoneyKind => Object.freeze({ kind: 'money' }),
   listOf,
   optional: <K extends AuditPlainKind>(of: K): AuditOptionalKind<K> =>
     Object.freeze({ kind: 'optional', of }),
@@ -87,11 +101,13 @@ export type AuditFieldValue<K extends AuditFieldKind> = K extends IdKind
           ? Temporal.Instant
           : K extends PermissionKeyKind
             ? string
-            : K extends AuditListKind<infer Of>
-              ? readonly AuditFieldValue<Of>[]
-              : K extends AuditOptionalKind<infer Of>
-                ? AuditFieldValue<Of> | null
-                : never;
+            : K extends AuditMoneyKind
+              ? Money
+              : K extends AuditListKind<infer Of>
+                ? readonly AuditFieldValue<Of>[]
+                : K extends AuditOptionalKind<infer Of>
+                  ? AuditFieldValue<Of> | null
+                  : never;
 
 /** The values of one side with fields `F`: every declared field, nothing else. */
 export type AuditValuesOf<F extends AuditFields> = {
@@ -200,6 +216,8 @@ function rebuildPlainKind(kind: unknown, tag: unknown = tagOf(kind)): AuditPlain
       return auditField.instant();
     case 'permissionKey':
       return auditField.permissionKey();
+    case 'money':
+      return auditField.money();
     case 'enumOf': {
       const values = (kind as { readonly values?: unknown }).values;
       if (!Array.isArray(values)) return fail('enumOf needs a list of values');
@@ -351,6 +369,46 @@ export interface AuditFieldCheckOptions {
   readonly isKnownPermissionKey: (key: string) => boolean;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * The jsonb form of a `money` value: `{amount, currency}` with the amount as a digit string, so
+ * the row and its hash never hold a float or a bigint. Each property is read once, and only the
+ * primitives read are checked and written (Hassan L1, L2), so a getter or a Proxy cannot answer
+ * the checks with one value and the row with another. The amount is above zero and is written
+ * by the same rule `parseMinorUnits` reads (digits, no sign, no leading zero, at most 16); the
+ * currency is an ISO 4217 code known to the platform. Nothing else of the value is written.
+ */
+function moneyJson(value: unknown): JsonObject | undefined {
+  let amount: unknown;
+  let currency: unknown;
+  try {
+    // Own properties only: an `amount` or `currency` put on Object.prototype is not the value's
+    // (Hassan L1 on the money kind).
+    if (
+      !isPlainObject(value) ||
+      !Object.hasOwn(value, 'amount') ||
+      !Object.hasOwn(value, 'currency')
+    ) {
+      return undefined;
+    }
+    amount = value.amount;
+    currency = value.currency;
+  } catch {
+    return undefined;
+  }
+  if (typeof amount !== 'bigint' || amount < 1n) return undefined;
+  const digits = amount.toString(10);
+  if (!parseMinorUnits(digits, MAX_WIRE_AMOUNT_DIGITS).ok) return undefined;
+  const parsed = parseMoney(amount, currency);
+  if (!parsed.ok) return undefined;
+  return { amount: digits, currency: parsed.value.currency };
+}
+
 type Encoded =
   | { readonly ok: true; readonly value: JsonValue }
   | { readonly ok: false; readonly tooLong?: true };
@@ -380,6 +438,10 @@ function encodePlain(kind: AuditPlainKind, value: unknown, options: AuditFieldCh
       return typeof value === 'string' && options.isKnownPermissionKey(value)
         ? { ok: true as const, value }
         : invalid;
+    case 'money': {
+      const json = moneyJson(value);
+      return json === undefined ? invalid : { ok: true as const, value: json };
+    }
   }
 }
 
@@ -410,16 +472,10 @@ function encodeValue(kind: AuditFieldKind, value: unknown, options: AuditFieldCh
   return encodePlain(kind, value, options);
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value) as unknown;
-  return prototype === Object.prototype || prototype === null;
-}
-
 /**
  * Checks one side of an entry against its declared fields and returns its jsonb form: exactly
  * the declared fields, each of its kind; instants as RFC 3339 UTC with three fractional digits;
- * `null` for an absent optional. A list longer than its maximum is `too-long`. The AuditWriter
+ * money as `{amount: "<digits>", currency}`; `null` for an absent optional. A list longer than its maximum is `too-long`. The AuditWriter
  * runs it on every entry (PA W4), whatever the definition's `entry` did.
  */
 export function encodeAuditFields(

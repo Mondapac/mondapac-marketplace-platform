@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import {
+  CLAIM_TEXT_CHECK_LIMITS,
   DRAFT_SAVE_LIMITS,
   RATE_COUNTER_KINDS,
   SUBMIT_LIMITS,
@@ -11,9 +12,16 @@ import {
 const T0 = Temporal.Instant.from('2026-10-08T00:00:00Z');
 
 describe('catalog rate limits', () => {
+  it('holds the claim-text check limits of design 8.4: 30 a minute and 1,000 a day', () => {
+    expect(CLAIM_TEXT_CHECK_LIMITS).toEqual([
+      { kind: 'claim-text-check.account.minute', limit: 30, windowMinutes: 1 },
+      { kind: 'claim-text-check.account.day', limit: 1000, windowMinutes: 1440 },
+    ]);
+  });
+
   it('names only kinds the table accepts, in the order a unit takes them', () => {
     expect([...RATE_COUNTER_KINDS]).toEqual([...RATE_COUNTER_KINDS].sort());
-    for (const limit of [...DRAFT_SAVE_LIMITS, ...SUBMIT_LIMITS]) {
+    for (const limit of [...DRAFT_SAVE_LIMITS, ...SUBMIT_LIMITS, ...CLAIM_TEXT_CHECK_LIMITS]) {
       expect(RATE_COUNTER_KINDS).toContain(limit.kind);
     }
   });

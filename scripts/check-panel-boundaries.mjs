@@ -12,7 +12,7 @@ import path from 'node:path';
 import ts from 'typescript';
 
 const root = path.resolve(process.argv[2] ?? path.join(import.meta.dirname, '..'));
-const PACKAGES = ['apps/seller', 'apps/admin', 'packages/ui'];
+const PACKAGES = ['apps/seller', 'apps/admin', 'packages/ui', 'packages/panel-server'];
 const SERVER_ONLY_KERNEL_NAMES = new Set([
   'ActorContext',
   'AnonymousActor',
@@ -87,6 +87,8 @@ for (const pkg of PACKAGES) {
       if (/^@mondapac\/api(\/|$)/.test(specifier)) fail('panels never import apps/api');
       if (/^@mondapac\/(seller|admin)(\/|$)/.test(specifier) && (isUi || specifier !== self))
         fail(isUi ? 'packages/ui imports no app' : 'an app never imports another app');
+      if (isUi && /^@mondapac\/panel-server(\/|$)/.test(specifier))
+        fail('packages/ui imports no server-only package');
       if (specifier.startsWith('.')) {
         const target = path.resolve(path.dirname(file), specifier);
         if (path.relative(pkgDir, target).startsWith('..'))

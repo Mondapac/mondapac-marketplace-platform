@@ -54,10 +54,20 @@ describe('assertClientAddressForwarding', () => {
   };
   const configFor = (hosts: string) => parsePanelConfig({ ...base, PANEL_HOSTS: hosts });
 
-  it('refuses a real host, whatever NODE_ENV is', () => {
+  it('refuses a real host without a signing key, whatever NODE_ENV is', () => {
     expect(() => assertClientAddressForwarding(configFor('https://sell.example.com=AU'))).toThrow(
-      'client-address forwarding',
+      'must sign the client address',
     );
+  });
+
+  it('allows a real host that has a signing key', () => {
+    const config = parsePanelConfig({
+      ...base,
+      PANEL_HOSTS: 'https://sell.example.com=AU',
+      BFF_CLIENT_ADDRESS_KEY_ID: 'panel',
+      BFF_CLIENT_ADDRESS_SECRET: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
+    });
+    expect(() => assertClientAddressForwarding(config)).not.toThrow();
   });
 
   it('allows *.localhost hosts only', () => {
