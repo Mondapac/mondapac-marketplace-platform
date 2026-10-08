@@ -24,7 +24,10 @@ export interface SeedRolesOutput {
 }
 
 export type SeedRolesFailure =
-  { readonly code: 'access.denied' } | { readonly code: 'seed.invalid' };
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'seed.invalid' }
+  /** One role or more failed (logged each); the other roles were seeded. */
+  | { readonly code: 'seed.incomplete'; readonly failed: number };
 
 export interface SeedRolesDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -43,7 +46,8 @@ type Outcome =
   | { readonly kind: 'upgraded'; readonly role: Role; readonly from: number }
   | { readonly kind: 'unchanged' }
   | { readonly kind: 'stored-newer'; readonly stored: number }
-  | { readonly kind: 'kind-mismatch' };
+  | { readonly kind: 'kind-mismatch' }
+  | { readonly kind: 'failed'; readonly errorName: string };
 
 /**
  * The seed routine of identity design 5.6 (slices 5 and 8a-1). Rule `system`, run per hosted
@@ -67,7 +71,10 @@ type Outcome =
  * - **stored at a newer version** (an older build running): never downgraded; a warning;
  * - **stored under the same code with another kind**: never changed; an error log.
  *
- * A refused audit row throws, so the role's change rolls back with it (PA W5). Custom roles are
+ * A refused audit row throws, so the role's change rolls back with it (PA W5). A role whose
+ * unit fails for any reason but a concurrent run is logged as an error and skipped; the run goes
+ * on with the other roles, so one bad role never keeps `seller-owner` from a new Market, and
+ * ends as `seed.incomplete`, which the job reports as a failed run (Mohammad 3). Custom roles are
  * never touched (R10). No admin account is ever created here (slice 7). Logs carry ids and codes
  * only, never a role name.
  */
@@ -106,6 +113,7 @@ export class SeedRoles extends UseCase<Record<string, never>, SeedRolesOutput, S
     }
     let created = 0;
     let upgraded = 0;
+    let failed = 0;
     for (const role of seeded) {
       const outcome = await this.seedOne(context, role);
       const where = {
@@ -150,9 +158,28 @@ export class SeedRoles extends UseCase<Record<string, never>, SeedRolesOutput, S
             ...where,
           });
           break;
+        case 'failed':
+          failed += 1;
+          this.#logger.error({
+            msg: 'identity.seed-roles.role-failed',
+            errorName: outcome.errorName,
+            ...where,
+          });
+          break;
         case 'unchanged':
           break;
       }
+    }
+    if (failed > 0) {
+      this.#logger.error({
+        msg: 'identity.seed-roles.incomplete',
+        created,
+        upgraded,
+        failed,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'seed.incomplete', failed });
     }
     return ok({ created, upgraded });
   }
@@ -192,8 +219,11 @@ export class SeedRoles extends UseCase<Record<string, never>, SeedRolesOutput, S
       });
       return done.ok ? done.value : { kind: 'unchanged' };
     } catch (error) {
+      // Any other failure: this role's unit rolled back; the run goes on with the next role.
+      if (!(error instanceof StaleAggregateError)) {
+        return { kind: 'failed', errorName: error instanceof Error ? error.name : 'unknown' };
+      }
       // A concurrent run upgraded the role first: converge, the next run finds it current.
-      if (!(error instanceof StaleAggregateError)) throw error;
       this.#logger.log({
         msg: 'identity.seed-roles.concurrent',
         scope: seeded.scope,

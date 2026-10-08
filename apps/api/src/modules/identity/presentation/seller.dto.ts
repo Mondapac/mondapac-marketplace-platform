@@ -122,7 +122,7 @@ export class SellerSessionSummary {
   @ApiProperty({
     type: [String],
     description:
-      "The keys the account's role grants now, sorted: every seller key for the Seller Owner, the role's stored keys that are still declared for another role.",
+      "The keys the account's role grants now, sorted: every seller key for the Seller Owner; for any other role, its stored keys that the registry still declares in the seller scope.",
   })
   permissionKeys!: string[];
 

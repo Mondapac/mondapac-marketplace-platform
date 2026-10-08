@@ -1,9 +1,9 @@
 import { Injectable, type OnApplicationBootstrap, type Provider } from '@nestjs/common';
 import type { PermissionKeyLookup } from '../events/outbox-writer';
-import { PERMISSION_KEY_PATTERN } from './access-rule';
 import { frozenKeySet } from './frozen-key-set';
 import {
   definePermission,
+  isDeclarablePermissionKey,
   isPermissionCatalogue,
   PERMISSION_SCOPES,
   type PermissionCatalogue,
@@ -65,8 +65,8 @@ export class PermissionRegistry
 
   constructor(retired: readonly string[] = RETIRED_PERMISSION_KEYS) {
     for (const key of retired) {
-      if (typeof key !== 'string' || !PERMISSION_KEY_PATTERN.test(key)) {
-        throw new PermissionRegistryError(`The retired list holds a malformed key`);
+      if (!isDeclarablePermissionKey(key)) {
+        throw new PermissionRegistryError(`The retired list holds a malformed or overlong key`);
       }
     }
     this.#retired = frozenKeySet(retired);

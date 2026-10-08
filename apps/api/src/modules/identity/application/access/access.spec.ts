@@ -16,7 +16,6 @@ import {
 import { TEST_MARKETS } from '../../../../../test/support/test-config';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
-import { SELLERS_BUSINESS_IDENTITY_EDIT } from '../../../sellers/contracts/permissions';
 import {
   SELLER_ACCESS_APPROVE,
   SELLER_ACCESS_VIEW,
@@ -30,6 +29,9 @@ import { openSession, type Session } from '../../domain/session';
 import type { SessionTokens } from '../ports/session-secrets';
 import { AccountAuthorisationCheck } from './account-authorisation-check';
 import { SessionAuthenticator } from './session-authenticator';
+
+// sellers' key by its literal: identity's tests never import another module's contracts.
+const SELLERS_BUSINESS_IDENTITY_EDIT = { key: 'sellers.business-identity.edit' } as const;
 
 // identity design 4, 5.2, 6.2 (slice 2): the Authenticator and the AuthorisationCheck, for both
 // Market fixtures.

@@ -120,9 +120,10 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(SellerSummaries, { unitOfWork: true, files: true }),
-    // Slice 2, the seller's draft (design 6.2), over HTTP through MyFileController. The
-    // permission key is held once identity slice 8a brings the registry and role keys (until
-    // then the gate refuses every route with access.denied).
+    // Slice 2, the seller's draft (design 6.2), over HTTP through MyFileController, under
+    // `sellers.business-identity.edit`: since identity slice 8a-1 the registry declares it and
+    // the Seller Owner holds it through the seller system role; an account without it gets
+    // access.denied.
     useCaseProvider(MyFileRead, {
       unitOfWork: true,
       files: true,

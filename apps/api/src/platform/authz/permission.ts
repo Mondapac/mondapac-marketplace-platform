@@ -1,5 +1,23 @@
 import { PERMISSION_KEY_PATTERN, type PermissionKey } from './access-rule';
 
+/**
+ * The longest permission key a module may declare (slice 8a-1; Mohammad 3, Hassan L-1). It
+ * bounds the audit rows that list keys: one `identity.role.seed-applied` row holds up to 40 keys
+ * added and 40 removed, and must stay under the audit writer's 4 KB per side
+ * (`MAX_AUDIT_SIDE_BYTES`); a test proves the worst case fits. The longest key today is 43
+ * characters (`identity.seller-account.reset-second-factor`).
+ */
+export const MAX_PERMISSION_KEY_LENGTH = 45;
+
+/** True for a well-formed key no longer than {@link MAX_PERMISSION_KEY_LENGTH}. */
+export function isDeclarablePermissionKey(key: unknown): key is string {
+  return (
+    typeof key === 'string' &&
+    key.length <= MAX_PERMISSION_KEY_LENGTH &&
+    PERMISSION_KEY_PATTERN.test(key)
+  );
+}
+
 /** The two scopes of a permission (R2): there is no customer scope. */
 export const PERMISSION_SCOPES = ['platform', 'seller'] as const;
 export type PermissionScope = (typeof PERMISSION_SCOPES)[number];
@@ -42,8 +60,10 @@ export function definePermission(
   },
 ): PermissionDeclaration {
   const { key, scope } = declaration;
-  if (typeof key !== 'string' || !PERMISSION_KEY_PATTERN.test(key)) {
-    throw new PermissionDeclarationError(`Malformed permission key "${String(key)}"`);
+  if (!isDeclarablePermissionKey(key)) {
+    throw new PermissionDeclarationError(
+      `Malformed or overlong permission key "${String(key)}" (at most ${MAX_PERMISSION_KEY_LENGTH} characters)`,
+    );
   }
   if (key.split('.')[0] !== module) {
     throw new PermissionDeclarationError(`Module "${module}" cannot declare "${key}"`);

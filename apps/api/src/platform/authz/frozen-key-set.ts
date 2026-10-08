@@ -6,6 +6,10 @@ const frozen = new WeakSet<object>();
  * `clear` throw, and the object itself is frozen. `Object.freeze` alone does not stop a `Set`
  * from changing, because its entries are internal slots, not properties. The registry hands
  * these out, so no caller can widen the keys of a scope for every later check.
+ *
+ * It guards against accidental mutation by our own code, not against hostile code running in the
+ * same process: such code could reach `Set.prototype` methods or the registry's internals by
+ * other means (Hassan I-1). The registry's trust boundary is the process.
  */
 class FrozenKeySet extends Set<string> {
   constructor(values: Iterable<string>) {

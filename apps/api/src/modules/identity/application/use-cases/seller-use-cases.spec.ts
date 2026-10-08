@@ -31,6 +31,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AccountState } from '../../domain/account';
+import { MAX_SEED_KEYS_PER_ROW } from '../../domain/audit';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer } from '../../infrastructure/mail/mail-catalogue';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
@@ -265,6 +266,49 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ]);
   });
 
+  it('pins the key list of every default role of 5.6, by key (Sajad G4)', () => {
+    const keysOf = (seedCode: string) =>
+      [
+        ...new CheckedInRoleSeed().roles().find((r) => r.seedCode === seedCode)!.permissionKeys,
+      ].sort();
+    const registry = realPermissionRegistry();
+
+    // Viewer: every unprotected `view` key of the platform scope, as the registry declares them.
+    expect(keysOf('viewer')).toEqual(
+      registry
+        .list('platform')
+        .filter((d) => !d.protected && d.key.endsWith('.view'))
+        .map((d) => d.key)
+        .sort(),
+    );
+    expect(keysOf('onboarding-compliance')).toEqual([
+      'identity.seller-access.approve',
+      'identity.seller-access.suspend',
+      'identity.seller-access.view',
+      'identity.seller-account.create',
+    ]);
+    expect(keysOf('catalogue-moderator')).toEqual(['identity.seller-access.view']);
+    expect(keysOf('operations-support')).toEqual([
+      'identity.customer-account.disable',
+      'identity.customer-account.view',
+      'identity.seller-access.view',
+      'identity.seller-account.reset-second-factor',
+    ]);
+    expect(keysOf('finance')).toEqual(['identity.seller-access.view']);
+    expect(keysOf('store-manager')).toEqual([
+      'identity.seller-role.view',
+      'identity.team-member.view',
+    ]);
+    for (const seedCode of [
+      'order-fulfilment',
+      'catalogue-stock',
+      'customer-service',
+      'bookkeeper',
+    ]) {
+      expect([seedCode, keysOf(seedCode)]).toEqual([seedCode, []]);
+    }
+  });
+
   it("its keys agree with the real registry: declared, in the role's scope, never protected", () => {
     expect(() =>
       checkRoleSeedKeys(new CheckedInRoleSeed().roles(), realPermissionRegistry()),
@@ -291,6 +335,21 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ],
     ],
     ['a scope without a system role', [platform]],
+    [
+      'more keys than one seed-applied row can list (Mohammad 3, Hassan L-1)',
+      [
+        platform,
+        role({}),
+        role({
+          kind: 'default',
+          seedCode: 'store-manager',
+          permissionKeys: Array.from(
+            { length: MAX_SEED_KEYS_PER_ROW + 1 },
+            (_, n) => `identity.fixture-${n}.view`,
+          ),
+        }),
+      ],
+    ],
   ])('refuses %s', (_case, roles) => {
     expect(() => checkRoleSeed(roles)).toThrow(RoleSeedError);
   });

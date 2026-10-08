@@ -267,6 +267,26 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
           : r,
       'protected-key',
     ],
+    [
+      'a key on a system role (R3)',
+      (r) =>
+        r.seedCode === 'seller-owner' ? { ...r, permissionKeys: ['identity.team-member.view'] } : r,
+      'system-keys',
+    ],
+    [
+      'more keys than one seed-applied row can list',
+      (r) =>
+        r.seedCode === 'viewer'
+          ? {
+              ...r,
+              permissionKeys: Array.from(
+                { length: MAX_SEED_KEYS_PER_ROW + 1 },
+                (_, n) => `identity.fixture-${n}.view`,
+              ),
+            }
+          : r,
+      'too-many-keys',
+    ],
   ])('refuses the whole seed with %s, writing nothing', async (_case, change, problem) => {
     await expect(seedRoles(seedWith(change)).execute(system, {})).resolves.toEqual({
       ok: false,
@@ -296,18 +316,64 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(logged('identity.seed-roles.concurrent')).toBeDefined();
   });
 
-  it('a refused audit row fails the run (PA W5): the unit of the upgrade rolls back', async () => {
+  it('a refused audit row fails that role only: the run goes on and ends as seed.incomplete (PA W5; Mohammad 3)', async () => {
     await seedRoles().execute(system, {});
+    fakes.audits.length = 0;
+    const finance = roleOf('platform', 'finance');
     const refusing: AuditWriter = {
-      record: () => Promise.reject(new Error('audit refused')),
+      record: (context, entry) =>
+        entry.targetId === finance.id
+          ? Promise.reject(new Error('audit refused'))
+          : fakes.audit.record(context, entry),
     };
 
     await expect(
       seedRoles(
-        seedWith((role) => (role.seedCode === 'finance' ? { ...role, seedVersion: 2 } : role)),
+        seedWith((role) =>
+          role.seedCode === 'finance' || role.seedCode === 'viewer'
+            ? { ...role, seedVersion: 2 }
+            : role,
+        ),
         { audit: refusing },
       ).execute(system, {}),
-    ).rejects.toThrow('audit refused');
+    ).resolves.toEqual({ ok: false, error: { code: 'seed.incomplete', failed: 1 } });
+    // The other upgrade still applied, with its row; the failure is logged by code, no message.
+    expect(roleOf('platform', 'viewer').seedVersion).toBe(2);
+    expect(fakes.audits.map((a) => [a.action, a.targetId])).toEqual([
+      ['identity.role.seed-applied', roleOf('platform', 'viewer').id],
+    ]);
+    expect(logged('identity.seed-roles.role-failed')?.[0]).toEqual({
+      msg: 'identity.seed-roles.role-failed',
+      errorName: 'Error',
+      scope: 'platform',
+      seedCode: 'finance',
+      marketId: market.marketId,
+      correlationId: system.correlationId,
+    });
+    expect(logged('identity.seed-roles.incomplete')?.[0]).toMatchObject({
+      created: 0,
+      upgraded: 1,
+      failed: 1,
+    });
+  });
+
+  it('one role that fails never keeps seller-owner from a new Market (Mohammad 3)', async () => {
+    const failing: RoleRepository = {
+      ...fakes.roleRepository,
+      addSeeded: (m, role) =>
+        role.state.seedCode === 'platform-administrator'
+          ? Promise.reject(new Error('boom'))
+          : fakes.roleRepository.addSeeded(m, role),
+    };
+
+    await expect(seedRoles(undefined, { roles: failing }).execute(system, {})).resolves.toEqual({
+      ok: false,
+      error: { code: 'seed.incomplete', failed: 1 },
+    });
+    expect(roleOf('seller', 'seller-owner')).toMatchObject({ kind: 'system', seedVersion: 1 });
+    expect([...fakes.roles.values()].filter((r) => r.marketId === market.marketId)).toHaveLength(
+      new CheckedInRoleSeed().roles().length - 1,
+    );
   });
 
   it('caps the keys of one row so that the row fits the writer (PA W4)', () => {

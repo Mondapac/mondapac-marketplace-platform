@@ -301,7 +301,6 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       sessions: true,
-      assignments: true,
       sellerAccess: true,
       grants: true,
       effectiveKeys: true,

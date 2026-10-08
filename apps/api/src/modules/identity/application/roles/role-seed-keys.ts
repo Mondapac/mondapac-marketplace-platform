@@ -1,8 +1,10 @@
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
+import { MAX_SEED_KEYS_PER_ROW } from '../../domain/audit';
 import type { SeededRole } from '../ports/role-seed';
 
 /** Why the seed's keys disagree with the registry (identity design 5.6). */
-export type RoleSeedKeyProblem = 'unknown-key' | 'wrong-scope' | 'protected-key' | 'system-keys';
+export type RoleSeedKeyProblem =
+  'unknown-key' | 'wrong-scope' | 'protected-key' | 'system-keys' | 'too-many-keys';
 
 /** A seed whose keys disagree with the permission registry: fails boot and the seed run. */
 export class RoleSeedKeyError extends Error {
@@ -20,7 +22,8 @@ export class RoleSeedKeyError extends Error {
  * The key half of the seed check (identity design 5.6): "a test and each boot fail when a seed
  * key is unknown to the registry, in the wrong scope or protected". A system role lists no key
  * (R3). A default role lists only keys the registry declares in the role's own scope (R2, R7)
- * and none that is protected (R11: no default role can hand a protected key to anyone). Run at
+ * and none that is protected (R11: no default role can hand a protected key to anyone), and at
+ * most `MAX_SEED_KEYS_PER_ROW`, so that its `seed-applied` row fits the audit writer. Run at
  * boot once the registry is sealed (`PermissionRegistry.whenSealed`) and again by every seed
  * run, so a seed that disagrees is never applied.
  */
@@ -34,6 +37,9 @@ export function checkRoleSeedKeys(
         throw new RoleSeedKeyError('system-keys', role.seedCode, null);
       }
       continue;
+    }
+    if (role.permissionKeys.length > MAX_SEED_KEYS_PER_ROW) {
+      throw new RoleSeedKeyError('too-many-keys', role.seedCode, null);
     }
     for (const key of role.permissionKeys) {
       const declaration = catalogue.get(key);

@@ -52,6 +52,7 @@ const REMOVED = accountId(4);
 const OTHER_MEMBER = accountId(5);
 const NO_ROLE = accountId(6);
 const UNKNOWN = accountId(99);
+const ELSEWHERE = accountId(98);
 
 describe.each(TEST_MARKETS)('TeamMembershipOf and the facade in market %s (slice 8a-1)', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
@@ -227,8 +228,34 @@ describe.each(TEST_MARKETS)('TeamMembershipOf and the facade in market %s (slice
 
   it("answers null, never another seller's data, for anyone outside the actor's team (R6)", async () => {
     const { team } = setUp();
+    // Cross-Market canary: an active member of the same seller id, in the other Market.
+    const otherMarket = (code === 'AU' ? 'ZZ' : 'AU') as AccountState['marketId'];
+    fakes.seedAccount({
+      id: ELSEWHERE,
+      marketId: otherMarket,
+      population: 'seller',
+      email: { typed: 'elsewhere@example.com', normalized: 'elsewhere@example.com' },
+      displayName: 'Elsewhere',
+      status: 'active',
+      emailVerifiedAt: START,
+      existingAccountNoticeAt: null,
+      signedUpAt: START,
+      createdAt: START,
+      version: 1,
+      credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+    });
+    fakes.seedMembership({
+      id: id<'SellerMembership'>('01990000-0000-7000-8000-00000000e0ee'),
+      marketId: otherMarket,
+      accountId: ELSEWHERE,
+      sellerId: SELLER,
+      state: 'active',
+      removedAt: null,
+      version: 1,
+      createdAt: START,
+    });
 
-    for (const other of [OTHER_MEMBER, REMOVED, UNKNOWN]) {
+    for (const other of [OTHER_MEMBER, REMOVED, UNKNOWN, ELSEWHERE]) {
       await expect(team.execute(as(OWNER), { accountId: other })).resolves.toEqual({
         ok: true,
         value: null,
@@ -241,7 +268,7 @@ describe.each(TEST_MARKETS)('TeamMembershipOf and the facade in market %s (slice
 
     await expect(
       team.execute(as(OWNER, OTHER_SELLER), { accountId: OTHER_MEMBER }),
-    ).resolves.toMatchObject({ ok: false });
+    ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
   });
 
   it.each(['pending', 'rejected'] as const)(

@@ -7,7 +7,6 @@ import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
-import type { RoleAssignmentRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 
 /**
@@ -45,7 +44,6 @@ export interface DescribeActorDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
-  readonly assignments: RoleAssignmentRepository;
   readonly sellerAccess: SellerAccessRepository;
   readonly grants: RoleGrantReader;
   /** The resolver of `EFFECTIVE_KEY_RESOLVER`, the gate's (N-1). */
@@ -54,9 +52,10 @@ export interface DescribeActorDependencies {
 
 /**
  * Describes the calling actor (identity design 8.1, 8.6). Rule `own-resources`, allowed for a
- * seller that is not approved (5.2). Reads the account, the session, the account's role
- * assignment and, for a seller-side actor, its seller's access state, in one read-only unit;
- * the actor's ids come from the context, never from input.
+ * seller that is not approved (5.2). Reads the account, the session, the account's role grant
+ * (the gate's grant read: one probe of the assignment gives both the role id and the keys, from
+ * one snapshot; Mojtaba N1) and, for a seller-side actor, its seller's access state, in one
+ * read-only unit; the actor's ids come from the context, never from input.
  */
 export class DescribeActor extends UseCase<
   Record<string, never>,
@@ -87,7 +86,6 @@ export class DescribeActor extends UseCase<
         ok({
           account: await this.deps.accounts.findById(market, actor.accountId),
           session: await this.deps.sessions.findById(market, actor.sessionId),
-          assignment: await this.deps.assignments.findByAccount(market, actor.accountId),
           grant:
             (await this.deps.grants.grantsOf(market, [actor.accountId])).get(actor.accountId) ??
             null,
@@ -99,7 +97,7 @@ export class DescribeActor extends UseCase<
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
-    const { account, session, assignment, seller, grant } = read.value;
+    const { account, session, seller, grant } = read.value;
     if (account === null || session === null || session.accountId !== actor.accountId) {
       return err({ code: 'access.denied' });
     }
@@ -107,7 +105,7 @@ export class DescribeActor extends UseCase<
       accountId: actor.accountId,
       population: actor.population,
       sellerId: actor.sellerId,
-      roleId: assignment?.state.roleId ?? null,
+      roleId: grant?.roleId ?? null,
       permissionKeys: [
         ...this.deps.effectiveKeys({
           population: actor.population,

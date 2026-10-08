@@ -215,7 +215,7 @@ describe('the seller draft over HTTP (integration)', () => {
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
-    it('refuses a visitor and a seller account without the permission (real use cases, real gate)', async () => {
+    it('admits the Seller Owner, and refuses a visitor and a session without a role (real use cases, real gate)', async () => {
       await boot(false);
       const session = await signedIn(code);
       const routes = [
@@ -227,9 +227,12 @@ describe('the seller draft over HTTP (integration)', () => {
         ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
       ] as const;
 
-      // The Seller Owner holds `sellers.business-identity.edit` through the seller system role
-      // (identity slice 8a-1), so the real gate admits it: the use case then runs, and its
-      // database is not reachable in this suite (the full path is test/db/sellers-files).
+      // The Seller Owner holds every seller key, `sellers.business-identity.edit` included,
+      // through the seller system role (identity slice 8a-1), so the real gate admits it and the
+      // sellers use case runs. Only identity's ports are faked in this suite: sellers' own
+      // repositories have no database here, so the use case's answer is not asserted, only that
+      // the gate did not refuse it (neither 401 nor 403). The admitted path on PostgreSQL is in
+      // test/db/role-seed.db-spec.ts (the gate) and test/db/sellers-files.db-spec.ts (the use cases).
       for (const [method, path, body] of routes) {
         const owner = await http()[method](path).set(session.headers).send(body);
         expect([method, path, [401, 403].includes(owner.status)]).toEqual([method, path, false]);

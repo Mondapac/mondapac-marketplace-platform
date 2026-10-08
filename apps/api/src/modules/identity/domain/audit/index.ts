@@ -17,7 +17,9 @@ import { ROLE_KINDS, ROLE_SCOPES } from '../role';
  * (identity design 5.6; PA 5 row 1). Target: the role. Written once per role per Market, when
  * the role is created; a run that finds the role creates nothing and writes nothing. No backfill
  * (PA 5). A default role's keys are those of its seed file at `seedVersion` (a change raises the
- * version), so the row names them by version; a later change is `identity.role.seed-applied`.
+ * version), so the row names them by version: the append-only test/contracts/role-seed.snapshot.json
+ * keeps the keys of every version that shipped (Mohammad 2, Hassan M-1). A later change is
+ * `identity.role.seed-applied`.
  */
 export const RoleSeeded = defineAuditAction({
   action: 'identity.role.seeded',
@@ -31,10 +33,14 @@ export const RoleSeeded = defineAuditAction({
 });
 
 /**
- * Most keys one `identity.role.seed-applied` row lists as added, and as removed. Both lists sit
- * in one `after`, whose canonical JSON must stay under the writer's 4 KB (PA W4): 40 keys of up
- * to about 45 characters each way fit. A seed change that adds or removes more is split over two
- * seed versions; otherwise the writer refuses the row and the upgrade does not apply (W5).
+ * Most keys one seeded role may hold, and so most keys one `identity.role.seed-applied` row lists
+ * as added, and as removed. `checkRoleSeed` and `checkRoleSeedKeys` refuse a seed role with more,
+ * at boot and on every run (Mohammad 3, Hassan L-1). Since every version of a role holds at most
+ * this many keys, an upgrade adds at most 40 and removes at most 40, however many versions a
+ * Market that is behind jumps over (it goes straight to the file's version). Permission keys are
+ * at most `MAX_PERMISSION_KEY_LENGTH` (45) characters, so the worst case, 40 added and 40 removed
+ * at that length, fits the writer's 4 KB per side (PA W4; tested in
+ * test/contracts/role-seed.contract.spec.ts).
  */
 export const MAX_SEED_KEYS_PER_ROW = 40;
 
