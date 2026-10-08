@@ -38,6 +38,13 @@ export interface ThrottleRepository {
   block(market: MarketContext, blocks: readonly ThrottleBlock[]): Promise<void>;
 
   /**
+   * Deletes every counter of one address (identity design 3.7: a reset clears the account's
+   * counters, which also lifts a block; AC 13), by its `account_key` (data design 3.5). Origin
+   * counters carry no address and stay. Answers how many rows went.
+   */
+  clearAccount(market: MarketContext, accountKey: Uint8Array): Promise<number>;
+
+  /**
    * Deletes counters whose window started before `windowStartedBefore` and that are not blocked
    * at `now`; answers how many.
    */

@@ -1,7 +1,19 @@
-import { Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketId, PendingEvent, Population } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketId, PendingEvent, Population, Result } from '@mondapac/shared-kernel';
 import type { EmailAddress } from './email-address';
-import { AccountEmailVerified, CustomerAccountRegistered, SignUpRepeated } from './events';
+import type { PASSWORD_CHANGE_CAUSES } from './events';
+import {
+  AccountEmailVerified,
+  AccountPasswordChanged,
+  CustomerAccountRegistered,
+  SignUpRepeated,
+} from './events';
+
+/** Why a password was replaced: a reset link, or the holder's own change (identity design 3.7). */
+export type PasswordChangeCause = (typeof PASSWORD_CHANGE_CAUSES)[number];
+
+/** The account may not take a new password now: disabled, or its email never verified (3.7). */
+export type AccountNotEligible = { readonly code: 'account.not-eligible' };
 
 /** The password credential, an entity of the account: a PHC string and when it was set. */
 export interface PasswordCredential {
@@ -254,6 +266,41 @@ export class Account {
       credential: Object.freeze({ passwordHash, changedAt: credential.changedAt }),
       version: this.#state.version + 1,
     });
+  }
+
+  /**
+   * Replaces the password (identity design 3.5, 3.7, 6.5; SEL-05, ACC-04, AC 8, AC 32; slice 4):
+   * the new hash, made by the caller outside any unit, and `changedAt = now`. Records
+   * `identity.account-password-changed.v1` with its cause. Only an active account whose email is
+   * verified takes one: a reset link is never issued to, nor used for, a disabled or unverified
+   * account (3.7; an unverified person signs up again, 3.2), and a change needs a session, which
+   * only such an account has (3.5). The sessions are the caller's: it revokes them in the same
+   * unit, after it took the account's credential lock (`AccountRepository.lockCredential`).
+   */
+  replacePassword(input: {
+    readonly passwordHash: string;
+    readonly now: Temporal.Instant;
+    readonly cause: PasswordChangeCause;
+  }): Result<void, AccountNotEligible> {
+    const { passwordHash, now, cause } = input;
+    if (this.#state.status !== 'active' || this.#state.emailVerifiedAt === null) {
+      return err({ code: 'account.not-eligible' });
+    }
+    const version = this.#state.version + 1;
+    this.#state = Object.freeze({
+      ...this.#state,
+      credential: Object.freeze({ passwordHash, changedAt: now }),
+      version,
+    });
+    this.#events.push(
+      AccountPasswordChanged.record({
+        aggregateId: this.#state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: this.#state.id, cause },
+      }),
+    );
+    return ok(undefined);
   }
 
   private change(

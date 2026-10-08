@@ -99,6 +99,8 @@ export class IdentityFakes {
   readonly assignments = new Map<string, RoleAssignmentState>();
   /** Subject keys created and destroyed, by subject id (accounts and sellers). */
   readonly subjectKeys = new Map<string, 'live' | 'destroyed'>();
+  /** Every account whose credential lock was taken, in order (N1). */
+  readonly credentialLocks: string[] = [];
   /** Mails the fake transport accepted, in order. */
   readonly mails: MailMessage[] = [];
   /** Makes the fake transport refuse every send. */
@@ -123,6 +125,7 @@ export class IdentityFakes {
     this.roles.clear();
     this.assignments.clear();
     this.subjectKeys.clear();
+    this.credentialLocks.length = 0;
     this.mails.length = 0;
     this.mailDown = false;
     this.inbox.clear();
@@ -176,6 +179,11 @@ export class IdentityFakes {
       return Promise.resolve(
         state === undefined || state.marketId !== market.marketId ? null : Account.restore(state),
       );
+    },
+    lockCredential: (market: MarketContext, id: Id<'Account'>) => {
+      const state = this.accounts.get(id);
+      this.credentialLocks.push(id);
+      return Promise.resolve(state !== undefined && state.marketId === market.marketId);
     },
     add: (_market: MarketContext, account: Account) => {
       this.subjectKeys.set(account.state.id, 'live');
@@ -505,6 +513,35 @@ export class IdentityFakes {
       found.session = { ...found.session, revokedAt: now, revokedReason: reason };
       return Promise.resolve(true);
     },
+    revokeAllOf: (market, accountId, reason, now, exceptId) => {
+      let count = 0;
+      for (const found of this.sessions.values()) {
+        const s = found.session;
+        if (
+          s.marketId === market.marketId &&
+          s.accountId === accountId &&
+          s.revokedAt === null &&
+          s.id !== exceptId
+        ) {
+          found.session = { ...s, revokedAt: now, revokedReason: reason };
+          count += 1;
+        }
+      }
+      return Promise.resolve(count);
+    },
+    rotate: (market, id, accountId, tokenHash) => {
+      const found = this.sessions.get(id);
+      if (
+        found === undefined ||
+        found.session.marketId !== market.marketId ||
+        found.session.accountId !== accountId ||
+        found.session.revokedAt !== null
+      ) {
+        return Promise.resolve(false);
+      }
+      found.tokenHash = hex(tokenHash);
+      return Promise.resolve(true);
+    },
     purgeExpired: () => Promise.resolve(0),
   };
 
@@ -567,6 +604,16 @@ export class IdentityFakes {
         }
       }
       return Promise.resolve();
+    },
+    clearAccount: (market, accountKey) => {
+      let count = 0;
+      for (const [key, row] of this.throttles) {
+        if (key.startsWith(`${market.marketId}|`) && row.accountKey === hex(accountKey)) {
+          this.throttles.delete(key);
+          count += 1;
+        }
+      }
+      return Promise.resolve(count);
     },
     purge: () => Promise.resolve(0),
   };

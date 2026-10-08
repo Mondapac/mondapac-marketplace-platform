@@ -27,6 +27,22 @@ export interface AccountRepository {
   findById(market: MarketContext, id: Id<'Account'>): Promise<Account | null>;
 
   /**
+   * The credential lock (identity design 3.5, 6.3; Hassan slice-2 N1): takes the account row's
+   * write lock for the rest of the caller's read-write unit, and answers false when the account
+   * does not exist. One statement that changes no value (`version = version + 0`): the guarded
+   * client sends no raw SQL, so no `FOR SHARE` or `FOR UPDATE` (platform persistence 4).
+   *
+   * Every unit that either replaces a credential and revokes sessions (password reset and
+   * change), or compares a verified password with the stored hash and then opens a session
+   * (the sign-in closing unit), takes it **first**, before it reads the credential. Both run at
+   * READ COMMITTED, where every later statement reads what was committed before it started, so
+   * the two serialise: a session opened with the old password either commits before the
+   * credential change reads the sessions it revokes, or its unit reads the new hash after the
+   * change committed and refuses. Read the account again after it (`findById`).
+   */
+  lockCredential(market: MarketContext, id: Id<'Account'>): Promise<boolean>;
+
+  /**
    * Stores a new account, its credential and its data key (identity design 11.3: the key is
    * created with the account, in the same unit).
    */

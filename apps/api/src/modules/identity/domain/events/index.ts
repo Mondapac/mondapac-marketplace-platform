@@ -92,6 +92,24 @@ export const SellerRegistered = defineEvent({
   },
 });
 
+/** Why an account's password was replaced (identity design 3.5, 3.7, 8.2; slice 4). */
+export const PASSWORD_CHANGE_CAUSES = ['reset', 'change'] as const;
+
+/**
+ * The account's password was replaced (identity design 3.7, 6.5, 8.2; slice 4): through a reset
+ * link (`reset`) or by the signed-in holder with the current password (`change`). In the same unit
+ * the account's sessions were revoked (all of them on a reset, all but the rotated current one on
+ * a change). Drives the "password changed" notice (`ux.md` E13). Ids and codes only.
+ */
+export const AccountPasswordChanged = defineEvent({
+  type: 'identity.account-password-changed.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    cause: eventField.enumOf(PASSWORD_CHANGE_CAUSES),
+  },
+});
+
 /**
  * Every event identity publishes, declared with `defineEvent` (platform persistence design
  * 5.3; identity design 8.2) and registered with the event catalogue by `IdentityModule`. Each
@@ -103,4 +121,5 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   OneTimeLinkRequested,
   AccountEmailVerified,
   SellerRegistered,
+  AccountPasswordChanged,
 ];

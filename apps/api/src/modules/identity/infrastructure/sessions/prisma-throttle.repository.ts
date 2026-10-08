@@ -109,6 +109,15 @@ export class PrismaThrottleRepository implements ThrottleRepository {
     }
   }
 
+  async clearAccount(market: MarketContext, accountKey: Uint8Array): Promise<number> {
+    // On the index (market_id, account_key) (data design 3.5). A deadlock with a concurrent
+    // reservation of the same address is retried by the unit of work (40P01, P 3.1 row 7).
+    const { count } = await this.prisma.tx(market).identitySignInThrottle.deleteMany({
+      where: { marketId: market.marketId, accountKey: Uint8Array.from(accountKey) },
+    });
+    return count;
+  }
+
   async purge(
     market: MarketContext,
     windowStartedBefore: Temporal.Instant,

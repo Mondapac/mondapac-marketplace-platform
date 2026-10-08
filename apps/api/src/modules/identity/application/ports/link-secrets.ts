@@ -20,8 +20,8 @@ export interface LinkTokens {
 /** Nest token of the {@link LinkTokens}. */
 export const LINK_TOKENS = Symbol('LINK_TOKENS');
 
-/** The panel pages a mail of `identity` links to. */
-export type LinkPage = 'verify-email' | 'sign-in';
+/** The panel pages a mail of `identity` links to (slice 4 adds the reset page). */
+export type LinkPage = 'verify-email' | 'sign-in' | 'reset-password';
 
 /**
  * Where a mail's link points (identity design 9, `LinkTargets(market, population, purpose)`):

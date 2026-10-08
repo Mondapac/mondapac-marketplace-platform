@@ -127,6 +127,10 @@ class FakeAccounts implements AccountRepository {
     throw new Error('sign-up reads no account by id');
   }
 
+  lockCredential(): never {
+    throw new Error('sign-up takes no credential lock');
+  }
+
   unverifiedSignedUpBefore(): never {
     throw new Error('sign-up lists no account');
   }
@@ -231,6 +235,10 @@ class FakeThrottles implements ThrottleRepository {
 
   block(): never {
     throw new Error('sign-up never blocks');
+  }
+
+  clearAccount(): never {
+    throw new Error('sign-up never clears an account');
   }
 
   purge(): never {

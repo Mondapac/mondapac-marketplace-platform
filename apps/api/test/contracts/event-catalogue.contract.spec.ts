@@ -79,6 +79,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.names()).toEqual([
       'identity.existing-account-mail',
       'identity.link-mail',
+      'identity.password-changed-mail',
       'identity.welcome-mail',
       'sellers.create-file',
     ]);
@@ -87,6 +88,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.sign-up-repeated.v1')).toEqual([
       'identity.existing-account-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.account-password-changed.v1')).toEqual([
+      'identity.password-changed-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',
