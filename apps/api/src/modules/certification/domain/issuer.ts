@@ -36,13 +36,12 @@ const approvalValid = (a: ExpertApproval | null | undefined): a is ExpertApprova
   a !== null && a !== undefined && cleanText(a.confirmedBy) && cleanText(a.reference);
 
 const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu;
+// Separators and dash look-alikes are dropped, so HAL-001, HAL−001 and HAL001 are one reference.
 const refKey = (r: string): string =>
   r
     .normalize('NFKC')
     .replace(INVISIBLE, '')
-    .replace(/\p{Pd}/gu, '-')
-    .replace(/\s+/gu, ' ')
-    .trim()
+    .replace(/[^\p{L}\p{N}]/gu, '')
     .toLowerCase();
 const cleanText = (s: unknown): s is string =>
   typeof s === 'string' && s.trim().length > 0 && !new RegExp(INVISIBLE.source, 'u').test(s);

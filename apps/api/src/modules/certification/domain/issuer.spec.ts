@@ -96,7 +96,7 @@ describe('issuer state machine', () => {
     });
 
     it('treats a re-typed old reference as not new, and an empty requester as invalid (Hassan L2, I1)', () => {
-      for (const r of ['DOC-1', ' doc-1 ', 'ｄｏｃ-1']) {
+      for (const r of ['DOC-1', ' doc-1 ', 'ｄｏｃ-1', 'doc\u22121', 'doc_1', 'doc 1', 'DOC1']) {
         expect(code(requestReactivation(closed(), 'a1', ref(r)))).toBe(
           'issuer.expert-approval-not-new',
         );
