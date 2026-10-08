@@ -89,7 +89,7 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   32 characters, and `sellers` refuses a scheme without an adapter at start-up. `required` says
   whether a seller must give an identifier before submitting (true for AU, SEL/Q3); `labelKey` is
   the translation key of the label ("ABN" for AU). A value valid in one scheme is not accepted for
-  another. The `registerLookup` keys of design 4.1 join in slice 4a.
+  another (enforced by `sellers`, not by this schema). The `registerLookup` keys of design 4.1 join in slice 4a.
 - `reservedWords` (required; sellers slice 2b): `slugs` are whole shop slugs that are never held (site
   routes, platform names) and `claimWords` are the words a seller may not claim (certification
   words and the platform's own name). A `slugs` entry is lower-case letters, digits and single

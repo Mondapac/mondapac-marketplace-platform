@@ -629,6 +629,27 @@ describe('loadMarketConfigs', () => {
         /labelKey/,
       ],
       [
+        'an empty scheme',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = ''),
+        /lower-case scheme token|scheme/,
+      ],
+      [
+        'a scheme with a trailing hyphen',
+        (c: typeof SELLERS) => void (c.businessIdentifier.scheme = 'abn-'),
+        /lower-case scheme token/,
+      ],
+      [
+        'a required flag that is not a boolean',
+        (c: typeof SELLERS) =>
+          void ((c.businessIdentifier as { required: unknown }).required = 'yes'),
+        /required/,
+      ],
+      [
+        'a label key longer than 64 characters',
+        (c: typeof SELLERS) => void (c.businessIdentifier.labelKey = 'k'.repeat(65)),
+        /too big|<=64|labelKey/,
+      ],
+      [
         'an unknown key in businessIdentifier',
         (c: typeof SELLERS) =>
           void ((c.businessIdentifier as Record<string, unknown>).extra = true),
