@@ -14,7 +14,9 @@ us own the look, because the design (ADR-0017) is ours and a styled kit would fi
 CLAUDE.md names Next.js and TypeScript as the frontend default. A spike on 2026-10-08 built a
 Next.js 16.4 app with React 19.3, Tailwind 4.3 and `@base-ui/react` 1.2 on `tokens.css`
 unchanged, with `dir="rtl"` and logical utilities: the production build passes and the
-generated CSS references the `--mp-*` variables, not copies of their values.
+generated CSS references the `--mp-*` variables, not copies of their values. It proves a build
+only; the install policy check (`pnpm-workspace.yaml`, no install scripts for Next's `sharp` or
+Tailwind's native binary) is part of the scaffold PR and blocks it if it fails.
 
 ## Decision
 1. **Framework:** Next.js (App Router) on React 19 and TypeScript, as the CLAUDE.md default.
@@ -22,24 +24,28 @@ generated CSS references the `--mp-*` variables, not copies of their values.
 2. **Styling:** Tailwind CSS v4. `tokens.css` is imported as is and never edited by hand.
    A small `@theme inline` file maps Tailwind theme names to `var(--mp-*)`. Tailwind's default
    palette, spacing and radius scales are disabled (`--color-*: initial`), so a class that
-   is not a token does not compile. A lint rule rejects hex, `rgb()` and arbitrary-value colour
-   classes in app and `packages/ui` code (Bagher checks it in release review).
+   is not a token has no colour. The lint rule is the control (Tailwind arbitrary values still
+   compile): it rejects hex, `rgb()` and arbitrary-value colour classes in app and `packages/ui` code (Bagher checks it in release review).
    Dark mode follows the exported `[data-theme="dark"]` block; switching it on is a product
    decision (D5), not part of this ADR.
 3. **Headless behaviour:** Base UI (`@base-ui/react`). Radix is not chosen: Base UI is actively
    developed, is also headless and unstyled, and covers the primitives we need
    (Dialog, Menu, Tabs, Tooltip, Select, Checkbox, Switch, Field). A primitive that Base UI
-   lacks is built in `packages/ui` with the same API shape, never pulled from a second kit.
+   lacks is built in `packages/ui` with the same API shape, never pulled from a second kit. Pin an exact version. Exit
+   trigger: if Base UI is abandoned or has an unfixed accessibility defect we cannot work around,
+   we swap it inside `packages/ui` (the only importer). The F1 PR smoke-checks Dialog, Menu and
+   Select focus and placement under RTL, and lists which kickoff components (Combobox, Popover,
+   Toast, Radio, Command palette) need a build of our own.
 4. **Our components:** `packages/ui` holds components in the shadcn style, copied and owned
    (no shadcn CLI dependency, no generated registry). Each wraps one Base UI primitive or plain
    HTML, takes only token-backed variants, and is named as in the Figma library (kickoff section 4).
    A component is added only after it exists in Figma (CLAUDE.md rule 12).
 5. **Tables:** TanStack Table for the headless model behind `DataTable`; the markup, sticky
    header, density and bulk-action bar are ours.
-6. **Forms and validation:** React Hook Form with Zod schemas. A schema mirrors the API
-   DTO; the server answer stays the authority and its reason codes map to copy
-   (`docs/modules/identity/ux.md`). This is one of the few client-side validation libraries
-   chosen now; others need a new entry here.
+6. **Forms and validation:** React Hook Form with Zod. Schemas are generated from the OpenAPI
+   document once ADR-0034 decision 7 lands; before that they are hand-written, advisory, and
+   covered by a contract test. The server answer stays the authority and its reason codes map
+   to copy (`docs/modules/identity/ux.md`). Another form or validation library needs a new entry here.
 7. **Icons:** the icon set already in Figma, exported as SVG components into `packages/ui`.
 8. **Tests:** Vitest with Testing Library for components, Playwright for a flow per slice
    (it also takes the milestone screenshots). Every component has a states page
@@ -48,8 +54,11 @@ generated CSS references the `--mp-*` variables, not copies of their values.
 9. **Dependencies:** every new dependency goes through its own small PR (shared lockfile),
    exact versions, no install scripts (`pnpm-workspace.yaml` policy stays).
 10. **Text direction and language:** components use CSS logical properties (`ps-*`, `ms-*`,
-    `start`/`end`) only, so a right-to-left Market works without rework. Strings live in a
-    message catalogue per panel, never inline; English is the first catalogue.
+    `start`/`end`) only, so a right-to-left Market works without rework. Strings never
+    live inline. One i18n library (next-intl, ICU plurals; Market locale maps to `lang` and `dir`)
+    serves all apps; `packages/ui` ships its own catalogue (aria labels, "Close") that each app
+    can override. English is the first catalogue. A lint rule also bans physical utilities
+    (`left-*`, `right-*`, `pl-*`, `pr-*`, `text-left`, `text-right`).
 
 ## Consequences
 - Colours and spacing cannot drift from Figma; a token change is a re-export, not a code hunt.

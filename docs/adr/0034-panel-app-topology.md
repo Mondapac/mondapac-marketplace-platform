@@ -26,31 +26,68 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
    panel apps and `packages/ui` to its layout). The menu is configuration: each app passes its
    nav config and permission keys to the shared shell; there is no `if (panel === ...)` in `packages/ui`.
 2. **Separate hosts.** Each panel and the storefront have their own host (for example
-   `seller.<domain>`, `admin.<domain>`; locally `localhost:3001` and `localhost:3002`).
-   An XSS in one cannot read the other's CSRF token or use its cookie (HF7).
+   `seller.<domain>`, `admin.<domain>`). Cookies ignore ports, so locally the panels run on
+   `seller.localhost` and `admin.localhost` (never two ports of one host); an XSS in one panel
+   can then neither read the other's CSRF token nor use its cookie (HF7). Hosts multiply by
+   Market; the naming scheme and certificate (wildcard per Market) belong to the DevOps slice.
+   Identity spike 5 (`__Host-` on plain http, Safari) is a prerequisite of the sign-in slice.
 3. **The panel server is the BFF.** The browser talks only to its own host. A Next.js route
-   handler relays `/api/*` to the API unchanged, except for these rules:
-   - it **sets** `x-market-id` from the request host through a server-side map
-     (`PANEL_MARKET_BY_HOST`, validated at start-up); it drops any `x-market-id` sent by the
-     browser; an unknown host answers 404; there is no default Market (ADR-0020 decision 3);
-   - it relays `Set-Cookie` unchanged and keeps the `__Host-` rules; it adds no cookie of its own;
-   - it forwards `x-csrf-token`, `Origin`/`Sec-Fetch-Site`, `x-correlation-id`, and refuses a request
-     with an `Authorization` header (HF14);
-   - it adds no business logic and never reads or logs a session token or password.
-4. **Session in the app.** Server components read the actor summary
-   (`GET identity/<population>/session`) with the browser's cookie to decide the page, and the
-   CSRF token from that answer is held in memory by the page, never in storage. A 401
-   (`session.invalid`) sends the user to sign-in. No client-side role logic is trusted: the API
-   decides; the UI only hides what the actor summary says it cannot do.
+   handler relays an **allowlist** of API paths (only the panel's own population routes under
+   `identity/<population>` and later the routes its screens use; never swagger or health;
+   `..` and encoded dots rejected). Rules:
+   - **Market:** it **sets** `x-market-id` from the normalised request host (lower case, no
+     port, no trailing dot; `X-Forwarded-Host` is read only when the edge is a configured
+     trusted hop) through a map that is **derived from Market configuration** (`HOSTED_MARKETS`
+     and `allowedOrigins`) and checked against them at start-up, not a second hand-kept list.
+     It drops any `x-market-id` from the browser. An unknown host answers 404. No default Market.
+   - **Cookies:** it relays every `Set-Cookie` unchanged, using `headers.getSetCookie()` (a
+     merged header breaks the `__Host-` attributes), with no `Domain` rewrite and no cookie of its own.
+   - **CSRF and origin:** the API's origin check is fail-open when `Origin` or `Sec-Fetch-Site`
+     is absent, and a server-side `fetch` sends neither. So the BFF itself **rejects** every
+     unsafe-method request whose `Origin` or `Sec-Fetch-Site` is absent or not its own host,
+     then forwards the browser's values and `x-csrf-token` verbatim. `allowedOrigins` lists the panel hosts.
+     It refuses any request carrying `Authorization` (HF14).
+   - **Client address:** the API throttles per origin (identity.md 6.8). The BFF forwards the
+     client address in one header it sets itself (dropping any `x-forwarded-*` or `forwarded` from
+     the browser), the API trusts that header only from the panel hosts' network (the trust-proxy
+     hop count, identity.md I4, is settled in the deployment slice), and the API is not
+     reachable from outside that network. This is a **gate for the sign-in slice**: the slice does
+     not merge until Hassan confirms it, or per-origin throttles would treat every user as one.
+   - **Correlation:** the API issues the correlation id (ADR-0020); the BFF logs the response
+     header and the client request id and never sends its own.
+   - **Hygiene:** hop-by-hop headers stripped; upstream responses pass `Cache-Control` through,
+     and session answers must carry `no-store`. It adds no business logic and never logs a
+     session token or password.
+4. **Session in the app.** A server component may *read* the actor summary
+   (`GET identity/<population>/session`) with `cache: 'no-store'` to choose the page, but it
+   cannot set cookies. Anything that may clear or rotate the cookie (a `session.invalid`
+   answer, sign-in, change-password) goes through the relay route handler, which redirects.
+   The CSRF token from the summary is held in memory by the page and carried through client
+   navigations in the RSC payload; pages that render it are `private, no-store`. A hard reload
+   fetches it again. No client-side role logic is trusted: the API decides; the UI hides what the
+   summary says is not allowed.
 5. **No cross-origin API calls from the browser.** No CORS with credentials is introduced.
-6. **Contract types.** The apps do not import API code. Request and response types come from
-   the OpenAPI document of `apps/api`, generated into a `packages/api-client` package in a later
-   slice; until then each slice writes its own small typed client in the app and a contract test
-   that checks it against the API's DTO examples.
-7. **Local run.** `pnpm dev` stays the API. `pnpm dev:seller` and `pnpm dev:admin` run each
-   panel against `localhost:3000`; the mail catcher shows the verification mail (Compose).
-8. **Deployment** (Kazem): one container image per app, host-based routing at the edge. The
-   details belong to the DevOps slice; nothing here depends on a provider.
+6. **Security headers.** Each app sends a nonce-based Content-Security-Policy,
+   `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and a strict referrer policy;
+   `dangerouslySetInnerHTML` is banned by lint. Access control is checked in the relay and the
+   page, not by Next middleware alone. Next.js and React advisories are patched within the
+   cadence Kazem sets (DevOps slice).
+7. **Contract types.** The apps do not import API code. Types and Zod schemas are generated
+   from the OpenAPI document into `packages/api-client` (a later slice); until then each slice
+   hand-writes a small typed client plus a contract test against the API's DTO examples, and
+   those schemas are advisory (the server answer is the authority).
+8. **Shared kernel.** The apps may import only value types from `packages/shared-kernel`
+   (`Money`, ids, formatting), never `ActorContext` or `CallContext` (server-side types). The
+   package is consumed through its built ESM output; `scripts/check-built-kernel.mjs` is extended
+   to the new consumers.
+9. **Boundaries.** `pnpm boundaries` gains rules (in the shell PR): apps import neither
+   `apps/api` nor each other; `packages/ui` imports no app; lint/review bans `if (panel)` branching.
+10. **Uploads.** Large files (certificates, images) do not stream through the BFF. They use the
+    API's upload route per ADR-0029 directly through the relay with a size limit set there, or
+    presigned URLs if ADR-0029 provides them; decided in the first slice that needs a file.
+11. **Local run.** `pnpm dev` stays the API. `pnpm dev:seller` and `pnpm dev:admin` run each
+    panel against it; the mail catcher shows the verification mail (Compose).
+12. **Out of scope.** Deployment details (Kazem) and Login-as-Seller (SEL-08), which needs its own host decision.
 
 ## Consequences
 - The API stays free of host or CORS logic, as ADR-0020 intends.
