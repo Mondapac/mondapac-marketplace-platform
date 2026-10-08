@@ -117,8 +117,11 @@ Rows, values and SQL are never logged.
     allowed, a side does not match its fields, a list is too long, a side is over 4 KB of
     canonical JSON, or an anonymous row has no `boundSubjectId`.
   - `permissionKey` values are refused until the permission registry exists (slice 8a-1).
-- `audit/` holds the writer; no module imports it (`pnpm boundaries`). Slice 6a binds the
-  writer into no module; 6b binds it into identity and adds the sealer.
+- `audit/` holds the writer; no module imports it (`pnpm boundaries`). From slice 6b only
+  identity binds a writer. The contracts test fails when another module binds one, and when
+  an action's owner is not the module folder that registers it (`platform.<component>` only
+  from `src/platform/<component>/`), for `registerAuditActions` and `auditWriterFor` alike
+  (Hassan L4). A new binder changes that test in the PR that needs it, for security review.
 - The audit models (`auditLog`, `auditLogSeal`, `auditChainCheckpoint`) are not in the view
   `PrismaService.tx(market)` returns. The writer reaches them through `auditTx(market)`,
   which has the same checks as `tx`. `pnpm boundaries` reserves them to `audit/`, and also
@@ -130,3 +133,33 @@ Rows, values and SQL are never logged.
     `SELECT`, `INSERT`).
   - A plain `TRUNCATE platform.audit_log` now fails with `0A000`, because the seal references
     it; with `CASCADE` the triggers refuse it (`23001`).
+
+## Audit chain (identity slice 6b; docs/design/domain/platform-audit.md 6 to 9, ADR-0032)
+- `platform/audit/` holds the chain; the statements are in
+  `persistence/audit/prisma-audit-chain-store.ts` (`AUDIT_CHAIN_STORE`, through `auditTx`).
+  - `audit-hash.ts`: `row_hash` and `chain_hash` v1 (PA 6.2). The fallback form is used only
+    when `canonicalJson` refuses the row as read (Hassan N1 c); golden vectors in its spec.
+  - `audit-chain-policy.ts`: every constant (S = 5 min, batch 500, checkpoint 1 h or 10 000
+    seals, heartbeat 24 h, lag 15 min, stall 3 runs). Its spec fails the build when a unit or
+    statement timeout ceiling is raised without S (S >= 4 x (30 s + 30 s)).
+- The sealer (`platform.audit-seal`, worker only, every 10 s, from start): one read-write
+  unit per batch. It checks the head's link, stops a Market whose head link is broken
+  (`audit.chain.broken`) or whose watermark is later than `now - S`
+  (`audit.seal.watermark-future`), seals settled rows above the watermark, and, on the first
+  run and every 5 min, unsealed rows of the last 24 h below it (`late`). A lost race (primary
+  key, `55P03`, `40P01`) ends the run at info level; a re-selected row with an unmoved head
+  is `audit.seal.duplicate-row`. The constraint name, not a guess, tells them apart.
+- Checkpoints are rows in the batch unit; the `AnchorSink` (Phase 2: `LogAnchorSink`, a log
+  line `audit.checkpoint` or `audit.heartbeat`) gets each checkpoint and a daily heartbeat
+  after commit. A failed anchor is `audit.anchor.failed`; sealing goes on.
+- The verifier (`platform.audit-verify`, hourly; full on the first run of a process and every
+  24 h): read-only units only (ADR-0025). It pins the head after reading the anchors, then
+  recomputes every link and row hash and runs checks (a) to (k) of PA 8. Each finding is one
+  error line with `alert: true`, the Market, epoch, `chainSeq` (text) and audit id: never
+  row content. It changes nothing.
+- Operator command: `node dist/audit-verify.js --market <id> [--full]` (incremental unless
+  `--full`). It prints one JSON line of positions and codes and exits 0 when clean, 2 with
+  findings, 1 when refused (usage, a Market this stack does not host, a failed start).
+- Tests: unit specs over `test/support/in-memory-audit-chain.ts`;
+  `test/db/platform-audit-chain.db-spec.ts` runs on its own database copy (`audit`), where
+  the owner tampers and resets the chain with the user triggers off.

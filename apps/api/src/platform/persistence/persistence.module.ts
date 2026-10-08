@@ -2,6 +2,7 @@ import { Global, Module, type FactoryProvider } from '@nestjs/common';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { MODEL_MAP } from '../../generated/model-map';
 import { AuditActionCatalogue } from '../audit/audit-action-catalogue';
+import { AUDIT_CHAIN_STORE, type AuditChainStore } from '../audit/audit-chain-store';
 import { AUDIT_WRITER, type AuditWriter } from '../audit/audit-writer';
 import { CLOCK } from '../clock/clock.module';
 import type { AppConfig } from '../config/app-config';
@@ -23,6 +24,7 @@ import { JOB_LOCK } from '../scheduler/job-lock';
 import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AdvisoryJobLock } from './advisory-job-lock';
+import { PrismaAuditChainStore } from './audit/prisma-audit-chain-store';
 import { createAuditWriter } from './audit/prisma-audit-writer';
 import { DatabaseProbe } from './database-probe';
 import { createGuardedClient, GUARDED_CLIENT, type GuardedClient } from './guarded-client';
@@ -146,7 +148,8 @@ export class PersistenceModule {
    * (docs/design/domain/platform-audit.md 2, 3.1): `providers: [PersistenceModule.auditWriterFor('identity')]`.
    * The owner is the module's folder, or `platform.<component>` for a platform component. As
    * with the outbox writer, no factory is injectable and a module never exports
-   * `AUDIT_WRITER`. Identity slice 6a calls it from tests only; 6b binds it into identity.
+   * `AUDIT_WRITER`. Identity slice 6b binds it into identity; the contracts test checks that
+   * each binding names the folder it is declared in.
    */
   static auditWriterFor(owner: string): FactoryProvider<AuditWriter> {
     if (!/^(?:platform\.)?[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(owner) || owner === 'platform') {
@@ -162,6 +165,16 @@ export class PersistenceModule {
         permissionKeys: PermissionKeyLookup,
       ) => createAuditWriter(owner, { catalogue, ids, clock, permissionKeys }),
     };
+  }
+
+  /**
+   * The chain tables of the audit (docs/design/domain/platform-audit.md 7, 8), bound only by
+   * `AuditModule` for the sealer and the verifier: the store is not exported, so no module
+   * reads or writes the chain (PA 2). Its statements run in the caller's unit through
+   * `auditTx`, like the writer's.
+   */
+  static auditChainStore(): FactoryProvider<AuditChainStore> {
+    return { provide: AUDIT_CHAIN_STORE, useFactory: () => new PrismaAuditChainStore() };
   }
 
   /**

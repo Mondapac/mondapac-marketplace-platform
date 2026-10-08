@@ -45,7 +45,9 @@ function exported(
     | 'TEST_SELLER_FILES_OWNER_DATABASE_URL'
     | 'TEST_PASSWORD_DATABASE_URL'
     | 'TEST_INVENTORY_DATABASE_URL'
-    | 'TEST_INVENTORY_OWNER_DATABASE_URL',
+    | 'TEST_INVENTORY_OWNER_DATABASE_URL'
+    | 'TEST_AUDIT_DATABASE_URL'
+    | 'TEST_AUDIT_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -129,6 +131,18 @@ export function inventoryTestDatabaseUrl(): string {
 
 export function inventoryOwnerTestDatabaseUrl(): string {
   return exported('TEST_INVENTORY_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that platform-audit-chain.db-spec.ts seals, tampers with and resets, as the
+ * application login and as its owner (the owner tampers and resets with the triggers off).
+ */
+export function auditTestDatabaseUrl(): string {
+  return exported('TEST_AUDIT_DATABASE_URL');
+}
+
+export function auditOwnerTestDatabaseUrl(): string {
+  return exported('TEST_AUDIT_OWNER_DATABASE_URL');
 }
 
 export { REPO_ROOT };
