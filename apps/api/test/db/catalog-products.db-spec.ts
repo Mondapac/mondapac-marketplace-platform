@@ -187,6 +187,32 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
     expect(await inUnit(() => repository.findById(market, uuid7() as Id<'Product'>))).toBeNull();
   });
 
+  it('saves a discard of a stored Configurable draft whose several events take consecutive versions', async () => {
+    const created = newProduct(market.marketId, {
+      configurable: true,
+      code: await inUnit(() => repository.nextProductCode(market)),
+    });
+    await inUnit(() => repository.add(market, created));
+    const first = (await inUnit(() => repository.findById(market, created.state.id)))!;
+    for (let n = 0; n < 3; n++) first.addVariant(uuid7() as Id<'Variant'>, 5, T1);
+    await inUnit(() => repository.save(market, first));
+
+    const stored = (await inUnit(() => repository.findById(market, created.state.id)))!;
+    const base = stored.state.version;
+    stored.discard(T1);
+    expect(stored.pendingEvents.map((event) => event.aggregateVersion)).toEqual([
+      base + 1,
+      base + 2,
+      base + 3,
+    ]);
+    await inUnit(() => repository.save(market, stored));
+
+    const again = (await inUnit(() => repository.findById(market, created.state.id)))!;
+    expect(again.state.version).toBe(base + 3);
+    expect(again.state.status).toBe('discarded');
+    expect(again.state.variants.every((variant) => variant.state === 'retired')).toBe(true);
+  });
+
   it('saves a Configurable product with added and removed variants', async () => {
     const created = newProduct(market.marketId, {
       configurable: true,
