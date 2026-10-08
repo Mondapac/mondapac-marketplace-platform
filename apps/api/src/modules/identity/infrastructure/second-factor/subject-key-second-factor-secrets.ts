@@ -23,9 +23,10 @@ const encodeSecret = (secret: Uint8Array): string => Buffer.from(secret).toStrin
  * 7.5; data design 3.10): the secret is sealed under the account's key with its own label, and a
  * recovery code is hashed with the account's key under its own purpose. Nothing is logged here.
  *
- * A destroyed key (erasure) answers "no match"; a ciphertext that does not open under this
- * account's key and label (another account's, another label's, or altered) throws the service's
- * `SubjectKeyIntegrityError`, which is never a match (Hassan L-1). The decoded secret buffer is
+ * A destroyed key (erasure) throws {@link SecondFactorKeyUnavailableError} (slice 7b, Hassan I-3);
+ * a ciphertext that does not open under this account's key and label (another account's, another
+ * label's, or altered) throws the service's `SubjectKeyIntegrityError` (Hassan L-1). Neither is
+ * ever a match. The decoded secret buffer is
  * zeroed after use, but that is best effort only: the base64url strings that `seal` takes and
  * `decrypt` returns are JavaScript strings, which cannot be zeroed and live until the garbage
  * collector reclaims them (Hassan I-5).
@@ -64,8 +65,9 @@ export class SubjectKeySecondFactorSecrets implements SecondFactorSecrets {
       SECOND_FACTOR_SECRET,
       secretCiphertext,
     );
-    // Only a destroyed key is an answer; an integrity failure throws on (Hassan L-1).
-    if (!opened.ok) return null;
+    // A destroyed key throws like an integrity failure (Hassan L-1): the caller gives both, and
+    // an unreachable key service, the one refusal of a wrong code and logs an alarm (I-3).
+    if (!opened.ok) throw new SecondFactorKeyUnavailableError();
     const secret = Buffer.from(opened.value, 'base64url');
     try {
       if (secret.length !== TOTP.secretBytes) return null;

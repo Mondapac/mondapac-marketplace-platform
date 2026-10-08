@@ -19,21 +19,24 @@ import type {
   PasswordResetAccepted,
 } from './password.dto';
 
-/** The populations with a reset and a change in this slice (admins: slice 7). */
+/** The populations with a reset and a change (slice 4; admins from slice 7b). */
 type SignInPopulation = RequestPasswordResetInput['population'];
 
 /**
  * The HTTP status of each outcome of the reset and change routes (identity design 5.2; slice 4).
  * The design names the codes; the statuses follow sign-in's (6.3, as built). A wrong current
- * password is 400, a field error on the form, not 401: the session itself is fine.
+ * password is 400, a field error on the form, not 401: the session itself is fine. Slice 7b: an
+ * admin's wrong code is 400 too, and the HF2 lock is 429 with its wait.
  */
 export const PASSWORD_STATUS = {
   'validation.failed': 400,
   'password.rejected': 400,
   'password.current-incorrect': 400,
+  'second-factor.invalid': 400,
   'link.rejected': 400,
   'session.invalid': 401,
   'request.throttled': 429,
+  'second-factor.locked': 429,
   'request.busy': 503,
   'access.unavailable': 503,
 } as const;
@@ -143,16 +146,24 @@ export async function answerChangePassword(
 ): Promise<PasswordChangedInSession | HttpException> {
   const refused = notJson(request);
   if (refused !== null) return refused;
-  const input = parseStringFields(body, ['currentPassword', 'newPassword'] as const);
+  // An admin also sends a code (Hassan I2 (b)); the other populations send none.
+  const names =
+    population === 'admin'
+      ? (['currentPassword', 'newPassword', 'code'] as const)
+      : (['currentPassword', 'newPassword'] as const);
+  const input = parseStringFields<'currentPassword' | 'newPassword' | 'code'>(body, names);
   if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
   const origin = clientOriginOf(clientAddressFrom(request));
   const address = clientAddressOf(clientAddressFrom(request));
   if (origin === null || address === null) return fail(503, 'access.unavailable');
 
-  const fields = input as Readonly<Record<'currentPassword' | 'newPassword', string>>;
+  const fields = input as Readonly<Record<'currentPassword' | 'newPassword', string>> & {
+    readonly code?: string;
+  };
   const result = await useCase.execute(context, {
     currentPassword: fields.currentPassword,
     newPassword: fields.newPassword,
+    ...(fields.code === undefined ? {} : { code: fields.code }),
     client: { origin, address },
   });
   if (result.ok) {
@@ -172,6 +183,7 @@ export async function answerChangePassword(
       return fail(PASSWORD_STATUS[error.code], error.code, { rule: error.rule });
     case 'request.throttled':
     case 'request.busy':
+    case 'second-factor.locked':
       response.setHeader('Retry-After', String(error.retryAfterSeconds));
       return fail(PASSWORD_STATUS[error.code], error.code, {
         retryAfterSeconds: error.retryAfterSeconds,
@@ -180,6 +192,7 @@ export async function answerChangePassword(
       response.setHeader('Set-Cookie', clearedSessionCookie(population, context.market.marketId));
       return fail(PASSWORD_STATUS[error.code], error.code);
     case 'password.current-incorrect':
+    case 'second-factor.invalid':
     case 'access.unavailable':
       return fail(PASSWORD_STATUS[error.code], error.code);
     case 'access.seller-not-approved':

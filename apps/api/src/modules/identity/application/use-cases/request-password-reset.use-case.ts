@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Population, Result } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -12,13 +12,13 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { ThrottleRepository } from '../ports/throttle.repository';
-import type { SignInPopulation } from '../sign-in/sign-in-flow';
+
 import { countMailAttempt } from '../sign-up/mail-attempt';
 import type { FieldProblem } from './register-customer.use-case';
 
 export interface RequestPasswordResetInput {
   /** The population of the route (the customer or the seller panel's "Forgot password?"). */
-  readonly population: SignInPopulation;
+  readonly population: Population;
   readonly email: string;
   /** The IPv4 address or the IPv6 /64 of the client (ADR-0037 resolver): the `mail.origin` key. */
   readonly origin: string;
@@ -148,7 +148,7 @@ export class RequestPasswordReset extends UseCase<
   }
 
   /** The population and ids only: never the address (P 12.3). */
-  private log(msg: string, context: CallContext, population: SignInPopulation): void {
+  private log(msg: string, context: CallContext, population: Population): void {
     this.#logger.log({
       msg,
       population,

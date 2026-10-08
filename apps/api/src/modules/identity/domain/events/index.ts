@@ -112,6 +112,68 @@ export const AccountPasswordChanged = defineEvent({
   },
 });
 
+/** The kinds of an invitation (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
+export const INVITATION_KINDS = ['seller-owner', 'staff', 'admin'] as const;
+
+/**
+ * An invitation was issued (identity design 3.4, 8.2; slice 7b: the first-admin routine; a re-send
+ * from slice 8b). The row exists without a token; identity's own mail handler mints the token,
+ * sends the mail and stores the hash and the expiry (6.6). Ids and codes only: never the invited
+ * address or a name.
+ */
+export const InvitationIssued = defineEvent({
+  type: 'identity.invitation-issued.v1',
+  aggregateType: 'invitation',
+  payload: {
+    invitationId: eventField.id(),
+    kind: eventField.enumOf(INVITATION_KINDS),
+    sellerId: eventField.optional(eventField.id()),
+  },
+});
+
+/**
+ * An invitation was accepted (identity design 3.4, 8.2; slice 7b): the account named here was
+ * created, with its assignment (and, for an admin, its active second factor), in the same unit.
+ */
+export const InvitationAccepted = defineEvent({
+  type: 'identity.invitation-accepted.v1',
+  aggregateType: 'invitation',
+  payload: {
+    invitationId: eventField.id(),
+    kind: eventField.enumOf(INVITATION_KINDS),
+    sellerId: eventField.optional(eventField.id()),
+    accountId: eventField.id(),
+  },
+});
+
+/**
+ * What happened to a second factor (identity design 3.6, 6.8, 8.2): `activated` (an enrolment
+ * completed, inside an invitation's acceptance or from a link), `replaced` (a new device swapped
+ * in), `recovery-codes-regenerated`, `reset` (the factor returned to `none`) and `locked` (HF2:
+ * the `second-factor.account` counter reached its limit; the event sends the alert mail).
+ */
+export const SECOND_FACTOR_CHANGES = [
+  'activated',
+  'replaced',
+  'recovery-codes-regenerated',
+  'reset',
+  'locked',
+] as const;
+export type SecondFactorChange = (typeof SECOND_FACTOR_CHANGES)[number];
+
+/**
+ * A second factor changed (identity design 3.6, 8.2; slice 7b). Ids and a code only: never the
+ * secret, a code or a recovery code. Drives the mail of `replaced`, `reset` and `locked` (9).
+ */
+export const SecondFactorChanged = defineEvent({
+  type: 'identity.second-factor-changed.v1',
+  aggregateType: 'second-factor',
+  payload: {
+    accountId: eventField.id(),
+    change: eventField.enumOf(SECOND_FACTOR_CHANGES),
+  },
+});
+
 /**
  * Every event identity publishes, declared with `defineEvent` (platform persistence design
  * 5.3; identity design 8.2) and registered with the event catalogue by `IdentityModule`. Each
@@ -124,4 +186,7 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   AccountEmailVerified,
   SellerRegistered,
   AccountPasswordChanged,
+  InvitationIssued,
+  InvitationAccepted,
+  SecondFactorChanged,
 ];

@@ -146,15 +146,16 @@ describe.each(TEST_MARKETS)('SubjectKeySecondFactorSecrets in market %s (7.3, 7.
     expect(secrets.matchPlain(secret.subarray(1), code, steps)).toBeNull();
   });
 
-  it('matches nothing once the key is destroyed (erasure), and refuses to seal', async () => {
+  it('matches nothing once the key is destroyed (erasure): it throws, and refuses to seal', async () => {
     const { keys, secrets } = setUp();
     const secret = secrets.newSecret();
     const sealed = await secrets.seal(market, ACCOUNT, secret);
     await keys.destroyKey(market, ACCOUNT);
     const step = timeStepAt(now);
+    // Slice 7b (Hassan I-3): a destroyed key is never a quiet "no match"; the caller alarms.
     await expect(
       secrets.matchStored(market, ACCOUNT, sealed, hotp(secret, step), [step]),
-    ).resolves.toBeNull();
+    ).rejects.toBeInstanceOf(SecondFactorKeyUnavailableError);
     await expect(secrets.seal(market, ACCOUNT, secret)).rejects.toBeInstanceOf(
       SecondFactorKeyUnavailableError,
     );

@@ -151,4 +151,30 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
       MarketNotHostedError,
     );
   });
+
+  it('reads each Market its own invitation lifetimes, challenge and second-factor counter (slice 7b)', () => {
+    const au = testMarketContext('AU', 'default');
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(policy.invitationLifetimeMinutes(au, 'admin')).toBe(72 * 60);
+    expect(policy.invitationLifetimeMinutes(au, 'seller-owner')).toBe(7 * 24 * 60);
+    expect(policy.invitationLifetimeMinutes(au, 'staff')).toBe(7 * 24 * 60);
+    expect(policy.invitationLifetimeMinutes(zz, 'admin')).toBe(48 * 60);
+    expect(policy.invitationLifetimeMinutes(zz, 'seller-owner')).toBe(5 * 24 * 60);
+    expect(policy.challengePolicy(au)).toEqual({ maxAttempts: 5, lifetimeSeconds: 300 });
+    expect(policy.challengePolicy(zz)).toEqual({ maxAttempts: 4, lifetimeSeconds: 240 });
+    expect(policy.secondFactorThrottle(au)).toEqual({
+      limit: 10,
+      windowMinutes: 24 * 60,
+      blockMinutes: 24 * 60,
+    });
+    expect(policy.secondFactorThrottle(zz)).toEqual({
+      limit: 8,
+      windowMinutes: 48 * 60,
+      blockMinutes: 48 * 60,
+    });
+    expect(policy.target(au, 'admin', 'enrol-second-factor')).toBe(
+      'https://admin.au.mondapac.test/second-factor/enrol',
+    );
+  });
 });
