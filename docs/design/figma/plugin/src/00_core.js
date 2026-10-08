@@ -169,6 +169,16 @@ async function loadFonts() {
 }
 function font(family, style) { return S.fonts[family + '|' + style] || S.fonts['IBM Plex Sans|Regular']; }
 
+// Binds the colour of each token layer of a spec effect. Figma's setBoundVariableForEffect returns the copy with spread 0
+// (forum.figma.com/t/setboundvariableforeffect-bug/59788; the real file had Focus/Ring and Ring/Urgent at spread 0 until 1.8.4),
+// so the spread is put back on the copy before the effects are set.
+function bindEffectColours(layers, e) {
+  return layers.map(function (fx, i) {
+    const tk = e.layers[i].token;
+    if (!tk) return fx;
+    return Object.assign({}, figma.variables.setBoundVariableForEffect(fx, 'color', S.color[tk]), { spread: e.layers[i].spread });
+  });
+}
 async function buildStyles() {
   // Font family variables hold the family actually loaded (fallback included), so bindings stay valid.
   const tm = S.colls.Typography.modes[0].modeId;
@@ -200,9 +210,7 @@ async function buildStyles() {
     st.effects = layers;
     // Focus and urgent rings take their colour from semantic variables, so they follow the theme.
     if (e.layers.some(function (l) { return l.token; })) {
-      await safe('bind effect ' + e.name, function () {
-        st.effects = layers.map(function (fx, i) { const tk = e.layers[i].token; return tk ? figma.variables.setBoundVariableForEffect(fx, 'color', S.color[tk]) : fx; });
-      });
+      await safe('bind effect ' + e.name, function () { st.effects = bindEffectColours(layers, e); });
     }
     S.es[e.name] = st;
   }

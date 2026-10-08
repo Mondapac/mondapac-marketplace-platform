@@ -900,9 +900,24 @@ async function upgradeModes() {
 }
 
 // ---------------------------------------------------------------- audit (design lint for the whole file)
+const AUDIT_LIST = 25;
+// What differs between an effect style's effects and its spec layers: '' when they match. Colours are left out (a ring's colour is bound
+// to a variable and changes with the theme); the shape is compared: layer count, type, offset, blur and spread.
+function effectDiff(effects, e) {
+  if (effects.length !== e.layers.length) return effects.length + ' layers, the spec has ' + e.layers.length;
+  const out = [];
+  e.layers.forEach(function (l, i) {
+    const fx = effects[i];
+    if (fx.type !== l.type) { out.push('layer ' + (i + 1) + ' is ' + fx.type); return; }
+    [['x', fx.offset.x, l.x], ['y', fx.offset.y, l.y], ['blur', fx.radius, l.blur], ['spread', fx.spread || 0, l.spread]].forEach(function (f) {
+      if (Math.abs(f[1] - f[2]) > 0.01) out.push('layer ' + (i + 1) + ' ' + f[0] + ' ' + num(f[1]) + ', spec ' + f[2]);
+    });
+  });
+  return out.join('; ');
+}
 async function auditFile() {
   await figma.loadAllPagesAsync();
-  const KINDS = { raw: 'Paints not bound to a variable', text: 'Text without a text style', overflow: 'Layers sticking out of their parent', desc: 'Components without a description', focus: 'Focus variants without a focus ring' };
+  const KINDS = { raw: 'Paints not bound to a variable', text: 'Text without a text style', overflow: 'Layers sticking out of their parent', desc: 'Components without a description', focus: 'Focus variants without a focus ring', effect: 'Effect styles that differ from the library spec' };
   const hits = {}; Object.keys(KINDS).forEach(function (k) { hits[k] = {}; });
   function where(n) { const p = []; for (let x = n; x && x.type !== 'PAGE'; x = x.parent) p.unshift(x.name); return p.slice(-4).join(' › '); }
   function hit(k, n, extra) { const key = where(n) + (extra ? ' ' + extra : ''); hits[k][key] = (hits[k][key] || 0) + 1; }
@@ -920,16 +935,28 @@ async function auditFile() {
       // Only auto-layout parents: free-form compositions (maps, charts, badge overlays) overlap on purpose.
       if (n.visible && p && p.type !== 'PAGE' && p.type !== 'SECTION' && p.layoutMode && p.layoutMode !== 'NONE' && n.absoluteBoundingBox && p.absoluteBoundingBox && !(n.layoutPositioning === 'ABSOLUTE')) {
         const a = n.absoluteBoundingBox, b = p.absoluteBoundingBox;
-        const over = Math.max(a.x + a.width - (b.x + b.width), a.y + a.height - (b.y + b.height), b.x - a.x, b.y - a.y);
+        const below = a.y + a.height - (b.y + b.height), side = Math.max(a.x + a.width - (b.x + b.width), b.x - a.x, b.y - a.y);
+        // 1.8.4: a clipped frame that scrolls vertically (a phone screen's Main) holds content below the fold on purpose.
+        const scrolls = p.clipsContent && (p.overflowDirection === 'VERTICAL' || p.overflowDirection === 'BOTH');
+        const over = scrolls ? side : Math.max(below, side);
         if (over > 1.5) hit('overflow', n, '+' + Math.round(over) + 'px' + (p.clipsContent ? ' clipped' : ''));
       }
     });
+  });
+  // 1.8.4: the effect styles the library defines keep the spec's shadows (offset, blur, spread), colour bindings aside.
+  (await figma.getLocalEffectStylesAsync()).forEach(function (st) {
+    const e = SPEC.effects.filter(function (x) { return x.name === st.name; })[0];
+    if (!e) return;
+    const diff = effectDiff(st.effects, e);
+    if (diff) { hits.effect[st.name + ' (' + diff + ')'] = 1; }
   });
   const report = ['Audit of ' + total + ' layers:'];
   Object.keys(KINDS).forEach(function (k) {
     const list = Object.keys(hits[k]); const count = list.reduce(function (a, x) { return a + hits[k][x]; }, 0);
     report.push((count ? '⚠ ' : '✓ ') + KINDS[k] + ': ' + count + (count ? ' (' + list.length + ' unique)' : ''));
-    list.slice(0, 25).forEach(function (x) { report.push('    ' + x + (hits[k][x] > 1 ? ' ×' + hits[k][x] : '')); });
+    list.slice(0, AUDIT_LIST).forEach(function (x) { report.push('    ' + x + (hits[k][x] > 1 ? ' ×' + hits[k][x] : '')); });
+    // 1.8.4: say how many were left out, so a long list does not hide an entry (the 1.8.0 seller phone cards were below the 25th).
+    if (list.length > AUDIT_LIST) report.push('    … and ' + (list.length - AUDIT_LIST) + ' more');
   });
   post({ type: 'done', report: report });
 }
