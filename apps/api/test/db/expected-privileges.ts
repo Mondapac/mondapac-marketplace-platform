@@ -224,6 +224,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['address', 'name', 'priority', 'time_zone'],
     },
+    // docs/design/data/inventory.md section 7 (slice 2): the outbox is immutable to the application
+    // but for the relay's mark; stock items are retired, never deleted, and their key columns never
+    // change; the ledger is append-only by privilege; a tombstone is inserted or cleared, never
+    // edited; the signal's key columns never change.
+    'inventory.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'inventory.stock_items': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['on_hand', 'retired_at', 'version'],
+    },
+    'inventory.stock_movements': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'inventory.availability_signals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['changed_at', 'only_left', 'status', 'version'],
+    },
+    'inventory.retirements': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
     // status and a retired variant). The identity columns of a product and a variant never change.
