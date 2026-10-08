@@ -22,10 +22,28 @@ describe('loadAppConfig', () => {
       apiDocsEnabled: false,
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       serviceAreaConfigDirs: [expect.stringMatching(/config[\\/]service-areas$/)],
+      localeConfigDirs: [expect.stringMatching(/config[\\/]locales$/)],
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
+      mailCatcherUrl: null,
     });
   });
+
+  it('takes the local mail catcher from MAIL_CATCHER_URL (identity design 9)', () => {
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', MAIL_CATCHER_URL: 'http://localhost:8025' })
+        .mailCatcherUrl,
+    ).toBe('http://localhost:8025');
+  });
+
+  it.each(['localhost:8025', 'ftp://localhost', 'not a url', ''])(
+    'rejects MAIL_CATCHER_URL=%p',
+    (value) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', MAIL_CATCHER_URL: value })).toThrow(
+        /MAIL_CATCHER_URL/,
+      );
+    },
+  );
 
   it('records whether NODE_ENV was set or defaulted (M2)', () => {
     expect(loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' })).toMatchObject({
@@ -96,6 +114,12 @@ describe('loadAppConfig', () => {
     const config = loadAppConfig({ HOSTED_MARKETS: 'ZZ', SERVICE_AREA_CONFIG_DIR: '/etc/areas' });
 
     expect(config.serviceAreaConfigDirs).toEqual([path.resolve('/etc/areas')]);
+  });
+
+  it('takes the translation catalogue directory from LOCALE_CONFIG_DIR', () => {
+    const config = loadAppConfig({ HOSTED_MARKETS: 'ZZ', LOCALE_CONFIG_DIR: '/etc/locales' });
+
+    expect(config.localeConfigDirs).toEqual([path.resolve('/etc/locales')]);
   });
 
   it('accepts a single hosted market, whichever market it is', () => {

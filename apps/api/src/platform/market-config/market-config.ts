@@ -73,11 +73,33 @@ const throttleCounterSchema = z.strictObject({
 });
 
 /**
+ * A page a mail links to: an absolute http(s) URL without a fragment (the token goes there) and
+ * without credentials.
+ */
+const pageUrl = z
+  .string()
+  .max(200)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return (
+        (url.protocol === 'https:' || url.protocol === 'http:') &&
+        !value.includes('#') &&
+        url.username === '' &&
+        url.password === ''
+      );
+    } catch {
+      return false;
+    }
+  }, 'must be an absolute http(s) URL without a fragment, such as "https://panel.example/page"');
+
+/**
  * The identity policy section (identity design 8.5 `IdentityMarketPolicy`; design 15). Each
  * value is Hassan's number (identity design 6.1, 6.5, 6.8; data design 3.6). A slice adds the
  * values it reads: 1d the password rules; slice 2 the customer session lifetime, the sign-in
- * and mail throttles and the retention of sign-in records; slice 5 "approval required" and the
- * seller lifetimes; slice 7 the admin lifetime.
+ * and mail throttles and the retention of sign-in records; slice 3 the links, the retention of
+ * unverified accounts and the mail sender; slice 5 "approval required" and the seller
+ * lifetimes; slice 7 the admin lifetime.
  */
 const identitySchema = z.strictObject({
   password: z
@@ -111,6 +133,28 @@ const identitySchema = z.strictObject({
   mailThrottles: z.strictObject({ account: throttleCounterSchema, origin: throttleCounterSchema }),
   /** Sign-in records are deleted this many days after the attempt (H3: 90). */
   signInRecordRetentionDays: z.number().int().min(1).max(3650),
+  /**
+   * One-time links (identity design 6.6, 9; slice 3). `lifetimeMinutes` per purpose, from the
+   * issue (HF15: verification 24 hours); a purpose without one is never issued. `targets`: the
+   * page a mail links to, per population and page (`LinkTargets`; hosts wait for D2).
+   */
+  links: z.strictObject({
+    lifetimeMinutes: z.strictObject({ 'verify-email': minutes }),
+    targets: z.strictObject({
+      customer: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }),
+    }),
+  }),
+  /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
+  unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
+  /** The sender of the Market's mail (identity design 9). */
+  mail: z.strictObject({
+    fromAddress: z.email().max(254),
+    fromName: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[^\p{Cc}\p{Cf}"<>]+$/u, 'must be plain text without control or format characters'),
+  }),
 });
 
 /**

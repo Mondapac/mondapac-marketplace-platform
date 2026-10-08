@@ -29,7 +29,21 @@
       "account": { "limit": 2, "windowMinutes": 60, "blockMinutes": 0 },
       "origin": { "limit": 8, "windowMinutes": 30, "blockMinutes": 0 }
     },
-    "signInRecordRetentionDays": 60
+    "signInRecordRetentionDays": 60,
+    "links": {
+      "lifetimeMinutes": { "verify-email": 720 },
+      "targets": {
+        "customer": {
+          "verify-email": "https://storefront.zz.test/konto/bestaetigen?ref=mail",
+          "sign-in": "https://storefront.zz.test/konto/anmelden"
+        }
+      }
+    },
+    "unverifiedAccountRetentionDays": 5,
+    "mail": {
+      "fromAddress": "noreply@zz.test",
+      "fromName": "ZZ Shop"
+    }
   },
   "sellers": {
     "address": {

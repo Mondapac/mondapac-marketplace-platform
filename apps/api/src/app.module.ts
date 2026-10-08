@@ -10,9 +10,11 @@ import type { AppConfig } from './platform/config/app-config';
 import { ConfigModule } from './platform/config/config.module';
 import { EventsModule } from './platform/events/events.module';
 import { HealthModule } from './platform/health/health.module';
+import { I18nModule } from './platform/i18n/i18n.module';
 import { ConflictFilter } from './platform/http/conflict-filter';
 import { IdsModule } from './platform/ids/ids.module';
 import { LoggingModule } from './platform/logging/logging.module';
+import { MailModule } from './platform/mail/mail.module';
 import { MarketConfigModule } from './platform/market-config/market-config.module';
 import { MarketContextGuard } from './platform/market-context/market-context.guard';
 import { MarketContextModule } from './platform/market-context/market-context.module';
@@ -57,12 +59,14 @@ export class AppModule {
         ClockModule,
         IdsModule,
         MarketConfigModule,
+        I18nModule,
         MarketContextModule,
         // The gate is built with identity's AuthorisationCheck (identity slice 2).
         AuthzModule.register(IdentityModule),
         PersistenceModule,
         SubjectKeysModule,
         EventsModule,
+        MailModule,
         SchedulerModule,
         WorkerModule,
         HealthModule,

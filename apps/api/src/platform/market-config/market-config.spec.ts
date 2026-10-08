@@ -38,6 +38,17 @@ const VALID = {
       origin: { limit: 10, windowMinutes: 60, blockMinutes: 0 },
     },
     signInRecordRetentionDays: 90,
+    links: {
+      lifetimeMinutes: { 'verify-email': 1440 },
+      targets: {
+        customer: {
+          'verify-email': 'https://shop.qq.test/confirm-email',
+          'sign-in': 'https://shop.qq.test/sign-in',
+        },
+      },
+    },
+    unverifiedAccountRetentionDays: 7,
+    mail: { fromAddress: 'no-reply@qq.test', fromName: 'QQ' },
   },
 };
 const IDENTITY = VALID.identity;
@@ -137,6 +148,61 @@ describe('loadMarketConfigs', () => {
       /identity\.password\.maxLength/,
     ],
     ['an unknown identity field', { identity: { ...IDENTITY, pepper: 'x' } }, /identity/],
+    [
+      'a link page with a fragment',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: { ...IDENTITY.links.targets.customer, 'verify-email': 'https://a.test/#x' },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.verify-email/,
+    ],
+    [
+      'a link page that is not http(s)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: { ...IDENTITY.links.targets.customer, 'sign-in': 'javascript:alert(1)' },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.sign-in/,
+    ],
+    [
+      'a link lifetime of zero',
+      {
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 0 } },
+        },
+      },
+      /identity\.links\.lifetimeMinutes/,
+    ],
+    [
+      'a sender name with a line break',
+      { identity: { ...IDENTITY, mail: { fromAddress: 'a@qq.test', fromName: 'QQ\nBcc: x' } } },
+      /identity\.mail\.fromName/,
+    ],
+    [
+      'a sender address that is not an email',
+      { identity: { ...IDENTITY, mail: { fromAddress: 'not-an-email', fromName: 'QQ' } } },
+      /identity\.mail\.fromAddress/,
+    ],
+    [
+      'an unverified retention above 30 days',
+      { identity: { ...IDENTITY, unverifiedAccountRetentionDays: 31 } },
+      /identity\.unverifiedAccountRetentionDays/,
+    ],
     [
       'an idle timeout longer than the absolute lifetime',
       {

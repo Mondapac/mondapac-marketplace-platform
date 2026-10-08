@@ -29,7 +29,21 @@
       "account": { "limit": 3, "windowMinutes": 60, "blockMinutes": 0 },
       "origin": { "limit": 10, "windowMinutes": 60, "blockMinutes": 0 }
     },
-    "signInRecordRetentionDays": 90
+    "signInRecordRetentionDays": 90,
+    "links": {
+      "lifetimeMinutes": { "verify-email": 1440 },
+      "targets": {
+        "customer": {
+          "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
+          "sign-in": "https://storefront.au.mondapac.test/account/sign-in"
+        }
+      }
+    },
+    "unverifiedAccountRetentionDays": 7,
+    "mail": {
+      "fromAddress": "no-reply@au.mondapac.test",
+      "fromName": "MondaPac"
+    }
   },
   "sellers": {
     "address": {
