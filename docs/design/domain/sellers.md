@@ -248,8 +248,10 @@ s5). Before approval the seller may save a different slug: the old row, never pu
 slug is held at the next submission (T1; 14.4 Q-M21). A seller never changes a slug after approval
 (brief s7, AC 16). Rules (brief s7): `a-z0-9-`
 only, 3 to 50 characters, no leading, trailing or double hyphen, compared after lower-casing; a
-reserved list in a checked-in data file of the module (site routes, platform names, and a claim
-group), never literals in `sellers`' code (Ali change 3). The claim group (certification words such
+reserved list in checked-in data (site routes, platform names, and a claim
+group), never literals in `sellers`' code (Ali change 3); as built in slice 2b the data is the
+`reservedWords` of the Market's `sellers` section (4.1), because a data file inside `src` is refused by
+the boundary test and a literal list by the lint rule on certification names. The claim group (certification words such
 as halal, kosher, vegan, certified, verified, official) is later supplied by the port that
 `certification` implements (16.2 item 6). Claim words are matched per token (split on hyphens and
 spaces): in a slug they are refused (`slug.reserved`); in a store name they are flagged to the
@@ -289,6 +291,7 @@ Validated at boot with the rest of the file; added by slices 2 to 5 (11.2).
 | `taxRegistration.questionKey` | "Registered for GST" key | Its own | Draft, `SellerTaxProfile` |
 | `address.format` | Fields and their order; postcode pattern; region list | Different fields | `AddressFormat` |
 | `timezones` | Region → `{ default, selectable[] }` IANA zones: the zone a saved address starts with and the closed list the seller chooses from; no postcode exceptions (amended 2026-10-08, spike 3 record, PR #96) | Its own (one region with two zones) | `TimezoneResolver` |
+| `reservedWords` | `slugs` (site routes, platform names) and `claimWords` (certification words), the checked-in data of 3.5; the claim group moves to a `certification` port later (16.2 item 6). Added in slice 2b | Its own, different words | `ShopSlug`, `StoreName` (3.5) |
 | `reviewChecks` | Codes and translation keys of the reviewer's named checks, which are required, and `manual-register-check` | A smaller list | 3.1, 7.3 |
 | `rejectReasons` | Codes and translation keys of the prepared reasons (brief s7) | Its own | Bulk reject, identity change |
 | `approvalRequired` | `true`: the checked-in default that seeds the ADR-0026 store; once seeded, the store is the source of truth and a change here no longer changes a live Market (14.1) | `false` | 7.3, AC 12, AC 19. The safe value (`true`) is in `sellers`' code, not here (ADR-0026 decision 5) |

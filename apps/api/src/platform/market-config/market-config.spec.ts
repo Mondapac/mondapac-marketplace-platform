@@ -331,6 +331,7 @@ describe('loadMarketConfigs', () => {
         postcodePattern: '^[0-9]{5}$',
         regions: ['N', 'S'],
       },
+      reservedWords: { slugs: ['admin'], claimWords: ['gold'] },
       timezones: {
         countries: ['NZ'],
         byRegion: {
@@ -386,7 +387,28 @@ describe('loadMarketConfigs', () => {
       ).toBe(true);
     });
 
+    it('lists different reserved words in the two Market fixtures', () => {
+      const [first, second] = [
+        ...loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values(),
+      ];
+
+      expect(first?.sellers?.reservedWords.claimWords.length).toBeGreaterThan(0);
+      expect(first?.sellers?.reservedWords.claimWords).not.toEqual(
+        second?.sellers?.reservedWords.claimWords,
+      );
+    });
+
     it.each([
+      [
+        'no reserved words: a Market never defaults them',
+        (c: typeof SELLERS) => void delete (c as { reservedWords?: unknown }).reservedWords,
+        /reservedWords/,
+      ],
+      [
+        'a reserved word that is not a slug token',
+        (c: typeof SELLERS) => void c.reservedWords.claimWords.push('Not A Token'),
+        /lower-case letters, digits and single hyphens/,
+      ],
       [
         'no approval policy: a Market never defaults it',
         (c: typeof SELLERS) => void delete (c as { approvalRequired?: boolean }).approvalRequired,

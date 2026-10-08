@@ -73,6 +73,13 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   when the runtime moves. Never an offset (ADR-0005). The seller chooses within the list (sellers
   spike 3 record, mini-review 2026-10-08); there is no postcode-exception table and no
   Google-derived data. The lists are reviewed like any config change.
+- `reservedWords` (required; sellers slice 2b): `slugs` are whole shop slugs that are never held (site
+  routes, platform names) and `claimWords` are the words a seller may not claim (certification
+  words such as the names of certification types). Each entry is lower-case letters, digits and
+  single hyphens, at most 50 characters. A claim word is matched per token (split on hyphens
+  and spaces): it makes a slug `slug.reserved`, and in a store name it is a reviewer flag that also
+  blocks the automatic approval. The lists are Market data, not literals in `sellers`' code
+  (sellers design 3.5, Ali change 3); the claim group moves to a `certification` port later.
 
 `postcodePattern` runs on user input, so it must be anchored with `^` and `$`, at most 64
 characters, with no `*`, `+`, lookaround or back-reference and only bounded `{n}` or `{n,m}`
