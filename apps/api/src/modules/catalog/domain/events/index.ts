@@ -22,8 +22,22 @@ export const VariantRemoved = defineEvent({
 });
 
 /**
+ * A platform category exists (catalog design 4.6, 9.3): created by the seed or by an admin.
+ * Subscribers read the tree for the category, so the payload holds the id only.
+ */
+export const PlatformCategoryCreated = defineEvent({
+  type: 'catalog.platform-category-created.v1',
+  aggregateType: 'platform-category',
+  payload: { categoryId: eventField.id() },
+});
+
+/**
  * Every event catalog publishes, declared with `defineEvent` and registered with the event
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
  */
-export const CATALOG_EVENTS: readonly EventDefinition[] = [VariantAdded, VariantRemoved];
+export const CATALOG_EVENTS: readonly EventDefinition[] = [
+  VariantAdded,
+  VariantRemoved,
+  PlatformCategoryCreated,
+];
