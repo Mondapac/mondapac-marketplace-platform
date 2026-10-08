@@ -21,3 +21,26 @@ describe('visibleNavItems', () => {
     expect(visibleNavItems(config, new Set(['c.view'])).map((i) => i.id)).toEqual(['home']);
   });
 });
+
+describe('visibleNavItems edge cases', () => {
+  it('returns nothing for an empty config', () => {
+    expect(visibleNavItems({ items: [] }, new Set(['a.view']))).toEqual([]);
+  });
+
+  it('hides an item whose anyOf list is empty (no key can show it)', () => {
+    const empty: NavConfig = {
+      items: [{ id: 'x', labelKey: 'nav.x', href: '/x', anyOf: [] }],
+    };
+    expect(visibleNavItems(empty, new Set(['a.view']))).toEqual([]);
+  });
+
+  it('keeps config order', () => {
+    const ordered: NavConfig = {
+      items: [
+        { id: 'b', labelKey: 'nav.b', href: '/b' },
+        { id: 'a', labelKey: 'nav.a', href: '/a' },
+      ],
+    };
+    expect(visibleNavItems(ordered, new Set()).map((i) => i.id)).toEqual(['b', 'a']);
+  });
+});

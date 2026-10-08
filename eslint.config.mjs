@@ -3,6 +3,7 @@ import eslint from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { panelSyntaxRules } from './packages/ui/lint/panel-rules.mjs';
 
 // Market and vertical identifiers that must never appear as literals in core code: they
 // belong in Market/Vertical configuration or a strategy implementation (ADR-0001 decision 5,
@@ -502,26 +503,7 @@ export default tseslint.config(
     files: ['apps/seller/**/*.{ts,tsx}', 'apps/admin/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector:
-            'Literal[value=/#[0-9a-fA-F]{3,8}\\b|\\b(rgb|rgba|hsl|hsla|oklch)\\(|\\[#|-\\[(rgb|hsl|oklch)/]',
-          message:
-            'panel-tokens-only: use a colour token (ADR-0033 decision 2), never a raw colour value.',
-        },
-        {
-          selector:
-            'Literal[value=/(^|\\s)(-?(pl|pr|ml|mr|left|right|rounded-l|rounded-r|border-l|border-r)-|text-left|text-right)/]',
-          message:
-            'logical-properties-only: use start/end utilities (ps, pe, ms, me, border-s, border-e, text-start, text-end), ADR-0033 decision 10.',
-        },
-        {
-          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-          message:
-            'no-raw-html: dangerouslySetInnerHTML is banned in the panels (ADR-0034 decision 6).',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...panelSyntaxRules],
     },
   },
   {
