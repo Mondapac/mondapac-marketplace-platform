@@ -24,10 +24,10 @@ needs from a storefront shell is written as an assumption in 7.1 and marked "ass
 and the order of elements are provisional ("For Jafar", 7.2).
 
 **IDs.** Continue SL-UX: S = seller-panel screen, P = admin-panel screen, C = card, D = dialog, E = email, F = flow. **`cart` has no seller-panel,
-admin-panel, card or email design**, so its first free numbers there are S8, P5, C2 and E25 (E24 is the unbuilt "area opened" proposal of SL-UX 1.2) and none is
-used. It uses **D11** (first free dialog number) and **F22** (first free flow number; SL-UX ends at F21). **B = buyer storefront screen.** ID-UX already
-uses B1 to B5 for shared panel screens (members, roles, account security, no access); cart's buyer screens continue that sequence at **B6**, and the
-Panel column of 1.1 says "Buyer" so the two uses cannot be mistaken (7.2 item 13 asks Jafar whether the buyer screens should get their own prefix). "AC n" is
+admin-panel, card or email design**, so it uses none of those numbers. (The sibling Phase 4 drafts took S8 to S13, P5 to P9, C2 to C6, E25 to E27 and D12 to D19; E24 is the unbuilt
+"area opened" proposal of SL-UX 1.2.) It uses **D11** and **F22** (SL-UX ends at F21; inventory continues at F29 and pricing at F37). **B = buyer storefront screen or element, one scheme for the
+three Phase 4 buyer drafts.** ID-UX already uses B1 to B5 for shared panel screens (members, roles, account security, no access); cart's buyer screens continue that sequence at **B6 to B9**,
+`inventory` takes **B10 to B12** and `pricing` **B13 to B15**. The Panel column of 1.1 says "Buyer" so the two uses of B cannot be mistaken (7.2 item 13 records the decision). "AC n" is
 the n-th acceptance criterion of brief section 10, counted from 1 in the order written (13 in all). Codes are the API codes of DD 3.2 and 5; the UI maps
 each to a translation key and never shows server text (INTL-11).
 
@@ -48,6 +48,12 @@ or admin screen: the one seller-facing cart setting (the optional minimum order)
 
 CRT-04 "N other sellers" (P1) is not designed here: brief section 3 gives it to the storefront and the Offers page.
 
+Acceptance criteria that no row above names directly (AC numbers in the brief's order, 13 in all):
+| AC | Where it is met in this spec |
+|---|---|
+| 10 (a cart untouched for 90 days signed in, or 7 days as a guest, is purged) | B6 and D11 show the empty state and give no reason (F23 step 9, 7.2 item 6); B8 shows "Cart, empty"; no retention value is shown |
+| 12 (customer A cannot read, change or remove customer B's cart or line id) | No line, cart or customer id is in a URL, title, visible text or telemetry (3.0 rule 5); a foreign or missing line id gets the same answer, `cart.line-not-found` (F24 step 4, F28 step 2); the guest token is never read by the page (section 6) |
+
 ### 1.2 Emails
 None. The brief has no reminder, abandoned-cart or merge email (section 3, out of scope), and a merge sends nothing (DD 6.5).
 
@@ -64,6 +70,8 @@ None. The brief has no reminder, abandoned-cart or merge email (section 3, out o
 ### 1.4 Changes this spec makes to approved documents
 None. It follows the brief and DD. Where the DD leaves a UI choice it is decided in 3.1.1 (a line without display data) and F28 (a guest write with an invalid cookie).
 
+Changes asked of other documents' owners (not of an approved document): **catalog's UX owner must confirm the order of the shared "Price and stock" slot of PS3 and PS7: the `pricing` summary card first, `inventory` C2 second** (the cart does not fill that slot; it shows what these two cards set). `pricing`'s `PriceTag` and `inventory`'s availability label are used here as they are specified there (section 4).
+
 ## 2. Flows
 
 State codes are those of DD 3.2 (line reasons), DD 5 (answers: `cart.offer-not-purchasable`, `cart.line-not-found`, `cart.too-many-lines`, `cart.not-ready`,
@@ -77,10 +85,10 @@ DD does not have are proposals for Mohammad (7.3).
 | 1 | On the product page the customer chooses a size or option (Variant) and a quantity (default 1) and presses "Add to cart". The button shows `State=Loading` at the same width and the control is read-only; a second press while one request is in flight is ignored (the add increments, so it is not idempotent: DD 10) | Quantity not a whole number from 1 to the ceiling: local check, field error `cart.error.validation.quantity`, nothing sent. Guest or signed in makes no difference to the control; the guest or account use case is chosen by the session |
 | 2 | Guest only: the first add creates the cart and sets the cookie. No consent screen, no notice. Viewing never creates a cart (DD 4) | Cookie refused by the browser: the add succeeds on the server, so after every guest add the panel reads the count (API needs 4); if it is 0, B7 shows `cart.add.error.cookies` and no "Added" status |
 | 3 | The answer says the line and its resulting quantity. B7 shows a status line "Added to your cart." with a "View cart" link; the B8 count updates; nothing moves focus and no drawer opens | Quantity limited: success plus a notice. `clamped: 'market-ceiling'` "The most you can have of one item is {max}. We set the quantity to {max}."; `'only-left'` "Only {count} left. We set the quantity to {count}."; limited to what the line already holds: "You already have the most you can add." |
-| 4 | Refused: `cart.offer-not-purchasable` with `details.reason` | `offer-unavailable` "This item is no longer available."; `seller-cannot-sell` "This seller isn't selling right now."; `no-valid-price` "The price isn't available right now."; `out-of-stock` "Out of stock."; `check-unavailable` "We can't check this item right now. Try again in a moment." (the keys are those of `line.reason.*`, 5). The control stays; "Add to cart" is disabled for `offer-unavailable`, `out-of-stock` and `seller-cannot-sell` until the page is reloaded (the reason is text beside the button, not a tooltip). `reduce-quantity` never comes from an add (the add limits instead, step 3) |
+| 4 | Refused: `cart.offer-not-purchasable` with `details.reason` | `offer-unavailable` "This item is no longer available."; `seller-cannot-sell` "This seller isn't selling right now."; `no-valid-price` "This size can't be bought until the seller sets a price." (`pricing.buyer.price.none-reason`); `out-of-stock` "Out of stock." (`inventory.availability.out`); `check-unavailable` "We can't check this item right now. Try again in a moment." (the other keys are those of `line.reason.*`, 5). The control stays; "Add to cart" is disabled for `offer-unavailable`, `out-of-stock` and `seller-cannot-sell` until the page is reloaded (the reason is text beside the button, not a tooltip). `reduce-quantity` never comes from an add (the add limits instead, step 3) |
 | 5 | Line limit: `cart.too-many-lines` | "Your cart is full. A cart can hold up to {max} different items." with "View cart". `{max}` is the Market line limit (AU 50) from the API (API needs 6) |
 | 6 | `request.throttled` (guest creation 30 an hour per network, guest writes 120 per 15 minutes per network and 60 per cart, DD 4) | One text for all: "You're making changes too quickly. Try again in {seconds, plural, one {# second} other {# seconds}}." The seconds are computed once from `retryAfterSeconds` and not counted down aloud; the button is enabled again at that time |
-| 7 | `conflict.stale` or `conflict.retry` (nothing was written) | The panel re-sends once without telling the customer; a second failure shows `cart.error.write` ("We couldn't update your cart. Try again.") |
+| 7 | `conflict.stale` or `conflict.retry` (nothing was written) | The panel does **not** re-send an add by itself. Rule: an add is re-sent (once, silently) only when the request carries an idempotency key, because the add increments and a repeat could double the quantity. **Until API need 11 confirms such a key, the add slice (slice 1's add) is held**, and the panel shows `cart.error.write` ("We couldn't update your cart. Try again.") at once, with the customer's own "Try again" as the only retry. Change and remove set a quantity or take a line out, so F24 step 7 governs them |
 | 8 | Network failure or timeout, outcome unknown | Not "Try again": the add may have happened. `cart.add.error.unknown` "We couldn't confirm this. Check your cart before you try again." with "View cart"; the count is re-read first |
 | 9 | `access.unavailable` (limiter fails closed) | `cart.error.unavailable`; nothing was written |
 | 10 | Signed-in customer whose session ended mid-add: `access.unauthenticated` | The add is not retried as a guest add (it would create a second, separate cart): "Your session ended. Sign in to continue." with "Sign in" (return URL: this page) |
@@ -127,7 +135,7 @@ DD does not have are proposals for Mohammad (7.3).
 |---|---|---|
 | 1 | The cart is **ready** when every line is buyable and no group is blocked. The view says so (API needs 1); the panel does not work it out. Ready: "Check out" is active | Not ready: "Check out" stays focusable but disabled (`aria-disabled`), with the reason as text beside it: "Fix {count} items first." and a link "Go to the first one". Activating it does nothing |
 | 2 | The customer presses "Check out". The button shows `State=Loading` ("Checking your cart…") and the panel moves to the checkout's first screen, which belongs to `ordering` (Phase 5). The cart sends no line, price, seller or quantity in the URL or the client state: `ordering` reads the cart on the server (`getCheckoutLines`, DD 6.6) | |
-| 3 | `ordering` answers `cart.not-ready` (the cart changed since the page was drawn, or a quantity is above what stock allows and only `ordering` can see it, DD 3.2) | `ordering` sends the customer back to B6; B6 re-reads and shows `cart.error.not-ready` ("Your cart changed. Check the items below, then try again.") at the top. The contract for the redirect and for the stock case is ordering's G2 (7.5) |
+| 3 | `ordering` answers `cart.not-ready` (the cart changed since the page was drawn, or a quantity is above what stock allows and only `ordering` can see it, DD 3.2) | `ordering` sends the customer back to B6; B6 re-reads and shows `cart.error.not-ready` ("Your cart changed. Check the items below, then try again.") at the top. **B6 accepts the checkout-return code only from a closed enum** (`not-ready`, `out`, `not-enough`, `over-limit`, `retired`; 7.5 item 1): each value maps to a fixed key, any other or repeated value is ignored (the cart is simply re-read), and the raw value is never rendered, logged or put in a title or telemetry. The contract for the redirect and for the stock case is ordering's G2 (7.5) |
 | 4 | A seller below its minimum: the customer adds more from that seller. There is no link on the group to that seller's shop page in this spec (the shop page is Phase 6 and the cart is not given its address, 7.3 item 8); the way back is "Continue shopping" and the product pages | Adding items and coming back re-reads and clears the message (AC 7: "افزودن کالا از همان فروشنده قفل را باز می‌کند") |
 | 5 | A currency or price-basis mismatch inside a group reaches the customer only as `check-unavailable` for that group (DD 6.4); no text names the cause | |
 
@@ -159,8 +167,8 @@ DD does not have are proposals for Mohammad (7.3).
    the groups. Touch density on phones and tablets: controls 48 px; stepper buttons and "Remove" at least 44 px.
 3. **Money.** Every amount comes from the API as `Money` and is formatted with `Intl.NumberFormat(locale, { style: "currency", currency })` using the
    Market currency (never a hard-coded symbol or "AUD"). **The panel does no money arithmetic**: unit price, line amount, group subtotal, cart subtotal,
-   the minimum and "remaining" arrive ready (API needs 1). Sellers' wording `{priceBasis}` (a Market key, for example "including GST") follows the minimum
-   and the page states the convention once: `cart.price-basis`. An amount is never split from its currency.
+   the minimum and "remaining" arrive ready (API needs 1). `{priceBasis}` is the text of the **one Market key `market.price.tax-inclusive`** (defined in `docs/modules/pricing/ux.md` section 5; AU "including GST"; `none` when the Market has no convention). It is a
+   parameter inside whole sentences (the minimum-order sentence, `cart.price-basis`, the `PriceTag` basis text), never a separate suffix key, so translators can reorder it. The page states the convention once: `cart.price-basis`. An amount is never split from its currency.
 4. **Freshness and storage.** Every cart read and write is `Cache-Control: no-store`. The panel keeps cart data in memory only and does not write it to
    `localStorage`, `sessionStorage`, IndexedDB or a service-worker cache. The only per-viewer convenience that may use `sessionStorage` (inside try/catch,
    page correct without it) is the merge banner of B9, which holds counts and no names. On `pageshow` with `persisted`, B6, B8 and D11 re-read.
@@ -175,29 +183,29 @@ DD does not have are proposals for Mohammad (7.3).
    built from them. Images use the product name as `alt`; a missing image shows the product-type icon, never a broken image.
 8. **Async changes** are announced through two page-level live regions: a polite `role="status"` (quantity updated, item removed, cart ready or not,
    merge result, added to cart) and an assertive `role="alert"` used only for an error that stops what the person just did. Details in section 6.
-9. **Dates and times.** The only time on these screens is the end of a special price (3.1, B6 line), shown in the seller's zone, named, when the API
+9. **Dates and times.** The only time on these screens is the "Ends {dateTime}" line of `PriceTag` (pricing B13/B14), shown in the seller's zone, named, when the API
    supplies the zone (7.3 item 7); otherwise it is left out.
 10. **Permissions.** There are none to check in the UI. A person who is not signed in sees the guest variants; the panel never infers what a session may do.
 
 ### 3.1 Buyer screens
 | Screen and purpose | Content, top to bottom | Fields, validation, actions | States | Never shown |
 |---|---|---|---|---|
-| **B6 Cart page.** See, fix and leave for checkout | Page title (H1) "Your cart" and the count line. `cart.price-basis` note. B9 banner when present. Cart-level banners: partial check (F23 step 8), stale refresh failure, not-ready return (F26 step 3), session ended. **Blockers banner** (Attention `InfoBanner`) when something blocks checkout: "{count} items need your attention" with links to each. Then one **`SellerGroup`** per seller (order: the order of the first line added, oldest first, which the API returns; nothing re-sorts as the customer edits): header "Sold by {seller}" and the subtotal of buyable lines; the group message slot; the `CartLine`s. Then the **summary** (`CartSummary`): "Items subtotal {amount}" over buyable lines, the shipping line (7.2 item 9), then the button (signed in) or the guest card (F25). "Continue shopping" link after the summary. One `CartLine`: image, product name (a link to the product page, except `offer-unavailable`), variant label, `CertChip` Compact per tag with badge data (a button that opens `CertDetail`), unit price ("{amount} each"; a special price shows "Special price" and "Regular price {amount}", text not strikethrough alone), the stepper and "Remove", the line amount, then notices (state, price change, "Only {count} left", merged-clamped). Every line has the hidden label "Sold by {seller}" (7.2 item 3) | Stepper and Remove (F24). "Change to {count}" on `reduce-quantity`. "Check out" (F26) or "Sign in to check out" and "Create an account" (F25). "Try again" on errors. Nothing else is editable | **Loading:** skeleton `SellerGroup`s (two groups of two lines). **Empty:** `EmptyState` (3.4). **Default**, **ready**, **blocked** (count), **guest**, **just merged** (B9), **partial check** (some lines `check-unavailable`), **refresh failed** (last view stays), **session ended** (account cart hidden, sign-in prompt), **error** (no cart data). Line states: 3.2. Group states: ok, below-minimum, check-unavailable, no buyable line. Write states: updating, undo row, write error | Exact stock; why a line is unbuyable beyond 3.2; the seller's minimum when the group has no buyable line; a subtotal that includes an unbuyable line; shipping or tax figures; "Total"; ids |
+| **B6 Cart page.** See, fix and leave for checkout | Page title (H1) "Your cart" and the count line. `cart.price-basis` note. B9 banner when present. Cart-level banners: partial check (F23 step 8), stale refresh failure, not-ready return (F26 step 3), session ended. **Blockers banner** (Attention `InfoBanner`) when something blocks checkout: "{count} items need your attention" with links to each. Then one **`SellerGroup`** per seller (order: the order of the first line added, oldest first, which the API returns; nothing re-sorts as the customer edits): header "Sold by {seller}" and the subtotal of buyable lines; the group message slot; the `CartLine`s. Then the **summary** (`CartSummary`): "Items subtotal {amount}" over buyable lines, the shipping line (7.2 item 9), then the button (signed in) or the guest card (F25). "Continue shopping" link after the summary. One `CartLine`: image, product name (a link to the product page, except `offer-unavailable`), variant label, `CertChip` Compact per tag with badge data (a button that opens `CertDetail`), the price as **`PriceTag` Line** (pricing B14: the unit amount, for a special the "Special price" badge and the struck "Was {amount}", "Ends {dateTime}", the basis text; the only price component, no cart-specific price block), the stepper and "Remove", the line amount, the availability label (**B10**, `inventory.availability.in-stock` / `.low` "Only {count} left"), then notices (state, price change, merged-clamped). Every line has the hidden label "Sold by {seller}" (7.2 item 3) | Stepper and Remove (F24). "Change to {count}" on `reduce-quantity`. "Check out" (F26) or "Sign in to check out" and "Create an account" (F25). "Try again" on errors. Nothing else is editable | **Loading:** skeleton `SellerGroup`s (two groups of two lines). **Empty:** `EmptyState` (3.4). **Default**, **ready**, **blocked** (count), **guest**, **just merged** (B9), **partial check** (some lines `check-unavailable`), **refresh failed** (last view stays), **session ended** (account cart hidden, sign-in prompt), **error** (no cart data). Line states: 3.2. Group states: ok, below-minimum, check-unavailable, no buyable line. Write states: updating, undo row, write error | Exact stock; why a line is unbuyable beyond 3.2; the seller's minimum when the group has no buyable line; a subtotal that includes an unbuyable line; shipping or tax figures; "Total"; ids |
 | **B7 Add to cart.** Put an item in the cart from the product page or its Offer list | Variant choice (the product page's own control) and the **`QuantityStepper`** (default 1), then the "Add to cart" `Button`. Under it one status line (polite). Same control in a compact form in an Offer row, where each Offer is a seller's listing: the seller name sits in the row's heading (STO-03), so the cart's "Sold by" is the page's | Quantity whole number 1 to the ceiling (the stepper's `max` is the ceiling from the API; the page never says "99" itself). One request at a time. F22 | **Default**; **adding** (Loading); **added** (status + "View cart"); **limited** (notice); **refused** per reason (button disabled for the three permanent reasons, text beside it); **cart full**; **throttled**; **unconfirmed**; **cookies refused** (guest) | Stock numbers other than `onlyLeft` (the product page shows the status; this control shows `onlyLeft` only inside the limited notice); the price in the button; "Buy now" |
 | **B8 Cart button.** Always-visible way to the cart | `IconButton` with `shopping-cart` and a `CountBadge`. Accessible name "Cart, {count, plural, one {# item} other {# items}}" ("Cart, empty" at 0). Count above 99 reads "99+" visually and in full to a screen reader | Opens D11 (F27). On B6: the current page | **Default**, **count**, **no count** (unreadable), **current page**, **updated** (announced once per change, polite: "Cart updated: {count} in your cart.") | The amount; names of items |
 | **B9 After sign-in: adding your earlier cart.** Explain what the merge did | A status region on the landing page while the merge runs, then an `InfoBanner` (Info; Attention on failure) with the outcome lines of F25 steps 5 to 7. Dismissable with a close button named "Dismiss message" | "Try again" on failure. Nothing else | **Working** (`role="status"`), **done**, **done with limits**, **failed** (retry), **nothing to merge** (nothing shown) | Counts of items the customer cannot act on; names of removed items unless the API supplies display data |
 | **D11 Mini-cart** (`Dialog` Layout=Side) | Title "Your cart" with the count; the groups and lines in the compact layout (image, name, variant, quantity "× {count}", line amount, one notice line); items subtotal; "View cart" (primary), "Continue shopping"; "Close" | Read-only. Tab order: title, the lines' product links, "View cart", "Continue shopping", "Close" | **Loading** (skeleton), **default**, **blocked** (one line at the top: "Some items need your attention. View your cart to fix them."), **empty**, **error** | Stepper, Remove, "Check out", the guest card (a guest sees the same panel; B6 asks them to sign in) |
 
-#### 3.1.1 Line state, group state and the price block (shared by B6 and D11)
+#### 3.1.1 Line state, group state and price display (shared by B6 and D11)
 The line state is the API's (DD 3.2); the panel shows one reason at most. Precedence is the DD's and is not reimplemented: the panel renders what the line carries.
 
 | Reason (DD 3.2) | In the subtotal | Treatment of the line | Text (key `cart.line.reason.*`) | Action |
 |---|---|---|---|---|
-| (buyable) | Yes | Full | none; if the status is LOW: "Only {count} left." (Info) | Stepper, Remove |
+| (buyable) | Yes | Full | none; the availability label B10 from the API's status: `inventory.availability.in-stock`, or `.low` "Only {count} left" (Info) | Stepper, Remove |
 | `offer-unavailable` | No | Name and image if the answer carried them, otherwise the placeholder name `cart.line.unavailable-name` ("Item no longer available") and the `package` icon; no link, no price, no stepper. Critical notice | "This item is no longer available." | Remove |
 | `seller-cannot-sell` | No | Name, image and variant stay; no price. Critical notice | "{seller} isn't selling right now." ("This seller isn't selling right now." when no name) | Stepper (lower), Remove |
-| `no-valid-price` | No | No price shown. Attention notice | "The price isn't available right now." | Stepper, Remove |
-| `out-of-stock` | No | Price shown as last read is **not** shown (nothing to buy). Critical notice | "Out of stock." | Stepper, Remove |
+| `no-valid-price` | No | `PriceTag` state No price (B15: "No price yet", never `0` or blank). Attention notice | `pricing.buyer.price.none-reason`: "This size can't be bought until the seller sets a price." | Stepper, Remove |
+| `out-of-stock` | No | Price shown as last read is **not** shown (nothing to buy). Critical notice | `inventory.availability.out`: "Out of stock." | Stepper, Remove |
 | `reduce-quantity` | No (counted when fixed) | Price shown. Attention notice | "Only {count} left. Reduce the quantity to check out." | "Change to {count}", stepper, Remove |
 | `check-unavailable` | No | Name and image stay. Attention notice | "We can't check this item right now. Try again in a moment." | Stepper, Remove; a "Try again" on the page-level banner re-reads |
 
@@ -207,12 +215,11 @@ shown in the group, once per group, and only for a group with at least one buyab
 | Group state | Message (verbatim from SL-UX 3.1a; keys in section 5) | Tone |
 |---|---|---|
 | ok, or an explicit "none" | none | none |
-| `below-minimum` | "{seller} requires at least {minimum} per order. Add {remaining} more to check out." The Market's convention, when known, is appended to `{minimum}` as "({priceBasis})" | Attention, `alert-triangle` |
+| `below-minimum` | "{seller} requires at least {minimum} per order. Add {remaining} more to check out." The Market's convention, when known, is a parameter inside the same sentence (`{priceBasis}` after `{minimum}`), not a separate key | Attention, `alert-triangle` |
 | `check-unavailable` | "We can't check the minimum order for {seller} right now. Try again in a moment." | Attention, `alert-circle` |
 | no buyable line | none; the subtotal reads "No items to buy" | Neutral |
 
-**Price block.** Unit price and, when the API says the basis is `special`, the words "Special price" plus "Regular price {amount}"; the end of the special
-("Special price until {dateTime}") only when the API supplies the seller's zone. **Price-change notice** (a line whose current price differs from the price
+**Price display.** Every price on a line (B6 and D11) is drawn by `PriceTag` Line (pricing B14, with B15 for "No price yet"); cart has no price block and no price strings of its own. The special price, the struck "Was {amount}", "Ends {dateTime}" (only when the API supplies the seller's zone) and the basis text are `pricing.buyer.price.*` and the one Market key `market.price.tax-inclusive`. **Price-change notice** (a line whose current price differs from the price
 at add): "The price went up from {previous} to {current} since you added this." (Attention, `arrow-up`) or "...went down..." (Info, `arrow-down`). A price
 pending review is never shown: the line shows the previous effective price with no notice, because the API only answers the effective price.
 
@@ -242,13 +249,13 @@ a line `check-unavailable` and a group `check-unavailable` are different facts w
 
 "Existing" is `docs/design/figma/README.md` section 5 (library built through **1.8.3**), `icons.json` (68 icons) and the other UX documents' planned components (`CertChip`, `CertDetail`:
 planned, not built; cart needs only `CertChip`, and only when badge data exists). Their planned release numbers (SL-UX 1.3.0 and 1.4.0, CUX 1.5.0 and 1.6.0, CAT-UX 1.7.0 and 1.8.0) collide with
-releases the README (section 9) already built, so cart's release is named by content, **"Cart (buyer)"**, a MINOR, and takes **the next free number when published** (1.9.0 if nothing ships first).
-It needs only what is built: `Dialog`, `Toast`, `EmptyState`, `InfoBanner`, `IconButton`, `CountBadge`, `Button`, `Input`, `ProductThumb`.
+releases the README (section 9) already built, so cart's release is named by content, **"Cart (buyer)"**, a MINOR. **This document proposes no number:** it is assigned at publish by the design track, and Ali orders the releases (7.2 item 15).
+It needs only what is built: `Dialog`, `Toast`, `EmptyState`, `InfoBanner`, `IconButton`, `CountBadge`, `Button`, `Input`, `ProductThumb`; plus, from the other two Phase 4 releases, **`PriceTag`** (release "Pricing", pricing 4) and the `StatusBadge` Availability values (release "Inventory", inventory 4). `CartLine` frames come after both.
 
 | Screen element | Existing component or template | Change needed in Figma first | Release |
 |---|---|---|---|
 | Quantity control (B6 line, B7) | `Input`, `IconButton` | New **`QuantityStepper`**: minus, number field, plus; States Default, Focus, Disabled, Updating, Error; Size Regular, Compact; BOOLEAN `Show remove`; 44 px targets in Touch; locale digits. Two places | MINOR |
-| Cart line (B6, D11) | `ProductThumb`, `CertChip`, `Button` (Link), `InfoBanner` | New **`CartLine`**: Layout Full, Compact; slots Image, Name, Variant, Chips, Price block, Quantity, Line amount, Notices (0 to 2); States Default, Updating, Unbuyable (`Reason`), Removed (undo row), Error, Loading | MINOR |
+| Cart line (B6, D11) | `ProductThumb`, `CertChip`, `Button` (Link), `InfoBanner`, **`PriceTag`** (Size Line; pricing), `StatusBadge` Availability (inventory) | New **`CartLine`**: Layout Full, Compact; slots Image, Name, Variant, Chips, **Price (an instance of `PriceTag` Line, the only price component)**, Availability (an instance of `StatusBadge` Availability), Quantity, Line amount, Notices (0 to 2); States Default, Updating, Unbuyable (`Reason`), Removed (undo row), Error, Loading | MINOR |
 | Seller group (B6, D11) | surface of the library, `InfoBanner` | New **`SellerGroup`**: header ("Sold by", subtotal), message slot, line slot; Layout Full, Compact; States Default, Below minimum, Cannot check, No buyable line, Loading | MINOR |
 | Summary (B6, D11 footer) | `Button`, `InfoBanner` | New **`CartSummary`**: Layout Card, Sticky (below 760 px), Footer; Mode Ready, Blocked (reason and link), Guest (sign-in card), Loading | MINOR |
 | Inline notices (price change, reason, minimum order) | `InfoBanner` | New property **Size** (Regular, Compact): one line, start icon, optional text link. Used inside `CartLine` and `SellerGroup` | MINOR |
@@ -270,7 +277,7 @@ Keys are `cart.<surface>.<element>[.<variant>]`, kebab-case, ICU MessageFormat, 
 `identity.error.unknown`. Values from Market configuration are keys the Market owns (`{priceBasis}`, currency). (L) marks text for legal review. The Persian text
 is translated from these English keys in the i18n catalogue (the brief's own terms: سبد خرید, فروخته توسط, حداقل سفارش); nothing here is Persian-only.
 
-**Words used everywhere:** cart; item; quantity; Sold by; subtotal (items only); check out; sign in; create an account; special price; regular price; minimum order. **Never:** basket, bag,
+**Words used everywhere:** cart; item; quantity; Sold by; subtotal (items only); check out; sign in; create an account; special price; Was (the struck regular price, pricing's word); minimum order. **Never:** basket, bag,
 "buy now", "total", "verified", "deleted", "suspended", "held".
 
 | Key (prefix `cart.`) | en-AU text |
@@ -279,17 +286,13 @@ is translated from these English keys in the i18n catalogue (the brief's own ter
 | `page.continue` | Continue shopping |
 | `empty.title · .body` | Your cart is empty · Items you add will appear here. |
 | `group.sold-by · .sold-by-unknown · .subtotal · .subtotal-none` | Sold by {seller} · Sold by another seller · Subtotal {amount} · No items to buy |
-| `group.below-minimum` (SL-UX 3.1a "below-minimum", verbatim) | {seller} requires at least {minimum} per order. Add {remaining} more to check out. |
-| `group.minimum-basis` | ({priceBasis}) (appended to `{minimum}` when the Market's convention is known) |
+| `group.below-minimum` (SL-UX 3.1a "below-minimum"; same words, the basis is now a parameter) | {seller} requires at least {minimum}{priceBasis, select, none {} other { ({priceBasis})}} per order. Add {remaining} more to check out. |
 | `group.check-unavailable` (SL-UX 3.1a "check-unavailable", verbatim) | We can't check the minimum order for {seller} right now. Try again in a moment. |
 | `line.sr-sold-by` (visually hidden, on every line) | Sold by {seller}. |
-| `line.unit-price · .price-special · .price-regular · .special-until` | {amount} each · Special price · Regular price {amount} · Special price until {dateTime} |
 | `line.amount-label` (hidden) | Line total: {amount} |
 | `line.price-changed.up · .down` | The price went up from {previous} to {current} since you added this. · The price went down from {previous} to {current} since you added this. |
-| `line.only-left` | Only {count} left. |
 | `line.unavailable-name` | Item no longer available |
 | `line.reason.offer-unavailable · .seller-cannot-sell · .seller-cannot-sell-unnamed` | This item is no longer available. · {seller} isn't selling right now. · This seller isn't selling right now. |
-| `line.reason.no-valid-price · .out-of-stock` | The price isn't available right now. · Out of stock. |
 | `line.reason.reduce-quantity · action.set-to-max` | Only {count} left. Reduce the quantity to check out. · Change to {count} |
 | `line.reason.check-unavailable` | We can't check this item right now. Try again in a moment. |
 | `line.quantity.label · .increase · .decrease` | Quantity for {product} · Add one more {product} · Take one {product} off |
@@ -311,7 +314,7 @@ is translated from these English keys in the i18n catalogue (the brief's own ter
 | `mini.title · .view · .continue · .close · .blocked` | Your cart · View cart · Continue shopping · Close cart · Some items need your attention. View your cart to fix them. |
 | `merge.working · .done` | Adding the items from your earlier cart… · We added the items from your earlier cart. |
 | `merge.clamped · .not-added` | {count, plural, one {# quantity was} other {# quantities were}} lowered to the most you can have. · {count, plural, one {# item wasn't} other {# items weren't}} added because a cart can hold up to {max} different items. |
-| `merge.error · .retry · .dismiss` | We couldn't add your earlier cart just now. · Try again · Dismiss message |
+| `merge.error · .dismiss` | We couldn't add your earlier cart just now. · Dismiss message (its "Try again" is `common.try-again`) |
 | `error.load · .partial · .partial-stale` | We couldn't load your cart. Try again. · We couldn't check some items just now. Checkout is paused until we can. · We couldn't refresh your cart. What you see may be out of date. |
 | `error.write · .stale · .line-not-found · .not-ready` | We couldn't update your cart. Try again. · Your cart changed in another window. We've updated it. Check it and try again. · That item is no longer in your cart. · Your cart changed. Check the items below, then try again. |
 | `error.validation.quantity` | Enter a whole number from 1 to {max}. To take it out, use Remove. |
@@ -321,8 +324,10 @@ is translated from these English keys in the i18n catalogue (the brief's own ter
 Notes on the table. The two minimum-order keys copy the text of SL-UX 3.1a word for word, including its rules (shipping excluded from the amount, `{priceBasis}` appended
 when known, no message for an explicit "none", money formatted with `Intl` and the Market currency). `{remaining}` and `{minimum}` arrive from the API as `Money`. "Items
 subtotal" is deliberate: it says the figure is not a total. The sentence "Shipping is worked out at checkout." is provisional until `ordering` and `shipping` fix what the
-customer is told (7.2 item 9). The price-change sentences, "Special price", "Regular price" and the price-basis line are (L): consumer-law review of price comparisons and of
-GST wording (AU; pricing Q6's tax-adviser confirmation is still pending).
+customer is told (7.2 item 9). The price-change sentences and the price-basis line are (L): consumer-law review of price comparisons and of
+GST wording (AU; pricing Q6's tax-adviser confirmation is still pending); "Special price", "Was" and "Ends" are pricing's (L) strings.
+
+**Reused keys (no copy of their own in `cart.`).** Price display: `pricing.buyer.price.*` through `PriceTag` (special label, "Was {amount}", "Ends {dateTime}", "No price yet", "This size can't be bought until the seller sets a price.") and the one Market key `market.price.tax-inclusive` (text such as "including GST", used as `{priceBasis}`). Availability on a line: `inventory.availability.in-stock`, `.low` ("Only {count} left"), `.out` ("Out of stock"). Shared: `common.try-again` serves every "Try again" in this table, including the merge banner.
 
 ## 6. Accessibility, responsiveness, RTL and locale
 
@@ -343,7 +348,7 @@ Gate: WCAG 2.2 AA (ID-UX 6; the brief: unbuyable, price change and minimum order
 - **Contrast and non-colour.** Text 4.5:1, control borders 3:1. Critical, Attention and Info notices differ by icon and words; "went up" and "went down" are words and arrows; a special
   price is words, not strikethrough alone. Forced-colors keeps icon and border. Under `prefers-reduced-motion` Updating is a static icon and text and D11 opens without a slide.
 - **Targets and widths.** 48 px for primary controls, 44 px for stepper buttons, Remove and chips on phones; nothing under 24 px. Smallest width 320 px. Below 760 px a `CartLine`
-  is a card (image and name; variant and chips; price block; stepper and Remove on one wrapping row; line amount and notices).
+  is a card (image and name; variant and chips; `PriceTag`; stepper and Remove on one wrapping row; line amount and notices).
 - **RTL.** Logical properties only. The stepper reads minus, number, plus in the reading direction; digits follow the locale; money uses `Intl`. `arrow-up` and `arrow-down` do not
   mirror; `chevron-right` does. Names use `dir="auto"`; each minimum-order sentence is one translated unit with `{seller}`, `{minimum}` and `{remaining}` isolated (`bdi`), so a Latin store
   name inside a Persian sentence keeps its order. D11 opens from the inline-end edge (left in RTL). Text may grow 40%: buttons wrap, never truncate.
@@ -383,20 +388,20 @@ assumed them so B6 to D11 can be designed; each is an open point for Jafar and H
 8. **"Empty the cart" and "Remove all unavailable"** are not in the brief and not designed.
 9. **Shipping line.** "Shipping is worked out at checkout." assumes `ordering` shows shipping. CRT-07 is P0 but `shipping` is Phase 6 and the brief gives Phase 5 one simple method (brief section 8). Hadi and
    ordering's G2 fix the sentence.
-10. **Regular price beside a special price** is my reading of pricing's display rule. Legal (L) decides whether a comparison price is allowed and how it is worded.
-11. **Wording that needs legal (L):** the price-change sentences, "Special price", "Regular price", the price-basis line (GST; the tax adviser's confirmation before Phase 5 is pending), the shipping
+10. **Regular price beside a special price** ("Was {amount}", drawn by pricing's `PriceTag`) is pricing's display rule, reused here without change. Legal (L) decides whether a comparison price is allowed and how it is worded (pricing 7.1 item 2).
+11. **Wording that needs legal (L):** the price-change sentences, the price-basis line (GST; the tax adviser's confirmation before Phase 5 is pending), the shipping
     sentence, and whether the strictly functional guest-cart cookie needs a notice.
 12. **Page title** stays "Your cart" with no count (a count in the tab title changes on every edit).
-13. **Prefix.** Cart's buyer screens are B6 to B9 and D11 so the sequence continues from ID-UX B5. If the buyer surface grows (storefront, product page, checkout), a separate prefix (for example BY) is
-    cleaner; Jafar decides before the next buyer module.
+13. **Prefix - resolved.** One scheme B for the Phase 4 buyer drafts: cart B6 to B9 (and D11), `inventory` B10 to B12, `pricing` B13 to B15, continuing from ID-UX B5. If the buyer surface later gets its own prefix
+    (storefront, product page, checkout), Jafar decides before the next buyer module and all three documents are renamed together.
 14. **A link from a below-minimum group to that seller's shop page** needs the shop address in `sellerSummaries` and a Phase 6 route (API needs 8); not designed.
-15. **Figma release number.** The numbers planned in SL-UX, CUX and CAT-UX collide with built releases; cart takes the next free MINOR when published (section 4). Renumbering the others is the design track's job.
+15. **Figma release number.** The numbers planned in SL-UX, CUX and CAT-UX collide with built releases. No document proposes a number: cart is a MINOR release named "Cart (buyer)", the number is assigned at publish by the design track, and Ali orders the releases (section 4). Renumbering the others is the design track's job.
 16. **Persian.** English keys are the source; translations are made in the i18n catalogue. No research with Persian-reading buyers exists.
 
 ### 7.3 API needs (for Mohammad)
 1. **The view answer** (`cart.view-cart` and guest): per group `sellerId`, display name (or absent), subtotal of buyable lines (`Money`), `minimumOrder` (none, `Money`, or "cannot check"), `remaining` (`Money`) for a
    `below-minimum` group; per line `lineId`, `offerId`, `variantId`, quantity, state `buyable` or the reason, `onlyLeft` for any LOW line, display data (product name, variant label, image key), badge data per tag,
-   `unitPrice`, `regularPrice` and `basis`, line amount, `taxInclusive`, `priceChanged: { previous }`; cart-level `subtotal`, `checkout: { ready, blockers }`, and `limits: { maxLineQuantity, maxLines }`. The panel computes no
+   `unitPrice`, `regularPrice` and `basis`, `specialEndsAt`, line amount, `taxInclusive`, `priceChanged: { previous }`, and the public availability `status` for every buyable line (for the B10 label; `onlyLeft` when LOW); cart-level `subtotal`, `checkout: { ready, blockers }`, and `limits: { maxLineQuantity, maxLines }`. The panel computes no
    amount and no state. **The Market's price-basis text key** arrives from Market configuration.
 2. **Write answers.** Add, change and remove should return the updated line and the group and cart totals (or the whole view), so one click does not cost a second read of five facade calls. Otherwise the panel re-reads after
    each debounced write; say which.
@@ -409,9 +414,9 @@ assumed them so B6 to D11 can be designed; each is an open point for Jafar and H
 7. **Special price end:** `specialEndsAt` with the seller's IANA zone, or nothing shown. Optional write "acknowledge price" if 7.2 item 4 is yes.
 8. **Seller shop address** in `sellerSummaries` (slug or path key) if 7.2 item 14 is yes.
 9. **Idempotency of add:** the add increments, so a repeated request doubles the quantity. The UI prevents double presses and, after an unknown outcome, re-reads first (F22 step 8). Is there a platform idempotency key
-   I should send on add, change and remove?
+   I should send on add, change and remove? (Decided in item 11: no automatic re-send without one.)
 10. **Image URLs:** the display data gives an image key; the panel needs the public URL rule and the rendition sizes (CAT-UX 3.5: public origin, server-made renditions only).
-11. **Conflict handling:** on `conflict.stale` and `conflict.retry` the panel re-sends once (F22 step 7). Confirm the add is safe to re-send after a 409 (DD 10 says nothing was written).
+11. **Conflict handling and idempotency key (blocks the add slice).** On `conflict.stale` and `conflict.retry` the panel does not re-send an add by itself (F22 step 7). It re-sends once only with an idempotency key. Confirm that the add accepts one (item 9) and is safe to re-send after a 409 (DD 10 says nothing was written). **Slice 1's add is held until this is confirmed.**
 
 ### 7.4 For Hassan
 1. Cart responses are `no-store` and the panel re-reads on `pageshow` with `persisted` (3.0 rule 4, F25 step 9). Confirm.
@@ -422,9 +427,9 @@ assumed them so B6 to D11 can be designed; each is an open point for Jafar and H
 5. Throttle texts are the same for all counters (F22 step 6) so a probe learns nothing about which limit was hit.
 
 ### 7.5 For `ordering` G2 (hand-off)
-1. The checkout's first call is `cart.getCheckoutLines`; on `cart.not-ready` `ordering` sends the customer back to B6 (proposal: `/cart` with a query value that carries a code, never ids), and B6 shows `cart.error.not-ready`.
-2. The stock case the cart cannot see (a quantity above stock when the status is IN_STOCK, `inventory.insufficient` `not-enough` without a number, DD 3.2) is shown by `ordering`'s own UI; it must not show a number above the
-   threshold (brief section 5) and should send the customer back to B6 or let them lower the quantity in place. Cart's `reduce-quantity` exists only for LOW stock.
+1. The checkout's first call is `cart.getCheckoutLines`; on `cart.not-ready` `ordering` sends the customer back to B6 (proposal: `/cart` with one query value that carries a code, never ids), and B6 shows `cart.error.not-ready`. **The code is a closed enum:** `not-ready`, `out`, `not-enough`, `over-limit`, `retired`. B6 maps each value to a fixed key and ignores anything else; the raw value is never rendered (F26 step 3).
+2. **All four checkout reasons of `inventory.insufficient` are handed off** (inventory F34 step 2): `out` ("{item} is out of stock."), `not-enough` ("We don't have enough of {item} right now. Lower the quantity or remove it."), `over-limit` ("You can't order that many of {item} at a time. Lower the quantity.", with `{limit}` only when the API gives it) and `retired` ("{item} is no longer for sale. Remove it to continue."), the words being `inventory.buyer.error.*` (B11). They are shown by `ordering`'s own UI, one message per failing line, and the cart's lines show the same facts with their own states: `out` and `retired` are the cart's `out-of-stock` and `offer-unavailable`; `not-enough` is the stock case the cart cannot see (a quantity above stock when the status is IN_STOCK, DD 3.2); `over-limit` is the seller's or public limit per customer (it has no cart state; the cart's own ceiling is `clamped: 'market-ceiling'`). None may show a number above the
+   threshold (brief section 5); `ordering` should send the customer back to B6 (with the enum code above) or let them lower the quantity in place. Cart's `reduce-quantity` exists only for LOW stock.
 3. Checkout shows frozen prices; cart never passes a price (DD 6.6). Cart's "Items subtotal" and checkout's total can differ (price changed, tax): the wording must not say they will match.
 4. Clearing purchased lines after an order (`clearPurchasedLines`): the customer who returns to B6 sees the remaining lines only; no UI.
 5. Which words `ordering` uses for the minimum order if it re-applies it: the same keys as `cart.group.below-minimum` and `cart.group.check-unavailable`.
@@ -436,7 +441,7 @@ the quantity (7.2 item 4), and which storefront carries the cart in Phase 5 (SA8
 ## 8. Hand-off notes
 
 ### 8.1 Design track: what to build in Figma, in order
-Follow `docs/design/figma/update-procedure.md` (Sandbox, review, publish, Export tokens). One release, "Cart (buyer)", MINOR, the next free number when published (section 4).
+Follow `docs/design/figma/update-procedure.md` (Sandbox, review, publish, Export tokens). One release, "Cart (buyer)", MINOR, number assigned at publish by the design track, Ali ordering the releases (section 4). `CartLine` waits for `PriceTag` ("Pricing") and `StatusBadge` Availability ("Inventory", merged with the "Pricing" `StatusBadge` change note).
 1. **Foundations first:** icon `shopping-cart`; token `size/thumb-lg`; `InfoBanner` Size=Compact; `ProductThumb` Size=Large; `Dialog` Layout=Side.
 2. **Components:** `QuantityStepper` (all states, both sizes, Updating and Error, Show remove); `CartLine` (Full and Compact; Default, Updating, Unbuyable with each of the six reasons, Removed/undo row, Error, Loading); `SellerGroup`
    (Default, Below minimum, Cannot check, No buyable line, Loading; Full and Compact); `CartSummary` (Card, Sticky, Footer; Ready, Blocked, Guest, Loading).
@@ -451,7 +456,7 @@ Follow `docs/design/figma/update-procedure.md` (Sandbox, review, publish, Export
 Every screen also waits for the storefront shell and the product page (SA8, 7.1), the customer sign-in screens (ID-UX A1 to A6, Cus), ID-UX D1 and D2 ADRs and slice F0 (ADR-0017).
 | Screens | Backend slice (DD 13) | Library release |
 |---|---|---|
-| B7 (add), B8 (count), B6 with lines, quantity, remove, undo; empty, loading, error | 1 (needs `catalog.offerListings`, SC1, PC1, IC1; the count endpoint) | Cart (buyer) |
+| B7 (add), B8 (count), B6 with lines, quantity, remove, undo; empty, loading, error. **The add is held until API need 11 (idempotency key) is confirmed** | 1 (needs `catalog.offerListings`, SC1, PC1, IC1; the count endpoint) | Cart (buyer); `PriceTag` ("Pricing") |
 | B6 grouping with "Sold by", all line states of 3.1.1, price-change notice, `CertChip` line, D11 | 2 (needs SC2) | Cart (buyer); chips need the CUX release |
 | Guest variants of B6 and B7, the guest card, B9 and the merge call after sign-in | 3 (**Hassan's review first**) | Cart (buyer) |
 | Group minimum-order messages (`group.below-minimum`, `group.check-unavailable`) | 4 (waits for `sellers` slice 20) | Cart (buyer) |
@@ -471,7 +476,9 @@ Every screen also waits for the storefront shell and the product page (SA8, 7.1)
 | Reza (ui-ux-designer) | Author. Reason codes of DD 3.2 checked (condition 4); notes in 3.2 and 7.3 | — |
 | Jafar (product-designer) | Pending | 7.1 and 7.2 |
 | Mohammad (software-architect) | Pending | 7.3 |
-| Hassan (security-tester) | Pending | 7.4 |
+| Hassan (security-tester), 2026-10-08 | Pass with conditions | Applied: B6 accepts the checkout-return code only from a closed enum and never renders the raw value (F26 step 3, 7.5 item 1); no automatic re-send of an add without an idempotency key, add slice held (F22 step 7, 7.3 item 11); all four checkout reasons handed off (7.5 item 2). Still his: 7.4 |
+| Sajad (qa-engineer), 2026-10-08 | Pass with conditions | Applied: AC 10 and AC 12 mapping rows (1.1); one price component and one set of price strings (`PriceTag`, pricing's); availability through `inventory.availability.*`; duplicate keys removed (`line.only-left`, `merge.retry`, `group.minimum-basis`, `line.unit-price` group); the "first free numbers" line corrected; buyer IDs B6 to B15 unique across the three documents |
+| Bagher (qc-release-manager), 2026-10-08 | Pass with conditions | Applied: no Figma release number proposed (section 4, 7.2 item 15, 8.1); dependency on the "Pricing" and "Inventory" releases stated; `market.price.tax-inclusive` as the one basis key; "Price and stock" slot order for catalog's UX owner to confirm (1.4); review record dated |
 | Hadi (product-owner) | Pending | 7.2 items 1, 2, 4, 9 and 10 |
 | Ali (cto) | Pending | Section 4 (release number), 8.2 |
 | Owner | Not needed (7.6) | — |
