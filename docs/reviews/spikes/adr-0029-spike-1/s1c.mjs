@@ -1,0 +1,32 @@
+/* eslint-disable -- spike script (evidence), see ../README.md */
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectVersionsCommand, PutObjectRetentionCommand, PutBucketLifecycleConfigurationCommand,
+  PutBucketVersioningCommand, PutBucketPolicyCommand, CreateMultipartUploadCommand, AbortMultipartUploadCommand, ListObjectsV2Command, DeleteBucketCommand, GetBucketLifecycleConfigurationCommand, CreateBucketCommand } from '@aws-sdk/client-s3';
+const mk = (k, s) => new S3Client({ endpoint: 'http://127.0.0.1:8333', region: 'us-east-1', forcePathStyle: true, credentials: { accessKeyId: k, secretAccessKey: s }, maxAttempts: 1 });
+const prov = mk('provkey', 'provsecret'), api = mk('apikey', 'apisecret'), origin = mk('originkey', 'originsecret');
+const EV = 'dev-cert-evidence-au', DR = 'dev-cert-draft-au', PUB = 'dev-catalog-public-au', INT = 'dev-intake-au';
+const R = []; const t = async (name, fn) => { try { R.push([name, 'ok', (await fn()) ?? '']); } catch (e) { R.push([name, 'ERR', `${e.name} ${e.$metadata?.httpStatusCode ?? ''}`]); } };
+let vid; const until = new Date(Date.now() + 3600e3);
+await t('API put evidence with COMPLIANCE lock', () => api.send(new PutObjectCommand({ Bucket: EV, Key: 'api1', Body: 'ct', ObjectLockMode: 'COMPLIANCE', ObjectLockRetainUntilDate: until })).then((r) => (vid = r.VersionId)));
+await t('API head: lock verified', () => api.send(new HeadObjectCommand({ Bucket: EV, Key: 'api1' })).then((r) => `${r.ObjectLockMode} ${r.ObjectLockRetainUntilDate?.toISOString()}`));
+await t('API read evidence', () => api.send(new GetObjectCommand({ Bucket: EV, Key: 'api1' })).then((r) => r.Body.transformToString()));
+await t('API list versions evidence', () => api.send(new ListObjectVersionsCommand({ Bucket: EV, Prefix: 'api1' })).then((r) => `versions=${r.Versions?.length}`));
+await t('API DeleteObject on evidence (must be refused)', () => api.send(new DeleteObjectCommand({ Bucket: EV, Key: 'api1' })).then(() => 'DELETED/MARKER (bad)'));
+await t('API DeleteObject VERSION on evidence (must be refused)', () => api.send(new DeleteObjectCommand({ Bucket: EV, Key: 'api1', VersionId: vid })).then(() => 'DELETED (bad)'));
+await t('API write + delete in cert-draft (allowed)', () => api.send(new PutObjectCommand({ Bucket: DR, Key: 'd1', Body: 'x' })).then(() => api.send(new DeleteObjectCommand({ Bucket: DR, Key: 'd1' }))).then(() => 'put+delete'));
+await t('API multipart create+abort in draft', () => api.send(new CreateMultipartUploadCommand({ Bucket: DR, Key: 'mpx' })).then((r) => api.send(new AbortMultipartUploadCommand({ Bucket: DR, Key: 'mpx', UploadId: r.UploadId }))).then(() => 'ok'));
+await t('API PutBucketLifecycle on evidence (must be refused)', () => api.send(new PutBucketLifecycleConfigurationCommand({ Bucket: EV, LifecycleConfiguration: { Rules: [{ ID: 'x', Status: 'Enabled', Filter: { Prefix: '' }, Expiration: { Days: 1 } }] } })).then(() => 'CHANGED (bad)'));
+await t('API PutBucketLifecycle on draft (must be refused)', () => api.send(new PutBucketLifecycleConfigurationCommand({ Bucket: DR, LifecycleConfiguration: { Rules: [{ ID: 'x', Status: 'Enabled', Filter: { Prefix: '' }, Expiration: { Days: 1 } }] } })).then(() => 'CHANGED (bad)'));
+await t('API PutBucketVersioning (must be refused)', () => api.send(new PutBucketVersioningCommand({ Bucket: DR, VersioningConfiguration: { Status: 'Enabled' } })).then(() => 'CHANGED (bad)'));
+await t('API PutBucketPolicy (must be refused)', () => api.send(new PutBucketPolicyCommand({ Bucket: DR, Policy: '{}' })).then(() => 'CHANGED (bad)'));
+await t('API shorten retention (not in the policy? PutObjectRetention is allowed)', () => api.send(new PutObjectRetentionCommand({ Bucket: EV, Key: 'api1', VersionId: vid, Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(Date.now() + 60e3) } })).then(() => 'SHORTENED (bad)'));
+await t('API create bucket / delete bucket (must be refused)', () => api.send(new CreateBucketCommand({ Bucket: 'dev-rogue-au' })).then(() => 'CREATED (bad)'));
+await t('API read catalog-public (must be refused)', () => api.send(new GetObjectCommand({ Bucket: PUB, Key: 'p1' })).then(() => 'READ (bad)'));
+await t('API write intake (not granted, must be refused)', () => api.send(new PutObjectCommand({ Bucket: INT, Key: 'z', Body: 'x' })).then(() => 'WRITTEN (bad)'));
+await t('ORIGIN get public object', () => origin.send(new GetObjectCommand({ Bucket: PUB, Key: 'p1' })).then((r) => r.Body.transformToString()));
+await t('ORIGIN put public (must be refused)', () => origin.send(new PutObjectCommand({ Bucket: PUB, Key: 'p9', Body: 'x' })).then(() => 'WRITTEN (bad)'));
+await t('ORIGIN list public bucket (must be refused)', () => origin.send(new ListObjectsV2Command({ Bucket: PUB })).then(() => 'LISTED (bad)'));
+await t('ORIGIN get evidence (must be refused)', () => origin.send(new GetObjectCommand({ Bucket: EV, Key: 'api1' })).then(() => 'READ (bad)'));
+await t('anonymous GET public bucket object (public access blocked?)', async () => { const r = await fetch(`http://127.0.0.1:8333/${PUB}/p1`); return `HTTP ${r.status}`; });
+await t('anonymous GET evidence object', async () => { const r = await fetch(`http://127.0.0.1:8333/${EV}/api1`); return `HTTP ${r.status}`; });
+await t('lifecycle readable roundtrip on intake (admin)', () => prov.send(new GetBucketLifecycleConfigurationCommand({ Bucket: INT })).then((r) => JSON.stringify(r.Rules[0].Expiration)));
+for (const [n, s, d] of R) console.log(`${s === 'ok' ? 'OK ' : 'ERR'} ${n} -> ${d}`);

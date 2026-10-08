@@ -1,0 +1,18 @@
+import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand, ListObjectVersionsCommand, PutObjectRetentionCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+const mk = (k, s) => new S3Client({ endpoint: 'http://127.0.0.1:8333', region: 'us-east-1', forcePathStyle: true, credentials: { accessKeyId: k, secretAccessKey: s }, maxAttempts: 1 });
+const prov = mk('provkey', 'provsecret');
+const EV = 'dev-cert-evidence-au';
+const R = []; const t = async (name, fn) => { try { R.push([name, 'ok', (await fn()) ?? '']); } catch (e) { R.push([name, 'ERR', `${e.name} ${e.$metadata?.httpStatusCode ?? ''} ${String(e.message).slice(0, 90)}`]); } };
+const until = new Date(Date.now() + 3600e3);
+let vid;
+await t('admin put COMPLIANCE lock 1h', () => prov.send(new PutObjectCommand({ Bucket: EV, Key: 'locked1', Body: 'ct', ObjectLockMode: 'COMPLIANCE', ObjectLockRetainUntilDate: until })).then((r) => (vid = r.VersionId)));
+await t('head shows mode/until/version', () => prov.send(new HeadObjectCommand({ Bucket: EV, Key: 'locked1' })).then((r) => `${r.ObjectLockMode} ${r.ObjectLockRetainUntilDate?.toISOString()} v=${r.VersionId === vid}`));
+await t('delete the locked VERSION (must be refused)', () => prov.send(new DeleteObjectCommand({ Bucket: EV, Key: 'locked1', VersionId: vid })).then(() => 'DELETED (bad)'));
+await t('delete with BypassGovernanceRetention (must be refused)', () => prov.send(new DeleteObjectCommand({ Bucket: EV, Key: 'locked1', VersionId: vid, BypassGovernanceRetention: true })).then(() => 'DELETED (bad)'));
+await t('shorten retention (must be refused)', () => prov.send(new PutObjectRetentionCommand({ Bucket: EV, Key: 'locked1', VersionId: vid, Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(Date.now() + 60e3) } })).then(() => 'SHORTENED (bad)'));
+await t('extend retention (allowed)', () => prov.send(new PutObjectRetentionCommand({ Bucket: EV, Key: 'locked1', VersionId: vid, Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(Date.now() + 7200e3) } })).then(() => 'extended'));
+await t('mode change COMPLIANCE->GOVERNANCE (must be refused)', () => prov.send(new PutObjectRetentionCommand({ Bucket: EV, Key: 'locked1', VersionId: vid, Retention: { Mode: 'GOVERNANCE', RetainUntilDate: new Date(Date.now() + 7200e3) } })).then(() => 'CHANGED (bad)'));
+await t('plain delete (marker) keeps the version', () => prov.send(new DeleteObjectCommand({ Bucket: EV, Key: 'locked1' })).then(() => prov.send(new ListObjectVersionsCommand({ Bucket: EV, Prefix: 'locked1' }))).then((r) => `versions=${r.Versions?.length ?? 0} markers=${r.DeleteMarkers?.length ?? 0}`));
+await t('old version still readable by id', () => prov.send(new GetObjectCommand({ Bucket: EV, Key: 'locked1', VersionId: vid })).then((r) => r.Body.transformToString()));
+await t('overwrite creates a new version, old locked one stays', () => prov.send(new PutObjectCommand({ Bucket: EV, Key: 'locked1', Body: 'ct2' })).then(() => prov.send(new ListObjectVersionsCommand({ Bucket: EV, Prefix: 'locked1' }))).then((r) => `versions=${r.Versions?.length ?? 0}`));
+for (const [n, s, d] of R) console.log(`${s === 'ok' ? 'OK ' : 'ERR'} ${n} -> ${d}`);
