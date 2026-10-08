@@ -4,7 +4,10 @@
     "market": "MondaPac {marketName}",
     "support": "Need help? Email {supportEmail}."
   },
-  "nav": { "home": "Home" },
+  "nav": {
+    "home": "Home",
+    "setup": "Seller account"
+  },
   "home": {
     "title": "Home",
     "empty": "Your seller workspace is being set up.",
@@ -16,21 +19,34 @@
   "showcase": {
     "title": "Sell to neighbours who care where their food comes from.",
     "cards": {
-      "one": { "name": "Cedar Lane Halal Meats", "detail": "Certificate verified" },
-      "two": { "name": "Olive Grove Bakehouse", "detail": "Same-day delivery in Brisbane" },
-      "three": { "name": "Riverbend Poultry Co.", "detail": "Family-run since 1998" }
+      "one": {
+        "name": "Cedar Lane Halal Meats",
+        "detail": "Certificate verified"
+      },
+      "two": {
+        "name": "Olive Grove Bakehouse",
+        "detail": "Same-day delivery in Brisbane"
+      },
+      "three": {
+        "name": "Riverbend Poultry Co.",
+        "detail": "Family-run since 1998"
+      }
     }
   },
   "identity": {
     "common": {
-      "account-type": { "seller": "Seller account" },
+      "account-type": {
+        "seller": "Seller account"
+      },
       "label": {
         "email": "Email",
         "password": "Password",
         "new-password": "New password",
         "name": "Your name"
       },
-      "help": { "password": "Use {min} to {max} characters. A short sentence works well." },
+      "help": {
+        "password": "Use {min} to {max} characters. A short sentence works well."
+      },
       "action": {
         "show-password": "Show password",
         "hide-password": "Hide password",
@@ -38,7 +54,9 @@
       }
     },
     "error": {
-      "credentials": { "invalid": "Email or password is incorrect. Check both and try again." },
+      "credentials": {
+        "invalid": "Email or password is incorrect. Check both and try again."
+      },
       "request": {
         "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
         "csrf": "Refresh the page and try again."
@@ -58,13 +76,17 @@
       "membership": {
         "none": "This account isn't part of a seller team any more. Ask the shop owner to invite you again."
       },
-      "seller-access": { "suspended": "This seller account is suspended. Contact us for details." },
+      "seller-access": {
+        "suspended": "This seller account is suspended. Contact us for details."
+      },
       "validation": {
         "email": {
           "required": "Enter your email.",
           "format": "Enter an email address like name@example.com."
         },
-        "password": { "required": "Enter your password." },
+        "password": {
+          "required": "Enter your password."
+        },
         "name": {
           "required": "Enter your name.",
           "characters": "Remove web addresses and special formatting characters from the name."
@@ -88,7 +110,9 @@
         "forgot": "Forgot password?",
         "sign-up": "New to MondaPac? Create a seller account"
       },
-      "label": { "keep-signed-in": "Keep me signed in on this device" },
+      "label": {
+        "keep-signed-in": "Keep me signed in on this device"
+      },
       "help": {
         "keep-signed-in": "Only on a device you don't share. You stay signed in for up to 30 days.",
         "throttled": "You can still reset your password."
@@ -103,7 +127,10 @@
       "page-title": "Create account – Seller account – MondaPac",
       "title": "Create a seller account",
       "body": "First confirm your email. Then MondaPac reviews your application before you can sell.",
-      "action": { "submit": "Create account", "sign-in": "Already have a seller account? Sign in" }
+      "action": {
+        "submit": "Create account",
+        "sign-in": "Already have a seller account? Sign in"
+      }
     },
     "check-email": {
       "page-title": "Check your email – Seller account – MondaPac",
@@ -112,22 +139,35 @@
       "body-no-address": "We've sent you an email. Open it and follow the link to continue.",
       "body-from-sign-in": "Confirm your email before you sign in. Use the link we sent to {email}, or send a new one.",
       "help": "It can take a few minutes. Check your spam folder too.",
-      "action": { "resend": "Send it again", "wrong-address": "Wrong address? Sign up again" },
-      "status": { "resent": "Sent again." }
+      "action": {
+        "resend": "Send it again",
+        "wrong-address": "Wrong address? Sign up again"
+      },
+      "status": {
+        "resent": "Sent again."
+      }
     },
     "confirm-email": {
       "page-title": "Confirm your email – Seller account – MondaPac",
       "title": "Confirm your email",
       "body": "Enter your password to confirm your email. Then you'll see the status of your application.",
-      "action": { "submit": "Confirm email" },
-      "status": { "checking": "Checking your link…" }
+      "action": {
+        "submit": "Confirm email"
+      },
+      "status": {
+        "checking": "Checking your link…"
+      }
     },
     "link": {
-      "title": { "rejected": "This link can't be used" },
+      "title": {
+        "rejected": "This link can't be used"
+      },
       "body": {
         "rejected": "It may have expired or already been used. Enter your email and we'll send a new one."
       },
-      "action": { "send-new": "Send a new link" },
+      "action": {
+        "send-new": "Send a new link"
+      },
       "status": {
         "sent": "If that address has an account waiting to be confirmed, we've sent a new link."
       }
@@ -135,7 +175,9 @@
     "forgot-password": {
       "page-title": "Reset your password – Seller account – MondaPac",
       "title": "Reset your seller account password",
-      "action": { "submit": "Send reset link" },
+      "action": {
+        "submit": "Send reset link"
+      },
       "sent": {
         "title": "Check your email",
         "body": "If a seller account uses {email}, we've sent a link to reset its password. The link works for 60 minutes."
@@ -145,7 +187,161 @@
       "page-title": "Choose a new password – Seller account – MondaPac",
       "title": "Choose a new password",
       "body": "Changing your password signs you out everywhere.",
-      "action": { "submit": "Save new password" }
+      "action": {
+        "submit": "Save new password"
+      }
+    }
+  },
+  "sellers": {
+    "steps": {
+      "business": "Business details",
+      "address": "Address and area",
+      "number": "Business number",
+      "slug": "Shop web address",
+      "submit": "Review and submit"
+    },
+    "account": {
+      "title": "Your seller account",
+      "intro": "Finish these steps, then submit your details for review.",
+      "step-done": "Done",
+      "step-todo": "To do",
+      "step-needs": "Needs attention",
+      "open": "Open",
+      "outside-area": "We're not in your area yet. We've saved your details. You can submit once we open there.",
+      "submit-later": "Review and submit opens when every step is done.",
+      "status-waiting": "Waiting"
+    },
+    "step": {
+      "counter": "Step {current} of {total}",
+      "back": "Back to your seller account"
+    },
+    "action": {
+      "save-continue": "Save and continue",
+      "continue": "Continue",
+      "saving": "Saving…",
+      "save": "Save"
+    },
+    "status": {
+      "saved": "Saved",
+      "dirty": "Unsaved changes"
+    },
+    "business": {
+      "title": "Your shop",
+      "label": {
+        "store-name": "Store name",
+        "business-name": "Business name",
+        "phone": "Phone",
+        "contact-email": "Contact email",
+        "sign-in-email": "You sign in with"
+      },
+      "help": {
+        "store-name": "Customers see this name. Don't use words that claim a certification, and don't copy another brand.",
+        "business-name": "The legal name of your business.",
+        "contact-email": "For customers and MondaPac to reach your business. You still sign in with {signInEmail}."
+      }
+    },
+    "address": {
+      "title": "Where your shop works from",
+      "registered-title": "Registered business address",
+      "different": "My registered business address is different",
+      "help": {
+        "scope": "Only the address where your shop works from sets your service area and time zone.",
+        "zone": "We use this to work out your local time for cut-offs and certificate dates. Only MondaPac can change it."
+      },
+      "result": {
+        "zone": "Your work time zone is {zoneName} ({zoneId}).",
+        "local-time": "It is {time} there now."
+      },
+      "choose-region": "Choose…",
+      "line1": "Street address",
+      "line2": "Apartment, suite or unit (optional)",
+      "suburb": "Suburb",
+      "state": "State or territory",
+      "postcode": "Postcode",
+      "country": "Country",
+      "label": {
+        "zone": "Time zone"
+      }
+    },
+    "number": {
+      "title": "Business number",
+      "label": {
+        "abn": "ABN"
+      },
+      "help": {
+        "abn": "11 digits"
+      },
+      "status": {
+        "checking": "Checking with the official register…",
+        "matched": "Matched with the official register",
+        "not-matched": "We couldn't match this number with the official register. Check it and try again, or contact us.",
+        "unavailable": "We couldn't check this right now. You can still submit, and a reviewer will check it."
+      }
+    },
+    "slug": {
+      "label": "Shop web address",
+      "help": "Lowercase letters, numbers and hyphens. {min} to {max} characters.",
+      "help-later": "You can only change this later by asking MondaPac.",
+      "suggested": "Suggested from your store name. You can change it.",
+      "status": {
+        "checking": "Checking…",
+        "available": "Available now. It's held for you when you submit."
+      }
+    },
+    "validation": {
+      "required": "Enter this detail.",
+      "characters": "Remove the special characters.",
+      "length": "This is too long or too short.",
+      "format": "Check the format and try again.",
+      "region": "Choose one of the options.",
+      "invalid": "Check this detail and try again."
+    },
+    "error": {
+      "phone": {
+        "required": "Enter a phone number."
+      },
+      "identifier": {
+        "format": "That doesn't look like a valid {identifierLabel}. Check the number and try again.",
+        "checksum": "That doesn't look like a valid {identifierLabel}. Check the number and try again."
+      },
+      "lookup": {
+        "limit": "You've changed this number too many times. Try again later."
+      },
+      "slug": {
+        "taken": "That address isn't available. Try another.",
+        "reserved": "That address isn't available. Try another.",
+        "format": "Use {min} to {max} lowercase letters, numbers and hyphens, with no hyphen at the start, end or in a row."
+      },
+      "request": {
+        "throttled": "Too many tries. Wait a moment and try again."
+      },
+      "conflict": {
+        "stale": "This page changed somewhere else. Reload it and try again."
+      },
+      "file": {
+        "change-request-required": "Use Request a change for these details."
+      },
+      "timezone": {
+        "unresolved": "We couldn't work out your time zone from this address. Check the address, or contact us.",
+        "not-selectable": "Choose a time zone from the list."
+      },
+      "address": {
+        "outside-service-area": "We're not in your area yet. We've saved your details. You can submit once we open there."
+      },
+      "limit": {
+        "daily": "You've reached today's limit for this. Try again later."
+      }
+    },
+    "common": {
+      "contact-us": "Contact us"
+    },
+    "optional": "optional",
+    "business-identifier": {
+      "abn": "ABN"
+    },
+    "page": {
+      "unavailable": "We couldn't load this page. Try again in a moment.",
+      "title-suffix": "Seller account – MondaPac"
     }
   }
 }

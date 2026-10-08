@@ -13,7 +13,18 @@ import type { PanelConfig, PanelHost } from './config.ts';
 
 /** The paths this panel may reach, by method (its own population's identity routes). */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
-  GET: new Set(['identity/seller/session', 'identity/seller/status']),
+  GET: new Set([
+    'identity/seller/session',
+    'identity/seller/status',
+    'sellers/my-file',
+    'sellers/my-file/form-descriptors',
+  ]),
+  PUT: new Set([
+    'sellers/my-file/general',
+    'sellers/my-file/address',
+    'sellers/my-file/slug',
+    'sellers/my-file/identifier',
+  ]),
   POST: new Set([
     'identity/seller/sign-up',
     'identity/seller/confirm-email',
@@ -23,6 +34,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/password-reset-email',
     'identity/seller/reset-password',
     'identity/seller/change-password',
+    'sellers/my-file/slug-check',
+    'sellers/my-file/identifier-check',
   ]),
 };
 

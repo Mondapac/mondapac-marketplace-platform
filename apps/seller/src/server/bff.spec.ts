@@ -11,6 +11,7 @@ const config: PanelConfig = {
   passwordMaxLength: 128,
   marketName: 'Australia',
   supportEmail: 'support@example.com',
+  storefrontAddress: null,
   clientAddressKey: null,
 };
 
@@ -79,6 +80,34 @@ describe('relay logging', () => {
       quiet,
     );
     expect(quiet).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay allowlist for the seller file', () => {
+  const put = (path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method: 'PUT',
+      headers: sameOrigin,
+      body: '{}',
+    });
+
+  it('relays the setup PUTs and refuses a PUT elsewhere', async () => {
+    const upstream = upstreamOk();
+    const ok = await relay(
+      config,
+      put('sellers/my-file/slug'),
+      ['sellers', 'my-file', 'slug'],
+      upstream,
+    );
+    expect(ok.status).toBe(200);
+    const no = await relay(
+      config,
+      put('sellers/my-file/submit'),
+      ['sellers', 'my-file', 'submit'],
+      upstream,
+    );
+    expect(no.status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -15,7 +15,7 @@ export type ApiResult<T> =
   | { readonly ok: false; readonly failure: ApiFailure };
 
 export async function callApi<T>(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT',
   path: string,
   body?: unknown,
   csrfToken?: string,
