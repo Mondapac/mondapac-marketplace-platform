@@ -24,6 +24,8 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { addressToJson, parseAddress } from '../../domain/address';
 import { identifierIndexKeyOf } from '../../domain/business-identifier';
 import type { RateReservation } from '../../domain/rate-limits';
+import { registerCheckAfter } from '../../domain/register-check';
+import { registerCheckIsCurrent } from '../register/register-lookup';
 import type { Sealed, SealedField } from '../../domain/sealed';
 import { SellerFile } from '../../domain/seller-file';
 import { SellerTaxProfile } from '../../domain/tax-registration';
@@ -854,6 +856,60 @@ describe.each(['AU', 'ZZ'] as const)('the register lookup in %s', (code) => {
         });
         expect(unavailable.ok && unavailable.value).toMatchObject({ state: 'unavailable' });
       });
+    });
+  });
+
+  describe('registerCheckIsCurrent (slice 5 reads it) and its boundary', () => {
+    const settingsOf = SETTINGS[code];
+    const checkOf = (
+      outcome: 'active' | 'not-found' | 'unavailable',
+      checkedAt: Temporal.Instant,
+    ) => registerCheckAfter(null, outcome, [], checkedAt, { kind: 'job', accountId: null });
+    const fileChangedAt = (t: Setup, at: Temporal.Instant) => {
+      const { sellerId } = seller(t, code);
+      return SellerFile.restore({
+        ...t.files.stored.get(`${code}|${sellerId}`)!,
+        lastChangedAt: at,
+      });
+    };
+
+    it('is true for a fresh active result and for a definite negative', () => {
+      const t = setUp(code);
+      const file = fileChangedAt(t, START);
+      expect(registerCheckIsCurrent(file, checkOf('active', START), START, settingsOf)).toBe(true);
+      expect(registerCheckIsCurrent(file, checkOf('not-found', START), START, settingsOf)).toBe(
+        true,
+      );
+      // A negative never ages and is not moved by an edit.
+      const much = START.add({ hours: settingsOf.maxResultAgeDays * 24 * 10 });
+      const edited = fileChangedAt(t, START.add({ hours: 1 }));
+      expect(registerCheckIsCurrent(edited, checkOf('not-found', START), much, settingsOf)).toBe(
+        true,
+      );
+    });
+
+    it('is false with no result, for unavailable, for an aged result and for a changed draft', () => {
+      const t = setUp(code);
+      const file = fileChangedAt(t, START);
+      expect(registerCheckIsCurrent(file, null, START, settingsOf)).toBe(false);
+      expect(registerCheckIsCurrent(file, checkOf('unavailable', START), START, settingsOf)).toBe(
+        false,
+      );
+      const aged = START.add({ hours: settingsOf.maxResultAgeDays * 24, seconds: 1 });
+      expect(registerCheckIsCurrent(file, checkOf('active', START), aged, settingsOf)).toBe(false);
+      const edited = fileChangedAt(t, START.add({ hours: 1 }));
+      expect(registerCheckIsCurrent(edited, checkOf('active', START), START, settingsOf)).toBe(
+        false,
+      );
+    });
+
+    it('counts a change at the very instant of the check as current, and one nanosecond later as stale', () => {
+      const t = setUp(code);
+      const check = checkOf('active', START);
+      const equal = fileChangedAt(t, START);
+      const later = fileChangedAt(t, START.add({ nanoseconds: 1 }));
+      expect(registerCheckIsCurrent(equal, check, START, settingsOf)).toBe(true);
+      expect(registerCheckIsCurrent(later, check, START, settingsOf)).toBe(false);
     });
   });
 
