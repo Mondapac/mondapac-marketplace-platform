@@ -508,6 +508,7 @@ function makeFigma(opts) {
         });
       });
     }
+    swapComponent(c) { this._checkLive(); if (!c || c.type !== 'COMPONENT') fail('swapComponent needs a component'); this._main = c; this._adopt(c); }
     resetOverrides() {}
   }
 

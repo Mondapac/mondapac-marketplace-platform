@@ -133,7 +133,7 @@ function tplAdminSellers() {
     [false, 'LF', 'Neutral', 'Logan Family Grocer', 'logan-family-grocer · Logan Central QLD 4114', ['Success', 'Dot', 'Active'], [['Manufacturer']], 'Healthy', '190', '1.2%', '18 May 2026'],
     [false, 'HP', 'Amber', 'Holland Park Bakehouse', 'holland-park-bakehouse · Holland Park QLD 4121', ['Success', 'Dot', 'Active'], [['Seller'], ['Vegan']], 'Healthy', '356', '0.4%', '2 Feb 2026'],
     [false, 'SC', 'Neutral', 'Slacks Creek Butchers', 'slacks-creek-butchers · Slacks Creek QLD 4127', ['Critical', 'Icon', 'Suspended'], [['Revoked']], 'Unhealthy', '12', '9.8%', '20 Jan 2026'],
-    [false, 'WO', 'Teal', 'Woolloongabba Organics', 'gabba-organics · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
+    [false, 'WO', 'Teal', 'Woolloongabba Grocers', 'gabba-grocers · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
   ];
   const tableCard = card('Seller list', [
     frame({ name: 'tabs', dir: 'H', px: 'space/3-5', align: 'center', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [inst('Tab', { Selected: 'True', Label: 'All', Count: '128' }), inst('Tab', { Selected: 'False', Label: 'Awaiting approval', Count: '6' }), inst('Tab', { Selected: 'False', Label: 'Active', Count: '109' }), inst('Tab', { Selected: 'False', Label: 'Certificate expiring', Count: '5' }), inst('Tab', { Selected: 'False', Label: 'Suspended', Count: '3' })]),

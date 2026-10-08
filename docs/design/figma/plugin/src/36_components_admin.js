@@ -7,10 +7,12 @@
 const SETTINGROW_AXES = { State: ['Default', 'Saving', 'Locked', 'Error'] };
 // [icon, icon colour, sample message, text colour]: Locked gives the reason, Error says the save failed. The Error text has no copy key yet (sample).
 const SETTINGROW_MSG = { Locked: ['lock', 'icon/muted', 'Your role can view these settings but not change them.', 'text/secondary'], Error: ['alert-circle', 'status/critical/fg', 'We couldn’t save this change. Try again.', 'status/critical/fg'] };
+// Message is one text property for Locked and Error, so its default names both uses; each instance sets the reason or the failure text.
+const SETTINGROW_MSG_DEF = 'Why it’s locked, or that the save failed.';
 const SETTINGROW_KEYS = ['Label', 'Description', 'Meta', 'Message', 'Show meta', 'Control'];
 function settingRowOpts(control) {
   return { width: 1368, desc: 'One setting that saves on its own (1.10.0): a label, a description, the control and the line "Changed by {name} on {date}" (Meta, read from the setting itself; Show meta off before the first change). Control is a swap slot (default a Switch, preferred Switch and SegmentedControl) and an exposed instance, so its value and segment labels are set from the row. State: Default; Saving while the request runs (the control shows the new value, "Saving…" with a still icon, aria-busy); Locked when the role cannot change it or the feature is not there yet (the control is drawn at 40% and stays focusable with aria-disabled; Message gives the reason in text, never a tooltip); Error when the save failed (the control shows the old value again; Message says so). A change with a consequence goes through a confirm dialog first (D3). A list that follows a choice, such as the CheckboxRow list for "Only selected types", sits under the row, not inside it. Width size/form-max; fill the card in screens.',
-    text: [{ prop: 'Label', node: 'label', def: 'Require approval for new sellers' }, { prop: 'Description', node: 'description', def: 'New sign-ups wait for a person to approve them.' }, { prop: 'Meta', node: 'meta', def: 'Changed by Layla Haddad on 6 Oct 2026' }, { prop: 'Message', node: 'message-text', def: SETTINGROW_MSG.Locked[2] }],
+    text: [{ prop: 'Label', node: 'label', def: 'Require approval for new sellers' }, { prop: 'Description', node: 'description', def: 'New sign-ups wait for a person to approve them.' }, { prop: 'Meta', node: 'meta', def: 'Changed by Layla Haddad on 6 Oct 2026' }, { prop: 'Message', node: 'message-text', def: SETTINGROW_MSG_DEF }],
     bool: [{ prop: 'Show meta', node: 'meta', def: true }], swap: [{ prop: 'Control', node: 'control', comp: control }] };
 }
 function settingRowVariant(c, p) {
@@ -40,9 +42,9 @@ function settingRowBlock(root) {
   const set = makeSet('SettingRow', SETTINGROW_AXES, settingRowVariant, settingRowOpts(control));
   settingRowPreferred(set, S.sets.SettingRow.keys.Control);
   componentBlock(root, set, { title: 'SettingRow', summary: 'One setting that saves on its own (1.10.0): Admin-only settings on the seller page (C1), Seller settings (P4) and every later setting.',
-    use: ['One setting per row inside a Card; each row saves on its own, after a confirm dialog when the change has a consequence.', 'Control: a Switch for on or off; a SegmentedControl for two or three answers (All types or Only selected types). A list that follows the choice sits under the row.', 'Saving while the request runs; Locked when the role cannot change it or the feature is not there yet; Error when the save failed (the control shows the old value again).', 'Meta is "Changed by {name} on {date}", from the setting itself.'],
+    use: ['One setting per row inside a Card; each row saves on its own, after a confirm dialog when the change has a consequence.', 'Control: a Switch for on or off; a SegmentedControl for two or three answers (All types or Only selected types). A list that follows the choice sits under the row.', 'Saving while the request runs; Locked when the role cannot change it or the feature is not there yet; Error when the save failed (the control shows the old value again). Message is one text for Locked and Error, so each use sets it: the reason, or the failure text.', 'Meta is "Changed by {name} on {date}", from the setting itself.'],
     props: ['Label, Description, Meta, Message (text); Show meta (boolean)', 'Control (instance swap, Switch or SegmentedControl), exposed so its value is set from the row', 'State: Default, Saving, Locked, Error'],
-    a11y: ['The label names the control (role="switch", or a radio group for a SegmentedControl); the description and the meta line are tied with aria-describedby.', 'Locked: the control is aria-disabled and stays focusable; the reason is text beside it, never a tooltip.', 'Saving: aria-busy on the row and "Saving…" in a role="status" region. Error is announced once and keeps focus on the control.', 'Every state is words with an icon, never colour alone.'],
+    a11y: ['The label names the control (role="switch", or a radio group for a SegmentedControl); the description and the meta line are tied with aria-describedby.', 'Locked: the control is aria-disabled and stays focusable; the reason is text beside it, tied with aria-describedby, never a tooltip. The dimmed control is the disabled look of this library (40% opacity).', 'Saving: aria-busy on the row and "Saving…" in a role="status" region. Error is announced once and keeps focus on the control.', 'Every state is words with an icon, never colour alone.'],
     dont: ['A separate Save button for one setting.', 'Hiding a setting the role cannot change.'] });
   return set;
 }
@@ -111,7 +113,7 @@ function sellerAdminLacks() {
   if (cb && cb.set) {
     if (!cb.keys['Show undo']) out.push('CheckboxRow Show undo');
     const noUndo = cb.set.children.filter(function (v) { return !v.children.some(function (k) { return k.name === 'undo'; }); }).length;
-    if (noUndo) out.push('CheckboxRow undo action (' + noUndo + ' variants without it)');
+    if (noUndo) out.push('CheckboxRow undo action (' + noUndo + (noUndo === 1 ? ' variant' : ' variants') + ' without it)');
   }
   if (sr && sr.set) SETTINGROW_KEYS.forEach(function (k) { if (!sr.keys[k]) out.push('SettingRow ' + k); });
   return out;

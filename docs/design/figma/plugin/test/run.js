@@ -746,6 +746,8 @@ function state190(M, opts, label) {
 // review, Seller detail with its admin-only settings, Seller settings, Store profile, their state boards, dialogs and phone frames).
 const CODE_190 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.9.0.js'), 'utf8'); // the released 1.9.0 plugin (code.js of main at 0900aca)
 const SA_P1 = 'Admin · Sellers (Phase 3)', SA_P3 = 'Admin · Seller review', SA_P2 = 'Admin · Seller detail', SA_P4 = 'Shared · Settings · Seller settings', SA_S7 = 'Seller · Store profile';
+const APPROVE_REASONS_1100 = { 'checks-missing': 'Record 2 required checks first.', 'register-blocks': 'Approve is unavailable while the register result is negative.', 'register-lookup': 'Look it up again or record a manual check first.',
+  'not-current-revision': 'This isn’t the current submission.', 'identifier-held': 'Another approved or suspended seller already holds this number.', 'decision-in-progress': 'A decision is being recorded.' };
 const statesOf = (base, list) => list.map((s) => (s ? base + ' · ' + s : base));
 const SHELL_ADMIN_1100 = statesOf(SA_P1, [null, 'Selected', 'Selection limit', 'Incomplete', 'Approved', 'View only']).concat(statesOf(SA_P3, ['Application', 'Checks missing', 'Register negative', 'Lookup not performed', 'Change request', 'Withdrawn']),
   statesOf(SA_P2, [null, 'Edit', 'Not approved', 'View only', 'History']), statesOf(SA_P4, [null, 'View only']));
@@ -812,8 +814,53 @@ function state1100(M, opts, label) {
   check(btnState(missing, 'Approve').join() === 'Disabled' && textsOf(missing).includes('Record 2 required checks first.') && btnState(app, 'Approve').join() === 'Default' && btnState(wd, 'Approve').length === 0 && btnState(wd, 'Reject…').length === 0, label + ': Approve is disabled with its reason beside it while required checks are missing, enabled on a complete application, and gone on a withdrawn one');
   check(textsOf(app).includes('Recorded by Layla Haddad on 8 Oct 2026, 10:02 AEST') && instsOf(app, /^Value=/).some((x) => x._main.parent.name === 'CheckboxRow' && propOf(x, 'Show undo') === true) && instsOf(missing, /State=Saving$/).some((x) => x._main.parent.name === 'CheckboxRow'), label + ': a recorded reviewer check says who recorded it and when, with Undo; a check being saved shows State=Saving');
   check(textsOf(F(SA_P1 + ' · View only')).includes(SELLERS_VIEW_ONLY_COPY) && instsOf(F(SA_P4 + ' · View only'), /^State=/).filter((x) => x._main.parent.name === 'SettingRow').every((x) => x._main.variantProperties.State === 'Locked') && textsOf(F(SA_P2 + ' · History')).includes('Viewing this is recorded.'), label + ': view-only pages say why and lock their settings; the history says that viewing it is recorded');
+  rules1100(M, label);
   const dark = DARK_1100.map((n) => frameNamed(M, n)[0]);
   check(dark.every((d) => d && d.getPluginData('theme') === 'dark' && d.parent === hostNamed(M, 'Templates · Dark preview')), label + ': the dark preview has ' + DARK_1100.join(', '));
+}
+// The hard rules and one acceptance text per flow F16 to F21 on every 1.10.0 frame (Sajad's review of 1.10.0).
+function rules1100(M, label) {
+  const F = (n) => frameNamed(M, n)[0];
+  const all = ADMIN_1100.concat(SELLER_1100).map(F);
+  const words = (f) => textsOf(f);
+  const bare = []; all.forEach((f) => words(f).forEach((t) => { if (/(^|[^A-Za-z])\$\s?\d/.test(t)) bare.push(f.name + ': ' + t); }));
+  const prefixes = []; [SA_S7, SA_S7 + ' · Minimum order states'].map(F).forEach((f) => instsOf(f, /^Type=Text/).filter((i) => !hiddenAbove(i, f)).forEach((i) => i.findAll((t) => t.type === 'TEXT' && t.name === 'prefix' && t.visible !== false).forEach((t) => prefixes.push(t.characters))));
+  check(bare.length === 0 && prefixes.length >= 8 && prefixes.every((x) => /^[A-Z]{3}$/.test(x)), label + ': the minimum order Input shows an ISO currency code as its prefix (' + prefixes.length + ') and no 1.10.0 text puts a bare "$" before an amount' + (bare.length ? ' (' + bare.slice(0, 2).join(' | ') + ')' : ''));
+  const dec = all.filter((f) => f.name.indexOf(SA_P1) === 0 || f.name.indexOf(SA_P3) === 0 || f.name === 'Dialogs · Seller review · Admin');
+  const ai = []; dec.forEach((f) => words(f).forEach((t) => { if (/\bAI\b|artificial|assistant|recommend/i.test(t)) ai.push(f.name + ': ' + t.slice(0, 60)); }));
+  check(dec.length === 17 && ai.length === 0, label + ': no AI or recommendation text on the ' + dec.length + ' Sellers list and Seller review frames, boards and dialogs' + (ai.length ? ' (' + ai.slice(0, 2).join(' | ') + ')' : ''));
+  const cert = []; all.forEach((f) => words(f).forEach((t) => { if (/halal|kosher|vegan|organic|gluten|fair ?trade/i.test(t)) cert.push(f.name + ': ' + t.slice(0, 50)); }));
+  check(cert.length === 0, label + ': no certification type word (halal, kosher, vegan, organic, gluten, fairtrade) on any 1.10.0 frame' + (cert.length ? ' (' + cert.slice(0, 2).join(' | ') + ')' : ''));
+  const REASONS = { 'Checks missing': 'Record 2 required checks first.', 'Register negative': 'Approve is unavailable while the register result is negative.', 'Lookup not performed': 'Look it up again or record a manual check first.' };
+  check(Object.keys(REASONS).every((k) => { const f = F(SA_P3 + ' · ' + k); const head = f.findOne((x) => x.name === 'Header'); const ap = head && instsOf(head, /^Variant=Primary/).filter((x) => propOf(x, 'Label') === 'Approve'); const why = head && head.findOne((x) => x.name === 'decision-reason'); return ap && ap.length === 1 && ap[0]._main.variantProperties.State === 'Disabled' && why && textsOf(why).includes(REASONS[k]); }), label + ': on Checks missing, Register negative and Lookup not performed, Approve is disabled with the exact reason beside it');
+  const board = F(SA_P3 + ' · Approve disabled');
+  check(instsOf(board, /^Variant=Primary.*State=Disabled/).filter((x) => propOf(x, 'Label') === 'Approve').length === 6 && Object.keys(APPROVE_REASONS_1100).every((k) => textsOf(board).includes(APPROVE_REASONS_1100[k])), label + ': the Approve disabled board shows 6 disabled Approve buttons, each with its reason');
+  const rows = (n) => instsOf(F(n), /^State=/).filter((x) => x._main.parent.name === 'SettingRow').map((x) => x._main.variantProperties.State).join();
+  check(rows(SA_P2 + ' · View only') === 'Locked,Locked,Locked' && rows(SA_P4 + ' · View only') === 'Locked', label + ': a view-only admin sees the 3 Admin-only settings and the Market setting locked');
+  const MUST = [
+    [SA_P3 + ' · Application', ['Reject…', 'A match doesn’t prove the applicant controls the business.', 'Undo']],
+    [SA_P3 + ' · Withdrawn', ['This submission was withdrawn.']],
+    [SA_P1 + ' · Selection limit', ['You can select up to 50 sellers at a time.', 'Reject…']],
+    [SA_P1 + ' · Selected', ['Change requests are decided one at a time.']],
+    [SA_P1 + ' · Approved', ['Search works on All, Awaiting review and Incomplete.']],
+    [SA_P1, ['+ Kind']], [SA_P1 + ' · View only', ['+ Needs a check']],
+    ['Dialogs · Seller review · Admin', ['1 done', '1 skipped', '1 refused', 'Skipped: no current submission, or a decision is under way.', 'The shop owner sees the text of this reason.']],
+    [SA_P2 + ' · Edit banners', ['Saving withdraws the pending submission.', 'You also need permission to approve identity changes.', 'A change request is waiting. Decide it first.']],
+    [SA_P2 + ' · Edit', ['Record 1 required check first.']],
+    [SA_P2, ['The seller can’t change these.', 'Restricting types arrives with the product catalog.', 'Changed by Layla Haddad on 6 Oct 2026']],
+    [SA_P2 + ' · Not approved', ['Allow one more application']],
+    [SA_P4, ['Require approval for new sellers', 'Applies to new sign-ups in Australia only.']],
+    [SA_P4 + ' · View only', ['Your role can view these settings but not change them.']],
+    [SA_S7 + ' · Pending change', ['Waiting for review', 'Cancel request', 'Another change request is waiting. Cancel it or wait for the decision.']],
+    [SA_S7 + ' · Staff', ['Only the shop owner can change these details.']],
+    [SA_S7 + ' · Minimum order states', ['No minimum. Customers can order any amount.', 'Minimum removed.', 'You’re signed in as this seller. Edit their details from the seller’s page.']],
+  ];
+  const miss = []; MUST.forEach((e) => { const t = textsOf(F(e[0])); e[1].forEach((x) => { if (!t.includes(x)) miss.push(e[0] + ': ' + x); }); });
+  check(miss.length === 0, label + ': each 1.10.0 frame shows the ux.md texts of its flow (F16 to F21)' + (miss.length ? ' (missing: ' + miss.slice(0, 3).join(' | ') + ')' : ''));
+  const btn = (n, lbl) => instsOf(F(n), /^Variant=/).filter((x) => propOf(x, 'Label') === lbl && !hiddenAbove(x, F(n))).map((x) => x._main.variantProperties.State).join();
+  check(btn(SA_P2, 'Allow one more application') === '' && btn(SA_P2 + ' · Edit', 'Save changes') === 'Disabled' && /^(Disabled,?)+$/.test(btn(SA_S7 + ' · Staff', 'Request a change')) && /^(Disabled,?)+$/.test(btn(SA_S7 + ' · Pending change', 'Request a change')) && /^(Default,?)+$/.test(btn(SA_S7, 'Request a change')), label + ': "Allow one more application" only on Not approved; Save disabled while a check is missing; "Request a change" disabled for Staff and while a change waits, enabled for the owner');
+  const infoIcons = all.map((f) => instsOf(f, /^Tone=Info/).filter((b) => b._main.parent.name === 'InfoBanner')).reduce((a, b) => a.concat(b), []);
+  check(infoIcons.length > 0 && infoIcons.every((b) => !b.findOne((x) => x.name === 'icon-badge-check') && b.findOne((x) => x.name === 'icon-info')), label + ': the ' + infoIcons.length + ' Info banners of 1.10.0 show the info icon, not the certificate chip\'s badge-check');
 }
 
 async function updateTo180(M, label, opts, from) {
@@ -954,7 +1001,7 @@ async function updateScenario(label, opts, from) {
   // export
   r = await send(M, { type: 'export', version: SPEC_VERSION });
   check(!r.err, 'export finished' + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
-  if (r.done) compareExport(r.done.files, 'starter');
+  check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), 'starter' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, 'starter');
   // theme commands on a selection
   const adminHost = findHost('Templates · Admin'); const adminPage = adminHost.page();
   await M.figma.setCurrentPageAsync(adminPage);
@@ -980,7 +1027,7 @@ async function updateScenario(label, opts, from) {
   const orphan = []; M.ROOT.children.forEach((p) => p.findAll(() => true).forEach((n) => (n._fills || []).concat(n._strokes || []).forEach((pp) => { if (pp.boundVariables && !M.VARS.get(pp.boundVariables.color.id)) orphan.push(pathOf(n)); })));
   check(orphan.length === 0, 'no layer is bound to a deleted variable after upgrade (' + orphan.length + ')');
   r = await send(M, { type: 'export', version: SPEC_VERSION });
-  if (r.done) compareExport(r.done.files, 'after upgrade');
+  check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), 'after upgrade' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, 'after upgrade');
 
   // 2 · Professional plan (modes allowed from the start)
   console.log('\n■ Scenario 2 · Professional plan (modes)');
@@ -996,7 +1043,7 @@ async function updateScenario(label, opts, from) {
   state190(M, { maxModes: 4 }, 'new build (modes)');
   state1100(M, { maxModes: 4 }, 'new build (modes)');
   r = await send(M, { type: 'export', version: SPEC_VERSION });
-  if (r.done) compareExport(r.done.files, 'modes');
+  check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), 'modes' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, 'modes');
 
   // 3 · IBM Plex not available
   console.log('\n■ Scenario 3 · IBM Plex missing (fallback fonts)');
@@ -1234,7 +1281,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'audit' });
     check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the repair');
     r = await send(Q, { type: 'export', version: SPEC_VERSION });
-    if (r.done) compareExport(r.done.files, '1.8.1 repaired ' + tag11 + ' export');
+    check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), '1.8.1 repaired ' + tag11 + ' export' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, '1.8.1 repaired ' + tag11 + ' export');
   }
   // guards: hand-edited and foreign nodes are skipped and reported, never deleted
   {
@@ -1308,7 +1355,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'audit' });
     check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update');
     r = await send(Q, { type: 'export', version: SPEC_VERSION });
-    if (r.done) compareExport(r.done.files, '1.8.2 updated ' + tag12 + ' export');
+    check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), '1.8.2 updated ' + tag12 + ' export' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, '1.8.2 updated ' + tag12 + ' export');
   }
   {
     // an Input set that is not the plugin's is not re-laid out
@@ -1369,7 +1416,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'audit' });
     check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update' + (r.done ? ': ' + r.done.report.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
     r = await send(Q, { type: 'export', version: SPEC_VERSION });
-    if (r.done) compareExport(r.done.files, '1.8.3 updated ' + tag13 + ' export');
+    check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), '1.8.3 updated ' + tag13 + ' export' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, '1.8.3 updated ' + tag13 + ' export');
   }
   {
     // a CheckboxRow that is not the plugin's, or whose variants were renamed: the 1.8.3 frames wait, and say why
@@ -1468,7 +1515,7 @@ async function updateScenario(label, opts, from) {
     const again = allNodes(Q).filter((n) => !snap14.has(n.id) || fullSnap(n) + n.overflowDirection !== snap14.get(n.id));
     check(!r.err && r.done && r.done.added.length === 0 && allNodes(Q).length === all14.length && again.length === 0 && ringStyles(Q).map(spreads).join('|') === st14, 'a second run adds, changes and moves nothing (' + again.length + ')');
     r = await send(Q, { type: 'export', version: SPEC_VERSION });
-    if (r.done) compareExport(r.done.files, '1.8.4 updated ' + tag14 + ' export');
+    check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), '1.8.4 updated ' + tag14 + ' export' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, '1.8.4 updated ' + tag14 + ' export');
   }
   {
     // a new build: rings with their spread, scrolling phone screens
@@ -1701,7 +1748,9 @@ async function updateScenario(label, opts, from) {
     load(Q, CODE);
     const before = allNodes(Q); const ids0 = new Set(before.map((n) => n.id)); const nVars = Q.VARS.size;
     const snap0 = new Map(before.map((n) => [n.id, fullSnap(n)])); const pos0 = posOf(Q);
+    const hostW = (X) => ['Templates · Admin', 'Templates · Seller'].map((h) => hostNamed(X, h).width).join(); const w0 = hostW(Q);
     r = await send(Q, { type: 'update' });
+    check(hostW(Q) === w0, 'Templates · Admin and Templates · Seller keep their width (' + w0 + ') ' + tag16);
     check(!r.err && r.done, 'Update library finished on the 1.9.0 file ' + tag16 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add16 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add16.join('\n    '));
     const want16 = ADDED_1100_MID.concat(ADDED_1100_TPL, ['changelog row 1.10.0', 'cover version', 'file version ' + SPEC_VERSION]);
@@ -1748,7 +1797,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'audit' });
     check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update' + (r.done ? ': ' + r.done.report.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
     r = await send(Q, { type: 'export', version: SPEC_VERSION });
-    if (r.done) compareExport(r.done.files, '1.10.0 updated ' + tag16 + ' export');
+    check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), '1.10.0 updated ' + tag16 + ' export' + ': Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, '1.10.0 updated ' + tag16 + ' export');
   }
   {
     const fresh190 = async () => { const G = start(STARTER, CODE_190); await send(G, { type: 'build' }); load(G, CODE); return G; };
@@ -1770,7 +1819,7 @@ async function updateScenario(label, opts, from) {
     G = await fresh190();
     const odd = setOf(G, 'CheckboxRow').children.find((v) => v.name === 'Value=Checked, State=Hover'); odd.children[1].name = 'my content';
     r = await send(G, { type: 'update' }); rp = rep16(r);
-    check(!r.err && !odd.children.some((k) => k.name === 'undo') && rp.includes('ℹ skipped the CheckboxRow undo action in Value=Checked, State=Hover: its layers were changed by hand') && rp.includes('CheckboxRow undo action (9 variants)') && rp.some((l) => l === SA_WAIT + 'CheckboxRow undo action (1 variants without it)') && saFrames(G).length === 0, 'a CheckboxRow variant changed by hand gets no undo link and is reported; the other 9 get it; the frames wait (' + (r.err ? r.err.message : rp.filter((l) => /^ℹ skipped/.test(l)).join(' | ')) + ')');
+    check(!r.err && !odd.children.some((k) => k.name === 'undo') && rp.includes('ℹ skipped the CheckboxRow undo action in Value=Checked, State=Hover: its layers were changed by hand') && rp.includes('CheckboxRow undo action (9 variants)') && rp.some((l) => l === SA_WAIT + 'CheckboxRow undo action (1 variant without it)') && saFrames(G).length === 0, 'a CheckboxRow variant changed by hand gets no undo link and is reported; the other 9 get it; the frames wait (' + (r.err ? r.err.message : rp.filter((l) => /^ℹ skipped/.test(l)).join(' | ')) + ')');
     await noOp16(G, 'hand-changed CheckboxRow variant');
     // d. the CheckboxRow Usage panel and description changed by hand are kept and reported; everything else arrives
     G = await fresh190();

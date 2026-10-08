@@ -23,7 +23,7 @@ const P1_ALL = [P1_AWAITING[0],
   { i: 'FN', tone: 'Amber', name: 'Faisal Noor', email: 'faisal@noorpantry.example', status: 'Approved', since: '4 Feb 2026' },
   { i: 'YK', tone: 'Teal', name: 'Yusuf Karimi', email: 'yusuf@kurabyfresh.example', status: 'Approved', since: '12 Mar 2026', reset: true },
   { i: 'KR', tone: 'Neutral', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example', status: 'Suspended', since: '20 Jan 2026' },
-  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbaorganics.example', status: 'Invited', since: '6 Oct 2026' },
+  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbagrocers.example', status: 'Invited', since: '6 Oct 2026' },
 ];
 // Tab counts: [Awaiting approval, Approved, Changes needed, Suspended, Invited, All]; the empty frame has nobody waiting.
 const P1_TABS = ['Awaiting approval', 'Approved', 'Changes needed', 'Suspended', 'Invited', 'All'];

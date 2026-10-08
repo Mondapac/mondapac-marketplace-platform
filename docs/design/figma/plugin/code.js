@@ -1951,7 +1951,7 @@ function checkboxRowVariant(c, p) {
 const CHECKBOXROW_PROPS_180 = ['Label, Description (text); Show badge (boolean, the "Protected" Badge)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only'];
 const CHECKBOXROW_PROPS = ['Label, Description (text); Show badge (boolean, the "Protected" Badge, or "Required" on a reviewer check); Show undo (boolean, 1.10.0)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only, Saving (1.10.0)'];
 const CHECKBOXROW_A11Y_180 = ['The row is one <label>; disabled rows use aria-disabled and stay focusable with the reason tied by aria-describedby.', 'Read-only keeps the checked state readable ("Granted" or "Not granted" as hidden text).', '"Protected" is text plus the lock icon, never colour alone.', 'A group per resource is a <fieldset> with a <legend>.'];
-const CHECKBOXROW_A11Y = CHECKBOXROW_A11Y_180.concat(['Saving (1.10.0): aria-busy on the row and "Saving…" in a role="status" region; "Recorded" is announced once. "Undo" is named "Undo {check}" and keeps focus on the row after it.']);
+const CHECKBOXROW_A11Y = CHECKBOXROW_A11Y_180.concat(['Saving (1.10.0): aria-busy on the row and "Saving…" in a role="status" region, and the checkbox ignores input until the save ends; "Recorded" is announced once. "Undo" is named "Undo {check}", is not rendered when Show undo is off, announces "Set back to not done." and keeps focus on the row after it.']);
 function checkboxRowBlock(root) {
   const cr = makeSet('CheckboxRow', CHECKBOXROW_AXES, checkboxRowVariant, CHECKBOXROW_OPTS);
   componentBlock(root, cr, { title: 'CheckboxRow', summary: 'One permission on the role editor and later multi-select lists (1.8.0); one reviewer check that saves on its own (1.10.0). 2 values by 6 states.',
@@ -2354,10 +2354,12 @@ function setupLacks() {
 const SETTINGROW_AXES = { State: ['Default', 'Saving', 'Locked', 'Error'] };
 // [icon, icon colour, sample message, text colour]: Locked gives the reason, Error says the save failed. The Error text has no copy key yet (sample).
 const SETTINGROW_MSG = { Locked: ['lock', 'icon/muted', 'Your role can view these settings but not change them.', 'text/secondary'], Error: ['alert-circle', 'status/critical/fg', 'We couldn’t save this change. Try again.', 'status/critical/fg'] };
+// Message is one text property for Locked and Error, so its default names both uses; each instance sets the reason or the failure text.
+const SETTINGROW_MSG_DEF = 'Why it’s locked, or that the save failed.';
 const SETTINGROW_KEYS = ['Label', 'Description', 'Meta', 'Message', 'Show meta', 'Control'];
 function settingRowOpts(control) {
   return { width: 1368, desc: 'One setting that saves on its own (1.10.0): a label, a description, the control and the line "Changed by {name} on {date}" (Meta, read from the setting itself; Show meta off before the first change). Control is a swap slot (default a Switch, preferred Switch and SegmentedControl) and an exposed instance, so its value and segment labels are set from the row. State: Default; Saving while the request runs (the control shows the new value, "Saving…" with a still icon, aria-busy); Locked when the role cannot change it or the feature is not there yet (the control is drawn at 40% and stays focusable with aria-disabled; Message gives the reason in text, never a tooltip); Error when the save failed (the control shows the old value again; Message says so). A change with a consequence goes through a confirm dialog first (D3). A list that follows a choice, such as the CheckboxRow list for "Only selected types", sits under the row, not inside it. Width size/form-max; fill the card in screens.',
-    text: [{ prop: 'Label', node: 'label', def: 'Require approval for new sellers' }, { prop: 'Description', node: 'description', def: 'New sign-ups wait for a person to approve them.' }, { prop: 'Meta', node: 'meta', def: 'Changed by Layla Haddad on 6 Oct 2026' }, { prop: 'Message', node: 'message-text', def: SETTINGROW_MSG.Locked[2] }],
+    text: [{ prop: 'Label', node: 'label', def: 'Require approval for new sellers' }, { prop: 'Description', node: 'description', def: 'New sign-ups wait for a person to approve them.' }, { prop: 'Meta', node: 'meta', def: 'Changed by Layla Haddad on 6 Oct 2026' }, { prop: 'Message', node: 'message-text', def: SETTINGROW_MSG_DEF }],
     bool: [{ prop: 'Show meta', node: 'meta', def: true }], swap: [{ prop: 'Control', node: 'control', comp: control }] };
 }
 function settingRowVariant(c, p) {
@@ -2387,9 +2389,9 @@ function settingRowBlock(root) {
   const set = makeSet('SettingRow', SETTINGROW_AXES, settingRowVariant, settingRowOpts(control));
   settingRowPreferred(set, S.sets.SettingRow.keys.Control);
   componentBlock(root, set, { title: 'SettingRow', summary: 'One setting that saves on its own (1.10.0): Admin-only settings on the seller page (C1), Seller settings (P4) and every later setting.',
-    use: ['One setting per row inside a Card; each row saves on its own, after a confirm dialog when the change has a consequence.', 'Control: a Switch for on or off; a SegmentedControl for two or three answers (All types or Only selected types). A list that follows the choice sits under the row.', 'Saving while the request runs; Locked when the role cannot change it or the feature is not there yet; Error when the save failed (the control shows the old value again).', 'Meta is "Changed by {name} on {date}", from the setting itself.'],
+    use: ['One setting per row inside a Card; each row saves on its own, after a confirm dialog when the change has a consequence.', 'Control: a Switch for on or off; a SegmentedControl for two or three answers (All types or Only selected types). A list that follows the choice sits under the row.', 'Saving while the request runs; Locked when the role cannot change it or the feature is not there yet; Error when the save failed (the control shows the old value again). Message is one text for Locked and Error, so each use sets it: the reason, or the failure text.', 'Meta is "Changed by {name} on {date}", from the setting itself.'],
     props: ['Label, Description, Meta, Message (text); Show meta (boolean)', 'Control (instance swap, Switch or SegmentedControl), exposed so its value is set from the row', 'State: Default, Saving, Locked, Error'],
-    a11y: ['The label names the control (role="switch", or a radio group for a SegmentedControl); the description and the meta line are tied with aria-describedby.', 'Locked: the control is aria-disabled and stays focusable; the reason is text beside it, never a tooltip.', 'Saving: aria-busy on the row and "Saving…" in a role="status" region. Error is announced once and keeps focus on the control.', 'Every state is words with an icon, never colour alone.'],
+    a11y: ['The label names the control (role="switch", or a radio group for a SegmentedControl); the description and the meta line are tied with aria-describedby.', 'Locked: the control is aria-disabled and stays focusable; the reason is text beside it, tied with aria-describedby, never a tooltip. The dimmed control is the disabled look of this library (40% opacity).', 'Saving: aria-busy on the row and "Saving…" in a role="status" region. Error is announced once and keeps focus on the control.', 'Every state is words with an icon, never colour alone.'],
     dont: ['A separate Save button for one setting.', 'Hiding a setting the role cannot change.'] });
   return set;
 }
@@ -2458,7 +2460,7 @@ function sellerAdminLacks() {
   if (cb && cb.set) {
     if (!cb.keys['Show undo']) out.push('CheckboxRow Show undo');
     const noUndo = cb.set.children.filter(function (v) { return !v.children.some(function (k) { return k.name === 'undo'; }); }).length;
-    if (noUndo) out.push('CheckboxRow undo action (' + noUndo + ' variants without it)');
+    if (noUndo) out.push('CheckboxRow undo action (' + noUndo + (noUndo === 1 ? ' variant' : ' variants') + ' without it)');
   }
   if (sr && sr.set) SETTINGROW_KEYS.forEach(function (k) { if (!sr.keys[k]) out.push('SettingRow ' + k); });
   return out;
@@ -2600,7 +2602,7 @@ function tplAdminSellers() {
     [false, 'LF', 'Neutral', 'Logan Family Grocer', 'logan-family-grocer · Logan Central QLD 4114', ['Success', 'Dot', 'Active'], [['Manufacturer']], 'Healthy', '190', '1.2%', '18 May 2026'],
     [false, 'HP', 'Amber', 'Holland Park Bakehouse', 'holland-park-bakehouse · Holland Park QLD 4121', ['Success', 'Dot', 'Active'], [['Seller'], ['Vegan']], 'Healthy', '356', '0.4%', '2 Feb 2026'],
     [false, 'SC', 'Neutral', 'Slacks Creek Butchers', 'slacks-creek-butchers · Slacks Creek QLD 4127', ['Critical', 'Icon', 'Suspended'], [['Revoked']], 'Unhealthy', '12', '9.8%', '20 Jan 2026'],
-    [false, 'WO', 'Teal', 'Woolloongabba Organics', 'gabba-organics · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
+    [false, 'WO', 'Teal', 'Woolloongabba Grocers', 'gabba-grocers · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
   ];
   const tableCard = card('Seller list', [
     frame({ name: 'tabs', dir: 'H', px: 'space/3-5', align: 'center', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [inst('Tab', { Selected: 'True', Label: 'All', Count: '128' }), inst('Tab', { Selected: 'False', Label: 'Awaiting approval', Count: '6' }), inst('Tab', { Selected: 'False', Label: 'Active', Count: '109' }), inst('Tab', { Selected: 'False', Label: 'Certificate expiring', Count: '5' }), inst('Tab', { Selected: 'False', Label: 'Suspended', Count: '3' })]),
@@ -3612,7 +3614,7 @@ const P1_ALL = [P1_AWAITING[0],
   { i: 'FN', tone: 'Amber', name: 'Faisal Noor', email: 'faisal@noorpantry.example', status: 'Approved', since: '4 Feb 2026' },
   { i: 'YK', tone: 'Teal', name: 'Yusuf Karimi', email: 'yusuf@kurabyfresh.example', status: 'Approved', since: '12 Mar 2026', reset: true },
   { i: 'KR', tone: 'Neutral', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example', status: 'Suspended', since: '20 Jan 2026' },
-  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbaorganics.example', status: 'Invited', since: '6 Oct 2026' },
+  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbagrocers.example', status: 'Invited', since: '6 Oct 2026' },
 ];
 // Tab counts: [Awaiting approval, Approved, Changes needed, Suspended, Invited, All]; the empty frame has nobody waiting.
 const P1_TABS = ['Awaiting approval', 'Approved', 'Changes needed', 'Suspended', 'Invited', 'All'];
@@ -4274,16 +4276,23 @@ const SA_SELLERS = {
   toowoomba: { i: 'TS', tone: 'Blue', store: 'Toowoomba Spice House', slug: 'toowoomba-spice', name: 'Omar Farouk', email: 'omar@toowoombaspice.example' },
   goldcoast: { i: 'GP', tone: 'Purple', store: 'Gold Coast Pantry', slug: 'gold-coast-pantry', name: 'Aisha Rahman', email: 'aisha@goldcoastpantry.example' },
   noor: { i: 'NP', tone: 'Amber', store: 'Noor Pantry', slug: 'noor-pantry', name: 'Faisal Noor', email: 'faisal@noorpantry.example' },
-  gabba: { i: 'WO', tone: 'Teal', store: 'Woolloongabba Organics', slug: 'gabba-organics', name: 'Zainab Ali', email: 'zainab@gabbaorganics.example' },
+  gabba: { i: 'WO', tone: 'Teal', store: 'Woolloongabba Grocers', slug: 'gabba-grocers', name: 'Zainab Ali', email: 'zainab@gabbagrocers.example' },
   moorooka: { i: 'MG', tone: 'Blue', store: 'Moorooka Grocer', slug: 'moorooka-grocer', name: 'Rashid Omar', email: 'rashid@moorookagrocer.example' },
   slacks: { i: 'SC', tone: 'Neutral', store: 'Slacks Creek Butchers', slug: 'slacks-creek-butchers', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example' },
 };
-// An InfoBanner with a title only (the body layer is hidden), for the one-sentence messages of section 5.
+// An InfoBanner with a title only (the body layer is hidden), for the one-sentence messages of section 5. An Info banner here shows the
+// info icon (an override in this instance): the InfoBanner's own Info icon is badge-check, the certificate chip's glyph, which would read as
+// "verified" next to a register result or the certificate slot.
 function saBanner(tone, title, action, name) {
   const p = { Tone: tone, Title: title, Body: ' ', 'Show action': !!action }; if (action) p.Action = action;
   const b = inst('InfoBanner', p, { name: name || 'banner', sizeH: 'FILL' });
   const bodyT = b.findOne(function (n) { return n.name === 'body'; }); if (bodyT) bodyT.visible = false;
+  if (tone === 'Info') infoIcon(b);
   return b;
+}
+function infoIcon(b) {
+  const ic = b.findOne(function (n) { return n.type === 'INSTANCE' && n.name === 'icon-badge-check'; }); if (!ic) return;
+  ic.swapComponent(S.icons.info); ic.name = 'icon-info'; recolor(ic, 'text/link');
 }
 function saLine(s, name, color) { return text(s, 'Body/Small', color || 'text/muted', { name: name || 'note', sizeH: 'FILL' }); }
 function linkBtn(label, ic, name) { const p = { Variant: 'Link', Size: 'Sm', State: 'Default', Label: label }; if (ic) { p['Leading icon'] = true; p.Icon = { icon: ic }; } return inst('Button', p, { name: name || 'link' }); }
@@ -4315,7 +4324,7 @@ function settingRow(o) {
   const p = { State: o.state || 'Default', Label: o.label, 'Show meta': !!o.meta };
   if (o.desc) p.Description = o.desc;
   if (o.meta) p.Meta = o.meta;
-  if (o.msg) p.Message = o.msg;
+  if (o.msg || SETTINGROW_MSG[p.State]) p.Message = o.msg || SETTINGROW_MSG[p.State][2];
   if (o.seg) p.Control = { comp: S.sets.SegmentedControl.comp };
   const r = inst('SettingRow', p, { name: 'setting · ' + o.label, sizeH: 'FILL' });
   if (!o.desc) { const d = r.findOne(function (n) { return n.name === 'description'; }); if (d) d.visible = false; }
@@ -4330,14 +4339,15 @@ function confirmDlg(name, title, body, primary, o) { o = o || {}; return dlg({ n
 // ---- P1 Sellers (Phase 3 frame; ux.md 3.2 P1, F16, F17)
 const P1P3_NAME = 'Admin · Sellers (Phase 3)';
 const P1P3_TABS = ['Awaiting review', 'Incomplete', 'Changes needed', 'Not approved', 'Approved', 'Suspended', 'Invited', 'All'];
-const P1P3_COUNTS = ['5', '2', '1', '1', '3', '1', '1', '14'];
-// Awaiting review: [seller, kind, since, status, flags]; flags: selected, locked (a change request, not selectable), busy (a decision is being recorded)
-const P1P3_AWAITING = [['sunnybank', 'New application', '29 Sep 2026'], ['darra', 'New application', '2 Oct 2026'], ['kuraby', 'Change request', '7 Oct 2026', 'Approved', { locked: true }],
-  ['logan', 'New application', '5 Oct 2026'], ['holland', 'New application', '7 Oct 2026', null, { busy: true }]];
-const P1P3_SELECTED = [0, 1, 3];
+const P1P3_COUNTS = ['5', '2', '1', '1', '3', '1', '1', '13'];
+// Awaiting review, oldest first: [seller, kind, since, status, flags]; Since is the date of the current submission. flags: locked (a change
+// request, not selectable), busy (a decision is being recorded). All counts each seller once: Kuraby's change request is an approved seller's row.
+const P1P3_AWAITING = [['darra', 'New application', '2 Oct 2026'], ['logan', 'New application', '5 Oct 2026'], ['sunnybank', 'New application', '6 Oct 2026'],
+  ['kuraby', 'Change request', '7 Oct 2026', 'Approved', { locked: true }], ['holland', 'New application', '7 Oct 2026', null, { busy: true }]];
+const P1P3_SELECTED = [0, 1, 2];
 const P1P3_INCOMPLETE = [['toowoomba', null, '4 Oct 2026', 'Not in your area yet'], ['goldcoast', null, '6 Oct 2026', 'Not in your area yet']];
 const P1P3_APPROVED = [['kuraby', null, '12 Mar 2026', 'Approved'], ['noor', null, '4 Feb 2026', 'Approved'], ['gabba', null, '7 Jul 2026', 'Approved']];
-const P1P3_ALL = [['sunnybank', null, '29 Sep 2026', 'Awaiting review'], ['toowoomba', null, '4 Oct 2026', 'Not in your area yet'], ['moorooka', null, '3 Oct 2026', 'Changes needed'],
+const P1P3_ALL = [['sunnybank', null, '6 Oct 2026', 'Awaiting review'], ['toowoomba', null, '4 Oct 2026', 'Not in your area yet'], ['moorooka', null, '5 Oct 2026', 'Not approved'],
   ['kuraby', null, '12 Mar 2026', 'Approved'], ['slacks', null, '20 Jan 2026', 'Suspended'], ['gabba', null, '6 Oct 2026', 'Invited']];
 const SEARCH_HELP = 'Store name, shop web address, or the full ' + SETUP.idLabel + '.';
 const SEARCH_DISABLED = 'Search works on All, Awaiting review and Incomplete.';
@@ -4354,6 +4364,11 @@ function p1p3SellerCell(m, extra) {
     text(m.name + ' · ' + m.email, 'Caption/Default', 'text/muted', { name: 'owner', sizeH: 'FILL', truncate: true })];
   if (extra) lines.push(text(extra, 'Caption/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' }));
   return [inst('IdentityTile', { Tone: m.tone, Shape: 'Rounded', Initials: m.i }), frame({ name: 'seller', dir: 'V', sizeH: 'FILL' }, lines)];
+}
+function addChip(label, name) {
+  const c = inst('FilterChip', { Type: 'Add' }, { name: name });
+  const t = c.findOne(function (n) { return n.name === 'add-label'; }); if (t) t.characters = '+ ' + label;
+  return c;
 }
 function selectHeader(value, state) { return frame({ name: 'th select', dir: 'H', w: 56, h: 42, align: 'center', justify: 'center', fill: 'bg/subtle', stroke: 'border/default', sides: ['bottom'] }, [inst('Checkbox', { Value: value, State: state || 'Default' }, { name: 'select-all' })]); }
 // o: { tab, rows, selected (indexes), select (checkbox column), viewOnly }
@@ -4391,11 +4406,12 @@ function bulkBar(count, cap) {
 function tplP1P3(state) {
   const tab = { Incomplete: 'Incomplete', Approved: 'Approved', 'View only': 'All' }[state] || 'Awaiting review';
   const view = state === 'View only', limit = state === 'Selection limit';
-  const counts = limit ? ['64'].concat(P1P3_COUNTS.slice(1, 7), ['73']) : P1P3_COUNTS;
-  const kids = [pageTitle('Sellers', (limit ? '73' : '14') + ' sellers in the ' + SA_MARKET + ' market', [primaryHeaderButton('Add seller', view ? 'Disabled' : 'Default')])];
+  const counts = limit ? ['64'].concat(P1P3_COUNTS.slice(1, 7), ['72']) : P1P3_COUNTS;
+  const kids = [pageTitle('Sellers', (limit ? '72' : '13') + ' sellers in the ' + SA_MARKET + ' market', [primaryHeaderButton('Add seller', view ? 'Disabled' : 'Default')])];
   if (view) kids.push(text(SELLERS_VIEW_ONLY, 'Body/Small', 'text/muted', { name: 'view-only-help', sizeH: 'FILL' }));
   const chips = [];
-  if (tab === 'Awaiting review') chips.push(inst('FilterChip', { Type: 'Add' }, { name: 'kind-filter' }));
+  if (tab === 'Awaiting review') chips.push(addChip('Kind', 'kind-filter'));
+  if (tab === 'All') chips.push(addChip('Needs a check', 'needs-check-filter'));
   if (tab === 'Incomplete') chips.push(inst('FilterChip', { Type: 'Applied', Label: 'Outside service area' }, { name: 'outside-filter' }));
   kids.push(frame({ name: 'filters', dir: 'H', gap: 'space/3', align: 'start', sizeH: 'FILL' }, [p1p3Search(tab === 'Approved')].concat(chips)));
   kids.push(tabsBar(P1P3_TABS.map(function (t, i) { return [t, counts[i], t === tab]; })));
@@ -4490,7 +4506,7 @@ function historyCard(events, empty) {
   const body = empty ? [saLine(empty, 'empty')] : events.map(function (e) { const p = { Tone: e[0], Who: e[1], What: e[2], When: e[3], 'Show quote': !!e[4] }; if (e[4]) p.Quote = e[4]; return inst('TimelineItem', p, { sizeH: 'FILL' }); });
   return card('History', [header('History', null), frame({ name: 'events', dir: 'V', pad: [0, 18, 6, 18], sizeH: 'FILL' }, body)]);
 }
-const P3_HISTORY = [['Teal', 'Hana Yusuf', 'submitted again', P3_APP.submitted], ['Blue', SA_REVIEWER, 'asked for changes', '3 Oct 2026, 11:05 AEST', 'Use the legal name of your business, as it appears on the register, then submit again.'],
+const P3_HISTORY = [['Teal', 'Hana Yusuf', 'submitted again', P3_APP.submitted], ['Blue', SA_REVIEWER, 'asked for changes', '3 Oct 2026, 11:05 AEST', 'Use the legal name of your business, then submit again.'],
   ['Teal', 'Hana Yusuf', 'submitted the application', '29 Sep 2026, 9:40 AEST']];
 function sideCard(title, kids) { return card(title, [header(title, null), frame({ name: 'body', dir: 'V', gap: 'space/3', pad: [0, 18, 18, 18], sizeH: 'FILL' }, kids)]); }
 function otherSellers(list) {
@@ -4621,8 +4637,7 @@ function tplP2(state) {
 // Edit an approved seller (F18 steps 1 and 2): the S2 to S5 fields, the checks and the register state of P3, one save that applies at once.
 function p2Edit() {
   const checks = card('Checks', [header('Checks', null), reviewCheck({ label: STORE_CHECK, required: true, value: 'Checked', desc: SA_RECORDED, undo: true }), reviewCheck({ label: P3_CHECKS[1][0], required: true })]);
-  const bar = inst('FormActionBar', { Layout: 'Inline', State: 'Dirty' }, { name: 'FormActionBar', sizeH: 'FILL' });
-  setNested(bar, 'primary', prop('Button', 'Label', 'Save changes')); setNested(bar, 'secondary', prop('Button', 'Label', 'Cancel'));
+  const bar = setupBar({ primary: 'Save changes', secondary: 'Cancel', state: 'Dirty', disabled: true });
   return [saBanner('Info', 'Changes to business identity apply at once and the owner is emailed.', null, 'edit-banner'),
     setupCard('Business details', [setupField('Store name', { value: SETUP.store, helper: STORE_HELP }), setupField('Business name', { value: 'Kuraby Fresh Grocers Pty Ltd' }), setupField('Phone', { value: SETUP.phone }), setupField('Contact email', { value: SETUP.contact, optional: true })]),
     setupCard('Address and area', addressFields(false)), setupCard('Business number', [numberField('Matched')]),
@@ -4665,7 +4680,7 @@ function tplP4States() {
 
 // ---- Dialogs (ux.md 3.4): D3 uses, D4 modes, D7, D8, D9, D10
 const PREPARED = 'Business details incomplete';
-const PREPARED_TEXT = 'Some of the business details you gave are missing or don’t match. Check them and submit again.';
+const PREPARED_TEXT = 'Some of the business details you gave are incomplete. Check them and submit again.';
 function preparedSelect(state, value) { return panelField('Prepared reason', { select: { state: state, value: value } }); }
 function preview(label, value) { return frame({ name: 'preview', dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(label, 'Caption/Default', 'text/muted'), text(value, 'Body/Default', 'text/primary', { name: 'preview-text', sizeH: 'FILL' })]); }
 function bodyRejectApplication() {
@@ -4673,7 +4688,7 @@ function bodyRejectApplication() {
   const f = inst('Field', { Label: 'Reason for the seller', Helper: REASON_HELP + ' Don’t copy values from the official register.', 'Show helper': true, 'Show counter': true, Counter: REASON_COUNTER, 'Show error': false, Control: { comp: ta } }, { name: 'field-reason-for-the-seller', sizeH: 'FILL' });
   return [preparedSelect('Default', 'Choose a prepared reason (optional)'), f];
 }
-function bodyRejectBulk() { return [preparedSelect('Filled', PREPARED), preview('The sellers see this text', PREPARED_TEXT)]; }
+function bodyRejectBulk() { return [preparedSelect('Filled', PREPARED), preview('The shop owner sees the text of this reason.', PREPARED_TEXT)]; }
 function bodyRejectChange() { return [preparedSelect('Filled', 'Store name not accepted'), preview('The shop owner sees the text of this reason.', 'We couldn’t accept this store name. Use the name customers know your shop by.')]; }
 function bodyBulkResult() {
   const count = function (ic, token, s) { return frame({ name: s, dir: 'H', gap: 'space/2', align: 'center' }, [icon(ic, token, 16), text(s, 'Body/Strong')]); };
@@ -4682,7 +4697,7 @@ function bodyBulkResult() {
     text('Skipped: no current submission, or a decision is under way.', 'Body/Small', 'text/muted', { name: 'skipped-help', sizeH: 'FILL' }),
     item('Darra Asian Mart', 'Skipped: this isn’t the current submission.'), item('Logan Family Grocer', 'Refused: record 2 required checks first.')];
 }
-function bodySlug() { return [readOnlyPair('Current address', SETUP.storefront + SETUP.slug), setupField('Shop web address', { value: 'kuraby-fresh-grocers', prefix: SETUP.storefront, helper: SLUG_HELP, status: ['Success', 'Available now. It’s held for you when you submit.'] }), saBanner('Attention', 'The old address is retired and can never be used again.', null, 'warning')]; }
+function bodySlug() { return [readOnlyPair('Current address', SETUP.storefront + SETUP.slug), setupField('Shop web address', { value: 'kuraby-fresh-grocers', prefix: SETUP.storefront, helper: SLUG_HELP, status: ['Success', 'Available now.'] }), saBanner('Attention', 'The old address is retired and can never be used again.', null, 'warning')]; }
 function bodyZone() { return [readOnlyPair('Current time zone', SETUP.zone + ' (' + SETUP.zoneId + ')'), panelField('Time zone', { select: { state: 'Filled', value: 'Sydney time (Australia/Sydney)' }, helper: 'This changes cut-off and expiry times for this seller. The change is recorded.' })]; }
 function bodyConfirmYou() { return [text('Enter your password to change your business details.', 'Body/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' }), authField('Password', { type: 'Password', filled: true }), authField('6-digit code', { type: 'Code', filled: true })]; }
 function tplDialogsReview() {
@@ -4739,7 +4754,11 @@ const S7_NAME = 'Seller · Store profile';
 const S7_REQUESTED = 'Kuraby Fresh Grocers';
 const S7_REJECTED = 'We couldn’t accept this store name. Use the name customers know your shop by.';
 const PLAIN_TEXT = 'Plain text only. Web addresses and formatting are shown as typed.';
-const MIN_UNIT = 'Amount in AUD, including GST';
+// The AU Market's sample money values: the currency code and tax phrase come from Market configuration, amounts are formatted with Intl.
+const MIN_CURRENCY = 'AUD';
+const MIN_MONEY = { saved: 'A$50.00', latest: 'A$40.00', example: 'A$25.00' };
+const MIN_UNIT = 'Amount in ' + MIN_CURRENCY + ', including GST';
+const ACTING_AS = 'You’re signed in as this seller. Edit their details from the seller’s page.';
 const MIN_APPLIES = 'Customers can’t check out your items with less than this. Shipping isn’t counted. A change applies at once, including to open carts.';
 function s7Field(label, value, o) {
   o = o || {};
@@ -4752,13 +4771,19 @@ function s7Field(label, value, o) {
 }
 function saveBar(state) { return setupBar({ primary: 'Save', secondary: null, state: state || 'Clean' }); }
 // The identity rows: owner (Request a change), Staff (the reason instead), pending or not accepted (the store name as a Compare row).
+const S7_OWNER_ONLY = 'Only the shop owner can change these details.';
+const S7_PENDING = 'Another change request is waiting. Cancel it or wait for the decision.';
+// A DataRow "Request a change" that is disabled, with its reason as the row's note.
+function askOff(r) { setNested(r, 'action', { State: 'Disabled' }); return r; }
 function identityRows(o) {
-  const ask = o.staff || o.readOnly ? null : 'Request a change'; const note = o.staff ? 'Only the shop owner can change these details.' : null;
+  const ask = o.readOnly ? null : 'Request a change'; const off = o.staff || o.pending; const note = o.staff ? S7_OWNER_ONLY : (o.pending ? S7_PENDING : null);
   let store;
   if (o.pending) store = saRow({ label: 'Store name', value: SETUP.store, compare: S7_REQUESTED, valueLabel: 'Current', compareLabel: 'Requested', flag: FLAG.waiting, action: 'Cancel request', note: 'Your current details stay in use until MondaPac reviews this.' });
   else if (o.notAccepted) store = saRow({ label: 'Store name', value: SETUP.store, compare: S7_REQUESTED, valueLabel: 'Current', compareLabel: 'Requested', flag: FLAG.notAccepted, action: 'Request a change', note: S7_REJECTED });
   else store = saRow({ label: 'Store name', value: SETUP.store, action: ask, note: note, narrow: o.narrow });
-  return [store, saRow({ label: 'Business name', value: SETUP.business, action: o.pending ? null : ask, note: note, narrow: o.narrow }), saRow({ label: SETUP.idLabel, value: SETUP.abn, action: o.pending ? null : ask, note: note, narrow: o.narrow })];
+  const rows = [saRow({ label: 'Business name', value: SETUP.business, action: ask, note: note, narrow: o.narrow }), saRow({ label: SETUP.idLabel, value: SETUP.abn, action: ask, note: note, narrow: o.narrow })];
+  if (off && ask) { if (o.staff) askOff(store); rows.forEach(askOff); }
+  return [store].concat(rows);
 }
 function s7General(o) {
   const kids = [header('General', null), frame({ name: 'locked-note', dir: 'H', pad: [0, 'space/5', 'space/2', 'space/5'], sizeH: 'FILL' }, [saLine('These details need a review before they change.', 'identity-note')])].concat(identityRows(o));
@@ -4773,8 +4798,10 @@ function s7General(o) {
   return card('General', kids);
 }
 function s7Address(o) {
-  const ask = o.staff || o.readOnly ? null : 'Request a change';
-  return card('Address', [header('Address', null), saRow({ label: 'Where your shop works from', value: SETUP.street + ', ' + SETUP.locality + ' ' + SETUP.region + ' ' + SETUP.postcode, action: ask, note: o.staff ? 'Only the shop owner can change these details.' : null, narrow: o.narrow }),
+  const ask = o.readOnly ? null : 'Request a change';
+  const where = saRow({ label: 'Where your shop works from', value: SETUP.street + ', ' + SETUP.locality + ' ' + SETUP.region + ' ' + SETUP.postcode, action: ask, note: o.staff ? S7_OWNER_ONLY : (o.pending ? S7_PENDING : null), narrow: o.narrow });
+  if (ask && (o.staff || o.pending)) askOff(where);
+  return card('Address', [header('Address', null), where,
     saRow({ label: 'Work time zone', value: SETUP.zone + ' (' + SETUP.zoneId + ')', note: 'To change this, contact us.', narrow: o.narrow }), saRow({ label: 'Shop web address', value: SETUP.storefront + SETUP.slug, note: 'To change this, contact us.', narrow: o.narrow })]);
 }
 const S7_TEXTS = { description: 'Fresh lamb, beef and poultry, cut to order in Kuraby since 2009. Order by 2 pm for same-day pickup.', policies: 'Unopened items can be returned within 7 days. Chilled items can’t be returned once collected.' };
@@ -4792,19 +4819,19 @@ function s7Texts(o) {
 function s7Tax(o) { return card('Tax registration', [header('Tax registration', null), saRow({ label: SETUP.taxQuestion, value: 'Yes, from ' + SETUP.taxFrom, action: o.readOnly ? null : 'Record a change', note: 'MondaPac doesn’t decide whether you must register.' })]); }
 // The Settings card: the minimum order in each state of 3.1a.
 const MIN_STATES = ['None', 'Set', 'Dirty', 'Saving', 'Removed', 'Invalid amount', 'Wrong currency', 'Save conflict', 'Load error', 'No edit permission', 'Acting-as'];
-function minField(value, error) { return setupField('Minimum order (optional)', { value: value, prefix: 'AUD', helper: error ? null : MIN_UNIT, error: error }); }
+function minField(value, error) { return setupField('Minimum order (optional)', { value: value, prefix: MIN_CURRENCY, helper: error ? null : MIN_UNIT, error: error }); }
 function minOrder(state) {
   const kids = [];
   if (state === 'Load error') return [saBanner('Critical', 'We couldn’t load this card.', 'Try again', 'load-error')];
-  if (state === 'No edit permission') return [saRow({ label: 'Minimum order', value: 'A$50.00' })];
-  if (state === 'Acting-as') return [saBanner('Info', 'You’re signed in as this seller. Edit their details from the seller’s page.', null, 'acting-as'), saRow({ label: 'Minimum order', value: 'A$50.00' })];
+  if (state === 'No edit permission') return [saRow({ label: 'Minimum order', value: MIN_MONEY.saved })];
+  if (state === 'Acting-as') return [saBanner('Attention', ACTING_AS, null, 'acting-as'), saRow({ label: 'Minimum order', value: MIN_MONEY.saved })];
   if (state === 'Invalid amount') kids.push(saBanner('Critical', 'Check the details below', null, 'error-summary'));
-  if (state === 'Wrong currency') kids.push(saBanner('Attention', 'This amount isn’t in AUD. Reload the page and try again.', 'Reload', 'currency'));
-  if (state === 'Save conflict') kids.push(saBanner('Attention', 'This setting was changed somewhere else. The latest value is A$40.00. Check it and save again.', null, 'conflict'));
+  if (state === 'Wrong currency') kids.push(saBanner('Attention', 'This amount isn’t in ' + MIN_CURRENCY + '. Reload the page and try again.', 'Reload', 'currency'));
+  if (state === 'Save conflict') kids.push(saBanner('Attention', 'This setting was changed somewhere else. The latest value is ' + MIN_MONEY.latest + '. Check it and save again.', null, 'conflict'));
   const value = { None: '', Removed: '', Dirty: '60.00', Saving: '60.00', 'Invalid amount': '0', 'Save conflict': '60.00', 'Wrong currency': '60' }[state];
-  kids.push(minField(value === undefined ? '50.00' : value, state === 'Invalid amount' ? 'Enter an amount greater than zero, for example A$25.00.' : null), setupNote(MIN_APPLIES, 'applies'));
+  kids.push(minField(value === undefined ? '50.00' : value, state === 'Invalid amount' ? 'Enter an amount greater than zero, for example ' + MIN_MONEY.example + '.' : null), setupNote(MIN_APPLIES, 'applies'));
   if (state === 'None' || state === 'Removed') kids.push(setupNote('No minimum. Customers can order any amount.', 'none'));
-  else kids.push(frame({ name: 'current', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [saLine('Current minimum: ' + (state === 'Save conflict' ? 'A$40.00' : 'A$50.00'), 'current-text', 'text/secondary'), state === 'Set' ? linkBtn('Remove minimum', null, 'remove') : null]));
+  else kids.push(frame({ name: 'current', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [saLine('Current minimum: ' + (state === 'Save conflict' ? MIN_MONEY.latest : MIN_MONEY.saved), 'current-text', 'text/secondary'), linkBtn('Remove minimum', null, 'remove')]));
   const bar = { None: ['Clean', true, true], Set: ['Clean'], Dirty: ['Dirty'], Saving: ['Saving'], Removed: ['Clean'], 'Invalid amount': ['Error'], 'Wrong currency': ['Dirty'], 'Save conflict': ['Dirty'] }[state];
   kids.push(setupBar({ primary: 'Save', secondary: null, state: bar[0], disabled: bar[1], noStatus: bar[2] }));
   if (state === 'Removed') kids.push(inst('Toast', { Tone: 'Success', Message: 'Minimum removed.', 'Show action': false }, { name: 'Toast' }));
@@ -4830,7 +4857,7 @@ function tplS7(state, o) {
 function tplS7Min() { return stateBoard(S7_NAME + ' · Minimum order states', 'Store profile: minimum order', 'The Settings card in each state of ux.md 3.1a. The prefix is the Market\'s ISO currency code, never a bare "$"; amounts are formatted with Intl in the page locale. No view permission is B5, as for the whole page.', MIN_STATES, function (s) { return frame({ name: 'card-body', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, minOrder(s)); }); }
 function tplS7Phone() {
   const o = { narrow: true };
-  const scr = phoneScreen(S7_NAME + ' (phone)', 'Seller', [text('Store profile', 'Heading/H1', 'text/primary', { sizeH: 'FILL' }), s7General(o), s7Address(o)], 'More');
+  const scr = phoneScreen(S7_NAME + ' (phone)', 'Seller', [text('Store profile', 'Heading/H1', 'text/primary', { sizeH: 'FILL' }), s7General(o), s7Address(o), s7Settings(o)], 'More');
   applyDensity(scr, 'touch');
   return scr;
 }
