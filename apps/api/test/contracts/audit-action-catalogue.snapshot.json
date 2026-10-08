@@ -11,7 +11,7 @@
       "founding": "boolean",
       "roleId": "id",
       "scope": "enumOf(platform|seller)",
-      "sellerId": "id"
+      "sellerId": "optional(id)"
     }
   },
   {

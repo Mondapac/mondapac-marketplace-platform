@@ -23,6 +23,7 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { SessionRepository } from '../ports/session.repository';
+import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
@@ -61,6 +62,8 @@ export interface ChangePasswordDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
+  /** HF11: the closing unit voids the account's open sign-in challenges. */
+  readonly challenges: SignInChallengeRepository;
   readonly links: OneTimeLinkRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
@@ -90,9 +93,10 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  * nothing in the input names one.
  *
  * Decided by the design (6.5, 3.5, 6.2): the current password is required in the same request
- * (a code too once a second factor exists, slice 7, so an admin is refused until then); **every
- * other session of the account is revoked** (`password-changed`), and **the current session
- * continues with a new token** (rotation), so a token copied before the change stops working.
+ * (an admin needs a code too, Hassan I2 (b): that path comes with admin sign-in in slice 7b, so
+ * an admin is refused until then); **every other session of the account is revoked**
+ * (`password-changed`), and **the current session continues with a new token** (rotation), so a
+ * token copied before the change stops working.
  *
  * Guessing the current password is throttled as sign-in is (HF1, 6.8): the reservation unit
  * counts `sign-in.account-origin`, `sign-in.account` and `sign-in.origin` for the account's
@@ -107,7 +111,8 @@ const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
  * was revoked meanwhile: `session.invalid`, nothing changes), the new hash saved, the other
  * sessions revoked, the reservation given back and `identity.account-password-changed.v1`
  * (`change`) recorded, which sends the "password changed" mail (E13). The same unit cancels the
- * account's unused reset link (Hassan L2), so a link requested before the change stops working.
+ * account's unused reset link (Hassan L2), so a link requested before the change stops working,
+ * and voids every open sign-in challenge of the account (HF11; Hassan I2 (d)).
  *
  * Every attempt that reaches the current password leaves a sign-in record (identity design 10.2;
  * Hassan L3) in the unit that decides it: `password.current-incorrect` or `password-changed`,
@@ -141,7 +146,7 @@ export class ChangePassword extends UseCase<
     const { market, actor } = context;
     const { unitOfWork, accounts, throttles, keys, policy, hasher } = this.deps;
     // The gate admits only an authenticated actor under own-resources. An admin needs a code
-    // with the password once a second factor exists (6.5; slice 7): refused until then.
+    // with the password (6.5; Hassan I2 (b)), which slice 7b brings: refused until then.
     if (actor.kind !== 'authenticated' || actor.population === 'admin') {
       return err({ code: 'access.denied' });
     }
@@ -278,6 +283,8 @@ export class ChangePassword extends UseCase<
         await accounts.save(market, current);
         // Hassan L2: a reset link requested before the change stops working with it.
         await this.deps.links.cancelUnused(market, actor.accountId, 'reset-password');
+        // HF11, Hassan I2 (d): a challenge opened with the old password can never complete.
+        await this.deps.challenges.voidAllOf(market, actor.accountId);
         const revokedSessions = await sessions.revokeAllOf(
           market,
           actor.accountId,

@@ -3,8 +3,10 @@ import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { InvitationRepository } from '../ports/invitation.repository';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { SessionRepository } from '../ports/session.repository';
+import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleRepository } from '../ports/throttle.repository';
 
@@ -16,12 +18,16 @@ export const THROTTLE_KEPT_HOURS = 48;
 export const LINK_KEPT_AFTER_SPENT_HOURS = 24;
 /** At most this many one-day deletes of sign-in records per run; the next run continues. */
 export const MAX_RECORD_DAYS_PER_RUN = 400;
+/** Accepted and revoked invitations leave 30 days after the decision (data design 9; slice 7). */
+export const INVITATION_KEPT_AFTER_DECISION_HOURS = 30 * 24;
 
 export interface PurgeExpiredOutput {
   readonly sessions: number;
   readonly throttles: number;
   readonly signInRecords: number;
   readonly links: number;
+  readonly challenges: number;
+  readonly invitations: number;
 }
 
 export type PurgeExpiredFailure = { readonly code: 'access.denied' };
@@ -32,6 +38,8 @@ export interface PurgeExpiredDependencies {
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
   readonly links: OneTimeLinkRepository;
+  readonly challenges: SignInChallengeRepository;
+  readonly invitations: InvitationRepository;
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
 }
@@ -44,7 +52,9 @@ export interface PurgeExpiredDependencies {
  * - throttle counters whose window started more than 48 hours ago and that are not blocked;
  * - sign-in records older than the Market's retention (H3: 90 days), one day of `occurred_at`
  *   per statement, from the oldest;
- * - one-time links consumed or expired for a day (slice 3).
+ * - one-time links consumed or expired for a day (slice 3);
+ * - sign-in challenges past their expiry; pending invitations past their expiry; accepted and
+ *   revoked invitations 30 days after the decision (slice 7).
  *
  * Each statement runs in its own short unit. Rule `system`: run by the hourly job only.
  */
@@ -110,11 +120,26 @@ export class PurgeExpired extends UseCase<
       ok(await links.purgeSpent(market, now.subtract({ hours: LINK_KEPT_AFTER_SPENT_HOURS }))),
     );
 
+    const purgedChallenges = await unitOfWork.run(market, async () =>
+      ok(await this.deps.challenges.purgeExpired(market, now)),
+    );
+    const purgedInvitations = await unitOfWork.run(market, async () =>
+      ok(
+        await this.deps.invitations.purge(
+          market,
+          now,
+          now.subtract({ hours: INVITATION_KEPT_AFTER_DECISION_HOURS }),
+        ),
+      ),
+    );
+
     return ok({
       sessions: purgedSessions.ok ? purgedSessions.value : 0,
       throttles: purgedThrottles.ok ? purgedThrottles.value : 0,
       signInRecords: purgedRecords,
       links: purgedLinks.ok ? purgedLinks.value : 0,
+      challenges: purgedChallenges.ok ? purgedChallenges.value : 0,
+      invitations: purgedInvitations.ok ? purgedInvitations.value : 0,
     });
   }
 }
