@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { GuardUnit } from './market-guard';
+import type { RawRunner } from './named-statements';
 
 /**
  * The open unit (platform persistence design, "P", 3.2): the one value the persistence
@@ -22,6 +23,11 @@ export class OpenUnit implements GuardUnit {
      * `platform/persistence/audit/`; `PrismaService.tx` hands out `view`, which lacks them.
      */
     readonly auditView: object,
+    /**
+     * The read-write unit's transaction, for the named statements of `named-statements.ts`
+     * only (P 4.2); null for a read-only unit, which has no transaction to lock in.
+     */
+    readonly raw: RawRunner | null = null,
   ) {
     Object.freeze(this);
   }

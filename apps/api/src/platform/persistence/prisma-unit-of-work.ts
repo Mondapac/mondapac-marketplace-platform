@@ -12,6 +12,7 @@ import {
 import {
   CONNECTION_WAIT_MS,
   DEFAULT_UNIT_TIMEOUT_MS,
+  MAX_LOCK_TIMEOUT_MS,
   MAX_UNIT_TIMEOUT_MS,
   UNIT_ATTEMPTS,
   type HandledOnce,
@@ -33,6 +34,7 @@ import {
   recordInInbox,
   settleDelivery,
 } from './outbox/delivery-ledger';
+import { setLockTimeout, type RawRunner } from './named-statements';
 import { OpenUnit, unitStorage } from './unit-store';
 
 /** Carries an `err` result out of the transaction callback, so that nothing commits (P 3.1 row 3). */
@@ -40,6 +42,20 @@ class RollbackSignal<E> extends Error {
   constructor(readonly result: Result<never, E>) {
     super('The unit returned err; rolled back');
   }
+}
+
+/**
+ * The transaction's raw door, kept in the open unit for `named-statements.ts` alone. The guard
+ * still sees every call and lets through only a statement that file registered.
+ */
+function rawRunnerOf(transaction: {
+  $queryRaw(statement: Prisma.Sql): Promise<unknown>;
+  $executeRaw(statement: Prisma.Sql): Promise<unknown>;
+}): RawRunner {
+  return {
+    query: (statement) => transaction.$queryRaw(statement),
+    execute: (statement) => transaction.$executeRaw(statement),
+  };
 }
 
 /** The short random pause between attempts (P 3.1 row 7). */
@@ -50,12 +66,21 @@ const randomPause: RetryPause = async () => {
 
 /** Refuses the option combinations of P 3.1 rows 8 and 9 (ADR-0025 condition (c)). */
 export function checkUnitOfWorkOptions(options: UnitOfWorkOptions): void {
-  const { readOnly, isolation, timeoutMs } = options;
+  const { readOnly, isolation, timeoutMs, lockTimeoutMs } = options;
   if (readOnly === true && isolation !== undefined) {
     throw new InvalidUnitOfWorkOptionsError('read-only-with-isolation');
   }
   if (readOnly === true && timeoutMs !== undefined) {
     throw new InvalidUnitOfWorkOptionsError('read-only-with-timeout');
+  }
+  if (readOnly === true && lockTimeoutMs !== undefined) {
+    throw new InvalidUnitOfWorkOptionsError('read-only-with-lock-timeout');
+  }
+  if (
+    lockTimeoutMs !== undefined &&
+    (!Number.isInteger(lockTimeoutMs) || lockTimeoutMs < 1 || lockTimeoutMs > MAX_LOCK_TIMEOUT_MS)
+  ) {
+    throw new InvalidUnitOfWorkOptionsError('lock-timeout-out-of-range');
   }
   if (isolation !== undefined && isolation !== 'serializable') {
     throw new InvalidUnitOfWorkOptionsError('unknown-isolation');
@@ -178,10 +203,17 @@ export class PrismaUnitOfWork implements UnitOfWork {
             false,
             modelDelegatesOf(transaction, this.map),
             auditDelegatesOf(transaction, this.map),
+            rawRunnerOf(transaction),
           );
           const current = unit;
           try {
-            const result = await unitStorage.run(current, async () => await work());
+            const result = await unitStorage.run(current, async () => {
+              // First statement of every attempt (inventory data design 4.2 L7).
+              if (options.lockTimeoutMs !== undefined) {
+                await setLockTimeout(current.raw!, options.lockTimeoutMs);
+              }
+              return await work();
+            });
             if (!result.ok) throw new RollbackSignal(result);
             return result;
           } finally {

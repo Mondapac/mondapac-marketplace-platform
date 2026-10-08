@@ -1,6 +1,8 @@
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import type { MarketGuardRefusal } from '../unit-of-work/errors';
+import { Prisma } from '../../generated/prisma/client';
 import { marketGuardRefusal, type GuardUnit } from './market-guard';
+import { lockStockItemsStatement, lockTimeoutStatement } from './named-statements';
 import type { ModelMap, ModelMapEntry } from './model-map';
 
 // P 4.1 and the first row of P 13: the guard's decision as a pure function of (map entry,
@@ -112,6 +114,48 @@ describe.each(['AU', 'ZZ'] as const)('market guard decision, unit opened for %s'
         expect(decide(undefined, operation, {}, 'no unit')).toBe('raw-sql');
       },
     );
+
+    describe('named statements (P 4.2)', () => {
+      const lock = (marketId: string, tenantId: string) =>
+        lockStockItemsStatement({ marketId, tenantId } as never, [
+          '00000000-0000-4000-8000-000000000001',
+        ]);
+      const own = lock(M, TENANT);
+      const timeout = lockTimeoutStatement(100);
+
+      it('lets the lock statement through $queryRaw and the timeout through $executeRaw', () => {
+        expect(decide(undefined, '$queryRaw', own)).toBeNull();
+        expect(decide(undefined, '$executeRaw', timeout)).toBeNull();
+      });
+
+      it('refuses the lock statement for another Market or tenant than the unit’s', () => {
+        expect(decide(undefined, '$queryRaw', lock(other, TENANT))).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', lock(M, OTHER_TENANT))).toBe('raw-sql');
+      });
+
+      it('refuses a text that is not on the list, and the other operation for a listed text', () => {
+        expect(decide(undefined, '$queryRaw', Prisma.sql`SELECT 1`)).toBe('raw-sql');
+        expect(decide(undefined, '$executeRaw', own)).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', timeout)).toBe('raw-sql');
+        expect(decide(undefined, '$executeRaw', Prisma.raw('SET LOCAL lock_timeout = 5000'))).toBe(
+          'raw-sql',
+        );
+      });
+
+      it.each(['$queryRawUnsafe', '$executeRawUnsafe', '$queryRawTyped'])(
+        'refuses %s even with a listed statement',
+        (operation) => {
+          expect(decide(undefined, operation, own)).toBe('raw-sql');
+          expect(decide(undefined, operation, timeout)).toBe('raw-sql');
+        },
+      );
+
+      it('refuses a listed statement with no unit, in a read-only unit and in a closed one', () => {
+        expect(decide(undefined, '$queryRaw', own, 'no unit')).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', own, readOnlyUnit)).toBe('raw-sql');
+        expect(decide(undefined, '$queryRaw', own, { ...unit, closed: true })).toBe('raw-sql');
+      });
+    });
 
     it('refuses any other client operation with no model', () => {
       expect(decide(undefined, '$somethingNew', {})).toBe('unknown-operation');
