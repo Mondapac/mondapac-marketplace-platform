@@ -157,6 +157,7 @@ function setUp() {
       seed: new CheckedInRoleSeed(),
       clock,
       ids,
+      audit: fakes.audit,
     }),
     register: new RegisterSeller(gate, {
       ...common,
@@ -169,7 +170,12 @@ function setUp() {
     }),
     resend: new RequestSellerVerification(gate, common),
     sendLinkMail,
-    confirm: new ConfirmSellerEmail(gate, { ...signInDeps, linkTokens }),
+    confirm: new ConfirmSellerEmail(gate, {
+      ...signInDeps,
+      linkTokens,
+      audit: fakes.audit,
+      assignments: fakes.assignmentRepository,
+    }),
     signIn: new SignInSeller(gate, signInDeps),
     status: new DescribeSellerStatus(gate, {
       unitOfWork,
@@ -346,6 +352,26 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
         [code, 'platform', 'system', 'platform-administrator'],
         [code, 'seller', 'system', 'seller-owner'],
       ]);
+      // identity.role.seeded once per created role, as the system; the second run writes none.
+      const roleIds = new Map([...s.fakes.roles.values()].map((r) => [r.scope, r.id]));
+      expect(
+        s.fakes.audits.map((a) => [a.action, a.actor, a.marketId, a.targetId, a.after]).sort(),
+      ).toEqual([
+        [
+          'identity.role.seeded',
+          'system',
+          code,
+          roleIds.get('platform'),
+          { scope: 'platform', kind: 'system', seedVersion: expect.any(Number) as unknown },
+        ],
+        [
+          'identity.role.seeded',
+          'system',
+          code,
+          roleIds.get('seller'),
+          { scope: 'seller', kind: 'system', seedVersion: expect.any(Number) as unknown },
+        ],
+      ]);
     });
 
     it('refuses any actor but the system', async () => {
@@ -516,6 +542,79 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
         sellerId: seller.sellerId,
         idleTimeoutSeconds: sessionLifetime.idleTimeoutSeconds,
       });
+    });
+
+    it('writes the three founding rows as anonymous, naming the seller, the owner and the bound account', async () => {
+      const s = setUp();
+      await s.seed.execute(system, {});
+      await signUp(s);
+      const token = await mailedToken(s);
+      s.fakes.audits.length = 0;
+      // A wrong password verifies nothing and writes no row.
+      const refused = await s.confirm.execute(anonymous, {
+        token,
+        password: `${PASSWORD}!`,
+        keepSignedIn: false,
+        client: CLIENT,
+      });
+      expect(refused.ok).toBe(false);
+      expect(s.fakes.audits).toEqual([]);
+
+      await s.confirm.execute(anonymous, {
+        token,
+        password: PASSWORD,
+        keepSignedIn: false,
+        client: CLIENT,
+      });
+
+      const { sellerId } = sellerOf(s);
+      const accountId = account(s).id;
+      const [assignment] = [...s.fakes.assignments.values()].filter(
+        (a) => a.accountId === accountId,
+      );
+      const named = { sellerId, accountId, boundSubjectId: accountId };
+      expect(s.fakes.audits).toEqual([
+        {
+          action: 'identity.seller-access.founded',
+          targetType: 'identity.seller-access',
+          targetId: sellerId,
+          before: null,
+          after: { ...named, state: expectedState, origin: 'self' },
+          actor: 'anonymous',
+          marketId: code,
+        },
+        {
+          action: 'identity.seller-member.added',
+          targetType: 'identity.seller-access',
+          targetId: sellerId,
+          before: null,
+          after: { ...named, roleId: assignment!.roleId, founding: true },
+          actor: 'anonymous',
+          marketId: code,
+        },
+        {
+          action: 'identity.account-role.assigned',
+          targetType: 'identity.account',
+          targetId: accountId,
+          before: null,
+          after: { ...named, roleId: assignment!.roleId, scope: 'seller', founding: true },
+          actor: 'anonymous',
+          marketId: code,
+        },
+      ]);
+      // AC 12: ids, codes and flags only.
+      const text = JSON.stringify(s.fakes.audits);
+      expect(text).not.toContain(EMAIL);
+      expect(text).not.toContain(NAME);
+
+      // A later sign-in founds nothing again.
+      await s.signIn.execute(anonymous, {
+        email: EMAIL,
+        password: PASSWORD,
+        keepSignedIn: false,
+        client: CLIENT,
+      });
+      expect(s.fakes.audits).toHaveLength(3);
     });
 
     it('a later sign-in records no second seller-registered', async () => {

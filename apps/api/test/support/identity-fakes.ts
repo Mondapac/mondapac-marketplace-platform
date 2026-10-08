@@ -1,6 +1,14 @@
 import type { TestingModuleBuilder } from '@nestjs/testing';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketContext, PendingEvent, Population, Result } from '@mondapac/shared-kernel';
+import type {
+  AuditEntry,
+  CallContext,
+  Id,
+  MarketContext,
+  PendingEvent,
+  Population,
+  Result,
+} from '@mondapac/shared-kernel';
 import {
   REVIEWER_CANDIDATE_READER,
   type ReviewerCandidateReader,
@@ -70,6 +78,7 @@ import {
   windowRestartBefore,
   type ThrottleReservation,
 } from '../../src/modules/identity/domain/throttle';
+import { AUDIT_WRITER, type AuditWriter } from '../../src/platform/audit/audit-writer';
 import { OUTBOX_WRITER, type OutboxWriter } from '../../src/platform/events/outbox-writer';
 import {
   MAIL_TRANSPORT,
@@ -96,6 +105,8 @@ export class IdentityFakes {
   readonly throttles = new Map<string, ThrottleReservation & { accountKey: string | null }>();
   readonly records: (SignInRecord & { marketId: string })[] = [];
   readonly events: PendingEvent[] = [];
+  /** Audit entries recorded through identity's writer, with the actor kind and Market. */
+  readonly audits: (AuditEntry & { actor: string; marketId: string })[] = [];
   readonly links = new Map<string, OneTimeLinkState>();
   readonly sellerAccess = new Map<string, SellerAccessState>();
   readonly memberships = new Map<string, SellerMembershipState>();
@@ -123,6 +134,7 @@ export class IdentityFakes {
     this.throttles.clear();
     this.records.length = 0;
     this.events.length = 0;
+    this.audits.length = 0;
     this.links.clear();
     this.sellerAccess.clear();
     this.memberships.clear();
@@ -678,6 +690,21 @@ export class IdentityFakes {
     },
   };
 
+  /**
+   * Identity's audit writer without a database: it records what it is given (the real writer
+   * needs an open unit of the persistence layer; test/db/ covers it).
+   */
+  readonly audit: AuditWriter = {
+    record: (context: CallContext, entry: AuditEntry) => {
+      this.audits.push({
+        ...entry,
+        actor: context.actor.kind,
+        marketId: context.market.marketId,
+      });
+      return Promise.resolve();
+    },
+  };
+
   readonly hasher: PasswordHasher = {
     hash: (plain: string): Promise<Result<string, PasswordHasherBusy>> => {
       if (this.busy) return Promise.resolve(err({ code: 'request.busy', retryAfterSeconds: 1 }));
@@ -714,6 +741,8 @@ export class IdentityFakes {
       .useValue(this.recordRepository)
       .overrideProvider(OUTBOX_WRITER)
       .useValue(this.outbox)
+      .overrideProvider(AUDIT_WRITER)
+      .useValue(this.audit)
       .overrideProvider(ONE_TIME_LINK_REPOSITORY)
       .useValue(this.linkRepository)
       .overrideProvider(SELLER_ACCESS_REPOSITORY)

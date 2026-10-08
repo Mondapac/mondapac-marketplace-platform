@@ -2,13 +2,38 @@ import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
-import { FixedClock, SequenceIdGenerator, testCallContext } from '@mondapac/shared-kernel/testing';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
+import {
+  FixedClock,
+  SequenceIdGenerator,
+  testAuthenticatedActor,
+  testCallContext,
+} from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import request from 'supertest';
 import { SeedSystemRoles } from '../../src/modules/identity/application/use-cases/seed-system-roles.use-case';
 import { SELLERS_FACADE, type SellersFacade } from '../../src/modules/sellers';
 import { BackfillSellerFiles } from '../../src/modules/sellers/application/use-cases/backfill-seller-files.use-case';
+import { MyFileSaveSlug } from '../../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
+import { MyFileCheckSlug } from '../../src/modules/sellers/application/use-cases/my-file-check-slug.use-case';
+import { MyFileRead } from '../../src/modules/sellers/application/use-cases/my-file-read.use-case';
+import { MyFileSaveAddress } from '../../src/modules/sellers/application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveGeneral } from '../../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
+import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
+import { PrismaShopSlugRepository } from '../../src/modules/sellers/infrastructure/prisma-shop-slug.repository';
+import { reservedWordsOf } from '../../src/modules/sellers/domain/reserved-words';
+import { parseShopSlug } from '../../src/modules/sellers/domain/shop-slug';
+import { PrismaRateCounterRepository } from '../../src/modules/sellers/infrastructure/prisma-rate-counter.repository';
+import {
+  RATE_COUNTER_KINDS,
+  SAVE_LIMITS,
+  rateVerdict,
+} from '../../src/modules/sellers/domain/rate-limits';
+import type { RateCounter } from '../../src/modules/sellers/application/ports/rate-counter.repository';
+import { PrismaService } from '../../src/platform/persistence/prisma.service';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { ok } from '@mondapac/shared-kernel';
+import { AUTHORISATION_CHECK, type AuthorisationCheck } from '../../src/platform/authz';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -30,6 +55,7 @@ import { sellerFilesOwnerTestDatabaseUrl, sellerFilesTestDatabaseUrl } from './t
 // and the constraints are checked on the same rows. This file runs on its own copy of the run
 // database (global-setup.ts): the relay and the dispatcher claim every due row of a Market.
 
+const NO_WORDS = reservedWordsOf({ slugs: [], claimWords: [] });
 const PASSWORD = 'correct horse battery staple';
 const TOKEN_IN_URL = /#(ml1_[A-Za-z0-9_-]{43})$/m;
 
@@ -46,6 +72,24 @@ const tokenOf = (mail: MailMessage): string => {
   const match = TOKEN_IN_URL.exec(mail.text);
   if (match === null) throw new Error('the mail carries no link token');
   return match[1]!;
+};
+
+/**
+ * Stands in for identity slice 8a (the permission registry and role keys): until then identity's
+ * check refuses every `permissions` rule. The Seller Owner system role holds every seller key, so
+ * this admits an authenticated seller actor under a `permissions` rule and nothing else; the
+ * sellers use cases still check ownership and the access state themselves.
+ */
+const sellerOwnerCheck: AuthorisationCheck = {
+  check: (context, declaration) =>
+    Promise.resolve(
+      context.actor.kind === 'authenticated' &&
+        context.actor.population === 'seller' &&
+        context.actor.sellerId !== null &&
+        declaration.rule.kind === 'permissions'
+        ? { allowed: true }
+        : { allowed: false, denial: { code: 'access.denied' } },
+    ),
 };
 
 describe.each(TEST_MARKETS)('sellers files in market %s (database integration)', (code) => {
@@ -85,7 +129,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           .overrideProvider(CLOCK)
           .useValue(clock)
           .overrideProvider(MAIL_TRANSPORT)
-          .useValue(transport),
+          .useValue(transport)
+          .overrideProvider(AUTHORISATION_CHECK)
+          .useValue(sellerOwnerCheck),
     }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
@@ -349,6 +395,14 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         ...params,
       ]);
 
+    const draftSlugOf = async (sellerId: string) =>
+      (
+        await sql.query<{ draft_slug: string | null }>(
+          'SELECT draft_slug FROM sellers.seller_files WHERE seller_id = $1',
+          [sellerId],
+        )
+      ).rows[0]!.draft_slug;
+
     /**
      * A well-formed placeholder ciphertext of `length` characters: the v1 envelope shape
      * ("v1." and base64url; 41 characters is the envelope of an empty plaintext, data design 4.5).
@@ -468,6 +522,45 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       expect(index.rows.map((row) => row.indexdef)).toEqual([
         'CREATE INDEX seller_files_market_id_store_name_key_idx ON sellers.seller_files USING btree (market_id, store_name_key)',
       ]);
+    });
+
+    it('holds a draft slug of the shop_slugs rule, with no unique key (Q-M25)', async () => {
+      const first = await registerSeller(code);
+      const second = await registerSeller(code);
+      const accepted = ['abc', 'a-b-c', 'a1-2b', 'a'.repeat(50)];
+      for (const value of accepted) {
+        await update(first, 'draft_slug = $2', [value]);
+        expect(await draftSlugOf(first)).toBe(value);
+      }
+      for (const value of [
+        'ab',
+        'a'.repeat(51),
+        'Abc',
+        '-abc',
+        'abc-',
+        'a--b',
+        'ab c',
+        '\u0430bc',
+        'caf\u00e9',
+        'abc\n',
+      ]) {
+        await refuses(
+          'UPDATE sellers.seller_files SET draft_slug = $2 WHERE seller_id = $1',
+          [first, value],
+          'seller_files_draft_slug_check',
+        );
+      }
+      // Not unique: two files may hold the same draft slug (uniqueness is decided in shop_slugs).
+      await update(first, 'draft_slug = $2', ['same-shop']);
+      await update(second, 'draft_slug = $2', ['same-shop']);
+      expect(await draftSlugOf(second)).toBe('same-shop');
+      await update(first, 'draft_slug = NULL');
+      expect(await draftSlugOf(first)).toBeNull();
+      const indexes = await owner.query(
+        `SELECT indexdef FROM pg_indexes WHERE schemaname = 'sellers' AND tablename = 'seller_files'
+            AND indexdef LIKE '%draft_slug%'`,
+      );
+      expect(indexes.rows).toEqual([]);
     });
 
     it('stores slugs with the C collation, unique per Market, one held per seller, never deleted', async () => {
@@ -612,10 +705,14 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         `SELECT a.attname, c.collname FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
            JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_collation c ON c.oid = a.attcollation
           WHERE n.nspname = 'sellers' AND ((t.relname = 'shop_slugs' AND a.attname = 'slug')
-             OR (t.relname = 'seller_files' AND a.attname = 'store_name_key'))
+             OR (t.relname = 'seller_files' AND a.attname IN ('store_name_key', 'draft_slug')))
           ORDER BY a.attname`,
       );
-      expect(collation.rows.map((row: { collname: string }) => row.collname)).toEqual(['C', 'C']);
+      expect(collation.rows.map((row: { collname: string }) => row.collname)).toEqual([
+        'C',
+        'C',
+        'C',
+      ]);
     });
 
     it('counts in rate_counters with the closed kind list, a 32-byte key and a guarded decrement', async () => {
@@ -701,6 +798,679 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           [code, other, key],
         );
       }
+    });
+  });
+
+  describe('PrismaRateCounterRepository (real counters, injected now)', () => {
+    const T0 = Temporal.Instant.from('2026-10-08T12:00:00Z');
+    const keys: Buffer[] = [];
+    const newKey = (): Buffer => {
+      const key = Buffer.from(
+        randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+        'hex',
+      );
+      keys.push(key);
+      return key;
+    };
+    afterEach(async () => {
+      if (keys.length === 0) return;
+      await sql.query('DELETE FROM sellers.rate_counters WHERE key_hash = ANY($1::bytea[])', [
+        keys,
+      ]);
+      keys.length = 0;
+    });
+
+    const reserve = (
+      marketCode: string,
+      limits: typeof SAVE_LIMITS,
+      key: Buffer,
+      now: Temporal.Instant,
+    ) => {
+      const counters: RateCounter[] = limits.map((limit) => ({ limit, keyHash: key }));
+      const marketContext = marketOf(marketCode);
+      return app
+        .get<UnitOfWork>(UNIT_OF_WORK)
+        .run(marketContext, async () =>
+          ok(
+            await new PrismaRateCounterRepository(app.get(PrismaService)).reserve(
+              marketContext,
+              counters,
+              now,
+            ),
+          ),
+        )
+        .then((result) => {
+          if (!result.ok) throw new Error('the reservation unit failed');
+          return result.value;
+        });
+    };
+    const count = (reservations: Awaited<ReturnType<typeof reserve>>, kind: string) =>
+      reservations.find((reservation) => reservation.kind === kind)!.count;
+
+    it('refuses over the limit, restarts the window, and keeps minute and day apart', async () => {
+      expect(RATE_COUNTER_KINDS).toContain('save.account.minute');
+      const key = newKey();
+      let last = await reserve(code, SAVE_LIMITS, key, T0);
+      for (let attempt = 2; attempt <= 60; attempt += 1) {
+        last = await reserve(code, SAVE_LIMITS, key, T0);
+        expect(rateVerdict(SAVE_LIMITS, last, T0)).toEqual({ allowed: true });
+      }
+      expect(count(last, 'save.account.minute')).toBe(60);
+      const refused = await reserve(code, SAVE_LIMITS, key, T0);
+      expect(count(refused, 'save.account.minute')).toBe(61);
+      expect(rateVerdict(SAVE_LIMITS, refused, T0)).toEqual({
+        allowed: false,
+        retryAfterSeconds: 60,
+      });
+
+      // One window later the minute counter restarts at 1; the day counter keeps counting.
+      const later = T0.add({ minutes: 1 });
+      const restarted = await reserve(code, SAVE_LIMITS, key, later);
+      expect(count(restarted, 'save.account.minute')).toBe(1);
+      expect(count(restarted, 'save.account.day')).toBe(62);
+      expect(rateVerdict(SAVE_LIMITS, restarted, later)).toEqual({ allowed: true });
+
+      // A day later both restart.
+      const nextDay = T0.add({ hours: 24 });
+      const fresh = await reserve(code, SAVE_LIMITS, key, nextDay);
+      expect(count(fresh, 'save.account.minute')).toBe(1);
+      expect(count(fresh, 'save.account.day')).toBe(1);
+    });
+
+    it('counts every one of N parallel reservations exactly once', async () => {
+      const key = newKey();
+      const n = 12;
+      const results = await Promise.all(
+        Array.from({ length: n }, () => reserve(code, SAVE_LIMITS, key, T0)),
+      );
+      expect(
+        results.map((result) => count(result, 'save.account.minute')).sort((a, b) => a - b),
+      ).toEqual(Array.from({ length: n }, (_, index) => index + 1));
+      const { rows } = await sql.query<{ kind: string; count: number }>(
+        'SELECT kind, count FROM sellers.rate_counters WHERE market_id = $1 AND key_hash = $2 ORDER BY kind',
+        [code, key],
+      );
+      expect(rows).toEqual([
+        { kind: 'save.account.day', count: n },
+        { kind: 'save.account.minute', count: n },
+      ]);
+    });
+
+    it('purges counters whose window started before the cut-off, in this Market only', async () => {
+      const old = newKey();
+      const kept = newKey();
+      const edge = newKey();
+      const elsewhere = newKey();
+      await reserve(code, SAVE_LIMITS, edge, T0.subtract({ hours: 48 }));
+      await reserve(code, SAVE_LIMITS, old, T0.subtract({ hours: 49 }));
+      await reserve(code, SAVE_LIMITS, kept, T0.subtract({ hours: 47 }));
+      await reserve(other, SAVE_LIMITS, elsewhere, T0.subtract({ hours: 49 }));
+      const purge = async (marketCode: string) => {
+        const marketContext = marketOf(marketCode);
+        const result = await app
+          .get<UnitOfWork>(UNIT_OF_WORK)
+          .run(marketContext, async () =>
+            ok(
+              await new PrismaRateCounterRepository(app.get(PrismaService)).purgeStartedBefore(
+                marketContext,
+                T0.subtract({ hours: 48 }),
+              ),
+            ),
+          );
+        if (!result.ok) throw new Error('the purge unit failed');
+        return result.value;
+      };
+      const remaining = async (key: Buffer, marketCode: string) =>
+        (
+          await sql.query(
+            'SELECT 1 FROM sellers.rate_counters WHERE market_id = $1 AND key_hash = $2',
+            [marketCode, key],
+          )
+        ).rowCount;
+
+      // Other tests may leave rows of their own; only the three keys of this test are asserted.
+      expect(await purge(code)).toBeGreaterThanOrEqual(2);
+      expect(await remaining(old, code)).toBe(0);
+      expect(await remaining(kept, code)).toBe(2);
+      // Exactly 48 hours old is not before the cut-off: kept.
+      expect(await remaining(edge, code)).toBe(2);
+      expect(await remaining(elsewhere, other)).toBe(2);
+      expect(await purge(code)).toBe(0);
+      expect(await purge(other)).toBeGreaterThanOrEqual(2);
+      expect(await remaining(elsewhere, other)).toBe(0);
+    });
+
+    it('does not throttle another account, nor the same account in another Market', async () => {
+      const a = newKey();
+      const b = newKey();
+      for (let attempt = 0; attempt < 61; attempt += 1) await reserve(code, SAVE_LIMITS, a, T0);
+      const atLimit = await reserve(code, SAVE_LIMITS, a, T0);
+      expect(rateVerdict(SAVE_LIMITS, atLimit, T0).allowed).toBe(false);
+
+      const otherAccount = await reserve(code, SAVE_LIMITS, b, T0);
+      expect(count(otherAccount, 'save.account.minute')).toBe(1);
+      expect(rateVerdict(SAVE_LIMITS, otherAccount, T0)).toEqual({ allowed: true });
+
+      const otherMarket = await reserve(other, SAVE_LIMITS, a, T0);
+      expect(count(otherMarket, 'save.account.minute')).toBe(1);
+      expect(rateVerdict(SAVE_LIMITS, otherMarket, T0)).toEqual({ allowed: true });
+    });
+  });
+
+  // Slice 2 part c-1 (sellers design 3.1, 3.5, 4.2, 4.3, 6.2, 6.5, 8.1; data design 3.1, 3.5,
+  // 3.11, 4): the draft use cases on PostgreSQL with the real subject keys and identity.
+  describe('slice 2 draft use cases', () => {
+    const ids = new SequenceIdGenerator(clock);
+    const FIXTURE = {
+      AU: {
+        address: { line1: '1 George St', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+        area: 'greater-brisbane',
+        zones: ['Australia/Brisbane', 'Australia/Lindeman'],
+      },
+      ZZ: {
+        address: { street: '1 Main', district: 'Central', prefecture: 'ZB', postalCode: '1000001' },
+        area: 'zz-central',
+        zones: ['Pacific/Auckland', 'Pacific/Chatham'],
+      },
+    }[code];
+    const GENERAL = {
+      storeName: 'Al Noor Grocer',
+      businessName: 'Al Noor Trading Pty Ltd',
+      phone: '+61 7 3000 0000',
+      contactEmail: 'shop.canary@example.com',
+    };
+
+    /** Sets identity's access state directly (as the migration role): it must not freeze the draft. */
+    const setAccessState = (sellerId: string, state: string) =>
+      owner.query(
+        `UPDATE identity.seller_access SET state = $2 WHERE market_id = $1 AND seller_id = $3`,
+        [code, state, sellerId],
+      );
+
+    /** A registered seller (AU: `pending`; ZZ: `approved` at registration) and its owner's context. */
+    async function draftSeller(): Promise<{ sellerId: Id<'Seller'>; context: CallContext }> {
+      const sellerId = await registerSeller(code);
+      return { sellerId, context: await ownerContext(code, sellerId) };
+    }
+
+    async function ownerContext(marketCode: string, sellerId: string): Promise<CallContext> {
+      const { rows } = await sql.query<{ account_id: string }>(
+        `SELECT account_id FROM identity.seller_memberships WHERE seller_id = $1`,
+        [sellerId],
+      );
+      const market = marketOf(marketCode);
+      return testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: rows[0]!.account_id as Id<'Account'>,
+          sessionId: ids.next<'Session'>(),
+          sellerId: sellerId as Id<'Seller'>,
+        }),
+        `db-sellers-${randomUUID()}`,
+      );
+    }
+
+    const row = async (sellerId: string) =>
+      (
+        await sql.query<Record<string, unknown>>(
+          `SELECT store_name, store_name_key, business_name_ciphertext, phone_ciphertext,
+                  contact_email_ciphertext, address_ciphertext, registered_address_ciphertext,
+                  service_area_code, operating_timezone, timezone_source, address_timezone,
+                  draft_complete, draft_slug, version
+             FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+          [code, sellerId],
+        )
+      ).rows[0]!;
+
+    it('gives sellerSummaries the draft zone to the system caller only, never across Markets', async () => {
+      const { sellerId, context } = await draftSeller();
+      const none = await facade().sellerSummaries(systemContext(code), [sellerId]);
+      expect(none).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
+
+      await app.get(MyFileSaveGeneral).execute(context, GENERAL);
+      await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address });
+
+      const asSystem = await facade().sellerSummaries(systemContext(code), [sellerId]);
+      const asRequest = await facade().sellerSummaries(anonymousContext(code), [sellerId]);
+      const elsewhere = await facade().sellerSummaries(systemContext(other), [sellerId]);
+      expect(asSystem).toEqual({
+        ok: true,
+        value: [
+          {
+            sellerId,
+            exists: true,
+            operatingTimezone: { zone: FIXTURE.zones[0], provisional: true },
+          },
+        ],
+      });
+      expect(asRequest).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
+      expect(elsewhere).toEqual({ ok: true, value: [{ sellerId, exists: false }] });
+    });
+
+    it('saves the draft encrypted at rest under the seller`s key and reads it back', async () => {
+      const { sellerId, context } = await draftSeller();
+
+      expect(await app.get(MyFileSaveGeneral).execute(context, GENERAL)).toEqual({
+        ok: true,
+        value: { version: 2, draftComplete: false, missing: ['address', 'timezone', 'slug'] },
+      });
+      const saved = await app.get(MyFileSaveAddress).execute(context, {
+        address: FIXTURE.address,
+        timezone: FIXTURE.zones[1],
+      });
+      expect(saved.ok && saved.value.missing).toEqual(['slug']);
+      expect(saved.ok && saved.value.draftComplete).toBe(false);
+
+      const stored = await row(sellerId);
+      expect(stored).toMatchObject({
+        store_name: 'Al Noor Grocer',
+        store_name_key: 'al noor grocer',
+        registered_address_ciphertext: null,
+        service_area_code: FIXTURE.area,
+        operating_timezone: FIXTURE.zones[1],
+        timezone_source: 'seller',
+        address_timezone: FIXTURE.zones[0],
+        draft_complete: false,
+        draft_slug: null,
+        version: 3,
+      });
+      const clear = [
+        GENERAL.businessName,
+        '+61730000000',
+        GENERAL.contactEmail,
+        ...(Object.values(FIXTURE.address) as string[]),
+      ];
+      for (const column of [
+        'business_name_ciphertext',
+        'phone_ciphertext',
+        'contact_email_ciphertext',
+        'address_ciphertext',
+      ]) {
+        const value = stored[column] as string;
+        expect(value).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
+        // Short values (a postcode, a region code) can appear in random ciphertext by chance.
+        for (const text of clear.filter((t) => t.length >= 8)) expect(value).not.toContain(text);
+      }
+
+      const read = await app.get(MyFileRead).execute(context, {});
+      expect(read.ok && read.value.general).toEqual({
+        storeName: 'Al Noor Grocer',
+        businessName: GENERAL.businessName,
+        phone: '+61730000000',
+        contactEmail: GENERAL.contactEmail,
+      });
+      expect(read.ok && read.value.address).toEqual(FIXTURE.address);
+      expect(read.ok && read.value.zoneOptions).toEqual(FIXTURE.zones);
+
+      // Bound to its label: a value copied into another column does not decrypt.
+      await owner.query(
+        `UPDATE sellers.seller_files SET phone_ciphertext = business_name_ciphertext
+          WHERE market_id = $1 AND seller_id = $2`,
+        [code, sellerId],
+      );
+      expect(await app.get(MyFileRead).execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
+    it('keeps sellers and Markets apart: ownership from the actor, ciphertext bound to its seller', async () => {
+      const a = await draftSeller();
+      const b = await draftSeller();
+      await app.get(MyFileSaveGeneral).execute(a.context, GENERAL);
+      await app
+        .get(MyFileSaveGeneral)
+        .execute(b.context, { ...GENERAL, businessName: 'Other Business Ltd' });
+      const readB = await app.get(MyFileRead).execute(b.context, {});
+      expect(readB.ok && readB.value.general.businessName).toBe('Other Business Ltd');
+
+      // A's ciphertext copied into B's row does not open under B's key.
+      await owner.query(
+        `UPDATE sellers.seller_files SET business_name_ciphertext =
+           (SELECT business_name_ciphertext FROM sellers.seller_files WHERE seller_id = $2)
+          WHERE market_id = $1 AND seller_id = $3`,
+        [code, a.sellerId, b.sellerId],
+      );
+      expect(await app.get(MyFileRead).execute(b.context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+
+      // An actor of the other Market carrying A's seller id finds nothing and changes nothing.
+      const elsewhere = await ownerContext(other, a.sellerId);
+      expect(await app.get(MyFileRead).execute(elsewhere, {})).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      expect(await app.get(MyFileSaveGeneral).execute(elsewhere, GENERAL)).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      expect((await row(a.sellerId)).version).toBe(2);
+    });
+
+    it('lets a seller complete the draft whatever identity reports: no approved revision, no freeze', async () => {
+      const { sellerId, context } = await draftSeller();
+      // ZZ approves at registration (approvalRequired false): `file-check-needed` (D 3.3), and
+      // the details must still be completable. AU starts pending.
+      const { rows } = await sql.query<{ state: string }>(
+        'SELECT state FROM identity.seller_access WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(rows[0]!.state).toBe(approvalRequired(code) ? 'pending' : 'approved');
+      expect((await app.get(MyFileSaveGeneral).execute(context, GENERAL)).ok).toBe(true);
+      expect(
+        (await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address })).ok,
+      ).toBe(true);
+      expect((await app.get(MyFileCheckSlug).execute(context, { slug: 'al-noor' })).ok).toBe(true);
+      expect((await row(sellerId)).draft_slug).toBeNull();
+      expect(
+        (await app.get(MyFileSaveSlug).execute(context, { slug: `al-noor-${code.toLowerCase()}` }))
+          .ok,
+      ).toBe(true);
+      expect(await row(sellerId)).toMatchObject({ draft_complete: true, version: 4 });
+
+      // `suspended` and `approved` do not freeze the draft by themselves either. (A suspended
+      // seller has no session in identity; the draft rule is the file's alone.)
+      for (const state of ['approved', 'suspended']) {
+        await setAccessState(sellerId, state);
+        expect((await app.get(MyFileSaveGeneral).execute(context, GENERAL)).ok).toBe(true);
+      }
+      expect((await row(sellerId)).version).toBe(6);
+    });
+
+    it('proves only the read-to-write guard: a save writes over the version it read, a lost race is conflict.stale', async () => {
+      const { sellerId, context } = await draftSeller();
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, index) =>
+          app
+            .get(MyFileSaveGeneral)
+            .execute(context, { ...GENERAL, businessName: `Business ${index}` }),
+        ),
+      );
+      const saved = results.filter((result) => result.ok).length;
+      expect(saved).toBeGreaterThanOrEqual(1);
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      expect((await row(sellerId)).version).toBe(1 + saved);
+    });
+
+    it('answers slug availability from shop_slugs, and limits checks to 30 a minute', async () => {
+      const { sellerId, context } = await draftSeller();
+      const suffix = randomUUID().slice(0, 8);
+      const insert = (slug: string, seller: string, state: 'held' | 'retired') =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, now(),
+                   CASE WHEN $5 = 'retired' THEN now() END, 1, now())`,
+          [randomUUID(), code, slug, seller, state, state === 'retired'],
+        );
+      await insert(`taken-${suffix}`, randomUUID(), 'held');
+      await insert(`mine-${suffix}`, sellerId, 'held');
+      await insert(`gone-${suffix}`, sellerId, 'retired');
+      const check = (slug: string) => app.get(MyFileCheckSlug).execute(context, { slug });
+
+      expect(await check(`Free-${suffix}`)).toEqual({
+        ok: true,
+        value: { code: 'slug.available', slug: `free-${suffix}` },
+      });
+      expect(await check(`taken-${suffix}`)).toEqual({ ok: true, value: { code: 'slug.taken' } });
+      expect(await check(`mine-${suffix}`)).toEqual({
+        ok: true,
+        value: { code: 'slug.available', slug: `mine-${suffix}` },
+      });
+      expect(await check(`gone-${suffix}`)).toEqual({ ok: true, value: { code: 'slug.taken' } });
+      expect(await check('admin')).toEqual({ ok: true, value: { code: 'slug.reserved' } });
+      expect(await check('a--b')).toEqual({ ok: true, value: { code: 'slug.format' } });
+      for (let attempt = 6; attempt < 30; attempt += 1) {
+        expect((await check(`free-${suffix}`)).ok).toBe(true);
+      }
+      expect(await check(`free-${suffix}`)).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+
+      // Two counters for this account, keyed by an HMAC (no id in clear), the minute one at 31.
+      const { rows } = await sql.query<{ kind: string; count: number; bytes: number }>(
+        `SELECT kind, count, octet_length(key_hash) AS bytes FROM sellers.rate_counters
+          WHERE market_id = $1 AND kind LIKE 'slug-check.%' AND count >= 31 ORDER BY kind`,
+        [code],
+      );
+      expect(rows).toEqual([
+        { kind: 'slug-check.account.day', count: 31, bytes: 32 },
+        { kind: 'slug-check.account.minute', count: 31, bytes: 32 },
+      ]);
+      const { rows: leaked } = await sql.query(
+        `SELECT 1 FROM sellers.rate_counters
+          WHERE position(convert_to($1, 'UTF8') IN key_hash) > 0`,
+        [(context.actor as { accountId: string }).accountId],
+      );
+      expect(leaked).toEqual([]);
+    });
+
+    it('saves the draft slug through the repository, round-trips it, and guards the version (Q-M25)', async () => {
+      const { sellerId, context } = await draftSeller();
+      const suffix = randomUUID().slice(0, 8);
+      const save = (slug: string) => app.get(MyFileSaveSlug).execute(context, { slug });
+
+      expect(await save(`Noor-${suffix}`)).toEqual({
+        ok: true,
+        value: {
+          version: 2,
+          draftComplete: false,
+          missing: ['storeName', 'businessName', 'phone', 'address', 'timezone'],
+        },
+      });
+      expect(await row(sellerId)).toMatchObject({ draft_slug: `noor-${suffix}`, version: 2 });
+      const read = await app.get(MyFileRead).execute(context, {});
+      expect(read.ok && read.value.slug).toBe(`noor-${suffix}`);
+      // The same slug again: no write, no new version.
+      expect((await save(`noor-${suffix}`)).ok).toBe(true);
+      expect((await row(sellerId)).version).toBe(2);
+      // A general save keeps it.
+      await app.get(MyFileSaveGeneral).execute(context, GENERAL);
+      expect(await row(sellerId)).toMatchObject({ draft_slug: `noor-${suffix}`, version: 3 });
+
+      // A write over a version that is no longer current changes no row.
+      const stale = await sql.query(
+        `UPDATE sellers.seller_files SET draft_slug = 'stale-write', version = 2
+          WHERE market_id = $1 AND seller_id = $2 AND version = 1`,
+        [code, sellerId],
+      );
+      expect(stale.rowCount).toBe(0);
+      expect((await row(sellerId)).draft_slug).toBe(`noor-${suffix}`);
+
+      // Reserved, malformed and taken slugs write nothing.
+      await sql.query(
+        `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+           ever_public, held_at, version, created_at)
+         VALUES ($1, $2, 'default', $3, $4, 'held', false, now(), 1, now())`,
+        [randomUUID(), code, `held-${suffix}`, randomUUID()],
+      );
+      expect(await save(`held-${suffix}`)).toEqual({ ok: false, error: { code: 'slug.taken' } });
+      expect(await save('admin')).toEqual({ ok: false, error: { code: 'slug.reserved' } });
+      expect(await save('a--b')).toEqual({ ok: false, error: { code: 'slug.format' } });
+      expect(await row(sellerId)).toMatchObject({ draft_slug: `noor-${suffix}`, version: 3 });
+    });
+
+    it('saves nothing when another unit bumped the version after the file was loaded (deterministic stale)', async () => {
+      const { sellerId } = await draftSeller();
+      const marketContext = marketOf(code);
+      const files = new PrismaSellerFileRepository(app.get(PrismaService));
+      const slug = parseShopSlug(`stale-${randomUUID().slice(0, 8)}`, NO_WORDS);
+      if (!slug.ok) throw new Error('the test slug is well formed');
+
+      const saved = await app
+        .get<UnitOfWork>(UNIT_OF_WORK)
+        .run<boolean, never>(marketContext, async () => {
+          const file = await files.findById(marketContext, sellerId);
+          // Another unit commits a save after this one read the file.
+          await sql.query(
+            'UPDATE sellers.seller_files SET version = version + 1 WHERE seller_id = $1',
+            [sellerId],
+          );
+          const applied = file!.saveSlug(slug.value, clock.now());
+          if (!applied.ok) throw new Error('the slug is accepted by the aggregate');
+          return ok(await files.saveDraft(marketContext, file!));
+        });
+      expect(saved).toEqual({ ok: true, value: false });
+      expect(await row(sellerId)).toMatchObject({ draft_slug: null, version: 2 });
+    });
+
+    it("reads a retired slug, own or another seller's, as taken through the repository mapping", async () => {
+      const { sellerId, context } = await draftSeller();
+      const suffix = randomUUID().slice(0, 8);
+      const slugs = new PrismaShopSlugRepository(app.get(PrismaService));
+      const retire = (slug: string, seller: string) =>
+        sql.query(
+          `INSERT INTO sellers.shop_slugs (id, market_id, tenant_id, slug, seller_id, state,
+             ever_public, held_at, retired_at, version, created_at)
+           VALUES ($1, $2, 'default', $3, $4, 'retired', true, now(), now(), 1, now())`,
+          [randomUUID(), code, slug, seller],
+        );
+      await retire(`own-${suffix}`, sellerId);
+      await retire(`other-${suffix}`, randomUUID());
+      const marketContext = marketOf(code);
+      const lookup = async (value: string) => {
+        const parsed = parseShopSlug(value, NO_WORDS);
+        if (!parsed.ok) throw new Error('the test slug is well formed');
+        return app
+          .get<UnitOfWork>(UNIT_OF_WORK)
+          .run(marketContext, async () => ok(await slugs.findBySlug(marketContext, parsed.value)));
+      };
+      const own = await lookup(`own-${suffix}`);
+      expect(own.ok && own.value).toMatchObject({ sellerId, state: 'retired' });
+      const other = await lookup(`other-${suffix}`);
+      expect(other.ok && other.value).toMatchObject({ state: 'retired' });
+
+      expect(await app.get(MyFileCheckSlug).execute(context, { slug: `own-${suffix}` })).toEqual({
+        ok: true,
+        value: { code: 'slug.taken' },
+      });
+      expect(await app.get(MyFileSaveSlug).execute(context, { slug: `other-${suffix}` })).toEqual({
+        ok: false,
+        error: { code: 'slug.taken' },
+      });
+      expect(await app.get(MyFileSaveSlug).execute(context, { slug: `own-${suffix}` })).toEqual({
+        ok: false,
+        error: { code: 'slug.taken' },
+      });
+    });
+
+    it('lets parallel slug saves have one winner per version, never a lost update', async () => {
+      const { sellerId, context } = await draftSeller();
+      const results = await Promise.all(
+        Array.from({ length: 4 }, (_, index) =>
+          app.get(MyFileSaveSlug).execute(context, { slug: `race-${index}-${code.toLowerCase()}` }),
+        ),
+      );
+      const saved = results.filter((result) => result.ok).length;
+      expect(saved).toBeGreaterThanOrEqual(1);
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      const stored = await row(sellerId);
+      expect(stored.version).toBe(1 + saved);
+      expect(stored.draft_slug).toMatch(/^race-\d-/);
+    });
+
+    it('stores a seller zone choice, and a refused zone changes nothing', async () => {
+      const { sellerId, context } = await draftSeller();
+      const addressKey = Object.keys(FIXTURE.address)[0] as keyof typeof FIXTURE.address;
+      const chosen = await app.get(MyFileSaveAddress).execute(context, {
+        address: FIXTURE.address,
+        timezone: FIXTURE.zones[1],
+      });
+      expect(chosen.ok && chosen.value.timezone).toMatchObject({
+        operatingTimezone: FIXTURE.zones[1],
+        timezoneSource: 'seller',
+      });
+      const before = await row(sellerId);
+      expect(before).toMatchObject({
+        operating_timezone: FIXTURE.zones[1],
+        timezone_source: 'seller',
+      });
+
+      for (const timezone of ['Etc/UTC', '+10:00', '', 123]) {
+        const refused = await app.get(MyFileSaveAddress).execute(context, {
+          address: { ...FIXTURE.address, [addressKey]: 'Changed 99' },
+          timezone,
+        });
+        expect(refused).toEqual({ ok: false, error: { code: 'timezone.not-selectable' } });
+        const after = await row(sellerId);
+        expect(after.version).toBe(before.version);
+        expect(after.address_ciphertext).toBe(before.address_ciphertext);
+        expect(after.operating_timezone).toBe(before.operating_timezone);
+        expect(after.timezone_source).toBe(before.timezone_source);
+        expect(after.address_timezone).toBe(before.address_timezone);
+        expect(after).toEqual(before);
+      }
+    });
+
+    it('keeps a single winner when general and address saves race', async () => {
+      const { sellerId, context } = await draftSeller();
+      const addressKey = Object.keys(FIXTURE.address)[0] as keyof typeof FIXTURE.address;
+      const generals = Array.from({ length: 4 }, (_, index) => `Racing Business ${index}`);
+      const addresses = Array.from({ length: 4 }, (_, index) => `${index + 1} Racing Rd`);
+      const results = await Promise.all([
+        ...generals.map((businessName) =>
+          app.get(MyFileSaveGeneral).execute(context, { ...GENERAL, businessName }),
+        ),
+        ...addresses.map((line) =>
+          app
+            .get(MyFileSaveAddress)
+            .execute(context, { address: { ...FIXTURE.address, [addressKey]: line } }),
+        ),
+      ]);
+      const saved = results.filter((result) => result.ok).length;
+      expect(saved).toBeGreaterThanOrEqual(1);
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      expect((await row(sellerId)).version).toBe(1 + saved);
+
+      // Every sealed column opens (one coherent state), and each holds a value one saved call sent.
+      const read = await app.get(MyFileRead).execute(context, {});
+      expect(read.ok).toBe(true);
+      if (!read.ok) return;
+      const winnerName = read.value.general.businessName;
+      expect(winnerName === null || generals.includes(winnerName)).toBe(true);
+      const winnerAddress = read.value.address;
+      expect(winnerAddress === null || addresses.includes(winnerAddress[addressKey] ?? '')).toBe(
+        true,
+      );
+      // A value is present only if a call that sent it succeeded.
+      const generalWins = results.slice(0, 4).filter((result) => result.ok).length;
+      const addressWins = results.slice(4).filter((result) => result.ok).length;
+      expect(winnerName === null).toBe(generalWins === 0);
+      expect(winnerAddress === null).toBe(addressWins === 0);
+    });
+
+    it('fails closed with access.unavailable when the counter store errors', async () => {
+      const { sellerId, context } = await draftSeller();
+      // A constraint no counter row can meet makes every reservation fail in the database.
+      await owner.query(
+        `ALTER TABLE sellers.rate_counters
+           ADD CONSTRAINT rate_counters_test_refuse CHECK (count < 0) NOT VALID`,
+      );
+      try {
+        expect(await app.get(MyFileSaveGeneral).execute(context, GENERAL)).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+        expect(await app.get(MyFileCheckSlug).execute(context, { slug: 'al-noor' })).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+      } finally {
+        await owner.query(
+          'ALTER TABLE sellers.rate_counters DROP CONSTRAINT rate_counters_test_refuse',
+        );
+      }
+      expect((await row(sellerId)).version).toBe(1);
     });
   });
 });

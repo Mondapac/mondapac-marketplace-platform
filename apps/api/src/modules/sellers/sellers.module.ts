@@ -8,11 +8,28 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { LOCATION_TIMEZONE_RESOLVER } from './application/ports/location-timezone-resolver';
+import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
+import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
 import { REGISTERED_SELLER_SOURCE } from './application/ports/registered-seller-source';
+import { SELLER_FILE_CIPHER } from './application/ports/seller-file-cipher';
 import { SELLER_FILE_REPOSITORY } from './application/ports/seller-file.repository';
+import {
+  ADDRESS_FORMATS,
+  SERVICE_AREAS,
+  TIMEZONE_RESOLVER,
+} from './application/ports/seller-market-formats';
 import { SELLER_MARKET_POLICY } from './application/ports/seller-market-policy';
+import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
 import { BackfillSellerFiles } from './application/use-cases/backfill-seller-files.use-case';
 import { CreateSellerFile } from './application/use-cases/create-seller-file.use-case';
+import { FormDescriptorsRead } from './application/use-cases/form-descriptors-read.use-case';
+import { MyFileCheckSlug } from './application/use-cases/my-file-check-slug.use-case';
+import { MyFileRead } from './application/use-cases/my-file-read.use-case';
+import { MyFileSaveAddress } from './application/use-cases/my-file-save-address.use-case';
+import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
+import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
+import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
@@ -20,8 +37,10 @@ import { SellingEligibility } from './application/use-cases/selling-eligibility.
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
+import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-files.job';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
+import { MyFileController } from './presentation/my-file.controller';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
 /**
@@ -32,8 +51,16 @@ import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   files: SELLER_FILE_REPOSITORY,
+  slugs: SHOP_SLUG_REPOSITORY,
   policy: SELLER_MARKET_POLICY,
   registered: REGISTERED_SELLER_SOURCE,
+  cipher: SELLER_FILE_CIPHER,
+  counters: RATE_COUNTER_REPOSITORY,
+  counterKeys: RATE_COUNTER_KEYS,
+  addressFormats: ADDRESS_FORMATS,
+  zones: TIMEZONE_RESOLVER,
+  areas: SERVICE_AREAS,
+  locationZones: LOCATION_TIMEZONE_RESOLVER,
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -63,10 +90,13 @@ function useCaseProvider<D, U>(
  * Slice 1 binds its outbox writer and events, the file store, the Market policy and the source of
  * registered sellers (identity's seller-access contract); the handler `sellers.create-file` on
  * `identity.seller-registered.v1`; the deploy-time backfill job `sellers.backfill-files`; and the
- * facade with `sellerSummaries` (its two use cases).
+ * facade with `sellerSummaries` (its two use cases). Slice 2 binds the seller's draft use cases
+ * (`my-file.*`, `form-descriptors.read`) with the field cipher, the slug store, the rate
+ * counters, the Market formats and the ServiceArea directory.
  */
 @Module({
   imports: [IdentityModule],
+  controllers: [MyFileController],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
@@ -87,6 +117,56 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(SellerSummaries, { unitOfWork: true, files: true }),
+    // Slice 2, the seller's draft (design 6.2), over HTTP through MyFileController. The
+    // permission key is held once identity slice 8a brings the registry and role keys (until
+    // then the gate refuses every route with access.denied).
+    useCaseProvider(MyFileRead, {
+      unitOfWork: true,
+      files: true,
+      cipher: true,
+      addressFormats: true,
+      zones: true,
+      areas: true,
+    }),
+    useCaseProvider(MyFileSaveGeneral, {
+      unitOfWork: true,
+      files: true,
+      cipher: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileSaveAddress, {
+      unitOfWork: true,
+      files: true,
+      cipher: true,
+      counters: true,
+      counterKeys: true,
+      addressFormats: true,
+      zones: true,
+      areas: true,
+      locationZones: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileSaveSlug, {
+      unitOfWork: true,
+      files: true,
+      slugs: true,
+      policy: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileCheckSlug, {
+      unitOfWork: true,
+      slugs: true,
+      policy: true,
+      files: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
     // The fail-closed stand-in of slice 9 (design 7.2): it reads nothing, so only the gate.
     ...[SellingEligibility, SellingEligibilitySystem].map((type): FactoryProvider => ({
@@ -115,9 +195,15 @@ function useCaseProvider<D, U>(
           sellingEligibilitySystem,
         }),
     },
-    registerJobsFrom('sellers', [BackfillSellerFiles], (backfill: BackfillSellerFiles) => [
-      backfillSellerFilesJob(backfill),
-    ]),
+    useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
+    registerJobsFrom(
+      'sellers',
+      [BackfillSellerFiles, PurgeExpired],
+      (backfill: BackfillSellerFiles, purge: PurgeExpired) => [
+        backfillSellerFilesJob(backfill),
+        purgeExpiredJob(purge),
+      ],
+    ),
     registerSubscriptionsFrom('sellers', [CreateSellerFile], (createFile: CreateSellerFile) =>
       sellerFileSubscriptions(createFile),
     ),

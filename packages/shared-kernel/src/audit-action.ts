@@ -9,7 +9,7 @@
 // no kind accepts free text, so a reason, a name or an email cannot be declared (ADR-0009
 // decision 6, R5; PA 3.2). `listOf` takes a required maximum length (Hassan L3). A new kind
 // is a kernel change reviewed by the security-tester.
-import { eventField, instantText } from './domain-event';
+import { copyListOnce, eventField, instantText, MAX_ENUM_VALUES } from './domain-event';
 import type {
   BooleanKind,
   EnumKind,
@@ -203,9 +203,13 @@ function rebuildPlainKind(kind: unknown, tag: unknown = tagOf(kind)): AuditPlain
     case 'enumOf': {
       const values = (kind as { readonly values?: unknown }).values;
       if (!Array.isArray(values)) return fail('enumOf needs a list of values');
-      // enumOf checks and freezes a copy of the values.
-      const copy = Array.prototype.slice.call(values) as unknown as [string, ...string[]];
-      return auditField.enumOf(copy);
+      // One copy, by index and with the length read once (Hassan R2 on slice 6a); enumOf then
+      // checks, de-duplicates and freezes that copy, never the caller's array.
+      const copied = copyListOnce(values, MAX_ENUM_VALUES);
+      if (copied === undefined || !('copy' in copied)) {
+        return fail(`enumOf needs a list of 1 to ${MAX_ENUM_VALUES} values`);
+      }
+      return auditField.enumOf(copied.copy as [string, ...string[]]);
     }
     case 'listOf':
     case 'optional':
@@ -383,15 +387,13 @@ function encodeValue(kind: AuditFieldKind, value: unknown, options: AuditFieldCh
   if (kind.kind === 'listOf') {
     if (!Array.isArray(value)) return invalid;
     // One copy, taken first, is checked and encoded (Hassan L2): a Proxy or an accessor cannot
-    // answer the length check with one list and the encoding with another. The copy stops at
-    // the maximum plus one, so a Proxy that reports a huge length cannot make it large.
-    let copy: unknown[];
-    try {
-      copy = Array.prototype.slice.call(value, 0, kind.max + 1) as unknown[];
-    } catch {
-      return invalid;
-    }
-    if (copy.length > kind.max) return { ok: false, tooLong: true } as Encoded;
+    // answer the length check with one list and the encoding with another. The length is read
+    // once and refused above the maximum before anything is copied, and the copy is an index
+    // loop into a fresh array: `slice` would honour `Symbol.species` (Hassan R1 on slice 6a).
+    const copied = copyListOnce(value, kind.max);
+    if (copied === undefined) return invalid;
+    if (!('copy' in copied)) return { ok: false, tooLong: true } as Encoded;
+    const copy = copied.copy;
     const items: JsonValue[] = [];
     for (let index = 0; index < copy.length; index += 1) {
       const encoded = encodePlain(kind.of, copy[index], options);

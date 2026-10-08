@@ -24,7 +24,9 @@ export interface SellersUnavailable {
 export interface SellersFacade {
   /**
    * Per distinct requested id, in the order of first occurrence: whether the seller has a file
-   * (slice 1; the time zone, the slug and the public store name join in later slices). An unknown
+   * (slice 1) and, for the `system` caller only, the draft's operating zone with `provisional:
+   * true` (slice 2; Hassan L4; absent when none is set; the slug and the public store name join
+   * in later slices). A request actor never gets the zone. An unknown
    * id and an id of another Market are byte-identical. At most 100 ids; a larger or malformed
    * call is refused whole. Two use cases behind this method: `anonymous` for a request actor,
    * `system` for the system actor. Not exposed over HTTP.

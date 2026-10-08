@@ -62,6 +62,26 @@ class FakeFiles implements SellerFileRepository {
     return Promise.resolve(true);
   }
 
+  findById(): Promise<SellerFile | null> {
+    return Promise.reject(new Error('not used by slice 1'));
+  }
+
+  saveDraft(): Promise<boolean> {
+    return Promise.reject(new Error('not used by slice 1'));
+  }
+
+  /** Draft zones by `market|seller`, set by a test that needs a seller with a zone. */
+  readonly zones = new Map<string, string>();
+
+  draftZones(market: MarketContext, ids: readonly Id<'Seller'>[]) {
+    const found = new Map<Id<'Seller'>, string>();
+    for (const id of ids) {
+      const zone = this.zones.get(`${market.marketId}|${id}`);
+      if (zone !== undefined && this.stored.has(`${market.marketId}|${id}`)) found.set(id, zone);
+    }
+    return Promise.resolve<ReadonlyMap<Id<'Seller'>, string>>(found);
+  }
+
   existingIds(market: MarketContext, ids: readonly Id<'Seller'>[]) {
     this.reads += 1;
     return Promise.resolve(
@@ -259,6 +279,7 @@ describe('the Market policy of sellers (design 14.1)', () => {
         approvalRequired: () => {
           throw new Error('policy unreadable');
         },
+        reservedWords: () => null,
       },
       outbox: { append: () => Promise.resolve() },
       clock: new FixedClock(START),
@@ -405,6 +426,50 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
     ];
     expect(anonymousAnswer).toEqual({ ok: true, value: expected });
     expect(JSON.stringify(systemAnswer)).toBe(JSON.stringify(anonymousAnswer));
+  });
+
+  it('gives the draft zone, provisional, to the system pair only (Hassan L4)', async () => {
+    const t = setUp();
+    const [a, b] = await withFiles(t, 2);
+    const unknown = t.ids.next<'Seller'>();
+    t.files.zones.set(`${code}|${a}`, 'Pacific/Auckland');
+    const request = [a!, b!, unknown];
+
+    const asSystem = await t.summariesSystem.execute(system(code), { sellerIds: request });
+    const asRequest = await t.summaries.execute(anonymous(code), { sellerIds: request });
+
+    expect(asSystem).toEqual({
+      ok: true,
+      value: [
+        {
+          sellerId: a,
+          exists: true,
+          operatingTimezone: { zone: 'Pacific/Auckland', provisional: true },
+        },
+        { sellerId: b, exists: true },
+        { sellerId: unknown, exists: false },
+      ],
+    });
+    expect(asRequest).toEqual({
+      ok: true,
+      value: [
+        { sellerId: a, exists: true },
+        { sellerId: b, exists: true },
+        { sellerId: unknown, exists: false },
+      ],
+    });
+  });
+
+  it('never gives a zone of the other Market, even to the system pair', async () => {
+    const t = setUp();
+    const other = code === 'AU' ? 'ZZ' : 'AU';
+    const sellerId = t.ids.next<'Seller'>();
+    await t.create.execute(system(other), { delivery: delivery(t), sellerId, origin: 'self' });
+    t.files.zones.set(`${other}|${sellerId}`, 'Asia/Tokyo');
+
+    const result = await t.summariesSystem.execute(system(code), { sellerIds: [sellerId] });
+
+    expect(result).toEqual({ ok: true, value: [{ sellerId, exists: false }] });
   });
 
   it('answers an id of the other Market exactly as an unknown id, and reads read-only', async () => {

@@ -6,6 +6,8 @@ import {
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
@@ -73,6 +75,7 @@ import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
 import { SELLER_ACCESS_CONTRACT } from './contracts/seller-access.contract';
+import { IDENTITY_AUDIT_ACTIONS } from './domain/audit';
 import { IDENTITY_EVENTS } from './domain/events';
 import { accountRepositoryProvider } from './infrastructure/account-repository.provider';
 import { linkProviders } from './infrastructure/links/link-providers';
@@ -123,6 +126,7 @@ const PORT = {
   composer: IDENTITY_MAIL_COMPOSER,
   transport: MAIL_TRANSPORT,
   outbox: OUTBOX_WRITER,
+  audit: AUDIT_WRITER,
   policy: IDENTITY_MARKET_POLICY,
   clock: CLOCK,
   ids: ID_GENERATOR,
@@ -176,6 +180,10 @@ function useCaseProvider<D, U>(
  *
  * R-3 binds the reviewer read and the reviewer notice behind the seller-access contract
  * (identity design 8.7). No subscription sends it: only `sellers` calls it, after a submission.
+ *
+ * Slice 6b registers identity's audited actions and binds its own audit writer
+ * (docs/design/domain/platform-audit.md 2, 5): the seed writes `identity.role.seeded`, and the
+ * Seller Owner's email confirmation writes the three founding rows. No other module binds one.
  */
 @Module({
   controllers: [
@@ -190,6 +198,8 @@ function useCaseProvider<D, U>(
   providers: [
     PersistenceModule.outboxWriterFor('identity'),
     registerEvents('identity', IDENTITY_EVENTS),
+    PersistenceModule.auditWriterFor('identity'),
+    registerAuditActions('identity', IDENTITY_AUDIT_ACTIONS),
     { provide: PASSWORD_HASHER, useFactory: () => new Argon2idPasswordHasher() },
     { provide: COMMON_PASSWORD_LIST, useFactory: () => new CheckedInCommonPasswords() },
     {
@@ -374,6 +384,8 @@ function useCaseProvider<D, U>(
       linkTokens: true,
       memberships: true,
       sellerAccess: true,
+      audit: true,
+      assignments: true,
     }),
     useCaseProvider(RequestSellerVerification, {
       unitOfWork: true,
@@ -406,6 +418,7 @@ function useCaseProvider<D, U>(
       seed: true,
       clock: true,
       ids: true,
+      audit: true,
     }),
     useCaseProvider(SendWelcomeMail, {
       unitOfWork: true,

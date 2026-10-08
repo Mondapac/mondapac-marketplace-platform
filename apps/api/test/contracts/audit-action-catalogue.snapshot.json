@@ -1,1 +1,57 @@
-[]
+[
+  {
+    "action": "identity.account-role.assigned",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "accountId": "id",
+      "boundSubjectId": "id",
+      "founding": "boolean",
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "id"
+    }
+  },
+  {
+    "action": "identity.role.seeded",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(system|default|custom)",
+      "scope": "enumOf(platform|seller)",
+      "seedVersion": "integer"
+    }
+  },
+  {
+    "action": "identity.seller-access.founded",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "accountId": "id",
+      "boundSubjectId": "id",
+      "origin": "enumOf(self|invitation)",
+      "sellerId": "id",
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
+    "action": "identity.seller-member.added",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "accountId": "id",
+      "boundSubjectId": "id",
+      "founding": "boolean",
+      "roleId": "id",
+      "sellerId": "id"
+    }
+  }
+]

@@ -332,6 +332,109 @@ describe('encodeAuditFields (W4)', () => {
         error: { code: 'audit-fields.invalid', field: 'ids', problem: 'too-long' },
       });
     });
+
+    it('copies by index into a fresh array: Symbol.species is never consulted (Hassan R1)', () => {
+      let speciesCalls = 0;
+      // `slice` would build its result through the species, which here answers a Proxy that
+      // drops every written item and reads back a malformed id.
+      class Sneaky extends Array<unknown> {
+        static override get [Symbol.species](): ArrayConstructor {
+          return function SneakyResult() {
+            speciesCalls += 1;
+            return new Proxy([], {
+              defineProperty: () => true,
+              get: (target, property, receiver) =>
+                property === '0'
+                  ? 'not-an-id'
+                  : (Reflect.get(target, property, receiver) as unknown),
+            });
+          } as unknown as ArrayConstructor;
+        }
+      }
+      const list = new Sneaky();
+      list.push(ID);
+      const proxied = new Proxy(list, {});
+
+      for (const value of [list, proxied]) {
+        expect(encodeAuditFields(only, { ids: value }, KNOWN_KEYS)).toEqual({
+          ok: true,
+          value: { ids: [ID] },
+        });
+      }
+      expect(speciesCalls).toBe(0);
+    });
+
+    it('refuses a list whose length cannot be read, or is not a list length', () => {
+      const throwing = new Proxy([ID], {
+        get: (target, property, receiver) => {
+          if (property === 'length') throw new Error('trap');
+          return Reflect.get(target, property, receiver) as unknown;
+        },
+      });
+      const fractional = new Proxy([ID], {
+        get: (target, property, receiver) =>
+          property === 'length' ? 1.5 : (Reflect.get(target, property, receiver) as unknown),
+      });
+
+      for (const value of [throwing, fractional]) {
+        expect(encodeAuditFields(only, { ids: value }, KNOWN_KEYS)).toEqual({
+          ok: false,
+          error: { code: 'audit-fields.invalid', field: 'ids', problem: 'invalid' },
+        });
+      }
+    });
+  });
+});
+
+describe('enumOf values are copied once, then checked and frozen (Hassan R2)', () => {
+  /** An array whose iterator yields codes on its first pass and free text after it. */
+  function trickyValues(stored: readonly string[]) {
+    const counters = { iterator: 0, species: 0 };
+    class Tricky extends Array<string> {
+      static override get [Symbol.species](): ArrayConstructor {
+        counters.species += 1;
+        return Array;
+      }
+      override [Symbol.iterator](): ArrayIterator<string> {
+        counters.iterator += 1;
+        return (counters.iterator === 1 ? ['open', 'closed'] : ['Free Text', 'closed'])[
+          Symbol.iterator
+        ]();
+      }
+    }
+    const values = new Tricky();
+    for (const value of stored) Array.prototype.push.call(values, value);
+    return { values, counters };
+  }
+
+  it('stores the indexed values, never what an iterator or the species answers', () => {
+    const { values, counters } = trickyValues(['open', 'closed']);
+    const definition = defineAuditAction({
+      action: 'identity.door.changed',
+      targetType: 'identity.door',
+      actors: ['system'],
+      after: { state: { kind: 'enumOf', values } },
+    } as unknown as Parameters<typeof defineAuditAction>[0]);
+
+    expect(definition.after).toEqual({ state: { kind: 'enumOf', values: ['open', 'closed'] } });
+    const stored = (definition.after as unknown as { state: { values: readonly string[] } }).state
+      .values;
+    expect(Object.getPrototypeOf(stored)).toBe(Array.prototype);
+    expect(Object.isFrozen(stored)).toBe(true);
+    expect(counters).toEqual({ iterator: 0, species: 0 });
+  });
+
+  it('checks the indexed values: free text at an index is refused whatever the iterator says', () => {
+    const { values } = trickyValues(['Free Text', 'closed']);
+
+    expect(() =>
+      defineAuditAction({
+        action: 'identity.door.changed',
+        targetType: 'identity.door',
+        actors: ['system'],
+        after: { state: { kind: 'enumOf', values } },
+      } as unknown as Parameters<typeof defineAuditAction>[0]),
+    ).toThrow(TypeError);
   });
 });
 

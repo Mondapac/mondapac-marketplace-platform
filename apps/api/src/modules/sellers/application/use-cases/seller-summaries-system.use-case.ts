@@ -11,7 +11,7 @@ import type { SellerSummariesInput } from './seller-summaries.use-case';
 /**
  * `sellerSummaries` for event handlers and jobs (sellers design 7.1; slice 1): rule `system`,
  * the pair of `SellerSummaries` behind the same facade method, which picks this one for the
- * system actor. The same read, the same answer: nothing in it depends on the caller.
+ * system actor. The same read as its pair; it alone shows the draft's zone as provisional (Hassan L4).
  */
 export class SellerSummariesSystem extends UseCase<
   SellerSummariesInput,
@@ -34,6 +34,6 @@ export class SellerSummariesSystem extends UseCase<
     context: CallContext,
     input: SellerSummariesInput,
   ): Promise<Result<readonly SellerSummary[], SellerSummariesFailure>> {
-    return readSellerSummaries(this.deps, context, input.sellerIds);
+    return readSellerSummaries(this.deps, context, input.sellerIds, { provisionalZone: true });
   }
 }

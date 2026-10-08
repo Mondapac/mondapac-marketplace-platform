@@ -88,7 +88,8 @@ minted by `identity` (ADR-0022 decision 1); `sellers` uses the same id as the id
 
 ```
 SellerFile (id = sellerId)
-  |-- working draft: General, Address, business identifier  (editable)
+  |-- working draft: General, Address, shop slug, business identifier  (editable)
+  |     (the shop slug is `draft_slug`: chosen, not held; Q-M25)
   |-- Contact: phone, contact email                          (live after approval; history V4)
   |-- RegisterCheck (0..1 per identifier value; sticky negative, 7.7)
   |-- BusinessFileRevision (0..n; V1; immutable content)  --> ReviewCheck (0..n per revision)
@@ -246,7 +247,15 @@ M6). The purge of a file that was never approved deletes its row, which releases
 s5). Before approval the seller may save a different slug: the old row, never public, is released
 (deleted) in the same unit, after the withdraw warning if a pending revision holds it, and the new
 slug is held at the next submission (T1; 14.4 Q-M21). A seller never changes a slug after approval
-(brief s7, AC 16). Rules (brief s7): `a-z0-9-`
+(brief s7, AC 16). **The draft's slug (Q-M25):** the slug the seller chooses is saved in the draft
+by `my-file.save-slug` (`SellerFileDraft.slug`, column `draft_slug`), parsed against the Market's
+reserved words first and checked against `shop_slugs` for an advisory `slug.taken` (another seller's
+held slug or any retired slug); it is not held. Saving the slug the draft already has is a no-op.
+The slug is the sixth completeness part (`slug`). The server never derives a slug. Invariant I-S1
+(data design 3.1): while a held row exists, `draft_slug` equals its slug. At submission (slice 5)
+the draft slug is parsed again against the current reserved words; if a held row of the same slug
+exists nothing is inserted, otherwise the held row is inserted, `P2002` on `(market_id, slug)`
+being `slug.taken` with the unit rolled back and `P2002` on the held-per-seller key a fault. Rules (brief s7): `a-z0-9-`
 only, 3 to 50 characters, no leading, trailing or double hyphen, compared after lower-casing; a
 reserved list in checked-in data (site routes, platform names, and a claim
 group), never literals in `sellers`' code (Ali change 3); as built in slice 2b the data is the
@@ -379,7 +388,7 @@ enforces; no work now.
 | `my-file.read` (draft, statuses, steps) | `permissions [sellers.business-identity.edit]` | allow | The seller's own file only. The one status read of 14.3 (Reza 1). Also returns the latest withdrawal of an onboarding revision while no later revision exists (cause, `seller` or `admin`, instant; Jafar 4) and the latest identity-change revision when rejected (3.1, Jafar 5) |
 | `my-file.validate-identifier` | same | allow | Format and checksum only; no lookup, nothing stored (Reza 4) |
 | `form-descriptors.read` | `permissions [sellers.business-identity.edit]` (seller) and a twin under `sellers.seller.view` (admin) | allow | Address, phone and identifier descriptors of the actor's Market (Reza 2) |
-| `my-file.save-general`, `.save-address`, `.save-identifier`, `.check-slug` | same | allow | `save-general` refuses a first save without phone (SEL-11, AC 7). Refused on an approved file (`file.change-request-required`; Hassan L2) |
+| `my-file.save-general`, `.save-address`, `.save-slug`, `.save-identifier`, `.check-slug` | same | allow | `save-general` refuses a first save without phone (SEL-11, AC 7). Refused on an approved file (`file.change-request-required`; Hassan L2). `save-slug` (Q-M25): body `{ slug }` only; answers `DraftSaved`; codes `slug.format`, `slug.reserved`, `slug.taken` (advisory; the submission insert is the authority), `file.not-found`, `file.change-request-required`, `conflict.stale`; no event and no audit row; the log carries the outcome code, never the slug. `check-slug` stays write-free and does not read `draft_slug` |
 | `my-file.submit` | same | allow | Covers "submit again" (3.1, 7.3). Refused in acting-as (6.4) |
 | `my-file.withdraw` | same | allow | Explicit cancel of a pending revision |
 | `my-business-identity.request-change`, `.cancel-change` | same | deny | The request carries the new values; re-confirmation checked inside (R-2); refused in acting-as (6.4); audited (9) |
@@ -447,7 +456,7 @@ a fixed window from the first reservation; a counter store that cannot answer fa
 | Reviewer re-lookups | 30 per admin per 24 h |
 | Lookups per origin | 30 per 24 h |
 | Market budget | 1,000 calls per Market per 24 h; alert at 80%; the periodic job uses at most 50% |
-| Slug check | 30 per minute and 300 per 24 h per account |
+| Slug check | 30 per minute and 300 per 24 h per account. `my-file.save-slug` reserves this limit **and** the saves limit before any work: it refuses `slug.taken`, so it is as much a probe as a check (Q-M25) |
 | Saves (`my-file.save-*`, `validate-identifier`, profile, contact and store-settings saves) | 60 per minute and 1,000 per 24 h per account |
 | Submissions (submit, submit again, request-change) | 5 per 24 h per seller file; the reviewer notice coalesced to at most 1 per seller per 6 h (R-3) |
 | Withdraw and cancel | 10 per 24 h per seller file (14.4 Q-M22) |
@@ -625,6 +634,7 @@ constants `sellers.<record>.<field>`.
 | Field | Live | In revisions and history |
 |---|---|---|
 | Store name, slug | Clear (public once approved; list search) | Encrypted |
+| Draft slug (`draft_slug`, Q-M25) | Clear; not public while a draft; personal-adjacent for a sole trader; removed with the `seller_files` row; never in an event, an audit row, a log line or a model request | Encrypted (as the slug of the revision) |
 | Business name, phone, contact email, address lines, postcode | Encrypted (T2 option B) | Encrypted |
 | Business identifier | Encrypted, plus `IdentifierIndex` | Encrypted |
 | Register compared values | Encrypted, only if the agreement allows | Encrypted |
@@ -894,6 +904,7 @@ Edits made to the other two documents, only on the affected lines: data design 3
 | Q-M21 | Yes, before approval: the brief restricts slug changes only after approval (brief s7, AC 16), and a draft slug gives no right (T1). Saving a different slug releases (deletes) the held row in the same unit, after the withdraw warning if a pending revision holds it; the new slug is held at the next submission. No audit row (a seller-side draft change; the admin release keeps `sellers.slug.released`). So `DELETE` on `shop_slugs` arrives in slice 5. Changed: 3.5 |
 | Q-M22 | Per seller file, like submissions. Changed: 6.5 |
 | Q-M23 | A second address: brief s7 says the determining address is where the shop operates and "if the registered address differs it is captured separately (details: G2)", and its G2 list names "operating address vs registered address". The draft has the operating address (required) and an optional registered address (same `AddressFormat`; captured only when the seller says it differs). The operating address alone determines the ServiceArea and the time zone. Both are business identity (Q4: "address"): in every revision, reviewed, changed after approval only through `request-change` (identity change), encrypted under the seller's key like other business data (8.1). The register comparison of 7.7 uses the registered address's postcode when present, otherwise the operating one; `reviewerBusinessDetails` returns both, labelled. No migration (the address is one JSON ciphertext). Changed: 2.1, 7.1; Reza adds the field to the Address step |
+| Q-M25 | The draft keeps the chosen slug in `seller_files.draft_slug` (nullable, clear, the slug rule as a CHECK, no key or index), saved by the new use case `my-file.save-slug` (6.2). It counts against both the save and the slug-check limits (6.5), refuses `slug.taken` as an advisory read, and is the sixth completeness part. Reserved words stay in Market configuration, never in the CHECK. Invariant I-S1 is held by the application (data design 3.1). Closes follow-up 8. Changed: 2.1, 3.5, 6.2, 6.5, 8.1 |
 | Q-M24 | Accepted: P2 joins the list; slice 8 needs no migration once the `DELETE` grant on `shop_slugs` moved to slice 5 (Q-M21; Mojtaba). Changed: 11.1 |
 
 ## 15. Requests to the identity owner (backend track)
