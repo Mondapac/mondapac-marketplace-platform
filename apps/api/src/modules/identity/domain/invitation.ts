@@ -226,6 +226,19 @@ export class Invitation {
   }
 
   /**
+   * Whether {@link reissue} would accept at `now`: pending, and `now` before `createdAt` plus the
+   * kind's lifetime (Mohammad C2). Changes nothing; the admin team list's hint reads it (slice 8c).
+   */
+  reissuableAt(now: Temporal.Instant, lifetimeMinutes: number): boolean {
+    if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
+      throw new RangeError('reissue: a positive whole lifetime in minutes is required');
+    }
+    if (this.#state.state !== 'pending') return false;
+    const cutoff = this.#state.createdAt.add({ minutes: lifetimeMinutes });
+    return Temporal.Instant.compare(now, cutoff) < 0;
+  }
+
+  /**
    * `pending` → `pending`: a re-send by the inviter's side (3.4, flows E2 and F2; slice 8b). The
    * stored token is voided at once (its hash and expiry cleared), so the earlier link stops
    * working before the new mail goes; the version rises and `identity.invitation-issued.v1` is
@@ -237,12 +250,7 @@ export class Invitation {
    * again instead, which replaces it.
    */
   reissue(now: Temporal.Instant, lifetimeMinutes: number): Result<void, InvitationRejected> {
-    if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
-      throw new RangeError('reissue: a positive whole lifetime in minutes is required');
-    }
-    if (this.#state.state !== 'pending') return err(REJECTED);
-    const cutoff = this.#state.createdAt.add({ minutes: lifetimeMinutes });
-    if (Temporal.Instant.compare(now, cutoff) >= 0) return err(REJECTED);
+    if (!this.reissuableAt(now, lifetimeMinutes)) return err(REJECTED);
     this.change({ tokenHash: null, expiresAt: null });
     const { id, kind, sellerId, version } = this.#state;
     this.#events.push(

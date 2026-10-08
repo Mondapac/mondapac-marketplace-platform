@@ -117,6 +117,28 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return row === null ? null : restore(row);
   }
 
+  async pendingAdminInvitations(
+    market: MarketContext,
+    after: Id<'Invitation'> | null,
+    limit: number,
+  ): Promise<Invitation[]> {
+    // The predicate of the partial key `invitations_market_id_email_pending_platform_key`
+    // (pending, platform scope), so the planner can use it; a Market holds few such rows.
+    const rows = await this.prisma.tx(market).identityInvitation.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: null,
+        state: 'pending',
+        kind: 'admin',
+        ...(after === null ? {} : { id: { gt: after } }),
+      },
+      select: SELECTED,
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    return rows.map(restore);
+  }
+
   async add(market: MarketContext, invitation: Invitation): Promise<void> {
     const state = invitation.state;
     if (invitation.persistedVersion !== null) {

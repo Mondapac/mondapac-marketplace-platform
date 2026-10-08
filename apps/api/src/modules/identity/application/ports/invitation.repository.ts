@@ -24,6 +24,18 @@ export interface InvitationRepository {
   ): Promise<Invitation | null>;
 
   /**
+   * Up to `limit` pending admin invitations of this Market (platform scope, `seller_id` NULL),
+   * expired ones included, whose id is greater than `after` (all when null), by id: the open
+   * invitations of the admin team list (slice 8c). Served by the partial index
+   * `invitations_market_id_email_pending_platform_key`.
+   */
+  pendingAdminInvitations(
+    market: MarketContext,
+    after: Id<'Invitation'> | null,
+    limit: number,
+  ): Promise<Invitation[]>;
+
+  /**
    * Stores a new invitation. A pending invitation for the same address and scope, or a second
    * pending seller-owner invitation for the seller (the partial unique indexes of data design
    * 3.10, M12), throws {@link InvitationAlreadyPendingError}.

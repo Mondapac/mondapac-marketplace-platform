@@ -720,6 +720,21 @@ overturn any of them.
 | Mojtaba N3 | Not applicable: no `role_permissions` write in these slices; left for slice 10 |
 | Not built | The admin list (`admin-account.view`) and the customer lookup (`customer-account.view`): Ali ruled 2026-10-08 that they are slices 8c (after this one) and 8d (after the customer mini-review); nothing of them is in this PR |
 
+**The admin team list as built in slice 8c (Hossein, 2026-10-08).** Branch
+`feat/identity-slice8c-admin-team-list`. No migration and no new index: read-only over
+`accounts`, `role_assignments`, `roles`, `invitations` and `second_factors`. No new permission
+key. Choices made where this design left room; reviewers may overturn any of them.
+
+| Topic | As built |
+|---|---|
+| Route and rule | `GET identity/admin/team?after=&limit=` on `AdminTeamController` (`@ReadsSession`; a GET needs no CSRF token), `Cache-Control: no-store`. Use case `identity.list-admin-team`, rule `permissions [identity.admin-account.view]`. The query is closed (`after`, `limit`, each once); `limit` 1 to 100, default 50; a malformed `after` or `limit` is `validation.failed` 400 |
+| Rows | Admin accounts of the Market (any status) and its **pending** admin invitations (expired ones included, `status: expired`; decided ones never), in one list merged by id. Account rows: id, address, name, status, `self`, role (`roleId`, `kind`, `seedCode`). Invitation rows: id, invited address, role (null when gone, R12), inviter id (null for the first-admin invitation), `createdAt`, `expiresAt`. Personal data goes to the entitled actor only (8.6 row 2); logs carry counts, codes and ids. Never a token, a hash, a credential or factor data (Hassan) |
+| Paging | The id paging of `ListRegisteredSellers` (sellers design R-6): `after` is the last id of the previous page, `next` the `after` of the next or null. Both tables are read with `id > after`, `limit + 1` each, merged and cut (UUID v7, so creation order); one cursor over both |
+| Units | The gate's and the list's units are read-only, with no transaction (ADR-0025); the actor is re-read in the list's unit (`readActingGrants` with the view key), so a disabled or demoted actor gets `access.denied` |
+| Hints (8.6 row 6) | Per row and action, `{allowed, code}`. An action whose key the actor lacks is `access.denied`, and nothing else is evaluated or read for it (the factor read runs only for an actor with the reset key), so a hint never tells more than the command would answer the same actor. Otherwise the hint runs **the command's own verdict**, now one function each in `application/accounts/admin-verdicts.ts`, which the commands call too: change role `mayActOnAdmin` (`GrantPolicy.canActOn` plus R3 on the target) then `LastHolderPolicy` when the target holds the system role; disable and enable `statusChangeVerdict` (with `LastHolderPolicy` and the domain's `statusChangeRefusal`, which `Account.disable`/`enable` use); reset `secondFactorResetVerdict` (a factor in any state, as `findByAccount`); re-send `adminInvitationResendVerdict` (with `inviterMayStillGrant` and `Invitation.reissuableAt`, which `reissue` uses); revoke only its key (only pending rows are listed). Re-send without a configured lifetime is `access.unavailable`, as the command. Which role is grantable for a change is not a row hint: it is the role catalogue's `grantable` (slice 10). A unit test runs every command for every row and three actors and asserts the hint equals the command's answer |
+| Reads | `AdminAccountReader.adminAccounts` (new port; id, address, name, status only), `InvitationRepository.pendingAdminInvitations` (served by the partial key `invitations_market_id_email_pending_platform_key`), `SecondFactorRepository.presentAmong` (account ids only); roles and the holder count once per page. A Market holds 10² admin rows or fewer, as for the reviewer read |
+| Tests | `list-admin-team.spec.ts` (AU and ZZ, fakes), `test/admin-team-list.e2e.spec.ts` (HTTP, populations, OpenAPI), `test/db/admin-team-list.db-spec.ts` (PostgreSQL, SELECT only, no transaction) |
+
 **Password reset and change as built in slice 4 (Hossein, 2026-10-08).** Choices made where this
 design left room; reviewers may overturn any of them.
 

@@ -14,6 +14,7 @@ import { PLATFORM_ROLE_ASSIGN } from '../../contracts/permissions';
 import { AccountRoleChangedAudit } from '../../domain/audit';
 import { GrantPolicy } from '../../domain/grant-policy';
 import { LastHolderPolicy } from '../../domain/last-holder-policy';
+import { isSystemRole, mayActOnAdmin } from '../accounts/admin-verdicts';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
@@ -142,9 +143,18 @@ export class AssignAdminRole extends UseCase<
         if (role === null || !roleIsInActorsReach(role, self)) {
           return err({ code: 'role.unknown' });
         }
-        const acted = GrantPolicy.canActOn(reading.actor, reading.targets.get(subject.accountId)!);
-        if (!acted.ok) return err(acted.error);
         const assignment = await this.deps.assignments.findByAccount(market, subject.accountId);
+        const system = await this.deps.roles.findSystemRole(market, 'platform');
+        const systemRoleId = system?.state.id ?? null;
+        // canActOn, then R3 on the target: the one check of the command and of the list's hint
+        // (slice 8c). Without an assignment R3 cannot apply, so the order of 8a-2 is kept.
+        const acted = mayActOnAdmin(
+          reading.actor,
+          reading.targets.get(subject.accountId)!,
+          assignment?.state.roleId ?? null,
+          systemRoleId,
+        );
+        if (!acted.ok) return err(acted.error);
         if (assignment === null) {
           // Every admin account is created with its assignment (acceptance, 3.4); one without is
           // a corrupt store, answered as not found and logged, never repaired here.
@@ -153,15 +163,7 @@ export class AssignAdminRole extends UseCase<
           });
           return err({ code: 'account.unknown' });
         }
-        const system = await this.deps.roles.findSystemRole(market, 'platform');
-        const holdsSystem = system !== null && assignment.state.roleId === system.state.id;
-        // R3: removing the system role from its holder needs that same role, now.
-        if (
-          holdsSystem &&
-          !(reading.actor.holdsSystemRole && reading.actor.roleId === system.state.id)
-        ) {
-          return err({ code: 'member.outranks-actor' });
-        }
+        const holdsSystem = isSystemRole(assignment.state.roleId, systemRoleId);
         const granted = GrantPolicy.canGrant(
           reading.actor,
           grantedRoleOf(role, this.deps.effectiveKeys),
@@ -182,7 +184,7 @@ export class AssignAdminRole extends UseCase<
           });
         }
         if (holdsSystem) {
-          const holders = await this.deps.assignments.activeHoldersOf(market, system.state.id);
+          const holders = await this.deps.assignments.activeHoldersOf(market, systemRoleId!);
           const kept = LastHolderPolicy.allowsLosing(holders, subject.accountId);
           if (!kept.ok) return err(kept.error);
         }

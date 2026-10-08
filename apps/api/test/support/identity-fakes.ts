@@ -1,3 +1,7 @@
+import {
+  ADMIN_ACCOUNT_READER,
+  type AdminAccountReader,
+} from '../../src/modules/identity/application/ports/admin-account-reader';
 import { createHmac } from 'node:crypto';
 import type { TestingModuleBuilder } from '@nestjs/testing';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
@@ -322,6 +326,28 @@ export class IdentityFakes {
           .sort((a, b) => (a.id < b.id ? -1 : 1))
           .slice(0, limit)
           .map((a) => ({ accountId: a.id, email: a.email.typed })),
+      ),
+  };
+
+  /** The admin team list's account read (slice 8c), over the fake accounts. */
+  readonly adminAccountReader: AdminAccountReader = {
+    adminAccounts: (market, after, limit) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.population === 'admin' &&
+              (after === null || a.id > after),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit)
+          .map((a) => ({
+            accountId: a.id,
+            email: a.email.typed,
+            displayName: a.displayName,
+            status: a.status,
+          })),
       ),
   };
 
@@ -890,6 +916,14 @@ export class IdentityFakes {
       this.factors.delete(accountId);
       return Promise.resolve(true);
     },
+    presentAmong: (market, accountIds) =>
+      Promise.resolve(
+        new Set(
+          accountIds.filter(
+            (accountId) => this.factors.get(accountId)?.marketId === market.marketId,
+          ),
+        ),
+      ),
     activeAmong: (market, accountIds) =>
       Promise.resolve(
         new Set(
@@ -979,6 +1013,21 @@ export class IdentityFakes {
       );
       return Promise.resolve(state === undefined ? null : Invitation.restore(state));
     },
+    pendingAdminInvitations: (market, after, limit) =>
+      Promise.resolve(
+        [...this.invitations.values()]
+          .filter(
+            (candidate) =>
+              candidate.marketId === market.marketId &&
+              candidate.kind === 'admin' &&
+              candidate.sellerId === null &&
+              candidate.state === 'pending' &&
+              (after === null || candidate.id > after),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit)
+          .map((state) => Invitation.restore(state)),
+      ),
     findPendingFor: (market, sellerId, emailNormalized) => {
       const state = [...this.invitations.values()].find(
         (candidate) =>
@@ -1130,6 +1179,8 @@ export class IdentityFakes {
       .useValue(this.sellerAccessRepository)
       .overrideProvider(REVIEWER_CANDIDATE_READER)
       .useValue(this.reviewerCandidateReader)
+      .overrideProvider(ADMIN_ACCOUNT_READER)
+      .useValue(this.adminAccountReader)
       .overrideProvider(SELLER_MEMBERSHIP_REPOSITORY)
       .useValue(this.membershipRepository)
       .overrideProvider(ROLE_REPOSITORY)

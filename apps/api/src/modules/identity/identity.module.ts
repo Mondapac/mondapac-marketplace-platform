@@ -65,6 +65,9 @@ import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.re
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
 import { AcceptAdminInvitation } from './application/use-cases/accept-admin-invitation.use-case';
 import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
+import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case';
+import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
+import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
 import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
 import { DisableCustomerAccount } from './application/use-cases/disable-customer-account.use-case';
 import { EnableAdminAccount } from './application/use-cases/enable-admin-account.use-case';
@@ -153,6 +156,7 @@ import { identityMailSubscriptions } from './presentation/subscribers/mail.subsc
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   accounts: ACCOUNT_REPOSITORY,
+  adminAccounts: ADMIN_ACCOUNT_READER,
   sessions: SESSION_REPOSITORY,
   throttles: THROTTLE_REPOSITORY,
   records: SIGN_IN_RECORD_REPOSITORY,
@@ -251,6 +255,9 @@ function useCaseProvider<D, U>(
  * invitations with an inviter (issue, resend, revoke; the acceptance re-checks the inviter),
  * disabling and enabling admin and customer accounts, and the admin-initiated second-factor
  * reset, behind one controller (`AdminTeamController`).
+ *
+ * Slice 8c binds the admin team list (`ListAdminTeam`, `identity.admin-account.view`) and its
+ * account read, on the same controller.
  */
 @Module({
   controllers: [
@@ -286,6 +293,7 @@ function useCaseProvider<D, U>(
     ...reviewerProviders,
     ...roleProviders,
     ...secondFactorProviders,
+    adminAccountReaderProvider,
     {
       provide: AUTHENTICATOR,
       inject: [UNIT_OF_WORK, SESSION_REPOSITORY, SESSION_TOKENS, CLOCK],
@@ -738,6 +746,20 @@ function useCaseProvider<D, U>(
       challenges: true,
       outbox: true,
       audit: true,
+      clock: true,
+    }),
+    useCaseProvider(ListAdminTeam, {
+      unitOfWork: true,
+      accounts: true,
+      adminAccounts: true,
+      invitations: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      factors: true,
+      policy: true,
       clock: true,
     }),
     useCaseProvider(AssignAdminRole, {
