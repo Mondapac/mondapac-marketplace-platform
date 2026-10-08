@@ -5,6 +5,8 @@
   "supportedLocales": ["ja-JP", "en-US"],
   "defaultCurrency": "JPY",
   "settlementCurrency": "JPY",
+  "pricesIncludeTax": false,
+  "maxLineQuantity": 50,
   "timezone": "Asia/Tokyo",
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,

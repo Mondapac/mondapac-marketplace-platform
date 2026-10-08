@@ -5,6 +5,8 @@
   "supportedLocales": ["en-AU"],
   "defaultCurrency": "AUD",
   "settlementCurrency": "AUD",
+  "pricesIncludeTax": true,
+  "maxLineQuantity": 99,
   "timezone": "Australia/Brisbane",
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,

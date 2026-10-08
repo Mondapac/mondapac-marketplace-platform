@@ -9,7 +9,7 @@
 // their constructors are on the `/contexts` entry, for the platform's entry adapters only.
 // Identity slice 6a (platform-audit design 3 and 6.3): ContentHash, canonicalJson (RFC 8785)
 // and defineAuditAction with the audit field vocabulary.
-// Money has its own trigger (ADR-0015).
+// Money (ADR-0007 decision 1; ADR-0015 decision 3, with pricing slice 1).
 //
 // Named exports only. Fakes and test builders live on the `/testing` entry and are never
 // re-exported from here.
@@ -73,6 +73,21 @@ export type {
   PermissionKeyKind,
   RecordInput,
 } from './domain-event';
+
+export {
+  addMoney,
+  allocateMoney,
+  compareMoney,
+  MAX_WIRE_AMOUNT_DIGITS,
+  minorUnitExponent,
+  money,
+  MoneyError,
+  parseMinorUnits,
+  parseMoney,
+  scaleMoney,
+  subtractMoney,
+} from './money';
+export type { Money, MoneyParseError, RoundingMode } from './money';
 
 export { canonicalJson, MAX_CANONICAL_JSON_DEPTH } from './canonical-json';
 export type { CanonicalJsonError } from './canonical-json';
