@@ -1,11 +1,14 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { SeedSystemRoles } from '../src/modules/identity/application/use-cases/seed-system-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
-import { IdentityFakes } from './support/identity-fakes';
+import type { AccountState } from '../src/modules/identity/domain/account';
+import { RandomLinkTokens } from '../src/modules/identity/infrastructure/links/random-link-tokens';
+import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
 
@@ -21,10 +24,59 @@ const NAME = 'Amina Rahman';
 const fakes = new IdentityFakes();
 
 /** Market numbers of config/markets/AU.json and test/fixtures/markets/ZZ.json. */
-const NUMBERS: Record<string, { state: string; keptSeconds: number }> = {
-  AU: { state: 'pending', keptSeconds: 43_200 * 60 },
-  ZZ: { state: 'approved', keptSeconds: 20_160 * 60 },
+const NUMBERS: Record<
+  string,
+  { state: string; keptSeconds: number; limit: number; blockSeconds: number; mailLimit: number }
+> = {
+  AU: { state: 'pending', keptSeconds: 43_200 * 60, limit: 5, blockSeconds: 15 * 60, mailLimit: 3 },
+  ZZ: {
+    state: 'approved',
+    keptSeconds: 20_160 * 60,
+    limit: 4,
+    blockSeconds: 20 * 60,
+    mailLimit: 2,
+  },
 };
+
+const linkTokens = new RandomLinkTokens();
+
+/** An unverified customer account with an issued `verify-email` link; answers the token. */
+function seedUnverifiedCustomer(code: string): string {
+  const now = Temporal.Now.instant();
+  const created = now.subtract({ hours: 1 });
+  const accountId =
+    `0199${code === 'AU' ? 'cccc' : 'dddd'}-0000-7000-8000-000000000001` as Id<'Account'>;
+  const account: AccountState = {
+    id: accountId,
+    marketId: code as AccountState['marketId'],
+    population: 'customer',
+    email: { typed: EMAIL, normalized: EMAIL.toLowerCase() },
+    displayName: null,
+    status: 'active',
+    emailVerifiedAt: null,
+    existingAccountNoticeAt: null,
+    signedUpAt: created,
+    createdAt: created,
+    version: 1,
+    credential: { passwordHash: fakeHashOf(PASSWORD), changedAt: created },
+  };
+  fakes.seedAccount(account);
+  const { token, tokenHash } = linkTokens.issue();
+  const linkId = `0199${code === 'AU' ? 'cccc' : 'dddd'}-0000-7000-8000-0000000000a1`;
+  fakes.links.set(linkId, {
+    id: linkId as Id<'OneTimeLink'>,
+    marketId: account.marketId,
+    accountId,
+    purpose: 'verify-email',
+    requestedAt: created,
+    tokenHash,
+    issuedAt: created,
+    expiresAt: now.add({ hours: 1 }),
+    consumedAt: null,
+    version: 2,
+  });
+  return token;
+}
 
 const cookieOf = (setCookie: unknown): string => {
   const [line] = Array.isArray(setCookie) ? (setCookie as string[]) : [String(setCookie)];
@@ -276,6 +328,111 @@ describe('seller accounts over HTTP (integration)', () => {
 
       expect([known.status, unknown.status]).toEqual([202, 202]);
       expect(unknown.body).toEqual(known.body);
+    });
+
+    it('answers credentials.invalid, then request.throttled (429) with Retry-After at the limit', async () => {
+      await boot();
+      await signUpAndConfirm(code);
+      const { limit, blockSeconds } = NUMBERS[code]!;
+
+      for (let n = 0; n < limit; n += 1) {
+        const failed = await post('sign-in', code, { email: EMAIL, password: 'wrong password' });
+        expect(failed.body).toEqual({ statusCode: 401, code: 'credentials.invalid' });
+      }
+      const throttled = await post('sign-in', code, { email: EMAIL, password: PASSWORD });
+
+      expect(throttled.status).toBe(429);
+      expect(throttled.body).toMatchObject({ code: 'request.throttled' });
+      const retryAfter = Number(throttled.headers['retry-after']);
+      expect(retryAfter).toBeGreaterThan(0);
+      expect(retryAfter).toBeLessThanOrEqual(blockSeconds);
+      expect(throttled.headers['set-cookie']).toBeUndefined();
+    });
+
+    it("refuses a customer's verify-email token on the seller confirmation (link.rejected)", async () => {
+      await boot();
+      const token = seedUnverifiedCustomer(code);
+
+      const response = await post('confirm-email', code, { token, password: PASSWORD });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ statusCode: 400, code: 'link.rejected' });
+      expect([...fakes.accounts.values()][0]!.emailVerifiedAt).toBeNull();
+    });
+
+    it("refuses a seller's verify-email token on the customer confirmation, and it still works for the seller", async () => {
+      await boot();
+      await seedRoles(code);
+      await post('sign-up', code, { displayName: NAME, email: EMAIL, password: PASSWORD });
+      const token = await mailedToken(code);
+
+      const customer = await http()
+        .post('/identity/customer/confirm-email')
+        .set({ 'x-market-id': code })
+        .send({ token, password: PASSWORD });
+      const seller = await post('confirm-email', code, { token, password: PASSWORD });
+
+      expect(customer.status).toBe(400);
+      expect(customer.body).toEqual({ statusCode: 400, code: 'link.rejected' });
+      expect(seller.status).toBe(200);
+    });
+
+    describe('sign-up answers one body whatever the address (AC 21, Sajad gap 2)', () => {
+      const ACCEPTED = { code: 'sign-up.accepted' };
+      const signUp = (email: string) =>
+        post('sign-up', code, { displayName: NAME, email, password: PASSWORD });
+
+      it('a new address and the address of a verified seller', async () => {
+        await boot();
+        await seedRoles(code);
+        const fresh = await signUp('new.seller@example.com');
+        await signUpAndConfirm(code);
+
+        const verified = await signUp(EMAIL);
+
+        expect([fresh.status, verified.status]).toEqual([202, 202]);
+        expect(fresh.body).toEqual(ACCEPTED);
+        expect(verified.body).toEqual(fresh.body);
+        expect(verified.headers['set-cookie']).toBeUndefined();
+      });
+
+      it('the address of a disabled account', async () => {
+        await boot();
+        await seedRoles(code);
+        const fresh = await signUp('new.seller@example.com');
+        await signUp(EMAIL);
+        const owner = [...fakes.accounts.values()].find(
+          (a) => a.email.normalized === EMAIL.toLowerCase(),
+        )!;
+        fakes.seedAccount({ ...owner, status: 'disabled' });
+
+        const disabled = await signUp(EMAIL);
+
+        expect(disabled.status).toBe(202);
+        expect(disabled.body).toEqual(fresh.body);
+      });
+
+      it('a sign-up over the mail limit of its address', async () => {
+        await boot();
+        await seedRoles(code);
+        const fresh = await signUp('new.seller@example.com');
+        const { mailLimit } = NUMBERS[code]!;
+        for (let n = 0; n < mailLimit; n += 1) await signUp(EMAIL);
+        const linkEvents = () =>
+          fakes.events.filter(
+            (e) =>
+              e.type === 'identity.one-time-link-requested.v1' &&
+              e.payload['accountId'] !== fakes.events[0]!.payload['accountId'],
+          ).length;
+        expect(linkEvents()).toBe(mailLimit);
+
+        const throttled = await signUp(EMAIL);
+
+        expect(throttled.status).toBe(202);
+        expect(throttled.body).toEqual(fresh.body);
+        // The mail was refused: no new link request was published.
+        expect(linkEvents()).toBe(mailLimit);
+      });
     });
   });
 });
