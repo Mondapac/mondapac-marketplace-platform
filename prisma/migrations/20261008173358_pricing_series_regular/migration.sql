@@ -194,7 +194,8 @@ ALTER TABLE "pricing"."regular_price_records"
     ("hold_direction" IS NULL) = ("status" = 'accepted')
     AND ("hold_direction" IS NULL
          OR ("hold_direction" = 'up' AND "amount_minor" > "anchor_amount_minor")
-         OR ("hold_direction" = 'down' AND "amount_minor" < "anchor_amount_minor"))),
+         OR ("hold_direction" = 'down' AND "amount_minor" < "anchor_amount_minor"))
+    AND ("hold_direction" IS NULL OR "anchor_record_id" IS NOT NULL)),
   ADD CONSTRAINT "regular_price_records_effective_check" CHECK (
     ("effective_from" IS NOT NULL) = ("status" IN ('accepted', 'approved'))
     AND ("effective_from" IS NULL OR "effective_from" >= "submitted_at")

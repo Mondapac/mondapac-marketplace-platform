@@ -261,6 +261,7 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
     it.each([
       ['a held record without direction', { hold_direction: null }],
       ['a direction that disagrees with the amounts', { hold_direction: 'down' }],
+      ['a held record without an anchor', { anchor_record_id: null, anchor_amount_minor: null }],
       ['a pending record with a start', { effective_from: at(10) }],
       ['a superseded record without its cause', { status: 'superseded', superseded_at: at(11) }],
       [
