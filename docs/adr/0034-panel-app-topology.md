@@ -1,7 +1,7 @@
 # ADR-0034: Panel App Topology (D2); amends ADR-0008
 
 **Status:** Proposed — 2026-10-08. For Ali (cto) and Mohammad (software-architect); Hassan
-(security-tester) must confirm decisions 3 to 5 (cookies, CSRF, hosts) before the first
+(security-tester) must confirm decisions 2 to 4 (hosts, cookies, CSRF, session) before the first
 sign-in slice merges.
 **Relates to:** ADR-0008 (repository structure; `apps/web`), ADR-0018 and
 `docs/design/domain/identity.md` 6.4 (cookie, CSRF, HF7), ADR-0020 decision 3
@@ -44,23 +44,26 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
      merged header breaks the `__Host-` attributes), with no `Domain` rewrite and no cookie of its own.
    - **CSRF and origin:** the API's origin check is fail-open when `Origin` or `Sec-Fetch-Site`
      is absent, and a server-side `fetch` sends neither. So the BFF itself **rejects** every
-     unsafe-method request whose `Origin` or `Sec-Fetch-Site` is absent or not its own host,
-     then forwards the browser's values and `x-csrf-token` verbatim. `allowedOrigins` lists the panel hosts.
+     unsafe-method request whose `Origin` or `Sec-Fetch-Site` does not satisfy both `Sec-Fetch-Site: same-origin` and an `Origin` exactly equal to the
+     panel's own origin (scheme, host and port), then forwards the browser's values and
+     `x-csrf-token` verbatim. `allowedOrigins` is kept **per population**: admin routes accept only
+     the admin origin, seller routes only the seller origin, so the API's own check still holds behind the BFF.
      It refuses any request carrying `Authorization` (HF14).
    - **Client address:** the API throttles per origin (identity.md 6.8). The BFF forwards the
-     client address in one header it sets itself (dropping any `x-forwarded-*` or `forwarded` from
-     the browser), the API trusts that header only from the panel hosts' network (the trust-proxy
+     client address in one header it sets itself (it drops `x-forwarded-*` and `forwarded` from the
+     incoming request unless they come from a configured trusted hop, the same rule as `X-Forwarded-Host`), the API trusts that header only from the panel hosts' network (the trust-proxy
      hop count, identity.md I4, is settled in the deployment slice), and the API is not
      reachable from outside that network. This is a **gate for the sign-in slice**: the slice does
      not merge until Hassan confirms it, or per-origin throttles would treat every user as one.
    - **Correlation:** the API issues the correlation id (ADR-0020); the BFF logs the response
      header and the client request id and never sends its own.
-   - **Hygiene:** hop-by-hop headers stripped; upstream responses pass `Cache-Control` through,
-     and session answers must carry `no-store`. It adds no business logic and never logs a
+   - **Hygiene:** request headers are an allowlist (`Cookie`, `Content-Type`, `Accept`, `Origin`,
+     `Sec-Fetch-Site`, `x-csrf-token`, plus the headers set above); credentialed answers that set no
+     `Cache-Control` get `private, no-store`, and session answers always carry `no-store`. It adds no business logic and never logs a
      session token or password.
 4. **Session in the app.** A server component may *read* the actor summary
-   (`GET identity/<population>/session`) with `cache: 'no-store'` to choose the page, but it
-   cannot set cookies. Anything that may clear or rotate the cookie (a `session.invalid`
+   (`GET identity/<population>/session`) with `cache: 'no-store'` to choose the page, using the same mapping and header code as the relay (Market from host,
+   client address, no `Authorization`), but it cannot set cookies. Anything that may clear or rotate the cookie (a `session.invalid`
    answer, sign-in, change-password) goes through the relay route handler, which redirects.
    The CSRF token from the summary is held in memory by the page and carried through client
    navigations in the RSC payload; pages that render it are `private, no-store`. A hard reload
@@ -68,7 +71,8 @@ this ADR for separate hosts per panel and for the tier that sends `x-market-id`.
    summary says is not allowed.
 5. **No cross-origin API calls from the browser.** No CORS with credentials is introduced.
 6. **Security headers.** Each app sends a nonce-based Content-Security-Policy,
-   `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and a strict referrer policy;
+   `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, a strict referrer policy,
+   HSTS, `Cross-Origin-Opener-Policy: same-origin` and a restrictive `Permissions-Policy`;
    `dangerouslySetInnerHTML` is banned by lint. Access control is checked in the relay and the
    page, not by Next middleware alone. Next.js and React advisories are patched within the
    cadence Kazem sets (DevOps slice).

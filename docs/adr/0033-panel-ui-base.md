@@ -1,7 +1,7 @@
 # ADR-0033: Panel UI Base (D1)
 
 **Status:** Proposed — 2026-10-08. For Ali (cto) and Mohammad (software-architect) to rule on;
-Hassan (security-tester) and Reza (ui-ux-designer) to confirm the points marked for them.
+Hassan (security-tester) reviewed the SVG icon and install-policy points (decisions 7 and 9).
 **Relates to:** ADR-0017 (Figma is the source of truth), ADR-0014 (toolchain baseline),
 ADR-0034 (app topology), `docs/design/frontend-kickoff.md` (D1, section 15),
 `docs/design/tokens/` (exported tokens), CLAUDE.md rule 12.
@@ -46,7 +46,7 @@ Tailwind's native binary) is part of the scaffold PR and blocks it if it fails.
    document once ADR-0034 decision 7 lands; before that they are hand-written, advisory, and
    covered by a contract test. The server answer stays the authority and its reason codes map
    to copy (`docs/modules/identity/ux.md`). Another form or validation library needs a new entry here.
-7. **Icons:** the icon set already in Figma, exported as SVG components into `packages/ui`.
+7. **Icons:** the icon set already in Figma, exported as SVG components into `packages/ui` (sanitised at export, never injected as raw markup).
 8. **Tests:** Vitest with Testing Library for components, Playwright for a flow per slice
    (it also takes the milestone screenshots). Every component has a states page
    (default, hover, focus, disabled, loading, empty, error); the tool for it (Storybook or a
