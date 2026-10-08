@@ -7,6 +7,7 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
+import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { reduceDatabaseError } from '../../src/platform/persistence/database-error';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -264,11 +265,10 @@ describe.each(TEST_MARKETS)(
       ).toBe('23503 product_revision_variants_market_id_product_id_variant_id_fkey');
 
       await inUnit(market, () => revisions.add(market, good));
-      expect(
-        await failure(
-          inUnit(market, () => revisions.add(market, revision(p, f, c, { revisionNo: 1 }))),
-        ),
-      ).toBe('23505 product_revisions_market_id_product_id_revision_no_key');
+      // The repository turns the lost race on the number into a stale conflict (slice 6).
+      await expect(
+        inUnit(market, () => revisions.add(market, revision(p, f, c, { revisionNo: 1 }))),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
     });
 
     it('round-trips a revert, a tax override and an acting-as seller revision (M1)', async () => {
