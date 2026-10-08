@@ -120,7 +120,7 @@ describe('platform audit writer and seal tables (database integration, slice 6a)
       .useValue(clock)
       .compile();
     app = await moduleRef.init();
-    writer = app.select(AlphaAuditTestModule).get<AuditWriter>(AUDIT_WRITER);
+    writer = app.select(AlphaAuditTestModule).get<AuditWriter>(AUDIT_WRITER, { strict: true });
     unitOfWork = app.get<UnitOfWork>(UNIT_OF_WORK);
     root = app.get(PrismaRoot);
     sql = new Client({ connectionString: testDatabaseUrl() });

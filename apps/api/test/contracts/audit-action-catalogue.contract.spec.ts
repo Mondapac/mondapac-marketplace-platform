@@ -19,8 +19,9 @@ import { testAppConfig } from '../support/test-config';
 // The contracts tests of docs/design/domain/platform-audit.md 16 (identity slices 6a and 6b):
 // - the audit action catalogue of the booted application, in both roles, equals the checked-in
 //   snapshot, so every new or changed action is read by the security-tester in the diff (3.2);
-// - Ali's condition 1 on the 6a/6b split, as 6b changes it: identity is the only module that
-//   binds an AUDIT_WRITER provider, and it binds its own;
+// - Ali's condition 1 on the 6a/6b split, as 6b changes it: only the modules of AUDITING_MODULES
+//   bind an AUDIT_WRITER provider, each its own (identity since 6b; pricing since its slice 1
+//   part 3b, whose audited actions are design 8 of its approved G2);
 // - Hassan L4 (carried from 6a): each registration of actions and each writer binding names the
 //   folder it is declared in: `<m>` only in src/modules/<m>/<m>.module.ts, and
 //   `platform.<component>` only in src/platform/<component>/. Checked in the source and in the
@@ -28,6 +29,12 @@ import { testAppConfig } from '../support/test-config';
 // - a module can reach neither another module's writer nor a writer factory (PA 2).
 
 const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
+
+/**
+ * The Nest modules that bind their own audit writer and register their actions. A module joins
+ * this list only with the audited actions its approved design names (pricing: design 8).
+ */
+const AUDITING_MODULES = ['IdentityModule', 'PricingModule'] as const;
 const SRC = path.join(__dirname, '../../src');
 
 const foldersOf = (dir: string) =>
@@ -133,7 +140,8 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       .get('api')!
       .get(AuditActionCatalogue)
       .snapshot()
-      .map((entry) => entry.action);
+      .map((entry) => entry.action)
+      .filter((action) => action.startsWith('identity.'));
 
     expect(actions).toEqual([
       'identity.account-role.assigned',
@@ -161,7 +169,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
   });
 });
 
-describe('identity is the only module that binds an audit writer (Ali, condition 1, as 6b changes it)', () => {
+describe('only the auditing modules bind an audit writer, each its own (Ali, condition 1, as 6b changes it)', () => {
   /**
    * Every provider token of a Nest module and of the submodules it imports, depth first. An
    * imported bounded-context module (`sellers` imports `identity` for its facade) is its own
@@ -193,13 +201,15 @@ describe('identity is the only module that binds an audit writer (Ali, condition
   });
 
   it.each(CORE_MODULES.map((module) => [module.name, module] as const))(
-    '%s provides an AUDIT_WRITER only if it is IdentityModule',
+    '%s provides an AUDIT_WRITER only if it is an auditing module',
     (name, module) => {
-      expect(providerTokens(module).includes(AUDIT_WRITER)).toBe(name === 'IdentityModule');
+      expect(providerTokens(module).includes(AUDIT_WRITER)).toBe(
+        (AUDITING_MODULES as readonly string[]).includes(name),
+      );
     },
   );
 
-  it('in the booted graph, only IdentityModule resolves an AUDIT_WRITER, bound to "identity"', async () => {
+  it('in the booted graph, only the auditing modules resolve an AUDIT_WRITER, each bound to its own folder', async () => {
     const moduleRef = await apiGraph();
     const binders = nestModulesOf(moduleRef)
       .filter((nestModule) => nestModule.providers.has(AUDIT_WRITER))
@@ -209,7 +219,10 @@ describe('identity is the only module that binds an audit writer (Ali, condition
       ]);
     await moduleRef.close();
 
-    expect(binders).toEqual([['IdentityModule', 'identity']]);
+    expect(binders.sort()).toEqual([
+      ['IdentityModule', 'identity'],
+      ['PricingModule', 'pricing'],
+    ]);
   });
 
   it('binds every writer and registers every action list in the Nest module of its owner (Hassan L4)', async () => {
@@ -232,6 +245,8 @@ describe('identity is the only module that binds an audit writer (Ali, condition
     expect(found.map((entry) => [entry.module, entry.kind]).sort()).toEqual([
       ['IdentityModule', 'actions'],
       ['IdentityModule', 'writer'],
+      ['PricingModule', 'actions'],
+      ['PricingModule', 'writer'],
     ]);
     expect(found.filter((entry) => entry.owner !== entry.allowed)).toEqual([]);
   });
@@ -313,6 +328,8 @@ describe('identity is the only module that binds an audit writer (Ali, condition
     expect(calls.sort()).toEqual([
       `${path.join('modules', 'identity', 'identity.module.ts')}: auditWriterFor('identity')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
+      `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,
+      `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
     ]);
   });
 });
