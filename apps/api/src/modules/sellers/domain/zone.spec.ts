@@ -136,4 +136,60 @@ describe('zoneAfterAddressSave', () => {
       ).toEqual({ ok: true, value: zone('Australia/Sydney', 'seller', 'Australia/Sydney') });
     });
   });
+
+  describe('the suggested zone of a position', () => {
+    const suggest = (suggestedZone: unknown, hint: unknown = undefined) => ({
+      chosen: undefined,
+      hint,
+      suggestedZone,
+    });
+
+    it('applies to a draft whose zone nobody set, with source location', () => {
+      expect(zoneAfterAddressSave(null, ZB, suggest('Pacific/Chatham'))).toEqual({
+        ok: true,
+        value: zone('Pacific/Chatham', 'location', 'Pacific/Auckland'),
+      });
+      const browser = zone('Australia/Sydney', 'browser', 'Australia/Sydney');
+      expect(zoneAfterAddressSave(browser, NSW, suggest('Australia/Lord_Howe'))).toEqual({
+        ok: true,
+        value: zone('Australia/Lord_Howe', 'location', 'Australia/Sydney'),
+      });
+    });
+
+    it('comes before the browser zone, and a suggestion off the list leaves the browser zone', () => {
+      expect(
+        zoneAfterAddressSave(null, NSW, suggest('Australia/Lord_Howe', 'Australia/Broken_Hill')),
+      ).toEqual({ ok: true, value: zone('Australia/Lord_Howe', 'location', 'Australia/Sydney') });
+      expect(
+        zoneAfterAddressSave(null, NSW, suggest('Australia/Perth', 'Australia/Broken_Hill')),
+      ).toEqual({ ok: true, value: zone('Australia/Broken_Hill', 'browser', 'Australia/Sydney') });
+    });
+
+    it.each(['Australia/Perth', 'Etc/UTC', '+10:00', 7, {}, null])(
+      'is dropped silently when it is %j (the address wins)',
+      (suggested) => {
+        expect(zoneAfterAddressSave(null, NSW, suggest(suggested))).toEqual({
+          ok: true,
+          value: zone('Australia/Sydney', 'default', 'Australia/Sydney'),
+        });
+      },
+    );
+
+    it('never overrides a zone a seller or an admin set, and loses to a chosen zone', () => {
+      for (const source of ['seller', 'admin'] as const) {
+        const set = zone('Australia/Broken_Hill', source, 'Australia/Sydney');
+        expect(zoneAfterAddressSave(set, NSW, suggest('Australia/Lord_Howe'))).toEqual({
+          ok: true,
+          value: set,
+        });
+      }
+      expect(
+        zoneAfterAddressSave(null, NSW, {
+          chosen: 'Australia/Sydney',
+          hint: undefined,
+          suggestedZone: 'Australia/Lord_Howe',
+        }),
+      ).toEqual({ ok: true, value: zone('Australia/Sydney', 'seller', 'Australia/Sydney') });
+    });
+  });
 });

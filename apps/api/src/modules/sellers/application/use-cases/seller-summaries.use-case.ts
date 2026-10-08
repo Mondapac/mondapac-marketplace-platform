@@ -14,7 +14,7 @@ export interface SellerSummariesInput {
 /**
  * `sellerSummaries` for request actors (sellers design 7.1; slice 1): rule `anonymous`, so the
  * gate passes the Market's anonymous actor whoever calls, as for `identity.sellerAccessOf`. Its
- * pair for handlers and jobs is `SellerSummariesSystem`. Never over HTTP.
+ * pair for handlers and jobs is `SellerSummariesSystem`, which also shows the draft's provisional zone; this one does not (Hassan L4; the anonymous rule hides authenticated callers too). Never over HTTP.
  */
 export class SellerSummaries extends UseCase<
   SellerSummariesInput,
@@ -37,6 +37,6 @@ export class SellerSummaries extends UseCase<
     context: CallContext,
     input: SellerSummariesInput,
   ): Promise<Result<readonly SellerSummary[], SellerSummariesFailure>> {
-    return readSellerSummaries(this.deps, context, input.sellerIds);
+    return readSellerSummaries(this.deps, context, input.sellerIds, { provisionalZone: false });
   }
 }

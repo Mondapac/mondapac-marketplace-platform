@@ -27,6 +27,8 @@ import {
   type DraftValidationFailed,
   type FileNotFound,
 } from '../draft/draft-view';
+import { suggestedZoneFor } from '../draft/location-hint';
+import type { LocationTimezoneResolver } from '../ports/location-timezone-resolver';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
@@ -42,13 +44,16 @@ import type {
  * The Address group as the seller sends it (brief s7; UX S3; spike 3 record). `address` is the
  * operating address, an object of the Market format's fields; `registeredAddress` only when it
  * differs. `timezone` is the seller's choice from the region's list (optional); `browserTimezone`
- * is the browser's own zone, an untrusted hint. No coordinates (the location slice adds them).
+ * is the browser's own zone, an untrusted hint. `location` is a device position for the
+ * `LocationTimezoneResolver` hint: no HTTP route accepts it yet (the body shape is closed), so it
+ * is an in-process input only; it is validated, rounded, used for the call and never kept.
  */
 export interface MyFileSaveAddressInput {
   readonly address?: unknown;
   readonly registeredAddress?: unknown;
   readonly timezone?: unknown;
   readonly browserTimezone?: unknown;
+  readonly location?: unknown;
 }
 
 /** What the seller learns at once from an address save (brief s7, AC 6, AC 8). */
@@ -81,6 +86,7 @@ export interface MyFileSaveAddressDependencies {
   readonly addressFormats: AddressFormats;
   readonly zones: TimezoneResolver;
   readonly areas: ServiceAreas;
+  readonly locationZones: LocationTimezoneResolver;
   readonly clock: Clock;
 }
 
@@ -92,8 +98,8 @@ export interface MyFileSaveAddressDependencies {
  * The Market's `AddressFormat` validates both addresses (fields, postcode pattern, region). The
  * operating postcode is looked up in the platform `ServiceAreaDirectory`; an address outside
  * every open area is still saved and the answer says so (AC 6). The zone follows the domain rule
- * `zoneAfterAddressSave`: the region default, a hint from the browser only for a draft whose
- * zone nobody set, or the seller's choice from the region's list (`timezone.not-selectable`
+ * `zoneAfterAddressSave`: the region default, then a hint (a resolver's suggestion for the
+ * device position, else the browser's zone) only for a draft whose zone nobody set, or the seller's choice from the region's list (`timezone.not-selectable`
  * otherwise). The chosen zone stays a draft value: it reaches no approved revision and no
  * `approvedSellerZones` answer in this slice (the certification amendment comes first).
  */
@@ -156,10 +162,16 @@ export class MyFileSaveAddress extends UseCase<
 
     const area = areas.areaFor(market, operating.value.postcode);
     const regionZones = zones.zonesOf(market, operating.value.region);
-
     if (!(await fileExists(this.deps, context, owner.sellerId))) {
       return err({ code: 'file.not-found' });
     }
+    // Only when the request makes no choice of its own and the region has a list: the hint can
+    // never apply otherwise, so the resolver is not asked (nor the position handled) for nothing.
+    // Asked only after the file is known to exist, so a missing file costs no resolver call.
+    const suggestedZone =
+      regionZones !== null && (input.timezone === undefined || input.timezone === null)
+        ? await suggestedZoneFor(this.deps.locationZones, market, input.location)
+        : null;
     const sealed = await this.seal(market, owner.sellerId, operating.value, registered.value);
     if (!sealed.ok) return sealed;
 
@@ -175,6 +187,7 @@ export class MyFileSaveAddress extends UseCase<
           zone: {
             chosen: input.timezone === null ? undefined : input.timezone,
             hint: input.browserTimezone,
+            suggestedZone,
           },
         },
         clock.now(),

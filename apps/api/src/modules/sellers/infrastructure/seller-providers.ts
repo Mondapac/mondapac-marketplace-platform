@@ -12,6 +12,10 @@ import {
   SELLER_ACCESS_CONTRACT,
   type SellerAccessContract,
 } from '../../identity/contracts/seller-access.contract';
+import {
+  LOCATION_TIMEZONE_RESOLVER,
+  type LocationTimezoneResolver,
+} from '../application/ports/location-timezone-resolver';
 import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
 import {
   RATE_COUNTER_REPOSITORY,
@@ -43,6 +47,7 @@ import {
   type ShopSlugRepository,
 } from '../application/ports/shop-slug.repository';
 import { HmacRateCounterKeys, localSellersSecret } from './hmac-rate-counter-keys';
+import { NoneLocationTimezoneResolver } from './location-timezone-resolvers';
 import { IdentityRegisteredSellers } from './identity-registered-sellers';
 import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-config-seller-formats';
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
@@ -116,6 +121,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [ServiceAreaDirectory],
     useFactory: (directory: ServiceAreaDirectory): ServiceAreas =>
       new DirectoryServiceAreas(directory),
+  },
+  {
+    // The `none` adapter until Market configuration can name another
+    // (`sellers.locationTimezone.adapter`, spike 3 record; a shared-file change).
+    provide: LOCATION_TIMEZONE_RESOLVER,
+    useFactory: (): LocationTimezoneResolver => new NoneLocationTimezoneResolver(),
   },
   {
     provide: REGISTERED_SELLER_SOURCE,

@@ -34,6 +34,8 @@ import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.r
 import type { SealedFieldValues, SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import type { ShopSlugHolder, ShopSlugRepository } from '../ports/shop-slug.repository';
+import type { DevicePosition, LocationTimezoneResolver } from '../ports/location-timezone-resolver';
+import { LOCATION_RESOLVE_TIMEOUT_MS } from '../draft/location-hint';
 import { FormDescriptorsRead } from './form-descriptors-read.use-case';
 import { MyFileCheckSlug } from './my-file-check-slug.use-case';
 import { MyFileRead } from './my-file-read.use-case';
@@ -88,6 +90,10 @@ class FakeFiles implements SellerFileRepository {
   }
 
   addWithRoots(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  draftZones(): Promise<ReadonlyMap<Id<'Seller'>, string>> {
     return Promise.reject(new Error('not used here'));
   }
 
@@ -173,6 +179,10 @@ class FakeCounters implements RateCounterRepository {
       }),
     );
   }
+
+  purgeStartedBefore(): Promise<number> {
+    return Promise.reject(new Error('not used here'));
+  }
 }
 
 function setUp() {
@@ -197,7 +207,23 @@ function setUp() {
   const formats = new MarketConfigSellerFormats(markets);
   const counterKeys = new HmacRateCounterKeys(new Uint8Array(32).fill(7));
   const common = { unitOfWork, counters, counterKeys, clock };
+  // What the position gives; a test sets `locationAnswer` and reads `positions` (rounded values).
+  const locationState: {
+    answer: (() => string | null | Promise<string | null>) | null;
+    positions: DevicePosition[];
+    markets: string[];
+    /** When true the region has no zone list (the address save sees `null`). */
+    noZoneList: boolean;
+  } = { answer: null, positions: [], markets: [], noZoneList: false };
+  const locationResolver: LocationTimezoneResolver = {
+    zoneFor: async (market, position) => {
+      locationState.positions.push(position);
+      locationState.markets.push(market.marketId);
+      return locationState.answer === null ? null : locationState.answer();
+    },
+  };
   return {
+    location: locationState,
     clock,
     ids,
     files,
@@ -219,8 +245,12 @@ function setUp() {
       files,
       cipher,
       addressFormats: formats,
-      zones: formats,
+      zones: {
+        zonesOf: (market, region) =>
+          locationState.noZoneList ? null : formats.zonesOf(market, region),
+      },
       areas: new DirectoryServiceAreas(directory),
+      locationZones: locationResolver,
     }),
     saveSlug: new MyFileSaveSlug(gate, {
       ...common,
@@ -722,6 +752,164 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         browserTimezone: fixture.zones[1],
       });
       expect(hinted.ok && hinted.value.timezone?.timezoneSource).toBe('browser');
+    });
+
+    describe('the location hint (spike 3, part 2b)', () => {
+      const POSITION = { latitude: -27.4698123, longitude: 153.0251456 };
+
+      it('applies the suggested zone only to a draft whose zone nobody set, with source location', async () => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.answer = () => fixture.zones[1];
+
+        const saved = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          browserTimezone: fixture.zones[0],
+          location: POSITION,
+        });
+
+        expect(saved.ok && saved.value.timezone).toEqual({
+          operatingTimezone: fixture.zones[1],
+          timezoneSource: 'location',
+          addressTimezone: fixture.zones[0],
+        });
+        const chosen = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          timezone: fixture.zones[0],
+        });
+        expect(chosen.ok && chosen.value.timezone?.timezoneSource).toBe('seller');
+        t.location.answer = () => fixture.zones[1];
+        const again = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          location: POSITION,
+        });
+        expect(again.ok && again.value.timezone?.operatingTimezone).toBe(fixture.zones[0]);
+        expect(again.ok && again.value.timezone?.timezoneSource).toBe('seller');
+      });
+
+      it('rounds the position to two decimals before the resolver sees it', async () => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.answer = () => null;
+        await t.saveAddress.execute(context, { address: fixture.address, location: POSITION });
+        expect(t.location.positions).toEqual([{ latitude: -27.47, longitude: 153.03 }]);
+      });
+
+      it.each([
+        ['a zone off the region list', () => fixture.otherZones[0]],
+        ['no suggestion', () => null],
+        ['an offset', () => '+10:00'],
+        ['an error', () => Promise.reject(new Error('resolver down'))],
+      ])('keeps the region default for %s, without an error', async (_name, answer) => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.answer = answer;
+        const saved = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          location: POSITION,
+        });
+        expect(saved.ok && saved.value.timezone?.timezoneSource).toBe('default');
+        expect(saved.ok && saved.value.timezone?.operatingTimezone).toBe(fixture.zones[0]);
+      });
+
+      it('keeps the region default for a slow answer, after the timeout, without an error', async () => {
+        jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+        try {
+          const t = setUp();
+          const { context } = seller(t, code);
+          t.location.answer = () => new Promise<string>(() => undefined);
+          const pending = t.saveAddress.execute(context, {
+            address: fixture.address,
+            location: POSITION,
+          });
+          // Let the use case reach the resolver call, then pass the wait without real time.
+          while (t.location.positions.length === 0) await new Promise<void>((r) => setImmediate(r));
+          await jest.advanceTimersByTimeAsync(LOCATION_RESOLVE_TIMEOUT_MS);
+          const saved = await pending;
+          expect(saved.ok && saved.value.timezone?.timezoneSource).toBe('default');
+          expect(saved.ok && saved.value.timezone?.operatingTimezone).toBe(fixture.zones[0]);
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it.each([
+        { latitude: 91, longitude: 0 },
+        { latitude: 0, longitude: 181 },
+        { latitude: Number.NaN, longitude: 0 },
+        { latitude: '1', longitude: '2' },
+        [1, 2],
+        'x',
+        null,
+      ])('does not ask the resolver about the invalid position %j', async (location) => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.answer = () => fixture.zones[1];
+        const saved = await t.saveAddress.execute(context, { address: fixture.address, location });
+        expect(t.location.positions).toEqual([]);
+        expect(saved.ok && saved.value.timezone?.timezoneSource).toBe('default');
+      });
+
+      it('does not ask the resolver when the file does not exist', async () => {
+        const t = setUp();
+        const context = ownerContext(t, code, t.ids.next<'Seller'>());
+        t.location.answer = () => fixture.zones[1];
+        const saved = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          location: POSITION,
+        });
+        expect(saved).toEqual({ ok: false, error: { code: 'file.not-found' } });
+        expect(t.location.positions).toEqual([]);
+      });
+
+      it('does not ask the resolver when the request carries a timezone choice', async () => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.answer = () => fixture.zones[1];
+        const saved = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          timezone: fixture.zones[0],
+          location: POSITION,
+        });
+        expect(saved.ok).toBe(true);
+        expect(t.location.positions).toEqual([]);
+      });
+
+      it('does not ask the resolver when the region has no zone list', async () => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.noZoneList = true;
+        t.location.answer = () => fixture.zones[1];
+        const saved = await t.saveAddress.execute(context, {
+          address: fixture.address,
+          location: POSITION,
+        });
+        expect(saved.ok).toBe(true);
+        expect(t.location.positions).toEqual([]);
+      });
+
+      it('passes the request Market to the resolver', async () => {
+        const t = setUp();
+        const { context } = seller(t, code);
+        t.location.answer = () => null;
+        await t.saveAddress.execute(context, { address: fixture.address, location: POSITION });
+        expect(t.location.markets).toEqual([code]);
+      });
+
+      it('keeps the position out of the stored draft and the log', async () => {
+        const t = setUp();
+        const { sellerId, context } = seller(t, code);
+        t.location.answer = () => fixture.zones[1];
+        const spies = (['log', 'warn', 'error'] as const).map((level) =>
+          jest.spyOn(Logger.prototype, level),
+        );
+        spies.forEach((spy) => spy.mockClear());
+        await t.saveAddress.execute(context, { address: fixture.address, location: POSITION });
+        const text =
+          JSON.stringify(t.files.stored.get(`${code}|${sellerId}`)) +
+          JSON.stringify(spies.map((spy) => spy.mock.calls));
+        expect(text).not.toMatch(/27\.4|153\.0/);
+      });
     });
 
     it('resets the zone to the new region default when the region changes', async () => {

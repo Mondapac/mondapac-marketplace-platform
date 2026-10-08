@@ -20,6 +20,16 @@ export interface SellerFileRepository {
   ): Promise<ReadonlySet<Id<'Seller'>>>;
 
   /**
+   * The draft's operating zone of each of the ids that has a file in the Market and a zone (the
+   * clear `operating_timezone`; no key is used). An id with no file, with no zone yet, or of
+   * another Market is not in the answer. The caller bounds the list.
+   */
+  draftZones(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>>;
+
+  /**
    * The file of this seller in the Market with its draft (ciphertext as stored), or null: a
    * seller of another Market is null, exactly like an unknown id (AC 1). The seller id comes
    * from the actor, never from a request (AC 18).

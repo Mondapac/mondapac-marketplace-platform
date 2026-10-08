@@ -896,6 +896,50 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
       ]);
     });
 
+    it('purges counters whose window started before the cut-off, in this Market only', async () => {
+      const old = newKey();
+      const kept = newKey();
+      const edge = newKey();
+      const elsewhere = newKey();
+      await reserve(code, SAVE_LIMITS, edge, T0.subtract({ hours: 48 }));
+      await reserve(code, SAVE_LIMITS, old, T0.subtract({ hours: 49 }));
+      await reserve(code, SAVE_LIMITS, kept, T0.subtract({ hours: 47 }));
+      await reserve(other, SAVE_LIMITS, elsewhere, T0.subtract({ hours: 49 }));
+      const purge = async (marketCode: string) => {
+        const marketContext = marketOf(marketCode);
+        const result = await app
+          .get<UnitOfWork>(UNIT_OF_WORK)
+          .run(marketContext, async () =>
+            ok(
+              await new PrismaRateCounterRepository(app.get(PrismaService)).purgeStartedBefore(
+                marketContext,
+                T0.subtract({ hours: 48 }),
+              ),
+            ),
+          );
+        if (!result.ok) throw new Error('the purge unit failed');
+        return result.value;
+      };
+      const remaining = async (key: Buffer, marketCode: string) =>
+        (
+          await sql.query(
+            'SELECT 1 FROM sellers.rate_counters WHERE market_id = $1 AND key_hash = $2',
+            [marketCode, key],
+          )
+        ).rowCount;
+
+      // Other tests may leave rows of their own; only the three keys of this test are asserted.
+      expect(await purge(code)).toBeGreaterThanOrEqual(2);
+      expect(await remaining(old, code)).toBe(0);
+      expect(await remaining(kept, code)).toBe(2);
+      // Exactly 48 hours old is not before the cut-off: kept.
+      expect(await remaining(edge, code)).toBe(2);
+      expect(await remaining(elsewhere, other)).toBe(2);
+      expect(await purge(code)).toBe(0);
+      expect(await purge(other)).toBeGreaterThanOrEqual(2);
+      expect(await remaining(elsewhere, other)).toBe(0);
+    });
+
     it('does not throttle another account, nor the same account in another Market', async () => {
       const a = newKey();
       const b = newKey();
@@ -978,6 +1022,31 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           [code, sellerId],
         )
       ).rows[0]!;
+
+    it('gives sellerSummaries the draft zone to the system caller only, never across Markets', async () => {
+      const { sellerId, context } = await draftSeller();
+      const none = await facade().sellerSummaries(systemContext(code), [sellerId]);
+      expect(none).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
+
+      await app.get(MyFileSaveGeneral).execute(context, GENERAL);
+      await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address });
+
+      const asSystem = await facade().sellerSummaries(systemContext(code), [sellerId]);
+      const asRequest = await facade().sellerSummaries(anonymousContext(code), [sellerId]);
+      const elsewhere = await facade().sellerSummaries(systemContext(other), [sellerId]);
+      expect(asSystem).toEqual({
+        ok: true,
+        value: [
+          {
+            sellerId,
+            exists: true,
+            operatingTimezone: { zone: FIXTURE.zones[0], provisional: true },
+          },
+        ],
+      });
+      expect(asRequest).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
+      expect(elsewhere).toEqual({ ok: true, value: [{ sellerId, exists: false }] });
+    });
 
     it('saves the draft encrypted at rest under the seller`s key and reads it back', async () => {
       const { sellerId, context } = await draftSeller();

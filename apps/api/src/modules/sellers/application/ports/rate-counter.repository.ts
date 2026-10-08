@@ -22,6 +22,13 @@ export interface RateCounterRepository {
     counters: readonly RateCounter[],
     now: Temporal.Instant,
   ): Promise<readonly RateReservation[]>;
+
+  /**
+   * Deletes the Market's counters whose window started before `startedBefore` and answers how
+   * many (data design 3.11: the purge keeps 48 hours, twice the longest window). Safe to run
+   * twice and concurrently.
+   */
+  purgeStartedBefore(market: MarketContext, startedBefore: Temporal.Instant): Promise<number>;
 }
 
 export const RATE_COUNTER_REPOSITORY = Symbol('RATE_COUNTER_REPOSITORY');

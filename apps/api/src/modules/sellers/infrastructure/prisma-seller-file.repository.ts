@@ -136,6 +136,28 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
     return new Set(rows.map((row) => row.sellerId as Id<'Seller'>));
   }
 
+  async draftZones(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>> {
+    if (sellerIds.length === 0) return new Map();
+    if (sellerIds.length > MAX_IDS) throw new RangeError('draftZones: at most 100 ids');
+    const rows = await this.prisma.tx(market).sellersSellerFile.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: { in: [...sellerIds] },
+        operatingTimezone: { not: null },
+      },
+      select: { sellerId: true, operatingTimezone: true },
+    });
+    const zones = new Map<Id<'Seller'>, string>();
+    for (const row of rows) {
+      if (row.operatingTimezone !== null)
+        zones.set(row.sellerId as Id<'Seller'>, row.operatingTimezone);
+    }
+    return zones;
+  }
+
   async findById(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerFile | null> {
     const row = await this.prisma.tx(market).sellersSellerFile.findFirst({
       where: { marketId: market.marketId, sellerId },
