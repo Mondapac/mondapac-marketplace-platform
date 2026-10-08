@@ -23,7 +23,7 @@ generated CSS references the `--mp-*` variables, not copies of their values.
    A small `@theme inline` file maps Tailwind theme names to `var(--mp-*)`. Tailwind's default
    palette, spacing and radius scales are disabled (`--color-*: initial`), so a class that
    is not a token does not compile. A lint rule rejects hex, `rgb()` and arbitrary-value colour
-   classes in app and `packages/ui` code (Hassan/Reza need not review this; Bagher checks it).
+   classes in app and `packages/ui` code (Bagher checks it in release review).
    Dark mode follows the exported `[data-theme="dark"]` block; switching it on is a product
    decision (D5), not part of this ADR.
 3. **Headless behaviour:** Base UI (`@base-ui/react`). Radix is not chosen: Base UI is actively
