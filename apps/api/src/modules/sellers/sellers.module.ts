@@ -15,6 +15,8 @@ import { BackfillSellerFiles } from './application/use-cases/backfill-seller-fil
 import { CreateSellerFile } from './application/use-cases/create-seller-file.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
+import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
+import { SellingEligibility } from './application/use-cases/selling-eligibility.use-case';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
@@ -86,13 +88,32 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(SellerSummaries, { unitOfWork: true, files: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
+    // The fail-closed stand-in of slice 9 (design 7.2): it reads nothing, so only the gate.
+    ...[SellingEligibility, SellingEligibilitySystem].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
     {
       provide: SELLERS_FACADE,
-      inject: [SellerSummaries, SellerSummariesSystem],
+      inject: [
+        SellerSummaries,
+        SellerSummariesSystem,
+        SellingEligibility,
+        SellingEligibilitySystem,
+      ],
       useFactory: (
         sellerSummaries: SellerSummaries,
         sellerSummariesSystem: SellerSummariesSystem,
-      ) => new SellersFacadeImplementation({ sellerSummaries, sellerSummariesSystem }),
+        sellingEligibility: SellingEligibility,
+        sellingEligibilitySystem: SellingEligibilitySystem,
+      ) =>
+        new SellersFacadeImplementation({
+          sellerSummaries,
+          sellerSummariesSystem,
+          sellingEligibility,
+          sellingEligibilitySystem,
+        }),
     },
     registerJobsFrom('sellers', [BackfillSellerFiles], (backfill: BackfillSellerFiles) => [
       backfillSellerFilesJob(backfill),
