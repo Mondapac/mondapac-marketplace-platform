@@ -74,7 +74,8 @@ export const DEFAULT_UNIT_TIMEOUT_MS = 5000;
 export const MAX_UNIT_TIMEOUT_MS = 30_000;
 /**
  * The most a unit may ask for with `lockTimeoutMs`: the role-level `lock_timeout` is at most 3 s
- * (start-up check `role_timeouts`), and a unit may tighten that bound but not loosen it.
+ * (start-up check `role_timeouts`). A unit that asks for more than a role set lower gets
+ * the larger value, never above this ceiling.
  */
 export const MAX_LOCK_TIMEOUT_MS = 3000;
 /** The longest wait for a pooled connection, in a transaction and for every statement (row 8). */

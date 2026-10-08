@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
@@ -283,6 +284,9 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
       });
       await locked.opened;
 
+      // Were the lock FOR UPDATE, the insert would wait for the holder, and the holder for the
+      // insert: bound the wait so that a regression fails here with 55P03, not as a timeout.
+      await sql.query("SET lock_timeout = '1s'");
       const insertion = await timed(
         insert('stock_movements', {
           id: ids.next(),
@@ -300,6 +304,7 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
           occurred_at: at(2),
         }),
       );
+      await sql.query('RESET lock_timeout');
       holding.open();
       await holder;
 
@@ -314,6 +319,16 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
     const subsetOf = (seed: number) =>
       [0, 1, 2].map((offset) => all[(seed * 5 + offset * 2) % all.length]!);
 
+    const deadlocks = async (): Promise<number> => {
+      // Statistics reach the shared view with a short delay.
+      await sleep(1500);
+      const { rows } = await sql.query<{ deadlocks: string }>(
+        'SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()',
+      );
+      return Number(rows[0]!.deadlocks);
+    };
+    const before = await deadlocks();
+
     const results = await Promise.allSettled(
       Array.from({ length: 24 }, (_, seed) =>
         db.unitOfWork.run(market, async () => {
@@ -325,6 +340,8 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
     );
 
     expect(results.filter((result) => result.status === 'rejected')).toEqual([]);
+    // The unit of work retries 40P01, so a deadlock could hide behind a retry: count them.
+    expect(await deadlocks()).toBe(before);
   });
 
   it('keeps raw SQL refused for anything the platform did not build', async () => {

@@ -192,7 +192,7 @@ describe.each(['AU', 'ZZ'] as const)(
 );
 
 describe('lockTimeoutStatement', () => {
-  it('builds the fixed text with the checked number and registers it', () => {
+  it('builds the fixed text with the checked number', () => {
     const statement = lockTimeoutStatement(250);
     expect(statement.sql).toBe("SET LOCAL lock_timeout = '250ms'");
   });

@@ -4,7 +4,9 @@ import { join } from 'node:path';
 // P 4.2: a named statement is "<module>.<name>" and only that module's files may call it. The
 // list is checked in (named-statements.ts); this reads every `namedQuery` call under
 // src/modules and refuses one that names another module's statement, or a name that is not a
-// string literal the check can read.
+// string literal the check can read. It is a tripwire for the direct call form only
+// (`namedQuery(market, 'm.x', ...)`); an indirect form (`.call`, `['namedQuery']`) is for code
+// review and the security review of any new statement (named-statements.ts).
 
 const MODULES = join(__dirname, '../../modules');
 const CALL = /namedQuery\s*(?:<[^>]*>)?\s*\(\s*[^,]+,\s*(['"`])([^'"`]*)\1/gu;

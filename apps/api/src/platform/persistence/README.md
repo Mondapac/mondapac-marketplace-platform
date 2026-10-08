@@ -49,8 +49,9 @@ Implements platform persistence design sections 3 to 9 and 12.3
   (`named-statement-owners.spec.ts`).
 - `UnitOfWorkOptions.lockTimeoutMs` (1 to 3000, read-write units only) issues
   `SET LOCAL lock_timeout` as the first statement of every attempt. A wait that runs out ends
-  the unit with `TransactionConflictError('55P03')`. It can tighten the login role's
-  `lock_timeout` (at most 3 s) but not loosen it.
+  the unit with `TransactionConflictError('55P03')`. It is never above 3 s, the
+  ceiling the start-up check `role_timeouts` enforces on the login role; a role set lower can
+  be raised, up to that ceiling, by a unit that asks for it.
 - A new statement is a change to `named-statements.ts` with its guard rule, a two-Market
   database test, and reviews by the database-designer and the security-tester.
 
