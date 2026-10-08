@@ -1,9 +1,12 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
-import type { SellerSummary } from '../domain/seller-summary';
+import type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
 
 /** One answer per distinct requested seller (sellers design 7.2). */
 export type SellingEligibilityMap = ReadonlyMap<Id<'Seller'>, { readonly eligible: boolean }>;
+
+/** One entry per distinct requested id (sellers design 7.1a row 1). */
+export type ApprovedSellerZonesMap = ReadonlyMap<Id<'Seller'>, ApprovedSellerZone>;
 
 /** A request the facade refused before any read: a code and the fields, never their values. */
 export interface SellersValidationFailed {
@@ -52,6 +55,25 @@ export interface SellersFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed>>;
+
+  /**
+   * The fixed zone read for `certification`'s `evaluateClaims` only (sellers design 7.1a; request
+   * S-1): per distinct requested id, in first-occurrence order, `{ zone, addressZone }` of the
+   * approved revision, each an IANA id or null; a missing zone is the consumer's
+   * `seller-zone-missing`. The answer is the same for every caller (it reads the Market and the
+   * ids only). **Until slice 5 every entry is `{ zone: null, addressZone: null }`**, because no
+   * approved revision exists and nothing is read. Exactly one key per distinct id; an empty list
+   * answers an empty map; more than 100 entries (before or after collapsing duplicates) or a
+   * malformed id is refused whole. A consumer treats any `ok: false` as a failed batch and an
+   * unexpected key as a fault. Two use cases behind this method, as for `sellerSummaries`. Not
+   * exposed over HTTP.
+   */
+  approvedSellerZones(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<ApprovedSellerZonesMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
 }
 
 /** Nest token of the {@link SellersFacade}, provided and exported by `SellersModule`. */

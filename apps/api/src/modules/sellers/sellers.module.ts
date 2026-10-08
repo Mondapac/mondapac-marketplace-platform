@@ -23,6 +23,8 @@ import {
 } from './application/ports/seller-market-formats';
 import { SELLER_MARKET_POLICY } from './application/ports/seller-market-policy';
 import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
+import { ApprovedSellerZonesSystem } from './application/use-cases/approved-seller-zones-system.use-case';
+import { ApprovedSellerZones } from './application/use-cases/approved-seller-zones.use-case';
 import { BackfillSellerFiles } from './application/use-cases/backfill-seller-files.use-case';
 import { CreateSellerFile } from './application/use-cases/create-seller-file.use-case';
 import { FormDescriptorsRead } from './application/use-cases/form-descriptors-read.use-case';
@@ -204,8 +206,14 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
-    // The fail-closed stand-in of slice 9 (design 7.2): it reads nothing, so only the gate.
-    ...[SellingEligibility, SellingEligibilitySystem].map((type): FactoryProvider => ({
+    // The fail-closed stand-in of slice 9 (design 7.2) and the null-answering zone contract of
+    // slice 2 (design 7.1a): they read nothing, so only the gate.
+    ...[
+      SellingEligibility,
+      SellingEligibilitySystem,
+      ApprovedSellerZones,
+      ApprovedSellerZonesSystem,
+    ].map((type): FactoryProvider => ({
       provide: type,
       inject: [USE_CASE_GATE],
       useFactory: (gate: UseCaseGate) => new type(gate),
@@ -217,18 +225,24 @@ function useCaseProvider<D, U>(
         SellerSummariesSystem,
         SellingEligibility,
         SellingEligibilitySystem,
+        ApprovedSellerZones,
+        ApprovedSellerZonesSystem,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
         sellerSummariesSystem: SellerSummariesSystem,
         sellingEligibility: SellingEligibility,
         sellingEligibilitySystem: SellingEligibilitySystem,
+        approvedSellerZones: ApprovedSellerZones,
+        approvedSellerZonesSystem: ApprovedSellerZonesSystem,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
           sellerSummariesSystem,
           sellingEligibility,
           sellingEligibilitySystem,
+          approvedSellerZones,
+          approvedSellerZonesSystem,
         }),
     },
     useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
