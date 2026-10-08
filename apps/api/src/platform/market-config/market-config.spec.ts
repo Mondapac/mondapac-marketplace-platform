@@ -1695,6 +1695,15 @@ describe('loadMarketConfigs', () => {
       expect(loaded?.inventory?.maxSourcesPerSeller).toBe(limit);
     });
 
+    it.each([0, 99])('carries the default low-stock threshold %i', (threshold) => {
+      const loaded = loadMarketConfigs(
+        [withInventory({ maxSourcesPerSeller: 4, defaultLowStockThreshold: threshold })],
+        [QQ],
+      ).get(QQ);
+
+      expect(loaded?.inventory?.defaultLowStockThreshold).toBe(threshold);
+    });
+
     it('gives the two Market fixtures different thresholds (AC 13)', () => {
       const configs = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
       const thresholds = TEST_MARKET_IDS.map(

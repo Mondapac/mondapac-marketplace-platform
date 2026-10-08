@@ -455,6 +455,94 @@ describe.each(['AU', 'ZZ'] as const)('inventory.set-stock-level in market %s', (
     expect([...t.signals.rows.values()][0]).toMatchObject({ status: 'low', onlyLeft: 4 });
   });
 
+  it('answers stale for a same-level write with an old version, before the no-change shortcut', async () => {
+    const t = setUp();
+    const w = world(t);
+    await t.setStockLevel.execute(w.context, w.input({ onHand: 20 }));
+
+    const result = await t.setStockLevel.execute(
+      w.context,
+      w.input({ onHand: 20, expectedVersion: 4 }),
+    );
+
+    expect(code_(result)).toBe('conflict.stale');
+  });
+
+  it('takes the seller threshold of 0: in stock at 1, never low', async () => {
+    const t = setUp();
+    const w = world(t, { threshold: 0 });
+
+    await t.setStockLevel.execute(w.context, w.input({ onHand: 1 }));
+
+    expect([...t.signals.rows.values()][0]).toMatchObject({ status: 'in-stock', onlyLeft: null });
+  });
+
+  it('writes the largest level and back to 0 (the ledger delta of the extremes)', async () => {
+    const t = setUp();
+    const w = world(t);
+
+    await t.setStockLevel.execute(w.context, w.input({ onHand: 2_147_483_647 }));
+    await t.setStockLevel.execute(w.context, w.input({ onHand: 0, expectedVersion: 1 }));
+
+    expect(t.stock.movements.map((m) => m.delta)).toEqual([2_147_483_647, -2_147_483_647]);
+    expect([...t.signals.rows.values()][0]).toMatchObject({ status: 'out' });
+  });
+
+  it('counts the largest sellable, not the largest on hand, and skips a retired source', async () => {
+    const t = setUp();
+    const w = world(t, { threshold: 5 });
+    const big = t.ids.next<'StockItem'>();
+    const retired = t.ids.next<'StockItem'>();
+    t.stock.items.push(
+      {
+        id: big,
+        offerId: w.offerId,
+        variantId: w.variantId,
+        sourceId: t.ids.next<'InventorySource'>(),
+        sellerId: w.sellerId,
+        onHand: 100,
+        retired: false,
+        version: 1,
+      },
+      {
+        id: retired,
+        offerId: w.offerId,
+        variantId: w.variantId,
+        sourceId: t.ids.next<'InventorySource'>(),
+        sellerId: w.sellerId,
+        onHand: 500,
+        retired: true,
+        version: 1,
+      },
+    );
+    t.stock.held.set(big, 98);
+
+    await t.setStockLevel.execute(w.context, w.input({ onHand: 3 }));
+
+    // sellable: big 100 - 98 = 2, own 3, retired ignored: the largest is 3.
+    expect([...t.signals.rows.values()][0]).toMatchObject({ status: 'low', onlyLeft: 3 });
+  });
+
+  it('asks the lock before the tombstone and the item reads', async () => {
+    const t = setUp();
+    const w = world(t);
+    const order: string[] = [];
+    const lock = t.stock.lockSellUnit.bind(t.stock);
+    const retired = t.stock.isSellUnitRetired.bind(t.stock);
+    t.stock.lockSellUnit = (...args) => {
+      order.push('lock');
+      return lock(...args);
+    };
+    t.stock.isSellUnitRetired = (...args) => {
+      order.push('tombstone');
+      return retired(...args);
+    };
+
+    await t.setStockLevel.execute(w.context, w.input());
+
+    expect(order).toEqual(['lock', 'tombstone']);
+  });
+
   describe('answers inventory.not-found, the same for every cause (AC 11)', () => {
     it.each([
       [

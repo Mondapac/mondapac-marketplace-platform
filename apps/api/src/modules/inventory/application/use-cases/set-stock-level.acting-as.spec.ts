@@ -1,4 +1,4 @@
-import type { AuthenticatedActor } from '@mondapac/shared-kernel';
+import type { AuthenticatedActor, CallContext } from '@mondapac/shared-kernel';
 
 // Hassan (inventory design 6; 4.5, finding 8): stock writes refuse an acting-as (Login as Seller)
 // session, but `AuthenticatedActor` has no acting-as field until SEL-08, so the refusal cannot be
@@ -21,8 +21,16 @@ type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 /** Fails to compile when `AuthenticatedActor` gains or loses a key. */
 const actorKeysReviewed: Exactly<ActorKeys, ReviewedKeys> = true;
 
+/** The string keys of the call context: an acting-as session could also arrive here (Hassan L1). */
+type ContextKeys = Extract<keyof CallContext, string>;
+type ReviewedContextKeys = 'market' | 'actor' | 'correlationId';
+
+/** Fails to compile when `CallContext` gains or loses a key. */
+const contextKeysReviewed: Exactly<ContextKeys, ReviewedContextKeys> = true;
+
 describe('inventory stock writes and the acting-as session (Hassan finding 8)', () => {
   it('compiles only while AuthenticatedActor has exactly the reviewed keys', () => {
     expect(actorKeysReviewed).toBe(true);
+    expect(contextKeysReviewed).toBe(true);
   });
 });

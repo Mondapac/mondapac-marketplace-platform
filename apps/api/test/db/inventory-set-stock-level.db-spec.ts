@@ -6,6 +6,7 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import type { StockRepository } from '../../src/modules/inventory/application/ports/stock.repository';
 import type {
   OfferSellUnitsSource,
   StockOfferView,
@@ -56,6 +57,7 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
   let sql: Client;
   const clock = new FixedClock(T0);
   let setStockLevel: SetStockLevel;
+  let build: (repository: StockRepository) => SetStockLevel;
   /** Runs the use case, then moves the clock on so the ledger rows have distinct instants. */
   const execute = async (context: CallContext, input: SetStockLevelInput) => {
     const result = await setStockLevel.execute(context, input);
@@ -81,23 +83,25 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
           ),
         ),
     };
-    setStockLevel = new SetStockLevel(createUseCaseGate(markets, admitAll), {
-      unitOfWork: db.unitOfWork,
-      inventories: new PrismaSellerInventoryRepository(db.service),
-      stock,
-      signals: new PrismaAvailabilitySignalRepository(db.service),
-      offers,
-      policies: new ConfigInventoryPolicyProvider(markets),
-      outbox: new PrismaOutboxWriterFactory(
-        modelMap,
-        db.service,
-        catalogue,
+    build = (repository: StockRepository) =>
+      new SetStockLevel(createUseCaseGate(markets, admitAll), {
+        unitOfWork: db.unitOfWork,
+        inventories: new PrismaSellerInventoryRepository(db.service),
+        stock: repository,
+        signals: new PrismaAvailabilitySignalRepository(db.service),
+        offers,
+        policies: new ConfigInventoryPolicyProvider(markets),
+        outbox: new PrismaOutboxWriterFactory(
+          modelMap,
+          db.service,
+          catalogue,
+          ids,
+          NO_PERMISSION_KEYS,
+        ).forModule('inventory'),
         ids,
-        NO_PERMISSION_KEYS,
-      ).forModule('inventory'),
-      ids,
-      clock,
-    });
+        clock,
+      });
+    setStockLevel = build(stock);
   });
   afterAll(async () => {
     await db.close();
@@ -278,19 +282,102 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
     expect(await movementsOf(w.offerId)).toHaveLength(1);
   });
 
-  it('settles two simultaneous first writes: one item, one winner, the other stale', async () => {
+  /**
+   * A use case whose lock step waits until `parties` calls have read the sell unit, so that every
+   * party has seen the same state before any of them writes. Later calls (the retries of a 40001)
+   * pass at once. `reads` counts the calls, retries included.
+   */
+  function overlapping(parties: number) {
+    let arrived = 0;
+    let reads = 0;
+    let release!: () => void;
+    const together = new Promise<void>((resolve) => (release = resolve));
+    const wrapped: StockRepository = {
+      lockSellUnit: async (m, offerId, variantId) => {
+        const found = await stock.lockSellUnit(m, offerId, variantId);
+        reads += 1;
+        if (arrived < parties) {
+          arrived += 1;
+          if (arrived === parties) release();
+          await together;
+        }
+        return found;
+      },
+      isSellUnitRetired: (...args) => stock.isSellUnitRetired(...args),
+      heldQuantities: (...args) => stock.heldQuantities(...args),
+      insertItem: (...args) => stock.insertItem(...args),
+      setOnHand: (...args) => stock.setOnHand(...args),
+      appendMovement: (...args) => stock.appendMovement(...args),
+    };
+    return { useCase: build(wrapped), reads: () => reads };
+  }
+  const codesOf = (results: readonly { ok: boolean; error?: { code: string } }[]) =>
+    results.map((r) => (r.ok ? 'ok' : r.error?.code)).sort();
+  const signalEvents = async (offerId: string) => {
+    const [signal] = await rows(
+      `SELECT id, version FROM inventory.availability_signals WHERE market_id = $1 AND offer_id = $2`,
+      [code, offerId],
+    );
+    const events = await eventsOf(signal!.id as string);
+    return { version: signal!.version, events };
+  };
+
+  it('settles two overlapping first writes of one source: the 40001 retry finds the item, one stale', async () => {
     const w = await newWorld();
+    const race = overlapping(2);
 
     const results = await Promise.all([
-      execute(w.context, w.input({ onHand: 7 })),
-      execute(w.context, w.input({ onHand: 9 })),
+      race.useCase.execute(w.context, w.input({ onHand: 7 })),
+      race.useCase.execute(w.context, w.input({ onHand: 9 })),
     ]);
 
-    const codes = results.map((r) => (r.ok ? 'ok' : r.error.code)).sort();
-    expect(codes).toEqual(['conflict.stale', 'ok']);
+    expect(codesOf(results)).toEqual(['conflict.stale', 'ok']);
+    // Both read an empty sell unit; the loser's insert failed and its unit ran again.
+    expect(race.reads()).toBeGreaterThan(2);
     expect(await itemsOf(w.offerId)).toHaveLength(1);
     expect(await movementsOf(w.offerId)).toHaveLength(1);
     expect(await signalOf(w.offerId)).toHaveLength(1);
+  });
+
+  it('settles two overlapping first writes of two sources: both items, one signal, versions in step', async () => {
+    const w = await newWorld();
+    const second = ids.next<'InventorySource'>();
+    await sql.query(
+      `INSERT INTO inventory.sources (id, market_id, tenant_id, seller_id, name, is_default, priority, created_at)
+       VALUES ($1, $2, $3, $4, 'Second', false, 2, now())`,
+      [second, code, market.tenantId, w.sellerId],
+    );
+    const race = overlapping(2);
+
+    const results = await Promise.all([
+      race.useCase.execute(w.context, w.input({ onHand: 30 })),
+      race.useCase.execute(w.context, w.input({ onHand: 40, sourceId: second })),
+    ]);
+
+    expect(codesOf(results)).toEqual(['ok', 'ok']);
+    expect(await itemsOf(w.offerId)).toHaveLength(2);
+    expect(await movementsOf(w.offerId)).toHaveLength(2);
+    const { version, events } = await signalEvents(w.offerId);
+    expect(version).toBe(events.length);
+    expect((await signalOf(w.offerId))[0]).toMatchObject({ status: 'in-stock' });
+  });
+
+  it('serialises two updates with the same expected version: one ok, one stale, no lost update', async () => {
+    const w = await newWorld();
+    await execute(w.context, w.input({ onHand: 50 }));
+    // No barrier here: the item exists, so the second unit waits on the first one's row lock
+    // (L1) and reads the raised version after it.
+    const results = await Promise.all([
+      execute(w.context, w.input({ onHand: 40, expectedVersion: 1 })),
+      execute(w.context, w.input({ onHand: 30, expectedVersion: 1 })),
+    ]);
+
+    expect(codesOf(results)).toEqual(['conflict.stale', 'ok']);
+    expect(await movementsOf(w.offerId)).toHaveLength(2);
+    const [item] = await itemsOf(w.offerId);
+    expect(item).toMatchObject({ version: 2 });
+    const last = (await movementsOf(w.offerId)).at(-1)!;
+    expect(last.resulting_on_hand).toBe(item!.on_hand);
   });
 
   it('refuses a retired item and a tombstone with not-found, and writes nothing', async () => {
@@ -336,6 +423,88 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
     );
 
     expect(other.rowCount).toBe(0);
+  });
+
+  it('creates an item at 0 with no ledger row, then moves it from 0 to N with version 2', async () => {
+    const w = await newWorld();
+
+    await execute(w.context, w.input({ onHand: 0 }));
+    expect(await movementsOf(w.offerId)).toEqual([]);
+    expect((await signalOf(w.offerId))[0]).toMatchObject({ status: 'out', only_left: null });
+
+    const same = await execute(w.context, w.input({ onHand: 0, expectedVersion: 1 }));
+    expect(same).toMatchObject({ ok: true, value: { version: 1, changed: false } });
+
+    const raised = await execute(w.context, w.input({ onHand: 5, expectedVersion: 1 }));
+    expect(raised).toMatchObject({ ok: true, value: { onHand: 5, version: 2 } });
+    expect((await movementsOf(w.offerId)).map((m) => [m.delta, m.resulting_on_hand])).toEqual([
+      [5, 5],
+    ]);
+  });
+
+  it('answers stale for a same-level write with an old version (the version is checked first)', async () => {
+    const w = await newWorld();
+    await execute(w.context, w.input({ onHand: 20 }));
+
+    const result = await execute(w.context, w.input({ onHand: 20, expectedVersion: 4 }));
+
+    expect(result).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+  });
+
+  it('holds the largest level and back to 0: the ledger deltas fit and the CHECKs hold', async () => {
+    const w = await newWorld();
+    const MAX = 2_147_483_647;
+
+    await execute(w.context, w.input({ onHand: MAX }));
+    await execute(w.context, w.input({ onHand: 0, expectedVersion: 1 }));
+
+    expect((await movementsOf(w.offerId)).map((m) => [m.delta, m.resulting_on_hand])).toEqual([
+      [MAX, MAX],
+      [-MAX, 0],
+    ]);
+  });
+
+  it('creates a signal directly in low with one event only (no low-stock-reached)', async () => {
+    const w = await newWorld();
+
+    await execute(w.context, w.input({ onHand: 1 }));
+
+    const { version, events } = await signalEvents(w.offerId);
+    expect(events.map((e) => e.type)).toEqual(['inventory.availability-changed.v1']);
+    expect(version).toBe(1);
+    expect((await signalOf(w.offerId))[0]).toMatchObject({ status: 'low', only_left: 1 });
+  });
+
+  it('takes the seller threshold of 0: never low, no count, no low-stock-reached', async () => {
+    const w = await newWorld();
+    await sql.query(
+      `UPDATE inventory.seller_inventories SET low_stock_threshold = 0
+        WHERE market_id = $1 AND seller_id = $2`,
+      [code, w.sellerId],
+    );
+
+    await execute(w.context, w.input({ onHand: 1 }));
+    await execute(w.context, w.input({ onHand: 2, expectedVersion: 1 }));
+
+    expect((await signalOf(w.offerId))[0]).toMatchObject({ status: 'in-stock', only_left: null });
+    const { events } = await signalEvents(w.offerId);
+    expect(events.map((e) => e.type)).toEqual(['inventory.availability-changed.v1']);
+  });
+
+  it('refuses an Offer-scope tombstone as well', async () => {
+    const w = await newWorld();
+    await sql.query(
+      `INSERT INTO inventory.retirements
+         (id, market_id, tenant_id, scope, offer_id, source_aggregate_version, retired_at)
+       VALUES ($1, $2, $3, 'offer', $4, 1, now())`,
+      [ids.next(), code, market.tenantId, w.offerId],
+    );
+
+    expect(await execute(w.context, w.input())).toEqual({
+      ok: false,
+      error: { code: 'inventory.not-found' },
+    });
+    expect(await itemsOf(w.offerId)).toEqual([]);
   });
 
   it('refuses the repository writers outside a serializable unit', async () => {
