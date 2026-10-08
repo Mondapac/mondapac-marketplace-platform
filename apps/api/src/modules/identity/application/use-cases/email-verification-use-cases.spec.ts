@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -243,6 +243,63 @@ describe.each(TEST_MARKETS)('email verification in market %s (identity slice 3)'
       ).resolves.toEqual({ ok: false, error: { code: 'link.rejected' } });
       await expect(
         s.signIn.execute(anonymous, { email: EMAIL, password: PASSWORD, client: CLIENT }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    it('confirms and re-hashes in one save when the stored hash has older parameters (Hassan L2)', async () => {
+      const s = setUp();
+      await signUp(s);
+      await deliverLinkMail(s);
+      const token = tokenOf(s.fakes.mails[0]!.text);
+      const before = account(s);
+      s.fakes.needsRehash = true;
+      const rehashed = `${fakeHashOf(PASSWORD)}$rehashed`;
+      jest.spyOn(s.fakes.hasher, 'hash').mockResolvedValueOnce(ok(rehashed));
+
+      await expect(
+        s.confirm.execute(anonymous, { token, password: PASSWORD, client: CLIENT }),
+      ).resolves.toMatchObject({ ok: true, value: { code: 'signed-in' } });
+
+      // Two changes, one version step each, stored by one save.
+      expect(account(s)).toMatchObject({
+        emailVerifiedAt: s.clock.now(),
+        version: before.version + 2,
+        credential: { passwordHash: rehashed },
+      });
+      expect(s.fakes.events.at(-1)).toMatchObject({
+        type: 'identity.account-email-verified.v1',
+      });
+      expect(s.fakes.sessions.size).toBe(1);
+    });
+
+    it('refuses a link re-issued between the reservation and the closing unit (Hassan L1)', async () => {
+      const s = setUp();
+      await signUp(s);
+      await deliverLinkMail(s);
+      const token = tokenOf(s.fakes.mails[0]!.text);
+      const verify = s.fakes.hasher.verify.bind(s.fakes.hasher);
+      // While the password is hashed (outside any unit), "send it again" re-issues the link.
+      jest.spyOn(s.fakes.hasher, 'verify').mockImplementationOnce(async (plain, stored) => {
+        await s.resend.execute(anonymous, { email: EMAIL, origin: ORIGIN });
+        await deliverLinkMail(s);
+        return verify(plain, stored);
+      });
+
+      await expect(
+        s.confirm.execute(anonymous, { token, password: PASSWORD, client: CLIENT }),
+      ).resolves.toEqual({ ok: false, error: { code: 'link.rejected' } });
+
+      const [link] = [...s.fakes.links.values()];
+      expect(link).toMatchObject({ consumedAt: null });
+      expect(account(s).emailVerifiedAt).toBeNull();
+      expect(s.fakes.sessions.size).toBe(0);
+      // The mail of the re-issue holds the working link.
+      await expect(
+        s.confirm.execute(anonymous, {
+          token: tokenOf(s.fakes.mails.at(-1)!.text),
+          password: PASSWORD,
+          client: CLIENT,
+        }),
       ).resolves.toMatchObject({ ok: true });
     });
 

@@ -134,11 +134,18 @@ export class PrismaOneTimeLinkRepository implements OneTimeLinkRepository {
   async consume(
     market: MarketContext,
     id: Id<'OneTimeLink'>,
+    expectedVersion: number,
     now: Temporal.Instant,
   ): Promise<boolean> {
     const at = toDate(now);
     const { count } = await this.prisma.tx(market).identityOneTimeLink.updateMany({
-      where: { marketId: market.marketId, id, consumedAt: null, expiresAt: { gt: at } },
+      where: {
+        marketId: market.marketId,
+        id,
+        version: expectedVersion,
+        consumedAt: null,
+        expiresAt: { gt: at },
+      },
       data: { consumedAt: at, version: { increment: 1 } },
     });
     return count === 1;

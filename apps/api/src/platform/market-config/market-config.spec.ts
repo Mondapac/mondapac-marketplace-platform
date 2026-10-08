@@ -179,6 +179,34 @@ describe('loadMarketConfigs', () => {
       /identity\.links\.targets\.customer\.sign-in/,
     ],
     [
+      'a link page on plain http to a non-loopback host (Hassan L4)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: {
+            ...IDENTITY.links,
+            targets: {
+              customer: {
+                ...IDENTITY.links.targets.customer,
+                'verify-email': 'http://shop.qq.test/confirm-email',
+              },
+            },
+          },
+        },
+      },
+      /identity\.links\.targets\.customer\.verify-email/,
+    ],
+    [
+      'a verification link living longer than 24 hours (Hassan L3)',
+      {
+        identity: {
+          ...IDENTITY,
+          links: { ...IDENTITY.links, lifetimeMinutes: { 'verify-email': 1441 } },
+        },
+      },
+      /identity\.links\.lifetimeMinutes\.verify-email/,
+    ],
+    [
       'a link lifetime of zero',
       {
         identity: {
@@ -242,6 +270,25 @@ describe('loadMarketConfigs', () => {
 
     expect(() => loadMarketConfigs([directory], [QQ])).toThrow(InvalidMarketConfigError);
     expect(() => loadMarketConfigs([directory], [QQ])).toThrow(message);
+  });
+
+  it.each([
+    'http://localhost:3001/confirm-email',
+    'http://storefront.localhost/confirm-email',
+    'http://127.0.0.1:3001/confirm-email',
+    'http://[::1]:3001/confirm-email',
+    'https://shop.qq.test/confirm-email',
+  ])('accepts the link page %s, with a 24-hour verification link', (page) => {
+    const identity = {
+      ...IDENTITY,
+      links: {
+        lifetimeMinutes: { 'verify-email': 1440 },
+        targets: { customer: { ...IDENTITY.links.targets.customer, 'verify-email': page } },
+      },
+    };
+    const directory = directoryWith({ 'QQ.json': { ...VALID, identity } });
+
+    expect(loadMarketConfigs([directory], [QQ]).get(QQ)!.identity.links).toEqual(identity.links);
   });
 
   describe('the sellers section', () => {

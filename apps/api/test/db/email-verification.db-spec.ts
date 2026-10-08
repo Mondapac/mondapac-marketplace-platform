@@ -158,6 +158,16 @@ describe.each(TEST_MARKETS)(
         )
       ).rows;
 
+    const sessionsOf = async (accountId: string) =>
+      Number(
+        (
+          await sql.query<{ n: string }>(
+            'SELECT count(*) AS n FROM identity.sessions WHERE market_id = $1 AND account_id = $2',
+            [code, accountId],
+          )
+        ).rows[0]!.n,
+      );
+
     const deliveriesOf = async (subscriber: string, aggregateId: string) =>
       (
         await sql.query<{ status: string; attempts: number; error_code: string | null }>(
@@ -205,6 +215,47 @@ describe.each(TEST_MARKETS)(
       );
       expect(verified).toHaveLength(1);
       expect((await confirm(token)).body).toEqual({ statusCode: 400, code: 'link.rejected' });
+    });
+
+    it('a used link is refused the second time, and nothing changes (Sajad gap 1)', async () => {
+      const email = newAddress();
+      await signUp(email);
+      await settle();
+      const token = tokenOf(transport.to(email)[0]!);
+      expect((await confirm(token)).status).toBe(200);
+      const account = (await accountOf(email))!;
+      const [spent] = await linksOf(account.id);
+
+      const again = await confirm(token);
+
+      expect([again.status, bodyOf(again).code]).toEqual([400, 'link.rejected']);
+      expect(again.headers['set-cookie']).toBeUndefined();
+      expect((await linksOf(account.id))[0]).toEqual(spent);
+      expect(await sessionsOf(account.id)).toBe(1);
+    });
+
+    it('two confirmations with one link at once: exactly one signs in (Hassan I3)', async () => {
+      const email = newAddress();
+      await signUp(email);
+      await settle();
+      const token = tokenOf(transport.to(email)[0]!);
+
+      const answers = await Promise.all([confirm(token), confirm(token)]);
+
+      expect(answers.map((answer) => answer.status).sort()).toEqual([200, 400]);
+      expect(answers.map((answer) => bodyOf(answer).code).sort()).toEqual([
+        'link.rejected',
+        'signed-in',
+      ]);
+      const account = (await accountOf(email))!;
+      expect(account.email_verified_at).not.toBeNull();
+      expect(await sessionsOf(account.id)).toBe(1);
+      const { rows: verified } = await sql.query(
+        `SELECT 1 FROM identity.outbox WHERE market_id = $1 AND aggregate_id = $2
+          AND type = 'identity.account-email-verified.v1'`,
+        [code, account.id],
+      );
+      expect(verified).toHaveLength(1);
     });
 
     it('refuses the link in another Market, and a wrong password leaves it usable', async () => {

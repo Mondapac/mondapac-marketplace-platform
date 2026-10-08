@@ -301,19 +301,27 @@ export class CustomerSignInFlow {
         if (link !== null) {
           // 3.1: no link is used for a disabled account; it stays unused.
           if (current.state.status !== 'active') return refuse('account.disabled');
-          if (!(await this.linkDeps!.links.consume(market, link.state.id, now))) {
-            return refuse('link.rejected');
-          }
-          if (current.verifyEmail(now)) {
-            await accounts.save(market, current);
-            await this.linkDeps!.outbox.append(context, current.pendingEvents);
-          }
+          // Bound to the link read in the reservation unit: a link re-issued (or consumed)
+          // since then has another version, and this use is refused (Hassan L1).
+          const consumed = await this.linkDeps!.links.consume(
+            market,
+            link.state.id,
+            link.state.version,
+            now,
+          );
+          if (!consumed) return refuse('link.rejected');
+          current.verifyEmail(now);
         }
         if (!current.isEmailVerified) return refuse('email-verification-required');
         if (current.state.status !== 'active') return refuse('account.disabled');
-        if (rehashed !== null && rehashed.ok) {
-          current.rehashPassword(rehashed.value);
+        if (rehashed !== null && rehashed.ok) current.rehashPassword(rehashed.value);
+        // One save for every change of this unit (Hassan L2): the verified email and a re-hash
+        // step the version twice, and a second save of the same object would be stale.
+        if (current.state.version !== current.persistedVersion) {
           await accounts.save(market, current);
+          if (current.pendingEvents.length > 0) {
+            await this.linkDeps!.outbox.append(context, current.pendingEvents);
+          }
         }
         const session = openSession({
           id: this.deps.ids.next<'Session'>(),

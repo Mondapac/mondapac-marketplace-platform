@@ -72,9 +72,14 @@ const throttleCounterSchema = z.strictObject({
   blockMinutes: z.number().int().min(0).max(1440),
 });
 
+/** Hosts a browser resolves to this machine only: the one place a plain-http page is allowed. */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
 /**
- * A page a mail links to: an absolute http(s) URL without a fragment (the token goes there) and
- * without credentials.
+ * A page a mail links to: an absolute https URL without a fragment (the token goes there) and
+ * without credentials (Hassan L4). Plain http is accepted only for a loopback host
+ * (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`), for local development, so a mailed token
+ * never crosses a network in clear text.
  */
 const pageUrl = z
   .string()
@@ -82,8 +87,9 @@ const pageUrl = z
   .refine((value) => {
     try {
       const url = new URL(value);
+      const loopback = LOOPBACK_HOSTS.has(url.hostname) || url.hostname.endsWith('.localhost');
       return (
-        (url.protocol === 'https:' || url.protocol === 'http:') &&
+        (url.protocol === 'https:' || (url.protocol === 'http:' && loopback)) &&
         !value.includes('#') &&
         url.username === '' &&
         url.password === ''
@@ -91,7 +97,7 @@ const pageUrl = z
     } catch {
       return false;
     }
-  }, 'must be an absolute http(s) URL without a fragment, such as "https://panel.example/page"');
+  }, 'must be an absolute https URL (http only for a loopback host) without a fragment, such as "https://panel.example/page"');
 
 /**
  * The identity policy section (identity design 8.5 `IdentityMarketPolicy`; design 15). Each
@@ -139,7 +145,8 @@ const identitySchema = z.strictObject({
    * page a mail links to, per population and page (`LinkTargets`; hosts wait for D2).
    */
   links: z.strictObject({
-    lifetimeMinutes: z.strictObject({ 'verify-email': minutes }),
+    // Hassan L3: a verification link lives at most 24 hours (identity design 6.6).
+    lifetimeMinutes: z.strictObject({ 'verify-email': z.number().int().min(1).max(1440) }),
     targets: z.strictObject({
       customer: z.strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl }),
     }),

@@ -74,6 +74,8 @@ export class IdentityFakes {
   hashed = 0;
   verified = 0;
   busy = false;
+  /** Makes every correct verification ask for a re-hash (older parameters). */
+  needsRehash = false;
   /** Makes the reservation unit fail, as an unreachable counter table would. */
   throttlesDown = false;
 
@@ -90,6 +92,7 @@ export class IdentityFakes {
     this.hashed = 0;
     this.verified = 0;
     this.busy = false;
+    this.needsRehash = false;
     this.throttlesDown = false;
   }
 
@@ -127,6 +130,12 @@ export class IdentityFakes {
       return Promise.resolve(ok(undefined));
     },
     save: (_market: MarketContext, account: Account) => {
+      // As the repository: the stored version must be the one read (StaleAggregateError).
+      if (account.state.version === account.persistedVersion) return Promise.resolve();
+      const stored = this.accounts.get(account.state.id);
+      if (stored === undefined || stored.version !== account.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('account', account.state.id));
+      }
       this.accounts.set(account.state.id, account.state);
       return Promise.resolve();
     },
@@ -188,11 +197,12 @@ export class IdentityFakes {
       this.links.set(link.state.id, link.state);
       return Promise.resolve();
     },
-    consume: (market, id, now) => {
+    consume: (market, id, expectedVersion, now) => {
       const stored = this.links.get(id);
       if (
         stored === undefined ||
         stored.marketId !== market.marketId ||
+        stored.version !== expectedVersion ||
         stored.consumedAt !== null ||
         stored.expiresAt === null ||
         Temporal.Instant.compare(stored.expiresAt, now) <= 0
@@ -355,7 +365,10 @@ export class IdentityFakes {
       if (this.busy) return Promise.resolve(err({ code: 'request.busy', retryAfterSeconds: 1 }));
       this.verified += 1;
       return Promise.resolve(
-        ok({ matches: stored !== null && stored === fakeHashOf(plain), needsRehash: false }),
+        ok({
+          matches: stored !== null && stored === fakeHashOf(plain),
+          needsRehash: this.needsRehash && stored === fakeHashOf(plain),
+        }),
       );
     },
   };

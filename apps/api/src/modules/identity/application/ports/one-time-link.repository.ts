@@ -29,10 +29,16 @@ export interface OneTimeLinkRepository {
 
   /**
    * The single use (data design 3.7): one conditional statement that sets `consumed_at` only
-   * while the link is unused and unexpired at `now`, and raises the version. True when it did;
-   * false when a concurrent use, a new request or the expiry came first.
+   * while the link is unused, unexpired at `now` and still at `expectedVersion` (the version the
+   * caller read with its token), and raises the version. True when it did; false when a
+   * concurrent use, a new request (re-issue) or the expiry came first.
    */
-  consume(market: MarketContext, id: Id<'OneTimeLink'>, now: Temporal.Instant): Promise<boolean>;
+  consume(
+    market: MarketContext,
+    id: Id<'OneTimeLink'>,
+    expectedVersion: number,
+    now: Temporal.Instant,
+  ): Promise<boolean>;
 
   /** Deletes links consumed or expired before `before` (the hourly purge, data design 9). */
   purgeSpent(market: MarketContext, before: Temporal.Instant): Promise<number>;

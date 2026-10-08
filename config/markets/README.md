@@ -22,10 +22,10 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   and `mailThrottles` (`account`, `origin`), each a `limit`, a `windowMinutes` and a
   `blockMinutes` (0: no block, the window alone refuses; identity design 6.8), and
   `signInRecordRetentionDays` (how long sign-in records are kept; data design 3.6). Slice 3
-  adds `links.lifetimeMinutes` (per link purpose; `verify-email` 1440 for AU; identity design
-  3.7), `links.targets` (per population, the storefront page of each mail: `verify-email`, where
-  the token is appended as the URL fragment, and `sign-in`; an http(s) URL with no fragment and
-  no credentials; the AU hosts are `.test` placeholders until D2),
+  adds `links.lifetimeMinutes` (per link purpose; `verify-email` 1 to 1440, 1440 for AU;
+  identity design 3.7), `links.targets` (per population, the storefront page of each mail: `verify-email`, where
+  the token is appended as the URL fragment, and `sign-in`; an https URL, plain http only for a
+  loopback host such as `localhost`, with no fragment and no credentials; the AU hosts are `.test` placeholders until D2),
   `unverifiedAccountRetentionDays` (1 to 30; 7 for AU: an account never verified is deleted
   after this; identity design 3.1, 12.2) and `mail` (`fromAddress` and `fromName`, the sender of
   identity's mail; identity design 9). The mail text itself is in `config/locales/`, in the
