@@ -1,4 +1,4 @@
--- Reverses 20261008121500_catalog_attributes (docs/design/data/catalog.md 8.3): the grants
+-- Reverses 20261008151500_catalog_attributes (docs/design/data/catalog.md 8.3): the grants
 -- first, then the triggers, then the tables, children before parents. The roots and their
 -- revisions point at each other (revision to root, root to published revision), so the second
 -- foreign key is dropped first. CHECKs and indexes go with their tables.
