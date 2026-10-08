@@ -94,3 +94,34 @@ Rows, values and SQL are never logged.
 - `APP_ROLE` (`api` or `worker`) is required, with no default. `main.ts` reads it and calls
   `startApi` or `startWorker`; both build the same module graph. The worker has no HTTP
   listener; SIGTERM stops the relay and the scheduler (up to 10 s), then closes the graph.
+
+## Audit writer (identity slice 6a; docs/design/domain/platform-audit.md 3, 13)
+- Declare an audited action with `defineAuditAction` (kernel) in `modules/<m>/domain/`,
+  re-export it from `contracts/`, and register it in the module's Nest module:
+  `providers: [registerAuditActions('<m>', ACTIONS), PersistenceModule.auditWriterFor('<m>')]`.
+  - `before` and `after` fields come from `auditField` only: the event vocabulary, with a
+    required maximum on `listOf`. No kind takes free text.
+  - An action open to `anonymous` must declare `after.boundSubjectId` of kind `id` (W4a).
+  - A platform component registers under `platform.<component>`.
+  - `apps/api/test/contracts/audit-action-catalogue.snapshot.json` lists every action. A new
+    or changed action fails the contracts test until the snapshot changes, for security review.
+- A use case records inside its read-write unit (token `AUDIT_WRITER`):
+  `await audit.record(context, ACTION.entry(id, { before, after }))`.
+  - The writer stamps the id, Market, tenant, correlation id and `occurred_at` (from `Clock`,
+    in whole milliseconds). It derives the actor from the context: `USER`, `SYSTEM` or
+    `ANONYMOUS`.
+  - It throws `AuditWriteRefusedError` (a code and a field name, never a value), so the unit
+    rolls back. It refuses when no unit is open, the unit is read-only or of another Market,
+    the action is not the owner's or not in the sealed catalogue, the actor kind is not
+    allowed, a side does not match its fields, a list is too long, a side is over 4 KB of
+    canonical JSON, or an anonymous row has no `boundSubjectId`.
+  - `permissionKey` values are refused until the permission registry exists (slice 8a-1).
+- `audit/` holds the writer; no module imports it (`pnpm boundaries`). Slice 6a binds the
+  writer into no module; 6b binds it into identity and adds the sealer.
+- Migration `platform_audit_seal` (docs/design/data/platform.md 11) adds:
+  - `ANONYMOUS` actors, whole milliseconds on `occurred_at`, and an 8 192-byte text cap on
+    `before` and `after`;
+  - the append-only tables `audit_log_seal` and `audit_chain_checkpoint` (application:
+    `SELECT`, `INSERT`).
+  - A plain `TRUNCATE platform.audit_log` now fails with `0A000`, because the seal references
+    it; with `CASCADE` the triggers refuse it (`23001`).
