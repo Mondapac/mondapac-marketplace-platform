@@ -209,6 +209,10 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     expect(await bad({ sensitive_reasons: ['nonsense'], sensitive: true })).toBe('23514');
     expect(await bad({ sensitive: false, sensitive_reasons: ['name'] })).toBe('23514');
     expect(await bad({ content_hash: 'sha256:abc' })).toBe('23514');
+    // A NULL list would make the list CHECKs evaluate to NULL, which a CHECK accepts (B1).
+    expect(await bad({ definition_revision_ids: null })).toBe('23514');
+    expect(await bad({ sensitive_reasons: null })).toBe('23514');
+    expect(await bad({ sensitive_reasons: [null] })).toBe('23514');
     expect(await bad({ author_kind: 'bot' })).toBe('23514');
     expect(await bad({ acting_admin_account_id: uuid7(), author_kind: 'admin' })).toBe('23514');
     expect(
@@ -509,6 +513,23 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       await decision({ outcome: 'superseded', reason_code: null, superseded_cause: null }),
     ).toBe('23514');
     expect(await decision({ product_version: 0 })).toBe('23514');
+    // NULL lists must not slip past the checks rule (R2, H1): B1.
+    expect(await decision({ ...published, required_checks: ['a'], confirmed_checks: null })).toBe(
+      '23514',
+    );
+    expect(await decision({ ...published, required_checks: null })).toBe('23514');
+    expect(
+      await decision({
+        ...published,
+        publish_kind: 'auto',
+        approval_required_read: false,
+        confirmed_checks: null,
+        decided_by_kind: 'system',
+        decided_by_account_id: null,
+      }),
+    ).toBe('23514');
+    expect(await decision({ required_checks: ['Bad Code'] })).toBe('23514');
+    expect(await decision({ reason_text: ' padded ' })).toBe('23514');
   });
 
   it('keeps the working copy mutable and deletable by the application', async () => {

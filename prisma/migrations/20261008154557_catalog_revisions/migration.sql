@@ -232,7 +232,13 @@ ALTER TABLE "catalog"."product_revisions"
   ADD CONSTRAINT "product_revisions_field_provenance_check" CHECK (
     "field_provenance" IS NULL OR jsonb_typeof("field_provenance") = 'object'),
   -- D 9.2a codes.
-  ADD CONSTRAINT "product_revisions_sensitive_reasons_check" CHECK ("sensitive_reasons" <@ ARRAY[
+  -- Prisma cannot mark a scalar list required, so the lists are NOT NULL by CHECK (Mojtaba B1): a
+  -- NULL list would make the checks below evaluate to NULL, which a CHECK accepts.
+  ADD CONSTRAINT "product_revisions_definition_revision_ids_check" CHECK (
+    "definition_revision_ids" IS NOT NULL AND array_position("definition_revision_ids", NULL) IS NULL),
+  ADD CONSTRAINT "product_revisions_sensitive_reasons_check" CHECK (
+    "sensitive_reasons" IS NOT NULL AND array_position("sensitive_reasons", NULL) IS NULL
+    AND "sensitive_reasons" <@ ARRAY[
     'platform-categories', 'tax-category', 'name', 'primary-image', 'image-added-or-replaced',
     'variant-removed', 'never-published', 'approval-required']::text[]),
   ADD CONSTRAINT "product_revisions_sensitive_check" CHECK (
@@ -302,7 +308,15 @@ ALTER TABLE "catalog"."product_revision_decisions"
     "reason_text" IS NULL OR (
       "outcome" = 'changes-requested'
       AND char_length("reason_text") BETWEEN 1 AND 2000
+      AND "reason_text" = btrim("reason_text")
       AND "reason_text" !~ '[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]')),
+  ADD CONSTRAINT "product_revision_decisions_check_arrays_check" CHECK (
+    "required_checks" IS NOT NULL AND "confirmed_checks" IS NOT NULL
+    AND array_position("required_checks", NULL) IS NULL AND array_position("confirmed_checks", NULL) IS NULL
+    AND (cardinality("required_checks") = 0 OR array_to_string("required_checks", ',')
+         ~ '^[a-z][a-z0-9_-]{0,63}(,[a-z][a-z0-9_-]{0,63})*$')
+    AND (cardinality("confirmed_checks") = 0 OR array_to_string("confirmed_checks", ',')
+         ~ '^[a-z][a-z0-9_-]{0,63}(,[a-z][a-z0-9_-]{0,63})*$')),
   -- D 8.3a, Reza 7.6, Hassan H1: a reviewed publish without every required check cannot be stored.
   ADD CONSTRAINT "product_revision_decisions_checks_check" CHECK (
     "publish_kind" IS DISTINCT FROM 'reviewed' OR "required_checks" <@ "confirmed_checks"),
@@ -331,13 +345,15 @@ ALTER TABLE "catalog"."rate_counters"
 -- SECURITY INVOKER, pinned search_path, schema-qualified names, no dynamic EXECUTE (Ali's Q-K8).
 CREATE FUNCTION "catalog"."product_revision_variants_not_retired"() RETURNS trigger
   LANGUAGE plpgsql
+  SECURITY INVOKER
   SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   v_state text;
 BEGIN
   SELECT v.state INTO v_state FROM "catalog"."product_variants" v
-   WHERE v.market_id = NEW.market_id AND v.product_id = NEW.product_id AND v.id = NEW.variant_id;
+   WHERE v.market_id = NEW.market_id AND v.product_id = NEW.product_id AND v.id = NEW.variant_id
+     FOR SHARE;
   IF v_state = 'retired' THEN
     RAISE EXCEPTION 'catalog.product_revision_variants: a retired variant cannot join a revision'
       USING ERRCODE = 'check_violation';
@@ -382,7 +398,7 @@ CREATE TRIGGER "product_revision_decisions_no_truncate" BEFORE TRUNCATE
   ON "catalog"."product_revision_decisions"
   FOR EACH STATEMENT EXECUTE FUNCTION "catalog"."reject_mutation"();
 
--- Grants (data design 7): the revision tables take SELECT and INSERT only; the working copy is
+-- Grants (database-designer): docs/design/data/catalog.md section 7. The revision tables take SELECT and INSERT only; the working copy is
 -- deleted when a draft is discarded or pruned (10.1); counters are purged hourly (3.26).
 GRANT UPDATE ("published_revision_id", "pending_revision_id", "pending_submitted_at")
   ON TABLE "catalog"."products" TO "mondapac_app";
