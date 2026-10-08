@@ -60,6 +60,11 @@
   },
   "sellers": {
     "approvalRequired": true,
+    "businessIdentifier": {
+      "scheme": "abn",
+      "required": true,
+      "labelKey": "sellers.business-identifier.abn"
+    },
     "address": {
       "fields": [
         {

@@ -453,6 +453,24 @@ const reservedWordsSchema = z.strictObject({
 });
 
 /**
+ * The `businessIdentifier` of the `sellers` section (sellers design 4.1 and 4.2): which identifier
+ * scheme the Market uses, whether a seller must give one, and the translation key of its label.
+ * `scheme` names an adapter in `sellers/infrastructure/identifier-schemes/` (a file per scheme);
+ * that the name is a known adapter is checked by `sellers` at start-up, not here, because the
+ * platform does not know the module's adapters. The register-lookup keys (`registerLookup.*`)
+ * join in slice 4a.
+ */
+const businessIdentifierSchema = z.strictObject({
+  scheme: z
+    .string()
+    .max(32)
+    .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, 'must be a lower-case scheme token such as "abc-no"'),
+  /** Required: a Market never defaults it (design 4.1; AC 5, AC 12). */
+  required: z.boolean(),
+  labelKey: z.string().min(1).max(64),
+});
+
+/**
  * The `sellers` section of a Market file. It starts with what slice 2 (complete details) needs;
  * later slices add the rest of design 4.1 here, each with its own readiness gate (ADR-0013).
  */
@@ -461,6 +479,8 @@ const sellersSchema = z
     address: addressFormatSchema,
     timezones: sellerTimezonesSchema,
     reservedWords: reservedWordsSchema,
+    /** Required: a Market never defaults its identifier scheme (sellers slice 3). */
+    businessIdentifier: businessIdentifierSchema,
     /**
      * Whether a new seller starts `pending` (true) or `approved` (false) (sellers design 4.1;
      * identity design 3.3, SEL-03, AC 5). Required: a Market never defaults it. It is the seed
