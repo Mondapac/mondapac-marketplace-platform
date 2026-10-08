@@ -29,6 +29,34 @@ export type RoundingMode = 'half-up' | 'half-even' | 'down' | 'up';
 
 const CURRENCY_SHAPE = /^[A-Z]{3}$/;
 const exponents = new Map<string, number>();
+// `Intl.NumberFormat` accepts any well-formed code and answers 2 for an unknown one, so a typo
+// would pass silently. The platform's own list of ISO 4217 codes is the gate.
+// ISO 4217 minor-unit digits for every currency that is not 2, checked in so the exponent never
+// depends on the runtime's ICU data (CLDR differs from ISO for IQD, MGA and others).
+const ISO_4217_EXPONENT: ReadonlyMap<string, number> = new Map([
+  ...[
+    'BIF',
+    'CLP',
+    'DJF',
+    'GNF',
+    'ISK',
+    'JPY',
+    'KMF',
+    'KRW',
+    'PYG',
+    'RWF',
+    'UGX',
+    'UYI',
+    'VND',
+    'VUV',
+    'XAF',
+    'XOF',
+    'XPF',
+  ].map((code): [string, number] => [code, 0]),
+  ...['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND'].map((code): [string, number] => [code, 3]),
+  ...['CLF', 'UYW'].map((code): [string, number] => [code, 4]),
+]);
+let knownCurrencies: ReadonlySet<string> | undefined;
 
 /**
  * The number of minor-unit digits of a currency, from the platform's ISO 4217 data. Throws
@@ -40,22 +68,20 @@ export function minorUnitExponent(currency: string): number {
   if (typeof currency !== 'string' || !CURRENCY_SHAPE.test(currency)) {
     throw new MoneyError('currency must be an upper-case ISO 4217 code');
   }
-  let digits: number | undefined;
-  try {
-    digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
-      .maximumFractionDigits;
-  } catch {
+  knownCurrencies ??= new Set(Intl.supportedValuesOf('currency'));
+  if (!knownCurrencies.has(currency) && !ISO_4217_EXPONENT.has(currency)) {
     throw new MoneyError('currency must be an upper-case ISO 4217 code');
   }
-  if (digits === undefined) throw new MoneyError('currency must be an upper-case ISO 4217 code');
+  const digits = ISO_4217_EXPONENT.get(currency) ?? 2;
   exponents.set(currency, digits);
   return digits;
 }
 
 /** Builds a Money from values the code already trusts. Throws `MoneyError` on a bad currency. */
 export function money(amount: bigint, currency: string): Money {
+  if (typeof amount !== 'bigint') throw new MoneyError('amount must be a bigint');
   minorUnitExponent(currency);
-  return { amount, currency };
+  return Object.freeze({ amount, currency });
 }
 
 /** Builds a Money from untrusted input: the amount must be a bigint, the currency well formed. */
@@ -69,7 +95,25 @@ export function parseMoney(amount: unknown, currency: unknown): Result<Money, Mo
     return err({ code: 'money.invalid-currency' });
   }
   if (typeof amount !== 'bigint') return err({ code: 'money.invalid-amount' });
-  return ok({ amount, currency });
+  return ok(Object.freeze({ amount, currency }));
+}
+
+/** The most digits of a wire amount: below 2^53 and inside a BIGINT column (pricing design 4.4). */
+export const MAX_WIRE_AMOUNT_DIGITS = 16;
+
+/**
+ * Parses an amount sent as a string of minor units (ADR-0007 decision 10): digits only, no
+ * sign, no space, no leading zero (except `0` itself), at most `maxDigits` (default 16). The
+ * one place a wire amount becomes a bigint, so no caller reaches for the lenient `BigInt(text)`.
+ */
+export function parseMinorUnits(
+  text: unknown,
+  maxDigits: number = MAX_WIRE_AMOUNT_DIGITS,
+): Result<bigint, { readonly code: 'money.invalid-amount' }> {
+  if (typeof text !== 'string' || !/^(0|[1-9][0-9]*)$/.test(text) || text.length > maxDigits) {
+    return err({ code: 'money.invalid-amount' });
+  }
+  return ok(BigInt(text));
 }
 
 function sameCurrency(a: Money, b: Money): void {
@@ -80,12 +124,12 @@ function sameCurrency(a: Money, b: Money): void {
 
 export function addMoney(a: Money, b: Money): Money {
   sameCurrency(a, b);
-  return { amount: a.amount + b.amount, currency: a.currency };
+  return Object.freeze({ amount: a.amount + b.amount, currency: a.currency });
 }
 
 export function subtractMoney(a: Money, b: Money): Money {
   sameCurrency(a, b);
-  return { amount: a.amount - b.amount, currency: a.currency };
+  return Object.freeze({ amount: a.amount - b.amount, currency: a.currency });
 }
 
 export function compareMoney(a: Money, b: Money): -1 | 0 | 1 {
@@ -94,7 +138,7 @@ export function compareMoney(a: Money, b: Money): -1 | 0 | 1 {
   return a.amount < b.amount ? -1 : 1;
 }
 
-/** `numerator / denominator` of the quotient `value / divisor`, rounded as `mode` says. */
+/** `value / divisor` rounded as `mode` says; `down` and `up` are toward and away from zero. */
 function divideRounded(value: bigint, divisor: bigint, mode: RoundingMode): bigint {
   const negative = value < 0n;
   const magnitude = negative ? -value : value;
@@ -133,10 +177,10 @@ export function scaleMoney(
 ): Money {
   if (denominator <= 0n) throw new MoneyError('denominator must be positive');
   if (numerator < 0n) throw new MoneyError('numerator must not be negative');
-  return {
+  return Object.freeze({
     amount: divideRounded(value.amount * numerator, denominator, mode),
     currency: value.currency,
-  };
+  });
 }
 
 /**
@@ -166,8 +210,7 @@ export function allocateMoney(whole: Money, weights: readonly bigint[]): Money[]
     shares[index] = (shares[index] ?? 0n) + 1n;
     left -= 1n;
   }
-  return shares.map((share) => ({
-    amount: negative ? -share : share,
-    currency: whole.currency,
-  }));
+  return shares.map((share) =>
+    Object.freeze({ amount: negative ? -share : share, currency: whole.currency }),
+  );
 }
