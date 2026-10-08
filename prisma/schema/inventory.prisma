@@ -1,0 +1,75 @@
+// The inventory module (schema "inventory"). Physical design: docs/design/data/inventory.md;
+// every model is named Inventory<Name> (its C9) and mapped to its table with @@map. Slice 1
+// creates the inbox, the seller inventory root and its sources; later slices add the outbox,
+// the stock and the reservations, each in its own migration (data design 8.1).
+
+/// Events inventory's subscribers have handled (ADR-0006 decision 5; data design 3.1, PM4):
+/// `runOnce` inserts (event_id, handler) in the handler's own unit and skips the work when the
+/// row exists. Written only by platform/persistence/outbox/. The CHECKs and the grants are
+/// hand-written in the migration.
+model InventoryInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "inventory.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("inventory")
+}
+
+/// The inventory of one seller in one Market (inventory design 2.1; data design 3.2): the root
+/// of its sources and of the optional low-stock threshold. Created by the handler of the
+/// approval, with the Default source in the same unit. The CHECK on the threshold is
+/// hand-written in the migration.
+model InventorySellerInventory {
+  id                String            @id @db.Uuid
+  marketId          String            @map("market_id") @db.VarChar(8)
+  tenantId          String            @map("tenant_id")
+  /// The seller id identity minted (C4: a plain id, no foreign key).
+  sellerId          String            @map("seller_id") @db.Uuid
+  /// The seller's override (Q8); null means the Market default. 0 to 99, by a CHECK.
+  lowStockThreshold Int?              @map("low_stock_threshold")
+  /// Optimistic version of the aggregate (P 10); 1 at insert. A source change raises it.
+  version           Int
+  createdAt         DateTime          @map("created_at") @db.Timestamptz(6)
+  sources           InventorySource[]
+
+  /// One inventory per seller and Market; the foreign-key target of the sources (3.2).
+  @@unique([marketId, sellerId])
+  @@map("seller_inventories")
+  @@schema("inventory")
+}
+
+/// One place a seller keeps stock (inventory design 2.1; data design 3.3), a child entity of
+/// the seller inventory. Name, address and zone are the seller's text and may hold personal
+/// data. The CHECKs and the partial unique index "at most one Default" are hand-written in the
+/// migration; "exactly one Default" and gap-free priorities stay with the aggregate.
+model InventorySource {
+  id              String                   @id @db.Uuid
+  marketId        String                   @map("market_id") @db.VarChar(8)
+  tenantId        String                   @map("tenant_id")
+  /// The owner; never changes.
+  sellerId        String                   @map("seller_id") @db.Uuid
+  /// 1 to 80 characters, no outer spaces (CHECK).
+  name            String
+  /// The source's address (an object), or null: the Default source starts without one (Q-H2).
+  address         Json?                    @db.JsonB
+  /// An IANA zone id, or null: the seller's own zone (ADR-0005 decision 2).
+  timeZone        String?                  @map("time_zone")
+  /// Set at creation and never changed.
+  isDefault       Boolean                  @map("is_default")
+  /// Position 1..n in the seller's order (Q9).
+  priority        Int
+  createdAt       DateTime                 @map("created_at") @db.Timestamptz(6)
+  sellerInventory InventorySellerInventory @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// A position is held by one source; also the seller's list in priority order (3.3, T2).
+  @@unique([marketId, sellerId, priority])
+  /// The foreign-key target of the stock items of slice 2 (C3): their seller is their source's.
+  @@unique([marketId, id, sellerId])
+  @@map("sources")
+  @@schema("inventory")
+}

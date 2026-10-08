@@ -73,7 +73,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(worker.get(SubscriptionRegistry).names()).toEqual(api.get(SubscriptionRegistry).names());
   });
 
-  it("registers identity's mail subscriptions, sellers' file creation and seals the registry (P 6.4)", () => {
+  it("registers identity's mail subscriptions, inventory's seller inventory, sellers' file creation and seals the registry (P 6.4)", () => {
     const subscriptions = graphs.get('worker')!.get(SubscriptionRegistry);
 
     expect(subscriptions.names()).toEqual([
@@ -81,6 +81,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.link-mail',
       'identity.password-changed-mail',
       'identity.welcome-mail',
+      'inventory.ensure-seller-inventory',
       'sellers.create-file',
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
@@ -94,6 +95,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',
+      'inventory.ensure-seller-inventory',
       'sellers.create-file',
     ]);
     expect(subscriptions.sealed).toBe(true);

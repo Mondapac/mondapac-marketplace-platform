@@ -31,6 +31,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // No privilege for the application on `extensions` (see `extensions` below).
     extensions: [],
     identity: ['USAGE'],
+    inventory: ['USAGE'],
     platform: ['USAGE'],
     sellers: ['USAGE'],
   },
@@ -105,6 +106,18 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
+    // a seller inventory is never deleted and a source has no delete in the brief; the seller,
+    // the key columns and the Default flag are immutable, so UPDATE is by column.
+    'inventory.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'inventory.seller_inventories': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['low_stock_threshold', 'version'],
+    },
+    'inventory.sources': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['address', 'name', 'priority', 'time_zone'],
+    },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },
   extensions: {
