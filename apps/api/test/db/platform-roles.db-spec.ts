@@ -218,11 +218,12 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       await admin(narrow),
     ];
     const seen = new Set<string>();
-    // Other files add and delete platform roles in these Markets meanwhile: this case checks the
-    // seeded roles and its own, which nobody else touches.
+    // Other files add and delete platform roles in these Markets meanwhile, and role-seed.db-spec
+    // takes a key off seeded roles for a moment: this case checks the system role (its keys are
+    // derived, not stored) and its own roles, which nobody else touches.
     const { rows: seededRows } = await sql.query<{ id: string }>(
       `SELECT id FROM identity.roles WHERE market_id = $1 AND scope = 'platform'
-       AND seed_code IS NOT NULL`,
+       AND seed_code = 'platform-administrator'`,
       [code],
     );
     const own = new Set<string>([lead, narrow, low, ...seededRows.map((r) => r.id)]);
