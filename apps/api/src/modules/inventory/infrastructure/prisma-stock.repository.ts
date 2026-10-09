@@ -1,14 +1,40 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import {
+  MAX_LOCKED_STOCK_ITEMS,
+  type LockedStockItem,
+} from '../../../platform/persistence/named-statements';
 import type {
+  NewRetirementTombstone,
   NewStockItem,
   NewStockMovement,
   StockItemRow,
+  RetirementTarget,
   StockRepository,
 } from '../application/ports/stock.repository';
 import { assertSerializableUnit } from '../application/serializable-unit';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
+
+function toStockItemRow(row: LockedStockItem): StockItemRow {
+  return {
+    id: row.id as Id<'StockItem'>,
+    offerId: row.offerId as Id<'Offer'>,
+    variantId: row.variantId as Id<'Variant'>,
+    sourceId: row.sourceId as Id<'InventorySource'>,
+    sellerId: row.sellerId as Id<'Seller'>,
+    onHand: row.onHand,
+    retired: row.retiredAt !== null,
+    version: row.version,
+  };
+}
+
+/** Consecutive slices of at most `size`, in order. */
+function batches<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let at = 0; at < items.length; at += size) out.push(items.slice(at, at + size));
+  return out;
+}
 
 /**
  * {@link StockRepository} on `inventory.stock_items`, `inventory.stock_movements` and
@@ -33,16 +59,7 @@ export class PrismaStockRepository implements StockRepository {
     const locked = await this.prisma.namedQuery(market, 'inventory.lock-stock-items', {
       ids: found.map((row) => row.id),
     });
-    return locked.map((row) => ({
-      id: row.id as Id<'StockItem'>,
-      offerId: row.offerId as Id<'Offer'>,
-      variantId: row.variantId as Id<'Variant'>,
-      sourceId: row.sourceId as Id<'InventorySource'>,
-      sellerId: row.sellerId as Id<'Seller'>,
-      onHand: row.onHand,
-      retired: row.retiredAt !== null,
-      version: row.version,
-    }));
+    return locked.map(toStockItemRow);
   }
 
   async isSellUnitRetired(
@@ -63,6 +80,80 @@ export class PrismaStockRepository implements StockRepository {
       select: { id: true },
     });
     return found !== null;
+  }
+
+  async activeItemIds(
+    market: MarketContext,
+    target: RetirementTarget,
+  ): Promise<readonly Id<'StockItem'>[]> {
+    const rows = await this.prisma.tx(market).inventoryStockItem.findMany({
+      where: {
+        marketId: market.marketId,
+        retiredAt: null,
+        ...(target.scope === 'offer'
+          ? { offerId: target.offerId }
+          : { variantId: target.variantId }),
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    return rows.map((row) => row.id as Id<'StockItem'>);
+  }
+
+  async lockItems(
+    market: MarketContext,
+    ids: readonly Id<'StockItem'>[],
+  ): Promise<readonly StockItemRow[]> {
+    assertSerializableUnit('StockRepository.lockItems');
+    const rows: StockItemRow[] = [];
+    // Ascending ids in ascending batches keep one global lock order (data design 4.4).
+    for (const batch of batches([...ids].sort(), MAX_LOCKED_STOCK_ITEMS)) {
+      const locked = await this.prisma.namedQuery(market, 'inventory.lock-stock-items', {
+        ids: batch,
+      });
+      rows.push(...locked.map(toStockItemRow));
+    }
+    return rows;
+  }
+
+  async recordTombstone(market: MarketContext, tombstone: NewRetirementTombstone): Promise<void> {
+    assertSerializableUnit('StockRepository.recordTombstone');
+    const { target } = tombstone;
+    // `skipDuplicates` is ON CONFLICT DO NOTHING without a target, which covers both partial
+    // unique indexes; a replay or an event that arrives twice keeps the first tombstone.
+    await this.prisma.tx(market).inventoryRetirement.createMany({
+      data: [
+        {
+          id: tombstone.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          scope: target.scope,
+          offerId: target.scope === 'offer' ? target.offerId : null,
+          variantId: target.scope === 'variant' ? target.variantId : null,
+          sourceAggregateVersion: tombstone.sourceAggregateVersion,
+          retiredAt: toDate(tombstone.retiredAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
+  async retireItems(
+    market: MarketContext,
+    ids: readonly Id<'StockItem'>[],
+    retiredAt: Temporal.Instant,
+  ): Promise<number> {
+    assertSerializableUnit('StockRepository.retireItems');
+    let changed = 0;
+    for (const batch of batches(ids, MAX_LOCKED_STOCK_ITEMS)) {
+      // `retiredAt: null` keeps it one way: a retired item keeps its first instant (M6).
+      const { count } = await this.prisma.tx(market).inventoryStockItem.updateMany({
+        where: { marketId: market.marketId, id: { in: batch }, retiredAt: null },
+        data: { retiredAt: toDate(retiredAt) },
+      });
+      changed += count;
+    }
+    return changed;
   }
 
   heldQuantities(

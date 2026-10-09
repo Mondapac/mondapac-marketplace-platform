@@ -308,6 +308,10 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
       insertItem: (...args) => stock.insertItem(...args),
       setOnHand: (...args) => stock.setOnHand(...args),
       appendMovement: (...args) => stock.appendMovement(...args),
+      activeItemIds: (...args) => stock.activeItemIds(...args),
+      lockItems: (...args) => stock.lockItems(...args),
+      recordTombstone: (...args) => stock.recordTombstone(...args),
+      retireItems: (...args) => stock.retireItems(...args),
     };
     return { useCase: build(wrapped), reads: () => reads };
   }
