@@ -32,7 +32,7 @@ import type {
 import type { SellerInventoryRepository } from '../ports/seller-inventory.repository';
 import type { StockItemRow } from '../ports/stock.repository';
 import { ExpireReservations } from './expire-reservations.use-case';
-import { InMemoryReservations } from './in-memory-reservations';
+import { InMemoryReservations } from '../testing/in-memory-reservations';
 import { ReleaseOwnReservation } from './release-own-reservation.use-case';
 import { ReleaseReservation } from './release-reservation.use-case';
 import { Reserve } from './reserve.use-case';
