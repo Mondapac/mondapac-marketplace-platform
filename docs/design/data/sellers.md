@@ -1558,3 +1558,14 @@ on `seller_files`, then the revisions it names (no join across the two reads in 
 at most 100 ids). Tests: `test/db/sellers-business-file-revisions.db-spec.ts` (repository level, the
 out-of-order case of Hassan L1) and `test/db/sellers-submit.db-spec.ts` (use cases, the races, the
 reviewer notice, the zone read; its own copy of the run database).
+
+**Slice 5b review fixes (2026-10-09).** The approval guard (7a-read/decide) reads the
+`register_checks` row for (seller, the revision's `identifier_index`) and calls it current when its
+value and age are right; `compared_file_version` is not a currency test for approval, and the
+revision's register snapshot is for the reviewer and the audit, not the guard (design 3.4). This is
+an entry condition of 7a. Submit reuses the stored row, without a register call or quota, when the
+draft is unchanged (same keyed content hash as the latest revision, whose snapshot relied on this
+row) and the age rule allows; a definite negative on record refuses with no call. 7a/7b decisions
+re-check the identity state and re-read the stored register state on the server (Hassan L1, L2). 7b
+lands before any Market goes live or turns approval-required off. When the Market notice window
+refuses, the seller `reviewer-notice` reservation is released (the Market one stays).

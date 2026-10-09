@@ -140,7 +140,7 @@ describe.each(['AU', 'ZZ'])('sellers.after-submission in %s', (code) => {
     expect(t.counters.countOf('reviewer-notice.market')).toBe(1);
   });
 
-  it('coalesces a second seller into the Market window: both counters are kept and nothing is sent', async () => {
+  it('coalesces a second seller into the Market window: the Market count is kept, the seller window is released (Hassan L4)', async () => {
     const t = setUp();
     const first = submitted(t, code);
     const second = submitted(t, code);
@@ -150,8 +150,23 @@ describe.each(['AU', 'ZZ'])('sellers.after-submission in %s', (code) => {
 
     expect(result).toEqual({ ok: true, value: { code: 'after-submission.coalesced' } });
     expect(t.notifier.calls).toEqual([first.sellerId]);
-    expect(t.counters.countOf('reviewer-notice.seller')).toBe(2);
+    // Only the first seller's reservation is left; the refused one gave its window back.
+    expect(t.counters.countOf('reviewer-notice.seller')).toBe(1);
     expect(t.counters.countOf('reviewer-notice.market')).toBe(2);
+  });
+
+  it('tells the reviewers of a coalesced seller on its next submission in a later Market window', async () => {
+    const t = setUp();
+    const first = submitted(t, code);
+    const second = submitted(t, code);
+    await run(t, first);
+    await run(t, second);
+    t.clock.advance(Temporal.Duration.from({ minutes: 20 }));
+
+    const again = await run(t, second);
+
+    expect(again).toEqual({ ok: true, value: { code: 'after-submission.notified' } });
+    expect(t.notifier.calls).toEqual([first.sellerId, second.sellerId]);
   });
 
   it('coalesces the same seller within six hours without touching the Market window', async () => {

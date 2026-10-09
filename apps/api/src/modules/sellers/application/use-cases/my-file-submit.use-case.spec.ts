@@ -234,7 +234,7 @@ function setUp(code: 'AU' | 'ZZ', register: 'configured' | 'none' = 'configured'
       registerPolicy,
       taxProfiles,
     }),
-    withdraw: new MyFileWithdraw(gate, { ...common, files }),
+    withdraw: new MyFileWithdraw(gate, { ...common, files, accessReader: access }),
   };
 }
 
@@ -295,9 +295,10 @@ async function complete(t: Setup, code: 'AU' | 'ZZ', s: ReturnType<typeof seller
 const stored = (t: Setup, code: string, sellerId: Id<'Seller'>) =>
   t.files.stored.get(`${code}|${sellerId}`)!;
 
+const logSpies = {} as Record<'log' | 'warn' | 'error', jest.SpyInstance>;
 beforeAll(() => {
   for (const level of ['log', 'warn', 'error'] as const) {
-    jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined);
+    logSpies[level] = jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined);
   }
 });
 afterAll(() => jest.restoreAllMocks());
@@ -694,6 +695,98 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
       expect(t.outbox.events).toHaveLength(eventsBefore);
     });
 
+    it('spends no lookup and no quota when a withdrawn draft is submitted again, cycle after cycle (Ali A)', async () => {
+      const t = setUp(code);
+      const s = seller(t, code);
+      await complete(t, code, s);
+      const lookupKinds = ['lookup.account', 'lookup.origin', 'lookup.market'];
+      const spent = () => lookupKinds.map((kind) => t.counters.countOf(kind));
+      const before = spent();
+      expect(before[0]).toBe(1);
+      expect(t.fake.calls).toHaveLength(1);
+
+      for (let cycle = 1; cycle <= 4; cycle += 1) {
+        const submitted = await t.submit.execute(s.context, { origin: ORIGIN });
+        expect(submitted.ok && submitted.value).toMatchObject({ revisionNo: cycle });
+        const pending = await t.revisions.findPending(market(code), s.sellerId);
+        // The snapshot is the clean one of the original lookup, not a downgraded not-performed.
+        expect(pending!.register).toMatchObject({ outcome: 'active', checkedAt: START });
+        expect((await t.withdraw.execute(s.context, {})).ok).toBe(true);
+        t.clock.advance(Temporal.Duration.from({ hours: 1 }));
+      }
+
+      expect(t.fake.calls).toHaveLength(1);
+      expect(spent()).toEqual(before);
+    });
+
+    it('spends no lookup on a resubmission even when the account quota is used up', async () => {
+      const t = setUp(code);
+      const s = seller(t, code);
+      await complete(t, code, s);
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+      expect((await t.withdraw.execute(s.context, {})).ok).toBe(true);
+      t.registerPolicy.set(code, { ...SETTINGS[code], perAccountLimit: 1 });
+
+      const again = await t.submit.execute(s.context, { origin: ORIGIN });
+
+      expect(again.ok).toBe(true);
+      expect(t.fake.calls).toHaveLength(1);
+    });
+
+    it('asks again on a resubmission once the stored result is older than the maximum age', async () => {
+      const t = setUp(code);
+      const s = seller(t, code);
+      await complete(t, code, s);
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+      expect((await t.withdraw.execute(s.context, {})).ok).toBe(true);
+      t.clock.advance(
+        Temporal.Duration.from({ hours: (SETTINGS[code].maxResultAgeDays + 1) * 24 }),
+      );
+
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+
+      expect(t.fake.calls).toHaveLength(2);
+    });
+
+    it('asks again on a resubmission after the draft changed, even to something else and back', async () => {
+      const t = setUp(code);
+      const s = seller(t, code);
+      await complete(t, code, s);
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+      // An edit withdraws the submission; the new content is not the one the result was read for.
+      await t.saveGeneral.execute(s.context, { ...GENERAL, businessName: 'Al Noor Trading' });
+
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+
+      expect(t.fake.calls).toHaveLength(2);
+    });
+
+    it('refuses a definite negative on every attempt without a call or a quota, withdraw cycles or not', async () => {
+      const t = setUp(code);
+      const [missing] = numbers(code, ['0']);
+      const s = seller(t, code);
+      await complete(t, code, s, { identifier: missing });
+      const spent = () =>
+        ['lookup.account', 'lookup.origin', 'lookup.market'].map((kind) =>
+          t.counters.countOf(kind),
+        );
+      const before = spent();
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+          ok: false,
+          error: { code: 'identifier.not-matched' },
+        });
+        expect(await t.withdraw.execute(s.context, {})).toEqual({
+          ok: false,
+          error: { code: 'file.nothing-to-withdraw' },
+        });
+      }
+
+      expect(t.fake.calls).toHaveLength(1);
+      expect(spent()).toEqual(before);
+    });
+
     it('refuses a definite negative at once, without asking again, and a negative found now', async () => {
       const t = setUp(code);
       const [missing] = numbers(code, ['0']);
@@ -757,9 +850,8 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
       const limited = await t.submit.execute(s.context, { origin: ORIGIN });
       expect(!limited.ok && limited.error.code).toBe('lookup.limit');
       const noOrigin = await t.submit.execute(s.context, {});
-      expect(
-        !noOrigin.ok && ['request.throttled', 'access.unavailable', 'lookup.limit'],
-      ).toBeTruthy();
+      // An origin that cannot be read fails closed before any counter is spent.
+      expect(noOrigin).toEqual({ ok: false, error: { code: 'access.unavailable' } });
       expect(t.fake.calls).toHaveLength(0);
       expect(t.revisions.rows.size).toBe(0);
     });
@@ -811,6 +903,70 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         },
       });
       expect(t.counters.countOf('withdraw.file')).toBe(1);
+    });
+
+    it('is open to a seller waiting for a decision only, and fails closed when identity cannot answer (Hassan L3)', async () => {
+      const t = setUp(code);
+      const s = seller(t, code);
+      await complete(t, code, s);
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+      const version = stored(t, code, s.sellerId).version;
+
+      for (const state of ['suspended', 'rejected', 'approved'] as const) {
+        t.access.set(s.sellerId, state);
+        expect(await t.withdraw.execute(s.context, {})).toEqual({
+          ok: false,
+          error: { code: 'seller-access.wrong-state' },
+        });
+      }
+      t.access.failing = true;
+      expect(await t.withdraw.execute(s.context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+      t.access.failing = false;
+
+      // Nothing was written by any refusal, and the pending revision is still there.
+      expect(stored(t, code, s.sellerId).version).toBe(version);
+      expect(await t.revisions.findPending(market(code), s.sellerId)).not.toBeNull();
+      t.access.set(s.sellerId, 'pending');
+      expect((await t.withdraw.execute(s.context, {})).ok).toBe(true);
+    });
+
+    it('logs its outcome and a conflict with the correlation id', async () => {
+      const t = setUp(code);
+      const s = seller(t, code);
+      await complete(t, code, s);
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+      logSpies.log.mockClear();
+      logSpies.warn.mockClear();
+
+      expect((await t.withdraw.execute(s.context, {})).ok).toBe(true);
+      expect(logSpies.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'sellers.my-file-withdraw',
+          code: 'withdrawn',
+          correlationId: s.context.correlationId,
+        }),
+      );
+
+      // A decision closed the revision between the read and the write: conflict.stale, logged.
+      expect((await t.submit.execute(s.context, { origin: ORIGIN })).ok).toBe(true);
+      t.revisions.beforeWithdrawal = () => {
+        t.revisions.beforeWithdrawal = null;
+        const pending = [...t.revisions.rows.values()].find(
+          (r) => r.revision.status === 'pending',
+        )!;
+        t.revisions.force(market(code), { ...pending.revision, status: 'rejected' });
+      };
+      const stale = await t.withdraw.execute(s.context, {});
+      expect(!stale.ok && stale.error.code).toBe('conflict.stale');
+      expect(logSpies.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'sellers.my-file-withdraw.conflict',
+          correlationId: s.context.correlationId,
+        }),
+      );
     });
 
     it('answers file.nothing-to-withdraw when nothing is pending, and file.not-found without a file', async () => {

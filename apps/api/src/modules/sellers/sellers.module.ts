@@ -273,6 +273,7 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(MyFileWithdraw, {
+      accessReader: true,
       unitOfWork: true,
       files: true,
       revisions: true,

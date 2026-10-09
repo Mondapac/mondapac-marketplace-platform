@@ -526,6 +526,33 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
     }
   });
 
+  it('orders a submission and a save both ways: submit first is withdrawn by the save, save first stands', async () => {
+    // The two branches the race above may reach in either proportion, forced here in order.
+    const { sellerId, context } = await readySeller();
+    clock.advance(Temporal.Duration.from({ hours: 25 }));
+
+    expect((await submit(context)).ok).toBe(true);
+    const saved = await app
+      .get(MyFileSaveGeneral)
+      .execute(context, { ...GENERAL, businessName: 'Ordered One' });
+    expect(saved).toMatchObject({ ok: true, value: { submissionWithdrawn: true } });
+    expect((await revisions(sellerId)).at(-1)).toMatchObject({
+      status: 'withdrawn',
+      withdraw_cause: 'edited',
+    });
+
+    clock.advance(Temporal.Duration.from({ hours: 25 }));
+    const savedFirst = await app
+      .get(MyFileSaveGeneral)
+      .execute(context, { ...GENERAL, businessName: 'Ordered Two' });
+    expect(savedFirst).toMatchObject({ ok: true, value: { submissionWithdrawn: false } });
+    expect((await submit(context)).ok).toBe(true);
+    const rows = await revisions(sellerId);
+    expect(rows.map((row) => row.status)).toEqual(['withdrawn', 'pending']);
+    const read = await app.get(MyFileRead).execute(context, {});
+    expect(read.ok && read.value.general.businessName).toBe('Ordered Two');
+  });
+
   it('keeps one pending revision when two submissions race', async () => {
     const { sellerId, context } = await readySeller();
 

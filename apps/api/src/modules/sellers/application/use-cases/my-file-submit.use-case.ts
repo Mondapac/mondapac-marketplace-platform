@@ -1,6 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { Temporal, err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  ContentHash,
+  Id,
+  IdGenerator,
+  Result,
+} from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -16,11 +23,12 @@ import {
   newPendingRevision,
   registerSnapshotOf,
   type BusinessFileContent,
+  type BusinessFileRevision,
   type RegisterSnapshot,
   type SubmissionSnapshot,
 } from '../../domain/business-file-revision';
 import { SUBMIT_LIMITS } from '../../domain/rate-limits';
-import { blocksSubmit, registerStateOf } from '../../domain/register-check';
+import { blocksSubmit, registerStateOf, type RegisterCheck } from '../../domain/register-check';
 import type { Sealed, SealedField } from '../../domain/sealed';
 import type { DraftPart } from '../../domain/seller-file';
 import { parseShopSlug } from '../../domain/shop-slug';
@@ -219,13 +227,14 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
           const file = await files.findById(market, owner.sellerId);
           if (file === null) return ok(null);
           const pending = await revisions.findPending(market, owner.sellerId);
+          const latest = await revisions.findLatest(market, owner.sellerId);
           const index = file.state.draft.identifier?.index ?? null;
           const existing =
             plan !== null && index !== null
               ? await this.deps.registerChecks.find(market, owner.sellerId, index)
               : null;
           const tax = await this.deps.taxProfiles.findBySellerId(market, owner.sellerId);
-          return ok({ file, pending, existing, tax });
+          return ok({ file, pending, latest, existing, tax });
         },
         { readOnly: true },
       );
@@ -233,7 +242,7 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       return this.unavailable(context, 'read-failed', error);
     }
     if (!loaded.ok || loaded.value === null) return err({ code: 'file.not-found' });
-    const { file: current, pending, existing, tax } = loaded.value;
+    const { file: current, pending, latest: latestRevision, existing, tax } = loaded.value;
 
     if (current.state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
     if (access !== 'pending') return err({ code: 'seller-access.wrong-state' });
@@ -317,23 +326,38 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
     }
     const place = evaluated.value;
 
+    // Sealed before the register is consulted: the keyed hash of the content tells whether the draft
+    // is the one an earlier revision was submitted with (Ali A: no new lookup for an unchanged one).
+    let sealed: SealedRevision;
+    try {
+      const result = await sealer.seal(market, owner.sellerId, content);
+      if (!result.ok) return err({ code: 'sellers.unavailable' });
+      sealed = result.value;
+    } catch (error) {
+      return this.unavailable(context, 'seal-failed', error);
+    }
+
     // The register (design 7.7): a definite negative refuses; a value with no current result is
     // asked now, under the quotas of a save.
     const index = place.identifierIndex;
+    let reusedCheckedAt: Temporal.Instant | null = null;
     if (plan !== null && index !== null && identifier !== null) {
       const now = clock.now();
+      // An unchanged draft (same keyed content hash as the latest revision, whose snapshot relied
+      // on this very row) keeps its result: withdrawing and submitting again moves the file's
+      // version and stamp but not the draft, so the version rule does not apply (Ali A).
+      const reuse = reusableResult(existing, latestRevision, sealed.contentHash);
+      reusedCheckedAt = reuse ? (existing?.checkedAt ?? null) : null;
+      const basis = judgedBasis(
+        existing,
+        reuse,
+        current.state.lastChangedAt,
+        current.state.version,
+      );
       const stateOf = (check: typeof existing) =>
-        registerStateOf(
-          check,
-          now,
-          plan.settings.maxResultAgeDays,
-          current.state.lastChangedAt,
-          current.state.version,
-        );
+        registerStateOf(check, now, plan.settings.maxResultAgeDays, basis.changedAt, basis.version);
       if (blocksSubmit(stateOf(existing))) return err({ code: 'identifier.not-matched' });
-      if (
-        lookupDue(existing, now, plan.settings, current.state.lastChangedAt, current.state.version)
-      ) {
+      if (lookupDue(existing, now, plan.settings, basis.changedAt, basis.version)) {
         const quota = await reserveLookupQuota(
           this.deps,
           context,
@@ -355,20 +379,12 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
             snapshotAt,
             by: { kind: 'seller', accountId: owner.accountId },
           });
+          reusedCheckedAt = null;
           if (check !== null && blocksSubmit(stateOf(check))) {
             return err({ code: 'identifier.not-matched' });
           }
         }
       }
-    }
-
-    let sealed: SealedRevision;
-    try {
-      const result = await sealer.seal(market, owner.sellerId, content);
-      if (!result.ok) return err({ code: 'sellers.unavailable' });
-      sealed = result.value;
-    } catch (error) {
-      return this.unavailable(context, 'seal-failed', error);
     }
 
     return this.write(context, owner, {
@@ -377,6 +393,7 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       place,
       sealed,
       plan,
+      reusedCheckedAt,
     });
   }
 
@@ -389,6 +406,8 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       readonly place: SubmissionSnapshot;
       readonly sealed: SealedRevision;
       readonly plan: LookupPlan | null;
+      /** The `checkedAt` of the stored row judged reusable for an unchanged draft, or null. */
+      readonly reusedCheckedAt: Temporal.Instant | null;
     },
   ): Promise<Result<MyFileSubmitted, MyFileSubmitFailure>> {
     const { market } = context;
@@ -426,20 +445,17 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       const index = judged.place.identifierIndex;
       if (judged.plan !== null && index !== null) {
         const check = await this.deps.registerChecks.find(market, owner.sellerId, index);
-        if (
-          blocksSubmit(
-            registerStateOf(check, now, judged.plan.settings.maxResultAgeDays, changedAt, judgedAt),
-          )
-        ) {
+        // The row judged reusable is reused only if it is still that very row.
+        const reuse =
+          check !== null &&
+          judged.reusedCheckedAt !== null &&
+          Temporal.Instant.compare(check.checkedAt, judged.reusedCheckedAt) === 0;
+        const basis = judgedBasis(check, reuse, changedAt, judgedAt);
+        const maxAge = judged.plan.settings.maxResultAgeDays;
+        if (blocksSubmit(registerStateOf(check, now, maxAge, basis.changedAt, basis.version))) {
           return err({ code: 'identifier.not-matched' });
         }
-        register = registerSnapshotOf(
-          check,
-          now,
-          judged.plan.settings.maxResultAgeDays,
-          changedAt,
-          judgedAt,
-        );
+        register = registerSnapshotOf(check, now, maxAge, basis.changedAt, basis.version);
       }
 
       const revision = newPendingRevision({
@@ -480,4 +496,37 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       });
     });
   }
+}
+
+/**
+ * Whether the stored result may be reused for this draft: the latest revision (whatever its
+ * status) has the same keyed content hash, so the draft is what was submitted then, and its
+ * snapshot relied on exactly this row. Then a new version of the file (a withdrawal, a
+ * submission) is not a change of the draft. A result that aged out or is `unavailable` still
+ * follows the usual rules of age; only the version and stamp rule is set aside.
+ */
+function reusableResult(
+  existing: RegisterCheck | null,
+  latest: BusinessFileRevision | null,
+  contentHash: ContentHash,
+): boolean {
+  return (
+    existing !== null &&
+    latest !== null &&
+    latest.contentHash === contentHash &&
+    latest.register.checkedAt !== null &&
+    Temporal.Instant.compare(latest.register.checkedAt, existing.checkedAt) === 0
+  );
+}
+
+/** The file stamp and version to judge a row by: its own when the draft is unchanged. */
+function judgedBasis(
+  check: RegisterCheck | null,
+  reuse: boolean,
+  changedAt: Temporal.Instant,
+  version: number,
+): { readonly changedAt: Temporal.Instant; readonly version: number } {
+  return reuse && check !== null
+    ? { changedAt: check.checkedAt, version: check.comparedFileVersion }
+    : { changedAt, version };
 }

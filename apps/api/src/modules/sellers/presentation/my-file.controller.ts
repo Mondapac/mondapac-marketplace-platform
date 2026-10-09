@@ -518,7 +518,8 @@ export class MyFileController {
     summary: 'Withdraw the pending submission',
     description:
       'Cancels the pending submission; the draft stays as it is and can be submitted again. ' +
-      'At most 10 withdrawals a day per file. The body is empty.',
+      'At most 10 withdrawals a day per file. Open to an account that is waiting for a decision ' +
+      'only (seller-access.wrong-state). The body is empty.',
   })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
   @ApiOkResponse({ type: WithdrawnBody })
@@ -534,7 +535,8 @@ export class MyFileController {
   @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
   @ApiConflictResponse({
     type: SellersErrorBody,
-    description: 'file.nothing-to-withdraw or conflict.stale (read again and retry)',
+    description:
+      'file.nothing-to-withdraw, seller-access.wrong-state or conflict.stale (read again and retry)',
   })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
@@ -543,7 +545,7 @@ export class MyFileController {
   })
   @ApiServiceUnavailableResponse({
     type: SellersErrorBody,
-    description: 'access.unavailable',
+    description: 'sellers.unavailable or access.unavailable',
   })
   async postWithdraw(
     @Call() context: CallContext,

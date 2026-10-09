@@ -154,9 +154,13 @@ export class AfterSubmission extends UseCase<
       }
       reserved.push(byMarket);
       coalesced = !byMarket.allowed;
+      // Hassan L4: the Market window refused, so no notice is sent for this seller now. Its seller
+      // window must not stay spent, or the seller's next submission inside six hours would be
+      // coalesced by the seller window and the reviewers might never hear of it. The Market
+      // reservation stays: the Market's window is covered by the notice that took it.
+      if (coalesced) await this.releaseAll(context, [bySeller]);
     }
     if (coalesced) {
-      // Both reservations stay: the notice is covered by an earlier one.
       return (await this.markHandled(context, input.delivery))
         ? { code: 'after-submission.coalesced' }
         : { code: 'after-submission.already-handled' };
