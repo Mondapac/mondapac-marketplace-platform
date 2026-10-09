@@ -12,7 +12,10 @@ import { CatalogModule } from '../catalog';
 import { IdentityModule } from '../identity';
 import { AVAILABILITY_SIGNAL_REPOSITORY } from './application/ports/availability-signal.repository';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
+import { AVAILABILITY_READER } from './application/ports/availability-reader';
 import { STOCK_REPOSITORY } from './application/ports/stock.repository';
+import { AvailabilitySystemQuery } from './application/use-cases/availability-system.use-case';
+import { AvailabilityQuery } from './application/use-cases/availability.use-case';
 import { SetStockLevel } from './application/use-cases/set-stock-level.use-case';
 import { INVENTORY_EVENTS } from './domain/events';
 import { INVENTORY_POLICY_PROVIDER } from './application/ports/inventory-policy-provider';
@@ -22,6 +25,9 @@ import { EditSource } from './application/use-cases/edit-source.use-case';
 import { ListSources } from './application/use-cases/list-sources.use-case';
 import { ReorderSources } from './application/use-cases/reorder-sources.use-case';
 import { INVENTORY_PERMISSIONS } from './contracts/permissions';
+import { INVENTORY_FACADE } from './contracts/inventory.facade';
+import { InventoryFacadeImplementation } from './presentation/inventory.facade';
+import { SellerInventoryController } from './presentation/seller-inventory.controller';
 import { RekeyMovedOffer } from './application/use-cases/rekey-moved-offer.use-case';
 import { RetireSellUnits } from './application/use-cases/retire-sell-units.use-case';
 import { EnsureSellerInventory } from './application/use-cases/ensure-seller-inventory.use-case';
@@ -41,6 +47,7 @@ const PORT = {
   inventories: SELLER_INVENTORY_REPOSITORY,
   policies: INVENTORY_POLICY_PROVIDER,
   stock: STOCK_REPOSITORY,
+  items: AVAILABILITY_READER,
   signals: AVAILABILITY_SIGNAL_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
   outbox: OUTBOX_WRITER,
@@ -80,6 +87,7 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [IdentityModule, CatalogModule],
+  controllers: [SellerInventoryController],
   providers: [
     PersistenceModule.outboxWriterFor('inventory'),
     registerEvents('inventory', INVENTORY_EVENTS),
@@ -140,6 +148,14 @@ function useCaseProvider<D, U>(
       ids: true,
       clock: true,
     }),
+    useCaseProvider(AvailabilityQuery, { unitOfWork: true, items: true, signals: true }),
+    useCaseProvider(AvailabilitySystemQuery, { unitOfWork: true, items: true, signals: true }),
+    {
+      provide: INVENTORY_FACADE,
+      inject: [AvailabilityQuery, AvailabilitySystemQuery],
+      useFactory: (availability: AvailabilityQuery, availabilitySystem: AvailabilitySystemQuery) =>
+        new InventoryFacadeImplementation({ availability, availabilitySystem }),
+    },
     registerSubscriptionsFrom(
       'inventory',
       [EnsureSellerInventory, RetireSellUnits, RekeyMovedOffer],
@@ -150,5 +166,6 @@ function useCaseProvider<D, U>(
       ],
     ),
   ],
+  exports: [INVENTORY_FACADE],
 })
 export class InventoryModule {}

@@ -6,3 +6,14 @@ export {
   INVENTORY_STOCK_EDIT,
   INVENTORY_STOCK_VIEW,
 } from './permissions';
+export {
+  INVENTORY_FACADE,
+  MAX_AVAILABILITY_BATCH,
+  sellUnitKeyOf,
+  type AvailabilityMap,
+  type InventoryBatchTooLarge,
+  type InventoryFacade,
+  type InventoryValidationFailed,
+  type SellUnitAvailability,
+  type SellUnitKey,
+} from './inventory.facade';
