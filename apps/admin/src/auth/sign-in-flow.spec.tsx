@@ -181,7 +181,17 @@ describe('admin sign-in', () => {
     expect(screen.getByText('Your account is ready. Sign in.')).toBeTruthy();
     signIn();
     await screen.findByText('Enter your 6-digit code');
-    expect(document.title).toBe('Two-step verification – Admin account – MondaPac');
+    // The title is set in an effect, after the step renders.
+    await waitFor(() =>
+      expect(document.title).toBe('Two-step verification – Admin account – MondaPac'),
+    );
     view.unmount();
+  });
+
+  it('links to the forgot password page', () => {
+    render(wrap(<SignInFlow notice={null} />));
+    expect(screen.getByRole('link', { name: 'Forgot password?' }).getAttribute('href')).toBe(
+      '/forgot-password',
+    );
   });
 });

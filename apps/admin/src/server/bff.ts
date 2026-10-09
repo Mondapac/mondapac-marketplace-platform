@@ -19,8 +19,39 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/sign-in',
     'identity/admin/second-factor',
     'identity/admin/sign-out',
+    'identity/admin/password-reset-email',
+    'identity/admin/reset-password',
   ]),
 };
+
+/**
+ * Paths with one resource id (`:id`, a UUID), by method. Still exact: each segment must match
+ * the template, and the id must be a UUID, so no other path shape reaches the API.
+ */
+const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
+  POST: [
+    'identity/admin/accounts/:id/disable',
+    'identity/admin/accounts/:id/enable',
+    'identity/admin/accounts/:id/second-factor/reset',
+    'identity/admin/invitations/:id/resend',
+    'identity/admin/invitations/:id/revoke',
+  ],
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isAllowed(method: string, path: readonly string[]): boolean {
+  if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  return (ALLOWED_WITH_ID[method] ?? []).some((template) => {
+    const parts = template.split('/');
+    return (
+      parts.length === path.length &&
+      parts.every((part, index) =>
+        part === ':id' ? UUID.test(path[index] ?? '') : part === path[index],
+      )
+    );
+  });
+}
 
 /** Request headers that cross to the API. Everything else is dropped. */
 const FORWARDED_REQUEST_HEADERS = [
@@ -132,7 +163,7 @@ export async function relay(
   const host = panelHostFor(config, request.headers.get('host'));
   if (host === undefined) return notFound();
   const target = path.join('/');
-  if (!ALLOWED[request.method]?.has(target)) return notFound();
+  if (!isAllowed(request.method, path)) return notFound();
   if (request.headers.has('authorization')) return jsonError(401, 'session.invalid');
   if (request.method !== 'GET') {
     // Unsafe method: same-origin only, whatever the API would do with a missing header.

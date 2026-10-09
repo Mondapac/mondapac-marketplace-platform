@@ -7,6 +7,7 @@ import {
   type ActedOnAccount,
   type GrantedRole,
   type GrantingActor,
+  type NotGrantable,
   type ProtectedKeyCatalogue,
 } from '../../domain/grant-policy';
 import { scopeOfPopulation, type Role } from '../../domain/role';
@@ -109,6 +110,30 @@ export function protectedKeysOf(
   return { isProtected: (key) => registry.get(key)?.protected === true };
 }
 
+/** The ports {@link roleGrantVerdict} reads: the one resolver and the sealed registry. */
+export interface RoleGrantDependencies {
+  readonly effectiveKeys: EffectiveKeyResolver;
+  readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
+}
+
+/**
+ * Whether `actor` may put `role` in place (identity design 5.5): `GrantPolicy.canGrant` on what
+ * the role confers ({@link grantedRoleOf}) with the registry's protected keys. The one grant
+ * check of `AssignAdminRole`, `InviteAdmin`, the re-send and acceptance checks and the role
+ * catalogue's `grantable` (slice 10a), so a hint and a command can never disagree on it.
+ */
+export function roleGrantVerdict(
+  actor: GrantingActor,
+  role: Role,
+  deps: RoleGrantDependencies,
+): Result<void, NotGrantable> {
+  return GrantPolicy.canGrant(
+    actor,
+    grantedRoleOf(role, deps.effectiveKeys),
+    protectedKeysOf(deps.permissions),
+  );
+}
+
 /** The ports {@link readActingGrants} and {@link inviterMayStillGrant} read. */
 export interface ActingGrantDependencies {
   readonly accounts: AccountRepository;
@@ -172,10 +197,6 @@ export async function inviterMayStillGrant(
     [ADMIN_ACCOUNT_INVITE.key],
   );
   if (reading === null) return err('inviter-inactive');
-  const granted = GrantPolicy.canGrant(
-    reading.actor,
-    grantedRoleOf(role, deps.effectiveKeys),
-    protectedKeysOf(deps.permissions),
-  );
+  const granted = roleGrantVerdict(reading.actor, role, deps);
   return granted.ok ? ok(undefined) : err('inviter-cannot-grant');
 }

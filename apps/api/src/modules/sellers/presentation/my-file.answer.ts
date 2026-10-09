@@ -9,7 +9,8 @@ import type { FieldProblem } from './my-file.body';
  * the error format of identity design 5.2: `{ statusCode, code, details? }`). Refusals of the
  * gate keep `ACCESS_DENIED_STATUS`. A refusal of a value (`validation.failed`, `phone.required`,
  * `timezone.not-selectable`, `slug.format`, `slug.reserved`, `identifier.format`, `identifier.checksum`) is 400, as identity answers `validation.failed` and
- * `password.rejected`; a state that forbids the request is 409.
+ * `password.rejected`; a state that forbids the request (an incomplete draft, an address outside
+ * the areas, a number the register did not match, a submission already pending) is 409.
  */
 export const MY_FILE_STATUS = {
   'validation.failed': 400,
@@ -22,6 +23,12 @@ export const MY_FILE_STATUS = {
   'identifier.checksum': 400,
   'file.not-found': 404,
   'file.change-request-required': 409,
+  'file.incomplete': 409,
+  'file.already-submitted': 409,
+  'file.nothing-to-withdraw': 409,
+  'address.outside-service-area': 409,
+  'seller-access.wrong-state': 409,
+  'identifier.not-matched': 409,
   'conflict.stale': 409,
   'request.throttled': 429,
   'lookup.limit': 429,
@@ -38,6 +45,7 @@ export function fail(status: number, code: string, details?: object): HttpExcept
 export type MyFileError =
   | AccessDenied
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldProblem[] }
+  | { readonly code: 'file.incomplete'; readonly missing: readonly string[] }
   | {
       readonly code: 'request.throttled' | 'lookup.limit';
       readonly retryAfterSeconds: number;
@@ -45,7 +53,7 @@ export type MyFileError =
   | {
       readonly code: Exclude<
         keyof typeof MY_FILE_STATUS,
-        'validation.failed' | 'request.throttled' | 'lookup.limit'
+        'validation.failed' | 'file.incomplete' | 'request.throttled' | 'lookup.limit'
       >;
     };
 
@@ -54,6 +62,10 @@ export function errorOf(error: MyFileError, response: Response): HttpException {
   switch (error.code) {
     case 'validation.failed':
       return fail(MY_FILE_STATUS[error.code], error.code, { fields: error.fields });
+    case 'file.incomplete':
+      return fail(MY_FILE_STATUS[error.code], error.code, {
+        fields: error.missing.map((path) => ({ path, code: 'required' })),
+      });
     case 'request.throttled':
     case 'lookup.limit':
       response.setHeader('Retry-After', String(error.retryAfterSeconds));

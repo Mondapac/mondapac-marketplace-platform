@@ -1,5 +1,9 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import {
+  REVIEWER_NOTICE_MARKET_LIMITS,
+  REVIEWER_NOTICE_SELLER_LIMITS,
+  SUBMIT_LIMITS,
+  WITHDRAW_LIMITS,
   RATE_COUNTER_KINDS,
   budgetAlertCount,
   lookupAccountLimits,
@@ -108,6 +112,26 @@ describe('sellers rate limits', () => {
       expect(budgetAlertCount(1000)).toBe(800);
       expect(budgetAlertCount(10)).toBe(8);
       expect(budgetAlertCount(3)).toBe(3);
+    });
+  });
+
+  describe('the submission limits (design 6.5; slice 5b)', () => {
+    it('are 5 submissions and 10 withdrawals per 24 h, and a coalesced notice per 6 h and 15 min', () => {
+      expect(SUBMIT_LIMITS).toEqual([{ kind: 'submit.file', limit: 5, windowMinutes: 1440 }]);
+      expect(WITHDRAW_LIMITS).toEqual([{ kind: 'withdraw.file', limit: 10, windowMinutes: 1440 }]);
+      expect(REVIEWER_NOTICE_SELLER_LIMITS).toEqual([
+        { kind: 'reviewer-notice.seller', limit: 1, windowMinutes: 360 },
+      ]);
+      expect(REVIEWER_NOTICE_MARKET_LIMITS).toEqual([
+        { kind: 'reviewer-notice.market', limit: 1, windowMinutes: 15 },
+      ]);
+    });
+
+    it('refuse the sixth submission of the window and not the fifth', () => {
+      expect(rateVerdict(SUBMIT_LIMITS, [reservation('submit.file', 5)], NOW)).toEqual({
+        allowed: true,
+      });
+      expect(rateVerdict(SUBMIT_LIMITS, [reservation('submit.file', 6)], NOW).allowed).toBe(false);
     });
   });
 });

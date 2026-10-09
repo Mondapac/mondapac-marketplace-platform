@@ -66,6 +66,7 @@ import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
 import { AcceptAdminInvitation } from './application/use-cases/accept-admin-invitation.use-case';
 import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
 import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case';
+import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
 import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
 import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
 import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
@@ -258,6 +259,9 @@ function useCaseProvider<D, U>(
  *
  * Slice 8c binds the admin team list (`ListAdminTeam`, `identity.admin-account.view`) and its
  * account read, on the same controller.
+ *
+ * Slice 10a binds the role catalogue read (`ListPlatformRoles`, `identity.platform-role.view`),
+ * on the same controller.
  */
 @Module({
   controllers: [
@@ -761,6 +765,14 @@ function useCaseProvider<D, U>(
       factors: true,
       policy: true,
       clock: true,
+    }),
+    useCaseProvider(ListPlatformRoles, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
     }),
     useCaseProvider(AssignAdminRole, {
       unitOfWork: true,

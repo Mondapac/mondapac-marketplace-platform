@@ -43,6 +43,8 @@ function exported(
     | 'TEST_SELLER_DATABASE_URL'
     | 'TEST_SELLER_FILES_DATABASE_URL'
     | 'TEST_SELLER_FILES_OWNER_DATABASE_URL'
+    | 'TEST_SELLER_SUBMIT_DATABASE_URL'
+    | 'TEST_SELLER_SUBMIT_OWNER_DATABASE_URL'
     | 'TEST_PASSWORD_DATABASE_URL'
     | 'TEST_INVENTORY_DATABASE_URL'
     | 'TEST_INVENTORY_OWNER_DATABASE_URL'
@@ -119,6 +121,18 @@ export function sellerFilesTestDatabaseUrl(): string {
 
 export function sellerFilesOwnerTestDatabaseUrl(): string {
   return exported('TEST_SELLER_FILES_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that sellers-submit.db-spec.ts relays and dispatches on, likewise, as the application
+ * login and as its owner (the owner writes an approved revision and sets identity's state).
+ */
+export function sellerSubmitTestDatabaseUrl(): string {
+  return exported('TEST_SELLER_SUBMIT_DATABASE_URL');
+}
+
+export function sellerSubmitOwnerTestDatabaseUrl(): string {
+  return exported('TEST_SELLER_SUBMIT_OWNER_DATABASE_URL');
 }
 
 /** The copy that password-reset.db-spec.ts relays and dispatches on, likewise. */

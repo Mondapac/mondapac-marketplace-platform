@@ -55,6 +55,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'MAIL');
   await createCopy(name, 'SELLER');
   await createCopy(name, 'SELLER_FILES');
+  await createCopy(name, 'SELLER_SUBMIT');
   await createCopy(name, 'PASSWORD');
   await createCopy(name, 'INVENTORY');
   await createCopy(name, 'AUDIT');
@@ -77,6 +78,9 @@ export default async function globalSetup(): Promise<void> {
  *   link and welcome mail handlers, for the same reason;
  * - `seller_files`: sellers-files.db-spec.ts relays and dispatches identity's seller events to
  *   `sellers.create-file`, for the same reason;
+ * - `seller_submit`: sellers-submit.db-spec.ts relays and dispatches sellers' own submission events
+ *   to `sellers.after-submission` (and identity's seller events to `sellers.create-file`), for
+ *   the same reason;
  * - `password`: password-reset.db-spec.ts relays and dispatches identity's reset and change
  *   events to their mail handlers, for the same reason;
  * - `inventory`: inventory-sources.db-spec.ts relays and dispatches seller-registered events to
@@ -98,6 +102,7 @@ async function createCopy(
     | 'MAIL'
     | 'SELLER'
     | 'SELLER_FILES'
+    | 'SELLER_SUBMIT'
     | 'PASSWORD'
     | 'INVENTORY'
     | 'AUDIT'

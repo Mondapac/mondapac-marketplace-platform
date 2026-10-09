@@ -2,6 +2,7 @@
 
 import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
@@ -164,6 +165,9 @@ function PasswordForm({
       <Button type="submit" block loading={pending} disabled={throttle.blocked}>
         {t('sign-in.action.submit')}
       </Button>
+      <Link href="/forgot-password" className="text-sm text-link hover:underline">
+        {t('sign-in.action.forgot')}
+      </Link>
     </form>
   );
 }
