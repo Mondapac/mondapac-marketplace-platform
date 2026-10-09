@@ -9,6 +9,7 @@ import { AssignAdminRole } from '../../src/modules/identity/application/use-case
 import { InviteAdmin } from '../../src/modules/identity/application/use-cases/invite-admin.use-case';
 import { ListPlatformRoles } from '../../src/modules/identity/application/use-cases/list-platform-roles.use-case';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { TransactionConflictError } from '../../src/platform/unit-of-work/errors';
 import { realPermissionRegistry } from '../support/permission-registry';
 import { PrismaRoleRepository } from '../../src/modules/identity/infrastructure/sellers/prisma-seller-team.repository';
 import { createTestApp } from '../support/test-app';
@@ -33,6 +34,16 @@ const CREATED = '2026-10-09T00:00:00Z';
 const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFn';
 const newId = <T extends string>(): Id<T> =>
   `01990000-0000-7000-8000-${randomBytes(6).toString('hex')}` as Id<T>;
+
+async function untilNoConflict<T>(run: () => Promise<T>, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      if (!(error instanceof TransactionConflictError) || attempt >= attempts) throw error;
+    }
+  }
+}
 
 describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10a)', (code) => {
   const market = marketOf(code);
@@ -244,14 +255,18 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
         expect(entry.permissionKeys).toHaveLength(declared);
         // grantable: neither command refuses the role as not grantable or out of reach. A fresh
         // target and a fresh invitation address for each pair.
+        // Other identity files write roles in this Market at the same time, so a serializable unit
+        // may run out of its own retries; only that conflict is retried here, never an answer.
         const target = await admin(low);
-        const assigned = await app
-          .get(AssignAdminRole)
-          .execute(as(actor), { accountId: target, roleId: entry.roleId });
-        const invited = await app.get(InviteAdmin).execute(as(actor), {
-          email: `Parity.${randomUUID()}@Roles.example`,
-          roleId: entry.roleId,
-        });
+        const assigned = await untilNoConflict(() =>
+          app.get(AssignAdminRole).execute(as(actor), { accountId: target, roleId: entry.roleId }),
+        );
+        const invited = await untilNoConflict(() =>
+          app.get(InviteAdmin).execute(as(actor), {
+            email: `Parity.${randomUUID()}@Roles.example`,
+            roleId: entry.roleId,
+          }),
+        );
         const refused = (result: { ok: boolean; error?: { code: string } }) =>
           !result.ok && ['role.not-grantable', 'role.unknown'].includes(result.error!.code);
         expect(entry.grantable).toBe(!refused(assigned) && !refused(invited));
