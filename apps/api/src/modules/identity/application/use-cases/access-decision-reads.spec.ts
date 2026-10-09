@@ -356,15 +356,30 @@ describe.each(TEST_MARKETS)('R-5 access decision reads in market %s (slice 9a)',
     });
   });
 
-  it(`answers at most ${MAX_ACCESS_DECISIONS}, with truncated`, async () => {
+  it(`answers exactly ${MAX_ACCESS_DECISIONS} rows with truncated false (Sajad 1)`, async () => {
     const s = setUp();
     await seeded(s);
-    for (let i = 0; i < MAX_ACCESS_DECISIONS + 1; i += 1) await decided(s, 'approved');
+    for (let i = 0; i < MAX_ACCESS_DECISIONS; i += 1) await decided(s, 'approved');
 
     const result = await s.contract.accessDecisionsOf(admin, SELLER);
 
     expect(result.ok && result.value.decisions.length).toBe(MAX_ACCESS_DECISIONS);
+    expect(result.ok && result.value.truncated).toBe(false);
+  });
+
+  it(`answers the newest ${MAX_ACCESS_DECISIONS} of ${MAX_ACCESS_DECISIONS + 1}, the oldest dropped, with truncated (Sajad 1)`, async () => {
+    const s = setUp();
+    await seeded(s);
+    const ids: Id<'AccessDecision'>[] = [];
+    for (let i = 0; i < MAX_ACCESS_DECISIONS + 1; i += 1) ids.push(await decided(s, 'approved'));
+
+    const result = await s.contract.accessDecisionsOf(admin, SELLER);
+
     expect(result.ok && result.value.truncated).toBe(true);
+    // decided() gives each later decision a later instant: newest first is the reverse order.
+    expect(result.ok && result.value.decisions.map((d) => d.decisionId)).toEqual(
+      ids.slice(1).reverse(),
+    );
   });
 
   it('refuses the system actor, a seller actor and an admin without the view key (gate)', async () => {
@@ -387,12 +402,23 @@ describe.each(TEST_MARKETS)('R-5 access decision reads in market %s (slice 9a)',
     await seeded(s);
     await decided(s, 'rejected');
 
-    for (const context of [sellerActor, noView]) {
+    // An admin actor carrying the reserved acting-as marker (Hassan L2). A plain object is not
+    // minted, so today the gate already refuses it before the use case; the use case's marker
+    // check is covered on its own below, and by minted actors once SEL-08 adds the field (L1).
+    const actingAs = {
+      ...admin,
+      actor: {
+        ...admin.actor,
+        actingAs: { accountId: OWNER, sellerId: SELLER },
+      },
+    } as unknown as CallContext;
+    for (const context of [system, sellerActor, noView, actingAs]) {
       await expect(s.contract.accessDecisionsOf(context, SELLER)).resolves.toEqual({
         ok: false,
         error: { code: 'access.denied' },
       });
     }
+    expect(s.decisions.reads).toBe(0);
     // A disabled admin is refused in the read itself, before any reason is opened.
     s.fakes.accounts.set(ADMIN, { ...s.fakes.accounts.get(ADMIN)!, status: 'disabled' });
     await expect(s.contract.accessDecisionsOf(admin, SELLER)).resolves.toEqual({
@@ -629,6 +655,23 @@ describe.each(TEST_MARKETS)('R-5 access decision reads in market %s (slice 9a)',
     ).resolves.toEqual({ ok: true, value: [] });
   });
 
+  it(`answers ${MAX_BASIS_PAIRS} distinct pairs, every one (Sajad 2)`, async () => {
+    const s = setUp();
+    await seeded(s);
+    const pairs: { sellerId: Id<'Seller'>; basisId: Id }[] = [];
+    for (let i = 0; i < MAX_BASIS_PAIRS; i += 1) {
+      const basisId = uuid(0x6000 + i);
+      await decided(s, 'approved', { basisId });
+      pairs.push({ sellerId: SELLER, basisId });
+    }
+
+    const result = await s.contract.accessDecisionsByBasis(system, pairs);
+
+    expect(result.ok && result.value.map((r) => r.basisId).sort()).toEqual(
+      pairs.map((p) => p.basisId).sort(),
+    );
+  });
+
   it('answers unavailable, never an empty list, when the read fails (C6)', async () => {
     const s = setUp();
     await seeded(s);
@@ -654,6 +697,12 @@ describe('the acting-as marker (SEL-08, reserved; Hassan C1)', () => {
   });
 
   it('is absent from every actor the kernel mints today', () => {
+    // Compile-time tripwire (Hassan L1): this stops compiling once SEL-08 adds `actingAs` to
+    // `ActorContext`. Then replace `isActingAsSession` with a typed check and add use-case tests
+    // with a minted acting-as actor (identity design 6.7, the SEL-08 row of PR #215).
+    const actor: ActorContext = admin;
+    // @ts-expect-error actingAs is not on ActorContext until SEL-08
+    expect(actor.actingAs).toBeUndefined();
     expect(isActingAsSession(admin)).toBe(false);
     expect(isActingAsSession(testCallContext(market, 'system').actor)).toBe(false);
   });
