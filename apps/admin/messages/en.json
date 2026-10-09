@@ -255,6 +255,7 @@
           "retry": "Try again."
         },
         "account": {
+          "exists": "That address can't be invited. Check the team list or use another address.",
           "unknown": "This account no longer exists. We've refreshed the list.",
           "already-disabled": "Someone has just changed this. We've refreshed it.",
           "already-active": "Someone has just changed this. We've refreshed it."

@@ -168,7 +168,7 @@ describe('change role (D2)', () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/session-ended'));
   });
 
-  it('sends once when the button is pressed twice', async () => {
+  it('sends once when the button is pressed twice', () => {
     call.mockReturnValue(new Promise(() => undefined));
     submitFinance();
     fireEvent.click(screen.getByRole('button', { name: 'Change role' }));
@@ -252,5 +252,14 @@ describe('invite admin (D1)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Invite admin' }));
     expect(screen.getByLabelText<HTMLInputElement>('Email').value).toBe('');
     expect(screen.queryByText("You can't give that role.")).toBeNull();
+  });
+
+  it('shows its own message when the address cannot be invited', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'account.exists' } });
+    open();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'x@y.test' } });
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'r-finance' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    expect(await screen.findByText(/That address can't be invited/)).toBeTruthy();
   });
 });

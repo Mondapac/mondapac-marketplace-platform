@@ -154,6 +154,34 @@ describe('relay', () => {
     }
   });
 
+  it('relays change-role and invite, and refuses near misses and cross-site posts', async () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    for (const path of [
+      ['identity', 'admin', 'accounts', id, 'role'],
+      ['identity', 'admin', 'invitations'],
+    ]) {
+      const ok = upstreamOk();
+      expect((await relay(config, post(path.join('/')), path, ok)).status).toBe(200);
+      const blocked = upstreamOk();
+      const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
+      const response = await relay(config, post(path.join('/'), crossSite), path, blocked);
+      expect(response.status).toBe(403);
+      expect(blocked).not.toHaveBeenCalled();
+    }
+    for (const path of [
+      ['identity', 'admin', 'invitations', id],
+      ['identity', 'admin', 'invitations', 'x'],
+      ['identity', 'admin', 'accounts', 'not-a-uuid', 'role'],
+      ['identity', 'admin', 'accounts', id, 'role', 'extra'],
+      ['identity', 'admin', 'accounts', `${id}%2F..`, 'role'],
+    ]) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, post(path.join('/')), path, fetchImpl);
+      expect(response.status).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses an unsafe request that is not same-origin', async () => {
     const fetchImpl = upstreamOk();
     const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
