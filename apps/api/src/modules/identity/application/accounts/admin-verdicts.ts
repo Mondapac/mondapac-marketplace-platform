@@ -16,9 +16,8 @@ import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleRepository } from '../ports/seller-team.repository';
 import {
-  grantedRoleOf,
   inviterMayStillGrant,
-  protectedKeysOf,
+  roleGrantVerdict,
   roleIsInActorsReach,
   type GrantSubject,
   type InviterRefusal,
@@ -149,11 +148,7 @@ export async function adminInvitationResendVerdict(
   if (role === null || !roleIsInActorsReach(role, actor.self)) {
     return err({ code: 'invitation.rejected' });
   }
-  const granted = GrantPolicy.canGrant(
-    actor.view,
-    grantedRoleOf(role, deps.effectiveKeys),
-    protectedKeysOf(deps.permissions),
-  );
+  const granted = roleGrantVerdict(actor.view, role, deps);
   if (!granted.ok) return err({ code: 'role.not-grantable' });
   const inviter = await inviterMayStillGrant(deps, market, inviterId, role);
   if (!inviter.ok) return err({ code: 'invitation.rejected', inviterRefusal: inviter.error });

@@ -44,6 +44,13 @@ export interface RoleRepository {
   /** The role with this id, or null. */
   findById(market: MarketContext, id: Id<'Role'>): Promise<Role | null>;
 
+  /**
+   * The platform roles of this Market, by id, each with its stored keys (the role catalogue,
+   * slice 10a). It takes no scope on purpose: a seller's role is never read through it (Ali's
+   * 10a ruling; the seller scope joins with slice 10). A Market holds few platform roles (2.3).
+   */
+  platformRoles(market: MarketContext): Promise<Role[]>;
+
   /** The seeded role of this scope and seed code (the seed routine's key, 8.3), or null. */
   findBySeedCode(market: MarketContext, scope: RoleScope, seedCode: string): Promise<Role | null>;
 

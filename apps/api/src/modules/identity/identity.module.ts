@@ -77,6 +77,7 @@ import { SendSellerAccessMail } from './application/use-cases/send-seller-access
 import { SuspendSellerAccess } from './application/use-cases/suspend-seller-access.use-case';
 import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
 import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case';
+import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
 import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
 import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
 import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
@@ -276,6 +277,9 @@ function useCaseProvider<D, U>(
  * encrypted reasons, the decision mails (four subscriptions, E4 to E7), re-apply behind the
  * seller-access contract, and a seller created by an admin's invitation (issue, re-send, revoke,
  * and the owner's acceptance), behind `AdminSellersController` and the seller sign-up controller.
+ *
+ * Slice 10a binds the role catalogue read (`ListPlatformRoles`, `identity.platform-role.view`),
+ * on `AdminTeamController`.
  */
 @Module({
   controllers: [
@@ -791,6 +795,14 @@ function useCaseProvider<D, U>(
       factors: true,
       policy: true,
       clock: true,
+    }),
+    useCaseProvider(ListPlatformRoles, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
     }),
     useCaseProvider(AssignAdminRole, {
       unitOfWork: true,

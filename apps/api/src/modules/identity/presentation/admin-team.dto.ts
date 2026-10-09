@@ -241,3 +241,43 @@ export class AdminTeamPageView {
   })
   next!: string | null;
 }
+
+/** One platform role of the role catalogue (slice 10a): exactly these five fields. */
+export class PlatformRoleView {
+  @ApiProperty({ format: 'uuid' })
+  roleId!: string;
+
+  @ApiProperty({ enum: ['system', 'default', 'custom'], description: 'system: show a lock.' })
+  kind!: 'system' | 'default' | 'custom';
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The seed code of a system or default role: its label is a translation key. Null for a ' +
+      'custom role.',
+  })
+  seedCode!: string | null;
+
+  @ApiProperty({
+    description: 'How many permissions the role confers now (every one of the scope for system).',
+  })
+  permissionCount!: number;
+
+  @ApiProperty({
+    description:
+      'Whether you may give this role now: you hold every permission it confers, a protected ' +
+      'one only with the Platform Administrator role, and the Platform Administrator role only ' +
+      'if you hold it. A hint only: assigning a role and inviting an admin check again. It does ' +
+      'not say whether you hold the permission to assign or invite.',
+  })
+  grantable!: boolean;
+}
+
+export class PlatformRoleCatalogueView {
+  @ApiProperty({
+    type: [PlatformRoleView],
+    description: 'The platform roles of the Market, by id. Never a seller role.',
+  })
+  items!: PlatformRoleView[];
+}

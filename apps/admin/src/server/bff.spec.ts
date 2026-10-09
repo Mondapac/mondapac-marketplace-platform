@@ -105,6 +105,55 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it.each(['identity/admin/password-reset-email', 'identity/admin/reset-password'])(
+    'relays the anonymous password routes (%s)',
+    async (path) => {
+      const response = await relay(config, post(path), path.split('/'), upstreamOk());
+      expect(response.status).toBe(200);
+    },
+  );
+
+  it.each(['identity/admin/password-reset-email', 'identity/admin/reset-password'])(
+    'refuses a cross-site POST to %s',
+    async (path) => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        post(path, { ...sameOrigin, 'sec-fetch-site': 'cross-site' }),
+        path.split('/'),
+        fetchImpl,
+      );
+      expect(response.status).toBe(403);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it('relays the id paths of the team commands, and only with a UUID id', async () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    const ok = upstreamOk();
+    const allowed = await relay(
+      config,
+      post(`identity/admin/accounts/${id}/disable`),
+      ['identity', 'admin', 'accounts', id, 'disable'],
+      ok,
+    );
+    expect(allowed.status).toBe(200);
+    for (const path of [
+      ['identity', 'admin', 'accounts', 'not-a-uuid', 'disable'],
+      ['identity', 'admin', 'accounts', id, 'role'],
+      ['identity', 'admin', 'accounts', id, 'disable', 'extra'],
+      ['identity', 'admin', 'customers', id, 'disable'],
+      ['identity', 'admin', 'accounts', `${id}%2F..`, 'disable'],
+      ['identity', 'admin', 'accounts', '..', 'disable'],
+      ['identity', 'admin', 'accounts', id, 'disable', ''],
+    ]) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, post(path.join('/')), path, fetchImpl);
+      expect(response.status).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses an unsafe request that is not same-origin', async () => {
     const fetchImpl = upstreamOk();
     const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };

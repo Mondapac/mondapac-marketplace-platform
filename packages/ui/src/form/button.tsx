@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'link';
+export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly variant?: ButtonVariant;
@@ -14,6 +14,8 @@ const VARIANT: Record<ButtonVariant, string> = {
     'bg-accent text-on-accent hover:bg-accent-hover disabled:bg-accent-disabled disabled:cursor-not-allowed',
   secondary:
     'border border-line-control bg-surface text-fg hover:bg-muted disabled:text-fg-muted disabled:cursor-not-allowed',
+  destructive:
+    'border border-critical-border bg-surface text-critical-fg hover:bg-critical-bg disabled:border-line-control disabled:text-fg-muted disabled:cursor-not-allowed',
   link: 'text-link underline-offset-2 hover:underline disabled:text-fg-muted disabled:cursor-not-allowed',
 };
 

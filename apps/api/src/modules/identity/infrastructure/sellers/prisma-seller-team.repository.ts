@@ -200,6 +200,30 @@ export class PrismaRoleRepository implements RoleRepository {
     return this.withKeys(market, row);
   }
 
+  async platformRoles(market: MarketContext): Promise<Role[]> {
+    // `roles_market_id_scope_seed_code_key` serves the `(market_id, scope)` prefix; a platform
+    // role never has a seller (R9), and the filter keeps it so.
+    const rows = await this.prisma.tx(market).identityRole.findMany({
+      where: { marketId: market.marketId, scope: 'platform', sellerId: null },
+      select: ROLE,
+      orderBy: { id: 'asc' },
+    });
+    if (rows.length === 0) return [];
+    // Their stored keys in one read on the primary key's prefix `(market_id, role_id)`.
+    const keys = await this.prisma.tx(market).identityRolePermission.findMany({
+      where: { marketId: market.marketId, roleId: { in: rows.map((row) => row.id) } },
+      select: { roleId: true, permissionKey: true },
+      orderBy: [{ roleId: 'asc' }, { permissionKey: 'asc' }],
+    });
+    const byRole = new Map<string, string[]>();
+    for (const key of keys) {
+      const list = byRole.get(key.roleId) ?? [];
+      list.push(key.permissionKey);
+      byRole.set(key.roleId, list);
+    }
+    return rows.map((row) => restoreRole(row, byRole.get(row.id) ?? []));
+  }
+
   async findBySeedCode(
     market: MarketContext,
     scope: RoleScope,

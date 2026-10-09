@@ -40,12 +40,16 @@
       },
       "label": {
         "email": "Email",
-        "password": "Password"
+        "password": "Password",
+        "new-password": "New password"
       },
       "action": {
         "show-password": "Show password",
         "hide-password": "Hide password",
         "back-to-sign-in": "Back to sign in"
+      },
+      "help": {
+        "password": "Use {min} to {max} characters. A short sentence works well."
       }
     },
     "error": {
@@ -83,13 +87,21 @@
       },
       "unknown": "Something went wrong on our side. Try again.",
       "network": "You're offline or the connection dropped. Check it and try again.",
-      "market": "This page isn't available."
+      "market": "This page isn't available.",
+      "password": {
+        "rejected": {
+          "length": "Use {min} to {max} characters.",
+          "common": "That password is too easy to guess. Choose a different one.",
+          "contains-identity": "Don't use your email or name in your password."
+        }
+      }
     },
     "sign-in": {
       "page-title": "Sign in – Admin account – MondaPac",
       "title": "Sign in to your admin account",
       "action": {
-        "submit": "Sign in"
+        "submit": "Sign in",
+        "forgot": "Forgot password?"
       },
       "banner": {
         "session-ended": "Your session has ended. Sign in again to continue.",
@@ -147,7 +159,8 @@
       "role": {
         "none": "No role",
         "custom": "Custom role",
-        "system": "(system role)"
+        "system": "(system role)",
+        "unknown": "Role"
       },
       "empty": {
         "title": "It's just you so far",
@@ -159,6 +172,68 @@
         "title": "You don't have access to this page",
         "body": "Your role doesn't include it. Ask an admin who manages roles.",
         "action": "Go to Home"
+      },
+      "actions": "Actions",
+      "actions-for": "Actions for {name}",
+      "action": {
+        "deactivate": "Deactivate account…",
+        "reactivate": "Reactivate account",
+        "reset-two-step": "Reset two-step verification…",
+        "resend": "Resend invitation",
+        "cancel-invitation": "Cancel invitation…"
+      },
+      "dialog": {
+        "keep": "Keep as it is",
+        "deactivate": {
+          "title": "Deactivate {name}'s admin account?",
+          "body": "They're signed out straight away and can't sign in.",
+          "action": "Deactivate account"
+        },
+        "reset-two-step": {
+          "title": "Reset two-step verification for {name}?",
+          "body": "They're signed out. At their next sign-in we email them a link to set it up again.",
+          "action": "Reset"
+        },
+        "cancel-invitation": {
+          "title": "Cancel the invitation to {name}?",
+          "body": "The link in their email stops working.",
+          "action": "Cancel invitation"
+        },
+        "keep-invitation": "Keep invitation"
+      },
+      "toast": {
+        "deactivate": "{name}'s account is deactivated. They've been signed out.",
+        "reactivate": "{name}'s account is active again. They can sign in.",
+        "reset-two-step": "Two-step verification reset for {name}. We've emailed them a link to set it up again.",
+        "resend": "Invitation sent again to {name}.",
+        "cancel-invitation": "Invitation to {name} cancelled."
+      },
+      "reason": {
+        "access": {
+          "denied": "Your role doesn't include this.",
+          "unavailable": "This is not available right now. Try again in a moment."
+        },
+        "member": {
+          "self": "You can't do this to your own account.",
+          "outranks-actor": "This person has permissions you don't have.",
+          "last-holder": "At least one Platform Administrator must remain."
+        },
+        "second-factor": {
+          "none": "They have no two-step verification to reset."
+        },
+        "invitation": {
+          "unknown": "This invitation no longer exists. We've refreshed the list.",
+          "rejected": "This invitation can't be sent again. We've refreshed the list."
+        },
+        "conflict": {
+          "stale": "Someone has just changed this. We've refreshed it.",
+          "retry": "Try again."
+        },
+        "account": {
+          "unknown": "This account no longer exists. We've refreshed the list.",
+          "already-disabled": "Someone has just changed this. We've refreshed it.",
+          "already-active": "Someone has just changed this. We've refreshed it."
+        }
       }
     },
     "role": {
@@ -168,6 +243,36 @@
       "operations-support": "Operations & support",
       "finance": "Finance",
       "viewer": "Viewer"
+    },
+    "forgot-password": {
+      "page-title": "Reset your password – Admin account – MondaPac",
+      "title": "Reset your admin account password",
+      "action": {
+        "submit": "Send reset link"
+      },
+      "sent": {
+        "title": "Check your email",
+        "body": "If an admin account uses {email}, we've sent a link to reset its password. The link works for 60 minutes."
+      }
+    },
+    "reset-password": {
+      "page-title": "Choose a new password – Admin account – MondaPac",
+      "title": "Choose a new password",
+      "body": "Changing your password signs you out everywhere. Two-step verification stays on.",
+      "status": {
+        "checking": "Checking your link…"
+      },
+      "action": {
+        "submit": "Save new password"
+      }
+    },
+    "link": {
+      "title": {
+        "rejected": "This link can't be used"
+      },
+      "body": {
+        "rejected": "It may have expired or already been used. Ask for a new link and we'll send one."
+      }
     }
   }
 }

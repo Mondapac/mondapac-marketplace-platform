@@ -50,6 +50,10 @@ import {
   MAX_ADMIN_TEAM_PAGE,
   type AdminTeamPage,
 } from '../application/use-cases/list-admin-team.use-case';
+import {
+  ListPlatformRoles,
+  type PlatformRoleCatalogue,
+} from '../application/use-cases/list-platform-roles.use-case';
 import { ResendAdminInvitation } from '../application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from '../application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from '../application/use-cases/revoke-admin-invitation.use-case';
@@ -66,6 +70,7 @@ import {
   AdminTeamAccountRowView,
   AdminTeamInvitationRowView,
   AdminTeamPageView,
+  PlatformRoleCatalogueView,
 } from './admin-team.dto';
 import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
@@ -140,6 +145,32 @@ function teamQuery(
   };
 }
 
+/**
+ * The role catalogue's query is closed and empty (slice 10a): any parameter, `scope` included,
+ * is refused, so no parameter can reach the seller scope.
+ */
+function rolesQuery(query: Record<string, unknown>): Record<string, never> | HttpException {
+  const keys = Object.keys(query).sort();
+  if (keys.length === 0) return {};
+  return refusal({
+    code: 'validation.failed',
+    fields: keys.slice(0, 10).map((path) => ({ path: path.slice(0, 64), code: 'unknown' })),
+  });
+}
+
+/** The catalogue as JSON: exactly the five fields of each role, in a fixed order. */
+function catalogueView(catalogue: PlatformRoleCatalogue): PlatformRoleCatalogueView {
+  return {
+    items: catalogue.items.map(({ roleId, kind, seedCode, permissionCount, grantable }) => ({
+      roleId,
+      kind,
+      seedCode,
+      permissionCount,
+      grantable,
+    })),
+  };
+}
+
 /** The page as JSON: instants as ISO strings; nothing else is added or dropped. */
 function teamPageView(page: AdminTeamPage): AdminTeamPageView {
   return {
@@ -163,7 +194,8 @@ const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthen
 
 /**
  * Admin team management over HTTP (identity design 3.1, 3.4, 3.6, 5.3 to 5.5, 7.3, 8.6; slices
- * 8a-2, 8b and 8c): the team list (accounts, open invitations and per-row action hints), an
+ * 8a-2, 8b, 8c and 10a): the team list (accounts, open invitations and per-row action hints),
+ * the platform role catalogue with a `grantable` hint per role, an
  * admin's role, admin invitations with their inviter, disabling and enabling admin and customer
  * accounts, and resetting another admin's second factor. Every route reads the
  * admin session of the request's Market (`@ReadsSession`), so its unsafe method needs the CSRF
@@ -190,7 +222,43 @@ export class AdminTeamController {
     private readonly enableCustomerAccount: EnableCustomerAccount,
     private readonly resetOtherAdminSecondFactor: ResetOtherAdminSecondFactor,
     private readonly listAdminTeam: ListAdminTeam,
+    private readonly listPlatformRoles: ListPlatformRoles,
   ) {}
+
+  @Get('roles')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'List the platform roles of the Market, with whether you may give each',
+    description:
+      'Needs identity.platform-role.view. The platform roles of the Market, by id: id, kind, ' +
+      'seed code (the label key of a seeded role), how many permissions each confers, and ' +
+      '`grantable`, whether you may give it now. `grantable` is a hint: assigning a role and ' +
+      'inviting an admin check again. No name, description or permission list (slice 10), and ' +
+      'never a seller role. No query parameter is accepted. Not cached.',
+  })
+  @ApiOkResponse({ type: PlatformRoleCatalogueView })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description: 'validation.failed: any query parameter (details.fields)',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  async roles(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<PlatformRoleCatalogueView> {
+    const input = rolesQuery(query);
+    let outcome: PlatformRoleCatalogueView | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.listPlatformRoles.execute(context, input);
+      outcome = result.ok ? catalogueView(result.value) : refusal(result.error);
+    }
+    // What the actor may grant: never stored by a cache.
+    response.setHeader('Cache-Control', 'no-store');
+    return this.settle('identity.admin-list-roles', context, outcome);
+  }
 
   @Get('team')
   @ReadsSession()

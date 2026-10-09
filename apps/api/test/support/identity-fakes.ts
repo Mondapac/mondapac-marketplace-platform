@@ -564,6 +564,15 @@ export class IdentityFakes {
         state === undefined || state.marketId !== market.marketId ? null : Role.restore(state),
       );
     },
+    platformRoles: (market) =>
+      Promise.resolve(
+        [...this.roles.values()]
+          .filter(
+            (r) => r.marketId === market.marketId && r.scope === 'platform' && r.sellerId === null,
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+          .map((state) => Role.restore(state)),
+      ),
     findBySeedCode: (market, scope, seedCode) => {
       const state = [...this.roles.values()].find(
         (r) => r.marketId === market.marketId && r.scope === scope && r.seedCode === seedCode,
