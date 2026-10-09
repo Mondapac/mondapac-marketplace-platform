@@ -1,11 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  Id,
+  MarketContext,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { SELLER_ACCOUNT_CREATE } from '../../contracts/permissions';
 import { InvitationReissuedAudit, InvitationRevokedAudit } from '../../domain/audit';
+import { invitationReissuableAt, type InvitationState } from '../../domain/invitation';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
@@ -79,6 +87,36 @@ export async function sellerInviterStillStands(
 }
 
 /**
+ * The guards of re-sending a found, pending seller-owner invitation, before its mail counters
+ * (identity design 3.4; slices 9 and 9b): within its lifetime (Mohammad C2), its inviter still
+ * standing (Hassan L3) and an address still on it, else `invitation.rejected`. The re-send
+ * command runs it after its key; the admin seller list's re-send hint runs it after the same key.
+ * It reads only the fields named, so a summary without the token hash serves as well as the
+ * aggregate's state. `stands` answers whether the inviter still stands: by default
+ * `sellerInviterStillStands`; the list passes the same check memoized per inviter for one read
+ * (Mojtaba R2 on PR #222), whose answer cannot differ within that unit.
+ */
+export async function sellerInvitationResendVerdict(
+  deps: ActingGrantDependencies,
+  market: MarketContext,
+  invitation: Pick<InvitationState, 'state' | 'createdAt' | 'invitedByAccountId'> & {
+    readonly hasAddress: boolean;
+  },
+  now: Temporal.Instant,
+  lifetimeMinutes: number,
+  stands: (inviterId: Id<'Account'> | null) => Promise<boolean> = (inviterId) =>
+    sellerInviterStillStands(deps, market, inviterId),
+): Promise<Result<void, { readonly code: 'invitation.rejected' }>> {
+  if (!invitationReissuableAt(invitation, now, lifetimeMinutes)) {
+    return err({ code: 'invitation.rejected' });
+  }
+  if (!(await stands(invitation.invitedByAccountId))) {
+    return err({ code: 'invitation.rejected' });
+  }
+  return invitation.hasAddress ? ok(undefined) : err({ code: 'invitation.rejected' });
+}
+
+/**
  * Re-send and revoke of a seller-owner invitation (identity design 3.4 `pending` → `pending`,
  * `pending` → `revoked`; `ux.md` F9 step 6 "Resend" and "Cancel"; slice 9), the routine of
  * `identity.resend-seller-invitation` and `identity.revoke-seller-invitation`, both under
@@ -116,13 +154,15 @@ export async function changeSellerOwnerInvitation(
       }
       const { kind, roleId } = invitation.state;
       if (change === 'resend') {
-        if (!invitation.reissuableAt(now, lifetime)) return err({ code: 'invitation.rejected' });
-        const inviter = invitation.state.invitedByAccountId;
-        if (!(await sellerInviterStillStands(deps, market, inviter))) {
-          return err({ code: 'invitation.rejected' });
-        }
         const address = invitation.state.email;
-        if (address === null) return err({ code: 'invitation.rejected' });
+        const guards = await sellerInvitationResendVerdict(
+          deps,
+          market,
+          { ...invitation.state, hasAddress: address !== null },
+          now,
+          lifetime,
+        );
+        if (!guards.ok || address === null) return err({ code: 'invitation.rejected' });
         const verdict = await reserveInvitationMail(
           deps,
           market,

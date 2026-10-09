@@ -1104,10 +1104,10 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 2 | 2 | `catalog_category_tree` | `category_trees`; `platform_categories` with the no-cycle trigger and function; revisions and names with triggers |
 | 3 | 3 | `catalog_attributes` | The five tables of 3.5 (revisions' `relaxation_request_id` columns without their FKs; no `archived_by_request_id` yet) |
 | 4 | 4 | `catalog_revisions` | `product_working_copies`; `product_revisions`, texts, categories, variants (with the not-retired trigger), decisions (check columns included); `rate_counters`; on `products`: `published_revision_id`, `pending_revision_id`, `pending_submitted_at`, their FKs and CHECKs (`NOT VALID` then `VALIDATE`), the published-revision partial unique, the seller-list and queue partial indexes; the `discarded`-without-revision CHECK (`NOT VALID` then `VALIDATE`); `product_working_copies_market_id_last_saved_at_idx` with `DELETE` granted |
-| 5 | 7 | `catalog_offers` | `offers` (without `shelf_category_id`), `offer_history`; no `DELETE` on `products`, `product_variants`, `offers` (Q-K2) |
+| 5 | 7 | `catalog_offers` | `offers` (without `shelf_category_id`), `offer_history`; no `DELETE` on `products`, `product_variants`, `offers` (Q-K2); the Offer queue partial index (moved here from 8, see the note below the table) |
 | 6 | 8 | `catalog_offer_tags` | `offer_tags` (copy, check constraints including `offer_tags_published_copy_check`, `status_seq` and its trigger, open-tag partial unique, autovacuum settings), `offer_tag_history` (with `status_seq` and its unique), then the deferred `offer_tags_history_present` constraint trigger |
 | 7 | 9 | `catalog_name_search` | Trigram index of 6.2 (after the platform `pg_trgm` PR) |
-| 8 | 10 | `catalog_review` | `offer_publication_decisions`; the Offer queue partial index |
+| 8 | 10 | `catalog_review` | `offer_publication_decisions` |
 | 9 | 11 | `catalog_fanout` | `tag_reevaluation_requests` |
 | 10 | 12 | `catalog_tag_selection` | The five selection indexes and the reconciliation index of 3.15 |
 | 11 | 13 | `catalog_images` | `product_images` (raw-key and master-prefix CHECKs, raw-key partial index, delete guard, column-level `UPDATE` grant), renditions, `product_revision_images`; `products.photo_taken_down_at` |
@@ -1117,6 +1117,18 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 15 | 23 | `catalog_seller_categories` | The tables of 3.22; `offers.shelf_category_id` and its FK (`NOT VALID`, `VALIDATE`) |
 | 16 | 24 | `catalog_import` | 3.24 |
 | 17 | 25, 26 | `catalog_ai_listing`, `catalog_ai_claim_flags` | 3.25 |
+
+**As built in migration 5** (`20261009030000_catalog_offers`, Mojtaba 2026-10-09): (a) the Offer
+queue partial index `offers_market_id_submitted_at_pending_idx` is created with the table, while it is
+empty, instead of on a live table in migration 8; (b) one CHECK added to 3.13,
+`offers_first_published_check` (`status <> 'published' OR first_published_at IS NOT NULL`); (c) the
+fifth cause code, unnamed in D 6.4, is `description-claim-text` (column
+`off_sale_description_claim_text`); (d) `offer_history` carries the 3.14 snapshot column
+`shelf_category_id` (nullable, no FK) from this migration, so slice 23 alters no insert-only table;
+its `changed_fields` elements match `^[a-z][A-Za-z0-9_.-]{0,63}$`; the snapshot obeys the Offer's
+handling and `listed` rules (`offer_history_handling_required_check`, `offer_history_listed_check`
+with `listed = (status = 'published' AND cardinality(off_sale_causes) = 0)`), `actor_account_id` is
+NULL iff `actor_kind = 'system'` and `acting_admin_account_id` only with a seller actor.
 
 This matches D 15.1's list (1, 2, 3, 4, 7, 8, 10, 11, 12, 13, 18, 21, 23, 24, 25, 26) plus 9
 (trigram, only with option A) and 22 (url keys). No migration: P1, 5, 6, 14, 15, 16, 17, 19, 20 —

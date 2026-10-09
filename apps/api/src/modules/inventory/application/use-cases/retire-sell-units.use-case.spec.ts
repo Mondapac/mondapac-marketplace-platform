@@ -43,6 +43,12 @@ const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TE
 const gate = createUseCaseGate(markets, null);
 
 class FakeStock implements StockRepository {
+  itemIdsOfOfferVariants() {
+    return Promise.reject(new Error('not used'));
+  }
+  tombstonesOf() {
+    return Promise.reject(new Error('not used'));
+  }
   items: StockItemRow[] = [];
   readonly tombstones: NewRetirementTombstone[] = [];
   readonly retiredAt = new Map<string, Temporal.Instant>();

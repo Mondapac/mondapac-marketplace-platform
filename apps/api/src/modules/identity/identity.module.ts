@@ -82,6 +82,10 @@ import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case'
 import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
 import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
 import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
+import { ListSellerAccounts } from './application/use-cases/list-seller-accounts.use-case';
+import { SellerAccountSummaries } from './application/use-cases/seller-account-summaries.use-case';
+import { SELLER_ACCOUNT_READER } from './application/ports/seller-account-reader';
+import { sellerAccountReaderProvider } from './infrastructure/sellers/prisma-seller-account-reader';
 import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
 import { DisableCustomerAccount } from './application/use-cases/disable-customer-account.use-case';
 import { EnableAdminAccount } from './application/use-cases/enable-admin-account.use-case';
@@ -172,6 +176,7 @@ const PORT = {
   unitOfWork: UNIT_OF_WORK,
   accounts: ACCOUNT_REPOSITORY,
   adminAccounts: ADMIN_ACCOUNT_READER,
+  sellerAccounts: SELLER_ACCOUNT_READER,
   sessions: SESSION_REPOSITORY,
   throttles: THROTTLE_REPOSITORY,
   records: SIGN_IN_RECORD_REPOSITORY,
@@ -280,6 +285,10 @@ function useCaseProvider<D, U>(
  * seller-access contract, and a seller created by an admin's invitation (issue, re-send, revoke,
  * and the owner's acceptance), behind `AdminSellersController` and the seller sign-up controller.
  *
+ * Slice 9b binds the admin seller list (`ListSellerAccounts`, `identity.seller-access.view`) on
+ * `AdminSellersController`, and `sellerAccountSummaries` behind the seller-access contract, over
+ * one read of `identity`'s own tables (`SELLER_ACCOUNT_READER`).
+ *
  * Slice 10a binds the role catalogue read (`ListPlatformRoles`, `identity.platform-role.view`),
  * on `AdminTeamController`.
  */
@@ -319,6 +328,7 @@ function useCaseProvider<D, U>(
     ...roleProviders,
     ...secondFactorProviders,
     adminAccountReaderProvider,
+    sellerAccountReaderProvider,
     {
       provide: AUTHENTICATOR,
       inject: [UNIT_OF_WORK, SESSION_REPOSITORY, SESSION_TOKENS, CLOCK],
@@ -1011,6 +1021,23 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    // Slice 9b: the admin seller list (HTTP) and `sellerAccountSummaries` (contract below).
+    useCaseProvider(ListSellerAccounts, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      sellerAccounts: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(SellerAccountSummaries, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      sellerAccounts: true,
+    }),
     // Slice 9a: the R-5 reads of the decisions, for `sellers` only (contract below).
     useCaseProvider(ListSellerAccessDecisions, {
       unitOfWork: true,
@@ -1113,6 +1140,7 @@ function useCaseProvider<D, U>(
       inject: [
         SellerAccessOf,
         SellerAccessOfSystem,
+        SellerAccountSummaries,
         ListRegisteredSellers,
         NotifyAccessReviewers,
         ApproveSellerAccess,
@@ -1124,6 +1152,7 @@ function useCaseProvider<D, U>(
       useFactory: (
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
+        sellerAccountSummaries: SellerAccountSummaries,
         listRegisteredSellers: ListRegisteredSellers,
         notifyAccessReviewers: NotifyAccessReviewers,
         approveSellerAccess: ApproveSellerAccess,
@@ -1135,6 +1164,7 @@ function useCaseProvider<D, U>(
         new SellerAccessContractImplementation({
           sellerAccessOf,
           sellerAccessOfSystem,
+          sellerAccountSummaries,
           listRegisteredSellers,
           notifyAccessReviewers,
           approveSellerAccess,

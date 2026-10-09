@@ -1,12 +1,8 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
-import { ok } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OfferSellUnitsMap } from '../../contracts/catalog.facade';
-import {
-  absentForEveryKey,
-  parseOfferIds,
-  type OfferSellUnitsFailure,
-} from '../offers/offer-sell-units-placeholder';
+import type { OfferSellUnitsFailure } from '../offers/offer-sell-units-request';
+import { readSellUnits, type OfferSellUnitsDependencies } from '../offers/offer-sell-units-read';
 
 export interface OfferSellUnitsInput {
   readonly offerIds: readonly string[];
@@ -23,15 +19,17 @@ export class OfferSellUnitsQuery extends UseCase<
     rule: { kind: 'anonymous' },
   };
 
-  constructor(gate: UseCaseGate) {
+  constructor(
+    gate: UseCaseGate,
+    private readonly deps: OfferSellUnitsDependencies,
+  ) {
     super(gate);
   }
 
   protected handle(
-    _context: CallContext,
+    context: CallContext,
     input: OfferSellUnitsInput,
   ): Promise<Result<OfferSellUnitsMap, OfferSellUnitsFailure>> {
-    const ids = parseOfferIds(input.offerIds);
-    return Promise.resolve(ids.ok ? ok(absentForEveryKey()) : ids);
+    return readSellUnits(this.deps, context, input.offerIds);
   }
 }

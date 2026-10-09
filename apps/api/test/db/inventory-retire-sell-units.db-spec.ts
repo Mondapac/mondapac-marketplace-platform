@@ -194,6 +194,7 @@ describe.each(TEST_MARKETS)('inventory.retire-sell-units in market %s (database)
     catalogOffers.set(offerId, {
       sellerId: seller.sellerId,
       deleted: false,
+      productId: ids.next<'Product'>(),
       sellUnitVariantIds: new Set([...(known?.sellUnitVariantIds ?? []), variantId]),
     });
     const input: SetStockLevelInput = {
@@ -409,11 +410,14 @@ describe.each(TEST_MARKETS)('inventory.retire-sell-units in market %s (database)
       lockItems: (...args) => stock.lockItems(...args),
       recordTombstone: (...args) => stock.recordTombstone(...args),
       retireItems: (...args) => stock.retireItems(...args),
+      itemIdsOfOfferVariants: (...args) => stock.itemIdsOfOfferVariants(...args),
+      tombstonesOf: (...args) => stock.tombstonesOf(...args),
     };
     const racing = build(wrapped);
     catalogOffers.set(offerId, {
       sellerId: seller.sellerId,
       deleted: false,
+      productId: ids.next<'Product'>(),
       sellUnitVariantIds: new Set([variantId]),
     });
 

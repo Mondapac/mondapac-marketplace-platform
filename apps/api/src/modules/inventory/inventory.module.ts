@@ -22,11 +22,13 @@ import { EditSource } from './application/use-cases/edit-source.use-case';
 import { ListSources } from './application/use-cases/list-sources.use-case';
 import { ReorderSources } from './application/use-cases/reorder-sources.use-case';
 import { INVENTORY_PERMISSIONS } from './contracts/permissions';
+import { RekeyMovedOffer } from './application/use-cases/rekey-moved-offer.use-case';
 import { RetireSellUnits } from './application/use-cases/retire-sell-units.use-case';
 import { EnsureSellerInventory } from './application/use-cases/ensure-seller-inventory.use-case';
 import { inventoryProviders } from './infrastructure/inventory-providers';
 import { assertInventoryConfigured } from './infrastructure/market-config-boot-check';
 import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
+import { catalogOfferMovedSubscriptions } from './presentation/subscribers/catalog-offer-moved.subscriptions';
 import { sellerInventorySubscriptions } from './presentation/subscribers/seller-inventory.subscriptions';
 
 /**
@@ -127,12 +129,24 @@ function useCaseProvider<D, U>(
       ids: true,
       clock: true,
     }),
+    useCaseProvider(RekeyMovedOffer, {
+      unitOfWork: true,
+      inventories: true,
+      stock: true,
+      signals: true,
+      offers: true,
+      policies: true,
+      outbox: true,
+      ids: true,
+      clock: true,
+    }),
     registerSubscriptionsFrom(
       'inventory',
-      [EnsureSellerInventory, RetireSellUnits],
-      (ensure: EnsureSellerInventory, retire: RetireSellUnits) => [
+      [EnsureSellerInventory, RetireSellUnits, RekeyMovedOffer],
+      (ensure: EnsureSellerInventory, retire: RetireSellUnits, rekey: RekeyMovedOffer) => [
         ...sellerInventorySubscriptions(ensure),
         ...catalogRetirementSubscriptions(retire),
+        ...catalogOfferMovedSubscriptions(rekey),
       ],
     ),
   ],

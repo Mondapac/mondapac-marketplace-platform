@@ -39,6 +39,7 @@ export class CatalogOfferSellUnits implements OfferSellUnitsSource {
         offerId,
         Object.freeze({
           sellerId: offer.sellerId,
+          productId: offer.productId,
           deleted,
           // A deleted Offer has no sell units, whatever the answer lists.
           sellUnitVariantIds: new Set(deleted ? [] : offer.sellUnits.map((u) => u.variantId)),

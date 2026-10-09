@@ -35,6 +35,15 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
+import {
+  OFFER_SELL_UNITS_READER,
+  type OfferSellUnitsReader,
+} from '../application/ports/offer-sell-units.reader';
+import { PrismaOfferRepository } from './prisma-offer.repository';
+import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
+import { ID_GENERATOR } from '../../../platform/ids/ids.module';
+import type { IdGenerator } from '@mondapac/shared-kernel';
 import { CertificationClaimTextMatcher } from './certification-claim-text-matcher';
 import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
@@ -72,6 +81,18 @@ export const catalogProviders: readonly Provider[] = [
     provide: PRODUCT_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductRepository => new PrismaProductRepository(prisma),
+  },
+  {
+    provide: OFFER_REPOSITORY,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
+      new PrismaOfferRepository(prisma, ids),
+  },
+  {
+    provide: OFFER_SELL_UNITS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferSellUnitsReader =>
+      new PrismaOfferSellUnitsReader(prisma),
   },
   {
     provide: PLATFORM_CATEGORY_REPOSITORY,
