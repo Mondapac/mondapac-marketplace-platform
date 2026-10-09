@@ -23,20 +23,6 @@ const orNull = (date: Date | null): Temporal.Instant | null =>
 const UNIQUE_ONE_PER_PRODUCT = 'offers_market_id_seller_id_product_id_open_key';
 const UNIQUE_SKU = 'offers_market_id_seller_id_seller_sku_open_key';
 
-/**
- * The violated unique of a failed insert, from the plain shape of Prisma's `P2002` error
- * (`meta.driverAdapterError.cause.constraint.index`). It reads nothing else of the error.
- */
-function violatedUnique(error: unknown): string | null {
-  const object = error as {
-    code?: unknown;
-    meta?: { driverAdapterError?: { cause?: { constraint?: { index?: unknown } } } };
-  } | null;
-  if (typeof object !== 'object' || object === null || object.code !== 'P2002') return null;
-  const index = object.meta?.driverAdapterError?.cause?.constraint?.index;
-  return typeof index === 'string' ? index : null;
-}
-
 /** The causes as the five stored flags, in the order of {@link OFF_SALE_CAUSES}. */
 const causeFlags = (causes: readonly OffSaleCause[]) => ({
   offSaleTypeNotAllowed: causes.includes('type-not-allowed'),
@@ -94,7 +80,7 @@ export class PrismaOfferRepository implements OfferRepository {
         select: { id: true },
       });
     } catch (error) {
-      const unique = violatedUnique(error);
+      const unique = this.prisma.violatedConstraint(error);
       if (unique === UNIQUE_ONE_PER_PRODUCT) return 'offer.exists-for-product';
       if (unique === UNIQUE_SKU) return 'offer.sku-taken';
       throw error;

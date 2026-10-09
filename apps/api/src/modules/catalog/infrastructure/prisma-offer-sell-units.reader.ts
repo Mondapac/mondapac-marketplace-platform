@@ -1,6 +1,12 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { OfferSellUnits, OfferSellUnitsMap, OfferStatus } from '../contracts/catalog.facade';
+import type {
+  OfferSellUnits,
+  OfferSellUnitsMap,
+  OfferStatus,
+  SellUnit,
+  SellUnitState,
+} from '../contracts/catalog.facade';
 import type { OfferSellUnitsReader } from '../application/ports/offer-sell-units.reader';
 
 /**
@@ -34,21 +40,19 @@ export class PrismaOfferSellUnitsReader implements OfferSellUnitsReader {
             select: { id: true, productId: true, state: true },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           });
+    const byProduct = new Map<string, SellUnit[]>();
+    for (const variant of variants) {
+      const list = byProduct.get(variant.productId) ?? [];
+      list.push({ variantId: variant.id as Id<'Variant'>, state: variant.state as SellUnitState });
+      byProduct.set(variant.productId, list);
+    }
     for (const offer of offers) {
       result.set(offer.id as Id<'Offer'>, {
         sellerId: offer.sellerId as Id<'Seller'>,
         productId: offer.productId as Id<'Product'>,
         status: offer.status as OfferStatus,
         listed: offer.listed,
-        sellUnits:
-          offer.status === 'deleted'
-            ? []
-            : variants
-                .filter((variant) => variant.productId === offer.productId)
-                .map((variant) => ({
-                  variantId: variant.id as Id<'Variant'>,
-                  state: variant.state as 'proposed' | 'published',
-                })),
+        sellUnits: offer.status === 'deleted' ? [] : (byProduct.get(offer.productId) ?? []),
       });
     }
     return result;

@@ -128,27 +128,31 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
     expect(await run(other, () => offers.findById(other, offer.state.id))).toBeNull();
   });
 
+  /** A unit that ends with the refusal as an error, as the port's contract requires. */
+  const addInUnit = (offer: Offer) =>
+    persistence.unitOfWork.run(market, async () => {
+      const refusal = await offers.add(market, offer, actor);
+      return refusal === null
+        ? { ok: true as const, value: null }
+        : { ok: false as const, error: refusal };
+    });
+
   it('answers the one-Offer-per-product-and-seller unique as a refusal', async () => {
     const product = await newProduct();
     const seller = uuid7() as Id<'Seller'>;
     await run(market, () => offers.add(market, newOffer(product, seller, 'SKU-A'), actor));
     const second = newOffer(product, seller, 'SKU-B');
-    const refusal = await persistence.unitOfWork.run(market, async () => ({
-      ok: true as const,
-      value: await offers.add(market, second, actor),
-    }));
-    expect(refusal).toEqual({ ok: true, value: 'offer.exists-for-product' });
+    expect(await addInUnit(second)).toEqual({ ok: false, error: 'offer.exists-for-product' });
   });
 
   it('answers the SKU unique as a refusal, per seller only', async () => {
     const seller = uuid7() as Id<'Seller'>;
     const [first, second, third] = [await newProduct(), await newProduct(), await newProduct()];
     await run(market, () => offers.add(market, newOffer(first, seller, 'SKU-SAME'), actor));
-    const clash = await persistence.unitOfWork.run(market, async () => ({
-      ok: true as const,
-      value: await offers.add(market, newOffer(second, seller, 'SKU-SAME'), actor),
-    }));
-    expect(clash).toEqual({ ok: true, value: 'offer.sku-taken' });
+    expect(await addInUnit(newOffer(second, seller, 'SKU-SAME'))).toEqual({
+      ok: false,
+      error: 'offer.sku-taken',
+    });
     const otherSeller = uuid7() as Id<'Seller'>;
     expect(
       await run(market, () => offers.add(market, newOffer(third, otherSeller, 'SKU-SAME'), actor)),
