@@ -274,6 +274,7 @@ model IdentitySellerAccess {
   roles          IdentityRole[]
   sessions       IdentitySession[]
   invitations    IdentityInvitation[]
+  decisions      IdentityAccessDecision[]
 
   /// The target of composite foreign keys (data design C3).
   @@unique([marketId, sellerId])
@@ -523,5 +524,34 @@ model IdentityInvitation {
   /// (Mojtaba R1, data design 3.10): without it a seq scan and a relation-level predicate lock.
   @@index([marketId, sellerId])
   @@map("invitations")
+  @@schema("identity")
+}
+
+/// One decision on a seller's access (identity design 2.1 `AccessDecision`, 3.3; data design
+/// 3.11; slice 9). Append-only by privilege (INSERT, SELECT only; H6): the tamper-evident trace is
+/// the audit row, which holds the decision id (D 10.1). The reason of a rejection or a suspension
+/// is encrypted under the seller's subject key (D 11.3); destroying that key makes it unreadable
+/// while the row stays. The CHECKs are hand-written in the migration.
+model IdentityAccessDecision {
+  /// UUIDv7.
+  id                 String               @id @db.Uuid
+  marketId           String               @map("market_id") @db.VarChar(8)
+  tenantId           String               @map("tenant_id")
+  sellerId           String               @map("seller_id") @db.Uuid
+  /// approved | rejected | suspended | reinstated.
+  decision           String
+  /// Personal (free text), encrypted: set if and only if rejected or suspended (decision 9).
+  reasonCiphertext   String?              @map("reason_ciphertext")
+  /// Plain id (C4): the `sellers` submission the decision rests on (D 8.4); NULL in Phase 2.
+  basisId            String?              @map("basis_id") @db.Uuid
+  /// Plain id (C4); NULL for the system actor.
+  decidedByAccountId String?              @map("decided_by_account_id") @db.Uuid
+  decidedAt          DateTime             @map("decided_at") @db.Timestamptz(6)
+  sellerAccess       IdentitySellerAccess @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The latest decision of a seller (status page, mails), and the RESTRICT check PostgreSQL
+  /// runs when the purge deletes a seller_access row.
+  @@index([marketId, sellerId, decidedAt])
+  @@map("access_decisions")
   @@schema("identity")
 }

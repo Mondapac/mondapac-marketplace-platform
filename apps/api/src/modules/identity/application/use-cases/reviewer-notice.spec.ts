@@ -63,6 +63,9 @@ import {
   REVIEWER_NOTICE_BUDGET_MS,
   REVIEWER_NOTICE_SEND_TIMEOUT_MS,
 } from './notify-access-reviewers.use-case';
+import type { ApproveSellerAccess } from './approve-seller-access.use-case';
+import type { ReapplySellerAccess } from './reapply-seller-access.use-case';
+import type { RejectSellerAccess } from './reject-seller-access.use-case';
 import { SellerAccessOf } from './seller-access-of.use-case';
 import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
 
@@ -74,6 +77,12 @@ import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
 // test/db/reviewer-candidates.db-spec.ts.
 
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
+
+/** A use case this spec never calls: calling it fails the test. */
+const notUsed = <T>(): T =>
+  ({
+    execute: () => Promise.reject(new Error('not used in this spec')),
+  }) as unknown as T;
 
 /** A factor store holding active factors for exactly these accounts (slice 7). */
 const factorsFor = (accounts: Iterable<string>): ActiveSecondFactorReader => {
@@ -268,6 +277,10 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
         sellerAccess: fakes.sellerAccessRepository,
       }),
       notifyAccessReviewers: notify,
+      // The decisions and re-apply behind the contract have their own spec (slice 9).
+      approveSellerAccess: notUsed<ApproveSellerAccess>(),
+      rejectSellerAccess: notUsed<RejectSellerAccess>(),
+      reapplySellerAccess: notUsed<ReapplySellerAccess>(),
     });
     return {
       fakes,

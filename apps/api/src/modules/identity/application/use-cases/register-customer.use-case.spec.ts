@@ -313,6 +313,7 @@ const policy: IdentityMarketPolicy = {
   invitationLifetimeMinutes: () => null,
   challengePolicy: () => null,
   secondFactorThrottle: () => null,
+  sellerReapplyLimit: () => null,
 };
 
 function setUp() {

@@ -133,8 +133,14 @@ export async function answerSellerSignIn<const F extends string>(
     case 'credentials.invalid':
     case 'email-verification-required':
     case 'account.disabled':
-    case 'membership.none':
+      return fail(SELLER_SIGN_IN_STATUS[error.code], error.code);
     case 'seller-access.suspended':
+      // Slice 9: the Seller Owner reads the reason (decision 9; `ux.md` F2 row 9, A10); Staff
+      // the code only. Told only after full authentication (AC 7).
+      return error.reason === undefined
+        ? fail(SELLER_SIGN_IN_STATUS[error.code], error.code)
+        : fail(SELLER_SIGN_IN_STATUS[error.code], error.code, { reason: error.reason });
+    case 'membership.none':
     case 'access.unavailable':
       return fail(SELLER_SIGN_IN_STATUS[error.code], error.code);
     case 'access.seller-not-approved':

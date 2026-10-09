@@ -97,6 +97,16 @@ export class PrismaSellerMembershipRepository implements SellerMembershipReposit
     return row !== null;
   }
 
+  async activeMembersOf(market: MarketContext, sellerId: Id<'Seller'>): Promise<Id<'Account'>[]> {
+    // On the index (market_id, seller_id, state) of seller_memberships (data design 3.9).
+    const rows = await this.prisma.tx(market).identitySellerMembership.findMany({
+      where: { marketId: market.marketId, sellerId, state: 'active' },
+      select: { accountId: true },
+      orderBy: { accountId: 'asc' },
+    });
+    return rows.map((row) => row.accountId as Id<'Account'>);
+  }
+
   async add(market: MarketContext, membership: SellerMembership): Promise<void> {
     const state = membership.state;
     await this.prisma.tx(market).identitySellerMembership.create({

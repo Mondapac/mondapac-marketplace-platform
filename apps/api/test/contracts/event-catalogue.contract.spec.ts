@@ -82,6 +82,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.link-mail',
       'identity.password-changed-mail',
       'identity.second-factor-mail',
+      'identity.seller-approved-mail',
+      'identity.seller-reinstated-mail',
+      'identity.seller-rejected-mail',
+      'identity.seller-suspended-mail',
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
       'sellers.create-file',
@@ -107,6 +111,20 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.second-factor-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.invitation-accepted.v1')).toEqual([]);
+    // Slice 9: one result mail per access decision (E4 to E7); re-apply mails no one.
+    expect(subscriptions.subscribersOf('identity.seller-access-approved.v1')).toEqual([
+      'identity.seller-approved-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([
+      'identity.seller-rejected-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.seller-access-suspended.v1')).toEqual([
+      'identity.seller-suspended-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.seller-access-reinstated.v1')).toEqual([
+      'identity.seller-reinstated-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.seller-access-reapplied.v1')).toEqual([]);
     expect(subscriptions.sealed).toBe(true);
   });
 

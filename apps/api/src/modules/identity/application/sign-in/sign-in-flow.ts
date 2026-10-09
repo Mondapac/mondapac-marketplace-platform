@@ -28,6 +28,9 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
+import type { AccessDecisionRepository } from '../ports/access-decision.repository';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
+import { isSellerOwner } from '../sellers/seller-owner';
 import { scopeOfPopulation } from '../../domain/role';
 import type {
   RoleAssignmentRepository,
@@ -85,7 +88,14 @@ export type SignInRefusal =
   | { readonly code: 'email-verification-required' }
   | { readonly code: 'account.disabled' }
   | { readonly code: 'membership.none' }
-  | { readonly code: 'seller-access.suspended' }
+  | {
+      readonly code: 'seller-access.suspended';
+      /**
+       * The reason of the suspension, for the Seller Owner only (3.3, decision 9; slice 9): told
+       * after full authentication. Absent for Staff, and once erased with the seller's key.
+       */
+      readonly reason?: string;
+    }
   | { readonly code: 'link.rejected' }
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | PasswordHasherBusy
@@ -118,10 +128,15 @@ export interface LinkSignInDependencies {
   readonly outbox: OutboxWriter;
 }
 
-/** What the seller population needs on top: its membership and its seller's access (slice 5). */
+/**
+ * What the seller population needs on top: its membership and its seller's access (slice 5);
+ * slice 9 adds the decisions and the grant read, for the owner's reason of a suspension.
+ */
 export interface SellerSignInDependencies {
   readonly memberships: SellerMembershipRepository;
   readonly sellerAccess: SellerAccessRepository;
+  readonly decisions: AccessDecisionRepository;
+  readonly grants: RoleGrantReader;
 }
 
 /**
@@ -157,7 +172,7 @@ type Closed =
       readonly sellerAccess: SellerAccessStateCode | null;
     }
   | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome }
-  | { readonly kind: 'refused'; readonly code: Refused };
+  | { readonly kind: 'refused'; readonly code: Refused; readonly reason?: string };
 
 /** What the reservation and closing units of one attempt produce, for every population. */
 type Outcome =
@@ -505,7 +520,16 @@ export class SignInFlow {
               ? null
               : await sellerAccess.findById(market, membership.state.sellerId);
           if (seller === null) return refuse('membership.none');
-          if (!seller.allowsSignIn) return refuse('seller-access.suspended');
+          if (!seller.allowsSignIn) {
+            // Slice 9: the owner is told the reason (3.3, decision 9), read in this unit.
+            const reason = await this.#suspensionReason(market, seller, accountId);
+            await this.record(context, client, accountId, 'seller-access.suspended', null, now);
+            return ok({
+              kind: 'refused',
+              code: 'seller-access.suspended',
+              ...(reason === null ? {} : { reason }),
+            });
+          }
         }
         let founded = false;
         if (link !== null) {
@@ -554,7 +578,11 @@ export class SignInFlow {
     );
     if (!closed.ok) return err(UNAVAILABLE);
     const outcome = closed.value;
-    if (outcome.kind === 'refused') return err({ code: outcome.code });
+    if (outcome.kind === 'refused') {
+      return outcome.code === 'seller-access.suspended' && outcome.reason !== undefined
+        ? err({ code: outcome.code, reason: outcome.reason })
+        : err({ code: outcome.code });
+    }
     if (outcome.kind === 'admin-step') return ok({ kind: 'admin-step', step: outcome.step });
     return ok({
       kind: 'signed-in',
@@ -566,6 +594,23 @@ export class SignInFlow {
         sellerAccess: outcome.sellerAccess,
       },
     });
+  }
+
+  /**
+   * The reason of the suspension a seller is in, for its Seller Owner only (identity design 3.3,
+   * decision 9; slice 9): the latest decision must be that suspension, the account must hold the
+   * seller system role, and the reason must still open under the seller's key. Null otherwise
+   * (Staff read the state only). Never logged.
+   */
+  async #suspensionReason(
+    market: CallContext['market'],
+    seller: SellerAccess,
+    accountId: Id<'Account'>,
+  ): Promise<string | null> {
+    const { decisions, grants } = this.sellerDeps!;
+    if (!(await isSellerOwner({ grants }, market, accountId))) return null;
+    const latest = await decisions.latestOf(market, seller.state.sellerId);
+    return latest?.decision === 'suspended' ? latest.reason : null;
   }
 
   /**

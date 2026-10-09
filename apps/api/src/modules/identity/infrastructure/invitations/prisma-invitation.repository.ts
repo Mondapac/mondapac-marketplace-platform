@@ -118,6 +118,18 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return row === null ? null : restore(row);
   }
 
+  async findPendingOwnerInvitation(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Invitation | null> {
+    // The predicate of the partial unique key `invitations_market_id_seller_id_owner_pending_key`.
+    const row = await this.prisma.tx(market).identityInvitation.findFirst({
+      where: { marketId: market.marketId, sellerId, kind: 'seller-owner', state: 'pending' },
+      select: SELECTED,
+    });
+    return row === null ? null : restore(row);
+  }
+
   async pendingAdminInvitations(
     market: MarketContext,
     after: Id<'Invitation'> | null,

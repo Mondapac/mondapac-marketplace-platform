@@ -62,6 +62,7 @@ import { SendPasswordChangedMail } from './send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './send-welcome-mail.use-case';
 import { SendInvitationMail } from './send-invitation-mail.use-case';
 import { SendSecondFactorMail } from './send-second-factor-mail.use-case';
+import { SendSellerAccessMail } from './send-seller-access-mail.use-case';
 import { RandomPrefixedTokens } from '../../infrastructure/second-factor/second-factor-tokens';
 import { SignInSeller } from './sign-in-seller.use-case';
 
@@ -135,6 +136,8 @@ function setUp() {
     tokens: new RandomSessionTokens(),
     memberships: fakes.membershipRepository,
     sellerAccess: fakes.sellerAccessRepository,
+    decisions: fakes.decisionRepository,
+    grants: fakes.grantReader,
   };
   const mailDeps = {
     unitOfWork,
@@ -168,6 +171,12 @@ function setUp() {
         clock,
       }),
       new SendSecondFactorMail(gate, mailDeps),
+      new SendSellerAccessMail(gate, {
+        ...mailDeps,
+        decisions: fakes.decisionRepository,
+        memberships: fakes.membershipRepository,
+        grants: fakes.grantReader,
+      }),
     ),
     seed: new SeedRoles(gate, {
       unitOfWork,
@@ -200,6 +209,9 @@ function setUp() {
       unitOfWork,
       accounts: fakes.accountRepository,
       sellerAccess: fakes.sellerAccessRepository,
+      decisions: fakes.decisionRepository,
+      grants: fakes.grantReader,
+      policy,
     }),
     membershipOf: new MembershipOf(gate, {
       unitOfWork,
@@ -846,6 +858,9 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
           accountCreatedAt: START.toString(),
           emailConfirmedAt: START.toString(),
           reason: null,
+          // Slice 9: no decision yet, and the Market sets no re-apply limit.
+          decidedAt: null,
+          reapplyLimitReached: false,
         },
       });
     });
@@ -1124,6 +1139,11 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
       const s = setUp();
 
       expect(s.subscriptions.map((x) => [x.name, x.event.type])).toEqual([
+        // Slice 9: the result mails of the decisions go to the Seller Owner, not to reviewers.
+        ['identity.seller-approved-mail', 'identity.seller-access-approved.v1'],
+        ['identity.seller-rejected-mail', 'identity.seller-access-rejected.v1'],
+        ['identity.seller-suspended-mail', 'identity.seller-access-suspended.v1'],
+        ['identity.seller-reinstated-mail', 'identity.seller-access-reinstated.v1'],
         ['identity.link-mail', 'identity.one-time-link-requested.v1'],
         ['identity.existing-account-mail', 'identity.sign-up-repeated.v1'],
         ['identity.welcome-mail', 'identity.seller-registered.v1'],

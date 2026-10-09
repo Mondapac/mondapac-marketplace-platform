@@ -5,6 +5,11 @@
     "reason": "Admin invitation acceptance with the mailed token: the invitee has no session yet."
   },
   {
+    "name": "identity.accept-seller-invitation",
+    "rule": "anonymous",
+    "reason": "Seller Owner invitation acceptance with the mailed token (slice 9): the invitee has no account or session yet. For Hassan's review."
+  },
+  {
     "name": "identity.complete-admin-sign-in",
     "rule": "anonymous",
     "reason": "Second step of admin sign-in with the pending sign-in ticket: no session exists until it passes."

@@ -104,7 +104,8 @@ export class SellerSessionController {
     type: ApiErrorBody,
     description:
       'email-verification-required; account.disabled; membership.none; ' +
-      'seller-access.suspended; request.csrf (a refused origin)',
+      'seller-access.suspended (with details.reason for the Seller Owner only); request.csrf ' +
+      '(a refused origin)',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
@@ -212,8 +213,8 @@ export class SellerSessionController {
     summary: "The seller's access status (the status page)",
     description:
       'The state, when it last changed, when the account was created and its email confirmed. ' +
-      'A seller waiting for approval, or rejected, may read it. The reason of a rejection is ' +
-      'null until the decisions of identity slice 9.',
+      'A seller waiting for approval, or rejected, may read it. The reason of the rejection ' +
+      'is returned to the Seller Owner only, with the instant of the latest decision.',
   })
   @ApiOkResponse({ type: SellerStatusBody })
   @ApiUnauthorizedResponse({
