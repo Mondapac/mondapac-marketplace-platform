@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpException,
   Logger,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -14,12 +16,14 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTooManyRequestsResponse,
   ApiTags,
@@ -42,6 +46,12 @@ import {
   type SellerAccessDecisionFailure,
 } from '../application/use-cases/approve-seller-access.use-case';
 import { InviteSeller } from '../application/use-cases/invite-seller.use-case';
+import {
+  ListSellerAccounts,
+  MAX_SELLER_LIST_PAGE,
+  SELLER_LIST_FILTERS,
+  type SellerListPage,
+} from '../application/use-cases/list-seller-accounts.use-case';
 import { RejectSellerAccess } from '../application/use-cases/reject-seller-access.use-case';
 import { ReinstateSellerAccess } from '../application/use-cases/reinstate-seller-access.use-case';
 import {
@@ -56,6 +66,9 @@ import {
   AdminSellerAccessDecided,
   AdminSellerInvitationIssued,
   AdminSellerInviteRequest,
+  AdminSellerListInvitationRowView,
+  AdminSellerListPageView,
+  AdminSellerListSellerRowView,
   AdminSellerReasonRequest,
 } from './admin-sellers.dto';
 import { AdminEmptyRequest, AdminInvitationChanged } from './admin-team.dto';
@@ -123,6 +136,60 @@ function decided(value: SellerAccessDecided): AdminSellerAccessDecided {
   };
 }
 
+/** The default page of the seller list. */
+const DEFAULT_SELLER_PAGE = 50;
+const SELLER_LIST_QUERY_KEYS: ReadonlySet<string> = new Set(['after', 'limit', 'state', 'email']);
+
+/**
+ * The seller list's query: only `after`, `limit`, `state` and `email`, each at most once (a
+ * repeated parameter is an array and refused); `limit` digits only. The use case checks the
+ * range, the id, the state and the address. A refused field is named, never its value.
+ */
+function sellerListQuery(
+  query: Record<string, unknown>,
+):
+  | { after: string | null; limit: number; state: string | null; email: string | null }
+  | HttpException {
+  const fields: { path: string; code: string }[] = [];
+  for (const key of Object.keys(query).sort().slice(0, 10)) {
+    if (!SELLER_LIST_QUERY_KEYS.has(key)) fields.push({ path: key.slice(0, 64), code: 'unknown' });
+  }
+  const { after, limit, state, email } = query;
+  for (const [path, value] of [
+    ['after', after],
+    ['state', state],
+    ['email', email],
+  ] as const) {
+    if (value !== undefined && typeof value !== 'string') fields.push({ path, code: 'format' });
+  }
+  if (limit !== undefined && (typeof limit !== 'string' || !/^[0-9]{1,4}$/.test(limit))) {
+    fields.push({ path: 'limit', code: 'format' });
+  }
+  if (fields.length > 0) return refusal({ code: 'validation.failed', fields });
+  return {
+    after: typeof after === 'string' ? after : null,
+    limit: typeof limit === 'string' ? Number(limit) : DEFAULT_SELLER_PAGE,
+    state: typeof state === 'string' ? state : null,
+    email: typeof email === 'string' ? email : null,
+  };
+}
+
+/** The page as JSON: instants as ISO strings; nothing else is added or dropped. */
+function sellerPageView(page: SellerListPage): AdminSellerListPageView {
+  return {
+    items: page.items.map((row) =>
+      row.type === 'seller'
+        ? { ...row, stateChangedAt: row.stateChangedAt.toString() }
+        : {
+            ...row,
+            createdAt: row.createdAt.toString(),
+            expiresAt: row.expiresAt === null ? null : row.expiresAt.toString(),
+          },
+    ),
+    next: page.next,
+  };
+}
+
 const SELLER_PARAM = { name: 'sellerId', description: 'The seller. A UUID v7.' };
 const INVITATION_PARAM = { name: 'invitationId', description: 'The invitation. A UUID v7.' };
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -143,6 +210,7 @@ const DECISION_CONFLICT =
  * `sellers` design R-1); suspend, reinstate and the invitations stay.
  */
 @ApiTags('identity')
+@ApiExtraModels(AdminSellerListSellerRowView, AdminSellerListInvitationRowView)
 @RoutePopulation('admin')
 @Controller('identity/admin')
 export class AdminSellersController {
@@ -156,7 +224,59 @@ export class AdminSellersController {
     private readonly inviteSeller: InviteSeller,
     private readonly resendSellerInvitation: ResendSellerInvitation,
     private readonly revokeSellerInvitation: RevokeSellerInvitation,
+    private readonly listSellerAccounts: ListSellerAccounts,
   ) {}
+
+  @Get('sellers')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'List the sellers of the Market and the open seller invitations',
+    description:
+      'Needs identity.seller-access.view. Sellers whose owner confirmed the email, with the ' +
+      "owner's name and address, and the open seller-owner invitations, merged by id (creation " +
+      'order), paged with `after` and `limit`. `state` filters: pending, approved, rejected, ' +
+      'suspended, or invited (the invitations only); absent lists both. `email` finds an exact ' +
+      'address (the owner or the invitee), never a part of one. Each row carries, per action, ' +
+      '`allowed` and the code the command would answer now (access.denied for an action whose ' +
+      'permission the actor lacks). Hints only: every command checks again. Never a reason. Not ' +
+      'cached.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: `Rows per page, 1 to ${MAX_SELLER_LIST_PAGE}; default ${DEFAULT_SELLER_PAGE}.`,
+  })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    description: '`next` of the previous page (a UUID v7); absent for the first page.',
+  })
+  @ApiQuery({ name: 'state', required: false, enum: SELLER_LIST_FILTERS })
+  @ApiQuery({
+    name: 'email',
+    required: false,
+    description: 'An exact address; matched trimmed and case-insensitively. Never logged.',
+  })
+  @ApiOkResponse({ type: AdminSellerListPageView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  async sellers(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AdminSellerListPageView> {
+    const input = sellerListQuery(query);
+    let outcome: AdminSellerListPageView | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.listSellerAccounts.execute(context, input);
+      outcome = result.ok ? sellerPageView(result.value) : refusal(result.error);
+    }
+    // Owners' and invitees' names and addresses: never stored by a cache.
+    response.setHeader('Cache-Control', 'no-store');
+    return this.settle('identity.admin-list-sellers', context, outcome);
+  }
 
   @Post('sellers/:sellerId/approve')
   @HttpCode(200)

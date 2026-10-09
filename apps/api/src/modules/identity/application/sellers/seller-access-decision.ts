@@ -11,10 +11,11 @@ import {
   SellerAccessReinstatedAudit,
   SellerAccessSuspendedAudit,
 } from '../../domain/audit';
-import type {
+import {
   SellerAccess,
-  SellerAccessStateCode,
-  SellerAccessWrongState,
+  type SellerAccessDecisionVerb,
+  type SellerAccessStateCode,
+  type SellerAccessWrongState,
 } from '../../domain/seller-access';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccessDecisionRepository } from '../ports/access-decision.repository';
@@ -28,7 +29,33 @@ import { readActingGrants, type GrantSubject } from '../roles/granting';
 import { readSellerPeople } from './seller-owner';
 
 /** The four decisions an admin takes on a seller's access (identity design 3.3). */
-export type SellerAccessVerb = 'approve' | 'reject' | 'suspend' | 'reinstate';
+export type SellerAccessVerb = SellerAccessDecisionVerb;
+
+/** Why a decision on a found seller is refused before its reason is read (3.3). */
+export type SellerAccessVerdictRefusal =
+  SellerAccessWrongState | { readonly code: 'seller-access.owner-unverified' };
+
+/**
+ * The checks of a decision on a registered seller that do not depend on its input (identity
+ * design 3.3; slices 9 and 9b): approve on a `pending` seller needs an owner with a verified
+ * email (`seller-access.owner-unverified`, checked before the state, so a seller in another
+ * state answers wrong-state), then the state the decision starts from (the domain's table). The
+ * command runs it after its key and before the transition; the admin seller list's hints run it
+ * after the same key, so a hint and the command cannot differ. The reason is not part of it.
+ */
+export function sellerAccessVerdict(
+  verb: SellerAccessVerb,
+  state: SellerAccessStateCode,
+  ownerVerified: boolean,
+): Result<void, SellerAccessVerdictRefusal> {
+  if (verb === 'approve' && state === 'pending' && !ownerVerified) {
+    return err({ code: 'seller-access.owner-unverified' });
+  }
+  if (!SellerAccess.decisionAllowedFrom(state, verb)) {
+    return err({ code: 'seller-access.wrong-state' });
+  }
+  return ok(undefined);
+}
 
 /** The seller decided on and, for reject and suspend, the reason; `basisId` per 8.4. */
 export interface SellerAccessDecisionInput {
@@ -133,13 +160,14 @@ export async function decideSellerAccess(
       if (access === null || !access.isRegistered) return err({ code: 'seller.unknown' });
       const before = access.state.state;
 
-      if (verb === 'approve') {
+      let ownerVerified = true;
+      if (verb === 'approve' && before === 'pending') {
         const { owner } = await readSellerPeople(deps, market, sellerId);
-        // The guard is checked after the state, so a seller in another state answers wrong-state.
-        if (before === 'pending' && (owner === null || !owner.isEmailVerified)) {
-          return err({ code: 'seller-access.owner-unverified' });
-        }
+        ownerVerified = owner !== null && owner.isEmailVerified;
       }
+      // The input-free checks, shared with the admin seller list's hints (slice 9b).
+      const verdict = sellerAccessVerdict(verb, before, ownerVerified);
+      if (!verdict.ok) return verdict;
       const decided = transition(access, verb, {
         decisionId: deps.ids.next<'AccessDecision'>(),
         decidedBy: actor.accountId,

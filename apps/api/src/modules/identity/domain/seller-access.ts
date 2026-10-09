@@ -47,6 +47,22 @@ export class SellerAccessInvariantError extends Error {
 export type SellerAccessWrongState = { readonly code: 'seller-access.wrong-state' };
 const WRONG_STATE: SellerAccessWrongState = Object.freeze({ code: 'seller-access.wrong-state' });
 
+/** The four decisions an admin takes on a seller's access (identity design 3.3). */
+export type SellerAccessDecisionVerb = 'approve' | 'reject' | 'suspend' | 'reinstate';
+
+/**
+ * The one state each decision starts from (3.3): approve and reject a `pending` seller, suspend
+ * an `approved` one, reinstate a `suspended` one. The transitions and the admin seller list's
+ * hints (slice 9b) read this table only.
+ */
+const DECISION_FROM: Readonly<Record<SellerAccessDecisionVerb, SellerAccessStateCode>> =
+  Object.freeze({
+    approve: 'pending',
+    reject: 'pending',
+    suspend: 'approved',
+    reinstate: 'suspended',
+  });
+
 /** A rejected seller that used up its re-applications (3.3: the "final state"). */
 export type SellerAccessReapplyLimit = { readonly code: 'seller-access.reapply-limit' };
 
@@ -221,7 +237,7 @@ export class SellerAccess {
    * with a verified email) needs other aggregates and belongs to the use case.
    */
   approve(input: BasedDecisionInput): Result<AccessDecision, SellerAccessWrongState> {
-    if (this.#state.state !== 'pending') return err(WRONG_STATE);
+    if (!SellerAccess.decisionAllowedFrom(this.#state.state, 'approve')) return err(WRONG_STATE);
     const decision = this.decision('approved', null, input.basisId, input);
     this.move('approved', input.now, 0);
     this.#events.push(
@@ -243,7 +259,7 @@ export class SellerAccess {
   reject(
     input: BasedDecisionInput & { readonly reason: unknown },
   ): Result<AccessDecision, SellerAccessWrongState | AccessReasonInvalid> {
-    if (this.#state.state !== 'pending') return err(WRONG_STATE);
+    if (!SellerAccess.decisionAllowedFrom(this.#state.state, 'reject')) return err(WRONG_STATE);
     const reason = parseAccessReason(input.reason);
     if (!reason.ok) return reason;
     const decision = this.decision('rejected', reason.value, input.basisId, input);
@@ -267,7 +283,7 @@ export class SellerAccess {
   suspend(
     input: DecisionInput & { readonly reason: unknown },
   ): Result<AccessDecision, SellerAccessWrongState | AccessReasonInvalid> {
-    if (this.#state.state !== 'approved') return err(WRONG_STATE);
+    if (!SellerAccess.decisionAllowedFrom(this.#state.state, 'suspend')) return err(WRONG_STATE);
     const reason = parseAccessReason(input.reason);
     if (!reason.ok) return reason;
     const decision = this.decision('suspended', reason.value, null, input);
@@ -285,7 +301,9 @@ export class SellerAccess {
 
   /** `suspended` → `approved` (3.3; AC 14). No reason (data design 3.11). */
   reinstate(input: DecisionInput): Result<AccessDecision, SellerAccessWrongState> {
-    if (this.#state.state !== 'suspended') return err(WRONG_STATE);
+    if (!SellerAccess.decisionAllowedFrom(this.#state.state, 'reinstate')) {
+      return err(WRONG_STATE);
+    }
     const decision = this.decision('reinstated', null, null, input);
     this.move('approved', input.now, this.#state.reapplyCount);
     this.#events.push(
@@ -306,6 +324,31 @@ export class SellerAccess {
   canReapply(limit: number): boolean {
     SellerAccess.checkLimit(limit);
     return this.#state.state === 'rejected' && this.#state.reapplyCount < limit;
+  }
+
+  /**
+   * Whether a seller in `state` with `reapplyCount` re-applications has reached `limit` (3.3):
+   * rejected, and no re-application left, so the panel shows "Not approved" rather than "Changes
+   * needed" (Jafar 6). The status read and the admin seller list (slice 9b) both answer it.
+   */
+  static reapplyLimitReached(
+    state: SellerAccessStateCode,
+    reapplyCount: number,
+    limit: number,
+  ): boolean {
+    SellerAccess.checkLimit(limit);
+    return state === 'rejected' && reapplyCount >= limit;
+  }
+
+  /**
+   * Whether `verb` may be taken on a seller in `state` (3.3): the check every transition makes
+   * first, and the state part of the admin seller list's hints (slice 9b), so they cannot differ.
+   */
+  static decisionAllowedFrom(
+    state: SellerAccessStateCode,
+    verb: SellerAccessDecisionVerb,
+  ): boolean {
+    return DECISION_FROM[verb] === state;
   }
 
   /**
