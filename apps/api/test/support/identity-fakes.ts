@@ -731,6 +731,61 @@ export class IdentityFakes {
           .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
           .map((state) => Role.restore(state)),
       ),
+    sellerRoles: (market, sellerId) =>
+      Promise.resolve(
+        [...this.roles.values()]
+          .filter(
+            (r) =>
+              r.marketId === market.marketId &&
+              r.scope === 'seller' &&
+              (r.sellerId === null || r.sellerId === sellerId),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+          .map((state) => Role.restore(state)),
+      ),
+    countCustom: (market, scope, sellerId) =>
+      Promise.resolve(
+        [...this.roles.values()].filter(
+          (r) =>
+            r.marketId === market.marketId &&
+            r.scope === scope &&
+            r.kind === 'custom' &&
+            r.sellerId === sellerId,
+        ).length,
+      ),
+    nameTaken: (market, scope, sellerId, nameNormalized, exceptRoleId) =>
+      Promise.resolve(
+        [...this.roles.values()].some(
+          (r) =>
+            r.marketId === market.marketId &&
+            r.scope === scope &&
+            r.kind === 'custom' &&
+            r.sellerId === sellerId &&
+            r.id !== exceptRoleId &&
+            Role.restore(r).nameNormalized === nameNormalized,
+        ),
+      ),
+    addCustom: (_market, role) => {
+      this.roles.set(role.state.id, role.state);
+      return Promise.resolve();
+    },
+    saveCustom: (_market, edit) => {
+      const state = edit.role.state;
+      const stored = this.roles.get(state.id);
+      if (stored === undefined || stored.version !== edit.role.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('role', state.id));
+      }
+      this.roles.set(state.id, state);
+      return Promise.resolve();
+    },
+    deleteCustom: (_market, role) => {
+      const stored = this.roles.get(role.state.id);
+      if (stored === undefined || stored.version !== role.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('role', role.state.id));
+      }
+      this.roles.delete(role.state.id);
+      return Promise.resolve();
+    },
     findBySeedCode: (market, scope, seedCode) => {
       const state = [...this.roles.values()].find(
         (r) => r.marketId === market.marketId && r.scope === scope && r.seedCode === seedCode,
@@ -786,6 +841,14 @@ export class IdentityFakes {
   };
 
   readonly assignmentRepository: RoleAssignmentRepository = {
+    heldRoles: (market, roleIds) =>
+      Promise.resolve(
+        new Set(
+          [...this.assignments.values()]
+            .filter((a) => a.marketId === market.marketId && roleIds.includes(a.roleId))
+            .map((a) => a.roleId),
+        ),
+      ),
     findByAccount: (market, accountId) => {
       const state = [...this.assignments.values()].find(
         (a) => a.marketId === market.marketId && a.accountId === accountId,

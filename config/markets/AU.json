@@ -119,6 +119,7 @@
       }
     },
     "sellerReapplyLimit": 3,
+    "customRoleLimits": { "seller": 20, "platform": 50 },
     "unverifiedAccountRetentionDays": 7,
     "mail": {
       "fromAddress": "no-reply@au.mondapac.test",

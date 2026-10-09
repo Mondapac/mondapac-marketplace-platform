@@ -73,7 +73,9 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   `sellerReapplyLimit` (1 to 10; 3 for AU, identity design 3.3: a rejected seller may re-apply
   while fewer than this many re-applications were made since its last approval; a Market
   without it answers `access.unavailable` to re-apply and reports `reapplyLimitReached` as
-  null). Later identity slices add their values here.
+  null). Slice 10 adds the optional `customRoleLimits` (`{ "seller": 1 to 200, "platform": 1 to 500 }`, both
+  required when present; 20 and 50 for AU: the custom roles a seller, and the Market's platform
+  scope, may hold; a Market without it answers `access.unavailable` to creating a role). Later identity slices add their values here.
 - `allowedOrigins`: one list per route population, `{ "admin": [...], "seller": [...],
   "customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
   3). Each list holds at most 20 exact browser origins (`scheme://host[:port]`, no path, none

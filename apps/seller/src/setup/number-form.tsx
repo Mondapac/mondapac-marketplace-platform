@@ -9,6 +9,7 @@ import type { FormDescriptors, IdentifierSaved, MyFile, RegisterResult } from '.
 import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
+import { useWithdrawGuard } from './use-withdraw-guard.tsx';
 
 const RESULT_KEY: Record<RegisterResult, { tone: 'success' | 'critical' | 'info'; key: string }> = {
   matched: { tone: 'success', key: 'sellers.number.status.matched' },
@@ -34,10 +35,16 @@ export function NumberForm({
   const [registerResult, setRegisterResult] = useState<RegisterResult | null>(file.registerResult);
   const [savedOnce, setSavedOnce] = useState(file.identifier !== null);
   const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  const guard = useWithdrawGuard(file.status === 'awaiting-review');
   useFocusFirstInvalid(formRef, focusKeys);
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending) return;
+    void guard.run(value !== (file.identifier?.display ?? ''), persist);
+  }
+
+  async function persist() {
     const outcome = await save<IdentifierSaved>('sellers/my-file/identifier', {
       identifier: value.trim() === '' ? null : value,
     });
@@ -63,6 +70,8 @@ export function NumberForm({
       noValidate
       className="flex flex-col gap-5"
     >
+      {guard.banner}
+      {guard.dialog}
       {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card>
         <TextField

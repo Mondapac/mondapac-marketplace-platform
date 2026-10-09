@@ -158,6 +158,39 @@
     }
   },
   {
+    "type": "identity.role-created.v1",
+    "aggregateType": "role",
+    "fields": {
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)",
+      "addedKeys": "listOf(permissionKey)",
+      "removedKeys": "listOf(permissionKey)"
+    }
+  },
+  {
+    "type": "identity.role-deleted.v1",
+    "aggregateType": "role",
+    "fields": {
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)",
+      "addedKeys": "listOf(permissionKey)",
+      "removedKeys": "listOf(permissionKey)"
+    }
+  },
+  {
+    "type": "identity.role-updated.v1",
+    "aggregateType": "role",
+    "fields": {
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)",
+      "addedKeys": "listOf(permissionKey)",
+      "removedKeys": "listOf(permissionKey)"
+    }
+  },
+  {
     "type": "identity.second-factor-changed.v1",
     "aggregateType": "second-factor",
     "fields": {

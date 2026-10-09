@@ -6,6 +6,7 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { TransactionConflictError } from '../../src/platform/unit-of-work/errors';
 import type { StockRepository } from '../../src/modules/inventory/application/ports/stock.repository';
 import type {
   OfferSellUnitsSource,
@@ -141,18 +142,37 @@ describe.each(TEST_MARKETS)('inventory.retire-sell-units in market %s (database)
   });
   const system = (marketCode = code): CallContext =>
     testCallContext(marketOf(marketCode), 'system');
+  /**
+   * The retirement scans `inventory.stock_items` by Variant or Offer in a SERIALIZABLE unit, and
+   * the other inventory specs insert into that table in parallel on this one database, so the unit
+   * can meet 40001 more often than the platform's three attempts absorb. Only that conflict is
+   * run again here; any other error, and the assertions, are unchanged.
+   */
+  async function onConflictAgain<T>(work: () => Promise<T>, attempts = 6): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await work();
+      } catch (error) {
+        if (!(error instanceof TransactionConflictError) || attempt >= attempts) throw error;
+      }
+    }
+  }
   const retireOffer = (offerId: Id<'Offer'>, marketCode = code, version = 3) =>
-    retire.execute(system(marketCode), {
-      delivery: delivery(),
-      target: { scope: 'offer', offerId },
-      sourceAggregateVersion: version,
-    } satisfies RetireSellUnitsInput);
+    onConflictAgain(() =>
+      retire.execute(system(marketCode), {
+        delivery: delivery(),
+        target: { scope: 'offer', offerId },
+        sourceAggregateVersion: version,
+      } satisfies RetireSellUnitsInput),
+    );
   const retireVariant = (variantId: Id<'Variant'>, marketCode = code) =>
-    retire.execute(system(marketCode), {
-      delivery: delivery(),
-      target: { scope: 'variant', variantId },
-      sourceAggregateVersion: 2,
-    } satisfies RetireSellUnitsInput);
+    onConflictAgain(() =>
+      retire.execute(system(marketCode), {
+        delivery: delivery(),
+        target: { scope: 'variant', variantId },
+        sourceAggregateVersion: 2,
+      } satisfies RetireSellUnitsInput),
+    );
 
   /** A seller with an inventory (one Default source) and its context, in `marketCode`. */
   async function newSeller(marketCode = code) {
@@ -485,17 +505,19 @@ describe.each(TEST_MARKETS)('inventory.retire-sell-units in market %s (database)
         [code, market.tenantId, variantId, seller.sourceId, seller.sellerId, itemIds, offerIds],
       );
 
-      const result = await runSerializable(db.unitOfWork, market, async () => {
-        const found = await stock.activeItemIds(market, { scope: 'variant', variantId });
-        const locked = await stock.lockItems(market, found);
-        const first = await stock.retireItems(market, found, T0);
-        const second = await stock.retireItems(
-          market,
-          found,
-          Temporal.Instant.from('2027-01-01T00:00:00Z'),
-        );
-        return ok({ found: found.length, locked: locked.length, first, second });
-      });
+      const result = await onConflictAgain(() =>
+        runSerializable(db.unitOfWork, market, async () => {
+          const found = await stock.activeItemIds(market, { scope: 'variant', variantId });
+          const locked = await stock.lockItems(market, found);
+          const first = await stock.retireItems(market, found, T0);
+          const second = await stock.retireItems(
+            market,
+            found,
+            Temporal.Instant.from('2027-01-01T00:00:00Z'),
+          );
+          return ok({ found: found.length, locked: locked.length, first, second });
+        }),
+      );
 
       expect(result).toEqual({
         ok: true,

@@ -71,6 +71,7 @@ describe('admin seller list over HTTP (integration, slice 9b)', () => {
       seedCode: null,
       seedVersion: null,
       sellerId: null,
+      name: 'Custom role',
       permissionKeys: ['identity.admin-account.view'],
       version: 1,
       createdAt: START,

@@ -68,6 +68,62 @@ export const RoleSeedApplied = defineAuditAction({
 });
 
 /**
+ * The most keys a custom role may hold (slice 10): the cap of a seeded role
+ * ({@link MAX_SEED_KEYS_PER_ROW}), so every row below lists at most this many keys, and the
+ * role editor also keeps them within the same byte budget (`seedKeysCost`), so the worst row fits
+ * the writer's 4 KB per side (PA W4). An edit adds at most this many and removes at most this
+ * many: "added" is a subset of the new keys, "removed" of the old ones, both within the cap.
+ */
+export const MAX_CUSTOM_ROLE_KEYS = MAX_SEED_KEYS_PER_ROW;
+
+/**
+ * A custom role was created in the role editor (identity design 5.3 `.role.create`, 5.4 R5;
+ * slice 10). Target: the role. The actor is the signed-in admin or Seller Owner. Ids, scope and
+ * permission keys: never the role's name (R5, free personal text). `sellerId` is set only for a
+ * seller-scope role.
+ */
+export const RoleCreatedAudit = defineAuditAction({
+  action: 'identity.role.created',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  after: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    sellerId: auditField.optional(auditField.id()),
+    addedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+  },
+});
+
+/**
+ * A custom role was edited (see {@link RoleCreatedAudit}): the keys put in and taken out, and
+ * whether the name changed (the name itself is never in a row). Written only when something
+ * changed.
+ */
+export const RoleUpdatedAudit = defineAuditAction({
+  action: 'identity.role.updated',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  after: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    sellerId: auditField.optional(auditField.id()),
+    addedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+    renamed: auditField.boolean(),
+  },
+});
+
+/** A custom role nobody held was deleted (see {@link RoleCreatedAudit}): the keys it held. */
+export const RoleDeletedAudit = defineAuditAction({
+  action: 'identity.role.deleted',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  before: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    sellerId: auditField.optional(auditField.id()),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+  },
+});
+
+/**
  * The founding rows of a self-registered seller (identity design 5.5; PA 5 row 2, Q1 decided
  * by Ali 2026-10-08): written when the Seller Owner verifies the email, the moment the
  * membership and the assignment take effect, in the unit that records `seller-registered`.
@@ -413,6 +469,9 @@ export const SellerAccessReappliedAudit = defineAuditAction({
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
   RoleSeedApplied,
+  RoleCreatedAudit,
+  RoleUpdatedAudit,
+  RoleDeletedAudit,
   SellerAccessFounded,
   SellerMemberAdded,
   AccountRoleAssigned,

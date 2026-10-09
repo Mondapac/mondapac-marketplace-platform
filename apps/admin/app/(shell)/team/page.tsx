@@ -6,6 +6,7 @@ import { requireSession } from '../../../src/server/session.ts';
 import { InviteAdminButton } from '../../../src/team/invite-admin-button.tsx';
 import { NoticeProvider } from '../../../src/team/notice.tsx';
 import { TeamTable } from '../../../src/team/team-table.tsx';
+import { TeamTabs, tabLabels } from '../../../src/team/team-tabs.tsx';
 import type { PlatformRole, TeamPage } from '../../../src/team/types.ts';
 
 const VIEW_PERMISSION = 'identity.admin-account.view';
@@ -68,6 +69,7 @@ export default async function TeamPageRoute({
   return (
     <AdminShell session={gate.session} activeId="team" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <TeamTabs active="admins" labels={keys.has(ROLES_PERMISSION) ? tabLabels(t) : null} />
       {result.kind === 'ok' ? (
         <>
           <NoticeProvider>
