@@ -221,6 +221,39 @@ export const AccountRoleChanged = defineEvent({
 });
 
 /**
+ * A custom role was created, edited or deleted in the role editor (identity design 8.2, 5.4 R5;
+ * slice 10). Ids, scope and permission keys only: the role's name is personal free text and has
+ * no path into an event. `sellerId` is null in platform scope; `addedKeys` and `removedKeys` are
+ * the keys the change put in and took out (a created role adds all its keys, a deleted one
+ * removes all).
+ */
+const ROLE_CHANGE_PAYLOAD = {
+  roleId: eventField.id(),
+  scope: eventField.enumOf(ROLE_ASSIGNMENT_SCOPES),
+  sellerId: eventField.optional(eventField.id()),
+  addedKeys: eventField.listOf(eventField.permissionKey()),
+  removedKeys: eventField.listOf(eventField.permissionKey()),
+} as const;
+
+export const RoleCreated = defineEvent({
+  type: 'identity.role-created.v1',
+  aggregateType: 'role',
+  payload: ROLE_CHANGE_PAYLOAD,
+});
+
+export const RoleUpdated = defineEvent({
+  type: 'identity.role-updated.v1',
+  aggregateType: 'role',
+  payload: ROLE_CHANGE_PAYLOAD,
+});
+
+export const RoleDeleted = defineEvent({
+  type: 'identity.role-deleted.v1',
+  aggregateType: 'role',
+  payload: ROLE_CHANGE_PAYLOAD,
+});
+
+/**
  * A pending invitation was revoked by the inviter's side (identity design 3.4, 8.2; slice 8b), or
  * replaced by a new issue for the same address (item G). Ids and codes only.
  */
@@ -319,6 +352,9 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   AccountDisabled,
   AccountEnabled,
   AccountRoleChanged,
+  RoleCreated,
+  RoleUpdated,
+  RoleDeleted,
   InvitationRevoked,
   SellerAccessApproved,
   SellerAccessRejected,

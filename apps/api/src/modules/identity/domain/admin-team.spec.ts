@@ -171,6 +171,7 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       seedCode: null,
       seedVersion: null,
       sellerId: SELLER_ID,
+      name: 'Custom role',
       permissionKeys: [],
       version: 1,
       createdAt: NOW,

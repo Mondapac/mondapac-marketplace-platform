@@ -1,6 +1,8 @@
 import { parseId, parseMarketId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, Population } from '@mondapac/shared-kernel';
 import {
+  normalizeRoleName,
+  parseRoleName,
   Role,
   RoleAssignment,
   RoleInvariantError,
@@ -50,6 +52,7 @@ describe.each(['AU', 'ZZ'])(
           seedCode: 'seller-owner',
           seedVersion: 1,
           sellerId: null,
+          name: null,
           permissionKeys: [],
           version: 1,
           createdAt: NOW,
@@ -170,6 +173,7 @@ describe.each(['AU', 'ZZ'])(
           seedCode: null,
           seedVersion: null,
           sellerId: id<'Seller'>('01990000-0000-7000-8000-0000000000a1'),
+          name: 'Custom role',
         });
         expect(() => custom.applySeed({ seedVersion: 2, permissionKeys: [] })).toThrow(
           new RoleInvariantError('seed-upgrade'),
@@ -234,6 +238,177 @@ describe.each(['AU', 'ZZ'])(
             now: NOW,
           }),
         ).toThrow(RoleInvariantError);
+      });
+    });
+  },
+);
+
+describe.each(['AU', 'ZZ'])(
+  'the custom role in market %s (identity design 2.1, 5.4; slice 10)',
+  (code) => {
+    const marketId = market(code);
+    const SELLER = id<'Seller'>('01990000-0000-7000-8000-0000000000a1');
+    const created = (overrides: Partial<Parameters<typeof Role.createCustom>[0]> = {}) =>
+      Role.createCustom({
+        id: ROLE_ID,
+        marketId,
+        scope: 'platform',
+        sellerId: null,
+        name: 'Night shift',
+        permissionKeys: ['identity.seller-access.view', 'identity.customer-account.view'],
+        now: NOW,
+        ...overrides,
+      });
+    const declared = () => true;
+
+    it('is created with a name, sorted keys, version 1 and a created event without the name', () => {
+      const role = created();
+
+      expect(role.state).toMatchObject({
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        name: 'Night shift',
+        version: 1,
+        permissionKeys: ['identity.customer-account.view', 'identity.seller-access.view'],
+      });
+      expect(role.nameNormalized).toBe('night shift');
+      expect(role.persistedVersion).toBeNull();
+      expect(role.pendingEvents).toHaveLength(1);
+      expect(role.pendingEvents[0]).toMatchObject({
+        type: 'identity.role-created.v1',
+        payload: {
+          scope: 'platform',
+          sellerId: null,
+          addedKeys: ['identity.customer-account.view', 'identity.seller-access.view'],
+          removedKeys: [],
+        },
+      });
+      expect(JSON.stringify(role.pendingEvents)).not.toContain('Night');
+    });
+
+    it('keeps the seller of a seller-scope role and refuses a seller on a platform role (R9)', () => {
+      expect(created({ scope: 'seller', sellerId: SELLER }).state.sellerId).toBe(SELLER);
+      expect(() => created({ sellerId: SELLER })).toThrow(new RoleInvariantError('seller'));
+      expect(() => created({ scope: 'seller', sellerId: null })).toThrow(
+        new RoleInvariantError('seller'),
+      );
+    });
+
+    it('refuses a malformed, repeated name or key, and a name on a seeded role', () => {
+      expect(() => created({ name: '' })).toThrow(new RoleInvariantError('name'));
+      expect(() => created({ name: ' padded ' })).toThrow(new RoleInvariantError('name'));
+      expect(() => created({ permissionKeys: ['not a key'] })).toThrow(
+        new RoleInvariantError('keys'),
+      );
+      expect(() =>
+        created({ permissionKeys: ['identity.seller-access.view', 'identity.seller-access.view'] }),
+      ).toThrow(new RoleInvariantError('keys'));
+      const seeded = Role.seedDefault({
+        id: ROLE_ID,
+        marketId,
+        scope: 'platform',
+        seedCode: 'viewer',
+        seedVersion: 1,
+        permissionKeys: [],
+        now: NOW,
+      });
+      expect(() => Role.restore({ ...seeded.state, name: 'Viewer' })).toThrow(
+        new RoleInvariantError('name'),
+      );
+    });
+
+    it('is edited whole: name and keys replaced, version up, added and removed keys named', () => {
+      const stored = Role.restore({ ...created().state, version: 3 });
+
+      const edit = stored.edit({
+        name: 'Day shift',
+        permissionKeys: ['identity.seller-access.view', 'identity.admin-account.view'],
+        isDeclared: declared,
+        now: NOW,
+      });
+
+      expect(edit.addedKeys).toEqual(['identity.admin-account.view']);
+      expect(edit.removedKeys).toEqual(['identity.customer-account.view']);
+      expect(edit.renamed).toBe(true);
+      expect(edit.role.state).toMatchObject({ name: 'Day shift', version: 4 });
+      expect(edit.role.persistedVersion).toBe(3);
+      expect(edit.role.pendingEvents[0]).toMatchObject({
+        type: 'identity.role-updated.v1',
+        aggregateVersion: 4,
+        payload: { addedKeys: ['identity.admin-account.view'] },
+      });
+      expect(stored.state.name).toBe('Night shift');
+    });
+
+    it('lists only keys the registry still declares in an edit, delete and event (R7)', () => {
+      const stored = Role.restore({
+        ...created().state,
+        permissionKeys: ['identity.retired.key', 'identity.seller-access.view'],
+      });
+      const isDeclared = (key: string) => key !== 'identity.retired.key';
+
+      const edit = stored.edit({
+        name: 'Night shift',
+        permissionKeys: ['identity.seller-access.view'],
+        isDeclared,
+        now: NOW,
+      });
+      const removed = stored.remove({ isDeclared, now: NOW });
+
+      expect(edit.removedKeys).toEqual([]);
+      expect(edit.renamed).toBe(false);
+      expect(removed.pendingEvents[0]).toMatchObject({
+        type: 'identity.role-deleted.v1',
+        payload: { removedKeys: ['identity.seller-access.view'], addedKeys: [] },
+      });
+    });
+
+    it('has no edit or delete path for a system or default role (R3, R10)', () => {
+      const system = Role.seedSystem({
+        id: ROLE_ID,
+        marketId,
+        scope: 'platform',
+        seedCode: 'platform-administrator',
+        seedVersion: 1,
+        now: NOW,
+      });
+      expect(() =>
+        system.edit({ name: 'x', permissionKeys: [], isDeclared: declared, now: NOW }),
+      ).toThrow(new RoleInvariantError('read-only'));
+      expect(() => system.remove({ isDeclared: declared, now: NOW })).toThrow(
+        new RoleInvariantError('read-only'),
+      );
+    });
+
+    describe('names', () => {
+      it.each([
+        ['  Caf\u00e9  ', 'Caf\u00e9'],
+        ['Cafe\u0301', 'Caf\u00e9'],
+        ['x'.repeat(80), 'x'.repeat(80)],
+      ])('accepts %j as %j', (raw, name) => {
+        expect(parseRoleName(raw)).toEqual({ ok: true, value: name });
+      });
+
+      it.each([
+        ['', 'length'],
+        ['   ', 'length'],
+        ['x'.repeat(81), 'length'],
+        [42, 'length'],
+        ['a\u0000b', 'characters'],
+        ['a\u0085b', 'characters'],
+        ['a\u202eb', 'characters'],
+        ['a\ud800b', 'characters'],
+      ])('refuses %j (%s)', (raw, rule) => {
+        expect(parseRoleName(raw)).toEqual({
+          ok: false,
+          error: { code: 'role-name.invalid', rule },
+        });
+      });
+
+      it('normalises case and form for the uniqueness check, not for display', () => {
+        expect(normalizeRoleName('CAFE\u0301 Team')).toBe(normalizeRoleName('caf\u00e9 team'));
+        expect(normalizeRoleName('Shift A')).not.toBe(normalizeRoleName('Shift B'));
       });
     });
   },

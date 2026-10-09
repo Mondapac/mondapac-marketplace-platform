@@ -111,6 +111,15 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     return this.markets.get(market.marketId).identity.sellerReapplyLimit ?? null;
   }
 
+  /**
+   * Slice 10 (identity design 2.3): no Market configuration key declares the custom-role limits
+   * yet (the Market-config PR adds `identity.customRoleLimits`), so every Market answers null and
+   * the role editor's create fails closed until it does.
+   */
+  customRoleLimit(): number | null {
+    return null;
+  }
+
   /** `LinkTargets` (identity design 9): the page per population and page, or null. */
   target<P extends Population>(
     market: MarketContext,

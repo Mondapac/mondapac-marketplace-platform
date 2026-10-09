@@ -90,6 +90,14 @@ export interface IdentityMarketPolicy {
    * re-apply fails closed (`access.unavailable`) until a Market configures it.
    */
   sellerReapplyLimit(market: MarketContext): number | null;
+
+  /**
+   * Slice 10 (identity design 2.3): the most custom roles one owner may hold in a scope: per
+   * seller in seller scope (proposal: 20), per Market in platform scope (proposal: 50), or null
+   * when the Market configures none, so the role editor's create fails closed
+   * (`access.unavailable`). No Market configuration key exists yet (a Market-config PR adds it).
+   */
+  customRoleLimit(market: MarketContext, scope: 'platform' | 'seller'): number | null;
 }
 
 /** The `From` of a Market's mail. */

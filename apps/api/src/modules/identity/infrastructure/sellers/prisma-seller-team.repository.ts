@@ -10,6 +10,7 @@ import type {
 import {
   Role,
   RoleAssignment,
+  type RoleEdit,
   type RoleKind,
   type RoleScope,
   type SeedUpgrade,
@@ -143,6 +144,7 @@ const ROLE = {
   seedCode: true,
   seedVersion: true,
   sellerId: true,
+  name: true,
   version: true,
   createdAt: true,
 } as const;
@@ -155,6 +157,7 @@ type RoleRow = {
   seedCode: string | null;
   seedVersion: number | null;
   sellerId: string | null;
+  name: string | null;
   version: number;
   createdAt: Date;
 };
@@ -169,6 +172,7 @@ function restoreRole(row: RoleRow, permissionKeys: readonly string[]): Role {
     seedCode: row.seedCode,
     seedVersion: row.seedVersion,
     sellerId: row.sellerId as Id<'Seller'> | null,
+    name: row.name,
     permissionKeys,
     version: row.version,
     createdAt: toInstant(row.createdAt),
@@ -208,20 +212,124 @@ export class PrismaRoleRepository implements RoleRepository {
       select: ROLE,
       orderBy: { id: 'asc' },
     });
-    if (rows.length === 0) return [];
-    // Their stored keys in one read on the primary key's prefix `(market_id, role_id)`.
-    const keys = await this.prisma.tx(market).identityRolePermission.findMany({
-      where: { marketId: market.marketId, roleId: { in: rows.map((row) => row.id) } },
-      select: { roleId: true, permissionKey: true },
-      orderBy: [{ roleId: 'asc' }, { permissionKey: 'asc' }],
+    return this.withKeysOf(market, rows);
+  }
+
+  async sellerRoles(market: MarketContext, sellerId: Id<'Seller'>): Promise<Role[]> {
+    // The shared seller-scope roles (no seller: system and default) and this seller's own custom
+    // roles (`roles_market_id_seller_id_idx`); another seller's role cannot match (R9).
+    const rows = await this.prisma.tx(market).identityRole.findMany({
+      where: {
+        marketId: market.marketId,
+        scope: 'seller',
+        OR: [{ sellerId: null }, { sellerId }],
+      },
+      select: ROLE,
+      orderBy: { id: 'asc' },
     });
-    const byRole = new Map<string, string[]>();
-    for (const key of keys) {
-      const list = byRole.get(key.roleId) ?? [];
-      list.push(key.permissionKey);
-      byRole.set(key.roleId, list);
+    return this.withKeysOf(market, rows);
+  }
+
+  async countCustom(
+    market: MarketContext,
+    scope: RoleScope,
+    sellerId: Id<'Seller'> | null,
+  ): Promise<number> {
+    return this.prisma.tx(market).identityRole.count({
+      where: { marketId: market.marketId, scope, kind: 'custom', sellerId },
+    });
+  }
+
+  async nameTaken(
+    market: MarketContext,
+    scope: RoleScope,
+    sellerId: Id<'Seller'> | null,
+    nameNormalized: string,
+    exceptRoleId?: Id<'Role'>,
+  ): Promise<boolean> {
+    // The partial unique indexes `roles_market_id_seller_id_name_custom_key` and
+    // `roles_market_id_name_platform_custom_key` serve this probe and are the backstop.
+    const row = await this.prisma.tx(market).identityRole.findFirst({
+      where: {
+        marketId: market.marketId,
+        scope,
+        kind: 'custom',
+        sellerId,
+        nameNormalized,
+        ...(exceptRoleId === undefined ? {} : { id: { not: exceptRoleId } }),
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
+  async addCustom(market: MarketContext, role: Role): Promise<void> {
+    const state = role.state;
+    if (state.kind !== 'custom' || state.name === null || state.name === undefined) {
+      throw new Error('addCustom: only a custom role is added here');
     }
-    return rows.map((row) => restoreRole(row, byRole.get(row.id) ?? []));
+    await this.prisma.tx(market).identityRole.create({
+      data: {
+        id: state.id,
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        scope: state.scope,
+        kind: state.kind,
+        seedCode: null,
+        seedVersion: null,
+        name: state.name,
+        nameNormalized: role.nameNormalized,
+        sellerId: state.sellerId,
+        version: state.version,
+        createdAt: toDate(state.createdAt),
+      },
+      select: { id: true },
+    });
+    await this.addKeys(market, state.id, state.permissionKeys);
+  }
+
+  async saveCustom(market: MarketContext, edit: RoleEdit): Promise<void> {
+    const { role } = edit;
+    const state = role.state;
+    const expected = role.persistedVersion;
+    if (expected === null || state.name === null || state.name === undefined) {
+      throw new Error('saveCustom: the role was never stored');
+    }
+    // The version guard first: a concurrent edit makes this one stale before it writes a key.
+    const { count } = await this.prisma.tx(market).identityRole.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: expected, kind: 'custom' },
+      data: { name: state.name, nameNormalized: role.nameNormalized, version: state.version },
+    });
+    if (count !== 1) throw new StaleAggregateError('role', state.id);
+    // Reconcile the key rows to the new set, so a stored key the registry dropped goes too.
+    await this.prisma.tx(market).identityRolePermission.deleteMany({
+      where: {
+        marketId: market.marketId,
+        roleId: state.id,
+        permissionKey: { notIn: [...state.permissionKeys] },
+      },
+    });
+    if (state.permissionKeys.length > 0) {
+      await this.prisma.tx(market).identityRolePermission.createMany({
+        data: state.permissionKeys.map((permissionKey) => ({
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          roleId: state.id,
+          permissionKey,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  async deleteCustom(market: MarketContext, role: Role): Promise<void> {
+    const expected = role.persistedVersion;
+    if (expected === null) throw new Error('deleteCustom: the role was never stored');
+    // The key rows go with it (ON DELETE CASCADE); an assignment would refuse (RESTRICT).
+    const { count } = await this.prisma.tx(market).identityRole.deleteMany({
+      where: { marketId: market.marketId, id: role.state.id, version: expected, kind: 'custom' },
+    });
+    if (count !== 1) throw new StaleAggregateError('role', role.state.id);
   }
 
   async findBySeedCode(
@@ -304,6 +412,23 @@ export class PrismaRoleRepository implements RoleRepository {
     });
   }
 
+  /** The roles of these rows with their stored keys: one read on the primary key's prefix. */
+  private async withKeysOf(market: MarketContext, rows: readonly RoleRow[]): Promise<Role[]> {
+    if (rows.length === 0) return [];
+    const keys = await this.prisma.tx(market).identityRolePermission.findMany({
+      where: { marketId: market.marketId, roleId: { in: rows.map((row) => row.id) } },
+      select: { roleId: true, permissionKey: true },
+      orderBy: [{ roleId: 'asc' }, { permissionKey: 'asc' }],
+    });
+    const byRole = new Map<string, string[]>();
+    for (const key of keys) {
+      const list = byRole.get(key.roleId) ?? [];
+      list.push(key.permissionKey);
+      byRole.set(key.roleId, list);
+    }
+    return rows.map((row) => restoreRole(row, byRole.get(row.id) ?? []));
+  }
+
   private async withKeys(market: MarketContext, row: RoleRow | null): Promise<Role | null> {
     if (row === null) return null;
     const keys = await this.prisma.tx(market).identityRolePermission.findMany({
@@ -348,6 +473,20 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
       assignedAt: toInstant(row.assignedAt),
       version: row.version,
     });
+  }
+
+  async heldRoles(
+    market: MarketContext,
+    roleIds: readonly Id<'Role'>[],
+  ): Promise<ReadonlySet<Id<'Role'>>> {
+    if (roleIds.length === 0) return new Set();
+    // `(market_id, role_id)`: the role foreign key's index; distinct roles that have a holder.
+    const rows = await this.prisma.tx(market).identityRoleAssignment.findMany({
+      where: { marketId: market.marketId, roleId: { in: [...roleIds] } },
+      select: { roleId: true },
+      distinct: ['roleId'],
+    });
+    return new Set(rows.map((row) => row.roleId as Id<'Role'>));
   }
 
   async hasActiveHolder(market: MarketContext, roleId: Id<'Role'>): Promise<boolean> {

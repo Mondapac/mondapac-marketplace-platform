@@ -214,6 +214,7 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
           roleId: roleOf(code, 'platform-administrator'),
           kind: 'system',
           seedCode: 'platform-administrator',
+          name: null,
         },
         actions: {
           changeRole: { allowed: true, code: null },
@@ -226,7 +227,7 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
         type: 'invitation',
         invitationId: INVITATION,
         email: 'Invitee@Example.com',
-        role: { roleId: roleOf(code, 'viewer'), kind: 'default', seedCode: 'viewer' },
+        role: { roleId: roleOf(code, 'viewer'), kind: 'default', seedCode: 'viewer', name: null },
         invitedByAccountId: ROOT,
         status: 'pending',
         createdAt: START.toString(),

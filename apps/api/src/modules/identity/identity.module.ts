@@ -80,6 +80,14 @@ import { SuspendSellerAccess } from './application/use-cases/suspend-seller-acce
 import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
 import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case';
 import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
+import type { RoleEditorDependencies } from './application/roles/role-editor';
+import { ListSellerRoles } from './application/use-cases/list-seller-roles.use-case';
+import { CreatePlatformRole } from './application/use-cases/create-platform-role.use-case';
+import { DeletePlatformRole } from './application/use-cases/delete-platform-role.use-case';
+import { EditPlatformRole } from './application/use-cases/edit-platform-role.use-case';
+import { CreateSellerRole } from './application/use-cases/create-seller-role.use-case';
+import { DeleteSellerRole } from './application/use-cases/delete-seller-role.use-case';
+import { EditSellerRole } from './application/use-cases/edit-seller-role.use-case';
 import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
 import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
 import { ListSellerAccounts } from './application/use-cases/list-seller-accounts.use-case';
@@ -163,6 +171,7 @@ import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
 import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified-accounts.job';
 import { seedRolesJob } from './presentation/jobs/seed-roles.job';
 import { SellerPasswordController } from './presentation/seller-password.controller';
+import { SellerRolesController } from './presentation/seller-roles.controller';
 import { SellerSessionController } from './presentation/seller-session.controller';
 import { SellerSignUpController } from './presentation/seller-sign-up.controller';
 import { identityMailSubscriptions } from './presentation/subscribers/mail.subscriptions';
@@ -214,6 +223,26 @@ const PORT = {
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
+
+/** The provider of one of the six use cases of the role editor (slice 10): one dependency set. */
+function roleEditorProvider<U>(
+  type: new (gate: UseCaseGate, deps: RoleEditorDependencies) => U,
+): FactoryProvider<U> {
+  return useCaseProvider(type, {
+    unitOfWork: true,
+    accounts: true,
+    roles: true,
+    assignments: true,
+    grants: true,
+    effectiveKeys: true,
+    permissions: true,
+    policy: true,
+    outbox: true,
+    audit: true,
+    clock: true,
+    ids: true,
+  });
+}
 
 /**
  * The provider of one use case: the gate and the named ports, in a dependency object. `ports`
@@ -289,6 +318,8 @@ function useCaseProvider<D, U>(
  * `AdminSellersController`, and `sellerAccountSummaries` behind the seller-access contract, over
  * one read of `identity`'s own tables (`SELLER_ACCOUNT_READER`).
  *
+ * Slice 10 binds the role editor of both scopes (create, edit, delete: six use cases over one core)
+ * and the seller catalogue (`ListSellerRoles`, `SellerRolesController`), and extends the 10a read.
  * Slice 10a binds the role catalogue read (`ListPlatformRoles`, `identity.platform-role.view`),
  * on `AdminTeamController`.
  */
@@ -301,6 +332,7 @@ function useCaseProvider<D, U>(
     SellerSessionController,
     CustomerPasswordController,
     SellerPasswordController,
+    SellerRolesController,
     AdminSessionController,
     AdminSecondFactorController,
     AdminPasswordController,
@@ -812,10 +844,26 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       roles: true,
+      assignments: true,
       grants: true,
       effectiveKeys: true,
       permissions: true,
     }),
+    useCaseProvider(ListSellerRoles, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+    }),
+    roleEditorProvider(CreatePlatformRole),
+    roleEditorProvider(EditPlatformRole),
+    roleEditorProvider(DeletePlatformRole),
+    roleEditorProvider(CreateSellerRole),
+    roleEditorProvider(EditSellerRole),
+    roleEditorProvider(DeleteSellerRole),
     useCaseProvider(AssignAdminRole, {
       unitOfWork: true,
       accounts: true,

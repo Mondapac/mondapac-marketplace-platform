@@ -1,0 +1,51 @@
+import { Logger } from '@nestjs/common';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { SELLER_ROLE_EDIT } from '../../contracts/permissions';
+import {
+  editCustomRole,
+  type EditRoleInput,
+  type RoleEditorDependencies,
+  type RoleEditorFailure,
+  type RoleEditorScope,
+  type RoleWritten,
+} from '../roles/role-editor';
+
+// Edit a custom seller role (identity design 5.3 `identity.seller-role.edit`, 5.4 R1 to R3,
+// R5, R7, R9 to R11; slice 10): a thin use case over the shared core in `roles/role-editor.ts`,
+// with its own protected key as the rule. The seller is the actor's (R6). The keys are protected, and protected seller keys are
+// not grantable in Phase 2 (5.4), so only the Seller Owner runs it and a seller role never
+// holds one.
+
+const EDITOR: RoleEditorScope = {
+  scope: 'seller',
+  population: 'seller',
+  createKey: 'identity.seller-role.create',
+  editKey: 'identity.seller-role.edit',
+  deleteKey: 'identity.seller-role.delete',
+};
+
+/** Edits a custom seller role's name and keys; never a seeded role (R3, R10). */
+export class EditSellerRole extends UseCase<EditRoleInput, RoleWritten, RoleEditorFailure> {
+  static override readonly access: AccessDeclaration = {
+    name: 'identity.edit-seller-role',
+    rule: { kind: 'permissions', allOf: [SELLER_ROLE_EDIT.key] },
+    whenSellerNotApproved: 'deny',
+  };
+
+  readonly #logger = new Logger('EditSellerRole');
+
+  constructor(
+    gate: UseCaseGate,
+    private readonly deps: RoleEditorDependencies,
+  ) {
+    super(gate);
+  }
+
+  protected handle(
+    context: CallContext,
+    input: EditRoleInput,
+  ): Promise<Result<RoleWritten, RoleEditorFailure>> {
+    return editCustomRole(this.deps, EDITOR, this.#logger, context, input);
+  }
+}

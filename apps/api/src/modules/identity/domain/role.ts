@@ -1,5 +1,14 @@
-import type { Id, MarketId, PendingEvent, Population, Temporal } from '@mondapac/shared-kernel';
-import { AccountRoleChanged } from './events';
+import { err, ok } from '@mondapac/shared-kernel';
+import type {
+  Id,
+  MarketId,
+  PendingEvent,
+  Population,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
+import { AccountRoleChanged, RoleCreated, RoleDeleted, RoleUpdated } from './events';
+import { isWellFormedText } from './well-formed-text';
 
 /** The two scopes of a role (R2): there is no customer scope. */
 export const ROLE_SCOPES = ['platform', 'seller'] as const;
@@ -29,6 +38,50 @@ function canonicalKeys(keys: readonly string[]): readonly string[] | null {
   return sorted.length === keys.length ? Object.freeze(sorted) : null;
 }
 
+/** The `roles_name_check` of the data design (M10): 1 to 80 characters after trimming. */
+const MAX_ROLE_NAME_LENGTH = 80;
+/**
+ * C0 and C1 controls and the bidi marks, embeddings, overrides and isolates: the class of the
+ * database CHECK `roles_name_check`.
+ */
+const FORBIDDEN_NAME_CHARACTERS = /[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+
+/** Why a custom role's name was refused: `validation.failed` with `details.rule` (8.6 row 1). */
+export type RoleNameInvalid = {
+  readonly code: 'role-name.invalid';
+  readonly rule: 'length' | 'characters';
+};
+
+/**
+ * The comparison form of a name (`roles.name_normalized`): NFC, lower-cased, trimmed. Two custom
+ * roles of one owner (a seller, or the Market in platform scope) never share it (M10).
+ */
+export function normalizeRoleName(name: string): string {
+  return name.normalize('NFC').toLowerCase().normalize('NFC').trim();
+}
+
+/**
+ * A custom role's name (identity design 2.1, M10): free text, so personal (R5: never in an event,
+ * a log or an audit row). Trimmed and NFC; 1 to 80 code points, also in its normalised form; no
+ * control or bidi formatting character; well-formed UTF-16. The database CHECKs say the same.
+ */
+export function parseRoleName(raw: unknown): Result<string, RoleNameInvalid> {
+  if (typeof raw !== 'string') return err({ code: 'role-name.invalid', rule: 'length' });
+  if (!isWellFormedText(raw)) return err({ code: 'role-name.invalid', rule: 'characters' });
+  const name = raw.normalize('NFC').trim();
+  const length = [...name].length;
+  if (length < 1 || length > MAX_ROLE_NAME_LENGTH) {
+    return err({ code: 'role-name.invalid', rule: 'length' });
+  }
+  if (FORBIDDEN_NAME_CHARACTERS.test(name)) {
+    return err({ code: 'role-name.invalid', rule: 'characters' });
+  }
+  if ([...normalizeRoleName(name)].length > MAX_ROLE_NAME_LENGTH) {
+    return err({ code: 'role-name.invalid', rule: 'length' });
+  }
+  return ok(name);
+}
+
 /**
  * The state of a {@link Role} (identity design 2.1; data design 3.9). The keys of a default role
  * are stored from slice 8a-1; the name of a custom role joins with the role editor (slice 10). A
@@ -44,6 +97,11 @@ export interface RoleState {
   readonly seedVersion: number | null;
   /** Set only on a seller-scope custom role (R9). */
   readonly sellerId: Id<'Seller'> | null;
+  /**
+   * The name of a custom role, set if and only if the kind is `custom` (absent reads as null).
+   * Personal free text (R5): a seeded role's label is a translation key of its `seedCode`.
+   */
+  readonly name?: string | null;
   /** The stored keys (`role_permissions`), unique and sorted; always empty for a system role. */
   readonly permissionKeys: readonly string[];
   readonly version: number;
@@ -72,7 +130,9 @@ export class RoleInvariantError extends Error {
       | 'population'
       | 'market'
       | 'founding-role'
-      | 'seed-upgrade',
+      | 'seed-upgrade'
+      | 'name'
+      | 'read-only',
   ) {
     super(`Role invariant broken: ${invariant}`);
   }
@@ -99,11 +159,15 @@ export function scopeOfPopulation(population: Population): RoleScope | null {
 export class Role {
   readonly #state: RoleState;
 
+  #events: PendingEvent[];
+
   private constructor(
     state: RoleState,
     /** The version read from the store; null for a role not stored yet. */
     readonly persistedVersion: number | null,
+    events: readonly PendingEvent[] = [],
   ) {
+    this.#events = [...events];
     if (!(ROLE_SCOPES as readonly string[]).includes(state.scope)) {
       throw new RoleInvariantError('scope');
     }
@@ -128,10 +192,16 @@ export class Role {
     if (keys === null || (state.kind === 'system' && keys.length > 0)) {
       throw new RoleInvariantError('keys');
     }
+    const name = state.name ?? null;
+    if ((state.kind === 'custom') !== (name !== null)) throw new RoleInvariantError('name');
+    if (name !== null) {
+      const parsed = parseRoleName(name);
+      if (!parsed.ok || parsed.value !== name) throw new RoleInvariantError('name');
+    }
     if (!Number.isInteger(state.version) || state.version < 1) {
       throw new RoleInvariantError('version');
     }
-    this.#state = Object.freeze({ ...state, permissionKeys: keys });
+    this.#state = Object.freeze({ ...state, name, permissionKeys: keys });
   }
 
   /** A system role created by the seed routine (5.6): the first holder of its scope gets it. */
@@ -193,6 +263,55 @@ export class Role {
     );
   }
 
+  /**
+   * A custom role of the role editor (identity design 2.1, 5.4 R10; slice 10): a platform role
+   * of the Market, or a role of one seller (R9). The caller has parsed the name
+   * ({@link parseRoleName}), checked the keys against the registry (R2, R7) and applied
+   * `GrantPolicy.canGrant`, the limit and the name's uniqueness in its serializable unit.
+   * Records `identity.role-created.v1` (R5: ids, scope and keys, never the name).
+   */
+  static createCustom(input: {
+    readonly id: Id<'Role'>;
+    readonly marketId: MarketId;
+    readonly scope: RoleScope;
+    readonly sellerId: Id<'Seller'> | null;
+    readonly name: string;
+    readonly permissionKeys: readonly string[];
+    readonly now: Temporal.Instant;
+  }): Role {
+    const { id, marketId, scope, sellerId, name, permissionKeys, now } = input;
+    const role = new Role(
+      {
+        id,
+        marketId,
+        scope,
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId,
+        name,
+        permissionKeys,
+        version: 1,
+        createdAt: now,
+      },
+      null,
+    );
+    return new Role(role.#state, null, [
+      RoleCreated.record({
+        aggregateId: id,
+        aggregateVersion: 1,
+        occurredAt: now,
+        payload: {
+          roleId: id,
+          scope,
+          sellerId,
+          addedKeys: role.#state.permissionKeys,
+          removedKeys: [],
+        },
+      }),
+    ]);
+  }
+
   /** A role read from the store. Checks the invariants again. */
   static restore(state: RoleState): Role {
     return new Role(state, state.version);
@@ -202,8 +321,97 @@ export class Role {
     return this.#state;
   }
 
+  /** The normalised name (`roles.name_normalized`) of a custom role; null for a seeded one. */
+  get nameNormalized(): string | null {
+    const name = this.#state.name ?? null;
+    return name === null ? null : normalizeRoleName(name);
+  }
+
+  /** Events recorded since the role was built or restored. */
+  get pendingEvents(): readonly PendingEvent[] {
+    return [...this.#events];
+  }
+
   get isSystem(): boolean {
     return this.#state.kind === 'system';
+  }
+
+  /**
+   * The role editor's edit of a custom role (identity design 5.4 R10; slice 10): the name and the
+   * whole key set are replaced, the version steps by one and `identity.role-updated.v1` is
+   * recorded. Only a custom role has an edit path (R3, R9, R10: system and default roles are
+   * read-only, `read-only`). `isDeclared` says whether the registry still declares a key: the
+   * event and the audit row list only declared keys (a stored key the registry dropped is
+   * removed silently, R7), so they always encode. The persisted version is kept, so the store
+   * updates at the version read.
+   */
+  edit(input: {
+    readonly name: string;
+    readonly permissionKeys: readonly string[];
+    readonly isDeclared: (key: string) => boolean;
+    readonly now: Temporal.Instant;
+  }): RoleEdit {
+    const state = this.#state;
+    if (state.kind !== 'custom') throw new RoleInvariantError('read-only');
+    const next = canonicalKeys(input.permissionKeys);
+    if (next === null) throw new RoleInvariantError('keys');
+    const before = new Set(state.permissionKeys);
+    const after = new Set(next);
+    const addedKeys = Object.freeze(
+      next.filter((key) => !before.has(key) && input.isDeclared(key)),
+    );
+    const removedKeys = Object.freeze(
+      state.permissionKeys.filter((key) => !after.has(key) && input.isDeclared(key)),
+    );
+    const version = state.version + 1;
+    const renamed = input.name !== state.name;
+    const role = new Role(
+      { ...state, name: input.name, permissionKeys: next, version },
+      this.persistedVersion,
+      [
+        RoleUpdated.record({
+          aggregateId: state.id,
+          aggregateVersion: version,
+          occurredAt: input.now,
+          payload: {
+            roleId: state.id,
+            scope: state.scope,
+            sellerId: state.sellerId,
+            addedKeys,
+            removedKeys,
+          },
+        }),
+      ],
+    );
+    return { role, addedKeys, removedKeys, renamed };
+  }
+
+  /**
+   * The role editor's delete of a custom role (identity design 2.3, 5.4; slice 10): records
+   * `identity.role-deleted.v1` with the keys it held. The caller has checked that no account
+   * holds it (`role.in-use`; the assignment foreign key is RESTRICT). Returns the role as it
+   * stood, with the event; the store deletes it at the version read.
+   */
+  remove(input: {
+    readonly isDeclared: (key: string) => boolean;
+    readonly now: Temporal.Instant;
+  }): Role {
+    const state = this.#state;
+    if (state.kind !== 'custom') throw new RoleInvariantError('read-only');
+    return new Role(state, this.persistedVersion, [
+      RoleDeleted.record({
+        aggregateId: state.id,
+        aggregateVersion: state.version + 1,
+        occurredAt: input.now,
+        payload: {
+          roleId: state.id,
+          scope: state.scope,
+          sellerId: state.sellerId,
+          addedKeys: [],
+          removedKeys: state.permissionKeys.filter(input.isDeclared),
+        },
+      }),
+    ]);
   }
 
   /**
@@ -239,6 +447,14 @@ export class Role {
       removedKeys: Object.freeze(state.permissionKeys.filter((key) => !after.has(key))),
     };
   }
+}
+
+/** What an edit of a custom role changed (R5, PA 5): key lists and whether the name changed. */
+export interface RoleEdit {
+  readonly role: Role;
+  readonly addedKeys: readonly string[];
+  readonly removedKeys: readonly string[];
+  readonly renamed: boolean;
 }
 
 /** The state of a {@link RoleAssignment} (identity design 2.1; data design 3.9). */

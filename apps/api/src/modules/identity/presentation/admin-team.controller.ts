@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpException,
   Logger,
   Param,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -50,10 +52,10 @@ import {
   MAX_ADMIN_TEAM_PAGE,
   type AdminTeamPage,
 } from '../application/use-cases/list-admin-team.use-case';
-import {
-  ListPlatformRoles,
-  type PlatformRoleCatalogue,
-} from '../application/use-cases/list-platform-roles.use-case';
+import { ListPlatformRoles } from '../application/use-cases/list-platform-roles.use-case';
+import { CreatePlatformRole } from '../application/use-cases/create-platform-role.use-case';
+import { DeletePlatformRole } from '../application/use-cases/delete-platform-role.use-case';
+import { EditPlatformRole } from '../application/use-cases/edit-platform-role.use-case';
 import { ResendAdminInvitation } from '../application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from '../application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from '../application/use-cases/revoke-admin-invitation.use-case';
@@ -70,10 +72,11 @@ import {
   AdminTeamAccountRowView,
   AdminTeamInvitationRowView,
   AdminTeamPageView,
-  PlatformRoleCatalogueView,
 } from './admin-team.dto';
 import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
+import { RoleCatalogueView, RoleEditorRequest, RoleWrittenView } from './role-editor.dto';
+import { catalogueView, roleBody, rolePathId, roleRefusal } from './role-editor.http';
 
 /**
  * The HTTP status of each refusal of the admin team routes (identity design 5.2, 8.6 row 1;
@@ -158,19 +161,6 @@ function rolesQuery(query: Record<string, unknown>): Record<string, never> | Htt
   });
 }
 
-/** The catalogue as JSON: exactly the five fields of each role, in a fixed order. */
-function catalogueView(catalogue: PlatformRoleCatalogue): PlatformRoleCatalogueView {
-  return {
-    items: catalogue.items.map(({ roleId, kind, seedCode, permissionCount, grantable }) => ({
-      roleId,
-      kind,
-      seedCode,
-      permissionCount,
-      grantable,
-    })),
-  };
-}
-
 /** The page as JSON: instants as ISO strings; nothing else is added or dropped. */
 function teamPageView(page: AdminTeamPage): AdminTeamPageView {
   return {
@@ -188,6 +178,7 @@ function teamPageView(page: AdminTeamPage): AdminTeamPageView {
 }
 
 const ACCOUNT_PARAM = { name: 'accountId', description: 'The account. A UUID v7.' };
+const ROLE_PARAM = { name: 'roleId', description: 'The role. A UUID v7.' };
 const INVITATION_PARAM = { name: 'invitationId', description: 'The invitation. A UUID v7.' };
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
@@ -223,20 +214,24 @@ export class AdminTeamController {
     private readonly resetOtherAdminSecondFactor: ResetOtherAdminSecondFactor,
     private readonly listAdminTeam: ListAdminTeam,
     private readonly listPlatformRoles: ListPlatformRoles,
+    private readonly createPlatformRole: CreatePlatformRole,
+    private readonly editPlatformRole: EditPlatformRole,
+    private readonly deletePlatformRole: DeletePlatformRole,
   ) {}
 
   @Get('roles')
   @ReadsSession()
   @ApiOperation({
-    summary: 'List the platform roles of the Market, with whether you may give each',
+    summary: 'List the platform roles of the Market, with their permissions and your options',
     description:
-      'Needs identity.platform-role.view. The platform roles of the Market, by id: id, kind, ' +
-      'seed code (the label key of a seeded role), how many permissions each confers, and ' +
-      '`grantable`, whether you may give it now. `grantable` is a hint: assigning a role and ' +
-      'inviting an admin check again. No name, description or permission list (slice 10), and ' +
-      'never a seller role. No query parameter is accepted. Not cached.',
+      'Needs identity.platform-role.view. The platform roles of the Market, by id: kind, seed ' +
+      'code (the label key of a seeded role), the name of a custom role, the permissions each ' +
+      'confers, `grantable` (whether you may give it now) and whether you may edit or delete it ' +
+      '(`actions`), plus `keys`: every platform permission with whether you may put it in a ' +
+      'custom role. All flags are hints: assigning, inviting, creating, editing and deleting ' +
+      'check again. Never a seller role. No query parameter is accepted. Not cached.',
   })
-  @ApiOkResponse({ type: PlatformRoleCatalogueView })
+  @ApiOkResponse({ type: RoleCatalogueView })
   @ApiBadRequestResponse({
     type: ApiErrorBody,
     description: 'validation.failed: any query parameter (details.fields)',
@@ -247,9 +242,9 @@ export class AdminTeamController {
     @Call() context: CallContext,
     @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<PlatformRoleCatalogueView> {
+  ): Promise<RoleCatalogueView> {
     const input = rolesQuery(query);
-    let outcome: PlatformRoleCatalogueView | HttpException;
+    let outcome: RoleCatalogueView | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.listPlatformRoles.execute(context, input);
@@ -258,6 +253,134 @@ export class AdminTeamController {
     // What the actor may grant: never stored by a cache.
     response.setHeader('Cache-Control', 'no-store');
     return this.settle('identity.admin-list-roles', context, outcome);
+  }
+
+  @Post('roles')
+  @HttpCode(201)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Create a custom platform role',
+    description:
+      'Needs identity.platform-role.create. A name and the whole key set. Every key must be one ' +
+      'you hold; a protected key needs the Platform Administrator role (R11). At most 40 ' +
+      'permissions; the Market limits how many custom roles it holds (role.limit; ' +
+      'access.unavailable while the Market sets none).',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RoleEditorRequest })
+  @ApiCreatedResponse({ type: RoleWrittenView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, role.not-grantable or request.csrf',
+  })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'role.name-taken, role.limit, conflict.stale or conflict.retry',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async createRole(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Body() body: unknown,
+  ): Promise<RoleWrittenView> {
+    const input = roleBody(request, body);
+    let outcome: RoleWrittenView | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.createPlatformRole.execute(context, {
+        name: input.name,
+        permissionKeys: input.permissionKeys as string[],
+      });
+      outcome = result.ok ? result.value : roleRefusal(result.error);
+    }
+    return this.settle('identity.admin-create-role', context, outcome);
+  }
+
+  @Put('roles/:roleId')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Edit a custom platform role',
+    description:
+      'Needs identity.platform-role.edit. Replaces the name and the whole key set of a custom ' +
+      'role. Never a system or default role (role.read-only), never a role that outranks you ' +
+      'or a key you may not give (role.not-grantable). The same name and keys answer ' +
+      'role.unchanged and write nothing. Holders of the role see the change at once.',
+  })
+  @ApiParam(ROLE_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RoleEditorRequest })
+  @ApiOkResponse({ type: RoleWrittenView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, role.not-grantable or request.csrf',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'role.unknown' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'role.read-only, role.name-taken, conflict.stale or conflict.retry',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  async editRole(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Param('roleId') rawRoleId: string,
+    @Body() body: unknown,
+  ): Promise<RoleWrittenView> {
+    const roleId = rolePathId(rawRoleId);
+    const input = roleBody(request, body);
+    let outcome: RoleWrittenView | HttpException;
+    if (roleId instanceof HttpException) outcome = roleId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.editPlatformRole.execute(context, {
+        roleId,
+        name: input.name,
+        permissionKeys: input.permissionKeys as string[],
+      });
+      outcome = result.ok ? result.value : roleRefusal(result.error);
+    }
+    return this.settle('identity.admin-edit-role', context, outcome);
+  }
+
+  @Delete('roles/:roleId')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Delete a custom platform role',
+    description:
+      'Needs identity.platform-role.delete. Only a custom role that no account holds ' +
+      '(role.in-use: reassign its holders first). Open invitations for it can no longer be ' +
+      'accepted. Never a system or default role (role.read-only).',
+  })
+  @ApiParam(ROLE_PARAM)
+  @ApiHeader(CSRF)
+  @ApiOkResponse({ type: RoleWrittenView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, role.not-grantable or request.csrf',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'role.unknown' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'role.read-only, role.in-use, conflict.stale or conflict.retry',
+  })
+  async deleteRole(
+    @Call() context: CallContext,
+    @Param('roleId') rawRoleId: string,
+  ): Promise<RoleWrittenView> {
+    const roleId = rolePathId(rawRoleId);
+    let outcome: RoleWrittenView | HttpException;
+    if (roleId instanceof HttpException) outcome = roleId;
+    else {
+      const result = await this.deletePlatformRole.execute(context, { roleId });
+      outcome = result.ok ? result.value : roleRefusal(result.error);
+    }
+    return this.settle('identity.admin-delete-role', context, outcome);
   }
 
   @Get('team')
