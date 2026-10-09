@@ -426,12 +426,18 @@ describe.each(TEST_MARKETS)(
         const held = new Promise<void>((resolve) => {
           release = resolve;
         });
+        // The winner starts only after the loser has read version 1, whatever the load.
+        let loserRead!: () => void;
+        const loserHasRead = new Promise<void>((resolve) => {
+          loserRead = resolve;
+        });
         const slowProducts = {
           ...products,
           nextProductCode: products.nextProductCode.bind(products),
           add: products.add.bind(products),
           findById: async (target: typeof market, id: Id<'Product'>) => {
             const loaded = await products.findById(target, id);
+            loserRead();
             await held;
             return loaded;
           },
@@ -463,6 +469,7 @@ describe.each(TEST_MARKETS)(
           content: { who: 'loser' },
           variantIds: [null],
         });
+        await loserHasRead;
         const winner = await service.execute(sellerContext(sellerId), {
           productId: product.state.id,
           content: { who: 'winner' },
