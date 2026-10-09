@@ -5,6 +5,7 @@ Implements platform persistence design sections 3 to 9 and 12.3
 (UnitOfWork, guard, model map) and 1b (outbox, relay, scheduler lock, `APP_ROLE`).
 
 ## What a module uses
+
 - `UNIT_OF_WORK` (`platform/unit-of-work/unit-of-work.ts`): `run(market, work, options)`.
   - A read-write unit is one interactive transaction at READ COMMITTED, or SERIALIZABLE
     when asked.
@@ -23,6 +24,7 @@ Implements platform persistence design sections 3 to 9 and 12.3
   `pnpm boundaries`.
 
 ## Read-only units (ADR-0025)
+
 - `{ readOnly: true }` opens no transaction.
 - `work` runs once on the guarded base client and is never retried.
 - Writes are refused.
@@ -32,6 +34,7 @@ Implements platform persistence design sections 3 to 9 and 12.3
   `read committed` (`databaseIsolationAccepted` in `check-database-role.ts`).
 
 ## Named raw statements and `lockTimeoutMs` (inventory slice 2, part 2; P 4.2)
+
 - Raw SQL stays refused for modules. The one exception is a closed list in
   `named-statements.ts`, reached through `PrismaService.namedQuery(market, name, params)`:
   - `inventory.lock-stock-items` locks stock items `FOR NO KEY UPDATE` in ascending id order
@@ -56,7 +59,9 @@ Implements platform persistence design sections 3 to 9 and 12.3
   database test, and reviews by the database-designer and the security-tester.
 
 ## Market guard
+
 `market-guard.ts` is a Prisma client extension. It refuses any query that:
+
 - runs with no open unit, or after the unit has closed;
 - is raw SQL;
 - has a `where`, selector or data that does not pin the unit's `marketId` and `tenantId`;
@@ -66,11 +71,13 @@ Implements platform persistence design sections 3 to 9 and 12.3
 Models marked `/// @market-scope none: <reason>` are exempt.
 
 The guard reads the model map: `apps/api/src/generated/model-map.ts`.
+
 - It is written by `scripts/generate-model-map.mjs`, which runs as a Prisma generator on
   every `prisma generate`.
 - It is checked against Prisma's DMMF.
 
 ## Start-up checks
+
 `main.ts` refuses to listen when `DatabaseProbe.roleProblems()` returns any problem
 (docs/design/data/platform.md 10.8). One of its reasons is `role_timeouts`: the login role's
 own settings (`pg_roles.rolconfig`) must hold `statement_timeout` (at most 30 s),
@@ -80,14 +87,17 @@ change does not have them, and the API will not start on it until you run
 `pnpm db:bootstrap` once.
 
 ## Configuration
+
 - `DATABASE_POOL_MAX`: pool size. Integer from 1 to 100, default 10.
 - The wait for a connection is fixed at 2 s (`connectionTimeoutMillis`).
 
 ## Logging
+
 `reduceDatabaseError` reduces a database error to `{name, prismaCode, sqlState, constraint}`.
 Rows, values and SQL are never logged.
 
 ## Events (slice 1b; P 5 and 6)
+
 - Declare an event with `defineEvent` (kernel) in `modules/<m>/domain/events/`, re-export
   it from `contracts/`, and register it in the module's Nest module:
   `providers: [outboxWriterFor('<m>'), registerEvents('<m>', EVENTS)]`.
@@ -110,6 +120,7 @@ Rows, values and SQL are never logged.
   changes (a changed list means: publish a new version).
 
 ## Scheduler and worker (slice 1b; P 7 and 8)
+
 - A job is a `JobDefinition` in `modules/<m>/presentation/jobs/`, registered with
   `registerJobs('<m>', [job])`. It runs once per hosted Market with that Market's context
   and a new correlation id; it must be safe to run twice and at once.
@@ -121,6 +132,7 @@ Rows, values and SQL are never logged.
   listener; SIGTERM stops the relay and the scheduler (up to 10 s), then closes the graph.
 
 ## Audit writer (identity slice 6a; docs/design/domain/platform-audit.md 3, 13)
+
 - Declare an audited action with `defineAuditAction` (kernel) in `modules/<m>/domain/`,
   re-export it from `contracts/`, and register it in the module's Nest module:
   `providers: [registerAuditActions('<m>', ACTIONS), PersistenceModule.auditWriterFor('<m>')]`.
@@ -159,6 +171,7 @@ Rows, values and SQL are never logged.
     it; with `CASCADE` the triggers refuse it (`23001`).
 
 ## Audit chain (identity slice 6b; docs/design/domain/platform-audit.md 6 to 9, ADR-0032)
+
 - `platform/audit/` holds the chain; the statements are in
   `persistence/audit/prisma-audit-chain-store.ts` (`AUDIT_CHAIN_STORE`, through `auditTx`).
   - `audit-hash.ts`: `row_hash` and `chain_hash` v1 (PA 6.2). The fallback form is used only
@@ -211,3 +224,27 @@ Rows, values and SQL are never logged.
 - Tests: unit specs over `test/support/in-memory-audit-chain.ts`;
   `test/db/platform-audit-chain.db-spec.ts` runs on its own database copy (`audit`), where
   the owner tampers and resets the chain with the user triggers off.
+
+## Raw read port (ADR-0030)
+
+`RAW_READ_PORT` (`raw-reads/raw-read-port.ts`) runs a read that Prisma cannot express. It is
+read-only and Market-bound:
+
+- It needs an open read-only unit (ADR-0025) of the asked Market; a read-write unit, no unit or
+  a Market that differs from the unit's is refused before any database call.
+- One unnamed statement goes out on the pool: no `BEGIN`, no transaction. `$1` is the Market,
+  bound by the helper from the unit; `$2` onwards are the declared parameters, type-checked
+  and, for arrays, capped (at most 1000) and, when zipped by one `unnest`, of equal length. A
+  `uuid` is lower case; callers normalise first.
+- Statements live only in `raw-reads/statements.ts` (CODEOWNERS: sign-off of Ali, Hassan and
+  Mojtaba, plus Mojtaba's plan review). The pure checker (`statement-check.ts`) allows one
+  `SELECT` over the owner's own tables with `<alias>.market_id = $1` per relation, `unnest`
+  over bound parameters, INNER and LEFT joins only, and refuses locking, `INTO`, recursive or
+  data-modifying CTEs, RIGHT and FULL joins, column alias lists, other functions, operators
+  and casts.
+- The same checker runs at start-up (`createRawReadPort`), in `pnpm boundaries` (which also
+  bans raw SQL and the `pg` driver outside the named platform files and checks each
+  `.rawRead(market, '<id>', ...)` call site) and, as a backstop, `EXPLAIN (GENERIC_PLAN)` in
+  the database tests.
+- The parser is `libpg-query`, pinned exactly and bumped together with the PostgreSQL major
+  (17 today; the tests assert parser version 170007). Only `raw-reads/pg-parser.ts` imports it.

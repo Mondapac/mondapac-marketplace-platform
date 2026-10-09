@@ -52,6 +52,8 @@ import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { UnavailableAllowedProductTypesReader } from './placeholders/unavailable-allowed-product-types.reader';
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
+import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
+import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import type { IdGenerator } from '@mondapac/shared-kernel';
@@ -98,6 +100,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
       new PrismaOfferRepository(prisma, ids),
+  },
+  {
+    provide: OWN_CATALOG_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OwnCatalogReader => new PrismaOwnCatalogReader(prisma),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,

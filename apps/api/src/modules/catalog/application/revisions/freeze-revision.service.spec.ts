@@ -78,6 +78,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       defaultFamily: () => 'default',
       conditions: () => ['new'],
       sellFromCatalogue: () => Promise.resolve(true),
+      sellerCanCreateProduct: () => Promise.resolve(true),
       approvalRequired: () => Promise.resolve(true),
     };
     service = new FreezeRevision({

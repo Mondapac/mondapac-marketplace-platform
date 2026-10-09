@@ -138,6 +138,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       defaultFamily: () => 'default',
       conditions: () => ['new'],
       sellFromCatalogue: () => Promise.resolve(true),
+      sellerCanCreateProduct: () => Promise.resolve(true),
       approvalRequired: () => Promise.resolve(true),
     };
     const outbox: OutboxWriter = {
