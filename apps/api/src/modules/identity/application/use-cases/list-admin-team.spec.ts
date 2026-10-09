@@ -86,6 +86,7 @@ const LEAD_KEYS = [
   'identity.platform-role.view',
   'identity.seller-access.view',
   'identity.seller-account.reset-second-factor',
+  'sellers.seller.view',
 ];
 
 type AccountAction = keyof AdminTeamAccountRow['actions'];

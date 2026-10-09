@@ -50,9 +50,11 @@ import {
 } from '../application/ports/seller-file.repository';
 import {
   ADDRESS_FORMATS,
+  ONBOARDING_AREAS,
   SERVICE_AREAS,
   TIMEZONE_RESOLVER,
   type AddressFormats,
+  type OnboardingAreas,
   type ServiceAreas,
   type TimezoneResolver,
 } from '../application/ports/seller-market-formats';
@@ -60,6 +62,10 @@ import {
   SELLER_MARKET_POLICY,
   type SellerMarketPolicy,
 } from '../application/ports/seller-market-policy';
+import {
+  SELLER_LIST_REPOSITORY,
+  type SellerListRepository,
+} from '../application/ports/seller-list.repository';
 import {
   SHOP_SLUG_REPOSITORY,
   type ShopSlugRepository,
@@ -81,6 +87,7 @@ import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-confi
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSellerFileRepository } from './prisma-seller-file.repository';
+import { PrismaSellerListRepository } from './prisma-seller-list.repository';
 import { PrismaShopSlugRepository } from './prisma-shop-slug.repository';
 import { PrismaTaxProfileRepository } from './prisma-tax-profile.repository';
 import { SubjectKeySellerFileCipher } from './subject-key-seller-file-cipher';
@@ -120,6 +127,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerFileRepository =>
       new PrismaSellerFileRepository(prisma),
+  },
+  {
+    provide: SELLER_LIST_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerListRepository =>
+      new PrismaSellerListRepository(prisma),
   },
   {
     provide: SHOP_SLUG_REPOSITORY,
@@ -205,6 +218,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     provide: SERVICE_AREAS,
     inject: [ServiceAreaDirectory],
     useFactory: (directory: ServiceAreaDirectory): ServiceAreas =>
+      new DirectoryServiceAreas(directory),
+  },
+  {
+    provide: ONBOARDING_AREAS,
+    inject: [ServiceAreaDirectory],
+    useFactory: (directory: ServiceAreaDirectory): OnboardingAreas =>
       new DirectoryServiceAreas(directory),
   },
   {

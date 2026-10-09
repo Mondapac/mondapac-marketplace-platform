@@ -84,5 +84,16 @@
       "identity.seller-account.create",
       "sellers.seller-file.review"
     ]
+  },
+  {
+    "entry": "platform:viewer@2",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "sellers.seller.view"
+    ]
   }
 ]

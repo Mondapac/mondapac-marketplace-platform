@@ -75,13 +75,17 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     scope: 'platform',
     kind: 'default',
     seedCode: 'viewer',
-    seedVersion: 1,
+    // Version 2 adds `sellers.seller.view`, an unprotected `view` key of the platform scope
+    // (sellers design 6.1, slice 6). The other default roles of 6.1 get it in a follow-up: a key
+    // added to a role moves the hints of the admin-team suites (R1, R3).
+    seedVersion: 2,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
       'identity.customer-account.view',
       'identity.admin-account.view',
       'identity.platform-role.view',
+      'sellers.seller.view',
     ],
   },
 ];

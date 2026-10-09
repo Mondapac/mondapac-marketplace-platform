@@ -85,6 +85,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_files_market_id_identifier_index_idx':
     'CREATE INDEX seller_files_market_id_identifier_index_idx ON sellers.seller_files USING btree (market_id, identifier_index) WHERE (identifier_index IS NOT NULL)',
+  // docs/design/data/sellers.md 7 (A4) and 9.1 migration 7 (slice 6): the "Incomplete" tab and the
+  // purge read the files that were never approved by (last_changed_at, seller_id).
+  'sellers.seller_files_market_id_last_changed_at_seller_id_unapproved_idx':
+    'CREATE INDEX seller_files_market_id_last_changed_at_seller_id_unapproved_idx ON sellers.seller_files USING btree (market_id, last_changed_at, seller_id) WHERE (approved_revision_id IS NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
     "CREATE UNIQUE INDEX shop_slugs_market_id_seller_id_held_key ON sellers.shop_slugs USING btree (market_id, seller_id) WHERE (state = 'held'::text)",
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':

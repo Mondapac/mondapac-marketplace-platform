@@ -4,6 +4,7 @@ import type { ServiceAreaDirectory } from '../../../platform/market-config/servi
 import type {
   AddressFormats,
   DraftServiceArea,
+  OnboardingAreas,
   ServiceAreas,
   TimezoneResolver,
 } from '../application/ports/seller-market-formats';
@@ -56,7 +57,7 @@ export class MarketConfigSellerFormats implements AddressFormats, TimezoneResolv
 }
 
 /** {@link ServiceAreas} on the platform `ServiceAreaDirectory` (design 4.3): code and flag only. */
-export class DirectoryServiceAreas implements ServiceAreas {
+export class DirectoryServiceAreas implements ServiceAreas, OnboardingAreas {
   constructor(private readonly directory: ServiceAreaDirectory) {}
 
   areaFor(market: MarketContext, postcode: string): DraftServiceArea | null {
@@ -64,5 +65,12 @@ export class DirectoryServiceAreas implements ServiceAreas {
     return area === undefined
       ? null
       : { code: area.code, sellerOnboardingEnabled: area.sellerOnboardingEnabled };
+  }
+
+  openCodes(market: MarketContext): readonly string[] {
+    return this.directory
+      .areasOf(market.marketId)
+      .filter((area) => area.sellerOnboardingEnabled)
+      .map((area) => area.code);
   }
 }

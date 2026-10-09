@@ -179,7 +179,7 @@ describe('role catalogue over HTTP (integration, slice 10a)', () => {
         roleId: roleOf(code, 'viewer'),
         kind: 'default',
         seedCode: 'viewer',
-        permissionCount: 4,
+        permissionCount: 5,
         grantable: true,
       });
       expect(items.find((item) => item.seedCode === 'platform-administrator')).toMatchObject({

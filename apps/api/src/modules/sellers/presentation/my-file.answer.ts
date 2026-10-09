@@ -21,6 +21,7 @@ export const MY_FILE_STATUS = {
   'slug.taken': 409,
   'identifier.format': 400,
   'identifier.checksum': 400,
+  'search.too-broad': 400,
   'file.not-found': 404,
   'file.change-request-required': 409,
   'file.incomplete': 409,

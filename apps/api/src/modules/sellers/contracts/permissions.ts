@@ -26,7 +26,21 @@ export const SELLERS_SELLER_FILE_REVIEW = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * The seller list and the seller page with clear fields only (design 6.1; Hassan M4): store name,
+ * slug, status, area code, time zone, kind of the pending submission and dates. No decryption.
+ * Platform scope, not protected. The default role mapping (Onboarding and Compliance, Catalogue
+ * Moderator, Operations and Support, Finance, Viewer) is `identity`'s seed and is not changed
+ * here; until it is, the Platform Administrator system role holds it.
+ */
+export const SELLERS_SELLER_VIEW = definePermission('sellers', {
+  key: 'sellers.seller.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
+  SELLERS_SELLER_VIEW,
 ]);
