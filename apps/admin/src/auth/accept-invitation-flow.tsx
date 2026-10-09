@@ -295,11 +295,12 @@ export function AcceptInvitationFlow({
         {problemMessage ? <ProblemBanner message={problemMessage} /> : null}
         <div className="flex flex-col gap-3 rounded-md border border-border p-4">
           {enrolment.otpauthUri.startsWith('otpauth://') ? (
-            <>
-              <p className="text-sm text-fg-secondary">{t('accept.secret.scan')}</p>
-              <SetupQr uri={enrolment.otpauthUri} label={t('accept.secret.qr-label')} />
-              <p className="text-sm text-fg-secondary">{t('accept.secret.cannot-scan')}</p>
-            </>
+            <SetupQr
+              uri={enrolment.otpauthUri}
+              label={t('accept.secret.qr-label')}
+              intro={t('accept.secret.scan')}
+              fallback={t('accept.secret.cannot-scan')}
+            />
           ) : null}
           <span className="text-sm text-fg-muted">{t('accept.secret.key-label')}</span>
           <code dir="ltr" className="font-mono text-base break-all">

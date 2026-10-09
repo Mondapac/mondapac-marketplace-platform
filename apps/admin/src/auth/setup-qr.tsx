@@ -9,11 +9,23 @@ const QUIET = 4;
  * (white in both themes) with the darkest fixed token for the modules, because scanners need
  * dark modules on a light ground whatever the theme.
  */
-export function SetupQr({ uri, label }: { readonly uri: string; readonly label: string }) {
+export function SetupQr({
+  uri,
+  label,
+  intro,
+  fallback,
+}: {
+  readonly uri: string;
+  readonly label: string;
+  readonly intro: string;
+  readonly fallback: string;
+}) {
   let rows: boolean[][];
   try {
     const code = qrcode(0, 'M');
-    code.addData(uri);
+    // The library reads one byte per character, so hand it the UTF-8 bytes (a non-ASCII issuer
+    // or label then reaches the authenticator app unchanged).
+    code.addData(String.fromCharCode(...new TextEncoder().encode(uri)), 'Byte');
     code.make();
     const size = code.getModuleCount();
     rows = Array.from({ length: size }, (_, r) =>
@@ -29,17 +41,21 @@ export function SetupQr({ uri, label }: { readonly uri: string; readonly label: 
     )
     .join('');
   return (
-    <div className="self-start rounded-md p-2" style={{ background: 'var(--mp-color-bg-qr)' }}>
-      <svg
-        role="img"
-        aria-label={label}
-        viewBox={`0 0 ${size} ${size}`}
-        shapeRendering="crispEdges"
-        className="size-48"
-        data-testid="setup-qr"
-      >
-        <path d={path} style={{ fill: 'var(--mp-color-bg-auth-showcase-admin)' }} />
-      </svg>
-    </div>
+    <>
+      <p className="text-sm text-fg-secondary">{intro}</p>
+      <div className="self-start rounded-md p-2" style={{ background: 'var(--mp-color-bg-qr)' }}>
+        <svg
+          role="img"
+          aria-label={label}
+          viewBox={`0 0 ${size} ${size}`}
+          shapeRendering="crispEdges"
+          className="size-48"
+          data-testid="setup-qr"
+        >
+          <path d={path} style={{ fill: 'var(--mp-color-bg-auth-showcase-admin)' }} />
+        </svg>
+      </div>
+      <p className="text-sm text-fg-secondary">{fallback}</p>
+    </>
   );
 }

@@ -200,6 +200,46 @@ describe('admin accept invitation', () => {
     expect(qr.outerHTML).not.toContain('ABCDEFGHIJKLMNOP');
   });
 
+  it('draws a bigger symbol for a longer address and keeps the quiet zone and plate', async () => {
+    call.mockResolvedValueOnce(enrolment);
+    mount();
+    await fillDetails();
+    const short = await screen.findByRole('img', { name: /QR code/ });
+    const [, , shortSide] = (short.getAttribute('viewBox') ?? '').split(' ').map(Number);
+    // A QR side is 17 + 4 * version modules, plus a 4-module quiet zone on each side.
+    expect(((shortSide ?? 0) - 8 - 17) % 4).toBe(0);
+    expect(short.parentElement?.getAttribute('style')).toContain('var(--mp-color-bg-qr)');
+    expect(short.querySelector('path')?.getAttribute('style')).toContain(
+      'var(--mp-color-bg-auth-showcase-admin)',
+    );
+    cleanup();
+    window.history.replaceState(null, '', '/accept-invitation#the-token');
+    call.mockResolvedValueOnce({
+      ...enrolment,
+      body: {
+        ...enrolment.body,
+        otpauthUri: `otpauth://totp/${'Ä'.repeat(40)}%20Shop:a@b.test?secret=ABCDEFGHIJKLMNOP&issuer=${'é'.repeat(40)}`,
+      },
+    });
+    mount();
+    await fillDetails();
+    const long = await screen.findByRole('img', { name: /QR code/ });
+    const [, , longSide] = (long.getAttribute('viewBox') ?? '').split(' ').map(Number);
+    expect(longSide).toBeGreaterThan(shortSide ?? 0);
+  });
+
+  it('shows only the key when the address is too long to fit in a QR code', async () => {
+    call.mockResolvedValueOnce({
+      ...enrolment,
+      body: { ...enrolment.body, otpauthUri: `otpauth://totp/x?secret=${'A'.repeat(5000)}` },
+    });
+    mount();
+    await fillDetails();
+    expect(await screen.findByText('ABCD EFGH IJKL MNOP')).toBeTruthy();
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.queryByText(/Scan this code/)).toBeNull();
+  });
+
   it('shows the key without a QR code when the address is not an otpauth one', async () => {
     call.mockResolvedValueOnce({
       ...enrolment,
