@@ -186,6 +186,22 @@ const linkTargetsSchema = z
         path: ['admin'],
       });
     }
+    // Every seller page is on the origin of the seller sign-in page (Hassan L1, PR #212), as the
+    // admin pages are on the review queue's: a seller token is only ever mailed to our own seller
+    // panel, never to another host a config change might name.
+    if (targets.seller !== undefined) {
+      const signIn = hostOf(targets.seller['sign-in']);
+      for (const [page, url] of Object.entries(targets.seller)) {
+        if (url === undefined || signIn === null) continue;
+        if (hostOf(url)?.origin !== signIn.origin) {
+          context.addIssue({
+            code: 'custom',
+            message: 'a seller page must have the origin of the seller sign-in page',
+            path: ['seller', page],
+          });
+        }
+      }
+    }
     if (targets.admin === undefined) return;
     const signInPages = ADMIN_SIGN_IN_PAGES.filter((page) => targets.admin![page] !== undefined);
     if (signInPages.length > 0 && signInPages.length < ADMIN_SIGN_IN_PAGES.length) {

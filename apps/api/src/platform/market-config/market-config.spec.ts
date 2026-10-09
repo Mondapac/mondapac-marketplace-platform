@@ -1159,6 +1159,25 @@ describe('loadMarketConfigs', () => {
         load(withKeys({ sellerPages: { ...SELLER_PAGES, 'accept-invitation': page } })),
       ).toThrow(/identity\.links\.targets\./);
     });
+
+    it.each([
+      ['on another host', 'https://evil.qq.test/accept-invitation'],
+      ['on another port of the seller host', 'https://seller.qq.test:8443/accept-invitation'],
+    ])('rejects a seller accept page %s (Hassan L1)', (_case, page) => {
+      expect(() =>
+        load(withKeys({ sellerPages: { ...SELLER_PAGES, 'accept-invitation': page } })),
+      ).toThrow(/a seller page must have the origin of the seller sign-in page/);
+    });
+
+    it('rejects any seller page off the seller sign-in origin (Hassan L1)', () => {
+      expect(() =>
+        load(
+          withKeys({
+            sellerPages: { ...SELLER_PAGES, 'reset-password': 'https://evil.qq.test/reset' },
+          }),
+        ),
+      ).toThrow(/a seller page must have the origin of the seller sign-in page/);
+    });
   });
 
   describe('the sellers section', () => {
