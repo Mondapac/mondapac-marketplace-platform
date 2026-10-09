@@ -13,7 +13,6 @@ import {
 import { ADMIN_ACCOUNT_INVITE } from '../../contracts/permissions';
 import { InvitationIssuedAudit, InvitationRevokedAudit } from '../../domain/audit';
 import { parseEmailAddress } from '../../domain/email-address';
-import { GrantPolicy } from '../../domain/grant-policy';
 import { Invitation } from '../../domain/invitation';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
@@ -25,9 +24,8 @@ import {
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleRepository } from '../ports/seller-team.repository';
 import {
-  grantedRoleOf,
-  protectedKeysOf,
   readActingGrants,
+  roleGrantVerdict,
   roleIsInActorsReach,
   type GrantSubject,
 } from '../roles/granting';
@@ -137,11 +135,7 @@ export class InviteAdmin extends UseCase<InviteAdminInput, InviteAdminOutput, In
           if (role === null || !roleIsInActorsReach(role, self)) {
             return err({ code: 'role.unknown' });
           }
-          const granted = GrantPolicy.canGrant(
-            reading.actor,
-            grantedRoleOf(role, this.deps.effectiveKeys),
-            protectedKeysOf(this.deps.permissions),
-          );
+          const granted = roleGrantVerdict(reading.actor, role, this.deps);
           if (!granted.ok) {
             this.log('identity.invite-admin.not-grantable', context, {
               reason: granted.error.reason,

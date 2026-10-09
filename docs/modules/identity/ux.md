@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Author | Reza (ui-ux-designer) — 2026-10-03 |
-| Status | Approved at G2, 2026-10-03 (Jafar, Ali, Hassan); Figma 1.1.0 and 1.2.0 before any frontend slice. Amended 2026-10-07: Auth layout with a brand panel (owner decision, 7.4 row 2; 3.0 rule 1 and section 4). |
+| Status | Approved at G2, 2026-10-03 (Jafar, Ali, Hassan); Figma 1.1.0 and 1.2.0 before any frontend slice. Amended 2026-10-07: Auth layout with a brand panel (owner decision, 7.4 row 2; 3.0 rule 1 and section 4). Amended 2026-10-09: role names keyed by seed code, and the Members keys for an expired invitation (section 5; Ali's ruling, asked by the identity track). |
 | Module | `identity`, tier A, Phase 2. G1 approved by the owner on 2026-10-02 |
 | Reviewers | Jafar (product-designer), Ali (cto), Hassan (security-tester). Mohammad (software-architect) writes the domain design in parallel |
 | Review applied | Jafar: changes 1 to 12 and his answers to the first draft's open points. Ali: required changes 8 and 9, his slice names and his owner list. Hassan: findings 2, 3, 6, 7, 13 and 15, the session lifetimes and his answers to the first draft's 7.3 |
@@ -460,6 +460,14 @@ the next free number. In this document 1.1.0 and 1.2.0 name those two releases.
   `.description`, owned by the module that declares the key.
 - In the tables, sibling keys and their texts are joined with " · ". (L) marks a row for legal
   review.
+- Role names (Ali's ruling, 2026-10-09). A system or default role is labelled by its seed code,
+  permanently: `identity.role.<seed-code>`, the `nameKey` of the role seeds, one key per seed code.
+  A custom role (no seed code) shows `members.role.custom`; a seed code without a key shows the
+  generic `members.role.unknown`, never the code itself; an invitation whose role was deleted shows
+  `members.role.none`. `members.role.system` is the accessible name of the lock icon after a system
+  role. A new seed code adds its key in the same change. Seed codes never take the names of the
+  role editor's elements under `role.` (`label`, `banner`, `help`, `body`, `toast`, `action`,
+  `status`).
 
 **Words used everywhere:** sign in, sign out, sign up; email; confirm your email; two-step
 verification; backup code; seller account, admin account, customer account; team member; role;
@@ -552,12 +560,16 @@ the seller panel only: system role = Owner, default role = Ready-made (Jafar, an
 | `dialog.delete-role.title · body · action` | Delete the role "{roleName}"? · This can't be undone. {count, plural, =0 {} one {# pending invitation with this role stops working.} other {# pending invitations with this role stop working.}} · Delete role |
 | `dialog.cancel-invitation.title · body · action · action.keep` | Cancel the invitation to {email}? · The link in their email stops working. · Cancel invitation · Keep invitation |
 | `members.title.seller · title.admin · tab.team · tab.admins · tab.roles` | Team & roles · Roles & permissions · Team · Admins · Roles |
-| `members.label.person · .role · .two-step · .status · .you · status.active · .invited · .deactivated · .two-step-on · .two-step-off` | Person · Role · Two-step verification · Status · You · Active · Invited · Deactivated · On · Off |
+| `members.label.person · .role · .two-step · .status · .you · status.active · .invited · .expired · .deactivated · .two-step-on · .two-step-off` | Person · Role · Two-step verification · Status · You · Active · Invited · Invitation expired · Deactivated · On · Off |
+| `members.action.resend · .cancel-invitation` | Resend invitation · Cancel invitation… |
+| `members.role.custom · .unknown · .none · .system` | Custom role · Role · No role · (system role) |
 | `members.action.invite.team · .invite.admin · .change-role · .reset-two-step · .remove · .deactivate · .reactivate` | Invite team member · Invite admin · Change role · Reset two-step verification · Remove from team… · Deactivate account… · Reactivate account |
 | `members.toast.reactivated` | {name}'s account is active again. They can sign in. |
 | `members.empty.title · empty.body · banner.early` | It's just you so far · Invite the people who help run your shop. Each person gets their own sign-in. · Team members can sign in now. The parts of the panel they can use appear as MondaPac adds features. |
 | `roles.action.create · .duplicate · .edit · .delete · status.system.admin · .system.seller · .default.admin · .default.seller · .custom · label.all · label.none` | Create role · Duplicate · Edit · Delete… · System · Owner · Default · Ready-made · Custom · All · None yet |
-| `roles.default.<code>.name · .description` | Name and one-line purpose of each ready-made role of DD 5.6, written once the owner approves the set (DD 14.4) |
+| `role.platform-administrator · .onboarding-compliance · .catalogue-moderator · .operations-support · .finance · .viewer` | Platform administrator · Onboarding and compliance · Catalogue moderator · Operations and support · Finance · Viewer |
+| `role.seller-owner · .store-manager · .order-fulfilment · .catalogue-stock · .customer-service · .bookkeeper` | Owner · Store manager · Order fulfilment · Catalogue and stock · Customer service · Bookkeeper |
+| `role-purpose.<seed-code>` | One-line purpose of each ready-made role on B2, written when B2 is built |
 | `roles.empty.title · empty.body.admin · empty.body.seller` | No custom roles yet · Default roles cover common jobs. Create a role when you need a different mix of permissions. · Ready-made roles cover common jobs. Create a role when you need a different mix of permissions. |
 | `role.label.name · label.count · action.select-all · status.protected · action.save` | Role name · {selected} of {total} permissions selected · Select all in {group} · Protected · Save role |
 | `role.banner.system.admin · .system.seller · banner.default.admin · .default.seller` | System role. It always has every permission in this panel and can't be changed or deleted. · Owner role. It always has every permission in this panel and can't be changed or deleted. · Default role from MondaPac. It can't be changed. Duplicate it to make your own version. · Ready-made role from MondaPac. It can't be changed. Duplicate it to make your own version. |
@@ -718,7 +730,8 @@ Told, not asked, and shown in the Persian summary: the words a seller reads ("Ch
 approved", "This seller account is suspended"): a design decision set by the `sellers` G1, and
 legal reads the final text (Jafar, Ali); "keep me signed in" for sellers only, opt-in, at most 30
 days (Ali); no promised review time on S1, since the `sellers` G2 asks the owner (Jafar). The
-ready-made roles question of DD 14.4 decides the keys `identity.roles.default.<code>.*`.
+ready-made roles question of DD 14.4 decided the role set; its names are the keys
+`identity.role.<seed-code>` of section 5 (Ali, 2026-10-09).
 
 ### 7.5 Inconsistencies found while reading
 1. Brief section 12 cites the README for six missing components (Dialog, Select, Textarea, password
