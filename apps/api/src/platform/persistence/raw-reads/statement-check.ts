@@ -173,6 +173,8 @@ function checkFrom(item: unknown, quals: unknown, walk: Walk): void {
   }
   const [kind, body] = entry;
   if (kind === 'JoinExpr' && isNode(body)) {
+    // A join alias hides the inner aliases and can rename a column to market_id (Hassan N-1).
+    if (body.alias !== undefined) walk.violations.add('join-alias');
     // An ON term filters nothing on the preserved side of a RIGHT or FULL join (Hassan H-2).
     if (body.jointype !== 'JOIN_INNER' && body.jointype !== 'JOIN_LEFT') {
       walk.violations.add(`join-type:${String(body.jointype)}`);
@@ -224,7 +226,14 @@ function checkFunction(call: Node, walk: Walk): void {
     const param = only(inner);
     if (param === null || param[0] !== 'ParamRef') walk.violations.add('unnest-argument-not-param');
   }
-  if (call.agg_star === true || call.agg_distinct === true || call.over !== undefined) {
+  if (
+    call.agg_star === true ||
+    call.agg_distinct === true ||
+    call.over !== undefined ||
+    call.agg_order !== undefined ||
+    call.agg_filter !== undefined ||
+    call.func_variadic === true
+  ) {
     walk.violations.add('function-not-allowed:call-form');
   }
 }
@@ -299,6 +308,18 @@ function visit(value: unknown, walk: Walk): void {
       case 'FuncCall':
         checkFunction(child, walk);
         break;
+      case 'SubLink': {
+        const operator = child.operName === undefined ? [] : strings(child.operName);
+        if (
+          operator === null ||
+          (operator.length > 0 && (operator.length !== 1 || !ALLOWED_OPERATORS.has(operator[0]!)))
+        ) {
+          walk.violations.add(
+            `operator-not-allowed:${operator === null ? '?' : operator.join('.')}`,
+          );
+        }
+        break;
+      }
       case 'ColumnRef':
         // `market_id` is only ever a direct operand of a comparison (Hassan L-2).
         if (

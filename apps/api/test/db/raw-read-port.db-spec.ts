@@ -184,7 +184,7 @@ describe('BEGIN READ ONLY as the application role (Hassan C1)', () => {
       await owner.end();
     });
 
-    // 25006 read_only_sql_transaction: the privilege check passes, so only READ ONLY refuses.
+    // 25006 read_only_sql_transaction. The grants above rule out a missing privilege as the reason.
     it.each([
       [
         'a data-modifying CTE',

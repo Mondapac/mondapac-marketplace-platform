@@ -351,4 +351,42 @@ describe('raw read statement check', () => {
       ).toContain('locking-clause');
     });
   });
+
+  describe('Hassan re-review of PR 220', () => {
+    const A = '"certification"."certification_types"';
+    const B = '"certification"."issuers"';
+    it.each([
+      [
+        'a join alias with a column list (N-1)',
+        `SELECT x.id FROM (${A} x JOIN (VALUES ($1::text)) v(m) ON true) AS x(id, a, b, market_id) WHERE x.market_id = $1`,
+        'join-alias',
+      ],
+      [
+        'a join alias over two tables (N-1)',
+        `SELECT x.id FROM (${A} x JOIN ${B} y ON y.market_id = $1) AS x(i1, m1, s1, i2, market_id) WHERE x.market_id = $1`,
+        'join-alias',
+      ],
+      [
+        'a qualified operator on a sub-link (N-2)',
+        `SELECT t.id FROM ${A} t WHERE t.market_id = $1 AND t.id OPERATOR(public.===) ANY (SELECT i.id FROM ${B} i WHERE i.market_id = $1)`,
+        'operator-not-allowed:public.===',
+      ],
+      [
+        'unnest with ORDER BY',
+        `SELECT u.v FROM unnest($2::text[] ORDER BY 1) AS u(v), ${A} t WHERE t.market_id = $1`,
+        'function-not-allowed:call-form',
+      ],
+    ])('refuses %s', async (_name, sql, violation) => {
+      expect(await check(sql, [{}])).toContain(violation);
+    });
+
+    it('still passes an ANY sub-link with a plain operator', async () => {
+      expect(
+        await check(
+          `SELECT t.id FROM ${A} t WHERE t.market_id = $1 AND t.id = ANY (SELECT i.type_id FROM ${B} i WHERE i.market_id = $1)`,
+          [],
+        ),
+      ).toEqual([]);
+    });
+  });
 });

@@ -72,7 +72,7 @@ const RAW_SQL_FILES = new Set([
 ]);
 /** C3: the only files that may import the database driver (ADR-0030 decision 6). */
 const DRIVER_FILES = new Set(['platform/persistence/prisma-root.ts']);
-const DRIVER_SPECIFIER = /^(pg|pg-[^/]+|pg\/.*|postgres|@prisma\/adapter-pg)$/;
+const DRIVER_SPECIFIER = /^(pg|pg-[^/]+|postgres|@prisma\/adapter-pg)(\/.*)?$/;
 const RAW_SQL_MEMBER =
   /^\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|queryRawTyped|extends)$/;
 const PRISMA_RAW_BUILDERS = new Set(['sql', 'raw', 'join']);
@@ -429,7 +429,9 @@ async function checkRawReads(root) {
           found.push(rawSqlMessage(node));
         } else if (ts.isBindingElement(node)) {
           const key = node.propertyName ?? node.name;
-          const text = ts.isIdentifier(key) || ts.isStringLiteralLike(key) ? key.text : undefined;
+          const literal = ts.isComputedPropertyName(key) ? key.expression : key;
+          const text =
+            ts.isIdentifier(literal) || ts.isStringLiteralLike(literal) ? literal.text : undefined;
           if (text !== undefined && RAW_SQL_MEMBER.test(text)) found.push(rawSqlMessage(node));
         }
       }
@@ -455,6 +457,17 @@ async function checkRawReads(root) {
           ts.isStringLiteralLike(node.arguments[0])
         ) {
           specifier = node.arguments[0].text;
+        }
+        if (
+          ts.isCallExpression(node) &&
+          (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+            (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
+          !(node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]))
+        ) {
+          found.push(
+            `${relative}:${lineOf(node)}: require/import() needs a string literal specifier ` +
+              '(a computed one could load the database driver; ADR-0030)',
+          );
         }
         if (specifier !== undefined && DRIVER_SPECIFIER.test(specifier)) {
           found.push(

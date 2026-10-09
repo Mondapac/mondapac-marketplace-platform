@@ -24,3 +24,9 @@ export {
   viaElement,
 };
 export * from 'postgres';
+
+declare const moduleName: string;
+const { ['$executeRawUnsafe']: computed } = db;
+const computedLoad = require(moduleName);
+export { computed, computedLoad };
+export * from 'postgres/cjs/src/index.js';

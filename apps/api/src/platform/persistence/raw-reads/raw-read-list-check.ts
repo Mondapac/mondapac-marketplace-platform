@@ -43,6 +43,7 @@ export async function checkRawReadList(
       const array = param.type.endsWith('[]');
       if (!array && !SCALAR.has(param.type)) bad('param-type');
       if (array && (param.maxLength === undefined || param.maxLength < 1)) bad('array-cap-missing');
+      if (array && !SCALAR.has(param.type.slice(0, -2))) bad('param-type');
       if (array && param.maxLength !== undefined && param.maxLength > MAX_ARRAY_CAP) {
         bad('array-cap-too-large');
       }
