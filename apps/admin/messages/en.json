@@ -380,7 +380,10 @@
         "body": "Custom roles you create will appear here."
       },
       "action": {
-        "view": "View"
+        "view": "View",
+        "edit": "Edit",
+        "duplicate": "Duplicate",
+        "create": "New role"
       },
       "back": "Back to roles",
       "read-only": {
@@ -389,7 +392,35 @@
       },
       "selected": "{selected} of {total} permissions selected",
       "included": "Included:",
-      "protected": "Protected"
+      "protected": "Protected",
+      "editor": {
+        "title-create": "New custom role",
+        "title-edit": "Edit role",
+        "name": "Role name",
+        "name-help": "Up to {max} characters. Each custom role needs its own name.",
+        "name-required": "Enter a name for the role.",
+        "name-invalid": "Use 1 to 80 characters, with no control characters.",
+        "too-many": "A role can have at most {max} permissions.",
+        "protected-help": "Protected. Only a Platform Administrator can give this.",
+        "not-grantable-help": "You don't hold this permission, so you can't give it.",
+        "create": "Create role",
+        "save": "Save changes",
+        "saved": "Saved. People with this role see the change now.",
+        "delete": "Delete role",
+        "delete-title": "Delete {name}?",
+        "delete-body": "This can't be undone. A role that someone still holds can't be deleted: give those people another role first.",
+        "delete-confirm": "Delete role",
+        "keep": "Keep role"
+      },
+      "reason": {
+        "role": {
+          "name-taken": "Another custom role already has this name.",
+          "limit": "This market has reached its limit of custom roles. Delete one first.",
+          "in-use": "Someone still has this role. Give them another role, then delete it.",
+          "read-only": "This role can't be changed. We've refreshed the page.",
+          "unchanged": "Nothing changed."
+        }
+      }
     }
   }
 }

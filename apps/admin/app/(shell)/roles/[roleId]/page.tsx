@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { RoleEditor } from '../../../../src/roles/role-editor.tsx';
 import { RoleView } from '../../../../src/roles/role-view.tsx';
 import { RolesNoAccess } from '../../../../src/roles/roles-page-gate.tsx';
 import type { RoleCatalogue } from '../../../../src/roles/types.ts';
@@ -8,6 +9,8 @@ import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 
 const VIEW_PERMISSION = 'identity.platform-role.view';
+const EDIT_PERMISSION = 'identity.platform-role.edit';
+const CREATE_PERMISSION = 'identity.platform-role.create';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -42,9 +45,29 @@ export default async function RolePageRoute({
   // Another Market's or an unknown id looks the same: not found (ux B5).
   const role = result.body.items.find((item) => item.roleId === roleId);
   if (role === undefined) notFound();
+  const keys = gate.session.permissionKeys;
+  if (role.kind === 'custom' && role.actions.edit.allowed && keys.includes(EDIT_PERMISSION)) {
+    return (
+      <AdminShell session={gate.session} activeId="team" title={title}>
+        <RoleEditor
+          // A new version remounts the form, so a refresh after a save shows the saved state.
+          key={role.version}
+          role={role}
+          catalogue={result.body}
+          csrfToken={gate.session.csrfToken}
+          initialName={role.name ?? ''}
+          initialKeys={role.permissionKeys}
+        />
+      </AdminShell>
+    );
+  }
   return (
     <AdminShell session={gate.session} activeId="team" title={title}>
-      <RoleView role={role} catalogue={result.body} />
+      <RoleView
+        role={role}
+        catalogue={result.body}
+        canDuplicate={keys.includes(CREATE_PERMISSION)}
+      />
     </AdminShell>
   );
 }

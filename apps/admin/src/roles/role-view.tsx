@@ -7,9 +7,11 @@ import type { RoleCatalogue, RoleRecord } from './types.ts';
 export async function RoleView({
   role,
   catalogue,
+  canDuplicate = false,
 }: {
   readonly role: RoleRecord;
   readonly catalogue: RoleCatalogue;
+  readonly canDuplicate?: boolean;
 }) {
   const t = await getTranslations();
   const held = new Set(role.permissionKeys);
@@ -29,6 +31,13 @@ export async function RoleView({
       {role.kind === 'custom' ? null : (
         <Banner tone="info">{t(`identity.roles.read-only.${role.kind}`)}</Banner>
       )}
+      {canDuplicate ? (
+        <p>
+          <a className="font-medium text-link underline" href={`/roles/new?from=${role.roleId}`}>
+            {t('identity.roles.action.duplicate')}
+          </a>
+        </p>
+      ) : null}
       <p className="text-fg-muted">
         {role.kind === 'system'
           ? t('identity.roles.permissions-all')

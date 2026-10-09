@@ -372,4 +372,34 @@ describe('signed client address (ADR-0037)', () => {
     const sent = new Headers(upstream.mock.calls[0]?.[1]?.headers);
     expect(sent.get('x-client-address')).toMatch(/^v1;k=panel;t=\d+;a=203\.0\.113\.7;s=/);
   });
+
+  it('relays the role editor routes, with a UUID id for edit and delete only', async () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'DELETE' ? {} : { body: '{}' }),
+      });
+    for (const [method, path] of [
+      ['POST', 'identity/admin/roles'],
+      ['PUT', `identity/admin/roles/${id}`],
+      ['DELETE', `identity/admin/roles/${id}`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', 'identity/admin/roles'],
+      ['DELETE', 'identity/admin/roles'],
+      ['DELETE', 'identity/admin/roles/not-a-uuid'],
+      ['POST', `identity/admin/roles/${id}`],
+      ['PUT', `identity/admin/roles/${id}/extra`],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+      expect(response.status).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
 });

@@ -62,8 +62,24 @@ describe('admin roles', () => {
     expect(screen.getByText('All')).toBeTruthy();
     expect(screen.getByText('2 permissions')).toBeTruthy();
     expect(screen.getByText('None yet')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'View Night shift' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Edit Night shift' }).getAttribute('href')).toBe(
       '/roles/0190a000-0000-7000-8000-0000000000a3',
+    );
+  });
+
+  it('offers View when a custom role cannot be edited, and Duplicate on the view', async () => {
+    const locked = role({
+      kind: 'custom',
+      seedCode: null,
+      name: 'Held',
+      actions: { edit: { allowed: false, code: 'access.denied' }, delete: allowed },
+    });
+    render(await RolesTable({ roles: [locked] }));
+    expect(screen.getByRole('link', { name: 'View Held' })).toBeTruthy();
+    cleanup();
+    render(await RoleView({ role: locked, catalogue, canDuplicate: true }));
+    expect(screen.getByRole('link', { name: 'Duplicate' }).getAttribute('href')).toBe(
+      `/roles/new?from=${locked.roleId}`,
     );
   });
 

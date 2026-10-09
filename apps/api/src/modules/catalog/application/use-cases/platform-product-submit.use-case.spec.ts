@@ -177,6 +177,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       defaultFamily: () => 'default',
       conditions: () => ['new'],
       sellFromCatalogue: () => Promise.resolve(true),
+      sellerCanCreateProduct: () => Promise.resolve(true),
       approvalRequired: () =>
         options.approvalThrows === true
           ? Promise.reject(new Error('config'))

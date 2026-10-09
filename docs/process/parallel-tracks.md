@@ -62,7 +62,7 @@
 3. **جدول وضعیت ماژول‌ها.** در `docs/modules/README.md` هر مسیر فقط ردیف ماژول خودش را عوض می‌کند.
 4. **شمارهٔ ADR.** قبل از نوشتن ADR، شمارهٔ آزاد بعدی در تابلو رزرو می‌شود. `0011` برای انتخاب CMS رزرو است.
 5. **lockfile و وابستگی.** `pnpm-lock.yaml` با دست ادغام نمی‌شود: هنگام تعارض، `pnpm install` اجرا و نتیجه commit می‌شود. افزودن وابستگی یک PR جداست (`package.json` همان اپ و `pnpm-lock.yaml`).
-6. **migration.** هم‌زمان فقط یک PR دارای migration باز است. شاخهٔ migration باید همهٔ migration های `main` را داشته باشد، وگرنه migration از نو ساخته می‌شود. migration ادغام‌شده هرگز ویرایش نمی‌شود. تأیید مجتبی (database-designer) مثل قبل لازم است.
+6. **migration.** (در «حالت سرعت» از ۲۰۲۶-۱۰-۰۹ این محدودیت برداشته شده؛ docs/process/speed-mode.md) هم‌زمان فقط یک PR دارای migration باز است. شاخهٔ migration باید همهٔ migration های `main` را داشته باشد، وگرنه migration از نو ساخته می‌شود. migration ادغام‌شده هرگز ویرایش نمی‌شود. تأیید مجتبی (database-designer) مثل قبل لازم است.
 
 ## تابلوی هماهنگی
 

@@ -193,6 +193,8 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   (design 7.1). AU: `new`, `used`; ZZ: `new`.
 - `sellFromCatalogue` (required): whether a seller may create an Offer on a PLATFORM product
   (OFR-03); the interim home of the ADR-0026 setting `catalog.sell-from-catalogue`.
+- `sellerCanCreateProduct` (required): whether a seller may create a new SELLER product (OFR-01);
+  the interim home of the ADR-0026 setting `catalog.seller-can-create-product`.
 - `approvalRequired` (required): true when a new revision of a published product waits for review
   unless it is minor and nothing is pending (design 4.2 row 1); the interim home of the ADR-0026
   setting `catalog.approval-required` until its store lands (catalog slice 10).

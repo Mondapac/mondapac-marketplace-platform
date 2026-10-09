@@ -57,6 +57,14 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     }
   }
 
+  sellerCanCreateProduct(market: MarketContext): Promise<boolean> {
+    try {
+      return Promise.resolve(this.section(market).sellerCanCreateProduct);
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
   approvalRequired(market: MarketContext): Promise<boolean> {
     // The port is async for the store of slice 10: a fault comes back as a rejection too.
     try {

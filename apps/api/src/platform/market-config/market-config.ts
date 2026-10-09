@@ -1052,6 +1052,11 @@ const catalogSchema = z
      * 10): a Market must say so, none defaults it.
      */
     sellFromCatalogue: z.boolean(),
+    /**
+     * Whether a seller may create a new SELLER product (OFR-01); the interim home of the ADR-0026
+     * setting `catalog.seller-can-create-product`. A Market must say so, none defaults it.
+     */
+    sellerCanCreateProduct: z.boolean(),
   })
   .superRefine((catalog, context) => {
     if (new Set(catalog.productTypes).size !== catalog.productTypes.length) {

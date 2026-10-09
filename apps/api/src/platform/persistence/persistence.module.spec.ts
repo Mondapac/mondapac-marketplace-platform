@@ -9,6 +9,7 @@ import { UNIT_OF_WORK, type UnitOfWorkOptions } from '../unit-of-work/unit-of-wo
 import { DatabaseProbe } from './database-probe';
 import { GUARDED_CLIENT } from './guarded-client';
 import { PersistenceModule } from './persistence.module';
+import { RAW_READ_PORT } from './raw-reads/raw-read-port';
 import { poolConfigOf, PrismaRoot } from './prisma-root';
 import { PrismaService } from './prisma.service';
 import { checkUnitOfWorkOptions } from './prisma-unit-of-work';
@@ -25,6 +26,7 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
       PrismaService,
       UNIT_OF_WORK,
       DatabaseProbe,
+      RAW_READ_PORT,
       EVENT_BUS,
       OUTBOX_RELAY,
       EVENT_DISPATCHER,

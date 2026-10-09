@@ -30,6 +30,8 @@ export interface CatalogMarketPolicy {
   conditions(market: MarketContext): readonly string[];
   /** Whether a seller may create an Offer on a PLATFORM product (7.3, OFR-03); read at creation. */
   sellFromCatalogue(market: MarketContext): Promise<boolean>;
+  /** Whether a seller may create a new SELLER product (7.3, OFR-01); read at creation. */
+  sellerCanCreateProduct(market: MarketContext): Promise<boolean>;
   /** Whether a new revision waits for review (4.2 row 1); read in the submitting unit. */
   approvalRequired(market: MarketContext): Promise<boolean>;
 }

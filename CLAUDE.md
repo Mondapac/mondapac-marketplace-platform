@@ -194,6 +194,24 @@ strategy implementation, not in core logic.
     one PR. Never check out a branch or write in another track's folder. At the end
     update the board and your track's status doc (project skill mondapac-track-session).
 
+## Speed mode (owner decision 2026-10-09, overrides the rules it names)
+The owner approved docs/process/speed-mode.md. Until the owner lifts it:
+- Gates (rule 10): no new G1/G2 or design documents. Build remaining modules from the
+  existing brief and design docs; read only the sections a task needs (grep), never whole files.
+- Reviews: CI (`pnpm verify`, boundaries, permission contract tests) is the main gate.
+  One combined review (qa-engineer + qc-release-manager in a single pass) per batch of PRs,
+  not per PR. security-tester reviews separately only the mandatory paths listed under Team
+  below (auth, payments, CERT-* enforcement, pricing Cost, AI, raw SQL). database-designer
+  sign-off is part of the combined review for schema changes.
+- PR size: one complete feature per PR (schema + use case + API + tests), not one slice per PR.
+- Migrations: the one-open-migration-PR rule is lifted. Each PR rebases on main right before
+  merge; if another migration merged meanwhile, regenerate the new migration on top. A merged
+  migration is never edited.
+- Design system first (rule 12) is paused: frontend uses existing tokens and library
+  components; new components go in code first and are back-ported to Figma later.
+- Bookkeeping (rule 13): update the board and status doc once per day, not after each PR.
+- Sessions: one fresh session per work package with a short handoff (5 KB max).
+
 ## Team (subagents in .claude/agents/)
 This project uses specialized subagents instead of one generalist for everything: cto,
 product-owner, software-architect, database-designer, product-designer, ui-ux-designer,
