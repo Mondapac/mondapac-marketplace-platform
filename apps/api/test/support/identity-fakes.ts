@@ -2,6 +2,11 @@ import {
   ADMIN_ACCOUNT_READER,
   type AdminAccountReader,
 } from '../../src/modules/identity/application/ports/admin-account-reader';
+import {
+  SELLER_ACCOUNT_READER,
+  type SellerAccountReader,
+  type SellerAccountRecord,
+} from '../../src/modules/identity/application/ports/seller-account-reader';
 import { createHmac } from 'node:crypto';
 import type { TestingModuleBuilder } from '@nestjs/testing';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
@@ -365,6 +370,125 @@ export class IdentityFakes {
             email: a.email.typed,
             displayName: a.displayName,
             status: a.status,
+          })),
+      ),
+  };
+
+  /**
+   * The Seller Owner of a seller in the fakes, by the rule of `readSellerPeople`: an active
+   * member of the seller population whose role is the seller system role (slice 9b).
+   */
+  private ownerOf(marketId: string, sellerId: string, verified: boolean) {
+    const owners = [...this.memberships.values()]
+      .filter((m) => m.marketId === marketId && m.sellerId === sellerId && m.state === 'active')
+      .map((m) => this.accounts.get(m.accountId))
+      .filter((account): account is AccountState => {
+        if (account === undefined || account.marketId !== marketId) return false;
+        if (account.population !== 'seller') return false;
+        if (verified && account.emailVerifiedAt === null) return false;
+        const assignment = [...this.assignments.values()].find(
+          (a) => a.marketId === marketId && a.accountId === account.id,
+        );
+        const role = assignment === undefined ? undefined : this.roles.get(assignment.roleId);
+        return role !== undefined && role.kind === 'system' && role.scope === 'seller';
+      })
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    return owners[0] ?? null;
+  }
+
+  private sellerRecord(state: SellerAccessState, verified: boolean): SellerAccountRecord {
+    const owner = this.ownerOf(state.marketId, state.sellerId, verified);
+    return {
+      sellerId: state.sellerId,
+      origin: state.origin,
+      state: state.state,
+      stateChangedAt: state.stateChangedAt,
+      reapplyCount: state.reapplyCount,
+      owner:
+        owner === null
+          ? null
+          : {
+              accountId: owner.id,
+              email: owner.email.typed,
+              displayName: owner.displayName,
+              emailVerified: owner.emailVerifiedAt !== null,
+            },
+    };
+  }
+
+  /** The admin seller list's and `sellerAccountSummaries`' read (slice 9b), over the fakes. */
+  readonly sellerAccountReader: SellerAccountReader = {
+    ownedSellers: (market, query) =>
+      Promise.resolve(
+        [...this.sellerAccess.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.registeredAt !== null &&
+              (query.state === null || a.state === query.state) &&
+              (query.sellerIds === null || query.sellerIds.includes(a.sellerId)) &&
+              (query.after === null || a.sellerId > query.after) &&
+              this.ownerOf(a.marketId, a.sellerId, true) !== null &&
+              (query.ownerAccountId === null ||
+                this.ownerOf(a.marketId, a.sellerId, true)?.id === query.ownerAccountId),
+          )
+          .sort((a, b) => (a.sellerId < b.sellerId ? -1 : 1))
+          .slice(0, query.limit)
+          .map((a) => this.sellerRecord(a, true)),
+      ),
+    summariesOf: (market, sellerIds) =>
+      Promise.resolve(
+        [...this.sellerAccess.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.registeredAt !== null &&
+              sellerIds.includes(a.sellerId),
+          )
+          .map((a) => this.sellerRecord(a, false)),
+      ),
+    sellersOfAddress: (market, emailNormalized) => {
+      const account = [...this.accounts.values()].find(
+        (a) =>
+          a.marketId === market.marketId &&
+          a.population === 'seller' &&
+          a.email.normalized === emailNormalized,
+      );
+      if (account === undefined) return Promise.resolve(null);
+      return Promise.resolve({
+        accountId: account.id,
+        sellerIds: [...this.memberships.values()]
+          .filter(
+            (m) =>
+              m.marketId === market.marketId && m.accountId === account.id && m.state === 'active',
+          )
+          .map((m) => m.sellerId)
+          .sort(),
+      });
+    },
+    openOwnerInvitations: (market, query) =>
+      Promise.resolve(
+        [...this.invitations.values()]
+          .filter(
+            (i) =>
+              i.marketId === market.marketId &&
+              i.kind === 'seller-owner' &&
+              i.state === 'pending' &&
+              i.sellerId !== null &&
+              (query.emailNormalized === null || i.email?.normalized === query.emailNormalized) &&
+              (query.after === null || i.id > query.after),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, query.limit)
+          .map((i) => ({
+            id: i.id,
+            sellerId: i.sellerId!,
+            state: 'pending' as const,
+            email: i.email?.typed ?? '',
+            displayName: i.displayName,
+            invitedByAccountId: i.invitedByAccountId,
+            expiresAt: i.expiresAt,
+            createdAt: i.createdAt,
           })),
       ),
   };
@@ -1359,6 +1483,8 @@ export class IdentityFakes {
       .useValue(this.reviewerCandidateReader)
       .overrideProvider(ADMIN_ACCOUNT_READER)
       .useValue(this.adminAccountReader)
+      .overrideProvider(SELLER_ACCOUNT_READER)
+      .useValue(this.sellerAccountReader)
       .overrideProvider(ACCESS_DECISION_REPOSITORY)
       .useValue(this.decisionRepository)
       .overrideProvider(SELLER_MEMBERSHIP_REPOSITORY)
