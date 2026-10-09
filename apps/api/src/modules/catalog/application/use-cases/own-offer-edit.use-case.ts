@@ -142,6 +142,7 @@ export class OwnOfferEdit extends UseCase<
     if (!guard.ok) return err({ code: 'access.unavailable' });
     if (guard.value === null) return err({ code: 'offer.not-found' });
     const stored = guard.value.state.description;
+    const guardVersion = guard.value.state.version;
 
     // The claim-text control runs outside any unit (it opens its own); a hit refuses the edit.
     const texts = Object.entries(description).filter(
@@ -171,6 +172,9 @@ export class OwnOfferEdit extends UseCase<
         async () => {
           const offer = await this.#ownOffer(market, offerId, sellerId);
           if (offer === null) return err({ code: 'offer.not-found' } as const);
+          // The changed texts were checked against the first read: another edit in between
+          // means the baseline is stale, so nothing is written (Hassan 7b-1 L-1).
+          if (offer.state.version !== guardVersion) return err({ code: 'conflict.stale' } as const);
           const edited = offer.edit({
             sellerSku,
             conditionCode,

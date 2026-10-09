@@ -152,17 +152,20 @@ describe.each(TEST_MARKETS)(
       ]);
     });
 
-    it('returns a pending-first-publish Offer to draft and clears submitted_at', async () => {
-      const id = await storedOffer(`P-${uuid7().slice(-10)}`, 'pending-first-publish');
-      const offer = await load(id);
-      edit(offer, offer.state.sellerSku);
-      expect(await save(offer)).toEqual({ ok: true, value: null });
-      const after = await row(id);
-      expect(after.status).toBe('draft');
-      expect(after.submitted_at).toBeNull();
-      expect(after.version).toBe(2);
-      expect((await history(id)).at(-1)).toEqual({ change_kind: 'edited', changed_fields: [] });
-    });
+    it.each(['pending-first-publish', 'changes-needed'] as const)(
+      'returns a %s Offer to draft and clears submitted_at',
+      async (status) => {
+        const id = await storedOffer(`P-${uuid7().slice(-10)}`, status);
+        const offer = await load(id);
+        edit(offer, offer.state.sellerSku);
+        expect(await save(offer)).toEqual({ ok: true, value: null });
+        const after = await row(id);
+        expect(after.status).toBe('draft');
+        expect(after.submitted_at).toBeNull();
+        expect(after.version).toBe(2);
+        expect((await history(id)).at(-1)).toEqual({ change_kind: 'edited', changed_fields: [] });
+      },
+    );
 
     it('stores nothing for an unchanged draft', async () => {
       const id = await storedOffer(`N-${uuid7().slice(-10)}`);

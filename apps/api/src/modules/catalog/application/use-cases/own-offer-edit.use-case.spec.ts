@@ -75,6 +75,9 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
       eligible?: boolean;
       saveRefusal?: 'offer.sku-taken';
       saveThrows?: Error;
+      /** The state a second read of the Offer answers (another edit landed in between). */
+      secondRead?: OfferState;
+      checkResult?: { ok: false; error: { code: string } };
       verdicts?: (texts: readonly { locale: string; text: string }[]) => ClaimTextVerdict[];
       reserve?:
         | { code: 'request.throttled'; retryAfterSeconds: number }
@@ -89,9 +92,11 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
     const unitOfWork = {
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
+    let reads = 0;
     const check = {
       execute: (_c: CallContext, texts: readonly { locale: string; text: string }[]) => {
         checked.push([...texts]);
+        if (options.checkResult !== undefined) return Promise.resolve(options.checkResult);
         const verdicts =
           options.verdicts?.(texts) ??
           texts.map((item) => ({
@@ -107,7 +112,12 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
       unitOfWork,
       offers: {
         add: () => Promise.reject(new Error('unused')),
-        findById: () => Promise.resolve(state === null ? null : Offer.restore(state)),
+        findById: () => {
+          reads += 1;
+          const current =
+            reads > 1 && options.secondRead !== undefined ? options.secondRead : state;
+          return Promise.resolve(current === null ? null : Offer.restore(current));
+        },
         save: (_m, offer) => {
           if (options.saveThrows !== undefined) return Promise.reject(options.saveThrows);
           if (options.saveRefusal !== undefined) return Promise.resolve(options.saveRefusal);
@@ -311,5 +321,52 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
     await expect(
       broken.useCase.execute(contextOf('seller'), form(broken.state!.id)),
     ).rejects.toThrow('db down');
+  });
+
+  it('returns a changes-needed Offer to draft', async () => {
+    const r = rig({
+      offer: offerState({ status: 'changes-needed', submittedAt: T0, handling: 'FRESH' }),
+    });
+    const outcome = await r.useCase.execute(contextOf('seller'), form(r.state!.id));
+    expect(outcome.ok).toBe(true);
+    expect(r.saved[0]!.state).toMatchObject({ status: 'draft', submittedAt: null });
+  });
+
+  it('reports no changed field when a waiting Offer is edited with an unchanged form', async () => {
+    const r = rig({
+      offer: offerState({ status: 'pending-first-publish', submittedAt: T0, handling: 'FRESH' }),
+    });
+    const outcome = await r.useCase.execute(
+      contextOf('seller'),
+      form(r.state!.id, { sellerSku: r.state!.sellerSku }),
+    );
+    expect(outcome).toEqual({ ok: true, value: { changedFields: [] } });
+    expect(r.saved).toHaveLength(1);
+    expect(r.saved[0]!.state.status).toBe('draft');
+  });
+
+  it('writes nothing when another edit landed between the claim check and the write', async () => {
+    const r = rig({ secondRead: offerState({ version: 3 }) });
+    const outcome = await r.useCase.execute(
+      contextOf('seller'),
+      form(r.state!.id, { description: { [locale]: 'a new text' } }),
+    );
+    expect(outcome).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+    expect(r.saved).toHaveLength(0);
+  });
+
+  it.each([
+    ['validation.failed', 'validation.failed'],
+    ['access.denied', 'access.denied'],
+    ['access.unavailable', 'access.unavailable'],
+    ['claim-text.check-unavailable', 'access.unavailable'],
+  ])('maps a claim-check failure %s to %s and stores nothing', async (from, to) => {
+    const r = rig({ checkResult: { ok: false, error: { code: from } } });
+    const outcome = await r.useCase.execute(
+      contextOf('seller'),
+      form(r.state!.id, { description: { [locale]: 'a new text' } }),
+    );
+    expect(outcome).toMatchObject({ ok: false, error: { code: to } });
+    expect(r.saved).toHaveLength(0);
   });
 });
