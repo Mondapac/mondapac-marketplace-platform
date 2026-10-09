@@ -621,6 +621,12 @@ subject key (D 11.3); `basis_id uuid` nullable (C4; the submission id of `seller
   `access_decisions_market_id_basis_id_idx`, declared in Prisma (Mojtaba, PR #204). A plain
   index rather than a partial `WHERE basis_id IS NOT NULL`: the table holds 10² to 10⁴ rows, and
   a partial index would be invisible to Prisma (8.4).
+- Slice 9a (built 2026-10-09, no migration) reads on these two indexes only: the admin history
+  `WHERE market_id, seller_id ORDER BY decided_at DESC, id DESC LIMIT 51` on the seller index; the
+  reconciliation `WHERE market_id AND basis_id = ANY(...)` (at most 100 ids) on the basis index,
+  without the reason column. No partial unique index on `(market_id, basis_id)` in 9a (Mohammad,
+  Hassan C7): the domain guard and `sellers`' "more than one decision for a pair = alert" rule
+  stand in for it.
 
 ## 4. What is never stored
 

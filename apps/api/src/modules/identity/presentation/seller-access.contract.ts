@@ -2,6 +2,8 @@ import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ApproveSellerAccess } from '../application/use-cases/approve-seller-access.use-case';
+import type { FindAccessDecisionsByBasis } from '../application/use-cases/find-access-decisions-by-basis.use-case';
+import type { ListSellerAccessDecisions } from '../application/use-cases/list-seller-access-decisions.use-case';
 import type { ReapplySellerAccess } from '../application/use-cases/reapply-seller-access.use-case';
 import type { RejectSellerAccess } from '../application/use-cases/reject-seller-access.use-case';
 import type { ListRegisteredSellers } from '../application/use-cases/list-registered-sellers.use-case';
@@ -9,11 +11,14 @@ import type { NotifyAccessReviewers } from '../application/use-cases/notify-acce
 import type { SellerAccessOf } from '../application/use-cases/seller-access-of.use-case';
 import type { SellerAccessOfSystem } from '../application/use-cases/seller-access-of-system.use-case';
 import type {
+  AccessDecisionByBasis,
+  AccessDecisionsUnavailable,
   FacadeValidationFailed,
   RegisteredSellerPage,
   ReviewerNoticeOutcome,
   ReviewerNoticeUnavailable,
   SellerAccessContract,
+  SellerAccessDecisionHistory,
   SellerAccessDecisionOutcome,
   SellerAccessDecisionRefusal,
   SellerAccessSummary,
@@ -30,6 +35,8 @@ export interface SellerAccessContractUseCases {
   readonly approveSellerAccess: ApproveSellerAccess;
   readonly rejectSellerAccess: RejectSellerAccess;
   readonly reapplySellerAccess: ReapplySellerAccess;
+  readonly listSellerAccessDecisions: ListSellerAccessDecisions;
+  readonly findAccessDecisionsByBasis: FindAccessDecisionsByBasis;
 }
 
 /**
@@ -97,6 +104,30 @@ export class SellerAccessContractImplementation implements SellerAccessContract 
     sellerId: Id<'Seller'>,
   ): Promise<Result<SellerReapplyOutcome, AccessDenied | SellerReapplyRefusal>> {
     return this.useCases.reapplySellerAccess.execute(context, { sellerId });
+  }
+
+  accessDecisionsOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<
+      SellerAccessDecisionHistory,
+      AccessDenied | FacadeValidationFailed | AccessDecisionsUnavailable
+    >
+  > {
+    return this.useCases.listSellerAccessDecisions.execute(context, { sellerId });
+  }
+
+  accessDecisionsByBasis(
+    context: CallContext,
+    items: readonly { readonly sellerId: Id<'Seller'>; readonly basisId: Id }[],
+  ): Promise<
+    Result<
+      readonly AccessDecisionByBasis[],
+      AccessDenied | FacadeValidationFailed | AccessDecisionsUnavailable
+    >
+  > {
+    return this.useCases.findAccessDecisionsByBasis.execute(context, { items });
   }
 }
 

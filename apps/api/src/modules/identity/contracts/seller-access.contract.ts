@@ -88,6 +88,58 @@ export interface SellerReapplyOutcome {
 export type SellerReapplyRefusal =
   { readonly code: 'seller-access.wrong-state' } | { readonly code: 'seller-access.reapply-limit' };
 
+/** The decisions an admin takes on a seller's access (identity design 3.3); codes never change. */
+export type AccessDecisionKind = 'approved' | 'rejected' | 'suspended' | 'reinstated';
+
+/**
+ * The reason of a decision (slice 9a, R-5). PERSONAL DATA when `status` is `present`: only to
+ * the entitled admin; never logged, cached, or put in an event, an audit row, an outbox or an
+ * error body by any module, and rendered only as escaped text (Hassan C3).
+ */
+export type AccessDecisionReason =
+  /** Approved and reinstated decisions carry no reason. */
+  | { readonly status: 'none' }
+  | { readonly status: 'present'; readonly text: string }
+  /** The seller's subject key is destroyed (erasure, R-9). */
+  | { readonly status: 'erased' };
+
+/** One decision on a seller's access, as the admin review reads it (slice 9a, R-5). */
+export interface SellerAccessDecisionView {
+  readonly decisionId: Id<'AccessDecision'>;
+  readonly kind: AccessDecisionKind;
+  /** The state the decision left the seller in: `reinstated` is `approved`. */
+  readonly resultingState: SellerAccessState;
+  readonly decidedAt: Temporal.Instant;
+  /** An admin's account id (names through R-11), or the system (an automatic approval). */
+  readonly decidedBy:
+    { readonly kind: 'admin'; readonly accountId: Id<'Account'> } | { readonly kind: 'system' };
+  /** Null on suspend and reinstate, and on decisions taken through the Phase 2 admin route. */
+  readonly basisId: Id | null;
+  readonly reason: AccessDecisionReason;
+}
+
+/** The answer of `accessDecisionsOf`: newest first, at most 50. */
+export interface SellerAccessDecisionHistory {
+  readonly sellerId: Id<'Seller'>;
+  readonly decisions: readonly SellerAccessDecisionView[];
+  /** More decisions exist than were answered. */
+  readonly truncated: boolean;
+}
+
+/** One decision found by its `{ sellerId, basisId }` pair: no reason, no decider. */
+export interface AccessDecisionByBasis {
+  readonly sellerId: Id<'Seller'>;
+  readonly basisId: Id;
+  readonly decisionId: Id<'AccessDecision'>;
+  readonly kind: AccessDecisionKind;
+  readonly decidedAt: Temporal.Instant;
+}
+
+/** A read or key failure: nothing may be concluded from it, and the caller must not act. */
+export interface AccessDecisionsUnavailable {
+  readonly code: 'access-decisions.unavailable';
+}
+
 /**
  * The calls of `identity` that only `sellers` consumes. Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs.
@@ -171,6 +223,51 @@ export interface SellerAccessContract {
     context: CallContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<SellerReapplyOutcome, AccessDenied | SellerReapplyRefusal>>;
+
+  /**
+   * A seller's access decisions for the admin review (identity design 8.1; sellers request R-5;
+   * slice 9a): `sellers`' `review.read` calls it with the reviewer's context unchanged. Rule
+   * `permissions [identity.seller-access.view]`, checked by the gate and again in `identity`'s
+   * read; the system actor, a seller actor and an acting-as session are refused. Newest first, at
+   * most 50, with `truncated`; the reason **decrypted** (`present`, `none`, or `erased` once the
+   * seller's key is destroyed).
+   *
+   * Obligations of the caller (Hassan C3): call it only for a reviewer who also holds
+   * `sellers.business-details.view`; answer with `Cache-Control: no-store`; never log the reason
+   * or put it in an event, an audit row, a cache, an outbox or an error body (a log-canary test
+   * on the success and the error paths); render it as escaped text only. Another Market's seller
+   * and an unknown id: an empty list. A key or read failure: `access-decisions.unavailable`,
+   * never a partial answer.
+   */
+  accessDecisionsOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<
+      SellerAccessDecisionHistory,
+      AccessDenied | FacadeValidationFailed | AccessDecisionsUnavailable
+    >
+  >;
+
+  /**
+   * The decisions taken on `sellers`' submissions, by `{ sellerId, basisId }` pair, 1 to 100
+   * pairs (identity design 8.1; sellers request R-5, reconciliation job; slice 9a). Rule
+   * `system`; the Market only from the dispatcher's context. A row answers only when Market,
+   * seller and basis all match; duplicate pairs are answered once. No reason, no decider.
+   *
+   * Only `ok` without a row for a pair means "no decision". `access-decisions.unavailable`,
+   * `access.denied` and `validation.failed` all mean: leave the intent and the claim untouched
+   * (Hassan C6). More than one decision for one pair: raise the alert and do not act.
+   */
+  accessDecisionsByBasis(
+    context: CallContext,
+    items: readonly { readonly sellerId: Id<'Seller'>; readonly basisId: Id }[],
+  ): Promise<
+    Result<
+      readonly AccessDecisionByBasis[],
+      AccessDenied | FacadeValidationFailed | AccessDecisionsUnavailable
+    >
+  >;
 }
 
 /** Nest token of the {@link SellerAccessContract}, provided and exported by `IdentityModule`. */
