@@ -34,6 +34,7 @@ export default async function RolePageRoute({
   if (result.kind !== 'ok') {
     return (
       <AdminShell session={gate.session} activeId="team" title={title}>
+        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('identity.error.unknown')}</p>
       </AdminShell>
     );

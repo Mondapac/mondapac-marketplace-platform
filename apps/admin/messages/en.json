@@ -357,12 +357,12 @@
     "roles": {
       "group": {
         "system": "System",
-        "default": "Ready-made",
+        "default": "Default",
         "custom": "Custom"
       },
       "type": {
         "system": "System",
-        "default": "Ready-made",
+        "default": "Default",
         "custom": "Custom"
       },
       "label": {
@@ -370,8 +370,8 @@
         "type": "Type",
         "permissions": "Permissions"
       },
-      "permissions-all": "All permissions",
-      "permissions-none": "No permissions yet",
+      "permissions-all": "All",
+      "permissions-none": "None yet",
       "empty-custom": {
         "title": "No custom roles yet",
         "body": "Custom roles you create will appear here."
@@ -381,8 +381,8 @@
       },
       "back": "Back to roles",
       "read-only": {
-        "system": "This role has every permission and can't be changed.",
-        "default": "This is a ready-made role and can't be changed."
+        "system": "System role. It always has every permission in this panel and can't be changed or deleted.",
+        "default": "Default role from MondaPac. It can't be changed."
       },
       "selected": "{selected} of {total} permissions selected",
       "included": "Included:",

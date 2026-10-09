@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
+import { TeamTabs, tabLabels } from '../team/team-tabs.tsx';
 import { RolesTable } from './roles-table.tsx';
 import { RoleView } from './role-view.tsx';
 import { groupByResource, humanise } from './role-name.ts';
@@ -56,11 +57,11 @@ describe('admin roles', () => {
     ];
     render(await RolesTable({ roles }));
     expect(screen.getByRole('heading', { name: 'System' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Ready-made' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Default' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Custom' })).toBeTruthy();
-    expect(screen.getByText('All permissions')).toBeTruthy();
+    expect(screen.getByText('All')).toBeTruthy();
     expect(screen.getByText('2 permissions')).toBeTruthy();
-    expect(screen.getByText('No permissions yet')).toBeTruthy();
+    expect(screen.getByText('None yet')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'View Night shift' }).getAttribute('href')).toBe(
       '/roles/0190a000-0000-7000-8000-0000000000a3',
     );
@@ -74,7 +75,11 @@ describe('admin roles', () => {
   it('shows a system role read-only with every permission of the scope', async () => {
     render(await RoleView({ role: role({}), catalogue }));
     expect(screen.getByRole('heading', { name: 'Platform Administrator' })).toBeTruthy();
-    expect(screen.getByText("This role has every permission and can't be changed.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "System role. It always has every permission in this panel and can't be changed or deleted.",
+      ),
+    ).toBeTruthy();
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
     expect(screen.getByText('Protected')).toBeTruthy();
   });
@@ -98,6 +103,51 @@ describe('admin roles', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
+  it('shows a default role with its banner and the Default type', async () => {
+    render(
+      await RoleView({
+        role: role({
+          kind: 'default',
+          seedCode: 'viewer',
+          permissionKeys: ['identity.admin-account.view'],
+          permissionCount: 1,
+        }),
+        catalogue,
+      }),
+    );
+    expect(screen.getByText("Default role from MondaPac. It can't be changed.")).toBeTruthy();
+    expect(screen.getByText('Default')).toBeTruthy();
+    expect(screen.queryByText('Protected')).toBeNull();
+  });
+
+  it('marks a protected permission of a custom role', async () => {
+    render(
+      await RoleView({
+        role: role({
+          kind: 'custom',
+          seedCode: null,
+          name: 'Ops',
+          permissionKeys: ['identity.platform-role.manage'],
+          permissionCount: 1,
+        }),
+        catalogue,
+      }),
+    );
+    expect(screen.getByText('Protected')).toBeTruthy();
+  });
+
+  it('falls back to the generic custom name when the name is missing or blank', async () => {
+    render(
+      await RoleView({ role: role({ kind: 'custom', seedCode: null, name: '  ' }), catalogue }),
+    );
+    expect(screen.getByRole('heading', { name: 'Custom role' })).toBeTruthy();
+  });
+
+  it('shows the empty custom group when the API returns no roles at all', async () => {
+    render(await RolesTable({ roles: [] }));
+    expect(screen.getByText('No custom roles yet')).toBeTruthy();
+  });
+
   it('never shows a raw seed code or the role name as markup', async () => {
     render(
       await RoleView({
@@ -115,5 +165,14 @@ describe('admin roles', () => {
       ['b.x', ['b.x.one', 'b.x.two']],
     ]);
     expect(humanise('admin-account')).toBe('Admin account');
+  });
+
+  it('marks the current tab and shows no tabs without labels', () => {
+    const t = createTranslator({ locale: 'en-AU', messages });
+    const { rerender } = render(<TeamTabs active="roles" labels={tabLabels(t)} />);
+    expect(screen.getByRole('link', { name: 'Roles' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Admins' }).getAttribute('aria-current')).toBeNull();
+    rerender(<TeamTabs active="admins" labels={null} />);
+    expect(screen.queryByRole('navigation')).toBeNull();
   });
 });

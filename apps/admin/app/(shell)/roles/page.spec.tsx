@@ -116,5 +116,11 @@ describe('admin roles pages', () => {
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     render(await RolesPageRoute());
     expect(screen.getByText(messages.identity.error.unknown)).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
+  });
+
+  it('keeps a custom role name out of the document title', async () => {
+    const { generateMetadata } = await import('./[roleId]/page.tsx');
+    expect(await generateMetadata()).toEqual({ title: 'Roles & permissions' });
   });
 });
