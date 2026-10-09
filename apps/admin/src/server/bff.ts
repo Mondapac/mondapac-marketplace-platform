@@ -26,6 +26,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/invitation/enrolment',
     'identity/admin/invitation/accept',
     'identity/admin/roles',
+    // A read with the search term in the body, so a POST (sellers design 7.8).
+    'sellers/admin/list',
   ]),
 };
 
