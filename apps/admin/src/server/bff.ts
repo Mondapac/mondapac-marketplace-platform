@@ -19,6 +19,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/sign-in',
     'identity/admin/second-factor',
     'identity/admin/sign-out',
+    'identity/admin/invitations',
     'identity/admin/password-reset-email',
     'identity/admin/reset-password',
   ]),
@@ -32,6 +33,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
     'identity/admin/accounts/:id/disable',
     'identity/admin/accounts/:id/enable',
+    'identity/admin/accounts/:id/role',
     'identity/admin/accounts/:id/second-factor/reset',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',

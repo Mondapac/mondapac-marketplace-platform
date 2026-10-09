@@ -5,6 +5,7 @@ import { useId, type SelectHTMLAttributes } from 'react';
 export interface SelectOption {
   readonly value: string;
   readonly label: string;
+  readonly disabled?: boolean;
 }
 
 export interface SelectProps extends Omit<
@@ -53,7 +54,7 @@ export function Select({
       >
         {placeholder === undefined ? null : <option value="">{placeholder}</option>}
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
           </option>
         ))}

@@ -1,19 +1,10 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { roleLabel } from './role-label.ts';
 import { RowActions, type RowTarget } from './row-actions.tsx';
-import type { AccountRow, InvitationRow, TeamPage, TeamRole, TeamRow } from './types.ts';
+import type { AccountRow, InvitationRow, PlatformRole, TeamPage, TeamRow } from './types.ts';
 
 type Translate = Awaited<ReturnType<typeof getTranslations>>;
-
-function roleLabel(t: Translate, role: TeamRole | null): string {
-  if (role === null) return t('identity.members.role.none');
-  const key = `identity.role.${role.seedCode ?? ''}`;
-  if (role.seedCode !== null && t.has(key)) return t(key);
-  // A seeded role with no copy key yet is "Role", never a raw code; custom roles have no name yet.
-  return role.kind === 'custom'
-    ? t('identity.members.role.custom')
-    : t('identity.members.role.unknown');
-}
 
 function statusOf(
   t: Translate,
@@ -60,7 +51,9 @@ function targetOf(row: TeamRow): RowTarget {
     id: row.accountId,
     name: row.displayName ?? row.email,
     status: row.status,
+    roleId: row.role?.roleId ?? null,
     hints: {
+      changeRole: row.actions.changeRole,
       disable: row.actions.disable,
       enable: row.actions.enable,
       resetSecondFactor: row.actions.resetSecondFactor,
@@ -73,10 +66,13 @@ export async function TeamTable({
   page,
   after,
   csrfToken,
+  roles,
 }: {
   readonly page: TeamPage;
   readonly after: string | null;
   readonly csrfToken: string;
+  /** Roles the actor may assign from; absent when they may not (Change role is hidden). */
+  readonly roles?: readonly PlatformRole[] | undefined;
 }) {
   const t = await getTranslations();
   if (page.items.length === 0 && after === null) {
@@ -141,7 +137,7 @@ export async function TeamTable({
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-end">
-                  <RowActions target={targetOf(row)} csrfToken={csrfToken} />
+                  <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
                 </td>
               </tr>
             );
