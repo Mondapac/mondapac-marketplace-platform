@@ -661,7 +661,8 @@ describe.each(TEST_MARKETS)(
         expect(await insert('retirements', variantTombstone())).toBeNull();
         await check(
           'retirements',
-          retirementRow({ scope: 'sell-unit' }),
+          // No Offer id, so that the Offer id rule above does not refuse the row first.
+          retirementRow({ scope: 'sell-unit', offer_id: null }),
           'retirements_scope_check',
         );
         await check(
