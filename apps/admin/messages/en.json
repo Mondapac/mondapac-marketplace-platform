@@ -150,7 +150,9 @@
         "admin": "Roles & permissions"
       },
       "tab": {
-        "admins": "Admins"
+        "admins": "Admins",
+        "roles": "Roles",
+        "label": "Roles and permissions sections"
       },
       "table-caption": "Admins and pending invitations",
       "label": {
@@ -351,6 +353,40 @@
         "saved": "I've saved these codes",
         "once": "These codes can't be shown again after you leave this page."
       }
+    },
+    "roles": {
+      "group": {
+        "system": "System",
+        "default": "Default",
+        "custom": "Custom"
+      },
+      "type": {
+        "system": "System",
+        "default": "Default",
+        "custom": "Custom"
+      },
+      "label": {
+        "role": "Role",
+        "type": "Type",
+        "permissions": "Permissions"
+      },
+      "permissions-all": "All",
+      "permissions-none": "None yet",
+      "empty-custom": {
+        "title": "No custom roles yet",
+        "body": "Custom roles you create will appear here."
+      },
+      "action": {
+        "view": "View"
+      },
+      "back": "Back to roles",
+      "read-only": {
+        "system": "System role. It always has every permission in this panel and can't be changed or deleted.",
+        "default": "Default role from MondaPac. It can't be changed."
+      },
+      "selected": "{selected} of {total} permissions selected",
+      "included": "Included:",
+      "protected": "Protected"
     }
   }
 }
