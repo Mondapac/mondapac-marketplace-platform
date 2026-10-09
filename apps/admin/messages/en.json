@@ -147,7 +147,8 @@
       "role": {
         "none": "No role",
         "custom": "Custom role",
-        "system": "(system role)"
+        "system": "(system role)",
+        "unknown": "Role"
       },
       "empty": {
         "title": "It's just you so far",

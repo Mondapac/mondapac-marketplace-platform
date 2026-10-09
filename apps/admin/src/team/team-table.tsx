@@ -9,17 +9,20 @@ function roleLabel(t: Translate, role: TeamRole | null): string {
   if (role === null) return t('identity.members.role.none');
   const key = `identity.role.${role.seedCode ?? ''}`;
   if (role.seedCode !== null && t.has(key)) return t(key);
-  return t('identity.members.role.custom');
+  // A seeded role with no copy key yet is "Role", never a raw code; custom roles have no name yet.
+  return role.kind === 'custom'
+    ? t('identity.members.role.custom')
+    : t('identity.members.role.unknown');
 }
 
 function statusOf(
   t: Translate,
   row: TeamRow,
-): { readonly tone: BadgeTone; readonly label: string } {
+): { readonly tone: BadgeTone; readonly label: string; readonly sent?: boolean } {
   if (row.type === 'invitation') {
     return row.status === 'expired'
       ? { tone: 'attention', label: t('identity.members.status.expired') }
-      : { tone: 'info', label: t('identity.members.status.invited') };
+      : { tone: 'neutral', label: t('identity.members.status.invited'), sent: true };
   }
   return row.status === 'active'
     ? { tone: 'success', label: t('identity.members.status.active') }
@@ -128,7 +131,14 @@ export async function TeamTable({
                   ) : null}
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={status.tone}>{status.label}</Badge>
+                  <Badge tone={status.tone}>
+                    {status.sent === true ? (
+                      <span className="me-1" aria-hidden="true">
+                        ✉
+                      </span>
+                    ) : null}
+                    {status.label}
+                  </Badge>
                 </td>
                 <td className="px-4 py-3 text-end">
                   <RowActions target={targetOf(row)} csrfToken={csrfToken} />
