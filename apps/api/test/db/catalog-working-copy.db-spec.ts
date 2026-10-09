@@ -78,6 +78,7 @@ describe.each(TEST_MARKETS)(
           defaultFamily: () => 'default',
           conditions: () => ['new'],
           sellFromCatalogue: () => Promise.resolve(true),
+          sellerCanCreateProduct: () => Promise.resolve(true),
           approvalRequired: () => Promise.resolve(true),
         },
         outbox: {
@@ -392,6 +393,7 @@ describe.each(TEST_MARKETS)(
             defaultFamily: () => 'default',
             conditions: () => ['new'],
             sellFromCatalogue: () => Promise.resolve(true),
+            sellerCanCreateProduct: () => Promise.resolve(true),
             approvalRequired: () => Promise.resolve(true),
           },
           outbox: { append: () => Promise.reject(new Error('outbox down')) },
@@ -464,6 +466,7 @@ describe.each(TEST_MARKETS)(
             defaultFamily: () => 'default',
             conditions: () => ['new'],
             sellFromCatalogue: () => Promise.resolve(true),
+            sellerCanCreateProduct: () => Promise.resolve(true),
             approvalRequired: () => Promise.resolve(true),
           },
           outbox: { append: () => Promise.resolve() },

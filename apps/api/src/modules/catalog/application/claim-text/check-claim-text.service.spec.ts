@@ -110,6 +110,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
       defaultFamily: () => 'default',
       conditions: () => ['new'],
       sellFromCatalogue: () => Promise.resolve(true),
+      sellerCanCreateProduct: () => Promise.resolve(true),
       approvalRequired: () => Promise.resolve(true),
     };
     const unitOfWork = {

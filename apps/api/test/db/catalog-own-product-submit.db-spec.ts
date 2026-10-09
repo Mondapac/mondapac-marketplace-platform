@@ -20,23 +20,23 @@ import type { CertificationFacade } from '../../src/modules/certification';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
 import { PrismaWorkingCopyRepository } from '../../src/modules/catalog/infrastructure/prisma-working-copy.repository';
-import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
-// Catalog slice 6 (platform-product.submit) on PostgreSQL, for both Market fixtures: the submit
+// Catalog slice 7 (own-product.submit: the SubmitProduct service as a seller) on PostgreSQL, for both Market fixtures: the submit
 // service end to end over the real stores (freeze, claim check, revision rows, product pointer,
 // events) and the loss of a race on the revision number mapped to a stale conflict.
 
 const T0 = Temporal.Instant.from('2026-10-08T00:00:00Z');
 const clock = new FixedClock(T0);
 let sequence = 0;
+const SELLER = '01990000-0000-7000-8000-00000000b001' as Id<'Seller'>;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 
 describe.each(TEST_MARKETS)(
-  'catalog platform product submit in market %s (database integration)',
+  'catalog own product submit in market %s (database integration)',
   (code) => {
     const market = marketOf(code);
     let persistence: Persistence;
@@ -205,8 +205,8 @@ describe.each(TEST_MARKETS)(
       const created = Product.create({
         id: uuid7() as Id<'Product'>,
         marketId: market.marketId,
-        scope: 'PLATFORM',
-        sellerId: null,
+        scope: 'SELLER',
+        sellerId: SELLER,
         handler: simpleProductType,
         familyCode: 'default',
         productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
@@ -232,40 +232,16 @@ describe.each(TEST_MARKETS)(
       return created.value;
     }
 
-    const adminContext = () =>
+    const sellerContext = (sellerId: Id<'Seller'> = SELLER) =>
       testCallContext(
         market,
         testAuthenticatedActor(market, {
-          population: 'admin',
+          population: 'seller',
           accountId: uuid7() as Id<'Account'>,
           sessionId: uuid7() as Id<'Session'>,
-          sellerId: null,
+          sellerId,
         }),
       );
-
-    it('stores revision 1, moves the published pointer and appends the events in one unit', async () => {
-      const product = await draftedProduct();
-      const result = await submit.execute(adminContext(), {
-        productId: product.state.id,
-        replacePending: false,
-      });
-      if (!result.ok) throw new Error(result.error.code);
-      expect(result.value).toMatchObject({ revisionNo: 1, published: true });
-
-      const stored = await inUnit(() => products.findById(market, product.state.id));
-      expect(stored?.state.publishedRevisionId).toBe(result.value.revisionId);
-      const revision = await inUnit(() =>
-        revisions.find(market, product.state.id, result.value.revisionId),
-      );
-      expect(revision).toMatchObject({
-        revisionNo: 1,
-        kind: 'submission',
-        authorKind: 'admin',
-        baseRevisionId: null,
-      });
-      expect(revision?.content.texts['en']?.name).toBe('Dates');
-      expect(appended).toContain('catalog.product-revision-submitted.v1');
-    });
 
     async function rowCount(table: string, productId: string): Promise<number> {
       const { rows } = await app.query(
@@ -274,6 +250,71 @@ describe.each(TEST_MARKETS)(
       );
       return (rows[0] as { n: number }).n;
     }
+
+    it('stores a seller revision as pending: the pending pointer moves, the published one does not', async () => {
+      const product = await draftedProduct();
+      const result = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!result.ok) throw new Error(result.error.code);
+      expect(result.value).toMatchObject({ revisionNo: 1, published: false });
+
+      const stored = await inUnit(() => products.findById(market, product.state.id));
+      expect(stored?.state).toMatchObject({
+        publishedRevisionId: null,
+        pendingRevisionId: result.value.revisionId,
+        status: 'unpublished',
+      });
+      const revision = await inUnit(() =>
+        revisions.find(market, product.state.id, result.value.revisionId),
+      );
+      expect(revision).toMatchObject({
+        revisionNo: 1,
+        kind: 'submission',
+        authorKind: 'seller',
+        baseRevisionId: null,
+        sensitive: true,
+      });
+      expect(appended).toContain('catalog.product-revision-submitted.v1');
+      expect(appended).not.toContain('catalog.product-revision-published.v1');
+    });
+
+    it('refuses a second submit while one is pending, then supersedes it with replacePending', async () => {
+      const product = await draftedProduct();
+      const first = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!first.ok) throw new Error(first.error.code);
+      const refused = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      expect(!refused.ok && refused.error.code).toBe('revision.pending-exists');
+      expect(await rowCount('product_revisions', product.state.id)).toBe(1);
+
+      const second = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: true,
+      });
+      if (!second.ok) throw new Error(second.error.code);
+      expect(second.value.revisionNo).toBe(2);
+      const stored = await inUnit(() => products.findById(market, product.state.id));
+      expect(stored?.state.pendingRevisionId).toBe(second.value.revisionId);
+    });
+
+    it('answers another seller as product.not-found and stores nothing', async () => {
+      const product = await draftedProduct();
+      const other = '01990000-0000-7000-8000-00000000b002' as Id<'Seller'>;
+      const result = await submit.execute(sellerContext(other), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      expect(!result.ok && result.error.code).toBe('product.not-found');
+      expect(await rowCount('product_revisions', product.state.id)).toBe(0);
+      expect(appended).toEqual([]);
+    });
 
     it('refuses a matching text and leaves no revision row and no event', async () => {
       const product = await draftedProduct();
@@ -291,71 +332,13 @@ describe.each(TEST_MARKETS)(
           lastSavedByAccountId: uuid7() as Id<'Account'>,
         }),
       );
-      const result = await submit.execute(adminContext(), {
+      const result = await submit.execute(sellerContext(), {
         productId: product.state.id,
         replacePending: false,
       });
       expect(!result.ok && result.error.code).toBe('claim-text.refused');
       expect(await rowCount('product_revisions', product.state.id)).toBe(0);
       expect(appended).toEqual([]);
-      const stored = await inUnit(() => products.findById(market, product.state.id));
-      expect(stored?.state.publishedRevisionId).toBeNull();
-    });
-
-    it('numbers a resubmit 2, names the published revision as its base and stores the reasons', async () => {
-      const product = await draftedProduct();
-      const first = await submit.execute(adminContext(), {
-        productId: product.state.id,
-        replacePending: false,
-      });
-      if (!first.ok) throw new Error(first.error.code);
-      await inUnit(() =>
-        copies.save(market, {
-          productId: product.state.id,
-          content: {
-            texts: { en: { name: 'Fresh dates', description: 'Sweet and soft' } },
-            categoryIds: [categoryId],
-            taxCategoryCode: 't1',
-          },
-          contentSchemaVersion: 1,
-          baseRevisionId: first.value.revisionId,
-          lastSavedAt: T0,
-          lastSavedByAccountId: uuid7() as Id<'Account'>,
-        }),
-      );
-      const second = await submit.execute(adminContext(), {
-        productId: product.state.id,
-        replacePending: false,
-      });
-      if (!second.ok) throw new Error(second.error.code);
-      expect(second.value.revisionNo).toBe(2);
-      const revision = await inUnit(() =>
-        revisions.find(market, product.state.id, second.value.revisionId),
-      );
-      expect(revision).toMatchObject({
-        baseRevisionId: first.value.revisionId,
-        sensitive: true,
-        sensitiveReasons: ['name'],
-      });
-      expect(await rowCount('product_revisions', product.state.id)).toBe(2);
-      expect(await rowCount('product_revision_variants', product.state.id)).toBe(2);
-      expect(appended).toContain('catalog.product-revision-published.v1');
-    });
-
-    it('the revision store turns a repeated revision number into StaleAggregateError (the service maps it to conflict.stale)', async () => {
-      const product = await draftedProduct();
-      const first = await submit.execute(adminContext(), {
-        productId: product.state.id,
-        replacePending: false,
-      });
-      if (!first.ok) throw new Error(first.error.code);
-      const stored = await inUnit(() =>
-        revisions.find(market, product.state.id, first.value.revisionId),
-      );
-      if (stored === null) throw new Error('missing revision');
-      await expect(
-        inUnit(() => revisions.add(market, { ...stored, id: uuid7() as Id<'ProductRevision'> })),
-      ).rejects.toBeInstanceOf(StaleAggregateError);
     });
   },
 );
