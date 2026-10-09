@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   OfferActor,
@@ -23,6 +24,39 @@ const orNull = (date: Date | null): Temporal.Instant | null =>
 
 const UNIQUE_ONE_PER_PRODUCT = 'offers_market_id_seller_id_product_id_open_key';
 const UNIQUE_SKU = 'offers_market_id_seller_id_seller_sku_open_key';
+
+type OfferRow = Prisma.CatalogOfferGetPayload<object>;
+
+/** A stored Offer row as the aggregate. */
+export function offerFromRow(row: OfferRow): Offer {
+  const flags: Record<OffSaleCause, boolean> = {
+    'type-not-allowed': row.offSaleTypeNotAllowed,
+    'product-retired': row.offSaleProductRetired,
+    'product-not-listed': row.offSaleProductNotListed,
+    'tag-suspended': row.offSaleTagSuspended,
+    'description-claim-text': row.offSaleDescriptionClaimText,
+  };
+  return Offer.restore({
+    id: row.id as Id<'Offer'>,
+    marketId: row.marketId as MarketId,
+    sellerId: row.sellerId as Id<'Seller'>,
+    productId: row.productId as Id<'Product'>,
+    sellerSku: row.sellerSku,
+    conditionCode: row.conditionCode,
+    description: row.description as Record<string, string>,
+    handling: row.handling as OfferHandling | null,
+    attestationRecordedAt: orNull(row.attestationRecordedAt),
+    attestationAccountId: row.attestationAccountId as Id<'Account'> | null,
+    status: row.status as OfferStatus,
+    offSaleCauses: OFF_SALE_CAUSES.filter((cause) => flags[cause]),
+    listed: row.listed,
+    submittedAt: orNull(row.submittedAt),
+    firstPublishedAt: orNull(row.firstPublishedAt),
+    deletedAt: orNull(row.deletedAt),
+    version: row.version,
+    createdAt: toInstant(row.createdAt),
+  });
+}
 
 /** The causes as the five stored flags, in the order of {@link OFF_SALE_CAUSES}. */
 const causeFlags = (causes: readonly OffSaleCause[]) => ({
@@ -177,33 +211,6 @@ export class PrismaOfferRepository implements OfferRepository {
     const row = await this.prisma.tx(market).catalogOffer.findFirst({
       where: { marketId: market.marketId, id },
     });
-    if (row === null) return null;
-    const flags: Record<OffSaleCause, boolean> = {
-      'type-not-allowed': row.offSaleTypeNotAllowed,
-      'product-retired': row.offSaleProductRetired,
-      'product-not-listed': row.offSaleProductNotListed,
-      'tag-suspended': row.offSaleTagSuspended,
-      'description-claim-text': row.offSaleDescriptionClaimText,
-    };
-    return Offer.restore({
-      id: row.id as Id<'Offer'>,
-      marketId: row.marketId as MarketId,
-      sellerId: row.sellerId as Id<'Seller'>,
-      productId: row.productId as Id<'Product'>,
-      sellerSku: row.sellerSku,
-      conditionCode: row.conditionCode,
-      description: row.description as Record<string, string>,
-      handling: row.handling as OfferHandling | null,
-      attestationRecordedAt: orNull(row.attestationRecordedAt),
-      attestationAccountId: row.attestationAccountId as Id<'Account'> | null,
-      status: row.status as OfferStatus,
-      offSaleCauses: OFF_SALE_CAUSES.filter((cause) => flags[cause]),
-      listed: row.listed,
-      submittedAt: orNull(row.submittedAt),
-      firstPublishedAt: orNull(row.firstPublishedAt),
-      deletedAt: orNull(row.deletedAt),
-      version: row.version,
-      createdAt: toInstant(row.createdAt),
-    });
+    return row === null ? null : offerFromRow(row);
   }
 }

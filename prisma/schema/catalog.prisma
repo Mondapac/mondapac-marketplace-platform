@@ -108,6 +108,8 @@ model CatalogProduct {
   @@unique([marketId, id, variantModel])
   /// One code per Market (D 17.1).
   @@unique([marketId, productCode])
+  /// The seller's own product list (own-products.list): keyset by id within one owner.
+  @@index([marketId, ownerSellerId, id], map: "products_market_id_owner_seller_id_id_idx")
   @@map("products")
   @@schema("catalog")
 }

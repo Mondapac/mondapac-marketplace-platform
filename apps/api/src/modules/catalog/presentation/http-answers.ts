@@ -53,6 +53,16 @@ export function refusalWith(
     : fail(status, error.code, details);
 }
 
+/** The page request of a list route from its query string: `afterId` and a numeric `limit`. */
+export function pageQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const { limit, ...rest } = query;
+  if (limit === undefined) return rest;
+  return {
+    ...rest,
+    limit: typeof limit === 'string' && /^\d{1,4}$/.test(limit) ? Number(limit) : -1,
+  };
+}
+
 /** The JSON-only check and the closed object of a body: no unknown key, no array, no scalar. */
 export function closedBody(
   request: Request,

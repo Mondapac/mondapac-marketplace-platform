@@ -1,6 +1,26 @@
 [
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
+  {
+    "name": "catalog.own-offer-read",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-offers-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-product-read",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-products-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
