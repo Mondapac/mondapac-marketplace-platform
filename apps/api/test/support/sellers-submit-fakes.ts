@@ -443,6 +443,25 @@ export class FakeAccess implements SellerAccessReader {
     if (this.failing) return Promise.reject(new Error('identity down'));
     return Promise.resolve(this.states.get(sellerId) ?? null);
   }
+
+  /** Every call of the batch read, to prove a page makes one. */
+  readonly manyCalls: (readonly Id<'Seller'>[])[] = [];
+
+  accessOfMany(
+    _context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, AccessState>> {
+    this.manyCalls.push(sellerIds);
+    if (this.failing) return Promise.reject(new Error('identity down'));
+    return Promise.resolve(
+      new Map(
+        sellerIds.flatMap((id): [Id<'Seller'>, AccessState][] => {
+          const state = this.states.get(id);
+          return state === undefined ? [] : [[id, state]];
+        }),
+      ),
+    );
+  }
 }
 
 /** The reviewer notice: programmable answers, every call counted. */

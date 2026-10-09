@@ -40,3 +40,14 @@ export interface ServiceAreas {
 }
 
 export const SERVICE_AREAS = Symbol('SERVICE_AREAS');
+
+/**
+ * The areas of a Market that take new sellers now (the admin list's "outside service area"
+ * filter, design 7.8): the codes of the platform `ServiceAreaDirectory` with onboarding enabled.
+ * Empty for a Market with no areas; no default area.
+ */
+export interface OnboardingAreas {
+  openCodes(market: MarketContext): readonly string[];
+}
+
+export const ONBOARDING_AREAS = Symbol('ONBOARDING_AREAS');

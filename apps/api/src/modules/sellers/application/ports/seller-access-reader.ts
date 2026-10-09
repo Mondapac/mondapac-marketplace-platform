@@ -10,6 +10,16 @@ import type { AccessState } from '../../domain/seller-status';
  */
 export interface SellerAccessReader {
   accessOf(context: CallContext, sellerId: Id<'Seller'>): Promise<AccessState | null>;
+
+  /**
+   * The state of up to 100 sellers in one call (the admin list: one `identity` call per page).
+   * A seller `identity` does not know is absent from the map. Throws when `identity` refuses or
+   * cannot answer.
+   */
+  accessOfMany(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, AccessState>>;
 }
 
 export const SELLER_ACCESS_READER = Symbol('SELLER_ACCESS_READER');
