@@ -491,6 +491,28 @@ describe.each(['AU', 'ZZ'] as const)(
       expect(r.checked).toHaveLength(0);
     });
 
+    it('runs the product and SEL-12 guards before the claim check', async () => {
+      const claim = { description: { [locale]: 'Certified halal' } };
+      const missing = rig({ product: null });
+      expect(
+        await missing.useCase.execute(contextOf('seller'), request(ids.next<'Product'>(), claim)),
+      ).toEqual({ ok: false, error: { code: 'product.not-found' } });
+      expect(missing.checked).toHaveLength(0);
+      const notAllowed = rig({ allowed: new Set(['configurable']) });
+      expect(
+        await notAllowed.useCase.execute(contextOf('seller'), request(notAllowed.state!.id, claim)),
+      ).toEqual({ ok: false, error: { code: 'type.not-allowed' } });
+      expect(notAllowed.checked).toHaveLength(0);
+    });
+
+    it('spends no save on a malformed request', async () => {
+      const r = rig();
+      for (const extra of [{ sellerId: 'x' }, { conditionCode: 'nope' }, { sellerSku: 5 }]) {
+        await r.useCase.execute(contextOf('seller'), request(r.state!.id, extra));
+      }
+      expect(r.reserved).toHaveLength(0);
+    });
+
     it.each(['offer.exists-for-product', 'offer.sku-taken'] as const)(
       'maps the %s refusal of the store to an error and appends no event',
       async (refusal) => {

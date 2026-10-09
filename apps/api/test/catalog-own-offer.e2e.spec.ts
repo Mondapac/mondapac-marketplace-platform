@@ -5,6 +5,10 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
 import { ALLOWED_PRODUCT_TYPES_READER } from '../src/modules/catalog/application/ports/allowed-product-types.reader';
+import {
+  CATALOG_MARKET_POLICY,
+  type CatalogMarketPolicy,
+} from '../src/modules/catalog/application/ports/catalog-market-policy';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { SELLER_ELIGIBILITY_READER } from '../src/modules/catalog/application/ports/seller-eligibility.reader';
@@ -51,6 +55,11 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let product: Product | null;
   let eligible: boolean;
   let reserve: unknown;
+  let addRefusal: string | null;
+  let allowed: unknown;
+  let verdicts: unknown[];
+  let productReads: number;
+  let claimChecks: number;
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -63,10 +72,16 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           .overrideProvider(CLOCK)
           .useValue(clock)
           .overrideProvider(PRODUCT_REPOSITORY)
-          .useValue({ findById: () => Promise.resolve(product) })
+          .useValue({
+            findById: () => {
+              productReads += 1;
+              return Promise.resolve(product);
+            },
+          })
           .overrideProvider(OFFER_REPOSITORY)
           .useValue({
             add: (_m: unknown, offer: Offer) => {
+              if (addRefusal !== null) return Promise.resolve(addRefusal);
               stored.push(offer);
               return Promise.resolve(null);
             },
@@ -75,9 +90,14 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           .overrideProvider(SELLER_ELIGIBILITY_READER)
           .useValue({ isEligible: () => Promise.resolve(eligible) })
           .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
-          .useValue({ allowedFor: () => Promise.resolve('all') })
+          .useValue({ allowedFor: () => Promise.resolve(allowed) })
           .overrideProvider(CheckClaimText)
-          .useValue({ execute: () => Promise.resolve({ ok: true, value: [] }) })
+          .useValue({
+            execute: () => {
+              claimChecks += 1;
+              return Promise.resolve({ ok: true, value: verdicts });
+            },
+          })
           .overrideProvider(SaveWorkingCopy)
           .useValue({ reserveSaves: () => Promise.resolve(reserve) }),
     }));
@@ -201,6 +221,11 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     product = null;
     eligible = true;
     reserve = null;
+    addRefusal = null;
+    allowed = 'all';
+    verdicts = [];
+    productReads = 0;
+    claimChecks = 0;
   });
   afterEach(async () => {
     await app.close();
@@ -217,23 +242,19 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     }
   });
 
-  it('maps every refusal code of the use case to a status', () => {
-    const codes = [
-      'access.denied',
-      'access.unavailable',
-      'request.throttled',
-      'seller.not-eligible',
-      'type.not-allowed',
-      'setting.sell-from-catalogue-off',
-      'product.not-found',
-      'offer.exists-for-product',
-      'offer.sku-taken',
-      'claim-text.refused',
-      'validation.failed',
-    ];
-    for (const code of codes) {
-      expect(OWN_OFFER_STATUS[code] ?? (code === 'access.denied' ? 403 : undefined)).toBeDefined();
-    }
+  it('maps every refusal code of the use case to its exact status', () => {
+    expect(OWN_OFFER_STATUS).toEqual({
+      'validation.failed': 400,
+      'product.not-found': 404,
+      'seller.not-eligible': 403,
+      'offer.exists-for-product': 409,
+      'offer.sku-taken': 409,
+      'type.not-allowed': 422,
+      'setting.sell-from-catalogue-off': 422,
+      'claim-text.refused': 422,
+      'request.throttled': 429,
+      'access.unavailable': 503,
+    });
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -337,6 +358,76 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(unknown.status).toBe(404);
       expect(unknown.body).toEqual({ statusCode: 404, code: 'product.not-found' });
       expect(stored).toHaveLength(0);
+    });
+
+    it('answers 409, 422 and 503 with the refusal code', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      for (const refusal of ['offer.exists-for-product', 'offer.sku-taken']) {
+        addRefusal = refusal;
+        const taken = await send(code, body(), session);
+        expect(taken.status).toBe(409);
+        expect(taken.body).toEqual({ statusCode: 409, code: refusal });
+      }
+      addRefusal = null;
+
+      allowed = new Set(['configurable']);
+      const notAllowed = await send(code, body(), session);
+      expect(notAllowed.status).toBe(422);
+      expect(notAllowed.body).toEqual({ statusCode: 422, code: 'type.not-allowed' });
+
+      allowed = null;
+      const unavailable = await send(code, body(), session);
+      expect(unavailable.status).toBe(503);
+      expect(unavailable.body).toEqual({ statusCode: 503, code: 'access.unavailable' });
+      expect(stored).toHaveLength(0);
+    });
+
+    it('answers a text with a claim as 422 with the refused fields, storing nothing', async () => {
+      await boot();
+      await seeded(code);
+      const locale = app
+        .get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY)
+        .locales(marketOf(code)).default;
+      verdicts = [
+        { code: 'claim-text.found', field: 'offer.description', ref: null, locale, hits: [] },
+      ];
+
+      const refused = await send(
+        code,
+        body({ description: { [locale]: 'Certified halal' } }),
+        sessionOf(code),
+      );
+
+      expect(refused.status).toBe(422);
+      expect(refused.body).toMatchObject({
+        statusCode: 422,
+        code: 'claim-text.refused',
+        details: { fields: [{ field: 'offer.description', locale }] },
+      });
+      expect(stored).toHaveLength(0);
+    });
+
+    it('does no work before a spent budget answers, and logs no text', async () => {
+      await boot();
+      await seeded(code);
+      reserve = { code: 'request.throttled', retryAfterSeconds: 3 };
+      const locale = app
+        .get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY)
+        .locales(marketOf(code)).default;
+
+      await send(
+        code,
+        body({ sellerSku: 'SECRET-SKU', description: { [locale]: 'secret text' } }),
+        sessionOf(code),
+      );
+
+      expect(productReads).toBe(0);
+      expect(claimChecks).toBe(0);
+      const line = logLines.find((l) => l.msg === 'catalog.own-offer-create' && l.outcome);
+      expect(JSON.stringify(line)).not.toMatch(/SECRET-SKU|secret text/);
     });
   });
 });
