@@ -249,7 +249,8 @@
       "withdrawn": "Your submission was withdrawn on {date} because MondaPac edited your details. Submit again when you're ready.",
       "withdrawn-self": "You withdrew your submission on {date}. Submit again when you're ready.",
       "submit-done": "Submitted",
-      "review-link": "Review and submit"
+      "review-link": "Review and submit",
+      "withdrawn-refused": "Your submission was withdrawn on {date}. Contact us if you have questions."
     },
     "step": {
       "counter": "Step {current} of {total}",

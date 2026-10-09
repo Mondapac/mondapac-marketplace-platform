@@ -2,6 +2,7 @@ import { Badge, Banner, Card } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { REVIEW_HREF, SETUP_STEPS, type SetupStepKey } from './steps.ts';
+import { RefreshOnFocus } from './refresh-on-focus.tsx';
 import { WithdrawSubmission } from './withdraw-submission.tsx';
 import type { MissingPart, MyFile } from './types.ts';
 
@@ -45,6 +46,13 @@ const BANNER_TONE = {
   'changes-needed': 'attention',
 } as const;
 
+function withdrawnKey(withdrawal: NonNullable<MyFile['latestWithdrawal']>): string {
+  if (withdrawal.cause === 'reapply-refused') return 'account.withdrawn-refused';
+  return withdrawal.byKind === 'seller' || withdrawal.cause === 'cancelled'
+    ? 'account.withdrawn-self'
+    : 'account.withdrawn';
+}
+
 /** The state the hub shows for the API's one status; anything else reads as details still needed. */
 function hubStateOf(file: MyFile, derived: HubState): HubState {
   switch (file.status) {
@@ -56,8 +64,11 @@ function hubStateOf(file: MyFile, derived: HubState): HubState {
       return 'outside-area';
     case 'ready-to-submit':
       return 'ready';
-    default:
+    case 'details-incomplete':
       return derived;
+    default:
+      // A status this panel has no words for yet (not approved, file check): never "ready".
+      return 'details-incomplete';
   }
 }
 
@@ -130,6 +141,7 @@ export function SetupHub({
   const withdrawal = file.latestWithdrawal;
   return (
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-5">
+      <RefreshOnFocus />
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold text-fg">{t('account.title')}</h1>
         <Badge tone={BADGE_TONE[state]}>{t(`account.badge.${state}`)}</Badge>
@@ -144,9 +156,7 @@ export function SetupHub({
       ) : null}
       {!waiting && withdrawal !== null ? (
         <Banner tone="info">
-          {t(withdrawal.byKind === 'seller' ? 'account.withdrawn-self' : 'account.withdrawn', {
-            date: when(withdrawal.at, 'date'),
-          })}
+          {t(withdrawnKey(withdrawal), { date: when(withdrawal.at, 'date') })}
         </Banner>
       ) : null}
       <Card title={t('account.steps')}>

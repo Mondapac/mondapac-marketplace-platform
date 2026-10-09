@@ -30,19 +30,20 @@ export function SubmitButton({
     setPending(true);
     setProblem(null);
     const result = await callApi('POST', 'sellers/my-file/submit', {}, csrfToken);
-    busy.current = false;
-    setPending(false);
     if (result.ok) {
+      // Stay busy until the page changes, so a quick second click sends nothing.
       router.push(SETUP_ROOT);
       router.refresh();
       return;
     }
+    busy.current = false;
+    setPending(false);
     const { failure } = result;
     if (failure.status === 401) {
       window.location.assign('/session-ended');
       return;
     }
-    setProblem(messageKeyOf(failure));
+    if (!REFRESH_CODES.has(failure.code)) setProblem(messageKeyOf(failure));
     if (
       REFRESH_CODES.has(failure.code) ||
       failure.code === 'file.incomplete' ||

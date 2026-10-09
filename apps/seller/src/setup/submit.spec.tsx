@@ -163,3 +163,95 @@ describe('S1 while waiting and after a withdrawal', () => {
     );
   });
 });
+
+describe('refusals', () => {
+  const refuse = async (failure: { status: number; code: string }) => {
+    call.mockResolvedValue({ ok: false, failure });
+    review(file);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
+    await waitFor(() => expect(call).toHaveBeenCalled());
+  };
+
+  it.each([
+    ['address.outside-service-area', /We're not in your area yet\. We've saved/],
+    ['identifier.not-matched', /couldn't match this number/],
+    ['lookup.limit', /changed this number too many times/],
+    ['slug.taken', /taken before you submitted/],
+    ['request.throttled', /Too many tries/],
+  ])('says why for %s', async (code, text) => {
+    await refuse({ status: 409, code });
+    expect(await screen.findByText(text)).toBeTruthy();
+  });
+
+  it('reloads quietly when the page was out of date', async () => {
+    await refuse({ status: 409, code: 'file.already-submitted' });
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Something went wrong/)).toBeNull();
+  });
+
+  it('goes to the signed-out page on a 401', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
+    await refuse({ status: 401, code: 'session.invalid' });
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    vi.unstubAllGlobals();
+  });
+
+  it('shows no submit button for a status without words yet', () => {
+    review({ ...file, status: 'suspended' });
+    expect(screen.queryByRole('button', { name: /Submit/ })).toBeNull();
+  });
+
+  it('keeps the withdraw dialog open and says why when it fails', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 429, code: 'request.throttled' } });
+    render(
+      wrap(
+        <SetupHub
+          file={{
+            ...file,
+            status: 'awaiting-review',
+            submission: { revisionNo: 1, submittedAt: '2026-10-08T23:30:00Z' },
+          }}
+          csrfToken="csrf-1"
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw submission' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Withdraw submission' })[1]!);
+    expect(await screen.findByText(/Too many tries/)).toBeTruthy();
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it('words a seller withdrawal and a refused re-apply differently', () => {
+    render(
+      wrap(
+        <SetupHub
+          file={{
+            ...file,
+            latestWithdrawal: { cause: 'cancelled', byKind: 'seller', at: '2026-10-08T23:30:00Z' },
+          }}
+          csrfToken="t"
+        />,
+      ),
+    );
+    expect(screen.getByText(/You withdrew your submission on 9 Oct 2026/)).toBeTruthy();
+    cleanup();
+    render(
+      wrap(
+        <SetupHub
+          file={{
+            ...file,
+            latestWithdrawal: {
+              cause: 'reapply-refused',
+              byKind: 'admin',
+              at: '2026-10-08T23:30:00Z',
+            },
+          }}
+          csrfToken="t"
+        />,
+      ),
+    );
+    expect(screen.getByText(/withdrawn on 9 Oct 2026\. Contact us/)).toBeTruthy();
+  });
+});

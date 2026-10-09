@@ -3,6 +3,9 @@ import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 import { loadSetupPage } from '../../../../src/server/setup-page.ts';
 import { ReviewSubmit } from '../../../../src/setup/review-submit.tsx';
 
+// Personal data: never prerendered or cached.
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata() {
   const t = await getTranslations('sellers');
   return { title: `${t('submit.title')} – ${t('page.title-suffix')}` };

@@ -5,6 +5,13 @@ import { SETUP_ROOT, SETUP_STEPS, type SetupStepKey } from './steps.ts';
 import { SubmitButton } from './submit-button.tsx';
 import type { FormDescriptors, MissingPart, MyFile } from './types.ts';
 
+const SUBMITTABLE: ReadonlySet<string> = new Set([
+  'details-incomplete',
+  'outside-service-area',
+  'ready-to-submit',
+  'changes-needed',
+]);
+
 interface Row {
   readonly key: string;
   readonly label: string;
@@ -122,6 +129,8 @@ export function ReviewSubmit({
   const problems = rows.filter((row) => row.missing || row.blocked);
   const first = problems[0];
   const waiting = file.status === 'awaiting-review';
+  // Only these states may submit; a status this panel has no words for yet shows no button.
+  const submittable = SUBMITTABLE.has(file.status);
   return (
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-5">
       <header className="flex flex-col gap-2">
@@ -168,7 +177,7 @@ export function ReviewSubmit({
           ))}
         </dl>
       </Card>
-      {waiting ? null : (
+      {waiting || !submittable ? null : (
         <div className="flex flex-col gap-2">
           <SubmitButton
             csrfToken={csrfToken}
