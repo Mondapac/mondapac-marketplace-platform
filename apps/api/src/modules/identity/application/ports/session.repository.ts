@@ -74,6 +74,21 @@ export interface SessionRepository {
   ): Promise<number>;
 
   /**
+   * Revokes every session of the seller's accounts that is not revoked yet (identity design 3.3,
+   * 3.5: the seller rejected or suspended; AC 14, AC 18): one set-based update on the sessions'
+   * seller copy. The caller holds the seller access row's lock (it updated the row in the same
+   * unit), and a seller sign-in takes that lock before it reads the state (item H), so a session
+   * a racing sign-in opened is either already committed, and revoked here, or never opened.
+   * Answers how many rows changed.
+   */
+  revokeAllOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reason: SessionRevokedReason,
+    now: Temporal.Instant,
+  ): Promise<number>;
+
+  /**
    * Gives the account's live session a new token (identity design 6.2: the current session at a
    * password change): replaces its stored hash in place, only while it is not revoked. Answers
    * whether it did; false when the session was revoked or is gone.

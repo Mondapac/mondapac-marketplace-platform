@@ -26,6 +26,7 @@ import {
   type EffectiveKeyResolver,
 } from './application/access/effective-keys';
 import { SessionAuthenticator } from './application/access/session-authenticator';
+import { ACCESS_DECISION_REPOSITORY } from './application/ports/access-decision.repository';
 import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
 import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
 import { COMMON_PASSWORD_LIST } from './application/ports/common-password-list';
@@ -64,6 +65,16 @@ import { SIGN_IN_CHALLENGE_REPOSITORY } from './application/ports/sign-in-challe
 import { SIGN_IN_RECORD_REPOSITORY } from './application/ports/sign-in-record.repository';
 import { THROTTLE_REPOSITORY } from './application/ports/throttle.repository';
 import { AcceptAdminInvitation } from './application/use-cases/accept-admin-invitation.use-case';
+import { AcceptSellerInvitation } from './application/use-cases/accept-seller-invitation.use-case';
+import { ApproveSellerAccess } from './application/use-cases/approve-seller-access.use-case';
+import { InviteSeller } from './application/use-cases/invite-seller.use-case';
+import { ReapplySellerAccess } from './application/use-cases/reapply-seller-access.use-case';
+import { ReinstateSellerAccess } from './application/use-cases/reinstate-seller-access.use-case';
+import { RejectSellerAccess } from './application/use-cases/reject-seller-access.use-case';
+import { ResendSellerInvitation } from './application/use-cases/resend-seller-invitation.use-case';
+import { RevokeSellerInvitation } from './application/use-cases/revoke-seller-invitation.use-case';
+import { SendSellerAccessMail } from './application/use-cases/send-seller-access-mail.use-case';
+import { SuspendSellerAccess } from './application/use-cases/suspend-seller-access.use-case';
 import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
 import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case';
 import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
@@ -134,6 +145,7 @@ import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { AdminPasswordController } from './presentation/admin-password.controller';
 import { AdminSecondFactorController } from './presentation/admin-second-factor.controller';
 import { AdminSessionController } from './presentation/admin-session.controller';
+import { AdminSellersController } from './presentation/admin-sellers.controller';
 import { AdminTeamController } from './presentation/admin-team.controller';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
 import { CustomerPasswordController } from './presentation/customer-password.controller';
@@ -165,6 +177,7 @@ const PORT = {
   challenges: SIGN_IN_CHALLENGE_REPOSITORY,
   invitations: INVITATION_REPOSITORY,
   sellerAccess: SELLER_ACCESS_REPOSITORY,
+  decisions: ACCESS_DECISION_REPOSITORY,
   reviewers: ACCESS_REVIEWERS,
   memberships: SELLER_MEMBERSHIP_REPOSITORY,
   roles: ROLE_REPOSITORY,
@@ -260,8 +273,13 @@ function useCaseProvider<D, U>(
  * Slice 8c binds the admin team list (`ListAdminTeam`, `identity.admin-account.view`) and its
  * account read, on the same controller.
  *
+ * Slice 9 binds the access decisions (approve, reject, suspend, reinstate) with their store and
+ * encrypted reasons, the decision mails (four subscriptions, E4 to E7), re-apply behind the
+ * seller-access contract, and a seller created by an admin's invitation (issue, re-send, revoke,
+ * and the owner's acceptance), behind `AdminSellersController` and the seller sign-up controller.
+ *
  * Slice 10a binds the role catalogue read (`ListPlatformRoles`, `identity.platform-role.view`),
- * on the same controller.
+ * on `AdminTeamController`.
  */
 @Module({
   controllers: [
@@ -276,6 +294,7 @@ function useCaseProvider<D, U>(
     AdminSecondFactorController,
     AdminPasswordController,
     AdminTeamController,
+    AdminSellersController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('identity'),
@@ -468,6 +487,8 @@ function useCaseProvider<D, U>(
       ids: true,
       memberships: true,
       sellerAccess: true,
+      decisions: true,
+      grants: true,
     }),
     useCaseProvider(ConfirmSellerEmail, {
       unitOfWork: true,
@@ -486,6 +507,8 @@ function useCaseProvider<D, U>(
       linkTokens: true,
       memberships: true,
       sellerAccess: true,
+      decisions: true,
+      grants: true,
       audit: true,
       assignments: true,
     }),
@@ -500,7 +523,14 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
     }),
-    useCaseProvider(DescribeSellerStatus, { unitOfWork: true, accounts: true, sellerAccess: true }),
+    useCaseProvider(DescribeSellerStatus, {
+      unitOfWork: true,
+      accounts: true,
+      sellerAccess: true,
+      decisions: true,
+      grants: true,
+      policy: true,
+    }),
     useCaseProvider(MembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(TeamMembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
@@ -906,6 +936,155 @@ function useCaseProvider<D, U>(
       transport: true,
       policy: true,
     }),
+    // Slice 9: the access decisions, re-apply, the decision mails and the seller invitations.
+    useCaseProvider(ApproveSellerAccess, {
+      unitOfWork: true,
+      sellerAccess: true,
+      decisions: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(RejectSellerAccess, {
+      unitOfWork: true,
+      sellerAccess: true,
+      decisions: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SuspendSellerAccess, {
+      unitOfWork: true,
+      sellerAccess: true,
+      decisions: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ReinstateSellerAccess, {
+      unitOfWork: true,
+      sellerAccess: true,
+      decisions: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ReapplySellerAccess, {
+      unitOfWork: true,
+      sellerAccess: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendSellerAccessMail, {
+      unitOfWork: true,
+      decisions: true,
+      memberships: true,
+      grants: true,
+      accounts: true,
+      targets: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
+    useCaseProvider(InviteSeller, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      grants: true,
+      effectiveKeys: true,
+      sellerAccess: true,
+      memberships: true,
+      invitations: true,
+      throttles: true,
+      keys: true,
+      targets: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ResendSellerInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      invitations: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(RevokeSellerInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      invitations: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(AcceptSellerInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      roles: true,
+      assignments: true,
+      memberships: true,
+      sellerAccess: true,
+      grants: true,
+      effectiveKeys: true,
+      throttles: true,
+      keys: true,
+      invitationTokens: true,
+      hasher: true,
+      commonPasswords: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
     {
       provide: IDENTITY_FACADE,
       inject: [DescribeActor, MembershipOf, TeamMembershipOf],
@@ -920,18 +1099,32 @@ function useCaseProvider<D, U>(
       // imported through a contract file that is not in index.ts and that a boundary rule
       // limits to modules/sellers/.
       provide: SELLER_ACCESS_CONTRACT,
-      inject: [SellerAccessOf, SellerAccessOfSystem, ListRegisteredSellers, NotifyAccessReviewers],
+      inject: [
+        SellerAccessOf,
+        SellerAccessOfSystem,
+        ListRegisteredSellers,
+        NotifyAccessReviewers,
+        ApproveSellerAccess,
+        RejectSellerAccess,
+        ReapplySellerAccess,
+      ],
       useFactory: (
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
         listRegisteredSellers: ListRegisteredSellers,
         notifyAccessReviewers: NotifyAccessReviewers,
+        approveSellerAccess: ApproveSellerAccess,
+        rejectSellerAccess: RejectSellerAccess,
+        reapplySellerAccess: ReapplySellerAccess,
       ) =>
         new SellerAccessContractImplementation({
           sellerAccessOf,
           sellerAccessOfSystem,
           listRegisteredSellers,
           notifyAccessReviewers,
+          approveSellerAccess,
+          rejectSellerAccess,
+          reapplySellerAccess,
         }),
     },
     registerJobsFrom(
@@ -952,6 +1145,7 @@ function useCaseProvider<D, U>(
         SendPasswordChangedMail,
         SendInvitationMail,
         SendSecondFactorMail,
+        SendSellerAccessMail,
       ],
       (
         sendLinkMail: SendLinkMail,
@@ -960,6 +1154,7 @@ function useCaseProvider<D, U>(
         sendPasswordChangedMail: SendPasswordChangedMail,
         sendInvitationMail: SendInvitationMail,
         sendSecondFactorMail: SendSecondFactorMail,
+        sendSellerAccessMail: SendSellerAccessMail,
       ) =>
         identityMailSubscriptions(
           sendLinkMail,
@@ -968,6 +1163,7 @@ function useCaseProvider<D, U>(
           sendPasswordChangedMail,
           sendInvitationMail,
           sendSecondFactorMail,
+          sendSellerAccessMail,
         ),
     ),
   ],

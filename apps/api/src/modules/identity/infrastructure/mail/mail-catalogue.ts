@@ -68,6 +68,25 @@ export const MAIL_KEYS = [
   'identity.mail.second-factor-changed.admin.body.replaced',
   'identity.mail.second-factor-changed.admin.body.reset',
   'identity.mail.second-factor-changed.admin.body.locked',
+  'identity.mail.invitation.seller.subject',
+  'identity.mail.invitation.seller.heading',
+  'identity.mail.invitation.seller.body',
+  'identity.mail.invitation.seller.action',
+  'identity.mail.seller-approved.seller.subject',
+  'identity.mail.seller-approved.seller.heading',
+  'identity.mail.seller-approved.seller.body',
+  'identity.mail.seller-approved.seller.action',
+  'identity.mail.seller-rejected.seller.subject',
+  'identity.mail.seller-rejected.seller.heading',
+  'identity.mail.seller-rejected.seller.body',
+  'identity.mail.seller-rejected.seller.action',
+  'identity.mail.seller-suspended.seller.subject',
+  'identity.mail.seller-suspended.seller.heading',
+  'identity.mail.seller-suspended.seller.body',
+  'identity.mail.seller-reinstated.seller.subject',
+  'identity.mail.seller-reinstated.seller.heading',
+  'identity.mail.seller-reinstated.seller.body',
+  'identity.mail.seller-reinstated.seller.action',
   'identity.mail.common.account-line.customer',
   'identity.mail.common.account-line.seller',
   'identity.mail.common.account-line.admin',
@@ -89,13 +108,37 @@ export class MissingMailCatalogueError extends Error {
   }
 }
 
+/**
+ * A hosted Market's catalogue that puts the reason of a decision in a mail subject: refused at
+ * boot (`ux.md` 3.4: subjects carry no personal data and no reason text; Hassan L2 on PR #204),
+ * so a bad locale file never reaches a handler that would retry it.
+ */
+export class ReasonInSubjectError extends Error {
+  override readonly name = 'ReasonInSubjectError';
+  constructor(marketId: string, locale: string, keys: readonly string[]) {
+    super(
+      `identity's ${locale} catalogue, the default locale of Market ${marketId}, puts {reason} ` +
+        `in ${keys.join(', ')}: a subject never holds the reason`,
+    );
+  }
+}
+
 const PLACEHOLDER = /\{([a-z]+)\}/g;
+
+/** The result mails of the access decisions (`ux.md` E4 to E7; slice 9). */
+const DECISION_MAILS: ReadonlySet<string> = new Set([
+  'seller-approved',
+  'seller-rejected',
+  'seller-suspended',
+  'seller-reinstated',
+]);
 
 /**
  * {@link IdentityMailComposer} from `identity`'s translation catalogues (identity design 9,
  * INTL-11; `config/locales/<locale>/identity.json`): the Market's default locale, named placeholders and no ICU. Plain text only: no markup can be produced, and
- * the only values filled in are the URL, which code built, and the duration, which `Intl`
- * formats from a number (HF13). A placeholder without a value throws, so a broken locale file
+ * the only values filled in are the URL, which code built, the duration and the time, which
+ * `Intl` formats, and (slice 9) the reason of a rejection or a suspension, which the domain
+ * checked and which is never put in a subject (HF13). A placeholder without a value throws, so a broken locale file
  * never sends a mail with `{url}` in it.
  */
 export class CatalogueMailComposer implements IdentityMailComposer {
@@ -112,6 +155,12 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       const missing = MAIL_KEYS.filter((key) => messages?.[key] === undefined);
       if (messages === null || missing.length > 0) {
         throw new MissingMailCatalogueError(marketId, locale, missing);
+      }
+      const reasonInSubject = MAIL_KEYS.filter(
+        (key) => key.endsWith('.subject') && messages[key]!.includes('{reason}'),
+      );
+      if (reasonInSubject.length > 0) {
+        throw new ReasonInSubjectError(marketId, locale, reasonInSubject);
       }
       this.#byMarket.set(marketId, messages);
     }
@@ -141,12 +190,17 @@ export class CatalogueMailComposer implements IdentityMailComposer {
     }
     const notice =
       mail.template === 'password-changed' || mail.template === 'second-factor-changed';
+    // E5 and E6 quote the admin's reason (`ux.md` 3.4): text the domain checked (no control or
+    // bidi character), filled into a plain-text body only, never the subject.
+    if (mail.template === 'seller-rejected' || mail.template === 'seller-suspended') {
+      values['reason'] = mail.reason;
+    }
     if (notice) {
       // A notice says when (`ux.md` 3.4): in the Market's zone, the fallback of ADR-0005, since
       // an account has no zone of its own; the zone's name is written with the time.
       const timezone = this.markets.get(market.marketId).timezone;
       values['time'] = formatInstant(locale, timezone, mail.changedAt);
-    } else {
+    } else if (mail.template !== 'seller-suspended') {
       values['url'] = mail.url;
     }
     const fill = (template: string): string =>
@@ -170,11 +224,16 @@ export class CatalogueMailComposer implements IdentityMailComposer {
           ? `body.${mail.change}`
           : 'body';
     // E13 and the factor notice have no button: "if this wasn't you" in place of "ignore this".
-    const action = notice ? [] : [`${line(key('action'))}: ${(mail as { url: string }).url}`];
-    // E3 answers no request of the reader, so "ignore this" does not fit it (identity design 8.7).
+    // E6 (suspended) has none either: the seller cannot sign in while suspended.
+    const action =
+      notice || mail.template === 'seller-suspended'
+        ? []
+        : [`${line(key('action'))}: ${(mail as { url: string }).url}`];
+    // E3 and the decision mails E4 to E7 answer no request of the reader, so "ignore this" does
+    // not fit them (identity design 8.7; `ux.md` 3.4).
     const closing: MailKey[] = notice
       ? ['identity.mail.common.not-you']
-      : mail.template === 'reviewer-notice'
+      : mail.template === 'reviewer-notice' || DECISION_MAILS.has(mail.template)
         ? []
         : ['identity.mail.common.ignore'];
     const text = [
@@ -185,6 +244,8 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       ...closing.map(line),
       line('identity.mail.common.footer'),
     ].join('\n\n');
+    // Subjects carry no personal data and no reason text (`ux.md` 3.4): the constructor refused
+    // a catalogue that puts the reason in a subject (ReasonInSubjectError).
     return { subject: line(key('subject')), text: `${text}\n` };
   }
 

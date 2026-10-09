@@ -103,6 +103,15 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     return this.markets.get(market.marketId).identity.secondFactorThrottles?.account ?? null;
   }
 
+  /**
+   * Slice 9 (identity design 3.3): the Market file has no re-apply limit yet, so none is
+   * configured and re-apply fails closed. The Market-config PR adds the key; this read changes
+   * then, not the port.
+   */
+  sellerReapplyLimit(): number | null {
+    return null;
+  }
+
   /** `LinkTargets` (identity design 9): the page per population and page, or null. */
   target<P extends Population>(
     market: MarketContext,

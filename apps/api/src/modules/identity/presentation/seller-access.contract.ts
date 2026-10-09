@@ -1,5 +1,9 @@
+import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { ApproveSellerAccess } from '../application/use-cases/approve-seller-access.use-case';
+import type { ReapplySellerAccess } from '../application/use-cases/reapply-seller-access.use-case';
+import type { RejectSellerAccess } from '../application/use-cases/reject-seller-access.use-case';
 import type { ListRegisteredSellers } from '../application/use-cases/list-registered-sellers.use-case';
 import type { NotifyAccessReviewers } from '../application/use-cases/notify-access-reviewers.use-case';
 import type { SellerAccessOf } from '../application/use-cases/seller-access-of.use-case';
@@ -10,7 +14,11 @@ import type {
   ReviewerNoticeOutcome,
   ReviewerNoticeUnavailable,
   SellerAccessContract,
+  SellerAccessDecisionOutcome,
+  SellerAccessDecisionRefusal,
   SellerAccessSummary,
+  SellerReapplyOutcome,
+  SellerReapplyRefusal,
 } from '../contracts/seller-access.contract';
 
 /** The use cases behind the seller-access contract (`sellerAccessOf` has a pair). */
@@ -19,6 +27,9 @@ export interface SellerAccessContractUseCases {
   readonly sellerAccessOfSystem: SellerAccessOfSystem;
   readonly listRegisteredSellers: ListRegisteredSellers;
   readonly notifyAccessReviewers: NotifyAccessReviewers;
+  readonly approveSellerAccess: ApproveSellerAccess;
+  readonly rejectSellerAccess: RejectSellerAccess;
+  readonly reapplySellerAccess: ReapplySellerAccess;
 }
 
 /**
@@ -57,4 +68,42 @@ export class SellerAccessContractImplementation implements SellerAccessContract 
   > {
     return this.useCases.notifyAccessReviewers.execute(context, { sellerId });
   }
+
+  async approveSellerAccess(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    basisId: Id,
+  ): Promise<Result<SellerAccessDecisionOutcome, AccessDenied | SellerAccessDecisionRefusal>> {
+    const result = await this.useCases.approveSellerAccess.execute(context, { sellerId, basisId });
+    return result.ok ? ok(decisionOutcome(result.value, 'seller-access.approved')) : result;
+  }
+
+  async rejectSellerAccess(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    reason: string,
+    basisId: Id,
+  ): Promise<Result<SellerAccessDecisionOutcome, AccessDenied | SellerAccessDecisionRefusal>> {
+    const result = await this.useCases.rejectSellerAccess.execute(context, {
+      sellerId,
+      reason,
+      basisId,
+    });
+    return result.ok ? ok(decisionOutcome(result.value, 'seller-access.rejected')) : result;
+  }
+
+  reapplySellerAccess(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<SellerReapplyOutcome, AccessDenied | SellerReapplyRefusal>> {
+    return this.useCases.reapplySellerAccess.execute(context, { sellerId });
+  }
+}
+
+/** The contract's answer to a decision: ids and codes, never the reason or the session count. */
+function decisionOutcome(
+  value: Pick<SellerAccessDecisionOutcome, 'sellerId' | 'state' | 'decisionId'>,
+  code: SellerAccessDecisionOutcome['code'],
+): SellerAccessDecisionOutcome {
+  return { code, sellerId: value.sellerId, state: value.state, decisionId: value.decisionId };
 }

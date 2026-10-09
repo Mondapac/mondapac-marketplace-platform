@@ -180,6 +180,20 @@
     }
   },
   {
+    "action": "identity.seller-access.approved",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    },
+    "after": {
+      "basisId": "optional(id)",
+      "decisionId": "id",
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
     "action": "identity.seller-access.founded",
     "targetType": "identity.seller-access",
     "targetId": "id",
@@ -190,6 +204,60 @@
       "boundSubjectId": "id",
       "origin": "enumOf(self|invitation)",
       "sellerId": "id",
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
+    "action": "identity.seller-access.reapplied",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    },
+    "after": {
+      "reapplyCount": "integer",
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
+    "action": "identity.seller-access.reinstated",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    },
+    "after": {
+      "decisionId": "id",
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
+    "action": "identity.seller-access.rejected",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    },
+    "after": {
+      "basisId": "optional(id)",
+      "decisionId": "id",
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    }
+  },
+  {
+    "action": "identity.seller-access.suspended",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(pending|approved|rejected|suspended)"
+    },
+    "after": {
+      "decisionId": "id",
+      "revokedSessions": "integer",
       "state": "enumOf(pending|approved|rejected|suspended)"
     }
   },

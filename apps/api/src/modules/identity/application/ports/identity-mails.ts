@@ -1,7 +1,8 @@
 import type { MarketContext, Population, Temporal } from '@mondapac/shared-kernel';
 
 /**
- * The mails of `identity` in slices 3 to 5 and R-3 (identity design 9; `ux.md` 5, E1, E2, E3, E8, E12, E13). What
+ * The mails of `identity` in slices 3 to 9 and R-3 (identity design 9; `ux.md` 5, E1 to E8, E11 to
+ * E14, E16, E17). What
  * varies is data; the words come from the module's locale files, in the Market's default locale.
  */
 export type IdentityMail =
@@ -81,6 +82,33 @@ export type IdentityMail =
       readonly change: 'replaced' | 'reset' | 'locked';
       /** When it changed: written in the Market's time zone and locale. */
       readonly changedAt: Temporal.Instant;
+    }
+  | {
+      /**
+       * E4 approved, E7 reinstated (identity design 3.3, 9; slice 9): to the Seller Owner, with a
+       * button to the seller sign-in page. No reason, no token.
+       */
+      readonly template: 'seller-approved' | 'seller-reinstated';
+      readonly population: 'seller';
+      /** The seller sign-in page. */
+      readonly url: string;
+    }
+  | {
+      /**
+       * E5 "needs changes" (decision 9; slice 9): to the Seller Owner only, the reason quoted in
+       * the body (never the subject), a button to the seller sign-in page.
+       */
+      readonly template: 'seller-rejected';
+      readonly population: 'seller';
+      readonly url: string;
+      /** The admin's reason, already checked by the domain (no control or bidi character). */
+      readonly reason: string;
+    }
+  | {
+      /** E6 suspended (SEL-07; slice 9): to the Seller Owner only, the reason quoted; no button. */
+      readonly template: 'seller-suspended';
+      readonly population: 'seller';
+      readonly reason: string;
     };
 
 /** A rendered mail: plain text only (identity design 9; HF13). */

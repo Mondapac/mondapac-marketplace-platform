@@ -37,6 +37,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
     "CREATE UNIQUE INDEX invitations_market_id_email_pending_platform_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((state = 'pending'::text) AND (seller_id IS NULL))",
+  'identity.invitations_market_id_email_seller_owner_pending_key':
+    "CREATE UNIQUE INDEX invitations_market_id_email_seller_owner_pending_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((kind = 'seller-owner'::text) AND (state = 'pending'::text))",
   'identity.invitations_market_id_seller_id_email_pending_key':
     "CREATE UNIQUE INDEX invitations_market_id_seller_id_email_pending_key ON identity.invitations USING btree (market_id, seller_id, email_normalized) WHERE ((state = 'pending'::text) AND (seller_id IS NOT NULL))",
   'identity.invitations_market_id_seller_id_owner_pending_key':

@@ -80,7 +80,8 @@ export const SELLER_ACCESS_STATES = ['pending', 'approved', 'rejected', 'suspend
  * A seller exists for other modules (identity design 8.2; ADR-0022): published at the owner's
  * email verification for a self-registration, as the `SellerAccess` version step that sets
  * `registeredAt` (M4), so no consumer sees a seller the 7-day purge may still delete; at
- * creation for an invitation (slice 8). `sellers` creates its record under the same id when it
+ * creation for an invitation (slice 9; `ownerAccountId` null: the owner joins when it accepts).
+ * `sellers` creates its record under the same id when it
  * consumes it. Ids and codes only: no name, no email.
  */
 export const SellerRegistered = defineEvent({
@@ -234,6 +235,73 @@ export const InvitationRevoked = defineEvent({
 });
 
 /**
+ * A pending seller was approved (identity design 3.3, 8.2; SEL-03, AC 4; slice 9). `decisionId`
+ * names the `AccessDecision`; `basisId` is the `sellers` submission the approval rests on, once
+ * `sellers` calls through its contract (ADR-0022 decision 4: carried in v1, null in Phase 2,
+ * where an admin decides on name and email). `sellers.close-decision` and the result mail (`ux.md`
+ * E4) consume it. Ids only: never a name, an email or a reason.
+ */
+export const SellerAccessApproved = defineEvent({
+  type: 'identity.seller-access-approved.v1',
+  aggregateType: 'seller-access',
+  payload: {
+    sellerId: eventField.id(),
+    decisionId: eventField.id(),
+    basisId: eventField.optional(eventField.id()),
+  },
+});
+
+/**
+ * A pending seller was rejected with a reason (3.3, 8.2; decision 9, AC 6; slice 9). The reason is
+ * never in the event: the mail handler decrypts it from the decision named here (E5).
+ */
+export const SellerAccessRejected = defineEvent({
+  type: 'identity.seller-access-rejected.v1',
+  aggregateType: 'seller-access',
+  payload: {
+    sellerId: eventField.id(),
+    decisionId: eventField.id(),
+    basisId: eventField.optional(eventField.id()),
+  },
+});
+
+/**
+ * An approved seller was suspended with a reason (3.3, 8.2; SEL-07, AC 14; slice 9). In the same
+ * unit every session of the seller's accounts was revoked (E6).
+ */
+export const SellerAccessSuspended = defineEvent({
+  type: 'identity.seller-access-suspended.v1',
+  aggregateType: 'seller-access',
+  payload: {
+    sellerId: eventField.id(),
+    decisionId: eventField.id(),
+  },
+});
+
+/** A suspended seller was reinstated (3.3, 8.2; AC 14; slice 9): E7. */
+export const SellerAccessReinstated = defineEvent({
+  type: 'identity.seller-access-reinstated.v1',
+  aggregateType: 'seller-access',
+  payload: {
+    sellerId: eventField.id(),
+    decisionId: eventField.id(),
+  },
+});
+
+/**
+ * A rejected seller applied again and is pending (3.3, 8.2; AC 6; slice 9): only through the
+ * seller-access contract, which `sellers`' "submit again" calls. No decision is written; the
+ * re-application is the seller's own act. `sellers.close-decision` clears its intent on it.
+ */
+export const SellerAccessReapplied = defineEvent({
+  type: 'identity.seller-access-reapplied.v1',
+  aggregateType: 'seller-access',
+  payload: {
+    sellerId: eventField.id(),
+  },
+});
+
+/**
  * Every event identity publishes, declared with `defineEvent` (platform persistence design
  * 5.3; identity design 8.2) and registered with the event catalogue by `IdentityModule`. Each
  * new type changes the catalogue snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -252,4 +320,9 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   AccountEnabled,
   AccountRoleChanged,
   InvitationRevoked,
+  SellerAccessApproved,
+  SellerAccessRejected,
+  SellerAccessSuspended,
+  SellerAccessReinstated,
+  SellerAccessReapplied,
 ];

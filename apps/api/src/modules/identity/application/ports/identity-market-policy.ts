@@ -82,6 +82,14 @@ export interface IdentityMarketPolicy {
    * block early (Ali 2026-10-08, Hassan I-4).
    */
   secondFactorThrottle(market: MarketContext): ThrottleRule | null;
+
+  /**
+   * Slice 9: how many re-applications a rejected seller may make since its last approval
+   * (identity design 3.3: "fewer than 3", a Market policy value), or null. No Market
+   * configuration key exists yet (it needs a Market-config PR), so the adapter answers null and
+   * re-apply fails closed (`access.unavailable`) until a Market configures it.
+   */
+  sellerReapplyLimit(market: MarketContext): number | null;
 }
 
 /** The `From` of a Market's mail. */

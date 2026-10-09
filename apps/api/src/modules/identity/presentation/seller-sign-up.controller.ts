@@ -19,6 +19,7 @@ import { Call } from '../../../platform/call-context/call-context.decorator';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
+import { AcceptSellerInvitation } from '../application/use-cases/accept-seller-invitation.use-case';
 import { ConfirmSellerEmail } from '../application/use-cases/confirm-seller-email.use-case';
 import { RegisterSeller } from '../application/use-cases/register-seller.use-case';
 import { RequestSellerVerification } from '../application/use-cases/request-seller-verification.use-case';
@@ -29,7 +30,14 @@ import {
 import { fail, parseStringFields } from './customer-sign-up.controller';
 import { ApiErrorBody, CustomerSignUpAccepted } from './customer-sign-up.dto';
 import { answerSellerSignIn, outcomeOf } from './seller-sign-in.answer';
-import { SellerConfirmEmailRequest, SellerSignedIn, SellerSignUpRequest } from './seller.dto';
+import { adminBody, adminClient, adminFailure } from './admin.answer';
+import {
+  SellerAcceptInvitationRequest,
+  SellerConfirmEmailRequest,
+  SellerInvitationAccepted,
+  SellerSignedIn,
+  SellerSignUpRequest,
+} from './seller.dto';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 
 /**
@@ -43,6 +51,8 @@ import { RoutePopulation } from '../../../platform/call-context/route-population
  * - `POST confirm-email`: the link's token and the password; on success the email is confirmed
  *   and the seller session cookie set, as at sign-in.
  * - `POST verification-email`: "send it again"; one answer for every address.
+ * - `POST accept-invitation` (slice 9): the invited Seller Owner's token and new password; the
+ *   account is created and no session opens (`ux.md` F8).
  *
  * Every route logs its outcome code with the correlation id; never the name, the email, the
  * password or the link token.
@@ -58,6 +68,7 @@ export class SellerSignUpController {
     private readonly registerSeller: RegisterSeller,
     private readonly confirmSellerEmail: ConfirmSellerEmail,
     private readonly requestVerification: RequestSellerVerification,
+    private readonly acceptSellerInvitation: AcceptSellerInvitation,
   ) {}
 
   @Post('sign-up')
@@ -187,6 +198,67 @@ export class SellerSignUpController {
     this.log('identity.seller-verification-email', context, outcomeOf(outcome));
     if (outcome instanceof HttpException) throw outcome;
     return outcome;
+  }
+
+  @Post('accept-invitation')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Accept a seller owner's invitation and choose a password",
+    description:
+      "The token from the invitation link's fragment and a new password. The Seller Owner's " +
+      'account is created with the invited address and the name the admin gave, its email ' +
+      'confirmed; no session opens (sign in next). An invitation that is unknown, used, ' +
+      'revoked, expired, of another kind or Market, or whose address already has a seller ' +
+      'account answers invitation.rejected (one answer for every cause). Throttled per origin.',
+  })
+  @ApiBody({ type: SellerAcceptInvitationRequest })
+  @ApiOkResponse({ type: SellerInvitationAccepted })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description:
+      'validation.failed (details.fields), password.rejected (details.rule) or ' +
+      'invitation.rejected',
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid: the request carries an Authorization header (HF14)',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'request.csrf (a refused origin)' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'request.busy (the password-hash queue is full) or access.unavailable',
+  })
+  async acceptInvitation(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<SellerInvitationAccepted> {
+    const outcome = await this.answerAcceptance(context, request, response, body);
+    this.log('identity.seller-accept-invitation', context, outcomeOf(outcome));
+    if (outcome instanceof HttpException) throw outcome;
+    return outcome;
+  }
+
+  private async answerAcceptance(
+    context: CallContext,
+    request: Request,
+    response: Response,
+    body: unknown,
+  ): Promise<SellerInvitationAccepted | HttpException> {
+    const input = adminBody(request, body, ['token', 'password'] as const);
+    if (input instanceof HttpException) return input;
+    const client = adminClient(request);
+    if (client instanceof HttpException) return client;
+    const result = await this.acceptSellerInvitation.execute(context, { ...input, client });
+    if (!result.ok) return adminFailure(response, result.error);
+    response.setHeader('Cache-Control', 'no-store');
+    return { code: result.value.code };
   }
 
   private async answerSignUp(
