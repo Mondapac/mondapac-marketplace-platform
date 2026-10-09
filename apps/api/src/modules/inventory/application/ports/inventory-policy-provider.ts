@@ -7,6 +7,12 @@ export interface InventoryPolicyProvider {
 
   /** The low-stock threshold of a seller who set none, 0 to 99 (AU 10; design 5.2). */
   defaultLowStockThreshold(market: MarketContext): number;
+
+  /**
+   * The most variants one product may hold (catalog `maxVariantsPerProduct`, AU 100): it bounds the
+   * `offer-moved` mapping and so the re-key's lock set (design 3.6 step 2).
+   */
+  maxVariantsPerProduct(market: MarketContext): number;
 }
 
 export const INVENTORY_POLICY_PROVIDER = Symbol('INVENTORY_POLICY_PROVIDER');

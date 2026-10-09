@@ -169,6 +169,56 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
+  it('upgrades catalogue-moderator from version 1 to 2: adds catalog.platform-product.edit only, one seed-applied row, other roles untouched (I-1a)', async () => {
+    const EDIT = 'catalog.platform-product.edit';
+    // The previous build's definition: version 1 with the identity key only.
+    const v1 = seedWith((role) =>
+      role.seedCode === 'catalogue-moderator'
+        ? { ...role, seedVersion: 1, permissionKeys: ['identity.seller-access.view'] }
+        : role,
+    );
+    await seedRoles(v1).execute(system, {});
+    const before = roleOf('platform', 'catalogue-moderator');
+    expect([before.seedVersion, before.permissionKeys]).toEqual([
+      1,
+      ['identity.seller-access.view'],
+    ]);
+    // Copies, so an in-place change of a stored role would show.
+    const others = [...fakes.roles.values()]
+      .filter((r) => r.marketId === market.marketId && r.id !== before.id)
+      .map((r) => ({ ...r, permissionKeys: [...r.permissionKeys] }));
+    expect(others).toHaveLength(11);
+    fakes.audits.length = 0;
+
+    await expect(seedRoles().execute(system, {})).resolves.toEqual({
+      ok: true,
+      value: { created: 0, upgraded: 1 },
+    });
+
+    expect(roleOf('platform', 'catalogue-moderator')).toMatchObject({
+      id: before.id,
+      seedVersion: 2,
+      permissionKeys: [EDIT, 'identity.seller-access.view'],
+    });
+    // No other role of this Market gains the key or changes at all.
+    for (const role of others) expect(fakes.roles.get(role.id)).toEqual(role);
+    expect(fakes.audits).toEqual([
+      {
+        ...RoleSeedApplied.entry(before.id, {
+          before: { seedVersion: 1 },
+          after: { seedVersion: 2, addedKeys: [EDIT], removedKeys: [] },
+        }),
+        actor: 'system',
+        marketId: code,
+      },
+    ]);
+    // Applied once.
+    await expect(seedRoles().execute(system, {})).resolves.toEqual({
+      ok: true,
+      value: { created: 0, upgraded: 0 },
+    });
+  });
+
   it('upgrades a default role key by key, with one seed-applied row (Ali 2026-10-08)', async () => {
     await seedRoles().execute(system, {});
     const before = roleOf('seller', 'store-manager');

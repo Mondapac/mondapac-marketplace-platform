@@ -63,6 +63,12 @@ class FakeInventories implements SellerInventoryRepository {
 }
 
 class FakeStock implements StockRepository {
+  itemIdsOfOfferVariants() {
+    return Promise.reject(new Error('not used'));
+  }
+  tombstonesOf() {
+    return Promise.reject(new Error('not used'));
+  }
   items: StockItemRow[] = [];
   readonly movements: NewStockMovement[] = [];
   readonly retired = new Set<string>();
@@ -244,6 +250,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.set-stock-level in market %s', (
     t.offers.offers.set(offerId, {
       sellerId,
       deleted: false,
+      productId: t.ids.next<'Product'>(),
       sellUnitVariantIds: new Set([variantId]),
     });
     const sourceId = inventory.state.sources[0]!.id;
@@ -568,6 +575,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.set-stock-level in market %s', (
           t.offers.offers.set(w.offerId, {
             sellerId: t.ids.next<'Seller'>(),
             deleted: false,
+            productId: t.ids.next<'Product'>(),
             sellUnitVariantIds: new Set([w.variantId]),
           }),
       ],
@@ -577,6 +585,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.set-stock-level in market %s', (
           t.offers.offers.set(w.offerId, {
             sellerId: w.sellerId,
             deleted: true,
+            productId: t.ids.next<'Product'>(),
             sellUnitVariantIds: new Set(),
           }),
       ],
@@ -586,6 +595,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.set-stock-level in market %s', (
           t.offers.offers.set(w.offerId, {
             sellerId: w.sellerId,
             deleted: false,
+            productId: t.ids.next<'Product'>(),
             sellUnitVariantIds: new Set([t.ids.next<'Variant'>()]),
           }),
       ],
