@@ -902,6 +902,13 @@ const inventorySchema = z.strictObject({
    * 100 x 4 x 2 = 800 plus held items. Raising the limit is a design change with a re-check.
    */
   maxSourcesPerSeller: z.number().int().min(1).max(4),
+  /**
+   * The low-stock threshold when the seller has set none (design 5.2; AU 10): "only N left" is
+   * shown at or below it. Required: a Market never defaults it. 0 to 99, the range of the
+   * seller's own override, because a higher value would make the exact count public (Hassan
+   * finding 9).
+   */
+  defaultLowStockThreshold: z.number().int().min(0).max(99),
 });
 
 /**

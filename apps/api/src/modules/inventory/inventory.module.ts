@@ -1,11 +1,20 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
+import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { CatalogModule } from '../catalog';
 import { IdentityModule } from '../identity';
+import { AVAILABILITY_SIGNAL_REPOSITORY } from './application/ports/availability-signal.repository';
+import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
+import { STOCK_REPOSITORY } from './application/ports/stock.repository';
+import { SetStockLevel } from './application/use-cases/set-stock-level.use-case';
+import { INVENTORY_EVENTS } from './domain/events';
 import { INVENTORY_POLICY_PROVIDER } from './application/ports/inventory-policy-provider';
 import { SELLER_INVENTORY_REPOSITORY } from './application/ports/seller-inventory.repository';
 import { CreateSource } from './application/use-cases/create-source.use-case';
@@ -27,6 +36,10 @@ const PORT = {
   unitOfWork: UNIT_OF_WORK,
   inventories: SELLER_INVENTORY_REPOSITORY,
   policies: INVENTORY_POLICY_PROVIDER,
+  stock: STOCK_REPOSITORY,
+  signals: AVAILABILITY_SIGNAL_REPOSITORY,
+  offers: OFFER_SELL_UNITS_SOURCE,
+  outbox: OUTBOX_WRITER,
   ids: ID_GENERATOR,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -56,12 +69,16 @@ function useCaseProvider<D, U>(
  * slice. Slice 1 binds the seller inventory store and the handler
  * `inventory.ensure-seller-inventory` on `identity.seller-registered.v1`, checks at start-up that
  * every hosted Market has its `inventory` configuration, and (part 2) the seller's use cases
- * that list, add, edit and reorder stock locations. Their route arrives with the panel slice. The module publishes no
- * event yet, so it has no outbox until slice 2.
+ * that list, add, edit and reorder stock locations. Their route arrives with the panel slice.
+ * Slice 2 (part 3) adds the module's outbox, its two events and the seller's stock write
+ * `inventory.set-stock-level`; until catalog slice 7, catalog's fail-closed `offerSellUnits` answers
+ * every Offer as absent, so every stock write answers `inventory.not-found`.
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, CatalogModule],
   providers: [
+    PersistenceModule.outboxWriterFor('inventory'),
+    registerEvents('inventory', INVENTORY_EVENTS),
     ...inventoryProviders,
     {
       provide: 'INVENTORY_MARKET_CONFIG_CHECK',
@@ -83,6 +100,17 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(EditSource, { unitOfWork: true, inventories: true, policies: true }),
     useCaseProvider(ReorderSources, { unitOfWork: true, inventories: true, policies: true }),
+    useCaseProvider(SetStockLevel, {
+      unitOfWork: true,
+      inventories: true,
+      stock: true,
+      signals: true,
+      offers: true,
+      policies: true,
+      outbox: true,
+      ids: true,
+      clock: true,
+    }),
     useCaseProvider(EnsureSellerInventory, {
       unitOfWork: true,
       inventories: true,

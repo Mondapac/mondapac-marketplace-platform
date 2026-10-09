@@ -184,6 +184,26 @@
     }
   },
   {
+    "type": "inventory.availability-changed.v1",
+    "aggregateType": "availability-signal",
+    "fields": {
+      "offerId": "id",
+      "variantId": "id",
+      "status": "enumOf(in-stock|low|out)",
+      "onlyLeft": "optional(integer)"
+    }
+  },
+  {
+    "type": "inventory.low-stock-reached.v1",
+    "aggregateType": "availability-signal",
+    "fields": {
+      "sellerId": "id",
+      "offerId": "id",
+      "variantId": "id",
+      "onlyLeft": "integer"
+    }
+  },
+  {
     "type": "pricing.effective-price-changed.v1",
     "aggregateType": "price-series",
     "fields": {
