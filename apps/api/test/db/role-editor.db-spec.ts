@@ -13,10 +13,20 @@ import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed
 import { CreateSellerRole } from '../../src/modules/identity/application/use-cases/create-seller-role.use-case';
 import { DeleteSellerRole } from '../../src/modules/identity/application/use-cases/delete-seller-role.use-case';
 import { EditSellerRole } from '../../src/modules/identity/application/use-cases/edit-seller-role.use-case';
+import { ok } from '@mondapac/shared-kernel';
+import { realPermissionRegistry } from '../support/permission-registry';
+import { PrismaRoleRepository } from '../../src/modules/identity/infrastructure/sellers/prisma-seller-team.repository';
+import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { withRoleLimit } from '../support/role-limits';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { marketOf, otherMarketOf, recordDriverStatements } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  otherMarketOf,
+  recordDriverStatements,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // Identity slice 10 on PostgreSQL (identity design 5.3, 5.4, 2.3), for both Market fixtures, as
@@ -38,6 +48,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
   let app: NestExpressApplication;
   let sql: Client;
   let driver: ReturnType<typeof recordDriverStatements>;
+  let db: Persistence;
   let logs: jest.SpyInstance[];
 
   beforeAll(async () => {
@@ -48,6 +59,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
     driver = recordDriverStatements();
+    db = createPersistence();
     for (const each of [market, marketOf(other)]) {
       await app
         .get(SeedRoles)
@@ -56,6 +68,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
   });
   afterAll(async () => {
     driver.restore();
+    await db.close();
     await sql.end();
     await app.close();
   });
@@ -393,5 +406,286 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
         expect(statement).toMatch(/"market_id"\s*=/i);
       }
     }
+  });
+
+  it('two concurrent edits of one role: one version step per write, the key rows are the winner’s', async () => {
+    const root = await account(
+      'admin',
+      await seededRole('platform-administrator', 'platform'),
+      null,
+    );
+    const made = await app
+      .get(CreatePlatformRole)
+      .execute(asAdmin(root), { name: `Race ${unique()}`, permissionKeys: [] });
+    if (!made.ok) throw new Error(made.error.code);
+    const roleId = made.value.roleId;
+    const sets = [['identity.seller-access.view'], ['identity.customer-account.view']];
+
+    const settled = await Promise.allSettled(
+      sets.map((permissionKeys, n) =>
+        app
+          .get(EditPlatformRole)
+          .execute(asAdmin(root), { roleId, name: `Racer ${n} ${unique()}`, permissionKeys }),
+      ),
+    );
+
+    // Each wrote (a version step) or lost the race with a conflict error that the platform
+    // filter answers 409 (conflict.stale or conflict.retry); never a half write.
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        expect(['StaleAggregateError', 'TransactionConflictError']).toContain(
+          (result.reason as Error).name,
+        );
+      }
+    }
+    const written = settled.filter((r) => r.status === 'fulfilled').length;
+    expect(written).toBeGreaterThan(0);
+    const row = await sql.query<{ version: number; name: string }>(
+      `SELECT version, name FROM identity.roles WHERE market_id = $1 AND id = $2`,
+      [code, roleId],
+    );
+    expect(row.rows[0]!.version).toBe(1 + written);
+    const keys = await keysOf(roleId);
+    expect(keys).toHaveLength(1);
+    // The name and the key belong to the same writer.
+    const winner = sets.findIndex((k) => k[0] === keys[0]);
+    expect(winner).toBeGreaterThanOrEqual(0);
+    expect(row.rows[0]!.name.startsWith(`Racer ${winner} `) || written === 2).toBe(true);
+  });
+
+  it('an edit racing a delete: gone with no key rows, or edited; never both', async () => {
+    const root = await account(
+      'admin',
+      await seededRole('platform-administrator', 'platform'),
+      null,
+    );
+    const made = await app.get(CreatePlatformRole).execute(asAdmin(root), {
+      name: `Doomed ${unique()}`,
+      permissionKeys: ['identity.seller-access.view'],
+    });
+    if (!made.ok) throw new Error(made.error.code);
+    const roleId = made.value.roleId;
+
+    const settled = await Promise.allSettled([
+      app.get(EditPlatformRole).execute(asAdmin(root), {
+        roleId,
+        name: `Edited ${unique()}`,
+        permissionKeys: ['identity.customer-account.view'],
+      }),
+      app.get(DeletePlatformRole).execute(asAdmin(root), { roleId }),
+    ]);
+
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        expect(['StaleAggregateError', 'TransactionConflictError']).toContain(
+          (result.reason as Error).name,
+        );
+      }
+    }
+    const row = await sql.query(`SELECT 1 FROM identity.roles WHERE market_id = $1 AND id = $2`, [
+      code,
+      roleId,
+    ]);
+    const keys = await keysOf(roleId);
+    const deleted = settled[1].status === 'fulfilled' && settled[1].value.ok;
+    if (deleted) expect([row.rowCount, keys]).toEqual([0, []]);
+    else {
+      expect(row.rowCount).toBe(1);
+      expect(keys.length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('a write at an old version is stale: the version-guarded update refuses it', async () => {
+    const root = await account(
+      'admin',
+      await seededRole('platform-administrator', 'platform'),
+      null,
+    );
+    const made = await app
+      .get(CreatePlatformRole)
+      .execute(asAdmin(root), { name: `Old ${unique()}`, permissionKeys: [] });
+    if (!made.ok) throw new Error(made.error.code);
+    const roles = new PrismaRoleRepository(db.service);
+    const read = await db.unitOfWork.run(market, async () =>
+      ok(await roles.findById(market, made.value.roleId)),
+    );
+    if (!read.ok) throw new Error('read');
+    const role = read.value!;
+    const edit = role.edit({
+      name: `Newer ${unique()}`,
+      permissionKeys: [],
+      isDeclared: () => true,
+      now: role.state.createdAt,
+    });
+    await db.unitOfWork.run(market, async () => ok(await roles.saveCustom(market, edit)));
+
+    await expect(
+      db.unitOfWork.run(market, async () => ok(await roles.saveCustom(market, edit))),
+    ).rejects.toBeInstanceOf(StaleAggregateError);
+    await expect(
+      db.unitOfWork.run(market, async () => ok(await roles.deleteCustom(market, role))),
+    ).rejects.toBeInstanceOf(StaleAggregateError);
+  });
+
+  it.each(['platform', 'seller'] as const)(
+    'writes the longest declared keys (up to 40) in a %s role through the 4 KB audit writer',
+    async (scope) => {
+      const sellerId = scope === 'seller' ? await seller() : null;
+      const actor =
+        scope === 'seller'
+          ? await account('seller', await seededRole('seller-owner', 'seller'), sellerId)
+          : await account('admin', await seededRole('platform-administrator', 'platform'), null);
+      const context = scope === 'seller' ? asSeller(actor, sellerId!) : asAdmin(actor);
+      const keys = realPermissionRegistry()
+        .list(scope)
+        .filter((d) => scope === 'platform' || !d.protected)
+        .map((d) => d.key)
+        .sort((a, b) => b.length - a.length || (a < b ? -1 : 1))
+        .slice(0, 40);
+      const create = scope === 'seller' ? CreateSellerRole : CreatePlatformRole;
+      const edit = scope === 'seller' ? EditSellerRole : EditPlatformRole;
+      const remove = scope === 'seller' ? DeleteSellerRole : DeletePlatformRole;
+
+      const made = await app
+        .get(create)
+        .execute(context, { name: `Long ${unique()}`, permissionKeys: keys });
+      if (!made.ok) throw new Error(JSON.stringify(made.error));
+      const roleId = made.value.roleId;
+      // Everything out again: the `removedKeys` side is as large as the `addedKeys` side was.
+      const emptied = await app
+        .get(edit)
+        .execute(context, { roleId, name: `Long ${unique()}`, permissionKeys: [] });
+      const gone = await app.get(remove).execute(context, { roleId });
+
+      expect([emptied.ok, gone.ok]).toEqual([true, true]);
+      const audits = await sql.query<{ action: string }>(
+        `SELECT action FROM platform.audit_log WHERE market_id = $1 AND target_id = $2
+         ORDER BY action`,
+        [code, roleId],
+      );
+      expect(audits.rows.map((r) => r.action)).toEqual([
+        'identity.role.created',
+        'identity.role.deleted',
+        'identity.role.updated',
+      ]);
+    },
+  );
+
+  it('seller scope: a role a member holds is role.in-use; once free it is deleted', async () => {
+    const mine = await seller();
+    const owner = await account('seller', await seededRole('seller-owner', 'seller'), mine);
+    const made = await app.get(CreateSellerRole).execute(asSeller(owner, mine), {
+      name: `Held ${unique()}`,
+      permissionKeys: ['identity.team-member.view'],
+    });
+    if (!made.ok) throw new Error(made.error.code);
+    const member = await account('seller', made.value.roleId, mine);
+
+    const held = await app
+      .get(DeleteSellerRole)
+      .execute(asSeller(owner, mine), { roleId: made.value.roleId });
+    await sql.query(
+      `DELETE FROM identity.role_assignments WHERE market_id = $1 AND account_id = $2`,
+      [code, member],
+    );
+    const free = await app
+      .get(DeleteSellerRole)
+      .execute(asSeller(owner, mine), { roleId: made.value.roleId });
+
+    expect(held).toEqual({ ok: false, error: { code: 'role.in-use' } });
+    expect(free.ok).toBe(true);
+  });
+});
+
+describe.each(TEST_MARKETS)('the role limit in market %s (database, slice 10)', (code) => {
+  let app: NestExpressApplication;
+  let sql: Client;
+
+  beforeAll(async () => {
+    ({ app } = await createTestApp({
+      env: { DATABASE_URL: testDatabaseUrl() },
+      override: (builder) => withRoleLimit(builder, 1),
+    }));
+    sql = new Client({ connectionString: testDatabaseUrl() });
+    await sql.connect();
+    await app
+      .get(SeedRoles)
+      .execute(testCallContext(marketOf(code), 'system', `db-limit-${randomUUID()}`), {});
+  });
+  afterAll(async () => {
+    await sql.end();
+    await app.close();
+  });
+
+  it('counts a shop’s own custom roles: one fits, the second is role.limit, another shop is free', async () => {
+    const market = marketOf(code);
+    const ownerRole = (
+      await sql.query<{ id: string }>(
+        `SELECT id FROM identity.roles WHERE market_id = $1 AND scope = 'seller'
+         AND seed_code = 'seller-owner'`,
+        [code],
+      )
+    ).rows[0]!.id as Id<'Role'>;
+    const shop = async () => {
+      const sellerId = newId<'Seller'>();
+      await sql.query(
+        `INSERT INTO identity.seller_access (seller_id, market_id, tenant_id, origin, state,
+           state_changed_at, reapply_count, registered_at, version, created_at)
+         VALUES ($1, $2, 'default', 'self', 'approved', $3, 0, $3, 1, $3)`,
+        [sellerId, code, CREATED],
+      );
+      const id = newId<'Account'>();
+      const email = `Limit.${id}@Roles.example`;
+      await sql.query(
+        `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+         email_normalized, display_name, status, email_verified_at, signed_up_at, version,
+         created_at)
+         VALUES ($1, $2, 'default', 'seller', $3, $4, 'Owner', 'active', $5, $5, 1, $5)`,
+        [id, code, email, email.toLowerCase(), CREATED],
+      );
+      await sql.query(
+        `INSERT INTO identity.password_credentials
+           (market_id, tenant_id, account_id, password_hash, changed_at)
+         VALUES ($1, 'default', $2, $3, $4)`,
+        [code, id, PASSWORD_HASH, CREATED],
+      );
+      await sql.query(
+        `INSERT INTO identity.seller_memberships (id, market_id, tenant_id, account_id,
+           seller_id, state, removed_at, version, created_at)
+         VALUES ($1, $2, 'default', $3, $4, 'active', NULL, 1, $5)`,
+        [newId(), code, id, sellerId, CREATED],
+      );
+      await sql.query(
+        `INSERT INTO identity.role_assignments (id, market_id, tenant_id, account_id, role_id,
+           assigned_by_account_id, assigned_at, version)
+         VALUES ($1, $2, 'default', $3, $4, NULL, $5, 1)`,
+        [newId(), code, id, ownerRole, CREATED],
+      );
+      return testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id,
+          sessionId: newId<'Session'>(),
+          sellerId,
+        }),
+        `db-limit-${randomUUID()}`,
+      );
+    };
+    const [one, two] = [await shop(), await shop()];
+
+    const first = await app
+      .get(CreateSellerRole)
+      .execute(one, { name: 'First', permissionKeys: [] });
+    const second = await app
+      .get(CreateSellerRole)
+      .execute(one, { name: 'Second', permissionKeys: [] });
+    const other = await app
+      .get(CreateSellerRole)
+      .execute(two, { name: 'First', permissionKeys: [] });
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual({ ok: false, error: { code: 'role.limit' } });
+    expect(other.ok).toBe(true);
   });
 });

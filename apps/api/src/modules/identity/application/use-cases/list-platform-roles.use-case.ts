@@ -139,9 +139,11 @@ export class ListPlatformRoles extends UseCase<
         );
         if (acting === null) return err({ code: 'access.denied' });
         const roles = await this.deps.roles.platformRoles(market);
+        // Only a custom role can be `role.in-use` (a seeded role is `role.read-only` first), so only
+        // custom ids are asked: a shop's list never reads the assignments of the shared roles.
         const held = await this.deps.assignments.heldRoles(
           market,
-          roles.map((role) => role.state.id),
+          roles.filter((role) => role.state.kind === 'custom').map((role) => role.state.id),
         );
         const catalogue = buildRoleCatalogue({
           scope: 'platform',

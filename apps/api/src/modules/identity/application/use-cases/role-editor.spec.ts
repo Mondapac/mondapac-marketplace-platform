@@ -856,6 +856,27 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       });
     });
 
+    it('asks which roles are held only for custom roles, never for the shared ones (Mojtaba)', async () => {
+      const { listPlatform, listSeller } = setUp();
+      const spy = jest.spyOn(fakes.assignmentRepository, 'heldRoles');
+
+      await listPlatform.execute(asAdmin(ROOT), {});
+      await listSeller.execute(asSeller(OWNER), {});
+
+      expect(spy).toHaveBeenCalledTimes(2);
+      for (const [, ids] of spy.mock.calls) {
+        expect(ids.length).toBeGreaterThan(0);
+        for (const roleId of ids) expect(stored(roleId)!.kind).toBe('custom');
+      }
+      const [, platformIds] = spy.mock.calls[0]!;
+      const [, sellerIds] = spy.mock.calls[1]!;
+      expect([...sellerIds]).toEqual([SELLER_CUSTOM]);
+      expect([...platformIds].sort()).toEqual(
+        [LEAD_ROLE, NARROW_ROLE, HIGH_ROLE, HELD_ROLE].sort(),
+      );
+      spy.mockRestore();
+    });
+
     it('keeps the read-only units of the catalogue free of a transaction (ADR-0025)', async () => {
       const { listPlatform, listSeller } = setUp();
       await listPlatform.execute(asAdmin(ROOT), {});

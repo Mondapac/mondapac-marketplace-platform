@@ -7,6 +7,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { StaleAggregateError } from '../src/platform/unit-of-work/errors';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
@@ -426,6 +427,47 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       expect(query.status).toBe(400);
     });
   });
+
+  it.each(TEST_MARKETS)(
+    'maps role.in-use and a lost race (conflict.stale) to 409 in %s',
+    async (code) => {
+      await boot({ limit: 5 });
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 'admin');
+      const created = await call('post', code, 'admin', 'roles', root, {
+        name: 'Held',
+        permissionKeys: [],
+      });
+      const roleId = (created.body as { roleId: string }).roleId;
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>('01990000-0000-7000-8000-00000000e999'),
+        marketId: code as AccountState['marketId'],
+        accountId: VIEWER,
+        roleId: roleId as Id<'Role'>,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+
+      const inUse = await call('delete', code, 'admin', `roles/${roleId}`, root);
+      expect([inUse.status, inUse.body]).toEqual([409, { statusCode: 409, code: 'role.in-use' }]);
+
+      // A write that loses the version race: the platform filter answers 409 conflict.stale.
+      const lost = jest
+        .spyOn(fakes.roleRepository, 'saveCustom')
+        .mockRejectedValue(new StaleAggregateError('role', roleId));
+      try {
+        const stale = await call('put', code, 'admin', `roles/${roleId}`, root, {
+          name: 'Held 2',
+          permissionKeys: [],
+        });
+        expect(stale.status).toBe(409);
+        expect((stale.body as { code: string }).code).toBe('conflict.stale');
+      } finally {
+        lost.mockRestore();
+      }
+    },
+  );
 
   it('fails closed while the Market configures no role limit (access.unavailable)', async () => {
     await boot();
