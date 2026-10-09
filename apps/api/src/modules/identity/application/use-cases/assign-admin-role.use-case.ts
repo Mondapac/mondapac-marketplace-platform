@@ -12,7 +12,6 @@ import {
 } from '../../../../platform/authz';
 import { PLATFORM_ROLE_ASSIGN } from '../../contracts/permissions';
 import { AccountRoleChangedAudit } from '../../domain/audit';
-import { GrantPolicy } from '../../domain/grant-policy';
 import { LastHolderPolicy } from '../../domain/last-holder-policy';
 import { isSystemRole, mayActOnAdmin } from '../accounts/admin-verdicts';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
@@ -20,9 +19,8 @@ import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
 import {
-  grantedRoleOf,
-  protectedKeysOf,
   readActingGrants,
+  roleGrantVerdict,
   roleIsInActorsReach,
   type GrantSubject,
 } from '../roles/granting';
@@ -166,11 +164,7 @@ export class AssignAdminRole extends UseCase<
           return err({ code: 'account.unknown' });
         }
         const holdsSystem = isSystemRole(assignment.state.roleId, systemRoleId);
-        const granted = GrantPolicy.canGrant(
-          reading.actor,
-          grantedRoleOf(role, this.deps.effectiveKeys),
-          protectedKeysOf(this.deps.permissions),
-        );
+        const granted = roleGrantVerdict(reading.actor, role, this.deps);
         if (!granted.ok) {
           this.log('identity.assign-admin-role.not-grantable', context, {
             reason: granted.error.reason,
