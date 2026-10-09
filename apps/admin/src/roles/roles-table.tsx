@@ -78,7 +78,11 @@ export async function RolesTable({ roles }: { readonly roles: readonly RoleRecor
                               className="font-medium text-link underline"
                               href={`/roles/${role.roleId}`}
                             >
-                              {t('identity.roles.action.view')}{' '}
+                              {t(
+                                role.kind === 'custom' && role.actions.edit.allowed
+                                  ? 'identity.roles.action.edit'
+                                  : 'identity.roles.action.view',
+                              )}{' '}
                               <span className="sr-only">{name}</span>
                             </a>
                           </td>
