@@ -4,7 +4,6 @@ import {
   MAX_FACADE_BATCH,
   type CatalogBatchTooLarge,
   type CatalogValidationFailed,
-  type OfferSellUnitsMap,
 } from '../../contracts/catalog.facade';
 
 export type OfferSellUnitsFailure = CatalogValidationFailed | CatalogBatchTooLarge;
@@ -30,16 +29,4 @@ export function parseOfferIds(
     ids.add(parsed.value);
   }
   return ok(ids);
-}
-
-/**
- * Fail-closed stand-in for `offerSellUnits` (ADR-0031 decision 6; catalog slice 7 builds the
- * real one). Every Offer is **absent**: no Offer exists before slice 7, so that is the true
- * answer today, and every consumer treats absent as not sellable (pricing P-1, cart K-1;
- * `inventory` does not call this method before the real binding). It reads nothing and calls no
- * other module. Slice 7 replaces it and deletes this comment; until then nothing here can
- * return an entry, and no flag, config switch or default branch may be added.
- */
-export function absentForEveryKey(): OfferSellUnitsMap {
-  return new Map();
 }

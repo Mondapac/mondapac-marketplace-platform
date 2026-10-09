@@ -1,4 +1,5 @@
 import type { AttributeDefinitionState, AttributeOption } from './attribute-definition';
+import type { OfferState } from './offer';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 
@@ -7,13 +8,14 @@ import type { RevisionContent, RevisionText, RevisionVariantContent } from './re
  * field of the content types that exist today, and the default-deny that keeps it complete. A
  * field id names a place a claim text can sit; the matcher is called on exactly these.
  *
- * Fields of a later slice (image alt text, URL key, Offer description, seller category names and
+ * Fields of a later slice (image alt text, URL key, seller category names and
  * descriptions, proposal texts, SEO and brand fields) join this list in the slice that adds the
  * content type, in the same change as the type.
  */
 export const CLAIM_CHECKED_FIELD_IDS = [
   'attribute-definition.name',
   'attribute-definition.option-label',
+  'offer.description',
   'platform-category.name',
   'platform-category.slug',
   'product.attribute-text-value',
@@ -123,6 +125,29 @@ export const PLATFORM_CATEGORY_FIELDS: Record<keyof PlatformCategoryState, Field
   createdAt: exempt('timestamp'),
 };
 
+export const OFFER_FIELDS: Record<keyof OfferState, FieldDisposition> = {
+  id: exempt('identifier'),
+  marketId: exempt('identifier'),
+  sellerId: exempt('identifier'),
+  productId: exempt('identifier'),
+  // A seller's own code, shown to the seller only (CAT-10); a customer never reads it.
+  sellerSku: exempt('internal-code'),
+  conditionCode: exempt('internal-code'),
+  // Locale to text, written by the seller and read by customers.
+  description: checked('offer.description'),
+  handling: exempt('internal-code'),
+  attestationRecordedAt: exempt('timestamp'),
+  attestationAccountId: exempt('identifier'),
+  status: exempt('internal-code'),
+  offSaleCauses: exempt('internal-code'),
+  listed: exempt('internal-code'),
+  submittedAt: exempt('timestamp'),
+  firstPublishedAt: exempt('timestamp'),
+  deletedAt: exempt('timestamp'),
+  version: exempt('number'),
+  createdAt: exempt('timestamp'),
+};
+
 /** Every table above by name, so the schema test can walk them and follow `nested`. */
 export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, FieldDisposition>>>> = {
   REVISION_TEXT_FIELDS,
@@ -132,6 +157,7 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   ATTRIBUTE_DEFINITION_FIELDS,
   CATEGORY_NAME_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
+  OFFER_FIELDS,
 };
 
 /**
@@ -167,6 +193,8 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   FreezeInput: { noCustomerText: 'working input of the freeze; its texts are checked as content' },
   FreezeIssue: { noCustomerText: 'issue code with a fixed path' },
   OutcomeInput: { noCustomerText: 'ids and a decision code' },
+  Offer: { noCustomerText: 'aggregate class around OfferState' },
+  OfferState: { table: 'OFFER_FIELDS' },
   OfferSellUnits: { noCustomerText: 'sell units, numbers and ids' },
   PlatformCategoryState: { table: 'PLATFORM_CATEGORY_FIELDS' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },

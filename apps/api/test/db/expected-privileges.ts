@@ -311,6 +311,33 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // docs/design/data/catalog.md section 7 (slice 7): no DELETE on offers (Q-K2: a discarded
+    // draft's Offer becomes `deleted`); the seller, identity and creation columns never change;
+    // the Offer history is insert-only (CA3).
+    'catalog.offers': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'attestation_account_id',
+        'attestation_recorded_at',
+        'condition_code',
+        'deleted_at',
+        'description',
+        'first_published_at',
+        'handling',
+        'listed',
+        'off_sale_description_claim_text',
+        'off_sale_product_not_listed',
+        'off_sale_product_retired',
+        'off_sale_tag_suspended',
+        'off_sale_type_not_allowed',
+        'product_id',
+        'seller_sku',
+        'status',
+        'submitted_at',
+        'version',
+      ],
+    },
+    'catalog.offer_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
     // and currency never change; a regular record's content never changes (only its status,
