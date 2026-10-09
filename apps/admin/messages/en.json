@@ -159,6 +159,65 @@
         "title": "You don't have access to this page",
         "body": "Your role doesn't include it. Ask an admin who manages roles.",
         "action": "Go to Home"
+      },
+      "actions": "Actions",
+      "actions-for": "Actions for {name}",
+      "action": {
+        "deactivate": "Deactivate account…",
+        "reactivate": "Reactivate account",
+        "reset-two-step": "Reset two-step verification…",
+        "resend": "Resend invitation",
+        "cancel-invitation": "Cancel invitation…"
+      },
+      "dialog": {
+        "keep": "Keep as it is",
+        "deactivate": {
+          "title": "Deactivate {name}'s admin account?",
+          "body": "They're signed out straight away and can't sign in.",
+          "action": "Deactivate account"
+        },
+        "reset-two-step": {
+          "title": "Reset two-step verification for {name}?",
+          "body": "They're signed out. At their next sign-in we email them a link to set it up again.",
+          "action": "Reset"
+        },
+        "cancel-invitation": {
+          "title": "Cancel the invitation to {name}?",
+          "body": "The link in their email stops working.",
+          "action": "Cancel invitation"
+        }
+      },
+      "toast": {
+        "deactivate": "{name}'s account is deactivated. They've been signed out.",
+        "reactivate": "{name}'s account is active again. They can sign in.",
+        "reset-two-step": "Two-step verification reset for {name}. We've emailed them a link to set it up again.",
+        "resend": "Invitation sent again to {name}.",
+        "cancel-invitation": "Invitation to {name} cancelled."
+      },
+      "reason": {
+        "access": {
+          "denied": "Your role doesn't include this.",
+          "unavailable": "This is not available right now. Try again in a moment."
+        },
+        "member": {
+          "self": "You can't do this to your own account.",
+          "outranks-actor": "This person has permissions you don't have.",
+          "last-holder": "At least one Platform Administrator must remain."
+        },
+        "second-factor": {
+          "none": "They have no two-step verification to reset."
+        },
+        "invitation": {
+          "rejected": "This invitation can't be sent again.",
+          "unknown": "This invitation no longer exists. We've refreshed the list."
+        },
+        "conflict": {
+          "stale": "Someone has just changed this. We've refreshed it.",
+          "retry": "Try again."
+        },
+        "account": {
+          "unknown": "This account no longer exists. We've refreshed the list."
+        }
       }
     },
     "role": {

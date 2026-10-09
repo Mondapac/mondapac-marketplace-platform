@@ -6,6 +6,7 @@ import messages from '../../messages/en.json';
 import { TeamTable } from './team-table.tsx';
 import type { AccountRow, InvitationRow, TeamPage } from './types.ts';
 
+vi.mock('./row-actions.tsx', () => ({ RowActions: () => null }));
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
 }));
@@ -40,7 +41,7 @@ const invitation = (over: Partial<InvitationRow>): InvitationRow => ({
 });
 
 async function show(page: TeamPage, after: string | null = null) {
-  render(await TeamTable({ page, after }));
+  render(await TeamTable({ page, after, csrfToken: 'csrf' }));
 }
 
 describe('admin team table', () => {
@@ -73,6 +74,7 @@ describe('admin team table', () => {
       'Person',
       'Role',
       'Status',
+      'Actions',
     ]);
     expect(within(rows[1]!).getByText('(system role)')).toBeTruthy();
     expect(within(rows[1]!).getByText('You')).toBeTruthy();

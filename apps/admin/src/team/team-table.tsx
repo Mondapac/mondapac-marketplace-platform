@@ -1,5 +1,6 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { RowActions, type RowTarget } from './row-actions.tsx';
 import type { AccountRow, InvitationRow, TeamPage, TeamRole, TeamRow } from './types.ts';
 
 type Translate = Awaited<ReturnType<typeof getTranslations>>;
@@ -42,18 +43,42 @@ function Person({ t, row }: { readonly t: Translate; readonly row: AccountRow | 
   );
 }
 
+function targetOf(row: TeamRow): RowTarget {
+  if (row.type === 'invitation') {
+    return {
+      kind: 'invitation',
+      id: row.invitationId,
+      name: row.email,
+      hints: { resend: row.actions.resend, revoke: row.actions.revoke },
+    };
+  }
+  return {
+    kind: 'account',
+    id: row.accountId,
+    name: row.displayName ?? row.email,
+    status: row.status,
+    hints: {
+      disable: row.actions.disable,
+      enable: row.actions.enable,
+      resetSecondFactor: row.actions.resetSecondFactor,
+    },
+  };
+}
+
 /** The Admins tab of B1: admin accounts and open invitations, read only (actions land with D2/D3). */
 export async function TeamTable({
   page,
   after,
+  csrfToken,
 }: {
   readonly page: TeamPage;
   readonly after: string | null;
+  readonly csrfToken: string;
 }) {
   const t = await getTranslations();
   if (page.items.length === 0 && after === null) {
     return (
-      <div className="rounded-lg border border-border p-6">
+      <div className="rounded-lg border border-line p-6">
         <h2 className="text-lg font-semibold">{t('identity.members.empty.title')}</h2>
         <p className="mt-1 text-fg-muted">{t('identity.members.empty.body')}</p>
       </div>
@@ -63,10 +88,10 @@ export async function TeamTable({
     return <p className="text-fg-muted">{t('identity.members.empty.page')}</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg border border-line">
       <table className="w-full text-start text-sm">
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>
-        <thead className="bg-surface-muted text-fg-muted">
+        <thead className="bg-muted text-fg-muted">
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.members.label.person')}
@@ -77,9 +102,12 @@ export async function TeamTable({
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.members.label.status')}
             </th>
+            <th scope="col" className="px-4 py-3 text-end font-medium">
+              {t('identity.members.actions')}
+            </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-y divide-line-row">
           {page.items.map((row) => {
             const status = statusOf(t, row);
             const id = row.type === 'account' ? row.accountId : row.invitationId;
@@ -101,6 +129,9 @@ export async function TeamTable({
                 </td>
                 <td className="px-4 py-3">
                   <Badge tone={status.tone}>{status.label}</Badge>
+                </td>
+                <td className="px-4 py-3 text-end">
+                  <RowActions target={targetOf(row)} csrfToken={csrfToken} />
                 </td>
               </tr>
             );
