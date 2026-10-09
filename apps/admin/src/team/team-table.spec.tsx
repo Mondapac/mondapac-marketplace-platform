@@ -6,6 +6,7 @@ import messages from '../../messages/en.json';
 import { TeamTable } from './team-table.tsx';
 import type { AccountRow, InvitationRow, TeamPage } from './types.ts';
 
+vi.mock('./row-actions.tsx', () => ({ RowActions: () => null }));
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
 }));
@@ -40,7 +41,7 @@ const invitation = (over: Partial<InvitationRow>): InvitationRow => ({
 });
 
 async function show(page: TeamPage, after: string | null = null) {
-  render(await TeamTable({ page, after }));
+  render(await TeamTable({ page, after, csrfToken: 'csrf' }));
 }
 
 describe('admin team table', () => {
@@ -59,6 +60,14 @@ describe('admin team table', () => {
         }),
         invitation({}),
         invitation({
+          invitationId: '0190a000-0000-7000-8000-000000000005',
+          role: {
+            roleId: '0190a000-0000-7000-8000-0000000000a5',
+            kind: 'default',
+            seedCode: 'new-seed',
+          },
+        }),
+        invitation({
           invitationId: '0190a000-0000-7000-8000-000000000004',
           status: 'expired',
           role: null,
@@ -67,12 +76,13 @@ describe('admin team table', () => {
       next: null,
     });
     const rows = screen.getAllByRole('row');
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     expect(screen.getByRole('table', { name: 'Admins and pending invitations' })).toBeTruthy();
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
       'Person',
       'Role',
       'Status',
+      'Actions',
     ]);
     expect(within(rows[1]!).getByText('(system role)')).toBeTruthy();
     expect(within(rows[1]!).getByText('You')).toBeTruthy();
@@ -83,8 +93,10 @@ describe('admin team table', () => {
     expect(within(rows[2]!).getByText('Deactivated')).toBeTruthy();
     expect(within(rows[3]!).getByText('Viewer')).toBeTruthy();
     expect(within(rows[3]!).getByText('Invited')).toBeTruthy();
-    expect(within(rows[4]!).getByText('Invitation expired')).toBeTruthy();
-    expect(within(rows[4]!).getByText('No role')).toBeTruthy();
+    // A seeded role without a copy key yet reads "Role", never its code.
+    expect(within(rows[4]!).getByText('Role')).toBeTruthy();
+    expect(within(rows[5]!).getByText('Invitation expired')).toBeTruthy();
+    expect(within(rows[5]!).getByText('No role')).toBeTruthy();
   });
 
   it('says it is just the actor so far on an empty first page only', async () => {
