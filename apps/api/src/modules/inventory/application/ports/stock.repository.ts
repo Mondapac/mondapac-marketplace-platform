@@ -22,18 +22,34 @@ export interface NewStockItem {
   readonly createdAt: Temporal.Instant;
 }
 
-/** One ledger entry of an account's stock write (data design 3.5). */
-export interface NewStockMovement {
+interface NewStockMovementBase {
   readonly id: Id<'StockMovement'>;
   readonly stockItemId: Id<'StockItem'>;
   readonly offerId: Id<'Offer'>;
   readonly variantId: Id<'Variant'>;
   readonly delta: number;
   readonly resultingOnHand: number;
-  readonly reason: 'seller-set';
-  readonly actorAccountId: Id<'Account'>;
   readonly correlationId: string;
   readonly occurredAt: Temporal.Instant;
+}
+
+/**
+ * One ledger entry (data design 3.5): an account's stock write, or the module's own `re-key` of a
+ * moved Offer (the table CHECKs pair each reason with its actor kind).
+ */
+export type NewStockMovement =
+  | (NewStockMovementBase & {
+      readonly reason: 'seller-set';
+      readonly actorAccountId: Id<'Account'>;
+    })
+  | (NewStockMovementBase & { readonly reason: 're-key' });
+
+/** Which tombstones cover an Offer's sell units (data design 3.10). */
+export interface OfferTombstones {
+  /** An `offer` tombstone exists for the Offer. */
+  readonly offerRetired: boolean;
+  /** Those of the asked Variants that a `variant` tombstone covers. */
+  readonly retiredVariantIds: ReadonlySet<Id<'Variant'>>;
 }
 
 /** What a catalog retirement covers: an Offer, or a Variant across every Offer (data design 3.10). */
@@ -96,6 +112,24 @@ export interface StockRepository {
     market: MarketContext,
     ids: readonly Id<'StockItem'>[],
   ): Promise<readonly StockItemRow[]>;
+
+  /**
+   * The ids of every item of the Offer on any of the Variants, retired ones included, in ascending
+   * id order: the lock set of the re-key handler (design 3.6 step 2). A plain read; the caller locks
+   * them with {@link lockItems}.
+   */
+  itemIdsOfOfferVariants(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+    variantIds: readonly Id<'Variant'>[],
+  ): Promise<readonly Id<'StockItem'>[]>;
+
+  /** The tombstones that cover the Offer and the given Variants (data design 4.4). */
+  tombstonesOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+    variantIds: readonly Id<'Variant'>[],
+  ): Promise<OfferTombstones>;
 
   /** Records the tombstone; an existing one for the same key is left as it is. Serializable only. */
   recordTombstone(market: MarketContext, tombstone: NewRetirementTombstone): Promise<void>;

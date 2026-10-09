@@ -18,6 +18,14 @@ export class ConfigInventoryPolicyProvider implements InventoryPolicyProvider {
     return this.section(market).defaultLowStockThreshold;
   }
 
+  maxVariantsPerProduct(market: MarketContext): number {
+    const section = this.markets.get(market.marketId).catalog;
+    if (section === undefined) {
+      throw new Error(`inventory: Market ${market.marketId} has no "catalog" section`);
+    }
+    return section.maxVariantsPerProduct;
+  }
+
   private section(market: MarketContext) {
     const section = this.markets.get(market.marketId).inventory;
     if (section === undefined) {

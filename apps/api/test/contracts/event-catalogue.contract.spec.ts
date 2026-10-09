@@ -88,6 +88,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.seller-suspended-mail',
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
       'sellers.after-submission',
@@ -113,6 +114,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('catalog.variant-removed.v1')).toEqual([
       'inventory.retire-on-variant-removed',
+    ]);
+    // ... and re-keys the stock of an Offer that moved to a PLATFORM product (design 3.6).
+    expect(subscriptions.subscribersOf('catalog.offer-moved.v1')).toEqual([
+      'inventory.rekey-on-offer-moved',
     ]);
     expect(subscriptions.subscribersOf('identity.invitation-issued.v1')).toEqual([
       'identity.invitation-mail',

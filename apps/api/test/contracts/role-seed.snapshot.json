@@ -84,5 +84,10 @@
       "identity.seller-account.create",
       "sellers.seller-file.review"
     ]
+  },
+  {
+    "entry": "platform:catalogue-moderator@2",
+    "kind": "default",
+    "permissionKeys": ["catalog.platform-product.edit", "identity.seller-access.view"]
   }
 ]

@@ -137,6 +137,7 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
     catalogOffers.set(offerId, {
       sellerId,
       deleted: false,
+      productId: ids.next<'Product'>(),
       sellUnitVariantIds: new Set([variantId]),
     });
     const sourceId = inventory.state.sources[0]!.id;
@@ -312,6 +313,8 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
       lockItems: (...args) => stock.lockItems(...args),
       recordTombstone: (...args) => stock.recordTombstone(...args),
       retireItems: (...args) => stock.retireItems(...args),
+      itemIdsOfOfferVariants: (...args) => stock.itemIdsOfOfferVariants(...args),
+      tombstonesOf: (...args) => stock.tombstonesOf(...args),
     };
     return { useCase: build(wrapped), reads: () => reads };
   }
@@ -424,6 +427,7 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
     catalogOffers.set(sharedOffer, {
       sellerId: second.sellerId,
       deleted: false,
+      productId: ids.next<'Product'>(),
       sellUnitVariantIds: new Set([first.variantId]),
     });
     await sql.query(

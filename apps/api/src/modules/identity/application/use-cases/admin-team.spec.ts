@@ -448,6 +448,25 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       expect(roleIdOf(SUPPORT)).toBe(roleOf('viewer'));
     });
 
+    it('refuses Catalogue Moderator to an admin without catalog.platform-product.edit (seed v2, I-1a)', async () => {
+      const { assign } = setUp();
+      expect(LEAD_KEYS).not.toContain('catalog.platform-product.edit');
+      expect(roles.get('platform:catalogue-moderator')!.permissionKeys).toContain(
+        'catalog.platform-product.edit',
+      );
+
+      // LEAD holds identity.platform-role.assign and every other key of the role, not this one.
+      await expect(
+        assign.execute(as(LEAD), { accountId: SUPPORT, roleId: roleOf('catalogue-moderator') }),
+      ).resolves.toEqual({ ok: false, error: { code: 'role.not-grantable' } });
+      expect(roleIdOf(SUPPORT)).toBe(roleOf('operations-support'));
+      expect(fakes.audits).toEqual([]);
+      // A holder of the key (the system role) may grant it.
+      await expect(
+        assign.execute(as(ROOT), { accountId: SUPPORT, roleId: roleOf('catalogue-moderator') }),
+      ).resolves.toMatchObject({ ok: true, value: { code: 'role.assigned' } });
+    });
+
     it('makes another Platform Administrator, and demotes one while another remains', async () => {
       const { assign } = setUp();
 
@@ -747,6 +766,26 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
         invite.execute(as(ROOT), {
           email: 'x@example.com',
           roleId: roleOf('platform-administrator'),
+        }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    it('refuses an invitation to Catalogue Moderator from an admin without catalog.platform-product.edit (seed v2, I-1a)', async () => {
+      const { invite } = setUp();
+
+      await expect(
+        invite.execute(as(LEAD), {
+          email: 'moderator@example.com',
+          roleId: roleOf('catalogue-moderator'),
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'role.not-grantable' } });
+      expect(fakes.invitations.size).toBe(0);
+      expect(fakes.audits).toEqual([]);
+      // A holder of the key (the system role) may invite to it.
+      await expect(
+        invite.execute(as(ROOT), {
+          email: 'moderator@example.com',
+          roleId: roleOf('catalogue-moderator'),
         }),
       ).resolves.toMatchObject({ ok: true });
     });

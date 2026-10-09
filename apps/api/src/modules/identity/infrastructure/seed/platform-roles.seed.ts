@@ -43,9 +43,12 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     scope: 'platform',
     kind: 'default',
     seedCode: 'catalogue-moderator',
-    seedVersion: 1,
+    // Version 2 adds `catalog.platform-product.edit` (catalog design 8.1, CAT-41; request I-1,
+    // slice I-1a: create, edit, submit and revert PLATFORM products); a Market seeded at version
+    // 1 gets it on its next SeedRoles run.
+    seedVersion: 2,
     nameKey: 'identity.role.catalogue-moderator',
-    permissionKeys: ['identity.seller-access.view'],
+    permissionKeys: ['identity.seller-access.view', 'catalog.platform-product.edit'],
   },
   {
     // A3: help sellers and customers day to day.
