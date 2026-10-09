@@ -106,4 +106,36 @@ describe('admin reset password', () => {
       await screen.findByText('That password is too easy to guess. Choose a different one.'),
     ).toBeTruthy();
   });
+
+  it.each([
+    ['length', 'Use 12 to 128 characters.'],
+    ['contains-identity', "Don't use your email or name in your password."],
+  ])('shows the %s rule', async (rule, text) => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 400, code: 'password.rejected', details: { rule } },
+    });
+    open('#tok');
+    fireEvent.change(await screen.findByLabelText('New password'), { target: { value: 'short' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(await screen.findByText(text)).toBeTruthy();
+  });
+
+  it('says how long to wait when the reset is throttled, and when offline', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 429, code: 'request.throttled', details: { retryAfterSeconds: 600 } },
+    });
+    open('#tok');
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'x'.repeat(14) },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(await screen.findByText('Too many attempts. Try again in 10 minutes.')).toBeTruthy();
+    call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'network' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(
+      await screen.findByText("You're offline or the connection dropped. Check it and try again."),
+    ).toBeTruthy();
+  });
 });

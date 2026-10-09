@@ -113,6 +113,21 @@ describe('relay', () => {
     },
   );
 
+  it.each(['identity/admin/password-reset-email', 'identity/admin/reset-password'])(
+    'refuses a cross-site POST to %s',
+    async (path) => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        post(path, { ...sameOrigin, 'sec-fetch-site': 'cross-site' }),
+        path.split('/'),
+        fetchImpl,
+      );
+      expect(response.status).toBe(403);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
   it('relays the id paths of the team commands, and only with a UUID id', async () => {
     const id = '0190a000-0000-7000-8000-000000000001';
     const ok = upstreamOk();

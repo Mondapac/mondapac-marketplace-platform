@@ -187,4 +187,11 @@ describe('admin sign-in', () => {
     );
     view.unmount();
   });
+
+  it('links to the forgot password page', () => {
+    render(wrap(<SignInFlow notice={null} />));
+    expect(screen.getByRole('link', { name: 'Forgot password?' }).getAttribute('href')).toBe(
+      '/forgot-password',
+    );
+  });
 });
