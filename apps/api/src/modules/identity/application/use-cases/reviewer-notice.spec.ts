@@ -281,6 +281,9 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       approveSellerAccess: notUsed<ApproveSellerAccess>(),
       rejectSellerAccess: notUsed<RejectSellerAccess>(),
       reapplySellerAccess: notUsed<ReapplySellerAccess>(),
+      // The R-5 reads have their own spec (slice 9a).
+      listSellerAccessDecisions: notUsed(),
+      findAccessDecisionsByBasis: notUsed(),
     });
     return {
       fakes,

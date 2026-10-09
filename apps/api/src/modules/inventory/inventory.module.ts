@@ -22,9 +22,11 @@ import { EditSource } from './application/use-cases/edit-source.use-case';
 import { ListSources } from './application/use-cases/list-sources.use-case';
 import { ReorderSources } from './application/use-cases/reorder-sources.use-case';
 import { INVENTORY_PERMISSIONS } from './contracts/permissions';
+import { RetireSellUnits } from './application/use-cases/retire-sell-units.use-case';
 import { EnsureSellerInventory } from './application/use-cases/ensure-seller-inventory.use-case';
 import { inventoryProviders } from './infrastructure/inventory-providers';
 import { assertInventoryConfigured } from './infrastructure/market-config-boot-check';
+import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
 import { sellerInventorySubscriptions } from './presentation/subscribers/seller-inventory.subscriptions';
 
 /**
@@ -117,10 +119,21 @@ function useCaseProvider<D, U>(
       ids: true,
       clock: true,
     }),
+    useCaseProvider(RetireSellUnits, {
+      unitOfWork: true,
+      stock: true,
+      signals: true,
+      outbox: true,
+      ids: true,
+      clock: true,
+    }),
     registerSubscriptionsFrom(
       'inventory',
-      [EnsureSellerInventory],
-      (ensure: EnsureSellerInventory) => sellerInventorySubscriptions(ensure),
+      [EnsureSellerInventory, RetireSellUnits],
+      (ensure: EnsureSellerInventory, retire: RetireSellUnits) => [
+        ...sellerInventorySubscriptions(ensure),
+        ...catalogRetirementSubscriptions(retire),
+      ],
     ),
   ],
 })

@@ -88,6 +88,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.seller-suspended-mail',
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'inventory.retire-on-offer-deleted',
+      'inventory.retire-on-variant-removed',
       'sellers.after-submission',
       'sellers.create-file',
     ]);
@@ -104,6 +106,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
       'sellers.create-file',
+    ]);
+    // Inventory retires its items on catalog's retirements (design 3.5).
+    expect(subscriptions.subscribersOf('catalog.offer-deleted.v1')).toEqual([
+      'inventory.retire-on-offer-deleted',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.variant-removed.v1')).toEqual([
+      'inventory.retire-on-variant-removed',
     ]);
     expect(subscriptions.subscribersOf('identity.invitation-issued.v1')).toEqual([
       'identity.invitation-mail',

@@ -58,6 +58,7 @@ import {
 } from '../../src/modules/identity/application/ports/seller-access.repository';
 import {
   ACCESS_DECISION_REPOSITORY,
+  AccessReasonIntegrityError,
   AccessReasonKeyUnavailableError,
   type AccessDecisionRepository,
   type StoredAccessDecision,
@@ -469,6 +470,36 @@ export class IdentityFakes {
         )[0];
       return latest === undefined ? null : this.readDecision(market, latest);
     },
+    historyOf: async (market, sellerId, limit) => {
+      const rows = [...this.decisions.values()]
+        .filter((d) => d.state.marketId === market.marketId && d.state.sellerId === sellerId)
+        .sort(
+          (a, b) =>
+            Temporal.Instant.compare(b.state.decidedAt, a.state.decidedAt) ||
+            (a.state.id < b.state.id ? 1 : -1),
+        )
+        .slice(0, limit);
+      const read: StoredAccessDecision[] = [];
+      for (const row of rows) read.push(await this.readDecision(market, row));
+      return read;
+    },
+    findByBasis: (market, basisIds) =>
+      Promise.resolve(
+        [...this.decisions.values()]
+          .filter(
+            (d) =>
+              d.state.marketId === market.marketId &&
+              d.state.basisId !== null &&
+              basisIds.includes(d.state.basisId),
+          )
+          .map(({ state }) => ({
+            id: state.id,
+            sellerId: state.sellerId,
+            decision: state.decision,
+            basisId: state.basisId!,
+            decidedAt: state.decidedAt,
+          })),
+      ),
   };
 
   private async readDecision(
@@ -479,12 +510,15 @@ export class IdentityFakes {
     let reason: string | null = null;
     let reasonErased = false;
     if (cipher !== null) {
-      const opened = await this.subjectKeyService.decrypt(
-        market,
-        state.sellerId,
-        ACCESS_DECISION_REASON,
-        cipher,
-      );
+      const opened = await this.subjectKeyService
+        .decrypt(market, state.sellerId, ACCESS_DECISION_REASON, cipher)
+        .catch((error: unknown) => {
+          // As the adapter: the service's integrity failure is the port's.
+          if (error instanceof SubjectKeyIntegrityError) {
+            throw new AccessReasonIntegrityError(error.reason);
+          }
+          throw error;
+        });
       if (opened.ok) reason = opened.value;
       else reasonErased = true;
     }

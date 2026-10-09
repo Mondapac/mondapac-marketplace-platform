@@ -20,3 +20,5 @@ export function nextHref(key: SetupStepKey): string {
 export function stepNumber(key: SetupStepKey): number {
   return SETUP_STEPS.findIndex((step) => step.key === key) + 1;
 }
+
+export const REVIEW_HREF = `${SETUP_ROOT}/review`;

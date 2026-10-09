@@ -91,6 +91,33 @@ describe('relay allowlist for the seller file', () => {
       body: '{}',
     });
 
+  it('relays the POSTs of submit and withdraw, same-origin only, and nothing near them', async () => {
+    const post = (path: string, headers: Record<string, string> = sameOrigin) =>
+      new Request(`http://seller.localhost:3001/api/${path}`, {
+        method: 'POST',
+        headers,
+        body: '{}',
+      });
+    for (const name of ['submit', 'withdraw']) {
+      const upstream = upstreamOk();
+      const path = ['sellers', 'my-file', name];
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      const blocked = upstreamOk();
+      const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
+      const refused = await relay(config, post(path.join('/'), crossSite), path, blocked);
+      expect(refused.status).toBe(403);
+      expect(blocked).not.toHaveBeenCalled();
+    }
+    for (const path of [
+      ['sellers', 'my-file', 'submit', 'extra'],
+      ['sellers', 'my-file', 'approve'],
+    ]) {
+      const upstream = upstreamOk();
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
   it('relays the setup PUTs and refuses a PUT elsewhere', async () => {
     const upstream = upstreamOk();
     const ok = await relay(

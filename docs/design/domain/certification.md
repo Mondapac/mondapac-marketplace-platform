@@ -1036,6 +1036,7 @@ Javad has the pace of `identity` and `sellers`.
 | File type detection | Partly | Magic-byte checks in our code; a package only if the spike shows a need |
 | Separate cookieless origin | Infrastructure | Not for `certification` (T5 ruling); required before `catalog`'s public photos, decided in ADR-0029 |
 | Envelope encryption of bytes | Yes (`node:crypto`) | No package; `SubjectKeyService` extension (P-1) |
+| SQL parser for the raw-read statement check (ADR-0030 decisions 4 and 6) | No | `libpg-query` 17.7.4, exact pin, MIT, the PostgreSQL parser as WASM, no install script, one dependency (`@pgsql/types`); a runtime dependency of `apps/api`, imported only by the checker in `platform/persistence/raw-reads/`; pinned to the server major (`postgres:17`). Ruling of Ali, 2026-10-09; for the owner's approval. `pgsql-ast-parser` rejected: a hand-written grammar can read a statement differently from the server |
 
 ## 16. Hand-offs
 

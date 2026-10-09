@@ -21,7 +21,8 @@ const account = (over: Partial<Extract<RowTarget, { kind: 'account' }>> = {}): R
   id: ID,
   name: 'Ada Admin',
   status: 'active',
-  hints: { disable: ok, enable: ok, resetSecondFactor: ok },
+  roleId: 'r-current',
+  hints: { changeRole: ok, disable: ok, enable: ok, resetSecondFactor: ok },
   ...over,
 });
 
@@ -99,6 +100,7 @@ describe('team row actions', () => {
     show(
       account({
         hints: {
+          changeRole: ok,
           disable: { allowed: false, code: 'member.self' },
           enable: ok,
           resetSecondFactor: { allowed: false, code: 'member.last-holder' },
