@@ -339,6 +339,9 @@
       "secret": {
         "title": "Set up two-step verification",
         "body": "In your authenticator app, add a new account with this key, then enter the 6-digit code it shows.",
+        "scan": "Scan this code with your authenticator app.",
+        "qr-label": "QR code for your authenticator app",
+        "cannot-scan": "Can't scan it? Type the setup key below into the app instead.",
         "key-label": "Setup key",
         "open-app": "Open authenticator app",
         "required": "Admin accounts must use two-step verification."

@@ -188,6 +188,29 @@ describe('admin accept invitation', () => {
     expect(screen.queryByText('ABCD EFGH IJKL MNOP')).toBeNull();
   });
 
+  it('shows a QR code above the key, drawn from the otpauth URI, and keeps the key as text', async () => {
+    call.mockResolvedValueOnce(enrolment);
+    mount();
+    await fillDetails();
+    const qr = await screen.findByRole('img', { name: 'QR code for your authenticator app' });
+    expect(qr.tagName.toLowerCase()).toBe('svg');
+    expect(qr.querySelector('path')?.getAttribute('d')?.length).toBeGreaterThan(100);
+    expect(screen.getByText('ABCD EFGH IJKL MNOP')).toBeTruthy();
+    expect(document.querySelector('img')).toBeNull();
+    expect(qr.outerHTML).not.toContain('ABCDEFGHIJKLMNOP');
+  });
+
+  it('shows the key without a QR code when the address is not an otpauth one', async () => {
+    call.mockResolvedValueOnce({
+      ...enrolment,
+      body: { ...enrolment.body, otpauthUri: 'https://example.test/x' },
+    });
+    mount();
+    await fillDetails();
+    expect(await screen.findByText('ABCD EFGH IJKL MNOP')).toBeTruthy();
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+
   it('copies the setup key', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
