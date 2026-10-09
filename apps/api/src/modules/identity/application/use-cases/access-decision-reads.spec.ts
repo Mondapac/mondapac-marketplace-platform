@@ -131,6 +131,7 @@ function setUp(options: { readonly openGate?: boolean } = {}) {
     contract: new SellerAccessContractImplementation({
       sellerAccessOf: notUsed(),
       sellerAccessOfSystem: notUsed(),
+      sellerAccountSummaries: notUsed(),
       listRegisteredSellers: notUsed(),
       notifyAccessReviewers: notUsed(),
       approveSellerAccess: notUsed(),

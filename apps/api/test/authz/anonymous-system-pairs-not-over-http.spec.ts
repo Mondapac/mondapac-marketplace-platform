@@ -6,6 +6,7 @@ import { APPROVED_SELLER_ZONES } from '../../src/modules/sellers/contracts/appro
 import { CERTIFICATION_FACADE } from '../../src/modules/certification';
 import { FindAccessDecisionsByBasis } from '../../src/modules/identity/application/use-cases/find-access-decisions-by-basis.use-case';
 import { ListSellerAccessDecisions } from '../../src/modules/identity/application/use-cases/list-seller-access-decisions.use-case';
+import { SellerAccountSummaries } from '../../src/modules/identity/application/use-cases/seller-account-summaries.use-case';
 import { SELLER_ACCESS_CONTRACT } from '../../src/modules/identity/contracts/seller-access.contract';
 import { SELLERS_FACADE } from '../../src/modules/sellers/contracts/sellers.facade';
 import { ApprovedSellerZonesSystem } from '../../src/modules/sellers/application/use-cases/approved-seller-zones-system.use-case';
@@ -160,12 +161,14 @@ describe('anonymous and system use cases are not reachable over HTTP', () => {
     ).toEqual([]);
   });
 
-  it('never lets a controller depend on the R-5 decision reads or the seller-access contract (identity slice 9a; Hassan C1)', () => {
+  it('never lets a controller depend on the R-5 decision reads, the 9b summaries or the seller-access contract (identity slices 9a and 9b; Hassan C1, L1)', () => {
     // `ListSellerAccessDecisions` is a `permissions` use case, so the list check above would not
     // see it: it is named here. Both answer only through the contract, which only sellers uses.
     const forbidden = new Set<unknown>([
       ListSellerAccessDecisions,
       FindAccessDecisionsByBasis,
+      // Slice 9b (Hassan L1): owners' addresses by seller id, for `sellers` only.
+      SellerAccountSummaries,
       SELLER_ACCESS_CONTRACT,
     ]);
 
@@ -178,11 +181,13 @@ describe('anonymous and system use cases are not reachable over HTTP', () => {
       allowed.filter((entry) => entry.name === 'identity.find-access-decisions-by-basis'),
     ).toEqual([]);
     expect(
-      [ListSellerAccessDecisions, FindAccessDecisionsByBasis].map((useCase) => {
-        const declared = accessDeclarationOf(useCase);
-        return declared.ok ? declared.value.rule.kind : declared.error.code;
-      }),
-    ).toEqual(['permissions', 'system']);
+      [ListSellerAccessDecisions, FindAccessDecisionsByBasis, SellerAccountSummaries].map(
+        (useCase) => {
+          const declared = accessDeclarationOf(useCase);
+          return declared.ok ? declared.value.rule.kind : declared.error.code;
+        },
+      ),
+    ).toEqual(['permissions', 'system', 'permissions']);
   });
 
   it('still declares the approved-seller-zones pair as anonymous and system, so the check has teeth', () => {

@@ -21,6 +21,26 @@ export interface SellerAccessSummary {
   readonly stateChangedAt: Temporal.Instant;
 }
 
+/**
+ * One answer of `sellerAccountSummaries` (identity design 8.1; sellers design 7.8; slice 9b): the
+ * access state, the instant of its latest change, and the Seller Owner. Never a reason. The
+ * owner's `displayName` and `email` are PERSONAL DATA for the admin who asked: no module logs
+ * them or puts them in an event, an audit row, a cache, an outbox or an error body, and they are
+ * rendered as escaped text only.
+ */
+export interface SellerAccountSummary {
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessState;
+  readonly stateChangedAt: Temporal.Instant;
+  /** Null while the seller has no owner (a seller-owner invitation not accepted yet). */
+  readonly owner: {
+    readonly accountId: Id<'Account'>;
+    readonly displayName: string | null;
+    /** The owner's sign-in address, as typed. */
+    readonly email: string;
+  } | null;
+}
+
 /** One page of registered seller ids (sellers design R-6, id paging for the backfill). */
 export interface RegisteredSellerPage {
   readonly items: readonly {
@@ -158,6 +178,24 @@ export interface SellerAccessContract {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<readonly SellerAccessSummary[], AccessDenied | FacadeValidationFailed>>;
+
+  /**
+   * The access state and the Seller Owner of up to 100 sellers, for the admin seller list
+   * (identity design 8.1; sellers design 7.8, SEL-14 without a join; slice 9b): `sellers` calls
+   * it once per page with the admin's context unchanged. Rule `permissions
+   * [identity.seller-access.view]`, checked by the gate and again in `identity`'s read; the
+   * system actor, a seller actor and an acting-as session are refused. Only registered sellers of
+   * the context's Market are answered (an unknown id, another Market's seller: absent);
+   * duplicates once; a malformed id or more than 100 is `validation.failed`, never echoed.
+   *
+   * Obligations of the caller: the owner's name and address go only into the answer to that
+   * admin, with `Cache-Control: no-store`; never into a log, an event, an audit row, a cache,
+   * an outbox or an error body.
+   */
+  sellerAccountSummaries(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<readonly SellerAccountSummary[], AccessDenied | FacadeValidationFailed>>;
 
   /**
    * Registered sellers by id, with their origin, for the system actor only (sellers design R-6,

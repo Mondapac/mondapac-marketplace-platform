@@ -169,6 +169,7 @@ function setUp(options: { readonly reapplyLimit?: null } = {}) {
     contract: new SellerAccessContractImplementation({
       sellerAccessOf: notUsed(),
       sellerAccessOfSystem: notUsed(),
+      sellerAccountSummaries: notUsed(),
       listRegisteredSellers: notUsed(),
       notifyAccessReviewers: notUsed(),
       approveSellerAccess: approve,

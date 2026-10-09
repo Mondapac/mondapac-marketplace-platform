@@ -314,6 +314,55 @@ describe.each(['AU', 'ZZ'])('SellerAccess in market %s (identity design 2.1, 3.3
         error: { code: 'seller-access.wrong-state' },
       });
     });
+
+    // Slice 9b: the admin seller list's hints ask the same rule as the transitions.
+    const STATES = ['pending', 'approved', 'rejected', 'suspended'] as const;
+    const VERBS = ['approve', 'reject', 'suspend', 'reinstate'] as const;
+    it.each(STATES.flatMap((state) => VERBS.map((verb) => [verb, state] as const)))(
+      'decisionAllowedFrom(%s, %s) says what the transition answers',
+      (verb, state) => {
+        const access = inState(state);
+        const outcome = {
+          approve: () => access.approve({ ...by, basisId: null }),
+          reject: () => access.reject({ ...by, basisId: null, reason: 'Why.' }),
+          suspend: () => access.suspend({ ...by, reason: 'Why.' }),
+          reinstate: () => access.reinstate(by),
+        }[verb]();
+
+        expect(SellerAccess.decisionAllowedFrom(state, verb)).toBe(outcome.ok);
+      },
+    );
+  });
+
+  describe('reapplyLimitReached (3.3; the status read and the admin seller list)', () => {
+    it.each([
+      ['rejected', 3, 3, true],
+      ['rejected', 4, 3, true],
+      ['rejected', 2, 3, false],
+      ['pending', 3, 3, false],
+      ['approved', 0, 1, false],
+      ['suspended', 5, 3, false],
+    ] as const)(
+      '%s with %s re-applications under a limit of %s: %s',
+      (state, count, limit, reached) => {
+        const access = SellerAccess.restore({
+          ...selfRegistered(true).state,
+          registeredAt: NOW,
+          state,
+          reapplyCount: count,
+          version: 3,
+        });
+
+        expect(SellerAccess.reapplyLimitReached(state, count, limit)).toBe(reached);
+        expect(SellerAccess.reapplyLimitReached(state, count, limit)).toBe(
+          state === 'rejected' && !access.canReapply(limit),
+        );
+      },
+    );
+
+    it('refuses a limit that is not a positive whole number', () => {
+      expect(() => SellerAccess.reapplyLimitReached('rejected', 0, 0)).toThrow(RangeError);
+    });
   });
 
   describe('reapply (3.3: rejected → pending, behind the facade)', () => {
