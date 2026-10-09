@@ -87,6 +87,10 @@ describe.each(['AU', 'ZZ'] as const)(
         sellFromCatalogue?: boolean | 'fault';
         verdicts?: (texts: readonly { locale: string; text: string }[]) => ClaimTextVerdict[];
         addRefusal?: OfferAddRefusal;
+        reserve?:
+          | { code: 'request.throttled'; retryAfterSeconds: number }
+          | { code: 'access.unavailable' }
+          | null;
       } = {},
     ) {
       const state = options.product === undefined ? productState() : options.product;
@@ -121,6 +125,7 @@ describe.each(['AU', 'ZZ'] as const)(
           return Promise.resolve();
         },
       };
+      const reserved: number[] = [];
       const useCase = new OwnOfferCreateOnPlatformProduct(gate, {
         unitOfWork,
         products: {
@@ -143,12 +148,18 @@ describe.each(['AU', 'ZZ'] as const)(
             Promise.resolve(options.allowed === undefined ? 'all' : options.allowed),
         },
         check,
+        save: {
+          reserveSaves: () => {
+            reserved.push(1);
+            return Promise.resolve(options.reserve ?? null);
+          },
+        },
         policy,
         outbox,
         clock,
         ids,
       });
-      return { useCase, state, stored, events, checked };
+      return { useCase, state, stored, events, checked, reserved };
     }
 
     const request = (productId: Id<'Product'>, extra: Record<string, unknown> = {}) => ({
@@ -457,6 +468,27 @@ describe.each(['AU', 'ZZ'] as const)(
         if (!created.ok) throw new Error(created.error.code);
         expect(r.events).toEqual([expect.objectContaining({ type: 'catalog.offer-created.v1' })]);
       });
+    });
+
+    it.each([
+      [{ code: 'request.throttled' as const, retryAfterSeconds: 7 }],
+      [{ code: 'access.unavailable' as const }],
+    ])(
+      'stops at the save budget (%j) before the product read and the claim check',
+      async (reserve) => {
+        const r = rig({ reserve });
+        const outcome = await r.useCase.execute(contextOf('seller'), request(r.state!.id));
+        expect(outcome).toEqual({ ok: false, error: reserve });
+        expect(r.checked).toHaveLength(0);
+        expect(r.stored).toHaveLength(0);
+      },
+    );
+
+    it('spends one save per attempt, also for an unknown product', async () => {
+      const r = rig({ product: null });
+      await r.useCase.execute(contextOf('seller'), request(ids.next<'Product'>()));
+      expect(r.reserved).toHaveLength(1);
+      expect(r.checked).toHaveLength(0);
     });
 
     it.each(['offer.exists-for-product', 'offer.sku-taken'] as const)(

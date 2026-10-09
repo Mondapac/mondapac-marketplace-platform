@@ -25,6 +25,7 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 import { refusalOf, type RefusedField } from '../working-copy/save-draft.service';
+import type { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
 
 /** The request as the route will pass it. A closed shape: no other key is accepted (B1, L8). */
 export interface OwnOfferCreateOnPlatformProductInput {
@@ -42,6 +43,7 @@ export interface OwnOfferCreateOnPlatformProductOutput {
 export type OwnOfferCreateOnPlatformProductFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'access.unavailable' }
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'seller.not-eligible' }
   | { readonly code: 'type.not-allowed' }
   | { readonly code: 'setting.sell-from-catalogue-off' }
@@ -61,6 +63,8 @@ export interface OwnOfferCreateOnPlatformProductDependencies {
   readonly eligibility: SellerEligibilityReader;
   readonly allowedTypes: AllowedProductTypesReader;
   readonly check: CheckClaimText;
+  /** Spends the account's save budget (design 8.4: creating an Offer shares the draft-save limits). */
+  readonly save: Pick<SaveWorkingCopy, 'reserveSaves'>;
   readonly policy: CatalogMarketPolicy;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
@@ -76,12 +80,14 @@ const INPUT_KEYS = ['productId', 'sellerSku', 'conditionCode', 'description'] as
  * from the request; the input is closed and carries no handling, attestation or tag (B1).
  *
  * Guards, in order: the seller may sell (`sellingEligibility`); the Market allows selling from the
- * catalogue; the input is well formed (closed shape, the condition is one of the Market's, the description fits the Market's locales and the size bounds); the
- * description passes the claim-text control (a hit refuses the whole create, nothing is stored); the product
- * is PLATFORM, published and not retired, else a byte-identical `product.not-found` (M3); its type
- * is one the seller may sell (SEL-12; an error refuses). In one unit the Offer and its first
- * history row are stored with `offer-created`. Both uniques end the unit with an error, so nothing
- * of it commits.
+ * catalogue; the input is well formed (closed shape, the condition is one of the Market's, the
+ * description fits the Market's locales and size bounds); the account's save budget is spent
+ * (`request.throttled`; shared with draft saves, so a loop of creates is bounded before any read
+ * or matcher call); the product is PLATFORM, published and not retired, else a byte-identical
+ * `product.not-found` (M3); its type is one the seller may sell (SEL-12; an error refuses); the
+ * description passes the claim-text control (a hit refuses the whole create, nothing is stored).
+ * In one unit the Offer and its first history row are stored with `offer-created`. Both uniques
+ * end the unit with an error, so nothing of it commits.
  */
 export class OwnOfferCreateOnPlatformProduct extends UseCase<
   OwnOfferCreateOnPlatformProductInput,
@@ -151,6 +157,23 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
     if (!parsed.ok) return parsed;
     const { productId, sellerSku, conditionCode, description } = parsed.value;
 
+    // Spent before any read or the claim matcher, so a loop of creates is bounded (Hassan 7a-2 M-1).
+    const throttled = await deps.save.reserveSaves(context);
+    if (throttled !== null) return err(throttled);
+
+    // Read-only first: the product guards and the SEL-12 answer; the write unit repeats the
+    // product read so a retire between the two cannot slip through.
+    const guard = await deps.unitOfWork.run(
+      market,
+      async () => ok(await this.#productTypeOf(market, productId)),
+      { readOnly: true },
+    );
+    if (!guard.ok) return err({ code: 'access.unavailable' });
+    if (guard.value === null) return err({ code: 'product.not-found' });
+    const allowed = await deps.allowedTypes.allowedFor(context, sellerId);
+    if (allowed === null) return err({ code: 'access.unavailable' });
+    if (allowed !== 'all' && !allowed.has(guard.value)) return err({ code: 'type.not-allowed' });
+
     // The claim-text control runs outside any unit (it opens its own); a hit refuses the create.
     const texts = Object.entries(description).filter(([, text]) => text !== '');
     if (texts.length > 0) {
@@ -170,19 +193,6 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
       const refused = checked.value.flatMap((verdict) => refusalOf(verdict) ?? []);
       if (refused.length > 0) return err({ code: 'claim-text.refused', fields: refused });
     }
-
-    // Read-only first: the product guards and the SEL-12 answer; the write unit repeats the
-    // product read so a retire between the two cannot slip through.
-    const guard = await deps.unitOfWork.run(
-      market,
-      async () => ok(await this.#productTypeOf(market, productId)),
-      { readOnly: true },
-    );
-    if (!guard.ok) return err({ code: 'access.unavailable' });
-    if (guard.value === null) return err({ code: 'product.not-found' });
-    const allowed = await deps.allowedTypes.allowedFor(context, sellerId);
-    if (allowed === null) return err({ code: 'access.unavailable' });
-    if (allowed !== 'all' && !allowed.has(guard.value)) return err({ code: 'type.not-allowed' });
 
     return deps.unitOfWork.run<
       OwnOfferCreateOnPlatformProductOutput,
