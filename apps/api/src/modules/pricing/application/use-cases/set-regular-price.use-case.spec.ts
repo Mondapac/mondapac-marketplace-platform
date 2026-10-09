@@ -721,7 +721,9 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       ]);
       // Match the amount as a whole number token, not a bare substring: a random id can
       // contain any digit run, but never one delimited by non-digits.
-      const text = JSON.stringify(logged, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+      const text = JSON.stringify(logged, (_k, v: unknown) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      );
       expect(text).not.toMatch(new RegExp(`(?<![0-9a-zA-Z])${amount}(?![0-9a-zA-Z])`));
       expect(text).not.toMatch(/(?<![0-9a-zA-Z])absent(?![0-9a-zA-Z])/);
       expect(logged.flatMap((entry) => Object.keys(entry as object))).not.toContain('amount');
