@@ -12,3 +12,5 @@ export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
+export { Dialog, type DialogProps } from './overlay/dialog.tsx';
+export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';

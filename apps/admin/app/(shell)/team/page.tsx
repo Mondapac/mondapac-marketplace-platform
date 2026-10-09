@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { NoticeProvider } from '../../../src/team/notice.tsx';
 import { TeamTable } from '../../../src/team/team-table.tsx';
 import type { TeamPage } from '../../../src/team/types.ts';
 
@@ -53,7 +54,9 @@ export default async function TeamPageRoute({
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {result.kind === 'ok' ? (
         <>
-          <TeamTable page={result.body} after={after} />
+          <NoticeProvider>
+            <TeamTable page={result.body} after={after} csrfToken={gate.session.csrfToken} />
+          </NoticeProvider>
           {result.body.next === null || !UUID.test(result.body.next) ? null : (
             <p className="mt-4">
               <a
