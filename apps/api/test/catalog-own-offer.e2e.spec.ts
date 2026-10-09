@@ -410,6 +410,44 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(stored).toHaveLength(0);
     });
 
+    it('refuses the admin panel origin and a missing Sec-Fetch-Site, storing nothing', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      const wrongOrigin = await http()
+        .post('/catalog/seller/offers')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .send(body());
+      expect(wrongOrigin.status).toBe(403);
+      expect(wrongOrigin.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      const noFetchSite = await http()
+        .post('/catalog/seller/offers')
+        .set({ 'x-market-id': code, origin: panelHeaders(code, 'seller').origin, ...session })
+        .send(body());
+      expect(noFetchSite.status).toBe(403);
+      expect(noFetchSite.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      expect(stored).toHaveLength(0);
+    });
+
+    it('answers every product that is not offerable with the same 404 body', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const bodies: string[] = [];
+      for (const overrides of [
+        null,
+        { status: 'draft' as const, publishedRevisionId: null },
+        { scope: 'SELLER' as const, ownerSellerId: SELLER, createdBySellerId: SELLER },
+      ]) {
+        product = overrides === null ? null : Product.restore({ ...state(code), ...overrides });
+        const answer = await send(code, body(), session);
+        expect(answer.status).toBe(404);
+        bodies.push(JSON.stringify(answer.body));
+      }
+      expect(new Set(bodies).size).toBe(1);
+    });
+
     it('does no work before a spent budget answers, and logs no text', async () => {
       await boot();
       await seeded(code);

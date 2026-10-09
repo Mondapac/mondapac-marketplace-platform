@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 // Body and answer of the seller Offer routes (catalog design 4.4, 8.2; OFR-02, OFR-03; slice 7a-3).
-// Ids and codes only: an answer never carries a text the seller typed.
+// Ids and codes only. The one exception is a refused unknown key: it is cut and sanitised, and
+// the panel renders it as text only.
 
 export class OwnOfferCreateRequest {
   @ApiProperty({ format: 'uuid', description: 'A published PLATFORM product. A UUID v7.' })
