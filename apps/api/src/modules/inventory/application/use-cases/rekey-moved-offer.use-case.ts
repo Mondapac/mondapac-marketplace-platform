@@ -113,7 +113,10 @@ export class RekeyMovedOffer extends UseCase<
       view === undefined ||
       view.deleted ||
       view.productId !== input.toProductId ||
-      !input.toVariantIds.every((variantId) => view.sellUnitVariantIds.has(variantId))
+      !input.toVariantIds.every((variantId) => view.sellUnitVariantIds.has(variantId)) ||
+      // A `from` Variant that is still a sell unit of the Offer is a forged or stale event: its
+      // tombstone would block that Variant for every seller (Hassan, review of PR 219).
+      input.fromVariantIds.some((variantId) => view.sellUnitVariantIds.has(variantId))
     ) {
       return this.failed(context, input, 'inventory.rekey.offer-mismatch');
     }
@@ -204,6 +207,11 @@ export class RekeyMovedOffer extends UseCase<
       const to = toVariantIds[at]!;
       const sources = live.filter((item) => item.variantId === from);
       const targets = locked.filter((item) => item.variantId === to);
+      // A retired target without a tombstone cannot happen (retirement always records one); the
+      // stock must not vanish into it, so the unit rolls back and the delivery alerts.
+      if (!tombstones.retiredVariantIds.has(to) && targets.some((item) => item.retired)) {
+        throw new Error('inventory: a retired target stock item has no tombstone');
+      }
       const held = await stock.heldQuantities(
         market,
         sources.map((item) => item.id),
@@ -272,6 +280,13 @@ export class RekeyMovedOffer extends UseCase<
           });
         }
         if (moved > 0) {
+          // The old item keeps only what stays pending, so its row agrees with the ledger.
+          if (
+            (await stock.setOnHand(market, source.id, source.version, source.onHand - moved)) ===
+            'stale'
+          ) {
+            throw new Error('inventory: a locked stock item changed under its lock');
+          }
           await stock.appendMovement(market, {
             id: ids.next<'StockMovement'>(),
             stockItemId: source.id,

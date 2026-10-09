@@ -116,8 +116,11 @@ class FakeStock implements StockRepository {
   activeItemIds() {
     return Promise.reject(new Error('not used'));
   }
-  setOnHand() {
-    return Promise.reject(new Error('not used'));
+  setOnHand(_m: MarketContext, id: Id<'StockItem'>, version: number, onHand: number) {
+    const at = this.items.findIndex((i) => i.id === id && i.version === version && !i.retired);
+    if (at < 0) return Promise.resolve('stale' as const);
+    this.items[at] = { ...this.items[at]!, onHand, version: version + 1 };
+    return Promise.resolve('saved' as const);
   }
 }
 
@@ -536,6 +539,14 @@ describe.each(['AU', 'ZZ'])('inventory.rekey-moved-offer in market %s', (code) =
           }),
       ],
       [
+        'a from Variant that is still a sell unit of the Offer',
+        (w, t) =>
+          t.offers.offers.set(w.offerId, {
+            ...t.offers.offers.get(w.offerId)!,
+            sellUnitVariantIds: new Set([...w.to, w.from[0]!]),
+          }),
+      ],
+      [
         'a to Variant that is not a sell unit',
         (w, t) =>
           t.offers.offers.set(w.offerId, {
@@ -569,6 +580,30 @@ describe.each(['AU', 'ZZ'])('inventory.rekey-moved-offer in market %s', (code) =
       expect(result).toEqual({ ok: false, error: { code: 'inventory.rekey.offer-mismatch' } });
       expect(t.stock.movements).toEqual([]);
     });
+  });
+
+  it('leaves the old item with only its pending quantity, in step with the ledger', async () => {
+    const t = setUp();
+    const w = world(t, 1);
+    const old = stockItem(t, w, w.from[0]!, 500);
+    t.stock.held.set(old.id, 120);
+
+    await t.rekey.execute(system(code), w.input());
+
+    const after = t.stock.items.find((i) => i.id === old.id)!;
+    expect(after).toMatchObject({ onHand: 120, retired: true, version: 2 });
+    expect(t.stock.movements[0]!.resultingOnHand).toBe(after.onHand);
+  });
+
+  it('rolls back when a retired target has no tombstone, so no stock vanishes', async () => {
+    const t = setUp();
+    const w = world(t, 1);
+    const source = t.ids.next<'InventorySource'>();
+    stockItem(t, w, w.from[0]!, 40, source);
+    stockItem(t, w, w.to[0]!, 3, source, true);
+
+    await expect(t.rekey.execute(system(code), w.input())).rejects.toThrow('no tombstone');
+    expect(t.stock.movements).toEqual([]);
   });
 
   it('lets a catalog failure through, so the delivery is retried', async () => {

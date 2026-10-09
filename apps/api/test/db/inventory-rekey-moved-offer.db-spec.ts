@@ -296,7 +296,9 @@ describe.each(TEST_MARKETS)('inventory.rekey-moved-offer in market %s (database)
     ).toEqual(m.to.map((v) => [v, 500, seller.sellerId]).sort());
     expect(live(items).every((r) => r.source_id === seller.sourceId && r.version === 1)).toBe(true);
     const old = items.filter((r) => m.from.includes(r.variant_id as Id<'Variant'>));
-    expect(old.every((r) => r.retired_at !== null && r.on_hand === 500)).toBe(true);
+    expect(old.every((r) => r.retired_at !== null && r.on_hand === 0 && r.version === 2)).toBe(
+      true,
+    );
     // The ledger: a pair of module-written re-key movements per source item, one correlation id.
     const movements = await movementsOf(m.offerId);
     expect(movements).toHaveLength(4);
