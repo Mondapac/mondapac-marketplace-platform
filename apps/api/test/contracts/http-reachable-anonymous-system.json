@@ -1,5 +1,25 @@
 [
   {
+    "name": "cart.add-guest-item",
+    "rule": "anonymous",
+    "reason": "A guest adds to the cart held by the cart cookie: a guest has no account or session."
+  },
+  {
+    "name": "cart.remove-guest-item",
+    "rule": "anonymous",
+    "reason": "A guest removes a line of the cart held by the cart cookie: a guest has no account or session."
+  },
+  {
+    "name": "cart.set-guest-line-quantity",
+    "rule": "anonymous",
+    "reason": "A guest changes a line of the cart held by the cart cookie: a guest has no account or session."
+  },
+  {
+    "name": "cart.view-guest-cart",
+    "rule": "anonymous",
+    "reason": "The guest cart is read with the cart cookie of the browser: a guest has no account or session."
+  },
+  {
     "name": "identity.accept-admin-invitation",
     "rule": "anonymous",
     "reason": "Admin invitation acceptance with the mailed token: the invitee has no session yet."
@@ -29,16 +49,8 @@
     "rule": "anonymous",
     "reason": "Seller email-confirmation link: the visitor is not signed in yet."
   },
-  {
-    "name": "identity.register-customer",
-    "rule": "anonymous",
-    "reason": "Customer sign-up form."
-  },
-  {
-    "name": "identity.register-seller",
-    "rule": "anonymous",
-    "reason": "Seller sign-up form."
-  },
+  { "name": "identity.register-customer", "rule": "anonymous", "reason": "Customer sign-up form." },
+  { "name": "identity.register-seller", "rule": "anonymous", "reason": "Seller sign-up form." },
   {
     "name": "identity.request-customer-verification",
     "rule": "anonymous",

@@ -13,6 +13,11 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Cart (speed mode): one active cart per account, one cart per guest token hash.
+  'cart.carts_market_id_account_id_active_key':
+    "CREATE UNIQUE INDEX carts_market_id_account_id_active_key ON cart.carts USING btree (market_id, account_id) WHERE ((account_id IS NOT NULL) AND (status = 'active'::text))",
+  'cart.carts_market_id_guest_token_hash_key':
+    'CREATE UNIQUE INDEX carts_market_id_guest_token_hash_key ON cart.carts USING btree (market_id, guest_token_hash) WHERE (guest_token_hash IS NOT NULL)',
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/catalog.md 3.13 (slice 7): one open Offer per seller and product, one open

@@ -1,0 +1,54 @@
+// The cart module's tables (docs/design/domain/cart.md, simplified for speed mode). Every model is
+// named Cart<Name> and mapped to its table with @@map. The CHECKs, the partial unique indexes and
+// the grants are hand-written in the migration.
+
+/// One cart: owned by exactly one account or one guest token hash (CHECK). A guest cart is
+/// created on its first add and expires 7 days after `lastChangedAt`, decided at read time.
+model CartCart {
+  id               String     @id @db.Uuid
+  marketId         String     @map("market_id") @db.VarChar(8)
+  tenantId         String     @map("tenant_id")
+  /// The customer's account id (a plain id, no foreign key); null for a guest cart.
+  accountId        String?    @map("account_id") @db.Uuid
+  /// SHA-256 of the guest token (32 bytes); null for an account cart. The raw token is never stored.
+  guestTokenHash   Bytes?     @map("guest_token_hash")
+  /// active or merged (CHECK).
+  status           String
+  lastChangedAt    DateTime   @map("last_changed_at") @db.Timestamptz(6)
+  mergedIntoCartId String?    @map("merged_into_cart_id") @db.Uuid
+  mergedAt         DateTime?  @map("merged_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate; 1 at insert, +1 per change.
+  version          Int
+  createdAt        DateTime   @map("created_at") @db.Timestamptz(6)
+  lines            CartLine[]
+
+  /// The foreign-key target of the lines.
+  @@unique([marketId, id])
+  /// Lookup of a guest cart by its token (partial: the column is null for account carts).
+  @@index([marketId, guestTokenHash])
+  @@index([marketId, accountId])
+  @@map("carts")
+  @@schema("cart")
+}
+
+/// One line: a sell unit (Offer + Variant) and a quantity. `priceAtAdd` only detects a price
+/// change; it is never a price source (cart design 2.1).
+model CartLine {
+  id                 String   @id @db.Uuid
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  cartId             String   @map("cart_id") @db.Uuid
+  offerId            String   @map("offer_id") @db.Uuid
+  variantId          String   @map("variant_id") @db.Uuid
+  quantity           Int
+  /// Minor units and the currency of the price when the line was added or last changed.
+  priceAtAddAmount   BigInt   @map("price_at_add_amount")
+  priceAtAddCurrency String   @map("price_at_add_currency") @db.VarChar(3)
+  addedAt            DateTime @map("added_at") @db.Timestamptz(6)
+  cart               CartCart @relation(fields: [marketId, cartId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  /// One line per sell unit in a cart (CRT-02).
+  @@unique([marketId, cartId, offerId, variantId])
+  @@map("cart_lines")
+  @@schema("cart")
+}

@@ -32,6 +32,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     extensions: [],
     identity: ['USAGE'],
     inventory: ['USAGE'],
+    cart: ['USAGE'],
     platform: ['USAGE'],
     catalog: ['USAGE'],
     certification: ['USAGE'],
@@ -241,6 +242,26 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'only_left', 'status', 'version'],
     },
     'inventory.retirements': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Cart (speed mode): a cart is never deleted by the application (an expired guest cart is
+    // ignored at read time; a merged one is kept so a replay is recognised); its owner columns and
+    // status change on a merge. A line is deleted on remove; only its quantity, price-at-add and
+    // add instant change.
+    'cart.carts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'account_id',
+        'guest_token_hash',
+        'last_changed_at',
+        'merged_at',
+        'merged_into_cart_id',
+        'status',
+        'version',
+      ],
+    },
+    'cart.cart_lines': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['added_at', 'price_at_add_amount', 'price_at_add_currency', 'quantity'],
+    },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
     // status and a retired variant). The identity columns of a product and a variant never change.
