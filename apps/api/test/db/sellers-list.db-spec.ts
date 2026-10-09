@@ -326,9 +326,10 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
         [code],
       );
 
-      // A one-row table prefers a sequential scan; the index exists and is the one this order
-      // reads backwards, which `enable_seqscan = off` proves.
+      // A small table prefers a sequential scan or a sort; with both off the only way to read
+      // this order is the partial index, backwards, which proves the index serves A4.
       await owner.query('SET enable_seqscan = off');
+      await owner.query('SET enable_sort = off');
       const forced = await owner.query<{ 'QUERY PLAN': string }>(
         `EXPLAIN SELECT seller_id FROM sellers.seller_files
           WHERE market_id = $1 AND approved_revision_id IS NULL AND draft_complete = false
@@ -336,6 +337,7 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
         [code],
       );
       await owner.query('RESET enable_seqscan');
+      await owner.query('RESET enable_sort');
       const text = forced.rows.map((row) => row['QUERY PLAN']).join('\n');
       expect(plan.rows.length).toBeGreaterThan(0);
       expect(text).toContain('seller_files_market_id_last_changed_at_seller_id_unapproved_idx');
