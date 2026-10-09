@@ -2,9 +2,14 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../../platform/persistence/prisma.service';
 import { fieldLabel } from '../../../../platform/subject-keys/labels';
-import type { SubjectKeyService } from '../../../../platform/subject-keys/subject-key-service';
 import {
+  SubjectKeyIntegrityError,
+  type SubjectKeyService,
+} from '../../../../platform/subject-keys/subject-key-service';
+import {
+  AccessReasonIntegrityError,
   AccessReasonKeyUnavailableError,
+  type AccessDecisionBasisRow,
   type AccessDecisionRepository,
   type StoredAccessDecision,
 } from '../../application/ports/access-decision.repository';
@@ -49,7 +54,8 @@ interface DecisionRow {
  * read only, as the table's privileges allow. Every statement goes through
  * `PrismaService.tx(market)` with `marketId` at the top level of `where`. The reason is sealed and
  * opened with the `SubjectKeyService` under the seller's key, in the caller's unit (PF 4 row 8);
- * a ciphertext that does not open throws the service's integrity error, never a null reason.
+ * a ciphertext that does not open throws {@link AccessReasonIntegrityError} (the service's
+ * integrity error, as the port names it), never a null reason.
  */
 export class PrismaAccessDecisionRepository implements AccessDecisionRepository {
   constructor(
@@ -110,6 +116,49 @@ export class PrismaAccessDecisionRepository implements AccessDecisionRepository 
     return row === null ? null : this.read(market, row);
   }
 
+  async historyOf(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    limit: number,
+  ): Promise<readonly StoredAccessDecision[]> {
+    // On the index (market_id, seller_id, decided_at), as latestOf; the id breaks a tie.
+    const rows = await this.prisma.tx(market).identityAccessDecision.findMany({
+      where: { marketId: market.marketId, sellerId },
+      orderBy: [{ decidedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+      select: SELECTED,
+    });
+    const read: StoredAccessDecision[] = [];
+    // One after another: one key unwrap per operation (PF 4 row 9), in this unit.
+    for (const row of rows) read.push(await this.read(market, row));
+    return read;
+  }
+
+  async findByBasis(
+    market: MarketContext,
+    basisIds: readonly Id[],
+  ): Promise<readonly AccessDecisionBasisRow[]> {
+    if (basisIds.length === 0) return [];
+    // On the index (market_id, basis_id) (`= ANY`). The reason column is not selected at all.
+    const rows = await this.prisma.tx(market).identityAccessDecision.findMany({
+      where: { marketId: market.marketId, basisId: { in: [...basisIds] } },
+      orderBy: [{ decidedAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, sellerId: true, decision: true, basisId: true, decidedAt: true },
+    });
+    return rows.map((row) => {
+      if (!(ACCESS_DECISIONS as readonly string[]).includes(row.decision) || row.basisId === null) {
+        throw new Error('identity.access_decisions: a stored decision is malformed');
+      }
+      return {
+        id: row.id as Id<'AccessDecision'>,
+        sellerId: row.sellerId as Id<'Seller'>,
+        decision: row.decision as AccessDecisionKind,
+        basisId: row.basisId as Id,
+        decidedAt: toInstant(row.decidedAt),
+      };
+    });
+  }
+
   private async read(market: MarketContext, row: DecisionRow): Promise<StoredAccessDecision> {
     if (!(ACCESS_DECISIONS as readonly string[]).includes(row.decision)) {
       throw new Error('identity.access_decisions: a stored decision is malformed');
@@ -122,12 +171,7 @@ export class PrismaAccessDecisionRepository implements AccessDecisionRepository 
     let reason: string | null = null;
     let reasonErased = false;
     if (row.reasonCiphertext !== null) {
-      const opened = await this.subjectKeys.decrypt(
-        market,
-        sellerId,
-        ACCESS_DECISION_REASON,
-        row.reasonCiphertext,
-      );
+      const opened = await openReason(this.subjectKeys, market, sellerId, row.reasonCiphertext);
       if (opened.ok) reason = opened.value;
       else reasonErased = true;
     }
@@ -141,5 +185,21 @@ export class PrismaAccessDecisionRepository implements AccessDecisionRepository 
       decidedByAccountId: row.decidedByAccountId as Id<'Account'> | null,
       decidedAt: toInstant(row.decidedAt),
     };
+  }
+}
+
+/** Opens a reason; the service's integrity failure becomes the port's (slice 9a, Hassan C2). */
+async function openReason(
+  subjectKeys: SubjectKeyService,
+  market: MarketContext,
+  sellerId: Id<'Seller'>,
+  cipher: string,
+): ReturnType<SubjectKeyService['decrypt']> {
+  try {
+    return await subjectKeys.decrypt(market, sellerId, ACCESS_DECISION_REASON, cipher);
+  } catch (error) {
+    if (error instanceof SubjectKeyIntegrityError)
+      throw new AccessReasonIntegrityError(error.reason);
+    throw error;
   }
 }

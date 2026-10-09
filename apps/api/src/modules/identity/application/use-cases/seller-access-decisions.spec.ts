@@ -174,6 +174,8 @@ function setUp(options: { readonly reapplyLimit?: null } = {}) {
       approveSellerAccess: approve,
       rejectSellerAccess: reject,
       reapplySellerAccess: reapply,
+      listSellerAccessDecisions: notUsed(),
+      findAccessDecisionsByBasis: notUsed(),
     }),
     seed: new SeedRoles(gate, {
       unitOfWork,
