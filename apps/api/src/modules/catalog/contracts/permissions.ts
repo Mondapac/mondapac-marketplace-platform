@@ -12,4 +12,17 @@ export const CATALOG_PLATFORM_PRODUCT_EDIT = definePermission('catalog', {
   protected: false,
 });
 
-export const CATALOG_PERMISSIONS = declarePermissions('catalog', [CATALOG_PLATFORM_PRODUCT_EDIT]);
+/**
+ * Create and edit the seller's own products and Offers (OFR-01 to OFR-03). Seller scope: the Seller
+ * Owner holds every seller key by definition; the default roles that receive it are identity's seed.
+ */
+export const CATALOG_OWN_PRODUCT_EDIT = definePermission('catalog', {
+  key: 'catalog.own-product.edit',
+  scope: 'seller',
+  protected: false,
+});
+
+export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
+  CATALOG_PLATFORM_PRODUCT_EDIT,
+  CATALOG_OWN_PRODUCT_EDIT,
+]);

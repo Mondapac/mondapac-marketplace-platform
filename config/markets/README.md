@@ -187,6 +187,10 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
 - `defaultFamily` (required): the seeded attribute family code a new product starts in (design 4.1).
   A family that is not seeded gives `product.family-unavailable` at creation (AU has none until its
   attribute seed lands).
+- `conditions` (required, 1 to 20 codes, no repeats): the condition codes an Offer may carry
+  (design 7.1). AU: `new`, `used`; ZZ: `new`.
+- `sellFromCatalogue` (required): whether a seller may create an Offer on a PLATFORM product
+  (OFR-03); the interim home of the ADR-0026 setting `catalog.sell-from-catalogue`.
 - `approvalRequired` (required): true when a new revision of a published product waits for review
   unless it is minor and nothing is pending (design 4.2 row 1); the interim home of the ADR-0026
   setting `catalog.approval-required` until its store lands (catalog slice 10).

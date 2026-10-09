@@ -68,10 +68,23 @@ const SKU_PATTERN = /^[!-~]{1,64}$/;
 /** A vocabulary code (data design CA4). */
 const CODE_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
+/** The most characters one locale of an Offer description may hold (Hassan L-2). */
+export const MAX_DESCRIPTION_CHARS = 5000;
+/** The most locales one Offer description may hold. */
+export const MAX_DESCRIPTION_LOCALES = 20;
+
 function validDescription(value: unknown): value is Record<string, string> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  return Object.entries(value).every(
-    ([locale, text]) => locale.length > 0 && typeof text === 'string',
+  const entries = Object.entries(value);
+  return (
+    entries.length <= MAX_DESCRIPTION_LOCALES &&
+    entries.every(
+      ([locale, text]) =>
+        locale.length > 0 &&
+        locale.length <= 35 &&
+        typeof text === 'string' &&
+        text.length <= MAX_DESCRIPTION_CHARS,
+    )
   );
 }
 
