@@ -6,6 +6,7 @@ import { CustomerSessionController } from '../src/modules/identity/presentation/
 import { SellerSessionController } from '../src/modules/identity/presentation/seller-session.controller';
 import { MyFileController } from '../src/modules/sellers/presentation/my-file.controller';
 import { ReviewRegisterCheckController } from '../src/modules/sellers/presentation/review-register-check.controller';
+import { SellerListController } from '../src/modules/sellers/presentation/seller-list.controller';
 import { RoutePopulationError } from '../src/platform/call-context/route-population.check';
 import {
   ReadsSession,
@@ -100,6 +101,7 @@ describe('route populations at start-up', () => {
       expect(routePopulationOf(SellerSessionController)).toBe('seller');
       expect(routePopulationOf(MyFileController)).toBe('seller');
       expect(routePopulationOf(ReviewRegisterCheckController)).toBe('admin');
+      expect(routePopulationOf(SellerListController)).toBe('admin');
     });
   });
 });

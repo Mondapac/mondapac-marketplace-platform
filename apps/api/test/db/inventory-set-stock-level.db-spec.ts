@@ -36,7 +36,13 @@ import {
   TEST_MARKETS,
   testMarketId,
 } from '../support/test-config';
-import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  modelMap,
+  retryingConflicts,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // Inventory slice 2, part 3 on PostgreSQL (inventory design 4.5; data design 3.4, 3.5, 3.9, 4.4,
@@ -84,23 +90,25 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
         ),
     };
     build = (repository: StockRepository) =>
-      new SetStockLevel(createUseCaseGate(markets, admitAll), {
-        unitOfWork: db.unitOfWork,
-        inventories: new PrismaSellerInventoryRepository(db.service),
-        stock: repository,
-        signals: new PrismaAvailabilitySignalRepository(db.service),
-        offers,
-        policies: new ConfigInventoryPolicyProvider(markets),
-        outbox: new PrismaOutboxWriterFactory(
-          modelMap,
-          db.service,
-          catalogue,
+      retryingConflicts(
+        new SetStockLevel(createUseCaseGate(markets, admitAll), {
+          unitOfWork: db.unitOfWork,
+          inventories: new PrismaSellerInventoryRepository(db.service),
+          stock: repository,
+          signals: new PrismaAvailabilitySignalRepository(db.service),
+          offers,
+          policies: new ConfigInventoryPolicyProvider(markets),
+          outbox: new PrismaOutboxWriterFactory(
+            modelMap,
+            db.service,
+            catalogue,
+            ids,
+            NO_PERMISSION_KEYS,
+          ).forModule('inventory'),
           ids,
-          NO_PERMISSION_KEYS,
-        ).forModule('inventory'),
-        ids,
-        clock,
-      });
+          clock,
+        }),
+      );
     setStockLevel = build(stock);
   });
   afterAll(async () => {

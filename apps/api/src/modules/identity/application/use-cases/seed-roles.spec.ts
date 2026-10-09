@@ -169,6 +169,43 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
+  it('upgrades viewer from version 1 to 2: adds sellers.seller.view, one seed-applied row, other roles untouched', async () => {
+    const VIEW = 'sellers.seller.view';
+    // The previous build's definition: version 1 without the sellers key.
+    const v1 = seedWith((role) =>
+      role.seedCode === 'viewer'
+        ? { ...role, seedVersion: 1, permissionKeys: role.permissionKeys.filter((k) => k !== VIEW) }
+        : role,
+    );
+    await seedRoles(v1).execute(system, {});
+    const before = roleOf('platform', 'viewer');
+    expect(before.permissionKeys).not.toContain(VIEW);
+    const complianceBefore = roleOf('platform', 'onboarding-compliance');
+    fakes.audits.length = 0;
+
+    await expect(seedRoles().execute(system, {})).resolves.toEqual({
+      ok: true,
+      value: { created: 0, upgraded: 1 },
+    });
+
+    expect(roleOf('platform', 'viewer')).toMatchObject({
+      id: before.id,
+      seedVersion: 2,
+      permissionKeys: [...before.permissionKeys, VIEW].sort(),
+    });
+    expect(roleOf('platform', 'onboarding-compliance')).toEqual(complianceBefore);
+    expect(fakes.audits).toEqual([
+      {
+        ...RoleSeedApplied.entry(before.id, {
+          before: { seedVersion: 1 },
+          after: { seedVersion: 2, addedKeys: [VIEW], removedKeys: [] },
+        }),
+        actor: 'system',
+        marketId: code,
+      },
+    ]);
+  });
+
   it('upgrades catalogue-moderator from version 1 to 2: adds catalog.platform-product.edit only, one seed-applied row, other roles untouched (I-1a)', async () => {
     const EDIT = 'catalog.platform-product.edit';
     // The previous build's definition: version 1 with the identity key only.
@@ -314,7 +351,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(logged('identity.seed-roles.stored-newer')?.[0]).toMatchObject({
       seedCode: 'viewer',
       storedSeedVersion: 3,
-      seedVersion: 1,
+      seedVersion: 2,
     });
   });
 
@@ -432,7 +469,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     await expect(
       seedRoles(
         seedWith((role) =>
-          role.seedCode === 'finance' || role.seedCode === 'viewer'
+          role.seedCode === 'finance' || role.seedCode === 'operations-support'
             ? { ...role, seedVersion: 2 }
             : role,
         ),
@@ -440,9 +477,9 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       ).execute(system, {}),
     ).resolves.toEqual({ ok: false, error: { code: 'seed.incomplete', failed: 1 } });
     // The other upgrade still applied, with its row; the failure is logged by code, no message.
-    expect(roleOf('platform', 'viewer').seedVersion).toBe(2);
+    expect(roleOf('platform', 'operations-support').seedVersion).toBe(2);
     expect(fakes.audits.map((a) => [a.action, a.targetId])).toEqual([
-      ['identity.role.seed-applied', roleOf('platform', 'viewer').id],
+      ['identity.role.seed-applied', roleOf('platform', 'operations-support').id],
     ]);
     expect(logged('identity.seed-roles.role-failed')?.[0]).toEqual({
       msg: 'identity.seed-roles.role-failed',

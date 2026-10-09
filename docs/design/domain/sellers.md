@@ -793,6 +793,12 @@ has the measured pace of identity's slices.
 - `SellerTaxProfile` holds the periods; a date must lie between 1970-01-01 and one year ahead (typo guard); "not registered" starts at the recording instant. `TaxRegistrationRecorded` is also emitted on cancel and carries the seller id only.
 - Not built: `my-tax-registration.record` and cancel use cases (they need a sellers audit writer and the acting-as flag in the context) and `taxProfileOf` (Phase 5).
 
+### 11.5 Slice 6 as built (admin seller list)
+- Use case `sellers.list`, rule `permissions [sellers.seller.view]`; route `POST /sellers/admin/list` (`SellerListController`, admin population, session cookie, CSRF token, `no-store`). Body: `tab` (`awaiting-review` default, `incomplete`, `all`), `kind`, `outsideArea`, `search`, `after`, `limit` (1 to 50, 25). Answer: `items`, `next`, `counts`. Failures: `validation.failed` (paths and codes), `search.too-broad`, `sellers.unavailable`, the gate's.
+- A page is one read-only unit on `sellers`' tables (the page, the held slugs, the saved-address test and the pending submissions of its ids: no N+1) and then one `identity.sellerAccessOf` call for the page's ids. Clear columns only; the row has no business name, phone, address or number, and none of identity's personal fields.
+- Not served, waiting for identity's admin read (R-6 with state and counts, slice 9b): the tabs that follow identity's state, the owner name and email, the `file-check-needed` filter. Not offered: exact search by business number (waits for `sellers.business-details.view`, slice 7a-read). Recorded as readings in the brief's change log.
+- New ports: `SellerListRepository` (Prisma adapter), `OnboardingAreas` (the ServiceArea codes that take new sellers), and `SellerAccessReader.accessOfMany`.
+
 ## 12. Dependencies (for the owner's bundled list, ADR-0018 decision 8)
 | Need | Standard library? | Recommendation |
 |---|---|---|

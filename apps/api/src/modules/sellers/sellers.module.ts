@@ -1,5 +1,10 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  registerPermissions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -23,9 +28,11 @@ import { REGISTER_CHECK_REPOSITORY } from './application/ports/register-check.re
 import { REGISTER_LOOKUP_POLICY } from './application/ports/register-lookup-policy';
 import { REGISTERED_SELLER_SOURCE } from './application/ports/registered-seller-source';
 import { SELLER_FILE_CIPHER } from './application/ports/seller-file-cipher';
+import { SELLER_LIST_REPOSITORY } from './application/ports/seller-list.repository';
 import { SELLER_FILE_REPOSITORY } from './application/ports/seller-file.repository';
 import {
   ADDRESS_FORMATS,
+  ONBOARDING_AREAS,
   SERVICE_AREAS,
   TIMEZONE_RESOLVER,
 } from './application/ports/seller-market-formats';
@@ -49,6 +56,7 @@ import { MyFileValidateIdentifier } from './application/use-cases/my-file-valida
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { SellerList } from './application/use-cases/list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
@@ -64,6 +72,7 @@ import { ApprovedSellerZonesReaderImplementation } from './presentation/approved
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
 import { MyFileController } from './presentation/my-file.controller';
 import { ReviewRegisterCheckController } from './presentation/review-register-check.controller';
+import { SellerListController } from './presentation/seller-list.controller';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
 /**
@@ -83,6 +92,8 @@ const PORT = {
   addressFormats: ADDRESS_FORMATS,
   zones: TIMEZONE_RESOLVER,
   areas: SERVICE_AREAS,
+  onboardingAreas: ONBOARDING_AREAS,
+  list: SELLER_LIST_REPOSITORY,
   locationZones: LOCATION_TIMEZONE_RESOLVER,
   identifierSchemes: BUSINESS_IDENTIFIER_SCHEMES,
   identifierIndex: IDENTIFIER_INDEX,
@@ -94,6 +105,7 @@ const PORT = {
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
+  authorisation: AUTHORISATION_CHECK,
   notifier: REVIEWER_NOTIFIER,
   ids: ID_GENERATOR,
   clock: CLOCK,
@@ -133,7 +145,7 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [MyFileController, ReviewRegisterCheckController],
+  controllers: [MyFileController, ReviewRegisterCheckController, SellerListController],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
@@ -298,6 +310,16 @@ function useCaseProvider<D, U>(
       registerChecks: true,
       registerPolicy: true,
       clock: true,
+    }),
+    // Slice 6, the admin seller list (design 6.2, 7.8), over HTTP through SellerListController,
+    // under `sellers.seller.view`: clear fields only, one `identity` call per page, and the row status
+    // only for an actor that also holds `identity.seller-access.view`.
+    useCaseProvider(SellerList, {
+      unitOfWork: true,
+      list: true,
+      accessReader: true,
+      authorisation: true,
+      onboardingAreas: true,
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),

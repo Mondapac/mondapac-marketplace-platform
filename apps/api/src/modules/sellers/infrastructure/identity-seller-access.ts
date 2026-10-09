@@ -17,4 +17,14 @@ export class IdentitySellerAccess implements SellerAccessReader {
     const found = result.value.find((summary) => summary.sellerId === sellerId);
     return found === undefined ? null : found.state;
   }
+
+  async accessOfMany(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, AccessState>> {
+    if (sellerIds.length === 0) return new Map();
+    const result = await this.identity.sellerAccessOf(context, sellerIds);
+    if (!result.ok) throw new Error(`identity.sellerAccessOf refused: ${result.error.code}`);
+    return new Map(result.value.map((summary) => [summary.sellerId, summary.state]));
+  }
 }
