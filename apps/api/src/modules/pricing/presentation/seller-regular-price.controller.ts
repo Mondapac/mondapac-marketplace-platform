@@ -56,8 +56,9 @@ const ERROR = { type: Object };
  * regular price of one Variant of an own Offer, from now. A thin adapter: the seller comes from
  * the session, one use case does the work through its gate (`pricing.price.edit`). A jump past
  * the Market's threshold is held and answers 200 `pending-review`. The answer to an Offer that
- * is absent, deleted or not the seller's is one byte-identical 404. Under the general
- * per-account rate limit of the platform, and the use case's own refusal counters.
+ * is absent, deleted or not the seller's is one byte-identical 404. Under the platform's
+ * default per-origin rate limit only; a per-account write limit is a known gap (security review
+ * of the route), tracked for a follow-up.
  */
 @ApiTags('pricing')
 @RoutePopulation('seller')

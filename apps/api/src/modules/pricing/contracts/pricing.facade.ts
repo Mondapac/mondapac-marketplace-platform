@@ -17,7 +17,8 @@ export function priceKeyOf(key: PriceKey): string {
 
 /**
  * The regular price in force right now. No Cost, no hold, no history: a buyer-facing read
- * (ADR-0024). `taxInclusive` is the Market's `pricesIncludeTax` when the record was written.
+ * (ADR-0024). It does not check that the Offer is visible: the caller (cart, storefront) checks
+ * catalog's published state first and never passes buyer-supplied keys unchecked. `taxInclusive` is the Market's `pricesIncludeTax` when the record was written.
  */
 export interface EffectivePrice {
   readonly price: Money;
