@@ -719,12 +719,11 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
           correlationId: t.context.correlationId,
         }),
       ]);
-      // Compare whole values, not substrings: a random id can contain any digit run.
-      const values = logged.flatMap((entry) => Object.values(entry as Record<string, unknown>));
-      expect(values).not.toContain(amount);
-      expect(values).not.toContain(amount.toString());
-      expect(values).not.toContain(Number(amount));
-      expect(values).not.toContain('absent');
+      // Match the amount as a whole number token, not a bare substring: a random id can
+      // contain any digit run, but never one delimited by non-digits.
+      const text = JSON.stringify(logged, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+      expect(text).not.toMatch(new RegExp(`(?<![0-9a-zA-Z])${amount}(?![0-9a-zA-Z])`));
+      expect(text).not.toMatch(/(?<![0-9a-zA-Z])absent(?![0-9a-zA-Z])/);
       expect(logged.flatMap((entry) => Object.keys(entry as object))).not.toContain('amount');
     });
   });
