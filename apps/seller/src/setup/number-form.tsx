@@ -40,6 +40,7 @@ export function NumberForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending) return;
     void guard.run(value !== (file.identifier?.display ?? ''), persist);
   }
 

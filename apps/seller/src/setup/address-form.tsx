@@ -2,6 +2,7 @@
 
 import { Banner, Button, Card, CheckboxRow, FormActionBar, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import { nextHref, SETUP_ROOT } from './steps.ts';
@@ -73,6 +74,7 @@ export function AddressForm({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const { fields, regionField, regions } = descriptors.address;
   const [address, setAddress] = useState(() => blankAddress(fields, file.address));
@@ -154,6 +156,7 @@ export function AddressForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending) return;
     void guard.run(
       JSON.stringify([address, differs ? registered : null, zoneTouched]) !== initial,
       persist,
@@ -177,6 +180,7 @@ export function AddressForm({
       });
       setZone(body.timezone?.operatingTimezone ?? null);
       setZoneTouched(false);
+      router.refresh();
     }
   }
 

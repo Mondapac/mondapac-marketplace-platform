@@ -2,6 +2,7 @@
 
 import { Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
@@ -31,6 +32,7 @@ export function SlugForm({
   readonly storefrontAddress: string | null;
 }) {
   const t = useTranslations();
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const suggestion = file.slug === null ? suggestSlug(file.general.storeName ?? '') : '';
   const [value, setValue] = useState(file.slug ?? suggestion);
@@ -100,6 +102,7 @@ export function SlugForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending) return;
     void guard.run(value !== (file.slug ?? ''), persist);
   }
 
@@ -109,6 +112,7 @@ export function SlugForm({
     if (outcome?.ok) {
       setSavedOnce(true);
       setCheck({ kind: 'idle' });
+      router.refresh();
     }
   }
 

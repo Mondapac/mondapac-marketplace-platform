@@ -49,6 +49,7 @@ export function BusinessForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending) return;
     void guard.run(JSON.stringify(values) !== JSON.stringify(initial), persist);
   }
 

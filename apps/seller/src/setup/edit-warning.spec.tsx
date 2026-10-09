@@ -10,7 +10,9 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { BusinessForm } from './business-form.tsx';
+import { AddressForm } from './address-form.tsx';
 import { NumberForm } from './number-form.tsx';
+import { SlugForm } from './slug-form.tsx';
 import type { FormDescriptors, MyFile } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -112,5 +114,65 @@ describe('editing while the submission waits (D3)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
     expect(await screen.findByText('Save and withdraw your submission?')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
+  });
+
+  it('guards the web address step and refreshes after the confirmed save', async () => {
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <SlugForm file={file} csrfToken="csrf-1" storefrontAddress={null} />
+      </NextIntlClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Save and withdraw your submission?')).toBeNull();
+    call.mockClear();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'noor-grocers-2' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save and withdraw' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+  });
+
+  it('guards the address step: untouched saves, an edit asks', async () => {
+    const descriptors = {
+      address: {
+        fields: [
+          { key: 'line1', labelKey: 'sellers.address.line1', required: true, maxLength: 100 },
+        ],
+        postcodeField: 'postcode',
+        regionField: null,
+        postcodePattern: '^\\d{4}$',
+        regions: [],
+      },
+      timezones: {},
+    } as unknown as FormDescriptors;
+    const withAddress = { ...file, address: { line1: '1 Queen St' } };
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <AddressForm file={withAddress} descriptors={descriptors} csrfToken="csrf-1" />
+      </NextIntlClientProvider>,
+    );
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { version: 4, outsideServiceArea: false, timezone: null, zoneOptions: [] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    call.mockClear();
+    fireEvent.change(screen.getByLabelText(/Street address/), { target: { value: '2 King St' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    expect(await screen.findByText('Save and withdraw your submission?')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('sends once when Save and withdraw is pressed twice', async () => {
+    business(file);
+    fireEvent.change(screen.getByLabelText(/Phone/), { target: { value: '0411 111 111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
+    const confirm = await screen.findByRole('button', { name: 'Save and withdraw' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
   });
 });
