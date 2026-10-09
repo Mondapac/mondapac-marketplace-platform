@@ -40,12 +40,16 @@
       },
       "label": {
         "email": "Email",
-        "password": "Password"
+        "password": "Password",
+        "new-password": "New password"
       },
       "action": {
         "show-password": "Show password",
         "hide-password": "Hide password",
         "back-to-sign-in": "Back to sign in"
+      },
+      "help": {
+        "password": "Use {min} to {max} characters. A short sentence works well."
       }
     },
     "error": {
@@ -83,13 +87,21 @@
       },
       "unknown": "Something went wrong on our side. Try again.",
       "network": "You're offline or the connection dropped. Check it and try again.",
-      "market": "This page isn't available."
+      "market": "This page isn't available.",
+      "password": {
+        "rejected": {
+          "length": "Use {min} to {max} characters.",
+          "common": "That password is too easy to guess. Choose a different one.",
+          "contains-identity": "Don't use your email or name in your password."
+        }
+      }
     },
     "sign-in": {
       "page-title": "Sign in – Admin account – MondaPac",
       "title": "Sign in to your admin account",
       "action": {
-        "submit": "Sign in"
+        "submit": "Sign in",
+        "forgot": "Forgot password?"
       },
       "banner": {
         "session-ended": "Your session has ended. Sign in again to continue.",
@@ -231,6 +243,36 @@
       "operations-support": "Operations & support",
       "finance": "Finance",
       "viewer": "Viewer"
+    },
+    "forgot-password": {
+      "page-title": "Reset your password – Admin account – MondaPac",
+      "title": "Reset your admin account password",
+      "action": {
+        "submit": "Send reset link"
+      },
+      "sent": {
+        "title": "Check your email",
+        "body": "If an admin account uses {email}, we've sent a link to reset its password. The link works for 60 minutes."
+      }
+    },
+    "reset-password": {
+      "page-title": "Choose a new password – Admin account – MondaPac",
+      "title": "Choose a new password",
+      "body": "Changing your password signs you out everywhere. Two-step verification stays on.",
+      "status": {
+        "checking": "Checking your link…"
+      },
+      "action": {
+        "submit": "Save new password"
+      }
+    },
+    "link": {
+      "title": {
+        "rejected": "This link can't be used"
+      },
+      "body": {
+        "rejected": "It may have expired or already been used. Ask for a new link and we'll send one."
+      }
     }
   }
 }

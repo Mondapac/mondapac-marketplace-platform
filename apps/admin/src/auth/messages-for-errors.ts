@@ -48,3 +48,11 @@ export function fieldErrorKeys(
   }
   return result;
 }
+
+/** The key for `password.rejected` and its rule (ux 5, `password.rejected.<rule>`). */
+export function passwordRuleKey(failure: ApiFailure): string {
+  const rule = failure.details?.rule;
+  return rule === 'common' || rule === 'contains-identity'
+    ? `password.rejected.${rule}`
+    : 'password.rejected.length';
+}

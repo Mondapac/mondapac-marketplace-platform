@@ -105,6 +105,14 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it.each(['identity/admin/password-reset-email', 'identity/admin/reset-password'])(
+    'relays the anonymous password routes (%s)',
+    async (path) => {
+      const response = await relay(config, post(path), path.split('/'), upstreamOk());
+      expect(response.status).toBe(200);
+    },
+  );
+
   it('relays the id paths of the team commands, and only with a UUID id', async () => {
     const id = '0190a000-0000-7000-8000-000000000001';
     const ok = upstreamOk();
