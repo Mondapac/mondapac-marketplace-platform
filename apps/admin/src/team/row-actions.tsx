@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
-import type { ActionHint } from './types.ts';
+import { ChangeRoleDialog } from './role-dialog.tsx';
+import type { ActionHint, PlatformRole } from './types.ts';
 import { useNotice } from './notice.tsx';
 
 /** What a row needs to act; plain data, built on the server from the team row. */
@@ -15,7 +16,9 @@ export type RowTarget =
       readonly id: string;
       readonly name: string;
       readonly status: 'active' | 'disabled';
+      readonly roleId: string | null;
       readonly hints: {
+        readonly changeRole: ActionHint;
         readonly disable: ActionHint;
         readonly enable: ActionHint;
         readonly resetSecondFactor: ActionHint;
@@ -98,15 +101,19 @@ function definitionsFor(target: RowTarget): readonly ActionDef[] {
 export function RowActions({
   target,
   csrfToken,
+  roles,
 }: {
   readonly target: RowTarget;
   readonly csrfToken: string;
+  /** Present only when the actor may assign roles and the list loaded; absent hides Change role. */
+  readonly roles?: readonly PlatformRole[] | undefined;
 }) {
   const t = useTranslations('identity.members');
   const te = useTranslations('identity');
   const router = useRouter();
   const notify = useNotice();
   const [asking, setAsking] = useState<ActionDef | null>(null);
+  const [changingRole, setChangingRole] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // A ref, not only state: a second click must not start a second request before a render.
@@ -162,8 +169,31 @@ export function RowActions({
     },
   }));
 
+  if (target.kind === 'account' && roles !== undefined) {
+    items.unshift({
+      id: 'change-role',
+      label: t('action.change-role'),
+      disabled: !target.hints.changeRole.allowed,
+      ...(target.hints.changeRole.allowed
+        ? {}
+        : { reason: messageFor(target.hints.changeRole.code ?? 'unknown') }),
+      onSelect: () => setChangingRole(true),
+    });
+  }
+
   return (
     <>
+      {target.kind === 'account' && roles !== undefined ? (
+        <ChangeRoleDialog
+          open={changingRole}
+          onClose={() => setChangingRole(false)}
+          accountId={target.id}
+          name={target.name}
+          currentRoleId={target.roleId}
+          roles={roles}
+          csrfToken={csrfToken}
+        />
+      ) : null}
       <Menu label={t('actions-for', { name: target.name })} items={items} />
       <Dialog
         open={asking !== null}
