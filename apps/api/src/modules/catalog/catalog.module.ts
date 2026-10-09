@@ -270,6 +270,8 @@ const productTypeProvider: FactoryProvider<string> = {
     useCaseProvider(OwnProductCreate, {
       unitOfWork: true,
       products: true,
+      offers: true,
+      check: true,
       attributes: true,
       eligibility: true,
       allowedTypes: true,

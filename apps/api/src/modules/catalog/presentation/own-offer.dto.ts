@@ -61,3 +61,45 @@ export class OwnOfferEdited {
   })
   changedFields!: string[];
 }
+
+export class OwnProductCreateRequest {
+  @ApiProperty({
+    description:
+      "The product type, one of the Market's catalog.productTypes and one the seller may sell.",
+  })
+  typeCode!: string;
+
+  @ApiProperty({
+    description: "The seller's own SKU, unique among the seller's open Offers (CAT-10).",
+  })
+  sellerSku!: string;
+
+  @ApiProperty({ description: "One of the Market's catalog.conditions." })
+  conditionCode!: string;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description:
+      "Locale to text, in the Market's supported locales; at most 20 locales and 5,000 " +
+      'characters each. May be empty. It is the Offer description; the product is made with it.',
+  })
+  description!: Record<string, string>;
+}
+
+export class OwnProductCreated {
+  @ApiProperty({ format: 'uuid', description: 'The new draft product. A UUID v7.' })
+  productId!: string;
+
+  @ApiProperty({ description: '`P` and eight digits.', example: 'P00000001' })
+  productCode!: string;
+
+  @ApiProperty({
+    type: [String],
+    description: "A Simple product's one variant; empty for a Configurable one.",
+  })
+  variantIds!: string[];
+
+  @ApiProperty({ format: 'uuid', description: "The seller's draft Offer on it. A UUID v7." })
+  offerId!: string;
+}

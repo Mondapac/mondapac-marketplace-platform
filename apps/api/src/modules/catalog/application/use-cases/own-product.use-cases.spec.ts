@@ -26,6 +26,8 @@ import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys
 import { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-matcher';
+import type { Offer } from '../../domain/offer';
+import type { OfferAddRefusal, OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
@@ -110,6 +112,7 @@ describe.each(FIXTURES)(
         creationOn?: boolean | 'fault';
         reserve?: { code: 'request.throttled'; retryAfterSeconds: number } | null;
         gateOverride?: AuthorisationCheck;
+        offerRefusal?: OfferAddRefusal;
       } = {},
     ) {
       const stored = new Map<string, Product>();
@@ -279,9 +282,21 @@ describe.each(FIXTURES)(
           return Promise.resolve();
         },
       };
+      const addedOffers: Offer[] = [];
+      const offers: OfferRepository = {
+        add: (_m, offer) => {
+          if (options.offerRefusal !== undefined) return Promise.resolve(options.offerRefusal);
+          addedOffers.push(offer);
+          return Promise.resolve(null);
+        },
+        findById: () => Promise.resolve(null),
+        save: () => Promise.reject(new Error('unused')),
+      };
       const create = new OwnProductCreate(gate, {
         unitOfWork,
         products: createProducts,
+        offers,
+        check,
         attributes,
         eligibility,
         allowedTypes,
@@ -305,7 +320,18 @@ describe.each(FIXTURES)(
           });
         }
       };
-      return { useCase, create, added, stored, copies, revisions, matched, events, seed };
+      return {
+        useCase,
+        create,
+        added,
+        addedOffers,
+        stored,
+        copies,
+        revisions,
+        matched,
+        events,
+        seed,
+      };
     }
 
     const request = (productId: string, replacePending = false): OwnProductSubmitInput => ({
@@ -431,10 +457,17 @@ describe.each(FIXTURES)(
       expect(r.revisions.size).toBe(0);
     });
 
+    const FORM = {
+      typeCode: 'simple',
+      sellerSku: 'SKU-1',
+      conditionCode: 'new',
+      description: { [locale]: 'A plain description' },
+    };
+
     describe('own-product.create', () => {
       it('creates a draft SELLER product owned by the actor’s seller', async () => {
         const r = rig();
-        const created = await r.create.execute(contextOf('seller'), { typeCode: 'simple' });
+        const created = await r.create.execute(contextOf('seller'), FORM);
         expect(created.ok && created.value.productCode).toBe('P00000007');
         expect(created.ok && created.value.variantIds).toHaveLength(1);
         expect(r.added).toHaveLength(1);
@@ -447,13 +480,45 @@ describe.each(FIXTURES)(
           marketId: code,
         });
         expect(r.added[0]!.pendingEvents.length).toBeGreaterThan(0);
+        expect(created.ok && created.value.offerId).toBe(r.addedOffers[0]!.state.id);
+        expect(r.addedOffers).toHaveLength(1);
+        expect(r.addedOffers[0]!.state).toMatchObject({
+          sellerId: SELLER,
+          productId: r.added[0]!.state.id,
+          sellerSku: 'SKU-1',
+          status: 'draft',
+        });
+      });
+
+      it('refuses a taken SKU and a bad Offer form, keeping neither product nor Offer', async () => {
+        const taken = rig(undefined, { offerRefusal: 'offer.sku-taken' });
+        expect(await taken.create.execute(contextOf('seller'), FORM)).toEqual({
+          ok: false,
+          error: { code: 'offer.sku-taken' },
+        });
+        const r = rig();
+        const bad = await r.create.execute(contextOf('seller'), { ...FORM, conditionCode: 'nope' });
+        expect(bad).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'conditionCode', code: 'unknown' }],
+          },
+        });
+        const extra = await r.create.execute(contextOf('seller'), {
+          ...FORM,
+          sellerId: 'x',
+        } as typeof FORM);
+        expect(extra.ok).toBe(false);
+        expect(r.added).toHaveLength(0);
+        expect(r.addedOffers).toHaveLength(0);
       });
 
       it('refuses in order: not eligible, setting off, unknown type, SEL-12, spent budget', async () => {
         const call = (options: Parameters<typeof rig>[1], typeCode = 'simple') => {
           const r = rig(undefined, options);
           return r.create
-            .execute(contextOf('seller'), { typeCode })
+            .execute(contextOf('seller'), { ...FORM, typeCode })
             .then((result) => ({ result, r }));
         };
         expect((await call({ eligible: false, creationOn: false })).result).toEqual({
@@ -497,12 +562,12 @@ describe.each(FIXTURES)(
       it('refuses an admin and a customer, and a body that is not an object with a type', async () => {
         const r = rig();
         for (const population of ['admin', 'customer'] as const) {
-          expect(await r.create.execute(contextOf(population), { typeCode: 'simple' })).toEqual({
+          expect(await r.create.execute(contextOf(population), FORM)).toEqual({
             ok: false,
             error: { code: 'access.denied' },
           });
         }
-        expect(await r.create.execute(contextOf('seller'), {} as { typeCode: string })).toEqual({
+        expect(await r.create.execute(contextOf('seller'), {} as typeof FORM)).toEqual({
           ok: false,
           error: { code: 'validation.failed', fields: [{ path: 'typeCode', code: 'type' }] },
         });

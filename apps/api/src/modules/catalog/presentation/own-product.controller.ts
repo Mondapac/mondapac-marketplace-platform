@@ -43,13 +43,12 @@ import { OwnProductSubmit } from '../application/use-cases/own-product-submit.us
 import { closedBody, refusalWith, type Refusal } from './http-answers';
 import {
   ApiErrorBody,
-  PlatformProductCreated,
-  PlatformProductCreateRequest,
   PlatformProductDraftSaved,
   PlatformProductSaveDraftRequest,
   PlatformProductSubmitRequest,
   PlatformProductSubmitted,
 } from './platform-product.dto';
+import { OwnProductCreated, OwnProductCreateRequest } from './own-offer.dto';
 import { PLATFORM_PRODUCT_STATUS } from './platform-product.controller';
 
 /**
@@ -63,6 +62,8 @@ export const OWN_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.freez
   'seller.not-eligible': 403,
   'setting.product-creation-off': 422,
   'type.not-allowed': 422,
+  'offer.sku-taken': 409,
+  'claim-text.refused': 422,
 });
 
 function refusal(error: Refusal, response: Response, context?: CallContext): HttpException {
@@ -109,13 +110,14 @@ export class OwnProductController {
   @ApiOperation({
     summary: 'Create a draft product of the seller',
     description:
-      'Needs catalog.own-product.edit and a seller who may sell. The request names the type ' +
-      'only; the product is SELLER, owned by the session seller, in the Market default family, ' +
-      'with a fresh product code. The type must be one the seller may sell.',
+      'Needs catalog.own-product.edit and a seller who may sell. The request names the type and ' +
+      'the Offer form (sellerSku, conditionCode, description); the product is SELLER, owned by ' +
+      'the session seller, in the Market default family, with a fresh product code, and the ' +
+      "seller's draft Offer is made with it. The type must be one the seller may sell.",
   })
   @ApiHeader(CSRF)
-  @ApiBody({ type: PlatformProductCreateRequest })
-  @ApiCreatedResponse({ type: PlatformProductCreated })
+  @ApiBody({ type: OwnProductCreateRequest })
+  @ApiCreatedResponse({ type: OwnProductCreated })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -137,19 +139,28 @@ export class OwnProductController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
-  ): Promise<PlatformProductCreated> {
-    const input = closedBody(request, body, ['typeCode']);
-    let outcome: PlatformProductCreated | HttpException;
+  ): Promise<OwnProductCreated> {
+    const input = closedBody(request, body, [
+      'typeCode',
+      'sellerSku',
+      'conditionCode',
+      'description',
+    ]);
+    let outcome: OwnProductCreated | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.createProduct.execute(context, {
         typeCode: input.typeCode as string,
+        sellerSku: input.sellerSku as string,
+        conditionCode: input.conditionCode as string,
+        description: input.description,
       });
       outcome = result.ok
         ? {
             productId: result.value.productId,
             productCode: result.value.productCode,
             variantIds: [...result.value.variantIds],
+            offerId: result.value.offerId,
           }
         : refusal(result.error, response, context);
     }

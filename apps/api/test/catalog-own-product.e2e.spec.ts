@@ -4,6 +4,13 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { ALLOWED_PRODUCT_TYPES_READER } from '../src/modules/catalog/application/ports/allowed-product-types.reader';
+import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
+import {
+  CATALOG_MARKET_POLICY,
+  type CatalogMarketPolicy,
+} from '../src/modules/catalog/application/ports/catalog-market-policy';
+import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
+import type { Offer } from '../src/modules/catalog/domain/offer';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
 import { SubmitProduct } from '../src/modules/catalog/application/revisions/submit-product.service';
 import { SaveDraft } from '../src/modules/catalog/application/working-copy/save-draft.service';
@@ -48,6 +55,9 @@ describe('seller product routes over HTTP (integration)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
   let added: Product[];
+  let addedOffers: Offer[];
+  let offerRefusal: string | null;
+  let verdicts: unknown[];
   let product: Product | null;
   let eligible: boolean;
   let reserve: unknown;
@@ -76,6 +86,16 @@ describe('seller product routes over HTTP (integration)', () => {
               return Promise.resolve();
             },
           })
+          .overrideProvider(OFFER_REPOSITORY)
+          .useValue({
+            add: (_m: unknown, offer: Offer) => {
+              if (offerRefusal !== null) return Promise.resolve(offerRefusal);
+              addedOffers.push(offer);
+              return Promise.resolve(null);
+            },
+          })
+          .overrideProvider(CheckClaimText)
+          .useValue({ execute: () => Promise.resolve({ ok: true, value: verdicts }) })
           .overrideProvider(ATTRIBUTE_REPOSITORY)
           .useValue({ loadSchema: () => Promise.resolve({}) })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
@@ -219,6 +239,9 @@ describe('seller product routes over HTTP (integration)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     added = [];
+    addedOffers = [];
+    offerRefusal = null;
+    verdicts = [];
     product = null;
     eligible = true;
     reserve = null;
@@ -265,24 +288,27 @@ describe('seller product routes over HTTP (integration)', () => {
     });
   });
 
+  const FORM = {
+    typeCode: 'simple',
+    sellerSku: 'SKU-1',
+    conditionCode: 'new',
+    description: {},
+  };
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('creates a SELLER draft product owned by the session seller and logs the outcome', async () => {
       await boot();
       await seeded(code);
 
-      const created = await post(
-        code,
-        '/catalog/seller/products',
-        { typeCode: 'simple' },
-        sessionOf(code),
-      );
+      const created = await post(code, '/catalog/seller/products', FORM, sessionOf(code));
 
       expect(created.status).toBe(201);
       expect(added).toHaveLength(1);
       expect(created.body).toMatchObject({
         productId: added[0]!.state.id,
         productCode: 'P00000042',
+        offerId: addedOffers[0]!.state.id,
       });
+      expect(addedOffers[0]!.state).toMatchObject({ sellerId: SELLER, sellerSku: 'SKU-1' });
       expect((created.body as { variantIds: string[] }).variantIds).toHaveLength(1);
       expect(added[0]!.state).toMatchObject({
         scope: 'SELLER',
@@ -300,17 +326,10 @@ describe('seller product routes over HTTP (integration)', () => {
       await seeded(code);
       const session = sessionOf(code);
 
-      const noCsrf = await post(
-        code,
-        '/catalog/seller/products',
-        { typeCode: 'simple' },
-        { cookie: session.cookie },
-      );
+      const noCsrf = await post(code, '/catalog/seller/products', FORM, { cookie: session.cookie });
       expect(noCsrf.status).toBe(403);
       expect(noCsrf.body).toEqual({ statusCode: 403, code: 'request.csrf' });
-      expect(
-        (await post(code, '/catalog/seller/products', { typeCode: 'simple' }, {})).status,
-      ).toBe(401);
+      expect((await post(code, '/catalog/seller/products', FORM, {})).status).toBe(401);
       expect(added).toHaveLength(0);
     });
 
@@ -320,30 +339,18 @@ describe('seller product routes over HTTP (integration)', () => {
       const session = sessionOf(code);
 
       eligible = false;
-      const notEligible = await post(
-        code,
-        '/catalog/seller/products',
-        { typeCode: 'simple' },
-        session,
-      );
+      const notEligible = await post(code, '/catalog/seller/products', FORM, session);
       expect(notEligible.status).toBe(403);
       expect(notEligible.body).toEqual({ statusCode: 403, code: 'seller.not-eligible' });
 
       eligible = true;
       allowed = new Set(['configurable']);
-      const notAllowed = await post(
-        code,
-        '/catalog/seller/products',
-        { typeCode: 'simple' },
-        session,
-      );
+      const notAllowed = await post(code, '/catalog/seller/products', FORM, session);
       expect(notAllowed.status).toBe(422);
       expect(notAllowed.body).toEqual({ statusCode: 422, code: 'type.not-allowed' });
 
       allowed = null;
-      expect(
-        (await post(code, '/catalog/seller/products', { typeCode: 'simple' }, session)).status,
-      ).toBe(503);
+      expect((await post(code, '/catalog/seller/products', FORM, session)).status).toBe(503);
       expect(added).toHaveLength(0);
     });
 
@@ -355,7 +362,7 @@ describe('seller product routes over HTTP (integration)', () => {
       const extra = await post(
         code,
         '/catalog/seller/products',
-        { typeCode: 'simple', sellerId: 'x' },
+        { ...FORM, sellerId: 'x' },
         session,
       );
       expect(extra.status).toBe(400);
@@ -368,11 +375,37 @@ describe('seller product routes over HTTP (integration)', () => {
       const unknown = await post(
         code,
         '/catalog/seller/products',
-        { typeCode: 'hologram' },
+        { ...FORM, typeCode: 'hologram' },
         session,
       );
       expect(unknown.status).toBe(422);
       expect(unknown.body).toEqual({ statusCode: 422, code: 'product.type-not-offered' });
+    });
+
+    it('answers a taken SKU with 409 and a claim in the description with 422, storing nothing', async () => {
+      await boot();
+      await seeded(code);
+      offerRefusal = 'offer.sku-taken';
+      const taken = await post(code, '/catalog/seller/products', FORM, sessionOf(code));
+      expect(taken.status).toBe(409);
+      expect(taken.body).toEqual({ statusCode: 409, code: 'offer.sku-taken' });
+
+      offerRefusal = null;
+      const locale = app
+        .get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY)
+        .locales(marketOf(code)).default;
+      verdicts = [
+        { code: 'claim-text.found', field: 'offer.description', ref: null, locale, hits: [] },
+      ];
+      const refused = await post(
+        code,
+        '/catalog/seller/products',
+        { ...FORM, description: { [locale]: 'Certified halal' } },
+        sessionOf(code),
+      );
+      expect(refused.status).toBe(422);
+      expect(refused.body).toMatchObject({ code: 'claim-text.refused' });
+      expect(addedOffers).toHaveLength(0);
     });
 
     it('answers a spent budget with 429 and Retry-After', async () => {
@@ -380,12 +413,7 @@ describe('seller product routes over HTTP (integration)', () => {
       await seeded(code);
       reserve = { code: 'request.throttled', retryAfterSeconds: 17 };
 
-      const throttled = await post(
-        code,
-        '/catalog/seller/products',
-        { typeCode: 'simple' },
-        sessionOf(code),
-      );
+      const throttled = await post(code, '/catalog/seller/products', FORM, sessionOf(code));
 
       expect(throttled.status).toBe(429);
       expect(throttled.headers['retry-after']).toBe('17');
