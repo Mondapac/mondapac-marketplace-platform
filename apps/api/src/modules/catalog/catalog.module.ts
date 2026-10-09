@@ -62,6 +62,15 @@ import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
+import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
+import { OwnOffersList } from './application/use-cases/own-offers-list.use-case';
+import { OwnOfferRead } from './application/use-cases/own-offer-read.use-case';
+import { OWN_CATALOG_READER } from './application/ports/own-catalog.reader';
+import { OwnProductController } from './presentation/own-product.controller';
+import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
+import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
@@ -98,6 +107,7 @@ const PORT = {
   offers: OFFER_REPOSITORY,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
+  ownReader: OWN_CATALOG_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -159,7 +169,7 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
-  controllers: [PlatformProductController, OwnOfferController],
+  controllers: [PlatformProductController, OwnOfferController, OwnProductController],
   imports: [CertificationModule, SellersModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
@@ -262,6 +272,44 @@ const productTypeProvider: FactoryProvider<string> = {
       save: true,
       policy: true,
       clock: true,
+    }),
+    useCaseProvider(OwnProductCreate, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      check: true,
+      attributes: true,
+      eligibility: true,
+      allowedTypes: true,
+      save: true,
+      policy: true,
+      productTypes: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnProductSaveDraft, { saveDraft: true, eligibility: true }),
+    useCaseProvider(OwnProductSubmit, {
+      unitOfWork: true,
+      products: true,
+      submit: true,
+      eligibility: true,
+      allowedTypes: true,
+    }),
+    useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnProductRead, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      policy: true,
+    }),
+    useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnOfferRead, {
+      unitOfWork: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),

@@ -14,7 +14,7 @@
     "dev:worker": "node scripts/dev-worker.mjs",
     "dev:seller": "pnpm --filter @mondapac/seller dev",
     "dev:admin": "pnpm --filter @mondapac/admin dev",
-    "build": "pnpm db:generate && pnpm -r build && node scripts/check-built-kernel.mjs",
+    "build": "pnpm db:generate && pnpm -r build && node scripts/check-built-kernel.mjs && node scripts/check-built-parser.mjs",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",

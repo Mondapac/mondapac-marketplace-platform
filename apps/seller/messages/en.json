@@ -6,7 +6,9 @@
   },
   "nav": {
     "home": "Home",
-    "setup": "Seller account"
+    "setup": "Seller account",
+    "products": "Products",
+    "offers": "Offers"
   },
   "home": {
     "title": "Home",
@@ -441,6 +443,119 @@
       "body": "Your details will be saved and your submission withdrawn. Submit again when you're ready.",
       "action": "Save and withdraw",
       "keep": "Keep editing"
+    }
+  },
+  "catalog": {
+    "error": {
+      "unavailable": "We couldn't load this page. Check your connection and try again."
+    },
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Ask the account owner to give you permission to view products and offers."
+    },
+    "not-found": {
+      "title": "We couldn't find that",
+      "body": "It may have been removed, or it isn't part of your shop."
+    },
+    "back-home": "Back to home",
+    "next-page": "Next page",
+    "col": {
+      "status": "Status",
+      "changed": "Last change"
+    },
+    "products": {
+      "title": "Products",
+      "unnamed": "Unnamed product",
+      "pending": "Waiting for review",
+      "back": "Back to products",
+      "empty": {
+        "title": "No products yet",
+        "body": "Products you add will appear here with their review status."
+      },
+      "col": {
+        "product": "Product",
+        "code": "Product code"
+      },
+      "status": {
+        "draft": "Draft",
+        "unpublished": "Not published",
+        "published": "Published",
+        "matched": "Matched",
+        "retired": "Retired",
+        "unknown": "Unknown"
+      }
+    },
+    "product": {
+      "type": "Type",
+      "variants": "Variants",
+      "variants-count": "{count} of {max}",
+      "created": "Created",
+      "working-copy": "Working copy",
+      "saved-at": "Saved {when}",
+      "pending-revision": "Waiting for review",
+      "published-revision": "Published version"
+    },
+    "revision": {
+      "number": "Version",
+      "submitted": "Submitted",
+      "author": "Submitted by",
+      "author-kind": {
+        "seller": "You",
+        "admin": "MondaPac team",
+        "unknown": "Unknown"
+      },
+      "sensitive": "Review",
+      "sensitive-yes": "Needs a closer review"
+    },
+    "offers": {
+      "title": "Offers",
+      "back": "Back to offers",
+      "empty": {
+        "title": "No offers yet",
+        "body": "Offers you create to sell products will appear here."
+      },
+      "col": {
+        "product": "Product",
+        "sku": "Your SKU",
+        "listed": "On sale",
+        "submitted": "Submitted"
+      },
+      "listed": {
+        "yes": "On sale",
+        "no": "Not on sale"
+      },
+      "status": {
+        "draft": "Draft",
+        "pending-first-publish": "Waiting for review",
+        "changes-needed": "Changes needed",
+        "published": "Published",
+        "unknown": "Unknown"
+      }
+    },
+    "offer": {
+      "condition": "Condition",
+      "attestation": "Attestation",
+      "attested": "Recorded",
+      "not-attested": "Not recorded",
+      "handling": "Handling",
+      "first-published": "First published",
+      "description": "Description",
+      "off-sale": "Why this offer is not on sale",
+      "handling-value": {
+        "SEALED_ORIGINAL": "Sealed original",
+        "REPACKED": "Repacked",
+        "PREPARED": "Prepared",
+        "FRESH": "Fresh",
+        "unknown": "Unknown"
+      },
+      "cause": {
+        "type-not-allowed": "This product type isn't allowed in your market",
+        "product-retired": "The product was retired",
+        "product-not-listed": "The product is not listed",
+        "tag-suspended": "A certification tag is suspended",
+        "description-claim-text": "The description makes a claim that needs a matching certificate",
+        "unknown": "Unknown reason"
+      }
     }
   }
 }

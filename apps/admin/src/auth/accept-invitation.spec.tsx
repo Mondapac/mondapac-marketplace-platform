@@ -263,17 +263,18 @@ describe('admin accept invitation', () => {
 
   it('sends one accept request for a double click', async () => {
     call.mockResolvedValueOnce(enrolment);
-    let release: (value: ReturnType<typeof fail>) => void = () => undefined;
-    call.mockImplementationOnce(
-      () => new Promise((resolve) => (release = resolve as typeof release)),
-    );
+    // Resolved up front: the accept call may start after the click handler returns, so a resolver
+    // captured inside the mock could still be unset when the test releases it.
+    let resolve: (value: ReturnType<typeof fail>) => void = () => undefined;
+    const pending = new Promise<ReturnType<typeof fail>>((r) => (resolve = r));
+    call.mockImplementationOnce(() => pending);
     mount();
     await fillDetails();
     fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '111111' } });
     const verify = screen.getByRole('button', { name: 'Verify' });
     fireEvent.click(verify);
     fireEvent.click(verify);
-    release(fail('second-factor.invalid'));
+    resolve(fail('second-factor.invalid'));
     await screen.findByText(/That code didn't work/);
     expect(call).toHaveBeenCalledTimes(2);
   });

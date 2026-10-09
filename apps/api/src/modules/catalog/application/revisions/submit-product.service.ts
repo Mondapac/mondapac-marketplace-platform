@@ -76,8 +76,9 @@ export interface SubmitProductDependencies {
  *    store the revision and the product, and append the events, all in one unit. A lost race on
  *    the product or on the revision number is `conflict.stale`.
  *
- * The author is the actor's population; only an admin submits a PLATFORM product here (a seller
- * is refused until slice 7). Images are refused by the revision store until slice 13.
+ * The author is the actor's population: an admin submits PLATFORM products, a seller submits their
+ * own SELLER products (`own-product.submit` adds eligibility and SEL-12 around this). A seller's
+ * revision may wait for review (4.3). Images are refused by the revision store until slice 13.
  */
 export class SubmitProduct {
   readonly #logger = new Logger('SubmitProduct');
@@ -89,7 +90,16 @@ export class SubmitProduct {
     input: SubmitProductInput,
   ): Promise<Result<SubmitProductOutput, SubmitProductFailure>> {
     const { actor } = context;
-    if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
+    // The author is the actor's population and nothing else (an admin or a seller with a seller id).
+    const author: Author | null =
+      actor.kind !== 'authenticated'
+        ? null
+        : actor.population === 'admin'
+          ? { kind: 'admin' }
+          : actor.population === 'seller' && actor.sellerId !== null
+            ? { kind: 'seller', sellerId: actor.sellerId }
+            : null;
+    if (actor.kind !== 'authenticated' || author === null) {
       return err({ code: 'access.denied' });
     }
     const { market } = context;
@@ -114,7 +124,7 @@ export class SubmitProduct {
     >(
       market,
       async () => {
-        const loaded = await this.#load(context, input);
+        const loaded = await this.#load(context, input, author);
         if (!loaded.ok) return loaded;
         const frozen = await freeze.freeze(market, loaded.value.product, loaded.value.copy);
         if (!frozen.ok) return frozen;
@@ -163,7 +173,7 @@ export class SubmitProduct {
       const stored = await unitOfWork.run<SubmitProductOutput, SubmitProductFailure>(
         market,
         async () => {
-          const loaded = await this.#load(context, input);
+          const loaded = await this.#load(context, input, author);
           if (!loaded.ok) return loaded;
           const { product, copy } = loaded.value;
           const frozen = await freeze.freeze(market, product, copy);
@@ -187,11 +197,21 @@ export class SubmitProduct {
           } catch {
             return err({ code: 'access.unavailable' });
           }
+          let sensitiveRevisionPending = false;
+          if (author.kind === 'seller' && product.state.pendingRevisionId !== null) {
+            const pending = await revisions.find(
+              market,
+              product.state.id,
+              product.state.pendingRevisionId,
+            );
+            if (pending === null) return err({ code: 'conflict.stale' });
+            sensitiveRevisionPending = pending.sensitive;
+          }
           const outcome = decideOutcome({
             classification,
             approvalRequired,
-            sensitiveRevisionPending: false,
-            author: 'admin-platform',
+            sensitiveRevisionPending,
+            author: author.kind === 'seller' ? 'seller' : 'admin-platform',
           });
           const revisionId = this.deps.ids.next<'ProductRevision'>();
           const revisionNo = await revisions.nextRevisionNo(market, product.state.id);
@@ -199,7 +219,7 @@ export class SubmitProduct {
             revisionId,
             baseRevisionId: publishedId,
             outcome,
-            authorKind: 'admin',
+            authorKind: author.kind,
             replacePending: input.replacePending,
             revisionVariantIds: frozen.value.content.variants.map(
               (variant) => variant.variantId as Id<'Variant'>,
@@ -218,7 +238,7 @@ export class SubmitProduct {
             sensitive: outcome.sensitive,
             sensitiveReasons: outcome.reasons,
             contentHash: frozen.value.contentHash,
-            authorKind: 'admin',
+            authorKind: author.kind,
             authorAccountId: actor.accountId,
             actingAdminAccountId: null,
             submittedAt: now,
@@ -250,15 +270,25 @@ export class SubmitProduct {
     }
   }
 
-  async #load(context: CallContext, input: SubmitProductInput) {
+  async #load(context: CallContext, input: SubmitProductInput, author: Author) {
     const { market } = context;
     const product = await this.deps.products.findById(market, input.productId);
     if (product === null) return err({ code: 'product.not-found' as const });
-    // An admin submits PLATFORM products only; the aggregate says so again at the submit.
-    if (product.state.scope !== 'PLATFORM')
+    if (author.kind === 'seller') {
+      // A seller submits their own SELLER products; another seller's, a PLATFORM one and a
+      // missing one answer alike, so the answer reveals nothing.
+      if (product.state.scope !== 'SELLER' || product.state.ownerSellerId !== author.sellerId) {
+        return err({ code: 'product.not-found' as const });
+      }
+    } else if (product.state.scope !== 'PLATFORM') {
+      // An admin submits PLATFORM products only; the aggregate says so again at the submit.
       return err({ code: 'product.platform-admin-only' as const });
+    }
     const copy = await this.deps.workingCopies.find(market, product.state.id);
     if (copy === null) return err({ code: 'working-copy.not-found' as const });
     return ok({ product, copy });
   }
 }
+
+type Author =
+  { readonly kind: 'admin' } | { readonly kind: 'seller'; readonly sellerId: Id<'Seller'> };

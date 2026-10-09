@@ -22,7 +22,18 @@ export const CATALOG_OWN_PRODUCT_EDIT = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read the seller's own products, Offers and revisions (catalog design 8.1). Seller scope: the
+ * Seller Owner holds every seller key; the default roles that receive it are identity's seed.
+ */
+export const CATALOG_OWN_PRODUCT_VIEW = definePermission('catalog', {
+  key: 'catalog.own-product.view',
+  scope: 'seller',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
+  CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
 ]);

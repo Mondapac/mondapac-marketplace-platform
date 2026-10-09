@@ -297,7 +297,8 @@
     "productTypes": ["simple", "configurable"],
     "defaultFamily": "default",
     "conditions": ["new", "used"],
-    "sellFromCatalogue": true
+    "sellFromCatalogue": true,
+    "sellerCanCreateProduct": true
   },
   "pricing": {
     "maxUnitPriceMinor": 500000,

@@ -65,6 +65,7 @@ describe.each(TEST_MARKETS)(
       defaultFamily: () => 'default',
       conditions: () => ['new'],
       sellFromCatalogue: () => Promise.resolve(true),
+      sellerCanCreateProduct: () => Promise.resolve(true),
       approvalRequired: () => Promise.resolve(true),
     };
 
