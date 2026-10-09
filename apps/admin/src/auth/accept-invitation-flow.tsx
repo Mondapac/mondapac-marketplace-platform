@@ -10,6 +10,7 @@ import { FocusHeading } from './focus-heading.tsx';
 import { useLinkToken } from './link-token.ts';
 import { formErrorKey, passwordRuleKey } from './messages-for-errors.ts';
 import { ProblemBanner } from './problem-banner.tsx';
+import { SetupQr } from './setup-qr.tsx';
 
 interface Enrolment {
   readonly secret: string;
@@ -292,7 +293,15 @@ export function AcceptInvitationFlow({
         <FocusHeading key={enrolment.tag}>{t('accept.secret.title')}</FocusHeading>
         <p className="text-fg-secondary">{t('accept.secret.body')}</p>
         {problemMessage ? <ProblemBanner message={problemMessage} /> : null}
-        <div className="flex flex-col gap-2 rounded-md border border-border p-4">
+        <div className="flex flex-col gap-3 rounded-md border border-border p-4">
+          {enrolment.otpauthUri.startsWith('otpauth://') ? (
+            <SetupQr
+              uri={enrolment.otpauthUri}
+              label={t('accept.secret.qr-label')}
+              intro={t('accept.secret.scan')}
+              fallback={t('accept.secret.cannot-scan')}
+            />
+          ) : null}
           <span className="text-sm text-fg-muted">{t('accept.secret.key-label')}</span>
           <code dir="ltr" className="font-mono text-base break-all">
             {grouped(enrolment.secret)}
