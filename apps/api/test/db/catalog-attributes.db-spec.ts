@@ -9,6 +9,8 @@ import {
   ZZ_ATTRIBUTE_FAMILIES,
 } from '../../src/modules/catalog/infrastructure/seed/zz.attributes.seed';
 import { CLOCK } from '../../src/platform/clock/clock.module';
+import { CLAIM_TEXT_MATCHER } from '../../src/modules/catalog/application/ports/claim-text-matcher';
+import { cleanClaimTextMatcher } from '../support/clean-claim-text-matcher.fake';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { PrismaAttributeRepository } from '../../src/modules/catalog/infrastructure/prisma-attribute.repository';
@@ -38,7 +40,12 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     ({ app } = await createTestApp({
       env: { DATABASE_URL: testDatabaseUrl() },
       override: (builder) =>
-        builder.overrideProvider(CLOCK).useValue(new FixedClock(Temporal.Instant.from(T0))),
+        builder
+          .overrideProvider(CLOCK)
+          .useValue(new FixedClock(Temporal.Instant.from(T0)))
+          // The seeds are checked against a vocabulary; these specs test the SQL, not the words.
+          .overrideProvider(CLAIM_TEXT_MATCHER)
+          .useValue(cleanClaimTextMatcher),
     }));
   });
   afterAll(async () => {

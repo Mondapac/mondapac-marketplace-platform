@@ -104,9 +104,27 @@ export class CheckClaimText {
     context: CallContext,
     texts: readonly CheckedText[],
   ): Promise<Result<readonly ClaimTextVerdict[], CheckClaimTextFailure>> {
-    const accountId = accountOf(context);
-    if (accountId === null) return err({ code: 'access.denied' });
+    if (accountOf(context) === null) return err({ code: 'access.denied' });
+    return this.#check(context, texts);
+  }
 
+  /**
+   * The same check for the seed routines (design 7.2: names and option labels in seeds pass the
+   * claim-text check at apply time). Only the `system` actor may call it, and it spends no limit:
+   * the texts are checked-in data, not a caller's probe of the vocabulary.
+   */
+  async executeAsSystem(
+    context: CallContext,
+    texts: readonly CheckedText[],
+  ): Promise<Result<readonly ClaimTextVerdict[], CheckClaimTextFailure>> {
+    if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
+    return this.#check(context, texts);
+  }
+
+  async #check(
+    context: CallContext,
+    texts: readonly CheckedText[],
+  ): Promise<Result<readonly ClaimTextVerdict[], CheckClaimTextFailure>> {
     const invalid = this.#validate(context, texts);
     if (invalid !== null) return err(invalid);
 

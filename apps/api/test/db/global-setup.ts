@@ -61,6 +61,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'AUDIT');
   await createCopy(name, 'ADMIN_TEAM');
   await createCopy(name, 'CERTIFICATION');
+  await createCopy(name, 'CATALOG_CLAIMS');
 }
 
 /**
@@ -106,7 +107,8 @@ async function createCopy(
     | 'INVENTORY'
     | 'AUDIT'
     | 'ADMIN_TEAM'
-    | 'CERTIFICATION',
+    | 'CERTIFICATION'
+    | 'CATALOG_CLAIMS',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
