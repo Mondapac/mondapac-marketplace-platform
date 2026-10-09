@@ -469,7 +469,8 @@ describe.each(TEST_MARKETS)(
           content: { who: 'loser' },
           variantIds: [null],
         });
-        await loserHasRead;
+        // If the loser fails before it reads, its result ends the wait and the test fails clearly.
+        await Promise.race([loserHasRead, loser]);
         const winner = await service.execute(sellerContext(sellerId), {
           productId: product.state.id,
           content: { who: 'winner' },

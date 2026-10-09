@@ -8,7 +8,8 @@ const ATTEMPTS = 6;
  * The SQLSTATE of a statement that must fail, or null when it succeeded. Statements that take
  * table-level locks (TRUNCATE ... CASCADE refused by a trigger only after it holds the locks) can
  * deadlock with another spec writing to the same tables in parallel; such a statement is tried
- * again a few times, so the answer is the rule's own state and never the contention.
+ * again a few times, so the answer is the rule's own state and never the contention. For
+ * autocommit statements only: inside a transaction a failed statement aborts it (25P02).
  */
 export async function sqlState(
   client: Client,
