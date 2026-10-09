@@ -449,13 +449,13 @@ module.exports = {
       name: 'persistence-root-is-private',
       comment:
         "A module's infrastructure/ imports nothing of platform/persistence/ but " +
-        'prisma.service.ts: never the base client (PrismaRoot), the guarded client, the ' +
+        'prisma.service.ts and raw-reads/raw-read-port.ts (ADR-0030: the read-only port): never the base client (PrismaRoot), the guarded client, the ' +
         'unit store or the guard, so its only door to the database is tx(market).',
       severity: 'error',
       from: { path: '^src/modules/[^/]+/infrastructure/' },
       to: {
         path: '^src/platform/persistence/',
-        pathNot: '^src/platform/persistence/prisma\\.service\\.ts$',
+        pathNot: '^src/platform/persistence/(prisma\\.service|raw-reads/raw-read-port)\\.ts$',
       },
     },
     {
@@ -470,6 +470,17 @@ module.exports = {
         ],
       },
       to: { path: 'node_modules/(pg|pg-[^/]+|@types/pg)/' },
+    },
+    {
+      // ADR-0030, Ali's ruling C-e. The boundary script reaches the parser through
+      // createRequire from apps/api, so the cruiser does not see that second importer.
+      name: 'sql-parser-only-in-pg-parser',
+      comment:
+        'libpg-query is imported only by platform/persistence/raw-reads/pg-parser.ts (and, ' +
+        'outside src, by scripts/check-prisma-boundaries.mjs through createRequire from apps/api).',
+      severity: 'error',
+      from: { pathNot: '^src/platform/persistence/raw-reads/pg-parser\\.ts$' },
+      to: { path: '(^|/node_modules/)libpg-query(/|$)' },
     },
     {
       name: 'no-circular',
