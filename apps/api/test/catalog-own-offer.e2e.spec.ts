@@ -13,7 +13,7 @@ import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { SELLER_ELIGIBILITY_READER } from '../src/modules/catalog/application/ports/seller-eligibility.reader';
 import { SaveWorkingCopy } from '../src/modules/catalog/application/working-copy/save-working-copy.service';
-import type { Offer } from '../src/modules/catalog/domain/offer';
+import { Offer, type OfferState } from '../src/modules/catalog/domain/offer';
 import { Product, type ProductState } from '../src/modules/catalog/domain/product';
 import { OWN_OFFER_STATUS } from '../src/modules/catalog/presentation/own-offer.controller';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
@@ -56,6 +56,10 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let eligible: boolean;
   let reserve: unknown;
   let addRefusal: string | null;
+  let offer: Offer | null;
+  let saveRefusal: string | null;
+  let savedEdits: Offer[];
+  let offerReads: number;
   let allowed: unknown;
   let verdicts: unknown[];
   let productReads: number;
@@ -85,7 +89,15 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
               stored.push(offer);
               return Promise.resolve(null);
             },
-            findById: () => Promise.resolve(null),
+            findById: () => {
+              offerReads += 1;
+              return Promise.resolve(offer);
+            },
+            save: (_m: unknown, edited: Offer) => {
+              if (saveRefusal !== null) return Promise.resolve(saveRefusal);
+              savedEdits.push(edited);
+              return Promise.resolve(null);
+            },
           })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
           .useValue({ isEligible: () => Promise.resolve(eligible) })
@@ -222,6 +234,10 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     eligible = true;
     reserve = null;
     addRefusal = null;
+    offer = null;
+    saveRefusal = null;
+    savedEdits = [];
+    offerReads = 0;
     allowed = 'all';
     verdicts = [];
     productReads = 0;
@@ -240,12 +256,19 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     for (const status of ['201', '400', '403', '404', '409', '422', '429', '503']) {
       expect(responses).toHaveProperty(status);
     }
+    const edit = document.paths['/catalog/seller/offers/{offerId}']?.put?.responses;
+    for (const status of ['200', '400', '403', '404', '409', '422', '429', '503']) {
+      expect(edit).toHaveProperty(status);
+    }
   });
 
   it('maps every refusal code of the use case to its exact status', () => {
     expect(OWN_OFFER_STATUS).toEqual({
       'validation.failed': 400,
       'product.not-found': 404,
+      'offer.not-found': 404,
+      'offer.not-editable': 409,
+      'conflict.stale': 409,
       'seller.not-eligible': 403,
       'offer.exists-for-product': 409,
       'offer.sku-taken': 409,
@@ -466,6 +489,210 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(claimChecks).toBe(0);
       const line = logLines.find((l) => l.msg === 'catalog.own-offer-create' && l.outcome);
       expect(JSON.stringify(line)).not.toMatch(/SECRET-SKU|secret text/);
+    });
+  });
+
+  describe.each(TEST_MARKETS)('edit in market %s', (code) => {
+    const OFFER = id<'Offer'>(0x9001);
+    const offerState = (overrides: Partial<OfferState> = {}): OfferState => ({
+      id: OFFER,
+      marketId: code as AccountState['marketId'],
+      sellerId: SELLER,
+      productId: PRODUCT,
+      sellerSku: 'SKU-1',
+      conditionCode: 'new',
+      description: {},
+      handling: null,
+      attestationRecordedAt: null,
+      attestationAccountId: null,
+      status: 'draft',
+      offSaleCauses: [],
+      listed: false,
+      submittedAt: null,
+      firstPublishedAt: null,
+      deletedAt: null,
+      version: 2,
+      createdAt: START,
+      ...overrides,
+    });
+    const editBody = (extra: Record<string, unknown> = {}) => ({
+      sellerSku: 'SKU-2',
+      conditionCode: 'new',
+      description: {},
+      ...extra,
+    });
+    const put = (path: string, payload: unknown, headers: Record<string, string>) =>
+      http()
+        .put(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers })
+        .send(payload as object);
+    const url = `/catalog/seller/offers/${OFFER}`;
+
+    it('edits an own draft Offer, answers the changed fields and logs the outcome', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+
+      const edited = await put(url, editBody(), sessionOf(code));
+
+      expect(edited.status).toBe(200);
+      expect(edited.body).toEqual({ changedFields: ['sellerSku'] });
+      expect(savedEdits).toHaveLength(1);
+      expect(savedEdits[0]!.state).toMatchObject({ sellerSku: 'SKU-2', version: 3 });
+      expect(logLines.find((l) => l.msg === 'catalog.own-offer-edit' && l.outcome)).toMatchObject({
+        outcome: 'ok',
+        marketId: code,
+        correlationId: edited.headers['x-correlation-id'] as string,
+      });
+    });
+
+    it('refuses without the CSRF token and without a session, and PATCH and POST are not routes', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+
+      expect((await put(url, editBody(), { cookie: session.cookie })).body).toEqual({
+        statusCode: 403,
+        code: 'request.csrf',
+      });
+      expect((await put(url, editBody(), {})).status).toBe(401);
+      const patch = await http()
+        .patch(url)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...session })
+        .send(editBody());
+      expect(patch.status).toBe(404);
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('refuses an unknown field, a missing field, an array and a bad id', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+
+      const extra = await put(url, editBody({ handling: 'FRESH' }), session);
+      expect(extra.status).toBe(400);
+      expect(extra.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'handling', code: 'unknown-field' }] },
+      });
+      const missing = await put(url, { sellerSku: 'SKU-2', conditionCode: 'new' }, session);
+      expect(missing.body).toMatchObject({
+        details: { fields: [{ path: 'description', code: 'required' }] },
+      });
+      expect((await put(url, [], session)).status).toBe(400);
+      const badId = await put('/catalog/seller/offers/not-an-id', editBody(), session);
+      expect(badId.status).toBe(400);
+      expect(badId.body).toMatchObject({ details: { fields: [{ path: 'offerId' }] } });
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('answers every Offer that is not the seller’s to edit with the same 404 body', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const bodies: string[] = [];
+      for (const found of [
+        null,
+        offerState({ sellerId: id<'Seller'>(0xb999) }),
+        offerState({ status: 'deleted', deletedAt: START }),
+      ]) {
+        offer = found === null ? null : Offer.restore(found);
+        const answer = await put(url, editBody(), session);
+        expect(answer.status).toBe(404);
+        bodies.push(JSON.stringify(answer.body));
+      }
+      expect(new Set(bodies).size).toBe(1);
+      expect(bodies[0]).toBe(JSON.stringify({ statusCode: 404, code: 'offer.not-found' }));
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('answers 409 for a published Offer, a taken SKU and 403 for a seller who may not sell', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      offer = Offer.restore(
+        offerState({ status: 'published', firstPublishedAt: START, handling: 'FRESH' }),
+      );
+      const published = await put(url, editBody(), session);
+      expect(published.status).toBe(409);
+      expect(published.body).toEqual({ statusCode: 409, code: 'offer.not-editable' });
+
+      offer = Offer.restore(offerState());
+      saveRefusal = 'offer.sku-taken';
+      const taken = await put(url, editBody(), session);
+      expect(taken.status).toBe(409);
+      expect(taken.body).toEqual({ statusCode: 409, code: 'offer.sku-taken' });
+      saveRefusal = null;
+
+      eligible = false;
+      const notEligible = await put(url, editBody(), session);
+      expect(notEligible.status).toBe(403);
+      expect(notEligible.body).toEqual({ statusCode: 403, code: 'seller.not-eligible' });
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('answers a text with a claim as 422 and a spent budget as 429, storing nothing', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+      const locale = app
+        .get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY)
+        .locales(marketOf(code)).default;
+      verdicts = [
+        { code: 'claim-text.found', field: 'offer.description', ref: null, locale, hits: [] },
+      ];
+
+      const refused = await put(
+        url,
+        editBody({ description: { [locale]: 'Certified halal' } }),
+        session,
+      );
+      expect(refused.status).toBe(422);
+      expect(refused.body).toMatchObject({
+        code: 'claim-text.refused',
+        details: { fields: [{ field: 'offer.description', locale }] },
+      });
+
+      reserve = { code: 'request.throttled', retryAfterSeconds: 9 };
+      const checksBefore = claimChecks;
+      const readsBefore = offerReads;
+      const throttled = await put(url, editBody(), session);
+      expect(throttled.status).toBe(429);
+      expect(throttled.headers['retry-after']).toBe('9');
+      expect(claimChecks).toBe(checksBefore);
+      expect(offerReads).toBe(readsBefore);
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('refuses the admin panel origin, storing nothing, and logs no text', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+
+      const wrongOrigin = await http()
+        .put(url)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .send(editBody());
+      expect(wrongOrigin.status).toBe(403);
+      expect(savedEdits).toHaveLength(0);
+
+      const locale = app
+        .get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY)
+        .locales(marketOf(code)).default;
+      await put(
+        url,
+        editBody({ sellerSku: 'SECRET-SKU', description: { [locale]: 'secret text' } }),
+        session,
+      );
+      expect(
+        JSON.stringify(logLines.filter((l) => l.msg === 'catalog.own-offer-edit')),
+      ).not.toMatch(/SECRET-SKU|secret text/);
     });
   });
 });
