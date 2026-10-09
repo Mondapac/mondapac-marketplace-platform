@@ -358,6 +358,14 @@ export async function setLineQuantity(
   if (line === undefined) return err({ code: 'cart.line-not-found' });
   const verdict = (await deps.facts.evaluate(context, [line])).get(verdictKey(line));
   const limits = deps.policy.limits(context.market);
+  // A line that cannot be bought now can be lowered, never raised (design 6.1).
+  if (quantity > line.quantity && verdict?.state !== 'buyable') {
+    return err(
+      verdict === undefined || verdict.state === 'check-unavailable'
+        ? { code: 'cart.check-unavailable' }
+        : { code: 'cart.offer-not-purchasable', reason: verdict.reason ?? 'no-valid-price' },
+    );
+  }
 
   return deps.unitOfWork.run<LineWritten, CartFailure>(context.market, async () => {
     const now = deps.clock.now();
@@ -453,10 +461,12 @@ export async function mergeGuestCart(
       return ok({ ...nothing, merged: true });
     }
     const result = mergeCarts(accountLoaded.cart, guestLoaded.cart, limits, availability, now);
-    if ((await deps.carts.save(context.market, result.account)) === 'stale') {
+    // The guest cart first: it drops its lines, which the account cart then takes over under the
+    // same ids (a line id is a primary key).
+    if ((await deps.carts.save(context.market, result.guest)) === 'stale') {
       return err({ code: 'conflict.stale' });
     }
-    if ((await deps.carts.save(context.market, result.guest)) === 'stale') {
+    if ((await deps.carts.save(context.market, result.account)) === 'stale') {
       return err({ code: 'conflict.stale' });
     }
     return ok({ merged: true, clamped: result.clamped, notAdded: result.notAdded, cookie });

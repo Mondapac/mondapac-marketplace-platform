@@ -4,7 +4,7 @@ import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { CryptoGuestTokens } from '../../src/modules/cart/infrastructure/crypto-guest-tokens';
 import { PrismaCartRepository } from '../../src/modules/cart/infrastructure/prisma-cart.repository';
-import type { CartState } from '../../src/modules/cart/domain/cart';
+import { mergeCarts, type CartState } from '../../src/modules/cart/domain/cart';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -178,6 +178,38 @@ describe.each(TEST_MARKETS)('cart repository in market %s (database)', (code) =>
       repository.findByGuestHash(market, tokens.hashOf(token2)!),
     );
     expect(replay).toMatchObject({ status: 'merged', lines: [], mergedIntoCartId: guest.id });
+  });
+
+  it('merges a guest cart with a line the account cart lacks: the guest saves first, the line id moves', async () => {
+    const account = ids.next<'Account'>();
+    const mine = newCart({ kind: 'account', accountId: account }, 1);
+    const { cart: owner, token } = guestOwner();
+    const guest = newCart(owner, 2);
+    await value(market, () => repository.insert(market, mine));
+    await value(market, () => repository.insert(market, guest));
+    const merged = mergeCarts(
+      mine,
+      guest,
+      { maxLineQuantity: 99, maxLines: 50 },
+      () => null,
+      T0.add({ minutes: 1 }),
+    );
+
+    const saved = await value(market, async () => [
+      await repository.save(market, merged.guest),
+      await repository.save(market, merged.account),
+    ]);
+
+    expect(saved).toEqual(['saved', 'saved']);
+    const read = await value(market, () => repository.findActiveByAccount(market, account));
+    expect(read?.lines).toHaveLength(3);
+    expect(new Set(read?.lines.map((l) => l.id))).toEqual(
+      new Set([...mine.lines, ...guest.lines].map((l) => l.id)),
+    );
+    const replay = await value(market, () =>
+      repository.findByGuestHash(market, tokens.hashOf(token)!),
+    );
+    expect(replay).toMatchObject({ status: 'merged', lines: [] });
   });
 
   it('never shows a cart to another Market', async () => {

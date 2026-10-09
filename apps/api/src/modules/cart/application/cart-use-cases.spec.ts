@@ -258,7 +258,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     expect(group?.lines[1]?.priceChanged).toBeNull();
   });
 
-  it('changes the quantity of an unbuyable line without a purchasability refusal', async () => {
+  it('lowers an unbuyable line but refuses to raise it', async () => {
     const add = await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 5 });
     const lineId = add.ok ? add.value.lineId! : '';
     verdicts.clear();
@@ -273,7 +273,10 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     });
 
     expect(lower.ok && lower.value.quantity).toBe(2);
-    expect(raise.ok && raise.value.quantity).toBe(4);
+    expect(!raise.ok && raise.error).toEqual({
+      code: 'cart.offer-not-purchasable',
+      reason: 'offer-unavailable',
+    });
   });
 
   it('removes a line and answers not-found for an unknown one', async () => {

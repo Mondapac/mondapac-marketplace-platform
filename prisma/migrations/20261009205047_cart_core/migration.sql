@@ -65,7 +65,7 @@ ALTER TABLE "cart"."carts"
     ("status" = 'active' AND (("account_id" IS NULL) <> ("guest_token_hash" IS NULL)))
     OR ("status" = 'merged' AND "guest_token_hash" IS NOT NULL AND "account_id" IS NULL)),
   ADD CONSTRAINT "carts_merged_check" CHECK (
-    ("status" = 'merged') = ("merged_into_cart_id" IS NOT NULL AND "merged_at" IS NOT NULL)
+    ("status" = 'merged' AND "merged_into_cart_id" IS NOT NULL AND "merged_at" IS NOT NULL)
     OR ("status" = 'active' AND "merged_into_cart_id" IS NULL AND "merged_at" IS NULL));
 
 ALTER TABLE "cart"."cart_lines"
