@@ -1,7 +1,6 @@
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { RoleEditor } from '../../../../src/roles/role-editor.tsx';
-import { RoleView } from '../../../../src/roles/role-view.tsx';
 import { RolesNoAccess } from '../../../../src/roles/roles-page-gate.tsx';
 import type { RoleCatalogue } from '../../../../src/roles/types.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -9,7 +8,6 @@ import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 
 const VIEW_PERMISSION = 'identity.platform-role.view';
-const EDIT_PERMISSION = 'identity.platform-role.edit';
 const CREATE_PERMISSION = 'identity.platform-role.create';
 
 export async function generateMetadata() {
@@ -17,18 +15,20 @@ export async function generateMetadata() {
   return { title: t('identity.members.title.admin') };
 }
 
-export default async function RolePageRoute({
-  params,
+/** B4: a new custom role, optionally starting from a copy of another role (`?from=<roleId>`). */
+export default async function NewRolePageRoute({
+  searchParams,
 }: {
-  readonly params: Promise<{ readonly roleId: string }>;
+  readonly searchParams: Promise<{ readonly from?: string | string[] }>;
 }) {
-  const { roleId } = await params;
+  const { from } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
     return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
   }
-  if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) {
+  const keys = gate.session.permissionKeys;
+  if (!keys.includes(VIEW_PERMISSION) || !keys.includes(CREATE_PERMISSION)) {
     return <RolesNoAccess session={gate.session} />;
   }
   const result = await serverGet<RoleCatalogue>('identity/admin/roles');
@@ -42,31 +42,21 @@ export default async function RolePageRoute({
       </AdminShell>
     );
   }
-  // Another Market's or an unknown id looks the same: not found (ux B5).
-  const role = result.body.items.find((item) => item.roleId === roleId);
-  if (role === undefined) notFound();
-  const keys = gate.session.permissionKeys;
-  if (role.kind === 'custom' && role.actions.edit.allowed && keys.includes(EDIT_PERMISSION)) {
-    return (
-      <AdminShell session={gate.session} activeId="team" title={title}>
-        <RoleEditor
-          // A new version remounts the form, so a refresh after a save shows the saved state.
-          key={role.version}
-          role={role}
-          catalogue={result.body}
-          csrfToken={gate.session.csrfToken}
-          initialName={role.name ?? ''}
-          initialKeys={role.permissionKeys}
-        />
-      </AdminShell>
-    );
-  }
+  const source =
+    typeof from === 'string' ? result.body.items.find((item) => item.roleId === from) : undefined;
+  // Only keys this admin may give are carried over, so the copy can be saved as it stands.
+  const grantable = new Set(result.body.keys.filter((k) => k.grantable).map((k) => k.key));
+  const initialKeys =
+    source === undefined || source.kind === 'system'
+      ? []
+      : source.permissionKeys.filter((key) => grantable.has(key));
   return (
     <AdminShell session={gate.session} activeId="team" title={title}>
-      <RoleView
-        role={role}
+      <RoleEditor
         catalogue={result.body}
-        canDuplicate={keys.includes(CREATE_PERMISSION)}
+        csrfToken={gate.session.csrfToken}
+        initialName=""
+        initialKeys={initialKeys}
       />
     </AdminShell>
   );

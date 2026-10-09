@@ -15,6 +15,7 @@ import type { PanelConfig, PanelHost } from './config.ts';
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set(['identity/admin/session']),
   PUT: new Set([]),
+  DELETE: new Set([]),
   POST: new Set([
     'identity/admin/sign-in',
     'identity/admin/second-factor',
@@ -24,6 +25,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/reset-password',
     'identity/admin/invitation/enrolment',
     'identity/admin/invitation/accept',
+    'identity/admin/roles',
   ]),
 };
 
@@ -40,6 +42,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
   ],
+  PUT: ['identity/admin/roles/:id'],
+  DELETE: ['identity/admin/roles/:id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

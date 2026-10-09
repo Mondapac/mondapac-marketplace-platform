@@ -11,5 +11,6 @@ describe('relay route', () => {
     expect(typeof route.GET).toBe('function');
     expect(typeof route.POST).toBe('function');
     expect(typeof route.PUT).toBe('function');
+    expect(typeof route.DELETE).toBe('function');
   });
 });
