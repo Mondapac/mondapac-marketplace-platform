@@ -378,3 +378,12 @@ Security bar (Ali, unchanged): Hassan reviews slice 3 and slice 5 before merge.
 
 ## 17. Brief change-log rows
 The four rows this design causes (Hadi's Q-H1, Q-H2, Q-H3 and Ali's A-1) are recorded in the change log of `docs/modules/cart/brief.md` in the same PR.
+
+## 18. As built (speed mode, 2026-10-09)
+The first cart build (`feat/cart-core`) follows the speed plan: one PR, no new design documents. This section is the whole delta from sections 1 to 17; where they disagree, the code wins.
+
+**Built:** `cart.carts` and `cart.cart_lines` (one migration, `cart_core`); account and guest carts; add, change quantity, remove, view grouped by seller with the price-change notice; guest cart token as a `__Host-cart-guest-<market>` cookie (7 days, stored only as SHA-256); merge on sign-in (`POST /cart/merge`), transfer when the account has no cart; a line ceiling of `min(maxLineQuantity, onlyLeft when low)`; checks against `catalog`, `sellers`, `pricing` and `inventory` on every read and add, failing closed to `check-unavailable`.
+
+**Left out for now:** the 15-minute hold and the reservation (inventory slice 4, with checkout); the minimum order per seller; cart events and the outbox; the order-clearance table; a per-account write limit (the platform's per-origin limit applies); the cart facade for `ordering`; the purge job for expired guest carts (an expired cart is ignored at read time); the guest-cart cap per origin.
+
+**Simplified:** one use case per operation and caller kind (nine classes), all calling `cart-operations.ts`; the maximum of 50 lines and the 7-day guest lifetime are constants of `ConfigCartPolicy`, not Market settings; `GET /cart` makes at most two rounds of facade calls, never one per line.

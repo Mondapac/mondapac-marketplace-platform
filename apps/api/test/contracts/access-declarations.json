@@ -1,4 +1,13 @@
 [
+  { "name": "cart.add-guest-item", "rule": "anonymous" },
+  { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.remove-guest-item", "rule": "anonymous" },
+  { "name": "cart.remove-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.set-guest-line-quantity", "rule": "anonymous" },
+  { "name": "cart.set-line-quantity", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
@@ -90,11 +99,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
-  {
-    "name": "sellers.my-file-check-slug",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "sellers.my-file-check-slug", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.my-file-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "sellers.my-file-save-address",
@@ -111,26 +116,14 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
-  {
-    "name": "sellers.my-file-save-slug",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
-  {
-    "name": "sellers.my-file-submit",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "sellers.my-file-save-slug", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  { "name": "sellers.my-file-submit", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "sellers.my-file-validate-identifier",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
-  {
-    "name": "sellers.my-file-withdraw",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "sellers.my-file-withdraw", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },

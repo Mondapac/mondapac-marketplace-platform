@@ -83,4 +83,4 @@ CREATE UNIQUE INDEX "carts_market_id_guest_token_hash_key" ON "cart"."carts" ("m
 -- (the purge job arrives with retention).
 GRANT USAGE ON SCHEMA "cart" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("account_id", "guest_token_hash", "status", "last_changed_at", "merged_into_cart_id", "merged_at", "version") ON TABLE "cart"."carts" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("cart_id", "quantity", "price_at_add_amount", "price_at_add_currency"), DELETE ON TABLE "cart"."cart_lines" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("quantity", "price_at_add_amount", "price_at_add_currency", "added_at"), DELETE ON TABLE "cart"."cart_lines" TO "mondapac_app";

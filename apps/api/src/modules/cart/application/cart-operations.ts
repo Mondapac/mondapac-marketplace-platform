@@ -1,4 +1,4 @@
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, money, ok, parseId } from '@mondapac/shared-kernel';
 import type {
   CallContext,
   Clock,
@@ -197,10 +197,7 @@ function compose(cart: CartState, verdicts: ReadonlyMap<string, LineVerdict>): S
   }
   return [...groups].map(([sellerId, group]) => ({
     sellerId: sellerId as Id<'Seller'> | null,
-    subtotal:
-      group.currency === null || group.mixed
-        ? null
-        : ({ amount: group.sum, currency: group.currency } as Money),
+    subtotal: group.currency === null || group.mixed ? null : money(group.sum, group.currency),
     lines: group.lines,
   }));
 }
@@ -403,15 +400,20 @@ export async function removeItem(
   if (!lineId.ok) {
     return err({ code: 'validation.failed', fields: [{ path: 'lineId', code: 'format' }] });
   }
-  return deps.unitOfWork.run<{ cookie: GuestCookie | null }, CartFailure>(context.market, async () => {
-    const loaded = await load(deps, context.market, caller);
-    if (loaded.cart === null) return err({ code: 'cart.line-not-found' } as const);
-    const result = removeLine(loaded.cart, lineId.value, deps.clock.now());
-    if (!result.ok) return err({ code: result.code } as const);
-    const saved = await deps.carts.save(context.market, result.cart);
-    if (saved === 'stale') return err({ code: 'conflict.stale' } as const);
-    return ok({ cookie: cookieAfterWrite(caller, caller.kind === 'guest' ? caller.token : null) });
-  });
+  return deps.unitOfWork.run<{ cookie: GuestCookie | null }, CartFailure>(
+    context.market,
+    async () => {
+      const loaded = await load(deps, context.market, caller);
+      if (loaded.cart === null) return err({ code: 'cart.line-not-found' } as const);
+      const result = removeLine(loaded.cart, lineId.value, deps.clock.now());
+      if (!result.ok) return err({ code: result.code } as const);
+      const saved = await deps.carts.save(context.market, result.cart);
+      if (saved === 'stale') return err({ code: 'conflict.stale' } as const);
+      return ok({
+        cookie: cookieAfterWrite(caller, caller.kind === 'guest' ? caller.token : null),
+      });
+    },
+  );
 }
 
 /**
