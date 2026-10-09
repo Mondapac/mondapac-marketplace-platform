@@ -19,8 +19,10 @@ export class SellerListRequest {
     enum: LIST_TABS,
     default: 'awaiting-review',
     description:
-      'The tab, read from the sellers module. The tabs that follow the access state of ' +
-      'identity (changes needed, not approved, approved, suspended) are not served yet.',
+      'The tab, read from the sellers module. Only these three tabs are served. The tabs that ' +
+      'follow the access state of identity (changes needed, not approved, approved, ' +
+      'suspended) are not yet available: they are not modelled as empty lists, and a request ' +
+      'for one is validation.failed.',
   })
   tab?: (typeof LIST_TABS)[number];
 
@@ -46,7 +48,9 @@ export class SellerListRequest {
   search?: string;
 
   @ApiPropertyOptional({
-    description: 'The `next` of the previous page, for the same tab. Opaque.',
+    description:
+      'The `next` of the previous page, for the same tab. Pass it back unchanged; it is not ' +
+      'signed and carries no secret.',
   })
   after?: string;
 
@@ -76,9 +80,12 @@ export class SellerListRowView {
 
   @ApiProperty({
     type: String,
-    enum: SELLER_STATUSES,
+    enum: [...SELLER_STATUSES, 'hidden'],
     nullable: true,
-    description: 'The status of the seller file; null when identity does not know the seller.',
+    description:
+      'The status of the seller file. `hidden` when the caller does not also hold ' +
+      'identity.seller-access.view (the status shows the access state identity owns); null ' +
+      'when identity does not know the seller.',
   })
   status!: string | null;
 

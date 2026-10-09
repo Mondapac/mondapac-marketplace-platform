@@ -1,8 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  UseCase,
+  type AccessDeclaration,
+  type AuthorisationCheck,
+  type UseCaseGate,
+} from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { SELLER_ACCESS_VIEW } from '../../../identity';
 import { SELLERS_SELLER_VIEW } from '../../contracts/permissions';
 import {
   cursorText,
@@ -15,7 +21,7 @@ import {
   type ListRequest,
   type ListTab,
 } from '../../domain/seller-list';
-import type { SellerStatus } from '../../domain/seller-status';
+import type { AccessState, SellerStatus } from '../../domain/seller-status';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
 import type {
   ListCounts,
@@ -38,8 +44,12 @@ export interface SellerListRow {
   readonly storeName: string | null;
   /** The held slug, else the draft's; null before one is chosen. */
   readonly slug: string | null;
-  /** The status of design 3.3; null when `identity` does not know the seller. */
-  readonly status: SellerStatus | null;
+  /**
+   * The status of design 3.3; null when `identity` does not know the seller; `hidden` when the
+   * actor does not also hold `identity.seller-access.view` (the status reveals the access state
+   * `identity` owns, so `sellers.seller.view` alone does not show it).
+   */
+  readonly status: SellerStatus | 'hidden' | null;
   readonly origin: 'self' | 'invitation';
   /** The kind of the pending submission, or null when none is pending. */
   readonly kind: ListKind | null;
@@ -70,8 +80,20 @@ export interface SellerListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly list: SellerListRepository;
   readonly accessReader: SellerAccessReader;
+  /** Asked once per call whether the actor may see the status column (fails closed to hidden). */
+  readonly authorisation: AuthorisationCheck;
   readonly onboardingAreas: OnboardingAreas;
 }
+
+/**
+ * The second key of the list: the per-row `status` shows `identity`'s access state, so it needs
+ * `identity.seller-access.view` besides the rule of the use case (Ali, slice 6 review). Checked
+ * through the same `AuthorisationCheck` as the gate; not a use case of its own.
+ */
+export const LIST_STATUS_ACCESS: AccessDeclaration = {
+  name: 'sellers.list-status',
+  rule: { kind: 'permissions', allOf: [SELLER_ACCESS_VIEW.key] },
+};
 
 /**
  * `sellers.list` (sellers design 6.2, 7.8; slice 6; SEL-14): the admin's list of sellers, three
@@ -80,6 +102,10 @@ export interface SellerListDependencies {
  * the counts the tabs show. Rule `permissions [sellers.seller.view]` (platform scope), clear
  * fields only: nothing is decrypted and no key is used. The Market comes from the context and is
  * named in every statement, so a seller of another Market is never listed (AC 1).
+ *
+ * The `status` of a row is shown only to an actor that also holds `identity.seller-access.view`;
+ * otherwise it is `hidden` and `identity` is not called at all. A page with no row does not call
+ * `identity` either.
  *
  * One read-only unit on `sellers`' tables (ADR-0025), then **one** `identity` call for the state
  * of the whole page, outside any unit (no N+1; spike 2). If `identity` cannot answer, the list is
@@ -177,19 +203,24 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const more = rows.length > request.limit;
     const page = more ? rows.slice(0, request.limit) : rows;
 
-    let states;
-    try {
-      states = await accessReader.accessOfMany(
-        context,
-        page.map((row) => row.sellerId),
-      );
-    } catch (error) {
-      this.fail(context, 'access-failed', error);
-      return err({ code: 'sellers.unavailable' });
+    const showStatus = await this.mayShowStatus(context);
+    let states: ReadonlyMap<Id<'Seller'>, AccessState> = new Map();
+    if (showStatus && page.length > 0) {
+      try {
+        states = await accessReader.accessOfMany(
+          context,
+          page.map((row) => row.sellerId),
+        );
+      } catch (error) {
+        this.fail(context, 'access-failed', error);
+        return err({ code: 'sellers.unavailable' });
+      }
     }
 
     const openCodes = new Set(onboardingAreas.openCodes(market));
-    const items = page.map((row) => rowOf(row, states.get(row.sellerId) ?? null, openCodes));
+    const items = page.map((row) =>
+      rowOf(row, showStatus ? (states.get(row.sellerId) ?? null) : 'hidden', openCodes),
+    );
     const last = page[page.length - 1];
     return ok({
       tab: request.tab,
@@ -197,6 +228,15 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
       counts,
     });
+  }
+
+  private async mayShowStatus(context: CallContext): Promise<boolean> {
+    try {
+      return (await this.deps.authorisation.check(context, LIST_STATUS_ACCESS)).allowed;
+    } catch (error) {
+      this.fail(context, 'status-check-failed', error);
+      return false;
+    }
   }
 
   private fail(context: CallContext, reason: string, error: unknown): void {
@@ -211,7 +251,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
 
 function rowOf(
   row: ListedSeller,
-  access: Parameters<typeof listStatusOf>[0]['access'],
+  access: Parameters<typeof listStatusOf>[0]['access'] | 'hidden',
   openCodes: ReadonlySet<string>,
 ): SellerListRow {
   const outside = row.hasAddress
@@ -221,13 +261,16 @@ function rowOf(
     sellerId: row.sellerId,
     storeName: row.storeName,
     slug: row.heldSlug ?? row.draftSlug,
-    status: listStatusOf({
-      access,
-      hasApprovedRevision: row.hasApprovedRevision,
-      pendingKind: row.pending?.kind ?? null,
-      draftComplete: row.draftComplete,
-      outsideServiceArea: outside,
-    }),
+    status:
+      access === 'hidden'
+        ? 'hidden'
+        : listStatusOf({
+            access,
+            hasApprovedRevision: row.hasApprovedRevision,
+            pendingKind: row.pending?.kind ?? null,
+            draftComplete: row.draftComplete,
+            outsideServiceArea: outside,
+          }),
     origin: row.origin,
     kind: row.pending?.kind ?? null,
     submittedAt: row.pending?.submittedAt.toString() ?? null,

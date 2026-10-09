@@ -1,5 +1,10 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  registerPermissions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -100,6 +105,7 @@ const PORT = {
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
+  authorisation: AUTHORISATION_CHECK,
   notifier: REVIEWER_NOTIFIER,
   ids: ID_GENERATOR,
   clock: CLOCK,
@@ -306,11 +312,13 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     // Slice 6, the admin seller list (design 6.2, 7.8), over HTTP through SellerListController,
-    // under `sellers.seller.view`: clear fields only, one `identity` call per page.
+    // under `sellers.seller.view`: clear fields only, one `identity` call per page, and the row status
+    // only for an actor that also holds `identity.seller-access.view`.
     useCaseProvider(SellerList, {
       unitOfWork: true,
       list: true,
       accessReader: true,
+      authorisation: true,
       onboardingAreas: true,
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),

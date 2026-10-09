@@ -1569,3 +1569,22 @@ row) and the age rule allows; a definite negative on record refuses with no call
 re-check the identity state and re-read the stored register state on the server (Hassan L1, L2). 7b
 lands before any Market goes live or turns approval-required off. When the Market notice window
 refuses, the seller `reviewer-notice` reservation is released (the Market one stays).
+
+## 23. Slice 6 list queries: notes and revisit triggers (2026-10-09; Mojtaba review)
+
+- **Keyset as a filter (A3, A4).** The cursor condition is written through Prisma as
+  `OR (last_changed_at < $1, last_changed_at = $1 AND seller_id < $2)`, not as the row comparison
+  `(last_changed_at, seller_id) < ($1, $2)`: Prisma cannot express a row comparison and raw SQL is
+  blocked by the Market guard. Postgres evaluates the `OR` as a filter on the backward index scan
+  (the index still gives the order and the `LIMIT`, so a page reads rows from the cursor on, but the
+  rows before the cursor in the scan order are skipped by filter, not by index condition). Revisit
+  trigger: the p95 of `sellers.list` on the Incomplete or Awaiting review tab above 100 ms, or any
+  Market above 50,000 sellers; then move the statement to `$queryRaw` through a guarded helper.
+- **Collation.** `store_name_key` is `TEXT COLLATE "C"` (migration
+  `20261008130000_sellers_file_details`, line `ADD COLUMN "store_name_key" TEXT COLLATE "C"`), so
+  the prefix range `[key, key || U+10FFFF)` is byte order and uses `seller_files_market_id_store_name_key_idx`.
+- **Two O(rows) counts.** `counts` runs `count(*)` of all files and of the incomplete files per
+  Market with every page. Both scan the Market's rows (an index-only scan at best). Fine at
+  launch scale. Revisit trigger: **50,000 sellers in one Market**, or the p95 of the counts above
+  50 ms: then keep the counters in a table updated in the same unit as the file change, or cache them
+  for a few seconds.

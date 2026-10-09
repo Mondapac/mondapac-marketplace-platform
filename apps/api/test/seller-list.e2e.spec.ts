@@ -46,6 +46,7 @@ const ROOT = accountId(1);
 const VIEWER = accountId(2);
 const CUSTOMER = accountId(3);
 const SUPPORT = accountId(4);
+const LISTER = accountId(5);
 const CANARY = 'canary-search-term';
 
 const fakes = new IdentityFakes();
@@ -79,8 +80,9 @@ class StubList implements SellerListRepository {
   counts() {
     return Promise.resolve(emptyCounts);
   }
+  overflow = false;
   searchCandidates() {
-    return Promise.resolve({ ids: [sellerId(1)], overflow: false });
+    return Promise.resolve({ ids: this.overflow ? [] : [sellerId(1)], overflow: this.overflow });
   }
 }
 
@@ -88,12 +90,14 @@ class StubAccess implements SellerAccessReader {
   calls: (readonly Id<'Seller'>[])[] = [];
   state: AccessState = 'pending';
   failing = false;
+  unknown = false;
   accessOf(): Promise<AccessState | null> {
     return Promise.resolve(this.state);
   }
   accessOfMany(_context: CallContext, ids: readonly Id<'Seller'>[]) {
     this.calls.push(ids);
     if (this.failing) return Promise.reject(new Error('identity down'));
+    if (this.unknown) return Promise.resolve(new Map<Id<'Seller'>, AccessState>());
     return Promise.resolve(
       new Map(ids.map((one): [Id<'Seller'>, AccessState] => [one, this.state])),
     );
@@ -180,6 +184,30 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         version: 1,
       });
     };
+    // A custom platform role with the list key alone (no identity.seller-access.view).
+    const customRole = id<'Role'>(`01990000-0000-7000-8000-${n12(0xe100)}`);
+    fakes.seedRole({
+      id: customRole,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      permissionKeys: ['sellers.seller.view'],
+      version: 1,
+      createdAt: START,
+    });
+    account(5, LISTER, 'admin');
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe200 + 5)}`),
+      marketId,
+      accountId: LISTER,
+      roleId: customRole,
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
     admin(1, ROOT, 'platform-administrator');
     admin(2, VIEWER, 'viewer');
     admin(4, SUPPORT, 'operations-support');
@@ -236,6 +264,8 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
     list.queries = [];
     access.calls = [];
     access.failing = false;
+    access.unknown = false;
+    list.overflow = false;
     access.state = 'pending';
   });
   afterEach(async () => {
@@ -251,6 +281,14 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
     };
 
     expect(document.paths['/sellers/admin/list']?.post?.requestBody).toBeDefined();
+    const schemas = document.components.schemas as Record<
+      string,
+      { properties?: Record<string, { enum?: string[]; description?: string }> }
+    >;
+    // The status column: `hidden` is a documented value, and the unserved tabs are documented as
+    // not yet available (Ali's ruling), not modelled as empty.
+    expect(schemas.SellerListRowView?.properties?.status?.enum).toContain('hidden');
+    expect(schemas.SellerListRequest?.properties?.tab?.description).toContain('not yet available');
     for (const schema of ['SellerListRequest', 'SellerListBody', 'SellerListRowView']) {
       expect(document.components.schemas).toHaveProperty([schema]);
     }
@@ -367,6 +405,95 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         details: { fields: [{ path: 'sellerId', code: 'unknown-field' }] },
       });
       expect(JSON.stringify(bad.body)).not.toContain(CANARY);
+    });
+
+    it('shows the status only with identity.seller-access.view: the list key alone gets hidden (AC 17)', async () => {
+      await boot();
+      await seeded(code);
+      list.rows.set(code, [row(1)]);
+
+      const withKey = await post(code, sessionHeaders(code, VIEWER, 11));
+      const withoutKey = await post(code, sessionHeaders(code, LISTER, 12));
+
+      const statuses = (response: { body: unknown }) =>
+        (response.body as { items: { status: unknown }[] }).items.map((item) => item.status);
+      expect(withKey.status).toBe(200);
+      expect(statuses(withKey)).toEqual(['awaiting-review']);
+      expect(withoutKey.status).toBe(200);
+      expect(statuses(withoutKey)).toEqual(['hidden']);
+      // The hidden answer asks identity nothing.
+      expect(access.calls).toHaveLength(1);
+    });
+
+    it('answers status null, not hidden, for a seller identity does not know', async () => {
+      await boot();
+      await seeded(code);
+      list.rows.set(code, [row(1)]);
+      access.unknown = true;
+
+      const listed = await post(code, sessionHeaders(code, ROOT, 13));
+
+      expect(listed.status).toBe(200);
+      expect((listed.body as { items: { status: unknown }[] }).items[0]!.status).toBeNull();
+    });
+
+    it('answers search.too-broad as 400 when the term names more than the cap, and reads no page', async () => {
+      await boot();
+      await seeded(code);
+      list.overflow = true;
+
+      const broad = await post(code, sessionHeaders(code, ROOT, 14), { tab: 'all', search: 'ab' });
+
+      expect(broad.status).toBe(400);
+      expect((broad.body as { code: string }).code).toBe('search.too-broad');
+      expect(list.queries).toHaveLength(0);
+      expect(access.calls).toHaveLength(0);
+    });
+
+    it('answers validation.failed for a bad cursor, a cursor of another tab and a limit out of range', async () => {
+      await boot();
+      await seeded(code);
+      const foreign = `all.${sellerId(1)}`;
+
+      const garbage = await post(code, sessionHeaders(code, ROOT, 15), { after: 'garbage' });
+      const otherTab = await post(code, sessionHeaders(code, ROOT, 16), {
+        tab: 'incomplete',
+        after: foreign,
+      });
+      const zero = await post(code, sessionHeaders(code, ROOT, 17), { limit: 0 });
+      const tooMany = await post(code, sessionHeaders(code, ROOT, 18), { limit: 51 });
+
+      for (const [response, path] of [
+        [garbage, 'after'],
+        [otherTab, 'after'],
+        [zero, 'limit'],
+        [tooMany, 'limit'],
+      ] as const) {
+        expect(response.status).toBe(400);
+        expect(response.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path }] },
+        });
+      }
+      expect(JSON.stringify(garbage.body)).not.toContain('garbage');
+      expect(list.queries).toHaveLength(0);
+    });
+
+    it('takes limit 1 and limit 50 and asks the store for one row more (UX 8.2)', async () => {
+      await boot();
+      await seeded(code);
+      list.rows.set(code, [row(1), row(2), row(3)]);
+
+      const one = await post(code, sessionHeaders(code, ROOT, 19), { limit: 1 });
+      const max = await post(code, sessionHeaders(code, ROOT, 20), { limit: 50 });
+
+      expect(one.status).toBe(200);
+      expect((one.body as { items: unknown[]; next: unknown }).items).toHaveLength(1);
+      expect((one.body as { next: unknown }).next).toEqual(expect.any(String));
+      expect(max.status).toBe(200);
+      expect((max.body as { items: unknown[] }).items).toHaveLength(3);
+      expect((max.body as { next: unknown }).next).toBeNull();
+      expect(list.queries.map((q) => q.take)).toEqual([2, 51]);
     });
 
     it('is 503 sellers.unavailable, not an empty list, when identity cannot answer', async () => {

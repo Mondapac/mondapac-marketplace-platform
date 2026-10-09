@@ -7,6 +7,7 @@ import type {
   ListPageQuery,
   ListedSeller,
 } from '../../src/modules/sellers/application/ports/seller-list.repository';
+import type { ListCursor, ListTab } from '../../src/modules/sellers/domain/seller-list';
 import { SellerFile } from '../../src/modules/sellers/domain/seller-file';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { PrismaSellerListRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-list.repository';
@@ -371,6 +372,139 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
       const rows = await read(() => list.all(market, q({ onlyIds: [wanted, foreign] })));
 
       expect(idsOf(rows)).toEqual([wanted]);
+    });
+  });
+
+  // Paging to exhaustion with the same rule as the use case: ask for limit + 1, keep limit, and
+  // the cursor is the last row kept (AC 17: no row twice, none lost; UX 8.2: stable order).
+  const cursorOf = (tab: ListTab, last: ListedSeller): ListCursor =>
+    tab === 'all'
+      ? { tab, sellerId: last.sellerId }
+      : tab === 'incomplete'
+        ? { tab, changedAt: last.lastChangedAt, sellerId: last.sellerId }
+        : {
+            tab,
+            createdAt: last.pending!.submittedAt,
+            revisionId: last.pending!.revisionId,
+          };
+
+  async function walk(
+    tab: ListTab,
+    limit: number,
+    over: Partial<ListPageQuery> = {},
+  ): Promise<{ pages: ListedSeller[][]; more: boolean[] }> {
+    const pages: ListedSeller[][] = [];
+    const more: boolean[] = [];
+    let after: ListCursor | null = null;
+    for (let guard = 0; guard < 20; guard += 1) {
+      const query = q({ ...over, after, take: limit + 1 });
+      const rows: readonly ListedSeller[] = await read(() =>
+        tab === 'all'
+          ? list.all(market, query)
+          : tab === 'incomplete'
+            ? list.incomplete(market, query)
+            : list.awaitingReview(market, query),
+      );
+      const hasMore = rows.length > limit;
+      const kept = rows.slice(0, limit);
+      pages.push([...kept]);
+      more.push(hasMore);
+      if (!hasMore) return { pages, more };
+      after = cursorOf(tab, kept[kept.length - 1]!);
+    }
+    throw new Error('the walk did not end');
+  }
+
+  describe('keyset walks (AC 17, UX 8.2)', () => {
+    it('awaiting review: submissions at the same instant straddling a page boundary are neither repeated nor lost', async () => {
+      const sellers = [] as Id<'Seller'>[];
+      for (let n = 0; n < 5; n += 1) sellers.push(await newFile(n + 1));
+      // Four submissions at the very same instant, one earlier, one later: the boundary of a
+      // page of two falls inside the tie.
+      const early = await pending(sellers[0]!, 5);
+      const tied = [
+        await pending(sellers[1]!, 10),
+        await pending(sellers[2]!, 10),
+        await pending(sellers[3]!, 10),
+      ];
+      const late = await pending(sellers[4]!, 20);
+      const expected = [early, ...[...tied].sort(), late];
+
+      const { pages, more } = await walk('awaiting-review', 2);
+
+      const seen = pages.flat().map((row) => row.pending!.revisionId as string);
+      expect(seen).toEqual(expected);
+      expect(pages.map((page) => page.length)).toEqual([2, 2, 1]);
+      expect(more).toEqual([true, true, false]);
+      expect(new Set(seen).size).toBe(seen.length);
+    });
+
+    it.each([
+      ['all', 7, 3],
+      ['incomplete', 7, 3],
+      ['awaiting-review', 7, 3],
+    ] as const)(
+      '%s: %i rows with ties walk in disjoint pages of %i whose union is the whole list',
+      async (tab, total, limit) => {
+        const made: Id<'Seller'>[] = [];
+        for (let n = 0; n < total; n += 1) {
+          // Pairs share an instant: the tie-break decides the order inside each pair.
+          made.push(await newFile(1 + Math.floor(n / 2)));
+        }
+        if (tab === 'awaiting-review') {
+          for (const [n, seller] of made.entries()) await pending(seller, 10 + Math.floor(n / 3));
+        }
+
+        const { pages, more } = await walk(tab, limit);
+        const whole = await read(() => {
+          const query = q({ take: 50 });
+          return tab === 'all'
+            ? list.all(market, query)
+            : tab === 'incomplete'
+              ? list.incomplete(market, query)
+              : list.awaitingReview(market, query);
+        });
+
+        expect(pages.length).toBeGreaterThan(2);
+        const flat = pages.flat().map((row) => row.sellerId);
+        // Disjoint pages ...
+        expect(new Set(flat).size).toBe(flat.length);
+        // ... whose union, in order, is the full list and every seller made.
+        expect(flat).toEqual(idsOf(whole));
+        expect([...flat].sort()).toEqual([...made].sort());
+        expect(more.slice(0, -1).every(Boolean)).toBe(true);
+        expect(more[more.length - 1]).toBe(false);
+      },
+    );
+
+    it('limit + 1: a full last page reports no next, a page with one more row reports one', async () => {
+      for (let n = 0; n < 4; n += 1) await newFile(n + 1);
+
+      const exact = await walk('all', 4);
+      const one = await walk('all', 1);
+      const max = await walk('all', 50);
+
+      expect(exact.pages.map((page) => page.length)).toEqual([4]);
+      expect(exact.more).toEqual([false]);
+      expect(one.pages.map((page) => page.length)).toEqual([1, 1, 1, 1]);
+      expect(one.more).toEqual([true, true, true, false]);
+      expect(max.pages.map((page) => page.length)).toEqual([4]);
+    });
+
+    it('a search restriction and a cursor together keep the page inside the named sellers', async () => {
+      const named: Id<'Seller'>[] = [];
+      for (let n = 0; n < 5; n += 1) named.push(await newFile(n + 1));
+      await newFile(9);
+
+      const { pages } = await walk('all', 2, { onlyIds: named });
+
+      expect(
+        pages
+          .flat()
+          .map((row) => row.sellerId)
+          .sort(),
+      ).toEqual([...named].sort());
+      expect(pages.map((page) => page.length)).toEqual([2, 2, 1]);
     });
   });
 
