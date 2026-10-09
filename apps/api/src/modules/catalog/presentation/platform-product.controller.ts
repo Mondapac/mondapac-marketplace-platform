@@ -54,8 +54,8 @@ import {
 /**
  * The HTTP status of each refusal of the platform product routes (catalog design 4.2, 8.2; slice
  * 6). The design names codes, not statuses. Chosen: a malformed request is 400; a product that is
- * not a PLATFORM product of this Market answers like a missing one (404); a state that refuses the
- * change is 409; a request the rules refuse (a claim in a text, a draft that is not ready, a
+ * missing, of another Market or malformed in the path is 404; a SELLER product (or an owner
+ * mismatch) is 403 to an admin, who may know it exists; a state that refuses the change is 409; a request the rules refuse (a claim in a text, a draft that is not ready, a
  * type the Market does not offer) is 422; a missing Market setup is 503.
  */
 export const PLATFORM_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.freeze({
@@ -99,17 +99,40 @@ function fail(status: number, code: string, details?: object): HttpException {
   return new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
 }
 
-/** A refusal as an error answer: every field of the refusal except its code is its details. */
-function refusal(error: Refusal, response: Response): HttpException {
+/** The refusal fields that reach the client as `details`; any other field stays on the server. */
+const DETAIL_KEYS = ['fields', 'issues', 'retryAfterSeconds', 'max'] as const;
+const logger = new Logger('PlatformProductController');
+
+/**
+ * A refusal as an error answer: its status, the allow-listed detail fields, and `Retry-After`
+ * with a wait. A code with no status is a defect: it answers a bare `internal` and the code is
+ * logged, never sent.
+ */
+function refusal(error: Refusal, response: Response, context?: CallContext): HttpException {
   const status =
     PLATFORM_PRODUCT_STATUS[error.code] ??
-    ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS] ??
-    500;
-  const { code, ...rest } = error;
+    ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
+  if (status === undefined) {
+    logger.error({
+      msg: 'catalog.platform-product-unmapped-refusal',
+      code: error.code,
+      marketId: context?.market.marketId,
+      correlationId: context?.correlationId,
+    });
+    return fail(500, 'internal');
+  }
   if (error.retryAfterSeconds !== undefined) {
     response.setHeader('Retry-After', String(error.retryAfterSeconds));
   }
-  return Object.keys(rest).length === 0 ? fail(status, code) : fail(status, code, rest);
+  const details = Object.fromEntries(
+    DETAIL_KEYS.filter((key) => key in error).map((key) => [
+      key,
+      (error as Record<string, unknown>)[key],
+    ]),
+  );
+  return Object.keys(details).length === 0
+    ? fail(status, error.code)
+    : fail(status, error.code, details);
 }
 
 /** The JSON-only check and the closed object of a body: no unknown key, no array, no scalar. */
@@ -213,7 +236,7 @@ export class PlatformProductController {
             productCode: result.value.productCode,
             variantIds: [...result.value.variantIds],
           }
-        : refusal(result.error, response);
+        : refusal(result.error, response, context);
     }
     return this.settle('catalog.platform-product-create', context, outcome);
   }
@@ -238,13 +261,20 @@ export class PlatformProductController {
     description: 'validation.failed (details.fields) or working-copy.invalid-content',
   })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf, product.seller-only or product.scope-owner-mismatch',
+  })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'conflict.stale, product.not-editable or product.not-a-draft',
+    description: 'conflict.stale, product.not-editable, product.not-a-draft or variant.id-taken',
   })
-  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'variant.* refusals' })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description:
+      'variant.unknown, variant.fixed, variant.limit-reached (details.max), variant.not-found, variant.not-proposed or variant.none',
+  })
   @ApiTooManyRequestsResponse({
     type: ApiErrorBody,
     description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
@@ -274,7 +304,7 @@ export class PlatformProductController {
             variantIds: [...result.value.variantIds],
             refusedFields: result.value.refusedFields.map((field) => ({ ...field })),
           }
-        : refusal(result.error, response);
+        : refusal(result.error, response, context);
     }
     return this.settle('catalog.platform-product-save-draft', context, outcome);
   }
@@ -296,14 +326,18 @@ export class PlatformProductController {
   @ApiOkResponse({ type: PlatformProductSubmitted })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or product.platform-admin-only',
+  })
   @ApiNotFoundResponse({
     type: ApiErrorBody,
     description: 'product.not-found or working-copy.not-found',
   })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'conflict.stale, revision.pending-exists or another state refusal',
+    description:
+      'conflict.stale, revision.pending-exists, revision.base-changed, product.not-a-draft or another state refusal',
   })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
@@ -311,7 +345,10 @@ export class PlatformProductController {
   })
   @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable, revision.schema-unavailable or revision.type-unknown',
+  })
   async submit(
     @Call() context: CallContext,
     @Req() request: Request,
@@ -335,7 +372,7 @@ export class PlatformProductController {
             revisionNo: result.value.revisionNo,
             published: result.value.published,
           }
-        : refusal(result.error, response);
+        : refusal(result.error, response, context);
     }
     return this.settle('catalog.platform-product-submit', context, outcome);
   }
@@ -345,7 +382,8 @@ export class PlatformProductController {
     context: CallContext,
     outcome: T | HttpException,
   ): T {
-    this.#logger.log({
+    const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
+    this.#logger[failed ? 'warn' : 'log']({
       msg,
       outcome:
         outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',

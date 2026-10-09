@@ -3,6 +3,7 @@ import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { PLATFORM_PRODUCT_STATUS } from '../src/modules/catalog/presentation/platform-product.controller';
 import { SaveDraft } from '../src/modules/catalog/application/working-copy/save-draft.service';
 import { SubmitProduct } from '../src/modules/catalog/application/revisions/submit-product.service';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
@@ -48,6 +49,7 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
   let stored: Product[];
+  let schemaSeeded: boolean;
   let saveResult: unknown;
   let submitResult: unknown;
   const http = () => request(app.getHttpServer());
@@ -73,7 +75,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
             save: () => Promise.resolve(),
           })
           .overrideProvider(ATTRIBUTE_REPOSITORY)
-          .useValue({ loadSchema: () => Promise.resolve({ fields: [] }) })
+          .useValue({
+            loadSchema: () => Promise.resolve(schemaSeeded ? { fields: [] } : null),
+          })
           .overrideProvider(SaveDraft)
           .useValue({ execute: () => Promise.resolve(saveResult) })
           .overrideProvider(SubmitProduct)
@@ -156,6 +160,7 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     stored = [];
+    schemaSeeded = true;
     saveResult = ok({ variantIds: [], refusedFields: [] });
     submitResult = ok({ revisionId: PRODUCT, revisionNo: 1, published: true });
   });
@@ -350,8 +355,185 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       });
       submitResult = err({ code: 'access.unavailable' });
       expect((await submit()).status).toBe(503);
-      submitResult = err({ code: 'something.new' });
-      expect((await submit()).status).toBe(500);
+      submitResult = err({ code: 'something.new', secret: 'x' });
+      const unmapped = await submit();
+      expect(unmapped.status).toBe(500);
+      expect(unmapped.body).toEqual({ statusCode: 500, code: 'internal' });
+      expect(
+        logLines.find((l) => l.msg === 'catalog.platform-product-unmapped-refusal'),
+      ).toMatchObject({
+        code: 'something.new',
+        marketId: code,
+      });
+      // A refusal field outside the allow-list never reaches the client.
+      submitResult = err({ code: 'conflict.stale', secret: 'x' });
+      expect((await submit()).body).toEqual({ statusCode: 409, code: 'conflict.stale' });
+    });
+
+    it('answers the status of every mapped code through save and submit', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      for (const [refusalCode, status] of Object.entries(PLATFORM_PRODUCT_STATUS)) {
+        saveResult = err({ code: refusalCode });
+        submitResult = err({ code: refusalCode });
+        const saved = await send(
+          'put',
+          code,
+          `/${PRODUCT}/draft`,
+          { content: {}, variantIds: [] },
+          root,
+        );
+        const submitted = await send(
+          'post',
+          code,
+          `/${PRODUCT}/submit`,
+          { replacePending: false },
+          root,
+        );
+        for (const answer of [saved, submitted]) {
+          expect({ code: refusalCode, status: answer.status }).toEqual({
+            code: refusalCode,
+            status,
+          });
+          expect(answer.body).toEqual({ statusCode: status, code: refusalCode });
+        }
+      }
+    });
+
+    it('fails closed with 503 when the Market family is not seeded, storing nothing', async () => {
+      await boot();
+      await seeded(code);
+      schemaSeeded = false;
+      const created = await send(
+        'post',
+        code,
+        '',
+        { typeCode: 'simple' },
+        sessionOf(code, ROOT, 1),
+      );
+      expect(created.status).toBe(503);
+      expect(created.body).toEqual({ statusCode: 503, code: 'product.family-unavailable' });
+      expect(stored).toHaveLength(0);
+    });
+
+    it('offers Configurable only in a Market that lists it', async () => {
+      await boot();
+      await seeded(code);
+      const created = await send(
+        'post',
+        code,
+        '',
+        { typeCode: 'configurable' },
+        sessionOf(code, ROOT, 1),
+      );
+      if (code === 'AU') {
+        expect(created.status).toBe(201);
+        expect((created.body as { variantIds: string[] }).variantIds).toEqual([]);
+      } else {
+        expect(created.status).toBe(422);
+        expect(created.body).toEqual({ statusCode: 422, code: 'product.type-not-offered' });
+      }
+    });
+
+    it('rejects a wrong CSRF token, a missing Origin and a wrong population on every route', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const routes = [
+        ['post', '', { typeCode: 'simple' }],
+        ['put', `/${PRODUCT}/draft`, { content: {}, variantIds: [] }],
+        ['post', `/${PRODUCT}/submit`, { replacePending: false }],
+      ] as const;
+      for (const [method, path, body] of routes) {
+        const wrong = await send(method, code, path, body, { ...root, 'x-csrf-token': 'nope' });
+        expect(wrong.status).toBe(403);
+        expect(wrong.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+        const noToken = await send(method, code, path, body, { cookie: root.cookie });
+        expect(noToken.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+        const noOrigin = await http()
+          [method](`/catalog/admin/platform-products${path}`)
+          .set({ 'x-market-id': code, ...root })
+          .send(body);
+        expect(noOrigin.status).toBe(403);
+        const anonymous = await send(method, code, path, body, {});
+        expect(anonymous.status).toBe(401);
+        const customer = await http()
+          [method](`/catalog/admin/platform-products${path}`)
+          .set({
+            'x-market-id': code,
+            ...panelHeaders(code, 'admin'),
+            cookie: root.cookie.replace('session-admin', 'session-customer'),
+            'x-csrf-token': root['x-csrf-token'],
+          })
+          .send(body);
+        expect(customer.status).toBeGreaterThanOrEqual(401);
+      }
+      expect(stored).toHaveLength(0);
+    });
+
+    it('refuses malformed bodies of the draft save and the submit', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const fieldsOf = (answer: { body: unknown }) =>
+        (answer.body as { details?: { fields?: unknown } }).details?.fields;
+
+      const unknownDraft = await send(
+        'put',
+        code,
+        `/${PRODUCT}/draft`,
+        { content: {}, variantIds: [], x: 1 },
+        root,
+      );
+      expect(unknownDraft.status).toBe(400);
+      expect(fieldsOf(unknownDraft)).toEqual([{ path: 'x', code: 'unknown-field' }]);
+      const missing = await send('put', code, `/${PRODUCT}/draft`, {}, root);
+      expect(fieldsOf(missing)).toEqual([
+        { path: 'content', code: 'required' },
+        { path: 'variantIds', code: 'required' },
+      ]);
+      // Types are the use cases' to refuse: the route lets them answer validation.failed.
+      saveResult = err({
+        code: 'validation.failed',
+        fields: [{ path: 'variantIds', code: 'type' }],
+      });
+      const typed = await send(
+        'put',
+        code,
+        `/${PRODUCT}/draft`,
+        { content: {}, variantIds: 'x' },
+        root,
+      );
+      expect(typed.status).toBe(400);
+      expect(typed.body).toMatchObject({
+        details: { fields: [{ path: 'variantIds', code: 'type' }] },
+      });
+      for (const [method, path] of [
+        ['put', `/${PRODUCT}/draft`],
+        ['post', `/${PRODUCT}/submit`],
+      ] as const) {
+        const text = await http()
+          [method](`/catalog/admin/platform-products${path}`)
+          .set({
+            'x-market-id': code,
+            ...panelHeaders(code, 'admin'),
+            ...root,
+            'content-type': 'text/plain',
+          })
+          .send('x=1');
+        expect(text.status).toBe(415);
+        const broken = await http()
+          [method](`/catalog/admin/platform-products${path}`)
+          .set({
+            'x-market-id': code,
+            ...panelHeaders(code, 'admin'),
+            ...root,
+            'content-type': 'application/json',
+          })
+          .send('{"a":');
+        expect(broken.status).toBe(400);
+      }
     });
 
     it('answers a malformed product id as an unknown product and submits with a closed body', async () => {

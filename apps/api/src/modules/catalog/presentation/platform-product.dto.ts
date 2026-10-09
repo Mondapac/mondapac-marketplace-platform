@@ -11,7 +11,6 @@ export class PlatformProductCreateRequest {
     description:
       "The product type, one of the Market's catalog.productTypes. Nothing else is read: " +
       'scope, owner, Market, family, status and code come from the server.',
-    maxLength: 64,
   })
   typeCode!: string;
 }
@@ -124,7 +123,7 @@ export class ApiErrorBody {
   @ApiProperty({
     required: false,
     type: Object,
-    description: 'Per code: fields, issues, retryAfterSeconds.',
+    description: 'Per code: fields, issues, retryAfterSeconds, max (variant.limit-reached).',
   })
   details?: Record<string, unknown>;
 }
