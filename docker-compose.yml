@@ -12,7 +12,7 @@ name: mondapac
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: public.ecr.aws/docker/library/postgres:17-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -38,7 +38,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: public.ecr.aws/docker/library/redis:7-alpine
     ports:
       - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     healthcheck:
