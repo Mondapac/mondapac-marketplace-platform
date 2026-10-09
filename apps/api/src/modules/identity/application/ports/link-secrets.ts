@@ -28,8 +28,8 @@ export const LINK_TOKENS = Symbol('LINK_TOKENS');
 export interface LinkPages {
   readonly customer: 'verify-email' | 'sign-in' | 'reset-password';
   /**
-   * Slice 9 adds the seller panel's invitation acceptance page (E9); until the Market-config PR
-   * configures it, it answers null and no seller invitation is issued.
+   * Slice 9 adds the seller panel's invitation acceptance page (E9). A Market whose config has no
+   * such page answers null, and no seller invitation is issued there.
    */
   readonly seller: 'verify-email' | 'sign-in' | 'reset-password' | 'accept-invitation';
   /**
