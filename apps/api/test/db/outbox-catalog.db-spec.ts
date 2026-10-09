@@ -59,10 +59,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON inventory.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'inventory.retirements_market_id_offer_id_offer_key':
     "CREATE UNIQUE INDEX retirements_market_id_offer_id_offer_key ON inventory.retirements USING btree (market_id, offer_id) WHERE (scope = 'offer'::text)",
-  'inventory.retirements_market_id_offer_id_variant_id_variant_key':
-    "CREATE UNIQUE INDEX retirements_market_id_offer_id_variant_id_variant_key ON inventory.retirements USING btree (market_id, offer_id, variant_id) WHERE (scope = 'variant'::text)",
+  'inventory.retirements_market_id_variant_id_variant_key':
+    "CREATE UNIQUE INDEX retirements_market_id_variant_id_variant_key ON inventory.retirements USING btree (market_id, variant_id) WHERE (scope = 'variant'::text)",
   'inventory.sources_market_id_seller_id_default_key':
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
+  'inventory.stock_items_market_id_variant_id_active_idx':
+    'CREATE INDEX stock_items_market_id_variant_id_active_idx ON inventory.stock_items USING btree (market_id, variant_id) WHERE (retired_at IS NULL)',
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':

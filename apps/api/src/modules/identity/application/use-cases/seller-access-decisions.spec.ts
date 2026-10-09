@@ -69,8 +69,12 @@ const VIEWER = uuid<'Account'>(0xa004);
 const OWNER_EMAIL = 'owner@seller.example';
 const STAFF_EMAIL = 'staff@seller.example';
 
-/** The real policy, with a re-apply limit the Market configuration does not carry yet. */
-function policyWith(limit: number | null): MarketConfigIdentityPolicy {
+/**
+ * The real policy (both Market files configure a re-apply limit of 3), or, with `null`, the
+ * policy of a Market that configures none.
+ */
+function policyWith(limit: undefined | null): MarketConfigIdentityPolicy {
+  if (limit === undefined) return basePolicy;
   return Object.assign(Object.create(basePolicy) as MarketConfigIdentityPolicy, {
     sellerReapplyLimit: () => limit,
   });
@@ -81,11 +85,11 @@ const notUsed = <T>(): T =>
     execute: () => Promise.reject(new Error('not used in this spec')),
   }) as unknown as T;
 
-function setUp(options: { readonly reapplyLimit?: number | null } = {}) {
+function setUp(options: { readonly reapplyLimit?: null } = {}) {
   const fakes = new IdentityFakes();
   const clock = new FixedClock(START);
   const ids = new SequenceIdGenerator(clock);
-  const policy = policyWith(options.reapplyLimit ?? null);
+  const policy = policyWith(options.reapplyLimit);
   const units: (UnitOfWorkOptions | undefined)[] = [];
   const unitOfWork: UnitOfWork = {
     run: <T, E>(m: MarketContext, work: () => Promise<Result<T, E>>, opts?: UnitOfWorkOptions) => {
@@ -561,8 +565,8 @@ describe.each(TEST_MARKETS)('seller access decisions in market %s (slice 9)', (c
   });
 
   describe('re-apply (3.3)', () => {
-    it('answers access.unavailable while the Market configures no limit', async () => {
-      const s = setUp();
+    it('answers access.unavailable when the Market configures no limit', async () => {
+      const s = setUp({ reapplyLimit: null });
       await seeded(s, 'rejected');
 
       await expect(s.reapply.execute(sellerActorOf(OWNER), { sellerId: SELLER })).resolves.toEqual({
@@ -577,9 +581,10 @@ describe.each(TEST_MARKETS)('seller access decisions in market %s (slice 9)', (c
       });
     });
 
-    it('lets the owner apply again up to the limit; staff cannot', async () => {
-      const s = setUp({ reapplyLimit: 1 });
+    it("lets the owner apply again up to the Market's limit of 3; staff cannot", async () => {
+      const s = setUp();
       await seeded(s, 'rejected');
+      expect(basePolicy.sellerReapplyLimit(market)).toBe(3);
 
       await expect(s.reapply.execute(sellerActorOf(STAFF), { sellerId: SELLER })).resolves.toEqual({
         ok: false,
@@ -598,7 +603,17 @@ describe.each(TEST_MARKETS)('seller access decisions in market %s (slice 9)', (c
         ['identity.seller-access-reapplied.v1', { sellerId: SELLER }],
       ]);
       expect(s.fakes.audits.map((a) => a.action)).toEqual(['identity.seller-access.reapplied']);
+      await expect(s.status.execute(sellerActorOf(OWNER), {})).resolves.toMatchObject({
+        ok: true,
+        value: { state: 'pending', reapplyLimitReached: false },
+      });
 
+      for (const reapplyCount of [2, 3]) {
+        await s.reject.execute(admin, { sellerId: SELLER, reason: REASON, basisId: null });
+        await expect(
+          s.reapply.execute(sellerActorOf(OWNER), { sellerId: SELLER }),
+        ).resolves.toMatchObject({ ok: true, value: { state: 'pending', reapplyCount } });
+      }
       await s.reject.execute(admin, { sellerId: SELLER, reason: REASON, basisId: null });
       await expect(s.reapply.execute(sellerActorOf(OWNER), { sellerId: SELLER })).resolves.toEqual({
         ok: false,

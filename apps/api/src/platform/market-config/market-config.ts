@@ -146,9 +146,18 @@ const linkTargetsSchema = z
       'sign-in': pageUrl,
       'reset-password': pageUrl,
     }),
-    /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
+    /**
+     * The seller panel's pages (slice 5); absent for a Market without seller sign-up.
+     * `accept-invitation` (slice 9, identity design 6.7): the page of the Seller Owner invitation
+     * mail; without it the Market issues no seller invitation (`access.unavailable`).
+     */
     seller: z
-      .strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl, 'reset-password': pageUrl })
+      .strictObject({
+        'verify-email': pageUrl,
+        'sign-in': pageUrl,
+        'reset-password': pageUrl,
+        'accept-invitation': pageUrl.optional(),
+      })
       .optional(),
     /**
      * The admin panel's pages (identity design 8.7). `seller-review-queue` is the "Awaiting
@@ -176,6 +185,22 @@ const linkTargetsSchema = z
         message: 'admin.seller-review-queue is required when seller targets are configured',
         path: ['admin'],
       });
+    }
+    // Every seller page is on the origin of the seller sign-in page (Hassan L1, PR #212), as the
+    // admin pages are on the review queue's: a seller token is only ever mailed to our own seller
+    // panel, never to another host a config change might name.
+    if (targets.seller !== undefined) {
+      const signIn = hostOf(targets.seller['sign-in']);
+      for (const [page, url] of Object.entries(targets.seller)) {
+        if (url === undefined || signIn === null) continue;
+        if (hostOf(url)?.origin !== signIn.origin) {
+          context.addIssue({
+            code: 'custom',
+            message: 'a seller page must have the origin of the seller sign-in page',
+            path: ['seller', page],
+          });
+        }
+      }
     }
     if (targets.admin === undefined) return;
     const signInPages = ADMIN_SIGN_IN_PAGES.filter((page) => targets.admin![page] !== undefined);
@@ -363,6 +388,12 @@ const identitySchema = z
         }),
       })
       .optional(),
+    /**
+     * Re-applications a rejected seller may make since its last approval (identity design 3.3:
+     * fewer than 3, so 3 for AU; slice 9). Without it re-apply answers `access.unavailable` and the
+     * status read's `reapplyLimitReached` is null (fail closed).
+     */
+    sellerReapplyLimit: z.number().int().min(1).max(10).optional(),
     /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
     unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
     /** The sender of the Market's mail (identity design 9). */

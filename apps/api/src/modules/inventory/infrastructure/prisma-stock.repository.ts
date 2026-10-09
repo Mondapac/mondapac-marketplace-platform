@@ -53,8 +53,12 @@ export class PrismaStockRepository implements StockRepository {
     const found = await this.prisma.tx(market).inventoryRetirement.findFirst({
       where: {
         marketId: market.marketId,
-        offerId,
-        OR: [{ scope: 'offer' }, { scope: 'variant', variantId }],
+        // An Offer tombstone is keyed by the Offer, a Variant tombstone by the Variant alone
+        // (data design 3.10, migration 3).
+        OR: [
+          { scope: 'offer', offerId },
+          { scope: 'variant', variantId },
+        ],
       },
       select: { id: true },
     });

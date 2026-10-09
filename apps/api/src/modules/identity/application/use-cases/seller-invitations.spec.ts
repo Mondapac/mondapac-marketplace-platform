@@ -54,16 +54,9 @@ const INVITEE = 'Invited.Owner@Example.com';
 const NAME = 'Amina Rahman';
 const ORIGIN = '203.0.113.9';
 const CLIENT = { origin: ORIGIN, address: ORIGIN };
-const ACCEPT_PAGE = 'https://seller.example.test/accept-invitation';
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-const basePolicy = new MarketConfigIdentityPolicy(markets);
-/** The real policy, with the seller acceptance page the Market configuration lacks today. */
-const policy = Object.assign(Object.create(basePolicy) as MarketConfigIdentityPolicy, {
-  target: (market: MarketContext, population: string, page: string) =>
-    population === 'seller' && page === 'accept-invitation'
-      ? ACCEPT_PAGE
-      : basePolicy.target(market, population as never, page as never),
-});
+/** The real policy: both Market files configure the seller acceptance page. */
+const policy = new MarketConfigIdentityPolicy(markets);
 const composer = new CatalogueMailComposer(markets, loadLocaleCatalogues(TEST_LOCALE_CONFIG_DIRS));
 const tokens = new RandomPrefixedTokens('mi1_');
 const keys: ThrottleKeys = {

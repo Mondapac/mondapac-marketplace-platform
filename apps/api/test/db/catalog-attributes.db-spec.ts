@@ -16,6 +16,7 @@ import { TEST_MARKETS } from '../support/test-config';
 import { PrismaAttributeRepository } from '../../src/modules/catalog/infrastructure/prisma-attribute.repository';
 import { createPersistence, marketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { sqlState } from './sql-state';
 
 // Catalog slice 3 on PostgreSQL (catalog data design 3.3, 5.1, 7), for both Market fixtures: the
 // constraints, the insert-only revisions and the grants of the migration, and the seed use case
@@ -53,20 +54,6 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     await sql.end();
     await owner.end();
   });
-
-  /** The SQLSTATE of a statement that must fail, or null when it succeeded. */
-  async function sqlState(
-    client: Client,
-    text: string,
-    values: unknown[] = [],
-  ): Promise<string | null> {
-    try {
-      await client.query(text, values);
-      return null;
-    } catch (error) {
-      return (error as { code?: string }).code ?? 'unknown';
-    }
-  }
 
   const seedContext = () => testCallContext(market, 'system', `db-catalog-seed-${randomUUID()}`);
 
