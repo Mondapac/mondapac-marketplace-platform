@@ -62,7 +62,7 @@ describe.each(TEST_MARKETS)(
       // Not the shared counter: a parallel spec asserts consecutive codes from it.
       const products: ProductRepository = {
         nextProductCode: () =>
-          Promise.resolve(`X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`),
+          Promise.resolve(`Q${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`),
         add: (m, product) => real.add(m, product),
         findById: (m, id) => real.findById(m, id),
         save: (m, product) => real.save(m, product),
@@ -160,12 +160,12 @@ describe.each(TEST_MARKETS)(
       failOutbox = true;
       try {
         const before = await app.query(
-          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1`,
+          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1 AND product_code LIKE 'Q%'`,
           [code],
         );
         await expect(useCase.execute(adminContext(), { typeCode: 'simple' })).rejects.toThrow();
         const after = await app.query(
-          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1`,
+          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1 AND product_code LIKE 'Q%'`,
           [code],
         );
         expect((after.rows[0] as { n: number }).n).toBe((before.rows[0] as { n: number }).n);

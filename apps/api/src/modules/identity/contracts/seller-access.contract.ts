@@ -54,6 +54,41 @@ export interface ReviewerNoticeUnavailable {
 }
 
 /**
+ * A decision on a seller's access through the contract (identity design 3.3, 8.1, 8.4; slice 9):
+ * ids and codes, never the reason.
+ */
+export interface SellerAccessDecisionOutcome {
+  readonly code: 'seller-access.approved' | 'seller-access.rejected';
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessState;
+  /** The recorded decision; it carries the `basisId` given (ADR-0022 decision 4). */
+  readonly decisionId: Id<'AccessDecision'>;
+}
+
+/** Why a decision was refused (identity design 3.3, 8.6 row 1). */
+export type SellerAccessDecisionRefusal =
+  /** No registered seller with this id in the context's Market. */
+  | { readonly code: 'seller.unknown' }
+  | { readonly code: 'seller-access.wrong-state' }
+  | { readonly code: 'seller-access.reason-required' }
+  /** Approve: the seller has no owner account with a verified email. */
+  | { readonly code: 'seller-access.owner-unverified' }
+  /** The reason's length or characters (HF13): the rule, never the text. */
+  | { readonly code: 'validation.failed'; readonly rule: 'length' | 'characters' };
+
+/** A re-application through the contract (identity design 3.3; slice 9). */
+export interface SellerReapplyOutcome {
+  readonly code: 'seller-access.reapplied';
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessState;
+  readonly reapplyCount: number;
+}
+
+/** Why a re-application was refused (3.3): not rejected, or the Market's limit is reached. */
+export type SellerReapplyRefusal =
+  { readonly code: 'seller-access.wrong-state' } | { readonly code: 'seller-access.reapply-limit' };
+
+/**
  * The calls of `identity` that only `sellers` consumes. Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs.
  */
@@ -100,6 +135,42 @@ export interface SellerAccessContract {
   ): Promise<
     Result<ReviewerNoticeOutcome, AccessDenied | FacadeValidationFailed | ReviewerNoticeUnavailable>
   >;
+
+  /**
+   * Approves a pending seller (identity design 3.3, 8.1, 8.4; ADR-0022 decision 4; slice 9):
+   * `sellers`' review calls it with the reviewer's context unchanged (permission
+   * `identity.seller-access.approve`, checked again in `identity`'s unit) and the id of the
+   * submission it approves as `basisId`, required here (sellers design R-1, Ali change 4).
+   * `identity` stores it on the decision and publishes it in `identity.seller-access-approved.v1`.
+   */
+  approveSellerAccess(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    basisId: Id,
+  ): Promise<Result<SellerAccessDecisionOutcome, AccessDenied | SellerAccessDecisionRefusal>>;
+
+  /**
+   * Rejects a pending seller with a reason (3.3, decision 9; slice 9), as approve: `basisId`
+   * required. The reason is stored only encrypted and mailed to the Seller Owner; `sellers` must
+   * not store, log or put it in an event.
+   */
+  rejectSellerAccess(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    reason: string,
+    basisId: Id,
+  ): Promise<Result<SellerAccessDecisionOutcome, AccessDenied | SellerAccessDecisionRefusal>>;
+
+  /**
+   * A rejected seller applies again (3.3; slice 9): `sellers`' "submit again" calls it with the
+   * Seller Owner's own context unchanged (rule `own-resources`, allowed while not approved; the
+   * seller must be the actor's). `access.unavailable` while the Market configures no re-apply
+   * limit.
+   */
+  reapplySellerAccess(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<SellerReapplyOutcome, AccessDenied | SellerReapplyRefusal>>;
 }
 
 /** Nest token of the {@link SellerAccessContract}, provided and exported by `IdentityModule`. */

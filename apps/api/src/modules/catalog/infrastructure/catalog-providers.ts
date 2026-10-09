@@ -34,8 +34,9 @@ import {
   WORKING_COPY_REPOSITORY,
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
-import { CLAIM_TEXT_MATCHER } from '../application/ports/claim-text-matcher';
-import { UnavailableClaimTextMatcher } from './placeholders/unavailable-claim-text-matcher';
+import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { CertificationClaimTextMatcher } from './certification-claim-text-matcher';
+import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
@@ -54,9 +55,13 @@ const CATALOG_SECRET = Symbol('CATALOG_SECRET');
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
 export const catalogProviders: readonly Provider[] = [
-  // ADR-0031: the fail-closed stand-in of `certification.matchClaimTerms`, bound with `useClass`
-  // and nothing else until the binding PR replaces it with the real facade.
-  { provide: CLAIM_TEXT_MATCHER, useClass: UnavailableClaimTextMatcher },
+  // ADR-0031 decision 3: the binding of `certification.matchClaimTerms` (the placeholder is gone).
+  {
+    provide: CLAIM_TEXT_MATCHER,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
+      new CertificationClaimTextMatcher(certification),
+  },
   {
     provide: CATALOG_MARKET_POLICY,
     inject: [MarketRegistry],

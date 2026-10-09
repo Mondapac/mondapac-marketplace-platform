@@ -17,7 +17,39 @@ import type {
   CategoryTreeVersion,
   PlatformCategoryRepository,
 } from '../ports/platform-category.repository';
+import type { CheckClaimText, CheckedText } from '../claim-text/check-claim-text.service';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { SeedCategoryTree } from './seed-category-tree.use-case';
+
+/** A claim-text check whose verdict for a text is `found` when it contains "halal". */
+function fakeCheck(options: { unavailable?: boolean } = {}) {
+  const seen: CheckedText[][] = [];
+  const check = {
+    executeAsSystem: (_c: unknown, texts: readonly CheckedText[]) => {
+      seen.push([...texts]);
+      return Promise.resolve({
+        ok: true as const,
+        value: texts.map((item) => ({
+          field: item.field,
+          ref: item.ref,
+          locale: item.locale,
+          code: options.unavailable
+            ? ('claim-text.check-unavailable' as const)
+            : item.text.toLowerCase().includes('halal')
+              ? ('claim-text.found' as const)
+              : ('clean' as const),
+          ...(options.unavailable || !item.text.toLowerCase().includes('halal')
+            ? {}
+            : { hits: [] }),
+        })),
+      });
+    },
+  } as unknown as CheckClaimText;
+  return { check, seen };
+}
+const policy = {
+  locales: () => ({ default: 'xx', supported: ['xx'] }),
+} as unknown as CatalogMarketPolicy;
 
 // The seed use case (catalog design 4.6, 7.2) in memory for both Market fixtures: system only,
 // create-only, existing slugs skipped whatever their state, a seed that breaks a rule refused
@@ -59,7 +91,8 @@ const entry = (
 describe.each(TEST_MARKETS)('SeedCategoryTree in market %s', (code) => {
   const market = testMarketContext(code, 'default');
 
-  function build(tree: readonly SeededCategory[]) {
+  function build(tree: readonly SeededCategory[], checkOptions: { unavailable?: boolean } = {}) {
+    const { check, seen } = fakeCheck(checkOptions);
     let sequence = 0;
     const appended: unknown[] = [];
     const categories = new MemoryCategories();
@@ -77,6 +110,8 @@ describe.each(TEST_MARKETS)('SeedCategoryTree in market %s', (code) => {
       unitOfWork,
       categories,
       seed,
+      check,
+      policy,
       outbox,
       clock: new FixedClock(Temporal.Instant.from('2026-10-08T00:00:00Z')),
       ids: {
@@ -84,7 +119,7 @@ describe.each(TEST_MARKETS)('SeedCategoryTree in market %s', (code) => {
           `01990000-0000-7000-8000-${String(++sequence).padStart(12, '0')}` as Id<T>,
       },
     });
-    return { useCase, categories, appended };
+    return { useCase, categories, appended, seen };
   }
 
   const system = () => testCallContext(market, 'system', 'seed-category-tree-0001');
@@ -159,6 +194,39 @@ describe.each(TEST_MARKETS)('SeedCategoryTree in market %s', (code) => {
     const result = await s.useCase.execute(anonymous, {});
     expect(result.ok).toBe(false);
     expect(s.appended).toEqual([]);
+    expect(s.categories.bySlug.size).toBe(0);
+  });
+
+  it('checks every slug and name as the system actor before writing anything', async () => {
+    const s = build([entry('garden'), entry('tools', 'garden', 'Tools')]);
+    await s.useCase.execute(system(), {});
+    expect(s.seen).toHaveLength(1);
+    expect(s.seen[0]).toEqual([
+      { field: 'platform-category.slug', ref: 'garden', locale: 'xx', text: 'garden' },
+      { field: 'platform-category.name', ref: 'garden', locale: 'xx', text: 'A name' },
+      { field: 'platform-category.slug', ref: 'tools', locale: 'xx', text: 'tools' },
+      { field: 'platform-category.name', ref: 'tools', locale: 'xx', text: 'Tools' },
+    ]);
+  });
+
+  it('refuses the whole run, creating nothing, when a name holds a claim word', async () => {
+    const s = build([entry('garden'), entry('meat', null, 'Halal meat')]);
+    const result = await s.useCase.execute(system(), {});
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'seed.claim-text-refused',
+        places: [{ field: 'platform-category.name', ref: 'meat' }],
+      },
+    });
+    expect(s.categories.bySlug.size).toBe(0);
+    expect(s.appended).toHaveLength(0);
+  });
+
+  it('refuses the whole run, creating nothing, when the check is unavailable', async () => {
+    const s = build([entry('garden')], { unavailable: true });
+    const result = await s.useCase.execute(system(), {});
+    expect(!result.ok && result.error.code).toBe('seed.claim-text-unavailable');
     expect(s.categories.bySlug.size).toBe(0);
   });
 });

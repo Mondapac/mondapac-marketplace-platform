@@ -57,6 +57,14 @@ import {
   type SellerAccessRepository,
 } from '../../src/modules/identity/application/ports/seller-access.repository';
 import {
+  ACCESS_DECISION_REPOSITORY,
+  AccessReasonKeyUnavailableError,
+  type AccessDecisionRepository,
+  type StoredAccessDecision,
+} from '../../src/modules/identity/application/ports/access-decision.repository';
+import { ACCESS_DECISION_REASON } from '../../src/modules/identity/infrastructure/sellers/prisma-access-decision.repository';
+import type { AccessDecisionState } from '../../src/modules/identity/domain/access-decision';
+import {
   ROLE_ASSIGNMENT_REPOSITORY,
   ROLE_REPOSITORY,
   SELLER_MEMBERSHIP_REPOSITORY,
@@ -156,6 +164,14 @@ export class IdentityFakes {
   /** Sign-in challenges by id, with the hex of their token hash (slice 7). */
   readonly challenges = new Map<string, { challenge: SignInChallenge; tokenHash: string }>();
   readonly invitations = new Map<string, InvitationState>();
+  /**
+   * Access decisions by id (slice 9), as stored: the reason only as the fake ciphertext, under
+   * the seller's key; the clear reason is never kept here.
+   */
+  readonly decisions = new Map<
+    string,
+    { readonly state: Omit<AccessDecisionState, 'reason'>; readonly cipher: string | null }
+  >();
   /** Subject keys created and destroyed, by subject id (accounts and sellers). */
   readonly subjectKeys = new Map<string, 'live' | 'destroyed'>();
   /** Every account whose credential lock was taken, in order (N1). */
@@ -190,6 +206,7 @@ export class IdentityFakes {
     this.factors.clear();
     this.challenges.clear();
     this.invitations.clear();
+    this.decisions.clear();
     this.credentialLocks.length = 0;
     this.sellerLocks.length = 0;
     this.mails.length = 0;
@@ -418,6 +435,71 @@ export class IdentityFakes {
     },
   };
 
+  /** The decisions of slice 9, their reasons through the fake subject keys (as the adapter). */
+  readonly decisionRepository: AccessDecisionRepository = {
+    add: async (market, decision) => {
+      const { reason, ...state } = decision.state;
+      let cipher: string | null = null;
+      if (reason !== null) {
+        const sealed = await this.subjectKeyService.encrypt(
+          market,
+          state.sellerId,
+          ACCESS_DECISION_REASON,
+          reason,
+        );
+        if (!sealed.ok) throw new AccessReasonKeyUnavailableError();
+        cipher = sealed.value;
+      }
+      if (this.decisions.has(state.id)) throw new Error('access_decisions_pkey');
+      this.decisions.set(state.id, { state, cipher });
+    },
+    findById: async (market, id) => {
+      const stored = this.decisions.get(id);
+      return stored === undefined || stored.state.marketId !== market.marketId
+        ? null
+        : this.readDecision(market, stored);
+    },
+    latestOf: async (market, sellerId) => {
+      const latest = [...this.decisions.values()]
+        .filter((d) => d.state.marketId === market.marketId && d.state.sellerId === sellerId)
+        .sort(
+          (a, b) =>
+            Temporal.Instant.compare(b.state.decidedAt, a.state.decidedAt) ||
+            (a.state.id < b.state.id ? 1 : -1),
+        )[0];
+      return latest === undefined ? null : this.readDecision(market, latest);
+    },
+  };
+
+  private async readDecision(
+    market: MarketContext,
+    stored: { readonly state: Omit<AccessDecisionState, 'reason'>; readonly cipher: string | null },
+  ): Promise<StoredAccessDecision> {
+    const { state, cipher } = stored;
+    let reason: string | null = null;
+    let reasonErased = false;
+    if (cipher !== null) {
+      const opened = await this.subjectKeyService.decrypt(
+        market,
+        state.sellerId,
+        ACCESS_DECISION_REASON,
+        cipher,
+      );
+      if (opened.ok) reason = opened.value;
+      else reasonErased = true;
+    }
+    return {
+      id: state.id,
+      sellerId: state.sellerId,
+      decision: state.decision,
+      reason,
+      reasonErased,
+      basisId: state.basisId,
+      decidedByAccountId: state.decidedByAccountId,
+      decidedAt: state.decidedAt,
+    };
+  }
+
   readonly membershipRepository: SellerMembershipRepository = {
     findActiveByAccount: (market, accountId) => {
       const state = [...this.memberships.values()].find(
@@ -430,6 +512,16 @@ export class IdentityFakes {
         [...this.memberships.values()]
           .filter((m) => m.marketId === market.marketId && m.accountId === accountId)
           .map((m) => SellerMembership.restore(m)),
+      ),
+    activeMembersOf: (market, sellerId) =>
+      Promise.resolve(
+        [...this.memberships.values()]
+          .filter(
+            (m) =>
+              m.marketId === market.marketId && m.sellerId === sellerId && m.state === 'active',
+          )
+          .map((m) => m.accountId)
+          .sort(),
       ),
     sellerHasMembers: (market, sellerId) =>
       Promise.resolve(
@@ -753,6 +845,17 @@ export class IdentityFakes {
       }
       return Promise.resolve(count);
     },
+    revokeAllOfSeller: (market, sellerId, reason, now) => {
+      let count = 0;
+      for (const found of this.sessions.values()) {
+        const s = found.session;
+        if (s.marketId === market.marketId && s.sellerId === sellerId && s.revokedAt === null) {
+          found.session = { ...s, revokedAt: now, revokedReason: reason };
+          count += 1;
+        }
+      }
+      return Promise.resolve(count);
+    },
     rotate: (market, id, accountId, tokenHash) => {
       const found = this.sessions.get(id);
       if (
@@ -1055,15 +1158,39 @@ export class IdentityFakes {
       );
       return Promise.resolve(state === undefined ? null : Invitation.restore(state));
     },
+    findPendingOwnerInvitation: (market, sellerId) => {
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.state === 'pending' &&
+          candidate.kind === 'seller-owner' &&
+          candidate.sellerId === sellerId,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
+    findPendingOwnerInvitationByEmail: (market, emailNormalized) => {
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.state === 'pending' &&
+          candidate.kind === 'seller-owner' &&
+          candidate.email?.normalized === emailNormalized,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
     add: (_market, invitation) => {
       const state = invitation.state;
       const clash = [...this.invitations.values()].some(
         (other) =>
           other.state === 'pending' &&
           other.marketId === state.marketId &&
-          other.sellerId === state.sellerId &&
-          ((other.email !== null && other.email.normalized === state.email?.normalized) ||
-            (state.kind === 'seller-owner' && other.kind === 'seller-owner')),
+          ((other.sellerId === state.sellerId &&
+            ((other.email !== null && other.email.normalized === state.email?.normalized) ||
+              (state.kind === 'seller-owner' && other.kind === 'seller-owner'))) ||
+            // invitations_market_id_email_seller_owner_pending_key (slice 9, Mojtaba Q5).
+            (state.kind === 'seller-owner' &&
+              other.kind === 'seller-owner' &&
+              other.email?.normalized === state.email?.normalized)),
       );
       if (clash) return Promise.reject(new InvitationAlreadyPendingError());
       this.invitations.set(state.id, state);
@@ -1118,11 +1245,11 @@ export class IdentityFakes {
       this.keyed(subject, () => `fake1|${market.marketId}|${subject}|${field}|${plain}`),
     decrypt: (market: MarketContext, subject: Id, field: string, cipher: string) =>
       this.keyed(subject, () => {
-        const [version, m, s, f, plain] = cipher.split('|');
+        const [version, m, s, f, ...rest] = cipher.split('|');
         if (version !== 'fake1' || m !== market.marketId || s !== subject || f !== field) {
           throw new SubjectKeyIntegrityError('ciphertext-authentication');
         }
-        return plain ?? '';
+        return rest.join('|');
       }),
     hmac: (market: MarketContext, subject: Id, purpose: string, data: Uint8Array) =>
       this.keyed(subject, () =>
@@ -1198,6 +1325,8 @@ export class IdentityFakes {
       .useValue(this.reviewerCandidateReader)
       .overrideProvider(ADMIN_ACCOUNT_READER)
       .useValue(this.adminAccountReader)
+      .overrideProvider(ACCESS_DECISION_REPOSITORY)
+      .useValue(this.decisionRepository)
       .overrideProvider(SELLER_MEMBERSHIP_REPOSITORY)
       .useValue(this.membershipRepository)
       .overrideProvider(ROLE_REPOSITORY)

@@ -52,7 +52,9 @@ function exported(
     | 'TEST_AUDIT_OWNER_DATABASE_URL'
     | 'TEST_ADMIN_TEAM_DATABASE_URL'
     | 'TEST_CERTIFICATION_DATABASE_URL'
-    | 'TEST_CERTIFICATION_OWNER_DATABASE_URL',
+    | 'TEST_CERTIFICATION_OWNER_DATABASE_URL'
+    | 'TEST_CATALOG_CLAIMS_DATABASE_URL'
+    | 'TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -182,4 +184,16 @@ export function certificationTestDatabaseUrl(): string {
 
 export function certificationOwnerTestDatabaseUrl(): string {
   return exported('TEST_CERTIFICATION_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that catalog-claim-text-real-facade.db-spec.ts seeds a claim vocabulary on (the real
+ * certification reader reads whole Markets), as the application login and as its owner.
+ */
+export function catalogClaimsTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_CLAIMS_DATABASE_URL');
+}
+
+export function catalogClaimsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL');
 }

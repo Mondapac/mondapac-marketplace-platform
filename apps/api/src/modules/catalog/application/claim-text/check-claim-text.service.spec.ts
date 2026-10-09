@@ -11,7 +11,7 @@ import {
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { RateReservation } from '../../domain/rate-limits';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
-import { UnavailableClaimTextMatcher } from '../../infrastructure/placeholders/unavailable-claim-text-matcher';
+import { unavailableClaimTextMatcher } from '../../../../../test/support/unavailable-claim-text-matcher.fake';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type {
   ClaimTextCheckUnavailable,
@@ -163,6 +163,45 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     expect(calls).toHaveLength(0);
   });
 
+  describe('the seed check (executeAsSystem)', () => {
+    it('serves the system actor, checks like execute and spends no counter', async () => {
+      const { service, calls } = rig();
+      const result = await service.executeAsSystem(testCallContext(market, 'system'), [text('a')]);
+      expect(result).toEqual({
+        ok: true,
+        value: [{ code: 'clean', field: 'product.name', ref: null, locale }],
+      });
+      expect(calls).toHaveLength(1);
+    });
+
+    it.each(['admin', 'seller', 'customer'] as const)('refuses a %s actor', async (population) => {
+      const { service, calls } = rig();
+      await expect(service.executeAsSystem(contextOf(population), [text('a')])).resolves.toEqual(
+        err({ code: 'access.denied' }),
+      );
+      expect(calls).toHaveLength(0);
+    });
+
+    it('refuses an anonymous actor and keeps execute closed to the system actor', async () => {
+      const { service } = rig();
+      await expect(
+        service.executeAsSystem(testCallContext(market, 'anonymous'), [text('a')]),
+      ).resolves.toEqual(err({ code: 'access.denied' }));
+      await expect(
+        service.execute(testCallContext(market, 'system'), [text('a')]),
+      ).resolves.toEqual(err({ code: 'access.denied' }));
+    });
+
+    it('is unavailable under a matcher that cannot answer', async () => {
+      const { service } = rig({ matcher: unavailableClaimTextMatcher });
+      const result = await service.executeAsSystem(testCallContext(market, 'system'), [text('a')]);
+      expect(result).toEqual({
+        ok: true,
+        value: [{ code: 'claim-text.check-unavailable', field: 'product.name', ref: null, locale }],
+      });
+    });
+  });
+
   describe('hidden characters (6.3)', () => {
     it('refuses a bidi control before matching and reports its place', async () => {
       const { service, calls } = rig();
@@ -212,7 +251,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     });
 
     it('marks every text unavailable under the placeholder', async () => {
-      const { service } = rig({ matcher: new UnavailableClaimTextMatcher() });
+      const { service } = rig({ matcher: unavailableClaimTextMatcher });
       const result = await service.execute(contextOf('seller'), [text('a'), text('b')]);
       expect(result).toEqual({ ok: true, value: [unavailable(), unavailable()] });
     });
@@ -240,7 +279,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     });
 
     it('lets a hidden character win over an unavailable matcher', async () => {
-      const { service } = rig({ matcher: new UnavailableClaimTextMatcher() });
+      const { service } = rig({ matcher: unavailableClaimTextMatcher });
       const result = await service.execute(contextOf('seller'), [text('a‮b')]);
       expect(result.ok && result.value[0]?.code).toBe('text.invisible-character');
     });

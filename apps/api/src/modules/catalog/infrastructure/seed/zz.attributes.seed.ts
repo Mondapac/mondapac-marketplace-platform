@@ -12,7 +12,7 @@ export const ZZ_ATTRIBUTE_DEFINITIONS: readonly SeededDefinition[] = [
     material: false,
     isVariantOption: false,
     bounds: { maxLength: 80 },
-    names: { xx: 'Brand', yy: 'Marque' },
+    names: { 'ja-JP': 'Brand', 'en-US': 'Marque' },
     options: [],
   },
   {
@@ -22,10 +22,10 @@ export const ZZ_ATTRIBUTE_DEFINITIONS: readonly SeededDefinition[] = [
     material: false,
     isVariantOption: true,
     bounds: {},
-    names: { xx: 'Colour', yy: 'Couleur' },
+    names: { 'ja-JP': 'Colour', 'en-US': 'Couleur' },
     options: [
-      { code: 'red', labels: { xx: 'Red', yy: 'Rouge' }, active: true, position: 0 },
-      { code: 'green', labels: { xx: 'Green', yy: 'Vert' }, active: true, position: 1 },
+      { code: 'red', labels: { 'ja-JP': 'Red', 'en-US': 'Rouge' }, active: true, position: 0 },
+      { code: 'green', labels: { 'ja-JP': 'Green', 'en-US': 'Vert' }, active: true, position: 1 },
     ],
   },
   {
@@ -35,10 +35,20 @@ export const ZZ_ATTRIBUTE_DEFINITIONS: readonly SeededDefinition[] = [
     material: true,
     isVariantOption: false,
     bounds: {},
-    names: { xx: 'Grade', yy: 'Qualité' },
+    names: { 'ja-JP': 'Grade', 'en-US': 'Qualité' },
     options: [
-      { code: 'standard', labels: { xx: 'Standard', yy: 'Standard' }, active: true, position: 0 },
-      { code: 'premium', labels: { xx: 'Premium', yy: 'Premium' }, active: true, position: 1 },
+      {
+        code: 'standard',
+        labels: { 'ja-JP': 'Standard', 'en-US': 'Standard' },
+        active: true,
+        position: 0,
+      },
+      {
+        code: 'premium',
+        labels: { 'ja-JP': 'Premium', 'en-US': 'Premium' },
+        active: true,
+        position: 1,
+      },
     ],
   },
   {
@@ -48,7 +58,7 @@ export const ZZ_ATTRIBUTE_DEFINITIONS: readonly SeededDefinition[] = [
     material: false,
     isVariantOption: false,
     bounds: { min: 1, max: 100000 },
-    names: { xx: 'Weight in grams', yy: 'Poids en grammes' },
+    names: { 'ja-JP': 'Weight in grams', 'en-US': 'Poids en grammes' },
     options: [],
   },
   {
@@ -58,7 +68,7 @@ export const ZZ_ATTRIBUTE_DEFINITIONS: readonly SeededDefinition[] = [
     material: false,
     isVariantOption: false,
     bounds: { maxLength: 2000 },
-    names: { xx: 'Description', yy: 'Description' },
+    names: { 'ja-JP': 'Description', 'en-US': 'Description' },
     options: [],
   },
 ];

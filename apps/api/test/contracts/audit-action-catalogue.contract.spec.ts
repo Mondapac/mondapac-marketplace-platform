@@ -213,7 +213,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
     expect(worker.snapshot()).toEqual(api.snapshot());
   });
 
-  it("holds identity's actions of slices 6b, 8a-1, 7b, 8a-2 and 8b (PA 5)", () => {
+  it("holds identity's actions of slices 6b, 8a-1, 7b, 8a-2, 8b and 9 (PA 5)", () => {
     const actions = graphs
       .get('api')!
       .get(AuditActionCatalogue)
@@ -237,7 +237,12 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.second-factor.recovery-codes-regenerated',
       'identity.second-factor.replaced',
       'identity.second-factor.reset',
+      'identity.seller-access.approved',
       'identity.seller-access.founded',
+      'identity.seller-access.reapplied',
+      'identity.seller-access.reinstated',
+      'identity.seller-access.rejected',
+      'identity.seller-access.suspended',
       'identity.seller-member.added',
     ]);
   });

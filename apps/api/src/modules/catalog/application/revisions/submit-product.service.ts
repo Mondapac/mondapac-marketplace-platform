@@ -13,6 +13,7 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { ProductRefusal } from '../../domain/product';
 import { classify, decideOutcome } from '../../domain/product-revision-policy';
+import type { RevisionContent } from '../../domain/revision-content';
 import { revisionTextsOf, summaryOf } from '../../domain/revision-texts';
 import type { StoredRevision } from '../../domain/stored-revision';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
@@ -105,51 +106,57 @@ export class SubmitProduct {
       return err({ code: 'access.unavailable' });
     }
 
-    // 1. Freeze and check, before the write unit.
-    const first = await unitOfWork.run<ContentHash, SubmitProductFailure>(
+    // 1. Freeze, in a read-only unit. The claim check below runs after this unit has closed:
+    // units do not nest and the matcher opens its own (certification's note on #197).
+    const first = await unitOfWork.run<
+      { readonly content: RevisionContent; readonly contentHash: ContentHash },
+      SubmitProductFailure
+    >(
       market,
       async () => {
         const loaded = await this.#load(context, input);
         if (!loaded.ok) return loaded;
         const frozen = await freeze.freeze(market, loaded.value.product, loaded.value.copy);
         if (!frozen.ok) return frozen;
-        const texts = revisionTextsOf(frozen.value.content, locales.supported, locales.default);
-        if (!texts.ok) return err(texts.error);
-        const checked = await check.execute(
-          context,
-          texts.value.map(({ field, ref, locale, text }) => ({ field, ref, locale, text })),
-        );
-        if (!checked.ok) {
-          return err(
-            checked.error.code === 'validation.failed'
-              ? { code: 'working-copy.invalid-content' as const }
-              : checked.error.code === 'request.throttled'
-                ? { code: 'access.unavailable' as const }
-                : checked.error,
-          );
-        }
-        // Anything that is not plainly clean refuses, so an unknown verdict can never pass.
-        const refused = checked.value.flatMap((verdict) =>
-          verdict.code === 'clean' ? [] : (refusalOf(verdict) ?? []),
-        );
-        if (checked.value.some((verdict) => verdict.code !== 'clean') && refused.length === 0) {
-          return err({ code: 'working-copy.invalid-content' });
-        }
-        if (refused.length > 0) {
-          this.#logger.warn({
-            msg: 'catalog.submit-product.claim-text-refused',
-            refusedFields: refused.length,
-            marketId: market.marketId,
-            correlationId: context.correlationId,
-          });
-          return err({ code: 'claim-text.refused', fields: refused });
-        }
-        return ok(frozen.value.contentHash);
+        return ok({ content: frozen.value.content, contentHash: frozen.value.contentHash });
       },
       { readOnly: true },
     );
     if (!first.ok) return first;
-    const checkedHash = first.value;
+
+    // Check every text of the frozen content, outside any unit.
+    const texts = revisionTextsOf(first.value.content, locales.supported, locales.default);
+    if (!texts.ok) return err(texts.error);
+    const checked = await check.execute(
+      context,
+      texts.value.map(({ field, ref, locale, text }) => ({ field, ref, locale, text })),
+    );
+    if (!checked.ok) {
+      return err(
+        checked.error.code === 'validation.failed'
+          ? { code: 'working-copy.invalid-content' as const }
+          : checked.error.code === 'request.throttled'
+            ? { code: 'access.unavailable' as const }
+            : checked.error,
+      );
+    }
+    // Anything that is not plainly clean refuses, so an unknown verdict can never pass.
+    const refused = checked.value.flatMap((verdict) =>
+      verdict.code === 'clean' ? [] : (refusalOf(verdict) ?? []),
+    );
+    if (checked.value.some((verdict) => verdict.code !== 'clean') && refused.length === 0) {
+      return err({ code: 'working-copy.invalid-content' });
+    }
+    if (refused.length > 0) {
+      this.#logger.warn({
+        msg: 'catalog.submit-product.claim-text-refused',
+        refusedFields: refused.length,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'claim-text.refused', fields: refused });
+    }
+    const checkedHash = first.value.contentHash;
 
     // 2. Freeze again and store, in one unit.
     try {

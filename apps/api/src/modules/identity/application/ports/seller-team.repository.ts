@@ -19,6 +19,13 @@ export interface SellerMembershipRepository {
   /** Whether the seller has a membership of any state (HF5 "never had a member"; the purge). */
   sellerHasMembers(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean>;
 
+  /**
+   * The accounts with an active membership of the seller, by id (slice 9): the seller's owner
+   * and Staff, whose open challenges a rejection or a suspension voids (HF11), and among whom the
+   * owner is found by its grant.
+   */
+  activeMembersOf(market: MarketContext, sellerId: Id<'Seller'>): Promise<Id<'Account'>[]>;
+
   add(market: MarketContext, membership: SellerMembership): Promise<void>;
 
   /** Deletes a membership with the version read (the unverified purge); else stale. */

@@ -5,6 +5,9 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { PlatformCategory } from '../../domain/platform-category';
+import { checkSeedTexts, type SeedClaimRefusal } from '../claim-text/seed-claim-check';
+import type { CheckClaimText } from '../claim-text/check-claim-text.service';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { CategorySeed } from '../ports/category-seed';
 import type { PlatformCategoryRepository } from '../ports/platform-category.repository';
 
@@ -15,12 +18,15 @@ export interface SeedCategoryTreeOutput {
 
 export type SeedCategoryTreeFailure =
   | { readonly code: 'access.denied' }
-  | { readonly code: 'category.seed-invalid'; readonly slug: string; readonly reason: string };
+  | { readonly code: 'category.seed-invalid'; readonly slug: string; readonly reason: string }
+  | SeedClaimRefusal;
 
 export interface SeedCategoryTreeDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly categories: PlatformCategoryRepository;
   readonly seed: CategorySeed;
+  readonly check: CheckClaimText;
+  readonly policy: CatalogMarketPolicy;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
@@ -35,8 +41,9 @@ export interface SeedCategoryTreeDependencies {
  * its code has no update path to rewrite a category (the grants allow only the structural columns
  * slice 21's editor needs, and never slug, creator kind, names or revision history). A concurrent or
  * repeated run converges on the unique slug and the tree version guard: the loser's unit is
- * stale, fails, and the next run finds the work done. The claim-text check of seed names joins
- * with slice 5.
+ * stale, fails, and the next run finds the work done. Before anything is written, every name and
+ * slug of the seed passes the claim-text check as the system actor (design 7.2, ADR-0031 d3); a
+ * match or an unavailable check refuses the whole run.
  */
 export class SeedCategoryTree extends UseCase<
   Record<string, never>,
@@ -62,9 +69,45 @@ export class SeedCategoryTree extends UseCase<
   ): Promise<Result<SeedCategoryTreeOutput, SeedCategoryTreeFailure>> {
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
     const { market } = context;
-    const { unitOfWork, categories, seed, outbox, clock, ids } = this.deps;
+    const { unitOfWork, categories, seed, outbox, clock, ids, check, policy } = this.deps;
+    const tree = seed.tree(market);
+    let defaultLocale: string;
+    try {
+      defaultLocale = policy.locales(market).default;
+    } catch {
+      return err({ code: 'seed.claim-text-unavailable', places: [] });
+    }
+    const checked = await checkSeedTexts(
+      check,
+      policy,
+      context,
+      tree.flatMap((seeded) => [
+        {
+          field: 'platform-category.slug' as const,
+          ref: seeded.slug,
+          locale: defaultLocale,
+          text: seeded.slug,
+        },
+        ...seeded.names.map(({ locale, name }) => ({
+          field: 'platform-category.name' as const,
+          ref: seeded.slug,
+          locale,
+          text: name,
+        })),
+      ]),
+    );
+    if (!checked.ok) {
+      this.#logger.error({
+        msg: 'catalog.seed-category-tree.claim-text',
+        code: checked.error.code,
+        places: checked.error.places.length,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return checked;
+    }
     let created = 0;
-    for (const seeded of seed.tree(market)) {
+    for (const seeded of tree) {
       const done = await unitOfWork.run(market, async () => {
         if ((await categories.idBySlug(market, seeded.slug)) !== null) return ok(false);
         let parentId: Id<'Category'> | null = null;

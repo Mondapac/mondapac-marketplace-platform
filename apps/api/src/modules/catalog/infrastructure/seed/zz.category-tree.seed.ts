@@ -11,8 +11,8 @@ export const ZZ_CATEGORY_TREE: readonly SeededCategory[] = [
     parentSlug: null,
     verticalRootCode: 'outdoor',
     names: [
-      { locale: 'xx', name: 'Garden' },
-      { locale: 'yy', name: 'Jardin' },
+      { locale: 'ja-JP', name: 'Garden' },
+      { locale: 'en-US', name: 'Jardin' },
     ],
   },
   {
@@ -20,8 +20,8 @@ export const ZZ_CATEGORY_TREE: readonly SeededCategory[] = [
     parentSlug: 'garden',
     verticalRootCode: null,
     names: [
-      { locale: 'xx', name: 'Garden tools' },
-      { locale: 'yy', name: 'Outils de jardin' },
+      { locale: 'ja-JP', name: 'Garden tools' },
+      { locale: 'en-US', name: 'Outils de jardin' },
     ],
   },
   {
@@ -29,8 +29,8 @@ export const ZZ_CATEGORY_TREE: readonly SeededCategory[] = [
     parentSlug: 'garden',
     verticalRootCode: null,
     names: [
-      { locale: 'xx', name: 'Garden furniture' },
-      { locale: 'yy', name: 'Mobilier de jardin' },
+      { locale: 'ja-JP', name: 'Garden furniture' },
+      { locale: 'en-US', name: 'Mobilier de jardin' },
     ],
   },
   {
@@ -38,8 +38,8 @@ export const ZZ_CATEGORY_TREE: readonly SeededCategory[] = [
     parentSlug: null,
     verticalRootCode: null,
     names: [
-      { locale: 'xx', name: 'Kitchen' },
-      { locale: 'yy', name: 'Cuisine' },
+      { locale: 'ja-JP', name: 'Kitchen' },
+      { locale: 'en-US', name: 'Cuisine' },
     ],
   },
 ];
