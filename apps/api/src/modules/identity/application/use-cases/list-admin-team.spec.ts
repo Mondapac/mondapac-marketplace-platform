@@ -143,6 +143,7 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
       seedCode: null,
       seedVersion: null,
       sellerId: null,
+      name: 'Custom role',
       permissionKeys: LEAD_KEYS,
       version: 1,
       createdAt: START,
@@ -626,6 +627,7 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
       seedCode: null,
       seedVersion: null,
       sellerId: null,
+      name: 'Custom role',
       permissionKeys: [
         'identity.admin-account.invite',
         'identity.admin-account.reset-second-factor',

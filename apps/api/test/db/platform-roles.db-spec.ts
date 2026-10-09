@@ -5,8 +5,11 @@ import { ok } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { AssignAdminRole } from '../../src/modules/identity/application/use-cases/assign-admin-role.use-case';
+import { InviteAdmin } from '../../src/modules/identity/application/use-cases/invite-admin.use-case';
 import { ListPlatformRoles } from '../../src/modules/identity/application/use-cases/list-platform-roles.use-case';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { realPermissionRegistry } from '../support/permission-registry';
 import { PrismaRoleRepository } from '../../src/modules/identity/infrastructure/sellers/prisma-seller-team.repository';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
@@ -19,7 +22,7 @@ import {
 } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
-// Identity slice 10a on PostgreSQL (identity design 5.3 `identity.platform-role.view`), for both
+// Identity slices 10a and 10 (the extended read) on PostgreSQL (identity design 5.3 `identity.platform-role.view`), for both
 // Market fixtures, as the application role on the run database: the role catalogue through the
 // real gate, use case and Prisma ports, in read-only units with no transaction (ADR-0025), and
 // `RoleRepository.platformRoles` (this Market's platform roles with their stored keys, never a
@@ -153,11 +156,17 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
     expect(ids).not.toContain(elsewhere);
     expect(ids).not.toContain(await seededRole('seller-owner', 'seller'));
     const entry = (roleId: string) => items.find((item) => item.roleId === roleId)!;
-    expect(entry(narrow)).toEqual({
+    expect(entry(narrow)).toMatchObject({
       roleId: narrow,
       kind: 'custom',
       seedCode: null,
+      name: `Role ${narrow}`,
       permissionCount: 3,
+      permissionKeys: [
+        'identity.admin-account.view',
+        'identity.platform-role.assign',
+        'identity.platform-role.view',
+      ],
       // Protected keys (assign) without the system role: R11.
       grantable: false,
     });
@@ -186,8 +195,70 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       expect(statement.trim()).not.toMatch(/^(BEGIN|COMMIT|ROLLBACK|SET TRANSACTION)/i);
       expect(statement.trim()).toMatch(/^SELECT/i);
     }
-    // A custom role's name is personal and not part of this read (slice 10 adds it).
-    expect(driver.statements.join('\n')).not.toMatch(/"name"|name_normalized/);
+  });
+
+  it('permissionCount and grantable are what the assign and invite commands answer (parity, Sajad on 10a)', async () => {
+    const platformKeyCount = realPermissionRegistry().keysOf('platform').size;
+    const lead = await customRole([
+      'identity.admin-account.invite',
+      'identity.admin-account.view',
+      'identity.platform-role.assign',
+      'identity.platform-role.view',
+      'identity.seller-access.view',
+    ]);
+    const narrow = await customRole([
+      'identity.admin-account.invite',
+      'identity.platform-role.assign',
+      'identity.platform-role.view',
+    ]);
+    const low = await customRole(['identity.seller-access.view']);
+    const actors = [
+      await admin(await seededRole('platform-administrator')),
+      await admin(lead),
+      await admin(narrow),
+    ];
+    const seen = new Set<string>();
+    // Other files add and delete platform roles in these Markets meanwhile: this case checks the
+    // seeded roles and its own, which nobody else touches.
+    const { rows: seededRows } = await sql.query<{ id: string }>(
+      `SELECT id FROM identity.roles WHERE market_id = $1 AND scope = 'platform'
+       AND seed_code IS NOT NULL`,
+      [code],
+    );
+    const own = new Set<string>([lead, narrow, low, ...seededRows.map((r) => r.id)]);
+
+    for (const actor of actors) {
+      const listed = await app.get(ListPlatformRoles).execute(as(actor), {});
+      if (!listed.ok) throw new Error(`listed: ${listed.error.code}`);
+      for (const entry of listed.value.items.filter((item) => own.has(item.roleId))) {
+        // permissionCount: what the role confers through the one resolver, from the stored rows.
+        const { rows } = await sql.query<{ n: string }>(
+          `SELECT count(*) AS n FROM identity.role_permissions
+           WHERE market_id = $1 AND role_id = $2 AND permission_key = ANY($3::text[])`,
+          [code, entry.roleId, [...realPermissionRegistry().keysOf('platform')]],
+        );
+        const stored = Number(rows[0]!.n);
+        const declared = entry.kind === 'system' ? platformKeyCount : stored;
+        expect(entry.permissionCount).toBe(declared);
+        expect(entry.permissionKeys).toHaveLength(declared);
+        // grantable: neither command refuses the role as not grantable or out of reach. A fresh
+        // target and a fresh invitation address for each pair.
+        const target = await admin(low);
+        const assigned = await app
+          .get(AssignAdminRole)
+          .execute(as(actor), { accountId: target, roleId: entry.roleId });
+        const invited = await app.get(InviteAdmin).execute(as(actor), {
+          email: `Parity.${randomUUID()}@Roles.example`,
+          roleId: entry.roleId,
+        });
+        const refused = (result: { ok: boolean; error?: { code: string } }) =>
+          !result.ok && ['role.not-grantable', 'role.unknown'].includes(result.error!.code);
+        expect(entry.grantable).toBe(!refused(assigned) && !refused(invited));
+        seen.add(`${actor === actors[0] ? 'system' : 'other'}:${entry.grantable}`);
+      }
+    }
+    // Both answers occur: the system role may give every role, the others not all.
+    expect([...seen].sort()).toEqual(['other:false', 'other:true', 'system:true']);
   });
 
   it('reads the platform roles with their stored keys as findById does, by the Market', async () => {

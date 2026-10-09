@@ -111,6 +111,30 @@
     }
   },
   {
+    "action": "identity.role.created",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "action": "identity.role.deleted",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    },
+    "after": null
+  },
+  {
     "action": "identity.role.seed-applied",
     "targetType": "identity.role",
     "targetId": "id",
@@ -134,6 +158,20 @@
       "kind": "enumOf(system|default|custom)",
       "scope": "enumOf(platform|seller)",
       "seedVersion": "integer"
+    }
+  },
+  {
+    "action": "identity.role.updated",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addedKeys": "listOf(permissionKey, max 40)",
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "renamed": "boolean",
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
     }
   },
   {

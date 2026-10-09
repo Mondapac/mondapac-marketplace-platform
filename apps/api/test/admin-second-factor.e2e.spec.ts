@@ -1028,7 +1028,13 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         error: { code: 'invitation.rejected' },
       });
       // A role that is no longer a system role is refused too.
-      fakes.roles.set(role.id, { ...role, kind: 'custom', seedCode: null, seedVersion: null });
+      fakes.roles.set(role.id, {
+        ...role,
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        name: 'Custom role',
+      });
       await expect(ready.accept()).resolves.toEqual({
         ok: false,
         error: { code: 'invitation.rejected' },

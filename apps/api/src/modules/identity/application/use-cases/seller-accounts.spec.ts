@@ -299,6 +299,7 @@ describe.each(TEST_MARKETS)(
         seedCode: null,
         seedVersion: null,
         sellerId: null,
+        name: 'Custom role',
         permissionKeys: ['identity.admin-account.view'],
         version: 1,
         createdAt: START,
