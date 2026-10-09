@@ -44,3 +44,12 @@ export interface TeamPage {
   readonly items: readonly TeamRow[];
   readonly next: string | null;
 }
+
+/** One entry of `GET identity/admin/roles`. `grantable` is a hint; the commands check again. */
+export interface PlatformRole {
+  readonly roleId: string;
+  readonly kind: 'system' | 'default' | 'custom';
+  readonly seedCode: string | null;
+  readonly permissionCount: number;
+  readonly grantable: boolean;
+}

@@ -160,7 +160,9 @@
         "none": "No role",
         "custom": "Custom role",
         "system": "(system role)",
-        "unknown": "Role"
+        "unknown": "Role",
+        "permission-count": "{count, plural, one {# permission} other {# permissions}}",
+        "not-grantable": "you can't give this role"
       },
       "empty": {
         "title": "It's just you so far",
@@ -180,7 +182,9 @@
         "reactivate": "Reactivate account",
         "reset-two-step": "Reset two-step verification…",
         "resend": "Resend invitation",
-        "cancel-invitation": "Cancel invitation…"
+        "cancel-invitation": "Cancel invitation…",
+        "change-role": "Change role",
+        "invite-admin": "Invite admin"
       },
       "dialog": {
         "keep": "Keep as it is",
@@ -199,14 +203,34 @@
           "body": "The link in their email stops working.",
           "action": "Cancel invitation"
         },
-        "keep-invitation": "Keep invitation"
+        "keep-invitation": "Keep invitation",
+        "change-role": {
+          "title": "Change role for {name}",
+          "body": "The change applies from their next action. They stay signed in.",
+          "label": "Role",
+          "current": "Current role: {role}",
+          "placeholder": "Choose a role",
+          "choose": "Choose a role.",
+          "action": "Change role"
+        },
+        "invite": {
+          "title": "Invite an admin",
+          "label-role": "Role",
+          "choose": "Choose a role.",
+          "help": "They'll get an email with a link to set their own password. The link works for {duration}.",
+          "duration": "72 hours",
+          "action": "Send invitation",
+          "cancel": "Cancel",
+          "toast-sent": "Invitation sent to {email}."
+        }
       },
       "toast": {
         "deactivate": "{name}'s account is deactivated. They've been signed out.",
         "reactivate": "{name}'s account is active again. They can sign in.",
         "reset-two-step": "Two-step verification reset for {name}. We've emailed them a link to set it up again.",
         "resend": "Invitation sent again to {name}.",
-        "cancel-invitation": "Invitation to {name} cancelled."
+        "cancel-invitation": "Invitation to {name} cancelled.",
+        "change-role": "{name}'s role is changed. It applies from their next action."
       },
       "reason": {
         "access": {
@@ -223,16 +247,22 @@
         },
         "invitation": {
           "unknown": "This invitation no longer exists. We've refreshed the list.",
-          "rejected": "This invitation can't be sent again. We've refreshed the list."
+          "rejected": "This invitation can't be sent again. We've refreshed the list.",
+          "already-pending": "This person already has an invitation. Resend it from the list."
         },
         "conflict": {
           "stale": "Someone has just changed this. We've refreshed it.",
           "retry": "Try again."
         },
         "account": {
+          "exists": "That address can't be invited. Check the team list or use another address.",
           "unknown": "This account no longer exists. We've refreshed the list.",
           "already-disabled": "Someone has just changed this. We've refreshed it.",
           "already-active": "Someone has just changed this. We've refreshed it."
+        },
+        "role": {
+          "not-grantable": "You can't give that role.",
+          "unknown": "That role no longer exists. We've refreshed the list."
         }
       }
     },

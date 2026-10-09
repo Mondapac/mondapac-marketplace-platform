@@ -67,8 +67,13 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   300 for AU) and `secondFactorThrottles.account` (`limit` 1 to 10, `windowMinutes` and
   `blockMinutes` 1440 to 10080, never 0: the block is the lock; 10, 1440 and 1440 for AU;
   identity design 6.8, HF2). It also checks that `keepSignedInSessions.seller.absoluteLifetimeMinutes` is greater than
-  `sessions.seller.absoluteLifetimeMinutes` (1-B). Later identity slices add their
-  values here.
+  `sessions.seller.absoluteLifetimeMinutes` (1-B). Slice 9 adds two optional keys: the
+  `accept-invitation` page in `links.targets.seller` (the page of the Seller Owner invitation
+  mail; a Market without it issues no seller invitation and answers `access.unavailable`) and
+  `sellerReapplyLimit` (1 to 10; 3 for AU, identity design 3.3: a rejected seller may re-apply
+  while fewer than this many re-applications were made since its last approval; a Market
+  without it answers `access.unavailable` to re-apply and reports `reapplyLimitReached` as
+  null). Later identity slices add their values here.
 - `allowedOrigins`: one list per route population, `{ "admin": [...], "seller": [...],
   "customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
   3). Each list holds at most 20 exact browser origins (`scheme://host[:port]`, no path, none

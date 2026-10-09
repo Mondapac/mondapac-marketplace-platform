@@ -3,11 +3,15 @@ import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { InviteAdminButton } from '../../../src/team/invite-admin-button.tsx';
 import { NoticeProvider } from '../../../src/team/notice.tsx';
 import { TeamTable } from '../../../src/team/team-table.tsx';
-import type { TeamPage } from '../../../src/team/types.ts';
+import type { PlatformRole, TeamPage } from '../../../src/team/types.ts';
 
 const VIEW_PERMISSION = 'identity.admin-account.view';
+const ROLES_PERMISSION = 'identity.platform-role.view';
+const ASSIGN_PERMISSION = 'identity.platform-role.assign';
+const INVITE_PERMISSION = 'identity.admin-account.invite';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function generateMetadata() {
@@ -45,17 +49,39 @@ export default async function TeamPageRoute({
   const { after: rawAfter } = await searchParams;
   const after = typeof rawAfter === 'string' && UUID.test(rawAfter) ? rawAfter : null;
   const title = t('identity.members.title.admin');
-  const result = await serverGet<TeamPage>(
-    `identity/admin/team${after === null ? '' : `?after=${after}`}`,
-  );
-  if (result.kind === 'signed-out') redirect('/session-ended');
+  // Each action shows only to an actor who holds its key; the server checks every command again.
+  const keys = new Set(gate.session.permissionKeys);
+  const canAssign = keys.has(ASSIGN_PERMISSION);
+  const canInvite = keys.has(INVITE_PERMISSION);
+  const needsRoles = keys.has(ROLES_PERMISSION) && (canAssign || canInvite);
+  const [result, rolesResult] = await Promise.all([
+    serverGet<TeamPage>(`identity/admin/team${after === null ? '' : `?after=${after}`}`),
+    needsRoles
+      ? serverGet<{ readonly items: readonly PlatformRole[] }>('identity/admin/roles')
+      : Promise.resolve(null),
+  ]);
+  if (result.kind === 'signed-out' || rolesResult?.kind === 'signed-out') {
+    redirect('/session-ended');
+  }
+  // Without the role list the role actions are left out, not shown broken.
+  const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
     <AdminShell session={gate.session} activeId="team" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {result.kind === 'ok' ? (
         <>
           <NoticeProvider>
-            <TeamTable page={result.body} after={after} csrfToken={gate.session.csrfToken} />
+            {canInvite && roles !== undefined ? (
+              <div className="mb-4 flex justify-end">
+                <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
+              </div>
+            ) : null}
+            <TeamTable
+              page={result.body}
+              after={after}
+              csrfToken={gate.session.csrfToken}
+              roles={canAssign ? roles : undefined}
+            />
           </NoticeProvider>
           {result.body.next === null || !UUID.test(result.body.next) ? null : (
             <p className="mt-4">

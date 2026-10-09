@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import type { Population } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import {
@@ -140,6 +143,43 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     expect(
       policy.target(testMarketContext('AU', 'default'), 'admin', 'seller-review-queue'),
     ).not.toBe(policy.target(testMarketContext('ZZ', 'default'), 'admin', 'seller-review-queue'));
+  });
+
+  it('reads each Market its re-apply limit and seller accept page (slice 9, identity design 3.3)', () => {
+    const au = testMarketContext('AU', 'default');
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(policy.sellerReapplyLimit(au)).toBe(3);
+    expect(policy.sellerReapplyLimit(zz)).toBe(3);
+    expect(policy.target(au, 'seller', 'accept-invitation')).toBe(
+      'https://seller.au.mondapac.test/accept-invitation',
+    );
+    expect(policy.target(zz, 'seller', 'accept-invitation')).toBe(
+      'https://seller.zz.test/konto/einladung',
+    );
+    // The admin panel's acceptance page stays its own.
+    expect(policy.target(au, 'admin', 'accept-invitation')).toBe(
+      'https://admin.au.mondapac.test/accept-invitation',
+    );
+  });
+
+  it('answers null for both when a Market configures neither, so the flows fail closed', () => {
+    // A copy of ZZ without the two slice 9 keys; the checked-in files keep them.
+    const file = JSON.parse(
+      readFileSync(path.join(TEST_MARKET_CONFIG_DIRS[1], 'ZZ.json'), 'utf8'),
+    ) as { identity: { sellerReapplyLimit?: number; links: { targets: { seller: object } } } };
+    delete file.identity.sellerReapplyLimit;
+    delete (file.identity.links.targets.seller as Record<string, string>)['accept-invitation'];
+    const directory = mkdtempSync(path.join(tmpdir(), 'markets-without-'));
+    writeFileSync(path.join(directory, 'ZZ.json'), JSON.stringify(file));
+    const without = new MarketConfigIdentityPolicy(
+      new MarketRegistry(loadMarketConfigs([directory], [testMarketId('ZZ')])),
+    );
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(without.sellerReapplyLimit(zz)).toBeNull();
+    expect(without.target(zz, 'seller', 'accept-invitation')).toBeNull();
+    expect(without.target(zz, 'seller', 'sign-in')).toBe('https://seller.zz.test/konto/anmelden');
   });
 
   it('refuses a Market this Region Stack does not host, with no fallback', () => {

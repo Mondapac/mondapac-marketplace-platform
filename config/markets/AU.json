@@ -88,7 +88,8 @@
         "seller": {
           "verify-email": "https://seller.au.mondapac.test/confirm-email",
           "sign-in": "https://seller.au.mondapac.test/sign-in",
-          "reset-password": "https://seller.au.mondapac.test/reset-password"
+          "reset-password": "https://seller.au.mondapac.test/reset-password",
+          "accept-invitation": "https://seller.au.mondapac.test/accept-invitation"
         },
         "admin": {
           "seller-review-queue": "https://admin.au.mondapac.test/sellers/awaiting-review",
@@ -117,6 +118,7 @@
         "blockMinutes": 1440
       }
     },
+    "sellerReapplyLimit": 3,
     "unverifiedAccountRetentionDays": 7,
     "mail": {
       "fromAddress": "no-reply@au.mondapac.test",
