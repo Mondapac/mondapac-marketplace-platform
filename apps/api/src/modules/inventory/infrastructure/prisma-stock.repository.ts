@@ -1,9 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import {
-  MAX_LOCKED_STOCK_ITEMS,
-  type LockedStockItem,
-} from '../../../platform/persistence/named-statements';
 import type {
   NewRetirementTombstone,
   NewStockItem,
@@ -16,7 +12,27 @@ import { assertSerializableUnit } from '../application/serializable-unit';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
-function toStockItemRow(row: LockedStockItem): StockItemRow {
+/**
+ * The most items one `inventory.lock-stock-items` call locks (data design 4.3): the statement
+ * refuses more, so a longer list is locked in consecutive ascending batches. A module may not
+ * import the persistence internals, hence the copy; the 1,001-item case of
+ * `inventory-retire-sell-units.db-spec.ts` fails if the platform cap ever drops below it.
+ */
+const MAX_LOCKED_STOCK_ITEMS = 1000;
+
+/** The columns the lock statement answers (platform `LockedStockItem`). */
+interface LockedRow {
+  readonly id: string;
+  readonly offerId: string;
+  readonly variantId: string;
+  readonly sourceId: string;
+  readonly sellerId: string;
+  readonly onHand: number;
+  readonly retiredAt: Date | null;
+  readonly version: number;
+}
+
+function toStockItemRow(row: LockedRow): StockItemRow {
   return {
     id: row.id as Id<'StockItem'>,
     offerId: row.offerId as Id<'Offer'>,
