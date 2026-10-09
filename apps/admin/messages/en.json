@@ -150,7 +150,9 @@
         "admin": "Roles & permissions"
       },
       "tab": {
-        "admins": "Admins"
+        "admins": "Admins",
+        "roles": "Roles",
+        "label": "Roles and permissions sections"
       },
       "table-caption": "Admins and pending invitations",
       "label": {
@@ -351,6 +353,40 @@
         "saved": "I've saved these codes",
         "once": "These codes can't be shown again after you leave this page."
       }
+    },
+    "roles": {
+      "group": {
+        "system": "System",
+        "default": "Ready-made",
+        "custom": "Custom"
+      },
+      "type": {
+        "system": "System",
+        "default": "Ready-made",
+        "custom": "Custom"
+      },
+      "label": {
+        "role": "Role",
+        "type": "Type",
+        "permissions": "Permissions"
+      },
+      "permissions-all": "All permissions",
+      "permissions-none": "No permissions yet",
+      "empty-custom": {
+        "title": "No custom roles yet",
+        "body": "Custom roles you create will appear here."
+      },
+      "action": {
+        "view": "View"
+      },
+      "back": "Back to roles",
+      "read-only": {
+        "system": "This role has every permission and can't be changed.",
+        "default": "This is a ready-made role and can't be changed."
+      },
+      "selected": "{selected} of {total} permissions selected",
+      "included": "Included:",
+      "protected": "Protected"
     }
   }
 }
