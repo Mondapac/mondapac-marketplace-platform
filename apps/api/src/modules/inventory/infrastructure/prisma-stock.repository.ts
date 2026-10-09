@@ -4,6 +4,7 @@ import type {
   NewRetirementTombstone,
   NewStockItem,
   NewStockMovement,
+  OfferTombstones,
   StockItemRow,
   RetirementTarget,
   StockRepository,
@@ -114,6 +115,44 @@ export class PrismaStockRepository implements StockRepository {
       orderBy: { id: 'asc' },
     });
     return rows.map((row) => row.id as Id<'StockItem'>);
+  }
+
+  async itemIdsOfOfferVariants(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+    variantIds: readonly Id<'Variant'>[],
+  ): Promise<readonly Id<'StockItem'>[]> {
+    const rows = await this.prisma.tx(market).inventoryStockItem.findMany({
+      where: { marketId: market.marketId, offerId, variantId: { in: [...variantIds] } },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    return rows.map((row) => row.id as Id<'StockItem'>);
+  }
+
+  async tombstonesOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+    variantIds: readonly Id<'Variant'>[],
+  ): Promise<OfferTombstones> {
+    const rows = await this.prisma.tx(market).inventoryRetirement.findMany({
+      where: {
+        marketId: market.marketId,
+        OR: [
+          { scope: 'offer', offerId },
+          { scope: 'variant', variantId: { in: [...variantIds] } },
+        ],
+      },
+      select: { scope: true, variantId: true },
+    });
+    return {
+      offerRetired: rows.some((row) => row.scope === 'offer'),
+      retiredVariantIds: new Set(
+        rows.flatMap((row) =>
+          row.scope === 'variant' && row.variantId !== null ? [row.variantId as Id<'Variant'>] : [],
+        ),
+      ),
+    };
   }
 
   async lockItems(
@@ -231,9 +270,14 @@ export class PrismaStockRepository implements StockRepository {
           delta: movement.delta,
           resultingOnHand: movement.resultingOnHand,
           reason: movement.reason,
-          actorKind: 'account',
-          actorAccountId: movement.actorAccountId,
-          actorModule: null,
+          // `re-key` is the module's own write (the table CHECK pairs reason and actor kind).
+          ...(movement.reason === 're-key'
+            ? { actorKind: 'module', actorAccountId: null, actorModule: 'inventory' }
+            : {
+                actorKind: 'account',
+                actorAccountId: movement.actorAccountId,
+                actorModule: null,
+              }),
           correlationId: movement.correlationId,
           occurredAt: toDate(movement.occurredAt),
         },
