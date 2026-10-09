@@ -218,7 +218,9 @@
       "badge": {
         "details-incomplete": "Details needed",
         "ready": "Ready to submit",
-        "outside-area": "Not in your area yet"
+        "outside-area": "Not in your area yet",
+        "awaiting-review": "Awaiting review",
+        "changes-needed": "Changes needed"
       },
       "banner": {
         "details-incomplete": {
@@ -232,9 +234,22 @@
         "outside-area": {
           "title": "We're not in your area yet",
           "body": "Your details are saved. You can submit once we open there."
+        },
+        "awaiting-review": {
+          "title": "We're reviewing your application",
+          "body": "We'll email you when there's a decision. Until then you can't sell. Changing your details withdraws your submission."
+        },
+        "changes-needed": {
+          "title": "Your application needs changes",
+          "body": "Update your details and submit again."
         }
       },
-      "steps": "Steps"
+      "steps": "Steps",
+      "submitted-on": "Submitted on {dateTime}",
+      "withdrawn": "Your submission was withdrawn on {date} because MondaPac edited your details. Submit again when you're ready.",
+      "withdrawn-self": "You withdrew your submission on {date}. Submit again when you're ready.",
+      "submit-done": "Submitted",
+      "review-link": "Review and submit"
     },
     "step": {
       "counter": "Step {current} of {total}",
@@ -353,7 +368,10 @@
         "stale": "This page changed somewhere else. Reload it and try again."
       },
       "file": {
-        "change-request-required": "Use Request a change for these details."
+        "change-request-required": "Use Request a change for these details.",
+        "incomplete": "Some required details are missing. They're listed below.",
+        "decision-in-progress": "MondaPac is recording a decision. Try again in a moment.",
+        "already-submitted": "Your application is already waiting for review."
       },
       "timezone": {
         "unresolved": "We couldn't work out your time zone from this address. Check the address, or contact us.",
@@ -365,7 +383,11 @@
       "limit": {
         "daily": "You've reached today's limit for this. Try again later."
       },
-      "unavailable": "We couldn't save this right now. Try again in a moment."
+      "unavailable": "We couldn't save this right now. Try again in a moment.",
+      "slug-lost": "That web address was taken before you submitted. Choose another.",
+      "seller-access": {
+        "reapply-limit": "You've reached the limit for new applications. Contact us if you have questions."
+      }
     },
     "common": {
       "contact-us": "Contact us"
@@ -377,6 +399,40 @@
     "page": {
       "unavailable": "We couldn't load this page. Try again in a moment.",
       "title-suffix": "Seller account – MondaPac"
+    },
+    "withdraw": {
+      "open": "Withdraw submission",
+      "title": "Withdraw your submission?",
+      "body": "It leaves MondaPac's review queue. Your details stay saved.",
+      "action": "Withdraw submission",
+      "keep": "Keep submission",
+      "done": "Your submission was withdrawn."
+    },
+    "submit": {
+      "title": "Review and submit",
+      "back": "Back to your seller account",
+      "banner": "MondaPac reviews these details before you can sell. You'll get an email when there's a decision.",
+      "action": {
+        "submit": "Submit for review",
+        "again": "Submit again"
+      },
+      "help": {
+        "blocked": "Finish {count, plural, one {# item} other {# items}} first."
+      },
+      "row": {
+        "missing": "Missing",
+        "edit": "Edit",
+        "blocked": "Blocked",
+        "not-entered": "Not entered"
+      },
+      "blocked-area": "We're not in your area yet. We've saved your details. You can submit once we open there.",
+      "label": {
+        "zone": "Work time zone",
+        "registered": "Registered business address",
+        "address": "Where your shop works from"
+      },
+      "locked": "Your application is waiting for review.",
+      "details": "Your details"
     }
   }
 }

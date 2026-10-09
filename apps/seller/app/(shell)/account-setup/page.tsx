@@ -16,7 +16,7 @@ export default async function AccountSetupPage() {
   }
   return (
     <SellerShell session={page.session} activeId="s_setup" title={t('sellers.account.title')}>
-      <SetupHub file={page.file} />
+      <SetupHub file={page.file} csrfToken={page.session.csrfToken} />
     </SellerShell>
   );
 }
