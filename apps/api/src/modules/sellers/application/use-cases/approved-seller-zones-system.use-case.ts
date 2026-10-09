@@ -2,6 +2,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
   approvedSellerZonesFor,
+  type ApprovedSellerZonesDependencies,
   type ApprovedSellerZonesAnswer,
   type ApprovedSellerZonesFailure,
   type ApprovedSellerZonesInput,
@@ -18,14 +19,17 @@ export class ApprovedSellerZonesSystem extends UseCase<
     rule: { kind: 'system' },
   };
 
-  constructor(gate: UseCaseGate) {
+  constructor(
+    gate: UseCaseGate,
+    private readonly deps: ApprovedSellerZonesDependencies,
+  ) {
     super(gate);
   }
 
   protected handle(
-    _context: CallContext,
+    context: CallContext,
     input: ApprovedSellerZonesInput,
   ): Promise<Result<ApprovedSellerZonesAnswer, ApprovedSellerZonesFailure>> {
-    return Promise.resolve(approvedSellerZonesFor(input.sellerIds));
+    return approvedSellerZonesFor(this.deps, context, input.sellerIds);
   }
 }

@@ -19,9 +19,16 @@ export type RevisionAddRefused =
  * The reads return the revision without its content: the sealed content is read on its own, by
  * the one use case that needs it, so ciphertext never travels with a list or a status check.
  *
- * Not here yet: the status changes (withdraw, supersede, decide) and the move of the approved
- * pointer, which belong to slices 5b and 7a-decide.
+ * Slice 5b adds the withdrawal and the read of the approved zones. Not here yet: supersede and
+ * decide, and the move of the approved pointer (slice 7a-decide).
  */
+/** The two clear zone columns of an approved revision (data design 3.2). */
+export interface ApprovedZones {
+  readonly operatingTimezone: string;
+  /** Null for a revision backfilled without an address (data design 3.2). */
+  readonly addressTimezone: string | null;
+}
+
 export interface BusinessFileRevisionRepository {
   /**
    * Inserts a new `pending` revision with its sealed content. The revision's content hash must be
@@ -52,6 +59,26 @@ export interface BusinessFileRevisionRepository {
     sellerId: Id<'Seller'>,
     id: Id<'BusinessFileRevision'>,
   ): Promise<BusinessFileRevision | null>;
+
+  /**
+   * Writes the withdrawal of a pending revision (`withdrawn` from the domain): one `UPDATE …
+   * WHERE status = 'pending'` on the five columns a withdrawal sets, with the row count checked.
+   * Answers false and writes nothing when the revision is no longer pending (a decision, another
+   * withdrawal), so a lost race is the caller's `conflict.stale`. The revision must be
+   * `withdrawn` and carry its withdrawal.
+   */
+  saveWithdrawal(market: MarketContext, revision: BusinessFileRevision): Promise<boolean>;
+
+  /**
+   * The approved zones of up to 100 sellers of the Market (sellers design 7.1a row 7; data design
+   * A18): the approved pointer on `seller_files`, then the revision it names; the clear zone
+   * columns only, no key. A seller with no approved revision, of another Market, or unknown is not
+   * in the answer. The caller bounds the list.
+   */
+  approvedZones(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, ApprovedZones>>;
 
   /** The sealed content of one revision of this seller, as stored; null when there is none. */
   readSealedContent(

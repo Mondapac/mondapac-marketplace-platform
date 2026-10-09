@@ -146,7 +146,7 @@ const hintOf = (result: Result<unknown, { readonly code: string }>): ActionHint 
  * **Hints (no second implementation).** Each hint runs, after the action's own key, the same
  * function its command runs after its gate (`application/accounts/admin-verdicts.ts`):
  * change role `mayActOnAdmin` then `LastHolderPolicy` on the Platform Administrator role (which
- * role is grantable is the role catalogue's `grantable`, slice 10); disable and enable
+ * role is grantable is the role catalogue's `grantable`, slice 10a); disable and enable
  * `statusChangeVerdict`; reset `secondFactorResetVerdict`; re-send
  * `adminInvitationResendVerdict`; revoke needs only its key (the list holds pending invitations
  * only). An action whose key the actor lacks is `access.denied` and nothing else is evaluated or
@@ -398,7 +398,7 @@ class RowBuilder {
    * The row part of `AssignAdminRole`: `mayActOnAdmin`, an assignment must exist, and a holder
    * of the Platform Administrator role who is its last holder loses it with any other role
    * (`LastHolderPolicy`). Whether a given role is grantable is not a row hint (`role.unknown`,
-   * `canGrant` for the chosen role: the slice 10 role read's `grantable`; Hassan L2). Mirror of
+   * `canGrant` for the chosen role: the slice 10a role read's `grantable`; Hassan L2). Mirror of
    * `AssignAdminRole`'s target steps; change both together.
    */
   private async changeRoleHint(

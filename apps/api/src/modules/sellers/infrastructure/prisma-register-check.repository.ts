@@ -80,11 +80,16 @@ const COLUMNS = {
  * names the primary key `(market_id, seller_id, identifier_index)`, so it is a primary key probe
  * and never reaches another Market's or another seller's row.
  *
- * `record` keeps the sticky negative of `registerCheckAfter` under two concurrent writers without
- * a read-modify-write: it inserts the row if absent (`ON CONFLICT DO NOTHING`), sets the negative
- * mark only where it is still NULL, and then writes the latest answer, touching the mark again
- * only to clear it for an `active` answer. Each statement is atomic and the table's CHECKs hold
- * after each one (the mark is set before a negative outcome is written).
+ * `record` keeps the sticky negative of `registerCheckAfter` under concurrent writers without a
+ * read-modify-write, and makes the row **version-monotonic** (slice 5b; Hassan L1): the row is
+ * inserted if absent (`ON CONFLICT DO NOTHING`), and every later write is one `UPDATE … WHERE
+ * compared_file_version <= :new`, so a slower writer that compared an older version of the file
+ * changes nothing, and in particular never clears `definite_negative_at` or replaces a newer
+ * answer. A negative outcome is written by two statements that partition the row on its mark
+ * (the first sets the mark with the outcome, the second leaves the mark alone), so the table's
+ * CHECKs hold after each statement, also when the row was `active` before. Each statement is
+ * atomic; a statement that matches no row writes nothing. The answer is the row as stored, which
+ * is not the write when a newer version already holds the row.
  */
 export class PrismaRegisterCheckRepository implements RegisterCheckRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -122,45 +127,52 @@ export class PrismaRegisterCheckRepository implements RegisterCheckRepository {
     if (!Number.isSafeInteger(write.comparedFileVersion) || write.comparedFileVersion < 1) {
       throw new RangeError('record: the compared file version is a positive integer');
     }
-    const by = {
+    const answer = {
+      outcome: write.outcome,
+      mismatches: [...write.mismatches],
+      checkedAt: at,
       checkedByKind: write.checkedBy.kind,
       checkedByAccountId: write.checkedBy.accountId,
-      // Every write states the version it compared; the latest answer replaces the earlier one.
       comparedFileVersion: write.comparedFileVersion,
     };
+    // Only a row at this version or an older one is replaced (L1): the latest answer of the
+    // newest version wins, whatever the order in which the writers commit.
+    const notNewer = { ...key, comparedFileVersion: { lte: write.comparedFileVersion } };
 
-    await transaction.sellersRegisterCheck.createMany({
+    const { count: inserted } = await transaction.sellersRegisterCheck.createMany({
       data: [
         {
           ...key,
           tenantId: market.tenantId,
-          outcome: write.outcome,
-          mismatches: [...write.mismatches],
+          ...answer,
           definiteNegativeAt: negative ? at : null,
-          checkedAt: at,
-          ...by,
         },
       ],
       skipDuplicates: true,
     });
-    if (negative) {
-      // The first negative stays: only a NULL mark is set.
-      await transaction.sellersRegisterCheck.updateMany({
-        where: { ...key, definiteNegativeAt: null },
-        data: { definiteNegativeAt: at },
-      });
+    if (inserted === 0) {
+      if (negative) {
+        // The first negative keeps its mark: a row without one gets this answer's instant ...
+        await transaction.sellersRegisterCheck.updateMany({
+          where: { ...notNewer, definiteNegativeAt: null },
+          data: { ...answer, definiteNegativeAt: at },
+        });
+        // ... and a row that has one keeps it (a later negative only replaces the answer).
+        await transaction.sellersRegisterCheck.updateMany({
+          where: { ...notNewer, definiteNegativeAt: { not: null } },
+          data: answer,
+        });
+      } else {
+        await transaction.sellersRegisterCheck.updateMany({
+          where: notNewer,
+          data: {
+            ...answer,
+            // An active answer replaces a negative; an unavailable one leaves the mark alone.
+            ...(write.outcome === 'active' ? { definiteNegativeAt: null } : {}),
+          },
+        });
+      }
     }
-    await transaction.sellersRegisterCheck.updateMany({
-      where: key,
-      data: {
-        outcome: write.outcome,
-        mismatches: [...write.mismatches],
-        checkedAt: at,
-        ...by,
-        // An active answer replaces a negative; nothing else touches the mark.
-        ...(write.outcome === 'active' ? { definiteNegativeAt: null } : {}),
-      },
-    });
     const stored = await transaction.sellersRegisterCheck.findUniqueOrThrow({
       where: { marketId: market.marketId, marketId_sellerId_identifierIndex: key },
       select: COLUMNS,

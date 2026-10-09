@@ -296,7 +296,8 @@ async function updateTo170(label, opts, from) {
 const NEW_180 = ['Select', 'Textarea', 'CheckboxRow', 'Toast', 'DialogBody', 'Dialog', 'EmptyState'];
 const VARIANTS_180 = { Select: 7, Textarea: 6, CheckboxRow: 12, Toast: 2, Dialog: 6, EmptyState: 3 }; // CheckboxRow: 10 in 1.8.0, State=Saving added in 1.10.0
 const BODIES_180 = ['Template body · D1 Invite (Admin)', 'Template body · D1 Invite (Admin, list open)', 'Template body · D2 Change role (Admin)', 'Template body · D1 Invite (Seller)', 'Template body · D2 Change role (Seller)'];
-const ADMIN_180 = ['Shared · Members · Admin', 'Shared · Members · Admin · Menu open', 'Shared · Members · Admin · Loading', 'Shared · Members · Admin · Load error', 'Shared · Members · Admin · View only',
+const EXPIRED_1101 = 'Shared · Members · Admin · Invitation expired'; // 1.10.1, with the 1.8.0 Members frames
+const ADMIN_180 = ['Shared · Members · Admin', 'Shared · Members · Admin · Menu open', 'Shared · Members · Admin · Loading', 'Shared · Members · Admin · Load error', 'Shared · Members · Admin · View only', EXPIRED_1101,
   'Shared · Roles · Admin', 'Shared · Roles · Admin · No custom roles', 'Shared · No access · Admin', 'Shared · Account security · Admin', 'Shared · Account security · Admin · Errors',
   'Dialogs · Members · Admin', 'Dialogs · Confirm · Admin', 'Shared · Members · Admin (phone)', 'Shared · Not found · Admin (phone)', 'Dialog sheet · Change role (phone)'];
 const SELLER_180 = ['Shared · Members · Seller', 'Shared · Members · Seller · Empty', 'Shared · Members · Seller · Loading', 'Shared · Members · Seller · Load error', 'Shared · Roles · Seller', 'Shared · Roles · Seller · No custom roles',
@@ -394,6 +395,13 @@ function state180(M, opts, label) {
   const inv = vo.findAll((n) => n.type === 'INSTANCE' && /State=Disabled/.test(instMain(n)) && n.findOne((x) => x.type === 'TEXT' && x.characters === 'Invite admin'));
   const menuItems = vo.findAll((n) => n.type === 'INSTANCE' && /State=Disabled/.test(instMain(n)) && /^item-/.test(n.name));
   check(voTexts.length === 4 && inv.length === 1 && menuItems.length === 3, label + ': View only: "Invite admin" is disabled, the helper "' + VIEW_ONLY_COPY + '" sits under the title and on the 3 disabled menu items');
+  // 1.10.1: the expired invitation, its Attention badge with the clock icon, and its two-item row menu (Resend, then Cancel as Destructive)
+  const ex = frameNamed(M, EXPIRED_1101)[0];
+  const exBadge = ex.findAll((n) => n.type === 'INSTANCE' && /Tone=Attention/.test(instMain(n)) && /Leading=Icon/.test(instMain(n)) && n.findOne((x) => x.type === 'TEXT' && x.characters === 'Invitation expired'));
+  const exMenu = ex.findOne((n) => n.type === 'INSTANCE' && n.name === 'Row menu (open)');
+  const exItems = exMenu ? ['item-1', 'item-3'].map((nm) => exMenu.findOne((x) => x.name === nm)) : [];
+  const exLabel = (it) => { const t = it && it.findOne((x) => x.type === 'TEXT' && /invitation/.test(x.characters)); return t ? t.characters : ''; };
+  check(exBadge.length === 1 && exMenu && propOf(exMenu, 'Show item 2') === false && exItems.map(exLabel).join('|') === 'Resend invitation|Cancel invitation…' && /State=Default/.test(instMain(exItems[0])) && /State=Destructive/.test(instMain(exItems[1])), label + ': Invitation expired: one row has the Attention badge "Invitation expired", and its menu offers "Resend invitation" and "Cancel invitation…" (Destructive)');
   const le = frameNamed(M, 'Shared · Members · Seller · Load error')[0];
   check(le.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'We couldn’t load this list') && le.findAll((n) => n.type === 'TEXT').some((n) => n.characters === 'Try again') && le.findAll((n) => n.type === 'INSTANCE' && n.name === 'load-error' && /Tone=Critical/.test(instMain(n))).length === 1 && !le.findOne((n) => n.type === 'INSTANCE' && n.name === 'empty-state'), label + ': Load error is an InfoBanner Critical "We couldn’t load this list" with "Try again" (not an empty state)');
   const ld = frameNamed(M, 'Shared · Members · Admin · Loading')[0];
@@ -426,7 +434,7 @@ const lastBottom = (n) => { const kids = (n.children || []).filter((c) => c.visi
 const stackHeight = (f) => { const k = lastBottom(f); return f.paddingTop + f.paddingBottom + k.reduce((a, c) => a + c.height, 0) + f.itemSpacing * Math.max(0, k.length - 1); };
 const phoneMain = (M) => frameNamed(M, ADMIN_PHONE)[0].children.find((c) => c.name === 'Main');
 const cbParts = (M) => { const set = setOf(M, 'CheckboxRow'); const row = set.parent; return { set: set, row: row, usage: row.children.find((c) => c.name === 'Usage') }; };
-const shellFrames = (M) => SHELL_ADMIN.concat(SHELL_SELLER).map((n) => frameNamed(M, n)[0]);
+const shellFrames = (M) => SHELL_ADMIN.concat(SHELL_SELLER).map((n) => frameNamed(M, n)[0]).filter(Boolean); // a file older than 1.10.1 lacks the Invitation expired frame
 
 // Top-level children of every page and of every section on it (the nodes the canvas layout is made of).
 function topLevel(M) { const out = []; M.ROOT.children.forEach((p) => { p.children.forEach((n) => { out.push([p.name, n]); if (n.type === 'SECTION') n.children.forEach((c) => out.push([p.name + ' › ' + n.name, c])); }); }); return out; }
@@ -469,9 +477,9 @@ function state181(M, label, skipOverlap) {
   check(skipOverlap || ov.length === 0, label + ': ' + (skipOverlap ? 'overlap check skipped (update path: see the report check)' : 'no two top-level children of a page or section overlap') + ' (' + ov.length + (ov.length ? ': ' + ov.slice(0, 3).join(' | ') : '') + ')');
   const shell = shellFrames(M);
   const low = shell.filter((f) => f.height < 900 - 0.5);
-  check(shell.length === 22 && low.length === 0, label + ': every Panel desktop page is at least 900 high (' + shell.length + ' pages, ' + low.length + ' lower' + (low.length ? ': ' + low.map((f) => f.name + ' ' + f.height).join(', ') : '') + ')');
+  check(shell.length === 23 && low.length === 0, label + ': every Panel desktop page is at least 900 high (' + shell.length + ' pages, ' + low.length + ' lower' + (low.length ? ': ' + low.map((f) => f.name + ' ' + f.height).join(', ') : '') + ')');
   const hugging = shell.filter((f) => !FIXED_900.includes(f.name));
-  check(hugging.length === 18 && hugging.every((f) => f.minHeight === 900 && f.layoutSizingVertical === 'HUG') && FIXED_900.every((n) => { const f = frameNamed(M, n)[0]; return f.height === 900 && f.layoutSizingVertical === 'FIXED'; }), label + ': the 18 hugging Panel pages have minHeight 900, the 4 fixed pages stay 900 high');
+  check(hugging.length === 19 && hugging.every((f) => f.minHeight === 900 && f.layoutSizingVertical === 'HUG') && FIXED_900.every((n) => { const f = frameNamed(M, n)[0]; return f.height === 900 && f.layoutSizingVertical === 'FIXED'; }), label + ': the 19 hugging Panel pages (18 of 1.8.0, 1 of 1.10.1) have minHeight 900, the 4 fixed pages stay 900 high');
   const panelNames = SHELL_ADMIN.concat(SHELL_SELLER, SHELL_183, [EDITOR_PHONE]); const extraMin = topLevel(M).map((e) => e[1]).filter((n) => n.minHeight && !panelNames.includes(n.name) && !(n.name.indexOf(SETUP_PREFIX) === 0 && !/\(phone\)$/.test(n.name)) && !SHELL_1100.includes(n.name.replace(/ · Dark$/, '')));
   check(extraMin.length === 0, label + ': no top-level frame outside the Panel desktop pages has a minimum height' + (extraMin.length ? ' (' + extraMin.map((n) => n.name).join(', ') + ')' : ''));
   check(shell.every((f) => f.children[0].name === 'Sidebar' && f.children[0].layoutSizingVertical === 'FILL'), label + ': the Sidebar still fills the height of each Panel page');
@@ -745,6 +753,7 @@ function state190(M, opts, label) {
 // ---- Release 1.10.0 "Seller admin": SettingRow, CheckboxRow State=Saving and Show undo, and the Seller admin frames (Sellers in Phase 3, Seller
 // review, Seller detail with its admin-only settings, Seller settings, Store profile, their state boards, dialogs and phone frames).
 const CODE_190 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.9.0.js'), 'utf8'); // the released 1.9.0 plugin (code.js of main at 0900aca)
+const CODE_1100 = fs.readFileSync(path.join(__dirname, 'fixtures', 'code-1.10.0.js'), 'utf8'); // the released 1.10.0 plugin (code.js of main at 25d6df1)
 const SA_P1 = 'Admin · Sellers (Phase 3)', SA_P3 = 'Admin · Seller review', SA_P2 = 'Admin · Seller detail', SA_P4 = 'Shared · Settings · Seller settings', SA_S7 = 'Seller · Store profile';
 const APPROVE_REASONS_1100 = { 'checks-missing': 'Record 2 required checks first.', 'register-blocks': 'Approve is unavailable while the register result is negative.', 'register-lookup': 'Look it up again or record a manual check first.',
   'not-current-revision': 'This isn’t the current submission.', 'identifier-held': 'Another approved or suspended seller already holds this number.', 'decision-in-progress': 'A decision is being recorded.' };
@@ -761,11 +770,12 @@ const BODIES_SELLER_1100 = ['Template body · D9 Confirm it’s you'];
 const DARK_1100 = [SA_P3 + ' · Application · Dark', SA_S7 + ' · Pending change · Dark'];
 // What Update library reports for 1.10.0, in report order: the components after the 1.9.0 ones, the templates after the 1.9.0 templates.
 const ADDED_1100_MID = ['component SettingRow', 'CheckboxRow property Show undo', 'CheckboxRow undo action (10 variants)', 'variants added to CheckboxRow (2): State=Saving', 'update CheckboxRow description', 'CheckboxRow Usage: Saving and Show undo'];
+const ADDED_1101 = ['templates Panel · Admin (1 frame)']; // 1.10.1: the Invitation expired frame, made by the 1.8.0 template step on a file that lacks it
 const ADDED_1100_TPL = ['templates Seller admin · Admin (' + ADMIN_1100.length + ' frames, ' + BODIES_ADMIN_1100.length + ' template bodies)', 'templates Seller admin · Seller (' + SELLER_1100.length + ' frames, 1 template body)'].concat(DARK_1100.map((n) => 'dark preview ' + n));
 // The CheckboxRow documentation texts that 1.10.0 replaces in place (summary and Properties), as the plugin writes them.
 const CB_SUMMARY_1100 = 'One permission on the role editor and later multi-select lists (1.8.0); one reviewer check that saves on its own (1.10.0). 2 values by 6 states.';
 const CB_PROPS_1100 = ['Label, Description (text); Show badge (boolean, the "Protected" Badge, or "Required" on a reviewer check); Show undo (boolean, 1.10.0)', 'Value: Unchecked, Checked. State: Default, Hover, Focus, Disabled, Read-only, Saving (1.10.0)'];
-const NEW_1100 = new Set(ADMIN_1100.concat(SELLER_1100, BODIES_ADMIN_1100, BODIES_SELLER_1100, DARK_1100, ['SettingRow', 'undo']));
+const NEW_1100 = new Set(ADMIN_1100.concat(SELLER_1100, BODIES_ADMIN_1100, BODIES_SELLER_1100, DARK_1100, ['SettingRow', 'undo', EXPIRED_1101]));
 // a new layer that 1.10.0 adds under an existing parent (a Usage item is an 'Item', as in 1.9.0)
 const isNew1100Top = (n) => NEW_1100.has(n) || /^Value=(Unchecked|Checked), State=Saving$/.test(n);
 const isCbSet = (n) => n && n.type === 'COMPONENT_SET' && n.name === 'CheckboxRow';
@@ -892,7 +902,7 @@ async function updateTo180(M, label, opts, from) {
   state1100(M, opts, 'updated');
   { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
     check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.10.0', 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.10.1', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -1223,7 +1233,7 @@ async function updateScenario(label, opts, from) {
   const lostF = ['Shared · Members · Admin · Loading', 'Shared · Members · Seller · Loading'].map((n) => frameNamed(Z, n)[0]); const lostN = lostF.map((f) => f.name); lostF.forEach((f) => f.remove());
   check(tcz.children.length === 14 && lostV.length === 2 && lostN.length === 2, 'removed 2 Loading variants and 2 Loading frames');
   r = await send(Z, { type: 'update' }); const add10 = r.done ? r.done.added.filter((a) => !/^section .* moved /.test(a)) : []; // a section that grew may push the next ones along (restackSections)
-  check(!r.err && add10.length === 3 && add10.includes('variants added to TableCell (2): State=Loading') && add10.includes('templates Panel · Admin (1 frames)') && add10.includes('templates Panel · Seller (1 frames)'), 'the update re-adds only those (' + add10.join(', ') + ')' + (r.err ? ': ' + r.err.message : ''));
+  check(!r.err && add10.length === 3 && add10.includes('variants added to TableCell (2): State=Loading') && add10.includes('templates Panel · Admin (1 frame)') && add10.includes('templates Panel · Seller (1 frame)'), 'the update re-adds only those (' + add10.join(', ') + ')' + (r.err ? ': ' + r.err.message : ''));
   check(tcz.children.length === 16 && tcz.children.filter((c) => /State=Loading/.test(c.name)).length === 5 && lostN.every((n) => frameNamed(Z, n).length === 1) && BODIES_180.every((n) => countNamed(Z, 'COMPONENT', n) === 1), 'TableCell has 16 variants again, each Loading frame exists once and no template body was made twice');
   const lx = tcz.children.filter((c) => /State=Loading/.test(c.name)).map((c) => Math.round(c.x));
   check(lx.every((x) => x === lx[0]), 'the re-added variants join the existing Loading column');
@@ -1260,14 +1270,14 @@ async function updateScenario(label, opts, from) {
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
     // The 1.8.2 layout fixes (Input, AuthShowcase, Starter sections) run in the same update; scenario 12 checks them.
     const own181 = r.done ? r.done.added.filter((l) => !/^(Input|AuthShowcase) (variants laid out|documentation block)|^section .* moved /.test(l)) : [];
-    check(r.done && own181.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    check(r.done && own181.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
     state181(Q, '1.8.0 file repaired ' + tag11, true);
     state183(Q, '1.8.0 file updated ' + tag11);
     state190(Q, opts, '1.8.0 file updated ' + tag11);
     state1100(Q, opts, '1.8.0 file updated ' + tag11);
     const gone11 = [...ids0.keys()].filter((id) => !Q.byId.has(id));
     check(gone11.length === cardNodes.size && gone11.every((id) => cardNodes.has(id)), 'the only deletions are the 2 member cards and their layers (' + gone11.length + ')');
-    check(shellFrames(Q).every((f) => heights0.has(f.id)), 'no Panel page was replaced (same ids)');
+    check(shellFrames(Q).filter((f) => f.name !== EXPIRED_1101).every((f) => heights0.has(f.id)) && shellFrames(Q).length === 23, 'no Panel page was replaced (same ids), and the 1.10.1 page was added');
     check(cbParts(Q).set.children.filter((c) => ids0.has(c.id)).map((c) => c.id).join() === nCb0, 'the 10 CheckboxRow variants keep their ids (1.10.0 adds 2)');
     // Update library never moves a frame; an overlap that the repair causes is reported, not fixed. Only a Starter section that grew onto the next one moves (1.8.2, reported).
     const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => Q.byId.has(id) && pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
@@ -1391,7 +1401,7 @@ async function updateScenario(label, opts, from) {
     check(!r.err && r.done, 'Update library finished on the 1.8.2 file ' + tag13 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add13 = r.done ? r.done.added : []; console.log('    ' + add13.join('\n    '));
     const own13 = add13.filter((l) => !/^section .* moved /.test(l));
-    check(own13.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
+    check(own13.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
     state180(Q, opts, '1.8.2 file updated ' + tag13);
     state181(Q, '1.8.2 file updated ' + tag13);
     state183(Q, '1.8.2 file updated ' + tag13);
@@ -1458,7 +1468,7 @@ async function updateScenario(label, opts, from) {
     const keep = new Set(allNodes(Q).map((n) => n.id));
     r = await send(Q, { type: 'update' });
     const add = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    check(!r.err && add.join('|') === 'templates Panel 1.8.3 · Admin (2 frames, 1 template bodies)|templates Panel 1.8.3 · Seller (1 frames)' && lost.every((n) => frameNamed(Q, n).length === 1) && ADMIN_183.concat(SELLER_183).every((n) => frameNamed(Q, n).length === 1), 'Update library puts back exactly the lost frames and the lost body (' + (r.err ? r.err.message : add.join(', ')) + ')');
+    check(!r.err && add.join('|') === 'templates Panel 1.8.3 · Admin (2 frames, 1 template body)|templates Panel 1.8.3 · Seller (1 frame)' && lost.every((n) => frameNamed(Q, n).length === 1) && ADMIN_183.concat(SELLER_183).every((n) => frameNamed(Q, n).length === 1), 'Update library puts back exactly the lost frames and the lost body (' + (r.err ? r.err.message : add.join(', ')) + ')');
     const bodies = allNodes(Q).filter((n) => n.type === 'COMPONENT' && BODIES_183.includes(n.name)).map((n) => n.name).sort();
     check(bodies.join('|') === BODIES_183.slice().sort().join('|') && instMain(frameNamed(Q, 'Dialogs · Sellers · Admin')[0].findAll((x) => x.type === 'INSTANCE' && x.name === 'D4 Reject')[0].findOne((x) => x.name === 'content')) === 'Template body · D4 Reject' && [...keep].every((id) => Q.byId.has(id)), 'each template body exists once: the rebuilt dialogs reuse the bodies that are there, and nothing else was removed');
   }
@@ -1486,7 +1496,7 @@ async function updateScenario(label, opts, from) {
     const pos0 = posOf(Q);
     r = await send(Q, { type: 'update' });
     const add14 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    const want14 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_190_TPL, ADDED_1100_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want14 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
     check(!r.err && add14.join('|') === want14.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the two ring styles, the phone screens, the changelog row and the version, with no warning or skip (' + (r.err ? r.err.message : add14.join(', ')) + ')');
     state190(Q, opts, '1.8.3 file updated ' + tag14);
     state1100(Q, opts, '1.8.3 file updated ' + tag14);
@@ -1613,7 +1623,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.4 file ' + tag15 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add15 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add15.join('\n    '));
-    const want15 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_190_TPL, ADDED_1100_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'changelog row 1.10.0', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want15 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add15.join('|') === want15.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the token, icons, components, properties, templates, size table row, changelog row and version, with no warning, skip or overlap (' + add15.join(', ') + ')');
     state180(Q, opts, '1.8.4 file updated ' + tag15);
     state181(Q, '1.8.4 file updated ' + tag15);
@@ -1753,7 +1763,7 @@ async function updateScenario(label, opts, from) {
     check(hostW(Q) === w0, 'Templates · Admin and Templates · Seller keep their width (' + w0 + ') ' + tag16);
     check(!r.err && r.done, 'Update library finished on the 1.9.0 file ' + tag16 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add16 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add16.join('\n    '));
-    const want16 = ADDED_1100_MID.concat(ADDED_1100_TPL, ['changelog row 1.10.0', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want16 = ADDED_1100_MID.concat(ADDED_1101, ADDED_1100_TPL, ['changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add16.join('|') === want16.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names SettingRow, the CheckboxRow additions, the templates, the changelog row and the version, with no warning, skip or overlap (' + add16.join(', ') + ')');
     state180(Q, opts, '1.9.0 file updated ' + tag16);
     state181(Q, '1.9.0 file updated ' + tag16);
@@ -1852,6 +1862,47 @@ async function updateScenario(label, opts, from) {
     check(!r.err && r.done.added.filter((l) => !/^section .* moved /.test(l)).join('|') === 'variants added to CheckboxRow (1): State=Saving|templates Seller admin · Admin (1 frame)' && setOf(G, 'CheckboxRow').children.length === 12 && saFrames(G).length === ADMIN_1100.length + SELLER_1100.length, 'a CheckboxRow Saving variant removed by hand is added again and reported, and the lost frame comes back (' + (r.err ? r.err.message : r.done.added.join(' | ')) + ')');
     r = await send(G, { type: 'audit' });
     check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the Saving variant is added again');
+  }
+
+  // 17 · release 1.10.1 "Invitation expired": a 1.10.0 file gets the frame Shared · Members · Admin · Invitation expired, in a row below what Templates · Admin
+  // holds, the changelog row and the version, and nothing else changes. The fixture is the code.js of release 1.10.0 (test/fixtures/code-1.10.0.js, main at 25d6df1).
+  console.log('\n■ Scenario 17 · 1.10.1 Invitation expired on a 1.10.0 file');
+  for (const opts of [STARTER, { maxModes: 4 }]) {
+    const tag17 = opts.maxModes > 1 ? '(modes)' : '(Starter)';
+    const Q = start(opts, CODE_1100);
+    r = await send(Q, { type: 'build' });
+    check(!r.err && Q.ROOT.getPluginData('version') === '1.10.0' && frameNamed(Q, EXPIRED_1101).length === 0, 'the 1.10.0 plugin builds the starting file, without the Invitation expired frame ' + tag17);
+    // the owner placed a frame by hand below everything on Templates · Admin
+    const host = hostNamed(Q, 'Templates · Admin'); const mv = frameNamed(Q, SA_P1 + ' (phone)')[0];
+    mv.y = Math.max.apply(null, host.children.map((c) => c.y + c.height)) + 400;
+    if (host.type === 'SECTION') host.resizeWithoutConstraints(host.width, mv.y + mv.height + 240);
+    const at = mv.x + ',' + mv.y;
+    load(Q, CODE);
+    const before = allNodes(Q); const ids0 = new Set(before.map((n) => n.id)); const nVars = Q.VARS.size;
+    const snap0 = new Map(before.map((n) => [n.id, fullSnap(n)])); const pos0 = posOf(Q); const w0 = host.width;
+    r = await send(Q, { type: 'update' });
+    check(!r.err && r.done, 'Update library finished on the 1.10.0 file ' + tag17 + (r.err ? ': ' + r.err.message : ''));
+    const add17 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
+    const want17 = ADDED_1101.concat(['changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    check(add17.join('|') === want17.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the frame, the changelog row and the version, with no warning or skip ' + tag17 + ' (' + add17.join(', ') + ')');
+    state180(Q, opts, '1.10.0 file updated ' + tag17);
+    state1100(Q, opts, '1.10.0 file updated ' + tag17);
+    check(Q.VARS.size === nVars && [...ids0].every((id) => Q.byId.has(id)) && host.width === w0, 'no variable added, nothing deleted, and Templates · Admin keeps its width ' + tag17);
+    const changed = before.filter((n) => fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n) && !grown190(Q, n, ids0, snap0));
+    check(changed.length === 0, 'no existing layer changed apart from the cover, the changelog and grown hosts ' + tag17 + ' (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
+    const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
+    const ex = frameNamed(Q, EXPIRED_1101)[0];
+    check(moved.every((n) => n.type === 'SECTION') && mv.x + ',' + mv.y === at && ex && !ids0.has(ex.id) && ex.parent === host && ex.y >= mv.y + mv.height + 240 - 0.5, 'no existing frame moved, and the new frame sits in a row below the one the owner placed lowest ' + tag17);
+    const freshTops = allNodes(Q).filter((n) => !ids0.has(n.id) && n.parent && ids0.has(n.parent.id)).map((n) => n.name);
+    check(freshTops.every((n) => n === 'Row' || n === EXPIRED_1101), 'new layers are only the frame and the changelog row (' + freshTops.filter((n) => !(n === 'Row' || n === EXPIRED_1101)).join(', ') + ')');
+    const snap17 = new Map(allNodes(Q).map((n) => [n.id, fullSnap(n)]));
+    r = await send(Q, { type: 'update' });
+    const again = allNodes(Q).filter((n) => !snap17.has(n.id) || fullSnap(n) !== snap17.get(n.id));
+    check(!r.err && r.done && r.done.added.length === 0 && again.length === 0, 'a second run adds, changes and moves nothing ' + tag17 + ' (' + again.length + ')');
+    r = await send(Q, { type: 'audit' });
+    check(!r.err && r.done.report.filter((l) => l.indexOf('⚠') === 0).length === 0, 'Audit file has zero warnings after the update ' + tag17 + (r.done ? ': ' + r.done.report.filter((l) => /^⚠|^ {4}/.test(l)).slice(0, 6).join(' | ') : ''));
+    r = await send(Q, { type: 'export', version: SPEC_VERSION });
+    check(!!(r.done && r.done.files && Object.keys(r.done.files).length === 7), '1.10.1 updated ' + tag17 + ' export: Export tokens ran and gave 7 files'); if (r.done) compareExport(r.done.files, '1.10.1 updated ' + tag17 + ' export');
   }
 
   console.log('\n' + (failures ? '✕ ' + failures + ' check(s) failed' : '✓ all checks passed'));

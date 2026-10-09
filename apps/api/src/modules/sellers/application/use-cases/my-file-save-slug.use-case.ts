@@ -21,6 +21,9 @@ import {
   type DraftSaved,
   type FileNotFound,
 } from '../draft/draft-view';
+import { withdrawPendingOnEdit } from '../draft/withdraw-on-edit';
+import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -46,6 +49,8 @@ export interface MyFileSaveSlugDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
   readonly slugs: ShopSlugRepository;
+  readonly revisions: BusinessFileRevisionRepository;
+  readonly outbox: OutboxWriter;
   readonly policy: SellerMarketPolicy;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
@@ -67,7 +72,10 @@ export interface MyFileSaveSlugDependencies {
  *    slug in the aggregate and writes it over the version it read (`conflict.stale` on a lost
  *    race). The slug the draft already has is a no-op: no write, no new version.
  *
- * No event and no audit row; the log line holds the outcome code only, never the slug.
+ * A different slug releases the slug the seller's earlier submission held (never public, so it
+ * is deleted, not retired; data design 3.5) and withdraws the pending submission, in the same
+ * unit. The save itself writes no audit row; the log line holds the outcome code only, never the
+ * slug.
  */
 export class MyFileSaveSlug extends UseCase<
   MyFileSaveSlugInput,
@@ -136,7 +144,12 @@ export class MyFileSaveSlug extends UseCase<
       if (!applied.ok) return applied;
       if (file.state.version === file.persistedVersion) return ok(draftSaved(file, requirements));
       if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
-      return ok(draftSaved(file, requirements));
+      // A different slug releases the one the first submission held, if any (I-S1; Q-M21): a
+      // held row is never public before approval, and a pending submission is withdrawn.
+      await slugs.releaseUnpublished(market, owner.sellerId);
+      const edit = await withdrawPendingOnEdit(this.deps, context, file);
+      if (edit === 'lost') return err({ code: 'conflict.stale' });
+      return ok(draftSaved(file, requirements, edit === 'withdrawn'));
     });
   }
 }

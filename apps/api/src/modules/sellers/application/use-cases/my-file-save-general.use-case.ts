@@ -34,6 +34,9 @@ import {
   type DraftValidationFailed,
   type FileNotFound,
 } from '../draft/draft-view';
+import { withdrawPendingOnEdit } from '../draft/withdraw-on-edit';
+import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
@@ -66,6 +69,8 @@ export interface MyFileSaveGeneralDependencies {
   readonly files: SellerFileRepository;
   readonly policy: SellerMarketPolicy;
   readonly cipher: SellerFileCipher;
+  readonly revisions: BusinessFileRevisionRepository;
+  readonly outbox: OutboxWriter;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
   readonly clock: Clock;
@@ -120,7 +125,8 @@ function parseGeneral(input: MyFileSaveGeneralInput): Result<ParsedGeneral, Draf
  *    L2). `identity`'s access state is not read: a seller it reports approved without an
  *    approved revision (`file-check-needed`, D 3.3) still completes the details.
  *
- * Nothing personal reaches a log, an error or an event; no event is published for a draft save.
+ * A save that raises the version withdraws the pending submission, if any, in the same unit
+ * (`withdrawPendingOnEdit`; design 3.1); nothing personal reaches a log, an error or an event.
  */
 export class MyFileSaveGeneral extends UseCase<
   MyFileSaveGeneralInput,
@@ -183,7 +189,9 @@ export class MyFileSaveGeneral extends UseCase<
       const applied = file.saveGeneral(sealed.value, clock.now(), requirements);
       if (!applied.ok) return applied;
       if (!(await files.saveDraft(market, file))) return err({ code: 'conflict.stale' });
-      return ok(draftSaved(file, requirements));
+      const edit = await withdrawPendingOnEdit(this.deps, context, file);
+      if (edit === 'lost') return err({ code: 'conflict.stale' });
+      return ok(draftSaved(file, requirements, edit === 'withdrawn'));
     });
   }
 

@@ -20,8 +20,10 @@ export type ApprovedSellerZonesMap = ReadonlyMap<Id<'Seller'>, ApprovedSellerZon
  * The fixed zone read for `certification`'s `evaluateClaims` only: per distinct requested id, in
  * first-occurrence order, `{ zone, addressZone }` of the approved revision, each an IANA id or
  * null; a missing zone is the consumer's `seller-zone-missing`. The answer is the same for every
- * caller (it reads the Market and the ids only). **Until slice 5 every entry is `{ zone: null,
- * addressZone: null }`**, because no approved revision exists and nothing is read. Exactly one
+ * caller (it reads the Market and the ids only). A seller with no approved
+ * revision (and an id of another Market or never issued, alike) answers `{ zone: null,
+ * addressZone: null }`; the zones come from the clear columns of the approved revision (slice 5b).
+ * A read that fails is `sellers.unavailable`, never nulls. Exactly one
  * key per distinct id; an empty list answers an empty map; more than 100 entries (before or
  * after collapsing duplicates) or a malformed id is refused whole. A consumer treats any `ok:
  * false` as a failed batch and an unexpected key as a fault. Two use cases behind this method

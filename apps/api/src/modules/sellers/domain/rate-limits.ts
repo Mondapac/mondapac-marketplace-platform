@@ -43,6 +43,26 @@ export const SAVE_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'save.account.day', limit: 1000, windowMinutes: DAY },
 ]);
 
+/** Submissions per seller file (design 6.5): submit, submit again, request-change. */
+export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'submit.file', limit: 5, windowMinutes: DAY },
+]);
+
+/** Withdrawals and cancellations per seller file (design 6.5; data design 3.11, Q-M22). */
+export const WITHDRAW_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'withdraw.file', limit: 10, windowMinutes: DAY },
+]);
+
+/** The reviewer notice, coalesced to at most one per seller per fixed 6 h window (Ali R-3). */
+export const REVIEWER_NOTICE_SELLER_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'reviewer-notice.seller', limit: 1, windowMinutes: 6 * 60 },
+]);
+
+/** ... and at most one per Market per fixed 15-minute window (data design 3.11). */
+export const REVIEWER_NOTICE_MARKET_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'reviewer-notice.market', limit: 1, windowMinutes: 15 },
+]);
+
 function dailyLimit(kind: RateCounterKind, limit: number): readonly RateLimit[] {
   if (!Number.isSafeInteger(limit) || limit < 1) {
     throw new RangeError(`The limit of ${kind} is a positive whole number`);

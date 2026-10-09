@@ -9,6 +9,7 @@ export default async function globalTeardown(): Promise<void> {
     process.env.TEST_MAIL_DATABASE_NAME,
     process.env.TEST_SELLER_DATABASE_NAME,
     process.env.TEST_SELLER_FILES_DATABASE_NAME,
+    process.env.TEST_SELLER_SUBMIT_DATABASE_NAME,
     process.env.TEST_PASSWORD_DATABASE_NAME,
     process.env.TEST_INVENTORY_DATABASE_NAME,
     process.env.TEST_AUDIT_DATABASE_NAME,

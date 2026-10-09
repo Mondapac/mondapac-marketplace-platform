@@ -66,6 +66,7 @@
   },
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
+  { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
   { "name": "sellers.approved-seller-zones-system", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },
@@ -102,7 +103,17 @@
     "whenSellerNotApproved": "allow"
   },
   {
+    "name": "sellers.my-file-submit",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "sellers.my-file-validate-identifier",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "sellers.my-file-withdraw",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },

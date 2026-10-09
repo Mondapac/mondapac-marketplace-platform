@@ -19,6 +19,11 @@ import {
   TEST_MARKET_IDS,
   TEST_SERVICE_AREA_CONFIG_DIRS,
 } from '../../../../../test/support/test-config';
+import {
+  FakeAccess,
+  InMemoryRevisions,
+  RecordingOutbox,
+} from '../../../../../test/support/sellers-submit-fakes';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
@@ -126,6 +131,10 @@ class FakeFiles implements SellerFileRepository {
     this.stored.set(key, file.state);
     return Promise.resolve(true);
   }
+
+  recordChange(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
 }
 
 /** Seals as a readable tag bound to Market, seller and field: a copy elsewhere does not open. */
@@ -190,6 +199,10 @@ class FakeCounters implements RateCounterRepository {
     );
   }
 
+  release(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   purgeStartedBefore(): Promise<number> {
     return Promise.reject(new Error('not used here'));
   }
@@ -205,7 +218,12 @@ function setUp() {
   const slugs: ShopSlugRepository = {
     findBySlug: (market: MarketContext, slug: ShopSlug) =>
       Promise.resolve(slugRows.get(`${market.marketId}|${slug}`) ?? null),
+    hold: () => Promise.reject(new Error('not used here')),
+    releaseUnpublished: () => Promise.resolve(0),
   };
+  const revisions = new InMemoryRevisions();
+  const outbox = new RecordingOutbox();
+  const access = new FakeAccess();
   const readOnly: boolean[] = [];
   const unitOfWork: UnitOfWork = {
     run: (_market, work, options) => {
@@ -222,7 +240,7 @@ function setUp() {
   // These tests run in Markets with no register (`none`); the lookup has its own spec.
   const registerChecks = new InMemoryRegisterChecks();
   const registerPolicy = new FixedRegisterLookupPolicy();
-  const common = { unitOfWork, counters, counterKeys, clock };
+  const common = { unitOfWork, counters, counterKeys, clock, revisions, outbox };
   // What the position gives; a test sets `locationAnswer` and reads `positions` (rounded values).
   const locationState: {
     answer: (() => string | null | Promise<string | null>) | null;
@@ -247,9 +265,14 @@ function setUp() {
     counters,
     slugRows,
     readOnly,
+    access,
+    revisions,
+    outbox,
     read: new MyFileRead(gate, {
       unitOfWork,
       files,
+      revisions,
+      accessReader: access,
       policy,
       identifierSchemes,
       cipher,
@@ -331,6 +354,7 @@ function seller(t: Setup, code: string, hasApprovedRevision = false) {
     const key = `${code}|${sellerId}`;
     t.files.stored.set(key, { ...t.files.stored.get(key)!, hasApprovedRevision: true });
   }
+  t.access.set(sellerId, 'pending');
   return { sellerId, context: ownerContext(t, code, sellerId) };
 }
 
@@ -389,6 +413,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         value: {
           version: 2,
           draftComplete: false,
+          submissionWithdrawn: false,
           missing: parts(code, 'address', 'timezone', 'identifier', 'slug'),
         },
       });
@@ -622,6 +647,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         value: {
           version: 3,
           draftComplete: false,
+          submissionWithdrawn: false,
           missing: parts(code, 'identifier', 'slug'),
           serviceArea: fixture.area,
           outsideServiceArea: !fixture.area.sellerOnboardingEnabled,
@@ -1041,6 +1067,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
         value: {
           version: 2,
           draftComplete: false,
+          submissionWithdrawn: false,
           missing: parts(
             code,
             'storeName',
@@ -1135,7 +1162,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       const saved = await t.saveGeneral.execute(context, GENERAL);
       expect(saved).toEqual({
         ok: true,
-        value: { version: 5, draftComplete: true, missing: [] },
+        value: { version: 5, draftComplete: true, missing: [], submissionWithdrawn: false },
       });
     });
 
@@ -1362,7 +1389,7 @@ describe.each(['AU', 'ZZ'] as const)('the seller draft in %s', (code) => {
       await t.saveIdentifier.execute(context, { identifier: IDENTIFIERS[code].typed });
       expect(await t.saveSlug.execute(context, { slug: ' Al-Noor ' })).toEqual({
         ok: true,
-        value: { version: 5, draftComplete: true, missing: [] },
+        value: { version: 5, draftComplete: true, missing: [], submissionWithdrawn: false },
       });
       expect(storedOf(t, sellerId).draft.slug).toBe('al-noor');
       expect(storedOf(t, sellerId).draftComplete).toBe(true);

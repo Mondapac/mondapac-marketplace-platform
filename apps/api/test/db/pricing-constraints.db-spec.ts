@@ -669,22 +669,13 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
         );
         return rows.flatMap((r) => r.rows.map((row) => `${row.market_id}:${row.actor_account_id}`));
       };
-      // Other cases of this suite may have left older rows: the expected count is what the
-      // table holds before the purge, strictly before the horizon, in this Market.
-      const due = await Promise.all(
-        ['write_refusal_throttles', 'write_refusal_actor_throttles'].map((table) =>
-          app.query<{ n: string }>(
-            `SELECT count(*) AS n FROM pricing.${table} WHERE market_id = $1 AND window_started_at < $2`,
-            [code, t(-3600).toString()],
-          ),
-        ),
-      );
-      const expected = due.reduce((sum, r) => sum + Number(r.rows[0]?.n), 0);
-      expect(expected).toBeGreaterThanOrEqual(2);
       // One unit per table, the actor table first (the purge never holds rows of both, 3.8).
       const actors = await inUnit(() => throttles.purgeActorWindowsStartedBefore(market, t(-3600)));
       const offers = await inUnit(() => throttles.purgeOfferWindowsStartedBefore(market, t(-3600)));
-      expect(actors + offers).toBe(expected);
+      // Other cases or suites running in parallel may hold older rows of this Market, which
+      // the purge removes too, so the count is a lower bound; the rows of our accounts are exact.
+      expect(actors).toBeGreaterThanOrEqual(1);
+      expect(offers).toBeGreaterThanOrEqual(1);
       const left = await remaining();
       expect(left.sort()).toEqual(
         [
