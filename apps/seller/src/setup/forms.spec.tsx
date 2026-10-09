@@ -26,6 +26,9 @@ const wrap = (node: ReactNode) => (
 
 const emptyFile: MyFile = {
   version: 1,
+  status: 'details-incomplete',
+  submission: null,
+  latestWithdrawal: null,
   draftComplete: false,
   missing: ['storeName', 'businessName', 'phone', 'address', 'timezone', 'identifier', 'slug'],
   general: { storeName: null, businessName: null, phone: null, contactEmail: null },
@@ -200,7 +203,7 @@ describe('AddressForm', () => {
 describe('SetupHub states', () => {
   const allSaved = { ...emptyFile, missing: [] as MyFile['missing'] };
   it('shows the details-needed badge and banner while steps are open', () => {
-    render(wrap(<SetupHub file={emptyFile} />));
+    render(wrap(<SetupHub file={emptyFile} csrfToken="t" />));
     expect(screen.getByText('Details needed')).toBeTruthy();
     expect(screen.getByText('Finish your details')).toBeTruthy();
     expect(screen.getByText('3 fields left')).toBeTruthy();
@@ -208,7 +211,7 @@ describe('SetupHub states', () => {
   });
 
   it('shows the ready badge and banner when every step is saved', () => {
-    render(wrap(<SetupHub file={allSaved} />));
+    render(wrap(<SetupHub file={allSaved} csrfToken="t" />));
     expect(screen.getByText('Ready to submit')).toBeTruthy();
     expect(screen.getByText('Your details are ready')).toBeTruthy();
     expect(screen.queryByText('Waiting')).toBeNull();
@@ -232,13 +235,17 @@ describe('Back to checklist', () => {
 
 describe('SetupHub', () => {
   it('says the seller is outside the service area and marks the address step', () => {
-    render(wrap(<SetupHub file={{ ...emptyFile, missing: [], outsideServiceArea: true }} />));
+    render(
+      wrap(
+        <SetupHub file={{ ...emptyFile, missing: [], outsideServiceArea: true }} csrfToken="t" />,
+      ),
+    );
     expect(screen.getAllByText("We're not in your area yet").length).toBeGreaterThan(0);
     expect(screen.getByText('Needs attention')).toBeTruthy();
   });
 
   it('marks a step done when none of its parts is missing', () => {
-    render(wrap(<SetupHub file={{ ...emptyFile, missing: ['slug'] }} />));
+    render(wrap(<SetupHub file={{ ...emptyFile, missing: ['slug'] }} csrfToken="t" />));
     // Account created, Email confirmed and three finished steps.
     expect(screen.getAllByText('Done')).toHaveLength(5);
     // The shop web address and MondaPac reviews; Review and submit is Waiting.

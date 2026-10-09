@@ -12,8 +12,25 @@ export interface ZoneState {
   readonly addressTimezone: string;
 }
 
+export type SellerStatus =
+  | 'details-incomplete'
+  | 'outside-service-area'
+  | 'ready-to-submit'
+  | 'awaiting-review'
+  | 'changes-needed'
+  | 'approved'
+  | 'suspended'
+  | 'file-check-needed';
+
 export interface MyFile {
   readonly version: number;
+  readonly status: SellerStatus;
+  readonly submission: { readonly revisionNo: number; readonly submittedAt: string } | null;
+  readonly latestWithdrawal: {
+    readonly cause: string;
+    readonly byKind: string;
+    readonly at: string;
+  } | null;
   readonly draftComplete: boolean;
   readonly missing: readonly MissingPart[];
   readonly general: {
