@@ -49,7 +49,7 @@ describe('role editor over HTTP (integration, slice 10)', () => {
   let logLines: LogLine[];
   const http = () => request(app.getHttpServer());
 
-  async function boot(options: { limit?: number; env?: Record<string, string> } = {}) {
+  async function boot(options: { limit?: number | null; env?: Record<string, string> } = {}) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info', ...options.env },
       panelOrigins: true,
@@ -220,6 +220,22 @@ describe('role editor over HTTP (integration, slice 10)', () => {
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
+    it('creates a platform and a seller role with the Market limits as configured (no override)', async () => {
+      await boot();
+      await seeded(code);
+
+      const platform = await call('post', code, 'admin', 'roles', sessionOf(code, ROOT, 'admin'), {
+        name: 'Platform custom',
+        permissionKeys: ['identity.platform-role.view'],
+      });
+      const seller = await call('post', code, 'seller', 'roles', sessionOf(code, OWNER, 'seller'), {
+        name: 'Seller custom',
+        permissionKeys: [],
+      });
+
+      expect([platform.status, seller.status]).toEqual([201, 201]);
+    });
+
     it('platform: creates, lists with the name, edits and deletes a custom role; logs no name', async () => {
       await boot({ limit: 5 });
       await seeded(code);
@@ -470,7 +486,7 @@ describe('role editor over HTTP (integration, slice 10)', () => {
   );
 
   it('fails closed while the Market configures no role limit (access.unavailable)', async () => {
-    await boot();
+    await boot({ limit: null });
     await seeded('AU');
 
     const refused = await call('post', 'AU', 'admin', 'roles', sessionOf('AU', ROOT, 'admin'), {
