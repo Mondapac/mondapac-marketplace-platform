@@ -134,6 +134,7 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
     await expect(facade.offerSellUnits(context, [])).resolves.toMatchObject({ ok: true });
     const full = Array.from({ length: MAX_FACADE_BATCH }, (_, i) => offerId(i + 1));
     await expect(facade.offerSellUnits(context, full)).resolves.toMatchObject({ ok: true });
+    expect(reads.map((read) => read.ids.length)).toEqual([MAX_FACADE_BATCH]);
   });
 
   it('collapses duplicates after the length check', async () => {
@@ -141,6 +142,7 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
     await expect(facade.offerSellUnits(context, [offerId(1), offerId(1)])).resolves.toMatchObject({
       ok: true,
     });
+    expect(reads).toEqual([{ market: code, ids: [offerId(1)] }]);
     const duplicates = Array.from({ length: MAX_FACADE_BATCH + 1 }, () => offerId(1));
     await expect(facade.offerSellUnits(context, duplicates)).resolves.toEqual({
       ok: false,

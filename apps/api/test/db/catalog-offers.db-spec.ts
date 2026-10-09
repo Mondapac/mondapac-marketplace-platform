@@ -2,6 +2,7 @@ import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator } from '@mondapac/shared-kernel';
 import { Offer } from '../../src/modules/catalog/domain/offer';
 import { Product } from '../../src/modules/catalog/domain/product';
+import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaOfferSellUnitsReader } from '../../src/modules/catalog/infrastructure/prisma-offer-sell-units.reader';
@@ -154,7 +155,134 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
     ).toBeNull();
   });
 
+  it('reads back every stored field and all five off-sale causes', async () => {
+    const product = await newProduct();
+    const id = uuid7();
+    const seller = uuid7();
+    const account = uuid7();
+    await owner.query(
+      `INSERT INTO catalog.offers (id, market_id, tenant_id, seller_id, product_id, seller_sku,
+         condition_code, description, handling, attestation_recorded_at, attestation_account_id,
+         status, off_sale_type_not_allowed, off_sale_product_retired, off_sale_product_not_listed,
+         off_sale_tag_suspended, off_sale_description_claim_text, listed, submitted_at,
+         first_published_at, version, created_at)
+       VALUES ($1,$2,$3,$4,$5,'SKU-FULL','used','{"en":"x"}','SEALED_ORIGINAL',$6,$7,'published',
+         false,true,false,true,false,false,$6,$6,3,$6)`,
+      [id, market.marketId, market.tenantId, seller, product.state.id, T0.toString(), account],
+    );
+    const found = await run(market, () => offers.findById(market, id as Id<'Offer'>));
+    expect(found?.state).toMatchObject({
+      status: 'published',
+      handling: 'SEALED_ORIGINAL',
+      conditionCode: 'used',
+      listed: false,
+      offSaleCauses: ['product-retired', 'tag-suspended'],
+      attestationAccountId: account,
+      version: 3,
+    });
+    expect(found?.state.attestationRecordedAt?.toString()).toBe(T0.toString());
+    expect(found?.state.submittedAt?.toString()).toBe(T0.toString());
+    expect(found?.state.firstPublishedAt?.toString()).toBe(T0.toString());
+    expect(found?.persistedVersion).toBe(3);
+  });
+
+  it('leaves no Offer and no history row behind when the unit ends with an error', async () => {
+    const product = await newProduct();
+    const seller = uuid7() as Id<'Seller'>;
+    await run(market, () => offers.add(market, newOffer(product, seller, 'SKU-KEEP'), actor));
+    const refused = newOffer(product, seller, 'SKU-OTHER');
+    const outcome = await persistence.unitOfWork.run(market, async () => {
+      const refusal = await offers.add(market, refused, actor);
+      return refusal === null
+        ? { ok: true as const, value: null }
+        : { ok: false as const, error: refusal };
+    });
+    expect(outcome).toEqual({ ok: false, error: 'offer.exists-for-product' });
+    const rows = await owner.query(
+      `SELECT (SELECT count(*) FROM catalog.offers WHERE id = $1) AS offers,
+              (SELECT count(*) FROM catalog.offer_history WHERE offer_id = $1) AS history`,
+      [refused.state.id],
+    );
+    expect(rows.rows[0]).toEqual({ offers: '0', history: '0' });
+  });
+
+  it('lets exactly one of two concurrent creations win', async () => {
+    const product = await newProduct();
+    const seller = uuid7() as Id<'Seller'>;
+    const attempt = (sku: string) =>
+      persistence.unitOfWork.run(market, async () => {
+        const refusal = await offers.add(market, newOffer(product, seller, sku), actor);
+        return refusal === null
+          ? { ok: true as const, value: null }
+          : { ok: false as const, error: refusal };
+      });
+    const results = await Promise.all([attempt('SKU-RACE-1'), attempt('SKU-RACE-2')]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toEqual([
+      { ok: false, error: 'offer.exists-for-product' },
+    ]);
+  });
+
+  it.each(['admin', 'system'] as const)('records a %s actor in the history row', async (kind) => {
+    const product = await newProduct();
+    const offer = newOffer(product, uuid7() as Id<'Seller'>, `SKU-${kind}`);
+    const accountId = kind === 'system' ? null : (uuid7() as Id<'Account'>);
+    await run(market, () => offers.add(market, offer, { kind, accountId }));
+    const history = await owner.query(
+      'SELECT actor_kind, actor_account_id FROM catalog.offer_history WHERE offer_id = $1',
+      [offer.state.id],
+    );
+    expect(history.rows).toEqual([{ actor_kind: kind, actor_account_id: accountId }]);
+  });
+
   describe('offerSellUnits reader', () => {
+    it('includes proposed and published variants, excludes retired ones, in creation order', async () => {
+      const configurable = Product.create({
+        id: uuid7() as Id<'Product'>,
+        marketId: market.marketId as never,
+        scope: 'PLATFORM',
+        sellerId: null,
+        handler: configurableProductType,
+        familyCode: 'default',
+        productCode: `V${uuid7().replaceAll('-', '').slice(-12).toUpperCase()}`,
+        variantId: null,
+        now: T0,
+      });
+      if (!configurable.ok) throw new Error(configurable.error.code);
+      const product = configurable.value;
+      await run(market, () => products.add(market, product));
+      const variants = [
+        { id: uuid7(), state: 'proposed', at: '2026-10-09T00:00:01Z' },
+        { id: uuid7(), state: 'published', at: '2026-10-09T00:00:02Z' },
+        { id: uuid7(), state: 'retired', at: '2026-10-09T00:00:03Z' },
+      ];
+      for (const variant of variants) {
+        await owner.query(
+          `INSERT INTO catalog.product_variants (id, market_id, tenant_id, product_id,
+             variant_model, state, created_at, published_at, retired_at)
+           VALUES ($1,$2,$3,$4,'options','proposed',$5,NULL,NULL)`,
+          [variant.id, market.marketId, market.tenantId, product.state.id, variant.at],
+        );
+      }
+      await owner.query(
+        `UPDATE catalog.product_variants SET state='published', published_at=now()
+           WHERE market_id=$1 AND id=$2`,
+        [market.marketId, variants[1]!.id],
+      );
+      await owner.query(
+        `UPDATE catalog.product_variants SET state='retired', retired_at=now()
+           WHERE market_id=$1 AND id=$2`,
+        [market.marketId, variants[2]!.id],
+      );
+      const offer = newOffer(product, uuid7() as Id<'Seller'>, 'SKU-VARS');
+      await run(market, () => offers.add(market, offer, actor));
+      const map = await run(market, () => reader.read(market, [offer.state.id]));
+      expect(map.get(offer.state.id)?.sellUnits).toEqual([
+        { variantId: variants[0]!.id, state: 'proposed' },
+        { variantId: variants[1]!.id, state: 'published' },
+      ]);
+    });
+
     it('returns the Offer with its non-retired variants, and omits unknown and other-Market ids', async () => {
       const product = await newProduct();
       const offer = newOffer(product, uuid7() as Id<'Seller'>, 'SKU-R1');
