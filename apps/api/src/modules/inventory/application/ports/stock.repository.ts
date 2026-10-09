@@ -36,6 +36,19 @@ export interface NewStockMovement {
   readonly occurredAt: Temporal.Instant;
 }
 
+/** What a catalog retirement covers: an Offer, or a Variant across every Offer (data design 3.10). */
+export type RetirementTarget =
+  | { readonly scope: 'offer'; readonly offerId: Id<'Offer'> }
+  | { readonly scope: 'variant'; readonly variantId: Id<'Variant'> };
+
+export interface NewRetirementTombstone {
+  readonly id: Id<'Retirement'>;
+  readonly target: RetirementTarget;
+  /** The `aggregateVersion` of the catalog event; kept for audit only. */
+  readonly sourceAggregateVersion: number;
+  readonly retiredAt: Temporal.Instant;
+}
+
 /**
  * The store of stock items and their ledger (data design 3.4, 3.5, 4.3, 4.4). Every method runs in
  * the open unit of the use case; the writers run only in a `serializable` unit (4.5).
@@ -65,6 +78,38 @@ export interface StockRepository {
    * 0 for an item with none. Reservations arrive with slice 4 and this body then counts them; until
    * then the table does not exist, so nothing can be held.
    */
+  /**
+   * The ids of the target's items that are not retired, in ascending id order (read through the
+   * active index, data design 3.4). A plain read: the caller locks them with {@link lockItems}.
+   */
+  activeItemIds(
+    market: MarketContext,
+    target: RetirementTarget,
+  ): Promise<readonly Id<'StockItem'>[]>;
+
+  /**
+   * Locks the items `FOR NO KEY UPDATE` with the named statement `inventory.lock-stock-items`, in
+   * ascending id order. More than its 1,000-id cap are locked in consecutive ascending batches of
+   * one unit, so the global order stays ascending (data design 4.4, 4.3). Serializable unit only.
+   */
+  lockItems(
+    market: MarketContext,
+    ids: readonly Id<'StockItem'>[],
+  ): Promise<readonly StockItemRow[]>;
+
+  /** Records the tombstone; an existing one for the same key is left as it is. Serializable only. */
+  recordTombstone(market: MarketContext, tombstone: NewRetirementTombstone): Promise<void>;
+
+  /**
+   * Sets `retired_at` on the given items that are not retired yet, one way, and answers how many
+   * it changed. The caller holds their locks. Serializable unit only.
+   */
+  retireItems(
+    market: MarketContext,
+    ids: readonly Id<'StockItem'>[],
+    retiredAt: Temporal.Instant,
+  ): Promise<number>;
+
   heldQuantities(
     market: MarketContext,
     stockItemIds: readonly Id<'StockItem'>[],

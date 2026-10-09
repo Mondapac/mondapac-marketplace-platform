@@ -12,18 +12,14 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { INVENTORY_STOCK_EDIT } from '../../contracts/permissions';
-import {
-  availabilityOf,
-  parseStockLevel,
-  recomputeSignal,
-  sellableOfSellUnit,
-} from '../../domain/stock';
+import { availabilityOf, parseStockLevel, sellableOfSellUnit } from '../../domain/stock';
 import type { AvailabilitySignalRepository } from '../ports/availability-signal.repository';
 import type { InventoryPolicyProvider } from '../ports/inventory-policy-provider';
 import type { OfferSellUnitsSource } from '../ports/offer-sell-units';
 import type { SellerInventoryRepository } from '../ports/seller-inventory.repository';
 import type { StockItemRow, StockRepository } from '../ports/stock.repository';
 import { runSerializable } from '../serializable-unit';
+import { writeSignal } from '../signal-writer';
 import {
   checkSourceId,
   checkVersion,
@@ -194,7 +190,7 @@ export class SetStockLevel extends UseCase<
     accountId: Id<'Account'>,
     input: Checked,
   ): Promise<Result<SetStockLevelOutput, SetStockLevelFailure>> {
-    const { inventories, stock, signals, ids, clock, outbox, policies } = this.deps;
+    const { inventories, stock, ids, clock, policies } = this.deps;
     const { offerId, variantId, sourceId, onHand, expectedVersion } = input;
     const now = clock.now();
 
@@ -279,41 +275,13 @@ export class SetStockLevel extends UseCase<
         retired: item.retired,
       })),
     );
-    const stored = await signals.find(market, offerId, variantId);
-    const change = recomputeSignal({
-      stored,
-      newId: ids.next<'AvailabilitySignal'>(),
+    await writeSignal(this.deps, context, market, {
       offerId,
       variantId,
       sellerId,
       next: availabilityOf(sellable, threshold),
       now,
     });
-    if (change.kind === 'changed') {
-      if (change.created) {
-        await signals.insert(market, {
-          id: change.events[0]!.aggregateId as Id<'AvailabilitySignal'>,
-          offerId,
-          variantId,
-          sellerId,
-          status: change.next.status,
-          onlyLeft: change.next.onlyLeft,
-          changedAt: now,
-          version: change.version,
-        });
-      } else {
-        const updated = await signals.update(market, stored!.id, stored!.version, {
-          status: change.next.status,
-          onlyLeft: change.next.onlyLeft,
-          changedAt: now,
-          version: change.version,
-        });
-        // Under the sell unit's lock nothing else writes the signal: a miss is a bug.
-        if (updated === 'stale')
-          throw new Error('inventory: the availability signal moved under its lock');
-      }
-      await outbox.append(context, change.events);
-    }
     return ok({ stockItemId: itemId, onHand, version, changed: true });
   }
 

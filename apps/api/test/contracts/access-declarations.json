@@ -72,6 +72,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
+  { "name": "inventory.retire-sell-units", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
