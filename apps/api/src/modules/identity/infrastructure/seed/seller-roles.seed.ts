@@ -24,9 +24,13 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     scope: 'seller',
     kind: 'default',
     seedCode: 'store-manager',
-    seedVersion: 1,
+    seedVersion: 2,
     nameKey: 'identity.role.store-manager',
-    permissionKeys: ['identity.team-member.view', 'identity.seller-role.view'],
+    permissionKeys: [
+      'identity.team-member.view',
+      'identity.seller-role.view',
+      'catalog.own-product.view',
+    ],
   },
   {
     // V2: accepts, packs and hands over orders. Keys at the ordering and shipping gates.
@@ -42,18 +46,18 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     scope: 'seller',
     kind: 'default',
     seedCode: 'catalogue-stock',
-    seedVersion: 1,
+    seedVersion: 2,
     nameKey: 'identity.role.catalogue-stock',
-    permissionKeys: [],
+    permissionKeys: ['catalog.own-product.view'],
   },
   {
     // Answers customers, handles returns.
     scope: 'seller',
     kind: 'default',
     seedCode: 'customer-service',
-    seedVersion: 1,
+    seedVersion: 2,
     nameKey: 'identity.role.customer-service',
-    permissionKeys: [],
+    permissionKeys: ['catalog.own-product.view'],
   },
   {
     // Reads earnings, statements and invoices.
