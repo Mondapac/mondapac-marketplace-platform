@@ -52,6 +52,7 @@ import {
 } from './domain/product-type-handler';
 import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
+import { PlatformProductController } from './presentation/platform-product.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
@@ -145,6 +146,7 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
+  controllers: [PlatformProductController],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),
