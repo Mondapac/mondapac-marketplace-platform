@@ -343,7 +343,8 @@ describe('claim-text control behind the platform product routes (integration, sl
 
       matcherUp = false;
       const down = await send('post', code, '/submit', { replacePending: false }, session);
-      expect(down.status).toBeGreaterThanOrEqual(422);
+      expect(down.status).toBe(422);
+      expect(down.body).toMatchObject({ code: 'claim-text.refused' });
       expect(revisions.size).toBe(0);
 
       matcherUp = true;
