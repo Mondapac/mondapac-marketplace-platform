@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import { testCallContext } from '@mondapac/shared-kernel/testing';
+import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import {
   INVITATION_REPOSITORY,
@@ -15,14 +15,21 @@ import {
   type OpaqueTokens,
 } from '../../src/modules/identity/application/ports/second-factor-tokens';
 import {
+  LINK_TARGETS,
+  type LinkTargets,
+} from '../../src/modules/identity/application/ports/link-secrets';
+import {
   SELLER_ACCESS_REPOSITORY,
   type SellerAccessRepository,
 } from '../../src/modules/identity/application/ports/seller-access.repository';
 import { AcceptSellerInvitation } from '../../src/modules/identity/application/use-cases/accept-seller-invitation.use-case';
+import { InviteSeller } from '../../src/modules/identity/application/use-cases/invite-seller.use-case';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { parseEmailAddress } from '../../src/modules/identity/domain/email-address';
 import { Invitation } from '../../src/modules/identity/domain/invitation';
 import { SellerAccess } from '../../src/modules/identity/domain/seller-access';
+import { MarketConfigIdentityPolicy } from '../../src/modules/identity/infrastructure/market-config-identity-policy';
+import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
@@ -41,6 +48,17 @@ const newId = <T extends string>(): Id<T> =>
   `${ID_PREFIX}${randomBytes(6).toString('hex')}` as Id<T>;
 const CLIENT = { origin: '203.0.113.7', address: '203.0.113.7' };
 
+/** The seller acceptance page the Market configuration does not carry yet. */
+function withSellerAcceptPage(markets: MarketRegistry): LinkTargets {
+  const base = new MarketConfigIdentityPolicy(markets);
+  return {
+    target: (m: MarketContext, population, page) =>
+      population === 'seller' && page === 'accept-invitation'
+        ? 'https://seller.example.test/accept-invitation'
+        : base.target(m, population, page),
+  };
+}
+
 describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, slice 9)', (code) => {
   const market = marketOf(code);
   let app: NestExpressApplication;
@@ -52,7 +70,13 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
   let logs: jest.SpyInstance[];
 
   beforeAll(async () => {
-    ({ app } = await createTestApp({ env: { DATABASE_URL: testDatabaseUrl() } }));
+    ({ app } = await createTestApp({
+      env: { DATABASE_URL: testDatabaseUrl() },
+      override: (builder) =>
+        builder
+          .overrideProvider(LINK_TARGETS)
+          .useFactory({ factory: withSellerAcceptPage, inject: [MarketRegistry] }),
+    }));
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
     unitOfWork = app.get(UNIT_OF_WORK, { strict: false });
@@ -182,5 +206,56 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
     await expect(invited(email.toUpperCase(), admin)).rejects.toBeInstanceOf(
       InvitationAlreadyPendingError,
     );
+  });
+
+  it('lets one of two InviteSeller calls for one address win; no second seller survives (Mojtaba, round 2)', async () => {
+    const admin = await inviter();
+    const email = `racing.${randomUUID()}@invitations.example`;
+    const added: Id<'Seller'>[] = [];
+    // InviteSeller uses this same repository instance: record every seller it adds.
+    const original = sellers.add.bind(sellers);
+    const add = jest.spyOn(sellers, 'add').mockImplementation((m, access) => {
+      added.push(access.state.sellerId);
+      return original(m, access);
+    });
+    const as = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: admin,
+          sessionId: newId<'Session'>(),
+          sellerId: null,
+        }),
+        `db-invite-${randomUUID()}`,
+      );
+    const invite = () =>
+      app
+        .get(InviteSeller)
+        .execute(as(), { email, displayName: 'Amina Rahman', origin: CLIENT.origin });
+
+    let results;
+    try {
+      results = await Promise.all([invite(), invite()]);
+    } finally {
+      add.mockRestore();
+    }
+
+    const outcomes = results.map((r) => (r.ok ? r.value.code : r.error.code)).sort();
+    expect(outcomes).toEqual(['invitation.already-pending', 'invitation.issued']);
+    const winner = results.find((r) => r.ok)!;
+    const { rows } = await sql.query<{ seller_id: string }>(
+      `SELECT seller_id FROM identity.seller_access WHERE market_id = $1 AND seller_id = ANY($2)`,
+      [code, added],
+    );
+    expect(rows.map((r) => r.seller_id)).toEqual([
+      (winner as { ok: true; value: { sellerId: string } }).value.sellerId,
+    ]);
+    const pending = await sql.query<{ n: string }>(
+      `SELECT count(*) AS n FROM identity.invitations
+       WHERE market_id = $1 AND email_normalized = $2 AND state = 'pending'`,
+      [code, email],
+    );
+    expect(pending.rows[0]!.n).toBe('1');
   });
 });

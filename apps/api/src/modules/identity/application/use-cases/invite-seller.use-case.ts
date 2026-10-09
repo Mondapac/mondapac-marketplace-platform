@@ -104,13 +104,14 @@ export interface InviteSellerDependencies {
  * 2. The seller system role of the Market (the role the owner receives at acceptance).
  * 3. An address that already has a seller-side account in the Market is `account.exists`: the
  *    acceptance could only fail ("sign in and join" is not in this slice).
- * 4. One pending seller-owner invitation per address in the Market, whatever the seller (3.4;
+ * 4. The invitation mail's counters, `mail.account` of the address and `mail.origin` of the admin
+ *    (6.8; Hassan M1): used up is `request.throttled`, and nothing commits. Taken before any
+ *    invitation row, as the re-send does (data design 3.3 "throttle first"; Mojtaba, PR #204).
+ * 5. One pending seller-owner invitation per address in the Market, whatever the seller (3.4;
  *    Mohammad ask 1, Mojtaba Q5 on PR #204, backed by the partial unique key
  *    `invitations_market_id_email_seller_owner_pending_key`): a stale one (expired or never
  *    dispatched, M7) is revoked and replaced, otherwise `invitation.already-pending`. A violation
  *    of the key (a concurrent issue) answers the same and rolls the new seller back with it.
- * 5. The invitation mail's counters, `mail.account` of the address and `mail.origin` of the admin
- *    (6.8; Hassan M1): used up is `request.throttled`, and nothing commits.
  * 6. New seller: `SellerAccess.forInvitation`, `pending` when the Market requires approval, else
  *    `approved` (AC 5, AC 31), registered at once (`identity.seller-registered.v1`, no owner yet),
  *    with its subject key. An existing seller: of this Market, and its access never had a member
@@ -214,13 +215,7 @@ export class InviteSeller extends UseCase<
             replaced = true;
             return true;
           };
-          const sameAddress = await invitations.findPendingOwnerInvitationByEmail(
-            market,
-            email.value.normalized,
-          );
-          if (sameAddress !== null && !(await replaceStale(sameAddress))) {
-            return err({ code: 'invitation.already-pending' });
-          }
+          // Throttle rows first, then the invitation rows (data design 3.3; Mojtaba, PR #204).
           const verdict = await reserveInvitationMail(
             this.deps,
             market,
@@ -230,6 +225,13 @@ export class InviteSeller extends UseCase<
           );
           if (!verdict.allowed) {
             return err({ code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds });
+          }
+          const sameAddress = await invitations.findPendingOwnerInvitationByEmail(
+            market,
+            email.value.normalized,
+          );
+          if (sameAddress !== null && !(await replaceStale(sameAddress))) {
+            return err({ code: 'invitation.already-pending' });
           }
 
           let sellerId: Id<'Seller'>;

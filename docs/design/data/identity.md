@@ -257,6 +257,11 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
   every unit that voids challenges and writes throttles: reset and change release or clear their
   counters before `voidAllOf`; activation and device replacement release the attempt before
   their `voidAllOf`; the break-glass reset writes no throttle.
+- **Throttle before invitation** (slice 9; Mojtaba, PR #204 round 2). `InviteSeller` and the
+  seller-owner re-send reserve `mail.account` and `mail.origin` before they read or write an
+  invitation row (the replace of a stale invitation by address included), so the two never take
+  the same `mail.account` row and invitation row in opposite orders. A refused request commits
+  nothing either way.
 - **Signed-in code steps** (slice 7b item E: starting and completing a device replacement,
   regenerating the recovery codes; Mojtaba, PR #162 round 2). Their closing unit takes the
   account lock first, as the challenge code step does. Its success path then writes
