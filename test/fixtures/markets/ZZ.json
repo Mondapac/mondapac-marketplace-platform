@@ -221,7 +221,9 @@
     "maxVariantsPerProduct": 3,
     "approvalRequired": false,
     "productTypes": ["simple"],
-    "defaultFamily": "default"
+    "defaultFamily": "default",
+    "conditions": ["new"],
+    "sellFromCatalogue": true
   },
   "pricing": {
     "maxUnitPriceMinor": 2000000,

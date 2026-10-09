@@ -1027,6 +1027,20 @@ const catalogSchema = z
       .max(20),
     /** The attribute family a new product starts in (catalog design 4.1): a seeded family code. */
     defaultFamily: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
+    /**
+     * The condition codes an Offer may carry (catalog design 7.1). At least one; no code repeated.
+     * A code is a vocabulary code, shown through its label key by the panels.
+     */
+    conditions: z
+      .array(z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/))
+      .min(1)
+      .max(20),
+    /**
+     * Whether a seller may create an Offer on a PLATFORM product (OFR-03). The interim home of
+     * the ADR-0026 setting `catalog.sell-from-catalogue` until that store lands (catalog slice
+     * 10): a Market must say so, none defaults it.
+     */
+    sellFromCatalogue: z.boolean(),
   })
   .superRefine((catalog, context) => {
     if (new Set(catalog.productTypes).size !== catalog.productTypes.length) {
@@ -1034,6 +1048,13 @@ const catalogSchema = z
         code: 'custom',
         path: ['productTypes'],
         message: 'a product type must not repeat',
+      });
+    }
+    if (new Set(catalog.conditions).size !== catalog.conditions.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['conditions'],
+        message: 'a condition code must not repeat',
       });
     }
     const seen = new Set<string>();

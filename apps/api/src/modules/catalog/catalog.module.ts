@@ -25,7 +25,12 @@ import {
   PRODUCT_TYPE_LOOKUP,
   type ProductTypeLookup,
 } from './application/ports/product-type-lookup';
+import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
+import { OFFER_REPOSITORY } from './application/ports/offer.repository';
+import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
+import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
+import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
@@ -88,6 +93,9 @@ const PORT = {
   freeze: FreezeRevision,
   submit: SubmitProduct,
   reader: OFFER_SELL_UNITS_READER,
+  offers: OFFER_REPOSITORY,
+  eligibility: SELLER_ELIGIBILITY_READER,
+  allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -150,7 +158,7 @@ const productTypeProvider: FactoryProvider<string> = {
  */
 @Module({
   controllers: [PlatformProductController],
-  imports: [CertificationModule],
+  imports: [CertificationModule, SellersModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),
@@ -227,6 +235,18 @@ const productTypeProvider: FactoryProvider<string> = {
       attributes: true,
       policy: true,
       productTypes: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferCreateOnPlatformProduct, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      eligibility: true,
+      allowedTypes: true,
+      check: true,
+      policy: true,
       outbox: true,
       clock: true,
       ids: true,
