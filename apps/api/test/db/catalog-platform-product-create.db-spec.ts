@@ -40,6 +40,9 @@ describe.each(TEST_MARKETS)(
     let useCase: PlatformProductCreate;
     let appended: string[];
     let failOutbox = false;
+    // The code the repository handed out last: a test reads only its own rows (parallel specs
+    // share this database).
+    let lastCode = '';
     const adminContext = () =>
       testCallContext(
         market,
@@ -61,8 +64,10 @@ describe.each(TEST_MARKETS)(
       const real = new PrismaProductRepository(persistence.service);
       // Not the shared counter: a parallel spec asserts consecutive codes from it.
       const products: ProductRepository = {
-        nextProductCode: () =>
-          Promise.resolve(`Q${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`),
+        nextProductCode: () => {
+          lastCode = `Q${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
+          return Promise.resolve(lastCode);
+        },
         add: (m, product) => real.add(m, product),
         findById: (m, id) => real.findById(m, id),
         save: (m, product) => real.save(m, product),
@@ -159,16 +164,13 @@ describe.each(TEST_MARKETS)(
     it('stores nothing when the events cannot be written', async () => {
       failOutbox = true;
       try {
-        const before = await app.query(
-          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1 AND product_code LIKE 'Q%'`,
-          [code],
-        );
         await expect(useCase.execute(adminContext(), { typeCode: 'simple' })).rejects.toThrow();
-        const after = await app.query(
-          `SELECT count(*)::int AS n FROM catalog.products WHERE market_id = $1 AND product_code LIKE 'Q%'`,
-          [code],
+        expect(lastCode).not.toBe('');
+        const stored = await app.query(
+          `SELECT 1 FROM catalog.products WHERE market_id = $1 AND product_code = $2`,
+          [code, lastCode],
         );
-        expect((after.rows[0] as { n: number }).n).toBe((before.rows[0] as { n: number }).n);
+        expect(stored.rows).toHaveLength(0);
       } finally {
         failOutbox = false;
       }
