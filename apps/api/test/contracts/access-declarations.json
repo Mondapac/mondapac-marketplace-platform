@@ -75,6 +75,8 @@
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
   { "name": "inventory.rekey-moved-offer", "rule": "system" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
+  { "name": "pricing.effective-prices", "rule": "anonymous" },
+  { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
