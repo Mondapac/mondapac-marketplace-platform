@@ -16,6 +16,7 @@ import {
   type Persistence,
 } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { sqlState } from './sql-state';
 
 // Catalog slice 1 on PostgreSQL (catalog data design 3.1 to 3.3, 5.1, 7), for both Market
 // fixtures: the repository round trip, the product-code counter, optimistic saving, the
@@ -88,18 +89,6 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
         });
 
   /** The SQLSTATE of a statement that must fail, or null when it succeeded. */
-  async function sqlState(
-    client: Client,
-    text: string,
-    values: unknown[] = [],
-  ): Promise<string | null> {
-    try {
-      await client.query(text, values);
-      return null;
-    } catch (error) {
-      return (error as { code?: string }).code ?? 'unknown';
-    }
-  }
 
   async function insertProduct(overrides: Record<string, unknown> = {}): Promise<string> {
     const id = uuid7();

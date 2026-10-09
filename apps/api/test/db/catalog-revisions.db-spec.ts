@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { sqlState } from './sql-state';
 
 // Catalog slice 4 on PostgreSQL (catalog data design 3.6 to 3.10, 3.12, 3.26, 5.1, 7), for both
 // Market fixtures: the constraints, pointers, insert-only revision tables, the not-retired
@@ -31,20 +32,6 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     await sql.end();
     await owner.end();
   });
-
-  /** The SQLSTATE of a statement that must fail, or null when it succeeded. */
-  async function sqlState(
-    client: Client,
-    text: string,
-    values: unknown[] = [],
-  ): Promise<string | null> {
-    try {
-      await client.query(text, values);
-      return null;
-    } catch (error) {
-      return (error as { code?: string }).code ?? 'unknown';
-    }
-  }
 
   async function insert(table: string, row: Record<string, unknown>, client = sql) {
     const columns = Object.keys(row);
