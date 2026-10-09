@@ -14,11 +14,16 @@ import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
 import { PRICING_POLICY_PROVIDER } from './application/ports/pricing-policy-provider';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from './application/ports/write-refusal-throttle.repository';
+import { EffectivePricesSystemQuery } from './application/use-cases/effective-prices-system.use-case';
+import { EffectivePricesQuery } from './application/use-cases/effective-prices.use-case';
 import { PurgeWriteRefusalThrottles } from './application/use-cases/purge-write-refusal-throttles.use-case';
 import { SetRegularPrice } from './application/use-cases/set-regular-price.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
+import { PRICING_FACADE } from './contracts/pricing.facade';
 import { PRICING_AUDIT_ACTIONS } from './domain/audit';
 import { PRICING_EVENTS } from './domain/events';
+import { PricingFacadeImplementation } from './presentation/pricing.facade';
+import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
 import { pricingProviders } from './infrastructure/pricing-providers';
 import { purgeWriteRefusalThrottlesJob } from './presentation/jobs/purge-write-refusal-throttles.job';
 
@@ -69,6 +74,7 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [CatalogModule],
+  controllers: [SellerRegularPriceController],
   providers: [
     PersistenceModule.outboxWriterFor('pricing'),
     PersistenceModule.auditWriterFor('pricing'),
@@ -88,6 +94,16 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
     }),
+    useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
+    useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),
+    {
+      provide: PRICING_FACADE,
+      inject: [EffectivePricesQuery, EffectivePricesSystemQuery],
+      useFactory: (
+        effectivePrices: EffectivePricesQuery,
+        effectivePricesSystem: EffectivePricesSystemQuery,
+      ) => new PricingFacadeImplementation({ effectivePrices, effectivePricesSystem }),
+    },
     useCaseProvider(PurgeWriteRefusalThrottles, { unitOfWork: true, throttles: true, clock: true }),
     registerJobsFrom(
       'pricing',
@@ -95,5 +111,6 @@ function useCaseProvider<D, U>(
       (purge: PurgeWriteRefusalThrottles) => [purgeWriteRefusalThrottlesJob(purge)],
     ),
   ],
+  exports: [PRICING_FACADE],
 })
 export class PricingModule {}
