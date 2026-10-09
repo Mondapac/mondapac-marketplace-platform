@@ -12,7 +12,12 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
-import { Offer, type OfferRefusal } from '../../domain/offer';
+import {
+  MAX_DESCRIPTION_CHARS,
+  MAX_DESCRIPTION_LOCALES,
+  Offer,
+  type OfferRefusal,
+} from '../../domain/offer';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
@@ -71,8 +76,8 @@ const INPUT_KEYS = ['productId', 'sellerSku', 'conditionCode', 'description'] as
  * from the request; the input is closed and carries no handling, attestation or tag (B1).
  *
  * Guards, in order: the seller may sell (`sellingEligibility`); the Market allows selling from the
- * catalogue; the condition is one of the Market's; the description fits the Market's locales and
- * passes the claim-text control (a hit refuses the whole create, nothing is stored); the product
+ * catalogue; the input is well formed (closed shape, the condition is one of the Market's, the description fits the Market's locales and the size bounds); the
+ * description passes the claim-text control (a hit refuses the whole create, nothing is stored); the product
  * is PLATFORM, published and not retired, else a byte-identical `product.not-found` (M3); its type
  * is one the seller may sell (SEL-12; an error refuses). In one unit the Offer and its first
  * history row are stored with `offer-created`. Both uniques end the unit with an error, so nothing
@@ -130,9 +135,6 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
       return err({ code: 'access.denied' });
     }
     const sellerId = actor.sellerId;
-    const parsed = this.#parse(market, input);
-    if (!parsed.ok) return parsed;
-    const { productId, sellerSku, conditionCode, description } = parsed.value;
     const { deps } = this;
 
     if (!(await deps.eligibility.isEligible(context, sellerId))) {
@@ -145,6 +147,9 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
+    const parsed = this.#parse(market, input);
+    if (!parsed.ok) return parsed;
+    const { productId, sellerSku, conditionCode, description } = parsed.value;
 
     // The claim-text control runs outside any unit (it opens its own); a hit refuses the create.
     const texts = Object.entries(description).filter(([, text]) => text !== '');
@@ -253,9 +258,13 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
     if (typeof description !== 'object' || description === null || Array.isArray(description)) {
       return fail('description', 'type');
     }
-    for (const [locale, text] of Object.entries(description)) {
+    const entries = Object.entries(description);
+    if (entries.length > MAX_DESCRIPTION_LOCALES) return fail('description', 'format');
+    for (const [locale, text] of entries) {
       if (!locales.supported.includes(locale)) return fail('description', 'locale');
       if (typeof text !== 'string') return fail('description', 'type');
+      // Bounded here too, so oversize text never reaches the claim-text service.
+      if (text.length > MAX_DESCRIPTION_CHARS) return fail('description', 'format');
     }
     return ok({
       productId: product.value,

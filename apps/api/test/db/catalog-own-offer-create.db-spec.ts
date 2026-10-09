@@ -193,15 +193,14 @@ describe.each(TEST_MARKETS)(
       conditionCode: condition,
       description: { [locale]: 'A tidy listing' },
     });
-    const counts = async (offerId?: string) =>
+    const counts = async () =>
       (
         await owner.query(
           `SELECT (SELECT count(*) FROM catalog.offers WHERE seller_id = $1)::int AS offers,
                   (SELECT count(*) FROM catalog.offer_history h JOIN catalog.offers o
                      ON o.market_id = h.market_id AND o.id = h.offer_id
-                    WHERE o.seller_id = $1)::int AS history,
-                  $2::text AS probe`,
-          [sellerId, offerId ?? null],
+                    WHERE o.seller_id = $1)::int AS history`,
+          [sellerId],
         )
       ).rows[0] as { offers: number; history: number };
 
@@ -263,6 +262,40 @@ describe.each(TEST_MARKETS)(
       expect(clash).toEqual({ ok: false, error: { code: 'offer.sku-taken' } });
       expect(await counts()).toEqual({ ...before });
       expect(appended).toEqual([]);
+    });
+
+    it('lets another seller offer the same product and reuse a SKU', async () => {
+      const productId = await platformProduct();
+      const otherContext = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: uuid7() as Id<'Account'>,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: uuid7() as Id<'Seller'>,
+        }),
+      );
+      expect((await useCase.execute(sellerContext(), request(productId, 'SKU-SHARED'))).ok).toBe(
+        true,
+      );
+      expect((await useCase.execute(otherContext, request(productId, 'SKU-SHARED'))).ok).toBe(true);
+    });
+
+    it('answers an unknown product id as product.not-found', async () => {
+      const result = await useCase.execute(sellerContext(), request(uuid7() as Id<'Product'>));
+      expect(result).toEqual({ ok: false, error: { code: 'product.not-found' } });
+    });
+
+    it('lets the seller create again after the earlier Offer is deleted', async () => {
+      const productId = await platformProduct();
+      const first = await useCase.execute(sellerContext(), request(productId, 'SKU-GONE'));
+      if (!first.ok) throw new Error(first.error.code);
+      await owner.query(
+        `UPDATE catalog.offers SET status = 'deleted', deleted_at = now() WHERE id = $1`,
+        [first.value.offerId],
+      );
+      const again = await useCase.execute(sellerContext(), request(productId, 'SKU-GONE'));
+      expect(again.ok).toBe(true);
     });
 
     it('rolls back the Offer and its history when the outbox write fails', async () => {

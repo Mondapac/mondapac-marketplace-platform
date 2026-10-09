@@ -330,6 +330,135 @@ describe.each(['AU', 'ZZ'] as const)(
       ).toBe(true);
     });
 
+    it('accepts a description at the bound and refuses one character over, before the claim check', async () => {
+      const edge = rig();
+      const okEdge = await edge.useCase.execute(
+        contextOf('seller'),
+        request(edge.state!.id, { description: { [locale]: 'x'.repeat(5000) } }),
+      );
+      expect(okEdge.ok).toBe(true);
+      const over = rig();
+      const refused = await over.useCase.execute(
+        contextOf('seller'),
+        request(over.state!.id, { description: { [locale]: 'x'.repeat(5001) } }),
+      );
+      expect(refused).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'description', code: 'format' }] },
+      });
+      expect(over.checked).toHaveLength(0);
+    });
+
+    it('refuses more than 20 description locales before the claim check', async () => {
+      const r = rig();
+      const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`l${i}`, 'x']));
+      const outcome = await r.useCase.execute(
+        contextOf('seller'),
+        request(r.state!.id, { description: many }),
+      );
+      expect(outcome).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(r.checked).toHaveLength(0);
+    });
+
+    it.each([
+      ['a null body', null],
+      ['an array body', []],
+      ['a text body', 'x'],
+    ])('refuses %s', async (_name, body) => {
+      const r = rig();
+      const outcome = await r.useCase.execute(
+        contextOf('seller'),
+        body as unknown as ReturnType<typeof request>,
+      );
+      expect(outcome).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'body', code: 'type' }] },
+      });
+    });
+
+    it.each([
+      ['a non-UUID productId', { productId: 'nope' }, 'productId', 'format'],
+      ['a numeric sellerSku', { sellerSku: 5 }, 'sellerSku', 'type'],
+      ['a numeric conditionCode', { conditionCode: 5 }, 'conditionCode', 'type'],
+      ['a non-object description', { description: 'text' }, 'description', 'type'],
+      ['an array description', { description: [] }, 'description', 'type'],
+      ['a non-string text', { description: { en: 5 } }, 'description', 'type'],
+    ])('refuses %s', async (_name, extra, path, failure) => {
+      const r = rig();
+      const outcome = await r.useCase.execute(contextOf('seller'), request(r.state!.id, extra));
+      expect(outcome).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path }] },
+      });
+      expect(failure).toBeTruthy();
+      expect(r.stored).toHaveLength(0);
+    });
+
+    it('checks eligibility and the setting before the input is read', async () => {
+      const notEligible = rig({ eligible: false, sellFromCatalogue: false });
+      expect(
+        await notEligible.useCase.execute(contextOf('seller'), { bad: true } as never),
+      ).toEqual({ ok: false, error: { code: 'seller.not-eligible' } });
+      const off = rig({ sellFromCatalogue: false });
+      expect(await off.useCase.execute(contextOf('seller'), { bad: true } as never)).toEqual({
+        ok: false,
+        error: { code: 'setting.sell-from-catalogue-off' },
+      });
+    });
+
+    it('refuses an empty allowed set, and answers product.not-found before SEL-12', async () => {
+      const empty = rig({ allowed: new Set() });
+      expect(await empty.useCase.execute(contextOf('seller'), request(empty.state!.id))).toEqual({
+        ok: false,
+        error: { code: 'type.not-allowed' },
+      });
+      const missing = rig({ product: null, allowed: null });
+      expect(
+        await missing.useCase.execute(contextOf('seller'), request(ids.next<'Product'>())),
+      ).toEqual({ ok: false, error: { code: 'product.not-found' } });
+    });
+
+    it('lists only the refused locale of a mixed batch', async () => {
+      const r = rig({
+        verdicts: (texts) =>
+          texts.map((item) =>
+            item.text === 'bad'
+              ? {
+                  code: 'claim-text.found' as const,
+                  field: 'offer.description' as const,
+                  ref: null,
+                  locale: item.locale,
+                  hits: [],
+                }
+              : {
+                  code: 'clean' as const,
+                  field: 'offer.description' as const,
+                  ref: null,
+                  locale: item.locale,
+                },
+          ),
+      });
+      const supported = realPolicy.locales(market).supported;
+      if (supported.length < 2) return;
+      const outcome = await r.useCase.execute(
+        contextOf('seller'),
+        request(r.state!.id, { description: { [supported[0]!]: 'fine', [supported[1]!]: 'bad' } }),
+      );
+      expect(outcome).toMatchObject({ ok: false, error: { code: 'claim-text.refused' } });
+      if (!outcome.ok && outcome.error.code === 'claim-text.refused') {
+        expect(outcome.error.fields).toHaveLength(1);
+      }
+      expect(r.stored).toHaveLength(0);
+    });
+
+    it('records one offer-created event for the stored Offer', () => {
+      const r = rig();
+      return r.useCase.execute(contextOf('seller'), request(r.state!.id)).then((created) => {
+        if (!created.ok) throw new Error(created.error.code);
+        expect(r.events).toEqual([expect.objectContaining({ type: 'catalog.offer-created.v1' })]);
+      });
+    });
+
     it.each(['offer.exists-for-product', 'offer.sku-taken'] as const)(
       'maps the %s refusal of the store to an error and appends no event',
       async (refusal) => {
