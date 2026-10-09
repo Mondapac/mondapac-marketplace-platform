@@ -469,7 +469,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     await expect(
       seedRoles(
         seedWith((role) =>
-          role.seedCode === 'finance' || role.seedCode === 'catalogue-moderator'
+          role.seedCode === 'finance' || role.seedCode === 'operations-support'
             ? { ...role, seedVersion: 2 }
             : role,
         ),
@@ -477,9 +477,9 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       ).execute(system, {}),
     ).resolves.toEqual({ ok: false, error: { code: 'seed.incomplete', failed: 1 } });
     // The other upgrade still applied, with its row; the failure is logged by code, no message.
-    expect(roleOf('platform', 'catalogue-moderator').seedVersion).toBe(2);
+    expect(roleOf('platform', 'operations-support').seedVersion).toBe(2);
     expect(fakes.audits.map((a) => [a.action, a.targetId])).toEqual([
-      ['identity.role.seed-applied', roleOf('platform', 'catalogue-moderator').id],
+      ['identity.role.seed-applied', roleOf('platform', 'operations-support').id],
     ]);
     expect(logged('identity.seed-roles.role-failed')?.[0]).toEqual({
       msg: 'identity.seed-roles.role-failed',
