@@ -5,11 +5,14 @@ import { MarketConfigIdentityPolicy } from '../../src/modules/identity/infrastru
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 
 /**
- * A Market that configures custom-role limits (identity design 2.3; slice 10). The real Market
- * files carry none yet, so the role editor's create fails closed there; tests that exercise the
- * editor on the real stack override the policy with this.
+ * Overrides the custom-role limit (identity design 2.3; slice 10) with a small number, so a test
+ * reaches the limit cheaply, or with null (a Market without the key: create fails closed). The
+ * real Market files configure 20 and 50; tests that need those use no override.
  */
-export function withRoleLimit(builder: TestingModuleBuilder, limit: number): TestingModuleBuilder {
+export function withRoleLimit(
+  builder: TestingModuleBuilder,
+  limit: number | null,
+): TestingModuleBuilder {
   return builder.overrideProvider(IDENTITY_MARKET_POLICY).useFactory({
     factory: (markets: MarketRegistry): IdentityMarketPolicy =>
       Object.assign(
