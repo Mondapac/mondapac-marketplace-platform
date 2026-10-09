@@ -2,6 +2,7 @@
 
 import { Button, Card, FieldStatus, FormActionBar, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
@@ -11,6 +12,7 @@ import type { DraftSaved, MyFile, SlugCheck } from './types.ts';
 import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
+import { useWithdrawGuard } from './use-withdraw-guard.tsx';
 
 const IDLE_MS = 600;
 
@@ -30,6 +32,7 @@ export function SlugForm({
   readonly storefrontAddress: string | null;
 }) {
   const t = useTranslations();
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const suggestion = file.slug === null ? suggestSlug(file.general.storeName ?? '') : '';
   const [value, setValue] = useState(file.slug ?? suggestion);
@@ -37,6 +40,7 @@ export function SlugForm({
   const [check, setCheck] = useState<CheckState>({ kind: 'idle' });
   const [savedOnce, setSavedOnce] = useState(file.slug !== null);
   const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  const guard = useWithdrawGuard(file.status === 'awaiting-review');
   useFocusFirstInvalid(formRef, focusKeys);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
@@ -96,13 +100,19 @@ export function SlugForm({
     void runCheck(value);
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending) return;
+    void guard.run(value !== (file.slug ?? ''), persist);
+  }
+
+  async function persist() {
     if (timer.current) clearTimeout(timer.current);
     const outcome = await save<DraftSaved>('sellers/my-file/slug', { slug: value });
     if (outcome?.ok) {
       setSavedOnce(true);
       setCheck({ kind: 'idle' });
+      router.refresh();
     }
   }
 
@@ -147,6 +157,8 @@ export function SlugForm({
       noValidate
       className="flex flex-col gap-5"
     >
+      {guard.banner}
+      {guard.dialog}
       {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card>
         <TextField

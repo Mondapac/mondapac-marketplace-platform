@@ -1094,6 +1094,51 @@ describe('loadMarketConfigs', () => {
     });
   });
 
+  describe('identity.customRoleLimits (identity slice 10; identity design 2.3)', () => {
+    const withLimits = (limits?: unknown) => ({
+      ...VALID,
+      identity: { ...IDENTITY, ...(limits === undefined ? {} : { customRoleLimits: limits }) },
+    });
+    const load = (file: object) =>
+      loadMarketConfigs([directoryWith({ 'QQ.json': file })], [QQ]).get(QQ)!.identity;
+
+    it('configures 20 and 50 in both Market fixtures', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+
+      for (const market of markets.values()) {
+        expect(market.identity.customRoleLimits).toEqual({ seller: 20, platform: 50 });
+      }
+    });
+
+    it('accepts a Market without the object (create fails closed) and the bounds', () => {
+      expect(load(withLimits()).customRoleLimits).toBeUndefined();
+      expect(load(withLimits({ seller: 1, platform: 1 })).customRoleLimits).toEqual({
+        seller: 1,
+        platform: 1,
+      });
+      expect(load(withLimits({ seller: 200, platform: 500 })).customRoleLimits).toEqual({
+        seller: 200,
+        platform: 500,
+      });
+    });
+
+    it.each([
+      ['a missing platform', { seller: 20 }],
+      ['a missing seller', { platform: 50 }],
+      ['an empty object', {}],
+      ['an unknown key', { seller: 20, platform: 50, other: 1 }],
+      ['zero', { seller: 0, platform: 50 }],
+      ['a negative', { seller: 20, platform: -1 }],
+      ['a non-integer', { seller: 2.5, platform: 50 }],
+      ['a string', { seller: '20', platform: 50 }],
+      ['a seller limit above 200', { seller: 201, platform: 50 }],
+      ['a platform limit above 500', { seller: 20, platform: 501 }],
+      ['null', null],
+    ])('rejects %s', (_name, limits) => {
+      expect(() => load(withLimits(limits))).toThrow(/identity\.customRoleLimits/);
+    });
+  });
+
   describe('the seller access keys (identity slice 9; identity design 3.3, 6.7)', () => {
     const SELLER_PAGES = {
       'verify-email': 'https://seller.qq.test/confirm-email',
@@ -1904,6 +1949,8 @@ describe('loadMarketConfigs', () => {
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
+      conditions: ['new', 'used'],
+      sellFromCatalogue: true,
     };
     const withCatalog = (catalog: unknown) => directoryWith({ 'QQ.json': { ...VALID, catalog } });
 
@@ -1993,6 +2040,11 @@ describe('loadMarketConfigs', () => {
       ],
       ['a 65-character default family', { ...VALID_CATALOG, defaultFamily: 'a'.repeat(65) }],
       ['no default family', without('defaultFamily')],
+      ['no conditions', without('conditions')],
+      ['an empty condition list', { ...VALID_CATALOG, conditions: [] }],
+      ['a repeated condition', { ...VALID_CATALOG, conditions: ['new', 'new'] }],
+      ['a malformed condition', { ...VALID_CATALOG, conditions: ['Brand New'] }],
+      ['no sellFromCatalogue setting', without('sellFromCatalogue')],
       ['a malformed default family', { ...VALID_CATALOG, defaultFamily: 'Default Family' }],
       ['an unknown key', { ...VALID_CATALOG, photoLimits: {} }],
     ])('rejects %s', (_case, catalog) => {

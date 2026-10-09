@@ -25,6 +25,14 @@ export interface OfferRepository {
    */
   add(market: MarketContext, offer: Offer, actor: OfferActor): Promise<OfferAddRefusal | null>;
 
+  /**
+   * Stores the change an Offer holds (`pendingHistory`) with its history row, conditional on the
+   * version the Offer was read at (a lost race throws `StaleAggregateError`). The SKU unique
+   * decides a race on the SKU: its violation is answered as `offer.sku-taken` and the caller ends
+   * its unit with an error. An Offer with no pending change stores nothing.
+   */
+  save(market: MarketContext, offer: Offer, actor: OfferActor): Promise<'offer.sku-taken' | null>;
+
   /** The Offer in this Market, or null: another Market's id is not found. */
   findById(market: MarketContext, id: Id<'Offer'>): Promise<Offer | null>;
 }

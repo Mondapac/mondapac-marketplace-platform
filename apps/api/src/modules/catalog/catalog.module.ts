@@ -25,7 +25,13 @@ import {
   PRODUCT_TYPE_LOOKUP,
   type ProductTypeLookup,
 } from './application/ports/product-type-lookup';
+import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
+import { OFFER_REPOSITORY } from './application/ports/offer.repository';
+import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
+import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
+import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
+import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
@@ -55,6 +61,7 @@ import {
 import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
+import { OwnOfferController } from './presentation/own-offer.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
@@ -88,6 +95,9 @@ const PORT = {
   freeze: FreezeRevision,
   submit: SubmitProduct,
   reader: OFFER_SELL_UNITS_READER,
+  offers: OFFER_REPOSITORY,
+  eligibility: SELLER_ELIGIBILITY_READER,
+  allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -149,8 +159,8 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
-  controllers: [PlatformProductController],
-  imports: [CertificationModule],
+  controllers: [PlatformProductController, OwnOfferController],
+  imports: [CertificationModule, SellersModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),
@@ -230,6 +240,28 @@ const productTypeProvider: FactoryProvider<string> = {
       outbox: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(OwnOfferCreateOnPlatformProduct, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      eligibility: true,
+      allowedTypes: true,
+      check: true,
+      save: true,
+      policy: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferEdit, {
+      unitOfWork: true,
+      offers: true,
+      eligibility: true,
+      check: true,
+      save: true,
+      policy: true,
+      clock: true,
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),

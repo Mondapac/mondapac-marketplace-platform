@@ -26,6 +26,10 @@ export interface CatalogMarketPolicy {
   productTypes(market: MarketContext): readonly string[];
   /** The attribute family a new product starts in (4.1). */
   defaultFamily(market: MarketContext): string;
+  /** The condition codes an Offer may carry (7.1). */
+  conditions(market: MarketContext): readonly string[];
+  /** Whether a seller may create an Offer on a PLATFORM product (7.3, OFR-03); read at creation. */
+  sellFromCatalogue(market: MarketContext): Promise<boolean>;
   /** Whether a new revision waits for review (4.2 row 1); read in the submitting unit. */
   approvalRequired(market: MarketContext): Promise<boolean>;
 }

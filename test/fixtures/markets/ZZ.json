@@ -119,6 +119,7 @@
       }
     },
     "sellerReapplyLimit": 3,
+    "customRoleLimits": { "seller": 20, "platform": 50 },
     "unverifiedAccountRetentionDays": 5,
     "mail": {
       "fromAddress": "noreply@zz.test",
@@ -221,7 +222,9 @@
     "maxVariantsPerProduct": 3,
     "approvalRequired": false,
     "productTypes": ["simple"],
-    "defaultFamily": "default"
+    "defaultFamily": "default",
+    "conditions": ["new"],
+    "sellFromCatalogue": true
   },
   "pricing": {
     "maxUnitPriceMinor": 2000000,

@@ -39,6 +39,18 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 let clock: FixedClock;
 
+const ENTRY_FIELDS = [
+  'actions',
+  'grantable',
+  'kind',
+  'name',
+  'permissionCount',
+  'permissionKeys',
+  'roleId',
+  'seedCode',
+  'version',
+];
+
 describe('role catalogue over HTTP (integration, slice 10a)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
@@ -146,14 +158,19 @@ describe('role catalogue over HTTP (integration, slice 10a)', () => {
     const operation = document.paths['/identity/admin/roles']?.get;
     expect(operation).toBeDefined();
     expect((operation?.parameters ?? []).filter((p) => p.in === 'query')).toEqual([]);
-    expect(document.components.schemas).toHaveProperty(['PlatformRoleCatalogueView']);
-    expect(
-      Object.keys(document.components.schemas.PlatformRoleView?.properties ?? {}).sort(),
-    ).toEqual(['grantable', 'kind', 'permissionCount', 'roleId', 'seedCode']);
+    expect(document.components.schemas).toHaveProperty(['RoleCatalogueView']);
+    expect(Object.keys(document.components.schemas.RoleView?.properties ?? {}).sort()).toEqual(
+      ENTRY_FIELDS,
+    );
+    expect(Object.keys(document.components.schemas.RoleKeyView?.properties ?? {}).sort()).toEqual([
+      'grantable',
+      'key',
+      'protected',
+    ]);
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
-    it('lists the platform roles with the five fields and grantable; logs no key', async () => {
+    it('lists the platform roles with keys, grantable and action hints; logs no key', async () => {
       await boot();
       await seeded(code);
 
@@ -167,21 +184,24 @@ describe('role catalogue over HTTP (integration, slice 10a)', () => {
         .sort();
       expect(items.map((item) => item.roleId)).toEqual(platform);
       for (const item of items) {
-        expect(Object.keys(item).sort()).toEqual([
-          'grantable',
-          'kind',
-          'permissionCount',
-          'roleId',
-          'seedCode',
-        ]);
+        expect(Object.keys(item).sort()).toEqual(ENTRY_FIELDS);
       }
-      expect(items.find((item) => item.seedCode === 'viewer')).toEqual({
+      expect(items.find((item) => item.seedCode === 'viewer')).toMatchObject({
         roleId: roleOf(code, 'viewer'),
         kind: 'default',
         seedCode: 'viewer',
+        name: null,
         permissionCount: 5,
         grantable: true,
+        // A viewer holds no editor key: every action is access.denied.
+        actions: {
+          edit: { allowed: false, code: 'access.denied' },
+          delete: { allowed: false, code: 'access.denied' },
+        },
       });
+      const keys = (listed.body as { keys: { key: string; protected: boolean }[] }).keys;
+      expect(keys.length).toBeGreaterThan(0);
+      expect(keys.every((k) => k.key.startsWith('identity.') || k.key.includes('.'))).toBe(true);
       expect(items.find((item) => item.seedCode === 'platform-administrator')).toMatchObject({
         kind: 'system',
         grantable: false,
@@ -190,7 +210,6 @@ describe('role catalogue over HTTP (integration, slice 10a)', () => {
       for (const sellerRole of rolesOf(code, 'seller')) {
         expect(JSON.stringify(listed.body)).not.toContain(sellerRole.id);
       }
-      expect(JSON.stringify(listed.body)).not.toMatch(/identity\.[a-z-]+\.[a-z-]+/);
       const correlationId = listed.headers['x-correlation-id'] as string;
       expect(logLines.find((l) => l.msg === 'identity.admin-list-roles')).toMatchObject({
         outcome: 'ok',

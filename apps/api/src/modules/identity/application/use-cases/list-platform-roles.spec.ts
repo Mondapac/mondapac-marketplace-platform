@@ -94,7 +94,17 @@ const NARROW_KEYS = [
   'identity.platform-role.assign',
   'identity.platform-role.view',
 ];
-const ENTRY_FIELDS = ['grantable', 'kind', 'permissionCount', 'roleId', 'seedCode'];
+const ENTRY_FIELDS = [
+  'actions',
+  'grantable',
+  'kind',
+  'name',
+  'permissionCount',
+  'permissionKeys',
+  'roleId',
+  'seedCode',
+  'version',
+];
 
 describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
@@ -118,6 +128,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
     seedCode: null,
     seedVersion: null,
     sellerId: null,
+    name: 'Custom role',
     permissionKeys: [...permissionKeys].sort(),
     version: 1,
     createdAt: START,
@@ -257,6 +268,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
         unitOfWork,
         accounts: options.accounts ?? fakes.accountRepository,
         roles: roleRepository,
+        assignments: fakes.assignmentRepository,
         grants: fakes.grantReader,
         effectiveKeys,
         permissions,
@@ -291,7 +303,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
   const byId = (items: readonly PlatformRoleEntry[], roleId: Id<'Role'>) =>
     items.find((item) => item.roleId === roleId)!;
 
-  it('lists the Market’s platform roles by id, with exactly the five fields', async () => {
+  it('lists the Market’s platform roles by id, with exactly the declared fields', async () => {
     const { list, permissions } = setUp();
 
     const items = await catalogue(list, ROOT);
@@ -300,7 +312,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
     const expected = [...platform, LEAD_ROLE, NARROW_ROLE, MIN_ROLE].sort();
     expect(items.map((item) => item.roleId)).toEqual(expected);
     for (const item of items) expect(Object.keys(item).sort()).toEqual(ENTRY_FIELDS);
-    expect(byId(items, roleOf('platform-administrator'))).toEqual({
+    expect(byId(items, roleOf('platform-administrator'))).toMatchObject({
       roleId: roleOf('platform-administrator'),
       kind: 'system',
       seedCode: 'platform-administrator',
@@ -308,14 +320,20 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       permissionCount: permissions.keysOf('platform').size,
       grantable: true,
     });
-    expect(byId(items, roleOf('viewer'))).toEqual({
+    expect(byId(items, roleOf('viewer'))).toMatchObject({
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
       permissionCount: 5,
       grantable: true,
     });
-    expect(byId(items, LEAD_ROLE)).toMatchObject({ kind: 'custom', seedCode: null });
+    expect(byId(items, roleOf('viewer')).name).toBeNull();
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(4);
+    expect(byId(items, LEAD_ROLE)).toMatchObject({
+      kind: 'custom',
+      seedCode: null,
+      name: 'Custom role',
+    });
     // Only the read-only unit of the gate and the one of the read (ADR-0025).
     expect(units).toEqual([{ readOnly: true }, { readOnly: true }]);
   });

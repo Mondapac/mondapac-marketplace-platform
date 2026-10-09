@@ -175,6 +175,8 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       maxVariantsPerProduct: () => 100,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
+      conditions: () => ['new'],
+      sellFromCatalogue: () => Promise.resolve(true),
       approvalRequired: () =>
         options.approvalThrows === true
           ? Promise.reject(new Error('config'))

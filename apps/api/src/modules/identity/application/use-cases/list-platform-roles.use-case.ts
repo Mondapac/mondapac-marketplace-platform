@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import {
   UseCase,
   type AccessDeclaration,
@@ -8,48 +8,29 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { PLATFORM_ROLE_VIEW } from '../../contracts/permissions';
-import type { RoleKind } from '../../domain/role';
+import {
+  PLATFORM_ROLE_DELETE,
+  PLATFORM_ROLE_EDIT,
+  PLATFORM_ROLE_VIEW,
+} from '../../contracts/permissions';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
-import type { RoleRepository } from '../ports/seller-team.repository';
-import {
-  grantedRoleOf,
-  readActingGrants,
-  roleGrantVerdict,
-  roleIsInActorsReach,
-  type GrantSubject,
-} from '../roles/granting';
+import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
+import { readActingGrants, type GrantSubject } from '../roles/granting';
+import { buildRoleCatalogue, type RoleCatalogue, type RoleEntry } from '../roles/role-catalogue';
 
 /** The read takes no parameter: no scope, no seller, no filter (Ali's 10a ruling). */
 export type ListPlatformRolesInput = Readonly<Record<string, never>>;
 
 /**
- * One platform role as the catalogue shows it, and nothing more (Ali's 10a ruling): no name or
- * description (`RoleState` has neither; the panel labels a seeded role from `seedCode` through
- * i18n), and no key list (the role editor's detail view, slice 10).
+ * One platform role as the catalogue shows it (slice 10a, extended by slice 10): see
+ * {@link RoleEntry}. A custom role has a `name`; a seeded role is labelled from `seedCode`.
  */
-export interface PlatformRoleEntry {
-  readonly roleId: Id<'Role'>;
-  /** `system` gets a lock in the panel. */
-  readonly kind: RoleKind;
-  /** The seed code of a system or default role (its label is a translation key); else null. */
-  readonly seedCode: string | null;
-  /** How many keys the role confers now: every key of the scope for the system role (R3). */
-  readonly permissionCount: number;
-  /**
-   * Whether this actor may give this role now (`GrantPolicy.canGrant` for every key it confers,
-   * through `roleGrantVerdict`, the check `AssignAdminRole` and `InviteAdmin` run). A hint only:
-   * both commands check again in their own unit. It says nothing about whether the actor holds
-   * the assign or invite permission itself.
-   */
-  readonly grantable: boolean;
-}
+export type PlatformRoleEntry = RoleEntry;
 
-export interface PlatformRoleCatalogue {
-  readonly items: readonly PlatformRoleEntry[];
-}
+/** The platform roles and the keys of the platform scope (slice 10). */
+export type PlatformRoleCatalogue = RoleCatalogue;
 
 export type ListPlatformRolesFailure =
   | { readonly code: 'access.denied' }
@@ -62,9 +43,10 @@ export interface ListPlatformRolesDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly roles: RoleRepository;
+  readonly assignments: Pick<RoleAssignmentRepository, 'heldRoles'>;
   readonly grants: RoleGrantReader;
   readonly effectiveKeys: EffectiveKeyResolver;
-  readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
+  readonly permissions: Pick<SealedPermissionCatalogue, 'get' | 'list'>;
 }
 
 /**
@@ -82,7 +64,9 @@ export interface ListPlatformRolesDependencies {
  *    resolver) and `grantable` is `roleGrantVerdict`: the same function the assign, invite,
  *    re-send and acceptance checks call, never a second implementation.
  *
- * Slice 10 extends this read with the name, the seller scope and the key detail.
+ * Slice 10 extends this read with the name, per-role key detail, per-key `grantable` and the
+ * edit and delete hints (the seller scope has its own gate and rule in `ListSellerRoles`, over
+ * the same builder: one read model, two rules because a rule names keys of one scope).
  */
 export class ListPlatformRoles extends UseCase<
   ListPlatformRolesInput,
@@ -155,16 +139,23 @@ export class ListPlatformRoles extends UseCase<
         );
         if (acting === null) return err({ code: 'access.denied' });
         const roles = await this.deps.roles.platformRoles(market);
-        const items = roles
-          .filter((role) => roleIsInActorsReach(role, self))
-          .map((role): PlatformRoleEntry => ({
-            roleId: role.state.id,
-            kind: role.state.kind,
-            seedCode: role.state.seedCode,
-            permissionCount: grantedRoleOf(role, this.deps.effectiveKeys).effectiveKeys.size,
-            grantable: roleGrantVerdict(acting.actor, role, this.deps).ok,
-          }));
-        return ok({ items });
+        // Only a custom role can be `role.in-use` (a seeded role is `role.read-only` first), so only
+        // custom ids are asked: a shop's list never reads the assignments of the shared roles.
+        const held = await this.deps.assignments.heldRoles(
+          market,
+          roles.filter((role) => role.state.kind === 'custom').map((role) => role.state.id),
+        );
+        const catalogue = buildRoleCatalogue({
+          scope: 'platform',
+          actor: acting.actor,
+          subject: self,
+          roles,
+          held,
+          editKey: PLATFORM_ROLE_EDIT.key,
+          deleteKey: PLATFORM_ROLE_DELETE.key,
+          deps: this.deps,
+        });
+        return ok(catalogue);
       },
       { readOnly: true },
     );

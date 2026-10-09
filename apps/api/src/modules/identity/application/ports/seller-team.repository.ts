@@ -1,5 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import type { Role, RoleAssignment, RoleScope, SeedUpgrade } from '../../domain/role';
+import type { Role, RoleAssignment, RoleEdit, RoleScope, SeedUpgrade } from '../../domain/role';
 import type { SellerMembership } from '../../domain/seller-membership';
 
 /**
@@ -51,6 +51,47 @@ export interface RoleRepository {
    */
   platformRoles(market: MarketContext): Promise<Role[]>;
 
+  /**
+   * The seller-scope roles a seller sees (slice 10): the shared system and default roles of the
+   * Market and this seller's own custom roles, by id, each with its stored keys and name. Another
+   * seller's custom role is never read: the seller id is a required argument (R6, R9).
+   */
+  sellerRoles(market: MarketContext, sellerId: Id<'Seller'>): Promise<Role[]>;
+
+  /**
+   * How many custom roles the owner holds: the seller's in seller scope, the Market's in
+   * platform scope (`sellerId` null), for the limit of identity design 2.3.
+   */
+  countCustom(
+    market: MarketContext,
+    scope: RoleScope,
+    sellerId: Id<'Seller'> | null,
+  ): Promise<number>;
+
+  /**
+   * Whether a custom role of this owner already has the normalised name (M10; the partial unique
+   * indexes are the backstop), leaving `exceptRoleId` out.
+   */
+  nameTaken(
+    market: MarketContext,
+    scope: RoleScope,
+    sellerId: Id<'Seller'> | null,
+    nameNormalized: string,
+    exceptRoleId?: Id<'Role'>,
+  ): Promise<boolean>;
+
+  /** Stores a new custom role with its keys (slice 10). */
+  addCustom(market: MarketContext, role: Role): Promise<void>;
+
+  /**
+   * Stores an edit of a custom role: the name, the version at the version read (else
+   * `StaleAggregateError`), then the key rows added and removed (slice 10).
+   */
+  saveCustom(market: MarketContext, edit: RoleEdit): Promise<void>;
+
+  /** Deletes a custom role at the version read (else stale); its key rows go with it. */
+  deleteCustom(market: MarketContext, role: Role): Promise<void>;
+
   /** The seeded role of this scope and seed code (the seed routine's key, 8.3), or null. */
   findBySeedCode(market: MarketContext, scope: RoleScope, seedCode: string): Promise<Role | null>;
 
@@ -71,6 +112,12 @@ export interface RoleRepository {
 
 /** The role assignments (identity design 2.1, 2.3; data design 3.9). */
 export interface RoleAssignmentRepository {
+  /** Which of these roles any account holds (the role editor's `role.in-use`, slice 10). */
+  heldRoles(
+    market: MarketContext,
+    roleIds: readonly Id<'Role'>[],
+  ): Promise<ReadonlySet<Id<'Role'>>>;
+
   /** The one assignment of this account in Phase 2, or null. */
   findByAccount(market: MarketContext, accountId: Id<'Account'>): Promise<RoleAssignment | null>;
 

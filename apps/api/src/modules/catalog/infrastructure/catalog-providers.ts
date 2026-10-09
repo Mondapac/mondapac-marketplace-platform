@@ -40,6 +40,17 @@ import {
   OFFER_SELL_UNITS_READER,
   type OfferSellUnitsReader,
 } from '../application/ports/offer-sell-units.reader';
+import {
+  ALLOWED_PRODUCT_TYPES_READER,
+  type AllowedProductTypesReader,
+} from '../application/ports/allowed-product-types.reader';
+import {
+  SELLER_ELIGIBILITY_READER,
+  type SellerEligibilityReader,
+} from '../application/ports/seller-eligibility.reader';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { UnavailableAllowedProductTypesReader } from './placeholders/unavailable-allowed-product-types.reader';
+import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
@@ -87,6 +98,17 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
       new PrismaOfferRepository(prisma, ids),
+  },
+  {
+    provide: SELLER_ELIGIBILITY_READER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerEligibilityReader =>
+      new SellersSellerEligibilityReader(sellers),
+  },
+  {
+    // ADR-0031 decision 1: fail-closed until sellers publishes `allowedProductTypesOf`.
+    provide: ALLOWED_PRODUCT_TYPES_READER,
+    useFactory: (): AllowedProductTypesReader => new UnavailableAllowedProductTypesReader(),
   },
   {
     provide: OFFER_SELL_UNITS_READER,

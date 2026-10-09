@@ -58,12 +58,18 @@ export type ActionHint =
   | { readonly allowed: true; readonly code: null }
   | { readonly allowed: false; readonly code: string };
 
-/** A role as a row shows it: its id, its kind (a system role gets a lock) and its seed code. */
+/**
+ * A role as a row shows it: its id, its kind (a system role gets a lock), its seed code and, for a
+ * custom role, its name (slice 10: personal free text, shown to a holder of
+ * `identity.admin-account.view`; never logged).
+ */
 export interface AdminTeamRole {
   readonly roleId: Id<'Role'>;
   readonly kind: RoleKind;
   /** The seed code of a system or default role (its label is a translation key); else null. */
   readonly seedCode: string | null;
+  /** The name of a custom role; null for a seeded role (labelled from `seedCode`). */
+  readonly name: string | null;
 }
 
 export interface AdminTeamAccountRow {
@@ -313,7 +319,12 @@ class RowBuilder {
   private shown(role: Role | null): AdminTeamRole | null {
     // A role out of an admin's reach is never one of an admin's (R2, R9); shown as none.
     if (role === null || !roleIsInActorsReach(role, this.self)) return null;
-    return { roleId: role.state.id, kind: role.state.kind, seedCode: role.state.seedCode };
+    return {
+      roleId: role.state.id,
+      kind: role.state.kind,
+      seedCode: role.state.seedCode,
+      name: role.state.kind === 'custom' ? (role.state.name ?? null) : null,
+    };
   }
 
   async build(
