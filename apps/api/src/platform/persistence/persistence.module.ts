@@ -34,6 +34,11 @@ import { PrismaEventDispatcher } from './outbox/prisma-event-dispatcher';
 import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
+import { parseSql } from './raw-reads/pg-parser';
+import { PrismaRawReadPort } from './raw-reads/prisma-raw-read-port';
+import { RAW_READ_PORT } from './raw-reads/raw-read-port';
+import { assertRawReadList } from './raw-reads/raw-read-list-check';
+import { RAW_READ_STATEMENTS } from './raw-reads/statements';
 import { PrismaService } from './prisma.service';
 import { PrismaSubjectKeyStore } from './prisma-subject-key-store';
 import { PrismaUnitOfWork } from './prisma-unit-of-work';
@@ -68,6 +73,17 @@ const modelMap: ModelMap = MODEL_MAP;
       provide: UNIT_OF_WORK,
       inject: [GUARDED_CLIENT],
       useFactory: (client: GuardedClient) => new PrismaUnitOfWork(client, modelMap),
+    },
+    {
+      // The list is re-checked with the same pure parse as `pnpm boundaries` before the port
+      // exists, so the application refuses to start on a statement that breaks ADR-0030
+      // decisions 2 to 5, or when the parser cannot load (decision 4).
+      provide: RAW_READ_PORT,
+      inject: [PrismaRoot],
+      useFactory: async (root: PrismaRoot) => {
+        await assertRawReadList(parseSql, RAW_READ_STATEMENTS, modelMap);
+        return new PrismaRawReadPort(root);
+      },
     },
     {
       provide: DatabaseProbe,
@@ -112,6 +128,7 @@ const modelMap: ModelMap = MODEL_MAP;
     PrismaService,
     UNIT_OF_WORK,
     DatabaseProbe,
+    RAW_READ_PORT,
     EVENT_BUS,
     OUTBOX_RELAY,
     EVENT_DISPATCHER,

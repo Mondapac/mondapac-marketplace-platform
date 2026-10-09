@@ -26,10 +26,22 @@
 // tables in OUTBOX_TABLES of any module, and those models are reserved to that folder.
 // Likewise the platform models mapped to AUDIT_TABLES are reserved to
 // platform/persistence/audit/ (the AuditWriter; docs/design/domain/platform-audit.md 2).
+// Raw read statements (ADR-0030, controls C2 and C3):
+//   - when <src>/platform/persistence/raw-reads/statements.ts exists, the checked-in list is
+//     transpiled, parsed with libpg-query (loaded with createRequire from apps/api; the same
+//     pure checker the API runs at start-up) and every entry is checked against the schema;
+//   - every `.rawRead(market, '<id>', ...)` call names a literal id of the list, from the
+//     infrastructure folder of the module that owns the entry;
+//   - C3: raw SQL members (`$queryRaw`, `$executeRaw` and their Unsafe/Typed forms) and the
+//     `pg` driver are used only by the files in RAW_SQL_FILES; everywhere else, a read goes
+//     through the RawReadPort.
 //
 // Usage: node scripts/check-prisma-boundaries.mjs [schema-dir] [--src <apps/api/src>]
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { readPrismaSchema } from './prisma-schema.mjs';
 
@@ -43,6 +55,23 @@ const AUDIT_TABLES = ['audit_log', 'audit_log_seal', 'audit_chain_checkpoint'];
 const AUDIT_FOLDER = 'platform/persistence/audit/';
 /** The calls whose result is a model view: `PrismaService.tx(market)` and `auditTx(market)`. */
 const VIEW_CALLS = ['tx', 'auditTx'];
+
+/** C3: the only files (relative to the source root) that may run raw SQL or import `pg`. */
+const RAW_SQL_FILES = new Set([
+  'platform/persistence/advisory-job-lock.ts',
+  'platform/persistence/database-probe.ts',
+  'platform/persistence/guarded-client.ts',
+  'platform/persistence/market-guard.ts',
+  'platform/persistence/named-statements.ts',
+  'platform/persistence/outbox/in-process-event-bus.ts',
+  'platform/persistence/outbox/prisma-event-dispatcher.ts',
+  'platform/persistence/outbox/prisma-outbox-relay.ts',
+  'platform/persistence/prisma-root.ts',
+  'platform/persistence/prisma-unit-of-work.ts',
+  'platform/persistence/raw-reads/prisma-raw-read-port.ts',
+]);
+const RAW_SQL_MEMBER = /^\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|queryRawTyped)$/;
+const RAW_READS_FOLDER = 'platform/persistence/raw-reads/';
 
 const args = process.argv.slice(2);
 const srcFlag = args.indexOf('--src');
@@ -169,6 +198,8 @@ for (const model of outboxes.slice(1)) {
 
 // --- Model to owning module (P 9).
 if (existsSync(srcDir)) problems.push(...checkModelOwnership(srcDir));
+
+if (existsSync(srcDir)) problems.push(...(await checkRawReads(srcDir)));
 
 if (problems.length > 0) {
   console.error(
@@ -318,4 +349,119 @@ function checkModelOwnership(root) {
     visit(source);
   }
   return found;
+}
+
+/**
+ * Transpiles the pure checker (always the repository's own, so a fixture cannot swap it) and
+ * the list under `root`, and imports them from a temp dir.
+ */
+async function loadRawReadChecker(root) {
+  const checkerFolder = path.resolve('apps/api/src', RAW_READS_FOLDER);
+  const dir = mkdtempSync(path.join(tmpdir(), 'raw-reads-'));
+  try {
+    for (const name of ['statements', 'statement-check', 'raw-read-list-check']) {
+      const folder = name === 'statements' ? path.join(root, RAW_READS_FOLDER) : checkerFolder;
+      const out = ts
+        .transpileModule(readFileSync(path.join(folder, `${name}.ts`), 'utf8'), {
+          compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+        })
+        .outputText.replace(/(from\s+['"]\.\/[^'"]+)(['"])/g, '$1.mjs$2');
+      writeFileSync(path.join(dir, `${name}.mjs`), out);
+    }
+    const list = await import(pathToFileURL(path.join(dir, 'raw-read-list-check.mjs')).href);
+    const statements = await import(pathToFileURL(path.join(dir, 'statements.mjs')).href);
+    return { check: list.checkRawReadList, entries: statements.RAW_READ_STATEMENTS };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function checkRawReads(root) {
+  const found = [];
+  let entries = [];
+  if (existsSync(path.join(root, RAW_READS_FOLDER, 'statements.ts'))) {
+    // The parser belongs to apps/api (Ali's ruling C-e); the root script reaches it from there.
+    const apiRequire = createRequire(path.resolve('apps/api/package.json'));
+    const { loadModule, parse } = apiRequire('libpg-query');
+    await loadModule();
+    const loaded = await loadRawReadChecker(root);
+    entries = loaded.entries;
+    const problemsOfList = await loaded.check(parse, entries, rawReadModelMap());
+    found.push(...problemsOfList.map((line) => `raw read statement ${line}`));
+  }
+  const ids = new Map(entries.map((entry) => [entry.id, entry]));
+
+  for (const file of sourceFiles(root)) {
+    const relative = path.relative(root, file).split(path.sep).join('/');
+    const source = ts.createSourceFile(
+      file,
+      readFileSync(file, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const lineOf = (node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+    const rawSqlAllowed = RAW_SQL_FILES.has(relative);
+    const owner = /^modules\/([^/]+)\/infrastructure\//.exec(relative)?.[1];
+    const visit = (node) => {
+      if (
+        !rawSqlAllowed &&
+        ((ts.isPropertyAccessExpression(node) && RAW_SQL_MEMBER.test(node.name.text)) ||
+          (ts.isElementAccessExpression(node) &&
+            ts.isStringLiteralLike(node.argumentExpression) &&
+            RAW_SQL_MEMBER.test(node.argumentExpression.text)))
+      ) {
+        found.push(
+          `${relative}:${lineOf(node)}: raw SQL outside the files of RAW_SQL_FILES; ` +
+            'read through RawReadPort (ADR-0030)',
+        );
+      } else if (
+        !rawSqlAllowed &&
+        (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+        node.moduleSpecifier &&
+        ts.isStringLiteral(node.moduleSpecifier) &&
+        /^(pg|pg\/.*|postgres|@prisma\/adapter-pg)$/.test(node.moduleSpecifier.text)
+      ) {
+        found.push(
+          `${relative}:${lineOf(node)}: import of the database driver "${node.moduleSpecifier.text}" ` +
+            'outside the files of RAW_SQL_FILES (ADR-0030)',
+        );
+      } else if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === 'rawRead' &&
+        !relative.startsWith(RAW_READS_FOLDER)
+      ) {
+        const id = node.arguments[1];
+        if (id === undefined || !ts.isStringLiteralLike(id)) {
+          found.push(
+            `${relative}:${lineOf(node)}: rawRead needs a string literal statement id as its second argument`,
+          );
+        } else if (!ids.has(id.text)) {
+          found.push(
+            `${relative}:${lineOf(node)}: rawRead names "${id.text}", which is not in the list`,
+          );
+        } else if (ids.get(id.text).owner !== owner) {
+          found.push(
+            `${relative}:${lineOf(node)}: rawRead "${id.text}" belongs to module ` +
+              `"${ids.get(id.text).owner}"; call it from that module's infrastructure folder`,
+          );
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return found;
+}
+
+/** The part of the model map the list check reads, from the models this run already parsed. */
+function rawReadModelMap() {
+  const mapModels = {};
+  const mapModules = {};
+  for (const model of models) {
+    if (model.schema === undefined) continue;
+    mapModels[model.name] = { module: model.module, schema: model.schema, table: model.table };
+    mapModules[model.module] = { schema: model.module.replaceAll('-', '_') };
+  }
+  return { models: mapModels, modules: mapModules };
 }
