@@ -163,6 +163,30 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     );
   });
 
+  it('reads each Market its custom-role limits per scope (slice 10, identity design 2.3)', () => {
+    for (const code of ['AU', 'ZZ']) {
+      const market = testMarketContext(code, 'default');
+      expect(policy.customRoleLimit(market, 'seller')).toBe(20);
+      expect(policy.customRoleLimit(market, 'platform')).toBe(50);
+    }
+  });
+
+  it('answers null for the role limits when a Market configures none (fail closed)', () => {
+    const file = JSON.parse(
+      readFileSync(path.join(TEST_MARKET_CONFIG_DIRS[1], 'ZZ.json'), 'utf8'),
+    ) as { identity: { customRoleLimits?: object } };
+    delete file.identity.customRoleLimits;
+    const directory = mkdtempSync(path.join(tmpdir(), 'markets-without-limits-'));
+    writeFileSync(path.join(directory, 'ZZ.json'), JSON.stringify(file));
+    const without = new MarketConfigIdentityPolicy(
+      new MarketRegistry(loadMarketConfigs([directory], [testMarketId('ZZ')])),
+    );
+    const zz = testMarketContext('ZZ', 'default');
+
+    expect(without.customRoleLimit(zz, 'seller')).toBeNull();
+    expect(without.customRoleLimit(zz, 'platform')).toBeNull();
+  });
+
   it('answers null for both when a Market configures neither, so the flows fail closed', () => {
     // A copy of ZZ without the two slice 9 keys; the checked-in files keep them.
     const file = JSON.parse(

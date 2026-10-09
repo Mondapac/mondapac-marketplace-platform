@@ -394,6 +394,17 @@ const identitySchema = z
      * status read's `reapplyLimitReached` is null (fail closed).
      */
     sellerReapplyLimit: z.number().int().min(1).max(10).optional(),
+    /**
+     * Custom roles a Market allows (identity design 2.3; slice 10): per seller in the seller
+     * scope, per Market in the platform scope. Both fields are required when the object is
+     * present; without it the role editor's create answers `access.unavailable` (fail closed).
+     */
+    customRoleLimits: z
+      .strictObject({
+        seller: z.number().int().min(1).max(200),
+        platform: z.number().int().min(1).max(500),
+      })
+      .optional(),
     /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
     unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
     /** The sender of the Market's mail (identity design 9). */

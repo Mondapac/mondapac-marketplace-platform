@@ -112,12 +112,11 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
   }
 
   /**
-   * Slice 10 (identity design 2.3): no Market configuration key declares the custom-role limits
-   * yet (the Market-config PR adds `identity.customRoleLimits`), so every Market answers null and
-   * the role editor's create fails closed until it does.
+   * Slice 10 (identity design 2.3): `identity.customRoleLimits` (20 per seller, 50 per Market for
+   * platform roles in AU); null when the Market configures none, so create fails closed.
    */
-  customRoleLimit(): number | null {
-    return null;
+  customRoleLimit(market: MarketContext, scope: 'platform' | 'seller'): number | null {
+    return this.markets.get(market.marketId).identity.customRoleLimits?.[scope] ?? null;
   }
 
   /** `LinkTargets` (identity design 9): the page per population and page, or null. */
