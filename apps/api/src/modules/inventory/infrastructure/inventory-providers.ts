@@ -20,8 +20,13 @@ import {
   OFFER_SELL_UNITS_SOURCE,
   type OfferSellUnitsSource,
 } from '../application/ports/offer-sell-units';
+import {
+  AVAILABILITY_READER,
+  type AvailabilityReader,
+} from '../application/ports/availability-reader';
 import { STOCK_REPOSITORY, type StockRepository } from '../application/ports/stock.repository';
 import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
+import { PrismaAvailabilityReader } from './prisma-availability.reader';
 import { PrismaAvailabilitySignalRepository } from './prisma-availability-signal.repository';
 import { PrismaStockRepository } from './prisma-stock.repository';
 
@@ -40,6 +45,11 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     provide: STOCK_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): StockRepository => new PrismaStockRepository(prisma),
+  },
+  {
+    provide: AVAILABILITY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AvailabilityReader => new PrismaAvailabilityReader(prisma),
   },
   {
     provide: AVAILABILITY_SIGNAL_REPOSITORY,
