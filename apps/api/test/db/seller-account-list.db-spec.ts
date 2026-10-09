@@ -177,6 +177,7 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
     sellerId: Id<'Seller'>,
     invitedBy: Id<'Account'>,
     marketCode: string = code,
+    options: { expired?: boolean } = {},
   ): Promise<{ id: Id<'Invitation'>; email: string }> {
     const id = newId<'Invitation'>();
     const email = `Invitee.${id}@Sellers.example`;
@@ -195,8 +196,9 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
         sellerId,
         invitedBy,
         randomBytes(32),
-        // The use case reads the real clock: created now, its mail valid for another hour.
-        new Date(Date.now() + 3_600_000).toISOString(),
+        // The use case reads the real clock: created now, its mail valid for another hour, or
+        // (Sajad 1) its mail expired an hour ago.
+        new Date(Date.now() + (options.expired === true ? -3_600_000 : 3_600_000)).toISOString(),
         new Date().toISOString(),
       ],
     );
@@ -358,6 +360,61 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
       contract.sellerAccountSummaries(as(keyless.id), [approved.sellerId]),
     ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
     expect(logged()).not.toMatch(/@sellers\.example/i);
+  });
+
+  it('lists a pending invitation whose mail expired, as expired, with its re-send hint (Sajad 1)', async () => {
+    const compliance = await account('admin', {
+      role: await roleId('platform', 'onboarding-compliance'),
+    });
+    const invited = await seller('pending', { origin: 'invitation' });
+    const expired = await ownerInvitation(invited, compliance.id, code, { expired: true });
+
+    const row = (await everyRow(compliance.id, { state: 'invited' })).find(
+      (each) => rowId(each) === expired.id,
+    );
+
+    // Past its mail's expiry, still within the seller-owner lifetime: it can be re-sent.
+    expect(row).toMatchObject({
+      type: 'invitation',
+      sellerId: invited,
+      status: 'expired',
+      actions: { resend: { allowed: true, code: null }, revoke: { allowed: true, code: null } },
+    });
+  });
+
+  it('reads the owners in one flat statement, the Market a scalar, never an IN list (Mojtaba R1)', async () => {
+    const compliance = await account('admin', {
+      role: await roleId('platform', 'onboarding-compliance'),
+    });
+    const owned = await Promise.all([ownedSeller('pending'), ownedSeller('approved')]);
+    const ids = owned.map((each) => each.sellerId);
+
+    const summaries = await driver.during(() =>
+      contract.sellerAccountSummaries(as(compliance.id), ids),
+    );
+    const summaryStatements = [...driver.statements];
+    const listed = await driver.during(() =>
+      app.get(ListSellerAccounts).execute(as(compliance.id), { limit: 100 }),
+    );
+    const listStatements = [...driver.statements];
+
+    expect([summaries.ok, listed.ok]).toEqual([true, true]);
+    for (const statements of [summaryStatements, listStatements]) {
+      const owners = statements.filter((statement) =>
+        /^SELECT "identity"\."seller_memberships"\./.test(statement.trim()),
+      );
+      expect(owners).toHaveLength(1);
+      // The owners read has the Market as a scalar. No statement of the read repeats the Market
+      // in a list, as Prisma's nested relation load did: one value per parent row.
+      expect(owners[0]).not.toMatch(/"market_id" IN \(/);
+      for (const statement of statements) {
+        expect(statement).not.toMatch(/"market_id" IN \(\$\d+,/);
+      }
+    }
+    if (!summaries.ok) throw new Error('refused');
+    expect(summaries.value.map((each) => each.owner?.accountId).sort()).toEqual(
+      owned.map((each) => each.owner.id).sort(),
+    );
   });
 
   it('runs in read-only units on identity tables only: SELECTs, the Market in each, no sellers schema', async () => {

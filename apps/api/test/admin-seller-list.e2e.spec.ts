@@ -256,7 +256,6 @@ describe('admin seller list over HTTP (integration, slice 9b)', () => {
       expect(body.items[0]).toEqual({
         type: 'seller',
         sellerId: S_PENDING,
-        origin: 'self',
         state: 'pending',
         stateChangedAt: START.toString(),
         reapplyLimitReached: false,
@@ -435,6 +434,8 @@ describe('admin seller list over HTTP (integration, slice 9b)', () => {
       ] as const) {
         const refused = await sellers(code, cookie, query);
         expect(refused.status).toBe(400);
+        // A refusal is not cached either (Sajad 2).
+        expect(refused.headers['cache-control']).toBe('no-store');
         expect(refused.body).toMatchObject({
           code: 'validation.failed',
           details: { fields: [expect.objectContaining({ path })] },

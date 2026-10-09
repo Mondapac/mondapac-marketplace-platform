@@ -11,11 +11,7 @@ import {
 } from '../../contracts/permissions';
 import { parseEmailAddress } from '../../domain/email-address';
 import { invitationStatusAt } from '../../domain/invitation';
-import {
-  SellerAccess,
-  type SellerAccessStateCode,
-  type SellerOrigin,
-} from '../../domain/seller-access';
+import { SellerAccess, type SellerAccessStateCode } from '../../domain/seller-access';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
@@ -28,7 +24,10 @@ import type {
 import { readActingGrants, type GrantSubject } from '../roles/granting';
 import { isActingAsSession } from '../sellers/access-decision-reads';
 import { sellerAccessVerdict, type SellerAccessVerb } from '../sellers/seller-access-decision';
-import { sellerInvitationResendVerdict } from '../sellers/seller-owner-invitation';
+import {
+  sellerInvitationResendVerdict,
+  sellerInviterStillStands,
+} from '../sellers/seller-owner-invitation';
 import type { ActionHint } from './list-admin-team.use-case';
 
 /** The largest page of the admin seller list; the route's default page is smaller. */
@@ -63,7 +62,6 @@ export interface SellerListOwner {
 export interface SellerListSellerRow {
   readonly type: 'seller';
   readonly sellerId: Id<'Seller'>;
-  readonly origin: SellerOrigin;
   readonly state: SellerAccessStateCode;
   /** "Since" (`ux.md` P1): the instant of the last change of state. */
   readonly stateChangedAt: Temporal.Instant;
@@ -164,8 +162,8 @@ type ValidInput = {
  * reinstate run `sellerAccessVerdict`, the check their command runs before the transition (the
  * domain's `decisionAllowedFrom`; approve's owner guard); re-send runs
  * `sellerInvitationResendVerdict`, the re-send command's guards before its mail counters
- * (`request.throttled` is never hinted); revoke needs only its key, as the list holds pending
- * invitations only. Both invitation commands answer `access.unavailable` while the Market
+ * (`request.throttled` is never hinted), with the inviter's standing read once per inviter;
+ * revoke needs only its key, as the list holds pending invitations only. Both invitation commands answer `access.unavailable` while the Market
  * configures no seller-owner invitation lifetime, and so do their hints. Hints only: every
  * command checks again in its own unit.
  *
@@ -283,13 +281,27 @@ export class ListSellerAccounts extends UseCase<
         ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
         const page = merged.slice(0, limit);
 
+        // Whether each inviter still stands, read once per inviter for this page (Mojtaba R2 on
+        // PR #222): the same check the re-send command runs, and it cannot differ in this unit.
+        const inviters = new Map<string, Promise<boolean>>();
+        const stands = (inviterId: Id<'Account'> | null): Promise<boolean> => {
+          const key = inviterId ?? '';
+          let known = inviters.get(key);
+          if (known === undefined) {
+            known = sellerInviterStillStands(this.deps, market, inviterId);
+            inviters.set(key, known);
+          }
+          return known;
+        };
         const rows: SellerListRow[] = [];
         for (const entry of page) {
           if ('seller' in entry) {
             const row = sellerRow(entry.seller, keys, reapplyLimit);
             if (row !== null) rows.push(row);
           } else {
-            rows.push(await this.invitationRow(context, entry.invitation, keys, now, lifetime));
+            rows.push(
+              await this.invitationRow(context, entry.invitation, keys, now, lifetime, stands),
+            );
           }
         }
         const more = merged.length > limit;
@@ -305,6 +317,7 @@ export class ListSellerAccounts extends UseCase<
     keys: ReadonlySet<string>,
     now: Temporal.Instant,
     lifetime: number | null,
+    stands: (inviterId: Id<'Account'> | null) => Promise<boolean>,
   ): Promise<SellerListInvitationRow> {
     const mayChange = keys.has(SELLER_ACCOUNT_CREATE.key);
     let resend: ActionHint;
@@ -323,6 +336,7 @@ export class ListSellerAccounts extends UseCase<
           },
           now,
           lifetime,
+          stands,
         ),
       );
     }
@@ -366,7 +380,6 @@ function sellerRow(
   return {
     type: 'seller',
     sellerId: seller.sellerId,
-    origin: seller.origin,
     state: seller.state,
     stateChangedAt: seller.stateChangedAt,
     reapplyLimitReached:

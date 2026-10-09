@@ -35,25 +35,14 @@ function ownerMembership(market: MarketContext, verified: boolean) {
   };
 }
 
-function selected(market: MarketContext, verified: boolean) {
-  return {
-    sellerId: true,
-    origin: true,
-    state: true,
-    stateChangedAt: true,
-    reapplyCount: true,
-    memberships: {
-      where: ownerMembership(market, verified),
-      // One owner per seller in Phase 2; a second would be a broken store, and the lowest
-      // account id is answered, deterministically.
-      orderBy: { accountId: 'asc' as const },
-      take: 1,
-      select: {
-        account: { select: { id: true, email: true, displayName: true, emailVerifiedAt: true } },
-      },
-    },
-  } as const;
-}
+/** The seller columns of a record; the owner is read separately (Mojtaba R1 on PR #222). */
+const SELLER_COLUMNS = {
+  sellerId: true,
+  origin: true,
+  state: true,
+  stateChangedAt: true,
+  reapplyCount: true,
+} as const;
 
 interface SellerRow {
   readonly sellerId: string;
@@ -61,18 +50,16 @@ interface SellerRow {
   readonly state: string;
   readonly stateChangedAt: Date;
   readonly reapplyCount: number;
-  readonly memberships: readonly {
-    readonly account: {
-      readonly id: string;
-      readonly email: string;
-      readonly displayName: string | null;
-      readonly emailVerifiedAt: Date | null;
-    };
-  }[];
 }
 
-function recordOf(row: SellerRow): SellerAccountRecord {
-  const owner = row.memberships[0]?.account;
+interface OwnerRow {
+  readonly id: string;
+  readonly email: string;
+  readonly displayName: string | null;
+  readonly emailVerifiedAt: Date | null;
+}
+
+function recordOf(row: SellerRow, owner: OwnerRow | undefined): SellerAccountRecord {
   return {
     sellerId: row.sellerId as Id<'Seller'>,
     // The CHECKs of `seller_access` hold the codes (data design 3.9).
@@ -100,7 +87,8 @@ function recordOf(row: SellerRow): SellerAccountRecord {
  * the exact email `accounts_market_id_population_email_normalized_key`, then
  * `seller_memberships_market_id_account_id_idx`; the owners of a page or of the summaries
  * `seller_memberships_market_id_seller_id_state_idx` and the `accounts` key `(market_id, id)`.
- * Selects the address and the name, never a credential or a token hash.
+ * Selects the address and the name, never a credential or a token hash. Each read is a fixed
+ * number of flat statements, whatever the page size.
  */
 export class PrismaSellerAccountReader implements SellerAccountReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -126,11 +114,11 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
           },
         },
       },
-      select: selected(market, true),
+      select: SELLER_COLUMNS,
       orderBy: { sellerId: 'asc' },
       take: query.limit,
     });
-    return rows.map(recordOf);
+    return this.withOwners(market, rows, true);
   }
 
   async summariesOf(
@@ -144,9 +132,49 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
         registeredAt: { not: null },
         sellerId: { in: [...sellerIds] },
       },
-      select: selected(market, false),
+      select: SELLER_COLUMNS,
     });
-    return rows.map(recordOf);
+    return this.withOwners(market, rows, false);
+  }
+
+  /**
+   * The owners of a page or of the summaries, in two flat statements with the Market as a
+   * scalar (Mojtaba R1 on PR #222): the owner memberships by `seller_id = ANY` (the index
+   * `seller_memberships_market_id_seller_id_state_idx`), then their accounts by `id = ANY`
+   * (the `accounts` key). A nested relation select would repeat the Market in an `IN` list per
+   * parent, which PostgreSQL may price into a sequential scan. One owner per seller in Phase 2;
+   * a second would be a broken store, and the lowest account id is answered, deterministically.
+   */
+  private async withOwners(
+    market: MarketContext,
+    rows: readonly SellerRow[],
+    verified: boolean,
+  ): Promise<SellerAccountRecord[]> {
+    if (rows.length === 0) return [];
+    const memberships = await this.prisma.tx(market).identitySellerMembership.findMany({
+      where: {
+        ...ownerMembership(market, verified),
+        sellerId: { in: rows.map((row) => row.sellerId) },
+      },
+      select: { sellerId: true, accountId: true },
+    });
+    const ownerOf = new Map<string, string>();
+    for (const { sellerId, accountId } of memberships) {
+      const known = ownerOf.get(sellerId);
+      if (known === undefined || accountId < known) ownerOf.set(sellerId, accountId);
+    }
+    const accounts =
+      ownerOf.size === 0
+        ? []
+        : await this.prisma.tx(market).identityAccount.findMany({
+            where: { marketId: market.marketId, id: { in: [...new Set(ownerOf.values())] } },
+            select: { id: true, email: true, displayName: true, emailVerifiedAt: true },
+          });
+    const byId = new Map(accounts.map((account) => [account.id, account]));
+    return rows.map((row) => {
+      const accountId = ownerOf.get(row.sellerId);
+      return recordOf(row, accountId === undefined ? undefined : byId.get(accountId));
+    });
   }
 
   async sellersOfAddress(

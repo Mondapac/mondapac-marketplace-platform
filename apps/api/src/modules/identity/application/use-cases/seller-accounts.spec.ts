@@ -466,7 +466,6 @@ describe.each(TEST_MARKETS)(
       expect(page.items[1]).toEqual<SellerListSellerRow>({
         type: 'seller',
         sellerId: S_APPROVED,
-        origin: 'self',
         state: 'approved',
         stateChangedAt: s.fakes.sellerAccess.get(S_APPROVED)!.stateChangedAt,
         reapplyLimitReached: false,
@@ -566,6 +565,39 @@ describe.each(TEST_MARKETS)(
             }
           }
         }
+      }
+    });
+
+    it('reads whether an inviter still stands once per inviter and page, not per row (Mojtaba R2)', async () => {
+      const s = setUp();
+      const extra = [0xb036, 0xb037, 0xb038].map((n) => id<'Invitation'>(n));
+      extra.forEach((invitationId, n) => {
+        s.fakes.invitations.set(invitationId, {
+          ...s.fakes.invitations.get(INVITATION)!,
+          id: invitationId,
+          sellerId: id<'Seller'>(0xb061 + n),
+          email: { typed: `Invitee${n}@Example.com`, normalized: `invitee${n}@example.com` },
+        });
+      });
+      const reads = jest.spyOn(s.fakes.accountRepository, 'findById');
+
+      const page = await listed(s, adminOf(ROOT), { state: 'invited' });
+
+      expect(idsOf(page)).toEqual([INVITATION, ...extra]);
+      // Four invitations from one inviter: one inviter check (one account read of the inviter).
+      expect(reads.mock.calls.filter(([, accountId]) => accountId === COMPLIANCE)).toHaveLength(1);
+      // The memoized answer is the command's own: every re-send hint equals the command.
+      for (const row of page.items as SellerListInvitationRow[]) {
+        const answer = await setUpWith(row.invitationId);
+        expect(row.actions.resend).toEqual(answer);
+      }
+
+      async function setUpWith(invitationId: Id<'Invitation'>): Promise<ActionHint> {
+        const fresh = setUp();
+        for (const each of extra) fresh.fakes.invitations.set(each, s.fakes.invitations.get(each)!);
+        return hintOf(
+          await fresh.commands.resend.execute(adminOf(ROOT), { invitationId, origin: 'o' }),
+        );
       }
     });
 

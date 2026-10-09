@@ -115,9 +115,6 @@ export class AdminSellerListSellerRowView {
   @ApiProperty({ format: 'uuid' })
   sellerId!: string;
 
-  @ApiProperty({ enum: ['self', 'invitation'], description: 'Signed up, or added by an admin.' })
-  origin!: 'self' | 'invitation';
-
   @ApiProperty({ enum: ['pending', 'approved', 'rejected', 'suspended'] })
   state!: string;
 

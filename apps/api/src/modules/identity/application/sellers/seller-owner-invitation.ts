@@ -92,7 +92,9 @@ export async function sellerInviterStillStands(
  * standing (Hassan L3) and an address still on it, else `invitation.rejected`. The re-send
  * command runs it after its key; the admin seller list's re-send hint runs it after the same key.
  * It reads only the fields named, so a summary without the token hash serves as well as the
- * aggregate's state.
+ * aggregate's state. `stands` answers whether the inviter still stands: by default
+ * `sellerInviterStillStands`; the list passes the same check memoized per inviter for one read
+ * (Mojtaba R2 on PR #222), whose answer cannot differ within that unit.
  */
 export async function sellerInvitationResendVerdict(
   deps: ActingGrantDependencies,
@@ -102,11 +104,13 @@ export async function sellerInvitationResendVerdict(
   },
   now: Temporal.Instant,
   lifetimeMinutes: number,
+  stands: (inviterId: Id<'Account'> | null) => Promise<boolean> = (inviterId) =>
+    sellerInviterStillStands(deps, market, inviterId),
 ): Promise<Result<void, { readonly code: 'invitation.rejected' }>> {
   if (!invitationReissuableAt(invitation, now, lifetimeMinutes)) {
     return err({ code: 'invitation.rejected' });
   }
-  if (!(await sellerInviterStillStands(deps, market, invitation.invitedByAccountId))) {
+  if (!(await stands(invitation.invitedByAccountId))) {
     return err({ code: 'invitation.rejected' });
   }
   return invitation.hasAddress ? ok(undefined) : err({ code: 'invitation.rejected' });
