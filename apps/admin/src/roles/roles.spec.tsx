@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { TeamTabs, tabLabels } from '../team/team-tabs.tsx';
+import { TeamTabs } from '../team/team-tabs.tsx';
 import { RolesTable } from './roles-table.tsx';
 import { RoleView } from './role-view.tsx';
 import { groupByResource, humanise } from './role-name.ts';
@@ -168,8 +168,12 @@ describe('admin roles', () => {
   });
 
   it('marks the current tab and shows no tabs without labels', () => {
-    const t = createTranslator({ locale: 'en-AU', messages });
-    const { rerender } = render(<TeamTabs active="roles" labels={tabLabels(t)} />);
+    const labels = {
+      nav: messages.identity.members.tab.label,
+      admins: messages.identity.members.tab.admins,
+      roles: messages.identity.members.tab.roles,
+    };
+    const { rerender } = render(<TeamTabs active="roles" labels={labels} />);
     expect(screen.getByRole('link', { name: 'Roles' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Admins' }).getAttribute('aria-current')).toBeNull();
     rerender(<TeamTabs active="admins" labels={null} />);
