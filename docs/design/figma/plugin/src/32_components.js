@@ -46,7 +46,7 @@ async function buildNavigation(page) {
     ]));
     if (p.Workspace === 'Seller' && !col) {
       add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 40, px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-        inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh Halal Meats', 'Body/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
+        inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh', 'Body/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
       ])]));
       const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
     }
@@ -145,7 +145,7 @@ function buildMobileNav(root, have) {
       ]));
       if (seller) {
         add(c, frame({ name: 'shop-switcher', dir: 'H', pad: [12, 12, 4, 12], sizeH: 'FILL' }, [frame({ name: 'button', dir: 'H', h: 'size/control', px: 'space/2-5', gap: 'space/2', align: 'center', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-          inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh Halal Meats', 'Touch/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
+          inst('IdentityTile', { Tone: 'Teal', Shape: 'Rounded', Initials: 'KF' }), text('Kuraby Fresh', 'Touch/Strong', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('chevron-down', 'icon/muted', 16),
         ])]));
         const sw = c.children[1].children[0].children[0]; sw.resize(22, 22);
       }
@@ -247,9 +247,9 @@ async function buildReview(page) {
     const e = EF[p.Status];
     body(c, { dir: 'V', w: 260, pad: [10, 14, 10, 14], gap: 'space/1', fill: e[2] ? 'bg/row-selected' : 'bg/surface', stroke: e[2] ? 'action/primary' : 'border/row', sides: e[2] ? ['left'] : ['bottom'], strokeW: e[2] ? 3 : 1 }, [
       frame({ name: 'head', dir: 'H', justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Holder', 'Caption/Default', 'text/muted', { name: 'label' }), inst('Badge', { Tone: e[1], Leading: 'None', Label: e[0] })]),
-      text('Kuraby Fresh Halal Meats Pty Ltd', 'Body/Strong', 'text/primary', { name: 'value', sizeH: 'FILL' }),
+      text('Kuraby Fresh Pty Ltd', 'Body/Strong', 'text/primary', { name: 'value', sizeH: 'FILL' }),
     ]);
-  }, { width: 1000, desc: 'A value read from an uploaded document and whether it matches our records.', text: [{ prop: 'Label', node: 'label', def: 'Holder' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Halal Meats Pty Ltd' }] });
+  }, { width: 1000, desc: 'A value read from an uploaded document and whether it matches our records.', text: [{ prop: 'Label', node: 'label', def: 'Holder' }, { prop: 'Value', node: 'value', def: 'Kuraby Fresh Pty Ltd' }] });
   componentBlock(root, ef, { title: 'ExtractedField', summary: '"Check now" marks the field the reviewer is working on; it matches the highlight on the document.' });
 
   const ck = makeSet('ChecklistItem', CHECKLIST_AXES, checklistVariant, CHECKLIST_OPTS);

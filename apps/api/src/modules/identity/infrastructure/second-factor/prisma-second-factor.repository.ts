@@ -201,6 +201,20 @@ export class PrismaSecondFactorRepository implements SecondFactorRepository {
     return new Set(rows.map((row) => row.accountId as Id<'Account'>));
   }
 
+  async presentAmong(
+    market: MarketContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlySet<Id<'Account'>>> {
+    const ids = [...new Set(accountIds)];
+    if (ids.length === 0) return new Set();
+    // The `(market_id, account_id)` key; the account id is the only column read.
+    const rows = await this.prisma.tx(market).identitySecondFactor.findMany({
+      where: { marketId: market.marketId, accountId: { in: ids } },
+      select: { accountId: true },
+    });
+    return new Set(rows.map((row) => row.accountId as Id<'Account'>));
+  }
+
   private async insertCodes(market: MarketContext, state: SecondFactorState): Promise<void> {
     if (state.recoveryCodes.length === 0) return;
     await this.prisma.tx(market).identityRecoveryCode.createMany({

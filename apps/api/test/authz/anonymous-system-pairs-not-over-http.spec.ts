@@ -3,6 +3,7 @@ import { forwardRef, Inject } from '@nestjs/common';
 import { ModulesContainer } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { APPROVED_SELLER_ZONES } from '../../src/modules/sellers/contracts/approved-seller-zones.contract';
+import { CERTIFICATION_FACADE } from '../../src/modules/certification';
 import { SELLERS_FACADE } from '../../src/modules/sellers/contracts/sellers.facade';
 import { ApprovedSellerZonesSystem } from '../../src/modules/sellers/application/use-cases/approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from '../../src/modules/sellers/application/use-cases/approved-seller-zones.use-case';
@@ -128,6 +129,14 @@ describe('anonymous and system use cases are not reachable over HTTP', () => {
     const rules = new Map(reachable().map(([, useCase, rule]) => [useCase, rule]));
 
     expect(allowed.filter((entry) => rules.get(entry.name) !== entry.rule)).toEqual([]);
+  });
+
+  it('never lets a controller depend on the certification facade (its use cases are anonymous and system)', () => {
+    const offenders = controllers()
+      .filter(({ dependencies }) => dependencies.includes(CERTIFICATION_FACADE))
+      .map(({ name }) => name);
+
+    expect(offenders).toEqual([]);
   });
 
   it('never lets a controller depend on the approved-seller-zones pair, its token or the sellers facade', () => {

@@ -130,7 +130,7 @@ function scSparkline(w, h) {
 }
 function showcaseCards(ws) {
   if (ws === 'Admin') {
-    const rows = [['CL', 'Teal', 'Cedar Lane Halal Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['OG', 'Amber', 'Olive Grove Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['RP', 'Neutral', 'Riverbend Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
+    const rows = [['CL', 'Teal', 'Cedar Lane Meats', 'Halal certificate renewal', 'Critical', 'Due 2h'], ['OG', 'Amber', 'Olive Grove Bakehouse', 'New seller · ABN check', 'Attention', 'Today'], ['RP', 'Neutral', 'Riverbend Poultry Co.', 'Manufacturer certificate', 'Neutral', 'Tomorrow']];
     return [
       scCard('Review queue', 360, [frame({ name: 'head', dir: 'H', justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Review queue', 'Body/Strong'), inst('Badge', { Tone: 'Attention', Leading: 'Dot', Label: '3 due today' })])].concat(rows.map(function (r) {
         return frame({ name: r[2], dir: 'H', gap: 'space/2-5', align: 'center', pad: [8, 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [inst('IdentityTile', { Tone: r[1], Shape: 'Rounded', Initials: r[0] }), scLines(r[2], r[3]), inst('Badge', { Tone: r[4], Leading: 'None', Label: r[5] })]);

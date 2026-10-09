@@ -11,10 +11,18 @@ export class ConfigInventoryPolicyProvider implements InventoryPolicyProvider {
   constructor(private readonly markets: MarketRegistry) {}
 
   maxSourcesPerSeller(market: MarketContext): number {
+    return this.section(market).maxSourcesPerSeller;
+  }
+
+  defaultLowStockThreshold(market: MarketContext): number {
+    return this.section(market).defaultLowStockThreshold;
+  }
+
+  private section(market: MarketContext) {
     const section = this.markets.get(market.marketId).inventory;
     if (section === undefined) {
       throw new Error(`inventory: Market ${market.marketId} has no "inventory" section`);
     }
-    return section.maxSourcesPerSeller;
+    return section;
   }
 }

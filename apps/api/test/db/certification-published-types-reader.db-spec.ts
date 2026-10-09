@@ -1,6 +1,7 @@
 import { ok, uuidV7 } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
+import { UnitPublishedTypesReader } from '../../src/modules/certification/infrastructure/unit-published-types.reader';
 import { PrismaPublishedTypesReader } from '../../src/modules/certification/infrastructure/prisma-published-types.reader';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -186,6 +187,24 @@ for (const phase of ['happy', 'faults'] as const) {
           const elsewhere = (await read(() => reader.types(other, {}), other)).map((t) => t.code);
           expect(elsewhere).toContain(`elsewhere-${code.toLowerCase()}`);
           expect(elsewhere).not.toContain(own);
+        });
+
+      if (phase === 'happy')
+        it('answers outside any unit through the unit-opening wrapper, for the Market asked only', async () => {
+          const wrapped = `wrapped-${code.toLowerCase()}`;
+          await save(market, { code: wrapped, texts: { en: [wrapped] } });
+          const viaUnit = new UnitPublishedTypesReader(persistence.unitOfWork, reader);
+
+          const vocabulary = await viaUnit.claimVocabulary(market);
+          expect(vocabulary).toContainEqual({ typeCode: wrapped, terms: [wrapped] });
+          const types = await viaUnit.types(market, { status: 'active' });
+          expect(types.map((t) => t.code)).toContain(wrapped);
+          // The other Market's reads never show this Market's type.
+          expect((await viaUnit.types(other, {})).map((t) => t.code)).not.toContain(wrapped);
+          // The same answer as a read inside a unit the test opened itself.
+          expect(await viaUnit.types(market, {})).toEqual(
+            await read(() => reader.types(market, {})),
+          );
         });
 
       if (phase === 'faults') {

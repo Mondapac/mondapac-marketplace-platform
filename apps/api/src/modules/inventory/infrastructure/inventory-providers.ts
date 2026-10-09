@@ -1,6 +1,7 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import {
   INVENTORY_POLICY_PROVIDER,
   type InventoryPolicyProvider,
@@ -11,9 +12,21 @@ import {
   type SellerInventoryRepository,
 } from '../application/ports/seller-inventory.repository';
 import { PrismaSellerInventoryRepository } from './prisma-seller-inventory.repository';
+import {
+  AVAILABILITY_SIGNAL_REPOSITORY,
+  type AvailabilitySignalRepository,
+} from '../application/ports/availability-signal.repository';
+import {
+  OFFER_SELL_UNITS_SOURCE,
+  type OfferSellUnitsSource,
+} from '../application/ports/offer-sell-units';
+import { STOCK_REPOSITORY, type StockRepository } from '../application/ports/stock.repository';
+import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
+import { PrismaAvailabilitySignalRepository } from './prisma-availability-signal.repository';
+import { PrismaStockRepository } from './prisma-stock.repository';
 
 /**
- * Binds the ports of slice 1. They live in `infrastructure/` because only this layer may reach
+ * Binds the ports of slices 1 and 2. They live in `infrastructure/` because only this layer may reach
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
 export const inventoryProviders: readonly FactoryProvider[] = [
@@ -22,6 +35,23 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerInventoryRepository =>
       new PrismaSellerInventoryRepository(prisma),
+  },
+  {
+    provide: STOCK_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StockRepository => new PrismaStockRepository(prisma),
+  },
+  {
+    provide: AVAILABILITY_SIGNAL_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AvailabilitySignalRepository =>
+      new PrismaAvailabilitySignalRepository(prisma),
+  },
+  {
+    provide: OFFER_SELL_UNITS_SOURCE,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): OfferSellUnitsSource =>
+      new CatalogOfferSellUnits(catalog),
   },
   {
     provide: INVENTORY_POLICY_PROVIDER,

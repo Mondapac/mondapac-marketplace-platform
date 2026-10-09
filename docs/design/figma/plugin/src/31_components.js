@@ -128,14 +128,14 @@ async function buildTables(page) {
     if (p.State === 'Loading') tcSkeleton(p.Type).forEach(function (n) { kids.push(n); }); // 1.8.0: skeleton shapes in bg/muted instead of content
     else if (p.Type === 'Header') kids.push(text('Column', 'Body/Small Strong', 'text/muted', { name: 'label' }), icon('arrow-down', 'icon/muted', 12));
     else if (p.Type === 'Text') kids.push(text('Kuraby QLD 4112', 'Body/Default', 'text/primary', { name: 'label', truncate: true, sizeH: 'FILL' }));
-    else if (p.Type === 'Two-line') kids.push(frame({ name: 'lines', dir: 'V', sizeH: 'FILL' }, [text('Kuraby Fresh Halal Meats', 'Body/Strong', 'text/primary', { name: 'label', truncate: true, sizeH: 'FILL' }), text('kuraby-fresh-halal · Kuraby QLD 4112', 'Caption/Default', 'text/muted', { name: 'meta', truncate: true, sizeH: 'FILL' })]));
+    else if (p.Type === 'Two-line') kids.push(frame({ name: 'lines', dir: 'V', sizeH: 'FILL' }, [text('Kuraby Fresh', 'Body/Strong', 'text/primary', { name: 'label', truncate: true, sizeH: 'FILL' }), text('kuraby-fresh · Kuraby QLD 4112', 'Caption/Default', 'text/muted', { name: 'meta', truncate: true, sizeH: 'FILL' })]));
     else if (p.Type === 'Number') kids.push(text('AUD 86.40', 'Body/Default', 'text/primary', { name: 'label' }));
     else if (p.Type === 'Checkbox') kids.push(inst('Checkbox', { Value: p.State === 'Selected' ? 'Checked' : 'Unchecked', State: 'Default' }));
     else if (p.Type === 'Actions') kids.push(inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default' }));
     body(c, { dir: 'H', w: p.Type === 'Checkbox' || p.Type === 'Actions' ? 56 : 200, h: hdr ? 42 : 56, px: 'space/3', gap: 'space/1', align: 'center', justify: p.Type === 'Number' ? 'end' : (p.Type === 'Checkbox' || p.Type === 'Actions' ? 'center' : 'start'), fill: fill, stroke: hdr ? 'border/default' : 'border/row', sides: ['bottom'] }, kids);
     if (hdr) c.children[1].name = 'sort';
   }, { width: 1040, skip: function (p) { return p.Type === 'Header' && p.State !== 'Default'; }, desc: TABLECELL_DESC,
-    text: [{ prop: 'Text', node: 'label', def: 'Kuraby Fresh Halal Meats' }, { prop: 'Meta', node: 'meta', def: 'kuraby-fresh-halal · Kuraby QLD 4112' }], bool: [{ prop: 'Sorted', node: 'sort', def: false }] });
+    text: [{ prop: 'Text', node: 'label', def: 'Kuraby Fresh' }, { prop: 'Meta', node: 'meta', def: 'kuraby-fresh · Kuraby QLD 4112' }], bool: [{ prop: 'Sorted', node: 'sort', def: false }] });
   componentBlock(root, cell, { title: 'TableCell', summary: 'Header 42 px, rows 56 px. Numbers right-aligned with tabular figures in code. State=Loading (1.8.0) shows skeleton shapes: build 8 skeleton rows while a list loads.', a11y: ['aria-sort on the sorted header.', 'Row checkbox labelled "Select <name>".', 'Loading: the table or list region has aria-busy="true", skeleton cells are aria-hidden, one visually hidden "Loading" text sits in a polite live region, and the header and tabs stay visible.'] });
 
   const card = makeComponent('CardHeader', function (c) {

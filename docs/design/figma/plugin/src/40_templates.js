@@ -79,7 +79,7 @@ function tplAdminHome() {
     inst('QueueCard', { Tone: 'On track', Title: 'Product revisions', Count: '23', Oldest: 'Oldest 5 h of 1 day' }, { sizeH: 'FILL' }),
     inst('QueueCard', { Tone: 'Due today', Title: 'Refunds for admin', Count: '2', Unit: 'AUD 184.50 incl. GST' }, { sizeH: 'FILL' }),
   ]);
-  const RQ = [['CE', 'Teal', 'Certification', 'Halal certificate, renewal', 'Kuraby Fresh Halal Meats', 'Waiting 2 days 4 h', 'Overdue'], ['RF', 'Amber', 'Refund · order MP-10311', 'Item damaged, AUD 64.50', 'Darra Asian & Halal Mart', 'Waiting 4 h', 'Due soon'],
+  const RQ = [['CE', 'Teal', 'Certification', 'Halal certificate, renewal', 'Kuraby Fresh', 'Waiting 2 days 4 h', 'Overdue'], ['RF', 'Amber', 'Refund · order MP-10311', 'Item damaged, AUD 64.50', 'Darra Asian Mart', 'Waiting 4 h', 'Due soon'],
     ['PR', 'Blue', 'Product revision · price +38%', 'Date & walnut loaf, 800 g', 'Holland Park Bakehouse', 'Waiting 5 h', 'Due soon'], ['MC', 'Teal', 'Manufacturer certificate', 'Covers 14 sealed products', 'Logan Family Grocer', 'Waiting 21 h', 'Upcoming'],
     ['SA', 'Purple', 'Seller application', 'New seller, ABN supplied', 'Sunnybank Spice Market', 'Waiting 1 day', 'Upcoming']];
   const DLL = { 'Overdue': 'Overdue 4 h', 'Due soon': 'Due 5:00 pm', 'Upcoming': 'Due 2 Oct' };
@@ -102,12 +102,12 @@ function tplAdminHome() {
   const live = card('Live deliveries', [frame({ name: 'head', dir: 'H', pad: [16, 18, 12, 18], justify: 'between', align: 'center', sizeH: 'FILL' }, [text('Live deliveries', 'Heading/H2'), inst('Badge', { Tone: 'Success', Leading: 'Dot', Label: 'Live · 2:30 pm' })]), map, legend, stats], { sizeH: null, w: 380 });
   const split = frame({ name: 'Queue + map', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [rq, live]);
 
-  const TOP = [['KF', 'Teal', 'Kuraby Fresh Halal Meats', '34 orders · Kuraby', 'AUD 2,146.90'], ['HP', 'Amber', 'Holland Park Bakehouse', '29 orders · Holland Park', 'AUD 1,388.20'], ['DA', 'Blue', 'Darra Asian & Halal Mart', '22 orders · Darra', 'AUD 1,204.75'], ['LF', 'Purple', 'Logan Family Grocer', '18 orders · Logan Central', 'AUD 986.40']];
+  const TOP = [['KF', 'Teal', 'Kuraby Fresh', '34 orders · Kuraby', 'AUD 2,146.90'], ['HP', 'Amber', 'Holland Park Bakehouse', '29 orders · Holland Park', 'AUD 1,388.20'], ['DA', 'Blue', 'Darra Asian Mart', '22 orders · Darra', 'AUD 1,204.75'], ['LF', 'Purple', 'Logan Family Grocer', '18 orders · Logan Central', 'AUD 986.40']];
   const top = card('Top sellers', [header('Top sellers today', 'All sellers'), headerRow([['Seller', 'fill'], ['Today', 100], ['Sales', 120]])].concat(TOP.map(function (t) {
     return row([[[inst('IdentityTile', { Tone: t[1], Shape: 'Rounded', Initials: t[0] }), twoLine(t[2], t[3])], 'fill'], [inst('Sparkline', { Tone: 'Accent' }), 100], [text(t[4], 'Body/Strong'), 120, { justify: 'end' }]]);
   })));
   const certs = card('Certificates', [header('Certificates', null), frame({ name: 'donut-row', dir: 'H', gap: 'space/3-5', pad: [0, 18, 12, 18], align: 'center' }, [inst('DonutProgress', {}), frame({ name: 't', dir: 'V' }, [text('92 of 109 hold a valid certificate', 'Body/Strong'), text('78 seller · 14 manufacturer only', 'Body/Small', 'text/muted')])]),
-    frame({ name: 'list', dir: 'V', pad: [0, 18, 8, 18], sizeH: 'FILL' }, [text('Expiring in 30 days', 'Caption/Overline', 'text/muted')].concat([['Kuraby Fresh Halal Meats', 'Seller', '14 days', 'status/attention/fg'], ['Darra Asian & Halal Mart', 'Seller', '22 days', 'text/secondary'], ['Logan Family Grocer', 'Manufacturer', '29 days', 'text/secondary']].map(function (e) {
+    frame({ name: 'list', dir: 'V', pad: [0, 18, 8, 18], sizeH: 'FILL' }, [text('Expiring in 30 days', 'Caption/Overline', 'text/muted')].concat([['Kuraby Fresh', 'Seller', '14 days', 'status/attention/fg'], ['Darra Asian Mart', 'Seller', '22 days', 'text/secondary'], ['Logan Family Grocer', 'Manufacturer', '29 days', 'text/secondary']].map(function (e) {
       return frame({ name: e[0], dir: 'H', justify: 'between', align: 'center', py: 'space/2-5', stroke: 'border/row', sides: ['bottom'], sizeH: 'FILL' }, [frame({ name: 'l', dir: 'V', gap: 'space/1' }, [text(e[0], 'Body/Strong'), inst('CertChip', { Kind: e[1] })]), text(e[2], 'Body/Small Strong', e[3])]);
     })))], { sizeH: null, w: 340 });
   const payout = card('Payout', [header('Next payout batch', null), frame({ name: 'body', dir: 'V', gap: 'space/3', pad: [0, 18, 18, 18], sizeH: 'FILL' }, [
@@ -127,13 +127,13 @@ function tplAdminHome() {
 // ---- Admin · Sellers
 function tplAdminSellers() {
   const S1 = [
-    [true, 'KF', 'Teal', 'Kuraby Fresh Halal Meats', 'kuraby-fresh-halal · Kuraby QLD 4112', ['Success', 'Dot', 'Active'], [['Seller', '· exp 15 Oct']], 'Healthy', '412', '0.8%', '12 Mar 2026'],
+    [true, 'KF', 'Teal', 'Kuraby Fresh', 'kuraby-fresh · Kuraby QLD 4112', ['Success', 'Dot', 'Active'], [['Seller', '· exp 15 Oct']], 'Healthy', '412', '0.8%', '12 Mar 2026'],
     [true, 'SS', 'Purple', 'Sunnybank Spice Market', 'sunnybank-spice · Sunnybank QLD 4109', ['Info', 'Icon', 'Awaiting approval'], [], 'No data', '0', '—', '29 Sep 2026'],
-    [false, 'DA', 'Blue', 'Darra Asian & Halal Mart', 'darra-asian-halal · Darra QLD 4076', ['Success', 'Dot', 'Active'], [['Seller', '· exp 23 Oct']], 'At risk', '268', '3.1%', '4 Apr 2026'],
+    [false, 'DA', 'Blue', 'Darra Asian Mart', 'darra-asian-mart · Darra QLD 4076', ['Success', 'Dot', 'Active'], [['Seller', '· exp 23 Oct']], 'At risk', '268', '3.1%', '4 Apr 2026'],
     [false, 'LF', 'Neutral', 'Logan Family Grocer', 'logan-family-grocer · Logan Central QLD 4114', ['Success', 'Dot', 'Active'], [['Manufacturer']], 'Healthy', '190', '1.2%', '18 May 2026'],
     [false, 'HP', 'Amber', 'Holland Park Bakehouse', 'holland-park-bakehouse · Holland Park QLD 4121', ['Success', 'Dot', 'Active'], [['Seller'], ['Vegan']], 'Healthy', '356', '0.4%', '2 Feb 2026'],
     [false, 'SC', 'Neutral', 'Slacks Creek Butchers', 'slacks-creek-butchers · Slacks Creek QLD 4127', ['Critical', 'Icon', 'Suspended'], [['Revoked']], 'Unhealthy', '12', '9.8%', '20 Jan 2026'],
-    [false, 'WO', 'Teal', 'Woolloongabba Organics', 'gabba-organics · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
+    [false, 'WO', 'Teal', 'Woolloongabba Grocers', 'gabba-grocers · Woolloongabba QLD 4102', ['Success', 'Dot', 'Active'], [['Self-declared']], 'Healthy', '97', '0.0%', '7 Jul 2026'],
   ];
   const tableCard = card('Seller list', [
     frame({ name: 'tabs', dir: 'H', px: 'space/3-5', align: 'center', stroke: 'border/default', sides: ['bottom'], sizeH: 'FILL' }, [inst('Tab', { Selected: 'True', Label: 'All', Count: '128' }), inst('Tab', { Selected: 'False', Label: 'Awaiting approval', Count: '6' }), inst('Tab', { Selected: 'False', Label: 'Active', Count: '109' }), inst('Tab', { Selected: 'False', Label: 'Certificate expiring', Count: '5' }), inst('Tab', { Selected: 'False', Label: 'Suspended', Count: '3' })]),
@@ -163,7 +163,7 @@ function tplAdminReview() {
   add(paper, ellipse({ name: 'seal', w: 52, fill: 'cert/seller/bg', stroke: 'cert/seller/fg', strokeW: 1.6, xy: [154, 36] }));
   add(paper, text('[ ISSUER NAME ]', 'Mono/Small', 'text/muted', { xy: [136, 102] }));
   add(paper, text('HALAL CERTIFICATE', 'Heading/H2', 'cert/seller/fg', { xy: [104, 120] }));
-  [['Certificate no.', '[Certificate number]', 'action/primary'], ['Holder', 'Kuraby Fresh Halal Meats Pty Ltd', 'cert/seller/fg'], ['Premises', 'Kuraby QLD 4112'], ['Scope', 'Fresh meat and poultry'], ['Valid', '10 Sep 2026 to 9 Sep 2027']].forEach(function (r2, i) {
+  [['Certificate no.', '[Certificate number]', 'action/primary'], ['Holder', 'Kuraby Fresh Pty Ltd', 'cert/seller/fg'], ['Premises', 'Kuraby QLD 4112'], ['Scope', 'Fresh meat and poultry'], ['Valid', '10 Sep 2026 to 9 Sep 2027']].forEach(function (r2, i) {
     const y = 190 + i * 26;
     if (r2[2]) add(paper, rect({ name: 'highlight', w: 196, h: 22, fill: r2[2] === 'action/primary' ? 'bg/selected' : 'cert/seller/bg', stroke: r2[2], strokeW: 1.2, radius: 3, xy: [120, y - 3] }));
     add(paper, text(r2[0], 'Caption/Default', 'text/muted', { xy: [40, y] })); add(paper, text(r2[1], 'Caption/Strong', 'text/primary', { xy: [126, y] }));
@@ -174,7 +174,7 @@ function tplAdminReview() {
   const fields = frame({ name: 'Read from document', dir: 'V', w: 260, stroke: 'border/default', sides: ['left'], sizeV: 'FILL' }, [
     frame({ name: 'h', dir: 'H', pad: [12, 14, 8, 14] }, [text('Read from document', 'Caption/Overline', 'text/muted')]),
     inst('ExtractedField', { Status: 'Check now', Label: 'Certificate no.', Value: '[Certificate number]' }, { sizeH: 'FILL' }),
-    inst('ExtractedField', { Status: 'Matches', Label: 'Holder', Value: 'Kuraby Fresh Halal Meats Pty Ltd' }, { sizeH: 'FILL' }),
+    inst('ExtractedField', { Status: 'Matches', Label: 'Holder', Value: 'Kuraby Fresh Pty Ltd' }, { sizeH: 'FILL' }),
     inst('ExtractedField', { Status: 'Matches', Label: 'Issuer', Value: '[Issuer name]' }, { sizeH: 'FILL' }),
     inst('ExtractedField', { Status: 'To check', Label: 'Scope', Value: 'Fresh meat and poultry, one premises in Kuraby QLD 4112' }, { sizeH: 'FILL' }),
     inst('ExtractedField', { Status: 'Matches', Label: 'Valid', Value: '10 Sep 2026 to 9 Sep 2027' }, { sizeH: 'FILL' }),
@@ -208,7 +208,7 @@ function tplAdminReview() {
   const left = frame({ name: 'Left', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [doc, activity]);
   const right = frame({ name: 'Right', dir: 'V', gap: 'space/4', w: 380 }, [checks, decision]);
   return screen('Admin · Certificate review', 'Admin', 'nav-review', 'Review queue', [
-    frame({ name: 'Header', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text('‹ Review queue', 'Body/Strong', 'text/link'), pageTitle('Halal certificate renewal', 'Kuraby Fresh Halal Meats · submitted 29 Sep 2026, 10:24 am AEST by Yusuf Karimi (Shop owner)', [text('2 of 4 certifications', 'Body/Small', 'text/muted'), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-left' } }), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-right' } })],
+    frame({ name: 'Header', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text('‹ Review queue', 'Body/Strong', 'text/link'), pageTitle('Halal certificate renewal', 'Kuraby Fresh · submitted 29 Sep 2026, 10:24 am AEST by Yusuf Karimi (Shop owner)', [text('2 of 4 certifications', 'Body/Small', 'text/muted'), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-left' } }), inst('IconButton', { Variant: 'Secondary', Size: 'Md', State: 'Default', Icon: { icon: 'chevron-right' } })],
       frame({ name: 'badges', dir: 'H', gap: 'space/2' }, [inst('StatusBadge', { Status: 'In review' }), inst('Badge', { Tone: 'Critical', Leading: 'Icon', Label: 'Deadline passed 4 h ago', Icon: { icon: 'alert-circle' } })]))]),
     facts, frame({ name: 'Body', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [left, right]),
   ], { gap: 'space/5', pad: [24, 32, 40, 32] });

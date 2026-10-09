@@ -6,6 +6,7 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import {
   InvitationAlreadyPendingError,
   type InvitationRepository,
+  type PendingAdminInvitation,
 } from '../../application/ports/invitation.repository';
 import {
   INVITATION_KINDS,
@@ -115,6 +116,45 @@ export class PrismaInvitationRepository implements InvitationRepository {
       select: SELECTED,
     });
     return row === null ? null : restore(row);
+  }
+
+  async pendingAdminInvitations(
+    market: MarketContext,
+    after: Id<'Invitation'> | null,
+    limit: number,
+  ): Promise<PendingAdminInvitation[]> {
+    // The predicate of the partial key `invitations_market_id_email_pending_platform_key`
+    // (pending, platform scope), so the planner can use it; a Market holds few such rows. A
+    // summary: never `token_hash` (Hassan L1 on PR #196).
+    const rows = await this.prisma.tx(market).identityInvitation.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: null,
+        state: 'pending',
+        kind: 'admin',
+        ...(after === null ? {} : { id: { gt: after } }),
+      },
+      select: {
+        id: true,
+        email: true,
+        roleId: true,
+        invitedByAccountId: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'Invitation'>,
+      state: 'pending',
+      // `invitations_email_pending_check`: a pending invitation holds its address.
+      email: row.email ?? '',
+      roleId: row.roleId as Id<'Role'>,
+      invitedByAccountId: row.invitedByAccountId as Id<'Account'> | null,
+      expiresAt: toOptionalInstant(row.expiresAt),
+      createdAt: toInstant(row.createdAt),
+    }));
   }
 
   async add(market: MarketContext, invitation: Invitation): Promise<void> {

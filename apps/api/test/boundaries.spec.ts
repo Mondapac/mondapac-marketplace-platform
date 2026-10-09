@@ -488,7 +488,17 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ['src/platform/persistence/persistence.module.ts', ['PersistenceModule']],
       ['src/platform/persistence/database-probe.ts', ['DatabaseProbe']],
       // persistence-root-is-private lets module infrastructure import this file only.
-      ['src/platform/persistence/prisma.service.ts', ['MarketTransaction', 'PrismaService']],
+      [
+        'src/platform/persistence/prisma.service.ts',
+        [
+          'LockedStockItem',
+          'MarketTransaction',
+          'NamedStatementName',
+          'NamedStatementParams',
+          'NamedStatementRow',
+          'PrismaService',
+        ],
+      ],
       // persistence-internals-are-private lets the logger import the error reducer.
       [
         'src/platform/persistence/database-error.ts',

@@ -23,7 +23,7 @@ const P1_ALL = [P1_AWAITING[0],
   { i: 'FN', tone: 'Amber', name: 'Faisal Noor', email: 'faisal@noorpantry.example', status: 'Approved', since: '4 Feb 2026' },
   { i: 'YK', tone: 'Teal', name: 'Yusuf Karimi', email: 'yusuf@kurabyfresh.example', status: 'Approved', since: '12 Mar 2026', reset: true },
   { i: 'KR', tone: 'Neutral', name: 'Khalid Rahimi', email: 'khalid@slackscreekbutchers.example', status: 'Suspended', since: '20 Jan 2026' },
-  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbaorganics.example', status: 'Invited', since: '6 Oct 2026' },
+  { i: 'ZA', tone: 'Blue', name: 'Zainab Ali', email: 'zainab@gabbagrocers.example', status: 'Invited', since: '6 Oct 2026' },
 ];
 // Tab counts: [Awaiting approval, Approved, Changes needed, Suspended, Invited, All]; the empty frame has nobody waiting.
 const P1_TABS = ['Awaiting approval', 'Approved', 'Changes needed', 'Suspended', 'Invited', 'All'];
@@ -138,7 +138,7 @@ function bodySuspend() { return [text('Everyone on the seller’s team is signed
 function bodyViewReason() { return [inst('ReasonQuote', { Label: 'Reason from MondaPac', Date: 'Written on 3 Oct 2026' }, { name: 'reason', sizeH: 'FILL' }), readOnlyPair('Written by', 'Layla Haddad')]; }
 const D6_NAME_HELP = 'The shop owner’s own name, not the business name. They add the store and business names when they set up.';
 function bodyAddSeller() {
-  return [authField('Owner’s name', { value: 'Rashid Omar', helper: D6_NAME_HELP }), authField('Email', { value: 'rashid@moorookahalal.example', helper: 'We’ll email them a link to choose their own password. You never see or set it.' }),
+  return [authField('Owner’s name', { value: 'Rashid Omar', helper: D6_NAME_HELP }), authField('Email', { value: 'rashid@moorookagrocer.example', helper: 'We’ll email them a link to choose their own password. You never see or set it.' }),
     text('The account still needs approval after they accept.', 'Body/Default', 'text/secondary', { name: 'note', sizeH: 'FILL' })];
 }
 // A scene as tall as its dialogs need (at least 900), so no dialog is cut off.

@@ -9,7 +9,7 @@ const PANEL_BODIES = []; // template-body components made in the current run, pl
 
 // ---- small parts
 function bdg(tone, leading, label, ic) { const p = { Tone: tone, Leading: leading, Label: label }; if (leading === 'Icon') p.Icon = { icon: ic }; return inst('Badge', p); }
-const STATUS_BADGE = { Active: ['Success', 'Dot', 'Active'], Invited: ['Neutral', 'Icon', 'Invited', 'send'], Deactivated: ['Neutral', 'Icon', 'Deactivated', 'ban'], On: ['Success', 'Icon', 'On', 'check'], Off: ['Neutral', 'Icon', 'Off', 'x'] };
+const STATUS_BADGE = { Active: ['Success', 'Dot', 'Active'], Invited: ['Neutral', 'Icon', 'Invited', 'send'], Deactivated: ['Neutral', 'Icon', 'Deactivated', 'ban'], 'Invitation expired': ['Attention', 'Icon', 'Invitation expired', 'clock'], On: ['Success', 'Icon', 'On', 'check'], Off: ['Neutral', 'Icon', 'Off', 'x'] };
 function statusBadge(k) { const d = STATUS_BADGE[k]; return bdg(d[0], d[1], d[2], d[3]); }
 const TYPE_BADGE = { System: ['Neutral', 'Icon', 'System', 'lock'], Owner: ['Neutral', 'Icon', 'Owner', 'lock'], Default: ['Neutral', 'None', 'Default'], 'Ready-made': ['Neutral', 'None', 'Ready-made'], Custom: ['Info', 'None', 'Custom'] };
 function typeBadge(k) { const d = TYPE_BADGE[k]; return bdg(d[0], d[1], d[2], d[3]); }
@@ -56,6 +56,14 @@ function shellPage(name, ws, crumb, kids, o) { return screen(name, ws, 'none', c
 function primaryHeaderButton(label, state) { return btn(label, 'Primary', 'Md', { State: state || 'Default', 'Leading icon': true, Icon: { icon: 'plus' } }); }
 function fullButton(label, variant, state) { return inst('Button', { Variant: variant || 'Primary', Size: 'Touch', State: state || 'Default', Label: label }, { name: 'primary-action', sizeH: 'FILL' }); }
 
+// A row menu with two items (item-1 and item-3; Show item 2 off): the actions of an invitation row.
+function invitationMenu(abs) {
+  const m = inst('Menu', { 'Show header': false, 'Show item 2': false, 'Show divider': false }, { name: 'Row menu (open)', abs: abs });
+  setNested(m, 'item-1', menuItemProps('Default', 'Resend invitation', 'send'));
+  setNested(m, 'item-3', menuItemProps('Destructive', 'Cancel invitation…', 'x'));
+  return m;
+}
+
 // ---- Members (T8, B1)
 const ADMIN_MEMBERS = [
   { i: 'LH', tone: 'Teal', name: 'Layla Haddad', email: 'layla.haddad@mondapac.example', you: true, role: 'Compliance lead', status: 'Active' },
@@ -64,6 +72,9 @@ const ADMIN_MEMBERS = [
   { i: 'NH', tone: 'Purple', name: 'Noor Hassan', email: 'noor.hassan@mondapac.example', role: 'Seller reviewer', status: 'Invited' },
   { i: 'SO', tone: 'Neutral', name: 'Sam Okafor', email: 'sam.okafor@mondapac.example', role: 'Support agent', status: 'Deactivated' },
 ];
+// 1.10.1: an invitation past the expiry of its last mail (identity API status `expired`); it can still be re-sent or cancelled. Shown on its own frame.
+const INVITATION_EXPIRED = 'Invitation expired';
+const ADMIN_EXPIRED = { i: 'KA', tone: 'Amber', name: 'Karim Aziz', email: 'karim.aziz@mondapac.example', role: 'Support agent', status: INVITATION_EXPIRED };
 const SELLER_MEMBERS = [
   { i: 'YK', tone: 'Teal', name: 'Yusuf Karimi', email: 'yusuf@kurabyfresh.example', you: true, role: 'Owner', system: true, two: 'On', status: 'Active' },
   { i: 'AR', tone: 'Amber', name: 'Amina Rahman', email: 'amina.rahman@kurabyfresh.example', role: 'Order packer', two: 'Off', status: 'Active' },
@@ -71,14 +82,14 @@ const SELLER_MEMBERS = [
 ];
 // A list that cannot load is an InfoBanner Critical with "Try again", not an empty state (title: identity.error.list-load.title, body: identity.error.network).
 function listLoadError() { return inst('InfoBanner', { Tone: 'Critical', Title: 'We couldn’t load this list', Body: 'You’re offline or the connection dropped. Check it and try again.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' }); }
-function membersTable(ws, state) {
+function membersTable(ws, state, extra) {
   const admin = ws === 'Admin';
   const cols = admin ? [['Person', 'fill'], ['Role', 220], ['Status', 170], ['', 56]] : [['Person', 'fill'], ['Role', 200], ['Two-step verification', 200], ['Status', 150], ['', 56]];
   if (state === 'Load error') return listLoadError();
   const kids = [headerRow(cols)];
   if (state === 'Loading') return card('Member list', kids.concat(loadingRows(admin ? [['Two-line', 'fill'], ['Text', 220], ['Text', 170], ['Actions', 56]] : [['Two-line', 'fill'], ['Text', 200], ['Text', 200], ['Text', 150], ['Actions', 56]])));
   if (state === 'Empty') return card('Member list', kids.concat([inst('EmptyState', { Size: 'Card', Icon: { icon: 'users' }, Title: 'It’s just you so far', Body: 'Invite the people who help run your shop. Each person gets their own sign-in.' }, { name: 'empty-state', sizeH: 'FILL' })]));
-  (admin ? ADMIN_MEMBERS : SELLER_MEMBERS).forEach(function (m) {
+  (admin ? ADMIN_MEMBERS : SELLER_MEMBERS).concat(extra || []).forEach(function (m) {
     const cells = [[personCell(m), 'fill'], [roleNodes(m), admin ? 220 : 200, { gap: 'space/1-5' }]];
     if (!admin) cells.push([m.two ? statusBadge(m.two) : null, 200]);
     cells.push([statusBadge(m.status), admin ? 170 : 150], [rowAction(), 56, { justify: 'center' }]);
@@ -87,16 +98,18 @@ function membersTable(ws, state) {
   return card('Member list', kids);
 }
 function tplMembersAdmin(state) {
-  const view = state === 'View only';
+  const view = state === 'View only', expired = state === INVITATION_EXPIRED;
   const scr = shellPage('Shared · Members · Admin' + (state ? ' · ' + state : ''), 'Admin', 'Roles & permissions', [
     pageTitle('Roles & permissions', view ? VIEW_ONLY : null, [primaryHeaderButton('Invite admin', view ? 'Disabled' : 'Default')]),
-    tabsBar([['Admins', '5', true], ['Roles', null, false]]),
-    membersTable('Admin', state === 'Loading' || state === 'Load error' ? state : null),
+    tabsBar([['Admins', expired ? '6' : '5', true], ['Roles', null, false]]),
+    membersTable('Admin', state === 'Loading' || state === 'Load error' ? state : null, expired ? [ADMIN_EXPIRED] : null),
   ]);
   // The menus are placed by estimate under the actions button of the third row (a peer the actor may manage) or the first row (view only); nudge in Figma.
   // A member who outranks the actor or is the last holder of a system role (Omar Saleh) gets every item disabled (ux.md F11 steps 4-5).
   if (state === 'Menu open') add(scr, rowMenu([['Default', 'Change role', 'user'], ['Default', 'Reset two-step verification', 'smartphone'], ['Destructive', 'Deactivate account…', 'ban']], [1128, 438]));
   if (view) add(scr, rowMenu([['Disabled', 'Change role', 'user', VIEW_ONLY], ['Disabled', 'Reset two-step verification', 'smartphone', VIEW_ONLY], ['Disabled', 'Deactivate account…', 'ban', VIEW_ONLY]], [1128, 310]));
+  // 1.10.1: the expired invitation (sixth row) with its two actions; "Cancel invitation…" opens the Cancel invitation dialog of Dialogs · Confirm · Admin.
+  if (expired) add(scr, invitationMenu([1128, 630]));
   return scr;
 }
 function tplMembersSeller(state) {
@@ -360,6 +373,7 @@ function panelDefs() {
       ['members', 'Shared · Members · Admin · Loading', function () { return tplMembersAdmin('Loading'); }],
       ['members', 'Shared · Members · Admin · Load error', function () { return tplMembersAdmin('Load error'); }],
       ['members', 'Shared · Members · Admin · View only', function () { return tplMembersAdmin('View only'); }],
+      ['members', 'Shared · Members · Admin · ' + INVITATION_EXPIRED, function () { return tplMembersAdmin(INVITATION_EXPIRED); }], // 1.10.1
       ['roles', 'Shared · Roles · Admin', function () { return tplRoles('Admin', false); }],
       ['roles', 'Shared · Roles · Admin · No custom roles', function () { return tplRoles('Admin', true); }],
       ['access', 'Shared · No access · Admin', function () { return tplNoAccess('Admin'); }],

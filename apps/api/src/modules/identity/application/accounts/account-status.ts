@@ -5,8 +5,6 @@ import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { AccountDisabledAudit, AccountEnabledAudit } from '../../domain/audit';
-import { GrantPolicy } from '../../domain/grant-policy';
-import { LastHolderPolicy } from '../../domain/last-holder-policy';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
@@ -14,6 +12,7 @@ import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-t
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import { readActingGrants, type GrantSubject } from '../roles/granting';
+import { statusChangeVerdict } from './admin-verdicts';
 
 /** The account an admin disables or enables again. */
 export interface AccountStatusInput {
@@ -117,24 +116,25 @@ export async function changeAccountStatus(
         return err({ code: 'account.unknown' });
       }
       const accountId = account.state.id;
-      const acted = GrantPolicy.canActOn(reading.actor, reading.targets.get(accountId)!);
-      if (!acted.ok) return err(acted.error);
+      let targetRoleId: Id<'Role'> | null = null;
+      let systemRoleId: Id<'Role'> | null = null;
       if (change.population === 'admin') {
-        const system = await deps.roles.findSystemRole(market, 'platform');
-        const assignment = await deps.assignments.findByAccount(market, accountId);
-        const holdsSystem = system !== null && assignment?.state.roleId === system.state.id;
-        if (
-          holdsSystem &&
-          !(reading.actor.holdsSystemRole && reading.actor.roleId === system.state.id)
-        ) {
-          return err({ code: 'member.outranks-actor' });
-        }
-        if (holdsSystem && change.to === 'disabled') {
-          const holders = await deps.assignments.activeHoldersOf(market, system.state.id);
-          const kept = LastHolderPolicy.allowsLosing(holders, accountId);
-          if (!kept.ok) return err(kept.error);
-        }
+        systemRoleId = (await deps.roles.findSystemRole(market, 'platform'))?.state.id ?? null;
+        targetRoleId =
+          (await deps.assignments.findByAccount(market, accountId))?.state.roleId ?? null;
       }
+      // The one verdict of the command and of the admin team list's hint (slice 8c).
+      const verdict = await statusChangeVerdict({
+        actor: reading.actor,
+        target: reading.targets.get(accountId)!,
+        population: account.state.population,
+        status: account.state.status,
+        to: change.to,
+        targetRoleId,
+        systemRoleId,
+        holders: () => deps.assignments.activeHoldersOf(market, systemRoleId!),
+      });
+      if (!verdict.ok) return err(verdict.error);
       const changed = change.to === 'disabled' ? account.disable(now) : account.enable(now);
       if (!changed.ok) {
         // A seller-side account never reaches here (population checked above).

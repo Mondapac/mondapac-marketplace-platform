@@ -163,14 +163,16 @@ async function build(force) {
     templatesPage(h, 'Templates · Admin', 'Full screens built only from library instances. Copy a template to start a new Admin screen; never detach the shell.', list);
     addPanelTemplates(h, 'tpl-admin'); // 1.8.0 Panel: Members, Roles, No access, Account security, dialogs (one canvas row per group, below the first row)
     addPanelTemplates(h, 'tpl-admin', null, panel183Defs, PANEL183_ROWS); // 1.8.3: Sellers list (P1), role editor, dialogs D4 to D6, unsaved changes
+    addPanelTemplates(h, 'tpl-admin', null, sellerAdminDefs, SELLER_ADMIN_ROWS); // 1.10.0 Seller admin: Sellers (Phase 3), Seller review, Seller detail, Seller settings, dialogs
     return list;
   });
   const sellerScreens = await onPage(P['tpl-seller'], 'Seller templates', function (h) {
     const list = [tplSellerHome(), tplSellerOrders(), tplSellerBoard(), tplSellerPhoneHome(), tplSellerPhoneMenu()].concat(s1Screens().map(function (d) { return d[1](); }));
-    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below; Seller · Setup (1.9.0: S1 with the sellers steps, S2 to S6) in the rows after them.', list);
+    templatesPage(h, 'Templates · Seller', 'Same structure as Admin with seller navigation, features and permissions. The order board is the tablet layout (touch density). Seller · Your seller account (S1, 1.7.0) is the landing page while a seller is not approved, in the limited shell. Shared · Members, Roles, No access, Not found, Account security and the Dialogs (1.8.0) sit in rows below; Seller · Setup (1.9.0: S1 with the sellers steps, S2 to S6) in the rows after them, then Seller · Store profile (1.10.0, S7).', list);
     addPanelTemplates(h, 'tpl-seller');
     addPanelTemplates(h, 'tpl-seller', null, panel183Defs, PANEL183_ROWS);
     addPanelTemplates(h, 'tpl-seller', null, setupDefs, SETUP_ROWS); // 1.9.0 Seller setup: S1 in each seller state, the steps S2 to S6, two state boards, phone frames
+    addPanelTemplates(h, 'tpl-seller', null, sellerAdminDefs, SELLER_ADMIN_ROWS); // 1.10.0: Store profile (S7), its dialogs and phone frames
     return list;
   });
   const authScreensBuilt = await onPage(P['tpl-auth'], 'Auth templates', function (h) {
@@ -179,8 +181,8 @@ async function build(force) {
     return made.map(function (m) { return m.frame; });
   });
   await onPage(P['tpl-dark'], 'Dark preview', function (h) {
-    const byName = {}; sellerScreens.concat(authScreensBuilt, P['tpl-seller'].host.children).forEach(function (s) { byName[s.name] = s; });
-    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.concat(DARK_190).map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
+    const byName = {}; sellerScreens.concat(authScreensBuilt, P['tpl-seller'].host.children, P['tpl-admin'].host.children).forEach(function (s) { byName[s.name] = s; });
+    const clones = [adminScreens[0], sellerScreens[1], sellerScreens[2]].concat(DARK_170.concat(DARK_190, DARK_1100).map(function (n) { return byName[n]; })).map(function (s) { const c = s.clone(); c.name = s.name + ' · Dark'; return c; });
     templatesPage(h, 'Templates · Dark preview', S.modes.color
       ? 'These frames use the Dark mode of the Color collection. Select any frame and switch the mode in the Appearance panel to compare.'
       : 'Starter plan: these copies are bound to the "Color · Dark" collection. Use the plugin buttons Dark theme / Light theme on a selection to switch any frame.', clones);
@@ -648,6 +650,25 @@ async function updateLibrary() {
     });
   }
 
+  // 2g · release 1.10.0 "Seller admin": SettingRow is a new set (its Control slot prefers Switch and SegmentedControl); CheckboxRow gets
+  // State=Saving and Show undo in place (propertySteps1100: the undo link is added hidden, so no existing instance changes).
+  if (S.sets.SettingRow && !own('SettingRow')) skip('SettingRow', 'component SettingRow: a component named SettingRow that is not the plugin\'s already exists in this file');
+  else if (!S.sets.SettingRow) {
+    const bad = ['Switch', 'SegmentedControl'].filter(function (d) { return !own(d); });
+    if (bad.length) skip('SettingRow', 'component SettingRow: it needs the plugin\'s ' + bad.join(', '));
+    else {
+      await onPage(T.forms, 'SettingRow', function (host) { settingRowBlock(docRoot(host, 'Forms & selection', PANEL_SUBTITLE['Forms & selection'])); fitSection(host); });
+      added.push('component SettingRow');
+    }
+  }
+  for (const step of propertySteps1100(own)) {
+    await onPage(pageOf(step.node), step.label, function () {
+      step.run().forEach(function (a) { added.push(a); });
+      let sec = step.node; while (sec && sec.type !== 'SECTION' && sec.type !== 'PAGE') sec = sec.parent;
+      if (sec && sec.type === 'SECTION') fitSection(sec);
+    });
+  }
+
   // 3b · 1.7.0 templates: Auth (its own page or section), S1 on Templates · Seller, and their dark previews.
   // A template is built only when every component it places is the plugin's (made earlier or in this run).
   const blockedBy = function (names) { return names.filter(function (n) { return skipped[n] || !own(n); }); };
@@ -705,7 +726,7 @@ async function updateLibrary() {
       if (!missing.length) continue;
       let made = null;
       await onPage(T[key], key === 'tpl-admin' ? 'Admin panel templates' : 'Seller panel templates', function (host) { made = addPanelTemplates(host, key, missing); fitSection(host); });
-      added.push('templates Panel · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + ' frames' + (made.bodies ? ', ' + made.bodies + ' template bodies' : '') + ')');
+      added.push('templates Panel · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + (made.frames === 1 ? ' frame' : ' frames') + (made.bodies ? ', ' + made.bodies + (made.bodies === 1 ? ' template body' : ' template bodies') : '') + ')');
     }
   }
 
@@ -739,8 +760,10 @@ async function updateLibrary() {
   const cbRec = S.sets.CheckboxRow;
   if (cbRec && cbRec.set && own('CheckboxRow') && cbRec.set.width > CHECKBOXROW_OPTS.width + 0.5) {
     const cs = cbRec.set, row = cs.parent, doc = row && row.name === 'Component + usage' && row.type === 'FRAME';
+    // the ten 1.8.0 variants, and the two State=Saving variants when 1.10.0 (step 2g) added them in this run or before
     const names = cs.children.map(function (c) { return c.name; });
-    const ok = doc && names.length === 10 && names.every(function (nm) { return /^Value=(Unchecked|Checked), State=(Default|Hover|Focus|Disabled|Read-only)$/.test(nm); });
+    const base = combos(CHECKBOXROW_AXES_180).map(variantName), all = combos(CHECKBOXROW_AXES).map(variantName);
+    const ok = doc && names.length === new Set(names).size && base.every(function (nm) { return names.indexOf(nm) >= 0; }) && names.every(function (nm) { return all.indexOf(nm) >= 0; });
     if (ok) fix181.cb = true; else log('ℹ skipped CheckboxRow layout: the set or its documentation row was changed by hand');
   }
   if (fix181.minH.length) {
@@ -774,7 +797,7 @@ async function updateLibrary() {
   const p183Block = blockedBy(PANEL183_TEMPLATE_NEEDS); if (!tcLoading) p183Block.push('TableCell State=Loading');
   // The frames place these variants by name; a set whose variants were renamed or removed by hand waits.
   const dialog183 = [['Md', 'Destructive', 'Centred'], ['Md', 'Default', 'Centred'], ['Sm', 'Default', 'Centred'], ['Sm', 'Destructive', 'Centred'], ['Sm', 'Destructive', 'Sheet']].map(function (v) { return { Size: v[0], Tone: v[1], Layout: v[2] }; });
-  [['CheckboxRow', combos(CHECKBOXROW_AXES)], ['Textarea', combos(TEXTAREA_AXES)], ['Dialog', dialog183]].forEach(function (d) {
+  [['CheckboxRow', combos(CHECKBOXROW_AXES_180)], ['Textarea', combos(TEXTAREA_AXES)], ['Dialog', dialog183]].forEach(function (d) {
     const rec = S.sets[d[0]];
     if (p183Block.indexOf(d[0]) < 0 && rec && rec.set && missingCombos(rec, d[1]).length) p183Block.push(d[0] + ' variants (' + missingCombos(rec, d[1]).map(variantName).join('; ') + ')');
   });
@@ -787,7 +810,7 @@ async function updateLibrary() {
       if (!missing.length) continue;
       let made = null;
       await onPage(T[key], key === 'tpl-admin' ? 'Admin panel templates 1.8.3' : 'Seller panel templates 1.8.3', function (host) { made = addPanelTemplates(host, key, missing, panel183Defs, PANEL183_ROWS); fitSection(host); });
-      added.push('templates Panel 1.8.3 · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + ' frames' + (made.bodies ? ', ' + made.bodies + ' template bodies' : '') + ')');
+      added.push('templates Panel 1.8.3 · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + (made.frames === 1 ? ' frame' : ' frames') + (made.bodies ? ', ' + made.bodies + (made.bodies === 1 ? ' template body' : ' template bodies') : '') + ')');
     }
   }
 
@@ -818,6 +841,39 @@ async function updateLibrary() {
       await onPage(T['tpl-dark'], 'Dark preview 1.9.0', function (host) {
         let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
         dark190.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
+        fitSection(host);
+      });
+    }
+  }
+
+  // 3h · 1.10.0 "Seller admin": Sellers (Phase 3), Seller review, Seller detail, Seller settings and their dialogs on Templates · Admin, the store
+  // profile on Templates · Seller, and two dark previews. Built when every set they place is the plugin's with its 1.9.0 and 1.10.0 parts.
+  const adminBlock = blockedBy(SELLER_ADMIN_TEMPLATE_NEEDS).concat(setupLacks(), sellerAdminLacks());
+  [['CheckboxRow', combos(CHECKBOXROW_AXES)], ['SettingRow', combos(SETTINGROW_AXES)], ['Dialog', combos(DIALOG_AXES).filter(function (p) { return !(p.Layout === 'Sheet' && p.Size === 'Md'); })],
+    ['DataRow', combos(DATAROW_AXES).filter(function (p) { return !DATAROW_SKIP(p); })], ['FormActionBar', combos(FAB_AXES)]].forEach(function (d) {
+    const rec = S.sets[d[0]];
+    if (adminBlock.indexOf(d[0]) >= 0 || !rec || !rec.set) return;
+    const miss = missingCombos(rec, d[1]);
+    if (miss.length) adminBlock.push(d[0] + ' variants (' + miss.map(variantName).join('; ') + ')');
+  });
+  if (adminBlock.length) log('ℹ skipped Seller admin templates: they need the plugin\'s ' + adminBlock.join(', '));
+  else {
+    const keys = ['tpl-admin', 'tpl-seller'];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]; const present = T[key].host.children.map(function (c) { return c.name; });
+      const missing = sellerAdminNames(key).filter(function (n) { return present.indexOf(n) < 0; });
+      if (!missing.length) continue;
+      let made = null;
+      await onPage(T[key], key === 'tpl-admin' ? 'Seller admin templates · Admin' : 'Seller admin templates · Seller', function (host) { made = addPanelTemplates(host, key, missing, sellerAdminDefs, SELLER_ADMIN_ROWS); fitSection(host); });
+      added.push('templates Seller admin · ' + (key === 'tpl-admin' ? 'Admin' : 'Seller') + ' (' + made.frames + (made.frames === 1 ? ' frame' : ' frames') + (made.bodies ? ', ' + made.bodies + (made.bodies === 1 ? ' template body' : ' template bodies') : '') + ')');
+    }
+    const dark1100 = DARK_1100.filter(function (n) { return T['tpl-dark'].host.children.every(function (c) { return c.name !== n + ' · Dark'; }); }).map(function (n) {
+      return T['tpl-admin'].host.children.concat(T['tpl-seller'].host.children).filter(function (c) { return c.type === 'FRAME' && c.name === n && c.getPluginData(PLUGIN_TAG) === '1'; })[0];
+    }).filter(Boolean);
+    if (dark1100.length) {
+      await onPage(T['tpl-dark'], 'Dark preview 1.10.0', function (host) {
+        let x = rightEdge(host) + 160; const ref = host.children.filter(function (n) { return n.type === 'FRAME' && n.height > 400; })[0]; const y = ref ? ref.y : 240;
+        dark1100.forEach(function (src) { const c = src.clone(); c.name = src.name + ' · Dark'; host.appendChild(c); c.x = x; c.y = y; x += c.width + 160; applyTheme(c, 'dark'); added.push('dark preview ' + c.name); });
         fitSection(host);
       });
     }

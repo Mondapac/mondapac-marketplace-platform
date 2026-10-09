@@ -163,6 +163,7 @@ async function buildForms(page) {
   }, { desc: SEG_DESC, text: [{ prop: 'Segment 1', node: 'label-1', def: 'Today' }, { prop: 'Segment 2', node: 'label-2', def: '7 days' }, { prop: 'Segment 3', node: 'label-3', def: '30 days' }] });
   const segWrap = frame({ name: 'SegmentedControl', dir: 'H', pad: 32, fill: 'bg/surface', radius: 16 }); add(segWrap, seg);
   componentBlock(root, segWrap, { title: 'SegmentedControl', summary: 'Switch the period of a dashboard.', a11y: SEG_A11Y });
+  settingRowBlock(root); // 1.10.0
 
   const tab = makeSet('Tab', { Selected: ['True', 'False'] }, function (c, p) {
     const on = p.Selected === 'True';
