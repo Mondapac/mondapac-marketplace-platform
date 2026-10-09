@@ -60,6 +60,9 @@ export function AcceptInvitationFlow({
   const [recoveryCodes, setRecoveryCodes] = useState<readonly string[]>([]);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
+  // True once the admin was sent back to step 1, so the heading takes focus (ux 6).
+  const [returned, setReturned] = useState(false);
 
   /** One request at a time, even when a button is pressed twice before a render. */
   async function single(task: () => Promise<void>) {
@@ -80,8 +83,19 @@ export function AcceptInvitationFlow({
       setRejected(true);
       return;
     }
+    if (failure.code === 'request.busy' || failure.code === 'access.unavailable') {
+      setProblem({ key: 'accept.busy' });
+      return;
+    }
     const key = formErrorKey(failure);
     setProblem(key ?? { key: 'unknown' });
+  }
+
+  function backToDetails() {
+    setEnrolment(null);
+    setCode('');
+    setReturned(true);
+    setStep('details');
   }
 
   async function fetchEnrolment(token: string): Promise<boolean> {
@@ -147,6 +161,7 @@ export function AcceptInvitationFlow({
       const { failure } = result;
       if (failure.code === 'invitation.enrolment-expired') {
         if (await fetchEnrolment(link.token)) setProblem({ key: 'accept.enrolment-expired' });
+        else backToDetails();
         return;
       }
       if (failure.code === 'second-factor.invalid') {
@@ -155,16 +170,19 @@ export function AcceptInvitationFlow({
       }
       if (failure.code === 'password.rejected') {
         setPasswordError(passwordRuleKey(failure));
-        setEnrolment(null);
-        setStep('details');
+        backToDetails();
+        return;
+      }
+      if (failure.code === 'second-factor.locked') {
+        backToDetails();
+        setProblem({ key: 'accept.locked' });
         return;
       }
       if (failure.code === 'validation.failed') {
         const paths = (failure.details?.fields ?? []).map((field) => field.path);
         if (paths.includes('displayName')) {
           setNameError('validation.name.invalid');
-          setEnrolment(null);
-          setStep('details');
+          backToDetails();
           return;
         }
         if (paths.includes('code')) {
@@ -185,6 +203,16 @@ export function AcceptInvitationFlow({
     }
   }
 
+  async function copyKey() {
+    if (enrolment === null) return;
+    try {
+      await navigator.clipboard.writeText(enrolment.secret);
+      setKeyCopied(true);
+    } catch {
+      setKeyCopied(false);
+    }
+  }
+
   function downloadCodes() {
     const url = URL.createObjectURL(
       new Blob([`${recoveryCodes.join('\n')}\n`], { type: 'text/plain' }),
@@ -193,7 +221,7 @@ export function AcceptInvitationFlow({
     anchor.href = url;
     anchor.download = 'mondapac-recovery-codes.txt';
     anchor.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   if (link.state === 'checking') {
@@ -224,6 +252,7 @@ export function AcceptInvitationFlow({
         noValidate
         className="flex flex-col gap-5"
       >
+        {returned ? <FocusHeading>{t('accept.details.title')}</FocusHeading> : null}
         <p className="text-fg-secondary">{t('accept.details.body')}</p>
         {problemMessage ? <ProblemBanner message={problemMessage} /> : null}
         <TextField
@@ -260,7 +289,7 @@ export function AcceptInvitationFlow({
   if (step === 'secret' && enrolment !== null) {
     return (
       <form onSubmit={(event) => void accept(event)} noValidate className="flex flex-col gap-5">
-        <FocusHeading>{t('accept.secret.title')}</FocusHeading>
+        <FocusHeading key={enrolment.tag}>{t('accept.secret.title')}</FocusHeading>
         <p className="text-fg-secondary">{t('accept.secret.body')}</p>
         {problemMessage ? <ProblemBanner message={problemMessage} /> : null}
         <div className="flex flex-col gap-2 rounded-md border border-border p-4">
@@ -268,9 +297,16 @@ export function AcceptInvitationFlow({
           <code dir="ltr" className="font-mono text-base break-all">
             {grouped(enrolment.secret)}
           </code>
-          <a href={enrolment.otpauthUri} className="text-sm text-link hover:underline">
-            {t('accept.secret.open-app')}
-          </a>
+          <div className="flex flex-wrap items-center gap-4">
+            <Button type="button" variant="secondary" onClick={() => void copyKey()}>
+              {keyCopied ? t('accept.codes.copied') : t('accept.codes.copy')}
+            </Button>
+            {enrolment.otpauthUri.startsWith('otpauth://') ? (
+              <a href={enrolment.otpauthUri} className="text-sm text-link hover:underline">
+                {t('accept.secret.open-app')}
+              </a>
+            ) : null}
+          </div>
         </div>
         <TextField
           label={t('two-step.label.code')}

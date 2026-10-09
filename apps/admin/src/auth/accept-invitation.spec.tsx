@@ -155,6 +155,49 @@ describe('admin accept invitation', () => {
     expect(screen.getByLabelText('Your name')).toBeTruthy();
   });
 
+  it('goes back to step 1 with a new-key notice when too many wrong codes were entered', async () => {
+    call.mockResolvedValueOnce(enrolment);
+    call.mockResolvedValueOnce(fail('second-factor.locked'));
+    mount();
+    await fillDetails();
+    fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '111111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText(/Too many wrong codes. Start again/)).toBeTruthy();
+    expect(screen.getByLabelText('Your name')).toBeTruthy();
+    expect(screen.queryByText('ABCD EFGH IJKL MNOP')).toBeNull();
+    expect(document.activeElement?.textContent).toBe('Your details');
+  });
+
+  it.each(['request.busy', 'access.unavailable'])('says to try again for %s', async (code) => {
+    call.mockResolvedValueOnce(fail(code));
+    mount();
+    await fillDetails();
+    expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
+    expect(screen.getByLabelText('Your name')).toBeTruthy();
+  });
+
+  it('returns to step 1 when the new key cannot be fetched after an expiry', async () => {
+    call.mockResolvedValueOnce(enrolment);
+    call.mockResolvedValueOnce(fail('invitation.enrolment-expired'));
+    call.mockResolvedValueOnce(fail('request.busy'));
+    mount();
+    await fillDetails();
+    fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '111111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
+    expect(screen.queryByText('ABCD EFGH IJKL MNOP')).toBeNull();
+  });
+
+  it('copies the setup key', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    call.mockResolvedValueOnce(enrolment);
+    mount();
+    await fillDetails();
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('ABCDEFGHIJKLMNOP'));
+  });
+
   it('sends one accept request for a double click', async () => {
     call.mockResolvedValueOnce(enrolment);
     let release: (value: ReturnType<typeof fail>) => void = () => undefined;
@@ -168,7 +211,8 @@ describe('admin accept invitation', () => {
     fireEvent.click(verify);
     fireEvent.click(verify);
     release(fail('second-factor.invalid'));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    await screen.findByText(/That code didn't work/);
+    expect(call).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the token, the secret and the codes out of storage and the address bar', async () => {
