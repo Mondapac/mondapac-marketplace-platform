@@ -18,6 +18,31 @@ export interface StoredAccessDecision {
   readonly decidedAt: Temporal.Instant;
 }
 
+/**
+ * A decision found by its basis (slice 9a, R-5 reconciliation): ids, kind and instant only. No
+ * reason is read or opened for it, and no decider.
+ */
+export interface AccessDecisionBasisRow {
+  readonly id: Id<'AccessDecision'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly decision: AccessDecisionKind;
+  readonly basisId: Id;
+  readonly decidedAt: Temporal.Instant;
+}
+
+/**
+ * A stored reason that does not open (its ciphertext does not authenticate, has an unknown format,
+ * or the key does not unwrap): the subject-key service's integrity failure, as this port reports
+ * it (PF 4 row 7). Never an erasure. It may mean tampering, so a reader logs it as an operational
+ * alert. Carries the failed check only: never the ciphertext or a value.
+ */
+export class AccessReasonIntegrityError extends Error {
+  override readonly name = 'AccessReasonIntegrityError';
+  constructor(readonly check: 'ciphertext-format' | 'ciphertext-authentication' | 'unwrap') {
+    super(`identity.access_decisions: a stored reason failed its integrity check: ${check}`);
+  }
+}
+
 /** The seller's key is destroyed, so a new reason cannot be sealed: never stored in clear. */
 export class AccessReasonKeyUnavailableError extends Error {
   override readonly name = 'AccessReasonKeyUnavailableError';
@@ -45,6 +70,27 @@ export interface AccessDecisionRepository {
 
   /** The seller's latest decision, or null when none was ever taken. */
   latestOf(market: MarketContext, sellerId: Id<'Seller'>): Promise<StoredAccessDecision | null>;
+
+  /**
+   * The seller's decisions, newest first (`decided_at`, then id), at most `limit` (slice 9a,
+   * R-5), with their reasons opened as {@link findById} does: a destroyed key is `reasonErased`;
+   * a ciphertext that does not open throws {@link AccessReasonIntegrityError}. Another Market's seller or an unknown id: none.
+   */
+  historyOf(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    limit: number,
+  ): Promise<readonly StoredAccessDecision[]>;
+
+  /**
+   * The decisions of this Market whose `basis_id` is one of `basisIds` (slice 9a, R-5
+   * reconciliation), on the index (market_id, basis_id). Nothing is decrypted. The caller
+   * matches the seller of each row against the pair it asked for.
+   */
+  findByBasis(
+    market: MarketContext,
+    basisIds: readonly Id[],
+  ): Promise<readonly AccessDecisionBasisRow[]>;
 }
 
 /** Nest token of the {@link AccessDecisionRepository}. */
