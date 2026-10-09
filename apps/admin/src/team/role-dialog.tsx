@@ -3,9 +3,10 @@
 import { Banner, Button, Dialog, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { useNotice } from './notice.tsx';
+import { roleLabel } from './role-label.ts';
 import { roleOptions } from './role-options.ts';
 import type { PlatformRole } from './types.ts';
 
@@ -72,12 +73,24 @@ export function ChangeRoleDialog({
   const flight = useSingleFlight();
   const [roleId, setRoleId] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
   const options = useMemo(() => roleOptions(root, roles), [root, roles]);
+  const current = roles.find((role) => role.roleId === currentRoleId) ?? null;
+
+  // A closed dialog starts clean next time: no old choice, error or stale role id.
+  useEffect(() => {
+    if (!open) {
+      setRoleId('');
+      setProblem(null);
+      setRoleError(null);
+    }
+  }, [open]);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
+    setRoleError(null);
     if (roleId === '') {
-      setProblem(t('dialog.change-role.choose'));
+      setRoleError(t('dialog.change-role.choose'));
       return;
     }
     await flight.run(async () => {
@@ -129,12 +142,16 @@ export function ChangeRoleDialog({
     >
       <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-4">
         <p>{t('dialog.change-role.body')}</p>
+        <p className="text-sm text-fg-muted">
+          {t('dialog.change-role.current', { role: roleLabel(root, current) })}
+        </p>
         <Select
           label={t('dialog.change-role.label')}
           value={roleId}
           onChange={(event) => setRoleId(event.target.value)}
           placeholder={t('dialog.change-role.placeholder')}
           options={options.filter((option) => option.value !== currentRoleId)}
+          error={roleError ?? undefined}
         />
         {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
       </form>
@@ -167,6 +184,16 @@ export function InviteAdminDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const options = useMemo(() => roleOptions(root, roles), [root, roles]);
 
+  useEffect(() => {
+    if (!open) {
+      setEmail('');
+      setRoleId('');
+      setEmailError(null);
+      setRoleError(null);
+      setProblem(null);
+    }
+  }, [open]);
+
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     const address = email.trim();
@@ -190,8 +217,6 @@ export function InviteAdminDialog({
       );
       if (result.ok) {
         onClose();
-        setEmail('');
-        setRoleId('');
         notify({ tone: 'success', text: t('dialog.invite.toast-sent', { email: address }) });
         router.refresh();
         return;
@@ -210,7 +235,12 @@ export function InviteAdminDialog({
         else setProblem(messageFor('unknown'));
         return;
       }
-      if (failure.code === 'role.unknown' || failure.code === 'conflict.stale') router.refresh();
+      if (
+        failure.code === 'role.unknown' ||
+        failure.code === 'role.not-grantable' ||
+        failure.code === 'conflict.stale'
+      )
+        router.refresh();
       setProblem(messageFor(failure.code));
     });
   }

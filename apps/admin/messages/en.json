@@ -208,6 +208,7 @@
           "title": "Change role for {name}",
           "body": "The change applies from their next action. They stay signed in.",
           "label": "Role",
+          "current": "Current role: {role}",
           "placeholder": "Choose a role",
           "choose": "Choose a role.",
           "action": "Change role"

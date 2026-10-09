@@ -129,6 +129,52 @@ describe('change role (D2)', () => {
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
+  it('shows the current role', () => {
+    row();
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change role' }));
+    expect(screen.getByText('Current role: Viewer')).toBeTruthy();
+  });
+
+  const submitFinance = () => {
+    row();
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change role' }));
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'r-finance' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change role' }));
+  };
+
+  it('starts clean after a cancel', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'role.not-grantable' } });
+    submitFinance();
+    await screen.findByText("You can't give that role.");
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change role' }));
+    expect(screen.queryByText("You can't give that role.")).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Role').value).toBe('');
+  });
+
+  it('closes, tells them and reloads when the role vanished meanwhile', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'role.unknown' } });
+    submitFinance();
+    expect(await screen.findByText(/That role no longer exists/)).toBeTruthy();
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it('goes to the signed-out page on a 401', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'session.required' } });
+    submitFinance();
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/session-ended'));
+  });
+
+  it('sends once when the button is pressed twice', async () => {
+    call.mockReturnValue(new Promise(() => undefined));
+    submitFinance();
+    fireEvent.click(screen.getByRole('button', { name: 'Change role' }));
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
   it('is left out when the actor has no role list', () => {
     row(null);
     openMenu();
@@ -192,5 +238,19 @@ describe('invite admin (D1)', () => {
     expect(
       await screen.findByText('This person already has an invitation. Resend it from the list.'),
     ).toBeTruthy();
+  });
+
+  it('starts clean after a cancel and reloads when the role is not grantable', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'role.not-grantable' } });
+    open();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'x@y.test' } });
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'r-finance' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    await screen.findByText("You can't give that role.");
+    expect(router.refresh).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Invite admin' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Email').value).toBe('');
+    expect(screen.queryByText("You can't give that role.")).toBeNull();
   });
 });
