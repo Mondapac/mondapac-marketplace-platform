@@ -27,6 +27,7 @@ export const MY_FILE_STATUS = {
   'file.incomplete': 409,
   'file.already-submitted': 409,
   'file.nothing-to-withdraw': 409,
+  'review.no-revision': 409,
   'address.outside-service-area': 409,
   'seller-access.wrong-state': 409,
   'identifier.not-matched': 409,

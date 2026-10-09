@@ -274,7 +274,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 6],
+      ['platform', 'default', 'onboarding-compliance', 7],
       ['platform', 'default', 'catalogue-moderator', 3],
       ['platform', 'default', 'operations-support', 5],
       ['platform', 'default', 'finance', 2],
@@ -295,11 +295,16 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ].sort();
     const registry = realPermissionRegistry();
 
-    // Viewer: every unprotected `view` key of the platform scope, as the registry declares them.
+    // Viewer: every unprotected `view` key of the platform scope, as the registry declares them,
+    // except the keys that decrypt personal data (sellers design 6.1: the Viewer never reads
+    // business details in clear).
+    const DECRYPTING_VIEW_KEYS = ['sellers.business-details.view'];
     expect(keysOf('viewer')).toEqual(
       registry
         .list('platform')
-        .filter((d) => !d.protected && d.key.endsWith('.view'))
+        .filter(
+          (d) => !d.protected && d.key.endsWith('.view') && !DECRYPTING_VIEW_KEYS.includes(d.key),
+        )
         .map((d) => d.key)
         .sort(),
     );
@@ -308,6 +313,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'identity.seller-access.suspend',
       'identity.seller-access.view',
       'identity.seller-account.create',
+      'sellers.business-details.view',
       'sellers.seller-file.review',
       'sellers.seller.view',
     ]);
@@ -335,6 +341,18 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'bookkeeper',
     ]) {
       expect([seedCode, keysOf(seedCode)]).toEqual([seedCode, []]);
+    }
+  });
+
+  it('every default role that can approve a seller can also read the review page (sellers design 6.2, Hassan M4)', () => {
+    // The gate has no "any of", so the approve key implies the details key only by this pairing.
+    for (const role of new CheckedInRoleSeed().roles()) {
+      if (role.permissionKeys.includes('identity.seller-access.approve')) {
+        expect([role.seedCode, role.permissionKeys]).toEqual([
+          role.seedCode,
+          expect.arrayContaining(['sellers.business-details.view']),
+        ]);
+      }
     }
   });
 

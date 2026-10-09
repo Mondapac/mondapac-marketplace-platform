@@ -28,8 +28,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 2 adds `sellers.seller-file.review` (sellers design 6.1: record review checks, run a
     // re-lookup, record a manual register check); a Market seeded at version 1 gets it on its
     // next SeedRoles run. Version 3 adds `sellers.seller.view` (the admin seller list, sellers
-    // slice 6).
-    seedVersion: 3,
+    // slice 6). Version 4 adds `sellers.business-details.view` (the review page, which decrypts
+    // business data, sellers slice 7a-read): every default role that holds
+    // `identity.seller-access.approve` holds it too, because the gate has no "any of" (sellers
+    // design 6.2, Hassan M4); the seed contract test checks the pairing.
+    seedVersion: 4,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -38,6 +41,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'identity.seller-account.create',
       'sellers.seller-file.review',
       'sellers.seller.view',
+      'sellers.business-details.view',
     ],
   },
   {
