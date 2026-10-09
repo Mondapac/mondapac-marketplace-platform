@@ -18,6 +18,9 @@ function market(code: string): MarketId {
 
 const SELLER_ID = id<'Seller'>('01990000-0000-7000-8000-0000000000a1');
 const OWNER_ID = id<'Account'>('01990000-0000-7000-8000-000000000001');
+const ADMIN_ID = id<'Account'>('01990000-0000-7000-8000-000000000009');
+const DECISION_ID = id<'AccessDecision'>('01990000-0000-7000-8000-0000000000d1');
+const BASIS_ID = id('01990000-0000-7000-8000-0000000000b1');
 
 describe.each(['AU', 'ZZ'])('SellerAccess in market %s (identity design 2.1, 3.3, 8.2)', (code) => {
   const marketId = market(code);
@@ -104,6 +107,273 @@ describe.each(['AU', 'ZZ'])('SellerAccess in market %s (identity design 2.1, 3.3
 
       expect(access.allowsSignIn).toBe(signIn);
       expect(access.isApproved).toBe(approved);
+    });
+  });
+
+  describe('forInvitation (3.4 seller-owner; SEL-06, AC 31)', () => {
+    const invited = (approvalRequired: boolean) =>
+      SellerAccess.forInvitation({ sellerId: SELLER_ID, marketId, approvalRequired, now: NOW });
+
+    it('starts pending when the Market requires approval, registered at once (8.2)', () => {
+      const access = invited(true);
+
+      expect(access.state).toEqual<SellerAccessState>({
+        sellerId: SELLER_ID,
+        marketId,
+        origin: 'invitation',
+        state: 'pending',
+        stateChangedAt: NOW,
+        reapplyCount: 0,
+        registeredAt: NOW,
+        version: 1,
+        createdAt: NOW,
+      });
+      expect(access.isRegistered).toBe(true);
+    });
+
+    it('starts approved when the Market does not require approval (AC 5)', () => {
+      expect(invited(false).state.state).toBe('approved');
+    });
+
+    it('records seller-registered at creation, without an owner yet (8.2)', () => {
+      const [event, ...rest] = invited(true).pendingEvents;
+
+      expect(rest).toEqual([]);
+      expect(event).toMatchObject({
+        type: 'identity.seller-registered.v1',
+        aggregateId: SELLER_ID,
+        aggregateVersion: 1,
+        occurredAt: NOW,
+        payload: {
+          sellerId: SELLER_ID,
+          ownerAccountId: null,
+          origin: 'invitation',
+          accessState: 'pending',
+        },
+      });
+    });
+  });
+
+  describe('decisions (3.3; SEL-03, SEL-07, decision 9)', () => {
+    const inState = (state: SellerAccessState['state'], reapplyCount = 0) =>
+      SellerAccess.restore({
+        ...selfRegistered(true).state,
+        registeredAt: NOW,
+        state,
+        reapplyCount,
+        version: 3,
+      });
+    const by = { decisionId: DECISION_ID, decidedBy: ADMIN_ID, now: LATER };
+
+    it('approves a pending seller: a decision, the state, a version step, the event', () => {
+      const access = inState('pending', 2);
+
+      const decided = access.approve({ ...by, basisId: BASIS_ID });
+
+      expect(decided.ok && decided.value.state).toEqual({
+        id: DECISION_ID,
+        marketId,
+        sellerId: SELLER_ID,
+        decision: 'approved',
+        reason: null,
+        basisId: BASIS_ID,
+        decidedByAccountId: ADMIN_ID,
+        decidedAt: LATER,
+      });
+      // "Fewer than 3 re-applications since the last approval": the count starts again.
+      expect(access.state).toMatchObject({
+        state: 'approved',
+        stateChangedAt: LATER,
+        reapplyCount: 0,
+        version: 4,
+      });
+      expect(access.pendingEvents).toEqual([
+        expect.objectContaining({
+          type: 'identity.seller-access-approved.v1',
+          aggregateType: 'seller-access',
+          aggregateId: SELLER_ID,
+          aggregateVersion: 4,
+          occurredAt: LATER,
+          payload: { sellerId: SELLER_ID, decisionId: DECISION_ID, basisId: BASIS_ID },
+        }),
+      ]);
+    });
+
+    it('rejects a pending seller with its reason; the event never carries it', () => {
+      const access = inState('pending');
+
+      const decided = access.reject({ ...by, basisId: null, reason: ' Missing ABN. ' });
+
+      expect(decided.ok && decided.value.state).toMatchObject({
+        decision: 'rejected',
+        reason: 'Missing ABN.',
+        basisId: null,
+      });
+      expect(access.state).toMatchObject({ state: 'rejected', version: 4 });
+      expect(access.pendingEvents[0]).toMatchObject({
+        type: 'identity.seller-access-rejected.v1',
+        payload: { sellerId: SELLER_ID, decisionId: DECISION_ID, basisId: null },
+      });
+      expect(JSON.stringify(access.pendingEvents)).not.toContain('Missing ABN');
+    });
+
+    it('suspends an approved seller with its reason, and reinstates it', () => {
+      const access = inState('approved');
+
+      const suspended = access.suspend({ ...by, reason: 'Complaints under review.' });
+      expect(suspended.ok && suspended.value.state).toMatchObject({
+        decision: 'suspended',
+        reason: 'Complaints under review.',
+      });
+      expect(access.state).toMatchObject({ state: 'suspended', version: 4 });
+      expect(access.allowsSignIn).toBe(false);
+
+      const reinstateId = id<'AccessDecision'>('01990000-0000-7000-8000-0000000000d2');
+      const later = LATER.add({ hours: 1 });
+      const reinstated = access.reinstate({
+        decisionId: reinstateId,
+        decidedBy: ADMIN_ID,
+        now: later,
+      });
+      expect(reinstated.ok && reinstated.value.state).toMatchObject({
+        id: reinstateId,
+        decision: 'reinstated',
+        reason: null,
+      });
+      expect(access.state).toMatchObject({ state: 'approved', stateChangedAt: later, version: 5 });
+      expect(access.pendingEvents.map((event) => [event.type, event.aggregateVersion])).toEqual([
+        ['identity.seller-access-suspended.v1', 4],
+        ['identity.seller-access-reinstated.v1', 5],
+      ]);
+    });
+
+    it.each(['', ' \n '])(
+      'refuses to reject without a reason (%j) and changes nothing (AC 6)',
+      (reason) => {
+        const access = inState('pending');
+
+        expect(access.reject({ ...by, basisId: null, reason })).toEqual({
+          ok: false,
+          error: { code: 'seller-access.reason-required' },
+        });
+        expect(access.state).toMatchObject({ state: 'pending', version: 3 });
+        expect(access.pendingEvents).toEqual([]);
+      },
+    );
+
+    it('refuses to suspend without a reason and changes nothing (AC 14)', () => {
+      const access = inState('approved');
+
+      expect(access.suspend({ ...by, reason: '' })).toEqual({
+        ok: false,
+        error: { code: 'seller-access.reason-required' },
+      });
+      expect(access.state).toMatchObject({ state: 'approved', version: 3 });
+    });
+
+    it('refuses a malformed reason with its rule', () => {
+      const access = inState('approved');
+
+      expect(access.suspend({ ...by, reason: 'bad\u202e' })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', rule: 'characters' },
+      });
+    });
+
+    // Every transition 3.3 does not list, and the most tempting ones by name.
+    it.each([
+      ['approve', 'approved'],
+      ['approve', 'rejected'],
+      ['approve', 'suspended'],
+      ['reject', 'approved'],
+      ['reject', 'rejected'],
+      ['reject', 'suspended'],
+      ['suspend', 'pending'],
+      ['suspend', 'rejected'],
+      ['suspend', 'suspended'],
+      ['reinstate', 'pending'],
+      ['reinstate', 'approved'],
+      ['reinstate', 'rejected'],
+    ] as const)('refuses to %s a seller that is %s (seller-access.wrong-state)', (verb, from) => {
+      const access = inState(from);
+      const decide = {
+        approve: () => access.approve({ ...by, basisId: null }),
+        reject: () => access.reject({ ...by, basisId: null, reason: 'Why.' }),
+        suspend: () => access.suspend({ ...by, reason: 'Why.' }),
+        reinstate: () => access.reinstate(by),
+      }[verb];
+
+      expect(decide()).toEqual({ ok: false, error: { code: 'seller-access.wrong-state' } });
+      expect(access.state).toMatchObject({ state: from, version: 3 });
+      expect(access.pendingEvents).toEqual([]);
+    });
+
+    it('checks the state before the reason', () => {
+      expect(inState('suspended').reject({ ...by, basisId: null, reason: '' })).toEqual({
+        ok: false,
+        error: { code: 'seller-access.wrong-state' },
+      });
+    });
+  });
+
+  describe('reapply (3.3: rejected → pending, behind the facade)', () => {
+    const rejected = (reapplyCount: number) =>
+      SellerAccess.restore({
+        ...selfRegistered(true).state,
+        registeredAt: NOW,
+        state: 'rejected',
+        reapplyCount,
+        version: 3,
+      });
+
+    it.each([0, 1, 2])('moves a rejected seller with %s re-applications to pending', (count) => {
+      const access = rejected(count);
+
+      expect(access.reapply(LATER, 3)).toEqual({ ok: true, value: undefined });
+
+      expect(access.state).toMatchObject({
+        state: 'pending',
+        stateChangedAt: LATER,
+        reapplyCount: count + 1,
+        version: 4,
+      });
+      expect(access.pendingEvents).toEqual([
+        expect.objectContaining({
+          type: 'identity.seller-access-reapplied.v1',
+          aggregateVersion: 4,
+          payload: { sellerId: SELLER_ID },
+        }),
+      ]);
+    });
+
+    it('answers seller-access.reapply-limit at the limit, and the seller stays rejected', () => {
+      const access = rejected(3);
+
+      expect(access.reapply(LATER, 3)).toEqual({
+        ok: false,
+        error: { code: 'seller-access.reapply-limit' },
+      });
+      expect(access.state).toMatchObject({ state: 'rejected', reapplyCount: 3, version: 3 });
+      expect(access.canReapply(3)).toBe(false);
+      expect(rejected(2).canReapply(3)).toBe(true);
+    });
+
+    it.each(['pending', 'approved', 'suspended'] as const)(
+      'refuses a seller that is %s',
+      (state) => {
+        const access = SellerAccess.restore({ ...rejected(0).state, state });
+
+        expect(access.reapply(LATER, 3)).toEqual({
+          ok: false,
+          error: { code: 'seller-access.wrong-state' },
+        });
+        expect(access.canReapply(3)).toBe(false);
+      },
+    );
+
+    it('refuses a limit that is not a positive whole number', () => {
+      expect(() => rejected(0).reapply(LATER, 0)).toThrow(RangeError);
+      expect(() => rejected(0).reapply(LATER, 1.5)).toThrow(RangeError);
     });
   });
 

@@ -199,6 +199,21 @@ export class PrismaSessionRepository implements SessionRepository {
     return count;
   }
 
+  async revokeAllOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reason: SessionRevokedReason,
+    now: Temporal.Instant,
+  ): Promise<number> {
+    // On the partial index sessions_market_id_seller_id_seller_idx (data design 8.4); the
+    // predicate `seller_id IS NOT NULL` is implied by the equality.
+    const { count } = await this.prisma.tx(market).identitySession.updateMany({
+      where: { marketId: market.marketId, sellerId, revokedAt: null },
+      data: { revokedAt: toDate(now), revokedReason: reason },
+    });
+    return count;
+  }
+
   async rotate(
     market: MarketContext,
     id: Id<'Session'>,

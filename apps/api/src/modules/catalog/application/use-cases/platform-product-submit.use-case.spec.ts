@@ -23,7 +23,7 @@ import type { AttributeRepository } from '../ports/attribute.repository';
 import { Product } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
-import { UnavailableClaimTextMatcher } from '../../infrastructure/placeholders/unavailable-claim-text-matcher';
+import { unavailableClaimTextMatcher } from '../../../../../test/support/unavailable-claim-text-matcher.fake';
 import { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-matcher';
@@ -105,8 +105,11 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
     const revisions = new Map<string, StoredRevision>();
     const matched: ClaimTextToMatch[][] = [];
     const events: unknown[] = [];
+    // Units do not nest and the real matcher opens its own: a call inside an open unit is a bug.
+    let openUnits = 0;
     const matcher: ClaimTextMatcher = matcherOverride ?? {
       match: (_c, texts) => {
+        if (openUnits > 0) throw new Error('the matcher was called inside an open unit');
         matched.push([...texts]);
         return Promise.resolve({
           ok: true as const,
@@ -115,7 +118,15 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       },
     };
     const unitOfWork = {
-      run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+      run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => {
+        if (openUnits > 0) throw new Error('units do not nest');
+        openUnits += 1;
+        try {
+          return await work();
+        } finally {
+          openUnits -= 1;
+        }
+      },
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
       nextProductCode: () => Promise.resolve('P00000001'),
@@ -311,7 +322,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
   });
 
   it('refuses every text while the matcher is the placeholder', async () => {
-    const r = rig(new UnavailableClaimTextMatcher());
+    const r = rig(unavailableClaimTextMatcher);
     const product = newProduct();
     r.seed(product);
     const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));
@@ -423,7 +434,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
   });
 
   it('lists the placeholder refusal for every text, by field', async () => {
-    const r = rig(new UnavailableClaimTextMatcher());
+    const r = rig(unavailableClaimTextMatcher);
     const product = newProduct();
     r.seed(product);
     const submitted = await r.useCase.execute(contextOf('admin'), request(product.state.id));

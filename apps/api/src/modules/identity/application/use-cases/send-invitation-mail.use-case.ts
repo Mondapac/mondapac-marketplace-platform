@@ -53,9 +53,10 @@ export interface SendInvitationMailDependencies {
  *    lifetime) stored if the invitation is still the one announced. A retry after a failed unit
  *    sends a new mail and the first token never works (6.6).
  *
- * Slice 7b sends the `admin` kind (the first-admin routine); the other kinds come with their
- * slices (8b, 9, 11) and throw here until their page and copy exist, so a delivery is
- * dead-lettered with an alert, never dropped. A missing lifetime or page throws too. The token,
+ * Slice 7b sends the `admin` kind (the first-admin routine), slice 9 the `seller-owner` kind (E9,
+ * to the seller panel's acceptance page); `staff` comes with slice 11 and throws here until its
+ * page and copy exist, so a delivery is dead-lettered with an alert, never dropped. A missing
+ * lifetime or page throws too. The token,
  * the address and the body are never logged.
  */
 export class SendInvitationMail extends UseCase<
@@ -107,11 +108,17 @@ export class SendInvitationMail extends UseCase<
       );
     }
     const { kind, email } = invitation!.state;
-    if (kind !== 'admin') {
+    if (kind === 'staff') {
       throw new Error(`send-invitation-mail: no mail for the ${kind} kind before its slice`);
     }
+    // The panel the invitee joins: an admin's (E11), or the seller panel for a seller created by
+    // an admin (E9, slice 9).
+    const population = kind === 'admin' ? 'admin' : 'seller';
     const lifetimeMinutes = policy.invitationLifetimeMinutes(market, kind);
-    const target = this.deps.targets.target(market, 'admin', 'accept-invitation');
+    const target =
+      population === 'admin'
+        ? this.deps.targets.target(market, 'admin', 'accept-invitation')
+        : this.deps.targets.target(market, 'seller', 'accept-invitation');
     if (lifetimeMinutes === null || target === null || email === null) {
       throw new Error(
         `send-invitation-mail: no lifetime or page for ${kind} in ${market.marketId}`,
@@ -122,7 +129,7 @@ export class SendInvitationMail extends UseCase<
     url.hash = minted.token;
     const composed = this.deps.composer.compose(market, {
       template: 'invitation',
-      population: 'admin',
+      population,
       url: url.toString(),
       lifetimeMinutes,
     });

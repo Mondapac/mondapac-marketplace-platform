@@ -101,6 +101,8 @@ function setUp(population: Population) {
           ...deps,
           memberships: fakes.membershipRepository,
           sellerAccess: fakes.sellerAccessRepository,
+          decisions: fakes.decisionRepository,
+          grants: fakes.grantReader,
         });
   return { fakes, steps, clock, useCase };
 }

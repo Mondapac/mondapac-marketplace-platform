@@ -27,7 +27,11 @@ export const LINK_TOKENS = Symbol('LINK_TOKENS');
  */
 export interface LinkPages {
   readonly customer: 'verify-email' | 'sign-in' | 'reset-password';
-  readonly seller: 'verify-email' | 'sign-in' | 'reset-password';
+  /**
+   * Slice 9 adds the seller panel's invitation acceptance page (E9); until the Market-config PR
+   * configures it, it answers null and no seller invitation is issued.
+   */
+  readonly seller: 'verify-email' | 'sign-in' | 'reset-password' | 'accept-invitation';
   /**
    * Slice 7b adds the admin panel's sign-in, invitation acceptance, enrolment and reset pages;
    * until the Market-config PR configures them they answer null and no such mail is sent.

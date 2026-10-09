@@ -166,6 +166,47 @@
     }
   },
   {
+    "type": "identity.seller-access-approved.v1",
+    "aggregateType": "seller-access",
+    "fields": {
+      "sellerId": "id",
+      "decisionId": "id",
+      "basisId": "optional(id)"
+    }
+  },
+  {
+    "type": "identity.seller-access-reapplied.v1",
+    "aggregateType": "seller-access",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "identity.seller-access-reinstated.v1",
+    "aggregateType": "seller-access",
+    "fields": {
+      "sellerId": "id",
+      "decisionId": "id"
+    }
+  },
+  {
+    "type": "identity.seller-access-rejected.v1",
+    "aggregateType": "seller-access",
+    "fields": {
+      "sellerId": "id",
+      "decisionId": "id",
+      "basisId": "optional(id)"
+    }
+  },
+  {
+    "type": "identity.seller-access-suspended.v1",
+    "aggregateType": "seller-access",
+    "fields": {
+      "sellerId": "id",
+      "decisionId": "id"
+    }
+  },
+  {
     "type": "identity.seller-registered.v1",
     "aggregateType": "seller-access",
     "fields": {

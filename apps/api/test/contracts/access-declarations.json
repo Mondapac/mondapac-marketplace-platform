@@ -10,6 +10,7 @@
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
+  { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.complete-admin-sign-in", "rule": "anonymous" },
   {
@@ -33,6 +34,11 @@
   { "name": "identity.purge-expired", "rule": "system" },
   { "name": "identity.purge-unverified-accounts", "rule": "system" },
   {
+    "name": "identity.reapply-seller-access",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "identity.regenerate-recovery-codes",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
@@ -52,6 +58,7 @@
   { "name": "identity.send-link-mail", "rule": "system" },
   { "name": "identity.send-password-changed-mail", "rule": "system" },
   { "name": "identity.send-second-factor-mail", "rule": "system" },
+  { "name": "identity.send-seller-access-mail", "rule": "system" },
   { "name": "identity.send-welcome-mail", "rule": "system" },
   { "name": "identity.sign-in-admin", "rule": "anonymous" },
   { "name": "identity.sign-in-customer", "rule": "anonymous" },

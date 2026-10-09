@@ -1,3 +1,4 @@
+import { CertificationModule } from '../certification';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
@@ -147,6 +148,7 @@ const productTypeProvider: FactoryProvider<string> = {
  */
 @Module({
   controllers: [PlatformProductController],
+  imports: [CertificationModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),
@@ -233,6 +235,8 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       categories: true,
       seed: true,
+      check: true,
+      policy: true,
       outbox: true,
       clock: true,
       ids: true,
@@ -241,6 +245,8 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       attributes: true,
       attributeSeed: true,
+      check: true,
+      policy: true,
       clock: true,
       ids: true,
     }),

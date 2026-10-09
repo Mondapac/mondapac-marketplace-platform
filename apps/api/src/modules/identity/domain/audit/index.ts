@@ -333,6 +333,82 @@ export const AdminSessionOpenedAudit = defineAuditAction({
   },
 });
 
+/**
+ * The decisions on a seller's access (identity design 3.3, 10.1; PA 5 row 9; slice 9). Target: the
+ * seller access record. The actor is the admin who decided (AC 11, AC 27). `before` and `after`
+ * are state codes; `after.decisionId` names the `AccessDecision`, which holds the reason
+ * encrypted under the seller's key: the reason is never in a row (R5, VER-13). `basisId` is the
+ * `sellers` submission an approval or a rejection rests on (ADR-0022 decision 4); null in Phase 2.
+ */
+export const SellerAccessApprovedAudit = defineAuditAction({
+  action: 'identity.seller-access.approved',
+  targetType: 'identity.seller-access',
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(SELLER_ACCESS_STATES) },
+  after: {
+    state: auditField.enumOf(SELLER_ACCESS_STATES),
+    decisionId: auditField.id(),
+    basisId: auditField.optional(auditField.id()),
+  },
+});
+
+/** A pending seller rejected with a reason (see {@link SellerAccessApprovedAudit}). */
+export const SellerAccessRejectedAudit = defineAuditAction({
+  action: 'identity.seller-access.rejected',
+  targetType: 'identity.seller-access',
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(SELLER_ACCESS_STATES) },
+  after: {
+    state: auditField.enumOf(SELLER_ACCESS_STATES),
+    decisionId: auditField.id(),
+    basisId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * An approved seller suspended with a reason (see {@link SellerAccessApprovedAudit}); in the same
+ * unit every session of its accounts was revoked. `revokedSessions` is the count.
+ */
+export const SellerAccessSuspendedAudit = defineAuditAction({
+  action: 'identity.seller-access.suspended',
+  targetType: 'identity.seller-access',
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(SELLER_ACCESS_STATES) },
+  after: {
+    state: auditField.enumOf(SELLER_ACCESS_STATES),
+    decisionId: auditField.id(),
+    revokedSessions: auditField.integer(),
+  },
+});
+
+/** A suspended seller reinstated (see {@link SellerAccessApprovedAudit}). */
+export const SellerAccessReinstatedAudit = defineAuditAction({
+  action: 'identity.seller-access.reinstated',
+  targetType: 'identity.seller-access',
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(SELLER_ACCESS_STATES) },
+  after: {
+    state: auditField.enumOf(SELLER_ACCESS_STATES),
+    decisionId: auditField.id(),
+  },
+});
+
+/**
+ * A rejected seller applied again (identity design 3.3; PA 5 row 9): the Seller Owner, signed in,
+ * through `sellers`' "submit again". Target: the seller access record. No decision is written;
+ * `reapplyCount` is the count after this one.
+ */
+export const SellerAccessReappliedAudit = defineAuditAction({
+  action: 'identity.seller-access.reapplied',
+  targetType: 'identity.seller-access',
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(SELLER_ACCESS_STATES) },
+  after: {
+    state: auditField.enumOf(SELLER_ACCESS_STATES),
+    reapplyCount: auditField.integer(),
+  },
+});
+
 /** Every audited action of identity, for its module's registration. */
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
@@ -352,4 +428,9 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   RecoveryCodesRegeneratedAudit,
   SecondFactorResetAudit,
   AdminSessionOpenedAudit,
+  SellerAccessApprovedAudit,
+  SellerAccessRejectedAudit,
+  SellerAccessSuspendedAudit,
+  SellerAccessReinstatedAudit,
+  SellerAccessReappliedAudit,
 ]);

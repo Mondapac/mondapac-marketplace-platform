@@ -166,8 +166,53 @@ export class SellerStatusBody {
     type: String,
     nullable: true,
     description:
-      'The reason of a rejection, for the Seller Owner only. Always null until the decisions ' +
-      'of identity slice 9.',
+      "The instant of the seller's latest access decision, ISO 8601 UTC; null before any.",
+  })
+  decidedAt!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The reason of the rejection (or suspension) the seller is in, exactly as written, for ' +
+      'the Seller Owner only; null for Staff and in every other state. Personal data: show it ' +
+      'as text, never as markup.',
   })
   reason!: string | null;
+
+  @ApiProperty({
+    description:
+      'True when a rejected seller has used up its re-applications ("Not approved"); false ' +
+      'otherwise; null (unknown) while the Market configures no re-apply limit.',
+    type: Boolean,
+    nullable: true,
+  })
+  reapplyLimitReached!: boolean | null;
+}
+
+/** Accept a seller owner's invitation (identity design 3.4; `ux.md` F8, A9; slice 9). */
+export class SellerAcceptInvitationRequest {
+  @ApiProperty({
+    description:
+      "The token from the fragment of the invitation mail's link (never in a URL the server " +
+      'sees). Never logged or echoed.',
+    example: 'mi1_…',
+  })
+  token!: string;
+
+  @ApiProperty({
+    description:
+      'The new password, at most 1024 bytes, under the password rules of the Market. Never ' +
+      'trimmed, logged or echoed.',
+    format: 'password',
+  })
+  password!: string;
+}
+
+export class SellerInvitationAccepted {
+  @ApiProperty({
+    enum: ['invitation.accepted'],
+    description: 'The account exists and its email is confirmed; no session is opened: sign in.',
+  })
+  code!: 'invitation.accepted';
 }

@@ -14,7 +14,36 @@ import type { AttributeDefinition } from '../../domain/attribute-definition';
 import type { AttributeFamily } from '../../domain/attribute-family';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeSeed, SeededDefinition, SeededFamily } from '../ports/attribute-seed';
+import type { CheckClaimText, CheckedText } from '../claim-text/check-claim-text.service';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { SeedAttributes } from './seed-attributes.use-case';
+
+/** A claim-text check whose verdict for a text is `found` when it contains "halal". */
+function fakeCheck(options: { unavailable?: boolean } = {}) {
+  const seen: CheckedText[][] = [];
+  const check = {
+    executeAsSystem: (_c: unknown, texts: readonly CheckedText[]) => {
+      seen.push([...texts]);
+      return Promise.resolve({
+        ok: true as const,
+        value: texts.map((item) => ({
+          field: item.field,
+          ref: item.ref,
+          locale: item.locale,
+          code: options.unavailable
+            ? ('claim-text.check-unavailable' as const)
+            : item.text.toLowerCase().includes('halal')
+              ? ('claim-text.found' as const)
+              : ('clean' as const),
+        })),
+      });
+    },
+  } as unknown as CheckClaimText;
+  return { check, seen };
+}
+const policy = {
+  locales: () => ({ default: 'xx', supported: ['xx'] }),
+} as unknown as CatalogMarketPolicy;
 
 // The seed use case (catalog design 7.2) in memory for both Market fixtures: system only,
 // definitions before families, create-only, an existing code skipped whatever its state, a seed
@@ -88,7 +117,9 @@ describe.each(TEST_MARKETS)('SeedAttributes in market %s', (code) => {
   function build(
     seedDefinitions: readonly SeededDefinition[],
     seedFamilies: readonly SeededFamily[],
+    checkOptions: { unavailable?: boolean } = {},
   ) {
+    const { check, seen } = fakeCheck(checkOptions);
     let sequence = 0;
     const attributes = new MemoryAttributes();
     const unitOfWork = {
@@ -102,13 +133,15 @@ describe.each(TEST_MARKETS)('SeedAttributes in market %s', (code) => {
       unitOfWork,
       attributes,
       attributeSeed,
+      check,
+      policy,
       clock: new FixedClock(Temporal.Instant.from('2026-10-08T00:00:00Z')),
       ids: {
         next: <T extends string>() =>
           `01990000-0000-7000-8000-${String(++sequence).padStart(12, '0')}` as Id<T>,
       },
     });
-    return { useCase, attributes };
+    return { useCase, attributes, seen };
   }
 
   const system = () => testCallContext(market, 'system', 'seed-attributes-0001');
@@ -201,5 +234,43 @@ describe.each(TEST_MARKETS)('SeedAttributes in market %s', (code) => {
     const result = await s.useCase.execute(anonymous, {});
     expect(result.ok).toBe(false);
     expect(s.attributes.order).toEqual([]);
+  });
+
+  it('checks every name and option label as the system actor before writing anything', async () => {
+    const withOption: SeededDefinition = {
+      ...definition('brand'),
+      options: [{ code: 'acme', labels: { xx: 'Acme' }, active: true, position: 1 }],
+    };
+    const s = build([withOption], []);
+    await s.useCase.execute(system(), {});
+    expect(s.seen).toHaveLength(1);
+    expect(s.seen[0]).toEqual([
+      { field: 'attribute-definition.name', ref: 'brand', locale: 'xx', text: 'A name' },
+      { field: 'attribute-definition.option-label', ref: 'brand-acme', locale: 'xx', text: 'Acme' },
+    ]);
+  });
+
+  it('refuses the whole run, creating nothing, when an option label holds a claim word', async () => {
+    const bad: SeededDefinition = {
+      ...definition('brand'),
+      options: [{ code: 'x', labels: { xx: 'Halal' }, active: true, position: 1 }],
+    };
+    const s = build([definition('model'), bad], []);
+    const result = await s.useCase.execute(system(), {});
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'seed.claim-text-refused',
+        places: [{ field: 'attribute-definition.option-label', ref: 'brand-x' }],
+      },
+    });
+    expect(s.attributes.definitions.size).toBe(0);
+  });
+
+  it('refuses the whole run when the check is unavailable', async () => {
+    const s = build([definition('brand')], [], { unavailable: true });
+    const result = await s.useCase.execute(system(), {});
+    expect(!result.ok && result.error.code).toBe('seed.claim-text-unavailable');
+    expect(s.attributes.definitions.size).toBe(0);
   });
 });

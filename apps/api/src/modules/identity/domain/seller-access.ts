@@ -1,5 +1,21 @@
-import type { Id, MarketId, PendingEvent, Temporal } from '@mondapac/shared-kernel';
-import { SELLER_ACCESS_STATES, SELLER_ORIGINS, SellerRegistered } from './events';
+import { err, ok } from '@mondapac/shared-kernel';
+import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
+import {
+  AccessDecision,
+  parseAccessReason,
+  type AccessDecisionKind,
+  type AccessReasonInvalid,
+} from './access-decision';
+import {
+  SELLER_ACCESS_STATES,
+  SELLER_ORIGINS,
+  SellerAccessApproved,
+  SellerAccessReapplied,
+  SellerAccessRejected,
+  SellerAccessReinstated,
+  SellerAccessSuspended,
+  SellerRegistered,
+} from './events';
 
 export type SellerOrigin = (typeof SELLER_ORIGINS)[number];
 export type SellerAccessStateCode = (typeof SELLER_ACCESS_STATES)[number];
@@ -27,12 +43,39 @@ export class SellerAccessInvariantError extends Error {
   }
 }
 
+/** A transition that 3.3 does not list from the current state (8.6 row 1). */
+export type SellerAccessWrongState = { readonly code: 'seller-access.wrong-state' };
+const WRONG_STATE: SellerAccessWrongState = Object.freeze({ code: 'seller-access.wrong-state' });
+
+/** A rejected seller that used up its re-applications (3.3: the "final state"). */
+export type SellerAccessReapplyLimit = { readonly code: 'seller-access.reapply-limit' };
+
+/** Who decides, when, and under which id (identity design 3.3; data design 3.11). */
+export interface DecisionInput {
+  readonly decisionId: Id<'AccessDecision'>;
+  /** The deciding account; null for the system actor (C4). */
+  readonly decidedBy: Id<'Account'> | null;
+  readonly now: Temporal.Instant;
+}
+
+/** Approve and reject also carry `sellers`' submission id, once `sellers` calls (8.4). */
+export interface BasedDecisionInput extends DecisionInput {
+  readonly basisId: Id | null;
+}
+
 /**
  * The `SellerAccess` aggregate (identity design 2.1 and 3.3; ADR-0022): one per seller id,
- * minted by `identity`; its state covers every account of the seller. Slice 5 builds the
- * creation by self-registration and the `seller-registered` step; the decisions (approve,
- * reject, suspend, reinstate, re-apply) arrive with slice 9. Times come from the caller's
- * `Clock`; a change raises the version by one and records at most one event.
+ * minted by `identity`; its state covers every account of the seller. Times come from the
+ * caller's `Clock`; a change raises the version by one and records at most one event.
+ *
+ * - Creation: by self-registration (slice 5; published when the owner verifies the email) or by
+ *   an admin's seller-owner invitation (slice 9; published at once, 8.2).
+ * - Decisions (slice 9): `approve` and `reject` a `pending` seller, `suspend` an `approved` one,
+ *   `reinstate` a `suspended` one. Each answers the {@link AccessDecision} to store; a rejection
+ *   and a suspension need a non-empty reason (decision 9), checked here, so no entry point can
+ *   reject or suspend without one. Every other transition is `seller-access.wrong-state`.
+ * - `reapply` (slice 9, behind the seller-access contract): `rejected` → `pending` while the
+ *   re-applications since the last approval are fewer than the Market's limit.
  */
 export class SellerAccess {
   #state: SellerAccessState;
@@ -43,18 +86,7 @@ export class SellerAccess {
     /** The version read from the store; null for a seller not stored yet. */
     readonly persistedVersion: number | null,
   ) {
-    if (!Number.isInteger(state.reapplyCount) || state.reapplyCount < 0) {
-      throw new SellerAccessInvariantError('reapply-count');
-    }
-    if (!Number.isInteger(state.version) || state.version < 1) {
-      throw new SellerAccessInvariantError('version');
-    }
-    if (!(SELLER_ACCESS_STATES as readonly string[]).includes(state.state)) {
-      throw new SellerAccessInvariantError('state');
-    }
-    if (!(SELLER_ORIGINS as readonly string[]).includes(state.origin)) {
-      throw new SellerAccessInvariantError('origin');
-    }
+    SellerAccess.check(state);
     this.#state = Object.freeze({ ...state });
   }
 
@@ -84,6 +116,49 @@ export class SellerAccess {
       },
       null,
     );
+  }
+
+  /**
+   * A seller created by an admin with a seller-owner invitation (3.3, 3.4; SEL-06, AC 5, AC 31):
+   * `pending` when the Market requires approval, `approved` when it does not, as a
+   * self-registration. Registered at once (8.2: "at creation for an invitation"): the purge never
+   * deletes it, and `identity.seller-registered.v1` is recorded now, with no owner yet.
+   */
+  static forInvitation(input: {
+    readonly sellerId: Id<'Seller'>;
+    readonly marketId: MarketId;
+    readonly approvalRequired: boolean;
+    readonly now: Temporal.Instant;
+  }): SellerAccess {
+    const { sellerId, marketId, approvalRequired, now } = input;
+    const access = new SellerAccess(
+      {
+        sellerId,
+        marketId,
+        origin: 'invitation',
+        state: approvalRequired ? 'pending' : 'approved',
+        stateChangedAt: now,
+        reapplyCount: 0,
+        registeredAt: now,
+        version: 1,
+        createdAt: now,
+      },
+      null,
+    );
+    access.#events.push(
+      SellerRegistered.record({
+        aggregateId: sellerId,
+        aggregateVersion: 1,
+        occurredAt: now,
+        payload: {
+          sellerId,
+          ownerAccountId: null,
+          origin: 'invitation',
+          accessState: access.#state.state,
+        },
+      }),
+    );
+    return access;
   }
 
   /** A seller access read from the store. Checks the invariants again. */
@@ -138,5 +213,173 @@ export class SellerAccess {
       }),
     );
     return true;
+  }
+
+  /**
+   * `pending` → `approved` (3.3; SEL-03, AC 4, AC 9). The re-application count starts again: the
+   * limit counts re-applications "since the last approval". The guard on the owner (an account
+   * with a verified email) needs other aggregates and belongs to the use case.
+   */
+  approve(input: BasedDecisionInput): Result<AccessDecision, SellerAccessWrongState> {
+    if (this.#state.state !== 'pending') return err(WRONG_STATE);
+    const decision = this.decision('approved', null, input.basisId, input);
+    this.move('approved', input.now, 0);
+    this.#events.push(
+      SellerAccessApproved.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: input.now,
+        payload: {
+          sellerId: this.#state.sellerId,
+          decisionId: input.decisionId,
+          basisId: input.basisId,
+        },
+      }),
+    );
+    return ok(decision);
+  }
+
+  /** `pending` → `rejected` with a non-empty reason (3.3; decision 9, AC 6). */
+  reject(
+    input: BasedDecisionInput & { readonly reason: unknown },
+  ): Result<AccessDecision, SellerAccessWrongState | AccessReasonInvalid> {
+    if (this.#state.state !== 'pending') return err(WRONG_STATE);
+    const reason = parseAccessReason(input.reason);
+    if (!reason.ok) return reason;
+    const decision = this.decision('rejected', reason.value, input.basisId, input);
+    this.move('rejected', input.now, this.#state.reapplyCount);
+    this.#events.push(
+      SellerAccessRejected.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: input.now,
+        payload: {
+          sellerId: this.#state.sellerId,
+          decisionId: input.decisionId,
+          basisId: input.basisId,
+        },
+      }),
+    );
+    return ok(decision);
+  }
+
+  /** `approved` → `suspended` with a non-empty reason (3.3; SEL-07, decision 9, AC 14). */
+  suspend(
+    input: DecisionInput & { readonly reason: unknown },
+  ): Result<AccessDecision, SellerAccessWrongState | AccessReasonInvalid> {
+    if (this.#state.state !== 'approved') return err(WRONG_STATE);
+    const reason = parseAccessReason(input.reason);
+    if (!reason.ok) return reason;
+    const decision = this.decision('suspended', reason.value, null, input);
+    this.move('suspended', input.now, this.#state.reapplyCount);
+    this.#events.push(
+      SellerAccessSuspended.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: input.now,
+        payload: { sellerId: this.#state.sellerId, decisionId: input.decisionId },
+      }),
+    );
+    return ok(decision);
+  }
+
+  /** `suspended` → `approved` (3.3; AC 14). No reason (data design 3.11). */
+  reinstate(input: DecisionInput): Result<AccessDecision, SellerAccessWrongState> {
+    if (this.#state.state !== 'suspended') return err(WRONG_STATE);
+    const decision = this.decision('reinstated', null, null, input);
+    this.move('approved', input.now, this.#state.reapplyCount);
+    this.#events.push(
+      SellerAccessReinstated.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: input.now,
+        payload: { sellerId: this.#state.sellerId, decisionId: input.decisionId },
+      }),
+    );
+    return ok(decision);
+  }
+
+  /**
+   * Whether a re-application is still possible under `limit` (3.3; 8.6 row 2: the status read
+   * says so, and the panel shows "Changes needed" or "Not approved").
+   */
+  canReapply(limit: number): boolean {
+    SellerAccess.checkLimit(limit);
+    return this.#state.state === 'rejected' && this.#state.reapplyCount < limit;
+  }
+
+  /**
+   * `rejected` → `pending` by the Seller Owner (3.3; AC 6): fewer than `limit` re-applications
+   * since the last approval, else `seller-access.reapply-limit` and the seller stays rejected.
+   * Records `identity.seller-access-reapplied.v1`; no decision is written (data design 3.11).
+   */
+  reapply(
+    now: Temporal.Instant,
+    limit: number,
+  ): Result<void, SellerAccessWrongState | SellerAccessReapplyLimit> {
+    SellerAccess.checkLimit(limit);
+    if (this.#state.state !== 'rejected') return err(WRONG_STATE);
+    if (this.#state.reapplyCount >= limit) return err({ code: 'seller-access.reapply-limit' });
+    this.move('pending', now, this.#state.reapplyCount + 1);
+    this.#events.push(
+      SellerAccessReapplied.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: now,
+        payload: { sellerId: this.#state.sellerId },
+      }),
+    );
+    return ok(undefined);
+  }
+
+  private decision(
+    decision: AccessDecisionKind,
+    reason: string | null,
+    basisId: Id | null,
+    input: DecisionInput,
+  ): AccessDecision {
+    return AccessDecision.decide({
+      id: input.decisionId,
+      marketId: this.#state.marketId,
+      sellerId: this.#state.sellerId,
+      decision,
+      reason,
+      basisId,
+      decidedByAccountId: input.decidedBy,
+      decidedAt: input.now,
+    });
+  }
+
+  private move(state: SellerAccessStateCode, now: Temporal.Instant, reapplyCount: number): void {
+    const next: SellerAccessState = {
+      ...this.#state,
+      state,
+      stateChangedAt: now,
+      reapplyCount,
+      version: this.#state.version + 1,
+    };
+    SellerAccess.check(next);
+    this.#state = Object.freeze(next);
+  }
+
+  private static checkLimit(limit: number): void {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new RangeError('reapply: the limit is a positive whole number');
+    }
+  }
+
+  private static check(state: SellerAccessState): void {
+    if (!Number.isInteger(state.reapplyCount) || state.reapplyCount < 0) {
+      throw new SellerAccessInvariantError('reapply-count');
+    }
+    if (!Number.isInteger(state.version) || state.version < 1) {
+      throw new SellerAccessInvariantError('version');
+    }
+    if (!(SELLER_ACCESS_STATES as readonly string[]).includes(state.state)) {
+      throw new SellerAccessInvariantError('state');
+    }
+    if (!(SELLER_ORIGINS as readonly string[]).includes(state.origin)) {
+      throw new SellerAccessInvariantError('origin');
+    }
   }
 }

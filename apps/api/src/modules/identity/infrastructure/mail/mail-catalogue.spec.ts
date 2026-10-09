@@ -16,6 +16,7 @@ import {
   formatDuration,
   MAIL_KEYS,
   MissingMailCatalogueError,
+  ReasonInSubjectError,
 } from './mail-catalogue';
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
@@ -186,6 +187,24 @@ describe('CatalogueMailComposer (identity design 9; ux.md E1, E12)', () => {
         url: 'https://x.test/',
       }),
     ).toThrow(/admin/);
+  });
+
+  it('refuses at construction a catalogue that puts the reason in a subject (Hassan L2)', () => {
+    const withReason = {
+      ...catalogues.messages('identity', 'ja-JP')!,
+      'identity.mail.seller-suspended.seller.subject': '停止: {reason}',
+    };
+    const bad = new LocaleCatalogues(
+      new Map([
+        ['en-AU', new Map([['identity', catalogues.messages('identity', 'en-AU')!]])],
+        ['ja-JP', new Map([['identity', withReason]])],
+      ]),
+    );
+
+    expect(() => new CatalogueMailComposer(markets, bad)).toThrow(ReasonInSubjectError);
+    expect(() => new CatalogueMailComposer(markets, bad)).toThrow(
+      /identity\.mail\.seller-suspended\.seller\.subject/,
+    );
   });
 
   it('refuses at construction a hosted Market whose locale has no catalogue', () => {

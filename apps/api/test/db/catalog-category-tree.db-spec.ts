@@ -6,10 +6,13 @@ import { Client } from 'pg';
 import { SeedCategoryTree } from '../../src/modules/catalog/application/use-cases/seed-category-tree.use-case';
 import { ZZ_CATEGORY_TREE } from '../../src/modules/catalog/infrastructure/seed/zz.category-tree.seed';
 import { CLOCK } from '../../src/platform/clock/clock.module';
+import { CLAIM_TEXT_MATCHER } from '../../src/modules/catalog/application/ports/claim-text-matcher';
+import { cleanClaimTextMatcher } from '../support/clean-claim-text-matcher.fake';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { sqlState } from './sql-state';
 
 // Catalog slice 2 on PostgreSQL (catalog data design 3.4, 5.1, 7), for both Market fixtures: the
 // constraints, the no-cycle trigger with its depth cap, the insert-only revisions and the
@@ -34,7 +37,12 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
     ({ app } = await createTestApp({
       env: { DATABASE_URL: testDatabaseUrl() },
       override: (builder) =>
-        builder.overrideProvider(CLOCK).useValue(new FixedClock(Temporal.Instant.from(T0))),
+        builder
+          .overrideProvider(CLOCK)
+          .useValue(new FixedClock(Temporal.Instant.from(T0)))
+          // The seeds are checked against a vocabulary; these specs test the SQL, not the words.
+          .overrideProvider(CLAIM_TEXT_MATCHER)
+          .useValue(cleanClaimTextMatcher),
     }));
   });
   afterAll(async () => {
@@ -42,20 +50,6 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
     await sql.end();
     await owner.end();
   });
-
-  /** The SQLSTATE of a statement that must fail, or null when it succeeded. */
-  async function sqlState(
-    client: Client,
-    text: string,
-    values: unknown[] = [],
-  ): Promise<string | null> {
-    try {
-      await client.query(text, values);
-      return null;
-    } catch (error) {
-      return (error as { code?: string }).code ?? 'unknown';
-    }
-  }
 
   async function insertCategory(overrides: Record<string, unknown> = {}): Promise<string> {
     const id = uuid7();

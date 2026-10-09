@@ -19,7 +19,7 @@ import { configurableProductType } from '../../domain/product-types/configurable
 import type { RateReservation } from '../../domain/rate-limits';
 import type { WorkingCopy } from '../../domain/working-copy';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
-import { UnavailableClaimTextMatcher } from '../../infrastructure/placeholders/unavailable-claim-text-matcher';
+import { unavailableClaimTextMatcher } from '../../../../../test/support/unavailable-claim-text-matcher.fake';
 import { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-matcher';
@@ -263,7 +263,7 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
   });
 
   it('refuses every new text, and saves the rest, while the matcher is the placeholder', async () => {
-    const r = rig(new UnavailableClaimTextMatcher());
+    const r = rig(unavailableClaimTextMatcher);
     const product = newProduct();
     r.stored.set(product.state.id, product);
 

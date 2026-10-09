@@ -30,6 +30,7 @@ const PENDING_KEYS: ReadonlySet<string> = new Set([
   'invitations_market_id_seller_id_email_pending_key',
   'invitations_market_id_email_pending_platform_key',
   'invitations_market_id_seller_id_owner_pending_key',
+  'invitations_market_id_email_seller_owner_pending_key',
 ]);
 
 const SELECTED = {
@@ -113,6 +114,30 @@ export class PrismaInvitationRepository implements InvitationRepository {
     // On the partial unique keys of data design 8.4 (pending, by scope and address).
     const row = await this.prisma.tx(market).identityInvitation.findFirst({
       where: { marketId: market.marketId, sellerId, emailNormalized, state: 'pending' },
+      select: SELECTED,
+    });
+    return row === null ? null : restore(row);
+  }
+
+  async findPendingOwnerInvitation(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Invitation | null> {
+    // The predicate of the partial unique key `invitations_market_id_seller_id_owner_pending_key`.
+    const row = await this.prisma.tx(market).identityInvitation.findFirst({
+      where: { marketId: market.marketId, sellerId, kind: 'seller-owner', state: 'pending' },
+      select: SELECTED,
+    });
+    return row === null ? null : restore(row);
+  }
+
+  async findPendingOwnerInvitationByEmail(
+    market: MarketContext,
+    emailNormalized: string,
+  ): Promise<Invitation | null> {
+    // The predicate of the partial unique key `invitations_market_id_email_seller_owner_pending_key`.
+    const row = await this.prisma.tx(market).identityInvitation.findFirst({
+      where: { marketId: market.marketId, emailNormalized, kind: 'seller-owner', state: 'pending' },
       select: SELECTED,
     });
     return row === null ? null : restore(row);
