@@ -296,7 +296,7 @@ describe.each(TEST_MARKETS)(
         id,
         marketId: m as AccountState['marketId'],
         kind,
-        email: { typed: INVITEE, normalized: INVITEE.toLowerCase() } as InvitationState['email'],
+        email: { typed: INVITEE, normalized: INVITEE.toLowerCase() },
         displayName: kind === 'seller-owner' ? NAME : null,
         roleId: roleOf(
           s,

@@ -681,12 +681,12 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
               population: 'seller',
               accountId,
               sessionId: id<'Session'>(`01990000-0000-7000-8000-${n12(0xf1f0)}`),
-              sellerId: sellerId as Id<'Seller'>,
+              sellerId: sellerId,
             }),
           );
         return {
           root,
-          sellerId: sellerId as Id<'Seller'>,
+          sellerId: sellerId,
           owner: actorOf(owner.id),
           staff: actorOf(staffOf(code)),
         };
