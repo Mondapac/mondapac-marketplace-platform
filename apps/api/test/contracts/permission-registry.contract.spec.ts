@@ -128,7 +128,7 @@ describe('the permission registry of the booted application (PF 6.1; slice 8a-1)
   it("worker: catalog's keys are registered and sealed at bootstrap, before identity.seed-roles can run (I-1a)", () => {
     // The seed names `catalog.platform-product.edit` (Catalogue Moderator v2). The registry is
     // sealed in onApplicationBootstrap, which `startWorker` completes before WorkerRuntime.start()
-    // starts the scheduler; the job itself runs in test/db/role-seed-worker.db-spec.ts.
+    // starts the scheduler; the job itself runs in test/db/role-seed.db-spec.ts (worker block).
     const worker = graphs.get('worker')!;
     const registry = worker.get(PermissionRegistry);
     expect(registry.sealed).toBe(true);
