@@ -1,3 +1,4 @@
+import { CertificationModule } from '../certification';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
@@ -145,6 +146,7 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
+  imports: [CertificationModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),

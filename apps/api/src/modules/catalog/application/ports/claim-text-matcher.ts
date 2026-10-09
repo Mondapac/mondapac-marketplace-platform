@@ -25,8 +25,8 @@ export const MAX_MATCH_TEXT_LENGTH = 20_000;
 
 /**
  * Matching of claim terms (catalog design 6.1), owned by `catalog` and bound to
- * `certification.matchClaimTerms` once that binding PR merges. Until then the composition root
- * binds the fail-closed placeholder of ADR-0031 and every check answers unavailable. The call
+ * `certification.matchClaimTerms` (ADR-0031 decision 3). The facade opens a read-only unit of its
+ * own, so no caller may hold a unit of work open (units do not nest). The call
  * carries the caller's {@link CallContext} unchanged; the answer is one list of matches per text,
  * in order, and any other shape is treated as unavailable by the consumer.
  */

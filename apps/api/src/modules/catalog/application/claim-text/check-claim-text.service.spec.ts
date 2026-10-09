@@ -11,7 +11,7 @@ import {
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { RateReservation } from '../../domain/rate-limits';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
-import { UnavailableClaimTextMatcher } from '../../infrastructure/placeholders/unavailable-claim-text-matcher';
+import { unavailableClaimTextMatcher } from '../../../../../test/support/unavailable-claim-text-matcher.fake';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type {
   ClaimTextCheckUnavailable,
@@ -212,7 +212,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     });
 
     it('marks every text unavailable under the placeholder', async () => {
-      const { service } = rig({ matcher: new UnavailableClaimTextMatcher() });
+      const { service } = rig({ matcher: unavailableClaimTextMatcher });
       const result = await service.execute(contextOf('seller'), [text('a'), text('b')]);
       expect(result).toEqual({ ok: true, value: [unavailable(), unavailable()] });
     });
@@ -240,7 +240,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     });
 
     it('lets a hidden character win over an unavailable matcher', async () => {
-      const { service } = rig({ matcher: new UnavailableClaimTextMatcher() });
+      const { service } = rig({ matcher: unavailableClaimTextMatcher });
       const result = await service.execute(contextOf('seller'), [text('a‮b')]);
       expect(result.ok && result.value[0]?.code).toBe('text.invisible-character');
     });

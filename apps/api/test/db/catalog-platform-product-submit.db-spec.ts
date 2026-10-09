@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
+import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -15,6 +15,8 @@ import { SubmitProduct } from '../../src/modules/catalog/application/revisions/s
 import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { HmacRateCounterKeys } from '../../src/modules/catalog/infrastructure/hmac-rate-counter-keys';
+import { CertificationClaimTextMatcher } from '../../src/modules/catalog/infrastructure/certification-claim-text-matcher';
+import type { CertificationFacade } from '../../src/modules/certification';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
 import { PrismaWorkingCopyRepository } from '../../src/modules/catalog/infrastructure/prisma-working-copy.repository';
@@ -127,19 +129,29 @@ describe.each(TEST_MARKETS)(
             fields: [],
           }),
       } as unknown as AttributeRepository;
+      const facade = {
+        matchClaimTerms: (context, texts) =>
+          persistence.unitOfWork.run(
+            context.market,
+            () =>
+              Promise.resolve(
+                ok(
+                  texts.map((item) =>
+                    item.text.includes('halal')
+                      ? [{ typeCode: 'halal' as never, pass: 'token' as const, span: null }]
+                      : [],
+                  ),
+                ),
+              ),
+            { readOnly: true },
+          ),
+      } satisfies Pick<CertificationFacade, 'matchClaimTerms'> as unknown as CertificationFacade;
       const check = new CheckClaimText({
         unitOfWork: persistence.unitOfWork,
-        matcher: {
-          match: (_c, texts) =>
-            Promise.resolve({
-              ok: true as const,
-              value: texts.map((item) =>
-                item.text.includes('halal')
-                  ? [{ typeCode: 'x', span: { fromToken: 0, toToken: 0 } }]
-                  : [],
-              ),
-            }),
-        },
+        // The real adapter over a facade that opens a read-only unit of its own, as
+        // `certification.matchClaimTerms` does: a call inside an open unit would throw
+        // `NestedUnitOfWorkError`.
+        matcher: new CertificationClaimTextMatcher(facade),
         counters: {
           reserve: () => Promise.reject(new Error('submit spends no counter')),
           purgeStartedBefore: () => Promise.resolve(0),
