@@ -146,9 +146,18 @@ const linkTargetsSchema = z
       'sign-in': pageUrl,
       'reset-password': pageUrl,
     }),
-    /** The seller panel's pages (slice 5); absent for a Market without seller sign-up. */
+    /**
+     * The seller panel's pages (slice 5); absent for a Market without seller sign-up.
+     * `accept-invitation` (slice 9, identity design 6.7): the page of the Seller Owner invitation
+     * mail; without it the Market issues no seller invitation (`access.unavailable`).
+     */
     seller: z
-      .strictObject({ 'verify-email': pageUrl, 'sign-in': pageUrl, 'reset-password': pageUrl })
+      .strictObject({
+        'verify-email': pageUrl,
+        'sign-in': pageUrl,
+        'reset-password': pageUrl,
+        'accept-invitation': pageUrl.optional(),
+      })
       .optional(),
     /**
      * The admin panel's pages (identity design 8.7). `seller-review-queue` is the "Awaiting
@@ -363,6 +372,12 @@ const identitySchema = z
         }),
       })
       .optional(),
+    /**
+     * Re-applications a rejected seller may make since its last approval (identity design 3.3:
+     * fewer than 3, so 3 for AU; slice 9). Without it re-apply answers `access.unavailable` and the
+     * status read's `reapplyLimitReached` is null (fail closed).
+     */
+    sellerReapplyLimit: z.number().int().min(1).max(10).optional(),
     /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
     unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
     /** The sender of the Market's mail (identity design 9). */

@@ -88,7 +88,8 @@
         "seller": {
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
           "sign-in": "https://seller.zz.test/konto/anmelden",
-          "reset-password": "https://seller.zz.test/konto/passwort?ref=mail"
+          "reset-password": "https://seller.zz.test/konto/passwort?ref=mail",
+          "accept-invitation": "https://seller.zz.test/konto/einladung"
         },
         "admin": {
           "seller-review-queue": "https://admin.zz.test/haendler/pruefung?ref=mail",
@@ -117,6 +118,7 @@
         "blockMinutes": 2880
       }
     },
+    "sellerReapplyLimit": 3,
     "unverifiedAccountRetentionDays": 5,
     "mail": {
       "fromAddress": "noreply@zz.test",

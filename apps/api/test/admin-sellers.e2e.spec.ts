@@ -47,7 +47,11 @@ const INVITEE = 'Invited.Owner@Example.com';
 const NAME = 'Amina Rahman';
 const REASON = 'Canary reason: licence number does not match';
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
-const ACCEPT_PAGE = 'https://seller.example.test/accept-invitation';
+/** The seller accept page each Market file configures (`identity.links.targets.seller`). */
+const ACCEPT_PAGES: Readonly<Record<string, string>> = {
+  AU: 'https://seller.au.mondapac.test/accept-invitation',
+  ZZ: 'https://seller.zz.test/konto/einladung',
+};
 
 const id = <T extends string>(text: string): Id<T> => {
   const parsed = parseId(text);
@@ -70,13 +74,13 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 let deliveries = 0;
 
-/** The real link targets, with the seller accept page the Market configuration lacks today. */
-function withSellerAcceptPage(markets: MarketRegistry): LinkTargets {
+/** The real link targets of a Market that configures no seller accept page (fail closed). */
+function withoutSellerAcceptPage(markets: MarketRegistry): LinkTargets {
   const base = new MarketConfigIdentityPolicy(markets);
   return {
     target: (market: MarketContext, population, page) =>
       population === 'seller' && page === 'accept-invitation'
-        ? ACCEPT_PAGE
+        ? null
         : base.target(market, population, page),
   };
 }
@@ -92,26 +96,25 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
   const http = () => request(app.getHttpServer());
 
   async function boot(
-    options: { readonly acceptPage?: boolean; readonly reapplyLimit?: number } = {},
+    options: { readonly withoutAcceptPage?: boolean; readonly withoutReapplyLimit?: boolean } = {},
   ) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info' },
       panelOrigins: true,
       override: (builder) => {
         let built = fakes.override(builder);
-        if (options.acceptPage === true) {
+        if (options.withoutAcceptPage === true) {
           built = built
             .overrideProvider(LINK_TARGETS)
-            .useFactory({ factory: withSellerAcceptPage, inject: [MarketRegistry] });
+            .useFactory({ factory: withoutSellerAcceptPage, inject: [MarketRegistry] });
         }
-        const limit = options.reapplyLimit;
-        if (limit !== undefined) {
-          // The re-apply limit the Market configuration does not carry yet.
+        if (options.withoutReapplyLimit === true) {
+          // A Market that configures no re-apply limit (fail closed); the real files carry 3.
           built = built.overrideProvider(IDENTITY_MARKET_POLICY).useFactory({
             factory: (markets: MarketRegistry): IdentityMarketPolicy =>
               Object.assign(
                 Object.create(new MarketConfigIdentityPolicy(markets)) as IdentityMarketPolicy,
-                { sellerReapplyLimit: () => limit },
+                { sellerReapplyLimit: () => null },
               ),
             inject: [MarketRegistry],
           });
@@ -295,7 +298,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
       aggregateVersion: event.aggregateVersion,
     });
     expect(sent).toMatchObject({ ok: true, value: { code: 'invitation-mail.sent' } });
-    expect(fakes.mails.at(-1)!.text).toContain(`${ACCEPT_PAGE}#`);
+    expect(fakes.mails.at(-1)!.text).toContain(`${ACCEPT_PAGES[code]}#`);
     return /#(mi1_[A-Za-z0-9_-]{43})/.exec(fakes.mails.at(-1)!.text)![1]!;
   }
 
@@ -437,8 +440,8 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         sellerId,
         state: 'rejected',
         reason: REASON,
-        // No re-apply limit in the Market config yet: unknown, never true (Mohammad ask 3).
-        reapplyLimitReached: null,
+        // The Market's limit is 3 and no re-application was made yet.
+        reapplyLimitReached: false,
       });
     });
 
@@ -493,8 +496,8 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
       expect(fakes.decisions.size).toBe(0);
     });
 
-    it('answers access.unavailable to a seller invitation while the Market has no accept page', async () => {
-      await boot();
+    it('answers access.unavailable to a seller invitation when the Market has no accept page', async () => {
+      await boot({ withoutAcceptPage: true });
       await seeded(code);
       const root = sessionOf(code, rootOf(code), 1);
 
@@ -510,7 +513,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     });
 
     it('creates a seller by invitation; the owner accepts with a password and signs in', async () => {
-      await boot({ acceptPage: true });
+      await boot();
       await seeded(code);
       const root = sessionOf(code, rootOf(code), 1);
 
@@ -558,7 +561,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     });
 
     it('revokes a pending owner invitation: its link stops working; re-sends another', async () => {
-      await boot({ acceptPage: true });
+      await boot();
       await seeded(code);
       const root = sessionOf(code, rootOf(code), 1);
       const issued = await adminPost(
@@ -590,7 +593,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     });
 
     it('refuses a second invitation to the address, and re-send or revoke once accepted or from another Market', async () => {
-      await boot({ acceptPage: true });
+      await boot();
       await seeded(code);
       const otherCode = TEST_MARKETS.find((c) => c !== code)!;
       await seeded(otherCode);
@@ -631,7 +634,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     });
 
     it('answers 429 with Retry-After once the invitation mails of an address are used up (Hassan M1)', async () => {
-      await boot({ acceptPage: true });
+      await boot();
       await seeded(code);
       const root = sessionOf(code, rootOf(code), 1);
       const limit = app.get(MarketRegistry).get(marketOf(code).marketId).identity.mailThrottles
@@ -694,8 +697,8 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
       const contract = () =>
         app.get<SellerAccessContract>(SELLER_ACCESS_CONTRACT, { strict: false });
 
-      it('fails closed while the Market configures no limit', async () => {
-        await boot();
+      it('fails closed when the Market configures no limit', async () => {
+        await boot({ withoutReapplyLimit: true });
         const { sellerId, owner } = await rejectedSeller();
 
         await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
@@ -704,19 +707,27 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         });
       });
 
-      it('lets the owner apply again up to a configured limit; staff cannot', async () => {
-        await boot({ reapplyLimit: 1 });
+      it("lets the owner apply again up to the Market's limit of 3; staff cannot", async () => {
+        await boot();
         const { root, sellerId, owner, staff } = await rejectedSeller();
 
         await expect(contract().reapplySellerAccess(staff, sellerId)).resolves.toEqual({
           ok: false,
           error: { code: 'access.denied' },
         });
-        await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
-          ok: true,
-          value: { code: 'seller-access.reapplied', sellerId, state: 'pending', reapplyCount: 1 },
-        });
-        await adminPost(code, `sellers/${sellerId}/reject`, { reason: REASON }, root);
+        for (const reapplyCount of [1, 2, 3]) {
+          await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
+            ok: true,
+            value: { code: 'seller-access.reapplied', sellerId, state: 'pending', reapplyCount },
+          });
+          const rejected = await adminPost(
+            code,
+            `sellers/${sellerId}/reject`,
+            { reason: REASON },
+            root,
+          );
+          expect(rejected.status).toBe(200);
+        }
         await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
           ok: false,
           error: { code: 'seller-access.reapply-limit' },

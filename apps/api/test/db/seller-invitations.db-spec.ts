@@ -15,10 +15,6 @@ import {
   type OpaqueTokens,
 } from '../../src/modules/identity/application/ports/second-factor-tokens';
 import {
-  LINK_TARGETS,
-  type LinkTargets,
-} from '../../src/modules/identity/application/ports/link-secrets';
-import {
   SELLER_ACCESS_REPOSITORY,
   type SellerAccessRepository,
 } from '../../src/modules/identity/application/ports/seller-access.repository';
@@ -28,8 +24,6 @@ import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed
 import { parseEmailAddress } from '../../src/modules/identity/domain/email-address';
 import { Invitation } from '../../src/modules/identity/domain/invitation';
 import { SellerAccess } from '../../src/modules/identity/domain/seller-access';
-import { MarketConfigIdentityPolicy } from '../../src/modules/identity/infrastructure/market-config-identity-policy';
-import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
@@ -48,17 +42,6 @@ const newId = <T extends string>(): Id<T> =>
   `${ID_PREFIX}${randomBytes(6).toString('hex')}` as Id<T>;
 const CLIENT = { origin: '203.0.113.7', address: '203.0.113.7' };
 
-/** The seller acceptance page the Market configuration does not carry yet. */
-function withSellerAcceptPage(markets: MarketRegistry): LinkTargets {
-  const base = new MarketConfigIdentityPolicy(markets);
-  return {
-    target: (m: MarketContext, population, page) =>
-      population === 'seller' && page === 'accept-invitation'
-        ? 'https://seller.example.test/accept-invitation'
-        : base.target(m, population, page),
-  };
-}
-
 describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, slice 9)', (code) => {
   const market = marketOf(code);
   let app: NestExpressApplication;
@@ -70,13 +53,8 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
   let logs: jest.SpyInstance[];
 
   beforeAll(async () => {
-    ({ app } = await createTestApp({
-      env: { DATABASE_URL: testDatabaseUrl() },
-      override: (builder) =>
-        builder
-          .overrideProvider(LINK_TARGETS)
-          .useFactory({ factory: withSellerAcceptPage, inject: [MarketRegistry] }),
-    }));
+    // The real Market files configure the seller accept page (identity.links.targets.seller).
+    ({ app } = await createTestApp({ env: { DATABASE_URL: testDatabaseUrl() } }));
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
     unitOfWork = app.get(UNIT_OF_WORK, { strict: false });

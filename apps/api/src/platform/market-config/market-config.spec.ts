@@ -1094,6 +1094,73 @@ describe('loadMarketConfigs', () => {
     });
   });
 
+  describe('the seller access keys (identity slice 9; identity design 3.3, 6.7)', () => {
+    const SELLER_PAGES = {
+      'verify-email': 'https://seller.qq.test/confirm-email',
+      'sign-in': 'https://seller.qq.test/sign-in',
+      'reset-password': 'https://seller.qq.test/reset-password',
+    };
+    const withKeys = (keys: { sellerPages?: object; reapplyLimit?: unknown }) => ({
+      ...VALID,
+      identity: {
+        ...IDENTITY,
+        ...(keys.reapplyLimit === undefined ? {} : { sellerReapplyLimit: keys.reapplyLimit }),
+        links: {
+          ...IDENTITY.links,
+          targets: {
+            ...IDENTITY.links.targets,
+            seller: keys.sellerPages ?? SELLER_PAGES,
+            admin: { 'seller-review-queue': 'https://admin.qq.test/queue' },
+          },
+        },
+      },
+    });
+    const load = (file: object) =>
+      loadMarketConfigs([directoryWith({ 'QQ.json': file })], [QQ]).get(QQ)!.identity;
+
+    it('configures the limit of 3 and a seller accept page in both Market fixtures', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+
+      for (const market of markets.values()) {
+        const { sellerReapplyLimit, links } = market.identity;
+        expect(sellerReapplyLimit).toBe(3);
+        const page = links.targets.seller!['accept-invitation']!;
+        // On the seller panel, as the other seller pages, never the admin panel.
+        expect(new URL(page).origin).toBe(new URL(links.targets.seller!['sign-in']).origin);
+        expect(page).not.toBe(links.targets.admin!['accept-invitation']);
+      }
+    });
+
+    it('accepts a Market without either key (both flows fail closed), and with both', () => {
+      const without = load(withKeys({}));
+      expect(without.sellerReapplyLimit).toBeUndefined();
+      expect(without.links.targets.seller!['accept-invitation']).toBeUndefined();
+
+      const page = 'https://seller.qq.test/accept-invitation';
+      const withBoth = load(
+        withKeys({ reapplyLimit: 3, sellerPages: { ...SELLER_PAGES, 'accept-invitation': page } }),
+      );
+      expect(withBoth.sellerReapplyLimit).toBe(3);
+      expect(withBoth.links.targets.seller!['accept-invitation']).toBe(page);
+      expect(load(withKeys({ reapplyLimit: 1 })).sellerReapplyLimit).toBe(1);
+      expect(load(withKeys({ reapplyLimit: 10 })).sellerReapplyLimit).toBe(10);
+    });
+
+    it.each([0, 11, 2.5, '3', null])('rejects the re-apply limit %p', (limit) => {
+      expect(() => load(withKeys({ reapplyLimit: limit }))).toThrow(/identity\.sellerReapplyLimit/);
+    });
+
+    it.each([
+      ['with a fragment', 'https://seller.qq.test/accept-invitation#x'],
+      ['over plain http on a public host', 'http://seller.qq.test/accept-invitation'],
+      ['on the admin panel host', 'https://admin.qq.test/accept-invitation'],
+    ])('rejects a seller accept page %s', (_case, page) => {
+      expect(() =>
+        load(withKeys({ sellerPages: { ...SELLER_PAGES, 'accept-invitation': page } })),
+      ).toThrow(/identity\.links\.targets\./);
+    });
+  });
+
   describe('the sellers section', () => {
     const SELLERS = {
       approvalRequired: true,
