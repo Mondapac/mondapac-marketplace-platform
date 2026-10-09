@@ -19,6 +19,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/sign-in',
     'identity/admin/second-factor',
     'identity/admin/sign-out',
+    'identity/admin/password-reset-email',
+    'identity/admin/reset-password',
   ]),
 };
 
