@@ -1,8 +1,8 @@
 @echo off
-rem Starts MondaPac locally on Windows: Docker services, database, API, worker and the seller panel.
+rem Starts MondaPac locally on Windows: Docker services, database, API, worker and the seller and admin panels.
 rem Run from anywhere: double-click this file or run scripts\dev-local.bat.
 rem Needs: Docker Desktop (running), Node.js 24.20+ and pnpm 10 (npm i -g pnpm@10).
-rem Then open http://seller.localhost:3001 . Mail arrives in Mailpit at http://localhost:8025 .
+rem Then open http://seller.localhost:3001 (seller) or http://admin.localhost:3002 (admin). Mail arrives in Mailpit at http://localhost:8025 .
 rem The Market is AU, the first Market (HOSTED_MARKETS in .env.example and PANEL_HOSTS in
 rem apps\seller\.env.example name it too; change all three together for another Market).
 setlocal
@@ -32,6 +32,14 @@ findstr /b /c:"CLIENT_ADDRESS_SOURCE=" "apps\seller\.env.local" >nul 2>nul || (
   echo apps\seller\.env.local has no CLIENT_ADDRESS_SOURCE: adding CLIENT_ADDRESS_SOURCE=socket
   echo CLIENT_ADDRESS_SOURCE=socket>>"apps\seller\.env.local"
 )
+if not exist "apps\admin\.env.local" (
+  echo Creating apps\admin\.env.local from apps\admin\.env.example
+  copy /y "apps\admin\.env.example" "apps\admin\.env.local" >nul
+)
+findstr /b /c:"CLIENT_ADDRESS_SOURCE=" "apps\admin\.env.local" >nul 2>nul || (
+  echo apps\admin\.env.local has no CLIENT_ADDRESS_SOURCE: adding CLIENT_ADDRESS_SOURCE=socket
+  echo CLIENT_ADDRESS_SOURCE=socket>>"apps\admin\.env.local"
+)
 
 echo [1/5] Installing packages
 call pnpm install || goto :fail
@@ -49,15 +57,17 @@ start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"
 rem The worker builds the API once; wait so it does not race the API watcher that cleans dist.
 start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:worker"
 
-echo [5/5] Starting the seller panel in its own window
+echo [5/5] Starting the seller and admin panels in their own windows
 start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
+start "MondaPac admin panel" /d "%CD%" cmd /k "pnpm dev:admin"
 
 echo.
 echo Started. Wait about a minute for the first build, then open:
 echo   Seller panel : http://seller.localhost:3001
+  Admin panel  : http://admin.localhost:3002
 echo   Mail (Mailpit): http://localhost:8025
-echo To stop: close the three windows, then run "docker compose down".
-echo (The three windows inherit MARKET_CONFIG_DIR from this one.)
+echo To stop: close the four windows, then run "docker compose down".
+echo (The four windows inherit MARKET_CONFIG_DIR from this one.)
 pause
 endlocal
 exit /b 0
