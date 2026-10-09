@@ -75,6 +75,10 @@
         },
         "code": {
           "required": "Enter the code."
+        },
+        "name": {
+          "required": "Enter your name.",
+          "invalid": "Use your name without links or special characters (1 to 100 characters)."
         }
       },
       "second-factor": {
@@ -94,6 +98,11 @@
           "common": "That password is too easy to guess. Choose a different one.",
           "contains-identity": "Don't use your email or name in your password."
         }
+      },
+      "accept": {
+        "enrolment-expired": "That setup key expired, so we made a new one. Add the new key to your app and enter the newest code.",
+        "busy": "We can't finish this right now. Try again in a moment.",
+        "locked": "Too many wrong codes. Start again: we'll make a new setup key."
       }
     },
     "sign-in": {
@@ -302,6 +311,45 @@
       },
       "body": {
         "rejected": "It may have expired or already been used. Ask for a new link and we'll send one."
+      }
+    },
+    "accept": {
+      "page-title": "Accept your invitation – Admin account – MondaPac",
+      "title": "Set up your admin account",
+      "status": {
+        "checking": "Checking your invitation…"
+      },
+      "rejected": {
+        "title": "This invitation can't be used",
+        "body": "It may have expired, been used or been cancelled. Ask the admin who invited you to send a new one."
+      },
+      "details": {
+        "body": "Choose how your name appears and a password. Next you'll set up two-step verification, which admin accounts must use.",
+        "title": "Your details"
+      },
+      "label": {
+        "name": "Your name"
+      },
+      "action": {
+        "continue": "Continue",
+        "finish": "Continue to sign in"
+      },
+      "secret": {
+        "title": "Set up two-step verification",
+        "body": "In your authenticator app, add a new account with this key, then enter the 6-digit code it shows.",
+        "key-label": "Setup key",
+        "open-app": "Open authenticator app",
+        "required": "Admin accounts must use two-step verification."
+      },
+      "codes": {
+        "title": "Save your backup codes",
+        "body": "Each code works once if you lose your phone. Keep them somewhere safe.",
+        "copy": "Copy",
+        "copied": "Copied",
+        "download": "Download",
+        "print": "Print",
+        "saved": "I've saved these codes",
+        "once": "These codes can't be shown again after you leave this page."
       }
     }
   }
