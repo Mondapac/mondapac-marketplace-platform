@@ -403,13 +403,39 @@ describe.each(TEST_MARKETS)('inventory.set-stock-level in market %s (database)',
     const v = await newWorld();
     await sql.query(
       `INSERT INTO inventory.retirements
-         (id, market_id, tenant_id, scope, offer_id, variant_id, source_aggregate_version, retired_at)
-       VALUES ($1, $2, $3, 'variant', $4, $5, 1, now())`,
-      [ids.next(), code, market.tenantId, v.offerId, v.variantId],
+         (id, market_id, tenant_id, scope, variant_id, source_aggregate_version, retired_at)
+       VALUES ($1, $2, $3, 'variant', $4, 1, now())`,
+      [ids.next(), code, market.tenantId, v.variantId],
     );
     const tombstoned = await execute(v.context, v.input());
     expect(tombstoned).toEqual({ ok: false, error: { code: 'inventory.not-found' } });
     expect(await itemsOf(v.offerId)).toEqual([]);
+  });
+
+  it('refuses every Offer of a retired Variant, even when the catalog read is stale', async () => {
+    const first = await newWorld();
+    const second = await newWorld();
+    // The second seller's Offer also sells the first one's Variant id (the same product).
+    const sharedOffer = ids.next<'Offer'>();
+    catalogOffers.set(sharedOffer, {
+      sellerId: second.sellerId,
+      deleted: false,
+      sellUnitVariantIds: new Set([first.variantId]),
+    });
+    await sql.query(
+      `INSERT INTO inventory.retirements
+         (id, market_id, tenant_id, scope, variant_id, source_aggregate_version, retired_at)
+       VALUES ($1, $2, $3, 'variant', $4, 1, now())`,
+      [ids.next(), code, market.tenantId, first.variantId],
+    );
+
+    const result = await execute(
+      second.context,
+      second.input({ offerId: sharedOffer, variantId: first.variantId }),
+    );
+
+    expect(result).toEqual({ ok: false, error: { code: 'inventory.not-found' } });
+    expect(await itemsOf(sharedOffer)).toEqual([]);
   });
 
   it("does not reach another Market's item with the same Offer and Variant ids", async () => {
