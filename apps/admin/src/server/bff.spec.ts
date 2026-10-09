@@ -140,7 +140,7 @@ describe('relay', () => {
     expect(allowed.status).toBe(200);
     for (const path of [
       ['identity', 'admin', 'accounts', 'not-a-uuid', 'disable'],
-      ['identity', 'admin', 'accounts', id, 'role'],
+      ['identity', 'admin', 'accounts', id, 'password'],
       ['identity', 'admin', 'accounts', id, 'disable', 'extra'],
       ['identity', 'admin', 'customers', id, 'disable'],
       ['identity', 'admin', 'accounts', `${id}%2F..`, 'disable'],
