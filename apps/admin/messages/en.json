@@ -6,7 +6,8 @@
   },
   "nav": {
     "home": "Home",
-    "team": "Roles & permissions"
+    "team": "Roles & permissions",
+    "sellers": "Sellers"
   },
   "home": {
     "title": "Home",
@@ -420,6 +421,69 @@
           "read-only": "This role can't be changed. We've refreshed the page.",
           "unchanged": "Nothing changed."
         }
+      }
+    }
+  },
+  "sellers": {
+    "list": {
+      "title": "Sellers",
+      "no-access": "You don't have access to the seller list.",
+      "back-home": "Back to home",
+      "tabs": "Seller lists",
+      "tab": {
+        "awaiting-review": "Awaiting review",
+        "incomplete": "Incomplete",
+        "all": "All sellers"
+      },
+      "search": {
+        "label": "Store name or shop address",
+        "help": "Start of the name or address, at least 2 letters.",
+        "submit": "Search",
+        "too-short": "Enter at least 2 characters."
+      },
+      "filter": {
+        "kind": "Submission",
+        "all-kinds": "All submissions",
+        "outside-area": "Outside the service area only"
+      },
+      "kind": {
+        "onboarding": "New application",
+        "identity-change": "Change request",
+        "unknown": "Unknown"
+      },
+      "col": {
+        "store": "Store",
+        "status": "Status",
+        "kind": "Submission",
+        "area": "Service area",
+        "submitted": "Submitted",
+        "changed": "Last change"
+      },
+      "unnamed": "No store name yet",
+      "invited": "Invited by MondaPac",
+      "status": {
+        "details-incomplete": "Details incomplete",
+        "outside-service-area": "Outside service area",
+        "ready-to-submit": "Ready to submit",
+        "awaiting-review": "Awaiting review",
+        "changes-needed": "Changes needed",
+        "approved": "Approved",
+        "suspended": "Suspended",
+        "file-check-needed": "File check needed",
+        "unknown": "Unknown"
+      },
+      "empty": {
+        "awaiting-review": "No sellers are waiting for review.",
+        "incomplete": "No incomplete applications.",
+        "all": "No sellers yet.",
+        "search": "No sellers match that search."
+      },
+      "loading": "Loading sellers...",
+      "more": "Show more",
+      "error": {
+        "too-broad": "That search matches too many sellers. Add more letters.",
+        "denied": "You don't have access to the seller list.",
+        "unavailable": "We couldn't load the sellers. Try again in a moment."
       }
     }
   }

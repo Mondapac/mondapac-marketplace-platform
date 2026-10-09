@@ -402,4 +402,24 @@ describe('signed client address (ADR-0037)', () => {
       expect(fetchImpl).not.toHaveBeenCalled();
     }
   });
+
+  it('relays the seller list read, a POST only, and refuses it cross-site', async () => {
+    const ok = upstreamOk();
+    expect(
+      (await relay(config, post('sellers/admin/list'), ['sellers', 'admin', 'list'], ok)).status,
+    ).toBe(200);
+    const getList = new Request('http://admin.localhost:3002/api/sellers/admin/list', {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+    const fetchImpl = upstreamOk();
+    expect((await relay(config, getList, ['sellers', 'admin', 'list'], fetchImpl)).status).toBe(
+      404,
+    );
+    const crossSite = post('sellers/admin/list', { ...sameOrigin, 'sec-fetch-site': 'cross-site' });
+    expect((await relay(config, crossSite, ['sellers', 'admin', 'list'], fetchImpl)).status).toBe(
+      403,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

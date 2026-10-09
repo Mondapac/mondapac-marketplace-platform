@@ -6,6 +6,12 @@ export const adminNav: NavConfig = {
   items: [
     { id: 'home', labelKey: 'nav.home', href: '/' },
     {
+      id: 'sellers',
+      labelKey: 'nav.sellers',
+      href: '/sellers',
+      anyOf: ['sellers.seller.view'],
+    },
+    {
       id: 'team',
       labelKey: 'nav.team',
       href: '/team',
