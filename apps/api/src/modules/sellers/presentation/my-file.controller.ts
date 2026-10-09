@@ -32,12 +32,15 @@ import { MyFileSaveIdentifier } from '../application/use-cases/my-file-save-iden
 import { MyFileSaveSlug } from '../application/use-cases/my-file-save-slug.use-case';
 import { MyFileValidateIdentifier } from '../application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from '../application/use-cases/my-file-save-general.use-case';
+import { MyFileSubmit } from '../application/use-cases/my-file-submit.use-case';
+import { MyFileWithdraw } from '../application/use-cases/my-file-withdraw.use-case';
 import { errorOf, fail, type MyFileError } from './my-file.answer';
 import {
   parseAddressBody,
   parseGeneralBody,
   parseIdentifierCheckBody,
   parseIdentifierSaveBody,
+  parseEmptyBody,
   parseSlugBody,
   type FieldProblem,
 } from './my-file.body';
@@ -56,6 +59,8 @@ import {
   SaveSlugRequest,
   SellersErrorBody,
   SlugCheckBody,
+  SubmittedBody,
+  WithdrawnBody,
 } from './my-file.dto';
 
 // Shape is checked before the gate: a malformed body answers 400 to any signed-in caller. That
@@ -92,6 +97,8 @@ export class MyFileController {
     private readonly saveIdentifier: MyFileSaveIdentifier,
     private readonly validateIdentifier: MyFileValidateIdentifier,
     private readonly formDescriptors: FormDescriptorsRead,
+    private readonly submitFile: MyFileSubmit,
+    private readonly withdrawFile: MyFileWithdraw,
   ) {}
 
   @Get()
@@ -118,7 +125,21 @@ export class MyFileController {
   ): Promise<MyFileBody> {
     response.setHeader('Cache-Control', NO_STORE);
     const result = await this.myFileRead.execute(context, {});
-    return this.settle('sellers.my-file-read', context, response, result, 'read');
+    const view = this.settle('sellers.my-file-read', context, response, result, 'read');
+    return {
+      ...view,
+      submission:
+        view.submission === null
+          ? null
+          : {
+              revisionNo: view.submission.revisionNo,
+              submittedAt: view.submission.submittedAt.toString(),
+            },
+      latestWithdrawal:
+        view.latestWithdrawal === null
+          ? null
+          : { ...view.latestWithdrawal, at: view.latestWithdrawal.at.toString() },
+    };
   }
 
   @Put('general')
@@ -433,6 +454,111 @@ export class MyFileController {
     return this.settle('sellers.my-file-validate-identifier', context, response, result, 'valid');
   }
 
+  @Post('submit')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Submit the saved draft for review',
+    description:
+      'Creates the pending revision from the saved draft, judged against the Market now: the ' +
+      'draft must be complete, the address inside an area that takes new sellers, the slug ' +
+      'holdable and the business number not definitely refused by the register (a number with no ' +
+      'current result is asked of the register first). At most 5 submissions a day per file. ' +
+      'The body is empty. Refused for an account that is not waiting for a decision ' +
+      '(seller-access.wrong-state) and for a file that already has an approved revision.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiOkResponse({ type: SubmittedBody })
+  @ApiBadRequestResponse({
+    type: SellersErrorBody,
+    description: 'validation.failed (a body with fields), slug.format or slug.reserved',
+  })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiConflictResponse({
+    type: SellersErrorBody,
+    description:
+      'file.incomplete (details.fields), address.outside-service-area, identifier.not-matched, ' +
+      'slug.taken, file.already-submitted, seller-access.wrong-state, ' +
+      'file.change-request-required or conflict.stale (read again and retry)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description:
+      'request.throttled or lookup.limit (details.retryAfterSeconds, Retry-After): too many ' +
+      'submissions or new numbers today',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async postSubmit(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<SubmittedBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    this.shapeOf('sellers.my-file-submit', context, request, body, parseEmptyBody, true);
+    // The origin is the resolved client address (ADR-0037), never the body or a forwarded header.
+    const result = await this.submitFile.execute(context, {
+      origin: clientOriginOf(clientAddressFrom(request)),
+    });
+    const submitted = this.settle('sellers.my-file-submit', context, response, result, 'submitted');
+    return { ...submitted, submittedAt: submitted.submittedAt.toString() };
+  }
+
+  @Post('withdraw')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Withdraw the pending submission',
+    description:
+      'Cancels the pending submission; the draft stays as it is and can be submitted again. ' +
+      'At most 10 withdrawals a day per file. Open to an account that is waiting for a decision ' +
+      'only (seller-access.wrong-state). The body is empty.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiOkResponse({ type: WithdrawnBody })
+  @ApiBadRequestResponse({
+    type: SellersErrorBody,
+    description: 'validation.failed (a body with fields)',
+  })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiConflictResponse({
+    type: SellersErrorBody,
+    description:
+      'file.nothing-to-withdraw, seller-access.wrong-state or conflict.stale (read again and retry)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async postWithdraw(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<WithdrawnBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    this.shapeOf('sellers.my-file-withdraw', context, request, body, parseEmptyBody, true);
+    const result = await this.withdrawFile.execute(context, {});
+    return this.settle('sellers.my-file-withdraw', context, response, result, 'withdrawn');
+  }
+
   @Get('form-descriptors')
   @ApiOperation({
     summary: "The form descriptors of the seller's Market",
@@ -465,8 +591,15 @@ export class MyFileController {
     request: Request,
     body: unknown,
     parse: (body: unknown) => T | readonly FieldProblem[],
+    bodyOptional = false,
   ): T {
-    if (request.is('application/json') !== 'application/json') {
+    // A route that takes nothing (submit, withdraw) may come with no body at all, and then has no
+    // content type to check; one that comes with a body must send JSON like every other route.
+    const hasBody =
+      !bodyOptional ||
+      Number(request.headers['content-length'] ?? 0) > 0 ||
+      request.headers['transfer-encoding'] !== undefined;
+    if (hasBody && request.is('application/json') !== 'application/json') {
       this.log(msg, context, 'request.body-unsupported');
       throw fail(415, 'request.body-unsupported');
     }

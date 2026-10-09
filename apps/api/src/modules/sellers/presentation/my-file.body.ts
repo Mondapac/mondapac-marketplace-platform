@@ -209,3 +209,15 @@ export function parseIdentifierCheckBody(
   }
   return problems.length > 0 ? problems : { identifier: identifier as string };
 }
+
+/**
+ * The body of a route that takes nothing (submit, withdraw): absent, or an object with no field.
+ * Any field is `unknown-field`; the seller, the Market and every state come from the session and
+ * the file, never from the request (AC 16).
+ */
+export function parseEmptyBody(body: unknown): Record<string, never> | readonly FieldProblem[] {
+  if (body === undefined || body === null) return {};
+  if (!isRecord(body)) return [{ path: '', code: 'format' }];
+  const problems = unknownFields(body, []);
+  return problems.length > 0 ? problems : {};
+}

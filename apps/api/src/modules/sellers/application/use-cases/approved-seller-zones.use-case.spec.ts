@@ -7,6 +7,12 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Temporal } from '@mondapac/shared-kernel';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
+import {
+  InMemoryRevisions,
+  TransactionalUnitOfWork,
+} from '../../../../../test/support/sellers-submit-fakes';
+import { newPendingRevision } from '../../domain/business-file-revision';
+import { identifierIndexKeyOf } from '../../domain/business-identifier';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
@@ -14,20 +20,25 @@ import { ApprovedSellerZonesReaderImplementation } from '../../presentation/appr
 import { ApprovedSellerZonesSystem } from './approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './approved-seller-zones.use-case';
 
-// The contract of approvedSellerZones before slice 5 (sellers design 7.1a; certification #124):
-// no approved revision exists, so every id answers { zone: null, addressZone: null }.
+// The contract of approvedSellerZones (sellers design 7.1a; certification #124): one entry per
+// distinct id; { zone, addressZone } of the approved revision (slice 5b), nulls for any id with
+// none. The PostgreSQL read is covered by test/db/sellers-submit.db-spec.ts.
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const gate = createUseCaseGate(markets, null);
-const ids = new SequenceIdGenerator(new FixedClock(Temporal.Instant.from('2026-10-08T10:00:00Z')));
+const NOW = Temporal.Instant.from('2026-10-08T10:00:00Z');
+const ids = new SequenceIdGenerator(new FixedClock(NOW));
+const revisions = new InMemoryRevisions();
+const unitOfWork = new TransactionalUnitOfWork([revisions]);
+const deps = { unitOfWork, revisions };
 const NONE = { zone: null, addressZone: null };
 
 describe.each(['AU', 'ZZ'])('approvedSellerZones contract, Market %s', (code) => {
   const market = () => testMarketContext(code, 'default');
   const anonymous = () => testCallContext(market(), 'anonymous');
   const system = () => testCallContext(market(), 'system');
-  const request = new ApprovedSellerZones(gate);
-  const jobs = new ApprovedSellerZonesSystem(gate);
+  const request = new ApprovedSellerZones(gate, deps);
+  const jobs = new ApprovedSellerZonesSystem(gate, deps);
   const facade = new ApprovedSellerZonesReaderImplementation({
     approvedSellerZones: request,
     approvedSellerZonesSystem: jobs,
@@ -165,8 +176,133 @@ describe.each(['AU', 'ZZ'])('approvedSellerZones contract, Market %s', (code) =>
   });
 });
 
+/** Puts a revision of the given status in the store, the way a decision would leave it. */
+function revision(
+  code: string,
+  sellerId: ReturnType<typeof ids.next<'Seller'>>,
+  status: 'pending' | 'approved' | 'withdrawn',
+  zones: { operatingTimezone: string; addressTimezone: string | null },
+): void {
+  const base = newPendingRevision({
+    id: ids.next<'BusinessFileRevision'>(),
+    sellerId,
+    kind: 'onboarding',
+    revisionNo: 1,
+    authorKind: 'seller',
+    authorAccountId: ids.next<'Account'>(),
+    snapshot: {
+      ...zones,
+      serviceAreaCode: 'area-1',
+      identifierIndex: identifierIndexKeyOf(new Uint8Array(32).fill(1)),
+    },
+    contentHash: `hmac-sha256:${'a'.repeat(64)}` as never,
+    register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+    now: NOW,
+  });
+  const market = testMarketContext(code, 'default');
+  const row = {
+    ...base,
+    status,
+    decidedAt: status === 'approved' ? NOW : null,
+    decidedByAccountId: status === 'approved' ? ids.next<'Account'>() : null,
+  };
+  void revisions.add(market, row, {
+    ciphertext: 'sealed.x' as never,
+    contentHash: row.contentHash,
+  });
+}
+
+describe.each(['AU', 'ZZ'])('approvedSellerZones with approved revisions, Market %s', (code) => {
+  const market = () => testMarketContext(code, 'default');
+  const anonymous = () => testCallContext(market(), 'anonymous');
+  const request = new ApprovedSellerZones(gate, deps);
+  const jobs = new ApprovedSellerZonesSystem(gate, deps);
+
+  it('answers the approved revision zones, and nulls for pending, withdrawn and unknown sellers', async () => {
+    const approved = ids.next<'Seller'>();
+    const pending = ids.next<'Seller'>();
+    const withdrawn = ids.next<'Seller'>();
+    const noAddress = ids.next<'Seller'>();
+    const unknown = ids.next<'Seller'>();
+    revision(code, approved, 'approved', {
+      operatingTimezone: 'Pacific/Auckland',
+      addressTimezone: 'Pacific/Chatham',
+    });
+    revision(code, pending, 'pending', {
+      operatingTimezone: 'Asia/Tokyo',
+      addressTimezone: 'Asia/Tokyo',
+    });
+    revision(code, withdrawn, 'withdrawn', {
+      operatingTimezone: 'Asia/Tokyo',
+      addressTimezone: 'Asia/Tokyo',
+    });
+    revision(code, noAddress, 'approved', {
+      operatingTimezone: 'Asia/Tokyo',
+      addressTimezone: null,
+    });
+
+    const batch = [unknown, approved, pending, approved, withdrawn, noAddress];
+    for (const result of [
+      await request.execute(anonymous(), { sellerIds: batch }),
+      await jobs.execute(testCallContext(market(), 'system'), { sellerIds: batch }),
+    ]) {
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect([...result.value]).toEqual([
+        [unknown, NONE],
+        [approved, { zone: 'Pacific/Auckland', addressZone: 'Pacific/Chatham' }],
+        [pending, NONE],
+        [withdrawn, NONE],
+        [noAddress, { zone: 'Asia/Tokyo', addressZone: null }],
+      ]);
+    }
+  });
+
+  it('never answers a seller approved in the other Market', async () => {
+    const other = code === 'AU' ? 'ZZ' : 'AU';
+    const seller = ids.next<'Seller'>();
+    revision(other, seller, 'approved', {
+      operatingTimezone: 'Asia/Tokyo',
+      addressTimezone: 'Asia/Tokyo',
+    });
+
+    const result = await request.execute(anonymous(), { sellerIds: [seller] });
+
+    expect(result.ok && [...result.value]).toEqual([[seller, NONE]]);
+  });
+
+  it('fails closed with sellers.unavailable when the read fails, never nulls', async () => {
+    const broken = new ApprovedSellerZones(gate, {
+      unitOfWork,
+      revisions: {
+        approvedZones: () => Promise.reject(new Error('database down')),
+      } as never,
+    });
+
+    const result = await broken.execute(anonymous(), { sellerIds: [ids.next<'Seller'>()] });
+
+    expect(result).toEqual({ ok: false, error: { code: 'sellers.unavailable' } });
+  });
+
+  it('reads nothing for an empty list', async () => {
+    const reads: boolean[] = [];
+    const counting = new ApprovedSellerZones(gate, {
+      unitOfWork: {
+        run: (market, work, options) => (reads.push(true), unitOfWork.run(market, work, options)),
+        runOnce: unitOfWork.runOnce.bind(unitOfWork),
+      },
+      revisions,
+    });
+
+    const result = await counting.execute(anonymous(), { sellerIds: [] });
+
+    expect(result.ok && result.value.size).toBe(0);
+    expect(reads).toEqual([]);
+  });
+});
+
 it('answers the same bytes under AU and ZZ', async () => {
-  const request = new ApprovedSellerZones(gate);
+  const request = new ApprovedSellerZones(gate, deps);
   const a = ids.next<'Seller'>();
 
   const au = await request.execute(

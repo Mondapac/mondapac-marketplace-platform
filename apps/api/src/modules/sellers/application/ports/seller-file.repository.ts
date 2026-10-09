@@ -42,6 +42,15 @@ export interface SellerFileRepository {
    * and writes nothing when another unit changed the file first.
    */
   saveDraft(market: MarketContext, file: SellerFile): Promise<boolean>;
+
+  /**
+   * Writes a change that touched no draft column (a submission, a withdrawal): the new version
+   * and `last_changed_at`, only where the stored version is still `file.persistedVersion`. The
+   * statement takes the row's lock, so it is also how a unit holds the file against a draft save
+   * for the rest of its transaction. Answers false and writes nothing when another unit changed
+   * the file first.
+   */
+  recordChange(market: MarketContext, file: SellerFile): Promise<boolean>;
 }
 
 export const SELLER_FILE_REPOSITORY = Symbol('SELLER_FILE_REPOSITORY');

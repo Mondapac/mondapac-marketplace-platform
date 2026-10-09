@@ -59,6 +59,15 @@ export class InMemoryRegisterChecks implements RegisterCheckRepository {
     return Promise.resolve(next);
   }
 
+  /** For a transactional fake unit of work: puts the rows back as they are now. */
+  snapshot(): () => void {
+    const copy = new Map(this.rows);
+    return () => {
+      this.rows.clear();
+      for (const [key, value] of copy) this.rows.set(key, value);
+    };
+  }
+
   /** The rows of one Market (a test asserting that nothing was written reads this). */
   count(market: MarketContext): number {
     return [...this.rows.keys()].filter((key) => key.startsWith(`${market.marketId}|`)).length;

@@ -1,6 +1,7 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { Temporal } from '@mondapac/shared-kernel';
 import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
@@ -14,6 +15,8 @@ import { MyFileSaveSlug } from '../src/modules/sellers/application/use-cases/my-
 import { ReviewRegisterCheckRead } from '../src/modules/sellers/application/use-cases/review-register-check-read.use-case';
 import { MyFileValidateIdentifier } from '../src/modules/sellers/application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from '../src/modules/sellers/application/use-cases/my-file-save-general.use-case';
+import { MyFileSubmit } from '../src/modules/sellers/application/use-cases/my-file-submit.use-case';
+import { MyFileWithdraw } from '../src/modules/sellers/application/use-cases/my-file-withdraw.use-case';
 import { IdentityFakes } from './support/identity-fakes';
 import { completionLineOf, createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
@@ -75,6 +78,8 @@ describe('the seller draft over HTTP (integration)', () => {
     validateIdentifier: new Stub(),
     descriptors: new Stub(),
     review: new Stub(),
+    submit: new Stub(),
+    withdraw: new Stub(),
   };
   const http = () => request(app.getHttpServer());
 
@@ -105,6 +110,10 @@ describe('the seller draft over HTTP (integration)', () => {
               .useValue(stubs.descriptors)
               .overrideProvider(ReviewRegisterCheckRead)
               .useValue(stubs.review)
+              .overrideProvider(MyFileSubmit)
+              .useValue(stubs.submit)
+              .overrideProvider(MyFileWithdraw)
+              .useValue(stubs.withdraw)
           : faked;
       },
     }));
@@ -243,6 +252,8 @@ describe('the seller draft over HTTP (integration)', () => {
         ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
         ['put', '/sellers/my-file/identifier', { identifier: '1' }],
         ['post', '/sellers/my-file/identifier-check', { identifier: '1' }],
+        ['post', '/sellers/my-file/submit', {}],
+        ['post', '/sellers/my-file/withdraw', {}],
       ] as const;
 
       // The Seller Owner holds every seller key, `sellers.business-identity.edit` included,
@@ -287,13 +298,30 @@ describe('the seller draft over HTTP (integration)', () => {
     it('reads the draft with the seller of the session, Cache-Control no-store', async () => {
       await boot(true);
       const session = await signedIn(code);
-      stubs.read.next = { ok: true, value: { version: 1, general: { phone: '0400' } } };
+      const at = Temporal.Instant.from('2026-10-08T10:00:00Z');
+      stubs.read.next = {
+        ok: true,
+        value: {
+          version: 1,
+          general: { phone: '0400' },
+          status: 'awaiting-review',
+          submission: { revisionNo: 2, submittedAt: at },
+          latestWithdrawal: { cause: 'edited', byKind: 'seller', at },
+        },
+      };
 
       const response = await http().get('/sellers/my-file').set(session.headers);
 
       expect(response.status).toBe(200);
       expect(response.headers['cache-control']).toBe('no-store');
-      expect(response.body).toEqual({ version: 1, general: { phone: '0400' } });
+      // Instants leave as ISO strings.
+      expect(response.body).toEqual({
+        version: 1,
+        general: { phone: '0400' },
+        status: 'awaiting-review',
+        submission: { revisionNo: 2, submittedAt: '2026-10-08T10:00:00Z' },
+        latestWithdrawal: { cause: 'edited', byKind: 'seller', at: '2026-10-08T10:00:00Z' },
+      });
       const [call] = stubs.read.calls;
       expect(call!.input).toEqual({});
       expect(call!.context.market.marketId).toBe(code);
@@ -580,6 +608,8 @@ describe('the seller draft over HTTP (integration)', () => {
       ['post', '/sellers/my-file/slug-check', { slug: 'a-shop' }],
       ['put', '/sellers/my-file/identifier', { identifier: '1' }],
       ['post', '/sellers/my-file/identifier-check', { identifier: '1' }],
+      ['post', '/sellers/my-file/submit', {}],
+      ['post', '/sellers/my-file/withdraw', {}],
     ] as const)(
       '%s %s: a missing or invalid CSRF token answers 403 request.csrf, no-store, without a call',
       async (method, path, body) => {
@@ -608,6 +638,8 @@ describe('the seller draft over HTTP (integration)', () => {
       ['put', '/sellers/my-file/slug', { slug: 'a-shop' }, 'saveSlug'],
       ['put', '/sellers/my-file/identifier', { identifier: '1' }, 'saveIdentifier'],
       ['post', '/sellers/my-file/identifier-check', { identifier: '1' }, 'validateIdentifier'],
+      ['post', '/sellers/my-file/submit', {}, 'submit'],
+      ['post', '/sellers/my-file/withdraw', {}, 'withdraw'],
     ] as const)(
       '%s %s: request.throttled answers 429 with Retry-After',
       async (method, path, body, stub) => {
@@ -808,7 +840,144 @@ describe('the seller draft over HTTP (integration)', () => {
       expect(JSON.stringify(logLines)).not.toContain('SECRET-NUMBER');
     });
 
-    it('is in the OpenAPI document with its eight routes, the CSRF header, 415 and 429', async () => {
+    it('submits with the origin of the socket and nothing from the body, and answers the revision', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      const at = Temporal.Instant.from('2026-10-08T10:00:00Z');
+      stubs.submit.next = {
+        ok: true,
+        value: { revisionNo: 1, version: 7, submittedAt: at, resubmission: false },
+      };
+
+      const empty = await http().post('/sellers/my-file/submit').set(session.headers);
+      const object = await http().post('/sellers/my-file/submit').set(session.headers).send({});
+
+      for (const response of [empty, object]) {
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).toEqual({
+          revisionNo: 1,
+          version: 7,
+          submittedAt: '2026-10-08T10:00:00Z',
+          resubmission: false,
+        });
+      }
+      expect(stubs.submit.calls.map((call) => call.input)).toEqual([
+        { origin: ORIGIN },
+        { origin: ORIGIN },
+      ]);
+      const [call] = stubs.submit.calls;
+      expect(call!.context.market.marketId).toBe(code);
+      expect(call!.context.actor).toMatchObject({ kind: 'authenticated', population: 'seller' });
+    });
+
+    it.each(['submit', 'withdraw'] as const)(
+      '%s takes nothing: a field (a seller id, a state) is 400 and a non-JSON body 415, without a call',
+      async (route) => {
+        await boot(true);
+        const session = await signedIn(code);
+        const post = () => http().post(`/sellers/my-file/${route}`).set(session.headers);
+
+        const extra = await post().send({ sellerId: 'x', state: 'approved' });
+        const text = await post().set('content-type', 'text/plain').send('approve');
+
+        expect(extra.status).toBe(400);
+        expect(extra.body).toEqual({
+          statusCode: 400,
+          code: 'validation.failed',
+          details: {
+            fields: [
+              { path: 'sellerId', code: 'unknown-field' },
+              { path: 'state', code: 'unknown-field' },
+            ],
+          },
+        });
+        expect(text.status).toBe(415);
+        expect(stubs[route].calls).toHaveLength(0);
+      },
+    );
+
+    it.each([
+      [{ code: 'file.incomplete', missing: ['address', 'slug'] }, 409],
+      [{ code: 'address.outside-service-area' }, 409],
+      [{ code: 'identifier.not-matched' }, 409],
+      [{ code: 'slug.taken' }, 409],
+      [{ code: 'slug.format' }, 400],
+      [{ code: 'slug.reserved' }, 400],
+      [{ code: 'file.already-submitted' }, 409],
+      [{ code: 'seller-access.wrong-state' }, 409],
+      [{ code: 'file.change-request-required' }, 409],
+      [{ code: 'conflict.stale' }, 409],
+      [{ code: 'file.not-found' }, 404],
+      [{ code: 'lookup.limit', retryAfterSeconds: 9 }, 429],
+      [{ code: 'sellers.unavailable' }, 503],
+      [{ code: 'access.unavailable' }, 503],
+    ] as const)('maps the submit failure %j to %s, no-store', async (failure, status) => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.submit.next = { ok: false, error: failure };
+
+      const response = await http().post('/sellers/my-file/submit').set(session.headers).send({});
+
+      expect(response.status).toBe(status);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect((response.body as { code: string }).code).toBe(failure.code);
+      if (failure.code === 'file.incomplete') {
+        expect(detailsOf(response)).toEqual({
+          fields: [
+            { path: 'address', code: 'required' },
+            { path: 'slug', code: 'required' },
+          ],
+        });
+      }
+      if (failure.code === 'lookup.limit') expect(response.headers['retry-after']).toBe('9');
+    });
+
+    it('withdraws and answers the version; nothing to withdraw is 409', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.withdraw.next = { ok: true, value: { version: 9 } };
+
+      const withdrawn = await http().post('/sellers/my-file/withdraw').set(session.headers);
+      stubs.withdraw.next = { ok: false, error: { code: 'file.nothing-to-withdraw' } };
+      const nothing = await http().post('/sellers/my-file/withdraw').set(session.headers);
+
+      expect(withdrawn.status).toBe(200);
+      expect(withdrawn.body).toEqual({ version: 9 });
+      expect(withdrawn.headers['cache-control']).toBe('no-store');
+      expect(nothing.status).toBe(409);
+      expect(nothing.body).toEqual({ statusCode: 409, code: 'file.nothing-to-withdraw' });
+      expect(stubs.withdraw.calls[0]!.input).toEqual({});
+    });
+
+    it('refuses an unsafe submit from another origin or a cross-site request, without a call', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.submit.next = {
+        ok: true,
+        value: {
+          revisionNo: 1,
+          version: 2,
+          submittedAt: Temporal.Instant.from('2026-10-08T10:00:00Z'),
+          resubmission: false,
+        },
+      };
+
+      const foreign = await http()
+        .post('/sellers/my-file/submit')
+        .set({ ...session.headers, origin: 'https://evil.example' })
+        .send({});
+      const crossSite = await http()
+        .post('/sellers/my-file/submit')
+        .set({ ...session.headers, 'sec-fetch-site': 'cross-site' })
+        .send({});
+
+      expect(foreign.status).toBe(403);
+      expect(crossSite.status).toBe(403);
+      expect(stubs.submit.calls).toHaveLength(0);
+    });
+
+    it('is in the OpenAPI document with its ten routes, the CSRF header, 415 and 429', async () => {
       await boot(true, { API_DOCS_ENABLED: 'true' });
 
       const response = await http().get('/docs-json').expect(200);
@@ -827,6 +996,8 @@ describe('the seller draft over HTTP (integration)', () => {
         ['post', '/sellers/my-file/slug-check'],
         ['put', '/sellers/my-file/identifier'],
         ['post', '/sellers/my-file/identifier-check'],
+        ['post', '/sellers/my-file/submit'],
+        ['post', '/sellers/my-file/withdraw'],
       ] as const;
       for (const [method, path] of routes) expect(paths[path]?.[method]).toBeDefined();
       for (const [method, path] of routes.slice(2)) {

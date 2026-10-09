@@ -21,6 +21,13 @@ import { SellerFile, type DraftRequirements } from '../../src/modules/sellers/do
 import type { ShopSlug } from '../../src/modules/sellers/domain/shop-slug';
 import { parseStoreName } from '../../src/modules/sellers/domain/store-name';
 import { PrismaBusinessFileRevisionRepository } from '../../src/modules/sellers/infrastructure/prisma-business-file-revision.repository';
+import { PrismaRateCounterRepository } from '../../src/modules/sellers/infrastructure/prisma-rate-counter.repository';
+import { PrismaShopSlugRepository } from '../../src/modules/sellers/infrastructure/prisma-shop-slug.repository';
+import {
+  REVIEWER_NOTICE_SELLER_LIMITS,
+  SAVE_LIMITS,
+} from '../../src/modules/sellers/domain/rate-limits';
+import { withdrawn } from '../../src/modules/sellers/domain/business-file-revision';
 import { PrismaRegisterCheckRepository } from '../../src/modules/sellers/infrastructure/prisma-register-check.repository';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { SubjectKeyRevisionContentSealer } from '../../src/modules/sellers/infrastructure/subject-key-revision-content-sealer';
@@ -103,6 +110,8 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
   let files: PrismaSellerFileRepository;
   let revisions: PrismaBusinessFileRevisionRepository;
   let checks: PrismaRegisterCheckRepository;
+  let counters: PrismaRateCounterRepository;
+  let slugs: PrismaShopSlugRepository;
   let sealer: SubjectKeyRevisionContentSealer;
   let keys: NodeSubjectKeyService;
 
@@ -111,6 +120,8 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
     files = new PrismaSellerFileRepository(db.service);
     revisions = new PrismaBusinessFileRevisionRepository(db.service);
     checks = new PrismaRegisterCheckRepository(db.service);
+    counters = new PrismaRateCounterRepository(db.service);
+    slugs = new PrismaShopSlugRepository(db.service);
     keys = new NodeSubjectKeyService(
       new PrismaSubjectKeyStore(db.service, db.unitOfWork),
       new LocalKeyWrapper({ nodeEnv: 'test', nodeEnvExplicit: true }),
@@ -973,6 +984,322 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
         checks.record(market, other2, index, write(unavailableFile.state.version, 'unavailable')),
       );
       expect(await currentness(other2)).toBe(false);
+    });
+  });
+
+  describe('register results are version-monotonic (slice 5b; Hassan L1)', () => {
+    const by = { kind: 'seller', accountId: ACCOUNT } as const;
+    const index = identifierIndexKeyOf(new Uint8Array(32).fill(4));
+    const at = (seconds: number) => T0.add({ seconds });
+    const record = (
+      sellerId: Id<'Seller'>,
+      version: number,
+      outcome: 'active' | 'not-found' | 'cancelled' | 'unavailable',
+      checkedAt = at(version),
+    ) =>
+      inUnit(code, () =>
+        checks.record(market, sellerId, index, {
+          outcome,
+          mismatches: [],
+          checkedAt,
+          checkedBy: by,
+          comparedFileVersion: version,
+        }),
+      );
+    const stored = (sellerId: Id<'Seller'>) =>
+      inUnit(code, () => checks.find(market, sellerId, index));
+
+    it('never lets a writer that compared an older version replace a newer answer', async () => {
+      const sellerId = await newFile();
+      await record(sellerId, 5, 'active');
+
+      const late = await record(sellerId, 3, 'unavailable');
+
+      // The answer is the row as stored: the version-5 answer, not the write.
+      expect(late).toMatchObject({ outcome: 'active', comparedFileVersion: 5 });
+      expect(await stored(sellerId)).toMatchObject({
+        outcome: 'active',
+        comparedFileVersion: 5,
+        checkedAt: at(5),
+      });
+    });
+
+    it('replaces an answer of the same or an older version, so the latest of the newest version wins', async () => {
+      const sellerId = await newFile();
+      await record(sellerId, 2, 'unavailable');
+      expect(await record(sellerId, 2, 'active')).toMatchObject({ outcome: 'active' });
+      expect(await record(sellerId, 4, 'unavailable')).toMatchObject({
+        outcome: 'unavailable',
+        comparedFileVersion: 4,
+      });
+    });
+
+    it('never clears the definite negative by a lower version, and a higher active clears it', async () => {
+      const sellerId = await newFile();
+      await record(sellerId, 4, 'not-found');
+      expect((await stored(sellerId))?.definiteNegativeAt).toEqual(at(4));
+
+      // An older snapshot found the register active: it must not undo the negative.
+      expect(await record(sellerId, 3, 'active')).toMatchObject({
+        outcome: 'not-found',
+        comparedFileVersion: 4,
+        definiteNegativeAt: at(4),
+      });
+      // The same version, or a later unavailable answer, keeps the mark (AC 31).
+      expect(await record(sellerId, 4, 'unavailable')).toMatchObject({
+        outcome: 'unavailable',
+        definiteNegativeAt: at(4),
+      });
+      // A later active answer of a newer version ends it.
+      expect(await record(sellerId, 6, 'active')).toMatchObject({
+        outcome: 'active',
+        comparedFileVersion: 6,
+        definiteNegativeAt: null,
+      });
+    });
+
+    it('records a negative over an active row and keeps the first mark on a second negative', async () => {
+      const sellerId = await newFile();
+      await record(sellerId, 2, 'active');
+
+      const first = await record(sellerId, 3, 'not-found');
+      expect(first).toMatchObject({ outcome: 'not-found', definiteNegativeAt: at(3) });
+      const second = await record(sellerId, 4, 'cancelled');
+      expect(second).toMatchObject({
+        outcome: 'cancelled',
+        comparedFileVersion: 4,
+        definiteNegativeAt: at(3),
+      });
+      // A lower negative changes nothing.
+      expect(await record(sellerId, 1, 'not-found', at(99))).toMatchObject({
+        comparedFileVersion: 4,
+        definiteNegativeAt: at(3),
+      });
+    });
+
+    it('ends on the newest version whatever the order in which concurrent writers commit', async () => {
+      for (let round = 0; round < 4; round += 1) {
+        const sellerId = await newFile();
+        const versions = [2, 7, 3, 9, 5, 4, 8, 6].sort(() => Math.random() - 0.5);
+        await Promise.all(versions.map((version) => record(sellerId, version, 'active')));
+        expect(await stored(sellerId)).toMatchObject({
+          comparedFileVersion: 9,
+          checkedAt: at(9),
+          definiteNegativeAt: null,
+        });
+      }
+    });
+  });
+
+  describe('slice 5b repository methods', () => {
+    it('recordChange raises only the version and the change instant, over the version read', async () => {
+      const sellerId = await newFile();
+      const draft = await withIdentifier(sellerId);
+      const later = T0.add({ minutes: 5 });
+      const before = (await inUnit(code, () => files.findById(market, sellerId)))!;
+      const events = before.recordWithdrawal(
+        { revisionId: ids.next<'BusinessFileRevision'>(), cause: 'cancelled', byKind: 'seller' },
+        later,
+      );
+      void events;
+
+      expect(await inUnit(code, () => files.recordChange(market, before))).toBe(true);
+
+      const after = (await inUnit(code, () => files.findById(market, sellerId)))!;
+      expect(after.state.version).toBe(draft.state.version + 1);
+      expect(after.state.lastChangedAt).toEqual(later);
+      expect(after.state.draft).toEqual(draft.state.draft);
+      expect(after.state.draftComplete).toBe(draft.state.draftComplete);
+      // The same object, written again, is a stale compare-and-set.
+      expect(await inUnit(code, () => files.recordChange(market, before))).toBe(false);
+    });
+
+    it('lets exactly one of two concurrent changes of the same version win', async () => {
+      const sellerId = await newFile();
+      const read = () => inUnit(code, () => files.findById(market, sellerId));
+      const [one, two] = [(await read())!, (await read())!];
+      const revisionId = ids.next<'BusinessFileRevision'>();
+      for (const file of [one, two]) {
+        file.recordWithdrawal(
+          { revisionId, cause: 'cancelled', byKind: 'seller' },
+          T0.add({ minutes: 1 }),
+        );
+      }
+
+      const outcomes = await Promise.all(
+        [one, two].map((file) => inUnit(code, () => files.recordChange(market, file))),
+      );
+
+      expect(outcomes.filter(Boolean)).toHaveLength(1);
+      expect((await read())!.state.version).toBe(2);
+    });
+
+    it('closes a pending revision once, with the row count checked, and never a decided one', async () => {
+      const sellerId = await newFile();
+      const revision = pendingRevision(sellerId);
+      expect((await add(revision)).ok).toBe(true);
+      const closed = withdrawn(revision, 'edited', 'seller', T0.add({ minutes: 2 }));
+      if (!closed.ok) throw new Error('fixture');
+
+      expect(await inUnit(code, () => revisions.saveWithdrawal(market, closed.value))).toBe(true);
+      expect(await inUnit(code, () => revisions.saveWithdrawal(market, closed.value))).toBe(false);
+
+      const stored = await inUnit(code, () => revisions.findById(market, sellerId, revision.id));
+      expect(stored).toMatchObject({
+        status: 'withdrawn',
+        statusChangedAt: T0.add({ minutes: 2 }),
+        withdrawal: { cause: 'edited', byKind: 'seller', at: T0.add({ minutes: 2 }) },
+      });
+      expect(await inUnit(code, () => revisions.findPending(market, sellerId))).toBeNull();
+
+      // A revision decided in between: the compare on the status finds nothing to close.
+      const second = pendingRevision(sellerId, { revisionNo: 2 });
+      expect((await add(second)).ok).toBe(true);
+      // A decision commits first (the application role may write the status columns).
+      await sql.query(
+        `UPDATE sellers.business_file_revisions
+            SET status = 'approved', status_changed_at = $3, decided_at = $3
+          WHERE market_id = $1 AND id = $2`,
+        [code, second.id, T0.add({ minutes: 2 }).toString()],
+      );
+      const raced = withdrawn(second, 'cancelled', 'seller', T0.add({ minutes: 3 }));
+      if (!raced.ok) throw new Error('fixture');
+
+      expect(await inUnit(code, () => revisions.saveWithdrawal(market, raced.value))).toBe(false);
+      expect((await revisionRows(sellerId)).map((row) => row.status)).toEqual([
+        'withdrawn',
+        'approved',
+      ]);
+    });
+
+    it('refuses to close a revision of another seller, of another Market, or one not withdrawn', async () => {
+      const sellerId = await newFile();
+      const revision = pendingRevision(sellerId);
+      expect((await add(revision)).ok).toBe(true);
+      const closed = withdrawn(revision, 'cancelled', 'seller', T0.add({ minutes: 2 }));
+      if (!closed.ok) throw new Error('fixture');
+
+      expect(
+        await inUnit(other, () => revisions.saveWithdrawal(marketOf(other), closed.value)),
+      ).toBe(false);
+      await expect(
+        inUnit(code, () => revisions.saveWithdrawal(market, revision)),
+      ).rejects.toThrow();
+      expect((await inUnit(code, () => revisions.findPending(market, sellerId)))?.id).toBe(
+        revision.id,
+      );
+    });
+
+    it('reads the approved zones through the pointer: the clear columns, one entry per approved seller', async () => {
+      const approved = await newFile();
+      const noAddress = await newFile();
+      const pending = await newFile();
+      const unknown = ids.next<'Seller'>();
+      const make = async (sellerId: Id<'Seller'>, overrides: Row) => {
+        const id = randomUUID();
+        await insertRaw(sellerId, {
+          id,
+          status: 'approved',
+          decided_at: T0.toString(),
+          ...overrides,
+        });
+        await sql.query(
+          'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+          [code, sellerId, id],
+        );
+      };
+      await make(approved, {});
+      await make(noAddress, { address_timezone: null });
+      expect((await add(pendingRevision(pending))).ok).toBe(true);
+      const foreign = await newFile(other as typeof code);
+
+      const zones = await inUnit(code, () =>
+        revisions.approvedZones(market, [approved, noAddress, pending, unknown, foreign]),
+      );
+
+      expect([...zones.entries()]).toEqual(
+        expect.arrayContaining([
+          [
+            approved,
+            { operatingTimezone: fixture.operatingZone, addressTimezone: fixture.addressZone },
+          ],
+          [noAddress, { operatingTimezone: fixture.operatingZone, addressTimezone: null }],
+        ]),
+      );
+      expect(zones.size).toBe(2);
+      expect(await inUnit(code, () => revisions.approvedZones(market, []))).toEqual(new Map());
+    });
+
+    it('holds a slug once, reports who has it, and releases only a never-public held one', async () => {
+      const mine = await newFile();
+      const theirs = await newFile();
+      const slug = `shop-${randomUUID().slice(0, 8)}` as ShopSlug;
+      const hold = (sellerId: Id<'Seller'>, value: ShopSlug) =>
+        inUnit(code, () => slugs.hold(market, { id: ids.next(), sellerId, slug: value, now: T0 }));
+
+      expect(await hold(mine, slug)).toBe('held');
+      expect(await hold(mine, slug)).toBe('already-held');
+      expect(await hold(theirs, slug)).toBe('taken');
+      // One slug per seller (I-S1): holding another is a fault, not a refusal.
+      await expect(hold(mine, `${slug}-two` as ShopSlug)).rejects.toThrow();
+
+      expect(await inUnit(code, () => slugs.releaseUnpublished(market, mine))).toBe(1);
+      expect(await inUnit(code, () => slugs.releaseUnpublished(market, mine))).toBe(0);
+      expect(await hold(theirs, slug)).toBe('held');
+
+      // Ever public: never released, by the repository or the database.
+      await sql.query(
+        'UPDATE sellers.shop_slugs SET ever_public = true WHERE market_id = $1 AND seller_id = $2',
+        [code, theirs],
+      );
+      expect(await inUnit(code, () => slugs.releaseUnpublished(market, theirs))).toBe(0);
+      // Another Market never sees or releases it.
+      expect(await inUnit(other, () => slugs.releaseUnpublished(marketOf(other), theirs))).toBe(0);
+    });
+
+    it('releases a reviewer-notice reservation of its own window once, never below zero, never a later window', async () => {
+      const limit = REVIEWER_NOTICE_SELLER_LIMITS[0]!;
+      const counter = {
+        limit,
+        keyHash: Buffer.from(randomUUID().replaceAll('-', '').padEnd(64, '0'), 'hex'),
+      };
+      const reserve = (now: Temporal.Instant) =>
+        inUnit(code, () => counters.reserve(market, [counter], now));
+      const release = (windowStartedAt: Temporal.Instant) =>
+        inUnit(code, () => counters.release(market, counter, windowStartedAt));
+
+      const first = (await reserve(T0))[0]!;
+      expect(first.count).toBe(1);
+      expect(await release(first.windowStartedAt)).toBe(true);
+      expect(await release(first.windowStartedAt)).toBe(false);
+      const count = () =>
+        sql
+          .query<{ count: number }>(
+            'SELECT count FROM sellers.rate_counters WHERE market_id = $1 AND kind = $2 AND key_hash = $3',
+            [code, limit.kind, counter.keyHash],
+          )
+          .then((result) => result.rows[0]!.count);
+      expect(await count()).toBe(0);
+
+      // A window that restarted in between belongs to a later reservation.
+      const old = (await reserve(T0))[0]!;
+      const later = (await reserve(T0.add({ minutes: limit.windowMinutes + 1 })))[0]!;
+      expect(later.count).toBe(1);
+      expect(await release(old.windowStartedAt)).toBe(false);
+      expect(await count()).toBe(1);
+      expect(await release(later.windowStartedAt)).toBe(true);
+    });
+
+    it('releases no other kind: the repository refuses a save or lookup counter', async () => {
+      const counter = {
+        limit: SAVE_LIMITS[0]!,
+        keyHash: Buffer.from(randomUUID().replaceAll('-', '').padEnd(64, '0'), 'hex'),
+      };
+      const reserved = await inUnit(code, () => counters.reserve(market, [counter], T0));
+
+      await expect(
+        inUnit(code, () => counters.release(market, counter, reserved[0]!.windowStartedAt)),
+      ).rejects.toThrow(TypeError);
     });
   });
 

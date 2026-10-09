@@ -1,7 +1,15 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
 import { sameIdentifier, type DraftIdentifier } from './business-identifier';
-import { SellerFileCreated } from './events';
+import {
+  REVISION_AUTHOR_KINDS,
+  REVISION_KINDS,
+  WITHDRAW_CAUSES,
+  type RevisionAuthorKind,
+  type RevisionKind,
+  type WithdrawCause,
+} from './revision-kinds';
+import { BusinessFileSubmitted, BusinessFileWithdrawn, SellerFileCreated } from './events';
 import type { Sealed } from './sealed';
 import type { ShopSlug } from './shop-slug';
 import type { StoreName } from './store-name';
@@ -87,6 +95,22 @@ export interface AddressDraftInput {
   /** The zones of the operating address's region (Market configuration), or null for none. */
   readonly zones: RegionZones | null;
   readonly zone: ZoneChoice;
+}
+
+/** What a submission tells the file about its new revision (sellers design 7.4). */
+export interface SubmissionRecord {
+  readonly revisionId: Id<'BusinessFileRevision'>;
+  readonly kind: RevisionKind;
+  readonly authorKind: RevisionAuthorKind;
+  /** The file had an earlier revision: another try, not a first application. */
+  readonly resubmission: boolean;
+}
+
+/** What a withdrawal tells the file about the revision it closed (sellers design 7.4). */
+export interface WithdrawalRecord {
+  readonly revisionId: Id<'BusinessFileRevision'>;
+  readonly cause: WithdrawCause;
+  readonly byKind: RevisionAuthorKind;
 }
 
 /** A save refused by the aggregate. Codes only (sellers design 8.3). */
@@ -304,6 +328,86 @@ export class SellerFile {
     if (sameIdentifier(this.#state.draft.identifier, identifier)) return ok(undefined);
     this.apply({ ...this.#state.draft, identifier }, now, requirements);
     return ok(undefined);
+  }
+
+  /**
+   * Records that a revision was created from the draft (sellers design 3.1, 7.4; slice 5b). The
+   * submission changes no draft column: it raises the file's version (the repository writes it
+   * over the version read, so a save, a withdrawal or another submission that committed first
+   * makes this one lose) and appends `sellers.business-file-submitted.v1` at that version. An
+   * onboarding submission on a file with an approved revision is refused: that file changes
+   * business identity through a change request only.
+   */
+  recordSubmission(
+    input: SubmissionRecord,
+    now: Temporal.Instant,
+  ): Result<void, { readonly code: 'file.change-request-required' }> {
+    if (!(REVISION_KINDS as readonly string[]).includes(input.kind)) {
+      throw new TypeError('recordSubmission: unknown kind');
+    }
+    if (!(REVISION_AUTHOR_KINDS as readonly string[]).includes(input.authorKind)) {
+      throw new TypeError('recordSubmission: unknown author kind');
+    }
+    if (input.kind === 'onboarding' && this.#state.hasApprovedRevision) {
+      return err({ code: 'file.change-request-required' });
+    }
+    this.touch(now);
+    this.#events.push(
+      BusinessFileSubmitted.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: now,
+        payload: {
+          sellerId: this.#state.sellerId,
+          revisionId: input.revisionId,
+          kind: input.kind,
+          authorKind: input.authorKind,
+          resubmission: input.resubmission,
+        },
+      }),
+    );
+    return ok(undefined);
+  }
+
+  /**
+   * Records that the pending revision was withdrawn (design 3.1, 7.4; slice 5b), after a draft
+   * edit (the save already raised the version in this unit, and the event reuses it) or on its
+   * own (the version is raised here). The revision's status is the revision repository's.
+   */
+  recordWithdrawal(input: WithdrawalRecord, now: Temporal.Instant): void {
+    if (!(WITHDRAW_CAUSES as readonly string[]).includes(input.cause)) {
+      throw new TypeError('recordWithdrawal: unknown cause');
+    }
+    if (!(REVISION_AUTHOR_KINDS as readonly string[]).includes(input.byKind)) {
+      throw new TypeError('recordWithdrawal: unknown actor kind');
+    }
+    this.touch(now);
+    this.#events.push(
+      BusinessFileWithdrawn.record({
+        aggregateId: this.#state.sellerId,
+        aggregateVersion: this.#state.version,
+        occurredAt: now,
+        payload: {
+          sellerId: this.#state.sellerId,
+          revisionId: input.revisionId,
+          cause: input.cause,
+          byKind: input.byKind,
+        },
+      }),
+    );
+  }
+
+  /**
+   * The file changed in this unit without its draft changing: raises the version and stamps the
+   * change, once per unit (an edit that already raised it keeps its version).
+   */
+  private touch(now: Temporal.Instant): void {
+    if (this.#state.version !== this.#persistedVersion) return;
+    this.#state = Object.freeze({
+      ...this.#state,
+      lastChangedAt: now,
+      version: this.#state.version + 1,
+    });
   }
 
   private apply(

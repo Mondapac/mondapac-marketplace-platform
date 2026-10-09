@@ -4,7 +4,15 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SELLERS_BUSINESS_IDENTITY_EDIT } from '../../contracts/permissions';
 import { addressFromJson, type AddressFormatSpec } from '../../domain/address';
+import type { Temporal } from '@mondapac/shared-kernel';
+import type { RevisionAuthorKind, WithdrawCause } from '../../domain/revision-kinds';
 import type { SellerRegisterResult } from '../../domain/register-check';
+import {
+  onboardingStepsOf,
+  sellerStatusOf,
+  type OnboardingStep,
+  type SellerStatus,
+} from '../../domain/seller-status';
 import type { Sealed, SealedField } from '../../domain/sealed';
 import type { DraftPart, DraftRequirements, SellerFile } from '../../domain/seller-file';
 import type { ZoneState } from '../../domain/zone';
@@ -16,6 +24,8 @@ import {
   type SellersUnavailable,
 } from '../draft/draft-support';
 import { zoneOptionsOf, type FileNotFound } from '../draft/draft-view';
+import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
+import type { SellerAccessReader } from '../ports/seller-access-reader';
 import type { RegisterCheckRepository } from '../ports/register-check.repository';
 import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
 import { sellerResultOf } from '../register/register-lookup';
@@ -71,13 +81,35 @@ export interface MyFileView {
   readonly registerResult: SellerRegisterResult | null;
   /** The zones of the saved address's region, the default first; empty without an address. */
   readonly zoneOptions: readonly string[];
+  /** The one status of design 3.3 that slice 5b can tell. */
+  readonly status: SellerStatus;
+  /** The steps card of S1 (design 7.1 `onboardingSteps`). */
+  readonly onboardingSteps: readonly OnboardingStep[];
+  /** The pending submission, or null. */
+  readonly submission: {
+    readonly revisionNo: number;
+    readonly submittedAt: Temporal.Instant;
+  } | null;
+  /**
+   * The seller's latest revision when it ended withdrawn (cause, by whom, when), so the page can
+   * say why the submission is gone (ux F14); null otherwise.
+   */
+  readonly latestWithdrawal: {
+    readonly cause: WithdrawCause;
+    readonly byKind: RevisionAuthorKind;
+    readonly at: Temporal.Instant;
+  } | null;
 }
+
+type BaseView = Omit<MyFileView, 'status' | 'onboardingSteps' | 'submission' | 'latestWithdrawal'>;
 
 export type MyFileReadFailure = DraftAccessDenied | SellersUnavailable | FileNotFound;
 
 export interface MyFileReadDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
+  readonly revisions: BusinessFileRevisionRepository;
+  readonly accessReader: SellerAccessReader;
   readonly policy: SellerMarketPolicy;
   readonly identifierSchemes: BusinessIdentifierSchemes;
   readonly cipher: SellerFileCipher;
@@ -130,6 +162,14 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     const { unitOfWork, files, addressFormats } = this.deps;
 
     const lookup = this.deps.registerPolicy.settingsOf(market);
+    // The access state is `identity`'s, read live and outside any unit (design 7.2).
+    let access;
+    try {
+      access = await this.deps.accessReader.accessOf(context, owner.sellerId);
+    } catch {
+      return err({ code: 'sellers.unavailable' });
+    }
+    if (access === null) return err({ code: 'file.not-found' });
     const read = await unitOfWork.run(
       market,
       async () => {
@@ -139,7 +179,11 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
           lookup.kind === 'configured' && index !== null
             ? await this.deps.registerChecks.find(market, owner.sellerId, index)
             : null;
-        return ok({ found, check });
+        const pending =
+          found === null ? null : await this.deps.revisions.findPending(market, owner.sellerId);
+        const latest =
+          found === null ? null : await this.deps.revisions.findLatest(market, owner.sellerId);
+        return ok({ found, check, pending, latest });
       },
       { readOnly: true },
     );
@@ -159,7 +203,36 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     const requirements = draftRequirementsOf(this.deps.policy, market);
     if (format === null || requirements === null) return err({ code: 'sellers.unavailable' });
     try {
-      return await this.view(market, owner.sellerId, file, format, requirements, registerResult);
+      const viewed = await this.view(
+        market,
+        owner.sellerId,
+        file,
+        format,
+        requirements,
+        registerResult,
+      );
+      if (!viewed.ok) return viewed;
+      const { pending, latest } = read.value;
+      const base = viewed.value;
+      const statusInput = {
+        access,
+        hasApprovedRevision: file.state.hasApprovedRevision,
+        hasPendingOnboardingRevision: pending?.kind === 'onboarding',
+        missing: base.missing,
+        outsideServiceArea: base.outsideServiceArea,
+        registerNegative: base.registerResult === 'not-matched',
+      };
+      const status = sellerStatusOf(statusInput);
+      return ok({
+        ...base,
+        status,
+        onboardingSteps: onboardingStepsOf(statusInput, status),
+        submission:
+          pending === null
+            ? null
+            : { revisionNo: pending.revisionNo, submittedAt: pending.createdAt },
+        latestWithdrawal: latest?.withdrawal != null ? { ...latest.withdrawal } : null,
+      });
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
@@ -172,7 +245,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     format: AddressFormatSpec,
     requirements: DraftRequirements,
     registerResult: SellerRegisterResult | null,
-  ): Promise<Result<MyFileView, SellersUnavailable>> {
+  ): Promise<Result<BaseView, SellersUnavailable>> {
     const { cipher, zones, areas, identifierSchemes } = this.deps;
     let destroyed = false;
     const open = async <F extends SealedField>(

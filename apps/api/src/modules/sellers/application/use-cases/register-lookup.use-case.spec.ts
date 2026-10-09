@@ -16,6 +16,11 @@ import {
   validIdentifiers,
 } from '../../../../../test/support/sellers-register-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
+import {
+  FakeAccess,
+  InMemoryRevisions,
+  RecordingOutbox,
+} from '../../../../../test/support/sellers-submit-fakes';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
@@ -137,6 +142,10 @@ class FakeFiles implements SellerFileRepository {
   }
   /** When set, the next `saveDraft` loses to a concurrent writer (optimistic version check). */
   conflictOnNextSave = false;
+  recordChange(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   saveDraft(market: MarketContext, file: SellerFile): Promise<boolean> {
     if (this.conflictOnNextSave) {
       this.conflictOnNextSave = false;
@@ -202,6 +211,10 @@ class FakeCounters implements RateCounterRepository {
       }),
     );
   }
+  release(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   purgeStartedBefore(): Promise<number> {
     return Promise.reject(new Error('not used here'));
   }
@@ -247,7 +260,10 @@ function setUp(code: 'AU' | 'ZZ', options: Options = {}) {
     registerPolicy,
     new Map([[FAKE_REGISTER_ADAPTER, fake]]),
   );
-  const common = { unitOfWork, counters, counterKeys, clock };
+  const revisions = new InMemoryRevisions();
+  const outbox = new RecordingOutbox();
+  const access = new FakeAccess();
+  const common = { unitOfWork, counters, counterKeys, clock, revisions, outbox };
   const identifierSchemes = new MarketConfigIdentifierSchemes(markets);
   return {
     clock,
@@ -272,9 +288,12 @@ function setUp(code: 'AU' | 'ZZ', options: Options = {}) {
       taxProfiles,
       addressFormats: formats,
     }),
+    access,
     read: new MyFileRead(gate, {
       unitOfWork,
       files,
+      revisions,
+      accessReader: access,
       policy,
       identifierSchemes,
       cipher,
@@ -308,6 +327,7 @@ function seller(t: Setup, code: string) {
       now: START,
     }),
   );
+  t.access.set(sellerId, 'pending');
   const accountId = t.ids.next<'Account'>();
   const context: CallContext = testCallContext(
     market(code),

@@ -1140,6 +1140,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         value: {
           version: 2,
           draftComplete: false,
+          submissionWithdrawn: false,
           missing: parts('address', 'timezone', 'identifier', 'slug'),
         },
       });
@@ -1352,6 +1353,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
         value: {
           version: 2,
           draftComplete: false,
+          submissionWithdrawn: false,
           missing: parts('storeName', 'businessName', 'phone', 'address', 'timezone', 'identifier'),
         },
       });
@@ -1701,6 +1703,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           value: {
             version: 2,
             draftComplete: false,
+            submissionWithdrawn: false,
             missing: parts('storeName', 'businessName', 'phone', 'address', 'timezone', 'slug'),
             registerResult: null,
           },

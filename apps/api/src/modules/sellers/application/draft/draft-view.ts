@@ -8,13 +8,23 @@ export interface DraftSaved {
   readonly draftComplete: boolean;
   /** The mandatory parts still missing, in the order of the form. */
   readonly missing: readonly DraftPart[];
+  /**
+   * True when this save withdrew the seller's pending submission (sellers design 3.1; ux F14):
+   * the seller must submit again.
+   */
+  readonly submissionWithdrawn: boolean;
 }
 
-export function draftSaved(file: SellerFile, requirements: DraftRequirements): DraftSaved {
+export function draftSaved(
+  file: SellerFile,
+  requirements: DraftRequirements,
+  submissionWithdrawn = false,
+): DraftSaved {
   return {
     version: file.state.version,
     draftComplete: file.state.draftComplete,
     missing: file.missing(requirements),
+    submissionWithdrawn,
   };
 }
 

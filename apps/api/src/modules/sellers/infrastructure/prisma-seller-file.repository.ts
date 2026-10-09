@@ -261,4 +261,20 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
     });
     return count === 1;
   }
+
+  async recordChange(market: MarketContext, file: SellerFile): Promise<boolean> {
+    const { state } = file;
+    if (state.version !== file.persistedVersion + 1) {
+      throw new RangeError('recordChange: one change raises the version by exactly one');
+    }
+    const { count } = await this.prisma.tx(market).sellersSellerFile.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: state.sellerId,
+        version: file.persistedVersion,
+      },
+      data: { lastChangedAt: toDate(state.lastChangedAt), version: state.version },
+    });
+    return count === 1;
+  }
 }
