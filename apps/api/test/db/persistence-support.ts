@@ -15,6 +15,7 @@ import {
   PrismaUnitOfWork,
   type RetryPause,
 } from '../../src/platform/persistence/prisma-unit-of-work';
+import { TransactionConflictError } from '../../src/platform/unit-of-work/errors';
 import { testAppConfig } from '../support/test-config';
 import { testDatabaseUrl } from './test-database';
 
@@ -139,3 +140,30 @@ export async function timed<T>(
 }
 
 export { randomUUID };
+
+/**
+ * A use case whose `execute` is run again when the unit of work gives up on a serialization
+ * conflict (`TransactionConflictError`). The platform retries a unit three times; under the
+ * parallel database specs of one run, SERIALIZABLE units also meet false conflicts from other
+ * files (predicate locks are page-wide on small tables), so three attempts can run out. A real
+ * caller meets the same answer as `409 conflict.retry` or an event redelivery, and runs again;
+ * this does the same for the specs that open serializable units. Only that error is retried.
+ */
+export function retryingConflicts<T extends { execute(...args: never[]): Promise<unknown> }>(
+  useCase: T,
+  attempts = 6,
+): T {
+  // A use case's `execute` is sealed on the instance, so the stand-in is a plain object that
+  // carries only `execute`, which is all the specs call.
+  return {
+    execute: async (...args: never[]) => {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await useCase.execute(...args);
+        } catch (error) {
+          if (!(error instanceof TransactionConflictError) || attempt >= attempts) throw error;
+        }
+      }
+    },
+  } as unknown as T;
+}

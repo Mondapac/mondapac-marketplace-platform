@@ -38,7 +38,13 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import type { HandledOnce, UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
-import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  modelMap,
+  retryingConflicts,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // Inventory slice 2, part 5 on PostgreSQL (inventory design 3.6; data design 3.5, 4.4, 4.5),
@@ -109,38 +115,44 @@ describe.each(TEST_MARKETS)('inventory.rekey-moved-offer in market %s (database)
       NO_PERMISSION_KEYS,
     ).forModule('inventory');
     build = (repository) => ({
-      set: new SetStockLevel(gate, {
-        unitOfWork: db.unitOfWork,
-        inventories,
-        stock: repository,
-        signals,
-        offers,
-        policies,
-        outbox,
-        ids,
-        clock,
-      }),
-      rekey: new RekeyMovedOffer(gate, {
-        unitOfWork: handledOnce(),
-        inventories,
-        stock: repository,
-        signals,
-        offers,
-        policies,
-        outbox,
-        ids,
-        clock,
-      }),
+      set: retryingConflicts(
+        new SetStockLevel(gate, {
+          unitOfWork: db.unitOfWork,
+          inventories,
+          stock: repository,
+          signals,
+          offers,
+          policies,
+          outbox,
+          ids,
+          clock,
+        }),
+      ),
+      rekey: retryingConflicts(
+        new RekeyMovedOffer(gate, {
+          unitOfWork: handledOnce(),
+          inventories,
+          stock: repository,
+          signals,
+          offers,
+          policies,
+          outbox,
+          ids,
+          clock,
+        }),
+      ),
     });
     ({ set: setStockLevel, rekey } = build(stock));
-    retire = new RetireSellUnits(gate, {
-      unitOfWork: handledOnce(),
-      stock,
-      signals,
-      outbox,
-      ids,
-      clock,
-    });
+    retire = retryingConflicts(
+      new RetireSellUnits(gate, {
+        unitOfWork: handledOnce(),
+        stock,
+        signals,
+        outbox,
+        ids,
+        clock,
+      }),
+    );
   });
   afterAll(async () => {
     await db.close();
