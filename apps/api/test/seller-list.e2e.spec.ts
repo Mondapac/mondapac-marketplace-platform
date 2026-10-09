@@ -210,7 +210,30 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
     });
     admin(1, ROOT, 'platform-administrator');
     admin(2, VIEWER, 'viewer');
-    admin(4, SUPPORT, 'operations-support');
+    // An admin whose role lacks the list key: a custom platform role with another view key.
+    const noListRole = id<'Role'>(`01990000-0000-7000-8000-${n12(0xe100 + 1)}`);
+    fakes.seedRole({
+      id: noListRole,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      permissionKeys: ['identity.customer-account.view'],
+      version: 1,
+      createdAt: START,
+    });
+    account(4, SUPPORT, 'admin');
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe200 + 4)}`),
+      marketId,
+      accountId: SUPPORT,
+      roleId: noListRole,
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
     account(3, CUSTOMER, 'customer');
   }
 

@@ -100,5 +100,42 @@
       "identity.seller-access.view",
       "sellers.seller.view"
     ]
+  },
+  {
+    "entry": "platform:onboarding-compliance@3",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.seller-access.approve",
+      "identity.seller-access.suspend",
+      "identity.seller-access.view",
+      "identity.seller-account.create",
+      "sellers.seller-file.review",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:catalogue-moderator@3",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.platform-product.edit",
+      "identity.seller-access.view",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:operations-support@2",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.customer-account.disable",
+      "identity.customer-account.view",
+      "identity.seller-access.view",
+      "identity.seller-account.reset-second-factor",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:finance@2",
+    "kind": "default",
+    "permissionKeys": ["identity.seller-access.view", "sellers.seller.view"]
   }
 ]
