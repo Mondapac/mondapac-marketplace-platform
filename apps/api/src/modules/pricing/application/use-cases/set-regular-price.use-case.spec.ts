@@ -719,9 +719,13 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
           correlationId: t.context.correlationId,
         }),
       ]);
-      const text = JSON.stringify(logged);
-      expect(text).not.toContain(amount.toString());
-      expect(text).not.toContain('absent');
+      // Compare whole values, not substrings: a random id can contain any digit run.
+      const values = logged.flatMap((entry) => Object.values(entry as Record<string, unknown>));
+      expect(values).not.toContain(amount);
+      expect(values).not.toContain(amount.toString());
+      expect(values).not.toContain(Number(amount));
+      expect(values).not.toContain('absent');
+      expect(logged.flatMap((entry) => Object.keys(entry as object))).not.toContain('amount');
     });
   });
 
