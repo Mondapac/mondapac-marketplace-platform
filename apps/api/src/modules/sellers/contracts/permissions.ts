@@ -32,7 +32,7 @@ export const SELLERS_SELLER_FILE_REVIEW = definePermission('sellers', {
  * Platform scope, not protected. The default role mapping is `identity`'s seed: the Viewer role
  * holds it since seed version 2 (slice 6) and the Platform Administrator system role holds every
  * key; Onboarding and Compliance, Catalogue Moderator, Operations and Support and Finance get it
- * in a follow-up identity PR that must land before slice 7a-read. The per-row `status` of the
+ * since their seed versions 3, 3, 2 and 2 (identity). The per-row `status` of the
  * list also needs `identity.seller-access.view`.
  */
 export const SELLERS_SELLER_VIEW = definePermission('sellers', {
