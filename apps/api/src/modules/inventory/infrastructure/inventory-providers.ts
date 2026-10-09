@@ -29,9 +29,14 @@ import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
 import { PrismaAvailabilityReader } from './prisma-availability.reader';
 import { PrismaAvailabilitySignalRepository } from './prisma-availability-signal.repository';
 import { PrismaStockRepository } from './prisma-stock.repository';
+import {
+  RESERVATION_REPOSITORY,
+  type ReservationRepository,
+} from '../application/ports/reservation.repository';
+import { PrismaReservationRepository } from './prisma-reservation.repository';
 
 /**
- * Binds the ports of slices 1 and 2. They live in `infrastructure/` because only this layer may reach
+ * Binds the ports of slices 1, 2 and 4. They live in `infrastructure/` because only this layer may reach
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
 export const inventoryProviders: readonly FactoryProvider[] = [
@@ -45,6 +50,12 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     provide: STOCK_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): StockRepository => new PrismaStockRepository(prisma),
+  },
+  {
+    provide: RESERVATION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ReservationRepository =>
+      new PrismaReservationRepository(prisma),
   },
   {
     provide: AVAILABILITY_READER,

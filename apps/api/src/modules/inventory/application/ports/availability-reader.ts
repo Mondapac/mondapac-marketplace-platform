@@ -1,11 +1,11 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 
 /** One non-retired stock item as the availability read needs it. */
 export interface AvailabilityItem {
   readonly offerId: Id<'Offer'>;
   readonly variantId: Id<'Variant'>;
   readonly onHand: number;
-  /** Units held by reservations and committed lines; 0 until reservations arrive (slice 4). */
+  /** Units held at `now` by unexpired ACTIVE reservation lines and COMMITTED lines. */
   readonly held: number;
 }
 
@@ -14,6 +14,7 @@ export interface AvailabilityReader {
   itemsOfSellUnits(
     market: MarketContext,
     keys: readonly { readonly offerId: Id<'Offer'>; readonly variantId: Id<'Variant'> }[],
+    now: Temporal.Instant,
   ): Promise<readonly AvailabilityItem[]>;
 }
 

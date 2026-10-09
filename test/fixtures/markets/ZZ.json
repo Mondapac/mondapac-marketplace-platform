@@ -194,7 +194,9 @@
   },
   "inventory": {
     "maxSourcesPerSeller": 2,
-    "defaultLowStockThreshold": 3
+    "defaultLowStockThreshold": 3,
+    "reservationMinutes": 10,
+    "defaultCustomerCap": 4
   },
   "catalog": {
     "taxCategories": [

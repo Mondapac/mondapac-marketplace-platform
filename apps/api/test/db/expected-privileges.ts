@@ -242,6 +242,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'only_left', 'status', 'version'],
     },
     'inventory.retirements': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/inventory.md section 7 (slice 4): a reservation's expiry and a line's
+    // quantity and sell-unit ids never change; no DELETE on reservations until the prune job (lines
+    // go by cascade); an Offer's purchase limit is cleared by deleting it.
+    'inventory.reservations': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['release_cause', 'status', 'status_changed_at', 'version'],
+    },
+    'inventory.reservation_lines': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['order_line_id', 'state', 'state_changed_at', 'stock_item_id'],
+    },
+    'inventory.offer_purchase_limits': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // Cart (speed mode): a cart is never deleted by the application (an expired guest cart is
     // ignored at read time; a merged one is kept so a replay is recognised); its owner columns and
     // status change on a merge. A line is deleted on remove; only its quantity, price-at-add and

@@ -90,11 +90,6 @@ export interface StockRepository {
   ): Promise<boolean>;
 
   /**
-   * The quantity held on each item by active reservations and committed lines (design 4.1),
-   * 0 for an item with none. Reservations arrive with slice 4 and this body then counts them; until
-   * then the table does not exist, so nothing can be held.
-   */
-  /**
    * The ids of the target's items that are not retired, in ascending id order (read through the
    * active index, data design 3.4). A plain read: the caller locks them with {@link lockItems}.
    */
@@ -144,9 +139,15 @@ export interface StockRepository {
     retiredAt: Temporal.Instant,
   ): Promise<number>;
 
+  /**
+   * The quantity held on each item at `now` by ACTIVE unexpired reservation lines and COMMITTED
+   * lines (design 4.1), 0 for an item with none. Expiry is derived from `now`, never from the
+   * job's status column.
+   */
   heldQuantities(
     market: MarketContext,
     stockItemIds: readonly Id<'StockItem'>[],
+    now: Temporal.Instant,
   ): Promise<ReadonlyMap<Id<'StockItem'>, number>>;
 
   insertItem(market: MarketContext, item: NewStockItem): Promise<void>;
