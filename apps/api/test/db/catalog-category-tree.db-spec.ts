@@ -6,6 +6,8 @@ import { Client } from 'pg';
 import { SeedCategoryTree } from '../../src/modules/catalog/application/use-cases/seed-category-tree.use-case';
 import { ZZ_CATEGORY_TREE } from '../../src/modules/catalog/infrastructure/seed/zz.category-tree.seed';
 import { CLOCK } from '../../src/platform/clock/clock.module';
+import { CLAIM_TEXT_MATCHER } from '../../src/modules/catalog/application/ports/claim-text-matcher';
+import { cleanClaimTextMatcher } from '../support/clean-claim-text-matcher.fake';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
@@ -34,7 +36,12 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
     ({ app } = await createTestApp({
       env: { DATABASE_URL: testDatabaseUrl() },
       override: (builder) =>
-        builder.overrideProvider(CLOCK).useValue(new FixedClock(Temporal.Instant.from(T0))),
+        builder
+          .overrideProvider(CLOCK)
+          .useValue(new FixedClock(Temporal.Instant.from(T0)))
+          // The seeds are checked against a vocabulary; these specs test the SQL, not the words.
+          .overrideProvider(CLAIM_TEXT_MATCHER)
+          .useValue(cleanClaimTextMatcher),
     }));
   });
   afterAll(async () => {

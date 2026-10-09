@@ -52,14 +52,46 @@ export class CertificationClaimTextMatcher implements ClaimTextMatcher {
       });
       return UNAVAILABLE;
     }
-    if (answer.value.length !== texts.length) return UNAVAILABLE;
-    return ok(
-      answer.value.map((matches) =>
-        matches.map((match) => ({
-          typeCode: match.typeCode,
-          span: match.span === null ? null : { ...match.span },
-        })),
-      ),
-    );
+    const mapped = copyMatches(answer.value, texts.length);
+    if (mapped === null) {
+      this.#logger.warn({
+        msg: 'catalog.claim-text.certification-malformed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      return UNAVAILABLE;
+    }
+    return ok(mapped);
   }
+}
+
+const isIndex = (value: unknown): value is number =>
+  Number.isInteger(value) && (value as number) >= 0;
+
+/**
+ * Copies the type code and span of each match, or `null` when the answer is not exactly one list
+ * of well-formed matches per text (an unknown shape is unavailable, never an empty answer).
+ */
+function copyMatches(answer: unknown, expected: number): ClaimTextMatch[][] | null {
+  if (!Array.isArray(answer) || answer.length !== expected) return null;
+  const out: ClaimTextMatch[][] = [];
+  for (const matches of answer as unknown[]) {
+    if (!Array.isArray(matches)) return null;
+    const copy: ClaimTextMatch[] = [];
+    for (const match of matches as unknown[]) {
+      if (typeof match !== 'object' || match === null) return null;
+      const { typeCode, span } = match as { typeCode?: unknown; span?: unknown };
+      if (typeof typeCode !== 'string' || typeCode === '') return null;
+      if (span === null) {
+        copy.push({ typeCode, span: null });
+        continue;
+      }
+      if (typeof span !== 'object' || span === undefined) return null;
+      const { fromToken, toToken } = span as { fromToken?: unknown; toToken?: unknown };
+      if (!isIndex(fromToken) || !isIndex(toToken)) return null;
+      copy.push({ typeCode, span: { fromToken, toToken } });
+    }
+    out.push(copy);
+  }
+  return out;
 }

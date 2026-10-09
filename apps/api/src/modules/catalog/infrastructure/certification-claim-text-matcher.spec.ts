@@ -47,8 +47,15 @@ describe.each(['AU', 'ZZ'] as const)('CertificationClaimTextMatcher in market %s
         [{ typeCode: 'kosher', pass: 'compact', span: null }],
       ]),
     );
-    const result = await matcher.match(context, [...texts, ...[]].slice(0, 2));
+    const result = await matcher.match(context, [
+      { field: 'product.name', ref: 'secret', locale: 'en', text: 'one' },
+      { field: 'product.name', ref: null, locale: 'ar', text: 'two' },
+    ] as never);
     expect(calls[0]?.context).toBe(context);
+    expect(calls[0]?.texts).toEqual([
+      { locale: 'en', text: 'one' },
+      { locale: 'ar', text: 'two' },
+    ]);
     expect(result).toEqual({
       ok: true,
       value: [
@@ -63,6 +70,13 @@ describe.each(['AU', 'ZZ'] as const)('CertificationClaimTextMatcher in market %s
     ['an unavailable read', () => err({ code: 'certification.unavailable' })],
     ['a validation failure', () => err({ code: 'validation.failed', fields: [] })],
     ['an answer of the wrong length', () => ok([[]])],
+    ['an inner list that is null', () => ok([null, []])],
+    ['a match without a type code', () => ok([[{ span: null }], []])],
+    ['a match with an undefined span', () => ok([[{ typeCode: 'halal' }], []])],
+    [
+      'a span with a bad index',
+      () => ok([[{ typeCode: 'halal', span: { fromToken: -1, toToken: 2 } }], []]),
+    ],
     [
       'a thrown fault',
       () => {
@@ -72,5 +86,10 @@ describe.each(['AU', 'ZZ'] as const)('CertificationClaimTextMatcher in market %s
   ])('answers unavailable for %s', async (_name, answer) => {
     const failing = rig(answer);
     expect(await failing.matcher.match(context, texts)).toEqual(UNAVAILABLE);
+  });
+
+  it('answers an empty list for no texts', async () => {
+    const { matcher } = rig(() => ok([]));
+    expect(await matcher.match(context, [])).toEqual({ ok: true, value: [] });
   });
 });
