@@ -858,9 +858,9 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
           accountCreatedAt: START.toString(),
           emailConfirmedAt: START.toString(),
           reason: null,
-          // Slice 9: no decision yet, and the Market sets no re-apply limit (unknown, null).
+          // Slice 9: no decision yet; the Market's re-apply limit (3) is not reached.
           decidedAt: null,
-          reapplyLimitReached: null,
+          reapplyLimitReached: false,
         },
       });
     });

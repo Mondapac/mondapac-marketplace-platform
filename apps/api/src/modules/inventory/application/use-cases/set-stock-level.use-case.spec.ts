@@ -101,6 +101,19 @@ class FakeStock implements StockRepository {
     this.movements.push(movement);
     return Promise.resolve();
   }
+  // The retirement handler's methods: not used by this use case.
+  activeItemIds() {
+    return Promise.reject(new Error('not used'));
+  }
+  lockItems() {
+    return Promise.reject(new Error('not used'));
+  }
+  recordTombstone() {
+    return Promise.reject(new Error('not used'));
+  }
+  retireItems() {
+    return Promise.reject(new Error('not used'));
+  }
 }
 
 class FakeSignals implements AvailabilitySignalRepository {

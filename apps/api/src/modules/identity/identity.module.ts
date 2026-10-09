@@ -71,6 +71,8 @@ import { InviteSeller } from './application/use-cases/invite-seller.use-case';
 import { ReapplySellerAccess } from './application/use-cases/reapply-seller-access.use-case';
 import { ReinstateSellerAccess } from './application/use-cases/reinstate-seller-access.use-case';
 import { RejectSellerAccess } from './application/use-cases/reject-seller-access.use-case';
+import { FindAccessDecisionsByBasis } from './application/use-cases/find-access-decisions-by-basis.use-case';
+import { ListSellerAccessDecisions } from './application/use-cases/list-seller-access-decisions.use-case';
 import { ResendSellerInvitation } from './application/use-cases/resend-seller-invitation.use-case';
 import { RevokeSellerInvitation } from './application/use-cases/revoke-seller-invitation.use-case';
 import { SendSellerAccessMail } from './application/use-cases/send-seller-access-mail.use-case';
@@ -1009,6 +1011,15 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    // Slice 9a: the R-5 reads of the decisions, for `sellers` only (contract below).
+    useCaseProvider(ListSellerAccessDecisions, {
+      unitOfWork: true,
+      decisions: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
+    useCaseProvider(FindAccessDecisionsByBasis, { unitOfWork: true, decisions: true }),
     useCaseProvider(SendSellerAccessMail, {
       unitOfWork: true,
       decisions: true,
@@ -1107,6 +1118,8 @@ function useCaseProvider<D, U>(
         ApproveSellerAccess,
         RejectSellerAccess,
         ReapplySellerAccess,
+        ListSellerAccessDecisions,
+        FindAccessDecisionsByBasis,
       ],
       useFactory: (
         sellerAccessOf: SellerAccessOf,
@@ -1116,6 +1129,8 @@ function useCaseProvider<D, U>(
         approveSellerAccess: ApproveSellerAccess,
         rejectSellerAccess: RejectSellerAccess,
         reapplySellerAccess: ReapplySellerAccess,
+        listSellerAccessDecisions: ListSellerAccessDecisions,
+        findAccessDecisionsByBasis: FindAccessDecisionsByBasis,
       ) =>
         new SellerAccessContractImplementation({
           sellerAccessOf,
@@ -1125,6 +1140,8 @@ function useCaseProvider<D, U>(
           approveSellerAccess,
           rejectSellerAccess,
           reapplySellerAccess,
+          listSellerAccessDecisions,
+          findAccessDecisionsByBasis,
         }),
     },
     registerJobsFrom(

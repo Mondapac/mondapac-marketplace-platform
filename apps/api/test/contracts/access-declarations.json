@@ -27,6 +27,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "identity.find-access-decisions-by-basis", "rule": "system" },
   { "name": "identity.issue-first-admin-invitation", "rule": "system" },
   { "name": "identity.list-registered-sellers", "rule": "system" },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
@@ -72,6 +73,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
+  { "name": "inventory.retire-sell-units", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },

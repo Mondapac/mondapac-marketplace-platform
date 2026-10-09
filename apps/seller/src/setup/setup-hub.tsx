@@ -1,7 +1,9 @@
 import { Badge, Banner, Card } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { SETUP_STEPS, type SetupStepKey } from './steps.ts';
+import { REVIEW_HREF, SETUP_STEPS, type SetupStepKey } from './steps.ts';
+import { RefreshOnFocus } from './refresh-on-focus.tsx';
+import { WithdrawSubmission } from './withdraw-submission.tsx';
 import type { MissingPart, MyFile } from './types.ts';
 
 // Which missing parts belong to which step. Until the API sends `onboardingSteps` the hub derives
@@ -14,7 +16,8 @@ const PARTS: Readonly<Record<SetupStepKey, readonly MissingPart[]>> = {
 };
 
 type StepState = 'done' | 'todo' | 'needs' | 'waiting';
-type HubState = 'details-incomplete' | 'ready' | 'outside-area';
+type HubState =
+  'details-incomplete' | 'ready' | 'outside-area' | 'awaiting-review' | 'changes-needed';
 
 const STATE_TEXT: Record<StepState, string> = {
   done: 'account.step-done',
@@ -32,12 +35,42 @@ const BADGE_TONE = {
   'details-incomplete': 'neutral',
   ready: 'info',
   'outside-area': 'attention',
+  'awaiting-review': 'info',
+  'changes-needed': 'attention',
 } as const;
 const BANNER_TONE = {
   'details-incomplete': 'info',
   ready: 'info',
   'outside-area': 'attention',
+  'awaiting-review': 'info',
+  'changes-needed': 'attention',
 } as const;
+
+function withdrawnKey(withdrawal: NonNullable<MyFile['latestWithdrawal']>): string {
+  if (withdrawal.cause === 'reapply-refused') return 'account.withdrawn-refused';
+  return withdrawal.byKind === 'seller' || withdrawal.cause === 'cancelled'
+    ? 'account.withdrawn-self'
+    : 'account.withdrawn';
+}
+
+/** The state the hub shows for the API's one status; anything else reads as details still needed. */
+function hubStateOf(file: MyFile, derived: HubState): HubState {
+  switch (file.status) {
+    case 'awaiting-review':
+      return 'awaiting-review';
+    case 'changes-needed':
+      return 'changes-needed';
+    case 'outside-service-area':
+      return 'outside-area';
+    case 'ready-to-submit':
+      return 'ready';
+    case 'details-incomplete':
+      return derived;
+    default:
+      // A status this panel has no words for yet (not approved, file check): never "ready".
+      return 'details-incomplete';
+  }
+}
 
 function Row({
   title,
@@ -80,15 +113,35 @@ function Row({
 }
 
 /** S1: where the seller stands and the checklist of what to do next (sellers ux 3.1 S1, 3.3). */
-export function SetupHub({ file }: { readonly file: MyFile }) {
+export function SetupHub({
+  file,
+  csrfToken,
+}: {
+  readonly file: MyFile;
+  readonly csrfToken: string;
+}) {
   const t = useTranslations('sellers');
+  const format = useFormatter();
+  const zone = file.timezone?.operatingTimezone;
   const outside = file.outsideServiceArea === true;
   const left = (key: SetupStepKey) =>
     PARTS[key].filter((part) => file.missing.includes(part)).length;
   const allDone = SETUP_STEPS.every((step) => left(step.key) === 0);
-  const state: HubState = outside ? 'outside-area' : allDone ? 'ready' : 'details-incomplete';
+  const derived: HubState = outside ? 'outside-area' : allDone ? 'ready' : 'details-incomplete';
+  const state = hubStateOf(file, derived);
+  const waiting = state === 'awaiting-review';
+  const canSubmit =
+    state === 'ready' || (state === 'changes-needed' && file.draftComplete && !outside);
+  const when = (iso: string, style: 'date' | 'dateTime') =>
+    format.dateTime(new Date(iso), {
+      dateStyle: 'medium',
+      ...(style === 'dateTime' ? { timeStyle: 'short' as const } : {}),
+      ...(zone === undefined ? {} : { timeZone: zone }),
+    });
+  const withdrawal = file.latestWithdrawal;
   return (
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-5">
+      <RefreshOnFocus />
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold text-fg">{t('account.title')}</h1>
         <Badge tone={BADGE_TONE[state]}>{t(`account.badge.${state}`)}</Badge>
@@ -96,6 +149,16 @@ export function SetupHub({ file }: { readonly file: MyFile }) {
       <Banner tone={BANNER_TONE[state]} title={t(`account.banner.${state}.title`)}>
         {t(`account.banner.${state}.body`)}
       </Banner>
+      {waiting && file.submission !== null ? (
+        <p className="text-sm text-fg-muted">
+          {t('account.submitted-on', { dateTime: when(file.submission.submittedAt, 'dateTime') })}
+        </p>
+      ) : null}
+      {!waiting && withdrawal !== null ? (
+        <Banner tone="info">
+          {t(withdrawnKey(withdrawal), { date: when(withdrawal.at, 'date') })}
+        </Banner>
+      ) : null}
       <Card title={t('account.steps')}>
         <ol className="flex flex-col divide-y divide-line">
           <Row title={t('account.account-created')} state="done" />
@@ -119,15 +182,18 @@ export function SetupHub({ file }: { readonly file: MyFile }) {
               />
             );
           })}
-          {/* Review and submit waits for the sellers submit endpoint (backend slice 5). */}
           <Row
             title={t('steps.submit')}
-            state={state === 'ready' ? 'todo' : 'waiting'}
-            detail={t('account.submit-later')}
+            state={waiting ? 'done' : canSubmit ? 'todo' : 'waiting'}
+            detail={
+              waiting ? t('account.submit-done') : canSubmit ? undefined : t('account.submit-later')
+            }
+            href={canSubmit ? REVIEW_HREF : undefined}
           />
-          <Row title={t('account.review')} state="todo" />
+          <Row title={t('account.review')} state={waiting ? 'waiting' : 'todo'} />
         </ol>
       </Card>
+      {waiting ? <WithdrawSubmission csrfToken={csrfToken} /> : null}
     </div>
   );
 }

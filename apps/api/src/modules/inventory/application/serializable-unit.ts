@@ -1,6 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { MarketContext, Result } from '@mondapac/shared-kernel';
-import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { EventDelivery } from '../../../platform/events/event-delivery';
+import {
+  MAX_UNIT_TIMEOUT_MS,
+  type HandledOnce,
+  type UnitOfWork,
+} from '../../../platform/unit-of-work/unit-of-work';
 
 /**
  * Marks the work of a unit that {@link runSerializable} opened. Module-private: the only way in
@@ -36,6 +41,25 @@ export function runSerializable<T, E>(
 ): Promise<Result<T, E>> {
   return unitOfWork.run(market, () => serializableScope.run(true, work), {
     isolation: 'serializable',
+  });
+}
+
+/**
+ * {@link runSerializable} for an event handler: the inbox row, the work and the delivery mark in
+ * one `serializable` unit (`UnitOfWork.runOnce` with the isolation option). A `40001` retries the
+ * whole unit, inbox row included.
+ */
+export function runSerializableOnce<T, E>(
+  unitOfWork: UnitOfWork,
+  market: MarketContext,
+  delivery: EventDelivery,
+  work: () => Promise<Result<T, E>>,
+): Promise<Result<HandledOnce<T>, E>> {
+  return unitOfWork.runOnce(market, delivery, () => serializableScope.run(true, work), {
+    isolation: 'serializable',
+    // A Variant of a PLATFORM product is retired across every seller's Offer (data design 4.4):
+    // many sell units in one unit, so it gets the longest unit the platform allows.
+    timeoutMs: MAX_UNIT_TIMEOUT_MS,
   });
 }
 
