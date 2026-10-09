@@ -10,6 +10,7 @@ import type { DraftSaved, MyFile } from './types.ts';
 import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
+import { useWithdrawGuard } from './use-withdraw-guard.tsx';
 
 export function BusinessForm({
   file,
@@ -31,7 +32,9 @@ export function BusinessForm({
     phone: file.general.phone ?? '',
     contactEmail: file.general.contactEmail ?? '',
   });
+  const [initial] = useState(values);
   const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  const guard = useWithdrawGuard(file.status === 'awaiting-review');
   const fieldKey = (name: keyof typeof values) => problem?.fields[name];
   const fieldError = (name: keyof typeof values) => {
     const key = fieldKey(name);
@@ -44,8 +47,12 @@ export function BusinessForm({
       setValues((current) => ({ ...current, [name]: event.target.value }));
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
+    void guard.run(JSON.stringify(values) !== JSON.stringify(initial), persist);
+  }
+
+  async function persist() {
     const result = await save<DraftSaved>('sellers/my-file/general', values);
     if (result?.ok) {
       router.push(nextHref('business'));
@@ -60,6 +67,8 @@ export function BusinessForm({
       noValidate
       className="flex flex-col gap-5"
     >
+      {guard.banner}
+      {guard.dialog}
       {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card title={t('sellers.business.title')}>
         <TextField

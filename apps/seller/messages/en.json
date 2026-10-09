@@ -434,6 +434,13 @@
       },
       "locked": "Your application is waiting for review.",
       "details": "Your details"
+    },
+    "edit-warning": {
+      "banner": "Your application is waiting for review. If you change anything, your submission is withdrawn and you'll need to submit again.",
+      "title": "Save and withdraw your submission?",
+      "body": "Your details will be saved and your submission withdrawn. Submit again when you're ready.",
+      "action": "Save and withdraw",
+      "keep": "Keep editing"
     }
   }
 }

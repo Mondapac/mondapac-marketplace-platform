@@ -9,6 +9,7 @@ import type { AddressSaved, FormDescriptors, MyFile, ZoneState } from './types.t
 import { ButtonLink } from './button-link.tsx';
 import { ProblemBanner } from './problem-banner.tsx';
 import { useStepSave } from './use-step-save.ts';
+import { useWithdrawGuard } from './use-withdraw-guard.tsx';
 
 type AddressValues = Record<string, string>;
 type Fields = FormDescriptors['address']['fields'];
@@ -92,7 +93,9 @@ export function AddressForm({
           zoneOptions: file.zoneOptions,
         },
   );
+  const [initial] = useState(() => JSON.stringify([address, differs ? registered : null, false]));
   const { pending, problem, save, focusKeys } = useStepSave(csrfToken);
+  const guard = useWithdrawGuard(file.status === 'awaiting-review');
   useFocusFirstInvalid(formRef, focusKeys);
 
   const region = regionField === null ? null : (address[regionField] ?? '');
@@ -149,8 +152,15 @@ export function AddressForm({
     });
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
+    void guard.run(
+      JSON.stringify([address, differs ? registered : null, zoneTouched]) !== initial,
+      persist,
+    );
+  }
+
+  async function persist() {
     const hint = browserZone();
     const outcome = await save<AddressSaved>('sellers/my-file/address', {
       address,
@@ -177,6 +187,8 @@ export function AddressForm({
       noValidate
       className="flex flex-col gap-5"
     >
+      {guard.banner}
+      {guard.dialog}
       {problem?.form ? <ProblemBanner message={t(problem.form.key)} /> : null}
       <Card title={t('sellers.address.title')}>
         <p className="text-sm text-fg-muted">{t('sellers.address.help.scope')}</p>
