@@ -41,7 +41,13 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import type { HandledOnce, UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
-import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  modelMap,
+  retryingConflicts,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // Inventory slice 2, part 4 on PostgreSQL (inventory design 3.5, 4.5; data design 3.10, 4.4, 4.5),
@@ -109,25 +115,29 @@ describe.each(TEST_MARKETS)('inventory.retire-sell-units in market %s (database)
       NO_PERMISSION_KEYS,
     ).forModule('inventory');
     build = (repository) => ({
-      set: new SetStockLevel(gate, {
-        unitOfWork: db.unitOfWork,
-        inventories: new PrismaSellerInventoryRepository(db.service),
-        stock: repository,
-        signals,
-        offers,
-        policies: new ConfigInventoryPolicyProvider(markets),
-        outbox,
-        ids,
-        clock,
-      }),
-      retire: new RetireSellUnits(gate, {
-        unitOfWork: handledOnce(),
-        stock: repository,
-        signals,
-        outbox,
-        ids,
-        clock,
-      }),
+      set: retryingConflicts(
+        new SetStockLevel(gate, {
+          unitOfWork: db.unitOfWork,
+          inventories: new PrismaSellerInventoryRepository(db.service),
+          stock: repository,
+          signals,
+          offers,
+          policies: new ConfigInventoryPolicyProvider(markets),
+          outbox,
+          ids,
+          clock,
+        }),
+      ),
+      retire: retryingConflicts(
+        new RetireSellUnits(gate, {
+          unitOfWork: handledOnce(),
+          stock: repository,
+          signals,
+          outbox,
+          ids,
+          clock,
+        }),
+      ),
     });
     ({ set: setStockLevel, retire } = build(stock));
   });
