@@ -239,7 +239,7 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
     it('includes proposed and published variants, excludes retired ones, in creation order', async () => {
       const configurable = Product.create({
         id: uuid7() as Id<'Product'>,
-        marketId: market.marketId as never,
+        marketId: market.marketId,
         scope: 'PLATFORM',
         sellerId: null,
         handler: configurableProductType,
