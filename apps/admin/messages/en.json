@@ -185,7 +185,8 @@
           "title": "Cancel the invitation to {name}?",
           "body": "The link in their email stops working.",
           "action": "Cancel invitation"
-        }
+        },
+        "keep-invitation": "Keep invitation"
       },
       "toast": {
         "deactivate": "{name}'s account is deactivated. They've been signed out.",
@@ -208,15 +209,17 @@
           "none": "They have no two-step verification to reset."
         },
         "invitation": {
-          "rejected": "This invitation can't be sent again.",
-          "unknown": "This invitation no longer exists. We've refreshed the list."
+          "unknown": "This invitation no longer exists. We've refreshed the list.",
+          "rejected": "This invitation can't be sent again. We've refreshed the list."
         },
         "conflict": {
           "stale": "Someone has just changed this. We've refreshed it.",
           "retry": "Try again."
         },
         "account": {
-          "unknown": "This account no longer exists. We've refreshed the list."
+          "unknown": "This account no longer exists. We've refreshed the list.",
+          "already-disabled": "Someone has just changed this. We've refreshed it.",
+          "already-active": "Someone has just changed this. We've refreshed it."
         }
       }
     },

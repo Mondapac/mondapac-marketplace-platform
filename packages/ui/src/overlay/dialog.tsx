@@ -34,7 +34,17 @@ export function Dialog({ open, title, onClose, children, actions }: DialogProps)
         onClose();
       }}
       onClick={(event) => {
-        if (event.target === ref.current) onClose();
+        // Only the backdrop: a click on the dialog's own padding also targets the element.
+        const box = ref.current?.getBoundingClientRect();
+        if (
+          event.target === ref.current &&
+          box !== undefined &&
+          (event.clientX < box.left ||
+            event.clientX > box.right ||
+            event.clientY < box.top ||
+            event.clientY > box.bottom)
+        )
+          onClose();
       }}
       className="m-auto w-[min(32rem,calc(100%-2rem))] rounded-lg border border-line bg-surface p-6 text-fg backdrop:bg-fg/40"
     >

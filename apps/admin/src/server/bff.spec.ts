@@ -120,6 +120,9 @@ describe('relay', () => {
       ['identity', 'admin', 'accounts', id, 'role'],
       ['identity', 'admin', 'accounts', id, 'disable', 'extra'],
       ['identity', 'admin', 'customers', id, 'disable'],
+      ['identity', 'admin', 'accounts', `${id}%2F..`, 'disable'],
+      ['identity', 'admin', 'accounts', '..', 'disable'],
+      ['identity', 'admin', 'accounts', id, 'disable', ''],
     ]) {
       const fetchImpl = upstreamOk();
       const response = await relay(config, post(path.join('/')), path, fetchImpl);

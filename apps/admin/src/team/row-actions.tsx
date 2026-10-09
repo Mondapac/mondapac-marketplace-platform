@@ -3,7 +3,7 @@
 import { Banner, Button, Dialog, Menu, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import type { ActionHint } from './types.ts';
 import { useNotice } from './notice.tsx';
@@ -27,6 +27,16 @@ export type RowTarget =
       readonly name: string;
       readonly hints: { readonly resend: ActionHint; readonly revoke: ActionHint };
     };
+
+/** Answers that mean the list is out of date: the dialog closes and the list is reloaded. */
+const CHANGED_MEANWHILE: ReadonlySet<string> = new Set([
+  'conflict.stale',
+  'account.unknown',
+  'account.already-disabled',
+  'account.already-active',
+  'invitation.unknown',
+  'invitation.rejected',
+]);
 
 type ActionId = 'deactivate' | 'reactivate' | 'reset-two-step' | 'resend' | 'cancel-invitation';
 
@@ -99,6 +109,8 @@ export function RowActions({
   const [asking, setAsking] = useState<ActionDef | null>(null);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // A ref, not only state: a second click must not start a second request before a render.
+  const inFlight = useRef(false);
 
   const messageFor = (code: string): string => {
     if (t.has(`reason.${code}`)) return t(`reason.${code}`);
@@ -107,9 +119,12 @@ export function RowActions({
   };
 
   async function run(action: ActionDef) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPending(true);
     setProblem(null);
     const result = await callApi('POST', action.path, {}, csrfToken);
+    inFlight.current = false;
     setPending(false);
     if (result.ok) {
       setAsking(null);
@@ -122,8 +137,8 @@ export function RowActions({
       router.replace('/session-ended');
       return;
     }
-    if (failure.code === 'conflict.stale') {
-      // The row changed meanwhile: close, say so, and show it as it is now.
+    if (CHANGED_MEANWHILE.has(failure.code)) {
+      // The row changed or went away meanwhile: close, say so, and show it as it is now.
       setAsking(null);
       notify({ tone: 'critical', text: messageFor(failure.code) });
       router.refresh();
@@ -136,7 +151,7 @@ export function RowActions({
   const items: MenuItem[] = definitionsFor(target).map((action) => ({
     id: action.id,
     label: t(`action.${action.id}`),
-    disabled: !action.hint.allowed,
+    disabled: !action.hint.allowed || pending,
     ...(action.hint.allowed ? {} : { reason: messageFor(action.hint.code ?? 'unknown') }),
     ...(action.critical ? { tone: 'critical' as const } : {}),
     onSelect: () => {
@@ -159,9 +174,10 @@ export function RowActions({
         actions={
           <>
             <Button variant="secondary" onClick={() => setAsking(null)} disabled={pending}>
-              {t('dialog.keep')}
+              {t(asking?.id === 'cancel-invitation' ? 'dialog.keep-invitation' : 'dialog.keep')}
             </Button>
             <Button
+              variant={asking?.critical === true ? 'critical' : 'primary'}
               loading={pending}
               onClick={() => {
                 if (asking !== null) void run(asking);

@@ -165,12 +165,13 @@ describe('team row actions', () => {
         'csrf-1',
       ),
     );
+    await screen.findByText('Invitation sent again to new@example.test.');
     fireEvent.click(screen.getByRole('button', { name: 'Actions for new@example.test' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Cancel invitation…' }));
     expect(screen.getByRole('dialog').textContent).toContain(
       'Cancel the invitation to new@example.test?',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep invitation' }));
     expect(call).toHaveBeenCalledTimes(1);
   });
 
@@ -182,5 +183,101 @@ describe('team row actions', () => {
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Actions for Ada Admin' }),
     );
+  });
+
+  it.each(['account.already-disabled', 'account.unknown'])(
+    'closes, says so and refreshes on %s',
+    async (code) => {
+      call.mockResolvedValue({ ok: false, failure: { status: 409, code } });
+      show(account());
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Deactivate account' }));
+      await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+      expect(screen.queryByText('Something went wrong on our side. Try again.')).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    },
+  );
+
+  it('shows a failed immediate action as a notice, not in a dialog', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'network' } });
+    show(account({ status: 'disabled' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reactivate account' }));
+    expect(
+      await screen.findByText("You're offline or the connection dropped. Check it and try again."),
+    ).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('sends nothing when the confirmation is dismissed, and keeps the dialog on a padding click', () => {
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
+    const dialog = screen.getByRole('dialog', { hidden: true });
+    // jsdom has no layout: a click inside the box (all zeros) is not outside it.
+    fireEvent.click(dialog, { clientX: 0, clientY: 0 });
+    expect(screen.getByRole('button', { name: 'Keep as it is' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
+    expect(screen.queryByRole('button', { name: 'Keep as it is' })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('moves through the menu with the arrow keys, Home and End, and closes on Tab', () => {
+    show(account());
+    const trigger = screen.getByRole('button', { name: 'Actions for Ada Admin' });
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const [first, second] = screen.getAllByRole('menuitem');
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second!, { key: 'Home' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first!, { key: 'End' });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second!, { key: 'Tab' });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('closes the menu on a click outside it', () => {
+    show(account());
+    openMenu();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('labels the confirmation and uses the destructive button for deactivate only', () => {
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Reset two-step verification for Ada Admin?' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reset' }).className).not.toContain(
+      'bg-critical-solid',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
+    expect(screen.getByRole('button', { name: 'Deactivate account' }).className).toContain(
+      'bg-critical-solid',
+    );
+  });
+
+  it('sends an immediate action once even if it is selected twice before the answer', async () => {
+    let finish: (value: { ok: true; status: number; body: object }) => void = () => undefined;
+    call.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    show(account({ status: 'disabled' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reactivate account' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reactivate account' }));
+    expect(call).toHaveBeenCalledTimes(1);
+    finish({ ok: true, status: 200, body: {} });
+    await screen.findByText("Ada Admin's account is active again. They can sign in.");
   });
 });
