@@ -62,6 +62,10 @@ import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnProductController } from './presentation/own-product.controller';
+import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
+import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
@@ -159,7 +163,7 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
-  controllers: [PlatformProductController, OwnOfferController],
+  controllers: [PlatformProductController, OwnOfferController, OwnProductController],
   imports: [CertificationModule, SellersModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
@@ -262,6 +266,29 @@ const productTypeProvider: FactoryProvider<string> = {
       save: true,
       policy: true,
       clock: true,
+    }),
+    useCaseProvider(OwnProductCreate, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      check: true,
+      attributes: true,
+      eligibility: true,
+      allowedTypes: true,
+      save: true,
+      policy: true,
+      productTypes: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnProductSaveDraft, { saveDraft: true, eligibility: true }),
+    useCaseProvider(OwnProductSubmit, {
+      unitOfWork: true,
+      products: true,
+      submit: true,
+      eligibility: true,
+      allowedTypes: true,
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),

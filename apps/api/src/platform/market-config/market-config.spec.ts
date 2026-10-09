@@ -1951,6 +1951,7 @@ describe('loadMarketConfigs', () => {
       defaultFamily: 'default',
       conditions: ['new', 'used'],
       sellFromCatalogue: true,
+      sellerCanCreateProduct: true,
     };
     const withCatalog = (catalog: unknown) => directoryWith({ 'QQ.json': { ...VALID, catalog } });
 
@@ -2045,6 +2046,7 @@ describe('loadMarketConfigs', () => {
       ['a repeated condition', { ...VALID_CATALOG, conditions: ['new', 'new'] }],
       ['a malformed condition', { ...VALID_CATALOG, conditions: ['Brand New'] }],
       ['no sellFromCatalogue setting', without('sellFromCatalogue')],
+      ['no sellerCanCreateProduct setting', without('sellerCanCreateProduct')],
       ['a malformed default family', { ...VALID_CATALOG, defaultFamily: 'Default Family' }],
       ['an unknown key', { ...VALID_CATALOG, photoLimits: {} }],
     ])('rejects %s', (_case, catalog) => {
