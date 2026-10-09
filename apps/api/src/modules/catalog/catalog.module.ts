@@ -60,6 +60,7 @@ import {
 import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
+import { OwnOfferController } from './presentation/own-offer.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
@@ -157,7 +158,7 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
-  controllers: [PlatformProductController],
+  controllers: [PlatformProductController, OwnOfferController],
   imports: [CertificationModule, SellersModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
@@ -246,6 +247,7 @@ const productTypeProvider: FactoryProvider<string> = {
       eligibility: true,
       allowedTypes: true,
       check: true,
+      save: true,
       policy: true,
       outbox: true,
       clock: true,

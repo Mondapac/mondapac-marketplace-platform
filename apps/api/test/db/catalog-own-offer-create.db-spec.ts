@@ -86,6 +86,7 @@ describe.each(TEST_MARKETS)(
               })),
             }),
         } as unknown as CheckClaimText,
+        save: { reserveSaves: () => Promise.resolve(null) },
         policy,
         outbox: {
           append: (_context, events) => {

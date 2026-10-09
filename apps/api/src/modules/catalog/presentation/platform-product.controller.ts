@@ -31,7 +31,6 @@ import {
 import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
-import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -41,6 +40,7 @@ import {
 import { PlatformProductCreate } from '../application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from '../application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from '../application/use-cases/platform-product-submit.use-case';
+import { closedBody, refusalWith, type Refusal } from './http-answers';
 import {
   ApiErrorBody,
   PlatformProductCreated,
@@ -93,74 +93,14 @@ export const PLATFORM_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.
   'access.unavailable': 503,
 });
 
-type Refusal = { readonly code: string; readonly retryAfterSeconds?: number };
-
-function fail(status: number, code: string, details?: object): HttpException {
-  return new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
-}
-
-/** The refusal fields that reach the client as `details`; any other field stays on the server. */
-const DETAIL_KEYS = ['fields', 'issues', 'retryAfterSeconds', 'max'] as const;
-const logger = new Logger('PlatformProductController');
-
-/**
- * A refusal as an error answer: its status, the allow-listed detail fields, and `Retry-After`
- * with a wait. A code with no status is a defect: it answers a bare `internal` and the code is
- * logged, never sent.
- */
 function refusal(error: Refusal, response: Response, context?: CallContext): HttpException {
-  const status =
-    PLATFORM_PRODUCT_STATUS[error.code] ??
-    ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
-  if (status === undefined) {
-    logger.error({
-      msg: 'catalog.platform-product-unmapped-refusal',
-      code: error.code,
-      marketId: context?.market.marketId,
-      correlationId: context?.correlationId,
-    });
-    return fail(500, 'internal');
-  }
-  if (error.retryAfterSeconds !== undefined) {
-    response.setHeader('Retry-After', String(error.retryAfterSeconds));
-  }
-  const details = Object.fromEntries(
-    DETAIL_KEYS.filter((key) => key in error).map((key) => [
-      key,
-      (error as Record<string, unknown>)[key],
-    ]),
+  return refusalWith(
+    PLATFORM_PRODUCT_STATUS,
+    error,
+    response,
+    context,
+    'catalog.platform-product-unmapped-refusal',
   );
-  return Object.keys(details).length === 0
-    ? fail(status, error.code)
-    : fail(status, error.code, details);
-}
-
-/** The JSON-only check and the closed object of a body: no unknown key, no array, no scalar. */
-function closedBody(
-  request: Request,
-  body: unknown,
-  keys: readonly string[],
-): Record<string, unknown> | HttpException {
-  if (request.is('application/json') !== 'application/json') {
-    return fail(415, 'request.body-unsupported');
-  }
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    return fail(400, 'validation.failed', { fields: [{ path: '', code: 'type' }] });
-  }
-  const record = body as Record<string, unknown>;
-  const fields: { path: string; code: string }[] = [];
-  for (const key of Object.keys(record).sort().slice(0, 10)) {
-    if (!keys.includes(key)) {
-      fields.push({
-        path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
-        code: 'unknown-field',
-      });
-    }
-  }
-  for (const key of keys) {
-    if (!Object.hasOwn(record, key)) fields.push({ path: key, code: 'required' });
-  }
-  return fields.length > 0 ? fail(400, 'validation.failed', { fields }) : record;
 }
 
 /** A path id: malformed answers as an unknown product, byte-identical to a missing one. */
