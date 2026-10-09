@@ -258,13 +258,13 @@ describe('team row actions', () => {
       screen.getByRole('dialog', { name: 'Reset two-step verification for Ada Admin?' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reset' }).className).not.toContain(
-      'bg-critical-solid',
+      'text-critical-fg',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
     expect(screen.getByRole('button', { name: 'Deactivate account' }).className).toContain(
-      'bg-critical-solid',
+      'text-critical-fg',
     );
   });
 

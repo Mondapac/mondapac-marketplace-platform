@@ -177,7 +177,7 @@ export function RowActions({
               {t(asking?.id === 'cancel-invitation' ? 'dialog.keep-invitation' : 'dialog.keep')}
             </Button>
             <Button
-              variant={asking?.critical === true ? 'critical' : 'primary'}
+              variant={asking?.critical === true ? 'destructive' : 'primary'}
               loading={pending}
               onClick={() => {
                 if (asking !== null) void run(asking);
