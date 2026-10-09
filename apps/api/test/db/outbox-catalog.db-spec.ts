@@ -15,6 +15,16 @@ import { testDatabaseUrl } from './test-database';
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // docs/design/data/catalog.md 3.13 (slice 7): one open Offer per seller and product, one open
+  // Offer per seller and SKU, the fan-out keyset and the Offer half of the review queue.
+  'catalog.offers_market_id_product_id_open_idx':
+    "CREATE INDEX offers_market_id_product_id_open_idx ON catalog.offers USING btree (market_id, product_id, id) WHERE (status <> 'deleted'::text)",
+  'catalog.offers_market_id_seller_id_product_id_open_key':
+    "CREATE UNIQUE INDEX offers_market_id_seller_id_product_id_open_key ON catalog.offers USING btree (market_id, seller_id, product_id) WHERE (status <> 'deleted'::text)",
+  'catalog.offers_market_id_seller_id_seller_sku_open_key':
+    "CREATE UNIQUE INDEX offers_market_id_seller_id_seller_sku_open_key ON catalog.offers USING btree (market_id, seller_id, seller_sku) WHERE (status <> 'deleted'::text)",
+  'catalog.offers_market_id_submitted_at_pending_idx':
+    "CREATE INDEX offers_market_id_submitted_at_pending_idx ON catalog.offers USING btree (market_id, submitted_at, id) WHERE (status = 'pending-first-publish'::text)",
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':

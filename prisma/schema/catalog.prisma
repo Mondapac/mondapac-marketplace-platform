@@ -100,6 +100,7 @@ model CatalogProduct {
   publishedRevision    CatalogProductRevision?    @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   pendingRevision      CatalogProductRevision?    @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   workingCopy          CatalogProductWorkingCopy?
+  offers               CatalogOffer[]
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -548,5 +549,107 @@ model CatalogRateCounter {
 
   @@id([marketId, kind, keyHash])
   @@map("rate_counters")
+  @@schema("catalog")
+}
+
+/// The Offer root (catalog design 2.3 M-3, M-5; data design 3.13): one seller's terms for one
+/// product. Never physically deleted (Q-K2): a discarded draft's Offer becomes `deleted`. The
+/// seller never changes (no column grant). The CHECKs (status, handling, attestation pair,
+/// `listed` against the causes, SKU), the case-sensitive SKU collation, the two partial uniques,
+/// the two partial indexes and the grants are hand-written in the migration. The shelf column
+/// (`shelf_category_id`) arrives with seller categories in slice 23.
+model CatalogOffer {
+  id                          String                @id @db.Uuid
+  marketId                    String                @map("market_id") @db.VarChar(8)
+  tenantId                    String                @map("tenant_id")
+  /// Never updated (no column grant; PRC 2.3).
+  sellerId                    String                @map("seller_id") @db.Uuid
+  /// Changed only by a CAT-45 match (the Offer moves, D 4.5).
+  productId                   String                @map("product_id") @db.Uuid
+  /// 1 to 64 printable ASCII characters, no space (CHECK); collation "C" is set in the migration.
+  /// Unique per seller among non-deleted Offers.
+  sellerSku                   String                @map("seller_sku")
+  /// A Market `conditions` code (CA4).
+  conditionCode               String                @map("condition_code")
+  /// Locale to text, an object (CHECK, CA6); nothing queries inside it.
+  description                 Json                  @db.JsonB
+  /// SEALED_ORIGINAL | REPACKED | PREPARED | FRESH; null only while `draft` or `deleted`.
+  handling                    String?
+  /// Both or neither (CHECK); written only by own-offer.record-attestation.
+  attestationRecordedAt       DateTime?             @map("attestation_recorded_at") @db.Timestamptz(6)
+  attestationAccountId        String?               @map("attestation_account_id") @db.Uuid
+  /// draft | pending-first-publish | changes-needed | published | deleted.
+  status                      String
+  /// The stored off-sale causes (M-5): type-not-allowed, product-retired, product-not-listed,
+  /// tag-suspended, description-claim-text.
+  offSaleTypeNotAllowed       Boolean               @map("off_sale_type_not_allowed")
+  offSaleProductRetired       Boolean               @map("off_sale_product_retired")
+  offSaleProductNotListed     Boolean               @map("off_sale_product_not_listed")
+  offSaleTagSuspended         Boolean               @map("off_sale_tag_suspended")
+  offSaleDescriptionClaimText Boolean               @map("off_sale_description_claim_text")
+  /// Exactly `status = 'published'` and no cause (CHECK offers_listed_check).
+  listed                      Boolean
+  /// The last submit for review; required while `pending-first-publish` (CHECK); queue sort key.
+  submittedAt                 DateTime?             @map("submitted_at") @db.Timestamptz(6)
+  firstPublishedAt            DateTime?             @map("first_published_at") @db.Timestamptz(6)
+  /// Set exactly when `status = 'deleted'` (CHECK).
+  deletedAt                   DateTime?             @map("deleted_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate (P 10); 1 at insert.
+  version                     Int
+  createdAt                   DateTime              @map("created_at") @db.Timestamptz(6)
+  product                     CatalogProduct        @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  history                     CatalogOfferHistory[]
+
+  /// The target of composite foreign keys (C3); the A1 batch read.
+  @@unique([marketId, id])
+  /// The target of the same-seller tag foreign key (3.15).
+  @@unique([marketId, id, sellerId])
+  @@map("offers")
+  @@schema("catalog")
+}
+
+/// The history of an Offer (V4; data design 3.14): one row per Offer change, with a snapshot of
+/// the Offer after it. Insert-only (CA3): SELECT and INSERT for the application, and triggers
+/// refuse UPDATE, DELETE and TRUNCATE for every role. A tag-only change has no row here.
+model CatalogOfferHistory {
+  id                   String       @id @db.Uuid
+  marketId             String       @map("market_id") @db.VarChar(8)
+  tenantId             String       @map("tenant_id")
+  offerId              String       @map("offer_id") @db.Uuid
+  /// The Offer's version after the change; unique per Offer.
+  offerVersion         Int          @map("offer_version")
+  /// created | edited | submitted | publication-approved | changes-requested | published |
+  /// handling-changed | attestation-recorded | attestation-withdrawn | causes-changed | moved |
+  /// shelf-cleared | deleted.
+  changeKind           String       @map("change_kind")
+  /// Field ids (D 6.2) of the change, no values; may be empty.
+  changedFields        String[]     @map("changed_fields")
+  // Snapshot after the change.
+  productId            String       @map("product_id") @db.Uuid
+  status               String
+  /// Collation "C" is set in the migration.
+  sellerSku            String       @map("seller_sku")
+  conditionCode        String       @map("condition_code")
+  description          Json         @db.JsonB
+  handling             String?
+  attestationRecorded  Boolean      @map("attestation_recorded")
+  /// Always null until seller categories (slice 23); no foreign key (a snapshot).
+  shelfCategoryId      String?      @map("shelf_category_id") @db.Uuid
+  listed               Boolean
+  /// The cause codes set after the change (a subset of the five).
+  offSaleCauses        String[]     @map("off_sale_causes")
+  /// seller | admin | system.
+  actorKind            String       @map("actor_kind")
+  /// Null exactly for the system actor (CHECK).
+  actorAccountId       String?      @map("actor_account_id") @db.Uuid
+  /// Acting-as (IMP-06): the admin behind a seller's change.
+  actingAdminAccountId String?      @map("acting_admin_account_id") @db.Uuid
+  occurredAt           DateTime     @map("occurred_at") @db.Timestamptz(6)
+  offer                CatalogOffer @relation(fields: [marketId, offerId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, offerId, offerVersion])
+  /// The history read (A17).
+  @@index([marketId, offerId, occurredAt])
+  @@map("offer_history")
   @@schema("catalog")
 }

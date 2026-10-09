@@ -25,6 +25,7 @@ import {
   PRODUCT_TYPE_LOOKUP,
   type ProductTypeLookup,
 } from './application/ports/product-type-lookup';
+import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
@@ -86,6 +87,7 @@ const PORT = {
   revisions: PRODUCT_REVISION_REPOSITORY,
   freeze: FreezeRevision,
   submit: SubmitProduct,
+  reader: OFFER_SELL_UNITS_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -258,12 +260,8 @@ const productTypeProvider: FactoryProvider<string> = {
         seedAttributesJob(attributes),
       ],
     ),
-    // The fail-closed stand-in of slice 7 (ADR-0031 decision 6): it reads nothing, so only the gate.
-    ...[OfferSellUnitsQuery, OfferSellUnitsSystemQuery].map((type): FactoryProvider => ({
-      provide: type,
-      inject: [USE_CASE_GATE],
-      useFactory: (gate: UseCaseGate) => new type(gate),
-    })),
+    useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
+    useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     {
       provide: CATALOG_FACADE,
       inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery],

@@ -74,6 +74,10 @@ const PINNED: readonly (readonly [string, string])[] = [
     'platform:onboarding-compliance@2',
     'ac191a2f8d0a212f1d1999406817e86cab41617d1092a423eba1672e087af7a5',
   ],
+  [
+    'platform:catalogue-moderator@2',
+    '47ee8bdbc5ea862063818cc7663efe7631b4bf913f8b56abb1e74271d22d3267',
+  ],
   ['platform:viewer@2', '9999ab667e19eb83f2cb21adfdbe6d25e9be8ddf3ba59f4ec8045cdfcd1c9624'],
 ];
 

@@ -11,7 +11,10 @@ import { isPermissionCatalogue } from '../../src/platform/authz/permission';
 import { ROLE_SEED, type RoleSeed } from '../../src/modules/identity/application/ports/role-seed';
 import { RoleSeedKeyError } from '../../src/modules/identity/application/roles/role-seed-keys';
 import { CheckedInRoleSeed } from '../../src/modules/identity/infrastructure/seed/checked-in-role-seed';
+import { SEED_ROLES_JOB } from '../../src/modules/identity/presentation/jobs/seed-roles.job';
+import { JobRegistry } from '../../src/platform/scheduler/job-registry';
 import { SEED_KEYS_BUDGET_BYTES } from '../../src/modules/identity/application/roles/role-seed-budget';
+import { realPermissionRegistry } from '../support/permission-registry';
 import { keysCosting } from '../support/seed-key-fixtures';
 import { testAppConfig } from '../support/test-config';
 
@@ -111,13 +114,45 @@ describe('the permission registry of the booted application (PF 6.1; slice 8a-1)
     }
   });
 
-  it('accepts every key of the checked-in seed (the boot check ran and passed)', () => {
-    const registry = graphs.get('api')!.get(PermissionRegistry);
-    for (const role of new CheckedInRoleSeed().roles()) {
-      for (const key of role.permissionKeys) {
-        expect([key, registry.get(key)?.scope]).toEqual([key, role.scope]);
+  it('accepts every key of the checked-in seed in both roles (the boot check ran and passed)', () => {
+    for (const graph of graphs.values()) {
+      const registry = graph.get(PermissionRegistry);
+      for (const role of new CheckedInRoleSeed().roles()) {
+        for (const key of role.permissionKeys) {
+          expect([key, registry.get(key)?.scope]).toEqual([key, role.scope]);
+        }
       }
     }
+  });
+
+  it("worker: catalog's keys are registered and sealed at bootstrap, before identity.seed-roles can run (I-1a)", () => {
+    // The seed names `catalog.platform-product.edit` (Catalogue Moderator v2). The registry is
+    // sealed in onApplicationBootstrap, which `startWorker` completes before WorkerRuntime.start()
+    // starts the scheduler; the job itself runs in test/db/role-seed.db-spec.ts (worker block).
+    const worker = graphs.get('worker')!;
+    const registry = worker.get(PermissionRegistry);
+    expect(registry.sealed).toBe(true);
+    expect(registry.get('catalog.platform-product.edit')).toMatchObject({
+      scope: 'platform',
+      protected: false,
+    });
+    expect(worker.get(JobRegistry).get(SEED_ROLES_JOB)).toMatchObject({ runAtStart: true });
+  });
+
+  it('the test helper realPermissionRegistry() holds exactly the booted keys', () => {
+    expect(
+      realPermissionRegistry()
+        .list()
+        .map((d) => d.key)
+        .sort(),
+    ).toEqual(
+      graphs
+        .get('api')!
+        .get(PermissionRegistry)
+        .list()
+        .map((d) => d.key)
+        .sort(),
+    );
   });
 });
 
@@ -144,19 +179,22 @@ describe('registerPermissions is called from a module file, with its own name (P
 });
 
 describe('the boot check of the seed keys (identity design 5.6)', () => {
-  it('fails boot when a seed role names a key the registry does not declare', async () => {
-    const roles = new CheckedInRoleSeed().roles();
-    const broken: RoleSeed = {
-      roles: () =>
-        roles.map((role) =>
-          role.seedCode === 'viewer'
-            ? { ...role, permissionKeys: [...role.permissionKeys, 'identity.not-a-key'] }
-            : role,
-        ),
-    };
+  it.each(['api', 'worker'] as const)(
+    'fails boot (%s) when a seed role names a key the registry does not declare',
+    async (appRole) => {
+      const roles = new CheckedInRoleSeed().roles();
+      const broken: RoleSeed = {
+        roles: () =>
+          roles.map((role) =>
+            role.seedCode === 'viewer'
+              ? { ...role, permissionKeys: [...role.permissionKeys, 'identity.not-a-key'] }
+              : role,
+          ),
+      };
 
-    await expect(boot('api', broken)).rejects.toBeInstanceOf(RoleSeedKeyError);
-  });
+      await expect(boot(appRole, broken)).rejects.toBeInstanceOf(RoleSeedKeyError);
+    },
+  );
 
   it("fails boot when a seed role's keys are one byte over the seed-applied budget", async () => {
     const roles = new CheckedInRoleSeed().roles();

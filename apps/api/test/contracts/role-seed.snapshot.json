@@ -86,6 +86,11 @@
     ]
   },
   {
+    "entry": "platform:catalogue-moderator@2",
+    "kind": "default",
+    "permissionKeys": ["catalog.platform-product.edit", "identity.seller-access.view"]
+  },
+  {
     "entry": "platform:viewer@2",
     "kind": "default",
     "permissionKeys": [

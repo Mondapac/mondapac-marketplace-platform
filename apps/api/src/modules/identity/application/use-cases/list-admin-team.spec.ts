@@ -770,13 +770,15 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
             result =
               action === 'changeRole'
                 ? // A role the actor may grant and that differs from the target's, so the
-                  // command's answer is the row's (grantability is not a row hint).
+                  // command's answer is the row's (grantability is not a row hint). Both roles
+                  // hold only identity keys that LEAD holds; Catalogue Moderator is not one of
+                  // them since seed v2 (I-1a) adds a catalog key LEAD lacks.
                   await commands.changeRole.execute(as(actor), {
                     ...input,
                     roleId:
-                      row.role?.roleId === roleOf('catalogue-moderator')
+                      row.role?.roleId === roleOf('operations-support')
                         ? roleOf('finance')
-                        : roleOf('catalogue-moderator'),
+                        : roleOf('operations-support'),
                   })
                 : await commands[action as Exclude<AccountAction, 'changeRole'>].execute(
                     as(actor),
