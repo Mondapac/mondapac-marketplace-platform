@@ -31,7 +31,15 @@ export type OffSaleCause = (typeof OFF_SALE_CAUSES)[number];
 export type OfferRefusal =
   | { readonly code: 'offer.sku-invalid' }
   | { readonly code: 'offer.condition-invalid' }
-  | { readonly code: 'offer.description-invalid' };
+  | { readonly code: 'offer.description-invalid' }
+  | { readonly code: 'offer.not-editable' };
+
+/** The history row a change leaves (data design 3.14); field ids only, never values. */
+export interface OfferPendingHistory {
+  readonly changeKind: 'edited';
+  readonly changedFields: readonly string[];
+  readonly occurredAt: Temporal.Instant;
+}
 
 export interface OfferState {
   readonly id: Id<'Offer'>;
@@ -73,6 +81,10 @@ export const MAX_DESCRIPTION_CHARS = 5000;
 /** The most locales one Offer description may hold. */
 export const MAX_DESCRIPTION_LOCALES = 20;
 
+function sortedEntries(value: Readonly<Record<string, string>>): [string, string][] {
+  return Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 function validDescription(value: unknown): value is Record<string, string> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const entries = Object.entries(value);
@@ -100,6 +112,7 @@ export class Offer {
   #state: OfferState;
   readonly #events: PendingEvent[] = [];
   readonly #persistedVersion: number | null;
+  #pendingHistory: OfferPendingHistory | null = null;
 
   private constructor(state: OfferState, persistedVersion: number | null) {
     this.#state = Object.freeze(state);
@@ -161,6 +174,59 @@ export class Offer {
     return ok(offer);
   }
 
+  /**
+   * A seller's edit of the content fields (SKU, condition, description): a closed set with no
+   * handling, attestation or tag (B1). Only an Offer that is not yet published may be edited
+   * here: a `pending-first-publish` or `changes-needed` Offer returns to `draft` and leaves the
+   * queue (design 4.4). A published Offer is refused until the tag re-asking of slice 8 exists
+   * (fail closed: an edit must never skip `evaluateClaims`). Answers the field ids that changed;
+   * an edit that changes nothing stores nothing and leaves the version alone.
+   */
+  edit(input: {
+    readonly sellerSku: string;
+    readonly conditionCode: string;
+    readonly description: Readonly<Record<string, string>>;
+    readonly now: Temporal.Instant;
+  }): Result<readonly string[], OfferRefusal> {
+    const state = this.#state;
+    if (
+      state.status !== 'draft' &&
+      state.status !== 'changes-needed' &&
+      state.status !== 'pending-first-publish'
+    ) {
+      return err({ code: 'offer.not-editable' });
+    }
+    if (typeof input.sellerSku !== 'string' || !SKU_PATTERN.test(input.sellerSku)) {
+      return err({ code: 'offer.sku-invalid' });
+    }
+    if (typeof input.conditionCode !== 'string' || !CODE_PATTERN.test(input.conditionCode)) {
+      return err({ code: 'offer.condition-invalid' });
+    }
+    if (!validDescription(input.description)) return err({ code: 'offer.description-invalid' });
+    const changed: string[] = [];
+    if (input.sellerSku !== state.sellerSku) changed.push('sellerSku');
+    if (input.conditionCode !== state.conditionCode) changed.push('conditionCode');
+    if (
+      JSON.stringify(sortedEntries(input.description)) !==
+      JSON.stringify(sortedEntries(state.description))
+    ) {
+      changed.push('description');
+    }
+    if (changed.length === 0 && state.status === 'draft') return ok([]);
+    if (this.#pendingHistory !== null) throw new Error('edit: the Offer already has a change');
+    this.#state = Object.freeze({
+      ...state,
+      sellerSku: input.sellerSku,
+      conditionCode: input.conditionCode,
+      description: Object.freeze({ ...input.description }),
+      status: 'draft',
+      submittedAt: null,
+      version: state.version + 1,
+    });
+    this.#pendingHistory = { changeKind: 'edited', changedFields: changed, occurredAt: input.now };
+    return ok(changed);
+  }
+
   /** An Offer read back from storage; records no event. */
   static restore(state: OfferState): Offer {
     return new Offer(state, state.version);
@@ -173,6 +239,11 @@ export class Offer {
   /** The version the row had when it was read, or null for an Offer not yet stored. */
   get persistedVersion(): number | null {
     return this.#persistedVersion;
+  }
+
+  /** The history row to store with the change made since the Offer was read, or null. */
+  get pendingHistory(): OfferPendingHistory | null {
+    return this.#pendingHistory;
   }
 
   /** Events recorded since the aggregate was built, in the order of their versions. */

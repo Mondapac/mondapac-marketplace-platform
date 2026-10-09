@@ -29,6 +29,7 @@ import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-produc
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
 import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
 import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
+import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
 import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
@@ -252,6 +253,15 @@ const productTypeProvider: FactoryProvider<string> = {
       outbox: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(OwnOfferEdit, {
+      unitOfWork: true,
+      offers: true,
+      eligibility: true,
+      check: true,
+      save: true,
+      policy: true,
+      clock: true,
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),

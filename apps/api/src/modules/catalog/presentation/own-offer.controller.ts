@@ -1,4 +1,15 @@
-import { Body, Controller, HttpCode, HttpException, Logger, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpException,
+  Logger,
+  Param,
+  Post,
+  Put,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -7,7 +18,9 @@ import {
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -23,9 +36,15 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
 import { closedBody, refusalWith } from './http-answers';
-import { OwnOfferCreated, OwnOfferCreateRequest } from './own-offer.dto';
+import {
+  OwnOfferCreated,
+  OwnOfferCreateRequest,
+  OwnOfferEdited,
+  OwnOfferEditRequest,
+} from './own-offer.dto';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -39,6 +58,9 @@ import { ApiErrorBody } from './platform-product.dto';
 export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'product.not-found': 404,
+  'offer.not-found': 404,
+  'offer.not-editable': 409,
+  'conflict.stale': 409,
   'seller.not-eligible': 403,
   'offer.exists-for-product': 409,
   'offer.sku-taken': 409,
@@ -66,7 +88,10 @@ const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token o
 export class OwnOfferController {
   readonly #logger = new Logger('OwnOfferController');
 
-  constructor(private readonly createOffer: OwnOfferCreateOnPlatformProduct) {}
+  constructor(
+    private readonly createOffer: OwnOfferCreateOnPlatformProduct,
+    private readonly editOffer: OwnOfferEdit,
+  ) {}
 
   @Post()
   @HttpCode(201)
@@ -134,6 +159,78 @@ export class OwnOfferController {
     const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
     this.#logger[failed ? 'warn' : 'log']({
       msg: 'catalog.own-offer-create',
+      outcome:
+        outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (outcome instanceof HttpException) throw outcome;
+    return outcome;
+  }
+
+  @Put(':offerId')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Edit the content of an own Offer that is not yet published',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. The whole content form: SKU, ' +
+      'condition and description. An Offer of another seller, a deleted one or an unknown id is ' +
+      'a byte-identical offer.not-found. A changed text that holds a certification-like claim or ' +
+      'a hidden character, or that cannot be checked, refuses the whole edit ' +
+      '(claim-text.refused, details.fields). An Offer waiting for review or needing changes ' +
+      'returns to draft. A published Offer is offer.not-editable. Shares the save budget of ' +
+      'draft saves: 60 a minute and 1,000 a day per account.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiBody({ type: OwnOfferEditRequest })
+  @ApiOkResponse({ type: OwnOfferEdited })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer.sku-taken, offer.not-editable or conflict.stale',
+  })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'claim-text.refused' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async edit(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferEdited> {
+    const input = closedBody(request, body, ['sellerSku', 'conditionCode', 'description']);
+    let outcome: OwnOfferEdited | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.editOffer.execute(context, {
+        offerId,
+        sellerSku: input.sellerSku as string,
+        conditionCode: input.conditionCode as string,
+        description: input.description,
+      });
+      outcome = result.ok
+        ? { changedFields: [...result.value.changedFields] }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
+    this.#logger[failed ? 'warn' : 'log']({
+      msg: 'catalog.own-offer-edit',
       outcome:
         outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
       marketId: context.market.marketId,

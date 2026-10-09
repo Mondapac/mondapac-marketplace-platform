@@ -195,6 +195,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   OutcomeInput: { noCustomerText: 'ids and a decision code' },
   Offer: { noCustomerText: 'aggregate class around OfferState' },
   OfferState: { table: 'OFFER_FIELDS' },
+  OfferPendingHistory: { noCustomerText: 'history kind, field ids and an instant' },
   OfferSellUnits: { noCustomerText: 'sell units, numbers and ids' },
   PlatformCategoryState: { table: 'PLATFORM_CATEGORY_FIELDS' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },

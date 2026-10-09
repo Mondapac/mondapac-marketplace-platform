@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   OfferActor,
@@ -108,6 +109,64 @@ export class PrismaOfferRepository implements OfferRepository {
         actorAccountId: actor.accountId,
         actingAdminAccountId: actor.actingAdminAccountId ?? null,
         occurredAt: toDate(state.createdAt),
+      },
+      select: { id: true },
+    });
+    return null;
+  }
+
+  async save(
+    market: MarketContext,
+    offer: Offer,
+    actor: OfferActor,
+  ): Promise<'offer.sku-taken' | null> {
+    const state = offer.state;
+    const expected = offer.persistedVersion;
+    const history = offer.pendingHistory;
+    if (expected === null) throw new Error('save: the offer was never stored; use add');
+    if (state.marketId !== market.marketId) throw new Error('save: the offer is of another Market');
+    if (history === null) return null;
+    const tx = this.prisma.tx(market);
+    try {
+      const { count } = await tx.catalogOffer.updateMany({
+        where: { marketId: market.marketId, id: state.id, version: expected },
+        data: {
+          sellerSku: state.sellerSku,
+          conditionCode: state.conditionCode,
+          description: { ...state.description },
+          status: state.status,
+          submittedAt: state.submittedAt === null ? null : toDate(state.submittedAt),
+          version: state.version,
+        },
+      });
+      if (count !== 1) throw new StaleAggregateError('offer', state.id);
+    } catch (error) {
+      if (this.prisma.violatedConstraint(error) === UNIQUE_SKU) return 'offer.sku-taken';
+      throw error;
+    }
+    await tx.catalogOfferHistory.create({
+      data: {
+        id: this.ids.next<'OfferHistory'>(),
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        offerId: state.id,
+        offerVersion: state.version,
+        changeKind: history.changeKind,
+        changedFields: [...history.changedFields],
+        productId: state.productId,
+        status: state.status,
+        sellerSku: state.sellerSku,
+        conditionCode: state.conditionCode,
+        description: { ...state.description },
+        handling: state.handling,
+        attestationRecorded: state.attestationRecordedAt !== null,
+        shelfCategoryId: null,
+        listed: state.listed,
+        offSaleCauses: [...state.offSaleCauses],
+        actorKind: actor.kind,
+        actorAccountId: actor.accountId,
+        actingAdminAccountId: actor.actingAdminAccountId ?? null,
+        occurredAt: toDate(history.occurredAt),
       },
       select: { id: true },
     });

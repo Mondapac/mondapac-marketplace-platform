@@ -31,3 +31,33 @@ export class OwnOfferCreated {
   @ApiProperty({ format: 'uuid', description: 'The new draft Offer. A UUID v7.' })
   offerId!: string;
 }
+
+export class OwnOfferEditRequest {
+  @ApiProperty({
+    description: "The seller's own SKU, unique among the seller's open Offers (CAT-10).",
+  })
+  sellerSku!: string;
+
+  @ApiProperty({ description: "One of the Market's catalog.conditions." })
+  conditionCode!: string;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description:
+      "The whole description: locale to text, in the Market's supported locales; at most 20 " +
+      'locales and 5,000 characters each. May be empty. Handling, attestation, tags, seller and ' +
+      'status are never accepted. An Offer waiting for review or needing changes returns to draft.',
+  })
+  description!: Record<string, string>;
+}
+
+export class OwnOfferEdited {
+  @ApiProperty({
+    type: [String],
+    description:
+      'Field ids that changed (sellerSku, conditionCode, description); empty when the form ' +
+      'matched what was stored.',
+  })
+  changedFields!: string[];
+}

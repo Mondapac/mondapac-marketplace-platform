@@ -12,18 +12,14 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
-import {
-  MAX_DESCRIPTION_CHARS,
-  MAX_DESCRIPTION_LOCALES,
-  Offer,
-  type OfferRefusal,
-} from '../../domain/offer';
+import { Offer, type OfferRefusal } from '../../domain/offer';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
+import { parseOfferContent } from '../offer-content';
 import { refusalOf, type RefusedField } from '../working-copy/save-draft.service';
 import type { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
 
@@ -253,35 +249,9 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
     const product =
       typeof input.productId === 'string' ? parseId<'Product'>(input.productId) : null;
     if (product === null || !product.ok) return fail('productId', 'format');
-    if (typeof input.sellerSku !== 'string') return fail('sellerSku', 'type');
-    if (typeof input.conditionCode !== 'string') return fail('conditionCode', 'type');
-    let conditions: readonly string[];
-    let locales: { readonly supported: readonly string[] };
-    try {
-      conditions = this.deps.policy.conditions(market);
-      locales = this.deps.policy.locales(market);
-    } catch {
-      return err({ code: 'access.unavailable' });
-    }
-    if (!conditions.includes(input.conditionCode)) return fail('conditionCode', 'unknown');
-    const description = input.description;
-    if (typeof description !== 'object' || description === null || Array.isArray(description)) {
-      return fail('description', 'type');
-    }
-    const entries = Object.entries(description);
-    if (entries.length > MAX_DESCRIPTION_LOCALES) return fail('description', 'format');
-    for (const [locale, text] of entries) {
-      if (!locales.supported.includes(locale)) return fail('description', 'locale');
-      if (typeof text !== 'string') return fail('description', 'type');
-      // Bounded here too, so oversize text never reaches the claim-text service.
-      if (text.length > MAX_DESCRIPTION_CHARS) return fail('description', 'format');
-    }
-    return ok({
-      productId: product.value,
-      sellerSku: input.sellerSku,
-      conditionCode: input.conditionCode,
-      description: { ...(description as Record<string, string>) },
-    });
+    const content = parseOfferContent(this.deps.policy, market, input);
+    if (!content.ok) return content;
+    return ok({ productId: product.value, ...content.value });
   }
 }
 
