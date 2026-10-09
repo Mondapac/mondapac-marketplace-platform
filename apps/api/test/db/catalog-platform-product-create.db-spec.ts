@@ -163,6 +163,7 @@ describe.each(TEST_MARKETS)(
 
     it('stores nothing when the events cannot be written', async () => {
       failOutbox = true;
+      lastCode = '';
       try {
         await expect(useCase.execute(adminContext(), { typeCode: 'simple' })).rejects.toThrow();
         expect(lastCode).not.toBe('');
