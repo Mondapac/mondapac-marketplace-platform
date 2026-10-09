@@ -31,6 +31,34 @@ type Node = Record<string, unknown>;
 /** The only functions a statement may call (ADR-0030 decision 3). */
 const ALLOWED_FUNCTIONS: readonly (readonly string[])[] = [['unnest'], ['pg_catalog', 'unnest']];
 
+/** The comparison operators a statement may use; a qualified or other operator is refused. */
+const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
+  '=',
+  '<>',
+  '!=',
+  '<',
+  '<=',
+  '>',
+  '>=',
+  '~~',
+  '~~*',
+  '!~~',
+  '!~~*',
+]);
+
+/** The types a cast may name (`pg_catalog` or unqualified); anything else is refused. */
+const ALLOWED_CAST_TYPES: ReadonlySet<string> = new Set([
+  'uuid',
+  'text',
+  'bool',
+  'int4',
+  'int8',
+  'timestamptz',
+  'date',
+  'varchar',
+  'numeric',
+]);
+
 /** Node kinds that are refused wherever they appear (decision 4 and the function rule). */
 const REFUSED_NODES: ReadonlyMap<string, string> = new Map([
   ['LockingClause', 'locking-clause'],
@@ -103,7 +131,10 @@ interface Walk {
   readonly owner: StatementOwner;
   readonly violations: Set<string>;
   readonly paramNumbers: Set<number>;
-  readonly cteNames: Set<string>;
+  /** The CTE names visible at the select being walked (scoped, see `visitSelect`). */
+  cteNames: Set<string>;
+  /** `market_id` column nodes that are a direct operand of a comparison (Hassan L-2). */
+  readonly comparedMarketColumns: WeakSet<object>;
 }
 
 function relationName(rangeVar: Node): { schema: string | null; name: string; alias: string } {
@@ -117,6 +148,10 @@ function relationName(rangeVar: Node): { schema: string | null; name: string; al
 /** Decision 3: own schema, a table of the owner's models, qualified (a CTE name is exempt). */
 function checkRelation(rangeVar: Node, walk: Walk): void {
   const { schema, name } = relationName(rangeVar);
+  // A column alias list can rename another column to `market_id` (Hassan M-2).
+  if (isNode(rangeVar.alias) && rangeVar.alias.colnames !== undefined) {
+    walk.violations.add('relation-column-alias');
+  }
   if (schema === null) {
     if (!walk.cteNames.has(name)) walk.violations.add(`relation-unqualified:${name}`);
     return;
@@ -138,6 +173,10 @@ function checkFrom(item: unknown, quals: unknown, walk: Walk): void {
   }
   const [kind, body] = entry;
   if (kind === 'JoinExpr' && isNode(body)) {
+    // An ON term filters nothing on the preserved side of a RIGHT or FULL join (Hassan H-2).
+    if (body.jointype !== 'JOIN_INNER' && body.jointype !== 'JOIN_LEFT') {
+      walk.violations.add(`join-type:${String(body.jointype)}`);
+    }
     checkFrom(body.larg, quals, walk);
     checkFrom(body.rarg, body.quals, walk);
     return;
@@ -153,6 +192,18 @@ function checkFrom(item: unknown, quals: unknown, walk: Walk): void {
   if (kind !== 'RangeFunction' && kind !== 'RangeSubselect') {
     walk.violations.add(`from-item-unsupported:${kind}`);
   }
+}
+
+function checkCast(cast: Node, walk: Walk): void {
+  const target = isNode(cast.typeName) ? strings(cast.typeName.names) : null;
+  const name = target?.[target.length - 1];
+  const qualified = target !== null && target.length === 2 && target[0] === 'pg_catalog';
+  const ok =
+    target !== null &&
+    name !== undefined &&
+    (target.length === 1 || qualified) &&
+    ALLOWED_CAST_TYPES.has(name);
+  if (!ok) walk.violations.add(`cast-not-allowed:${target === null ? '?' : target.join('.')}`);
 }
 
 function checkFunction(call: Node, walk: Walk): void {
@@ -178,33 +229,50 @@ function checkFunction(call: Node, walk: Walk): void {
   }
 }
 
+/** The checks of one select body that need no walk: locking, INTO, CTE shape, Market rule. */
 function checkSelect(select: Node, walk: Walk): void {
   const locking = select.lockingClause;
   if (Array.isArray(locking) && locking.length > 0) walk.violations.add('locking-clause');
   if (select.intoClause !== undefined) walk.violations.add('select-into');
   const withClause = isNode(select.withClause) ? select.withClause : null;
-  if (withClause !== null) {
-    if (withClause.recursive === true) walk.violations.add('recursive-cte');
-    for (const cte of Array.isArray(withClause.ctes) ? withClause.ctes : []) {
-      const entry = only(cte);
-      if (entry !== null && entry[0] === 'CommonTableExpr' && isNode(entry[1])) {
-        const query = only(entry[1].ctequery);
-        if (query === null || query[0] !== 'SelectStmt') walk.violations.add('data-modifying-cte');
-      }
-    }
-  }
+  if (withClause !== null && withClause.recursive === true) walk.violations.add('recursive-cte');
   const from = Array.isArray(select.fromClause) ? select.fromClause : [];
   for (const item of from) checkFrom(item, select.whereClause, walk);
 }
 
-/** Collects every CTE name first, so a reference before its use site still reads as a CTE. */
-function collectCteNames(value: unknown, names: Set<string>): void {
-  if (Array.isArray(value)) {
-    for (const item of value) collectCteNames(item, names);
-  } else if (isNode(value)) {
-    if (typeof value.ctename === 'string') names.add(value.ctename);
-    for (const child of Object.values(value)) collectCteNames(child, names);
+/**
+ * A select body, plain or a UNION/INTERSECT/EXCEPT arm (arms are bare bodies, with no
+ * SelectStmt wrapper; Mojtaba H1, Hassan H-1). CTE names are scoped as PostgreSQL scopes them:
+ * a name is visible to later siblings and to the select itself, never to its own body or to an
+ * earlier sibling, and leaves scope with the select (Hassan M-1).
+ */
+function visitSelect(select: Node, walk: Walk): void {
+  const outer = walk.cteNames;
+  walk.cteNames = new Set(outer);
+  const withClause = isNode(select.withClause) ? select.withClause : null;
+  for (const cte of Array.isArray(withClause?.ctes) ? withClause.ctes : []) {
+    const entry = only(cte);
+    if (entry === null || entry[0] !== 'CommonTableExpr' || !isNode(entry[1])) {
+      walk.violations.add('from-item-unreadable');
+      continue;
+    }
+    const query = only(entry[1].ctequery);
+    if (query === null || query[0] !== 'SelectStmt') walk.violations.add('data-modifying-cte');
+    visit({ ctequery: entry[1].ctequery }, walk);
+    if (typeof entry[1].ctename === 'string') walk.cteNames.add(entry[1].ctename);
   }
+  const setOperation = select.op !== undefined && select.op !== 'SETOP_NONE';
+  checkSelect(select, walk);
+  for (const [key, child] of Object.entries(select)) {
+    if (key === 'withClause') continue;
+    if (setOperation && (key === 'larg' || key === 'rarg')) {
+      if (isNode(child)) visitSelect(child, walk);
+      else walk.violations.add('from-item-unreadable');
+    } else {
+      visit({ [key]: child }, walk);
+    }
+  }
+  walk.cteNames = outer;
 }
 
 function visit(value: unknown, walk: Walk): void {
@@ -223,19 +291,43 @@ function visit(value: unknown, walk: Walk): void {
     }
     switch (key) {
       case 'SelectStmt':
-        checkSelect(child, walk);
-        break;
+        visitSelect(child, walk);
+        continue;
       case 'RangeVar':
         checkRelation(child, walk);
         break;
       case 'FuncCall':
         checkFunction(child, walk);
         break;
+      case 'ColumnRef':
+        // `market_id` is only ever a direct operand of a comparison (Hassan L-2).
+        if (
+          marketColumnAlias({ ColumnRef: child }) !== undefined &&
+          !walk.comparedMarketColumns.has(child)
+        ) {
+          walk.violations.add('market-column-misused');
+        }
+        break;
+      case 'TypeCast':
+        checkCast(child, walk);
+        break;
       case 'ParamRef':
         if (typeof child.number === 'number') walk.paramNumbers.add(child.number);
         else walk.violations.add('param-unreadable');
         break;
       case 'A_Expr': {
+        const operator = strings(child.name);
+        if (operator === null || operator.length !== 1 || !ALLOWED_OPERATORS.has(operator[0]!)) {
+          walk.violations.add(
+            `operator-not-allowed:${operator === null ? '?' : operator.join('.')}`,
+          );
+        }
+        for (const operand of [child.lexpr, child.rexpr]) {
+          const column = only(operand);
+          if (column !== null && column[0] === 'ColumnRef' && isNode(column[1])) {
+            walk.comparedMarketColumns.add(column[1]);
+          }
+        }
         // `market_id` is compared with `$1`, never with a literal or another expression.
         for (const [side, other] of [
           [child.lexpr, child.rexpr],
@@ -285,8 +377,8 @@ export async function checkStatement(
     violations: new Set(),
     paramNumbers: new Set(),
     cteNames: new Set(),
+    comparedMarketColumns: new WeakSet(),
   };
-  collectCteNames(root[1], walk.cteNames);
   visit({ SelectStmt: root[1] }, walk);
 
   // Parameters: `$1` is the Market and is required; `$2..` are exactly the declared ones.

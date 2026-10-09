@@ -4,6 +4,8 @@ import type { RawReadEntry } from './statements';
 
 const ID = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 const SCALAR = new Set(['uuid', 'text']);
+/** The largest array cap a statement may declare; a larger one is a deliberate, reviewed change. */
+const MAX_ARRAY_CAP = 1000;
 
 /** The owner's schema and tables, read from the generated model map (models only, no view). */
 export function ownerOf(map: ModelMap, owner: string): StatementOwner | null {
@@ -41,6 +43,9 @@ export async function checkRawReadList(
       const array = param.type.endsWith('[]');
       if (!array && !SCALAR.has(param.type)) bad('param-type');
       if (array && (param.maxLength === undefined || param.maxLength < 1)) bad('array-cap-missing');
+      if (array && param.maxLength !== undefined && param.maxLength > MAX_ARRAY_CAP) {
+        bad('array-cap-too-large');
+      }
       if (!array && (param.maxLength !== undefined || param.group !== undefined)) {
         bad('scalar-with-array-options');
       }

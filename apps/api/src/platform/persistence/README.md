@@ -224,3 +224,27 @@ Rows, values and SQL are never logged.
 - Tests: unit specs over `test/support/in-memory-audit-chain.ts`;
   `test/db/platform-audit-chain.db-spec.ts` runs on its own database copy (`audit`), where
   the owner tampers and resets the chain with the user triggers off.
+
+## Raw read port (ADR-0030)
+
+`RAW_READ_PORT` (`raw-reads/raw-read-port.ts`) runs a read that Prisma cannot express. It is
+read-only and Market-bound:
+
+- It needs an open read-only unit (ADR-0025) of the asked Market; a read-write unit, no unit or
+  a Market that differs from the unit's is refused before any database call.
+- One unnamed statement goes out on the pool: no `BEGIN`, no transaction. `$1` is the Market,
+  bound by the helper from the unit; `$2` onwards are the declared parameters, type-checked
+  and, for arrays, capped (at most 1000) and, when zipped by one `unnest`, of equal length. A
+  `uuid` is lower case; callers normalise first.
+- Statements live only in `raw-reads/statements.ts` (CODEOWNERS: sign-off of Ali, Hassan and
+  Mojtaba, plus Mojtaba's plan review). The pure checker (`statement-check.ts`) allows one
+  `SELECT` over the owner's own tables with `<alias>.market_id = $1` per relation, `unnest`
+  over bound parameters, INNER and LEFT joins only, and refuses locking, `INTO`, recursive or
+  data-modifying CTEs, RIGHT and FULL joins, column alias lists, other functions, operators
+  and casts.
+- The same checker runs at start-up (`createRawReadPort`), in `pnpm boundaries` (which also
+  bans raw SQL and the `pg` driver outside the named platform files and checks each
+  `.rawRead(market, '<id>', ...)` call site) and, as a backstop, `EXPLAIN (GENERIC_PLAN)` in
+  the database tests.
+- The parser is `libpg-query`, pinned exactly and bumped together with the PostgreSQL major
+  (17 today; the tests assert parser version 170007). Only `raw-reads/pg-parser.ts` imports it.

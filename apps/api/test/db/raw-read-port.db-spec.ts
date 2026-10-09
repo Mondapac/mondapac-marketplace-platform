@@ -16,7 +16,7 @@ import {
   type Persistence,
 } from './persistence-support';
 import { explainCatalogProblems, runReadOnly } from './raw-read-support';
-import { applicationDatabaseUrl, ownerTestDatabaseUrl } from './test-database';
+import { testDatabaseUrl, ownerTestDatabaseUrl } from './test-database';
 
 // ADR-0030 decision 9 for the port, on a test entry over certification's own table, and the
 // same checks (BEGIN READ ONLY, catalog) for every checked-in entry as it is added. Both
@@ -55,7 +55,7 @@ describe('raw read port (database integration)', () => {
     db = createPersistence();
     port = new PrismaRawReadPort(db.root, [entry]);
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
-    app = new Client({ connectionString: applicationDatabaseUrl() });
+    app = new Client({ connectionString: testDatabaseUrl() });
     await owner.connect();
     await app.connect();
     // The same code in both Markets, each with its own row.
@@ -124,7 +124,7 @@ const listed: readonly RawReadEntry[] = [entry, ...RAW_READ_STATEMENTS];
 describe.each(listed.map((e) => [e.id, e] as const))('raw read statement %s', (_id, statement) => {
   let app: Client;
   beforeAll(async () => {
-    app = new Client({ connectionString: applicationDatabaseUrl() });
+    app = new Client({ connectionString: testDatabaseUrl() });
     await app.connect();
   });
   afterAll(async () => {
@@ -132,14 +132,14 @@ describe.each(listed.map((e) => [e.id, e] as const))('raw read statement %s', (_
   });
 
   it('plans against the real server and reads only ordinary tables (catalog check)', async () => {
-    expect(await explainCatalogProblems(app, statement.sql)).toEqual([]);
+    expect(await explainCatalogProblems(app, statement.sql, statement.owner)).toEqual([]);
   });
 });
 
 describe('BEGIN READ ONLY as the application role (Hassan C1)', () => {
   let app: Client;
   beforeAll(async () => {
-    app = new Client({ connectionString: applicationDatabaseUrl() });
+    app = new Client({ connectionString: testDatabaseUrl() });
     await app.connect();
   });
   afterAll(async () => {
@@ -151,7 +151,13 @@ describe('BEGIN READ ONLY as the application role (Hassan C1)', () => {
     async (_id, statement) => {
       for (const code of TEST_MARKETS) {
         const values = statement.params.map((p) =>
-          p.type.endsWith('[]') ? [] : p.type === 'uuid' ? randomUUID() : 'x',
+          p.type === 'uuid[]'
+            ? [randomUUID()]
+            : p.type === 'text[]'
+              ? ['x']
+              : p.type === 'uuid'
+                ? randomUUID()
+                : 'x',
         );
         await expect(
           runReadOnly(app, statement.sql, [marketOf(code).marketId, ...values]),
@@ -160,22 +166,71 @@ describe('BEGIN READ ONLY as the application role (Hassan C1)', () => {
     },
   );
 
-  it.each([
-    [
-      'a data-modifying CTE',
-      `WITH d AS (DELETE FROM certification.certification_types WHERE market_id = $1 RETURNING id) SELECT id FROM d`,
-    ],
-    [
-      'FOR UPDATE',
-      `SELECT id FROM certification.certification_types WHERE market_id = $1 FOR UPDATE`,
-    ],
-    [
-      'nextval',
-      `SELECT nextval('pg_catalog.pg_class_oid_index'::regclass) WHERE $1::text IS NOT NULL`,
-    ],
-  ])('the database itself refuses %s', async (_name, sql) => {
-    await expect(runReadOnly(app, sql, ['AU'])).rejects.toThrow(
-      /read-only|permission denied|not a sequence|cannot/i,
-    );
+  describe('negative controls, with grants that let only the read-only transaction refuse', () => {
+    let owner: Client;
+    beforeAll(async () => {
+      owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+      await owner.connect();
+      await owner.query(`
+        CREATE TABLE IF NOT EXISTS public.raw_read_probe (market_id text, id int);
+        CREATE SEQUENCE IF NOT EXISTS public.raw_read_probe_seq;
+        GRANT SELECT, UPDATE, DELETE ON public.raw_read_probe TO mondapac_app;
+        GRANT USAGE ON SEQUENCE public.raw_read_probe_seq TO mondapac_app`);
+    });
+    afterAll(async () => {
+      await owner.query(
+        'DROP TABLE IF EXISTS public.raw_read_probe; DROP SEQUENCE IF EXISTS public.raw_read_probe_seq',
+      );
+      await owner.end();
+    });
+
+    // 25006 read_only_sql_transaction: the privilege check passes, so only READ ONLY refuses.
+    it.each([
+      [
+        'a data-modifying CTE',
+        'WITH d AS (DELETE FROM public.raw_read_probe WHERE market_id = $1 RETURNING id) SELECT id FROM d',
+      ],
+      ['FOR UPDATE', 'SELECT id FROM public.raw_read_probe WHERE market_id = $1 FOR UPDATE'],
+      ['nextval', "SELECT nextval('public.raw_read_probe_seq') WHERE $1::text IS NOT NULL"],
+    ])('the database itself refuses %s', async (_name, sql) => {
+      await expect(runReadOnly(app, sql, ['AU'])).rejects.toMatchObject({ code: '25006' });
+    });
+
+    it('would run the same nextval outside READ ONLY (the control is the transaction)', async () => {
+      const result = await app.query("SELECT nextval('public.raw_read_probe_seq') AS n");
+      expect(result.rows).toHaveLength(1);
+    });
+
+    it('catalog backstop fails closed on a view, a catalog table and another schema', async () => {
+      await owner.query(`
+        CREATE OR REPLACE VIEW certification.raw_read_probe_view AS
+          SELECT id, market_id FROM certification.certification_types;
+        GRANT SELECT ON certification.raw_read_probe_view TO mondapac_app`);
+      try {
+        expect(
+          await explainCatalogProblems(
+            app,
+            'SELECT v.id FROM certification.raw_read_probe_view v WHERE v.market_id = $1',
+            'certification',
+          ),
+        ).toContain('relation-not-a-table:certification.raw_read_probe_view');
+        expect(
+          await explainCatalogProblems(
+            app,
+            'SELECT c.oid FROM pg_catalog.pg_class c WHERE $1::text IS NOT NULL',
+            'certification',
+          ),
+        ).toContain('relation-schema:pg_catalog.pg_class');
+        expect(
+          await explainCatalogProblems(
+            app,
+            'SELECT p.id FROM public.raw_read_probe p WHERE p.market_id = $1',
+            'certification',
+          ),
+        ).toContain('relation-schema:public.raw_read_probe');
+      } finally {
+        await owner.query('DROP VIEW IF EXISTS certification.raw_read_probe_view');
+      }
+    });
   });
 });

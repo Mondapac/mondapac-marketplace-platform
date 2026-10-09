@@ -56,7 +56,7 @@ const AUDIT_FOLDER = 'platform/persistence/audit/';
 /** The calls whose result is a model view: `PrismaService.tx(market)` and `auditTx(market)`. */
 const VIEW_CALLS = ['tx', 'auditTx'];
 
-/** C3: the only files (relative to the source root) that may run raw SQL or import `pg`. */
+/** C3: the only files (relative to the source root) that may run raw SQL (Hassan L-4). */
 const RAW_SQL_FILES = new Set([
   'platform/persistence/advisory-job-lock.ts',
   'platform/persistence/database-probe.ts',
@@ -70,7 +70,12 @@ const RAW_SQL_FILES = new Set([
   'platform/persistence/prisma-unit-of-work.ts',
   'platform/persistence/raw-reads/prisma-raw-read-port.ts',
 ]);
-const RAW_SQL_MEMBER = /^\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|queryRawTyped)$/;
+/** C3: the only files that may import the database driver (ADR-0030 decision 6). */
+const DRIVER_FILES = new Set(['platform/persistence/prisma-root.ts']);
+const DRIVER_SPECIFIER = /^(pg|pg-[^/]+|pg\/.*|postgres|@prisma\/adapter-pg)$/;
+const RAW_SQL_MEMBER =
+  /^\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|queryRawTyped|extends)$/;
+const PRISMA_RAW_BUILDERS = new Set(['sql', 'raw', 'join']);
 const RAW_READS_FOLDER = 'platform/persistence/raw-reads/';
 
 const args = process.argv.slice(2);
@@ -402,48 +407,94 @@ async function checkRawReads(root) {
     const lineOf = (node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
     const rawSqlAllowed = RAW_SQL_FILES.has(relative);
     const owner = /^modules\/([^/]+)\/infrastructure\//.exec(relative)?.[1];
+    const driverAllowed = DRIVER_FILES.has(relative);
+    const rawSqlMessage = (node) =>
+      `${relative}:${lineOf(node)}: raw SQL outside the files of RAW_SQL_FILES; ` +
+      'read through RawReadPort (ADR-0030)';
     const visit = (node) => {
-      if (
-        !rawSqlAllowed &&
-        ((ts.isPropertyAccessExpression(node) && RAW_SQL_MEMBER.test(node.name.text)) ||
+      if (!rawSqlAllowed) {
+        if (ts.isPropertyAccessExpression(node)) {
+          const onPrisma = ts.isIdentifier(node.expression) && node.expression.text === 'Prisma';
+          if (
+            RAW_SQL_MEMBER.test(node.name.text) ||
+            (onPrisma && PRISMA_RAW_BUILDERS.has(node.name.text))
+          ) {
+            found.push(rawSqlMessage(node));
+          }
+        } else if (
+          ts.isElementAccessExpression(node) &&
+          ts.isStringLiteralLike(node.argumentExpression) &&
+          RAW_SQL_MEMBER.test(node.argumentExpression.text)
+        ) {
+          found.push(rawSqlMessage(node));
+        } else if (ts.isBindingElement(node)) {
+          const key = node.propertyName ?? node.name;
+          const text = ts.isIdentifier(key) || ts.isStringLiteralLike(key) ? key.text : undefined;
+          if (text !== undefined && RAW_SQL_MEMBER.test(text)) found.push(rawSqlMessage(node));
+        }
+      }
+      if (!driverAllowed) {
+        let specifier;
+        if (
+          (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+          node.moduleSpecifier &&
+          ts.isStringLiteral(node.moduleSpecifier)
+        ) {
+          specifier = node.moduleSpecifier.text;
+        } else if (
+          ts.isImportEqualsDeclaration(node) &&
+          ts.isExternalModuleReference(node.moduleReference) &&
+          ts.isStringLiteralLike(node.moduleReference.expression)
+        ) {
+          specifier = node.moduleReference.expression.text;
+        } else if (
+          ts.isCallExpression(node) &&
+          (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+            (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
+          node.arguments[0] &&
+          ts.isStringLiteralLike(node.arguments[0])
+        ) {
+          specifier = node.arguments[0].text;
+        }
+        if (specifier !== undefined && DRIVER_SPECIFIER.test(specifier)) {
+          found.push(
+            `${relative}:${lineOf(node)}: import of the database driver "${specifier}" ` +
+              'outside the files of DRIVER_FILES (ADR-0030)',
+          );
+        }
+      }
+      if (!relative.startsWith(RAW_READS_FOLDER)) {
+        const isCallee =
+          ts.isPropertyAccessExpression(node) &&
+          node.name.text === 'rawRead' &&
+          ts.isCallExpression(node.parent) &&
+          node.parent.expression === node;
+        if (isCallee) {
+          const call = node.parent;
+          const id = call.arguments[1];
+          if (id === undefined || !ts.isStringLiteralLike(id)) {
+            found.push(
+              `${relative}:${lineOf(call)}: rawRead needs a string literal statement id as its second argument`,
+            );
+          } else if (!ids.has(id.text)) {
+            found.push(
+              `${relative}:${lineOf(call)}: rawRead names "${id.text}", which is not in the list`,
+            );
+          } else if (ids.get(id.text).owner !== owner) {
+            found.push(
+              `${relative}:${lineOf(call)}: rawRead "${id.text}" belongs to module ` +
+                `"${ids.get(id.text).owner}"; call it from that module's infrastructure folder`,
+            );
+          }
+        } else if (
+          (ts.isPropertyAccessExpression(node) && node.name.text === 'rawRead') ||
           (ts.isElementAccessExpression(node) &&
             ts.isStringLiteralLike(node.argumentExpression) &&
-            RAW_SQL_MEMBER.test(node.argumentExpression.text)))
-      ) {
-        found.push(
-          `${relative}:${lineOf(node)}: raw SQL outside the files of RAW_SQL_FILES; ` +
-            'read through RawReadPort (ADR-0030)',
-        );
-      } else if (
-        !rawSqlAllowed &&
-        (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-        node.moduleSpecifier &&
-        ts.isStringLiteral(node.moduleSpecifier) &&
-        /^(pg|pg\/.*|postgres|@prisma\/adapter-pg)$/.test(node.moduleSpecifier.text)
-      ) {
-        found.push(
-          `${relative}:${lineOf(node)}: import of the database driver "${node.moduleSpecifier.text}" ` +
-            'outside the files of RAW_SQL_FILES (ADR-0030)',
-        );
-      } else if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === 'rawRead' &&
-        !relative.startsWith(RAW_READS_FOLDER)
-      ) {
-        const id = node.arguments[1];
-        if (id === undefined || !ts.isStringLiteralLike(id)) {
+            node.argumentExpression.text === 'rawRead') ||
+          (ts.isBindingElement(node) && (node.propertyName ?? node.name).text === 'rawRead')
+        ) {
           found.push(
-            `${relative}:${lineOf(node)}: rawRead needs a string literal statement id as its second argument`,
-          );
-        } else if (!ids.has(id.text)) {
-          found.push(
-            `${relative}:${lineOf(node)}: rawRead names "${id.text}", which is not in the list`,
-          );
-        } else if (ids.get(id.text).owner !== owner) {
-          found.push(
-            `${relative}:${lineOf(node)}: rawRead "${id.text}" belongs to module ` +
-              `"${ids.get(id.text).owner}"; call it from that module's infrastructure folder`,
+            `${relative}:${lineOf(node)}: rawRead must be called directly as .rawRead(market, '<id>', ...)`,
           );
         }
       }

@@ -35,9 +35,8 @@ import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
 import { parseSql } from './raw-reads/pg-parser';
-import { PrismaRawReadPort } from './raw-reads/prisma-raw-read-port';
+import { createRawReadPort } from './raw-reads/create-raw-read-port';
 import { RAW_READ_PORT } from './raw-reads/raw-read-port';
-import { assertRawReadList } from './raw-reads/raw-read-list-check';
 import { RAW_READ_STATEMENTS } from './raw-reads/statements';
 import { PrismaService } from './prisma.service';
 import { PrismaSubjectKeyStore } from './prisma-subject-key-store';
@@ -81,8 +80,11 @@ const modelMap: ModelMap = MODEL_MAP;
       provide: RAW_READ_PORT,
       inject: [PrismaRoot],
       useFactory: async (root: PrismaRoot) => {
-        await assertRawReadList(parseSql, RAW_READ_STATEMENTS, modelMap);
-        return new PrismaRawReadPort(root);
+        return createRawReadPort(root, {
+          parse: parseSql,
+          list: RAW_READ_STATEMENTS,
+          map: modelMap,
+        });
       },
     },
     {

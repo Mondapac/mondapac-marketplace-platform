@@ -238,4 +238,117 @@ describe('raw read statement check', () => {
     );
     expect(result).toContain('recursive-cte');
   });
+
+  describe('set operations carry the Market rule on every arm (Mojtaba H1)', () => {
+    const T = '"certification"."certification_types"';
+    const I = '"certification"."issuers"';
+    it.each([
+      [
+        'a bare UNION ALL',
+        `SELECT t.id FROM ${T} t WHERE t.market_id = $1 UNION ALL SELECT u.id FROM ${I} u`,
+        'market-rule:u',
+      ],
+      [
+        'a parenthesised UNION',
+        `(SELECT t.id FROM ${T} t WHERE t.market_id = $1) UNION (SELECT u.id FROM ${I} u)`,
+        'market-rule:u',
+      ],
+      [
+        'an EXCEPT inside a CTE',
+        `WITH x AS (SELECT t.id FROM ${T} t WHERE t.market_id = $1 EXCEPT SELECT u.id FROM ${I} u) SELECT x.id FROM x`,
+        'market-rule:u',
+      ],
+      [
+        'an INTERSECT inside a WHERE subquery',
+        `SELECT t.id FROM ${T} t WHERE t.market_id = $1 AND t.id IN (SELECT a.id FROM ${I} a WHERE a.market_id = $1 INTERSECT SELECT u.id FROM ${I} u)`,
+        'market-rule:u',
+      ],
+      [
+        'a nested set operation (left arm)',
+        `SELECT t.id FROM ${T} t WHERE t.market_id = $1 UNION SELECT a.id FROM ${I} a WHERE a.market_id = $1 UNION SELECT u.id FROM ${I} u`,
+        'market-rule:u',
+      ],
+    ])('refuses %s whose arm lacks the Market term', async (_name, sql, violation) => {
+      expect(await check(sql, [])).toContain(violation);
+    });
+
+    it('passes a set operation whose arms all carry the term', async () => {
+      expect(
+        await check(
+          `SELECT t.id FROM ${T} t WHERE t.market_id = $1 UNION ALL SELECT u.id FROM ${I} u WHERE u.market_id = $1`,
+          [],
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  describe('Hassan review of PR 220', () => {
+    const T = '"certification"."certification_types"';
+    const I = '"certification"."issuers"';
+    it.each([
+      [
+        'INTO in a set-operation arm',
+        `SELECT t.id INTO t2 FROM ${T} t WHERE t.market_id = $1 UNION SELECT 1`,
+        'select-into',
+      ],
+      [
+        'a RIGHT JOIN (H-2)',
+        `SELECT c.id FROM unnest($2::uuid[]) AS u(id) RIGHT JOIN ${T} c ON c.market_id = $1 AND c.id = u.id`,
+        'join-type:JOIN_RIGHT',
+      ],
+      [
+        'a FULL JOIN (H-2)',
+        `WITH k AS (SELECT 1 AS x) SELECT c.id FROM k FULL JOIN ${T} c ON c.market_id = $1 AND false`,
+        'join-type:JOIN_FULL',
+      ],
+      [
+        'a CTE named inside a sub-select and used outside it (M-1)',
+        `SELECT u.id FROM (WITH users AS (SELECT 1 AS id) SELECT id FROM users) s, users u WHERE $1::text IS NOT NULL`,
+        'relation-unqualified:users',
+      ],
+      [
+        'a CTE that reads its own name (M-1)',
+        `WITH issuers AS (SELECT * FROM issuers) SELECT x.id FROM issuers x WHERE $1::text IS NOT NULL`,
+        'relation-unqualified:issuers',
+      ],
+      [
+        'a column alias list that renames a column to market_id (M-2)',
+        `SELECT c.id FROM ${T} AS c(id, market_id) WHERE c.market_id = $1`,
+        'relation-column-alias',
+      ],
+      [
+        'a qualified operator (L-1)',
+        `SELECT t.id FROM ${T} t WHERE t.market_id = $1 AND t.id OPERATOR(public.===) t.id`,
+        'operator-not-allowed:public.===',
+      ],
+      [
+        'a cast to regclass (L-1)',
+        `SELECT t.id FROM ${T} t WHERE t.market_id = $1 AND 'pg_authid'::regclass IS NOT NULL`,
+        'cast-not-allowed:regclass',
+      ],
+      [
+        'market_id inside COALESCE (L-2)',
+        `SELECT t.id FROM ${T} t WHERE COALESCE(t.market_id, 'AU') = 'AU' AND t.market_id = $1`,
+        'market-column-misused',
+      ],
+    ])('refuses %s', async (_name, sql, violation) => {
+      expect(await check(sql, [{}])).toContain(violation);
+    });
+
+    it('passes a LEFT JOIN with the term in its ON and a CTE used after its definition', async () => {
+      expect(
+        await check(
+          `WITH w AS (SELECT t.id FROM ${T} t WHERE t.market_id = $1)
+           SELECT w.id FROM w LEFT JOIN ${I} i ON i.market_id = $1 AND i.type_id = w.id`,
+          [],
+        ),
+      ).toEqual([]);
+    });
+
+    it('refuses locking, INTO and the other table forms in the places the walk must reach', async () => {
+      expect(
+        await check(`SELECT t.id FROM ${T} t WHERE t.market_id = $1 FOR UPDATE`, []),
+      ).toContain('locking-clause');
+    });
+  });
 });
