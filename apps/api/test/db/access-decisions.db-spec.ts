@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import {
   ACCESS_DECISION_REPOSITORY,
@@ -21,6 +22,9 @@ import {
   SESSION_REPOSITORY,
   type SessionRepository,
 } from '../../src/modules/identity/application/ports/session.repository';
+import { ApproveSellerAccess } from '../../src/modules/identity/application/use-cases/approve-seller-access.use-case';
+import { RejectSellerAccess } from '../../src/modules/identity/application/use-cases/reject-seller-access.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccessDecision } from '../../src/modules/identity/domain/access-decision';
 import { SellerAccess } from '../../src/modules/identity/domain/seller-access';
 import { openSession } from '../../src/modules/identity/domain/session';
@@ -71,6 +75,9 @@ describe.each(TEST_MARKETS)('access decisions in market %s (database, slice 9)',
     sessions = app.get(SESSION_REPOSITORY, { strict: false });
     memberships = app.get(SELLER_MEMBERSHIP_REPOSITORY, { strict: false });
     keys = app.get(SUBJECT_KEY_SERVICE, { strict: false });
+    await app
+      .get(SeedRoles)
+      .execute(testCallContext(market, 'system', `db-decisions-${randomUUID()}`), {});
   });
   afterAll(async () => {
     await sql.end();
@@ -281,5 +288,132 @@ describe.each(TEST_MARKETS)('access decisions in market %s (database, slice 9)',
       [staff]: 'seller-suspended',
       [outsider]: null,
     });
+  });
+
+  // Round 1 of PR #204 (Sajad 7, 8; Mohammad ask 2).
+
+  it('breaks a tie on decided_at by id: the latest is the greatest id', async () => {
+    const sellerId = await seller();
+    const at = '2026-10-09T00:00:00Z';
+    const [low, high] = [randomUUID(), randomUUID()].sort() as [string, string];
+    const insert = (decisionId: string, decision: string) =>
+      sql.query(
+        `INSERT INTO identity.access_decisions (id, market_id, tenant_id, seller_id, decision,
+         reason_ciphertext, basis_id, decided_by_account_id, decided_at)
+         VALUES ($1, $2, 'default', $3, $4, NULL, NULL, NULL, $5)`,
+        [decisionId, code, sellerId, decision, at],
+      );
+    await insert(high, 'reinstated');
+    await insert(low, 'approved');
+
+    await expect(inUnit(market, () => decisions.latestOf(market, sellerId))).resolves.toMatchObject(
+      { id: high, decision: 'reinstated' },
+    );
+  });
+
+  it('refuses a malformed Market or tenant; RESTRICT keeps a decided seller; no TRUNCATE or REFERENCES', async () => {
+    const sellerId = await seller();
+    const insert = (marketId: string, tenantId: string) =>
+      sql.query(
+        `INSERT INTO identity.access_decisions (id, market_id, tenant_id, seller_id, decision,
+         reason_ciphertext, basis_id, decided_by_account_id, decided_at)
+         VALUES ($1, $2, $3, $4, 'approved', NULL, NULL, NULL, now())`,
+        [randomUUID(), marketId, tenantId, sellerId],
+      );
+    await expect(insert(code.toLowerCase(), 'default')).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'access_decisions_market_id_check',
+    });
+    await expect(insert(code, 'Not A Tenant')).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'access_decisions_tenant_id_check',
+    });
+    await insert(code, 'default');
+    await expect(
+      sql.query(`DELETE FROM identity.seller_access WHERE market_id = $1 AND seller_id = $2`, [
+        code,
+        sellerId,
+      ]),
+    ).rejects.toMatchObject({
+      code: '23503',
+      constraint: 'access_decisions_market_id_seller_id_fkey',
+    });
+    const { rows } = await sql.query<{ truncate: boolean; references: boolean }>(
+      `SELECT has_table_privilege('mondapac_app', 'identity.access_decisions', 'TRUNCATE') AS truncate,
+              has_table_privilege('mondapac_app', 'identity.access_decisions', 'REFERENCES') AS references`,
+    );
+    expect(rows[0]).toEqual({ truncate: false, references: false });
+  });
+
+  it('lets one of an approve and a reject racing on one pending seller win; the other is wrong-state', async () => {
+    const roleId = async (scope: string, seedCode: string) => {
+      const { rows } = await sql.query<{ id: string }>(
+        `SELECT id FROM identity.roles WHERE market_id = $1 AND scope = $2 AND seed_code = $3`,
+        [code, scope, seedCode],
+      );
+      return rows[0]!.id;
+    };
+    const account = async (population: 'admin' | 'seller', role: string) => {
+      const id = newId<'Account'>();
+      const email = `racer.${id}@decisions.example`;
+      await sql.query(
+        `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+         email_normalized, display_name, status, email_verified_at, signed_up_at, version,
+         created_at)
+         VALUES ($1, $2, 'default', $3, $4, $4, 'Racer', 'active', now(), now(), 1, now())`,
+        [id, code, population, email],
+      );
+      await sql.query(
+        `INSERT INTO identity.password_credentials
+           (market_id, tenant_id, account_id, password_hash, changed_at)
+         VALUES ($1, 'default', $2, $3, now())`,
+        [code, id, PASSWORD_HASH],
+      );
+      await sql.query(
+        `INSERT INTO identity.role_assignments (id, market_id, tenant_id, account_id, role_id,
+         assigned_by_account_id, assigned_at, version)
+         VALUES ($1, $2, 'default', $3, $4, NULL, now(), 1)`,
+        [newId(), code, id, role],
+      );
+      return id;
+    };
+    const sellerId = await seller();
+    const owner = await account('seller', await roleId('seller', 'seller-owner'));
+    await sql.query(
+      `INSERT INTO identity.seller_memberships (id, market_id, tenant_id, account_id, seller_id,
+       state, removed_at, version, created_at)
+       VALUES ($1, $2, 'default', $3, $4, 'active', NULL, 1, now())`,
+      [newId(), code, owner, sellerId],
+    );
+    const adminOf = async () => {
+      const id = await account('admin', await roleId('platform', 'onboarding-compliance'));
+      return testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id,
+          sessionId: newId<'Session'>(),
+          sellerId: null,
+        }),
+        `db-race-${randomUUID()}`,
+      );
+    };
+    const [first, second] = [await adminOf(), await adminOf()];
+
+    const results = await Promise.all([
+      app.get(ApproveSellerAccess).execute(first, { sellerId, basisId: null }),
+      app.get(RejectSellerAccess).execute(second, { sellerId, reason: REASON, basisId: null }),
+    ]);
+
+    const codes = results.map((r) => (r.ok ? r.value.code : r.error.code)).sort();
+    expect([
+      ['seller-access.approved', 'seller-access.wrong-state'],
+      ['seller-access.rejected', 'seller-access.wrong-state'],
+    ]).toContainEqual(codes);
+    const { rows } = await sql.query<{ n: string }>(
+      `SELECT count(*) AS n FROM identity.access_decisions WHERE market_id = $1 AND seller_id = $2`,
+      [code, sellerId],
+    );
+    expect(rows[0]!.n).toBe('1');
   });
 });

@@ -11,12 +11,17 @@ import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
+import type { ThrottleKeys } from '../ports/session-secrets';
+import type { ThrottleRepository } from '../ports/throttle.repository';
 import { readActingGrants, type ActingGrantDependencies } from '../roles/granting';
+import { reserveInvitationMail } from './invitation-mail-budget';
 
 const RULE_KEYS = [SELLER_ACCOUNT_CREATE.key];
 
 export interface SellerOwnerInvitationInput {
   readonly invitationId: Id<'Invitation'>;
+  /** The admin's client: the `mail.origin` key of a re-send (6.8; Hassan M1). */
+  readonly origin: string;
 }
 
 export interface SellerOwnerInvitationChanged {
@@ -29,6 +34,8 @@ export type SellerOwnerInvitationFailure =
   | { readonly code: 'invitation.unknown' }
   /** Decided, past its lifetime (re-send), or its inviter could no longer issue it (re-send). */
   | { readonly code: 'invitation.rejected' }
+  /** Re-send: `mail.account` of the invited address or `mail.origin` is used up (6.8). */
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'access.denied' };
 
@@ -38,6 +45,8 @@ export interface SellerOwnerInvitationDependencies {
   readonly grants: RoleGrantReader;
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly invitations: InvitationRepository;
+  readonly throttles: ThrottleRepository;
+  readonly keys: ThrottleKeys;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
   readonly policy: IdentityMarketPolicy;
@@ -78,7 +87,9 @@ export async function sellerInviterStillStands(
  * `invitation.unknown`). A re-send needs the invitation within its lifetime (Mohammad C2) and its
  * inviter still standing (Hassan L3), else `invitation.rejected`; the old token stops working at
  * once and the mail handler sends a new one. A revoke leaves the seller without an owner: it can
- * be invited again (HF5 (a)). Audit `identity.invitation.reissued` or `.revoked`.
+ * be invited again (HF5 (a)). A re-send counts the mail on `mail.account` of the invited address
+ * and `mail.origin` (6.8; Hassan M1), after the checks above: used up is `request.throttled`,
+ * and nothing commits. Audit `identity.invitation.reissued` or `.revoked`.
  */
 export async function changeSellerOwnerInvitation(
   deps: SellerOwnerInvitationDependencies,
@@ -109,6 +120,18 @@ export async function changeSellerOwnerInvitation(
         const inviter = invitation.state.invitedByAccountId;
         if (!(await sellerInviterStillStands(deps, market, inviter))) {
           return err({ code: 'invitation.rejected' });
+        }
+        const address = invitation.state.email;
+        if (address === null) return err({ code: 'invitation.rejected' });
+        const verdict = await reserveInvitationMail(
+          deps,
+          market,
+          address.normalized,
+          input.origin,
+          now,
+        );
+        if (!verdict.allowed) {
+          return err({ code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds });
         }
         if (!invitation.reissue(now, lifetime).ok) return err({ code: 'invitation.rejected' });
       } else if (!invitation.revoke(now).ok) {

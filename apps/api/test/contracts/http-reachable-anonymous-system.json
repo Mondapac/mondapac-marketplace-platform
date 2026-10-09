@@ -7,7 +7,7 @@
   {
     "name": "identity.accept-seller-invitation",
     "rule": "anonymous",
-    "reason": "Seller Owner invitation acceptance with the mailed token (slice 9): the invitee has no account or session yet. For Hassan's review."
+    "reason": "Seller Owner invitation acceptance with the mailed token (slice 9): the invitee has no account or session yet."
   },
   {
     "name": "identity.complete-admin-sign-in",

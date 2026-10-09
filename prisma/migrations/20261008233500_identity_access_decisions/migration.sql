@@ -16,6 +16,9 @@ CREATE TABLE "identity"."access_decisions" (
 -- CreateIndex
 CREATE INDEX "access_decisions_market_id_seller_id_decided_at_idx" ON "identity"."access_decisions"("market_id", "seller_id", "decided_at");
 
+-- CreateIndex
+CREATE INDEX "access_decisions_market_id_basis_id_idx" ON "identity"."access_decisions"("market_id", "basis_id");
+
 -- AddForeignKey
 ALTER TABLE "identity"."access_decisions" ADD CONSTRAINT "access_decisions_market_id_seller_id_fkey" FOREIGN KEY ("market_id", "seller_id") REFERENCES "identity"."seller_access"("market_id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
@@ -35,6 +38,14 @@ ALTER TABLE "identity"."access_decisions"
     "decision" IN ('approved', 'rejected', 'suspended', 'reinstated')),
   ADD CONSTRAINT "access_decisions_reason_check" CHECK (
     ("decision" IN ('rejected', 'suspended')) = ("reason_ciphertext" IS NOT NULL));
+
+-- invitations (data design 3.10, Mojtaba Q5 on PR #204): at most one pending seller-owner
+-- invitation per normalised address in a Market, whatever the seller. Invite-seller creates the
+-- seller and its invitation in one unit, so a violation rolls the new seller back with it. A
+-- partial index: invisible to Prisma (8.4), listed in the partial-index catalogue test.
+CREATE UNIQUE INDEX "invitations_market_id_email_seller_owner_pending_key"
+  ON "identity"."invitations" ("market_id", "email_normalized")
+  WHERE "kind" = 'seller-owner' AND "state" = 'pending';
 
 -- Grants (database-designer): docs/design/data/identity.md section 7
 GRANT SELECT, INSERT ON TABLE "identity"."access_decisions" TO "mondapac_app";

@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Req,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -20,13 +21,14 @@ import {
   ApiOperation,
   ApiParam,
   ApiServiceUnavailableResponse,
+  ApiTooManyRequestsResponse,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS, type AccessDenied } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
@@ -49,7 +51,7 @@ import {
 } from '../application/use-cases/resend-seller-invitation.use-case';
 import { RevokeSellerInvitation } from '../application/use-cases/revoke-seller-invitation.use-case';
 import { SuspendSellerAccess } from '../application/use-cases/suspend-seller-access.use-case';
-import { adminBody } from './admin.answer';
+import { adminBody, adminClient } from './admin.answer';
 import {
   AdminSellerAccessDecided,
   AdminSellerInvitationIssued,
@@ -76,6 +78,7 @@ export const ADMIN_SELLERS_STATUS: Readonly<Record<string, number>> = Object.fre
   'account.exists': 409,
   'invitation.already-pending': 409,
   'invitation.rejected': 409,
+  'request.throttled': 429,
   'access.unavailable': 503,
 });
 
@@ -83,14 +86,20 @@ type Refusal = {
   readonly code: string;
   readonly fields?: readonly unknown[];
   readonly rule?: string;
+  readonly retryAfterSeconds?: number;
 };
 
-function refusal(error: Refusal): HttpException {
+function refusal(error: Refusal, response?: Response): HttpException {
   const status =
     ADMIN_SELLERS_STATUS[error.code] ??
     ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS] ??
     500;
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  // The invitation mail's counters (6.8; Hassan M1): 429 with Retry-After.
+  if (error.retryAfterSeconds !== undefined) {
+    response?.setHeader('Retry-After', String(error.retryAfterSeconds));
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   // A reason refused for its length or characters (HF13): the rule, never the text.
   if (error.rule !== undefined) {
     return fail(status, error.code, { fields: [{ path: 'reason', code: error.rule }] });
@@ -307,8 +316,19 @@ export class AdminSellersController {
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
-  @ApiConflictResponse({ type: ApiErrorBody, description: 'account.exists or conflict.stale' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'account.exists, invitation.already-pending (a pending owner invitation for the address ' +
+      'in this Market) or conflict.stale',
+  })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description:
+      'request.throttled (details.retryAfterSeconds, Retry-After): the invitation mail counters ' +
+      'of the address or the client are used up',
+  })
   @ApiServiceUnavailableResponse({
     type: ApiErrorBody,
     description: 'access.unavailable (the Market configures no seller invitation)',
@@ -316,14 +336,17 @@ export class AdminSellersController {
   async invite(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
   ): Promise<AdminSellerInvitationIssued> {
     const input = adminBody(request, body, ['email', 'displayName'] as const);
+    const client = adminClient(request);
     let outcome: AdminSellerInvitationIssued | HttpException;
     if (input instanceof HttpException) outcome = input;
+    else if (client instanceof HttpException) outcome = client;
     else {
-      const result = await this.inviteSeller.execute(context, input);
-      outcome = result.ok ? issued(result.value) : refusal(result.error);
+      const result = await this.inviteSeller.execute(context, { ...input, origin: client.origin });
+      outcome = result.ok ? issued(result.value) : refusal(result.error, response);
     }
     return this.settle('identity.admin-invite-seller', context, outcome);
   }
@@ -350,21 +373,34 @@ export class AdminSellersController {
     description: 'seller.has-members, account.exists, invitation.already-pending or conflict.stale',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description:
+      'request.throttled (details.retryAfterSeconds, Retry-After): the invitation mail counters ' +
+      'of the address or the client are used up',
+  })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async inviteToSeller(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Param('sellerId') rawSellerId: string,
     @Body() body: unknown,
   ): Promise<AdminSellerInvitationIssued> {
     const sellerId = pathId<'Seller'>(rawSellerId, 'seller.unknown');
     const input = adminBody(request, body, ['email', 'displayName'] as const);
+    const client = adminClient(request);
     let outcome: AdminSellerInvitationIssued | HttpException;
     if (sellerId instanceof HttpException) outcome = sellerId;
     else if (input instanceof HttpException) outcome = input;
+    else if (client instanceof HttpException) outcome = client;
     else {
-      const result = await this.inviteSeller.execute(context, { ...input, sellerId });
-      outcome = result.ok ? issued(result.value) : refusal(result.error);
+      const result = await this.inviteSeller.execute(context, {
+        ...input,
+        sellerId,
+        origin: client.origin,
+      });
+      outcome = result.ok ? issued(result.value) : refusal(result.error, response);
     }
     return this.settle('identity.admin-invite-seller-owner', context, outcome);
   }
@@ -391,15 +427,27 @@ export class AdminSellersController {
     description: 'invitation.rejected (decided or past its lifetime) or conflict.stale',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description:
+      'request.throttled (details.retryAfterSeconds, Retry-After): the invitation mail counters ' +
+      'of the address or the client are used up',
+  })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async resend(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Param('invitationId') rawInvitationId: string,
     @Body() body: unknown,
   ): Promise<AdminInvitationChanged> {
-    const outcome = await this.onInvitation(request, rawInvitationId, body, (invitationId) =>
-      this.resendSellerInvitation.execute(context, { invitationId }),
+    const outcome = await this.onInvitation(
+      request,
+      response,
+      rawInvitationId,
+      body,
+      (invitationId, origin) =>
+        this.resendSellerInvitation.execute(context, { invitationId, origin }),
     );
     return this.settle('identity.admin-resend-seller-invitation', context, outcome);
   }
@@ -430,11 +478,17 @@ export class AdminSellersController {
   async revoke(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Param('invitationId') rawInvitationId: string,
     @Body() body: unknown,
   ): Promise<AdminInvitationChanged> {
-    const outcome = await this.onInvitation(request, rawInvitationId, body, (invitationId) =>
-      this.revokeSellerInvitation.execute(context, { invitationId }),
+    const outcome = await this.onInvitation(
+      request,
+      response,
+      rawInvitationId,
+      body,
+      (invitationId, origin) =>
+        this.revokeSellerInvitation.execute(context, { invitationId, origin }),
     );
     return this.settle('identity.admin-revoke-seller-invitation', context, outcome);
   }
@@ -464,20 +518,24 @@ export class AdminSellersController {
   /** A route on one seller-owner invitation with an empty body. */
   private async onInvitation(
     request: Request,
+    response: Response,
     rawInvitationId: string,
     body: unknown,
     run: (
       invitationId: Id<'Invitation'>,
+      origin: string,
     ) => Promise<Result<SellerOwnerInvitationChanged, AccessDenied | SellerOwnerInvitationFailure>>,
   ): Promise<AdminInvitationChanged | HttpException> {
     const invitationId = pathId<'Invitation'>(rawInvitationId, 'invitation.unknown');
     if (invitationId instanceof HttpException) return invitationId;
     const input = adminBody(request, body, []);
     if (input instanceof HttpException) return input;
-    const result = await run(invitationId);
+    const client = adminClient(request);
+    if (client instanceof HttpException) return client;
+    const result = await run(invitationId, client.origin);
     return result.ok
       ? { code: result.value.code, invitationId: result.value.invitationId }
-      : refusal(result.error);
+      : refusal(result.error, response);
   }
 
   /** Logs the outcome code with the correlation id, then answers or throws. */

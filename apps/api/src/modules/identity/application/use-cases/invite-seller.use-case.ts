@@ -23,6 +23,9 @@ import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
 import type { RoleRepository, SellerMembershipRepository } from '../ports/seller-team.repository';
 import { readActingGrants, type GrantSubject } from '../roles/granting';
+import type { ThrottleKeys } from '../ports/session-secrets';
+import type { ThrottleRepository } from '../ports/throttle.repository';
+import { reserveInvitationMail } from '../sellers/invitation-mail-budget';
 import type { FieldProblem } from './register-customer.use-case';
 
 const RULE_KEYS = [SELLER_ACCOUNT_CREATE.key];
@@ -38,13 +41,15 @@ export interface InviteSellerInput {
    * revoked or expired.
    */
   readonly sellerId?: Id<'Seller'> | null;
+  /** The admin's client (`clientAddressFrom`): the `mail.origin` key (6.8; Hassan M1). */
+  readonly origin: string;
 }
 
 export interface InviteSellerOutput {
   readonly code: 'invitation.issued';
   readonly invitationId: Id<'Invitation'>;
   readonly sellerId: Id<'Seller'>;
-  /** Whether a stale pending invitation of the seller was revoked first (M7, M12). */
+  /** Whether a stale pending owner invitation (this seller's, or the address's) was revoked first (M7, M12). */
   readonly replaced: boolean;
 }
 
@@ -57,6 +62,8 @@ export type InviteSellerFailure =
   | { readonly code: 'seller.unknown' }
   /** The seller named had a member once: a seller-owner invitation is for an empty seller (HF5). */
   | { readonly code: 'seller.has-members' }
+  /** `mail.account` of the invited address or `mail.origin` of the admin is used up (6.8). */
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   /**
    * The Market configures no seller-owner lifetime or acceptance page, or the role seed has not
    * run: no invitation could be sent or accepted.
@@ -73,6 +80,8 @@ export interface InviteSellerDependencies {
   readonly sellerAccess: SellerAccessRepository;
   readonly memberships: SellerMembershipRepository;
   readonly invitations: InvitationRepository;
+  readonly throttles: ThrottleRepository;
+  readonly keys: ThrottleKeys;
   readonly targets: LinkTargets;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
@@ -95,12 +104,19 @@ export interface InviteSellerDependencies {
  * 2. The seller system role of the Market (the role the owner receives at acceptance).
  * 3. An address that already has a seller-side account in the Market is `account.exists`: the
  *    acceptance could only fail ("sign in and join" is not in this slice).
- * 4. New seller: `SellerAccess.forInvitation`, `pending` when the Market requires approval, else
+ * 4. One pending seller-owner invitation per address in the Market, whatever the seller (3.4;
+ *    Mohammad ask 1, Mojtaba Q5 on PR #204, backed by the partial unique key
+ *    `invitations_market_id_email_seller_owner_pending_key`): a stale one (expired or never
+ *    dispatched, M7) is revoked and replaced, otherwise `invitation.already-pending`. A violation
+ *    of the key (a concurrent issue) answers the same and rolls the new seller back with it.
+ * 5. The invitation mail's counters, `mail.account` of the address and `mail.origin` of the admin
+ *    (6.8; Hassan M1): used up is `request.throttled`, and nothing commits.
+ * 6. New seller: `SellerAccess.forInvitation`, `pending` when the Market requires approval, else
  *    `approved` (AC 5, AC 31), registered at once (`identity.seller-registered.v1`, no owner yet),
  *    with its subject key. An existing seller: of this Market, and its access never had a member
  *    (HF5 (a)); its pending seller-owner invitation, if any, is replaced when stale (M7) and is
  *    `invitation.already-pending` otherwise (M12).
- * 5. The invitation, without a token: `identity.invitation-issued.v1`, which the mail handler
+ * 7. The invitation, without a token: `identity.invitation-issued.v1`, which the mail handler
  *    dispatches (E9); audit `identity.invitation.issued` (`seller-owner`) as the actor.
  *
  * The address and the name are never logged or audited.
@@ -183,8 +199,40 @@ export class InviteSeller extends UseCase<
           );
           if (existing !== null) return err({ code: 'account.exists' });
 
-          let sellerId: Id<'Seller'>;
           let replaced = false;
+          const replaceStale = async (pending: Invitation): Promise<boolean> => {
+            if (!pending.replaceableAt(now, lifetime)) return false;
+            pending.revoke(now);
+            await invitations.save(market, pending);
+            await outbox.append(context, pending.pendingEvents);
+            await audit.record(
+              context,
+              InvitationRevokedAudit.entry(pending.state.id, {
+                after: { kind: pending.state.kind, roleId: pending.state.roleId },
+              }),
+            );
+            replaced = true;
+            return true;
+          };
+          const sameAddress = await invitations.findPendingOwnerInvitationByEmail(
+            market,
+            email.value.normalized,
+          );
+          if (sameAddress !== null && !(await replaceStale(sameAddress))) {
+            return err({ code: 'invitation.already-pending' });
+          }
+          const verdict = await reserveInvitationMail(
+            this.deps,
+            market,
+            email.value.normalized,
+            input.origin,
+            now,
+          );
+          if (!verdict.allowed) {
+            return err({ code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds });
+          }
+
+          let sellerId: Id<'Seller'>;
           if (input.sellerId === undefined || input.sellerId === null) {
             const access = SellerAccess.forInvitation({
               sellerId: this.deps.ids.next<'Seller'>(),
@@ -203,20 +251,8 @@ export class InviteSeller extends UseCase<
               return err({ code: 'seller.has-members' });
             }
             const pending = await invitations.findPendingOwnerInvitation(market, sellerId);
-            if (pending !== null) {
-              if (!pending.replaceableAt(now, lifetime)) {
-                return err({ code: 'invitation.already-pending' });
-              }
-              pending.revoke(now);
-              await invitations.save(market, pending);
-              await outbox.append(context, pending.pendingEvents);
-              await audit.record(
-                context,
-                InvitationRevokedAudit.entry(pending.state.id, {
-                  after: { kind: pending.state.kind, roleId: pending.state.roleId },
-                }),
-              );
-              replaced = true;
+            if (pending !== null && !(await replaceStale(pending))) {
+              return err({ code: 'invitation.already-pending' });
             }
           }
           const invitation = Invitation.issue({

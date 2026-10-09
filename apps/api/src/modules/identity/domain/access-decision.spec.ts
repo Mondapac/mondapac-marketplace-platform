@@ -61,11 +61,23 @@ describe('parseAccessReason (identity design 3.3, decision 9; HF13)', () => {
     ['a bidi override', 'Wrong \u202efile'],
     ['a bidi isolate', 'Wrong \u2066file'],
     ['a lone surrogate', 'Wrong \ud800 file'],
+    ['an Arabic letter mark', 'Wrong \u061c file'],
+    ['a zero-width space', 'Wrong\u200bfile'],
+    ['a byte order mark', 'Wrong \ufefffile'],
+    ['a deprecated format control', 'Wrong \u206afile'],
+    ['a line separator', 'Wrong\u2028file'],
+    ['a paragraph separator', 'Wrong\u2029file'],
+    ['a soft hyphen', 'Wrong\u00adfile'],
   ])('refuses %s (HF13: the text reaches a mail and a page)', (_name, raw) => {
     expect(parseAccessReason(raw)).toEqual({
       ok: false,
       error: { code: 'validation.failed', rule: 'characters' },
     });
+  });
+
+  it('keeps emoji built with the zero-width joiner and variation selectors (Hassan L3)', () => {
+    const family = 'Photo of the team \u{1f468}\u200d\u{1f469}\u200d\u{1f467} and \u2764\ufe0f';
+    expect(parseAccessReason(family)).toEqual({ ok: true, value: family });
   });
 
   it('keeps tabs, emoji and every script', () => {

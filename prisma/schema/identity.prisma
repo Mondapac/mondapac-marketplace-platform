@@ -552,6 +552,9 @@ model IdentityAccessDecision {
   /// The latest decision of a seller (status page, mails), and the RESTRICT check PostgreSQL
   /// runs when the purge deletes a seller_access row.
   @@index([marketId, sellerId, decidedAt])
+  /// The decisions of `sellers`' submissions, by basis id (slice 9a's R-5 read and its
+  /// reconciliation, `= ANY`; Mojtaba on PR #204).
+  @@index([marketId, basisId])
   @@map("access_decisions")
   @@schema("identity")
 }

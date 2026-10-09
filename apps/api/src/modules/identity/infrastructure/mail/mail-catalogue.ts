@@ -108,6 +108,21 @@ export class MissingMailCatalogueError extends Error {
   }
 }
 
+/**
+ * A hosted Market's catalogue that puts the reason of a decision in a mail subject: refused at
+ * boot (`ux.md` 3.4: subjects carry no personal data and no reason text; Hassan L2 on PR #204),
+ * so a bad locale file never reaches a handler that would retry it.
+ */
+export class ReasonInSubjectError extends Error {
+  override readonly name = 'ReasonInSubjectError';
+  constructor(marketId: string, locale: string, keys: readonly string[]) {
+    super(
+      `identity's ${locale} catalogue, the default locale of Market ${marketId}, puts {reason} ` +
+        `in ${keys.join(', ')}: a subject never holds the reason`,
+    );
+  }
+}
+
 const PLACEHOLDER = /\{([a-z]+)\}/g;
 
 /** The result mails of the access decisions (`ux.md` E4 to E7; slice 9). */
@@ -140,6 +155,12 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       const missing = MAIL_KEYS.filter((key) => messages?.[key] === undefined);
       if (messages === null || missing.length > 0) {
         throw new MissingMailCatalogueError(marketId, locale, missing);
+      }
+      const reasonInSubject = MAIL_KEYS.filter(
+        (key) => key.endsWith('.subject') && messages[key]!.includes('{reason}'),
+      );
+      if (reasonInSubject.length > 0) {
+        throw new ReasonInSubjectError(marketId, locale, reasonInSubject);
       }
       this.#byMarket.set(marketId, messages);
     }
@@ -223,11 +244,8 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       ...closing.map(line),
       line('identity.mail.common.footer'),
     ].join('\n\n');
-    // Subjects carry no personal data and no reason text (`ux.md` 3.4): a locale that put the
-    // reason in a subject is refused here, never sent.
-    if (catalogue[key('subject')].includes('{reason}')) {
-      throw new Error(`identity mail ${mail.template}: a subject never holds the reason`);
-    }
+    // Subjects carry no personal data and no reason text (`ux.md` 3.4): the constructor refused
+    // a catalogue that puts the reason in a subject (ReasonInSubjectError).
     return { subject: line(key('subject')), text: `${text}\n` };
   }
 

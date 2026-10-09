@@ -32,10 +32,11 @@ export interface SellerStatus {
   readonly reason: string | null;
   /**
    * Whether a rejected seller has used up its re-applications (3.3; 8.6 row 2: "Not approved"
-   * rather than "Changes needed"). False in every other state, and while the Market configures
-   * no limit (Phase 2: re-apply has no caller before `sellers`).
+   * rather than "Changes needed"). False in every other state. Null (unknown) while the Market
+   * configures no limit: never true then, so no seller is shown "Not approved" by a missing key
+   * (Mohammad ask 3 on PR #204).
    */
-  readonly reapplyLimitReached: boolean;
+  readonly reapplyLimitReached: boolean | null;
 }
 
 export type DescribeSellerStatusFailure = { readonly code: 'access.denied' };
@@ -118,7 +119,8 @@ export class DescribeSellerStatus extends UseCase<
       emailConfirmedAt: account.state.emailVerifiedAt?.toString() ?? null,
       decidedAt: decision?.decidedAt.toString() ?? null,
       reason,
-      reapplyLimitReached: limit !== null && state === 'rejected' && !seller.canReapply(limit),
+      reapplyLimitReached:
+        limit === null ? null : state === 'rejected' && !seller.canReapply(limit),
     });
   }
 }

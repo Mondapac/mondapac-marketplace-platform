@@ -28,6 +28,7 @@ import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of
 import type { AccountState } from '../../domain/account';
 import { MAX_ACCESS_REASON_LENGTH } from '../../domain/access-decision';
 import { openSession } from '../../domain/session';
+import { issueChallenge } from '../../domain/sign-in-challenge';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import { CatalogueMailComposer } from '../../infrastructure/mail/mail-catalogue';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
@@ -567,6 +568,11 @@ describe.each(TEST_MARKETS)('seller access decisions in market %s (slice 9)', (c
         error: { code: 'access.unavailable' },
       });
       expect(stateOf(s)).toBe('rejected');
+      // Unknown, never true (Mohammad ask 3 on PR #204): no seller is shown "Not approved".
+      await expect(s.status.execute(sellerActorOf(OWNER), {})).resolves.toMatchObject({
+        ok: true,
+        value: { state: 'rejected', reapplyLimitReached: null },
+      });
     });
 
     it('lets the owner apply again up to the limit; staff cannot', async () => {
@@ -628,6 +634,157 @@ describe.each(TEST_MARKETS)('seller access decisions in market %s (slice 9)', (c
       await expect(
         s.contract.approveSellerAccess(adminOf(VIEWER), SELLER, basisId),
       ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+  });
+
+  describe('round 1 of PR #204 (Sajad 1, 2, 4)', () => {
+    /** An open sign-in challenge for each of the owner and the staff member. */
+    async function challenged(s: Setup) {
+      for (const [n, accountId] of [
+        [1, OWNER],
+        [2, STAFF],
+      ] as const) {
+        await s.fakes.challengeRepository.add(
+          market,
+          issueChallenge({
+            id: uuid<'SignInChallenge'>(0x7000 + n),
+            marketId,
+            accountId,
+            purpose: 'second-factor',
+            credentialChangedAt: START,
+            policy: { maxAttempts: 5, lifetimeSeconds: 300 },
+            now: START,
+          }),
+          Buffer.from(`challenge-${n}`),
+        );
+      }
+    }
+    const openChallengesOf = (s: Setup) =>
+      [...s.fakes.challenges.values()].map((c) => c.challenge.accountId).sort();
+    const revokedOf = (s: Setup) =>
+      Object.fromEntries(
+        [...s.fakes.sessions.values()].map((x) => [x.session.accountId, x.session.revokedReason]),
+      );
+
+    it('approve voids no challenge and ends no session', async () => {
+      const s = setUp();
+      await seeded(s, 'pending');
+      await challenged(s);
+
+      await s.approve.execute(admin, { sellerId: SELLER, basisId: null });
+
+      expect(openChallengesOf(s)).toEqual([OWNER, STAFF].sort());
+      expect(revokedOf(s)).toEqual({ [OWNER]: null, [STAFF]: null });
+    });
+
+    it.each([
+      ['reject', 'pending' as const, 'seller-rejected'],
+      ['suspend', 'approved' as const, 'seller-suspended'],
+    ])(
+      '%s voids the open challenges and ends the sessions of the owner and the staff',
+      async (verb, state, reason) => {
+        const s = setUp();
+        await seeded(s, state);
+        await challenged(s);
+
+        const result =
+          verb === 'reject'
+            ? await s.reject.execute(admin, { sellerId: SELLER, reason: REASON, basisId: null })
+            : await s.suspend.execute(admin, { sellerId: SELLER, reason: REASON });
+
+        expect(result).toMatchObject({ ok: true, value: { revokedSessions: 2 } });
+        expect(openChallengesOf(s)).toEqual([]);
+        expect(revokedOf(s)).toEqual({ [OWNER]: reason, [STAFF]: reason });
+      },
+    );
+
+    it('E4, E6, E7: the reason is in the suspension body only, never in a subject', async () => {
+      const s = setUp();
+      await seeded(s, 'pending');
+      const ids: Id[] = [];
+      const decided = async (run: () => Promise<Result<{ decisionId: Id }, unknown>>) => {
+        const result = await run();
+        if (!result.ok) throw new Error('refused');
+        ids.push(result.value.decisionId);
+        s.clock.advance(Temporal.Duration.from({ minutes: 1 }));
+        return result.value.decisionId;
+      };
+      const approved = await decided(() =>
+        s.approve.execute(admin, { sellerId: SELLER, basisId: null }),
+      );
+      await expect(mailFor(s, 'approved', approved)).resolves.toMatchObject({ ok: true });
+      const suspended = await decided(() =>
+        s.suspend.execute(admin, { sellerId: SELLER, reason: REASON }),
+      );
+      await expect(mailFor(s, 'suspended', suspended)).resolves.toMatchObject({ ok: true });
+      const reinstated = await decided(() => s.reinstate.execute(admin, { sellerId: SELLER }));
+      await expect(mailFor(s, 'reinstated', reinstated)).resolves.toMatchObject({ ok: true });
+
+      const [e4, e6, e7] = s.fakes.mails;
+      expect([e4, e6, e7].map((m) => m!.to)).toEqual([OWNER_EMAIL, OWNER_EMAIL, OWNER_EMAIL]);
+      expect(e6!.text).toContain(REASON);
+      for (const mail of [e4!, e7!]) expect(mail.text).not.toContain('food-safety');
+      for (const mail of [e4!, e6!, e7!]) expect(mail.subject).not.toContain('food-safety');
+      // E4 and E7 carry the sign-in button; E6 none (the seller cannot sign in).
+      expect(e4!.text).toContain('https://');
+      expect(e7!.text).toContain('https://');
+      expect(e6!.text).not.toContain('https://');
+    });
+
+    it('skips an approval mail once a suspension followed it', async () => {
+      const s = setUp();
+      await seeded(s, 'pending');
+      const approved = await s.approve.execute(admin, { sellerId: SELLER, basisId: null });
+      s.clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      await s.suspend.execute(admin, { sellerId: SELLER, reason: REASON });
+
+      await expect(
+        mailFor(s, 'approved', (approved.ok && approved.value.decisionId) as Id),
+      ).resolves.toEqual({
+        ok: true,
+        value: { code: 'seller-access-mail.skipped', reason: 'decision.superseded' },
+      });
+      expect(s.fakes.mails).toEqual([]);
+    });
+
+    it.each([
+      [
+        'owner.none',
+        (s: Setup) => {
+          const owner = [...s.fakes.assignments.values()].find((a) => a.accountId === OWNER)!;
+          s.fakes.assignments.delete(owner.id);
+        },
+      ],
+      [
+        'account.disabled',
+        (s: Setup) => {
+          s.fakes.accounts.set(OWNER, { ...s.fakes.accounts.get(OWNER)!, status: 'disabled' });
+        },
+      ],
+    ])('skips the mail with %s', async (reason, change) => {
+      const s = setUp();
+      await seeded(s, 'pending');
+      const approved = await s.approve.execute(admin, { sellerId: SELLER, basisId: null });
+      change(s);
+
+      await expect(
+        mailFor(s, 'approved', (approved.ok && approved.value.decisionId) as Id),
+      ).resolves.toEqual({ ok: true, value: { code: 'seller-access-mail.skipped', reason } });
+      expect(s.fakes.mails).toEqual([]);
+    });
+
+    it('serves no status page to a suspended seller: the reason reaches staff nowhere', async () => {
+      const s = setUp();
+      await seeded(s, 'approved');
+      await s.suspend.execute(admin, { sellerId: SELLER, reason: REASON });
+
+      // The gate refuses every actor of a suspended seller; the owner reads the reason only in
+      // the mail and the sign-in refusal (test/admin-sellers.e2e.spec.ts: staff get the code).
+      for (const accountId of [OWNER, STAFF]) {
+        const answer = await s.status.execute(sellerActorOf(accountId), {});
+        expect(answer.ok).toBe(false);
+        expect(JSON.stringify(answer)).not.toContain('food-safety');
+      }
     });
   });
 });

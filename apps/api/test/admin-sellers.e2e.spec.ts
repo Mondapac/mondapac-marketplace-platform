@@ -1,12 +1,24 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import {
+  IDENTITY_MARKET_POLICY,
+  type IdentityMarketPolicy,
+} from '../src/modules/identity/application/ports/identity-market-policy';
 import {
   LINK_TARGETS,
   type LinkTargets,
 } from '../src/modules/identity/application/ports/link-secrets';
+import {
+  SELLER_ACCESS_CONTRACT,
+  type SellerAccessContract,
+} from '../src/modules/identity/contracts/seller-access.contract';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendInvitationMail } from '../src/modules/identity/application/use-cases/send-invitation-mail.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
@@ -43,8 +55,15 @@ const id = <T extends string>(text: string): Id<T> => {
   return parsed.value as Id<T>;
 };
 const n12 = (n: number) => String(n).padStart(12, '0');
-const ROOT = id<'Account'>(`01990000-0000-7000-8000-${n12(0xa001)}`);
-const VIEWER = id<'Account'>(`01990000-0000-7000-8000-${n12(0xa002)}`);
+/** Per-Market fixture ids, so both Markets can hold fixtures in one test. */
+const offsetOf = (code: string) => (code === 'AU' ? 0 : 0x100);
+const rootOf = (code: string) =>
+  id<'Account'>(`01990000-0000-7000-8000-${n12(0xa001 + offsetOf(code))}`);
+const viewerOf = (code: string) =>
+  id<'Account'>(`01990000-0000-7000-8000-${n12(0xa002 + offsetOf(code))}`);
+const staffOf = (code: string) =>
+  id<'Account'>(`01990000-0000-7000-8000-${n12(0xa003 + offsetOf(code))}`);
+const STAFF_EMAIL = 'staff@seller.example';
 const MISSING = '01990000-0000-7000-8000-00000000ffff';
 
 const fakes = new IdentityFakes();
@@ -72,17 +91,33 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
   let logLines: LogLine[];
   const http = () => request(app.getHttpServer());
 
-  async function boot(options: { readonly acceptPage?: boolean } = {}) {
+  async function boot(
+    options: { readonly acceptPage?: boolean; readonly reapplyLimit?: number } = {},
+  ) {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info' },
       panelOrigins: true,
-      override: (builder) =>
-        options.acceptPage === true
-          ? fakes
-              .override(builder)
-              .overrideProvider(LINK_TARGETS)
-              .useFactory({ factory: withSellerAcceptPage, inject: [MarketRegistry] })
-          : fakes.override(builder),
+      override: (builder) => {
+        let built = fakes.override(builder);
+        if (options.acceptPage === true) {
+          built = built
+            .overrideProvider(LINK_TARGETS)
+            .useFactory({ factory: withSellerAcceptPage, inject: [MarketRegistry] });
+        }
+        const limit = options.reapplyLimit;
+        if (limit !== undefined) {
+          // The re-apply limit the Market configuration does not carry yet.
+          built = built.overrideProvider(IDENTITY_MARKET_POLICY).useFactory({
+            factory: (markets: MarketRegistry): IdentityMarketPolicy =>
+              Object.assign(
+                Object.create(new MarketConfigIdentityPolicy(markets)) as IdentityMarketPolicy,
+                { sellerReapplyLimit: () => limit },
+              ),
+            inject: [MarketRegistry],
+          });
+        }
+        return built;
+      },
     }));
   }
 
@@ -93,8 +128,10 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     subscriber,
     attempt: 1,
   });
-  const roleOf = (seedCode: string) =>
-    [...fakes.roles.values()].find((r) => r.scope === 'platform' && r.seedCode === seedCode)!.id;
+  const roleOf = (seedCode: string, code: string, scope = 'platform') =>
+    [...fakes.roles.values()].find(
+      (r) => r.marketId === code && r.scope === scope && r.seedCode === seedCode,
+    )!.id;
 
   const adminPost = (code: string, path: string, body: unknown, headers: Record<string, string>) =>
     http()
@@ -117,8 +154,8 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     await app.get(SeedRoles).execute(systemOf(code), {});
     const marketId = code as AccountState['marketId'];
     for (const [n, accountId, seedCode] of [
-      [1, ROOT, 'platform-administrator'],
-      [2, VIEWER, 'viewer'],
+      [1, rootOf(code), 'platform-administrator'],
+      [2, viewerOf(code), 'viewer'],
     ] as const) {
       fakes.seedAccount({
         id: accountId,
@@ -135,10 +172,10 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         credential: { passwordHash: fakeHashOf(PASSWORD), changedAt: START },
       });
       fakes.seedAssignment({
-        id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe100 + n)}`),
+        id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe100 + offsetOf(code) + n)}`),
         marketId,
         accountId,
-        roleId: roleOf(seedCode),
+        roleId: roleOf(seedCode, code),
         assignedByAccountId: null,
         assignedAt: START,
         version: 1,
@@ -152,7 +189,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     void fakes.sessionRepository.add(
       marketOf(code),
       openSession({
-        id: id<'Session'>(`01990000-0000-7000-8000-${n12(0xf100 + n)}`),
+        id: id<'Session'>(`01990000-0000-7000-8000-${n12(0xf100 + offsetOf(code) + n)}`),
         marketId: code as AccountState['marketId'],
         accountId: account,
         population: 'admin',
@@ -189,10 +226,48 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     const token = /#(ml1_[A-Za-z0-9_-]{43})/.exec(fakes.mails.at(-1)!.text)![1]!;
     const confirmed = await sellerPost(code, 'confirm-email', { token, password: PASSWORD });
     expect(confirmed.status).toBe(200);
-    const [seller] = [...fakes.sellerAccess.values()];
+    const [seller] = [...fakes.sellerAccess.values()].filter((a) => a.marketId === code);
     // ZZ approves on sign-up; both Markets start these tests from "waiting for approval".
     fakes.seedSellerAccess({ ...seller!, state: 'pending' });
     return { sellerId: seller!.sellerId, cookie: cookieOf(confirmed.headers['set-cookie']) };
+  }
+
+  /** A staff member (Store Manager) of the seller, with a password: it can sign in. */
+  function staffMember(code: string, sellerId: string) {
+    const marketId = code as AccountState['marketId'];
+    fakes.seedAccount({
+      id: staffOf(code),
+      marketId,
+      population: 'seller',
+      email: { typed: STAFF_EMAIL, normalized: STAFF_EMAIL },
+      displayName: 'Staff Member',
+      status: 'active',
+      emailVerifiedAt: START,
+      existingAccountNoticeAt: null,
+      signedUpAt: START,
+      createdAt: START,
+      version: 1,
+      credential: { passwordHash: fakeHashOf(PASSWORD), changedAt: START },
+    });
+    fakes.seedMembership({
+      id: id<'SellerMembership'>(`01990000-0000-7000-8000-${n12(0xd100 + offsetOf(code))}`),
+      marketId,
+      accountId: staffOf(code),
+      sellerId: sellerId as Id<'Seller'>,
+      state: 'active',
+      removedAt: null,
+      version: 1,
+      createdAt: START,
+    });
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe1f0 + offsetOf(code))}`),
+      marketId,
+      accountId: staffOf(code),
+      roleId: roleOf('store-manager', code, 'seller'),
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
   }
 
   /** Runs the result mail of the last decision event; answers the mail. */
@@ -229,31 +304,59 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     await app.close();
   });
 
-  it('logs each decision with the correlation id, never the reason', async () => {
+  it('logs each decision with the correlation id, never the reason, in both Markets (Sajad 9)', async () => {
     await boot();
-    await seeded('AU');
-    const root = sessionOf('AU', ROOT, 1);
-    const { sellerId } = await pendingSeller('AU');
+    for (const code of TEST_MARKETS) {
+      await seeded(code);
+      const root = sessionOf(code, rootOf(code), 1);
+      const { sellerId } = await pendingSeller(code);
 
-    const rejected = await adminPost('AU', `sellers/${sellerId}/reject`, { reason: REASON }, root);
+      const rejected = await adminPost(
+        code,
+        `sellers/${sellerId}/reject`,
+        { reason: REASON },
+        root,
+      );
+      expect(rejected.status).toBe(200);
+      await decisionMailed(code);
+      expect(
+        logLines.find(
+          (l) =>
+            l.msg === 'identity.admin-reject-seller' &&
+            l.correlationId === rejected.headers['x-correlation-id'],
+        ),
+      ).toMatchObject({ outcome: 'seller-access.rejected', marketId: code });
 
-    expect(rejected.status).toBe(200);
-    expect(logLines.find((l) => l.msg === 'identity.admin-reject-seller')).toMatchObject({
-      outcome: 'seller-access.rejected',
-      marketId: 'AU',
-      correlationId: rejected.headers['x-correlation-id'] as string,
-    });
-    expect(JSON.stringify(logLines)).not.toContain('licence number');
-    expect(JSON.stringify(fakes.audits)).not.toContain('licence number');
-    expect(JSON.stringify(fakes.events)).not.toContain('licence number');
+      fakes.seedSellerAccess({ ...fakes.sellerAccess.get(sellerId)!, state: 'approved' });
+      const suspended = await adminPost(
+        code,
+        `sellers/${sellerId}/suspend`,
+        { reason: REASON },
+        root,
+      );
+      expect(suspended.status).toBe(200);
+      await decisionMailed(code);
+      expect(
+        logLines.find(
+          (l) =>
+            l.msg === 'identity.admin-suspend-seller' &&
+            l.correlationId === suspended.headers['x-correlation-id'],
+        ),
+      ).toMatchObject({ outcome: 'seller-access.suspended', marketId: code });
+    }
+    expect(fakes.mails.filter((m) => m.text.includes(REASON))).toHaveLength(4);
+    for (const record of [logLines, fakes.audits, fakes.events]) {
+      expect(JSON.stringify(record)).not.toContain('licence number');
+    }
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('approves, suspends with a reason the owner reads at sign-in, then reinstates', async () => {
       await boot();
       await seeded(code);
-      const root = sessionOf(code, ROOT, 1);
+      const root = sessionOf(code, rootOf(code), 1);
       const { sellerId, cookie } = await pendingSeller(code);
+      staffMember(code, sellerId);
 
       const approved = await adminPost(code, `sellers/${sellerId}/approve`, {}, root);
       expect(approved.status).toBe(200);
@@ -285,6 +388,9 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         code: 'seller-access.suspended',
         details: { reason: REASON },
       });
+      // Staff get the code only (decision 9; Sajad 4).
+      const staff = await sellerPost(code, 'sign-in', { email: STAFF_EMAIL, password: PASSWORD });
+      expect(staff.body).toEqual({ statusCode: 403, code: 'seller-access.suspended' });
       // Before the password is right, nothing about the suspension is told (AC 7).
       const wrong = await sellerPost(code, 'sign-in', {
         email: OWNER_EMAIL,
@@ -308,7 +414,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     it('rejects with a reason: the owner reads it on the status page', async () => {
       await boot();
       await seeded(code);
-      const root = sessionOf(code, ROOT, 1);
+      const root = sessionOf(code, rootOf(code), 1);
       const { sellerId } = await pendingSeller(code);
 
       const rejected = await adminPost(
@@ -331,15 +437,16 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         sellerId,
         state: 'rejected',
         reason: REASON,
-        reapplyLimitReached: false,
+        // No re-apply limit in the Market config yet: unknown, never true (Mohammad ask 3).
+        reapplyLimitReached: null,
       });
     });
 
     it('refuses what the rules refuse, with the codes of the routes', async () => {
       await boot();
       await seeded(code);
-      const root = sessionOf(code, ROOT, 1);
-      const viewer = sessionOf(code, VIEWER, 2);
+      const root = sessionOf(code, rootOf(code), 1);
+      const viewer = sessionOf(code, viewerOf(code), 2);
       const { sellerId } = await pendingSeller(code);
       const answer = async (path: string, body: unknown, headers = root) => {
         const response = await adminPost(code, path, body, headers);
@@ -389,7 +496,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     it('answers access.unavailable to a seller invitation while the Market has no accept page', async () => {
       await boot();
       await seeded(code);
-      const root = sessionOf(code, ROOT, 1);
+      const root = sessionOf(code, rootOf(code), 1);
 
       const response = await adminPost(
         code,
@@ -405,7 +512,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     it('creates a seller by invitation; the owner accepts with a password and signs in', async () => {
       await boot({ acceptPage: true });
       await seeded(code);
-      const root = sessionOf(code, ROOT, 1);
+      const root = sessionOf(code, rootOf(code), 1);
 
       const issued = await adminPost(
         code,
@@ -453,7 +560,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     it('revokes a pending owner invitation: its link stops working; re-sends another', async () => {
       await boot({ acceptPage: true });
       await seeded(code);
-      const root = sessionOf(code, ROOT, 1);
+      const root = sessionOf(code, rootOf(code), 1);
       const issued = await adminPost(
         code,
         'seller-invitations',
@@ -472,7 +579,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
 
       const accepted = await sellerPost(code, 'accept-invitation', { token, password: PASSWORD });
       expect(accepted.body).toEqual({ statusCode: 400, code: 'invitation.rejected' });
-      const viewer = sessionOf(code, VIEWER, 2);
+      const viewer = sessionOf(code, viewerOf(code), 2);
       const denied = await adminPost(
         code,
         'seller-invitations',
@@ -480,6 +587,141 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         viewer,
       );
       expect(denied.body).toEqual({ statusCode: 403, code: 'access.denied' });
+    });
+
+    it('refuses a second invitation to the address, and re-send or revoke once accepted or from another Market', async () => {
+      await boot({ acceptPage: true });
+      await seeded(code);
+      const otherCode = TEST_MARKETS.find((c) => c !== code)!;
+      await seeded(otherCode);
+      const root = sessionOf(code, rootOf(code), 1);
+      const otherRoot = sessionOf(otherCode, rootOf(otherCode), 3);
+      const issued = await adminPost(
+        code,
+        'seller-invitations',
+        { email: INVITEE, displayName: NAME },
+        root,
+      );
+      const { invitationId } = issued.body as { invitationId: string };
+
+      const again = await adminPost(
+        code,
+        'seller-invitations',
+        { email: INVITEE.toLowerCase(), displayName: NAME },
+        root,
+      );
+      expect(again.body).toEqual({ statusCode: 409, code: 'invitation.already-pending' });
+      expect([...fakes.sellerAccess.values()].filter((a) => a.marketId === code)).toHaveLength(1);
+      for (const verb of ['resend', 'revoke']) {
+        const foreign = await adminPost(
+          otherCode,
+          `seller-invitations/${invitationId}/${verb}`,
+          {},
+          otherRoot,
+        );
+        expect(foreign.body).toEqual({ statusCode: 404, code: 'invitation.unknown' });
+      }
+
+      const token = await invitationMailed(code);
+      await sellerPost(code, 'accept-invitation', { token, password: PASSWORD });
+      for (const verb of ['resend', 'revoke']) {
+        const late = await adminPost(code, `seller-invitations/${invitationId}/${verb}`, {}, root);
+        expect(late.body).toEqual({ statusCode: 409, code: 'invitation.rejected' });
+      }
+    });
+
+    it('answers 429 with Retry-After once the invitation mails of an address are used up (Hassan M1)', async () => {
+      await boot({ acceptPage: true });
+      await seeded(code);
+      const root = sessionOf(code, rootOf(code), 1);
+      const limit = app.get(MarketRegistry).get(marketOf(code).marketId).identity.mailThrottles
+        .account.limit;
+      for (let n = 0; n < limit; n += 1) {
+        const issued = await adminPost(
+          code,
+          'seller-invitations',
+          { email: INVITEE, displayName: NAME },
+          root,
+        );
+        expect(issued.status).toBe(201);
+        const { invitationId } = issued.body as { invitationId: string };
+        await adminPost(code, `seller-invitations/${invitationId}/revoke`, {}, root);
+      }
+
+      const refused = await adminPost(
+        code,
+        'seller-invitations',
+        { email: INVITEE, displayName: NAME },
+        root,
+      );
+
+      expect(refused.status).toBe(429);
+      expect(refused.body).toEqual({
+        statusCode: 429,
+        code: 'request.throttled',
+        details: { retryAfterSeconds: expect.any(Number) as number },
+      });
+      expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+    });
+
+    describe('re-apply through the seller-access contract (Sajad 5)', () => {
+      async function rejectedSeller() {
+        await seeded(code);
+        const root = sessionOf(code, rootOf(code), 1);
+        const { sellerId } = await pendingSeller(code);
+        staffMember(code, sellerId);
+        await adminPost(code, `sellers/${sellerId}/reject`, { reason: REASON }, root);
+        const owner = [...fakes.accounts.values()].find(
+          (a) => a.marketId === code && a.email.normalized === OWNER_EMAIL.toLowerCase(),
+        )!;
+        const actorOf = (accountId: Id<'Account'>) =>
+          testCallContext(
+            marketOf(code),
+            testAuthenticatedActor(marketOf(code), {
+              population: 'seller',
+              accountId,
+              sessionId: id<'Session'>(`01990000-0000-7000-8000-${n12(0xf1f0)}`),
+              sellerId: sellerId as Id<'Seller'>,
+            }),
+          );
+        return {
+          root,
+          sellerId: sellerId as Id<'Seller'>,
+          owner: actorOf(owner.id),
+          staff: actorOf(staffOf(code)),
+        };
+      }
+      const contract = () =>
+        app.get<SellerAccessContract>(SELLER_ACCESS_CONTRACT, { strict: false });
+
+      it('fails closed while the Market configures no limit', async () => {
+        await boot();
+        const { sellerId, owner } = await rejectedSeller();
+
+        await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+      });
+
+      it('lets the owner apply again up to a configured limit; staff cannot', async () => {
+        await boot({ reapplyLimit: 1 });
+        const { root, sellerId, owner, staff } = await rejectedSeller();
+
+        await expect(contract().reapplySellerAccess(staff, sellerId)).resolves.toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
+          ok: true,
+          value: { code: 'seller-access.reapplied', sellerId, state: 'pending', reapplyCount: 1 },
+        });
+        await adminPost(code, `sellers/${sellerId}/reject`, { reason: REASON }, root);
+        await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
+          ok: false,
+          error: { code: 'seller-access.reapply-limit' },
+        });
+      });
     });
   });
 });

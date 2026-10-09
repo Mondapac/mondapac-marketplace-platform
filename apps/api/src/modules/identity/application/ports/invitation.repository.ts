@@ -48,6 +48,16 @@ export interface InvitationRepository {
   ): Promise<Invitation | null>;
 
   /**
+   * The pending seller-owner invitation for this normalised address in this Market, whatever the
+   * seller, or null: at most one, by the partial unique key
+   * `invitations_market_id_email_seller_owner_pending_key` (3.10; Mojtaba Q5 on PR #204).
+   */
+  findPendingOwnerInvitationByEmail(
+    market: MarketContext,
+    emailNormalized: string,
+  ): Promise<Invitation | null>;
+
+  /**
    * Up to `limit` pending admin invitations of this Market (platform scope, `seller_id` NULL),
    * expired ones included, whose id is greater than `after` (all when null), by id: the open
    * invitations of the admin team list (slice 8c), as a summary without the token hash (Hassan

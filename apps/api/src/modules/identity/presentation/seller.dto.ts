@@ -183,9 +183,11 @@ export class SellerStatusBody {
   @ApiProperty({
     description:
       'True when a rejected seller has used up its re-applications ("Not approved"); false ' +
-      'otherwise, and while the Market configures no limit.',
+      'otherwise; null (unknown) while the Market configures no re-apply limit.',
+    type: Boolean,
+    nullable: true,
   })
-  reapplyLimitReached!: boolean;
+  reapplyLimitReached!: boolean | null;
 }
 
 /** Accept a seller owner's invitation (identity design 3.4; `ux.md` F8, A9; slice 9). */

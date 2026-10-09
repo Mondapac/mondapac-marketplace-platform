@@ -236,6 +236,18 @@ not block the foreign-key checks (`FOR KEY SHARE`) of inserts into `sessions` or
   record, `second_factors` and `sign_in_challenges` rows (child rows of the account) in any
   order; then throttle rows (kind order, then key); then outbox. A unit that does not take the
   account lock writes only one of these child rows, so no wait cycle forms.
+- **Seller access decisions and re-apply** (slice 9; Mojtaba, PR #204). They take no account
+  lock. Their READ COMMITTED unit takes the `seller_access` row first (`lockForSession`, the same
+  lock a seller session opening takes after the account), then reads the actor and the grants;
+  a decision then writes `seller_access`, the `access_decisions` row, and, for reject and
+  suspend, every live session of the seller (one update) and the open `sign_in_challenges` of
+  its active members; then outbox and audit. Re-apply writes `seller_access`, outbox and audit.
+  No cycle with the sign-in closing unit (account, then seller: it holds no session row when it
+  waits on the seller lock), nor with the challenge code step (it never takes the seller lock);
+  an invitation acceptance's membership insert takes only a key-share lock on `seller_access`.
+  **Accepted residual:** a reset or change of a member's password and a reject or suspend of its
+  seller both update that account's session rows, reached through different indexes, so a
+  deadlock (40P01) is possible; the unit of work retries it, as the other accepted conflicts here.
 - **Throttle before challenge** (slice 7b; Mojtaba, PR #162). Units that do not take the
   account lock and touch both take the throttle row first: the code step's reservation unit
   reserves the throttle counters, then the challenge's attempt. Because that unit takes no
@@ -559,6 +571,15 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
   `(market_id, seller_id) WHERE kind = 'seller-owner' AND state = 'pending'`. Without it, two
   owner invitations to two addresses for one new seller both pass the issue guard and both can be
   accepted. Measured: the second refused; a new one after a revocation accepted (11.4 M12).
+- **One pending `seller-owner` invitation per address in the Market, whatever the seller**
+  (D 3.4; slice 9, Mojtaba Q5 and Mohammad ask 1 on PR #204): partial unique
+  `invitations_market_id_email_seller_owner_pending_key` on `(market_id, email_normalized) WHERE
+  kind = 'seller-owner' AND state = 'pending'`, in migration #9's hand-written block. Without it
+  an admin's second invitation to one address creates a second seller, and the second acceptance
+  is refused once the account exists, leaving an empty seller. Invite-seller creates the seller
+  and the invitation in one unit, so a violation rolls the new seller and its `seller-registered`
+  event back too; it answers `invitation.already-pending`. The issue unit looks the address up
+  first and replaces an expired or never-dispatched row held by any seller (M7, below).
 - Unique `(market_id, token_hash)` for acceptance and the preview (D 8.6 row 5).
 - Plain `(market_id, seller_id)`, `invitations_market_id_seller_id_idx`, declared in Prisma: the
   RESTRICT check PostgreSQL runs when the serializable purge deletes a `seller_access` row;
@@ -568,7 +589,9 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
   case replaces such a row in its own unit (M7, confirmed). So does a pending row never
   dispatched (`token_hash IS NULL`) whose `created_at` is older than its kind's lifetime (Ali
   2026-10-08); from slice 7b the hourly job deletes those too (9). A new `seller-owner` invitation may
-  name a seller that never had a member (3.9).
+  name a seller that never had a member (3.9): "never had a member" means no
+  `seller_memberships` row of the seller in any state, `active` or `removed` (memberships are
+  never deleted while the seller exists).
 - Acceptance writes `accounts`, `seller_memberships` and `role_assignments`, so it runs
   `serializable` (C11): two concurrent first-admin acceptances cannot both see "no administrator".
 
@@ -585,7 +608,14 @@ subject key (D 11.3); `basis_id uuid` nullable (C4; the submission id of `seller
   unreadable while the rows stay. No other decision kind: "allow another application" is not in
   Phase 2 (M8).
 - Status page and admin screens (latest decision of a seller): `(market_id, seller_id,
-  decided_at)`.
+  decided_at)`, `access_decisions_market_id_seller_id_decided_at_idx`. Ties on `decided_at` are
+  broken by `id` (UUID v7, so creation order): the latest is the greatest id (Mohammad ask 2,
+  PR #204). It also serves the purge's RESTRICT check.
+- The decisions of `sellers`' submissions by basis id (slice 9a's R-5 read and its
+  reconciliation with `= ANY`): plain `(market_id, basis_id)`,
+  `access_decisions_market_id_basis_id_idx`, declared in Prisma (Mojtaba, PR #204). A plain
+  index rather than a partial `WHERE basis_id IS NOT NULL`: the table holds 10² to 10⁴ rows, and
+  a partial index would be invisible to Prisma (8.4).
 
 ## 4. What is never stored
 
@@ -737,7 +767,7 @@ Api and worker share the group `mondapac_app` (platform.md 10.1), so the api als
 | 6 | 5 | `identity_seller_access_roles` | `seller_access`, `seller_memberships`, `roles`, `role_permissions`, `role_assignments`; the foreign key `sessions.seller_id` |
 | 7 | 6a | `platform_audit_seal` (`platform.md` 11.10) | Section 6, in the audit design's own migration |
 | 8 | 7 | `identity_second_factor_invitations` | `second_factors`, `recovery_codes`, `sign_in_challenges`, `invitations` |
-| 9 | 9 | `identity_access_decisions` | `access_decisions` |
+| 9 | 9 | `identity_access_decisions` | `access_decisions` (with its two indexes); the partial unique key `invitations_market_id_email_seller_owner_pending_key` on `invitations` (PR #204 review) |
 
 Nine slices carry a migration (D 12.1); slices 1a, 4, 8a, 8b, 10, 11 and 12 need none. Later,
 each with its job: the `DELETE` grants and prune indexes of `inbox` and `event_delivery`.

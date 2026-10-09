@@ -1159,15 +1159,29 @@ export class IdentityFakes {
       );
       return Promise.resolve(state === undefined ? null : Invitation.restore(state));
     },
+    findPendingOwnerInvitationByEmail: (market, emailNormalized) => {
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.state === 'pending' &&
+          candidate.kind === 'seller-owner' &&
+          candidate.email?.normalized === emailNormalized,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
     add: (_market, invitation) => {
       const state = invitation.state;
       const clash = [...this.invitations.values()].some(
         (other) =>
           other.state === 'pending' &&
           other.marketId === state.marketId &&
-          other.sellerId === state.sellerId &&
-          ((other.email !== null && other.email.normalized === state.email?.normalized) ||
-            (state.kind === 'seller-owner' && other.kind === 'seller-owner')),
+          ((other.sellerId === state.sellerId &&
+            ((other.email !== null && other.email.normalized === state.email?.normalized) ||
+              (state.kind === 'seller-owner' && other.kind === 'seller-owner'))) ||
+            // invitations_market_id_email_seller_owner_pending_key (slice 9, Mojtaba Q5).
+            (state.kind === 'seller-owner' &&
+              other.kind === 'seller-owner' &&
+              other.email?.normalized === state.email?.normalized)),
       );
       if (clash) return Promise.reject(new InvitationAlreadyPendingError());
       this.invitations.set(state.id, state);

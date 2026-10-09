@@ -25,12 +25,15 @@ export type AccessReasonInvalid =
   | { readonly code: 'validation.failed'; readonly rule: 'length' | 'characters' };
 
 /**
- * C0 and C1 controls and the bidi marks, embeddings, overrides and isolates (the class of the
- * display-name rule, HF13): the reason reaches a plain-text mail and the seller's status page, so
- * nothing in it may reorder or hide the text around it. Tested after the tab and the line feed,
- * the two controls a reason keeps, are taken out.
+ * C0 and C1 controls, every format character (`\p{Cf}`: the bidi marks, embeddings, overrides and
+ * isolates, zero-width spaces, the BOM, the deprecated format controls U+206A to U+206F) and the
+ * line and paragraph separators U+2028 and U+2029 (HF13; Hassan L3 on PR #204): the reason
+ * reaches a plain-text mail and the seller's status page, so nothing in it may reorder or hide
+ * the text around it. The zero-width joiner stays, so emoji sequences still work; variation
+ * selectors are not format characters (`Mn`) and stay too. Tested after the tab and the line
+ * feed, the two controls a reason keeps, are taken out.
  */
-const FORBIDDEN = /[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+const FORBIDDEN = /[\p{Cc}\p{Zl}\p{Zp}]|(?!\u200d)\p{Cf}/u;
 const KEPT_CONTROLS = /[\t\n]/g;
 
 /**
