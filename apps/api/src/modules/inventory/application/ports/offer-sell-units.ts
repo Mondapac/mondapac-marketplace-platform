@@ -7,6 +7,8 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
  */
 export interface StockOfferView {
   readonly sellerId: Id<'Seller'>;
+  /** The Product the Offer sells now; a move changes it (catalog `offer-moved`). */
+  readonly productId: Id<'Product'>;
   /** catalog's `deleted` status: present, with no sell units. */
   readonly deleted: boolean;
   /** The Variants that may carry stock: the product's non-retired ones, `proposed` included. */
