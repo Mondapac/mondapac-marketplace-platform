@@ -35,9 +35,10 @@ jobs:
             version-file: .nvmrc
 
     services:
-      # Same major version as docker-compose.yml.
+      # Same image and major version as docker-compose.yml. Pulled from the AWS public mirror of
+      # the official image: Docker Hub rate-limits anonymous pulls from CI runners.
       postgres:
-        image: postgres:17-alpine
+        image: public.ecr.aws/docker/library/postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
