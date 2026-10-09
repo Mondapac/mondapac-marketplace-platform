@@ -1,12 +1,15 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   HttpCode,
   HttpException,
   Logger,
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -21,6 +24,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -40,7 +44,10 @@ import {
 import { OwnProductCreate } from '../application/use-cases/own-product-create.use-case';
 import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSubmit } from '../application/use-cases/own-product-submit.use-case';
-import { closedBody, refusalWith, type Refusal } from './http-answers';
+import { OwnProductRead } from '../application/use-cases/own-product-read.use-case';
+import { OwnProductsList } from '../application/use-cases/own-products-list.use-case';
+import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { OwnProductList, OwnProductView } from './own-reads.dto';
 import {
   ApiErrorBody,
   PlatformProductDraftSaved,
@@ -102,7 +109,75 @@ export class OwnProductController {
     private readonly createProduct: OwnProductCreate,
     private readonly saveDraft: OwnProductSaveDraft,
     private readonly submitProduct: OwnProductSubmit,
+    private readonly listProducts: OwnProductsList,
+    private readonly readProduct: OwnProductRead,
   ) {}
+
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'List the products of the seller',
+    description:
+      'Needs catalog.own-product.view. Newest first, keyset-paged: send `nextAfterId` of the ' +
+      'previous page as `afterId`. `limit` is 1 to 50 (default 25). Discarded and withdrawn ' +
+      'products are not listed.',
+  })
+  @ApiQuery({
+    name: 'afterId',
+    required: false,
+    description: 'The last product id of the previous page.',
+  })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiOkResponse({ type: OwnProductList })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async list(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<OwnProductList> {
+    const result = await this.listProducts.execute(context, pageQuery(query));
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.own-products-list', context, outcome);
+  }
+
+  @Get(':productId')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read one product of the seller',
+    description:
+      'Needs catalog.own-product.view. The product with its variants, working copy, published ' +
+      'revision and pending revision. Another seller’s product, a PLATFORM product and an ' +
+      'unknown id are one byte-identical product.not-found.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiOkResponse({ type: OwnProductView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async read(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+  ): Promise<OwnProductView> {
+    const productId = productIdOf(rawProductId, response);
+    let outcome: OwnProductView | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else {
+      const result = await this.readProduct.execute(context, { productId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as OwnProductView)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.own-product-read', context, outcome);
+  }
 
   @Post()
   @HttpCode(201)

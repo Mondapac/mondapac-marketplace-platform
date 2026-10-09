@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { ProductRepository } from '../application/ports/product.repository';
@@ -17,6 +18,39 @@ const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 const orNull = (date: Date | null): Temporal.Instant | null =>
   date === null ? null : toInstant(date);
+
+type ProductRow = Prisma.CatalogProductGetPayload<{ include: { variants: true } }>;
+
+/** A stored product row, with its variants, as the aggregate. */
+export function productFromRow(row: ProductRow): Product {
+  return Product.restore({
+    id: row.id as Id<'Product'>,
+    marketId: row.marketId as MarketId,
+    scope: row.scope as ProductScope,
+    ownerSellerId: row.ownerSellerId as Id<'Seller'> | null,
+    createdBySellerId: row.createdBySellerId as Id<'Seller'> | null,
+    typeCode: row.typeCode,
+    variantModel: row.variantModel as 'single' | 'options',
+    familyCode: row.familyCode,
+    productCode: row.productCode,
+    status: row.status as ProductStatus,
+    discardedAt: orNull(row.discardedAt),
+    ownBrand: row.ownBrand,
+    lastChangedAt: toInstant(row.lastChangedAt),
+    version: row.version,
+    createdAt: toInstant(row.createdAt),
+    publishedRevisionId: row.publishedRevisionId as Id<'ProductRevision'> | null,
+    pendingRevisionId: row.pendingRevisionId as Id<'ProductRevision'> | null,
+    pendingSubmittedAt: orNull(row.pendingSubmittedAt),
+    variants: row.variants.map((variant): VariantRecord => ({
+      id: variant.id as Id<'Variant'>,
+      state: variant.state as VariantState,
+      createdAt: toInstant(variant.createdAt),
+      publishedAt: orNull(variant.publishedAt),
+      retiredAt: orNull(variant.retiredAt),
+    })),
+  });
+}
 
 /**
  * {@link ProductRepository} on `catalog.products`, `product_variants` and
@@ -97,33 +131,7 @@ export class PrismaProductRepository implements ProductRepository {
       include: { variants: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
     });
     if (row === null) return null;
-    return Product.restore({
-      id: row.id as Id<'Product'>,
-      marketId: row.marketId as MarketId,
-      scope: row.scope as ProductScope,
-      ownerSellerId: row.ownerSellerId as Id<'Seller'> | null,
-      createdBySellerId: row.createdBySellerId as Id<'Seller'> | null,
-      typeCode: row.typeCode,
-      variantModel: row.variantModel as 'single' | 'options',
-      familyCode: row.familyCode,
-      productCode: row.productCode,
-      status: row.status as ProductStatus,
-      discardedAt: orNull(row.discardedAt),
-      ownBrand: row.ownBrand,
-      lastChangedAt: toInstant(row.lastChangedAt),
-      version: row.version,
-      createdAt: toInstant(row.createdAt),
-      publishedRevisionId: row.publishedRevisionId as Id<'ProductRevision'> | null,
-      pendingRevisionId: row.pendingRevisionId as Id<'ProductRevision'> | null,
-      pendingSubmittedAt: orNull(row.pendingSubmittedAt),
-      variants: row.variants.map((variant): VariantRecord => ({
-        id: variant.id as Id<'Variant'>,
-        state: variant.state as VariantState,
-        createdAt: toInstant(variant.createdAt),
-        publishedAt: orNull(variant.publishedAt),
-        retiredAt: orNull(variant.retiredAt),
-      })),
-    });
+    return productFromRow(row);
   }
 
   async save(market: MarketContext, product: Product): Promise<void> {
