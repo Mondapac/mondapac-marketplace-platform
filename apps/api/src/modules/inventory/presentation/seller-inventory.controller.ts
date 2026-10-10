@@ -11,7 +11,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
@@ -25,6 +25,7 @@ import { CreateSource } from '../application/use-cases/create-source.use-case';
 import { EditSource } from '../application/use-cases/edit-source.use-case';
 import { ListSources } from '../application/use-cases/list-sources.use-case';
 import { ReorderSources } from '../application/use-cases/reorder-sources.use-case';
+import { ViewOfferStock } from '../application/use-cases/view-offer-stock.use-case';
 import { SetStockLevel } from '../application/use-cases/set-stock-level.use-case';
 import { closedBody, fail } from './http-answers';
 
@@ -88,6 +89,7 @@ export class SellerInventoryController {
     private readonly editSource: EditSource,
     private readonly reorderSources: ReorderSources,
     private readonly setStockLevel: SetStockLevel,
+    private readonly viewOfferStock: ViewOfferStock,
   ) {}
 
   @Get('sources')
@@ -181,6 +183,38 @@ export class SellerInventoryController {
         orderedSourceIds: input.orderedSourceIds as string[],
       }),
       sourcesBody,
+    );
+  }
+
+  @Get('offers/:offerId/stock')
+  @ApiOperation({
+    summary: 'Read the stock of one own Offer: per Variant and location, level, held and version',
+  })
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  async viewStock(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+  ): Promise<unknown> {
+    return this.answer(
+      'view-offer-stock',
+      context,
+      response,
+      await this.viewOfferStock.execute(context, { offerId }),
+      (view) => ({
+        offerId: view.offerId,
+        variants: view.variants.map((variant) => ({
+          variantId: variant.variantId,
+          sources: variant.sources.map((cell) => ({
+            variantId: cell.variantId,
+            sourceId: cell.sourceId,
+            onHand: cell.onHand,
+            held: cell.held,
+            version: cell.version,
+            retired: cell.retired,
+          })),
+        })),
+      }),
     );
   }
 

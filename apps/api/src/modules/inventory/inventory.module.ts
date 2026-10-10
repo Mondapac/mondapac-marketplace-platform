@@ -13,6 +13,7 @@ import { IdentityModule } from '../identity';
 import { AVAILABILITY_SIGNAL_REPOSITORY } from './application/ports/availability-signal.repository';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { AVAILABILITY_READER } from './application/ports/availability-reader';
+import { OFFER_STOCK_READER } from './application/ports/offer-stock.reader';
 import { STOCK_REPOSITORY } from './application/ports/stock.repository';
 import { RESERVATION_REPOSITORY } from './application/ports/reservation.repository';
 import { ExpireReservations } from './application/use-cases/expire-reservations.use-case';
@@ -25,6 +26,7 @@ import { expireReservationsJob } from './presentation/jobs/expire-reservations.j
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { AvailabilitySystemQuery } from './application/use-cases/availability-system.use-case';
 import { AvailabilityQuery } from './application/use-cases/availability.use-case';
+import { ViewOfferStock } from './application/use-cases/view-offer-stock.use-case';
 import { SetStockLevel } from './application/use-cases/set-stock-level.use-case';
 import { INVENTORY_EVENTS } from './domain/events';
 import { INVENTORY_POLICY_PROVIDER } from './application/ports/inventory-policy-provider';
@@ -56,6 +58,7 @@ const PORT = {
   inventories: SELLER_INVENTORY_REPOSITORY,
   policies: INVENTORY_POLICY_PROVIDER,
   stock: STOCK_REPOSITORY,
+  offerStock: OFFER_STOCK_READER,
   reservations: RESERVATION_REPOSITORY,
   items: AVAILABILITY_READER,
   signals: AVAILABILITY_SIGNAL_REPOSITORY,
@@ -143,6 +146,13 @@ function useCaseProvider<D, U>(
       policies: true,
       outbox: true,
       ids: true,
+      clock: true,
+    }),
+    useCaseProvider(ViewOfferStock, {
+      unitOfWork: true,
+      inventories: true,
+      offerStock: true,
+      offers: true,
       clock: true,
     }),
     useCaseProvider(EnsureSellerInventory, {

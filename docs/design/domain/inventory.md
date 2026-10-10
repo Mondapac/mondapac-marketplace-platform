@@ -387,3 +387,12 @@ Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-test
 - L3: ordering validates Offer, seller and price before it calls `reserve`; inventory trusts neither.
 - Prune job and an EXPLAIN check of the held-sum plan before the reservation tables grow (slice 5 trigger).
 - Replay versus release race: a replay that returns a still-live reservation before any lock can race a release; the caller must treat the returned reservation as possibly just released and re-check at commit.
+
+## As built (speed mode): seller stock read, 2026-10-10
+
+- Route `GET inventory/seller/offers/:offerId/stock`, use case `inventory.view-offer-stock`. Access: `inventory.stock.view` (the existing seller-scope view key, also held by `list-sources`), `whenSellerNotApproved: deny`. `@RoutePopulation('seller')`, `@ReadsSession`, `Cache-Control: no-store`. The access rule is a permission rule, so it is not in `access-declarations.json` (that list holds the non-permission rules only); no schema change, so no migration and no privilege change.
+- Ownership as in `set-stock-level`: catalog's `offerSellUnits` (outside any unit) must answer for the Offer with the actor's seller and not deleted. Unknown, foreign, other-Market, deleted and offer-tombstoned all answer `inventory.not-found` (404); a malformed id is `validation.failed` (400); a seller without inventory is `inventory.not-ready` (409).
+- One read-only unit (ADR-0025) holds the seller inventory read and the new port `OfferStockReader` (`PrismaOfferStockReader`: items of the Offer and seller, retirement tombstones, `heldQuantitiesOf` at the Clock instant). No lock and no write.
+- Answer: `{ offerId, variants: [{ variantId, sources: [{ variantId, sourceId, onHand, held, version, retired }] }] }`. Every Variant catalog lists that no `variant` tombstone covers appears, and under it every source of the seller in priority order, with `onHand 0`, `held 0`, `version null` where no item exists. `version` is the `expectedVersion` the write needs (null means send null). `held` is exact (ACTIVE unexpired plus COMMITTED lines): the reader is the owner seller (brief s5).
+- A new port was added instead of a method on `StockRepository`, so the existing write fakes did not change.
+- Tests: `view-offer-stock.use-case.spec.ts` (AU, ZZ), `inventory-seller-routes.e2e.spec.ts` (200, 401, 403, 404, 409, 400 in both Markets), `inventory-view-offer-stock.db-spec.ts` (held units, no-row Variant, tombstones, cross-Market and cross-seller).
