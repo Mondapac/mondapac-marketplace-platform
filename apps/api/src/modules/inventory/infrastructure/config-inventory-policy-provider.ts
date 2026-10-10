@@ -26,6 +26,18 @@ export class ConfigInventoryPolicyProvider implements InventoryPolicyProvider {
     return section.maxVariantsPerProduct;
   }
 
+  reservationMinutes(market: MarketContext): number {
+    return this.section(market).reservationMinutes;
+  }
+
+  defaultCustomerCap(market: MarketContext): number {
+    return this.section(market).defaultCustomerCap;
+  }
+
+  maxLineQuantity(market: MarketContext): number {
+    return this.markets.get(market.marketId).maxLineQuantity;
+  }
+
   private section(market: MarketContext) {
     const section = this.markets.get(market.marketId).inventory;
     if (section === undefined) {

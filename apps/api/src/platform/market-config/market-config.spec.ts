@@ -1808,6 +1808,8 @@ describe('loadMarketConfigs', () => {
   });
 
   describe('the inventory section', () => {
+    const RESERVATION = { reservationMinutes: 15, defaultCustomerCap: 10 };
+    const GOOD_INVENTORY = { maxSourcesPerSeller: 4, defaultLowStockThreshold: 10, ...RESERVATION };
     const withInventory = (inventory: unknown) =>
       directoryWith({ 'QQ.json': { ...VALID, inventory } });
 
@@ -1819,7 +1821,13 @@ describe('loadMarketConfigs', () => {
 
     it.each([1, 4])('carries the source limit %i', (limit) => {
       const loaded = loadMarketConfigs(
-        [withInventory({ maxSourcesPerSeller: limit, defaultLowStockThreshold: 10 })],
+        [
+          withInventory({
+            maxSourcesPerSeller: limit,
+            defaultLowStockThreshold: 10,
+            ...RESERVATION,
+          }),
+        ],
         [QQ],
       ).get(QQ);
 
@@ -1828,7 +1836,13 @@ describe('loadMarketConfigs', () => {
 
     it.each([0, 99])('carries the default low-stock threshold %i', (threshold) => {
       const loaded = loadMarketConfigs(
-        [withInventory({ maxSourcesPerSeller: 4, defaultLowStockThreshold: threshold })],
+        [
+          withInventory({
+            maxSourcesPerSeller: 4,
+            defaultLowStockThreshold: threshold,
+            ...RESERVATION,
+          }),
+        ],
         [QQ],
       ).get(QQ);
 
@@ -1858,25 +1872,53 @@ describe('loadMarketConfigs', () => {
     });
 
     it.each([
-      ['a missing limit', { defaultLowStockThreshold: 10 }],
-      ['a missing threshold', { maxSourcesPerSeller: 4 }],
-      ['zero sources', { maxSourcesPerSeller: 0, defaultLowStockThreshold: 10 }],
+      ['a missing limit', { defaultLowStockThreshold: 10, ...RESERVATION }],
+      ['a missing threshold', { maxSourcesPerSeller: 4, ...RESERVATION }],
+      ['zero sources', { maxSourcesPerSeller: 0, defaultLowStockThreshold: 10, ...RESERVATION }],
       [
         'more sources than the re-key lock set allows',
-        { maxSourcesPerSeller: 5, defaultLowStockThreshold: 10 },
+        { maxSourcesPerSeller: 5, defaultLowStockThreshold: 10, ...RESERVATION },
       ],
-      ['a negative limit', { maxSourcesPerSeller: -1, defaultLowStockThreshold: 10 }],
-      ['a null limit', { maxSourcesPerSeller: null, defaultLowStockThreshold: 10 }],
-      ['a string limit', { maxSourcesPerSeller: '4', defaultLowStockThreshold: 10 }],
-      ['a fractional limit', { maxSourcesPerSeller: 2.5, defaultLowStockThreshold: 10 }],
-      ['a negative threshold', { maxSourcesPerSeller: 4, defaultLowStockThreshold: -1 }],
-      ['a threshold above 99', { maxSourcesPerSeller: 4, defaultLowStockThreshold: 100 }],
-      ['a fractional threshold', { maxSourcesPerSeller: 4, defaultLowStockThreshold: 2.5 }],
-      ['a string threshold', { maxSourcesPerSeller: 4, defaultLowStockThreshold: '10' }],
       [
-        'an unknown key',
+        'a negative limit',
+        { maxSourcesPerSeller: -1, defaultLowStockThreshold: 10, ...RESERVATION },
+      ],
+      ['a null limit', { maxSourcesPerSeller: null, defaultLowStockThreshold: 10, ...RESERVATION }],
+      [
+        'a string limit',
+        { maxSourcesPerSeller: '4', defaultLowStockThreshold: 10, ...RESERVATION },
+      ],
+      [
+        'a fractional limit',
+        { maxSourcesPerSeller: 2.5, defaultLowStockThreshold: 10, ...RESERVATION },
+      ],
+      [
+        'a negative threshold',
+        { maxSourcesPerSeller: 4, defaultLowStockThreshold: -1, ...RESERVATION },
+      ],
+      [
+        'a threshold above 99',
+        { maxSourcesPerSeller: 4, defaultLowStockThreshold: 100, ...RESERVATION },
+      ],
+      [
+        'a fractional threshold',
+        { maxSourcesPerSeller: 4, defaultLowStockThreshold: 2.5, ...RESERVATION },
+      ],
+      [
+        'a string threshold',
+        { maxSourcesPerSeller: 4, defaultLowStockThreshold: '10', ...RESERVATION },
+      ],
+      [
+        'a missing reservation duration',
+        { maxSourcesPerSeller: 4, defaultLowStockThreshold: 10, defaultCustomerCap: 10 },
+      ],
+      [
+        'a missing default cap',
         { maxSourcesPerSeller: 4, defaultLowStockThreshold: 10, reservationMinutes: 15 },
       ],
+      ['a zero reservation duration', { ...GOOD_INVENTORY, reservationMinutes: 0 }],
+      ['a zero default cap', { ...GOOD_INVENTORY, defaultCustomerCap: 0 }],
+      ['an unknown key', { ...GOOD_INVENTORY, holdMinutes: 15 }],
     ])('rejects %s', (_case, inventory) => {
       expect(() => loadMarketConfigs([withInventory(inventory)], [QQ])).toThrow(
         InvalidMarketConfigError,

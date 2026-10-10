@@ -150,5 +150,24 @@
       "sellers.seller-file.review",
       "sellers.seller.view"
     ]
+  },
+  {
+    "entry": "seller:store-manager@2",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.own-product.view",
+      "identity.seller-role.view",
+      "identity.team-member.view"
+    ]
+  },
+  {
+    "entry": "seller:catalogue-stock@2",
+    "kind": "default",
+    "permissionKeys": ["catalog.own-product.view"]
+  },
+  {
+    "entry": "seller:customer-service@2",
+    "kind": "default",
+    "permissionKeys": ["catalog.own-product.view"]
   }
 ]

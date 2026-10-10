@@ -104,7 +104,15 @@
   { "name": "inventory.availability", "rule": "anonymous" },
   { "name": "inventory.availability-system", "rule": "system" },
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
+  { "name": "inventory.expire-reservations", "rule": "system" },
   { "name": "inventory.rekey-moved-offer", "rule": "system" },
+  {
+    "name": "inventory.release-own-reservation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "inventory.release-reservation", "rule": "system" },
+  { "name": "inventory.reserve", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },

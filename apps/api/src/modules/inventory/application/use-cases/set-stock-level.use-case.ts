@@ -212,6 +212,7 @@ export class SetStockLevel extends UseCase<
     const held = await stock.heldQuantities(
       market,
       items.map((item) => item.id),
+      now,
     );
     if (own !== null) {
       if (own.onHand === onHand) {

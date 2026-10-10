@@ -96,6 +96,9 @@ const PINNED: readonly (readonly [string, string])[] = [
     'platform:onboarding-compliance@4',
     '1af633ca49fa20458b1673ddc84f744489b496618dbe35cabcdf28158f8872aa',
   ],
+  ['seller:store-manager@2', 'f9128aa75bc5b4cf8f57cd9998be691dd3bf9335eb462ae45221e5e68c28cde1'],
+  ['seller:catalogue-stock@2', '7d12fba91284c1d81f40920ae6b7baed41936cd7f5b64ca187a86d663bac87ac'],
+  ['seller:customer-service@2', 'e2f54ecb07a1871755288e69800a11ee227172ccf480da62568d3b9b842d8527'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;
