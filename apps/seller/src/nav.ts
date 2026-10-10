@@ -17,6 +17,12 @@ export const sellerNav: NavConfig = {
       href: '/offers',
       anyOf: ['catalog.own-product.view'],
     },
+    {
+      id: 's_stock',
+      labelKey: 'nav.stock',
+      href: '/stock-locations',
+      anyOf: ['inventory.stock.view'],
+    },
     // Shown only while the seller is not approved (SellerShell hides it after).
     { id: 's_setup', labelKey: 'nav.setup', href: '/account-setup' },
   ],
