@@ -13,7 +13,14 @@ const TONE: Record<string, BadgeTone> = {
 };
 
 /** The rows of one tab: store, status, kind of submission, area and dates. */
-export function SellersTable({ rows }: { readonly rows: readonly SellerRow[] }) {
+export function SellersTable({
+  rows,
+  canReview,
+}: {
+  readonly rows: readonly SellerRow[];
+  /** Rows link to the review page only for an actor who may open it. */
+  readonly canReview: boolean;
+}) {
   const t = useTranslations('sellers.list');
   return (
     <div className="overflow-x-auto rounded-lg border border-line">
@@ -34,7 +41,16 @@ export function SellersTable({ rows }: { readonly rows: readonly SellerRow[] }) 
             return (
               <tr key={row.sellerId}>
                 <td className="break-words px-4 py-3">
-                  <div className="font-medium text-fg">{row.storeName ?? t('unnamed')}</div>
+                  <div className="font-medium text-fg">
+                    {canReview ? (
+                      // A plain link: opening the page reads business details and is audited.
+                      <a className="text-link underline" href={`/sellers/${row.sellerId}`}>
+                        {row.storeName ?? t('unnamed')}
+                      </a>
+                    ) : (
+                      (row.storeName ?? t('unnamed'))
+                    )}
+                  </div>
                   {row.slug === null ? null : <div className="text-fg-muted">{row.slug}</div>}
                   {row.origin === 'invitation' ? (
                     <div className="text-fg-muted">{t('invited')}</div>
