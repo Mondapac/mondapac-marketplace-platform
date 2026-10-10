@@ -39,6 +39,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/submit',
     'sellers/my-file/withdraw',
     'inventory/seller/sources',
+    'catalog/seller/products',
   ]),
 };
 
