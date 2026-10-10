@@ -9,6 +9,7 @@ import {
   type RevisionKind,
   type WithdrawCause,
 } from './revision-kinds';
+import type { DecisionIntent } from './decision-intent';
 import { BusinessFileSubmitted, BusinessFileWithdrawn, SellerFileCreated } from './events';
 import type { Sealed } from './sealed';
 import type { ShopSlug } from './shop-slug';
@@ -75,6 +76,11 @@ export interface SellerFileState {
    * and the pointer; the repository then reads it from `approved_revision_id`.
    */
   readonly hasApprovedRevision: boolean;
+  /**
+   * The decision in flight around a call into `identity` (design 3.2; slice 7a-decide), or null.
+   * While it is set the draft does not change and the pending revision cannot be withdrawn.
+   */
+  readonly decisionIntent: DecisionIntent | null;
   readonly draft: SellerFileDraft;
 }
 
@@ -113,11 +119,18 @@ export interface WithdrawalRecord {
   readonly byKind: RevisionAuthorKind;
 }
 
+/**
+ * A decision on the pending revision is in flight (design 3.2): the revision is locked until its
+ * second unit, the event handler or the reconciliation job ends the intent.
+ */
+export type DecisionLocked = { readonly code: 'file.decision-in-progress' };
+
+/** Why the draft is frozen: an approved revision, or a decision in flight. */
+export type DraftFrozen = { readonly code: 'file.change-request-required' } | DecisionLocked;
+
 /** A save refused by the aggregate. Codes only (sellers design 8.3). */
 export type DraftRefused =
-  | { readonly code: 'file.change-request-required' }
-  | { readonly code: 'phone.required' }
-  | { readonly code: 'timezone.not-selectable' };
+  DraftFrozen | { readonly code: 'phone.required' } | { readonly code: 'timezone.not-selectable' };
 
 /**
  * The parts of a complete draft (brief AC 5), in the order of the form: details, address, number,
@@ -203,6 +216,7 @@ export class SellerFile {
         version: 1,
         createdAt: input.now,
         hasApprovedRevision: false,
+        decisionIntent: null,
         draft: EMPTY_DRAFT,
       },
       1,
@@ -237,9 +251,19 @@ export class SellerFile {
     return [...this.#events];
   }
 
-  /** Whether the draft may change: not once the file has an approved revision (D 3.1). */
+  /**
+   * Whether the draft may change: not once the file has an approved revision (D 3.1), and not
+   * while a decision is in flight (D 3.2).
+   */
   get draftEditable(): boolean {
-    return !this.#state.hasApprovedRevision;
+    return this.frozen() === null;
+  }
+
+  /** Why the draft may not change now, or null when it may. */
+  frozen(): DraftFrozen | null {
+    if (this.#state.hasApprovedRevision) return { code: 'file.change-request-required' };
+    if (this.#state.decisionIntent !== null) return { code: 'file.decision-in-progress' };
+    return null;
   }
 
   /** The mandatory parts the draft does not hold yet, in the order of the form. */
@@ -253,7 +277,8 @@ export class SellerFile {
     now: Temporal.Instant,
     requirements: DraftRequirements,
   ): Result<void, DraftRefused> {
-    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+    const frozen = this.frozen();
+    if (frozen !== null) return err(frozen);
     if (input.phone === null) return err({ code: 'phone.required' });
     this.apply(
       {
@@ -279,7 +304,8 @@ export class SellerFile {
     now: Temporal.Instant,
     requirements: DraftRequirements,
   ): Result<void, DraftRefused> {
-    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+    const frozen = this.frozen();
+    if (frozen !== null) return err(frozen);
     const zone = zoneAfterAddressSave(this.#state.draft.zone, input.zones, input.zone);
     if (!zone.ok) return zone;
     this.apply(
@@ -305,8 +331,9 @@ export class SellerFile {
     slug: ShopSlug,
     now: Temporal.Instant,
     requirements: DraftRequirements,
-  ): Result<void, { readonly code: 'file.change-request-required' }> {
-    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+  ): Result<void, DraftFrozen> {
+    const frozen = this.frozen();
+    if (frozen !== null) return err(frozen);
     if (this.#state.draft.slug === slug) return ok(undefined);
     this.apply({ ...this.#state.draft, slug }, now, requirements);
     return ok(undefined);
@@ -323,8 +350,9 @@ export class SellerFile {
     identifier: DraftIdentifier | null,
     now: Temporal.Instant,
     requirements: DraftRequirements,
-  ): Result<void, { readonly code: 'file.change-request-required' }> {
-    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+  ): Result<void, DraftFrozen> {
+    const frozen = this.frozen();
+    if (frozen !== null) return err(frozen);
     if (sameIdentifier(this.#state.draft.identifier, identifier)) return ok(undefined);
     this.apply({ ...this.#state.draft, identifier }, now, requirements);
     return ok(undefined);
@@ -395,6 +423,48 @@ export class SellerFile {
         },
       }),
     );
+  }
+
+  /**
+   * Sets the decision intent (design 3.2; unit 1 of 7.3): from here the revision it names is
+   * locked. Refused while another intent is set, or when the file already has an approved
+   * revision and the intent is about onboarding (only one onboarding approval per file).
+   */
+  beginDecision(intent: DecisionIntent): Result<void, DecisionLocked | DraftFrozen> {
+    if (this.#state.decisionIntent !== null) return err({ code: 'file.decision-in-progress' });
+    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+    this.touch(intent.since);
+    this.#state = Object.freeze({ ...this.#state, decisionIntent: intent });
+    return ok(undefined);
+  }
+
+  /**
+   * Closes a decision step on this revision (unit 2 of 7.3, the event handler or the
+   * reconciliation job; data design 3.1: a decision closure is a change of the file): raises the
+   * version once per unit and ends the intent when it names this revision. Answers whether an
+   * intent ended.
+   */
+  closeDecision(revisionId: Id<'BusinessFileRevision'>, now: Temporal.Instant): boolean {
+    this.touch(now);
+    if (this.#state.decisionIntent?.revisionId !== revisionId) return false;
+    this.#state = Object.freeze({ ...this.#state, decisionIntent: null });
+    return true;
+  }
+
+  /**
+   * Records that the onboarding revision was approved (design 3.1, 7.3): the file now has an
+   * approved revision, so its draft is frozen, and an intent naming the revision ends. The
+   * pointer itself (`approved_revision_id`) and the public store name are written by the
+   * repository in the same unit as the revision's status (data design 22, open point 2).
+   */
+  recordApproval(
+    revisionId: Id<'BusinessFileRevision'>,
+    now: Temporal.Instant,
+  ): Result<void, { readonly code: 'file.change-request-required' }> {
+    if (this.#state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
+    this.closeDecision(revisionId, now);
+    this.#state = Object.freeze({ ...this.#state, hasApprovedRevision: true });
+    return ok(undefined);
   }
 
   /**

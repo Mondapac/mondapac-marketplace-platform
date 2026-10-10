@@ -41,6 +41,15 @@ import {
 import { SELLER_MARKET_POLICY } from './application/ports/seller-market-policy';
 import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
 import { TAX_PROFILE_REPOSITORY } from './application/ports/tax-profile.repository';
+import { ADMIN_FLAG_REPOSITORY } from './application/ports/admin-flag.repository';
+import { IDENTIFIER_CLAIM_REPOSITORY } from './application/ports/identifier-claim.repository';
+import { REVIEW_CHECK_REPOSITORY } from './application/ports/review-check.repository';
+import { SELLER_ACCESS_DECIDER } from './application/ports/seller-access-decider';
+import { CloseDecision } from './application/use-cases/close-decision.use-case';
+import { ReconcileDecisions } from './application/use-cases/reconcile-decisions.use-case';
+import { ReviewApprove } from './application/use-cases/review-approve.use-case';
+import { ReviewReject } from './application/use-cases/review-reject.use-case';
+import { ReviewRecordManualCheck } from './application/use-cases/review-record-manual-check.use-case';
 import { AfterSubmission } from './application/use-cases/after-submission.use-case';
 import { MyFileSubmit } from './application/use-cases/my-file-submit.use-case';
 import { MyFileWithdraw } from './application/use-cases/my-file-withdraw.use-case';
@@ -71,6 +80,9 @@ import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
+import { reconcileDecisionsJob } from './presentation/jobs/reconcile-decisions.job';
+import { ReviewDecisionController } from './presentation/review-decision.controller';
+import { decisionSubscriptions } from './presentation/subscribers/decision.subscriptions';
 import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-files.job';
 import { ApprovedSellerZonesReaderImplementation } from './presentation/approved-seller-zones.reader';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
@@ -113,6 +125,10 @@ const PORT = {
   accessReader: SELLER_ACCESS_READER,
   authorisation: AUTHORISATION_CHECK,
   notifier: REVIEWER_NOTIFIER,
+  reviewChecks: REVIEW_CHECK_REPOSITORY,
+  claims: IDENTIFIER_CLAIM_REPOSITORY,
+  flags: ADMIN_FLAG_REPOSITORY,
+  decider: SELLER_ACCESS_DECIDER,
   ids: ID_GENERATOR,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -137,6 +153,23 @@ function useCaseProvider<D, U>(
   };
 }
 
+/** The ports of the reviewer's approve and reject (slice 7a-decide). */
+const REVIEW_DECISION_PORTS = {
+  unitOfWork: true,
+  accessReader: true,
+  decider: true,
+  registerChecks: true,
+  registerPolicy: true,
+  reviewChecks: true,
+  files: true,
+  revisions: true,
+  claims: true,
+  flags: true,
+  slugs: true,
+  ids: true,
+  clock: true,
+} as const;
+
 /**
  * The sellers bounded context (docs/design/domain/sellers.md; ADR-0013), filled slice by slice.
  * Slice 1 binds its outbox writer and events, the file store, the Market policy and the source of
@@ -155,6 +188,7 @@ function useCaseProvider<D, U>(
     MyFileController,
     ReviewReadController,
     ReviewRegisterCheckController,
+    ReviewDecisionController,
     SellerListController,
   ],
   providers: [
@@ -326,6 +360,7 @@ function useCaseProvider<D, U>(
       sealer: true,
       registerChecks: true,
       registerPolicy: true,
+      reviewChecks: true,
       accessReader: true,
       identifierSchemes: true,
       audit: true,
@@ -336,6 +371,42 @@ function useCaseProvider<D, U>(
       files: true,
       registerChecks: true,
       registerPolicy: true,
+      clock: true,
+    }),
+    // Slice 7a-decide, the reviewer's decision (design 3.1, 7.3): approve and reject under
+    // `identity.seller-access.approve`, the manual register check under `sellers.seller-file.review`,
+    // and the two paths that finish a decision whose request died: the handler of identity's
+    // decision events and the reconciliation job.
+    useCaseProvider(ReviewApprove, REVIEW_DECISION_PORTS),
+    useCaseProvider(ReviewReject, REVIEW_DECISION_PORTS),
+    useCaseProvider(ReviewRecordManualCheck, {
+      unitOfWork: true,
+      files: true,
+      revisions: true,
+      reviewChecks: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CloseDecision, {
+      unitOfWork: true,
+      files: true,
+      revisions: true,
+      claims: true,
+      flags: true,
+      slugs: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(ReconcileDecisions, {
+      unitOfWork: true,
+      decider: true,
+      accessReader: true,
+      files: true,
+      revisions: true,
+      claims: true,
+      flags: true,
+      slugs: true,
+      ids: true,
       clock: true,
     }),
     // Slice 6, the admin seller list (design 6.2, 7.8), over HTTP through SellerListController,
@@ -394,17 +465,24 @@ function useCaseProvider<D, U>(
     useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
     registerJobsFrom(
       'sellers',
-      [BackfillSellerFiles, PurgeExpired],
-      (backfill: BackfillSellerFiles, purge: PurgeExpired) => [
+      [BackfillSellerFiles, PurgeExpired, ReconcileDecisions],
+      (backfill: BackfillSellerFiles, purge: PurgeExpired, reconcile: ReconcileDecisions) => [
         backfillSellerFilesJob(backfill),
         purgeExpiredJob(purge),
+        reconcileDecisionsJob(reconcile),
       ],
     ),
     registerSubscriptionsFrom(
       'sellers',
-      [CreateSellerFile, AfterSubmission],
-      (createFile: CreateSellerFile, afterSubmission: AfterSubmission) =>
-        sellerFileSubscriptions(createFile, afterSubmission),
+      [CreateSellerFile, AfterSubmission, CloseDecision],
+      (
+        createFile: CreateSellerFile,
+        afterSubmission: AfterSubmission,
+        closeDecision: CloseDecision,
+      ) => [
+        ...sellerFileSubscriptions(createFile, afterSubmission),
+        ...decisionSubscriptions(closeDecision),
+      ],
     ),
   ],
   exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES],

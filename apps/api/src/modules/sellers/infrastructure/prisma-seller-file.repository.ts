@@ -3,6 +3,11 @@ import type { Id, MarketContext, MarketId, PlainText } from '@mondapac/shared-ke
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { SellerFileRepository } from '../application/ports/seller-file.repository';
 import { identifierIndexKeyOf, type DraftIdentifier } from '../domain/business-identifier';
+import {
+  DECISION_INTENT_KINDS,
+  type DecisionIntent,
+  type DecisionIntentKind,
+} from '../domain/decision-intent';
 import type { Sealed, SealedField } from '../domain/sealed';
 import {
   NEW_SELLER_ADMIN_SETTINGS,
@@ -47,6 +52,10 @@ const FILE_COLUMNS = {
   identifierCiphertext: true,
   identifierIndex: true,
   approvedRevisionId: true,
+  decisionIntent: true,
+  decisionAttemptId: true,
+  decisionRevisionId: true,
+  decisionIntentSince: true,
 } as const;
 
 /** A stored row that breaks the domain's rules: a fault of the data, never a value to use. */
@@ -94,6 +103,33 @@ function identifierOf(row: {
     scheme: identifierScheme,
     sealed: sealed<'identifier'>(identifierCiphertext)!,
     index: identifierIndexKeyOf(new Uint8Array(identifierIndex)),
+  };
+}
+
+function intentOf(row: {
+  readonly decisionIntent: string | null;
+  readonly decisionAttemptId: string | null;
+  readonly decisionRevisionId: string | null;
+  readonly decisionIntentSince: Date | null;
+}): DecisionIntent | null {
+  const { decisionIntent, decisionAttemptId, decisionRevisionId, decisionIntentSince } = row;
+  // The CHECK `seller_files_decision_intent_set_check` keeps the four together.
+  if (
+    decisionIntent === null ||
+    decisionAttemptId === null ||
+    decisionRevisionId === null ||
+    decisionIntentSince === null
+  ) {
+    return null;
+  }
+  if (!(DECISION_INTENT_KINDS as readonly string[]).includes(decisionIntent)) {
+    throw new StoredSellerFileError('decision_intent');
+  }
+  return {
+    kind: decisionIntent as DecisionIntentKind,
+    attemptId: decisionAttemptId as Id<'DecisionAttempt'>,
+    revisionId: decisionRevisionId as Id<'BusinessFileRevision'>,
+    since: toInstant(decisionIntentSince),
   };
 }
 
@@ -208,8 +244,9 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
       version: row.version,
       createdAt: toInstant(row.createdAt),
       // Slice 5: the file is frozen (draft saves refused) as soon as the V1 pointer names a
-      // revision (data design 3.1). Nothing moves the pointer before slice 7a-decide.
+      // revision (data design 3.1); slice 7a-decide moves the pointer.
       hasApprovedRevision: row.approvedRevisionId !== null,
+      decisionIntent: intentOf(row),
       draft: {
         storeName,
         businessName: sealed<'business-name'>(row.businessNameCiphertext),
@@ -276,5 +313,78 @@ export class PrismaSellerFileRepository implements SellerFileRepository {
       data: { lastChangedAt: toDate(state.lastChangedAt), version: state.version },
     });
     return count === 1;
+  }
+
+  async hold(market: MarketContext, file: SellerFile): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).sellersSellerFile.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: file.state.sellerId,
+        version: file.persistedVersion,
+      },
+      data: { version: file.persistedVersion },
+    });
+    return count === 1;
+  }
+
+  async recordDecision(
+    market: MarketContext,
+    file: SellerFile,
+    approval: {
+      readonly revisionId: Id<'BusinessFileRevision'>;
+      readonly publicStoreName: string;
+    } | null,
+  ): Promise<boolean> {
+    const { state } = file;
+    if (state.version !== file.persistedVersion + 1) {
+      throw new RangeError('recordDecision: one change raises the version by exactly one');
+    }
+    if (approval !== null && !state.hasApprovedRevision) {
+      throw new RangeError('recordDecision: an approval needs the file to record it first');
+    }
+    const intent = state.decisionIntent;
+    const { count } = await this.prisma.tx(market).sellersSellerFile.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: state.sellerId,
+        version: file.persistedVersion,
+      },
+      data: {
+        lastChangedAt: toDate(state.lastChangedAt),
+        version: state.version,
+        decisionIntent: intent?.kind ?? null,
+        decisionAttemptId: intent?.attemptId ?? null,
+        decisionRevisionId: intent?.revisionId ?? null,
+        decisionIntentSince: intent === null ? null : toDate(intent.since),
+        ...(approval === null
+          ? {}
+          : {
+              approvedRevisionId: approval.revisionId,
+              publicStoreName: approval.publicStoreName,
+            }),
+      },
+    });
+    return count === 1;
+  }
+
+  async staleDecisionIntents(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_IDS) {
+      throw new RangeError('staleDecisionIntents: 1 to 100 rows');
+    }
+    const rows = await this.prisma.tx(market).sellersSellerFile.findMany({
+      where: {
+        marketId: market.marketId,
+        decisionIntent: { not: null },
+        decisionIntentSince: { lt: toDate(before) },
+      },
+      orderBy: { decisionIntentSince: 'asc' },
+      take: limit,
+      select: { sellerId: true },
+    });
+    return rows.map((row) => row.sellerId as Id<'Seller'>);
   }
 }

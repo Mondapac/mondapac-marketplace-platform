@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { SellerFile } from '../../domain/seller-file';
 
 /**
@@ -51,6 +51,40 @@ export interface SellerFileRepository {
    * the file first.
    */
   recordChange(market: MarketContext, file: SellerFile): Promise<boolean>;
+
+  /**
+   * Takes the file row's lock for the rest of the unit without changing it (an update that writes
+   * the version it read), so a decision step that starts later waits for this unit. Answers false
+   * when the stored version is no longer `file.persistedVersion`.
+   */
+  hold(market: MarketContext, file: SellerFile): Promise<boolean>;
+
+  /**
+   * Writes a decision step (design 3.2, 7.3; slice 7a-decide): the new version, `last_changed_at`
+   * and the four decision-intent columns from the file's state and, with `approval`, the V1 pointer
+   * `approved_revision_id` and `public_store_name` (data design 3.1), only where the stored version
+   * is still `file.persistedVersion`. The caller writes the revision's status in the same unit
+   * (data design 22, open point 2). Answers false and writes nothing when another unit changed the
+   * file first.
+   */
+  recordDecision(
+    market: MarketContext,
+    file: SellerFile,
+    approval: {
+      readonly revisionId: Id<'BusinessFileRevision'>;
+      readonly publicStoreName: string;
+    } | null,
+  ): Promise<boolean>;
+
+  /**
+   * The sellers of the Market whose decision intent was set before `before`, oldest first, at most
+   * `limit` (data design A11: the partial index holds only the in-flight rows).
+   */
+  staleDecisionIntents(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]>;
 }
 
 export const SELLER_FILE_REPOSITORY = Symbol('SELLER_FILE_REPOSITORY');

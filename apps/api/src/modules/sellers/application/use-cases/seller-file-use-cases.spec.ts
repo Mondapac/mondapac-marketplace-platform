@@ -66,6 +66,18 @@ class FakeFiles implements SellerFileRepository {
     return Promise.reject(new Error('not used by slice 1'));
   }
 
+  hold(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  recordDecision(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  staleDecisionIntents(): Promise<readonly Id<'Seller'>[]> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   recordChange(): Promise<boolean> {
     return Promise.reject(new Error('not used here'));
   }

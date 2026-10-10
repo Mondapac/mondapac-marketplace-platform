@@ -108,6 +108,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // purge read the files that were never approved by (last_changed_at, seller_id).
   'sellers.seller_files_market_id_last_changed_at_seller_id_unapproved_idx':
     'CREATE INDEX seller_files_market_id_last_changed_at_seller_id_unapproved_idx ON sellers.seller_files USING btree (market_id, last_changed_at, seller_id) WHERE (approved_revision_id IS NULL)',
+  // docs/design/data/sellers.md A11, 3.13 (slice 7a-decide): the decisions in flight for the
+  // reconciliation job, one open flag per seller and code, and the open flags for the admin list.
+  'sellers.seller_files_market_id_decision_intent_since_idx':
+    'CREATE INDEX seller_files_market_id_decision_intent_since_idx ON sellers.seller_files USING btree (market_id, decision_intent_since) WHERE (decision_intent IS NOT NULL)',
+  'sellers.admin_flags_market_id_seller_id_code_open_key':
+    'CREATE UNIQUE INDEX admin_flags_market_id_seller_id_code_open_key ON sellers.admin_flags USING btree (market_id, seller_id, code) WHERE (cleared_at IS NULL)',
+  'sellers.admin_flags_market_id_raised_at_open_idx':
+    'CREATE INDEX admin_flags_market_id_raised_at_open_idx ON sellers.admin_flags USING btree (market_id, raised_at, id) WHERE (cleared_at IS NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
     "CREATE UNIQUE INDEX shop_slugs_market_id_seller_id_held_key ON sellers.shop_slugs USING btree (market_id, seller_id) WHERE (state = 'held'::text)",
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':

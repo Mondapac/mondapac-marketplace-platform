@@ -118,15 +118,32 @@ model SellersSellerFile {
   /// below names (market, seller, revision), so the pointer can only name a revision of this
   /// seller; a file with an approved revision has a frozen draft.
   approvedRevisionId             String?                       @map("approved_revision_id") @db.Uuid
+  /// Slice 7a-decide (Q-M2). The store name of the approved revision, copied in every unit that
+  /// moves the pointer; NULL exactly while the pointer is NULL (CHECK, hand-written, with S7).
+  publicStoreName                String?                       @map("public_store_name")
+  /// Slice 7a-decide (D 3.2). The decision in flight around a call into `identity`:
+  /// approve-requested | reject-requested | reapply-requested (CHECK). The four decision columns
+  /// are all NULL or all set (CHECK); the partial index on (market_id, decision_intent_since) for
+  /// the reconciliation job is hand-written.
+  decisionIntent                 String?                       @map("decision_intent")
+  /// Slice 7a-decide. The attempt that set the intent: only that attempt's second unit clears it.
+  decisionAttemptId              String?                       @map("decision_attempt_id") @db.Uuid
+  /// Slice 7a-decide. Revision N of the decision, a revision of this seller (composite FK).
+  decisionRevisionId             String?                       @map("decision_revision_id") @db.Uuid
+  /// Slice 7a-decide. When the intent was set; the reconciliation job reads intents older than 5 minutes.
+  decisionIntentSince            DateTime?                     @map("decision_intent_since") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                        Int
   createdAt                      DateTime                      @map("created_at") @db.Timestamptz(6)
   approvedRevision               SellersBusinessFileRevision?  @relation("SellerFileApprovedRevision", fields: [marketId, sellerId, approvedRevisionId], references: [marketId, sellerId, id], onDelete: Restrict, onUpdate: Restrict)
+  decisionRevision               SellersBusinessFileRevision?  @relation("SellerFileDecisionRevision", fields: [marketId, sellerId, decisionRevisionId], references: [marketId, sellerId, id], onDelete: Restrict, onUpdate: Restrict)
   revisions                      SellersBusinessFileRevision[] @relation("SellerFileRevisions")
   adminSettings                  SellersSellerAdminSettings?
   taxProfile                     SellersSellerTaxProfile?
   storeProfile                   SellersStoreProfile?
   registerChecks                 SellersRegisterCheck[]
+  identifierClaim                SellersIdentifierClaim?
+  adminFlags                     SellersAdminFlag[]
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
@@ -360,11 +377,89 @@ model SellersBusinessFileRevision {
   withdrawnAt          DateTime?           @map("withdrawn_at") @db.Timestamptz(6)
   sellerFile           SellersSellerFile   @relation("SellerFileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
   approvedFor          SellersSellerFile[] @relation("SellerFileApprovedRevision")
+  decisionFor          SellersSellerFile[] @relation("SellerFileDecisionRevision")
+  reviewChecks         SellersReviewCheck[]
+  identifierClaims     SellersIdentifierClaim[]
 
   /// The seller's revision numbers; the latest-rejected probe reads it backwards (3.2).
   @@unique([marketId, sellerId, revisionNo])
   /// The target of the pointer foreign keys of seller_files (3.1, 3.2).
   @@unique([marketId, sellerId, id])
   @@map("business_file_revisions")
+  @@schema("sellers")
+}
+
+/// A review check recorded on a revision (data design 3.3; slice 7a-decide, which builds what the
+/// reviewer's approval guard reads). Slice 7a-decide records only `manual-register-check`, the
+/// check that stands in for a register lookup the Market cannot make (D 3.4, AC 32); the codes a
+/// Market lists in configuration join with the slice that configures them. Recorded again while
+/// the revision is pending (an upsert on the key); "never after the decision" is the use case's.
+/// The foreign key names the seller too, so a check can only sit on that seller's revision.
+/// CHECKs and grants are hand-written in the migration.
+model SellersReviewCheck {
+  marketId                String                      @map("market_id") @db.VarChar(8)
+  tenantId                String                      @map("tenant_id")
+  sellerId                String                      @map("seller_id") @db.Uuid
+  revisionId              String                      @map("revision_id") @db.Uuid
+  /// S8 pattern; `manual-register-check` is the one code the design fixes.
+  checkCode               String                      @map("check_code")
+  /// done | not-applicable | not-done (CHECK). `not-done` sets a check back.
+  result                  String
+  /// active | not-found | cancelled: what the reviewer read in the register; set exactly for
+  /// `manual-register-check` (CHECK).
+  observedRegisterOutcome String?                     @map("observed_register_outcome")
+  /// A plain id (C4).
+  recordedByAccountId     String                      @map("recorded_by_account_id") @db.Uuid
+  recordedAt              DateTime                    @map("recorded_at") @db.Timestamptz(6)
+  revision                SellersBusinessFileRevision @relation(fields: [marketId, sellerId, revisionId], references: [marketId, sellerId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, checkCode])
+  @@map("review_checks")
+  @@schema("sellers")
+}
+
+/// One approved or suspended seller per identifier value per Market (data design 3.6; D 3.6, AC 21;
+/// slice 7a-decide). Taken in the first unit of an approval and released if `identity` refuses; a
+/// move is a delete plus an insert, so the row is never updated. CHECKs and grants are hand-written.
+model SellersIdentifierClaim {
+  marketId        String                      @map("market_id") @db.VarChar(8)
+  tenantId        String                      @map("tenant_id")
+  /// Personal (pseudonymous), S5: the identifier index of the revision that took the claim.
+  identifierIndex Bytes                       @map("identifier_index")
+  sellerId        String                      @map("seller_id") @db.Uuid
+  /// The revision that took the claim.
+  revisionId      String                      @map("revision_id") @db.Uuid
+  claimedAt       DateTime                    @map("claimed_at") @db.Timestamptz(6)
+  /// S1; 1 at insert (never updated).
+  version         Int
+  createdAt       DateTime                    @map("created_at") @db.Timestamptz(6)
+  sellerFile      SellersSellerFile           @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  revision        SellersBusinessFileRevision @relation(fields: [marketId, sellerId, revisionId], references: [marketId, sellerId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The second approval of one value fails here (AC 21).
+  @@id([marketId, identifierIndex])
+  /// One claim per seller.
+  @@unique([marketId, sellerId])
+  @@map("identifier_claims")
+  @@schema("sellers")
+}
+
+/// A flag for an admin (data design 3.13; D 14.4 Q-M20; slice 7a-decide): ids, a code and instants.
+/// The partial unique "one open flag per (Market, seller, code)", the open-flags index, the CHECKs
+/// and the grants are hand-written in the migration.
+model SellersAdminFlag {
+  id                 String            @id @db.Uuid
+  marketId           String            @map("market_id") @db.VarChar(8)
+  tenantId           String            @map("tenant_id")
+  sellerId           String            @map("seller_id") @db.Uuid
+  /// identifier-claim-conflict (CHECK; `register-recheck` joins with slice 11).
+  code               String
+  raisedAt           DateTime          @map("raised_at") @db.Timestamptz(6)
+  clearedAt          DateTime?         @map("cleared_at") @db.Timestamptz(6)
+  /// A plain id (C4); set exactly when cleared (CHECK).
+  clearedByAccountId String?           @map("cleared_by_account_id") @db.Uuid
+  sellerFile         SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("admin_flags")
   @@schema("sellers")
 }

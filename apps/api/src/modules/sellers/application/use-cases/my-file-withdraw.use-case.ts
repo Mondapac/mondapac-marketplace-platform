@@ -26,6 +26,7 @@ import type { SellerFileRepository } from '../ports/seller-file.repository';
 export type MyFileWithdrawFailure =
   | { readonly code: 'file.nothing-to-withdraw' }
   | { readonly code: 'seller-access.wrong-state' }
+  | { readonly code: 'file.decision-in-progress' }
   | SellersUnavailable
   | DraftAccessDenied
   | AccessUnavailable
@@ -139,6 +140,9 @@ export class MyFileWithdraw extends UseCase<
     return unitOfWork.run<{ readonly version: number }, MyFileWithdrawFailure>(market, async () => {
       const file = await files.findById(market, sellerId);
       if (file === null) return err({ code: 'file.not-found' });
+      // A reviewer's decision on the pending revision is in flight (design 7.3): it is not withdrawn
+      // from under it.
+      if (file.state.decisionIntent !== null) return err({ code: 'file.decision-in-progress' });
       const pending = await revisions.findPending(market, sellerId);
       if (pending === null) return err({ code: 'file.nothing-to-withdraw' });
       const now = clock.now();

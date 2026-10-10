@@ -308,5 +308,11 @@ export interface SellerAccessContract {
   >;
 }
 
+/**
+ * The decision events `sellers.close-decision` consumes (sellers design 7.3, 7.5): re-exported
+ * here, not from ../index.ts, so only `sellers` subscribes to the `basisId` of a decision.
+ */
+export { SellerAccessApproved, SellerAccessRejected } from '../domain/events';
+
 /** Nest token of the {@link SellerAccessContract}, provided and exported by `IdentityModule`. */
 export const SELLER_ACCESS_CONTRACT = Symbol('SELLER_ACCESS_CONTRACT');

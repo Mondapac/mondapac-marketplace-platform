@@ -19,7 +19,6 @@ import type {
   RegisterSnapshotOutcome,
 } from '../../domain/business-file-revision';
 import {
-  blocksApproval,
   registerStateOf,
   staleReasonOf,
   type RegisterCheck,
@@ -27,6 +26,7 @@ import {
   type RegisterStaleReason,
   type RegisterState,
 } from '../../domain/register-check';
+import { registerGuard, type ManualRegisterCheck } from '../../domain/review-check';
 import type { RevisionKind } from '../../domain/revision-kinds';
 import type { RevisionStatus } from '../../domain/business-file-revision';
 import type { AccessState } from '../../domain/seller-status';
@@ -37,6 +37,7 @@ import type { BusinessIdentifierSchemes } from '../ports/business-identifier-sch
 import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
 import type { RegisterCheckRepository } from '../ports/register-check.repository';
 import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
+import type { ReviewCheckRepository } from '../ports/review-check.repository';
 import type { RevisionContentSealer } from '../ports/revision-content-sealer';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -88,8 +89,16 @@ export interface ReviewRegisterView {
   readonly mismatches: readonly RegisterMismatch[];
   readonly staleReason: RegisterStaleReason | null;
   readonly checkedAt: Temporal.Instant | null;
-  /** Approval is blocked on this state until a manual register check is recorded (AC 31, 32). */
+  /**
+   * Whether the register guard of the approval refuses now (design 3.4; AC 31, 32): the very guard
+   * `review.approve` runs, so the page and the decision never disagree.
+   */
   readonly blocksApproval: boolean;
+  /** What the reviewer read in the register by hand for the pending revision, or null. */
+  readonly manualCheck: {
+    readonly observedOutcome: ManualRegisterCheck['observed'];
+    readonly recordedAt: Temporal.Instant;
+  } | null;
 }
 
 export interface ReviewView {
@@ -101,6 +110,11 @@ export interface ReviewView {
   /** The approved revision shown beside a pending identity change; null otherwise. */
   readonly previous: ReviewRevisionView | null;
   readonly register: ReviewRegisterView;
+  /**
+   * A decision on the pending revision is in flight (design 7.3): approve, reject and the manual
+   * check are refused until it settles, within minutes.
+   */
+  readonly decisionInProgress: boolean;
 }
 
 export type ReviewReadFailure =
@@ -113,6 +127,7 @@ export interface ReviewReadDependencies {
   readonly sealer: RevisionContentSealer;
   readonly registerChecks: RegisterCheckRepository;
   readonly registerPolicy: RegisterLookupPolicy;
+  readonly reviewChecks: ReviewCheckRepository;
   readonly accessReader: SellerAccessReader;
   readonly identifierSchemes: BusinessIdentifierSchemes;
   readonly audit: AuditWriter;
@@ -125,8 +140,10 @@ interface Loaded {
   readonly currentSealed: SealedRevisionContent;
   readonly previousSealed: SealedRevisionContent | null;
   readonly check: RegisterCheck | null;
+  readonly manual: ManualRegisterCheck | null;
   readonly fileChangedAt: Temporal.Instant;
   readonly fileVersion: number;
+  readonly decisionInProgress: boolean;
 }
 
 /**
@@ -231,6 +248,7 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
         current,
         previous,
         register: this.registerOf(market, data),
+        decisionInProgress: data.decisionInProgress,
       });
     } catch {
       return err({ code: 'sellers.unavailable' });
@@ -241,7 +259,7 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
     market: MarketContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<Loaded | 'no-file' | 'no-revision', never>> {
-    const { files, revisions, registerChecks, registerPolicy } = this.deps;
+    const { files, revisions, registerChecks, registerPolicy, reviewChecks } = this.deps;
     const file = await files.findById(market, sellerId);
     if (file === null) return ok('no-file');
     const pending = await revisions.findPending(market, sellerId);
@@ -260,14 +278,20 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
       settings.kind === 'configured' && current.identifierIndex !== null
         ? await registerChecks.find(market, sellerId, current.identifierIndex)
         : null;
+    const manual =
+      current.status === 'pending'
+        ? await reviewChecks.findManualRegisterCheck(market, sellerId, current.id)
+        : null;
     return ok({
       current,
       previous,
       currentSealed,
       previousSealed,
       check,
+      manual,
       fileChangedAt: file.state.lastChangedAt,
       fileVersion: file.state.version,
+      decisionInProgress: file.state.decisionIntent !== null,
     });
   }
 
@@ -314,6 +338,20 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
 
   private registerOf(market: MarketContext, data: Loaded): ReviewRegisterView {
     const settings = this.deps.registerPolicy.settingsOf(market);
+    const now = this.deps.clock.now();
+    const blocked = !registerGuard({
+      hasIdentifier: data.current.identifierIndex !== null,
+      lookupMaxResultAgeDays: settings.kind === 'configured' ? settings.maxResultAgeDays : null,
+      snapshot: data.current.register,
+      submittedAt: data.current.createdAt,
+      check: data.check,
+      manual: data.manual,
+      now,
+    }).ok;
+    const manualCheck =
+      data.manual === null
+        ? null
+        : { observedOutcome: data.manual.observed, recordedAt: data.manual.recordedAt };
     if (settings.kind !== 'configured') {
       return {
         lookup: 'none',
@@ -321,10 +359,10 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
         mismatches: [],
         staleReason: null,
         checkedAt: null,
-        blocksApproval: blocksApproval('not-performed', false),
+        blocksApproval: blocked,
+        manualCheck,
       };
     }
-    const now = this.deps.clock.now();
     const { check, fileChangedAt, fileVersion } = data;
     const state = registerStateOf(
       check,
@@ -342,7 +380,8 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
           ? staleReasonOf(check, now, settings.maxResultAgeDays, fileChangedAt, fileVersion)
           : null,
       checkedAt: state === 'not-performed' || check === null ? null : check.checkedAt,
-      blocksApproval: blocksApproval(state, false),
+      blocksApproval: blocked,
+      manualCheck,
     };
   }
 }

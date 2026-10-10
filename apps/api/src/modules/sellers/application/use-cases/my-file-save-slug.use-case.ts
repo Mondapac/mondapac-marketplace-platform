@@ -38,6 +38,7 @@ export interface MyFileSaveSlugInput {
 export type MyFileSaveSlugFailure =
   | { readonly code: 'slug.format' | 'slug.reserved' | 'slug.taken' }
   | { readonly code: 'file.change-request-required' }
+  | { readonly code: 'file.decision-in-progress' }
   | DraftAccessDenied
   | AccessUnavailable
   | RequestThrottled

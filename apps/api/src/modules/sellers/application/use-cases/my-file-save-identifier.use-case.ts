@@ -76,6 +76,7 @@ export interface IdentifierSaved extends DraftSaved {
 export type MyFileSaveIdentifierFailure =
   | { readonly code: IdentifierInvalid }
   | { readonly code: 'file.change-request-required' }
+  | { readonly code: 'file.decision-in-progress' }
   | LookupLimitReached
   | DraftAccessDenied
   | AccessUnavailable

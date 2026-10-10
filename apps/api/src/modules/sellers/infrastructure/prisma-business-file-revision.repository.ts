@@ -312,6 +312,32 @@ export class PrismaBusinessFileRevisionRepository implements BusinessFileRevisio
     return count === 1;
   }
 
+  async saveDecision(market: MarketContext, revision: BusinessFileRevision): Promise<boolean> {
+    if (
+      (revision.status !== 'approved' && revision.status !== 'rejected') ||
+      revision.decidedAt === null ||
+      revision.identityDecisionId === null
+    ) {
+      throw new RangeError('saveDecision: the revision must carry an identity decision');
+    }
+    // The guard is in the statement: only a pending revision is decided, once.
+    const { count } = await this.prisma.tx(market).sellersBusinessFileRevision.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: revision.sellerId,
+        id: revision.id,
+        status: 'pending',
+      },
+      data: {
+        status: revision.status,
+        statusChangedAt: toDate(revision.statusChangedAt),
+        decidedAt: toDate(revision.decidedAt),
+        identityDecisionId: revision.identityDecisionId,
+      },
+    });
+    return count === 1;
+  }
+
   async approvedZones(
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],

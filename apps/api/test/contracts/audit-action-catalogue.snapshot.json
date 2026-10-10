@@ -392,5 +392,16 @@
       "readKind": "enumOf(review)",
       "revisionId": "id"
     }
+  },
+  {
+    "action": "sellers.register.manual-check-recorded",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "observedOutcome": "enumOf(active|not-found|cancelled)",
+      "revisionId": "id"
+    }
   }
 ]

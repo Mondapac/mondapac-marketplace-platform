@@ -799,6 +799,15 @@ has the measured pace of identity's slices.
 - Not served, waiting for identity's admin read (R-6 with state and counts, slice 9b): the tabs that follow identity's state, the owner name and email, the `file-check-needed` filter. Not offered: exact search by business number (waits for `sellers.business-details.view`, slice 7a-read). Recorded as readings in the brief's change log.
 - New ports: `SellerListRepository` (Prisma adapter), `OnboardingAreas` (the ServiceArea codes that take new sellers), and `SellerAccessReader.accessOfMany`.
 
+### 11.6 Slice 7a-decide as built (approve and reject)
+- Routes (admin population, session cookie, CSRF, `no-store`, closed JSON bodies): `POST /sellers/admin/:sellerId/review/approve` `{revisionId}`, `POST …/review/reject` `{revisionId, reason}` (both `permissions [identity.seller-access.approve]`, checked again by `identity`), and `PUT …/review/manual-register-check` `{revisionId, observedOutcome}` (`sellers.seller-file.review`; audited as `sellers.register.manual-check-recorded`). Approve and reject answer 200 with `{decision, revisionId}`, or 202 `in-progress` when `identity` did not answer within 30 s.
+- Codes added: `file.decision-in-progress`, `review.not-current-revision`, `review.identifier-claimed`, `review.register-negative`, `review.manual-register-check-required` (409), and `identity`'s `seller-access.owner-unverified` (409), `seller-access.reason-required` (400) passed through.
+- The flow of 7.3: unit 1 sets the intent under the file's version compare-and-set and checks revision N, the register guard and the claim under it; the call into `identity` runs outside any unit; unit 2 settles (`settleDecision`) or releases (`releaseDecision`). The handlers `sellers.close-decision-approved` and `-rejected` (one use case, `sellers.close-decision`) and the job `sellers.reconcile-decisions` (every minute, intents older than 5 minutes) settle with the same functions.
+- Register guard as built: a definite negative refuses; a manual check passes when it read `active`; otherwise a fresh `active` result passes only when the submission relied on it or it was obtained after the submission (the draft is frozen while N is pending). `review.read` answers `blocksApproval` from the same guard, `register.manualCheck` and `decisionInProgress`.
+- While an intent is set, draft saves and the withdrawal answer `file.decision-in-progress`.
+- `identity`'s HTTP approve and reject routes are removed (R-1); suspend and reinstate stay there.
+- Not built here: the approval of an identity change (slice 10), bulk decisions (8), automatic approval (7a-auto), re-apply (7b); review checks other than the manual register check (AU configures none). The AC 5 change of R-1 is not done.
+
 ## 12. Dependencies (for the owner's bundled list, ADR-0018 decision 8)
 | Need | Standard library? | Recommendation |
 |---|---|---|

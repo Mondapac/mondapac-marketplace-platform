@@ -185,7 +185,7 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
       ],
     );
     await owner.query(
-      'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+      "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
       [code, sellerId, id],
     );
   }

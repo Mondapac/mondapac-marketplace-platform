@@ -126,6 +126,7 @@
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
   { "name": "sellers.approved-seller-zones-system", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },
+  { "name": "sellers.close-decision", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
   {
     "name": "sellers.form-descriptors-read",
@@ -158,6 +159,7 @@
   },
   { "name": "sellers.my-file-withdraw", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.purge-expired", "rule": "system" },
+  { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },

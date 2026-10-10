@@ -18,6 +18,7 @@ import {
   InMemoryFiles,
   InMemoryRevisions,
   TransactionalUnitOfWork,
+  InMemoryReviewChecks,
 } from '../../../../../test/support/sellers-submit-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
@@ -102,6 +103,7 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
   let revisions: InMemoryRevisions;
   let sealer: FakeSealer;
   let checks: InMemoryRegisterChecks;
+  let reviewChecks: InMemoryReviewChecks;
   let access: FakeAccess;
   let audit: RecordingAudit;
   let policy: FixedRegisterLookupPolicy;
@@ -117,6 +119,7 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
       sealer,
       registerChecks: checks,
       registerPolicy: policy,
+      reviewChecks,
       accessReader: access,
       identifierSchemes: { schemeOf: () => null },
       audit,
@@ -172,6 +175,7 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
     revisions = new InMemoryRevisions();
     sealer = new FakeSealer();
     checks = new InMemoryRegisterChecks();
+    reviewChecks = new InMemoryReviewChecks();
     access = new FakeAccess();
     audit = new RecordingAudit();
     policy = new FixedRegisterLookupPolicy({ [code]: SETTINGS[code]! });

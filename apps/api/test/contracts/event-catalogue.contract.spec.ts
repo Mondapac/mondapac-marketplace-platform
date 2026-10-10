@@ -92,6 +92,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
       'sellers.after-submission',
+      'sellers.close-decision-approved',
+      'sellers.close-decision-rejected',
       'sellers.create-file',
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
@@ -126,12 +128,15 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.second-factor-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.invitation-accepted.v1')).toEqual([]);
-    // Slice 9: one result mail per access decision (E4 to E7); re-apply mails no one.
+    // Slice 9: one result mail per access decision (E4 to E7); re-apply mails no one. Sellers
+    // slice 7a-decide: the review settles the revision a decision names (design 7.3).
     expect(subscriptions.subscribersOf('identity.seller-access-approved.v1')).toEqual([
       'identity.seller-approved-mail',
+      'sellers.close-decision-approved',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([
       'identity.seller-rejected-mail',
+      'sellers.close-decision-rejected',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-suspended.v1')).toEqual([
       'identity.seller-suspended-mail',
