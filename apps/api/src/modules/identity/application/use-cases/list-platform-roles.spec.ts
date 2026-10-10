@@ -85,6 +85,7 @@ const LEAD_KEYS = [
   'identity.platform-role.view',
   'identity.seller-access.view',
   'identity.seller-account.reset-second-factor',
+  'pricing.price-hold.view',
   'sellers.seller.view',
 ];
 /** Just enough to view, assign and invite: most roles hold a key it lacks. */
@@ -324,11 +325,11 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
-      permissionCount: 5,
+      permissionCount: 6,
       grantable: true,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
-    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(5);
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(6);
     expect(byId(items, LEAD_ROLE)).toMatchObject({
       kind: 'custom',
       seedCode: null,

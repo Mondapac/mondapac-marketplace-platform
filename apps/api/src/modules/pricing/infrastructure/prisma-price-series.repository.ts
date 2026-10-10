@@ -4,6 +4,8 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   AddPriceSeriesOutcome,
+  PendingHoldCursor,
+  PendingHoldView,
   PriceSeriesKey,
   PriceSeriesRepository,
 } from '../application/ports/price-series.repository';
@@ -13,6 +15,7 @@ import {
   PriceSeries,
   type PriceSeriesState,
   type RegularPriceRecord,
+  type HoldRejectionReason,
   type RegularRecordStatus,
   type RetireCause,
   type SupersedeCause,
@@ -71,6 +74,10 @@ interface RecordRow {
   readonly supersededAt: Date | null;
   readonly supersededByRecordId: string | null;
   readonly supersedeCause: string | null;
+  readonly decidedAt: Date | null;
+  readonly decidedByAccountId: string | null;
+  readonly decisionReasonCode: string | null;
+  readonly decisionNote: string | null;
 }
 
 interface SeriesRow {
@@ -109,6 +116,15 @@ function recordFromRow(row: RecordRow): RegularPriceRecord {
     supersededBy: row.supersededByRecordId as Id<'RegularPriceRecord'> | null,
     supersededAt: orNull(row.supersededAt),
     supersedeCause: row.supersedeCause as SupersedeCause | null,
+    decision:
+      row.decidedAt === null || row.decidedByAccountId === null
+        ? null
+        : {
+            decidedAt: toInstant(row.decidedAt),
+            decidedBy: row.decidedByAccountId as Id<'Account'>,
+            reasonCode: row.decisionReasonCode as HoldRejectionReason | null,
+            note: row.decisionNote,
+          },
   };
 }
 
@@ -138,6 +154,10 @@ function recordChanges(record: RegularPriceRecord) {
     supersededAt: dateOrNull(record.supersededAt),
     supersededByRecordId: record.supersededBy,
     supersedeCause: record.supersedeCause,
+    decidedAt: dateOrNull(record.decision?.decidedAt ?? null),
+    decidedByAccountId: record.decision?.decidedBy ?? null,
+    decisionReasonCode: record.decision?.reasonCode ?? null,
+    decisionNote: record.decision?.note ?? null,
   };
 }
 
@@ -150,13 +170,53 @@ function sameChangeableColumns(a: RegularPriceRecord, b: RegularPriceRecord): bo
     same(a.effectiveTo, b.effectiveTo) &&
     same(a.supersededAt, b.supersededAt) &&
     a.supersededBy === b.supersededBy &&
-    a.supersedeCause === b.supersedeCause
+    a.supersedeCause === b.supersedeCause &&
+    same(a.decision?.decidedAt ?? null, b.decision?.decidedAt ?? null) &&
+    a.decision?.decidedBy === b.decision?.decidedBy &&
+    a.decision?.reasonCode === b.decision?.reasonCode &&
+    a.decision?.note === b.decision?.note
   );
 }
 
 const RECORDS_IN_ORDER = {
   regularRecords: { orderBy: [{ submittedAt: 'asc' as const }, { id: 'asc' as const }] },
 };
+
+const HOLD_SERIES = {
+  series: { select: { id: true, offerId: true, variantId: true, sellerId: true } },
+};
+
+interface HoldRow extends RecordRow {
+  readonly series: {
+    readonly id: string;
+    readonly offerId: string;
+    readonly variantId: string;
+    readonly sellerId: string;
+  };
+}
+
+function holdFromRow(row: HoldRow): PendingHoldView {
+  if (
+    row.anchorRecordId === null ||
+    row.anchorAmountMinor === null ||
+    (row.holdDirection !== 'up' && row.holdDirection !== 'down')
+  ) {
+    // The table's CHECKs make this unreachable for a pending record.
+    throw new Error('price series: a pending record without its anchor');
+  }
+  return {
+    recordId: row.id as Id<'RegularPriceRecord'>,
+    seriesId: row.series.id as Id<'PriceSeries'>,
+    offerId: row.series.offerId as Id<'Offer'>,
+    variantId: row.series.variantId as Id<'Variant'>,
+    sellerId: row.series.sellerId as Id<'Seller'>,
+    amount: storedAmount(row.amountMinor, row.currency),
+    anchorRecordId: row.anchorRecordId as Id<'RegularPriceRecord'>,
+    anchorAmount: storedAmount(row.anchorAmountMinor, row.currency),
+    direction: row.holdDirection,
+    submittedAt: toInstant(row.submittedAt),
+  };
+}
 
 /**
  * {@link PriceSeriesRepository} on `pricing.price_series` and `pricing.regular_price_records`
@@ -177,6 +237,59 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
       include: RECORDS_IN_ORDER,
     });
     return row === null ? null : seriesFromRow(row);
+  }
+
+  async findByRecordId(
+    market: MarketContext,
+    recordId: Id<'RegularPriceRecord'>,
+  ): Promise<PriceSeries | null> {
+    const tx = this.prisma.tx(market);
+    const record = await tx.pricingRegularPriceRecord.findFirst({
+      where: { marketId: market.marketId, id: recordId },
+      select: { seriesId: true },
+    });
+    if (record === null) return null;
+    const row = await tx.pricingPriceSeries.findFirst({
+      where: { marketId: market.marketId, id: record.seriesId },
+      include: RECORDS_IN_ORDER,
+    });
+    return row === null ? null : seriesFromRow(row);
+  }
+
+  async listPendingHolds(
+    market: MarketContext,
+    after: PendingHoldCursor | null,
+    limit: number,
+  ): Promise<readonly PendingHoldView[]> {
+    const rows = await this.prisma.tx(market).pricingRegularPriceRecord.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'pending-review',
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { submittedAt: { gt: toDate(after.submittedAt) } },
+                { submittedAt: toDate(after.submittedAt), id: { gt: after.id } },
+              ],
+            }),
+      },
+      include: HOLD_SERIES,
+      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(holdFromRow);
+  }
+
+  async findPendingHold(
+    market: MarketContext,
+    recordId: Id<'RegularPriceRecord'>,
+  ): Promise<PendingHoldView | null> {
+    const row = await this.prisma.tx(market).pricingRegularPriceRecord.findFirst({
+      where: { marketId: market.marketId, id: recordId, status: 'pending-review' },
+      include: HOLD_SERIES,
+    });
+    return row === null ? null : holdFromRow(row);
   }
 
   async findByOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<readonly PriceSeries[]> {

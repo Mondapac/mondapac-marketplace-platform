@@ -678,7 +678,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     const { rows } = await sql.query<{ before: unknown; after: unknown }>(
       `SELECT before, after FROM platform.audit_log
         WHERE market_id = $1 AND target_id = $2 AND action = 'identity.role.seed-applied'
-          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '3'
+          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '4'
         ORDER BY occurred_at`,
       [marketId, roleId],
     );
@@ -691,7 +691,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     expect(registry.get(EDIT)).toMatchObject({ key: EDIT, scope: 'platform', protected: false });
   });
 
-  it('upgrades a Market seeded at catalogue-moderator version 1 to 3 with the keys, in every hosted Market', async () => {
+  it('upgrades a Market seeded at catalogue-moderator version 1 to 4 with the keys, in every hosted Market', async () => {
     // Every hosted Market has its roles (first run creates them, if no other file did yet).
     await expect(runSeedJob()).resolves.toEqual({ outcome: 'ran', failedMarkets: [] });
 
@@ -710,7 +710,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
         await sql.query(
           `DELETE FROM identity.role_permissions
             WHERE market_id = $1 AND role_id = $2 AND permission_key = ANY($3)`,
-          [code, role.id, [EDIT, 'sellers.seller.view']],
+          [code, role.id, [EDIT, 'sellers.seller.view', 'pricing.price-hold.view']],
         );
         await sql.query('COMMIT');
       } catch (error) {
@@ -725,17 +725,22 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
 
     for (const code of TEST_MARKETS) {
       const role = await moderatorOf(code);
-      expect(role.seed_version).toBe(3);
+      expect(role.seed_version).toBe(4);
       expect(await keysOf(code, role.id)).toEqual([
         EDIT,
         'identity.seller-access.view',
+        'pricing.price-hold.view',
         'sellers.seller.view',
       ]);
       const rows = await upgradeRowsOf(code, role.id);
       expect(rows).toHaveLength(earlier.get(code)! + 1);
       expect(rows.at(-1)).toEqual({
         before: { seedVersion: 1 },
-        after: { seedVersion: 3, addedKeys: [EDIT, 'sellers.seller.view'], removedKeys: [] },
+        after: {
+          seedVersion: 4,
+          addedKeys: [EDIT, 'pricing.price-hold.view', 'sellers.seller.view'],
+          removedKeys: [],
+        },
       });
     }
   });

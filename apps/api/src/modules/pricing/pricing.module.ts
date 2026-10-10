@@ -2,6 +2,7 @@ import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/commo
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -13,7 +14,14 @@ import { CatalogModule } from '../catalog';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
 import { PRICING_POLICY_PROVIDER } from './application/ports/pricing-policy-provider';
+import { RETIREMENT_TOMBSTONE_REPOSITORY } from './application/ports/retirement-tombstone.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from './application/ports/write-refusal-throttle.repository';
+import { ApprovePriceHold } from './application/use-cases/approve-price-hold.use-case';
+import { ListPriceHolds } from './application/use-cases/list-price-holds.use-case';
+import { RejectPriceHold } from './application/use-cases/reject-price-hold.use-case';
+import { RetireSeriesForRemovedOffer } from './application/use-cases/retire-series-for-removed-offer.use-case';
+import { RetireSeriesForRemovedVariant } from './application/use-cases/retire-series-for-removed-variant.use-case';
+import { ViewPriceHold } from './application/use-cases/view-price-hold.use-case';
 import { EffectivePricesSystemQuery } from './application/use-cases/effective-prices-system.use-case';
 import { EffectivePricesQuery } from './application/use-cases/effective-prices.use-case';
 import { PurgeWriteRefusalThrottles } from './application/use-cases/purge-write-refusal-throttles.use-case';
@@ -23,6 +31,8 @@ import { PRICING_FACADE } from './contracts/pricing.facade';
 import { PRICING_AUDIT_ACTIONS } from './domain/audit';
 import { PRICING_EVENTS } from './domain/events';
 import { PricingFacadeImplementation } from './presentation/pricing.facade';
+import { AdminPriceHoldController } from './presentation/admin-price-hold.controller';
+import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
 import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
 import { pricingProviders } from './infrastructure/pricing-providers';
 import { purgeWriteRefusalThrottlesJob } from './presentation/jobs/purge-write-refusal-throttles.job';
@@ -35,6 +45,7 @@ const PORT = {
   unitOfWork: UNIT_OF_WORK,
   series: PRICE_SERIES_REPOSITORY,
   throttles: WRITE_REFUSAL_THROTTLE_REPOSITORY,
+  tombstones: RETIREMENT_TOMBSTONE_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
   policies: PRICING_POLICY_PROVIDER,
   audit: AUDIT_WRITER,
@@ -68,13 +79,14 @@ function useCaseProvider<D, U>(
  * (part 1), its persistence ports (part 2), the Market policy (part 3a) and, in part 3b, the
  * application layer of the seller's regular-price write: the permission catalogue, the events,
  * the audited actions, `pricing.set-regular-price`, and the hourly purge of the refusal
- * counters. The route, the read facade and the retirement handlers arrive in later parts; until
- * catalog slice 7, catalog's fail-closed `offerSellUnits` answers every Offer as absent, so every
+ * counters. Slice 4 adds the admin price-hold review (queue, view, approve, reject; routes under
+ * `pricing/admin/price-holds`) and the two retirement handlers on catalog's `offer-deleted` and
+ * `variant-removed`. Until catalog slice 7, catalog's fail-closed `offerSellUnits` answers every Offer as absent, so every
  * write answers `pricing.offer-not-found`.
  */
 @Module({
   imports: [CatalogModule],
-  controllers: [SellerRegularPriceController],
+  controllers: [SellerRegularPriceController, AdminPriceHoldController],
   providers: [
     PersistenceModule.outboxWriterFor('pricing'),
     PersistenceModule.auditWriterFor('pricing'),
@@ -104,6 +116,45 @@ function useCaseProvider<D, U>(
         effectivePricesSystem: EffectivePricesSystemQuery,
       ) => new PricingFacadeImplementation({ effectivePrices, effectivePricesSystem }),
     },
+    useCaseProvider(ListPriceHolds, { unitOfWork: true, series: true }),
+    useCaseProvider(ViewPriceHold, { unitOfWork: true, series: true }),
+    useCaseProvider(ApprovePriceHold, {
+      unitOfWork: true,
+      series: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      policies: true,
+    }),
+    useCaseProvider(RejectPriceHold, {
+      unitOfWork: true,
+      series: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(RetireSeriesForRemovedOffer, {
+      unitOfWork: true,
+      series: true,
+      tombstones: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(RetireSeriesForRemovedVariant, {
+      unitOfWork: true,
+      series: true,
+      tombstones: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
+    registerSubscriptionsFrom(
+      'pricing',
+      [RetireSeriesForRemovedOffer, RetireSeriesForRemovedVariant],
+      (offer: RetireSeriesForRemovedOffer, variant: RetireSeriesForRemovedVariant) =>
+        catalogRetirementSubscriptions(offer, variant),
+    ),
     useCaseProvider(PurgeWriteRefusalThrottles, { unitOfWork: true, throttles: true, clock: true }),
     registerJobsFrom(
       'pricing',

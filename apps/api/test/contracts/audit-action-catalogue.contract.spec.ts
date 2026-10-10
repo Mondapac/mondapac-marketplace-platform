@@ -130,6 +130,9 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
  * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
 const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
+  'pricing.price-hold.approved.after.amount',
+  'pricing.price-hold.approved.after.anchorAmount',
+  'pricing.price-hold.rejected.after.amount',
   'pricing.regular-price.accepted.after.amount',
   'pricing.regular-price.accepted.after.anchorAmount',
   'pricing.regular-price.held.after.amount',

@@ -169,5 +169,27 @@
     "entry": "seller:customer-service@2",
     "kind": "default",
     "permissionKeys": ["catalog.own-product.view"]
+  },
+  {
+    "entry": "platform:catalogue-moderator@4",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.platform-product.edit",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:viewer@3",
+    "kind": "default",
+    "permissionKeys": [
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
   }
 ]

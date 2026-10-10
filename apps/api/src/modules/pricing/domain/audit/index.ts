@@ -1,5 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition } from '@mondapac/shared-kernel';
+import { HOLD_REJECTION_REASONS } from '../price-series';
 import { HOLD_DIRECTIONS } from '../events';
 
 // The audited actions of pricing (pricing design 8; platform-audit 3.2), registered at boot with
@@ -11,8 +12,10 @@ import { HOLD_DIRECTIONS } from '../events';
 // kernel's `money` kind (platform-audit 3.2). Only regular prices are audited here: Cost never
 // appears in an audit row of this module (ADR-0024; the catalogue contract test checks it).
 //
-// Slice 1, part 3b: the seller's regular-price write and its refusals. Later parts add the
-// decisions (slice 4), the retirement and re-key rows (system actor) and Cost (slice 3).
+// Slice 1, part 3b: the seller's regular-price write and its refusals. Slice 4 adds the hold
+// decisions (an approval and a rejection by an admin) and the retirement rows (system actor); the
+// re-key rows and Cost come with their slices. A rejection row carries the reason code only: the
+// optional note is personal free text and stays on the record (design 8).
 
 /** The audit target type of a price series (PA 4). */
 export const PRICE_SERIES_TARGET = 'pricing.price-series';
@@ -78,20 +81,73 @@ export const RegularPriceHeld = defineAuditAction({
 
 /**
  * A pending regular record was superseded (design 3.1 row 5): by a new seller write
- * (`replaced`, naming the successor) or a write equal to the price in force (`cancelled`). The
- * retirement causes are written by the retirement handlers (system actor), which add `system`
- * to `actors` when they ship.
+ * (`replaced`, naming the successor), a write equal to the price in force (`cancelled`), or, by
+ * the system actor, the retirement of its series (`offer-removed`, `variant-removed`).
  */
 export const RegularPriceSuperseded = defineAuditAction({
   action: 'pricing.regular-price.superseded',
   targetType: PRICE_SERIES_TARGET,
-  actors: ['authenticated'],
+  actors: ['authenticated', 'system'],
   after: {
     offerId: auditField.id(),
     variantId: auditField.id(),
     recordId: auditField.id(),
     cause: auditField.enumOf(SUPERSEDE_CAUSES),
     supersededByRecordId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * An admin approved a held regular price (design 3.1 row 3, 8). The decider is the audit row's
+ * actor; the amount uses the kernel's `money` kind. Target: the series.
+ */
+export const PriceHoldApproved = defineAuditAction({
+  action: 'pricing.price-hold.approved',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    amount: auditField.money(),
+    anchorRecordId: auditField.id(),
+    anchorAmount: auditField.money(),
+    effectiveFrom: auditField.instant(),
+  },
+});
+
+/**
+ * An admin rejected a held regular price (design 3.1 row 4, 8). The reason code is in the row;
+ * the optional note is not (personal free text, kept on the record). Target: the series.
+ */
+export const PriceHoldRejected = defineAuditAction({
+  action: 'pricing.price-hold.rejected',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    amount: auditField.money(),
+    reasonCode: auditField.enumOf(HOLD_REJECTION_REASONS),
+  },
+});
+
+/** Why a series was retired (design 6.4). */
+export const SERIES_RETIRE_CAUSES = ['offer-removed', 'variant-removed'] as const;
+
+/**
+ * A retirement handler retired a price series (design 6.4; system actor). No amount: the rows of
+ * the pending records it superseded are `pricing.regular-price.superseded`.
+ */
+export const PriceSeriesRetired = defineAuditAction({
+  action: 'pricing.series.retired',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['system'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    cause: auditField.enumOf(SERIES_RETIRE_CAUSES),
   },
 });
 
@@ -134,6 +190,9 @@ export const PRICING_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   RegularPriceAccepted,
   RegularPriceHeld,
   RegularPriceSuperseded,
+  PriceHoldApproved,
+  PriceHoldRejected,
+  PriceSeriesRetired,
   OfferWriteRefused,
   OfferWriteRefusalsSuppressed,
 ]);

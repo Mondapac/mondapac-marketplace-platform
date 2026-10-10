@@ -448,6 +448,9 @@ describe.each(TEST_MARKETS)(
       const racing: PriceSeriesRepository = {
         findByKey: (m, key) => inner.findByKey(m, key),
         findByOffer: (m, offerId) => inner.findByOffer(m, offerId),
+        findByRecordId: (m, recordId) => inner.findByRecordId(m, recordId),
+        listPendingHolds: (m, after, limit) => inner.listPendingHolds(m, after, limit),
+        findPendingHold: (m, recordId) => inner.findPendingHold(m, recordId),
         findByProductVariant: (m, productId, variantId) =>
           inner.findByProductVariant(m, productId, variantId),
         save: (m, series) => inner.save(m, series),
