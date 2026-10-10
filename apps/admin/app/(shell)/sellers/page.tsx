@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../src/server/session.ts';
 import { SellersList } from '../../../src/sellers/sellers-list.tsx';
+import { REVIEW_PERMISSION } from '../../../src/sellers/review-types.ts';
 import { LIST_PERMISSION } from '../../../src/sellers/types.ts';
 
 export async function generateMetadata() {
@@ -21,7 +22,10 @@ export default async function SellersPage() {
     <AdminShell session={gate.session} activeId="sellers" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {allowed ? (
-        <SellersList csrfToken={gate.session.csrfToken} />
+        <SellersList
+          csrfToken={gate.session.csrfToken}
+          canReview={gate.session.permissionKeys.includes(REVIEW_PERMISSION)}
+        />
       ) : (
         <>
           <p className="text-fg-muted">{t('sellers.list.no-access')}</p>

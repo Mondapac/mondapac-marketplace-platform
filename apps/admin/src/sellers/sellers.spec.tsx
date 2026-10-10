@@ -37,10 +37,10 @@ const page = (items: SellerRow[], next: string | null = null): SellerListPage =>
 const answer = (body: SellerListPage) =>
   call.mockResolvedValueOnce({ ok: true, status: 200, body });
 
-function mount() {
+function mount(canReview = false) {
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <SellersList csrfToken="csrf-1" />
+      <SellersList csrfToken="csrf-1" canReview={canReview} />
     </NextIntlClientProvider>,
   );
 }
