@@ -41,7 +41,22 @@ export const SELLERS_SELLER_VIEW = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * Every read that decrypts business data: the review page (`review.read`), the seller page's
+ * details and `reviewerBusinessDetails` (design 6.1; Hassan M4). Each such read is audited in the
+ * same unit as `sellers.business-details.viewed`. Platform scope, not protected. The gate of a
+ * use case has no "any of", so the approve keys do not imply it in code: the default role mapping
+ * (`identity`'s seed) puts it beside `identity.seller-access.approve`, and a seed contract test
+ * checks that every default role holding one holds the other.
+ */
+export const SELLERS_BUSINESS_DETAILS_VIEW = definePermission('sellers', {
+  key: 'sellers.business-details.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
+  SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_VIEW,

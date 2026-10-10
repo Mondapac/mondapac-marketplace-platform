@@ -93,12 +93,13 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       kind: 'default',
       sellerId: null,
-      seedVersion: 3,
+      seedVersion: 4,
       permissionKeys: [
         'identity.seller-access.approve',
         'identity.seller-access.suspend',
         'identity.seller-access.view',
         'identity.seller-account.create',
+        'sellers.business-details.view',
         'sellers.seller-file.review',
         'sellers.seller.view',
       ],
@@ -130,16 +131,19 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     );
   });
 
-  it('upgrades onboarding-compliance from version 1 to 3: adds sellers.seller-file.review and sellers.seller.view, one seed-applied row, other roles untouched', async () => {
+  it('upgrades onboarding-compliance from version 1 to 4: adds the sellers keys, one seed-applied row, other roles untouched', async () => {
     const REVIEW = 'sellers.seller-file.review';
     const VIEW = 'sellers.seller.view';
-    // The previous build's definition: version 1 without the sellers key.
+    const DETAILS = 'sellers.business-details.view';
+    // The previous build's definition: version 1 without the sellers keys.
     const v1 = seedWith((role) =>
       role.seedCode === 'onboarding-compliance'
         ? {
             ...role,
             seedVersion: 1,
-            permissionKeys: role.permissionKeys.filter((key) => key !== REVIEW && key !== VIEW),
+            permissionKeys: role.permissionKeys.filter(
+              (key) => key !== REVIEW && key !== VIEW && key !== DETAILS,
+            ),
           }
         : role,
     );
@@ -156,15 +160,15 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       id: before.id,
-      seedVersion: 3,
-      permissionKeys: [...before.permissionKeys, REVIEW, VIEW].sort(),
+      seedVersion: 4,
+      permissionKeys: [...before.permissionKeys, REVIEW, VIEW, DETAILS].sort(),
     });
     expect(roleOf('platform', 'viewer')).toEqual(viewerBefore);
     expect(fakes.audits).toEqual([
       {
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
-          after: { seedVersion: 3, addedKeys: [REVIEW, VIEW], removedKeys: [] },
+          after: { seedVersion: 4, addedKeys: [REVIEW, VIEW, DETAILS].sort(), removedKeys: [] },
         }),
         actor: 'system',
         marketId: code,

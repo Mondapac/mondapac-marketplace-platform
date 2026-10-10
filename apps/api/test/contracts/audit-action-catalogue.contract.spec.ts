@@ -26,7 +26,8 @@ import { testAppConfig } from '../support/test-config';
 //   snapshot, so every new or changed action is read by the security-tester in the diff (3.2);
 // - Ali's condition 1 on the 6a/6b split, as 6b changes it: only the modules of AUDITING_MODULES
 //   bind an AUDIT_WRITER provider, each its own (identity since 6b; pricing since its slice 1
-//   part 3b, whose audited actions are design 8 of its approved G2);
+//   part 3b, whose audited actions are design 8 of its approved G2; sellers since slice 7a-read,
+//   design 9);
 // - Hassan L4 (carried from 6a): each registration of actions and each writer binding names the
 //   folder it is declared in: `<m>` only in src/modules/<m>/<m>.module.ts, and
 //   `platform.<component>` only in src/platform/<component>/. Checked in the source and in the
@@ -43,7 +44,7 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * The Nest modules that bind their own audit writer and register their actions. A module joins
  * this list only with the audited actions its approved design names (pricing: design 8).
  */
-const AUDITING_MODULES = ['IdentityModule', 'PricingModule'] as const;
+const AUDITING_MODULES = ['IdentityModule', 'PricingModule', 'SellersModule'] as const;
 const SRC = path.join(__dirname, '../../src');
 
 const foldersOf = (dir: string) =>
@@ -410,6 +411,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(binders.sort()).toEqual([
       ['IdentityModule', 'identity'],
       ['PricingModule', 'pricing'],
+      ['SellersModule', 'sellers'],
     ]);
   });
 
@@ -435,6 +437,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['IdentityModule', 'writer'],
       ['PricingModule', 'actions'],
       ['PricingModule', 'writer'],
+      ['SellersModule', 'actions'],
+      ['SellersModule', 'writer'],
     ]);
     expect(found.filter((entry) => entry.owner !== entry.allowed)).toEqual([]);
   });
@@ -518,6 +522,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
+      `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,
+      `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
     ]);
   });
 });
