@@ -4,9 +4,10 @@ import type { IdentifierIndexKey } from '../../domain/business-identifier';
 /**
  * What taking a claim did (sellers design 3.6; data design 3.6): `taken` (inserted), `already-mine`
  * (this seller already holds this value, for this or an earlier revision), `held-by-other` (another
- * seller of the Market holds it: AC 21).
+ * seller of the Market holds it: AC 21), `seller-holds-another` (nobody holds this value, but the
+ * seller already holds a claim on another value: one claim per seller, Hassan on 7a-decide).
  */
-export type ClaimOutcome = 'taken' | 'already-mine' | 'held-by-other';
+export type ClaimOutcome = 'taken' | 'already-mine' | 'held-by-other' | 'seller-holds-another';
 
 /**
  * The store of identifier claims: one approved or suspended seller per identifier value per

@@ -690,6 +690,10 @@ export class InMemoryClaims implements IdentifierClaimRepository, Snapshottable 
     if (held !== undefined) {
       return Promise.resolve(held.sellerId === claim.sellerId ? 'already-mine' : 'held-by-other');
     }
+    const mine = [...this.rows.entries()].some(
+      ([k, row]) => k.startsWith(`${market.marketId}|`) && row.sellerId === claim.sellerId,
+    );
+    if (mine) return Promise.resolve('seller-holds-another');
     this.rows.set(key, { sellerId: claim.sellerId, revisionId: claim.revisionId });
     return Promise.resolve('taken');
   }

@@ -3,7 +3,12 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
 /** What `identity` answered to a decision (sellers design 7.3): the decision id, or its refusal code. */
 export type AccessDecisionAnswer =
   | { readonly kind: 'decided'; readonly decisionId: Id<'AccessDecision'> }
-  | { readonly kind: 'refused'; readonly code: string };
+  | {
+      readonly kind: 'refused';
+      readonly code: string;
+      /** With `validation.failed`: the reason rule `identity` refused (HF13), never the text. */
+      readonly rule?: string;
+    };
 
 /** A decision `identity` recorded for a `{ sellerId, basisId }` pair (request R-5). */
 export interface DecisionByBasis {

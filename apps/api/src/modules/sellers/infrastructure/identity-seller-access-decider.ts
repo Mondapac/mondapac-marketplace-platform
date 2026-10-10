@@ -47,8 +47,9 @@ export class IdentitySellerAccessDecider implements SellerAccessDecider {
   ): Promise<AccessDecisionAnswer> {
     return this.bounded(async () => {
       const result = await this.identity.rejectSellerAccess(context, sellerId, reason, basisId);
-      return result.ok
-        ? { kind: 'decided', decisionId: result.value.decisionId }
+      if (result.ok) return { kind: 'decided', decisionId: result.value.decisionId };
+      return 'rule' in result.error
+        ? { kind: 'refused', code: result.error.code, rule: result.error.rule }
         : { kind: 'refused', code: result.error.code };
     });
   }

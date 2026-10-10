@@ -51,7 +51,8 @@ const CONFLICTS =
  * header. Who may decide is the use case's gate (`identity.seller-access.approve`, checked again
  * by `identity`). The seller id of the path is read with the request's Market, so a seller of
  * another Market is `file.not-found`. Bodies are JSON only and closed. The reason of a rejection
- * is never logged; a log line holds the outcome code, the Market and the correlation id only.
+ * is never logged; a log line holds the outcome code, the seller and revision ids, the Market and
+ * the correlation id only.
  */
 @ApiTags('sellers')
 @RoutePopulation('admin')

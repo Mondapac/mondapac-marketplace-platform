@@ -409,5 +409,61 @@ describe('the reviewer decision over HTTP (integration, slice 7a-decide)', () =>
       expect(wrong.body).toEqual({ statusCode: 409, code: 'review.not-current-revision' });
       expect(decider.calls).toEqual([]);
     });
+
+    it('answers a seller of the other Market as unknown, a non-JSON body 415, and passes identity on', async () => {
+      await boot();
+      await seeded(code);
+      const other = TEST_MARKETS.find((m) => m !== code)!;
+      const foreign = `01990000-0000-7000-8000-${n12(0xc555)}`;
+      files.add(
+        SellerFile.create({
+          sellerId: id<'Seller'>(foreign),
+          marketId: other as AccountState['marketId'],
+          origin: 'self',
+          approvalRequiredAtRegistration: true,
+          now: START,
+        }),
+      );
+      const crossMarket = await http()
+        .post(`/sellers/admin/${foreign}/review/approve`)
+        .set({
+          'x-market-id': code,
+          ...panelHeaders(code, 'admin'),
+          ...sessionHeaders(code, ROOT, 11),
+        })
+        .send({ revisionId: REVISION });
+      expect(crossMarket.body).toEqual({ statusCode: 404, code: 'file.not-found' });
+
+      const text = await http()
+        .post(`/sellers/admin/${SELLER}/review/approve`)
+        .set({
+          'x-market-id': code,
+          ...panelHeaders(code, 'admin'),
+          ...sessionHeaders(code, ROOT, 12),
+        })
+        .set('content-type', 'text/plain')
+        .send('revisionId');
+      expect(text.status).toBe(415);
+
+      const blank = await send(
+        'post',
+        code,
+        'reject',
+        { revisionId: REVISION, reason: '  ' },
+        sessionHeaders(code, ROOT, 13),
+      );
+      expect(blank.body).toEqual({ statusCode: 400, code: 'seller-access.reason-required' });
+
+      decider.script.push('seller-access.owner-unverified');
+      const unverified = await send(
+        'post',
+        code,
+        'approve',
+        { revisionId: REVISION },
+        sessionHeaders(code, ROOT, 14),
+      );
+      expect(unverified.body).toEqual({ statusCode: 409, code: 'seller-access.owner-unverified' });
+      expect(decider.calls).toHaveLength(1);
+    });
   });
 });

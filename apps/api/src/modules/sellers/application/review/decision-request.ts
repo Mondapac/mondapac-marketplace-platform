@@ -87,7 +87,9 @@ function parsed(
   kind: 'approve' | 'reject',
 ): Result<
   { sellerId: Id<'Seller'>; revisionId: Id<'BusinessFileRevision'>; reason: string },
-  FileNotFound | Extract<ReviewDecisionFailure, { code: 'validation.failed' }>
+  | FileNotFound
+  | Extract<ReviewDecisionFailure, { code: 'validation.failed' }>
+  | { readonly code: 'seller-access.reason-required' }
 > {
   const seller = typeof input.sellerId === 'string' ? parseId<'Seller'>(input.sellerId) : null;
   if (seller === null || !seller.ok) return err({ code: 'file.not-found' });
@@ -98,6 +100,7 @@ function parsed(
   let reason = '';
   if (kind === 'reject') {
     if (typeof input.reason !== 'string') fields.push({ path: 'reason', code: 'type' });
+    else if (input.reason.trim() === '') return err({ code: 'seller-access.reason-required' });
     else if ([...input.reason].length > MAX_REASON_LENGTH) {
       fields.push({ path: 'reason', code: 'length' });
     } else reason = input.reason;
@@ -178,9 +181,9 @@ export async function decideOnRevision(
   }
   if (answer === null) return ok({ decision: 'in-progress', revisionId });
 
-  try {
-    if (answer.kind === 'decided') {
-      const outcome = kind === 'approve' ? 'approved' : 'rejected';
+  if (answer.kind === 'decided') {
+    const outcome = kind === 'approve' ? 'approved' : 'rejected';
+    try {
       const settled = await deps.unitOfWork.run(market, () =>
         settleDecision(deps, context, sellerId, revisionId, {
           outcome,
@@ -189,7 +192,21 @@ export async function decideOnRevision(
       );
       // A lost race means another path settled (or is settling) the same decision.
       return ok({ decision: settled.ok ? outcome : 'in-progress', revisionId });
+    } catch (error) {
+      // identity has decided: the event handler or the job records it, so the answer is
+      // in-progress, never a failure the reviewer would retry (Sajad).
+      logger.error({
+        msg: 'sellers.review-decision.settle-deferred',
+        error: error instanceof Error ? error.name : 'unknown',
+        sellerId,
+        revisionId,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return ok({ decision: 'in-progress', revisionId });
     }
+  }
+  try {
     const released = await deps.unitOfWork.run(market, () =>
       releaseDecision(deps, context, sellerId, revisionId, attemptId),
     );
@@ -205,7 +222,7 @@ export async function decideOnRevision(
   } catch (error) {
     return unavailable(context, 'settle-failed', error);
   }
-  return err(refusalOf(answer.code));
+  return err(refusalOf(answer.code, answer.rule));
 }
 
 /** Unit 1 of 7.3: lock the file, check under the lock, take the claim, set the intent. */
@@ -258,18 +275,22 @@ async function beginDecision(
 
   if (index !== null) {
     const claim = await deps.claims.take(market, { sellerId, revisionId, index, now });
-    if (claim === 'held-by-other') return err({ code: 'review.identifier-claimed' });
+    // Another seller holds the value (AC 21), or this seller still holds a claim on another value:
+    // either way a person looks first.
+    if (claim === 'held-by-other' || claim === 'seller-holds-another') {
+      return err({ code: 'review.identifier-claimed' });
+    }
   }
   return ok(undefined);
 }
 
-function refusalOf(code: string): ReviewDecisionFailure {
+function refusalOf(code: string, rule: string | undefined): ReviewDecisionFailure {
   if ((IDENTITY_REFUSALS as readonly string[]).includes(code)) {
     return { code: code as IdentityRefusal };
   }
   if (code === 'seller.unknown') return { code: 'file.not-found' };
   if (code === 'validation.failed') {
-    return { code: 'validation.failed', fields: [{ path: 'reason', code: 'rejected' }] };
+    return { code: 'validation.failed', fields: [{ path: 'reason', code: rule ?? 'rejected' }] };
   }
   return { code: 'access.unavailable' };
 }

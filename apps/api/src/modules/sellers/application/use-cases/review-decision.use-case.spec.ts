@@ -37,6 +37,12 @@ import { SellerFile } from '../../domain/seller-file';
 import { parseStoreName } from '../../domain/store-name';
 import type { ShopSlug } from '../../domain/shop-slug';
 import type { RegisterLookupSettings } from '../ports/register-lookup-policy';
+import {
+  CONNECTION_WAIT_MS,
+  DEFAULT_UNIT_TIMEOUT_MS,
+  UNIT_ATTEMPTS,
+} from '../../../../platform/unit-of-work/unit-of-work';
+import { DECISION_CALL_DEADLINE_MS, RECONCILE_AFTER } from '../../domain/decision-intent';
 import type { ReviewDecisionDependencies } from '../review/decision-request';
 import { CloseDecision } from './close-decision.use-case';
 import { ReconcileDecisions } from './reconcile-decisions.use-case';
@@ -559,4 +565,106 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
       error: { code: 'validation.failed', fields: [{ path: 'observedOutcome', code: 'enum' }] },
     });
   });
+
+  describe('identity refusals and failures after identity decided (Sajad)', () => {
+    beforeEach(() => activeCheck(sellerId));
+
+    it.each([
+      ['seller-access.reason-required', undefined, { code: 'seller-access.reason-required' }],
+      [
+        'validation.failed',
+        'characters',
+        { code: 'validation.failed', fields: [{ path: 'reason', code: 'characters' }] },
+      ],
+      ['seller.unknown', undefined, { code: 'file.not-found' }],
+      ['something.new', undefined, { code: 'access.unavailable' }],
+    ] as const)('maps %s and releases the intent', async (code, rule, expected) => {
+      decider.reject = (_context, seller, reason, basisId) => {
+        decider.calls.push({ kind: 'reject', sellerId: seller, basisId, reason });
+        return Promise.resolve(
+          rule === undefined ? { kind: 'refused', code } : { kind: 'refused', code, rule },
+        );
+      };
+
+      await expect(
+        reject().execute(admin(), { sellerId, revisionId, reason: REASON }),
+      ).resolves.toEqual({ ok: false, error: expected });
+      expect(stateOf(sellerId).decisionIntent).toBeNull();
+    });
+
+    it('refuses a blank reason before it locks anything', async () => {
+      await expect(
+        reject().execute(admin(), { sellerId, revisionId, reason: '   ' }),
+      ).resolves.toEqual({ ok: false, error: { code: 'seller-access.reason-required' } });
+      expect(decider.calls).toEqual([]);
+      expect(stateOf(sellerId).version).toBe(1);
+    });
+
+    it('answers in-progress when the settlement fails after identity decided', async () => {
+      const save = revisions.saveDecision.bind(revisions);
+      revisions.saveDecision = () => Promise.reject(new Error('connection lost'));
+
+      await expect(approve().execute(admin(), { sellerId, revisionId })).resolves.toEqual({
+        ok: true,
+        value: { decision: 'in-progress', revisionId },
+      });
+      expect(stateOf(sellerId).decisionIntent).not.toBeNull();
+
+      revisions.saveDecision = save;
+      clock.set(clock.now().add({ minutes: 6 }));
+      await expect(reconcile().execute(system(), {})).resolves.toMatchObject({
+        ok: true,
+        value: { settled: 1 },
+      });
+      expect(await statusOf(sellerId, revisionId)).toBe('approved');
+    });
+  });
+
+  it('flags both sellers when a late approval meets a claim taken meanwhile (AC 21, design 7.3)', async () => {
+    // A's approval times out; identity's decision is not visible to the job, which releases A.
+    activeCheck(sellerId);
+    decider.script.push('throw');
+    await approve().execute(admin(), { sellerId, revisionId });
+    const late = decider.recorded.splice(0)[0]!;
+    clock.set(clock.now().add({ minutes: 6 }));
+    await expect(reconcile().execute(system(), {})).resolves.toMatchObject({
+      value: { released: 1 },
+    });
+
+    // B takes the same business number.
+    const b = await submittedSeller();
+    activeCheck(b.sellerId);
+    await expect(approve().execute(admin(), b)).resolves.toMatchObject({
+      value: { decision: 'approved' },
+    });
+
+    // A's late event arrives: recorded (identity approved it), both flagged for an admin.
+    await expect(
+      closeDecision().execute(system(), {
+        delivery: delivery(),
+        outcome: 'approved',
+        sellerId,
+        decisionId: late.decisionId,
+        basisId: revisionId,
+      }),
+    ).resolves.toEqual({ ok: true, value: { code: 'close-decision.settled' } });
+    expect(await statusOf(sellerId, revisionId)).toBe('approved');
+    expect([...flags.open].sort()).toEqual(
+      [
+        `${market.marketId}|${sellerId}|identifier-claim-conflict`,
+        `${market.marketId}|${b.sellerId}|identifier-claim-conflict`,
+      ].sort(),
+    );
+    expect(await claims.holderOf(market, index)).toBe(b.sellerId);
+  });
+});
+
+// Hassan M3: identity's decision unit (its default timeout and connection wait, over every attempt)
+// ends before the request's deadline, and the deadline well before the job looks at an intent, so
+// a late commit in identity can never follow a release by the job.
+it("keeps identity's unit inside the call deadline, and the deadline inside the job's wait", () => {
+  expect((DEFAULT_UNIT_TIMEOUT_MS + CONNECTION_WAIT_MS) * UNIT_ATTEMPTS).toBeLessThan(
+    DECISION_CALL_DEADLINE_MS,
+  );
+  expect(DECISION_CALL_DEADLINE_MS).toBeLessThan(RECONCILE_AFTER.total('milliseconds'));
 });

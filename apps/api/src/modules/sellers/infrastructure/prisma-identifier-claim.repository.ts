@@ -48,7 +48,7 @@ export class PrismaIdentifierClaimRepository implements IdentifierClaimRepositor
     if (holder === claim.sellerId) return 'already-mine';
     if (holder !== null) return 'held-by-other';
     // Nobody holds the value, yet nothing was inserted: the seller holds a claim on another value.
-    throw new Error('sellers.identifier_claims: the seller already holds a claim on another value');
+    return 'seller-holds-another';
   }
 
   async release(

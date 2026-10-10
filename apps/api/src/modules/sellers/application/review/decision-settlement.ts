@@ -103,7 +103,7 @@ export async function settleDecision(
       index: revision.identifierIndex,
       now,
     });
-    if (claim === 'held-by-other') {
+    if (claim === 'held-by-other' || claim === 'seller-holds-another') {
       const holder = await claims.holderOf(market, revision.identifierIndex);
       for (const flaggedSeller of [sellerId, ...(holder === null ? [] : [holder])]) {
         await flags.raise(market, {

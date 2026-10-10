@@ -13,6 +13,12 @@ import { isFresh, type RegisterCheck } from './register-check';
  */
 export const MANUAL_REGISTER_CHECK = 'manual-register-check';
 
+/**
+ * How long a manual register check counts in a Market without a register lookup (with one, the
+ * Market's maximum result age applies to the reading by hand as to a lookup result).
+ */
+export const MANUAL_CHECK_MAX_AGE_DAYS = 30;
+
 /** What the reviewer read in the register by hand (data design 3.3). */
 export const OBSERVED_REGISTER_OUTCOMES = ['active', 'not-found', 'cancelled'] as const;
 export type ObservedRegisterOutcome = (typeof OBSERVED_REGISTER_OUTCOMES)[number];
@@ -52,7 +58,8 @@ export interface RegisterGuardInput {
  *
  * - a revision without an identifier (the Market asks for none) has nothing to check;
  * - a definite negative of the stored result refuses, whatever was recorded by hand (sticky, AC 31);
- * - a manual check that read `active` lets it through; one that read a negative refuses;
+ * - a manual check that read `active` lets it through while it is younger than the maximum age;
+ *   one that read a negative refuses;
  * - with no manual check, only an `active` result passes, still within the maximum age now, and
  *   only when it was judged against revision N's content: the very result the submission relied
  *   on (same instant as the snapshot), or one obtained after the submission (a reviewer's re-check;
@@ -71,10 +78,16 @@ export function registerGuard(input: RegisterGuardInput): Result<void, RegisterG
   ) {
     return err({ code: 'review.register-negative' });
   }
-  if (manual !== null) {
-    return manual.observed === 'active' ? ok(undefined) : err({ code: 'review.register-negative' });
-  }
   const maxAge = input.lookupMaxResultAgeDays;
+  if (manual !== null) {
+    if (manual.observed !== 'active') return err({ code: 'review.register-negative' });
+    // A reading by hand ages like a lookup result (Hassan on 7a-decide): past the Market's maximum
+    // result age, or MANUAL_CHECK_MAX_AGE_DAYS where the Market has no lookup, it is read again.
+    const limit = maxAge ?? MANUAL_CHECK_MAX_AGE_DAYS;
+    return Temporal.Instant.compare(manual.recordedAt.add({ hours: 24 * limit }), input.now) > 0
+      ? ok(undefined)
+      : err({ code: 'review.manual-register-check-required' });
+  }
   if (
     maxAge !== null &&
     check !== null &&

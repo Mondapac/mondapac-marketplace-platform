@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -28,6 +28,11 @@ import { ReconcileDecisions } from '../../src/modules/sellers/application/use-ca
 import { ReviewApprove } from '../../src/modules/sellers/application/use-cases/review-approve.use-case';
 import { ReviewRecordManualCheck } from '../../src/modules/sellers/application/use-cases/review-record-manual-check.use-case';
 import { ReviewReject } from '../../src/modules/sellers/application/use-cases/review-reject.use-case';
+import {
+  ADMIN_FLAG_REPOSITORY,
+  type AdminFlagRepository,
+} from '../../src/modules/sellers/application/ports/admin-flag.repository';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import {
   APPROVED_SELLER_ZONES,
   type ApprovedSellerZonesReader,
@@ -741,8 +746,8 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
       );
       reviewer = id;
     });
-    const submitted = async () => {
-      const ready = await readySeller();
+    const submitted = async (identifier?: string) => {
+      const ready = await readySeller(undefined, identifier);
       expect((await submit(ready.context)).ok).toBe(true);
       const [revision] = await revisions(ready.sellerId);
       return { ...ready, revisionId: revision!.id as string };
@@ -867,6 +872,58 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
       expect(await fileRow(sellerId)).toMatchObject({ decision_intent: null });
       expect(await revisions(sellerId)).toMatchObject([{ status: 'pending' }]);
       expect((await withdraw(context)).ok).toBe(true);
+    });
+
+    it('releases the claim when identity refuses the approval (owner not verified)', async () => {
+      // Its own number: an earlier test's approval holds the shared fixture identifier.
+      const { sellerId, revisionId } = await submitted(
+        code === 'AU'
+          ? validIdentifiers(abnScheme, 11, 1, ['8'], 4)[0]!
+          : validIdentifiers(zzCorpNoScheme, 9, 1, ['8'], 4)[0]!,
+      );
+      await manualActive(sellerId, revisionId);
+      await owner.query(
+        `UPDATE identity.accounts SET email_verified_at = NULL
+          WHERE market_id = $1 AND id IN (SELECT account_id FROM identity.seller_memberships
+                                           WHERE market_id = $1 AND seller_id = $2)`,
+        [code, sellerId],
+      );
+
+      expect(await app.get(ReviewApprove).execute(admin(), { sellerId, revisionId })).toEqual({
+        ok: false,
+        error: { code: 'seller-access.owner-unverified' },
+      });
+      const { rows } = await sql.query(
+        'SELECT 1 FROM sellers.identifier_claims WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(rows).toEqual([]);
+      expect(await fileRow(sellerId)).toMatchObject({ decision_intent: null });
+      expect(await revisions(sellerId)).toMatchObject([{ status: 'pending' }]);
+    });
+
+    it('keeps one open conflict flag per seller (the partial unique key)', async () => {
+      const { sellerId } = await submitted();
+      const flags = app.get<AdminFlagRepository>(ADMIN_FLAG_REPOSITORY);
+      const raise = () =>
+        app.get<UnitOfWork>(UNIT_OF_WORK).run(market, async () =>
+          ok(
+            await flags.raise(market, {
+              id: `01990000-0000-7000-8000-${randomUUID().slice(-12)}` as Id,
+              sellerId: sellerId as Id<'Seller'>,
+              code: 'identifier-claim-conflict',
+              now: clock.now(),
+            }),
+          ),
+        );
+
+      expect(await raise()).toEqual({ ok: true, value: 'raised' });
+      expect(await raise()).toEqual({ ok: true, value: 'already-open' });
+      const { rows } = await sql.query(
+        'SELECT code FROM sellers.admin_flags WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(rows).toEqual([{ code: 'identifier-claim-conflict' }]);
     });
 
     it('holds the CHECKs of the new tables', async () => {

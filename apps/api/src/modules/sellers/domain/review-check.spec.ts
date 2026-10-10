@@ -2,7 +2,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import type { RegisterSnapshot } from './business-file-revision';
 import { registerCheckAfter, type RegisterCheck } from './register-check';
-import { registerGuard, type ManualRegisterCheck } from './review-check';
+import { MANUAL_CHECK_MAX_AGE_DAYS, registerGuard, type ManualRegisterCheck } from './review-check';
 
 // The register guard of an approval (sellers design 3.4; AC 31, 32; slice 7a-decide).
 
@@ -15,25 +15,32 @@ const check = (
   outcome: 'active' | 'not-found' | 'unavailable',
   at: Temporal.Instant,
 ): RegisterCheck => registerCheckAfter(null, outcome, [], at, REVIEWER, 1);
-const manual = (observed: ManualRegisterCheck['observed']): ManualRegisterCheck => ({
+const manual = (
+  observed: ManualRegisterCheck['observed'],
+  recordedAt = NOW,
+): ManualRegisterCheck => ({
   revisionId: 'r' as Id<'BusinessFileRevision'>,
   observed,
   recordedByAccountId: 'a' as Id<'Account'>,
-  recordedAt: NOW,
+  recordedAt,
 });
-const guard = (input: Partial<Parameters<typeof registerGuard>[0]>) =>
-  registerGuard({
-    hasIdentifier: true,
-    lookupMaxResultAgeDays: 30,
-    snapshot: NONE,
-    submittedAt: SUBMITTED,
-    check: null,
-    manual: null,
-    now: NOW,
-    ...input,
-  });
+// The two Market fixtures differ in their maximum result age (AU 30 days, ZZ 3).
+describe.each([
+  ['AU', 30],
+  ['ZZ', 3],
+] as const)('registerGuard in %s', (_code, maxAge) => {
+  const guard = (input: Partial<Parameters<typeof registerGuard>[0]>) =>
+    registerGuard({
+      hasIdentifier: true,
+      lookupMaxResultAgeDays: maxAge,
+      snapshot: NONE,
+      submittedAt: SUBMITTED,
+      check: null,
+      manual: null,
+      now: NOW,
+      ...input,
+    });
 
-describe('registerGuard', () => {
   it('passes a revision without an identifier', () => {
     expect(guard({ hasIdentifier: false }).ok).toBe(true);
   });
@@ -67,5 +74,15 @@ describe('registerGuard', () => {
     const negative = { ok: false, error: { code: 'review.register-negative' } };
     expect(guard({ manual: manual('cancelled') })).toEqual(negative);
     expect(guard({ check: check('not-found', NOW), manual: manual('active') })).toEqual(negative);
+  });
+
+  it('lets a manual active reading age out like a lookup result', () => {
+    const required = { ok: false, error: { code: 'review.manual-register-check-required' } };
+    const old = NOW.subtract({ hours: 24 * maxAge + 1 });
+    expect(guard({ manual: manual('active', old) })).toEqual(required);
+    const withoutLookup = NOW.subtract({ hours: 24 * MANUAL_CHECK_MAX_AGE_DAYS + 1 });
+    expect(
+      guard({ lookupMaxResultAgeDays: null, manual: manual('active', withoutLookup) }),
+    ).toEqual(required);
   });
 });

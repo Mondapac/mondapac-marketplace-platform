@@ -58,7 +58,8 @@ CREATE TABLE "sellers"."admin_flags" (
 CREATE UNIQUE INDEX "identifier_claims_market_id_seller_id_key" ON "sellers"."identifier_claims"("market_id", "seller_id");
 
 -- AddForeignKey
-ALTER TABLE "sellers"."seller_files" ADD CONSTRAINT "seller_files_market_id_seller_id_decision_revision_id_fkey" FOREIGN KEY ("market_id", "seller_id", "decision_revision_id") REFERENCES "sellers"."business_file_revisions"("market_id", "seller_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "sellers"."seller_files" ADD CONSTRAINT "seller_files_market_id_seller_id_decision_revision_id_fkey" FOREIGN KEY ("market_id", "seller_id", "decision_revision_id") REFERENCES "sellers"."business_file_revisions"("market_id", "seller_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT NOT VALID;
+ALTER TABLE "sellers"."seller_files" VALIDATE CONSTRAINT "seller_files_market_id_seller_id_decision_revision_id_fkey";
 
 -- AddForeignKey
 ALTER TABLE "sellers"."review_checks" ADD CONSTRAINT "review_checks_market_id_seller_id_revision_id_fkey" FOREIGN KEY ("market_id", "seller_id", "revision_id") REFERENCES "sellers"."business_file_revisions"("market_id", "seller_id", "id") ON DELETE CASCADE ON UPDATE RESTRICT;
