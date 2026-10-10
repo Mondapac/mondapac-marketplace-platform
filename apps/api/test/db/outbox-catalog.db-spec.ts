@@ -90,6 +90,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON pricing.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'pricing.regular_price_records_effective_period_excl':
     "CREATE INDEX regular_price_records_effective_period_excl ON pricing.regular_price_records USING gist (market_id, series_id, tstzrange(effective_from, effective_to, '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
+  'pricing.regular_price_records_market_id_submitted_at_id_pending_idx':
+    "CREATE INDEX regular_price_records_market_id_submitted_at_id_pending_idx ON pricing.regular_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.regular_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX regular_price_records_market_id_series_id_pending_key ON pricing.regular_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
