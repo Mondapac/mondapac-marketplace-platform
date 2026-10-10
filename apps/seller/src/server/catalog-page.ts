@@ -16,12 +16,15 @@ export type CatalogPage<T> =
  * the account setup, and a session without the view permission gets the no-access state. The API
  * enforces the same rules; the checks here only spare it a refused call.
  */
-export async function loadCatalogPage<T>(path: string): Promise<CatalogPage<T>> {
+export async function loadCatalogPage<T>(
+  path: string,
+  permission: string = VIEW_PERMISSION,
+): Promise<CatalogPage<T>> {
   const gate = await requireSession();
   if (gate.kind === 'unavailable') return { kind: 'unavailable' };
   const { session } = gate;
   if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
-  if (!session.permissionKeys.includes(VIEW_PERMISSION)) return { kind: 'no-access', session };
+  if (!session.permissionKeys.includes(permission)) return { kind: 'no-access', session };
   const result = await serverGet<T>(path);
   if (result.kind === 'signed-out') redirect('/session-ended');
   if (result.kind === 'ok') return { kind: 'ok', session, body: result.body };

@@ -42,12 +42,13 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { OwnProductCreate } from '../application/use-cases/own-product-create.use-case';
+import { OwnProductOptions as OwnProductOptionsUseCase } from '../application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSubmit } from '../application/use-cases/own-product-submit.use-case';
 import { OwnProductRead } from '../application/use-cases/own-product-read.use-case';
 import { OwnProductsList } from '../application/use-cases/own-products-list.use-case';
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
-import { OwnProductList, OwnProductView } from './own-reads.dto';
+import { OwnProductList, OwnProductOptions, OwnProductView } from './own-reads.dto';
 import {
   ApiErrorBody,
   PlatformProductDraftSaved,
@@ -111,6 +112,7 @@ export class OwnProductController {
     private readonly submitProduct: OwnProductSubmit,
     private readonly listProducts: OwnProductsList,
     private readonly readProduct: OwnProductRead,
+    private readonly productOptions: OwnProductOptionsUseCase,
   ) {}
 
   @Get()
@@ -144,6 +146,32 @@ export class OwnProductController {
       ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList)
       : refusal(result.error, response, context);
     return this.settle('catalog.own-products-list', context, outcome);
+  }
+
+  // Declared before `:productId`, so "options" is not read as a product id.
+  @Get('options')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Options for the product form and list filters',
+    description:
+      "Needs catalog.own-product.edit. The Market's product types, Offer conditions and locales, " +
+      'whether sellers may create products here, and the statuses shown on products and Offers. ' +
+      "The type list is the Market's and is not yet narrowed by what the seller may sell.",
+  })
+  @ApiOkResponse({ type: OwnProductOptions })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async options(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OwnProductOptions> {
+    const result = await this.productOptions.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OwnProductOptions)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.own-product-options', context, outcome);
   }
 
   @Get(':productId')

@@ -8,7 +8,8 @@
     "home": "Home",
     "setup": "Seller account",
     "products": "Products",
-    "offers": "Offers"
+    "offers": "Offers",
+    "stock": "Stock locations"
   },
   "home": {
     "title": "Home",
@@ -483,7 +484,8 @@
         "matched": "Matched",
         "retired": "Retired",
         "unknown": "Unknown"
-      }
+      },
+      "new": "New product"
     },
     "product": {
       "type": "Type",
@@ -556,6 +558,84 @@
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
       }
+    },
+    "create": {
+      "title": "New product",
+      "intro": "Choose what you sell and add your first offer. You can add the product details next.",
+      "closed": "Your market does not let sellers add products yet.",
+      "back": "Back to products",
+      "type": "Product type",
+      "condition": "Condition",
+      "sku": "Your SKU",
+      "sku-help": "Your own code for this offer. It must be unique among your open offers.",
+      "choose": "Choose",
+      "description": "Description ({locale})",
+      "optional": "optional",
+      "submit": "Create product",
+      "creating": "Creating",
+      "validation": {
+        "summary": "Check the fields marked below.",
+        "invalid": "This value is not valid.",
+        "required": "This field is required.",
+        "length": "This value is too short or too long.",
+        "characters": "This value has characters that are not allowed."
+      },
+      "error": {
+        "type-not-allowed": "You can't sell this product type yet.",
+        "type-not-offered": "This product type isn't offered in your market.",
+        "creation-off": "Your market does not let sellers add products yet.",
+        "sku-taken": "You already have an open offer with this SKU.",
+        "not-eligible": "Your seller account can't add products right now.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "unavailable": "Products are unavailable right now. Try again later."
+      }
+    }
+  },
+  "stock": {
+    "title": "Stock locations",
+    "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
+    "optional": "optional",
+    "default": "Default",
+    "no-address": "No address",
+    "zone-own": "Your own time zone",
+    "add": "Add a location",
+    "full": "You have reached the limit of {max} locations.",
+    "edit": "Edit",
+    "up": "Move up",
+    "down": "Move down",
+    "move-up": "Move {name} up",
+    "move-down": "Move {name} down",
+    "saved": "Saved.",
+    "reload": "Reload the page",
+    "form": {
+      "add-title": "Add a location",
+      "edit-title": "Edit location",
+      "name": "Name",
+      "address": "Address",
+      "address-help": "Optional. This is personal data, so only you and the people you allow can see it.",
+      "choose-region": "Choose",
+      "zone": "Time zone",
+      "zone-help": "Cut-off times for this location use this zone.",
+      "zone-own": "Use my own time zone",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "validation": {
+      "summary": "Check the fields marked below.",
+      "type": "This value is not valid.",
+      "length": "This value is too short or too long.",
+      "characters": "This value has characters that are not allowed.",
+      "fields": "Check the address fields.",
+      "unknown": "This time zone is not known.",
+      "invalid": "This value is not valid."
+    },
+    "error": {
+      "limit": "You have reached the limit of {max} locations.",
+      "stale": "Another change was saved first. Reload the page to see it, then try again.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "unavailable": "Stock locations are unavailable right now. Try again later.",
+      "not-ready": "Your stock is not ready yet. Try again in a moment.",
+      "denied": "You do not have access to change stock locations."
     }
   }
 }

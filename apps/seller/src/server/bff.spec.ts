@@ -350,3 +350,37 @@ describe('signed client address (ADR-0037)', () => {
     expect(sent.get('x-client-address')).toMatch(/^v1;k=panel;t=\d+;a=203\.0\.113\.7;s=/);
   });
 });
+
+describe('relay allowlist for stock locations', () => {
+  const put = (path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method: 'PUT',
+      headers: sameOrigin,
+      body: '{}',
+    });
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+
+  it('relays a location edit by UUID and the order, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    expect((await relay(config, put(`inventory/seller/sources/${ID}`), [], upstream)).status).toBe(
+      404,
+    );
+    const ok = await relay(
+      config,
+      put(`inventory/seller/sources/${ID}`),
+      ['inventory', 'seller', 'sources', ID],
+      upstream,
+    );
+    expect(ok.status).toBe(200);
+    expect(
+      (await relay(config, put('x'), ['inventory', 'seller', 'sources-order'], upstream)).status,
+    ).toBe(200);
+    for (const path of [
+      ['inventory', 'seller', 'sources', 'not-a-uuid'],
+      ['inventory', 'seller', 'sources', ID, 'stock'],
+      ['inventory', 'seller', 'offers', ID],
+    ]) {
+      expect((await relay(config, put('x'), path, upstream)).status).toBe(404);
+    }
+  });
+});
