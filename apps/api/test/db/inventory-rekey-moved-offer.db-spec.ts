@@ -685,4 +685,67 @@ describe.each(TEST_MARKETS)('inventory.rekey-moved-offer in market %s (database)
       expect(movements.map((r) => r.delta).sort()).toEqual([-40, 40]);
     }
   });
+  it('retries when a hold commits between its first statement and its lock, and releases that hold too (H1)', async () => {
+    const seller = await newSeller();
+    const m = await stockedOffer(seller, 1, 50);
+    move(seller, m);
+    const [movedItem] = await itemsOf(code, m.offerId);
+    // The unit has read (its snapshot is fixed) when the hold commits; a row lock alone would not
+    // tell it. Only the hold_seq bump of the reservation repository's lock does.
+    let lockCalls = 0;
+    let reachedLock!: () => void;
+    const reached = new Promise<void>((resolve) => (reachedLock = resolve));
+    let resume!: () => void;
+    const resumed = new Promise<void>((resolve) => (resume = resolve));
+    const wrapped: StockRepository = {
+      lockSellUnit: (...args) => stock.lockSellUnit(...args),
+      itemIdsOfOfferVariants: (...args) => stock.itemIdsOfOfferVariants(...args),
+      activeItemIds: (...args) => stock.activeItemIds(...args),
+      isSellUnitRetired: (...args) => stock.isSellUnitRetired(...args),
+      heldQuantities: (...args) => stock.heldQuantities(...args),
+      insertItem: (...args) => stock.insertItem(...args),
+      setOnHand: (...args) => stock.setOnHand(...args),
+      appendMovement: (...args) => stock.appendMovement(...args),
+      lockItems: async (...args) => {
+        lockCalls += 1;
+        if (lockCalls === 1) {
+          reachedLock();
+          await resumed;
+        }
+        return stock.lockItems(...args);
+      },
+      tombstonesOf: (...args) => stock.tombstonesOf(...args),
+      recordTombstone: (...args) => stock.recordTombstone(...args),
+      retireItems: (...args) => stock.retireItems(...args),
+    };
+    const racing = build(wrapped);
+
+    const moved = racing.rekey.execute(system(), input(m));
+    await reached;
+    // What a committing reserve does: the line, then the lock that bumps hold_seq.
+    const reservationId = await hold([
+      {
+        offerId: m.offerId,
+        variantId: m.from[0]!,
+        stockItemId: movedItem!.id as string,
+        quantity: 4,
+      },
+    ]);
+    const marketContext = marketOf(code);
+    const bumped = await db.unitOfWork.run(marketContext, async () => {
+      await new PrismaReservationRepository(db.service).lockItems(marketContext, [
+        movedItem!.id as Id<'StockItem'>,
+      ]);
+      return ok(true);
+    });
+    expect(bumped.ok).toBe(true);
+    resume();
+
+    expect((await moved).ok).toBe(true);
+    expect(lockCalls).toBeGreaterThanOrEqual(2);
+    expect(await reservationState(reservationId)).toMatchObject({
+      status: 'released',
+      release_cause: 'offer-moved',
+    });
+  });
 });

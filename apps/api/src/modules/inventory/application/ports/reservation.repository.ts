@@ -30,6 +30,13 @@ export interface ReservationRepository {
   ): Promise<readonly StockItemRow[]>;
 
   /**
+   * Raises `hold_seq` (not `version`) on locked items whose holds this unit changes. `lockItems`
+   * already does it for its own set; the rekey, which locks through the stock repository, calls
+   * it itself. A SERIALIZABLE stock unit that locks such a row later gets 40001 and retries.
+   */
+  markHoldsChanged(market: MarketContext, ids: readonly Id<'StockItem'>[]): Promise<void>;
+
+  /**
    * Units held on each item at `now`: ACTIVE lines not yet expired plus COMMITTED lines, 0 for an
    * item with none (data design 4.3). A new statement, so it sees every commit before the lock.
    */

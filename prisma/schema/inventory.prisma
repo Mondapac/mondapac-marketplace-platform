@@ -127,6 +127,9 @@ model InventoryStockItem {
   /// Set once, never cleared (inventory design 3.3).
   retiredAt DateTime?                @map("retired_at") @db.Timestamptz(6)
   version   Int
+  /// Raised by every unit that changes holds on the item (reserve, release, expiry, rekey), never
+  /// `version` (C5). A SERIALIZABLE stock unit that locks the row after such a commit gets 40001.
+  holdSeq   Int                      @default(0) @map("hold_seq")
   createdAt DateTime                 @map("created_at") @db.Timestamptz(6)
   source    InventorySource          @relation(fields: [marketId, sourceId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
   movements InventoryStockMovement[]

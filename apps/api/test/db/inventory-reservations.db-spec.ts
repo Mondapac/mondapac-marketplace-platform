@@ -6,6 +6,7 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import type { StockRepository } from '../../src/modules/inventory/application/ports/stock.repository';
 import type { ReserveRequest } from '../../src/modules/inventory/contracts/ordering-port';
 import { ExpireReservations } from '../../src/modules/inventory/application/use-cases/expire-reservations.use-case';
 import { ReleaseOwnReservation } from '../../src/modules/inventory/application/use-cases/release-own-reservation.use-case';
@@ -457,6 +458,17 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
   });
 
   describe('the per-customer cap (design 5.1)', () => {
+    it('refuses D + 1 on a high-stock unit: the Market cap D binds (design 5.1)', async () => {
+      const s = await seller([[high + 100, null]]);
+      const d = config.defaultCustomerCap;
+
+      const over = await reserve.execute(customer(), cart(s.units, d + 1));
+      const exact = await reserve.execute(customer(), cart(s.units, d));
+
+      expect(over).toMatchObject({ error: { details: { lines: [{ reason: 'over-limit' }] } } });
+      expect(exact.ok).toBe(true);
+    });
+
     it('limits a low sell unit to min(D, ceil(onlyLeft / 2)) and a limited Offer to its limit', async () => {
       const s = await seller([
         [threshold, null],
@@ -700,5 +712,157 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
 
     await expect(duplicate).rejects.toMatchObject({ code: '23505' });
     await expect(badCause).rejects.toMatchObject({ code: '23514' });
+  });
+  describe('hold_seq (H1: a SERIALIZABLE stock unit learns that holds changed)', () => {
+    const seqOf = async (itemId: string) =>
+      (
+        await rows(
+          `SELECT hold_seq, version FROM inventory.stock_items WHERE market_id = $1 AND id = $2`,
+          [code, itemId],
+        )
+      )[0]!;
+
+    it('is raised by reserve, both releases and expiry, and never raises version (C5)', async () => {
+      const s = await seller([[high, null]]);
+      const item = s.units[0]!.items[0]!;
+      const system = testCallContext(market, 'system');
+      expect(await seqOf(item)).toEqual({ hold_seq: 0, version: 1 });
+
+      const who = customer();
+      const first = await reserve.execute(who, cart(s.units, 1));
+      if (!first.ok) throw new Error('first');
+      const afterReserve = (await seqOf(item)).hold_seq as number;
+      expect(afterReserve).toBeGreaterThan(0);
+
+      await releaseOwn.execute(who, { reservationId: first.value.reservationId });
+      const afterOwn = (await seqOf(item)).hold_seq as number;
+      expect(afterOwn).toBeGreaterThan(afterReserve);
+
+      const second = await reserve.execute(who, cart(s.units, 1));
+      if (!second.ok) throw new Error('second');
+      const afterSecond = (await seqOf(item)).hold_seq as number;
+      await release.execute(system, {
+        reservationId: second.value.reservationId,
+        cause: 'cancelled',
+      });
+      const afterSystem = (await seqOf(item)).hold_seq as number;
+      expect(afterSystem).toBeGreaterThan(afterSecond);
+
+      const third = await reserve.execute(who, cart(s.units, 1));
+      if (!third.ok) throw new Error('third');
+      const beforeExpiry = (await seqOf(item)).hold_seq as number;
+      clock.advance(Temporal.Duration.from({ minutes }));
+      await expire.execute(system, {});
+      expect((await seqOf(item)).hold_seq as number).toBeGreaterThan(beforeExpiry);
+      expect((await seqOf(item)).version).toBe(1);
+    });
+
+    it('makes set-stock-level retry when a reserve commits after its first statement, so it never goes below the hold', async () => {
+      const s = await seller([[8, null]]);
+      const sellerContext = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId: s.sellerId,
+        }),
+      );
+      const real = new PrismaStockRepository(db.service);
+      let lockCalls = 0;
+      let reachedLock!: () => void;
+      const reached = new Promise<void>((resolve) => (reachedLock = resolve));
+      let resume!: () => void;
+      const resumed = new Promise<void>((resolve) => (resume = resolve));
+      const wrapped: StockRepository = {
+        lockSellUnit: async (...args) => {
+          lockCalls += 1;
+          if (lockCalls === 1) {
+            // The unit has read the seller's inventory: its snapshot is fixed.
+            reachedLock();
+            await resumed;
+          }
+          return real.lockSellUnit(...args);
+        },
+        isSellUnitRetired: (...args) => real.isSellUnitRetired(...args),
+        activeItemIds: (...args) => real.activeItemIds(...args),
+        lockItems: (...args) => real.lockItems(...args),
+        itemIdsOfOfferVariants: (...args) => real.itemIdsOfOfferVariants(...args),
+        tombstonesOf: (...args) => real.tombstonesOf(...args),
+        recordTombstone: (...args) => real.recordTombstone(...args),
+        retireItems: (...args) => real.retireItems(...args),
+        heldQuantities: (...args) => real.heldQuantities(...args),
+        insertItem: (...args) => real.insertItem(...args),
+        setOnHand: (...args) => real.setOnHand(...args),
+        appendMovement: (...args) => real.appendMovement(...args),
+      };
+      const racing = new SetStockLevel(createUseCaseGate(markets, admitAll), {
+        unitOfWork: db.unitOfWork,
+        inventories: new PrismaSellerInventoryRepository(db.service),
+        stock: wrapped,
+        signals: new PrismaAvailabilitySignalRepository(db.service),
+        offers: {
+          sellUnitsOf: (_c, offerIds) =>
+            Promise.resolve(
+              new Map(
+                offerIds.flatMap((id) => {
+                  const offer = catalogOffers.get(id);
+                  return offer === undefined
+                    ? []
+                    : [
+                        [
+                          id,
+                          {
+                            sellerId: offer.sellerId,
+                            deleted: false,
+                            productId: ids.next<'Product'>(),
+                            sellUnitVariantIds: new Set([offer.variantId]),
+                          },
+                        ] as const,
+                      ];
+                }),
+              ),
+            ),
+        },
+        policies: new ConfigInventoryPolicyProvider(markets),
+        outbox: new PrismaOutboxWriterFactory(
+          modelMap,
+          db.service,
+          (() => {
+            const catalogue = new EventCatalogue();
+            catalogue.register('inventory', INVENTORY_EVENTS);
+            catalogue.seal();
+            return catalogue;
+          })(),
+          ids,
+          NO_PERMISSION_KEYS,
+        ).forModule('inventory'),
+        ids,
+        clock,
+      });
+
+      const lowered = racing.execute(sellerContext, {
+        offerId: s.units[0]!.offerId,
+        variantId: s.units[0]!.variantId,
+        sourceId: s.sourceIds[0],
+        onHand: 2,
+        expectedVersion: 1,
+      });
+      await reached;
+      const reserved = await reserve.execute(customer(), cart(s.units, 3));
+      expect(reserved.ok).toBe(true);
+      resume();
+
+      expect(await lowered).toEqual({
+        ok: false,
+        error: { code: 'inventory.stock.below-held', details: { min: 3 } },
+      });
+      expect(lockCalls).toBeGreaterThanOrEqual(2);
+      const [item] = await rows(
+        `SELECT on_hand FROM inventory.stock_items WHERE market_id = $1 AND id = $2`,
+        [code, s.units[0]!.items[0]],
+      );
+      expect(item!.on_hand).toBe(8);
+    });
   });
 });

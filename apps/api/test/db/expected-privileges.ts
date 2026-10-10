@@ -234,7 +234,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'inventory.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'inventory.stock_items': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['on_hand', 'retired_at', 'version'],
+      columnUpdate: ['hold_seq', 'on_hand', 'retired_at', 'version'],
     },
     'inventory.stock_movements': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'inventory.availability_signals': {
@@ -254,8 +254,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['order_line_id', 'state', 'state_changed_at', 'stock_item_id'],
     },
     'inventory.offer_purchase_limits': {
-      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
-      columnUpdate: [],
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['max_per_customer', 'version'],
     },
     // Cart (speed mode): a cart is never deleted by the application (an expired guest cart is
     // ignored at read time; a merged one is kept so a replay is recognised); its owner columns and

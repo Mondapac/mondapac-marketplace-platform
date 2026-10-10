@@ -1,3 +1,6 @@
+-- AlterTable
+ALTER TABLE "inventory"."stock_items" ADD COLUMN "hold_seq" INTEGER NOT NULL DEFAULT 0;
+
 -- CreateTable
 CREATE TABLE "inventory"."reservations" (
     "id" UUID NOT NULL,
@@ -104,9 +107,12 @@ CREATE UNIQUE INDEX "reservations_market_id_holder_account_id_active_key" ON "in
 CREATE INDEX "reservations_market_id_expires_at_active_idx" ON "inventory"."reservations" ("market_id", "expires_at") WHERE "status" = 'active';
 
 -- Grants (database-designer): docs/design/data/inventory.md section 7. Column-level UPDATE on
--- the two reservation tables (expires_at, quantity and the sell-unit ids are immutable); no
+-- the two reservation tables (expires_at, quantity, offer_id and variant_id are immutable; stock_item_id is updatable for the
+-- rekey of a moved Offer); no
 -- DELETE on reservations until the prune job (migration 4); lines are deleted only by the
 -- cascade, which needs no grant on the child.
 GRANT SELECT, INSERT, UPDATE ("status", "release_cause", "status_changed_at", "version") ON TABLE "inventory"."reservations" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("stock_item_id", "state", "order_line_id", "state_changed_at") ON TABLE "inventory"."reservation_lines" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "inventory"."offer_purchase_limits" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("max_per_customer", "version"), DELETE ON TABLE "inventory"."offer_purchase_limits" TO "mondapac_app";
+-- hold_seq: raised by every unit that changes holds (H1); a separate column from version (C5).
+GRANT UPDATE ("hold_seq") ON TABLE "inventory"."stock_items" TO "mondapac_app";

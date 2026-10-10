@@ -1,8 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { MAX_STOCK_ITEM_IDS } from './lock-limits';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 
 /** Prisma's `where` shape below is a contract: the plan depends on it (data design 4.3). */
-const MAX_IN_LIST = 1000;
+const MAX_IN_LIST = MAX_STOCK_ITEM_IDS;
 
 /**
  * The held sum of data design 4.3 (toss-up T1, option A): per stock item, the quantity of lines

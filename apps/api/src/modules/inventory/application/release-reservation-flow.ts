@@ -74,6 +74,11 @@ async function release(
   const released = await reservations.releaseActive(market, reservationId, cause, now);
   if (released) {
     await recomputeSellUnitSignals(deps, context, market, locked, found.state.lines, now);
+  } else {
+    // Changed 0 rows: another unit moved it first. A commit is a refusal, not a success (L1).
+    const again = await reservations.findById(market, reservationId);
+    if (again?.state.status === 'committed')
+      return err({ code: 'inventory.reservation.committed' });
   }
   return ok({ reservationId });
 }

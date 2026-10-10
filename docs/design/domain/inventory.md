@@ -378,3 +378,12 @@ Reviewed 2026-10-07 by Ali (cto, approve with changes) and Hassan (security-test
 - Slice 5: `commitReservation`, `cancelCommittedLine`, `recordShipment`, `getSellableExact`; the prune job and its migration (4); `set-purchase-limit` and the Offer form (the table is read by `reserve` and written by tests only).
 
 **Deviations.** `reserve` reads the sellers' source order and thresholds inside the unit, after the lock (the seller ids are known only from the locked items); the design reads them before the unit. A replay of a still-live reservation with the same checkout and lines returns it before any lock. A reservation past its expiry whose status is still `active` is not replayed; it is superseded.
+
+**Hold sequence (review fix H1, 2026-10-10).** `stock_items.hold_seq` (integer, default 0, column-level UPDATE grant) is raised by every unit that changes holds on a locked item: `reserve` (with its supersede release), `release-own-reservation`, `release-reservation`, `expire-reservations` (all through `ReservationRepository.lockItems`, right after the lock) and step 4 of `rekey-moved-offer` (`markHoldsChanged`). It is never `version`, so a hold does not make the seller's stock form stale (C5). Reason: `set-stock-level` and the rekey run SERIALIZABLE, their first statement fixes the snapshot, and a row lock held by a READ COMMITTED reserve does not raise 40001; the bump does, so the unit retries on a fresh snapshot and sees the hold. Proven by `inventory-reservations.db-spec.ts` (set-stock-level) and `inventory-rekey-moved-offer.db-spec.ts` (rekey). `offer_purchase_limits` may update only `max_per_customer` and `version`.
+
+**Preconditions before ordering wires `reserve` (open, not built).**
+- M1, cap oracle: for an in-stock status the cap must be `min(limit ?? D, threshold + 1)`, or the answer must be over-limit; needs a decision from Hadi and Ali. Tests for threshold 0 and limit > threshold on AU and ZZ come with it.
+- M2, rate limiter and alerts: a fail-closed limiter port is required before the endpoint is exposed, with the large-share and repeated-release log alerts.
+- L3: ordering validates Offer, seller and price before it calls `reserve`; inventory trusts neither.
+- Prune job and an EXPLAIN check of the held-sum plan before the reservation tables grow (slice 5 trigger).
+- Replay versus release race: a replay that returns a still-live reservation before any lock can race a release; the caller must treat the returned reservation as possibly just released and re-check at commit.

@@ -36,6 +36,12 @@ export class InMemoryReservations implements ReservationRepository {
     );
   }
 
+  readonly marked: (readonly Id<'StockItem'>[])[] = [];
+  markHoldsChanged(_m: MarketContext, ids: readonly Id<'StockItem'>[]) {
+    this.marked.push([...ids]);
+    return Promise.resolve();
+  }
+
   heldQuantities(_m: MarketContext, ids: readonly Id<'StockItem'>[], now: Temporal.Instant) {
     const lines: HeldLine[] = [...this.stored.values()].flatMap((r) =>
       r.state.lines.map((line) => ({

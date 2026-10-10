@@ -224,6 +224,14 @@ export class RekeyMovedOffer extends UseCase<
     // Step 4: release the live holds, final like `cancelled` (a commit after it is refused). Guarded
     // on `status = 'active'`; one structured line per released reservation.
     const releasedUnits: SellUnitRef[] = [];
+    // H1: a SERIALIZABLE snapshot cannot see a reserve that committed before the lock above, and a
+    // row lock does not raise 40001; the bump makes the next serializable locker retry.
+    if (holds.length > 0) {
+      await reservations.markHoldsChanged(
+        market,
+        lockedAll.map((item) => item.id),
+      );
+    }
     for (const hold of holds) {
       if (!(await reservations.releaseActive(market, hold.state.id, 'offer-moved', now))) continue;
       releasedUnits.push(...hold.state.lines);

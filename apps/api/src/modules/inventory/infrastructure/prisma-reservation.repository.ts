@@ -12,6 +12,7 @@ import {
   type ReservationLineStatus,
   type ReservationStatus,
 } from '../domain/reservation';
+import { MAX_STOCK_ITEM_IDS } from './lock-limits';
 import { heldQuantitiesOf } from './held-sum';
 import { toStockItemRow } from './prisma-stock.repository';
 
@@ -19,7 +20,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant => T.Instant.fromEpochMilliseconds(date.getTime());
 
 /** The most ids the lock statement takes (data design 4.3); a longer list is a caller bug. */
-const MAX_LOCKED_STOCK_ITEMS = 1000;
+const MAX_LOCKED_STOCK_ITEMS = MAX_STOCK_ITEM_IDS;
 
 interface HeaderRow {
   readonly id: string;
@@ -119,7 +120,19 @@ export class PrismaReservationRepository implements ReservationRepository {
     const locked = await this.prisma.namedQuery(market, 'inventory.lock-stock-items', {
       ids: unique,
     });
+    // Under the lock: tell SERIALIZABLE stock units that holds may have changed (H1).
+    await this.markHoldsChanged(market, unique);
     return locked.map(toStockItemRow);
+  }
+
+  async markHoldsChanged(market: MarketContext, ids: readonly Id<'StockItem'>[]): Promise<void> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return;
+    // Not `version`: a hold must not make the seller's stock form stale (design C5).
+    await this.prisma.tx(market).inventoryStockItem.updateMany({
+      where: { marketId: market.marketId, id: { in: unique } },
+      data: { holdSeq: { increment: 1 } },
+    });
   }
 
   heldQuantities(
