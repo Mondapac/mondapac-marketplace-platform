@@ -1,6 +1,7 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { formatInstant, known } from './format.ts';
+import { DecisionPanel } from './decision-panel.tsx';
 import type { ReviewContent, ReviewRead, ReviewRevision } from './review-types.ts';
 
 type Translate = Awaited<ReturnType<typeof getTranslations>>;
@@ -178,7 +179,18 @@ function RegisterPanel({ t, review }: { readonly t: Translate; readonly review: 
 }
 
 /** One seller application for a reviewer, read only: access state, the revision, the register. */
-export async function ReviewView({ review }: { readonly review: ReviewRead }) {
+export async function ReviewView({
+  review,
+  decide,
+}: {
+  readonly review: ReviewRead;
+  /** What the session may do about a pending application; absent for a read-only page. */
+  readonly decide?: {
+    readonly canDecide: boolean;
+    readonly canCheck: boolean;
+    readonly csrfToken: string;
+  };
+}) {
   const t = await getTranslations();
   const access = known(review.access, ACCESS);
   return (
@@ -207,6 +219,19 @@ export async function ReviewView({ review }: { readonly review: ReviewRead }) {
         />
       )}
       <RegisterPanel t={t} review={review} />
+      {decide !== undefined &&
+      review.access === 'pending' &&
+      (decide.canDecide || decide.canCheck) ? (
+        <DecisionPanel
+          sellerId={review.sellerId}
+          revisionId={review.current.id}
+          register={review.register}
+          decisionInProgress={review.decisionInProgress}
+          canDecide={decide.canDecide}
+          canCheck={decide.canCheck}
+          csrfToken={decide.csrfToken}
+        />
+      ) : null}
       <p>
         <a className="font-medium text-link underline" href="/sellers">
           {t('sellers.review.back')}

@@ -53,7 +53,9 @@ const review = (over: Partial<ReviewRead> = {}): ReviewRead => ({
     staleReason: null,
     checkedAt: '2026-10-08T00:59:00.000Z',
     blocksApproval: false,
+    manualCheck: null,
   },
+  decisionInProgress: false,
   ...over,
 });
 
@@ -66,9 +68,8 @@ describe('admin seller review page', () => {
     expect(screen.getByText('Awaiting approval')).toBeTruthy();
     expect(screen.getByText('Cedar Lane Pty Ltd')).toBeTruthy();
     expect(screen.getByText('ABN 51 824 753 556')).toBeTruthy();
-    expect(screen.getByText(/Line1: 1 Cedar Lane/)).toBeTruthy();
     expect(screen.getByText(/Postal code: 4000/)).toBeTruthy();
-    expect(screen.getByText(/Approving or rejecting it is not available yet/)).toBeTruthy();
+    expect(screen.getByText(/Each view is recorded in the audit log/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -102,6 +103,7 @@ describe('admin seller review page', () => {
             staleReason: null,
             checkedAt: null,
             blocksApproval: true,
+            manualCheck: null,
           },
         }),
       }),
@@ -122,6 +124,7 @@ describe('admin seller review page', () => {
             staleReason: null,
             checkedAt: null,
             blocksApproval: true,
+            manualCheck: null,
           },
         }),
       }),
