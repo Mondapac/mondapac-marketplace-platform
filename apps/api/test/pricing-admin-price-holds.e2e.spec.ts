@@ -222,7 +222,7 @@ describe('admin price holds over HTTP (integration, pricing slice 4)', () => {
     http()
       .post(`/pricing/admin/price-holds${path}`)
       .set({ ...base(code), ...session })
-      .send((payload ?? {}) as object);
+      .send(payload ?? {});
 
   beforeEach(() => {
     fakes.reset();

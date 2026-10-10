@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { ok, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
