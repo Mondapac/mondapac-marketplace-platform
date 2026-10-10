@@ -505,6 +505,91 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
     });
   });
 
+  describe('two admins deciding the same record', () => {
+    /** An approval that waits, after loading the record, until `release` opens. */
+    const waiting = (loaded: ReturnType<typeof openable>, release: ReturnType<typeof openable>) => {
+      const inner = repository();
+      const racing: PriceSeriesRepository = {
+        ...inner,
+        findByKey: (m, key) => inner.findByKey(m, key),
+        findByOffer: (m, o) => inner.findByOffer(m, o),
+        findByProductVariant: (m, p, v) => inner.findByProductVariant(m, p, v),
+        listPendingHolds: (m, a, l) => inner.listPendingHolds(m, a, l),
+        findPendingHold: (m, r) => inner.findPendingHold(m, r),
+        add: (m, s) => inner.add(m, s),
+        save: (m, s) => inner.save(m, s),
+        findByRecordId: async (m, id) => {
+          const found = await inner.findByRecordId(m, id);
+          loaded.open();
+          await release.opened;
+          return found;
+        },
+      };
+      return racing;
+    };
+
+    it.each(['approve', 'reject'] as const)(
+      'lets exactly one win when an approval overlaps another admin’s %s: the loser is conflict.stale',
+      async (other) => {
+        const h = await held();
+        const [series] = await seriesOf(h.offerId);
+        const loaded = openable();
+        const release = openable();
+        const slow = approve(waiting(loaded, release)).execute(admin(), { recordId: h.recordId });
+        await loaded.opened;
+        const winner =
+          other === 'approve'
+            ? await approve().execute(admin(), { recordId: h.recordId })
+            : await reject().execute(admin(), { recordId: h.recordId, reasonCode: 'other' });
+        release.open();
+
+        expect(winner.ok).toBe(true);
+        expect(await slow).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+        const statuses = (await recordsOf(series!.id)).map((r) => r.status);
+        expect(statuses).toEqual(['accepted', other === 'approve' ? 'approved' : 'rejected']);
+        const decisions = (await auditOf(series!.id)).filter((r) =>
+          r.action.startsWith('pricing.price-hold.'),
+        );
+        expect(decisions).toHaveLength(1);
+      },
+    );
+
+    it('answers pricing.hold.not-pending to a second decision that starts after the first', async () => {
+      const h = await held();
+      expect((await approve().execute(admin(), { recordId: h.recordId })).ok).toBe(true);
+      expect(await approve().execute(admin(), { recordId: h.recordId })).toEqual({
+        ok: false,
+        error: { code: 'pricing.hold.not-pending' },
+      });
+      expect(
+        await reject().execute(admin(), { recordId: h.recordId, reasonCode: 'other' }),
+      ).toEqual({ ok: false, error: { code: 'pricing.hold.not-pending' } });
+    });
+  });
+
+  describe('the queue query', () => {
+    it('reads the queue in order from the partial pending index', async () => {
+      await held();
+      // A small table prefers a sequential scan; with it off the index is the only way to read
+      // this order. The statement is the one the repository sends for a page after a cursor.
+      await sql.query('SET enable_seqscan = off');
+      try {
+        const plan = await sql.query<{ 'QUERY PLAN': string }>(
+          `EXPLAIN SELECT id FROM pricing.regular_price_records
+            WHERE market_id = $1 AND status = 'pending-review'
+              AND (submitted_at > $2 OR (submitted_at = $2 AND id > $3))
+            ORDER BY submitted_at ASC, id ASC LIMIT 51`,
+          [code, new Date('2026-10-10T00:00:00Z'), ids.next<'RegularPriceRecord'>()],
+        );
+        const text = plan.rows.map((row) => row['QUERY PLAN']).join('\n');
+        expect(text).toContain('regular_price_records_market_id_submitted_at_id_pending_idx');
+        expect(text).not.toContain('Sort');
+      } finally {
+        await sql.query('RESET enable_seqscan');
+      }
+    });
+  });
+
   describe('the retirement handlers', () => {
     it('retires every series of a deleted Offer, supersedes the pending record, and is idempotent', async () => {
       const h = await held();

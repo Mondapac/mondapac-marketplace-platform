@@ -35,13 +35,21 @@ export type RejectPriceHoldDependencies = HoldDecisionDependencies;
 /**
  * Whether a code point is one the table's `decision_note_check` refuses: every control character
  * but a newline (U+0000 to U+0009, U+000B to U+001F, U+007F to U+009F) and the bidirectional
- * marks (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069).
+ * marks (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069), plus, in the application
+ * only (the table's check lives in an already merged migration), the invisible and line-breaking
+ * format characters U+00AD, U+200B to U+200D, U+2028, U+2029, U+2060 and U+FEFF.
  */
 function forbiddenInNote(code: number): boolean {
   return (
     (code <= 0x1f && code !== 0x0a) ||
     (code >= 0x7f && code <= 0x9f) ||
     code === 0x061c ||
+    code === 0x00ad ||
+    (code >= 0x200b && code <= 0x200d) ||
+    code === 0x2028 ||
+    code === 0x2029 ||
+    code === 0x2060 ||
+    code === 0xfeff ||
     code === 0x200e ||
     code === 0x200f ||
     (code >= 0x202a && code <= 0x202e) ||

@@ -123,7 +123,9 @@ export class AdminPriceHoldController {
   @Get(':recordId')
   @ApiOperation({
     summary: 'One held price with its anchor (admin)',
-    description: 'Needs pricing.price-hold.view. A record of another Market is a 404.',
+    description:
+      'Needs pricing.price-hold.view. Only a record still pending is shown: an unknown id, a ' +
+      'record of another Market and a decided record all answer pricing.hold.not-found.',
   })
   @ApiParam({ name: 'recordId', format: 'uuid' })
   @ApiOkResponse({ type: PriceHoldRow })

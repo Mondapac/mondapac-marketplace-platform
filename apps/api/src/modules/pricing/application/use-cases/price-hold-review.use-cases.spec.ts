@@ -25,6 +25,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { ConfigPricingPolicyProvider } from '../../infrastructure/config-pricing-policy-provider';
 import { ApprovePriceHold } from './approve-price-hold.use-case';
+import { EffectivePricesQuery } from './effective-prices.use-case';
 import { ListPriceHolds } from './list-price-holds.use-case';
 import { RejectPriceHold } from './reject-price-hold.use-case';
 import { RetireSeriesForRemovedOffer } from './retire-series-for-removed-offer.use-case';
@@ -85,6 +86,7 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
     });
     const approve = new ApprovePriceHold(gate, { ...common, policies });
     const reject = new RejectPriceHold(gate, common);
+    const effective = new EffectivePricesQuery(gate, { unitOfWork, series, clock });
     const list = new ListPriceHolds(gate, { unitOfWork, series });
     const view = new ViewPriceHold(gate, { unitOfWork, series });
     const retireOffer = new RetireSeriesForRemovedOffer(gate, { ...common, tombstones });
@@ -166,6 +168,7 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
       set,
       approve,
       reject,
+      effective,
       list,
       view,
       retireOffer,
@@ -316,6 +319,31 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
         [{ path: 'note', code: 'format' }],
       ],
       [
+        'a note with a zero-width space',
+        { reasonCode: 'other', note: 'a\u200bb' },
+        [{ path: 'note', code: 'format' }],
+      ],
+      [
+        'a note with a line separator',
+        { reasonCode: 'other', note: 'a\u2028b' },
+        [{ path: 'note', code: 'format' }],
+      ],
+      [
+        'a note with a soft hyphen',
+        { reasonCode: 'other', note: 'a\u00adb' },
+        [{ path: 'note', code: 'format' }],
+      ],
+      [
+        'a note with a byte order mark',
+        { reasonCode: 'other', note: 'a\ufeffb' },
+        [{ path: 'note', code: 'format' }],
+      ],
+      [
+        'a note with a word joiner',
+        { reasonCode: 'other', note: 'a\u2060b' },
+        [{ path: 'note', code: 'format' }],
+      ],
+      [
         'a note that is not text',
         { reasonCode: 'other', note: 5 },
         [{ path: 'note', code: 'type' }],
@@ -442,6 +470,42 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
       t.unitOfWork.units.length = 0;
       await t.list.execute(t.admin(), { after: null, limit: null });
       expect(t.unitOfWork.units.map((u) => u.options)).toEqual([{ readOnly: true }]);
+    });
+  });
+
+  describe('the effective price around a decision (read through the effective-prices use case)', () => {
+    const priceOf = async (
+      t: ReturnType<typeof setup>,
+      h: { offerId: never; variantId: never },
+    ) => {
+      const result = await t.effective.execute(t.admin(), {
+        keys: [{ offerId: h.offerId, variantId: h.variantId }],
+      });
+      if (!result.ok) throw new Error('expected ok');
+      return [...result.value.values()][0];
+    };
+
+    it('serves the old price while held, the new one from approval, the old one after a rejection', async () => {
+      const t = setup();
+      const approved = await t.held();
+      const rejected = await t.held();
+      const key = (h: typeof approved) => ({
+        offerId: h.offerId as never,
+        variantId: h.variantId as never,
+      });
+
+      expect((await priceOf(t, key(approved)))?.price.amount).toBe(fixture.base);
+      expect((await priceOf(t, key(rejected)))?.price.amount).toBe(fixture.base);
+
+      await t.approve.execute(t.admin(), { recordId: approved.recordId });
+      await t.reject.execute(t.admin(), { recordId: rejected.recordId, reasonCode: 'other' });
+
+      const now = await priceOf(t, key(approved));
+      expect(now).toMatchObject({ recordId: approved.recordId });
+      expect(now?.price).toEqual({ amount: fixture.held, currency: fixture.currency });
+      const after = await priceOf(t, key(rejected));
+      expect(after?.price).toEqual({ amount: fixture.base, currency: fixture.currency });
+      expect(after?.recordId).not.toBe(rejected.recordId);
     });
   });
 
