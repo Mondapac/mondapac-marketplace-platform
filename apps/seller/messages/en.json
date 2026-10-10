@@ -484,7 +484,8 @@
         "matched": "Matched",
         "retired": "Retired",
         "unknown": "Unknown"
-      }
+      },
+      "new": "New product"
     },
     "product": {
       "type": "Type",
@@ -556,6 +557,37 @@
         "tag-suspended": "A certification tag is suspended",
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
+      }
+    },
+    "create": {
+      "title": "New product",
+      "intro": "Choose what you sell and add your first offer. You can add the product details next.",
+      "closed": "Your market does not let sellers add products yet.",
+      "back": "Back to products",
+      "type": "Product type",
+      "condition": "Condition",
+      "sku": "Your SKU",
+      "sku-help": "Your own code for this offer. It must be unique among your open offers.",
+      "choose": "Choose",
+      "description": "Description ({locale})",
+      "optional": "optional",
+      "submit": "Create product",
+      "creating": "Creating",
+      "validation": {
+        "summary": "Check the fields marked below.",
+        "invalid": "This value is not valid.",
+        "required": "This field is required.",
+        "length": "This value is too short or too long.",
+        "characters": "This value has characters that are not allowed."
+      },
+      "error": {
+        "type-not-allowed": "You can't sell this product type yet.",
+        "type-not-offered": "This product type isn't offered in your market.",
+        "creation-off": "Your market does not let sellers add products yet.",
+        "sku-taken": "You already have an open offer with this SKU.",
+        "not-eligible": "Your seller account can't add products right now.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "unavailable": "Products are unavailable right now. Try again later."
       }
     }
   },
