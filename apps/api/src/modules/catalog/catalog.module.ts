@@ -69,6 +69,7 @@ import { OwnOfferRead } from './application/use-cases/own-offer-read.use-case';
 import { OWN_CATALOG_READER } from './application/ports/own-catalog.reader';
 import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
 import { catalogProviders } from './infrastructure/catalog-providers';
@@ -296,6 +297,7 @@ const productTypeProvider: FactoryProvider<string> = {
       eligibility: true,
       allowedTypes: true,
     }),
+    useCaseProvider(OwnProductOptions, { policy: true }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,
