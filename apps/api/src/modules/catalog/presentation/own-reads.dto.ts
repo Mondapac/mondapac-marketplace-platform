@@ -117,3 +117,30 @@ export class OwnOfferList {
   })
   nextAfterId!: string | null;
 }
+
+export class OwnProductOptionsLocales {
+  @ApiProperty() default!: string;
+  @ApiProperty({ type: [String] }) supported!: string[];
+}
+
+export class OwnProductOptions {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The product types the Market offers. Not yet narrowed to what the seller may sell: a create with a type the seller may not sell answers 422 type.not-allowed.',
+  })
+  productTypes!: string[];
+  @ApiProperty({ type: [String], description: 'The condition codes an Offer may carry.' })
+  conditions!: string[];
+  @ApiProperty({ type: OwnProductOptionsLocales })
+  locales!: OwnProductOptionsLocales;
+  @ApiProperty({
+    description:
+      'False when the Market does not let sellers create products (the form should not open).',
+  })
+  sellerCanCreateProduct!: boolean;
+  @ApiProperty({ type: [String], description: 'Statuses a seller sees on products in lists.' })
+  productStatuses!: string[];
+  @ApiProperty({ type: [String], description: 'Statuses a seller sees on Offers in lists.' })
+  offerStatuses!: string[];
+}

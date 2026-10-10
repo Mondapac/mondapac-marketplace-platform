@@ -276,6 +276,39 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(pageCalls).toHaveLength(0);
     });
 
+    it('serves the product form options from the Market configuration, before any product id', async () => {
+      await boot();
+      await seeded(code);
+
+      const answer = await get(code, '/catalog/seller/products/options', sessionOf(code));
+
+      expect(answer.status).toBe(200);
+      expect(answer.headers['cache-control']).toBe('no-store');
+      const body = answer.body as {
+        productTypes: string[];
+        conditions: string[];
+        locales: { default: string; supported: string[] };
+        sellerCanCreateProduct: boolean;
+        productStatuses: string[];
+        offerStatuses: string[];
+      };
+      expect(body.productTypes.length).toBeGreaterThan(0);
+      expect(body.conditions.length).toBeGreaterThan(0);
+      expect(body.locales.supported).toContain(body.locales.default);
+      expect(typeof body.sellerCanCreateProduct).toBe('boolean');
+      expect(body.productStatuses).toEqual(
+        expect.arrayContaining(['draft', 'unpublished', 'published']),
+      );
+      expect(body.productStatuses).not.toContain('discarded');
+      expect(body.productStatuses).not.toContain('withdrawn');
+      expect(body.offerStatuses).toContain('draft');
+      expect(body.offerStatuses).not.toContain('deleted');
+      expect(
+        logLines.find((l) => l.msg === 'catalog.own-product-options' && l.outcome),
+      ).toMatchObject({ outcome: 'ok', marketId: code });
+      expect((await get(code, '/catalog/seller/products/options', {})).status).toBe(401);
+    });
+
     it('needs a session', async () => {
       await boot();
       await seeded(code);

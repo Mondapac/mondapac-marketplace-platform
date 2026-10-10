@@ -21,6 +21,11 @@
     "whenSellerNotApproved": "allow"
   },
   {
+    "name": "catalog.own-product-options",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "catalog.own-product-read",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
