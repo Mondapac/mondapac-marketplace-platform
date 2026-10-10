@@ -910,7 +910,7 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
           ok(
             await flags.raise(market, {
               id: `01990000-0000-7000-8000-${randomUUID().slice(-12)}` as Id,
-              sellerId: sellerId as Id<'Seller'>,
+              sellerId,
               code: 'identifier-claim-conflict',
               now: clock.now(),
             }),
