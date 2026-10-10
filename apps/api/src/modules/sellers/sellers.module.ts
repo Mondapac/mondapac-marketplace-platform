@@ -7,6 +7,8 @@ import {
 } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -54,6 +56,7 @@ import { MyFileSaveIdentifier } from './application/use-cases/my-file-save-ident
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
+import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
@@ -64,6 +67,7 @@ import { SellingEligibility } from './application/use-cases/selling-eligibility.
 import { SELLERS_PERMISSIONS } from './contracts/permissions';
 import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contract';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
+import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
@@ -71,6 +75,7 @@ import { backfillSellerFilesJob } from './presentation/jobs/backfill-seller-file
 import { ApprovedSellerZonesReaderImplementation } from './presentation/approved-seller-zones.reader';
 import { SellersFacadeImplementation } from './presentation/sellers.facade';
 import { MyFileController } from './presentation/my-file.controller';
+import { ReviewReadController } from './presentation/review-read.controller';
 import { ReviewRegisterCheckController } from './presentation/review-register-check.controller';
 import { SellerListController } from './presentation/seller-list.controller';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
@@ -102,6 +107,7 @@ const PORT = {
   registerPolicy: REGISTER_LOOKUP_POLICY,
   taxProfiles: TAX_PROFILE_REPOSITORY,
   outbox: OUTBOX_WRITER,
+  audit: AUDIT_WRITER,
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
@@ -145,10 +151,17 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [MyFileController, ReviewRegisterCheckController, SellerListController],
+  controllers: [
+    MyFileController,
+    ReviewReadController,
+    ReviewRegisterCheckController,
+    SellerListController,
+  ],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
+    PersistenceModule.auditWriterFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
+    registerAuditActions('sellers', SELLERS_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('sellers', SELLERS_PERMISSIONS),
     ...sellerProviders,
@@ -304,6 +317,20 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(ApprovedSellerZones, { unitOfWork: true, revisions: true }),
     useCaseProvider(ApprovedSellerZonesSystem, { unitOfWork: true, revisions: true }),
+    // Slice 7a-read, the review page (design 6.2, 8.3, 9): decrypts one seller's revisions under
+    // `sellers.business-details.view` and audits each read in its own unit.
+    useCaseProvider(ReviewRead, {
+      unitOfWork: true,
+      files: true,
+      revisions: true,
+      sealer: true,
+      registerChecks: true,
+      registerPolicy: true,
+      accessReader: true,
+      identifierSchemes: true,
+      audit: true,
+      clock: true,
+    }),
     useCaseProvider(ReviewRegisterCheckRead, {
       unitOfWork: true,
       files: true,

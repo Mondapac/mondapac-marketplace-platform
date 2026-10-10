@@ -33,7 +33,13 @@ function failureOf(status: number, code: string): Failure {
 }
 
 /** The admin seller list (SEL-14): three tabs, a name or slug prefix search, paging by cursor. */
-export function SellersList({ csrfToken }: { readonly csrfToken: string }) {
+export function SellersList({
+  csrfToken,
+  canReview,
+}: {
+  readonly csrfToken: string;
+  readonly canReview: boolean;
+}) {
   const t = useTranslations('sellers.list');
   const [tab, setTab] = useState<Tab>('awaiting-review');
   const [kind, setKind] = useState('');
@@ -152,7 +158,7 @@ export function SellersList({ csrfToken }: { readonly csrfToken: string }) {
         ) : null}
       </div>
       {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
-      {rows.length > 0 ? <SellersTable rows={rows} /> : null}
+      {rows.length > 0 ? <SellersTable rows={rows} canReview={canReview} /> : null}
       {!loading && failure === null && rows.length === 0 ? (
         <div className="rounded-lg border border-line p-6">
           <p className="font-medium">{t(search === '' ? `empty.${tab}` : 'empty.search')}</p>

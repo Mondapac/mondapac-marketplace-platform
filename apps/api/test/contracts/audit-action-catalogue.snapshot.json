@@ -422,5 +422,17 @@
       "offerId": "id",
       "variantId": "id"
     }
+  },
+  {
+    "action": "sellers.business-details.viewed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "previousRevisionId": "optional(id)",
+      "readKind": "enumOf(review)",
+      "revisionId": "id"
+    }
   }
 ]

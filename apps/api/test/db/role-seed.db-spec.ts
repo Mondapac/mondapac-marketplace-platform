@@ -262,10 +262,11 @@ describe.each(TEST_MARKETS)(
     it('a Market seeded at onboarding-compliance version 1 gets sellers.seller-file.review on the next run; custom roles are untouched', async () => {
       const REVIEW = 'sellers.seller-file.review';
       const SELLER_VIEW = 'sellers.seller.view';
+      const DETAILS = 'sellers.business-details.view';
       await seedRoles();
       const compliance = await roleRow('platform', 'onboarding-compliance');
       const viewer = await roleRow('platform', 'viewer');
-      expect(compliance.seed_version).toBeGreaterThanOrEqual(3);
+      expect(compliance.seed_version).toBeGreaterThanOrEqual(4);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
 
       // Put the Market back as the previous build left it: version 1, without the key.
@@ -275,7 +276,7 @@ describe.each(TEST_MARKETS)(
       );
       await sql.query(
         `DELETE FROM identity.role_permissions WHERE market_id = $1 AND role_id = $2 AND permission_key = ANY($3)`,
-        [code, compliance.id, [REVIEW, SELLER_VIEW]],
+        [code, compliance.id, [REVIEW, SELLER_VIEW, DETAILS]],
       );
       // A custom platform role (kind custom, no seed code) that holds the same key and another.
       const customId = newId<'Role'>();
@@ -300,7 +301,7 @@ describe.each(TEST_MARKETS)(
       await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 1 } });
 
       const upgraded = await roleRow('platform', 'onboarding-compliance');
-      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 3]);
+      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 4]);
       expect(await keysOf(compliance.id)).toEqual(expectedKeys);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
       const applied = (await auditRowsOf(compliance.id)).filter(
@@ -308,7 +309,11 @@ describe.each(TEST_MARKETS)(
       );
       expect(applied.at(-1)).toMatchObject({
         before: { seedVersion: 1 },
-        after: { seedVersion: 3, addedKeys: [REVIEW, SELLER_VIEW], removedKeys: [] },
+        after: {
+          seedVersion: 4,
+          addedKeys: [REVIEW, SELLER_VIEW, DETAILS].sort(),
+          removedKeys: [],
+        },
       });
       // Custom roles and the other defaults are untouched.
       expect(

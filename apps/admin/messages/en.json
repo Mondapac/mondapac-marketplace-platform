@@ -485,6 +485,101 @@
         "denied": "You don't have access to the seller list.",
         "unavailable": "We couldn't load the sellers. Try again in a moment."
       }
+    },
+    "review": {
+      "title": "Seller application",
+      "back": "Back to sellers",
+      "read-only": "You are viewing this application. Approving or rejecting it is not available yet.",
+      "under-review": "Under review",
+      "proposed": "Proposed changes",
+      "approved-revision": "Approved details",
+      "changed": "Changed",
+      "revision-line": "{kind}, version {no}, submitted {when}",
+      "kind": {
+        "onboarding": "New application",
+        "identity-change": "Change request",
+        "unknown": "Unknown"
+      },
+      "revision-status": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "superseded": "Replaced",
+        "withdrawn": "Withdrawn",
+        "unknown": "Unknown"
+      },
+      "access": {
+        "pending": "Awaiting approval",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "suspended": "Suspended",
+        "unknown": "Unknown"
+      },
+      "yes-no": {
+        "yes": "Yes",
+        "no": "No"
+      },
+      "field": {
+        "store-name": "Store name",
+        "business-name": "Business name",
+        "identifier": "Business number",
+        "phone": "Phone",
+        "contact-email": "Contact email",
+        "address": "Operating address",
+        "registered-address": "Registered address",
+        "indirect-tax": "Registered for GST",
+        "service-area": "Service area",
+        "timezone": "Time zone"
+      },
+      "register": {
+        "title": "Business register",
+        "none": "This market has no register lookup. A reviewer records a manual check.",
+        "state": "Register check",
+        "checked": "Last checked",
+        "mismatches": "Differences",
+        "at-submission": "At submission",
+        "approval": "Approval",
+        "blocks": "Blocked until the register check passes or a manual check is recorded",
+        "clear": "Not blocked",
+        "state-value": {
+          "not-performed": "Not checked",
+          "active": "Active",
+          "negative": "Not found or cancelled",
+          "unavailable": "Register unavailable",
+          "stale": "Out of date",
+          "unknown": "Unknown"
+        },
+        "outcome": {
+          "not-performed": "Not checked",
+          "active": "Active",
+          "not-found": "Not found",
+          "cancelled": "Cancelled",
+          "unavailable": "Register unavailable",
+          "unknown": "Unknown"
+        },
+        "mismatch": {
+          "business-name": "Business name",
+          "indirect-tax-registration": "GST registration",
+          "postcode": "Postcode",
+          "unknown": "Other"
+        }
+      },
+      "no-access": {
+        "title": "You don't have access to this application",
+        "body": "Ask an administrator for permission to view seller business details."
+      },
+      "not-found": {
+        "title": "We couldn't find that seller",
+        "body": "It may not exist, or it isn't in this market."
+      },
+      "no-revision": {
+        "title": "Nothing submitted yet",
+        "body": "This seller hasn't submitted details for review."
+      },
+      "unavailable": {
+        "title": "We couldn't load this application",
+        "body": "Try again in a moment."
+      }
     }
   }
 }
