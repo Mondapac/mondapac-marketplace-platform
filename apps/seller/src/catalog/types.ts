@@ -2,6 +2,7 @@
 // strings in UTC.
 
 export const VIEW_PERMISSION = 'catalog.own-product.view';
+export const EDIT_PERMISSION = 'catalog.own-product.edit';
 
 export interface ProductListItem {
   readonly productId: string;
@@ -72,4 +73,20 @@ export interface OfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+}
+
+/** `GET catalog/seller/products/options`: what the create form offers. */
+export interface ProductOptions {
+  readonly productTypes: readonly string[];
+  readonly conditions: readonly string[];
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
+  readonly sellerCanCreateProduct: boolean;
+}
+
+/** `POST catalog/seller/products`: the new draft product and its draft Offer. */
+export interface ProductCreated {
+  readonly productId: string;
+  readonly productCode: string;
+  readonly variantIds: readonly string[];
+  readonly offerId: string;
 }
