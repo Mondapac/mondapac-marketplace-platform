@@ -13,6 +13,8 @@ export function closedBody(
   request: Request,
   body: unknown,
   keys: readonly string[],
+  /** Keys that may be left out; the others are required. */
+  optional: readonly string[] = [],
 ): Record<string, unknown> | HttpException {
   if (request.is('application/json') !== 'application/json') {
     return fail(415, 'request.body-unsupported');
@@ -31,7 +33,8 @@ export function closedBody(
     }
   }
   for (const key of keys) {
-    if (!Object.hasOwn(record, key)) fields.push({ path: key, code: 'required' });
+    if (!optional.includes(key) && !Object.hasOwn(record, key))
+      fields.push({ path: key, code: 'required' });
   }
   return fields.length > 0 ? fail(400, 'validation.failed', { fields }) : record;
 }

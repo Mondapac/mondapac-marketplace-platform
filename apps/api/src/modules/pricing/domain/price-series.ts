@@ -156,9 +156,7 @@ export type HoldDecisionError =
   | { readonly code: 'pricing.hold.own-submission' };
 
 export type ApproveHoldError =
-  | HoldDecisionError
-  | { readonly code: 'pricing.policy-market-mismatch' }
-  | PriceAmountError;
+  HoldDecisionError | { readonly code: 'pricing.policy-market-mismatch' } | PriceAmountError;
 
 export type SetRegularPriceError =
   | { readonly code: 'pricing.series-retired' }
@@ -470,7 +468,8 @@ export class PriceSeries {
     const record = pending.value;
     const checked = priceAmount(record.amount, input.policy);
     if (!checked.ok) return err(checked.error);
-    if (record.amount.currency !== state.currency) return err({ code: 'pricing.currency-mismatch' });
+    if (record.amount.currency !== state.currency)
+      return err({ code: 'pricing.currency-mismatch' });
 
     const latest = latestPriced(state.regular);
     const start = effectiveStart(input.now, latest);

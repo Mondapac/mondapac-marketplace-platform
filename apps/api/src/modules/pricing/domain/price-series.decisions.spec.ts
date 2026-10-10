@@ -30,7 +30,11 @@ describe.each(PRICING_FIXTURES)('PriceSeries hold decisions in market $code', (f
   beforeEach(() => clock.set(Temporal.Instant.from('2026-10-08T10:00:00Z')));
 
   /** A series with a price in force and one held record. */
-  function withHold(): { series: PriceSeries; first: RegularPriceRecord; held: RegularPriceRecord } {
+  function withHold(): {
+    series: PriceSeries;
+    first: RegularPriceRecord;
+    held: RegularPriceRecord;
+  } {
     const series = newSeries(fixture, clock, ids);
     const set = (minor: bigint): RegularPriceRecord => {
       const result = series.setRegularPrice({
@@ -72,20 +76,20 @@ describe.each(PRICING_FIXTURES)('PriceSeries hold decisions in market $code', (f
     expect(jumpAnchor(series.state.regular, clock.now(), policy)?.id).toBe(held.id);
 
     expect(series.state.version).toBe(before + 2);
-    expect(series.pendingEvents.slice(-2).map((e) => [e.type, e.aggregateVersion, e.payload])).toEqual(
+    expect(
+      series.pendingEvents.slice(-2).map((e) => [e.type, e.aggregateVersion, e.payload]),
+    ).toEqual([
       [
-        [
-          'pricing.price-hold-decided.v1',
-          before + 1,
-          expect.objectContaining({ recordId: held.id, kind: 'regular', outcome: 'approved' }),
-        ],
-        [
-          'pricing.effective-price-changed.v1',
-          before + 2,
-          expect.objectContaining({ cause: 'hold-approved' }),
-        ],
+        'pricing.price-hold-decided.v1',
+        before + 1,
+        expect.objectContaining({ recordId: held.id, kind: 'regular', outcome: 'approved' }),
       ],
-    );
+      [
+        'pricing.effective-price-changed.v1',
+        before + 2,
+        expect.objectContaining({ cause: 'hold-approved' }),
+      ],
+    ]);
     // Restorable: the stored shape satisfies every invariant.
     expect(() => PriceSeriesAggregate.restore(series.state)).not.toThrow();
   });
@@ -185,7 +189,12 @@ describe.each(PRICING_FIXTURES)('PriceSeries hold decisions in market $code', (f
     });
     const before = series.state;
     expect(
-      series.approveHold({ recordId: held.id, decidedBy: admin, now: clock.now(), policy: stricter }),
+      series.approveHold({
+        recordId: held.id,
+        decidedBy: admin,
+        now: clock.now(),
+        policy: stricter,
+      }),
     ).toEqual({ ok: false, error: { code: 'pricing.amount-out-of-range' } });
     expect(series.state).toBe(before);
     // The admin can still reject it.
