@@ -274,10 +274,10 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 5],
-      ['platform', 'default', 'catalogue-moderator', 2],
-      ['platform', 'default', 'operations-support', 4],
-      ['platform', 'default', 'finance', 1],
+      ['platform', 'default', 'onboarding-compliance', 6],
+      ['platform', 'default', 'catalogue-moderator', 3],
+      ['platform', 'default', 'operations-support', 5],
+      ['platform', 'default', 'finance', 2],
       ['platform', 'default', 'viewer', 5],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 2],
@@ -309,18 +309,21 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'identity.seller-access.view',
       'identity.seller-account.create',
       'sellers.seller-file.review',
+      'sellers.seller.view',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual([
       'catalog.platform-product.edit',
       'identity.seller-access.view',
+      'sellers.seller.view',
     ]);
     expect(keysOf('operations-support')).toEqual([
       'identity.customer-account.disable',
       'identity.customer-account.view',
       'identity.seller-access.view',
       'identity.seller-account.reset-second-factor',
+      'sellers.seller.view',
     ]);
-    expect(keysOf('finance')).toEqual(['identity.seller-access.view']);
+    expect(keysOf('finance')).toEqual(['identity.seller-access.view', 'sellers.seller.view']);
     expect(keysOf('store-manager')).toEqual([
       'identity.seller-role.view',
       'identity.team-member.view',

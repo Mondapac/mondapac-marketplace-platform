@@ -261,10 +261,11 @@ describe.each(TEST_MARKETS)(
 
     it('a Market seeded at onboarding-compliance version 1 gets sellers.seller-file.review on the next run; custom roles are untouched', async () => {
       const REVIEW = 'sellers.seller-file.review';
+      const SELLER_VIEW = 'sellers.seller.view';
       await seedRoles();
       const compliance = await roleRow('platform', 'onboarding-compliance');
       const viewer = await roleRow('platform', 'viewer');
-      expect(compliance.seed_version).toBeGreaterThanOrEqual(2);
+      expect(compliance.seed_version).toBeGreaterThanOrEqual(3);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
 
       // Put the Market back as the previous build left it: version 1, without the key.
@@ -273,8 +274,8 @@ describe.each(TEST_MARKETS)(
         [code, compliance.id],
       );
       await sql.query(
-        `DELETE FROM identity.role_permissions WHERE market_id = $1 AND role_id = $2 AND permission_key = $3`,
-        [code, compliance.id, REVIEW],
+        `DELETE FROM identity.role_permissions WHERE market_id = $1 AND role_id = $2 AND permission_key = ANY($3)`,
+        [code, compliance.id, [REVIEW, SELLER_VIEW]],
       );
       // A custom platform role (kind custom, no seed code) that holds the same key and another.
       const customId = newId<'Role'>();
@@ -299,7 +300,7 @@ describe.each(TEST_MARKETS)(
       await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 1 } });
 
       const upgraded = await roleRow('platform', 'onboarding-compliance');
-      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 2]);
+      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 3]);
       expect(await keysOf(compliance.id)).toEqual(expectedKeys);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
       const applied = (await auditRowsOf(compliance.id)).filter(
@@ -307,7 +308,7 @@ describe.each(TEST_MARKETS)(
       );
       expect(applied.at(-1)).toMatchObject({
         before: { seedVersion: 1 },
-        after: { seedVersion: 2, addedKeys: [REVIEW], removedKeys: [] },
+        after: { seedVersion: 3, addedKeys: [REVIEW, SELLER_VIEW], removedKeys: [] },
       });
       // Custom roles and the other defaults are untouched.
       expect(
@@ -672,7 +673,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     const { rows } = await sql.query<{ before: unknown; after: unknown }>(
       `SELECT before, after FROM platform.audit_log
         WHERE market_id = $1 AND target_id = $2 AND action = 'identity.role.seed-applied'
-          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '2'
+          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '3'
         ORDER BY occurred_at`,
       [marketId, roleId],
     );
@@ -685,7 +686,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     expect(registry.get(EDIT)).toMatchObject({ key: EDIT, scope: 'platform', protected: false });
   });
 
-  it('upgrades a Market seeded at catalogue-moderator version 1 to 2 with the key, in every hosted Market', async () => {
+  it('upgrades a Market seeded at catalogue-moderator version 1 to 3 with the keys, in every hosted Market', async () => {
     // Every hosted Market has its roles (first run creates them, if no other file did yet).
     await expect(runSeedJob()).resolves.toEqual({ outcome: 'ran', failedMarkets: [] });
 
@@ -703,8 +704,8 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
         );
         await sql.query(
           `DELETE FROM identity.role_permissions
-            WHERE market_id = $1 AND role_id = $2 AND permission_key = $3`,
-          [code, role.id, EDIT],
+            WHERE market_id = $1 AND role_id = $2 AND permission_key = ANY($3)`,
+          [code, role.id, [EDIT, 'sellers.seller.view']],
         );
         await sql.query('COMMIT');
       } catch (error) {
@@ -719,13 +720,17 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
 
     for (const code of TEST_MARKETS) {
       const role = await moderatorOf(code);
-      expect(role.seed_version).toBe(2);
-      expect(await keysOf(code, role.id)).toEqual([EDIT, 'identity.seller-access.view']);
+      expect(role.seed_version).toBe(3);
+      expect(await keysOf(code, role.id)).toEqual([
+        EDIT,
+        'identity.seller-access.view',
+        'sellers.seller.view',
+      ]);
       const rows = await upgradeRowsOf(code, role.id);
       expect(rows).toHaveLength(earlier.get(code)! + 1);
       expect(rows.at(-1)).toEqual({
         before: { seedVersion: 1 },
-        after: { seedVersion: 2, addedKeys: [EDIT], removedKeys: [] },
+        after: { seedVersion: 3, addedKeys: [EDIT, 'sellers.seller.view'], removedKeys: [] },
       });
     }
   });
