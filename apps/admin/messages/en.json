@@ -489,7 +489,7 @@
     "review": {
       "title": "Seller application",
       "back": "Back to sellers",
-      "read-only": "You are viewing this application. Approving or rejecting it is not available yet.",
+      "read-only": "Business details are shown in clear for review. Each view is recorded in the audit log.",
       "under-review": "Under review",
       "proposed": "Proposed changes",
       "approved-revision": "Approved details",
@@ -579,6 +579,58 @@
       "unavailable": {
         "title": "We couldn't load this application",
         "body": "Try again in a moment."
+      }
+    },
+    "decision": {
+      "title": "Decision",
+      "in-progress": "A decision on this application is being settled. Read the page again in a minute.",
+      "reload": "Read the application again",
+      "choose": "Choose",
+      "cancel": "Cancel",
+      "blocked": "Approval is blocked until the register check is active. Record a manual check below, or wait for a lookup.",
+      "approve": "Approve",
+      "approve-confirm": "Approve this application? The seller can start selling once it is approved.",
+      "approve-yes": "Yes, approve",
+      "reject": "Reject",
+      "reject-yes": "Reject application",
+      "reason": "Reason",
+      "reason-help": "Sent to the seller owner. 1 to 2000 characters.",
+      "reason-invalid": "Give a reason of 1 to 2000 characters.",
+      "check": {
+        "title": "Manual register check",
+        "none": "No manual check has been recorded for this application.",
+        "recorded": "Recorded: {outcome} ({when}).",
+        "help": "Look the business up on the public register yourself and record what you saw. An active result is valid for 30 days.",
+        "label": "What the register shows",
+        "save": "Record check",
+        "outcome": {
+          "active": "Active",
+          "not-found": "Not found",
+          "cancelled": "Cancelled"
+        }
+      },
+      "notice": {
+        "approved": "Application approved.",
+        "rejected": "Application rejected.",
+        "settling": "Your decision is recorded and is being settled. Read the page again in a minute.",
+        "checked": "Manual check recorded."
+      },
+      "error": {
+        "not-current": "The seller changed the application after this page was opened.",
+        "identifier-claimed": "Another seller already holds this business identifier.",
+        "register-negative": "The register shows this business as not found or cancelled, so it can't be approved.",
+        "check-required": "Record a manual register check before approving.",
+        "owner-unverified": "The seller owner has not verified their email yet.",
+        "wrong-state": "This application is no longer waiting for a decision.",
+        "reason-required": "Give a reason for the rejection.",
+        "in-progress": "Another decision on this application is being settled.",
+        "not-found": "This application no longer exists.",
+        "denied": "You do not have access to decide on applications.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "Check the values and try again.",
+        "unavailable": "The decision could not be sent. Try again later.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unknown": "Something went wrong. Try again."
       }
     }
   }
