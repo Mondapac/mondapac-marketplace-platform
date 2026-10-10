@@ -69,6 +69,7 @@ describe.each(PRICING_FIXTURES)('PriceSeries in market $code', (fixture) => {
       taxInclusive: fixture.taxInclusive,
       anchor: null,
       supersedeCause: null,
+      decision: null,
     });
     expect(record.effectiveFrom?.epochMilliseconds).toBe(clock.now().epochMilliseconds);
     expect(effectiveRegular(series.state, clock.now())?.id).toBe(record.id);
