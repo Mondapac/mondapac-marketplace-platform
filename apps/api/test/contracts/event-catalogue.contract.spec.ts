@@ -91,6 +91,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
+      'pricing.retire-series-for-removed-offer',
+      'pricing.retire-series-for-removed-variant',
       'sellers.after-submission',
       'sellers.create-file',
     ]);
@@ -109,11 +111,14 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'sellers.create-file',
     ]);
     // Inventory retires its items on catalog's retirements (design 3.5).
+    // ... and so does pricing, for its price series (pricing design 6.4).
     expect(subscriptions.subscribersOf('catalog.offer-deleted.v1')).toEqual([
       'inventory.retire-on-offer-deleted',
+      'pricing.retire-series-for-removed-offer',
     ]);
     expect(subscriptions.subscribersOf('catalog.variant-removed.v1')).toEqual([
       'inventory.retire-on-variant-removed',
+      'pricing.retire-series-for-removed-variant',
     ]);
     // ... and re-keys the stock of an Offer that moved to a PLATFORM product (design 3.6).
     expect(subscriptions.subscribersOf('catalog.offer-moved.v1')).toEqual([

@@ -117,6 +117,8 @@
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
+  { "name": "pricing.retire-series-for-removed-offer", "rule": "system" },
+  { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
   { "name": "sellers.approved-seller-zones-system", "rule": "system" },

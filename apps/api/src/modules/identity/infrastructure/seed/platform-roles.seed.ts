@@ -47,13 +47,17 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     seedCode: 'catalogue-moderator',
     // Version 2 adds `catalog.platform-product.edit` (catalog design 8.1, CAT-41; request I-1,
     // slice I-1a: create, edit, submit and revert PLATFORM products); a Market seeded at version
-    // 1 gets it on its next SeedRoles run. Version 3 adds `sellers.seller.view`.
-    seedVersion: 3,
+    // 1 gets it on its next SeedRoles run. Version 3 adds `sellers.seller.view`. Version 4 adds
+    // `pricing.price-hold.view` (pricing design 5.3, slice 4: the review queue). The protected
+    // `pricing.price-hold.decide` is not listed: a default role never lists a protected key (R11),
+    // the Platform Administrator grants it (pricing H4).
+    seedVersion: 4,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
       'catalog.platform-product.edit',
       'sellers.seller.view',
+      'pricing.price-hold.view',
     ],
   },
   {
@@ -89,7 +93,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     seedCode: 'viewer',
     // Version 2 adds `sellers.seller.view`, an unprotected `view` key of the platform scope
     // (sellers design 6.1, slice 6). The other default roles of 6.1 got it in their version bumps.
-    seedVersion: 2,
+    // Version 3 adds `pricing.price-hold.view` (pricing design 5.3, slice 4).
+    seedVersion: 3,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -97,6 +102,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'identity.admin-account.view',
       'identity.platform-role.view',
       'sellers.seller.view',
+      'pricing.price-hold.view',
     ],
   },
 ];

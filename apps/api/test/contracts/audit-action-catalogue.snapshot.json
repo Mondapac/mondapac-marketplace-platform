@@ -335,6 +335,36 @@
     }
   },
   {
+    "action": "pricing.price-hold.approved",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "anchorAmount": "money",
+      "anchorRecordId": "id",
+      "effectiveFrom": "instant",
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.price-hold.rejected",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "offerId": "id",
+      "reasonCode": "enumOf(price-implausible|price-unverified|policy-breach|entered-in-error|other)",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "action": "pricing.regular-price.accepted",
     "targetType": "pricing.price-series",
     "targetId": "id",
@@ -371,13 +401,25 @@
     "action": "pricing.regular-price.superseded",
     "targetType": "pricing.price-series",
     "targetId": "id",
-    "actors": ["authenticated"],
+    "actors": ["authenticated", "system"],
     "before": null,
     "after": {
       "cause": "enumOf(replaced|cancelled|offer-removed|variant-removed)",
       "offerId": "id",
       "recordId": "id",
       "supersededByRecordId": "optional(id)",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.series.retired",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(offer-removed|variant-removed)",
+      "offerId": "id",
       "variantId": "id"
     }
   }
