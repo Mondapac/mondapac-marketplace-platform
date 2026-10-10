@@ -1,3 +1,4 @@
+import { OBSERVED_REGISTER_OUTCOMES } from '../domain/review-check';
 import { ApiProperty } from '@nestjs/swagger';
 import { REVISION_STATUSES, type RevisionStatus } from '../domain/business-file-revision';
 import { REGISTER_MISMATCHES } from '../domain/register-check';
@@ -77,6 +78,11 @@ export class ReviewRevisionBody {
   @ApiProperty({ type: ReviewContentBody }) content!: ReviewContentBody;
 }
 
+export class ReviewManualCheckBody {
+  @ApiProperty({ enum: OBSERVED_REGISTER_OUTCOMES }) observedOutcome!: string;
+  @ApiProperty({ description: 'ISO instant.' }) recordedAt!: string;
+}
+
 export class ReviewRegisterBody {
   @ApiProperty({ enum: ['configured', 'none'] }) lookup!: 'configured' | 'none';
   @ApiProperty({ enum: REGISTER_STATES }) state!: (typeof REGISTER_STATES)[number];
@@ -86,9 +92,17 @@ export class ReviewRegisterBody {
   @ApiProperty({ type: String, nullable: true }) checkedAt!: string | null;
   @ApiProperty({
     description:
-      'Approval is blocked on this state until a successful lookup or a recorded manual check.',
+      'Whether approve would be refused by the register now: a definite negative, or no current ' +
+      'active result and no manual check recorded (then record one).',
   })
   blocksApproval!: boolean;
+
+  @ApiProperty({
+    type: ReviewManualCheckBody,
+    nullable: true,
+    description: 'The manual register check recorded on the pending revision, or null.',
+  })
+  manualCheck!: ReviewManualCheckBody | null;
 }
 
 /** The review page of one seller (sellers design 6.2 `review.read`). */
@@ -115,4 +129,11 @@ export class ReviewReadBody {
   previous!: ReviewRevisionBody | null;
 
   @ApiProperty({ type: ReviewRegisterBody }) register!: ReviewRegisterBody;
+
+  @ApiProperty({
+    description:
+      'A decision on the pending revision is in flight: approve, reject and the manual check ' +
+      'answer file.decision-in-progress until it settles. Read again shortly.',
+  })
+  decisionInProgress!: boolean;
 }

@@ -40,10 +40,9 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import {
-  ApproveSellerAccess,
-  type SellerAccessDecided,
-  type SellerAccessDecisionFailure,
+import type {
+  SellerAccessDecided,
+  SellerAccessDecisionFailure,
 } from '../application/use-cases/approve-seller-access.use-case';
 import { InviteSeller } from '../application/use-cases/invite-seller.use-case';
 import {
@@ -52,7 +51,6 @@ import {
   SELLER_LIST_FILTERS,
   type SellerListPage,
 } from '../application/use-cases/list-seller-accounts.use-case';
-import { RejectSellerAccess } from '../application/use-cases/reject-seller-access.use-case';
 import { ReinstateSellerAccess } from '../application/use-cases/reinstate-seller-access.use-case';
 import {
   ResendSellerInvitation,
@@ -206,8 +204,9 @@ const DECISION_CONFLICT =
  * and maps the answer to the error format of 5.2. Every route logs its outcome code with the
  * correlation id; never a reason, an address or a name.
  *
- * Approve and reject leave this controller when `sellers` has its review (ADR-0022 decision 4;
- * `sellers` design R-1); suspend, reinstate and the invitations stay.
+ * Approve and reject are not here: `sellers`' review decides on a submission and calls them
+ * through the seller-access contract with its `basisId` (ADR-0022 decision 4; `sellers` design R-1,
+ * slice 7a-decide). Suspend, reinstate and the invitations stay.
  */
 @ApiTags('identity')
 @ApiExtraModels(AdminSellerListSellerRowView, AdminSellerListInvitationRowView)
@@ -217,8 +216,6 @@ export class AdminSellersController {
   readonly #logger = new Logger('AdminSellersController');
 
   constructor(
-    private readonly approveSellerAccess: ApproveSellerAccess,
-    private readonly rejectSellerAccess: RejectSellerAccess,
     private readonly suspendSellerAccess: SuspendSellerAccess,
     private readonly reinstateSellerAccess: ReinstateSellerAccess,
     private readonly inviteSeller: InviteSeller,
@@ -276,79 +273,6 @@ export class AdminSellersController {
     // Owners' and invitees' names and addresses: never stored by a cache.
     response.setHeader('Cache-Control', 'no-store');
     return this.settle('identity.admin-list-sellers', context, outcome);
-  }
-
-  @Post('sellers/:sellerId/approve')
-  @HttpCode(200)
-  @ReadsSession()
-  @ApiOperation({
-    summary: 'Approve a seller waiting for approval',
-    description:
-      'Needs identity.seller-access.approve. Only a pending seller whose owner has a confirmed ' +
-      'email. The owner is mailed.',
-  })
-  @ApiParam(SELLER_PARAM)
-  @ApiHeader(CSRF)
-  @ApiBody({ type: AdminEmptyRequest })
-  @ApiOkResponse({ type: AdminSellerAccessDecided })
-  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
-  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
-  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'seller.unknown' })
-  @ApiConflictResponse({
-    type: ApiErrorBody,
-    description: `seller-access.owner-unverified, ${DECISION_CONFLICT}`,
-  })
-  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
-  async approve(
-    @Call() context: CallContext,
-    @Req() request: Request,
-    @Param('sellerId') rawSellerId: string,
-    @Body() body: unknown,
-  ): Promise<AdminSellerAccessDecided> {
-    const outcome = await this.onSeller(request, rawSellerId, body, false, (sellerId) =>
-      this.approveSellerAccess.execute(context, { sellerId, basisId: null }),
-    );
-    return this.settle('identity.admin-approve-seller', context, outcome);
-  }
-
-  @Post('sellers/:sellerId/reject')
-  @HttpCode(200)
-  @ReadsSession()
-  @ApiOperation({
-    summary: 'Reject a seller waiting for approval, with a reason',
-    description:
-      'Needs identity.seller-access.approve. Only a pending seller. The reason is stored ' +
-      "encrypted and mailed to the Seller Owner only; every session of the seller's accounts " +
-      'ends.',
-  })
-  @ApiParam(SELLER_PARAM)
-  @ApiHeader(CSRF)
-  @ApiBody({ type: AdminSellerReasonRequest })
-  @ApiOkResponse({ type: AdminSellerAccessDecided })
-  @ApiBadRequestResponse({
-    type: ApiErrorBody,
-    description:
-      'seller-access.reason-required, or validation.failed (details.fields; the reason with ' +
-      'code length or characters)',
-  })
-  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
-  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'seller.unknown' })
-  @ApiConflictResponse({ type: ApiErrorBody, description: DECISION_CONFLICT })
-  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
-  async reject(
-    @Call() context: CallContext,
-    @Req() request: Request,
-    @Param('sellerId') rawSellerId: string,
-    @Body() body: unknown,
-  ): Promise<AdminSellerAccessDecided> {
-    const outcome = await this.onSeller(request, rawSellerId, body, true, (sellerId, reason) =>
-      this.rejectSellerAccess.execute(context, { sellerId, reason, basisId: null }),
-    );
-    return this.settle('identity.admin-reject-seller', context, outcome);
   }
 
   @Post('sellers/:sellerId/suspend')

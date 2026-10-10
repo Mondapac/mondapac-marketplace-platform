@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -24,6 +24,15 @@ import { MyFileSaveIdentifier } from '../../src/modules/sellers/application/use-
 import { MyFileSaveSlug } from '../../src/modules/sellers/application/use-cases/my-file-save-slug.use-case';
 import { MyFileSubmit } from '../../src/modules/sellers/application/use-cases/my-file-submit.use-case';
 import { MyFileWithdraw } from '../../src/modules/sellers/application/use-cases/my-file-withdraw.use-case';
+import { ReconcileDecisions } from '../../src/modules/sellers/application/use-cases/reconcile-decisions.use-case';
+import { ReviewApprove } from '../../src/modules/sellers/application/use-cases/review-approve.use-case';
+import { ReviewRecordManualCheck } from '../../src/modules/sellers/application/use-cases/review-record-manual-check.use-case';
+import { ReviewReject } from '../../src/modules/sellers/application/use-cases/review-reject.use-case';
+import {
+  ADMIN_FLAG_REPOSITORY,
+  type AdminFlagRepository,
+} from '../../src/modules/sellers/application/ports/admin-flag.repository';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import {
   APPROVED_SELLER_ZONES,
   type ApprovedSellerZonesReader,
@@ -700,6 +709,243 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
     expect(await revisions(sellerId)).toHaveLength(1);
   });
 
+  describe('the reviewer decision (slice 7a-decide; design 3.1, 3.6, 7.3)', () => {
+    let reviewer: Id<'Account'> | null = null;
+    /** An active, verified admin of this Market holding the platform administrator role. */
+    const admin = (): CallContext =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: reviewer!,
+          sessionId: ids.next<'Session'>(),
+          sellerId: null,
+        }),
+        `db-decide-${randomUUID()}`,
+      );
+    beforeEach(async () => {
+      const id = `01990000-0000-7000-8000-${randomUUID().slice(-12)}` as Id<'Account'>;
+      const email = `reviewer.${id}@decide.example`;
+      await owner.query(
+        `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+           email_normalized, display_name, status, email_verified_at, signed_up_at, version, created_at)
+         VALUES ($1, $2, 'default', 'admin', $3, $3, 'Reviewer', 'active', now(), now(), 1, now())`,
+        [id, code, email],
+      );
+      await owner.query(
+        `INSERT INTO identity.password_credentials (market_id, tenant_id, account_id, password_hash, changed_at)
+         VALUES ($1, 'default', $2, '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFn', now())`,
+        [code, id],
+      );
+      await owner.query(
+        `INSERT INTO identity.role_assignments (id, market_id, tenant_id, account_id, role_id,
+           assigned_by_account_id, assigned_at, version)
+         SELECT $3::uuid, market_id, tenant_id, $2::uuid, id, NULL, now(), 1 FROM identity.roles
+          WHERE market_id = $1 AND scope = 'platform' AND seed_code = 'platform-administrator'`,
+        [code, id, randomUUID()],
+      );
+      reviewer = id;
+    });
+    const submitted = async (identifier?: string) => {
+      const ready = await readySeller(undefined, identifier);
+      expect((await submit(ready.context)).ok).toBe(true);
+      const [revision] = await revisions(ready.sellerId);
+      return { ...ready, revisionId: revision!.id as string };
+    };
+    const fileRow = async (sellerId: string) =>
+      (
+        await sql.query<Record<string, unknown>>(
+          `SELECT approved_revision_id, public_store_name, decision_intent, decision_revision_id
+             FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+          [code, sellerId],
+        )
+      ).rows[0]!;
+    const manualActive = (sellerId: string, revisionId: string) =>
+      app.get(ReviewRecordManualCheck).execute(admin(), {
+        sellerId,
+        revisionId,
+        observedOutcome: 'active',
+      });
+
+    it('approves through identity: revision, pointer, public name, claim, public slug and identity state', async () => {
+      const { sellerId, revisionId, slug } = await submitted();
+
+      expect(await app.get(ReviewApprove).execute(admin(), { sellerId, revisionId })).toEqual({
+        ok: false,
+        error: { code: 'review.manual-register-check-required' },
+      });
+      expect((await manualActive(sellerId, revisionId)).ok).toBe(true);
+      expect(await app.get(ReviewApprove).execute(admin(), { sellerId, revisionId })).toEqual({
+        ok: true,
+        value: { decision: 'approved', revisionId },
+      });
+      // identity's event reaches sellers.close-decision-approved, which finds it settled.
+      await settle();
+
+      expect(await revisions(sellerId)).toMatchObject([{ id: revisionId, status: 'approved' }]);
+      expect(await fileRow(sellerId)).toEqual({
+        approved_revision_id: revisionId,
+        public_store_name: GENERAL.storeName,
+        decision_intent: null,
+        decision_revision_id: null,
+      });
+      const { rows: access } = await sql.query<{ state: string }>(
+        'SELECT state FROM identity.seller_access WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(access).toEqual([{ state: 'approved' }]);
+      const { rows: claims } = await sql.query<{ revision_id: string }>(
+        'SELECT revision_id FROM sellers.identifier_claims WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(claims).toEqual([{ revision_id: revisionId }]);
+      const { rows: slugs } = await sql.query<{ slug: string; ever_public: boolean }>(
+        'SELECT slug, ever_public FROM sellers.shop_slugs WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(slugs).toEqual([{ slug, ever_public: true }]);
+      const { rows: dead } = await sql.query(
+        `SELECT 1 FROM platform.event_delivery
+          WHERE market_id = $1 AND subscriber LIKE 'sellers.close-decision%' AND status <> 'delivered'`,
+        [code],
+      );
+      expect(dead).toEqual([]);
+    });
+
+    it('refuses a second seller with the same business number (AC 21)', async () => {
+      const first = await submitted();
+      await manualActive(first.sellerId, first.revisionId);
+      await app.get(ReviewApprove).execute(admin(), first);
+      const second = await submitted();
+      await manualActive(second.sellerId, second.revisionId);
+
+      expect(await app.get(ReviewApprove).execute(admin(), second)).toEqual({
+        ok: false,
+        error: { code: 'review.identifier-claimed' },
+      });
+      expect(await fileRow(second.sellerId)).toMatchObject({ decision_intent: null });
+    });
+
+    it('rejects through identity; the reason is kept by identity only', async () => {
+      const { sellerId, revisionId } = await submitted();
+      const reason = 'Reason canary 7a-decide';
+
+      expect(
+        await app.get(ReviewReject).execute(admin(), { sellerId, revisionId, reason }),
+      ).toEqual({ ok: true, value: { decision: 'rejected', revisionId } });
+      await settle();
+
+      expect(await revisions(sellerId)).toMatchObject([{ status: 'rejected' }]);
+      const { rows } = await owner.query<{ hit: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM sellers.seller_files WHERE seller_id = $1 AND row_to_json(seller_files)::text LIKE '%canary%')
+             OR EXISTS (SELECT 1 FROM sellers.outbox WHERE payload::text LIKE '%canary%') AS hit`,
+        [sellerId],
+      );
+      expect(rows).toEqual([{ hit: false }]);
+    });
+
+    it('lets the job release an intent identity never decided, and the draft can be edited again', async () => {
+      const { sellerId, revisionId, context } = await submitted();
+      await owner.query(
+        `UPDATE sellers.seller_files
+            SET decision_intent = 'reject-requested', decision_attempt_id = $3,
+                decision_revision_id = $4, decision_intent_since = $5, version = version + 1
+          WHERE market_id = $1 AND seller_id = $2`,
+        [
+          code,
+          sellerId,
+          randomUUID(),
+          revisionId,
+          new Date(clock.now().subtract({ minutes: 6 }).epochMilliseconds),
+        ],
+      );
+      expect(await withdraw(context)).toEqual({
+        ok: false,
+        error: { code: 'file.decision-in-progress' },
+      });
+
+      const run = await app
+        .get(ReconcileDecisions)
+        .execute(testCallContext(market, 'system', `db-reconcile-${randomUUID()}`), {});
+
+      expect(run).toEqual({ ok: true, value: { settled: 0, released: 1, left: 0 } });
+      expect(await fileRow(sellerId)).toMatchObject({ decision_intent: null });
+      expect(await revisions(sellerId)).toMatchObject([{ status: 'pending' }]);
+      expect((await withdraw(context)).ok).toBe(true);
+    });
+
+    it('releases the claim when identity refuses the approval (owner not verified)', async () => {
+      // Its own number: an earlier test's approval holds the shared fixture identifier.
+      const { sellerId, revisionId } = await submitted(
+        code === 'AU'
+          ? validIdentifiers(abnScheme, 11, 1, ['8'], 4)[0]!
+          : validIdentifiers(zzCorpNoScheme, 9, 1, ['8'], 4)[0]!,
+      );
+      await manualActive(sellerId, revisionId);
+      await owner.query(
+        `UPDATE identity.accounts SET email_verified_at = NULL
+          WHERE market_id = $1 AND id IN (SELECT account_id FROM identity.seller_memberships
+                                           WHERE market_id = $1 AND seller_id = $2)`,
+        [code, sellerId],
+      );
+
+      expect(await app.get(ReviewApprove).execute(admin(), { sellerId, revisionId })).toEqual({
+        ok: false,
+        error: { code: 'seller-access.owner-unverified' },
+      });
+      const { rows } = await sql.query(
+        'SELECT 1 FROM sellers.identifier_claims WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(rows).toEqual([]);
+      expect(await fileRow(sellerId)).toMatchObject({ decision_intent: null });
+      expect(await revisions(sellerId)).toMatchObject([{ status: 'pending' }]);
+    });
+
+    it('keeps one open conflict flag per seller (the partial unique key)', async () => {
+      const { sellerId } = await submitted();
+      const flags = app.get<AdminFlagRepository>(ADMIN_FLAG_REPOSITORY);
+      const raise = () =>
+        app.get<UnitOfWork>(UNIT_OF_WORK).run(market, async () =>
+          ok(
+            await flags.raise(market, {
+              id: `01990000-0000-7000-8000-${randomUUID().slice(-12)}` as Id,
+              sellerId,
+              code: 'identifier-claim-conflict',
+              now: clock.now(),
+            }),
+          ),
+        );
+
+      expect(await raise()).toEqual({ ok: true, value: 'raised' });
+      expect(await raise()).toEqual({ ok: true, value: 'already-open' });
+      const { rows } = await sql.query(
+        'SELECT code FROM sellers.admin_flags WHERE market_id = $1 AND seller_id = $2',
+        [code, sellerId],
+      );
+      expect(rows).toEqual([{ code: 'identifier-claim-conflict' }]);
+    });
+
+    it('holds the CHECKs of the new tables', async () => {
+      const { sellerId, revisionId } = await submitted();
+      await expect(
+        owner.query(
+          `INSERT INTO sellers.review_checks (market_id, tenant_id, seller_id, revision_id, check_code, result, recorded_by_account_id, recorded_at)
+           SELECT market_id, tenant_id, seller_id, $3, 'manual-register-check', 'done', $4, now()
+             FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+          [code, sellerId, revisionId, randomUUID()],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      await expect(
+        owner.query(
+          `UPDATE sellers.seller_files SET decision_intent = 'approve-requested'
+            WHERE market_id = $1 AND seller_id = $2`,
+          [code, sellerId],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+    });
+  });
+
   describe('approvedSellerZones (sellers design 7.1a; data design A18)', () => {
     const reader = () => app.get<ApprovedSellerZonesReader>(APPROVED_SELLER_ZONES);
     const system = () => testCallContext(market, 'system', `db-submit-${randomUUID()}`);
@@ -714,7 +960,7 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
         [code, revision!.id],
       );
       await sql.query(
-        'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+        "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
         [code, sellerId, revision!.id],
       );
     }

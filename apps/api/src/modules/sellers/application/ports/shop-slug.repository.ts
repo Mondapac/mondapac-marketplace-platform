@@ -42,6 +42,13 @@ export interface ShopSlugRepository {
    * ever-public row is never touched (the database refuses it as well).
    */
   releaseUnpublished(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
+
+  /**
+   * Marks the seller's held slug as public (`ever_public`, Hassan M6) when its seller's onboarding
+   * revision is approved (slice 7a-decide): from then a change retires it for ever instead of
+   * releasing it. Answers how many rows changed (0 or 1); never set back.
+   */
+  markPublic(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
 }
 
 export const SHOP_SLUG_REPOSITORY = Symbol('SHOP_SLUG_REPOSITORY');

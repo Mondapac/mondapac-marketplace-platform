@@ -199,6 +199,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
     'sellers.register_checks': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // docs/design/data/sellers.md sections 3.3, 3.6, 3.13 (slice 7a-decide): a review check is
+    // recorded again in place; a claim is inserted or released, never changed; a flag is raised
+    // and later cleared, its other columns fixed.
+    'sellers.review_checks': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'sellers.identifier_claims': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.admin_flags': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cleared_at', 'cleared_by_account_id'],
+    },
     // docs/design/data/sellers.md section 8 (slice 5, section 22): a revision's content never
     // changes by privilege; only the status columns do. DELETE arrives with the purge (18).
     'sellers.business_file_revisions': {

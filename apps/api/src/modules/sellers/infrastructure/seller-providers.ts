@@ -26,6 +26,22 @@ import {
   type BusinessRegisterLookups,
 } from '../application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX, type IdentifierIndex } from '../application/ports/identifier-index';
+import {
+  ADMIN_FLAG_REPOSITORY,
+  type AdminFlagRepository,
+} from '../application/ports/admin-flag.repository';
+import {
+  IDENTIFIER_CLAIM_REPOSITORY,
+  type IdentifierClaimRepository,
+} from '../application/ports/identifier-claim.repository';
+import {
+  REVIEW_CHECK_REPOSITORY,
+  type ReviewCheckRepository,
+} from '../application/ports/review-check.repository';
+import {
+  SELLER_ACCESS_DECIDER,
+  type SellerAccessDecider,
+} from '../application/ports/seller-access-decider';
 import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
 import {
   RATE_COUNTER_REPOSITORY,
@@ -80,6 +96,10 @@ import { MarketConfigIdentifierSchemes } from './identifier-schemes';
 import { NoneLocationTimezoneResolver } from './location-timezone-resolvers';
 import { MarketConfigRegisterLookupPolicy } from './market-config-register-lookup-policy';
 import { PrismaRegisterCheckRepository } from './prisma-register-check.repository';
+import { PrismaReviewCheckRepository } from './prisma-review-check.repository';
+import { PrismaIdentifierClaimRepository } from './prisma-identifier-claim.repository';
+import { PrismaAdminFlagRepository } from './prisma-admin-flag.repository';
+import { IdentitySellerAccessDecider } from './identity-seller-access-decider';
 import { FAKE_REGISTER_ADAPTER, FakeRegisterLookup } from './register-lookups/fake';
 import { MarketConfigRegisterLookups, availableRegisterAdapterCodes } from './register-lookups';
 import { IdentityRegisteredSellers } from './identity-registered-sellers';
@@ -279,5 +299,31 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [SELLER_ACCESS_CONTRACT],
     useFactory: (identity: SellerAccessContract): ReviewerNotifier =>
       new IdentityReviewerNotifier(identity),
+  },
+  // Slice 7a-decide: the review checks, the identifier claims, the admin flags, and the decision
+  // calls of `identity` (design 7.3; R-1).
+  {
+    provide: REVIEW_CHECK_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ReviewCheckRepository =>
+      new PrismaReviewCheckRepository(prisma),
+  },
+  {
+    provide: IDENTIFIER_CLAIM_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): IdentifierClaimRepository =>
+      new PrismaIdentifierClaimRepository(prisma),
+  },
+  {
+    provide: ADMIN_FLAG_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminFlagRepository =>
+      new PrismaAdminFlagRepository(prisma),
+  },
+  {
+    provide: SELLER_ACCESS_DECIDER,
+    inject: [SELLER_ACCESS_CONTRACT],
+    useFactory: (identity: SellerAccessContract): SellerAccessDecider =>
+      new IdentitySellerAccessDecider(identity),
   },
 ];

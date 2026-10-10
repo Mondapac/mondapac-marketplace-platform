@@ -70,6 +70,14 @@ export interface BusinessFileRevisionRepository {
   saveWithdrawal(market: MarketContext, revision: BusinessFileRevision): Promise<boolean>;
 
   /**
+   * Writes the decision on a pending revision (`decidedByIdentity` from the domain; slice
+   * 7a-decide): one `UPDATE … WHERE status = 'pending'` on the status columns, with the row count
+   * checked. Answers false and writes nothing when the revision is no longer pending, so a second
+   * settlement of one decision changes nothing.
+   */
+  saveDecision(market: MarketContext, revision: BusinessFileRevision): Promise<boolean>;
+
+  /**
    * The approved zones of up to 100 sellers of the Market (sellers design 7.1a row 7; data design
    * A18): the approved pointer on `seller_files`, then the revision it names; the clear zone
    * columns only, no key. A seller with no approved revision, of another Market, or unknown is not

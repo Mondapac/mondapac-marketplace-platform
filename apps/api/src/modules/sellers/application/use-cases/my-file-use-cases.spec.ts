@@ -132,6 +132,18 @@ class FakeFiles implements SellerFileRepository {
     return Promise.resolve(true);
   }
 
+  hold(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  recordDecision(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  staleDecisionIntents(): Promise<readonly Id<'Seller'>[]> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   recordChange(): Promise<boolean> {
     return Promise.reject(new Error('not used here'));
   }
@@ -220,6 +232,7 @@ function setUp() {
       Promise.resolve(slugRows.get(`${market.marketId}|${slug}`) ?? null),
     hold: () => Promise.reject(new Error('not used here')),
     releaseUnpublished: () => Promise.resolve(0),
+    markPublic: () => Promise.reject(new Error('not used here')),
   };
   const revisions = new InMemoryRevisions();
   const outbox = new RecordingOutbox();

@@ -72,4 +72,12 @@ export class PrismaShopSlugRepository implements ShopSlugRepository {
     });
     return count;
   }
+
+  async markPublic(market: MarketContext, sellerId: Id<'Seller'>): Promise<number> {
+    const { count } = await this.prisma.tx(market).sellersShopSlug.updateMany({
+      where: { marketId: market.marketId, sellerId, state: 'held', everPublic: false },
+      data: { everPublic: true, version: { increment: 1 } },
+    });
+    return count;
+  }
 }

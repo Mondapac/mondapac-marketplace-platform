@@ -405,3 +405,27 @@ export function superseded(
   }
   return ok({ ...revision, status: 'superseded', statusChangedAt: now });
 }
+
+/**
+ * `pending` to `approved` or `rejected` for an onboarding revision (design 3.1, 7.3; slice
+ * 7a-decide): `identity` took the decision, and the revision keeps the id of that decision
+ * (`identity_decision_id`) and its instant. The decider and the reason stay with `identity`
+ * (data design 3.2: `decided_by_account_id` and `reject_reason_code` are for identity changes).
+ */
+export function decidedByIdentity(
+  revision: BusinessFileRevision,
+  outcome: 'approved' | 'rejected',
+  identityDecisionId: Id<'AccessDecision'>,
+  now: Temporal.Instant,
+): Result<BusinessFileRevision, RevisionTransitionRefused> {
+  if (revision.kind !== 'onboarding' || !canTransition(revision.status, outcome)) {
+    return err({ code: 'revision.transition-forbidden' });
+  }
+  return ok({
+    ...revision,
+    status: outcome,
+    statusChangedAt: now,
+    decidedAt: now,
+    identityDecisionId,
+  });
+}

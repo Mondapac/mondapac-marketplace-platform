@@ -468,7 +468,7 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
       await insertRaw(otherSeller, { id: foreign, status: 'approved', decided_at: T0.toString() });
       const point = (target: string) =>
         sql.query(
-          'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+          "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
           [code, sellerId, target],
         );
       await expect(point(foreign)).rejects.toMatchObject({
@@ -713,7 +713,7 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
       // No pointer yet: nothing is approved, whatever the status column of a row says.
       expect(await inUnit(code, () => revisions.findApproved(market, sellerId))).toBeNull();
       await sql.query(
-        'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+        "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
         [code, sellerId, first],
       );
 
@@ -735,7 +735,7 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
       const id = randomUUID();
       await insertRaw(sellerId, { id, status: 'approved', decided_at: T0.toString() });
       await sql.query(
-        'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+        "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
         [code, sellerId, id],
       );
       const after = (await inUnit(code, () => files.findById(market, sellerId)))!;
@@ -1204,7 +1204,7 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
           ...overrides,
         });
         await sql.query(
-          'UPDATE sellers.seller_files SET approved_revision_id = $3 WHERE market_id = $1 AND seller_id = $2',
+          "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
           [code, sellerId, id],
         );
       };

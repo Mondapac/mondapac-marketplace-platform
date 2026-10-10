@@ -12,6 +12,7 @@ import { REGISTER_CHECK_REPOSITORY } from '../src/modules/sellers/application/po
 import { REVISION_CONTENT_SEALER } from '../src/modules/sellers/application/ports/revision-content-sealer';
 import { SELLER_ACCESS_READER } from '../src/modules/sellers/application/ports/seller-access-reader';
 import { SELLER_FILE_REPOSITORY } from '../src/modules/sellers/application/ports/seller-file.repository';
+import { REVIEW_CHECK_REPOSITORY } from '../src/modules/sellers/application/ports/review-check.repository';
 import {
   newPendingRevision,
   type BusinessFileContent,
@@ -26,6 +27,7 @@ import {
   FakeAccess,
   FakeSealer,
   InMemoryFiles,
+  InMemoryReviewChecks,
   InMemoryRevisions,
 } from './support/sellers-submit-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
@@ -98,7 +100,9 @@ describe('the review page over HTTP (integration, slice 7a-read)', () => {
           .overrideProvider(REGISTER_CHECK_REPOSITORY)
           .useValue(checks)
           .overrideProvider(SELLER_ACCESS_READER)
-          .useValue(access),
+          .useValue(access)
+          .overrideProvider(REVIEW_CHECK_REPOSITORY)
+          .useValue(new InMemoryReviewChecks()),
     }));
   }
 
@@ -263,7 +267,10 @@ describe('the review page over HTTP (integration, slice 7a-read)', () => {
           status: 'pending',
           content: { storeName: 'Al Noor Grocer', phone: '+61 7 3000 0000' },
         },
-        register: { blocksApproval: true },
+        // The fixture's revision carries no business number: the register guard has nothing to
+        // check (slice 7a-decide answers blocksApproval from the approval's own guard).
+        register: { blocksApproval: false, manualCheck: null },
+        decisionInProgress: false,
       });
       const rows = fakes.audits.filter((a) => a.action === 'sellers.business-details.viewed');
       expect(rows).toHaveLength(2);

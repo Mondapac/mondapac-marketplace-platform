@@ -100,7 +100,15 @@ export class ReviewReadController {
       register: {
         ...view.register,
         checkedAt: view.register.checkedAt?.toString() ?? null,
+        manualCheck:
+          view.register.manualCheck === null
+            ? null
+            : {
+                observedOutcome: view.register.manualCheck.observedOutcome,
+                recordedAt: view.register.manualCheck.recordedAt.toString(),
+              },
       },
+      decisionInProgress: view.decisionInProgress,
     };
   }
 }

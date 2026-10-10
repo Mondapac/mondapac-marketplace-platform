@@ -36,12 +36,12 @@ export const BODY_LIMITS = {
   addressValue: 256,
 } as const;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const length = (text: string): number => [...text].length;
 
-function unknownFields(
+export function unknownFields(
   record: Record<string, unknown>,
   allowed: readonly string[],
 ): FieldProblem[] {

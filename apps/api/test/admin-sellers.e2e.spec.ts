@@ -208,6 +208,28 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     };
   }
 
+  /**
+   * The root admin's decision through the seller-access contract, as `sellers`' review makes it
+   * (sellers slice 7a-decide moved approve and reject off this controller; ADR-0022 decision 4).
+   * The root's session must be open (`sessionOf(code, rootOf(code), 1)`).
+   */
+  const BASIS = id<'BusinessFileRevision'>('01990000-0000-7000-8000-00000000bb01');
+  function decide(code: string, sellerId: Id<'Seller'>, decision: 'approve' | 'reject') {
+    const admin = testCallContext(
+      marketOf(code),
+      testAuthenticatedActor(marketOf(code), {
+        population: 'admin',
+        accountId: rootOf(code),
+        sessionId: id<'Session'>(`01990000-0000-7000-8000-${n12(0xf100 + offsetOf(code) + 1)}`),
+        sellerId: null,
+      }),
+    );
+    const contract = app.get<SellerAccessContract>(SELLER_ACCESS_CONTRACT, { strict: false });
+    return decision === 'approve'
+      ? contract.approveSellerAccess(admin, sellerId, BASIS)
+      : contract.rejectSellerAccess(admin, sellerId, REASON, BASIS);
+  }
+
   /** A self-registered seller waiting for approval, with its owner's session cookie. */
   async function pendingSeller(code: string) {
     await sellerPost(code, 'sign-up', {
@@ -314,21 +336,8 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
       const root = sessionOf(code, rootOf(code), 1);
       const { sellerId } = await pendingSeller(code);
 
-      const rejected = await adminPost(
-        code,
-        `sellers/${sellerId}/reject`,
-        { reason: REASON },
-        root,
-      );
-      expect(rejected.status).toBe(200);
+      expect((await decide(code, sellerId, 'reject')).ok).toBe(true);
       await decisionMailed(code);
-      expect(
-        logLines.find(
-          (l) =>
-            l.msg === 'identity.admin-reject-seller' &&
-            l.correlationId === rejected.headers['x-correlation-id'],
-        ),
-      ).toMatchObject({ outcome: 'seller-access.rejected', marketId: code });
 
       fakes.seedSellerAccess({ ...fakes.sellerAccess.get(sellerId)!, state: 'approved' });
       const suspended = await adminPost(
@@ -361,13 +370,14 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
       const { sellerId, cookie } = await pendingSeller(code);
       staffMember(code, sellerId);
 
-      const approved = await adminPost(code, `sellers/${sellerId}/approve`, {}, root);
-      expect(approved.status).toBe(200);
-      expect(approved.body).toEqual({
-        code: 'seller-access.approved',
-        sellerId,
-        state: 'approved',
-        decisionId: expect.any(String) as string,
+      expect(await decide(code, sellerId, 'approve')).toEqual({
+        ok: true,
+        value: {
+          code: 'seller-access.approved',
+          sellerId,
+          state: 'approved',
+          decisionId: expect.any(String) as string,
+        },
       });
       expect((await decisionMailed(code)).to).toBe(OWNER_EMAIL);
 
@@ -417,16 +427,10 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     it('rejects with a reason: the owner reads it on the status page', async () => {
       await boot();
       await seeded(code);
-      const root = sessionOf(code, rootOf(code), 1);
+      sessionOf(code, rootOf(code), 1);
       const { sellerId } = await pendingSeller(code);
 
-      const rejected = await adminPost(
-        code,
-        `sellers/${sellerId}/reject`,
-        { reason: REASON },
-        root,
-      );
-      expect(rejected.status).toBe(200);
+      expect((await decide(code, sellerId, 'reject')).ok).toBe(true);
       expect((await decisionMailed(code)).text).toContain(REASON);
       const signedIn = await sellerPost(code, 'sign-in', {
         email: OWNER_EMAIL,
@@ -456,23 +460,34 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         return [response.status, response.body] as const;
       };
 
-      expect(await answer(`sellers/${sellerId}/approve`, {}, viewer)).toEqual([
+      // Approve and reject are `sellers`' routes now (sellers slice 7a-decide): gone from here.
+      expect(await answer(`sellers/${sellerId}/approve`, {})).toEqual([
+        404,
+        expect.objectContaining({ statusCode: 404 }),
+      ]);
+      expect(await answer(`sellers/${sellerId}/reject`, { reason: REASON })).toEqual([
+        404,
+        expect.objectContaining({ statusCode: 404 }),
+      ]);
+      expect(await answer(`sellers/${sellerId}/suspend`, { reason: REASON }, viewer)).toEqual([
         403,
         { statusCode: 403, code: 'access.denied' },
       ]);
-      expect(await answer(`sellers/${MISSING}/approve`, {})).toEqual([
+      expect(await answer(`sellers/${MISSING}/reinstate`, {})).toEqual([
         404,
         { statusCode: 404, code: 'seller.unknown' },
       ]);
-      expect(await answer('sellers/not-an-id/approve', {})).toEqual([
+      expect(await answer('sellers/not-an-id/reinstate', {})).toEqual([
         404,
         { statusCode: 404, code: 'seller.unknown' },
       ]);
-      expect(await answer(`sellers/${sellerId}/reject`, { reason: '  ' })).toEqual([
+      // The reason is judged on an approved seller (suspend checks the state first).
+      fakes.seedSellerAccess({ ...fakes.sellerAccess.get(sellerId)!, state: 'approved' });
+      expect(await answer(`sellers/${sellerId}/suspend`, { reason: '  ' })).toEqual([
         400,
         { statusCode: 400, code: 'seller-access.reason-required' },
       ]);
-      expect(await answer(`sellers/${sellerId}/reject`, { reason: 'a ‮ b' })).toEqual([
+      expect(await answer(`sellers/${sellerId}/suspend`, { reason: 'a \u202e b' })).toEqual([
         400,
         {
           statusCode: 400,
@@ -484,12 +499,12 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
         409,
         { statusCode: 409, code: 'seller-access.wrong-state' },
       ]);
-      expect(await answer(`sellers/${sellerId}/approve`, { extra: true })).toMatchObject([
+      expect(await answer(`sellers/${sellerId}/reinstate`, { extra: true })).toMatchObject([
         400,
         { code: 'validation.failed' },
       ]);
       const withoutCsrf = { ...root, 'x-csrf-token': '' };
-      expect(await answer(`sellers/${sellerId}/approve`, {}, withoutCsrf)).toEqual([
+      expect(await answer(`sellers/${sellerId}/reinstate`, {}, withoutCsrf)).toEqual([
         403,
         { statusCode: 403, code: 'request.csrf' },
       ]);
@@ -670,10 +685,10 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
     describe('re-apply through the seller-access contract (Sajad 5)', () => {
       async function rejectedSeller() {
         await seeded(code);
-        const root = sessionOf(code, rootOf(code), 1);
+        sessionOf(code, rootOf(code), 1);
         const { sellerId } = await pendingSeller(code);
         staffMember(code, sellerId);
-        await adminPost(code, `sellers/${sellerId}/reject`, { reason: REASON }, root);
+        await decide(code, sellerId, 'reject');
         const owner = [...fakes.accounts.values()].find(
           (a) => a.marketId === code && a.email.normalized === OWNER_EMAIL.toLowerCase(),
         )!;
@@ -688,7 +703,6 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
             }),
           );
         return {
-          root,
           sellerId: sellerId,
           owner: actorOf(owner.id),
           staff: actorOf(staffOf(code)),
@@ -709,7 +723,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
 
       it("lets the owner apply again up to the Market's limit of 3; staff cannot", async () => {
         await boot();
-        const { root, sellerId, owner, staff } = await rejectedSeller();
+        const { sellerId, owner, staff } = await rejectedSeller();
 
         await expect(contract().reapplySellerAccess(staff, sellerId)).resolves.toEqual({
           ok: false,
@@ -720,13 +734,7 @@ describe('admin seller routes over HTTP (integration, slice 9)', () => {
             ok: true,
             value: { code: 'seller-access.reapplied', sellerId, state: 'pending', reapplyCount },
           });
-          const rejected = await adminPost(
-            code,
-            `sellers/${sellerId}/reject`,
-            { reason: REASON },
-            root,
-          );
-          expect(rejected.status).toBe(200);
+          expect((await decide(code, sellerId, 'reject')).ok).toBe(true);
         }
         await expect(contract().reapplySellerAccess(owner, sellerId)).resolves.toEqual({
           ok: false,

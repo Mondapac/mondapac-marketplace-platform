@@ -33,6 +33,22 @@ import type {
   SealedRevision,
 } from '../../src/modules/sellers/application/ports/revision-content-sealer';
 import type { SellerAccessReader } from '../../src/modules/sellers/application/ports/seller-access-reader';
+import type {
+  AccessDecisionAnswer,
+  DecisionByBasis,
+  SellerAccessDecider,
+} from '../../src/modules/sellers/application/ports/seller-access-decider';
+import type { ReviewCheckRepository } from '../../src/modules/sellers/application/ports/review-check.repository';
+import type {
+  ClaimOutcome,
+  IdentifierClaimRepository,
+} from '../../src/modules/sellers/application/ports/identifier-claim.repository';
+import type {
+  AdminFlagCode,
+  AdminFlagRepository,
+} from '../../src/modules/sellers/application/ports/admin-flag.repository';
+import type { IdentifierIndexKey } from '../../src/modules/sellers/domain/business-identifier';
+import type { ManualRegisterCheck } from '../../src/modules/sellers/domain/review-check';
 import type { SellerFileRepository } from '../../src/modules/sellers/application/ports/seller-file.repository';
 import type {
   ShopSlugHolder,
@@ -175,6 +191,63 @@ export class InMemoryFiles implements SellerFileRepository, Snapshottable {
     return Promise.resolve(true);
   }
 
+  /** Takes the row lock: the version must still be the one read; nothing changes. */
+  hold(market: MarketContext, file: SellerFile): Promise<boolean> {
+    this.beforeWrite?.();
+    const current = this.stored.get(this.key(market, file.state.sellerId));
+    return Promise.resolve(current !== undefined && current.version === file.persistedVersion);
+  }
+
+  /** The approved pointer and the public store name an approval wrote, by file key. */
+  readonly approvals = new Map<string, { revisionId: string; publicStoreName: string }>();
+
+  recordDecision(
+    market: MarketContext,
+    file: SellerFile,
+    approval: {
+      readonly revisionId: Id<'BusinessFileRevision'>;
+      readonly publicStoreName: string;
+    } | null,
+  ): Promise<boolean> {
+    if (file.state.version !== file.persistedVersion + 1) {
+      throw new RangeError('recordDecision: one change raises the version by exactly one');
+    }
+    this.beforeWrite?.();
+    const key = this.key(market, file.state.sellerId);
+    const current = this.stored.get(key);
+    if (current === undefined || current.version !== file.persistedVersion) {
+      return Promise.resolve(false);
+    }
+    this.stored.set(key, {
+      ...current,
+      version: file.state.version,
+      lastChangedAt: file.state.lastChangedAt,
+      decisionIntent: file.state.decisionIntent,
+      hasApprovedRevision: file.state.hasApprovedRevision,
+    });
+    if (approval !== null) this.approvals.set(key, { ...approval });
+    return Promise.resolve(true);
+  }
+
+  staleDecisionIntents(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]> {
+    return Promise.resolve(
+      [...this.stored.values()]
+        .filter(
+          (state) =>
+            state.marketId === market.marketId &&
+            state.decisionIntent !== null &&
+            Temporal.Instant.compare(state.decisionIntent.since, before) < 0,
+        )
+        .sort((a, b) => Temporal.Instant.compare(a.decisionIntent!.since, b.decisionIntent!.since))
+        .slice(0, limit)
+        .map((state) => state.sellerId),
+    );
+  }
+
   /** Marks the file as having an approved revision (slice 7 sets the pointer; here the state). */
   approve(market: MarketContext, sellerId: Id<'Seller'>): void {
     const key = this.key(market, sellerId);
@@ -271,6 +344,14 @@ export class InMemoryRevisions implements BusinessFileRevisionRepository, Snapsh
     );
   }
 
+  saveDecision(market: MarketContext, revision: BusinessFileRevision): Promise<boolean> {
+    const key = `${market.marketId}|${revision.sellerId}|${revision.id}`;
+    const row = this.rows.get(key);
+    if (row === undefined || row.revision.status !== 'pending') return Promise.resolve(false);
+    this.rows.set(key, { ...row, revision });
+    return Promise.resolve(true);
+  }
+
   /** Puts a revision straight in the store as a decision would (tests of other states). */
   force(market: MarketContext, revision: BusinessFileRevision): void {
     const row = this.rows.get(`${market.marketId}|${revision.sellerId}|${revision.id}`)!;
@@ -342,6 +423,22 @@ export class InMemorySlugs implements ShopSlugRepository, Snapshottable {
     if (other !== undefined) throw new Error('I-S1: the seller holds another slug');
     this.rows.set(key, { sellerId: input.sellerId, state: 'held', everPublic: false });
     return Promise.resolve('held');
+  }
+
+  markPublic(market: MarketContext, sellerId: Id<'Seller'>): Promise<number> {
+    let marked = 0;
+    for (const [key, row] of this.rows) {
+      if (
+        key.startsWith(`${market.marketId}|`) &&
+        row.sellerId === sellerId &&
+        row.state === 'held' &&
+        !row.everPublic
+      ) {
+        this.rows.set(key, { ...row, everPublic: true });
+        marked += 1;
+      }
+    }
+    return Promise.resolve(marked);
   }
 
   releaseUnpublished(market: MarketContext, sellerId: Id<'Seller'>): Promise<number> {
@@ -543,5 +640,175 @@ export class ReadableCipher implements SellerFileCipher {
     const prefix = `v1.${market.marketId}.${sellerId}.${field}.`;
     if (!sealed.startsWith(prefix)) return Promise.reject(new Error('integrity'));
     return Promise.resolve(ok(Buffer.from(sealed.slice(prefix.length), 'base64url').toString()));
+  }
+}
+
+/** Manual register checks by `(Market, seller, revision)`: recording again replaces (an upsert). */
+export class InMemoryReviewChecks implements ReviewCheckRepository, Snapshottable {
+  readonly rows = new Map<string, ManualRegisterCheck>();
+
+  snapshot() {
+    return copyMap(this.rows);
+  }
+
+  findManualRegisterCheck(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    revisionId: Id<'BusinessFileRevision'>,
+  ): Promise<ManualRegisterCheck | null> {
+    return Promise.resolve(this.rows.get(`${market.marketId}|${sellerId}|${revisionId}`) ?? null);
+  }
+
+  recordManualRegisterCheck(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    check: ManualRegisterCheck,
+  ): Promise<void> {
+    this.rows.set(`${market.marketId}|${sellerId}|${check.revisionId}`, check);
+    return Promise.resolve();
+  }
+}
+
+/** Identifier claims with the keys of data design 3.6: one holder per value, one value per seller. */
+export class InMemoryClaims implements IdentifierClaimRepository, Snapshottable {
+  readonly rows = new Map<string, { sellerId: Id<'Seller'>; revisionId: string }>();
+
+  snapshot() {
+    return copyMap(this.rows);
+  }
+
+  take(
+    market: MarketContext,
+    claim: {
+      readonly sellerId: Id<'Seller'>;
+      readonly revisionId: Id<'BusinessFileRevision'>;
+      readonly index: IdentifierIndexKey;
+    },
+  ): Promise<ClaimOutcome> {
+    const key = `${market.marketId}|${Buffer.from(claim.index).toString('hex')}`;
+    const held = this.rows.get(key);
+    if (held !== undefined) {
+      return Promise.resolve(held.sellerId === claim.sellerId ? 'already-mine' : 'held-by-other');
+    }
+    const mine = [...this.rows.entries()].some(
+      ([k, row]) => k.startsWith(`${market.marketId}|`) && row.sellerId === claim.sellerId,
+    );
+    if (mine) return Promise.resolve('seller-holds-another');
+    this.rows.set(key, { sellerId: claim.sellerId, revisionId: claim.revisionId });
+    return Promise.resolve('taken');
+  }
+
+  release(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    revisionId: Id<'BusinessFileRevision'>,
+  ): Promise<boolean> {
+    for (const [key, row] of this.rows) {
+      if (
+        key.startsWith(`${market.marketId}|`) &&
+        row.sellerId === sellerId &&
+        row.revisionId === revisionId
+      ) {
+        this.rows.delete(key);
+        return Promise.resolve(true);
+      }
+    }
+    return Promise.resolve(false);
+  }
+
+  holderOf(market: MarketContext, index: IdentifierIndexKey): Promise<Id<'Seller'> | null> {
+    return Promise.resolve(
+      this.rows.get(`${market.marketId}|${Buffer.from(index).toString('hex')}`)?.sellerId ?? null,
+    );
+  }
+}
+
+/** Admin flags, one open per `(Market, seller, code)`. */
+export class InMemoryFlags implements AdminFlagRepository, Snapshottable {
+  readonly open = new Set<string>();
+
+  snapshot() {
+    const copy = new Set(this.open);
+    return () => {
+      this.open.clear();
+      for (const value of copy) this.open.add(value);
+    };
+  }
+
+  raise(
+    market: MarketContext,
+    flag: { readonly sellerId: Id<'Seller'>; readonly code: AdminFlagCode },
+  ): Promise<'raised' | 'already-open'> {
+    const key = `${market.marketId}|${flag.sellerId}|${flag.code}`;
+    if (this.open.has(key)) return Promise.resolve('already-open');
+    this.open.add(key);
+    return Promise.resolve('raised');
+  }
+}
+
+/**
+ * `identity`'s decisions, as the contract answers them: a queue of scripted answers per call
+ * (default: decide), the decisions recorded by `basisId`, and a hook that runs during the call
+ * (a concurrent handler or job gets in there).
+ */
+export class FakeDecider implements SellerAccessDecider {
+  readonly calls: {
+    kind: 'approve' | 'reject';
+    sellerId: string;
+    basisId: string;
+    reason?: string;
+  }[] = [];
+  readonly recorded: DecisionByBasis[] = [];
+  /** The next answers: a refusal code, 'throw' (no answer in time), or 'decide' (the default). */
+  readonly script: string[] = [];
+  during: (() => Promise<void>) | null = null;
+  /** Answers of `decisionsByBasis`: 'throw' makes it fail. */
+  byBasisFails = false;
+  private next = 0;
+
+  approve(context: CallContext, sellerId: Id<'Seller'>, basisId: Id<'BusinessFileRevision'>) {
+    this.calls.push({ kind: 'approve', sellerId, basisId });
+    return this.answer(sellerId, basisId, 'approved');
+  }
+
+  reject(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    reason: string,
+    basisId: Id<'BusinessFileRevision'>,
+  ) {
+    this.calls.push({ kind: 'reject', sellerId, basisId, reason });
+    return this.answer(sellerId, basisId, 'rejected');
+  }
+
+  decisionsByBasis(
+    _context: CallContext,
+    items: readonly {
+      readonly sellerId: Id<'Seller'>;
+      readonly basisId: Id<'BusinessFileRevision'>;
+    }[],
+  ): Promise<readonly DecisionByBasis[]> {
+    if (this.byBasisFails) return Promise.reject(new Error('identity unavailable'));
+    return Promise.resolve(
+      this.recorded.filter((row) =>
+        items.some((item) => item.sellerId === row.sellerId && item.basisId === row.basisId),
+      ),
+    );
+  }
+
+  private async answer(
+    sellerId: Id<'Seller'>,
+    basisId: Id<'BusinessFileRevision'>,
+    kind: 'approved' | 'rejected',
+  ): Promise<AccessDecisionAnswer> {
+    const step = this.script.shift() ?? 'decide';
+    if (step !== 'decide' && step !== 'throw') return { kind: 'refused', code: step };
+    const decisionId =
+      `0199dddd-0000-7000-8000-${String(++this.next).padStart(12, '0')}` as Id<'AccessDecision'>;
+    // identity commits before it answers: a timeout after the commit still leaves the decision.
+    this.recorded.push({ sellerId, basisId, decisionId, kind });
+    await this.during?.();
+    if (step === 'throw') throw new Error('DecisionDeadlineExceeded');
+    return { kind: 'decided', decisionId };
   }
 }

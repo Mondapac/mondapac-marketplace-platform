@@ -1588,3 +1588,11 @@ refuses, the seller `reviewer-notice` reservation is released (the Market one st
   launch scale. Revisit trigger: **50,000 sellers in one Market**, or the p95 of the counts above
   50 ms: then keep the counters in a table updated in the same unit as the file change, or cache them
   for a few seconds.
+
+## 24. Slice 7a-decide migration `20261010113051_sellers_review_decisions` (2026-10-10)
+- `seller_files`: `public_store_name` (set with the approved pointer, CHECK both null or both set), and the decision intent `decision_intent`, `decision_attempt_id`, `decision_revision_id`, `decision_intent_since` (all four set or all null; the revision is a foreign key to this file's revisions). Partial index `(market_id, decision_intent_since) WHERE decision_intent IS NOT NULL` for the reconciliation job.
+- `review_checks` (PK market, revision, check code; FK to the revision with cascade): only `manual-register-check` is written in this slice; `observed_register_outcome` is set exactly for it. Grants SELECT, INSERT, UPDATE.
+- `identifier_claims` (PK market, identifier index; unique market, seller): inserted on approval, released when `identity` refuses. Grants SELECT, INSERT, DELETE.
+- `admin_flags`: one open flag per (market, seller, code), code `identifier-claim-conflict` only. Grants SELECT, INSERT and UPDATE of the two clearing columns.
+- Simplifications: the `review_checks` FK carries `seller_id` (every read names the seller). `down.sql` drops in reverse order; `db:check-reversible` passes.
+

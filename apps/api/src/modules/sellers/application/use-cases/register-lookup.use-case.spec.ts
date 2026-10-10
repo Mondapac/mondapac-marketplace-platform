@@ -142,6 +142,18 @@ class FakeFiles implements SellerFileRepository {
   }
   /** When set, the next `saveDraft` loses to a concurrent writer (optimistic version check). */
   conflictOnNextSave = false;
+  hold(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  recordDecision(): Promise<boolean> {
+    return Promise.reject(new Error('not used here'));
+  }
+
+  staleDecisionIntents(): Promise<readonly Id<'Seller'>[]> {
+    return Promise.reject(new Error('not used here'));
+  }
+
   recordChange(): Promise<boolean> {
     return Promise.reject(new Error('not used here'));
   }
