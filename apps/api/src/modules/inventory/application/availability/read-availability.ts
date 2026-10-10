@@ -1,5 +1,5 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   MAX_AVAILABILITY_BATCH,
@@ -24,6 +24,7 @@ export interface AvailabilityDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly items: AvailabilityReader;
   readonly signals: AvailabilitySignalRepository;
+  readonly clock: Clock;
 }
 
 /**
@@ -57,7 +58,7 @@ export async function readAvailability(
   return deps.unitOfWork.run<AvailabilityMap, AvailabilityFailure>(
     market,
     async () => {
-      const items = await deps.items.itemsOfSellUnits(market, [...keys.values()]);
+      const items = await deps.items.itemsOfSellUnits(market, [...keys.values()], deps.clock.now());
       const answer = new Map<string, SellUnitAvailability>();
       for (const [mapKey, key] of keys) {
         const mine = items

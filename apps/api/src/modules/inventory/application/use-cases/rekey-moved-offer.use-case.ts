@@ -6,6 +6,8 @@ import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { availabilityOf, sellableOfSellUnit } from '../../domain/stock';
+import type { ReservationRepository, SellUnitRef } from '../ports/reservation.repository';
+import { distinctSellUnits, recomputeSellUnitSignals, sellUnitKey } from '../reservation-support';
 import type { AvailabilitySignalRepository } from '../ports/availability-signal.repository';
 import type { InventoryPolicyProvider } from '../ports/inventory-policy-provider';
 import type { OfferSellUnitsSource } from '../ports/offer-sell-units';
@@ -42,6 +44,7 @@ export interface RekeyMovedOfferDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly inventories: SellerInventoryRepository;
   readonly stock: StockRepository;
+  readonly reservations: ReservationRepository;
   readonly signals: AvailabilitySignalRepository;
   readonly offers: OfferSellUnitsSource;
   readonly policies: InventoryPolicyProvider;
@@ -63,8 +66,9 @@ const MAX_REKEY_LOCK_SET = 1000;
  * stranded on dead keys. Outside the unit it validates the mapping and checks it against catalog's
  * `offerSellUnits` (M1); then in one `serializable` unit opened through the inbox's `runOnce`:
  *
- * 1. read the ids of every item of the Offer on the `from` and `to` Variants, retired included, and
- *    lock them in one call (lock rule L1; above the cap it fails, never chunked);
+ * 1. read the ids of every item of the Offer on the `from` and `to` Variants, retired included, plus
+ *    every item of the sell units of the live reservations that hold a line on a `from` Variant,
+ *    and lock the union in one call (lock rule L1; above the cap it fails, never chunked);
  * 2. tombstones first: an Offer tombstone means only what is left is retired; a Variant tombstone on
  *    a `to` Variant means that pair moves nothing, its items are retired and the quantity logged;
  * 3. per pair and source, `moved = onHand - pending`: create the target item with `moved` and write
@@ -72,8 +76,10 @@ const MAX_REKEY_LOCK_SET = 1000;
  *    write only the `-moved` movement; retire the source item and tombstone the `from` Variant;
  * 4. recompute the signals of the old (now `out`) and new sell units.
  *
- * Pending is what `heldQuantities` reports (nothing before slice 4, which also releases the live
- * holds of step 4 of the design). A replay with the same event stops at the inbox; another event for
+ * Before the move (design step 4) every ACTIVE, unexpired reservation with a line on a `from` sell
+ * unit is released with cause `offer-moved`, all its lines, other sellers' included, and the signals
+ * of those other sell units are recomputed. Pending is then what `heldQuantities` reports: the
+ * committed lines only. A replay with the same event stops at the inbox; another event for
  * the same Offer finds the old items retired and moves nothing. Logs hold ids, codes and counts.
  */
 export class RekeyMovedOffer extends UseCase<
@@ -154,18 +160,32 @@ export class RekeyMovedOffer extends UseCase<
     >
   > {
     const { market } = context;
-    const { stock, inventories, policies, ids, clock } = this.deps;
+    const { stock, reservations, inventories, policies, ids, clock } = this.deps;
     const { offerId, fromVariantIds, toVariantIds } = input;
     const now = clock.now();
+
+    // Live holds on the `from` sell units (design 3.6 step 4), read before the lock so their other
+    // lines' items join the lock set (L1): a second read, then one lock call with the union.
+    const fromUnits: SellUnitRef[] = fromVariantIds.map((variantId) => ({ offerId, variantId }));
+    const holds = await reservations.liveOnSellUnits(market, fromUnits, now);
+    const heldLines = holds.flatMap((hold) => hold.state.lines);
+    const otherUnits = distinctSellUnits(heldLines).filter(
+      (unit) => !(unit.offerId === offerId && fromVariantIds.includes(unit.variantId)),
+    );
+    const otherItems = await reservations.itemsOfSellUnits(market, otherUnits);
 
     // Lock (L1) first: every item of both sides, retired included, in one call.
     const found = await stock.itemIdsOfOfferVariants(market, offerId, [
       ...fromVariantIds,
       ...toVariantIds,
     ]);
-    if (found.length > MAX_REKEY_LOCK_SET)
-      return err({ code: 'inventory.rekey.lock-set-too-large' });
-    const locked = found.length === 0 ? [] : await stock.lockItems(market, found);
+    const union = new Set<Id<'StockItem'>>(found);
+    for (const line of heldLines) union.add(line.stockItemId);
+    for (const item of otherItems) if (!item.retired) union.add(item.id);
+    if (union.size > MAX_REKEY_LOCK_SET) return err({ code: 'inventory.rekey.lock-set-too-large' });
+    const lockedAll = union.size === 0 ? [] : await stock.lockItems(market, [...union]);
+    const mine = new Set<string>([...fromVariantIds, ...toVariantIds]);
+    const locked = lockedAll.filter((item) => item.offerId === offerId && mine.has(item.variantId));
     if (locked.some((item) => item.sellerId !== sellerId)) {
       return err({ code: 'inventory.rekey.offer-mismatch' });
     }
@@ -201,6 +221,39 @@ export class RekeyMovedOffer extends UseCase<
       });
     }
 
+    // Step 4: release the live holds, final like `cancelled` (a commit after it is refused). Guarded
+    // on `status = 'active'`; one structured line per released reservation.
+    const releasedUnits: SellUnitRef[] = [];
+    // H1: a SERIALIZABLE snapshot cannot see a reserve that committed before the lock above, and a
+    // row lock does not raise 40001; the bump makes the next serializable locker retry.
+    if (holds.length > 0) {
+      await reservations.markHoldsChanged(
+        market,
+        lockedAll.map((item) => item.id),
+      );
+    }
+    for (const hold of holds) {
+      if (!(await reservations.releaseActive(market, hold.state.id, 'offer-moved', now))) continue;
+      releasedUnits.push(...hold.state.lines);
+      this.#logger.warn({
+        msg: 'inventory.rekey.hold-released',
+        reservationId: hold.state.id,
+        offerId,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+    // The other sell units of those holds just got stock back: publish their signals (5.3).
+    const otherKeys = new Set(otherUnits.map(sellUnitKey));
+    await recomputeSellUnitSignals(
+      this.deps,
+      context,
+      market,
+      lockedAll,
+      releasedUnits.filter((unit) => otherKeys.has(sellUnitKey(unit))),
+      now,
+    );
+
     const toRetire: Id<'StockItem'>[] = [];
     let sellUnits = 0;
     for (const [at, from] of fromVariantIds.entries()) {
@@ -215,6 +268,7 @@ export class RekeyMovedOffer extends UseCase<
       const held = await stock.heldQuantities(
         market,
         sources.map((item) => item.id),
+        now,
       );
       const created: StockItemRow[] = [];
       for (const source of sources) {
@@ -234,6 +288,19 @@ export class RekeyMovedOffer extends UseCase<
           continue;
         }
         const pending = held.get(source.id) ?? 0;
+        if (pending > 0) {
+          // Committed lines stay on the old item, where fulfil and cancel still work (design 3.6
+          // step 4); a live hold would have been released above, so this needs a bug upstream.
+          this.#logger.warn({
+            msg: 'inventory.rekey.pending-left',
+            offerId,
+            fromVariantId: from,
+            sourceId: source.sourceId,
+            quantity: pending,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
+        }
         if (source.onHand - pending < 0) {
           this.#logger.error({
             msg: 'inventory.rekey.pending-exceeds-on-hand',
@@ -330,6 +397,7 @@ export class RekeyMovedOffer extends UseCase<
         const heldTo = await stock.heldQuantities(
           market,
           kept.map((item) => item.id),
+          now,
         );
         await signalOf(
           to,

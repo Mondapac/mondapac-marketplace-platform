@@ -326,6 +326,16 @@ module.exports = {
       to: { path: SELLER_ACCESS_CONTRACT_FILE },
     },
     {
+      name: 'inventory-ordering-port-is-for-ordering',
+      comment:
+        "inventory's ordering port (contracts/ordering-port.ts: reserve, releaseReservation, " +
+        'releaseOwnReservation) is the only way to hold stock for a checkout, and only ordering ' +
+        "calls it (inventory design 7.2). inventory's index.ts does not export it.",
+      severity: 'error',
+      from: { pathNot: ['^src/modules/inventory/', '^src/modules/ordering/'] },
+      to: { path: '^src/modules/inventory/contracts/ordering-port\\.ts$' },
+    },
+    {
       name: 'approved-seller-zones-contract-is-for-certification',
       comment:
         "Only certification's application and infrastructure layers and its Nest module import " +

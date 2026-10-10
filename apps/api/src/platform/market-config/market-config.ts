@@ -932,8 +932,8 @@ const sellersSchema = z
 
 /**
  * The `inventory` section of a Market file (inventory design 8; docs/design/data/inventory.md
- * 8.3). It starts with what slice 1 needs; later slices add the reservation duration, the
- * default low-stock threshold and the default per-customer cap here.
+ * 8.3): the source limit, the default low-stock threshold, the reservation duration and the
+ * default per-customer cap.
  */
 const inventorySchema = z.strictObject({
   /**
@@ -951,6 +951,16 @@ const inventorySchema = z.strictObject({
    * finding 9).
    */
   defaultLowStockThreshold: z.number().int().min(0).max(99),
+  /**
+   * How long a checkout reservation holds stock, in minutes (design 4.2, 8; AU 15). Required: a
+   * Market never defaults it. 1 to 240.
+   */
+  reservationMinutes: z.number().int().min(1).max(240),
+  /**
+   * The per-customer cap `D` of a line when the Offer sets no limit (design 5.1; AU 10). Required:
+   * a Market never defaults it. 1 to 999, the range of `maxLineQuantity`, which also caps it.
+   */
+  defaultCustomerCap: z.number().int().min(1).max(999),
 });
 
 /**

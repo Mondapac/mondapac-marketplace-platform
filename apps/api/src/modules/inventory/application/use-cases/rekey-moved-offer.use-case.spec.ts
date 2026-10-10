@@ -36,6 +36,7 @@ import type {
   StockItemRow,
   StockRepository,
 } from '../ports/stock.repository';
+import { InMemoryReservations } from '../testing/in-memory-reservations';
 import { RekeyMovedOffer, type RekeyMovedOfferInput } from './rekey-moved-offer.use-case';
 
 // Inventory slice 2, part 5 in memory (inventory design 3.6): the re-key handler on both Market
@@ -202,6 +203,7 @@ function setUp() {
     unitOfWork,
     inventories: noInventories,
     stock,
+    reservations: new InMemoryReservations(),
     signals,
     offers,
     policies,

@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { MAX_STOCK_ITEM_IDS } from './lock-limits';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   NewRetirementTombstone,
@@ -10,6 +11,7 @@ import type {
   StockRepository,
 } from '../application/ports/stock.repository';
 import { assertSerializableUnit } from '../application/serializable-unit';
+import { heldQuantitiesOf } from './held-sum';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
@@ -19,7 +21,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
  * import the persistence internals, hence the copy; the 1,001-item case of
  * `inventory-retire-sell-units.db-spec.ts` fails if the platform cap ever drops below it.
  */
-const MAX_LOCKED_STOCK_ITEMS = 1000;
+const MAX_LOCKED_STOCK_ITEMS = MAX_STOCK_ITEM_IDS;
 
 /** The columns the lock statement answers (platform `LockedStockItem`). */
 interface LockedRow {
@@ -33,7 +35,7 @@ interface LockedRow {
   readonly version: number;
 }
 
-function toStockItemRow(row: LockedRow): StockItemRow {
+export function toStockItemRow(row: LockedRow): StockItemRow {
   return {
     id: row.id as Id<'StockItem'>,
     offerId: row.offerId as Id<'Offer'>,
@@ -212,11 +214,11 @@ export class PrismaStockRepository implements StockRepository {
   }
 
   heldQuantities(
-    _market: MarketContext,
+    market: MarketContext,
     stockItemIds: readonly Id<'StockItem'>[],
+    now: Temporal.Instant,
   ): Promise<ReadonlyMap<Id<'StockItem'>, number>> {
-    // No reservation table exists before slice 4, so nothing can be held (see the port).
-    return Promise.resolve(new Map(stockItemIds.map((id) => [id, 0] as const)));
+    return heldQuantitiesOf(this.prisma, market, stockItemIds, now);
   }
 
   async insertItem(market: MarketContext, item: NewStockItem): Promise<void> {

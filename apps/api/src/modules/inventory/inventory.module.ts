@@ -14,6 +14,15 @@ import { AVAILABILITY_SIGNAL_REPOSITORY } from './application/ports/availability
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { AVAILABILITY_READER } from './application/ports/availability-reader';
 import { STOCK_REPOSITORY } from './application/ports/stock.repository';
+import { RESERVATION_REPOSITORY } from './application/ports/reservation.repository';
+import { ExpireReservations } from './application/use-cases/expire-reservations.use-case';
+import { ReleaseOwnReservation } from './application/use-cases/release-own-reservation.use-case';
+import { ReleaseReservation } from './application/use-cases/release-reservation.use-case';
+import { Reserve } from './application/use-cases/reserve.use-case';
+import { INVENTORY_ORDERING_PORT } from './contracts/ordering-port';
+import { InventoryOrderingPortImplementation } from './presentation/ordering-port';
+import { expireReservationsJob } from './presentation/jobs/expire-reservations.job';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { AvailabilitySystemQuery } from './application/use-cases/availability-system.use-case';
 import { AvailabilityQuery } from './application/use-cases/availability.use-case';
 import { SetStockLevel } from './application/use-cases/set-stock-level.use-case';
@@ -47,6 +56,7 @@ const PORT = {
   inventories: SELLER_INVENTORY_REPOSITORY,
   policies: INVENTORY_POLICY_PROVIDER,
   stock: STOCK_REPOSITORY,
+  reservations: RESERVATION_REPOSITORY,
   items: AVAILABILITY_READER,
   signals: AVAILABILITY_SIGNAL_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
@@ -56,6 +66,18 @@ const PORT = {
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
+
+/** What the release use cases and the expiry job share: the lock, the held sums and the signals. */
+const RELEASE_PORTS = {
+  unitOfWork: true,
+  reservations: true,
+  inventories: true,
+  policies: true,
+  signals: true,
+  outbox: true,
+  ids: true,
+  clock: true,
+} as const;
 
 /**
  * The provider of one use case: the gate and the named ports, in a dependency object. `ports`
@@ -141,6 +163,7 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       inventories: true,
       stock: true,
+      reservations: true,
       signals: true,
       offers: true,
       policies: true,
@@ -148,8 +171,48 @@ function useCaseProvider<D, U>(
       ids: true,
       clock: true,
     }),
-    useCaseProvider(AvailabilityQuery, { unitOfWork: true, items: true, signals: true }),
-    useCaseProvider(AvailabilitySystemQuery, { unitOfWork: true, items: true, signals: true }),
+    useCaseProvider(AvailabilityQuery, {
+      unitOfWork: true,
+      items: true,
+      signals: true,
+      clock: true,
+    }),
+    useCaseProvider(AvailabilitySystemQuery, {
+      unitOfWork: true,
+      items: true,
+      signals: true,
+      clock: true,
+    }),
+    useCaseProvider(Reserve, {
+      unitOfWork: true,
+      reservations: true,
+      inventories: true,
+      policies: true,
+      signals: true,
+      outbox: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(ReleaseReservation, RELEASE_PORTS),
+    useCaseProvider(ReleaseOwnReservation, RELEASE_PORTS),
+    useCaseProvider(ExpireReservations, RELEASE_PORTS),
+    {
+      provide: INVENTORY_ORDERING_PORT,
+      inject: [Reserve, ReleaseReservation, ReleaseOwnReservation],
+      useFactory: (
+        reserve: Reserve,
+        releaseReservation: ReleaseReservation,
+        releaseOwnReservation: ReleaseOwnReservation,
+      ) =>
+        new InventoryOrderingPortImplementation({
+          reserve,
+          releaseReservation,
+          releaseOwnReservation,
+        }),
+    },
+    registerJobsFrom('inventory', [ExpireReservations], (expire: ExpireReservations) => [
+      expireReservationsJob(expire),
+    ]),
     {
       provide: INVENTORY_FACADE,
       inject: [AvailabilityQuery, AvailabilitySystemQuery],
@@ -166,6 +229,6 @@ function useCaseProvider<D, U>(
       ],
     ),
   ],
-  exports: [INVENTORY_FACADE],
+  exports: [INVENTORY_FACADE, INVENTORY_ORDERING_PORT],
 })
 export class InventoryModule {}

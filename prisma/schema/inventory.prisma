@@ -1,8 +1,8 @@
 // The inventory module (schema "inventory"). Physical design: docs/design/data/inventory.md;
 // every model is named Inventory<Name> (its C9) and mapped to its table with @@map. Slice 1
 // creates the inbox, the seller inventory root and its sources; slice 2 adds the outbox, the
-// stock items, the ledger, the availability signals and the retirement tombstones; the
-// reservations follow, each in its own migration (data design 8.1).
+// stock items, the ledger, the availability signals and the retirement tombstones; slice 4 adds
+// the reservations, their lines and the per-Offer purchase limit (data design 8.1, migration 3).
 
 /// Events of the inventory module (ADR-0006 decisions 1 and 2; data design 3.1, PM1). Written
 /// only by the platform OutboxWriter in the unit of the state change, read and marked only by
@@ -127,9 +127,13 @@ model InventoryStockItem {
   /// Set once, never cleared (inventory design 3.3).
   retiredAt DateTime?                @map("retired_at") @db.Timestamptz(6)
   version   Int
+  /// Raised by every unit that changes holds on the item (reserve, release, expiry, rekey), never
+  /// `version` (C5). A SERIALIZABLE stock unit that locks the row after such a commit gets 40001.
+  holdSeq   Int                      @default(0) @map("hold_seq")
   createdAt DateTime                 @map("created_at") @db.Timestamptz(6)
   source    InventorySource          @relation(fields: [marketId, sourceId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
   movements InventoryStockMovement[]
+  reservationLines InventoryReservationLine[]
 
   /// The inventory key (brief s5, ADR-0010 decision 2); its prefix serves "every item of a sell unit".
   @@unique([marketId, offerId, variantId, sourceId])
@@ -211,5 +215,85 @@ model InventoryRetirement {
   retiredAt              DateTime @map("retired_at") @db.Timestamptz(6)
 
   @@map("retirements")
+  @@schema("inventory")
+}
+
+/// The 15-minute checkout hold of one customer (inventory design 2.1, 3.1; data design 3.6): one
+/// per (Market, holder) while ACTIVE. FULFILLED and CANCELLED are derived from the lines. The
+/// CHECKs, the partial unique index "one ACTIVE per holder" and the expiry index are hand-written
+/// in the migration.
+model InventoryReservation {
+  id              String                    @id @db.Uuid
+  marketId        String                    @map("market_id") @db.VarChar(8)
+  tenantId        String                    @map("tenant_id")
+  /// The customer's account id (C4: a plain id, no foreign key).
+  holderAccountId String                    @map("holder_account_id") @db.Uuid
+  /// Ordering's id for the checkout (C4); commit must match it.
+  checkoutRef     String                    @map("checkout_ref") @db.Uuid
+  /// active, released, expired or committed (CHECK).
+  status          String
+  /// Set exactly when released (and kept on a superseded one later committed) (CHECK).
+  releaseCause    String?                   @map("release_cause")
+  /// createdAt plus the Market's duration; never changes.
+  expiresAt       DateTime                  @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime                  @map("created_at") @db.Timestamptz(6)
+  statusChangedAt DateTime                  @map("status_changed_at") @db.Timestamptz(6)
+  version         Int
+  lines           InventoryReservationLine[]
+
+  /// The foreign-key target of the lines' copy of `expires_at` (C3).
+  @@unique([marketId, id, expiresAt])
+  @@map("reservations")
+  @@schema("inventory")
+}
+
+/// One sell unit of a reservation (inventory design 2.1; data design 3.7). `state` mirrors the
+/// header until commit; `expiresAt` is the header's copy, proved equal by the foreign key, so
+/// the held sum reads one index. The CHECKs and the grants are hand-written in the migration.
+model InventoryReservationLine {
+  id             String               @id @db.Uuid
+  marketId       String               @map("market_id") @db.VarChar(8)
+  tenantId       String               @map("tenant_id")
+  reservationId  String               @map("reservation_id") @db.Uuid
+  expiresAt      DateTime             @map("expires_at") @db.Timestamptz(6)
+  offerId        String               @map("offer_id") @db.Uuid
+  variantId      String               @map("variant_id") @db.Uuid
+  /// The allocated stock item; its source and seller are the item's.
+  stockItemId    String               @map("stock_item_id") @db.Uuid
+  quantity       Int
+  /// active, released, expired, committed, fulfilled or cancelled (CHECK).
+  state          String
+  /// Ordering's order line (C4); set exactly from commit on (CHECK).
+  orderLineId    String?              @map("order_line_id") @db.Uuid
+  stateChangedAt DateTime             @map("state_changed_at") @db.Timestamptz(6)
+  reservation    InventoryReservation @relation(fields: [marketId, reservationId, expiresAt], references: [marketId, id, expiresAt], onDelete: Cascade, onUpdate: Restrict)
+  stockItem      InventoryStockItem   @relation(fields: [marketId, stockItemId, offerId, variantId], references: [marketId, id, offerId, variantId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One line per sell unit; its prefix serves "the lines of a reservation".
+  @@unique([marketId, reservationId, offerId, variantId])
+  /// The idempotency key of cancel and shipment (slice 5).
+  @@unique([marketId, orderLineId])
+  /// The held sum (T1 option A, data design 4.3): an index-only scan on live lines.
+  @@index([marketId, stockItemId, state, expiresAt, quantity], map: "reservation_lines_market_id_stock_item_id_state_idx")
+  @@map("reservation_lines")
+  @@schema("inventory")
+}
+
+/// The seller's optional per-customer cap of one Offer (inventory design 5.1; data design 3.8).
+/// Deleted to clear it. The CHECK and the grants are hand-written in the migration.
+model InventoryOfferPurchaseLimit {
+  id             String   @id @db.Uuid
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  offerId        String   @map("offer_id") @db.Uuid
+  /// The Offer's seller.
+  sellerId       String   @map("seller_id") @db.Uuid
+  maxPerCustomer Int      @map("max_per_customer")
+  version        Int
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+
+  /// At most one cap per Offer; also the read in `reserve`.
+  @@unique([marketId, offerId])
+  @@map("offer_purchase_limits")
   @@schema("inventory")
 }

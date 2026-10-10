@@ -1,4 +1,4 @@
-import { parseId } from '@mondapac/shared-kernel';
+import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../../test/support/pricing-fakes';
@@ -35,6 +35,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.availability in market %s', (cod
     const deps = {
       unitOfWork,
       items: { itemsOfSellUnits: () => Promise.resolve(items) },
+      clock: { now: () => Temporal.Instant.from('2026-10-09T01:00:00Z') },
       signals: {
         find: (_m: MarketContext, offerId: string, variantId: string) =>
           Promise.resolve(

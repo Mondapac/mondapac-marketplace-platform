@@ -26,6 +26,7 @@ import { SellerInventory } from '../../src/modules/inventory/domain/seller-inven
 import { ConfigInventoryPolicyProvider } from '../../src/modules/inventory/infrastructure/config-inventory-policy-provider';
 import { PrismaAvailabilitySignalRepository } from '../../src/modules/inventory/infrastructure/prisma-availability-signal.repository';
 import { PrismaSellerInventoryRepository } from '../../src/modules/inventory/infrastructure/prisma-seller-inventory.repository';
+import { PrismaReservationRepository } from '../../src/modules/inventory/infrastructure/prisma-reservation.repository';
 import { PrismaStockRepository } from '../../src/modules/inventory/infrastructure/prisma-stock.repository';
 import type { AuthorisationCheck } from '../../src/platform/authz';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -133,6 +134,7 @@ describe.each(TEST_MARKETS)('inventory.rekey-moved-offer in market %s (database)
           unitOfWork: handledOnce(),
           inventories,
           stock: repository,
+          reservations: new PrismaReservationRepository(db.service),
           signals,
           offers,
           policies,
@@ -342,6 +344,129 @@ describe.each(TEST_MARKETS)('inventory.rekey-moved-offer in market %s (database)
       expect(await statusOf(m.offerId, variantId)).toBe('out');
     }
     for (const variantId of m.to) expect(await statusOf(m.offerId, variantId)).toBe('in-stock');
+  });
+
+  /** A reservation of a customer, written directly: its lines hold the given stock items. */
+  async function hold(
+    lines: readonly { offerId: string; variantId: string; stockItemId: string; quantity: number }[],
+    state: 'active' | 'committed' = 'active',
+  ) {
+    const reservationId = ids.next<'Reservation'>();
+    const expiresAt = new Date(T0.epochMilliseconds + 3_600_000);
+    await sql.query(
+      `INSERT INTO inventory.reservations (id, market_id, tenant_id, holder_account_id, checkout_ref, status, expires_at, created_at, status_changed_at, version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, 1)`,
+      [
+        reservationId,
+        code,
+        marketOf(code).tenantId,
+        ids.next<'Account'>(),
+        ids.next<'Checkout'>(),
+        state,
+        expiresAt,
+        new Date(T0.epochMilliseconds),
+      ],
+    );
+    for (const line of lines) {
+      await sql.query(
+        `INSERT INTO inventory.reservation_lines (id, market_id, tenant_id, reservation_id, expires_at, offer_id, variant_id, stock_item_id, quantity, state, order_line_id, state_changed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          ids.next<'ReservationLine'>(),
+          code,
+          marketOf(code).tenantId,
+          reservationId,
+          expiresAt,
+          line.offerId,
+          line.variantId,
+          line.stockItemId,
+          line.quantity,
+          state,
+          state === 'committed' ? ids.next<'OrderLine'>() : null,
+          new Date(T0.epochMilliseconds),
+        ],
+      );
+    }
+    return reservationId;
+  }
+  const reservationState = async (id: string) =>
+    (
+      await rows(
+        `SELECT r.status, r.release_cause, (SELECT array_agg(l.state) FROM inventory.reservation_lines l WHERE l.reservation_id = r.id) AS lines
+           FROM inventory.reservations r WHERE r.market_id = $1 AND r.id = $2`,
+        [code, id],
+      )
+    )[0];
+
+  it("releases the live holds on the moved sell units with cause offer-moved, other sellers' lines included (design 3.6 step 4)", async () => {
+    const seller = await newSeller();
+    const other = await newSeller();
+    const m = await stockedOffer(seller, 1, 50);
+    const elsewhereOffer = ids.next<'Offer'>();
+    const elsewhereVariant = ids.next<'Variant'>();
+    expect((await stockOf(other, elsewhereOffer, elsewhereVariant, 5)).ok).toBe(true);
+    move(seller, m);
+    const [movedItem] = await itemsOf(code, m.offerId);
+    const [elsewhereItem] = await itemsOf(code, elsewhereOffer);
+    const reservationId = await hold([
+      {
+        offerId: m.offerId,
+        variantId: m.from[0]!,
+        stockItemId: movedItem!.id as string,
+        quantity: 4,
+      },
+      {
+        offerId: elsewhereOffer,
+        variantId: elsewhereVariant,
+        stockItemId: elsewhereItem!.id as string,
+        quantity: 5,
+      },
+    ]);
+    // The other seller's sell unit is fully held: its stored signal says out.
+    await sql.query(
+      `UPDATE inventory.availability_signals SET status = 'out', only_left = NULL, version = version + 1
+        WHERE market_id = $1 AND offer_id = $2`,
+      [code, elsewhereOffer],
+    );
+
+    const result = await rekey.execute(system(), input(m));
+
+    expect(result.ok).toBe(true);
+    expect(await reservationState(reservationId)).toEqual({
+      status: 'released',
+      release_cause: 'offer-moved',
+      lines: ['released', 'released'],
+    });
+    // The whole hold is gone, so the other seller's unit is sellable and its signal says so.
+    expect(await statusOf(elsewhereOffer, elsewhereVariant)).not.toBe('out');
+    // The moved stock is all of it: nothing was pending.
+    expect(live(await itemsOf(code, m.offerId)).map((r) => r.on_hand)).toEqual([50]);
+  });
+
+  it('moves only what is not pending and leaves committed lines on the old item', async () => {
+    const seller = await newSeller();
+    const m = await stockedOffer(seller, 1, 50);
+    move(seller, m);
+    const [movedItem] = await itemsOf(code, m.offerId);
+    const committed = await hold(
+      [
+        {
+          offerId: m.offerId,
+          variantId: m.from[0]!,
+          stockItemId: movedItem!.id as string,
+          quantity: 6,
+        },
+      ],
+      'committed',
+    );
+
+    const result = await rekey.execute(system(), input(m));
+
+    expect(result.ok).toBe(true);
+    expect(live(await itemsOf(code, m.offerId)).map((r) => r.on_hand)).toEqual([44]);
+    expect((await reservationState(committed))?.status).toBe('committed');
+    const old = (await itemsOf(code, m.offerId)).find((r) => r.id === movedItem!.id);
+    expect(old).toMatchObject({ on_hand: 6 });
   });
 
   it('refuses a seller write on an old Variant afterwards: the tombstone is the backstop', async () => {
@@ -559,5 +684,68 @@ describe.each(TEST_MARKETS)('inventory.rekey-moved-offer in market %s (database)
       expect(active[0]!.on_hand).toBe(40);
       expect(movements.map((r) => r.delta).sort()).toEqual([-40, 40]);
     }
+  });
+  it('retries when a hold commits between its first statement and its lock, and releases that hold too (H1)', async () => {
+    const seller = await newSeller();
+    const m = await stockedOffer(seller, 1, 50);
+    move(seller, m);
+    const [movedItem] = await itemsOf(code, m.offerId);
+    // The unit has read (its snapshot is fixed) when the hold commits; a row lock alone would not
+    // tell it. Only the hold_seq bump of the reservation repository's lock does.
+    let lockCalls = 0;
+    let reachedLock!: () => void;
+    const reached = new Promise<void>((resolve) => (reachedLock = resolve));
+    let resume!: () => void;
+    const resumed = new Promise<void>((resolve) => (resume = resolve));
+    const wrapped: StockRepository = {
+      lockSellUnit: (...args) => stock.lockSellUnit(...args),
+      itemIdsOfOfferVariants: (...args) => stock.itemIdsOfOfferVariants(...args),
+      activeItemIds: (...args) => stock.activeItemIds(...args),
+      isSellUnitRetired: (...args) => stock.isSellUnitRetired(...args),
+      heldQuantities: (...args) => stock.heldQuantities(...args),
+      insertItem: (...args) => stock.insertItem(...args),
+      setOnHand: (...args) => stock.setOnHand(...args),
+      appendMovement: (...args) => stock.appendMovement(...args),
+      lockItems: async (...args) => {
+        lockCalls += 1;
+        if (lockCalls === 1) {
+          reachedLock();
+          await resumed;
+        }
+        return stock.lockItems(...args);
+      },
+      tombstonesOf: (...args) => stock.tombstonesOf(...args),
+      recordTombstone: (...args) => stock.recordTombstone(...args),
+      retireItems: (...args) => stock.retireItems(...args),
+    };
+    const racing = build(wrapped);
+
+    const moved = racing.rekey.execute(system(), input(m));
+    await reached;
+    // What a committing reserve does: the line, then the lock that bumps hold_seq.
+    const reservationId = await hold([
+      {
+        offerId: m.offerId,
+        variantId: m.from[0]!,
+        stockItemId: movedItem!.id as string,
+        quantity: 4,
+      },
+    ]);
+    const marketContext = marketOf(code);
+    const bumped = await db.unitOfWork.run(marketContext, async () => {
+      await new PrismaReservationRepository(db.service).lockItems(marketContext, [
+        movedItem!.id as Id<'StockItem'>,
+      ]);
+      return ok(true);
+    });
+    expect(bumped.ok).toBe(true);
+    resume();
+
+    expect((await moved).ok).toBe(true);
+    expect(lockCalls).toBeGreaterThanOrEqual(2);
+    expect(await reservationState(reservationId)).toMatchObject({
+      status: 'released',
+      release_cause: 'offer-moved',
+    });
   });
 });

@@ -157,13 +157,18 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
 
 Owned by the `inventory` module (`docs/design/domain/inventory.md` 8). The module checks at
 start-up that every hosted Market has it; the schema keeps it optional so a Market that does not
-host inventory yet still loads. It starts with what slice 1 needs; later slices add the
-reservation duration, the default low-stock threshold and the default per-customer cap.
+host inventory yet still loads. Every key is required.
 
 - `maxSourcesPerSeller` (required, 1 to 4; 4 for AU): the most sources a seller may have, the
   Default included (inventory design 3.4). The ceiling of 4 keeps the re-key of a moved Offer
   (design 3.6) under the lock helper's 1,000-item cap with 100 variants per product (800 items
   plus held ones); raising it is a design change with a re-check.
+- `defaultLowStockThreshold` (required, 0 to 99; AU 10): "only N left" is shown at or below it
+  when the seller set no threshold of their own.
+- `reservationMinutes` (required, 1 to 240; AU 15): how long a checkout reservation holds stock
+  (inventory design 4.2).
+- `defaultCustomerCap` (required, 1 to 999; AU 10): the per-customer cap `D` of a line whose
+  Offer sets no limit (inventory design 5.1); the Market's `maxLineQuantity` still caps it.
 
 ## `catalog` section (optional)
 

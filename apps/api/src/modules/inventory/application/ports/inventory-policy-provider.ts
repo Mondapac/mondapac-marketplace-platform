@@ -13,6 +13,15 @@ export interface InventoryPolicyProvider {
    * `offer-moved` mapping and so the re-key's lock set (design 3.6 step 2).
    */
   maxVariantsPerProduct(market: MarketContext): number;
+
+  /** How long a checkout reservation holds stock, in minutes (AU 15; design 4.2, 8). */
+  reservationMinutes(market: MarketContext): number;
+
+  /** The per-customer cap `D` of a line whose Offer sets no limit (AU 10; design 5.1). */
+  defaultCustomerCap(market: MarketContext): number;
+
+  /** The Market's line ceiling, `MarketConfig.maxLineQuantity` (AU 99): no cap exceeds it. */
+  maxLineQuantity(market: MarketContext): number;
 }
 
 export const INVENTORY_POLICY_PROVIDER = Symbol('INVENTORY_POLICY_PROVIDER');
