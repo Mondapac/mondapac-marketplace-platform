@@ -25,10 +25,7 @@ import {
   type AvailabilityReader,
 } from '../application/ports/availability-reader';
 import { STOCK_REPOSITORY, type StockRepository } from '../application/ports/stock.repository';
-import {
-  OFFER_STOCK_READER,
-  type OfferStockReader,
-} from '../application/ports/offer-stock.reader';
+import { OFFER_STOCK_READER, type OfferStockReader } from '../application/ports/offer-stock.reader';
 import { PrismaOfferStockReader } from './prisma-offer-stock.reader';
 import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
 import { PrismaAvailabilityReader } from './prisma-availability.reader';

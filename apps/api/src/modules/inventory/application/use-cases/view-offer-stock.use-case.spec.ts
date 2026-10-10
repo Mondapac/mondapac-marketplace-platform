@@ -8,10 +8,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
-import {
-  TEST_MARKET_CONFIG_DIRS,
-  TEST_MARKET_IDS,
-} from '../../../../../test/support/test-config';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
@@ -136,7 +133,16 @@ describe.each(['AU', 'ZZ'] as const)('inventory.view-offer-stock in market %s', 
       productId: t.ids.next<'Product'>(),
       sellUnitVariantIds: new Set([variantB, variantA]),
     });
-    return { sellerId, context, offerId, variantA, variantB, source1: first.id, source2: second, t };
+    return {
+      sellerId,
+      context,
+      offerId,
+      variantA,
+      variantB,
+      source1: first.id,
+      source2: second,
+      t,
+    };
   }
 
   it('declares inventory.stock.view, denied for an unapproved seller', () => {

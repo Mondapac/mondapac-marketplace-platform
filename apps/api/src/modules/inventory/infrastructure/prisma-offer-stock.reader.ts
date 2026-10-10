@@ -1,9 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  OfferStockReader,
-  OfferStockSnapshot,
-} from '../application/ports/offer-stock.reader';
+import type { OfferStockReader, OfferStockSnapshot } from '../application/ports/offer-stock.reader';
 import { heldQuantitiesOf } from './held-sum';
 import { PrismaStockRepository } from './prisma-stock.repository';
 
