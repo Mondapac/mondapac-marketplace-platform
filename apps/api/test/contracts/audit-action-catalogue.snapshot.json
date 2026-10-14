@@ -353,6 +353,28 @@
     }
   },
   {
+    "action": "identity.seller-second-factor-reset.confirmed",
+    "targetType": "identity.second-factor",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": {
+      "state": "enumOf(pending|active)"
+    },
+    "after": {
+      "boundSubjectId": "id"
+    }
+  },
+  {
+    "action": "identity.seller-second-factor-reset.requested",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",

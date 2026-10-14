@@ -157,6 +157,12 @@ const linkTargetsSchema = z
         'sign-in': pageUrl,
         'reset-password': pageUrl,
         'accept-invitation': pageUrl.optional(),
+        /**
+         * Slice 12 (identity design 7.3, `ux.md` E15, A11): the page of the Seller Owner's
+         * confirmation of a second-factor reset an admin started; without it, or without the
+         * lifetime below, no such reset can start (`access.unavailable`).
+         */
+        'confirm-second-factor-reset': pageUrl.optional(),
       })
       .optional(),
     /**
@@ -323,6 +329,9 @@ const identitySchema = z
         'reset-password': z.literal(60),
         // Slice 7b: the admin's enrolment link, at most 60 minutes (identity design 6.6).
         'enrol-second-factor': z.number().int().min(1).max(60).optional(),
+        // Slice 12: the Seller Owner's confirmation of a reset an admin started, at most 24
+        // hours (identity design 3.7, HF15).
+        'confirm-second-factor-reset': z.number().int().min(1).max(1440).optional(),
       }),
       targets: linkTargetsSchema,
     }),

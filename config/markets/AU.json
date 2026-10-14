@@ -86,7 +86,8 @@
       "lifetimeMinutes": {
         "verify-email": 1440,
         "reset-password": 60,
-        "enrol-second-factor": 60
+        "enrol-second-factor": 60,
+        "confirm-second-factor-reset": 1440
       },
       "targets": {
         "customer": {
@@ -98,7 +99,8 @@
           "verify-email": "https://seller.au.mondapac.test/confirm-email",
           "sign-in": "https://seller.au.mondapac.test/sign-in",
           "reset-password": "https://seller.au.mondapac.test/reset-password",
-          "accept-invitation": "https://seller.au.mondapac.test/accept-invitation"
+          "accept-invitation": "https://seller.au.mondapac.test/accept-invitation",
+          "confirm-second-factor-reset": "https://seller.au.mondapac.test/second-factor/confirm-reset"
         },
         "admin": {
           "seller-review-queue": "https://admin.au.mondapac.test/sellers/awaiting-review",
