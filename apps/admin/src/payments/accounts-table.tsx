@@ -1,6 +1,6 @@
 import { useTranslations } from 'next-intl';
 import { formatInstant } from '../sellers/format.ts';
-import { AccountStatusBadge } from './status-badge.tsx';
+import { AccountStatusBadge, FlagBadge } from './status-badge.tsx';
 import type { ConnectedAccountRow } from './types.ts';
 
 const COLUMNS = [
@@ -29,7 +29,7 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
               <th
                 key={col}
                 scope="col"
-                className={`px-4 py-3 font-medium ${col === 'requirements' ? 'text-end' : ''}`}
+                className={`whitespace-nowrap px-4 py-3 font-medium ${col === 'requirements' ? 'text-end' : ''}`}
               >
                 {t(`col.${col}`)}
               </th>
@@ -52,16 +52,20 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
               <td className="whitespace-nowrap px-4 py-3">
                 <AccountStatusBadge status={row.status} />
               </td>
-              <td className="px-4 py-3">{t(row.ready ? 'yes' : 'no')}</td>
+              <td className="whitespace-nowrap px-4 py-3">
+                <FlagBadge on={row.ready} tone="success" />
+              </td>
               <td className="px-4 py-3 text-end tabular-nums">
                 {row.requirementsDue}
                 {row.requirementsPastDue ? (
                   <div className="text-critical-fg">{t('past-due')}</div>
                 ) : null}
               </td>
-              <td className="px-4 py-3">{formatInstant(row.coolingOffUntil)}</td>
-              <td className="px-4 py-3">{t(row.payoutsPaused ? 'yes' : 'no')}</td>
-              <td className="px-4 py-3">{formatInstant(row.lastReadAt)}</td>
+              <td className="whitespace-nowrap px-4 py-3">{formatInstant(row.coolingOffUntil)}</td>
+              <td className="whitespace-nowrap px-4 py-3">
+                <FlagBadge on={row.payoutsPaused} tone="attention" />
+              </td>
+              <td className="whitespace-nowrap px-4 py-3">{formatInstant(row.lastReadAt)}</td>
             </tr>
           ))}
         </tbody>

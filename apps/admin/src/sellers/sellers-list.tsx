@@ -84,6 +84,11 @@ export function SellersList({
       const ticket = ++latest.current;
       setLoading(true);
       setFailure(null);
+      // A new first page replaces the list at once: the old tab's rows never show under a new tab.
+      if (after === null) {
+        setRows([]);
+        setNext(null);
+      }
       const result = await callApi<SellerListPage>(
         'POST',
         'sellers/admin/list',

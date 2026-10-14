@@ -107,6 +107,10 @@ describe('payout account status', () => {
     expect(screen.getByText('Waiting period after a bank account change')).toBeTruthy();
     expect(screen.getByText(/16 Oct 2026/)).toBeTruthy();
     expect(screen.getByText(/Payouts are paused until then/)).toBeTruthy();
+    expect(
+      screen.getByText('Account approved. Payouts start after the waiting period.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Not ready for payouts')).toBeNull();
   });
 
   it('leaves the waiting-period notice out once the date has passed', () => {
@@ -147,6 +151,7 @@ describe('payout account status', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
     expect(await screen.findByText('Ready for payouts')).toBeTruthy();
+    expect(screen.getByText('Checked just now').getAttribute('role')).toBe('status');
     expect(call).toHaveBeenCalledWith('GET', 'payments/seller/payout-account');
   });
 });

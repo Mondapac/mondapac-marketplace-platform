@@ -18,6 +18,12 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
   ];
   return (
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
+      <a
+        className="inline-flex min-h-12 items-center self-start font-medium text-link underline"
+        href="/payout-accounts"
+      >
+        {t('detail.back')}
+      </a>
       <div>
         <h1 className="text-2xl font-semibold break-words">{account.sellerName ?? t('unnamed')}</h1>
         <p className="mt-1 text-sm text-fg-muted wrap-anywhere">{account.sellerId}</p>
@@ -27,7 +33,9 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
           <AccountStatusBadge status={account.status} />
         </div>
         {account.requirementsPastDue ? (
-          <Banner tone="critical">{t('detail.past-due')}</Banner>
+          <Banner tone="critical" title={t('detail.past-due-title')}>
+            {t('detail.past-due')}
+          </Banner>
         ) : null}
         <dl className="flex flex-col gap-3 sm:grid sm:grid-cols-[max-content_1fr] sm:gap-x-6">
           {rows.map((row) => (
@@ -57,14 +65,6 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
           </ul>
         )}
       </Card>
-      <p>
-        <a
-          className="inline-flex min-h-12 items-center font-medium text-link underline"
-          href="/payout-accounts"
-        >
-          {t('detail.back')}
-        </a>
-      </p>
     </div>
   );
 }

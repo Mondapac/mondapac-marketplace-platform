@@ -855,8 +855,9 @@
         "title": "Account",
         "changes": "Change history",
         "no-changes": "No changes recorded.",
-        "past-due": "Some requirements are past due.",
-        "back": "Back to connected accounts"
+        "past-due": "Stripe is waiting for details that were due already. Payouts may stop until the seller adds them.",
+        "back": "Back to connected accounts",
+        "past-due-title": "Requirements past due"
       }
     }
   }

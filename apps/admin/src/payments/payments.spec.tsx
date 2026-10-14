@@ -88,6 +88,15 @@ describe('connected accounts list', () => {
     );
   });
 
+  it('clears the old rows while another tab loads', async () => {
+    call.mockResolvedValueOnce(page([row()]));
+    render(wrap(<AccountsList />));
+    await screen.findByRole('table');
+    call.mockReturnValueOnce(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole('button', { name: 'Pending' }));
+    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
+  });
+
   it('pages by cursor with Show more', async () => {
     call.mockResolvedValueOnce(page([row()], 'next-1'));
     render(wrap(<AccountsList />));
@@ -133,7 +142,7 @@ describe('connected account detail', () => {
   it('shows the fields and the change history', () => {
     render(wrap(<AccountDetail account={detail()} />));
     expect(screen.getByRole('heading', { name: 'Cedar Lane Halal Meats' })).toBeTruthy();
-    expect(screen.getByText('Some requirements are past due.')).toBeTruthy();
+    expect(screen.getByText('Requirements past due')).toBeTruthy();
     const items = screen.getAllByRole('listitem').map((li) => li.textContent);
     expect(items[0]).toContain('Bank account updated');
     expect(items[1]).toContain('First bank account added');

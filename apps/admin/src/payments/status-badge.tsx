@@ -18,3 +18,9 @@ export function AccountStatusBadge({ status }: { readonly status: string }) {
   const key = known(status, STATUSES);
   return <Badge tone={TONE[key] ?? 'neutral'}>{t(`status.${key}`)}</Badge>;
 }
+
+/** A yes/no flag as a badge: `tone` when it is yes, neutral when it is no. */
+export function FlagBadge({ on, tone }: { readonly on: boolean; readonly tone: BadgeTone }) {
+  const t = useTranslations('payments.accounts');
+  return <Badge tone={on ? tone : 'neutral'}>{t(on ? 'yes' : 'no')}</Badge>;
+}

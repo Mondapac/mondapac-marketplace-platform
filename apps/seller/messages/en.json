@@ -1050,7 +1050,8 @@
         "enabled": "Stripe has approved your account for payouts.",
         "restricted": "Stripe needs more information before it can pay you.",
         "rejected": "Stripe could not approve this account. Contact support if you think this is a mistake.",
-        "unknown": "We could not read the status of your account."
+        "unknown": "We could not read the status of your account.",
+        "waiting": "Account approved. Payouts start after the waiting period."
       }
     },
     "ready": {
@@ -1115,6 +1116,7 @@
       "csrf": "Refresh the page and try again.",
       "denied": "You don't have permission to do this.",
       "unknown": "Something went wrong on our side. Try again."
-    }
+    },
+    "checked": "Checked just now"
   }
 }

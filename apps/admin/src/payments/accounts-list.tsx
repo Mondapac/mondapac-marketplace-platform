@@ -31,6 +31,11 @@ export function AccountsList() {
       const ticket = ++latest.current;
       setLoading(true);
       setFailed(null);
+      // A new first page replaces the list at once: the old tab's rows never show under a new tab.
+      if (after === null) {
+        setRows([]);
+        setNext(null);
+      }
       const query = new URLSearchParams();
       if (filter !== 'all') query.set('status', filter);
       if (after !== null) query.set('cursor', after);
