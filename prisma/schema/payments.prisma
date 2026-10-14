@@ -1,0 +1,30 @@
+// The payments module's tables (Phase 5 package 2, simplified for speed mode). Every model is
+// named Payments<Name> and mapped to its table with @@map. The CHECKs and the grants are
+// hand-written in the migration. No card data is stored here.
+
+/// One verified Stripe webhook event, kept to deduplicate by event id and to apply it once. The
+/// event body is not stored: the worker re-reads the object from Stripe before acting on it.
+model PaymentsStripeEvent {
+  /// Stripe's event id (evt_...): with the Market, the key, so a repeated delivery is one row.
+  eventId       String    @map("event_id")
+  marketId      String    @map("market_id") @db.VarChar(8)
+  tenantId      String    @map("tenant_id")
+  /// checkout.session.completed, checkout.session.expired or checkout.session.async_payment_failed (CHECK).
+  type          String
+  /// The Checkout session the event is about (cs_...).
+  objectId      String    @map("object_id")
+  receivedAt    DateTime  @map("received_at") @db.Timestamptz(6)
+  /// How many times the worker tried to apply it.
+  attempts      Int
+  /// When the worker may try it next.
+  nextAttemptAt DateTime  @map("next_attempt_at") @db.Timestamptz(6)
+  /// Set once, with the outcome, when the event is applied or given up.
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  /// confirmed, already-confirmed, voided, cancelled, ignored, rejected or failed (CHECK).
+  outcome       String?
+
+  @@id([marketId, eventId])
+  @@index([marketId, processedAt, nextAttemptAt])
+  @@map("stripe_events")
+  @@schema("payments")
+}

@@ -34,6 +34,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     inventory: ['USAGE'],
     cart: ['USAGE'],
     ordering: ['USAGE'],
+    payments: ['USAGE'],
     platform: ['USAGE'],
     catalog: ['USAGE'],
     certification: ['USAGE'],
@@ -308,6 +309,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'ordering.seller_orders': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
+    // its attempts and marks it done. No row is deleted.
+    'payments.stripe_events': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],
+    },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
     // status and a retired variant). The identity columns of a product and a variant never change.

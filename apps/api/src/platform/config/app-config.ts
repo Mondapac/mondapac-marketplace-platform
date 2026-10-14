@@ -66,6 +66,12 @@ const envSchema = z.object({
       'must be a Stripe test-mode key (sk_test_ or rk_test_); live keys are refused until the live gates are passed',
     )
     .optional(),
+  // Phase 5 package 2: the signing secret of the Stripe webhook endpoint (whsec_). Without it the
+  // webhook answers 503 and Stripe retries. The value is never echoed.
+  STRIPE_WEBHOOK_SECRET: z
+    .string()
+    .regex(/^whsec_[A-Za-z0-9+/=_]{8,200}$/, 'must be a Stripe webhook signing secret (whsec_)')
+    .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
   // and checked by parseClientAddressTrust below; a secret is never echoed.
   TRUSTED_BFF_CIDRS: z.string().optional(),
@@ -122,6 +128,12 @@ export interface AppConfig {
    * this object whole; read by ordering's Stripe adapter alone.
    */
   readonly stripeSecretKey: string | null;
+  /**
+   * The Stripe webhook signing secret (`STRIPE_WEBHOOK_SECRET`), or null: then the webhook
+   * receiver refuses every event with 503 and Stripe retries it later. Holds a secret: read by
+   * payments' signature check alone.
+   */
+  readonly stripeWebhookSecret: string | null;
   /**
    * Who may prove a client address, and with which keys (ADR-0037 decisions 4 and 5): from
    * `TRUSTED_BFF_CIDRS` and `CLIENT_ADDRESS_KEYS`. `null` when both are empty: the address is the
@@ -187,6 +199,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
+    stripeWebhookSecret: parsed.data.STRIPE_WEBHOOK_SECRET ?? null,
     clientAddressTrust: clientAddress.trust,
   });
 }
