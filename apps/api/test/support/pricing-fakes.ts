@@ -17,9 +17,16 @@ import type {
 } from '../../src/modules/pricing/application/ports/offer-sell-units';
 import type {
   AddPriceSeriesOutcome,
+  PendingHoldCursor,
+  PendingHoldView,
   PriceSeriesKey,
   PriceSeriesRepository,
 } from '../../src/modules/pricing/application/ports/price-series.repository';
+import type {
+  RetiredOfferTombstone,
+  RetiredVariantTombstone,
+  RetirementTombstoneRepository,
+} from '../../src/modules/pricing/application/ports/retirement-tombstone.repository';
 import type {
   RefusalAdmission,
   WriteRefusalThrottleRepository,
@@ -28,8 +35,11 @@ import { assertSerializableUnit } from '../../src/modules/pricing/application/se
 import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { PriceSeries } from '../../src/modules/pricing/domain/price-series';
-import type { PriceSeriesState } from '../../src/modules/pricing/domain/price-series';
-import { noRunOnce } from './fake-run-once';
+import type {
+  PriceSeriesState,
+  RegularPriceRecord,
+} from '../../src/modules/pricing/domain/price-series';
+import { fakeRunOnce } from './fake-run-once';
 
 // In-memory stand-ins for pricing's application tests (no database). PostgreSQL behaviour
 // (isolation, rollback, locks) is covered by test/db/pricing-*.db-spec.ts. The fakes keep what
@@ -49,7 +59,77 @@ export class FakeUnitOfWork implements UnitOfWork {
     this.units.push({ market: market.marketId, options });
     return work();
   }
-  runOnce = noRunOnce;
+  /** The inbox: `(Market, event, subscriber)` of every event handled. */
+  readonly handled = new Set<string>();
+  readonly onceUnits: { readonly market: string; readonly options: UnitOfWorkOptions }[] = [];
+  runOnce: UnitOfWork['runOnce'] = (market, delivery, work, options = {}) => {
+    this.onceUnits.push({ market: market.marketId, options });
+    return fakeRunOnce(this.handled)(market, delivery, work);
+  };
+}
+
+/** The tombstone tables, shared with the series fake that reads them on `add`. */
+export class InMemoryTombstones implements RetirementTombstoneRepository {
+  constructor(private readonly series: InMemoryPriceSeries) {}
+  readonly offers: { market: string; offerId: string; causeEventId: string }[] = [];
+  readonly variants: {
+    market: string;
+    productId: string;
+    variantId: string;
+    causeEventId: string;
+  }[] = [];
+
+  recordRetiredOffer(market: MarketContext, tombstone: RetiredOfferTombstone): Promise<boolean> {
+    const key = `${market.marketId}|${tombstone.offerId}`;
+    if (this.series.retiredOffers.has(key)) return Promise.resolve(false);
+    this.series.retiredOffers.add(key);
+    this.offers.push({
+      market: market.marketId,
+      offerId: tombstone.offerId,
+      causeEventId: tombstone.causeEventId,
+    });
+    return Promise.resolve(true);
+  }
+
+  recordRetiredVariant(
+    market: MarketContext,
+    tombstone: RetiredVariantTombstone,
+  ): Promise<boolean> {
+    const key = `${market.marketId}|${tombstone.productId}|${tombstone.variantId}`;
+    if (this.series.retiredVariants.has(key)) return Promise.resolve(false);
+    this.series.retiredVariants.add(key);
+    this.variants.push({
+      market: market.marketId,
+      productId: tombstone.productId,
+      variantId: tombstone.variantId,
+      causeEventId: tombstone.causeEventId,
+    });
+    return Promise.resolve(true);
+  }
+}
+
+function holdView(state: PriceSeriesState, record: RegularPriceRecord): PendingHoldView[] {
+  if (
+    record.status !== 'PENDING_REVIEW' ||
+    record.anchor === null ||
+    record.heldDirection === null
+  ) {
+    return [];
+  }
+  return [
+    {
+      recordId: record.id,
+      seriesId: state.id,
+      offerId: state.offerId,
+      variantId: state.variantId,
+      sellerId: state.sellerId,
+      amount: record.amount,
+      anchorRecordId: record.anchor.recordId,
+      anchorAmount: record.anchor.amount,
+      direction: record.heldDirection,
+      submittedAt: record.submittedAt,
+    },
+  ];
 }
 
 const keyOf = (market: MarketContext, key: PriceSeriesKey) =>
@@ -78,12 +158,70 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
     return Promise.resolve(state === undefined ? null : PriceSeries.restore(state));
   }
 
-  findByOffer(): Promise<readonly PriceSeries[]> {
-    return Promise.reject(new Error('not used here'));
+  findByOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<readonly PriceSeries[]> {
+    return Promise.resolve(
+      this.inMarket(market)
+        .filter((state) => state.offerId === offerId)
+        .map((state) => PriceSeries.restore(state)),
+    );
   }
 
-  findByProductVariant(): Promise<readonly PriceSeries[]> {
-    return Promise.reject(new Error('not used here'));
+  findByProductVariant(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    variantId: Id<'Variant'>,
+  ): Promise<readonly PriceSeries[]> {
+    return Promise.resolve(
+      this.inMarket(market)
+        .filter((state) => state.productId === productId && state.variantId === variantId)
+        .map((state) => PriceSeries.restore(state)),
+    );
+  }
+
+  findByRecordId(
+    market: MarketContext,
+    recordId: Id<'RegularPriceRecord'>,
+  ): Promise<PriceSeries | null> {
+    const state = this.inMarket(market).find((s) => s.regular.some((r) => r.id === recordId));
+    return Promise.resolve(state === undefined ? null : PriceSeries.restore(state));
+  }
+
+  listPendingHolds(
+    market: MarketContext,
+    after: PendingHoldCursor | null,
+    limit: number,
+  ): Promise<readonly PendingHoldView[]> {
+    const views = this.inMarket(market)
+      .flatMap((state) => state.regular.flatMap((r) => holdView(state, r)))
+      .sort(
+        (a, b) =>
+          a.submittedAt.epochMilliseconds - b.submittedAt.epochMilliseconds ||
+          (a.recordId < b.recordId ? -1 : 1),
+      )
+      .filter(
+        (view) =>
+          after === null ||
+          view.submittedAt.epochMilliseconds > after.submittedAt.epochMilliseconds ||
+          (view.submittedAt.epochMilliseconds === after.submittedAt.epochMilliseconds &&
+            view.recordId > after.id),
+      );
+    return Promise.resolve(views.slice(0, limit));
+  }
+
+  findPendingHold(
+    market: MarketContext,
+    recordId: Id<'RegularPriceRecord'>,
+  ): Promise<PendingHoldView | null> {
+    const view = this.inMarket(market)
+      .flatMap((state) => state.regular.flatMap((r) => holdView(state, r)))
+      .find((v) => v.recordId === recordId);
+    return Promise.resolve(view ?? null);
+  }
+
+  private inMarket(market: MarketContext): PriceSeriesState[] {
+    return [...this.rows.entries()]
+      .filter(([key]) => key.startsWith(`${market.marketId}|`))
+      .map(([, state]) => state);
   }
 
   add(market: MarketContext, series: PriceSeries): Promise<AddPriceSeriesOutcome> {

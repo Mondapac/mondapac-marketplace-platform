@@ -1,14 +1,11 @@
 import { declarePermissions, definePermission } from '../../../platform/authz';
 
-// The permission catalogue of pricing (pricing design 5.1; platform-foundations 6.1). Slice 1,
-// part 3b declares the three seller-scope keys: `pricing.price.edit` is named by the first use
-// case (`pricing.set-regular-price`), and the Seller Owner holds every seller key by definition
-// (design 5.3, Q11). The three platform-scope keys of 5.1 (`pricing.price-hold.view`,
-// `pricing.price-hold.decide`, `pricing.price-history.view`) join with the first use case that
-// names them (slice 4, and VER-09 for history), together with identity's seed of the default
-// roles that receive them (design 5.3, 16): a platform `view` key declared before the Viewer role
-// is seeded with it breaks identity's pinned seed (Sajad G4). The default seller roles that
-// receive these keys (design 5.3, Q5) are identity's seed, not this file.
+// The permission catalogue of pricing (pricing design 5.1; platform-foundations 6.1). Slice 1
+// declared the three seller-scope keys; slice 4 adds the two platform-scope keys of the price-hold
+// review, together with identity's seed of the default roles that receive them (design 5.3): a
+// platform `view` key declared before the Viewer role is seeded with it breaks identity's pinned
+// seed (Sajad G4). `pricing.price-history.view` joins with VER-09, the first use case that names
+// it. The seller roles that receive the seller keys (design 5.3, Q5) are identity's seed.
 
 /** See the regular price, special price and hold status of the seller's own Offers. */
 export const PRICING_PRICE_VIEW = definePermission('pricing', {
@@ -35,8 +32,27 @@ export const PRICING_COST_VIEW = definePermission('pricing', {
   protected: false,
 });
 
+/** See the review queue and a held record with its anchor (platform scope; design 5.1). */
+export const PRICING_PRICE_HOLD_VIEW = definePermission('pricing', {
+  key: 'pricing.price-hold.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Approve or reject a held record. Protected (H4): approving a hold has money impact, so no
+ * default role lists it; the Platform Administrator grants it in admin scope.
+ */
+export const PRICING_PRICE_HOLD_DECIDE = definePermission('pricing', {
+  key: 'pricing.price-hold.decide',
+  scope: 'platform',
+  protected: true,
+});
+
 export const PRICING_PERMISSIONS = declarePermissions('pricing', [
   PRICING_PRICE_VIEW,
   PRICING_PRICE_EDIT,
   PRICING_COST_VIEW,
+  PRICING_PRICE_HOLD_VIEW,
+  PRICING_PRICE_HOLD_DECIDE,
 ]);

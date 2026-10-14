@@ -20,6 +20,32 @@ export type RetireCause = 'offer-removed' | 'variant-removed';
  */
 export type SupersedeCause = 'replaced' | 'cancelled' | RetireCause;
 
+/**
+ * The reasons an admin may give for rejecting a held price (pricing design 3.1 row 4, J1). A
+ * closed list: the wording shown to the seller is the UX writer's (J1); the code is stored on the
+ * record and in the audit row. Free text goes only into the optional note, which stays on the
+ * record (never in an audit row, an event or a log; design 8).
+ */
+export const HOLD_REJECTION_REASONS = [
+  'price-implausible',
+  'price-unverified',
+  'policy-breach',
+  'entered-in-error',
+  'other',
+] as const;
+export type HoldRejectionReason = (typeof HOLD_REJECTION_REASONS)[number];
+
+/** Who decided a held record, when and why (pricing-data 3.3). Null while undecided. */
+export interface RecordDecision {
+  readonly decidedAt: Temporal.Instant;
+  /** Never the submitting account (H4; also the table's `decider_check`). */
+  readonly decidedBy: Id<'Account'>;
+  /** Required for a rejection, absent for an approval. */
+  readonly reasonCode: HoldRejectionReason | null;
+  /** Personal free text of a rejection; never leaves the record (design 8). */
+  readonly note: string | null;
+}
+
 /** The record a held price was measured against (design 2.4), copied so it never changes. */
 export interface JumpAnchor {
   readonly recordId: Id<'RegularPriceRecord'>;
@@ -53,6 +79,8 @@ export interface RegularPriceRecord {
   readonly supersededAt: Temporal.Instant | null;
   /** Set with `SUPERSEDED`; `replaced` exactly when `supersededBy` names the successor. */
   readonly supersedeCause: SupersedeCause | null;
+  /** Set exactly for `APPROVED` and `REJECTED` records. */
+  readonly decision: RecordDecision | null;
 }
 
 export interface PriceSeriesState {
@@ -102,6 +130,33 @@ export type SetRegularPriceOutcome =
       readonly kind: 'unchanged';
       readonly superseded: readonly RegularPriceRecord[];
     };
+
+export interface ApproveHoldInput {
+  readonly recordId: Id<'RegularPriceRecord'>;
+  readonly decidedBy: Id<'Account'>;
+  readonly now: Temporal.Instant;
+  /** The policy in force now: the amount is checked again against it (design 3.1 row 3). */
+  readonly policy: PricingPolicy;
+}
+
+export interface RejectHoldInput {
+  readonly recordId: Id<'RegularPriceRecord'>;
+  readonly decidedBy: Id<'Account'>;
+  readonly reasonCode: HoldRejectionReason;
+  /** Already normalised by the caller (trimmed, 1 to 1000 characters) or null. */
+  readonly note: string | null;
+  readonly now: Temporal.Instant;
+}
+
+export type HoldDecisionError =
+  | { readonly code: 'pricing.series-retired' }
+  | { readonly code: 'pricing.hold.not-found' }
+  | { readonly code: 'pricing.hold.not-pending' }
+  /** The decider submitted the record (H4). */
+  | { readonly code: 'pricing.hold.own-submission' };
+
+export type ApproveHoldError =
+  HoldDecisionError | { readonly code: 'pricing.policy-market-mismatch' } | PriceAmountError;
 
 export type SetRegularPriceError =
   | { readonly code: 'pricing.series-retired' }
@@ -331,6 +386,7 @@ export class PriceSeries {
         supersededBy: null,
         supersededAt: null,
         supersedeCause: null,
+        decision: null,
       });
       const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
       const direction = verdict.direction;
@@ -368,6 +424,7 @@ export class PriceSeries {
       supersededBy: null,
       supersededAt: null,
       supersedeCause: null,
+      decision: null,
     });
     const superseded = pending.map((r) => supersede(r, 'replaced', record.id, input.now));
     const closed = latest === null ? null : Object.freeze({ ...latest, effectiveTo: start });
@@ -390,6 +447,116 @@ export class PriceSeries {
         }),
     ]);
     return ok({ kind: 'accepted', record, previous: closed, superseded });
+  }
+
+  /**
+   * An admin approves a held price (pricing design 3.1 row 3). Re-checked here, whoever calls:
+   * the series is not retired, the record is still pending, the decider did not submit it (H4),
+   * and the amount passes the **current** policy's limits. The record becomes effective at
+   * `max(now, previous start + 1 ms)`, so from approval and not from submission, closes the
+   * previous period and becomes the new jump anchor (design 2.4). Events: `price-hold-decided`
+   * (approved), then `effective-price-changed` (`hold-approved`). The special-price guard (Q2)
+   * joins with the special stream (slice 5).
+   */
+  approveHold(input: ApproveHoldInput): Result<RegularPriceRecord, ApproveHoldError> {
+    const state = this.#state;
+    const pending = this.#pendingForDecision(input.recordId, input.decidedBy);
+    if (!pending.ok) return pending;
+    if (input.policy.marketId !== state.marketId) {
+      return err({ code: 'pricing.policy-market-mismatch' });
+    }
+    const record = pending.value;
+    const checked = priceAmount(record.amount, input.policy);
+    if (!checked.ok) return err(checked.error);
+    if (record.amount.currency !== state.currency)
+      return err({ code: 'pricing.currency-mismatch' });
+
+    const latest = latestPriced(state.regular);
+    const start = effectiveStart(input.now, latest);
+    const approved: RegularPriceRecord = Object.freeze({
+      ...record,
+      status: 'APPROVED' as const,
+      effectiveFrom: start,
+      effectiveTo: null,
+      decision: Object.freeze({
+        decidedAt: input.now,
+        decidedBy: input.decidedBy,
+        reasonCode: null,
+        note: null,
+      }),
+    });
+    const closed = latest === null ? [] : [Object.freeze({ ...latest, effectiveTo: start })];
+    this.#commit({ regular: replace(replace(state.regular, closed), [approved]) }, [
+      this.#holdDecided(record.id, 'approved', input.now),
+      (version) =>
+        EffectivePriceChanged.record({
+          aggregateId: state.id,
+          aggregateVersion: version,
+          occurredAt: input.now,
+          payload: {
+            offerId: state.offerId,
+            variantId: state.variantId,
+            cause: 'hold-approved',
+            effectiveFrom: start,
+            previousProductId: null,
+            previousVariantId: null,
+          },
+        }),
+    ]);
+    return ok(approved);
+  }
+
+  /**
+   * An admin rejects a held price (pricing design 3.1 row 4): same guards as an approval except
+   * the limits (a rejection never makes a price effective). The previous price is untouched.
+   * Event: `price-hold-decided` (rejected).
+   */
+  rejectHold(input: RejectHoldInput): Result<RegularPriceRecord, HoldDecisionError> {
+    const pending = this.#pendingForDecision(input.recordId, input.decidedBy);
+    if (!pending.ok) return pending;
+    const rejected: RegularPriceRecord = Object.freeze({
+      ...pending.value,
+      status: 'REJECTED' as const,
+      decision: Object.freeze({
+        decidedAt: input.now,
+        decidedBy: input.decidedBy,
+        reasonCode: input.reasonCode,
+        note: input.note,
+      }),
+    });
+    this.#commit({ regular: replace(this.#state.regular, [rejected]) }, [
+      this.#holdDecided(rejected.id, 'rejected', input.now),
+    ]);
+    return ok(rejected);
+  }
+
+  /** The guards every decision shares: not retired, found, still pending, not the submitter. */
+  #pendingForDecision(
+    recordId: Id<'RegularPriceRecord'>,
+    decidedBy: Id<'Account'>,
+  ): Result<RegularPriceRecord, HoldDecisionError> {
+    const state = this.#state;
+    if (state.retiredAt !== null) return err({ code: 'pricing.series-retired' });
+    const record = state.regular.find((r) => r.id === recordId);
+    if (record === undefined) return err({ code: 'pricing.hold.not-found' });
+    if (record.status !== 'PENDING_REVIEW') return err({ code: 'pricing.hold.not-pending' });
+    if (record.submittedBy === decidedBy) return err({ code: 'pricing.hold.own-submission' });
+    return ok(record);
+  }
+
+  #holdDecided(
+    recordId: Id<'RegularPriceRecord'>,
+    outcome: 'approved' | 'rejected',
+    now: Temporal.Instant,
+  ): EventAt {
+    const { id, offerId, variantId } = this.#state;
+    return (version) =>
+      PriceHoldDecided.record({
+        aggregateId: id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { offerId, variantId, recordId, kind: 'regular', outcome },
+      });
   }
 
   /**
@@ -510,6 +677,7 @@ function freezeRecord(record: RegularPriceRecord): RegularPriceRecord {
   return Object.freeze({
     ...record,
     amount: Object.freeze({ ...record.amount }),
+    decision: record.decision === null ? null : Object.freeze({ ...record.decision }),
     anchor:
       record.anchor === null
         ? null
@@ -541,6 +709,16 @@ function checkStoredState(state: PriceSeriesState): void {
     }
     if ((r.supersedeCause === 'replaced') !== (r.supersededBy !== null)) {
       bad('a replaced record names its successor, and only it');
+    }
+  }
+  for (const r of state.regular) {
+    const decided = r.status === 'APPROVED' || r.status === 'REJECTED';
+    if (decided !== (r.decision !== null)) bad('a decision belongs to a decided record only');
+    if (r.decision !== null) {
+      if (r.decision.decidedBy === r.submittedBy) bad('a record was decided by its submitter');
+      if ((r.status === 'REJECTED') !== (r.decision.reasonCode !== null)) {
+        bad('a rejection needs its reason code, and only it');
+      }
     }
   }
   const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');

@@ -423,3 +423,29 @@ describe('signed client address (ADR-0037)', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+describe('relay allowlist for seller decisions', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const call = (method: string, path: string) =>
+    relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      }),
+      path.split('/'),
+      vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+    );
+
+  it('relays approve, reject and the manual check for a seller UUID only', async () => {
+    expect((await call('POST', `sellers/admin/${ID}/review/approve`)).status).toBe(200);
+    expect((await call('POST', `sellers/admin/${ID}/review/reject`)).status).toBe(200);
+    expect((await call('PUT', `sellers/admin/${ID}/review/manual-register-check`)).status).toBe(
+      200,
+    );
+    expect((await call('POST', 'sellers/admin/nope/review/approve')).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/review/approve`)).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/review/suspend`)).status).toBe(404);
+  });
+});

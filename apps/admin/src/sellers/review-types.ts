@@ -2,6 +2,8 @@
 // clear: personal data, so the page is rendered per request and never cached.
 
 export const REVIEW_PERMISSION = 'sellers.business-details.view';
+export const DECIDE_PERMISSION = 'seller-access.approve';
+export const CHECK_PERMISSION = 'sellers.seller-file.review';
 
 export interface ReviewContent {
   readonly storeName: string;
@@ -41,6 +43,10 @@ export interface ReviewRegister {
   readonly staleReason: string | null;
   readonly checkedAt: string | null;
   readonly blocksApproval: boolean;
+  readonly manualCheck: {
+    readonly observedOutcome: string;
+    readonly recordedAt: string;
+  } | null;
 }
 
 export interface ReviewRead {
@@ -49,4 +55,6 @@ export interface ReviewRead {
   readonly current: ReviewRevision;
   readonly previous: ReviewRevision | null;
   readonly register: ReviewRegister;
+  /** A decision is in flight: approve, reject and the manual check are refused until it settles. */
+  readonly decisionInProgress: boolean;
 }
