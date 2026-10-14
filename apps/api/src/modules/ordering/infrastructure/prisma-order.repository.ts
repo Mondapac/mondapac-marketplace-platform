@@ -10,6 +10,7 @@ import type {
 import type {
   CancelReason,
   Fulfilment,
+  LedgerState,
   OrderLine,
   OrderState,
   OrderStatus,
@@ -51,6 +52,7 @@ interface OrderRow {
     readonly shippedAt: Date | null;
     readonly deliveredAt: Date | null;
     readonly inventoryRecordedAt: Date | null;
+    readonly ledgerState: string;
   }[];
   readonly lines: readonly {
     readonly id: string;
@@ -62,6 +64,7 @@ interface OrderRow {
     readonly lineAmount: bigint;
     readonly taxInclusive: boolean;
     readonly reservationLineId: string;
+    readonly commissionRateBps: number | null;
   }[];
 }
 
@@ -83,6 +86,7 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
   shippedAt: optionalInstant(s.shippedAt),
   deliveredAt: optionalInstant(s.deliveredAt),
   inventoryRecordedAt: optionalInstant(s.inventoryRecordedAt),
+  ledgerState: s.ledgerState as LedgerState,
 });
 
 const toLine = (l: LineRow, currency: string): OrderLine => ({
@@ -95,6 +99,7 @@ const toLine = (l: LineRow, currency: string): OrderLine => ({
   lineAmount: l.lineAmount,
   taxInclusive: l.taxInclusive,
   reservationLineId: l.reservationLineId,
+  commissionRateBps: l.commissionRateBps,
 });
 
 const byOffer = (a: { offerId: string; variantId: string }, b: typeof a): number =>
@@ -181,6 +186,7 @@ export class PrismaOrderRepository implements OrderRepository {
         shippingAmount: s.shipping,
         totalAmount: s.total,
         fulfilment: s.fulfilment,
+        ledgerState: s.ledgerState,
       })),
     });
     await tx.orderingOrderLine.createMany({
@@ -196,6 +202,7 @@ export class PrismaOrderRepository implements OrderRepository {
         lineAmount: l.lineAmount,
         taxInclusive: l.taxInclusive,
         reservationLineId: l.reservationLineId,
+        commissionRateBps: l.commissionRateBps,
       })),
     });
   }
@@ -329,6 +336,30 @@ export class PrismaOrderRepository implements OrderRepository {
       take: limit,
     });
     return rows.map(toRecord);
+  }
+
+  async findUnrecordedLedger(market: MarketContext, limit: number) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: { marketId: market.marketId, ledgerState: 'pending', order: { status: 'confirmed' } },
+      include: SELLER_INCLUDE,
+      orderBy: [{ ledgerAttempts: 'asc' }, { order: { confirmedAt: 'asc' } }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async countLedgerFailure(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: { marketId: market.marketId, id: sellerOrderId, ledgerState: 'pending' },
+      data: { ledgerAttempts: { increment: 1 } },
+    });
+  }
+
+  async markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: { marketId: market.marketId, id: sellerOrderId, ledgerState: 'pending' },
+      data: { ledgerState: 'recorded' },
+    });
   }
 
   async markInventoryRecorded(

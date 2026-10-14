@@ -38,6 +38,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     platform: ['USAGE'],
     catalog: ['USAGE'],
     certification: ['USAGE'],
+    commission_payouts: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
@@ -317,10 +318,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'delivered_at',
         'fulfilment',
         'inventory_recorded_at',
+        'ledger_attempts',
+        'ledger_state',
         'shipped_at',
         'tracking_ref',
       ],
     },
+    // Commission-payouts (Phase 5 package 5): a seller's own commission rate is set, changed and
+    // removed (back to the Market rate); the ledger is insert-only (a trigger also refuses UPDATE,
+    // DELETE and TRUNCATE for every role).
+    'commission_payouts.seller_commission_rates': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
+    },
+    'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {

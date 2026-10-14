@@ -11,6 +11,10 @@
   "payments": {
     "connectedAccountCountry": "JP"
   },
+  "commissionPayouts": {
+    "defaultRateBps": 1200,
+    "provisionalTaxRateBps": 1500
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
     "defaultPerMinute": 200

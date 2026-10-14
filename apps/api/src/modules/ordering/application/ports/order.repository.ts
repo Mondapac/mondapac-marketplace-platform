@@ -96,6 +96,18 @@ export interface OrderRepository {
     limit: number,
   ): Promise<readonly SellerOrderRecord[]>;
 
+  /**
+   * Paid seller orders not yet in the seller ledger: fewest failed attempts first, then oldest
+   * payment, so a seller order the ledger keeps refusing never blocks the ones behind it.
+   */
+  findUnrecordedLedger(market: MarketContext, limit: number): Promise<readonly SellerOrderRecord[]>;
+
+  /** Counts one more refused attempt to write the seller order into the ledger. */
+  countLedgerFailure(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<void>;
+
+  /** Marks the seller order as written into the ledger (once; a second call changes nothing). */
+  markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<void>;
+
   /** Marks the lines as recorded in inventory (once; a second call changes nothing). */
   markInventoryRecorded(
     market: MarketContext,

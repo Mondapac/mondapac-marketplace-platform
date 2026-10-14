@@ -1,0 +1,40 @@
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { LedgerEntry, LedgerKind } from '../../domain/ledger';
+
+/** Newest first; the cursor is the last row of the previous page. */
+export interface LedgerPage {
+  readonly limit: number;
+  readonly after: { readonly recordedAt: Temporal.Instant; readonly id: Id<'LedgerEntry'> } | null;
+}
+
+/** The sum of one seller's rows per kind and currency. */
+export interface LedgerSum {
+  readonly currency: string;
+  readonly kind: LedgerKind;
+  readonly amount: bigint;
+}
+
+/**
+ * The seller ledger of one Market (`commission_payouts.ledger_entries`): insert-only. The
+ * database refuses any change or delete of a row and the application role holds no such grant.
+ */
+export interface LedgerRepository {
+  /** Whether the seller order already has its rows (the idempotency check). */
+  hasSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<boolean>;
+
+  /**
+   * Inserts the rows of one fact. A row that exists already (same seller order, kind and line)
+   * is skipped, so a replay writes nothing twice. Answers how many rows were inserted.
+   */
+  append(market: MarketContext, entries: readonly LedgerEntry[]): Promise<number>;
+
+  list(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: LedgerPage,
+  ): Promise<readonly LedgerEntry[]>;
+
+  sums(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly LedgerSum[]>;
+}
+
+export const LEDGER_REPOSITORY = Symbol('LEDGER_REPOSITORY');

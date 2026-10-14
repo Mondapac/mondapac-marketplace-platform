@@ -8,6 +8,7 @@ import type {
   Temporal,
 } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade } from '../../cart';
+import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { ShippingFacade } from '../../shipping';
 import type {
   InsufficientReason,
@@ -35,6 +36,7 @@ export interface OrderingDependencies {
   readonly cart: CartCheckoutFacade;
   readonly inventory: InventoryOrderingPort;
   readonly shipping: ShippingFacade;
+  readonly commission: CommissionPayoutsFacade;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }
@@ -126,6 +128,18 @@ export async function startCheckout(
     return err({ code: 'ordering.shipping-unavailable', sellerIds: priced.sellerIds });
   }
   const plan = priced.plan;
+  // The commission rate of each seller is frozen on its lines now (COM-04); no rate, no order.
+  const rates = await deps.commission.commissionRates(
+    context,
+    plan.sellers.map((seller) => seller.sellerId),
+  );
+  if (!rates.ok) {
+    return err(
+      rates.error.code === 'access.denied'
+        ? { code: 'access.denied' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
 
   const orderId = deps.ids.next<'Order'>();
   const urls = deps.policy.returnUrls(context.market, orderId);
@@ -170,9 +184,10 @@ export async function startCheckout(
   }));
   const lines: OrderLine[] = [];
   for (const { id: sellerOrderId, seller } of sellerOrders) {
+    const rate = rates.value.get(seller.sellerId);
     for (const line of seller.lines) {
       const reservationLineId = reservationLine.get(`${line.offerId}/${line.variantId}`);
-      if (reservationLineId === undefined) {
+      if (reservationLineId === undefined || rate === undefined) {
         await deps.inventory.releaseOwnReservation(context, {
           reservationId: reservation.reservationId,
         });
@@ -188,6 +203,7 @@ export async function startCheckout(
         lineAmount: line.unitPrice.amount * BigInt(line.quantity),
         taxInclusive: line.taxInclusive,
         reservationLineId,
+        commissionRateBps: rate.rateBps,
       });
     }
   }
@@ -220,6 +236,7 @@ export async function startCheckout(
       shippedAt: null,
       deliveredAt: null,
       inventoryRecordedAt: null,
+      ledgerState: 'pending' as const,
     })),
     lines,
   };
