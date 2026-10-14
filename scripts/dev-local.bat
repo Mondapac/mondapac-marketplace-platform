@@ -78,6 +78,24 @@ if "%SEED%"=="1" (
   start "MondaPac demo data" /d "%CD%" cmd /k "node scripts\demo-seed\index.mjs"
 )
 
+rem The panels start in seconds but the API needs a minute to build; a sign-in before then fails
+rem with "upstream-unreachable". Wait here (up to 5 minutes) so the message below is true.
+echo Waiting for the API on http://localhost:3000 ...
+set /a TRIES=0
+:waitapi
+curl -s -f -o nul http://localhost:3000/health && goto :apiready
+set /a TRIES+=1
+if %TRIES% geq 60 goto :apislow
+timeout /t 5 /nobreak >nul
+goto :waitapi
+:apislow
+echo.
+echo The API is not answering yet. Look at the "MondaPac API" window: if it shows an error, fix that first;
+echo if it is still building, wait until it says the application started, then reload the panel.
+goto :afterwait
+:apiready
+echo The API is ready.
+:afterwait
 echo.
 echo Started. Wait about a minute for the first build, then open:
 echo   Seller panel : http://seller.localhost:3001
