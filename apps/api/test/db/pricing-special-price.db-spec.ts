@@ -305,7 +305,9 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
 
       clock.set(clock.now().add({ minutes: 1 }));
       const first = await publisher().execute(system, {});
-      expect(first).toMatchObject({ ok: true, value: { announced: 1, failed: 0 } });
+      // Other specials of the file may be due too: this offer's marker is what is asserted.
+      expect(first).toMatchObject({ ok: true, value: { failed: 0 } });
+      expect(first.ok && first.value.announced).toBeGreaterThanOrEqual(1);
       expect(await markersOf(s.offerId)).toEqual(['start']);
       // A repeated run finds the marker: no second event.
       const again = await publisher().execute(system, {});
@@ -313,7 +315,8 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
 
       clock.set(endsAt.add({ minutes: 1 }));
       const last = await publisher().execute(system, {});
-      expect(last).toMatchObject({ ok: true, value: { announced: 1, failed: 0 } });
+      expect(last).toMatchObject({ ok: true, value: { failed: 0 } });
+      expect(last.ok && last.value.announced).toBeGreaterThanOrEqual(1);
       expect(await markersOf(s.offerId)).toEqual(['end', 'start']);
       expect(await causesOf(s.offerId)).toEqual([
         'regular-accepted',
@@ -382,7 +385,7 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
       expect(other.map((r) => r.count)).toEqual([1, 1]);
 
       const purged = await persistence.unitOfWork.run(market, async () =>
-        ok(await counters().purgeStartedBefore(market, t0.add({ days: 3 }))),
+        ok(await counters().purgeStartedBefore(market, t0.add({ hours: 72 }))),
       );
       expect(purged.ok).toBe(true);
       const left = await sql.query(
