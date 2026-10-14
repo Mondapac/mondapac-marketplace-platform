@@ -178,7 +178,11 @@ export function confirmOrder(order: OrderState, now: Temporal.Instant): OrderSta
   };
 }
 
-/** Pending to cancelled. A confirmed or already cancelled order is not touched. */
+/**
+ * Pending to cancelled. A confirmed or already cancelled order is not touched. An order whose
+ * payment is authorised (a confirm is in progress) is cancelled only by a caller that has just
+ * voided that authorisation and says so with `paymentState` `voided`.
+ */
 export function cancelOrder(
   order: OrderState,
   reason: CancelReason,
@@ -186,5 +190,6 @@ export function cancelOrder(
   now: Temporal.Instant,
 ): OrderState | null {
   if (order.status !== 'pending-payment') return null;
+  if (order.paymentState === 'authorised' && paymentState !== 'voided') return null;
   return { ...order, status: 'cancelled', cancelReason: reason, paymentState, cancelledAt: now };
 }

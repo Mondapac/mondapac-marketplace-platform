@@ -120,6 +120,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     new ConfirmPayment(gate, deps).execute(system, {
       orderId,
       paymentIntentId,
+      sessionId: 'cs_test_1',
       amount: money(amount ?? [...orders.rows.values()][0]!.total.amount, currency),
     });
 
@@ -393,6 +394,49 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(orders.rows.get(order.id)?.status).toBe('pending-payment');
     });
 
+    it('refuses a payment that carries another order’s Checkout session', async () => {
+      const order = await started();
+      const result = await new ConfirmPayment(gate, deps).execute(system, {
+        orderId: order.id,
+        paymentIntentId: 'pi_test_1',
+        sessionId: 'cs_test_other',
+        amount: order.total,
+      });
+      expect(result).toEqual(err({ code: 'validation.failed' }));
+      expect(gateway.captured).toEqual([]);
+      expect(inventory.calls).toEqual(['reserve']);
+    });
+
+    it('leaves an order with an authorised payment alone when a newer checkout supersedes it', async () => {
+      const first = await start();
+      if (!first.ok) throw new Error('checkout failed');
+      const row = orders.rows.get(first.value.orderId)!;
+      orders.rows.set(row.id, {
+        ...row,
+        paymentState: 'authorised',
+        stripePaymentIntentId: 'pi_test_1',
+      });
+
+      await start();
+
+      expect(orders.rows.get(first.value.orderId)).toMatchObject({
+        status: 'pending-payment',
+        paymentState: 'authorised',
+      });
+      expect(gateway.expired).toEqual([]);
+    });
+
+    it('does not cancel when the hold was committed meanwhile, and asks for a retry', async () => {
+      const order = await started();
+      inventory.releaseCommitted = true;
+      const result = await new CancelPayment(gate, deps).execute(system, {
+        orderId: order.id,
+        cause: 'expired',
+      });
+      expect(result).toEqual(err({ code: 'ordering.try-again' }));
+      expect(orders.rows.get(order.id)?.status).toBe('pending-payment');
+    });
+
     it('answers an unknown order and a malformed id without touching anything', async () => {
       expect(await confirm(id<'Order'>(0xdead), 100n)).toEqual(
         err({ code: 'ordering.order-not-found' }),
@@ -401,6 +445,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         await new ConfirmPayment(gate, deps).execute(system, {
           orderId: 'nope',
           paymentIntentId: 'pi_test_1',
+          sessionId: 'cs_test_1',
           amount: money(1n, currency),
         }),
       ).toEqual(err({ code: 'validation.failed' }));
@@ -412,6 +457,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const denied = await new ConfirmPayment(gate, deps).execute(customer, {
         orderId: order.id,
         paymentIntentId: 'pi_test_1',
+        sessionId: 'cs_test_1',
         amount: order.total,
       });
       expect(denied.ok).toBe(false);

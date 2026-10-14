@@ -106,6 +106,9 @@ ALTER TABLE "ordering"."orders"
   ADD CONSTRAINT "orders_confirmed_check" CHECK (("status" = 'confirmed') = ("confirmed_at" IS NOT NULL)),
   ADD CONSTRAINT "orders_payment_state_check" CHECK (
     "payment_state" IN ('none', 'authorised', 'captured', 'voided')),
+  ADD CONSTRAINT "orders_status_payment_check" CHECK (
+    ("status" <> 'confirmed' OR "payment_state" = 'captured')
+    AND ("status" <> 'cancelled' OR "payment_state" <> 'authorised')),
   ADD CONSTRAINT "orders_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
   ADD CONSTRAINT "orders_total_check" CHECK ("total_amount" > 0),
   ADD CONSTRAINT "orders_version_check" CHECK ("version" >= 1);

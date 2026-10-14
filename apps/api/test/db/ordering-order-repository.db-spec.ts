@@ -205,6 +205,22 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(await rawOrder({ status: 'cancelled', cancelled_at: T0.toString() })).toBe(CHECK);
     expect(await rawOrder({ status: 'pending-payment', cancel_reason: 'expired' })).toBe(CHECK);
     expect(await rawOrder({ total_amount: 0 })).toBe(CHECK);
+    // A confirmed order is captured; a cancelled one never keeps an open authorisation.
+    expect(
+      await rawOrder({
+        status: 'confirmed',
+        payment_state: 'authorised',
+        confirmed_at: T0.toString(),
+      }),
+    ).toBe(CHECK);
+    expect(
+      await rawOrder({
+        status: 'cancelled',
+        cancel_reason: 'superseded',
+        cancelled_at: T0.toString(),
+        payment_state: 'authorised',
+      }),
+    ).toBe(CHECK);
     expect(await rawOrder({ payment_state: 'refunded' })).toBe(CHECK);
     expect(await rawOrder({ currency: 'aud' })).toBe(CHECK);
   });

@@ -70,7 +70,9 @@ export async function confirmPayment(
     orderId === null ||
     typeof input.paymentIntentId !== 'string' ||
     input.paymentIntentId.length === 0 ||
-    input.paymentIntentId.length > 255
+    input.paymentIntentId.length > 255 ||
+    typeof input.sessionId !== 'string' ||
+    input.sessionId.length === 0
   ) {
     return err({ code: 'validation.failed' });
   }
@@ -84,6 +86,10 @@ export async function confirmPayment(
   );
   if (!loaded.ok) return loaded;
   const order = loaded.value;
+  // The payment must come from this order's own Checkout session, not another order's.
+  if (order.stripeSessionId === null || order.stripeSessionId !== input.sessionId) {
+    return err({ code: 'validation.failed' });
+  }
 
   if (order.status === 'confirmed') {
     // A second payment for an order that is already paid: release it, keep the first.
@@ -94,6 +100,8 @@ export async function confirmPayment(
     input.amount?.currency !== order.total.currency || input.amount?.amount !== order.total.amount;
   if (order.status === 'cancelled' || wrongAmount) {
     if (!(await voidMoney(deps, order, input.paymentIntentId))) return RETRY;
+    // A pending order is released only while no other payment is authorised on it.
+    if (order.status === 'pending-payment' && order.paymentState !== 'none') return ok('voided');
     const settled =
       order.status === 'pending-payment'
         ? await release(deps, context, order, 'payment-failed', 'voided')
@@ -162,6 +170,9 @@ export async function confirmPayment(
     // repeats the (idempotent) commit and capture before it confirms.
     return confirmed;
   }
+  // The money is taken but the order is no longer pending: never answer 'confirmed' for it.
+  // The retry finds it cancelled, tries to void the intent, and fails loudly for an admin.
+  if (confirmed.value === null) return RETRY;
   await deps.cart.clearOrdered(context, {
     accountId: authorised.accountId,
     units: authorised.lines.map(({ offerId, variantId }) => ({ offerId, variantId })),
@@ -191,13 +202,19 @@ async function release(
   paymentState: PaymentState,
 ): Promise<Result<OrderState | null, PaymentFailure>> {
   // A reservation already gone (expired, superseded) answers not-found: nothing left to release.
-  await deps.inventory.releaseReservation(context, {
+  const released = await deps.inventory.releaseReservation(context, {
     reservationId: order.reservationId,
     cause: reason === 'payment-failed' ? 'payment-failed' : 'cancelled',
   });
-  return update(deps, context, order.id, (o) =>
+  // Committed meanwhile: a confirm is in progress, so this cancel must not win.
+  if (!released.ok && released.error.code === 'inventory.reservation.committed') return RETRY;
+  const settled = await update(deps, context, order.id, (o) =>
     cancelOrder(o, reason, paymentState === 'voided' ? 'voided' : o.paymentState, deps.clock.now()),
   );
+  if (!settled.ok || settled.value !== null) return settled;
+  // Nothing changed: either it was settled meanwhile, or a payment was authorised on it.
+  const now = await reload(deps, context, order.id);
+  return now !== null && now.status === 'pending-payment' ? RETRY : settled;
 }
 
 export type CancelOutcome = 'cancelled' | 'ignored';

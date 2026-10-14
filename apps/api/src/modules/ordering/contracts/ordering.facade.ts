@@ -5,6 +5,8 @@ import type { AccessDenied } from '../../../platform/authz';
 export interface AuthorisedPayment {
   readonly orderId: string;
   readonly paymentIntentId: string;
+  /** The Checkout session that created the payment; it must be the one stored on the order. */
+  readonly sessionId: string;
   /** What the provider holds; it must equal the order total or the payment is voided. */
   readonly amount: Money;
 }

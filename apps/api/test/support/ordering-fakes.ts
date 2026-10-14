@@ -126,6 +126,7 @@ export class FakeInventory implements InventoryOrderingPort {
   reserveFailuresLeft = 0;
   commitFails: CommitFailure | null = null;
   commitFailuresLeft = 0;
+  releaseCommitted = false;
   reserved: Parameters<InventoryOrderingPort['reserve']>[1][] = [];
   committed: unknown[] = [];
   reserve(_c: CallContext, request: Parameters<InventoryOrderingPort['reserve']>[1]) {
@@ -150,6 +151,9 @@ export class FakeInventory implements InventoryOrderingPort {
   }
   releaseReservation(_c: CallContext, request: { reservationId: string; cause: string }) {
     this.calls.push(`release:${request.cause}`);
+    if (this.releaseCommitted) {
+      return Promise.resolve(err({ code: 'inventory.reservation.committed' } as const));
+    }
     return Promise.resolve(ok({ reservationId: request.reservationId as Id<'Reservation'> }));
   }
   releaseOwnReservation(_c: CallContext, request: { reservationId: string }) {
