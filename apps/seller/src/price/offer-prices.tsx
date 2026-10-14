@@ -8,6 +8,7 @@ import { callApi } from '../api/client.ts';
 import { formatInstant } from '../catalog/format.ts';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, inputOf, minorOf } from './money.ts';
+import { SpecialPrice } from './special-price.tsx';
 import type { OfferPricesView, PriceWritten, VariantPrice } from './types.ts';
 
 function VariantRow({
@@ -122,6 +123,17 @@ function VariantRow({
             <span className="text-sm text-fg-muted">{t(`price.saved.${done}`)}</span>
           )}
         </form>
+      )}
+      {variant.seriesVersion === null && variant.special === null ? null : (
+        <SpecialPrice
+          offerId={offerId}
+          variant={variant}
+          currency={currency}
+          canEdit={!readOnly}
+          csrfToken={csrfToken}
+          version={version}
+          onVersion={setVersion}
+        />
       )}
     </section>
   );

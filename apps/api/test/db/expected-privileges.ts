@@ -251,16 +251,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'only_left', 'status', 'version'],
     },
     'inventory.retirements': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
-    // docs/design/data/inventory.md section 7 (slice 4): a reservation's expiry and a line's
-    // quantity and sell-unit ids never change; no DELETE on reservations until the prune job (lines
-    // go by cascade); an Offer's purchase limit is cleared by deleting it.
+    // docs/design/data/inventory.md section 7 (slices 4 and 5): a reservation's expiry and a line's
+    // quantity and sell-unit ids never change; DELETE on reservations is for the prune job only
+    // (lines go by cascade); an Offer's purchase limit is cleared by deleting it.
     'inventory.reservations': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['release_cause', 'status', 'status_changed_at', 'version'],
     },
     'inventory.reservation_lines': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['order_line_id', 'state', 'state_changed_at', 'stock_item_id'],
+    },
+    'inventory.rate_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
     },
     'inventory.offer_purchase_limits': {
       table: ['DELETE', 'INSERT', 'SELECT'],
@@ -407,6 +411,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'supersede_cause',
         'superseded_at',
         'superseded_by_record_id',
+      ],
+    },
+    // Special price records (slice 5): content never changes; status, decision, supersede,
+    // withdraw and effective-start columns are written once under the write-once trigger.
+    'pricing.special_price_records': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_note',
+        'decision_reason_code',
+        'effective_from',
+        'status',
+        'supersede_cause',
+        'superseded_at',
+        'superseded_by_record_id',
+        'withdraw_cause',
+        'withdrawn_at',
       ],
     },
     'pricing.retired_offers': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

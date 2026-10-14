@@ -12,6 +12,7 @@ import { callApi } from '../api/client.ts';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, inputOf, minorOf } from './money.ts';
 import { OfferPrices } from './offer-prices.tsx';
+import { utcInstantOf } from './special-price.tsx';
 import type { OfferPricesView } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -25,6 +26,13 @@ const view: OfferPricesView = {
       currency: 'AUD',
       inForce: { amount: '1999', effectiveFrom: '2026-10-01T00:00:00Z' },
       held: { amount: '2999', submittedAt: '2026-10-02T00:00:00Z', direction: 'up' },
+      special: {
+        amount: '1499',
+        startsAt: '2026-10-05T00:00:00Z',
+        endsAt: '2026-10-30T00:00:00Z',
+        state: 'running',
+      },
+      heldSpecial: null,
       retired: false,
     },
     {
@@ -33,6 +41,8 @@ const view: OfferPricesView = {
       currency: null,
       inForce: null,
       held: null,
+      special: null,
+      heldSpecial: null,
       retired: false,
     },
   ],
@@ -149,5 +159,112 @@ describe('OfferPrices', () => {
     expect(priceProblemOf({ status: 409, code: 'pricing.series-retired' })).toBe('retired');
     expect(priceProblemOf({ status: 503, code: 'access.unavailable' })).toBe('unavailable');
     expect(priceProblemOf({ status: 500, code: 'x' })).toBe('unknown');
+  });
+
+  it('shows the running special and no special form for an unpriced variant', () => {
+    mount();
+    expect(screen.getByText(/Special price \$14\.99 is running/)).toBeTruthy();
+    expect(screen.getAllByText('Special price')).toHaveLength(1);
+  });
+
+  it('sets a special with the shared version, in UTC, and the regular form follows the new version', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { status: 'pending-review', seriesVersion: 4 },
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Special price (AUD, GST included)'), {
+      target: { value: '9.50' },
+    });
+    fireEvent.change(screen.getByLabelText('Ends (UTC)'), {
+      target: { value: '2026-11-01T10:30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save special price' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'pricing/seller/offers/o1/variants/v1/special-price',
+      {
+        amount: '950',
+        currency: 'AUD',
+        startsAt: null,
+        endsAt: '2026-11-01T10:30:00Z',
+        expectedVersion: 3,
+      },
+      'csrf',
+    );
+    expect(await screen.findByText(/The discount is large/)).toBeTruthy();
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { status: 'accepted', seriesVersion: 5, recordId: 'r', effectiveFrom: 'x' },
+    });
+    fireEvent.change(screen.getAllByLabelText('Price (AUD, GST included)')[0] as HTMLElement, {
+      target: { value: '30' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save price' })[0] as HTMLElement);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[1]?.[2]).toMatchObject({ expectedVersion: 4 });
+  });
+
+  it('reads datetime-local text as a UTC instant', () => {
+    expect(utcInstantOf('2026-11-01T10:30')).toBe('2026-11-01T10:30:00Z');
+    expect(utcInstantOf('')).toBeNull();
+    expect(utcInstantOf('nonsense')).toBeNull();
+  });
+
+  it('ends the special now with the version and shows API refusals', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { seriesVersion: 4, endedRecordId: 'r', cancelledRecordId: null },
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'End special now' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      'pricing/seller/offers/o1/variants/v1/special-price/withdraw',
+      { expectedVersion: 3 },
+      'csrf',
+    );
+    expect(await screen.findByText('The special price was ended.')).toBeTruthy();
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 422, code: 'pricing.special-not-below-regular' },
+    } as never);
+    fireEvent.change(screen.getByLabelText('Special price (AUD, GST included)'), {
+      target: { value: '99' },
+    });
+    fireEvent.change(screen.getByLabelText('Ends (UTC)'), {
+      target: { value: '2026-11-01T10:30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save special price' }));
+    expect(await screen.findByText(/must be below the regular price/)).toBeTruthy();
+  });
+
+  it('shows a held special and hides the special form without edit permission', () => {
+    const held: OfferPricesView = {
+      ...view,
+      variants: [
+        {
+          ...(view.variants[0] as OfferPricesView['variants'][number]),
+          special: null,
+          heldSpecial: {
+            amount: '500',
+            startsAt: '2026-10-05T00:00:00Z',
+            endsAt: '2026-10-30T00:00:00Z',
+            submittedAt: '2026-10-04T00:00:00Z',
+          },
+        },
+      ],
+    };
+    mount(false, held);
+    expect(screen.getByText(/special price of \$5\.00/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save special price' })).toBeNull();
+    expect(priceProblemOf({ status: 409, code: 'pricing.regular-not-above-special' })).toBe(
+      'regular-not-above',
+    );
   });
 });

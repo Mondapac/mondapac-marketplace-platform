@@ -36,6 +36,17 @@ import {
   type ReservationRepository,
 } from '../application/ports/reservation.repository';
 import { PrismaReservationRepository } from './prisma-reservation.repository';
+import { APP_CONFIG } from '../../../platform/config/config.module';
+import type { AppConfig } from '../../../platform/config/app-config';
+import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
+import {
+  RATE_COUNTER_REPOSITORY,
+  type RateCounterRepository,
+} from '../application/ports/rate-counter.repository';
+import { HmacRateCounterKeys, localInventorySecret } from './hmac-rate-counter-keys';
+import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
+
+const INVENTORY_SECRET = Symbol('INVENTORY_SECRET');
 
 /**
  * Binds the ports of slices 1, 2 and 4. They live in `infrastructure/` because only this layer may reach
@@ -86,5 +97,22 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): InventoryPolicyProvider =>
       new ConfigInventoryPolicyProvider(markets),
+  },
+  {
+    provide: RATE_COUNTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): RateCounterRepository =>
+      new PrismaRateCounterRepository(prisma),
+  },
+  {
+    // The local stand-in of the inventory stack secret refuses production (K1).
+    provide: INVENTORY_SECRET,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): Uint8Array => localInventorySecret(config),
+  },
+  {
+    provide: RATE_COUNTER_KEYS,
+    inject: [INVENTORY_SECRET],
+    useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
   },
 ];

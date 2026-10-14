@@ -67,6 +67,8 @@ export type SetRegularPriceFailure =
   | { readonly code: 'pricing.currency-mismatch' }
   | { readonly code: 'pricing.amount-out-of-range' }
   | { readonly code: 'pricing.series-retired' }
+  /** Q2: the price is at or below a running or scheduled special. */
+  | { readonly code: 'pricing.regular-not-above-special' }
   | { readonly code: 'conflict.stale' };
 
 export interface SetRegularPriceDependencies {
@@ -403,7 +405,7 @@ export class SetRegularPrice extends UseCase<
 }
 
 /** Why catalog's answer refuses this write, or null when it allows it (design 5.2). */
-function refusalCause(
+export function refusalCause(
   offer: PricedOfferView | null,
   sellerId: Id<'Seller'>,
   variantId: Id<'Variant'>,

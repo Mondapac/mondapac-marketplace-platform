@@ -3,7 +3,7 @@
 // Other modules may import only what this file exports, through ../index.ts. Event
 // definitions are declared in domain/events/ and re-exported here (ADR-0006 decision 6), as are
 // the audited actions of domain/audit/ (docs/design/domain/platform-audit.md 3.2).
-export { IDENTITY_EVENTS, SellerRegistered } from '../domain/events';
+export { IDENTITY_EVENTS, SellerAccessApproved, SellerRegistered } from '../domain/events';
 export { IDENTITY_AUDIT_ACTIONS } from '../domain/audit';
 export * from './permissions';
 export {

@@ -7,11 +7,11 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { SellerInventory } from '../../domain/seller-inventory';
 import type { SellerInventoryRepository } from '../ports/seller-inventory.repository';
 
-/** One delivery of `identity.seller-registered.v1` (inventory design 3.4, 7.4). */
+/** One delivery of `identity.seller-registered.v1` or `-access-approved.v1` (design 3.4, 7.4). */
 export interface EnsureSellerInventoryInput {
   readonly delivery: EventDelivery;
   readonly sellerId: Id;
-  /** The seller's access state in the event; only `approved` creates an inventory. */
+  /** The seller's access state; only `approved` creates an inventory (the approval event says so). */
   readonly accessState: string;
 }
 
@@ -35,8 +35,7 @@ export interface EnsureSellerInventoryDependencies {
  * Rule `system`, from the subscription on `identity.seller-registered.v1`. An approved seller
  * gets a `SellerInventory` with its Default source (priority 1, no address, no zone) in one unit,
  * through `runOnce`. A seller that is not approved yet gets nothing: the inventory is created
- * when the approval arrives (`identity.seller-access-approved.v1`, which identity does not
- * publish yet; the handler gains that subscription with it).
+ * when the approval arrives (`identity.seller-access-approved.v1`, a second subscription).
  *
  * Idempotent twice over: the inbox skips an event this handler already handled, and the unique
  * (Market, seller) key makes a second approval, re-apply or reinstatement a no-op

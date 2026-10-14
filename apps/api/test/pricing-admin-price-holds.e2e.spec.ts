@@ -61,6 +61,9 @@ it('maps every refusal code of the review use cases to its exact status', () => 
     'pricing.series-retired': 409,
     'pricing.amount-out-of-range': 422,
     'pricing.currency-mismatch': 422,
+    'pricing.regular-not-above-special': 409,
+    'pricing.special-not-below-regular': 409,
+    'pricing.special-window.ended': 409,
     'conflict.stale': 409,
     'conflict.retry': 409,
   });

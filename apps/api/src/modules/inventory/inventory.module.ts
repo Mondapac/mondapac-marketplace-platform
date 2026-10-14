@@ -16,6 +16,13 @@ import { AVAILABILITY_READER } from './application/ports/availability-reader';
 import { OFFER_STOCK_READER } from './application/ports/offer-stock.reader';
 import { STOCK_REPOSITORY } from './application/ports/stock.repository';
 import { RESERVATION_REPOSITORY } from './application/ports/reservation.repository';
+import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
+import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
+import { CancelCommittedLine } from './application/use-cases/cancel-committed-line.use-case';
+import { CommitReservation } from './application/use-cases/commit-reservation.use-case';
+import { PruneReservations } from './application/use-cases/prune-reservations.use-case';
+import { RecordShipment } from './application/use-cases/record-shipment.use-case';
+import { pruneReservationsJob } from './presentation/jobs/prune-reservations.job';
 import { ExpireReservations } from './application/use-cases/expire-reservations.use-case';
 import { ReleaseOwnReservation } from './application/use-cases/release-own-reservation.use-case';
 import { ReleaseReservation } from './application/use-cases/release-reservation.use-case';
@@ -60,6 +67,8 @@ const PORT = {
   stock: STOCK_REPOSITORY,
   offerStock: OFFER_STOCK_READER,
   reservations: RESERVATION_REPOSITORY,
+  counters: RATE_COUNTER_REPOSITORY,
+  counterKeys: RATE_COUNTER_KEYS,
   items: AVAILABILITY_READER,
   signals: AVAILABILITY_SIGNAL_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
@@ -200,29 +209,58 @@ function useCaseProvider<D, U>(
       policies: true,
       signals: true,
       outbox: true,
+      counters: true,
+      counterKeys: true,
       ids: true,
       clock: true,
     }),
     useCaseProvider(ReleaseReservation, RELEASE_PORTS),
     useCaseProvider(ReleaseOwnReservation, RELEASE_PORTS),
     useCaseProvider(ExpireReservations, RELEASE_PORTS),
+    useCaseProvider(CommitReservation, RELEASE_PORTS),
+    useCaseProvider(CancelCommittedLine, { ...RELEASE_PORTS, stock: true }),
+    useCaseProvider(RecordShipment, { ...RELEASE_PORTS, stock: true }),
+    useCaseProvider(PruneReservations, {
+      unitOfWork: true,
+      reservations: true,
+      counters: true,
+      clock: true,
+    }),
     {
       provide: INVENTORY_ORDERING_PORT,
-      inject: [Reserve, ReleaseReservation, ReleaseOwnReservation],
+      inject: [
+        Reserve,
+        ReleaseReservation,
+        ReleaseOwnReservation,
+        CommitReservation,
+        CancelCommittedLine,
+        RecordShipment,
+      ],
       useFactory: (
         reserve: Reserve,
         releaseReservation: ReleaseReservation,
         releaseOwnReservation: ReleaseOwnReservation,
+        commitReservation: CommitReservation,
+        cancelCommittedLine: CancelCommittedLine,
+        recordShipment: RecordShipment,
       ) =>
         new InventoryOrderingPortImplementation({
           reserve,
           releaseReservation,
           releaseOwnReservation,
+          commitReservation,
+          cancelCommittedLine,
+          recordShipment,
         }),
     },
-    registerJobsFrom('inventory', [ExpireReservations], (expire: ExpireReservations) => [
-      expireReservationsJob(expire),
-    ]),
+    registerJobsFrom(
+      'inventory',
+      [ExpireReservations, PruneReservations],
+      (expire: ExpireReservations, prune: PruneReservations) => [
+        expireReservationsJob(expire),
+        pruneReservationsJob(prune),
+      ],
+    ),
     {
       provide: INVENTORY_FACADE,
       inject: [AvailabilityQuery, AvailabilitySystemQuery],

@@ -42,6 +42,8 @@ describe.each([
     price: money(1999n, currency),
     taxInclusive: true,
     recordId: id<'RegularPriceRecord'>(5),
+    basis: 'regular',
+    specialEndsAt: null,
   };
   const stock: SellUnitAvailability = { sellable: 4, status: 'low', onlyLeft: 4 };
 

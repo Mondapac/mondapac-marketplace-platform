@@ -1,4 +1,4 @@
-import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 
 /** At most this many keys per batch call; a larger call is refused whole. */
@@ -16,14 +16,20 @@ export function priceKeyOf(key: PriceKey): string {
 }
 
 /**
- * The regular price in force right now. No Cost, no hold, no history: a buyer-facing read
- * (ADR-0024). It does not check that the Offer is visible: the caller (cart, storefront) checks
- * catalog's published state first and never passes buyer-supplied keys unchecked. `taxInclusive` is the Market's `pricesIncludeTax` when the record was written.
+ * The price a buyer pays right now: the special price in force when it is below the regular
+ * price in force, else the regular price (pricing design 4.1). No Cost, no hold, no history: a
+ * buyer-facing read (ADR-0024). It does not check that the Offer is visible: the caller (cart,
+ * storefront) checks catalog's published state first and never passes buyer-supplied keys
+ * unchecked. `taxInclusive` is the Market's `pricesIncludeTax` when the record was written.
  */
 export interface EffectivePrice {
   readonly price: Money;
   readonly taxInclusive: boolean;
-  readonly recordId: Id<'RegularPriceRecord'>;
+  /** The record the price comes from: a regular record, or a special record when `basis` is `special`. */
+  readonly recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>;
+  readonly basis: 'regular' | 'special';
+  /** When the special window ends; null unless `basis` is `special`. */
+  readonly specialEndsAt: Temporal.Instant | null;
 }
 
 /** Per requested key that has a price in force. A key without one is absent ("no valid price"). */
@@ -43,7 +49,10 @@ export interface PricingBatchTooLarge {
  * re-reads at checkout. Not exposed over HTTP.
  */
 export interface PricingFacade {
-  /** The regular price in force for each key (at most 200 keys), keyed by {@link priceKeyOf}. */
+  /**
+   * The effective price (special in force, else regular) for each key (at most 200 keys), keyed
+   * by {@link priceKeyOf}.
+   */
   effectivePrices(
     context: CallContext,
     keys: readonly PriceKey[],

@@ -1,10 +1,28 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { ReleaseCause, Reservation } from '../../domain/reservation';
+import type { ReleaseCause, Reservation, ReservationLineStatus } from '../../domain/reservation';
 import type { StockItemRow } from './stock.repository';
 
 export interface SellUnitRef {
   readonly offerId: Id<'Offer'>;
   readonly variantId: Id<'Variant'>;
+}
+
+/** One line looked up by its order line (the idempotency key of cancel and shipment). */
+export interface CommittedLineRow {
+  readonly lineId: Id<'ReservationLine'>;
+  readonly reservationId: Id<'Reservation'>;
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+  readonly stockItemId: Id<'StockItem'>;
+  readonly quantity: number;
+  readonly status: ReservationLineStatus;
+}
+
+/** Where one reservation line lands when the reservation is committed. */
+export interface CommitAssignment {
+  readonly lineId: Id<'ReservationLine'>;
+  readonly orderLineId: string;
+  readonly stockItemId: Id<'StockItem'>;
 }
 
 /**
@@ -77,6 +95,43 @@ export interface ReservationRepository {
     cause: ReleaseCause,
     now: Temporal.Instant,
   ): Promise<boolean>;
+
+  /**
+   * ACTIVE, EXPIRED or RELEASED-as-superseded to COMMITTED, guarded on that status: answers false
+   * and changes nothing when another unit moved it first. The lines get their order line, their
+   * (possibly new) stock item and the state `committed`. The release cause `superseded` is kept.
+   */
+  commit(
+    market: MarketContext,
+    id: Id<'Reservation'>,
+    assignments: readonly CommitAssignment[],
+    now: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /** The line that carries this order line, or null. */
+  findLineByOrderLine(market: MarketContext, orderLineId: string): Promise<CommittedLineRow | null>;
+
+  /** COMMITTED to `to`, guarded on `state = 'committed'`; answers false when it was not. */
+  finishLine(
+    market: MarketContext,
+    lineId: Id<'ReservationLine'>,
+    to: 'cancelled' | 'fulfilled',
+    now: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /**
+   * Takes `quantity` off the item's on-hand and raises its version (a shipment, design 3.2).
+   * Answers the new on-hand, or null when the item holds less (nothing is written then). Runs
+   * under the item's lock.
+   */
+  shipUnits(market: MarketContext, id: Id<'StockItem'>, quantity: number): Promise<number | null>;
+
+  /**
+   * Deletes up to `limit` RELEASED or EXPIRED reservations whose last status change is before
+   * `before` (their lines go by the cascade); answers how many. Takes no stock lock: no sum reads
+   * these rows (design 4.3, 11).
+   */
+  pruneTerminal(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
 
   /**
    * ACTIVE to EXPIRED for the given reservations, guarded on `status = 'active'` and

@@ -32,7 +32,14 @@ import type {
 import type { SellerInventoryRepository } from '../ports/seller-inventory.repository';
 import type { StockItemRow } from '../ports/stock.repository';
 import { ExpireReservations } from './expire-reservations.use-case';
+import { InMemoryRateCounters } from '../testing/in-memory-rate-counters';
 import { InMemoryReservations } from '../testing/in-memory-reservations';
+import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
+import type { NewStockMovement, StockRepository } from '../ports/stock.repository';
+import { CancelCommittedLine } from './cancel-committed-line.use-case';
+import { CommitReservation } from './commit-reservation.use-case';
+import { PruneReservations } from './prune-reservations.use-case';
+import { RecordShipment } from './record-shipment.use-case';
 import { ReleaseOwnReservation } from './release-own-reservation.use-case';
 import { ReleaseReservation } from './release-reservation.use-case';
 import { Reserve } from './reserve.use-case';
@@ -98,6 +105,15 @@ function setUp() {
   const ids = new SequenceIdGenerator(clock);
   const inventories = new FakeInventories();
   const reservations = new InMemoryReservations();
+  const counters = new InMemoryRateCounters();
+  const counterKeys = new HmacRateCounterKeys(new Uint8Array(32).fill(7));
+  const movements: NewStockMovement[] = [];
+  const stock = {
+    appendMovement: (_m: MarketContext, movement: NewStockMovement) => {
+      movements.push(movement);
+      return Promise.resolve();
+    },
+  } as unknown as StockRepository;
   const signals = new FakeSignals();
   const events: PendingEvent[] = [];
   const outbox: OutboxWriter = {
@@ -115,17 +131,34 @@ function setUp() {
       o: UnitOfWorkOptions = {},
     ) => {
       units.push(o);
-      if (behaviour.throwOnRun !== null) return Promise.reject(behaviour.throwOnRun);
+      // Only the stock unit (the one with a lock wait) fails; the rate-counter units are separate.
+      if (behaviour.throwOnRun !== null && o.lockTimeoutMs !== undefined) {
+        return Promise.reject(behaviour.throwOnRun);
+      }
       return work();
     },
     runOnce: () => Promise.reject(new Error('not used')),
   };
-  const deps = { unitOfWork, reservations, inventories, policies, signals, outbox, ids, clock };
+  const deps = {
+    unitOfWork,
+    reservations,
+    inventories,
+    policies,
+    signals,
+    outbox,
+    counters,
+    counterKeys,
+    stock,
+    ids,
+    clock,
+  };
   return {
     clock,
     ids,
     inventories,
     reservations,
+    counters,
+    movements,
     signals,
     events,
     units,
@@ -134,6 +167,10 @@ function setUp() {
     releaseOwn: new ReleaseOwnReservation(gate, deps),
     release: new ReleaseReservation(gate, deps),
     expire: new ExpireReservations(gate, deps),
+    commit: new CommitReservation(gate, deps),
+    cancelLine: new CancelCommittedLine(gate, deps),
+    ship: new RecordShipment(gate, deps),
+    prune: new PruneReservations(gate, deps),
   };
 }
 type T = ReturnType<typeof setUp>;
@@ -625,6 +662,399 @@ describe.each(['AU', 'ZZ'] as const)('inventory reservations in market %s', (cod
       expect(await t.expire.execute(customer(t), {})).toMatchObject({
         error: { code: 'access.denied' },
       });
+    });
+  });
+
+  describe('the reserve rate limit (design 5.4, M2)', () => {
+    it('allows 6 calls per 15 minutes per account, then answers request.throttled with a wait', async () => {
+      const t = setUp();
+      const { units } = world(t, [[high, high]]);
+      const holder = customer(t);
+
+      for (let call = 0; call < 6; call += 1) {
+        expect((await t.reserve.execute(holder, request(t, units))).ok).toBe(true);
+      }
+      const seventh = await t.reserve.execute(holder, request(t, units));
+
+      expect(seventh).toMatchObject({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 15 * 60 },
+      });
+      // Another account is not affected.
+      expect((await t.reserve.execute(customer(t), request(t, units))).ok).toBe(true);
+    });
+
+    it('does not count a replay of the live reservation', async () => {
+      const t = setUp();
+      const { units } = world(t, [[high, high]]);
+      const holder = customer(t);
+      const same = request(t, units);
+
+      for (let call = 0; call < 12; call += 1) {
+        expect((await t.reserve.execute(holder, same)).ok).toBe(true);
+      }
+      expect([...t.counters.rows.values()].map((row) => row.count)).toEqual([1, 1]);
+    });
+
+    it('restarts the 15-minute window, but stops at 30 calls in 24 hours', async () => {
+      const t = setUp();
+      const { units } = world(t, [[high, high]]);
+      const holder = customer(t);
+
+      for (let batch = 0; batch < 5; batch += 1) {
+        for (let call = 0; call < 6; call += 1) {
+          expect((await t.reserve.execute(holder, request(t, units))).ok).toBe(true);
+        }
+        t.clock.advance(Temporal.Duration.from({ minutes: 16 }));
+      }
+      const over = await t.reserve.execute(holder, request(t, units));
+
+      expect(over).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+    });
+
+    it('fails closed with access.unavailable when the counters cannot answer, and holds nothing', async () => {
+      const t = setUp();
+      const { units } = world(t, [[high, high]]);
+      t.counters.failing = true;
+      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+      const result = await t.reserve.execute(customer(t), request(t, units));
+
+      expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(t.reservations.stored.size).toBe(0);
+    });
+  });
+
+  describe('the cap oracle fix (M1, design 5.1)', () => {
+    it('limits an in-stock line with a large Offer limit to threshold + 1, so no refusal depends on the count', async () => {
+      const t = setUp();
+      const { units } = world(t, [[high, 0]]);
+      t.reservations.limits.set(units[0]!.offerId, 90);
+
+      const fits = await t.reserve.execute(customer(t), request(t, units, threshold + 1));
+      const over = await t.reserve.execute(customer(t), request(t, units, threshold + 2));
+
+      expect(fits.ok).toBe(true);
+      expect(over).toMatchObject({
+        ok: false,
+        error: { details: { lines: [{ reason: 'over-limit' }] } },
+      });
+    });
+
+    it('with threshold 0 an in-stock line takes one unit and the rest is over-limit', async () => {
+      const t = setUp();
+      const { sellerId, units } = world(t, [[40, 0]]);
+      const inventory = t.inventories.stored.get(`${market.marketId}|${sellerId}`)!;
+      await t.inventories.add(
+        market,
+        SellerInventory.fromStored({ ...inventory.state, lowStockThreshold: 0 }),
+      );
+
+      const two = await t.reserve.execute(customer(t), request(t, units, 2));
+      const one = await t.reserve.execute(customer(t), request(t, units, 1));
+
+      expect(two).toMatchObject({
+        ok: false,
+        error: { details: { lines: [{ reason: 'over-limit' }] } },
+      });
+      expect(one.ok).toBe(true);
+    });
+  });
+
+  describe('inventory.commit-reservation (design 3.1, 10)', () => {
+    const SYSTEM = () => testCallContext(market, 'system');
+
+    async function reserved(
+      t: T,
+      quantity = 2,
+      stock: readonly (readonly [number, number])[] = [[high, high]],
+    ) {
+      const w = world(t, stock);
+      const checkoutRef = t.ids.next<'Checkout'>();
+      const holder = customer(t);
+      const result = await t.reserve.execute(holder, request(t, w.units, quantity, checkoutRef));
+      if (!result.ok) throw new Error('reserve');
+      const commitRequest = {
+        reservationId: result.value.reservationId,
+        checkoutRef,
+        lines: result.value.lines.map((line) => ({
+          reservationLineId: line.reservationLineId,
+          orderLineId: t.ids.next<'OrderLine'>(),
+        })),
+      };
+      return {
+        ...w,
+        holder,
+        checkoutRef,
+        reservationId: result.value.reservationId,
+        commitRequest,
+      };
+    }
+
+    const heldOn = (t: T, item: StockItemRow) =>
+      t.reservations.heldQuantities(market, [item.id], t.clock.now()).then((m) => m.get(item.id));
+
+    it('commits a live reservation where it is: lines get their order lines and keep counting after the hold would have expired', async () => {
+      const t = setUp();
+      const r = await reserved(t);
+
+      const done = await t.commit.execute(SYSTEM(), r.commitRequest);
+
+      expect(done).toEqual({ ok: true, value: { reservationId: r.reservationId } });
+      const stored = t.reservations.stored.get(r.reservationId)!;
+      expect(stored.state.status).toBe('committed');
+      expect(stored.state.lines.map((l) => [l.status, l.orderLineId])).toEqual(
+        r.commitRequest.lines.map((l) => ['committed', l.orderLineId]),
+      );
+      t.clock.advance(Temporal.Duration.from({ minutes: minutes + 5 }));
+      expect(await heldOn(t, r.units[0]!.rows[0]!)).toBe(2);
+    });
+
+    it('is idempotent with the same mapping and refuses another one, another checkoutRef or a subset', async () => {
+      const t = setUp();
+      const r = await reserved(t, 1, [
+        [high, high],
+        [high, high],
+      ]);
+      await t.commit.execute(SYSTEM(), r.commitRequest);
+
+      expect((await t.commit.execute(SYSTEM(), r.commitRequest)).ok).toBe(true);
+      const swapped = {
+        ...r.commitRequest,
+        lines: [
+          { ...r.commitRequest.lines[0]!, orderLineId: t.ids.next<'OrderLine'>() },
+          r.commitRequest.lines[1]!,
+        ],
+      };
+      expect(await t.commit.execute(SYSTEM(), swapped)).toMatchObject({
+        error: { code: 'inventory.commit-mismatch' },
+      });
+      expect(
+        await t.commit.execute(SYSTEM(), {
+          ...r.commitRequest,
+          checkoutRef: t.ids.next<'Checkout'>(),
+        }),
+      ).toMatchObject({ error: { code: 'inventory.commit-mismatch' } });
+      const second = await reserved(t, 1, [
+        [high, high],
+        [high, high],
+      ]);
+      expect(
+        await t.commit.execute(SYSTEM(), {
+          ...second.commitRequest,
+          lines: second.commitRequest.lines.slice(0, 1),
+        }),
+      ).toMatchObject({ error: { code: 'inventory.commit-mismatch' } });
+      expect(t.reservations.stored.get(second.reservationId)!.state.status).toBe('active');
+    });
+
+    it('allocates an expired reservation again under lock, on the next source when the first is gone', async () => {
+      const t = setUp();
+      const r = await reserved(t, 3, [[3, 10]]);
+      t.clock.advance(Temporal.Duration.from({ minutes: minutes + 1 }));
+      // Someone else takes the first source meanwhile.
+      const taker = await t.reserve.execute(customer(t), request(t, r.units, 3));
+      expect(taker.ok).toBe(true);
+
+      const done = await t.commit.execute(SYSTEM(), r.commitRequest);
+
+      expect(done.ok).toBe(true);
+      const stored = t.reservations.stored.get(r.reservationId)!;
+      expect(stored.state.status).toBe('committed');
+      expect(stored.state.lines[0]!.stockItemId).toBe(r.units[0]!.rows[1]!.id);
+    });
+
+    it('answers inventory.insufficient and keeps the status when nothing fits any more', async () => {
+      const t = setUp();
+      const r = await reserved(t, 1, [[high, 0]]);
+      t.clock.advance(Temporal.Duration.from({ minutes: minutes + 1 }));
+      // The seller sets the stock to 0 once the hold is gone.
+      const [first, second] = r.units[0]!.rows;
+      t.reservations.items = t.reservations.items.map((item) =>
+        item.id === first!.id || item.id === second!.id ? { ...item, onHand: 0 } : item,
+      );
+
+      const done = await t.commit.execute(SYSTEM(), r.commitRequest);
+
+      expect(done).toMatchObject({
+        ok: false,
+        error: { code: 'inventory.insufficient', details: { lines: [{ reason: 'out' }] } },
+      });
+      expect(t.reservations.stored.get(r.reservationId)!.state.status).toBe('active');
+    });
+
+    it('commits one RELEASED as superseded, but refuses one released for another cause', async () => {
+      const t = setUp();
+      const r = await reserved(t, 1);
+      const newer = await t.reserve.execute(r.holder, request(t, r.units, 1));
+      expect(newer.ok).toBe(true);
+      expect(t.reservations.stored.get(r.reservationId)!.state.releaseCause).toBe('superseded');
+
+      expect((await t.commit.execute(SYSTEM(), r.commitRequest)).ok).toBe(true);
+      const committed = t.reservations.stored.get(r.reservationId)!;
+      expect(committed.state.status).toBe('committed');
+      expect(committed.state.releaseCause).toBe('superseded');
+
+      const f = await reserved(t, 1);
+      await t.release.execute(SYSTEM(), {
+        reservationId: f.reservationId,
+        cause: 'payment-failed',
+      });
+      expect(await t.commit.execute(SYSTEM(), f.commitRequest)).toMatchObject({
+        ok: false,
+        error: { code: 'inventory.insufficient' },
+      });
+      expect(t.reservations.stored.get(f.reservationId)!.state.status).toBe('released');
+    });
+
+    it('is for the system actor only, validates its input and answers not-found for an unknown id', async () => {
+      const t = setUp();
+      const r = await reserved(t);
+
+      expect(await t.commit.execute(customer(t), r.commitRequest)).toMatchObject({
+        error: { code: 'access.denied' },
+      });
+      expect(await t.commit.execute(SYSTEM(), { ...r.commitRequest, lines: [] })).toMatchObject({
+        error: { code: 'validation.failed' },
+      });
+      expect(
+        await t.commit.execute(SYSTEM(), {
+          ...r.commitRequest,
+          reservationId: t.ids.next<'Reservation'>(),
+        }),
+      ).toMatchObject({ error: { code: 'inventory.reservation.not-found' } });
+    });
+  });
+
+  describe('cancel and shipment of a committed line (design 3.2, 10)', () => {
+    const SYSTEM = () => testCallContext(market, 'system');
+
+    async function committed(t: T, quantity = 2) {
+      const w = world(t, [[high, high]]);
+      const checkoutRef = t.ids.next<'Checkout'>();
+      const result = await t.reserve.execute(
+        customer(t),
+        request(t, w.units, quantity, checkoutRef),
+      );
+      if (!result.ok) throw new Error('reserve');
+      const orderLineId = t.ids.next<'OrderLine'>();
+      const done = await t.commit.execute(SYSTEM(), {
+        reservationId: result.value.reservationId,
+        checkoutRef,
+        lines: [{ reservationLineId: result.value.lines[0]!.reservationLineId, orderLineId }],
+      });
+      if (!done.ok) throw new Error('commit');
+      return { ...w, orderLineId, item: w.units[0]!.rows[0]! };
+    }
+
+    const heldOn = (t: T, id: Id<'StockItem'>) =>
+      t.reservations.heldQuantities(market, [id], t.clock.now()).then((m) => m.get(id));
+
+    it('cancels a committed line: the units are sellable again, a repeat is fine', async () => {
+      const t = setUp();
+      const c = await committed(t);
+      expect(await heldOn(t, c.item.id)).toBe(2);
+
+      const first = await t.cancelLine.execute(SYSTEM(), { orderLineId: c.orderLineId });
+      const again = await t.cancelLine.execute(SYSTEM(), { orderLineId: c.orderLineId });
+
+      expect(first).toEqual({ ok: true, value: { orderLineId: c.orderLineId } });
+      expect(again.ok).toBe(true);
+      expect(await heldOn(t, c.item.id)).toBe(0);
+    });
+
+    it('ships a committed line: on-hand goes down by the quantity once, with a shipment movement', async () => {
+      const t = setUp();
+      const c = await committed(t);
+
+      await t.ship.execute(SYSTEM(), { orderLineId: c.orderLineId });
+      await t.ship.execute(SYSTEM(), { orderLineId: c.orderLineId });
+
+      expect(t.reservations.shipped).toEqual([{ id: c.item.id, quantity: 2 }]);
+      expect(t.movements).toHaveLength(1);
+      expect(t.movements[0]).toMatchObject({
+        reason: 'shipment',
+        stockItemId: c.item.id,
+        delta: -2,
+        resultingOnHand: high - 2,
+      });
+      expect(await heldOn(t, c.item.id)).toBe(0);
+    });
+
+    it('refuses the opposite command on a finished line and an unknown order line', async () => {
+      const t = setUp();
+      const shipped = await committed(t);
+      await t.ship.execute(SYSTEM(), { orderLineId: shipped.orderLineId });
+      const cancelled = await committed(t);
+      await t.cancelLine.execute(SYSTEM(), { orderLineId: cancelled.orderLineId });
+
+      expect(
+        await t.cancelLine.execute(SYSTEM(), { orderLineId: shipped.orderLineId }),
+      ).toMatchObject({
+        error: { code: 'inventory.line.final' },
+      });
+      expect(await t.ship.execute(SYSTEM(), { orderLineId: cancelled.orderLineId })).toMatchObject({
+        error: { code: 'inventory.line.final' },
+      });
+      expect(
+        await t.ship.execute(SYSTEM(), { orderLineId: t.ids.next<'OrderLine'>() }),
+      ).toMatchObject({ error: { code: 'inventory.line.not-found' } });
+    });
+
+    it('takes the stock locks first and refuses a non-system caller', async () => {
+      const t = setUp();
+      const c = await committed(t);
+      const before = t.reservations.lockCalls.length;
+
+      await t.ship.execute(SYSTEM(), { orderLineId: c.orderLineId });
+
+      expect(t.reservations.lockCalls.length).toBe(before + 1);
+      expect(t.reservations.lockCalls.at(-1)).toContain(c.item.id);
+      expect(await t.ship.execute(customer(t), { orderLineId: c.orderLineId })).toMatchObject({
+        error: { code: 'access.denied' },
+      });
+    });
+  });
+
+  describe('inventory.prune-reservations (design 11)', () => {
+    it('deletes released and expired reservations 30 days after their last change, never committed or fresh ones', async () => {
+      const t = setUp();
+      const w = world(t, [[high, high]]);
+      const make = async (checkoutRef: string) => {
+        const r = await t.reserve.execute(customer(t), request(t, w.units, 1, checkoutRef));
+        if (!r.ok) throw new Error('reserve');
+        return r.value;
+      };
+      const old = await make(t.ids.next<'Checkout'>());
+      const kept = await make(t.ids.next<'Checkout'>());
+      const system = testCallContext(market, 'system');
+      await t.release.execute(system, { reservationId: old.reservationId, cause: 'cancelled' });
+      t.clock.advance(Temporal.Duration.from({ hours: 31 * 24 }));
+      const fresh = await make(t.ids.next<'Checkout'>());
+      await t.release.execute(system, { reservationId: fresh.reservationId, cause: 'cancelled' });
+
+      const run = await t.prune.execute(system, {});
+
+      expect(run).toMatchObject({ ok: true, value: { reservations: 1 } });
+      expect(t.reservations.stored.has(old.reservationId)).toBe(false);
+      expect(t.reservations.stored.has(fresh.reservationId)).toBe(true);
+      // `kept` expired at read time but its status is still active: not terminal, not pruned.
+      expect(t.reservations.stored.has(kept.reservationId)).toBe(true);
+      expect(await t.prune.execute(customer(t), {})).toMatchObject({
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('purges rate counters 48 hours after their window started', async () => {
+      const t = setUp();
+      const w = world(t, [[high, high]]);
+      await t.reserve.execute(customer(t), request(t, w.units));
+      t.clock.advance(Temporal.Duration.from({ hours: 49 }));
+
+      const run = await t.prune.execute(testCallContext(market, 'system'), {});
+
+      expect(run).toMatchObject({ ok: true, value: { rateCounters: 2 } });
+      expect(t.counters.rows.size).toBe(0);
     });
   });
 });

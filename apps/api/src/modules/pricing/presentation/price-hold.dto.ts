@@ -15,6 +15,14 @@ export class HoldMoney {
   currency!: string;
 }
 
+export class HoldWindow {
+  @ApiProperty({ format: 'date-time' })
+  startsAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  endsAt!: string;
+}
+
 export class PriceHoldRow {
   @ApiProperty({ format: 'uuid', description: 'The record to approve or reject.' })
   recordId!: string;
@@ -28,13 +36,25 @@ export class PriceHoldRow {
   @ApiProperty({ format: 'uuid' })
   sellerId!: string;
 
-  @ApiProperty({ enum: ['regular'], description: 'Special prices join with their slice.' })
-  kind!: 'regular';
+  @ApiProperty({ enum: ['regular', 'special'] })
+  kind!: 'regular' | 'special';
+
+  @ApiProperty({
+    type: HoldWindow,
+    required: false,
+    description: 'The window the seller asked for; present for a special price only.',
+  })
+  window?: HoldWindow;
 
   @ApiProperty({ type: HoldMoney, description: 'The held price.' })
   amount!: HoldMoney;
 
-  @ApiProperty({ type: HoldMoney, description: 'The price it was measured against.' })
+  @ApiProperty({
+    type: HoldMoney,
+    description:
+      'The price it was measured against. For a special: the larger of the regular price and ' +
+      'the regular jump anchor.',
+  })
   anchorAmount!: HoldMoney;
 
   @ApiProperty({ enum: ['up', 'down'] })

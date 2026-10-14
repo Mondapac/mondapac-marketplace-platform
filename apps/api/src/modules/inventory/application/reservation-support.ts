@@ -6,6 +6,8 @@ import type {
   Temporal,
 } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
+import type { InsufficientReason, InventoryInsufficient } from '../contracts/ordering-port';
+import type { LineFailure } from '../domain/allocation-policy';
 import { SellableCalculator } from '../domain/sellable-calculator';
 import { availabilityOf } from '../domain/stock';
 import type { AvailabilitySignalRepository } from './ports/availability-signal.repository';
@@ -104,4 +106,46 @@ export async function lockSellUnitsOf(
   for (const item of known) if (!item.retired) ids.add(item.id);
   const all = await reservations.lockItems(market, [...ids]);
   return { all, known };
+}
+
+/** The seller's source order and threshold for every seller among the locked items. */
+export async function sellerPriorities(
+  inventories: SellerInventoryRepository,
+  market: MarketContext,
+  locked: readonly StockItemRow[],
+) {
+  const ranks = new Map<string, number>();
+  const thresholds = new Map<Id<'Seller'>, number | null>();
+  for (const sellerId of new Set(locked.map((item) => item.sellerId))) {
+    const inventory = await inventories.findBySeller(market, sellerId);
+    thresholds.set(sellerId, inventory?.state.lowStockThreshold ?? null);
+    for (const source of inventory?.state.sources ?? []) {
+      ranks.set(`${sellerId}/${source.id}`, source.priority);
+    }
+  }
+  return {
+    thresholdOf: (sellerId: Id<'Seller'>): number | null => thresholds.get(sellerId) ?? null,
+    // A source the inventory no longer lists sorts last (fail safe), then by item id.
+    rankOf: (item: StockItemRow): number =>
+      ranks.get(`${item.sellerId}/${item.sourceId}`) ?? Number.MAX_SAFE_INTEGER,
+  };
+}
+
+/** `inventory.insufficient` with the failing lines in request order, reasons only (design 5.4). */
+export function insufficientOf(
+  requested: readonly SellUnitRef[],
+  failures: readonly LineFailure[],
+): InventoryInsufficient {
+  const byKey = new Map(failures.map((failure) => [sellUnitKey(failure), failure.reason] as const));
+  return {
+    code: 'inventory.insufficient',
+    details: {
+      lines: requested.flatMap((line) => {
+        const reason: InsufficientReason | undefined = byKey.get(sellUnitKey(line));
+        return reason === undefined
+          ? []
+          : [{ offerId: line.offerId, variantId: line.variantId, reason }];
+      }),
+    },
+  };
 }

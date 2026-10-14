@@ -422,11 +422,30 @@ describe('relay allowlist for stock locations', () => {
     expect((await relay(config, put(price.join('/')), price, upstream)).status).toBe(200);
     const bad = [
       ['pricing', 'seller', 'offers', 'x', 'variants', ID, 'regular-price'],
-      ['pricing', 'seller', 'offers', ID, 'variants', ID, 'special-price'],
+      ['pricing', 'seller', 'offers', ID, 'variants', ID, 'special-price', 'x'],
       ['pricing', 'seller', 'offers', ID, 'prices'],
     ];
     for (const path of bad) {
       expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
     }
+  });
+  it('relays special price set and withdraw by UUID', async () => {
+    const upstream = upstreamOk();
+    const special = ['pricing', 'seller', 'offers', ID, 'variants', ID, 'special-price'];
+    const withdraw = [...special, 'withdraw'];
+    expect((await relay(config, put(special.join('/')), special, upstream)).status).toBe(200);
+    const withdrawal = new Request(`http://seller.localhost:3001/api/${withdraw.join('/')}`, {
+      method: 'POST',
+      headers: sameOrigin,
+      body: '{}',
+    });
+    expect((await relay(config, withdrawal, withdraw, upstream)).status).toBe(200);
+    const bad = ['pricing', 'seller', 'offers', 'x', 'variants', ID, 'special-price', 'withdraw'];
+    const refused = new Request(`http://seller.localhost:3001/api/${bad.join('/')}`, {
+      method: 'POST',
+      headers: sameOrigin,
+      body: '{}',
+    });
+    expect((await relay(config, refused, bad, upstream)).status).toBe(404);
   });
 });

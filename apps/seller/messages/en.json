@@ -777,7 +777,35 @@
       "throttled": "Too many requests. Wait a moment and try again.",
       "csrf": "Your session expired. Reload the page and try again.",
       "unavailable": "Prices are unavailable right now. Try again later.",
-      "unknown": "Something went wrong. Try again."
+      "unknown": "Something went wrong. Try again.",
+      "special-not-found": "There is no special price to end. Reload the page.",
+      "no-regular": "Set a regular price first.",
+      "not-below": "A special price must be below the regular price.",
+      "window": "The end must be after the start.",
+      "past": "The start can't be in the past.",
+      "regular-not-above": "The regular price must stay above the special price. End or change the special first."
+    },
+    "special": {
+      "title": "Special price",
+      "none": "No special price.",
+      "running": "Special price {amount} is running, from {from} until {until}.",
+      "scheduled": "Special price {amount} is scheduled, from {from} until {until}.",
+      "held": "A special price of {amount} ({from} to {until}), sent {since}, is waiting for review. It starts only once approved.",
+      "field": "Special price ({currency}, GST included)",
+      "start": "Starts (UTC)",
+      "start-help": "Leave empty to start now. Times are in UTC.",
+      "end": "Ends (UTC)",
+      "save": "Save special price",
+      "end-now": "End special now",
+      "cancel": "Cancel pending special",
+      "saved": {
+        "accepted": "Saved. A new special replaces any current one.",
+        "pending-review": "Saved. The discount is large, so it waits for review."
+      },
+      "withdrawn": "The special price was ended.",
+      "error": {
+        "date": "Enter the end date and time, and a valid start if you set one."
+      }
     }
   }
 }

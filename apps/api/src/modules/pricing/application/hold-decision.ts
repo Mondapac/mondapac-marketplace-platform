@@ -25,6 +25,12 @@ export type HoldDecisionFailure =
   | { readonly code: 'pricing.series-retired' }
   | { readonly code: 'pricing.amount-out-of-range' }
   | { readonly code: 'pricing.currency-mismatch' }
+  /** Q2: the held regular price is no longer above a running or scheduled special. */
+  | { readonly code: 'pricing.regular-not-above-special' }
+  /** The held special is no longer strictly below the current regular price. */
+  | { readonly code: 'pricing.special-not-below-regular' }
+  /** The held special's window ended while it waited: reject it instead. */
+  | { readonly code: 'pricing.special-window.ended' }
   /** A concurrent write got there first: reload the queue. */
   | { readonly code: 'conflict.stale' }
   | { readonly code: 'conflict.retry' };
