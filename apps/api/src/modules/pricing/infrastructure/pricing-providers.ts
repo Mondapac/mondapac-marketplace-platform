@@ -15,6 +15,10 @@ import {
   type RetirementTombstoneRepository,
 } from '../application/ports/retirement-tombstone.repository';
 import {
+  WRITE_RATE_COUNTER_REPOSITORY,
+  type WriteRateCounterRepository,
+} from '../application/ports/write-rate-counter.repository';
+import {
   WRITE_REFUSAL_THROTTLE_REPOSITORY,
   type WriteRefusalThrottleRepository,
 } from '../application/ports/write-refusal-throttle.repository';
@@ -26,6 +30,7 @@ import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
 import { ConfigPricingPolicyProvider } from './config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from './prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from './prisma-retirement-tombstone.repository';
+import { PrismaWriteRateCounterRepository } from './prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from './prisma-write-refusal-throttle.repository';
 
 /**
@@ -52,6 +57,12 @@ export const pricingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): WriteRefusalThrottleRepository =>
       new PrismaWriteRefusalThrottleRepository(prisma),
+  },
+  {
+    provide: WRITE_RATE_COUNTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): WriteRateCounterRepository =>
+      new PrismaWriteRateCounterRepository(prisma),
   },
   {
     provide: OFFER_SELL_UNITS_SOURCE,

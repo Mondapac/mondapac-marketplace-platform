@@ -10,6 +10,7 @@ import {
   type SellerSeriesWriteDependencies,
   type SellerSeriesWriteFailure,
 } from '../seller-series-write';
+import { reserveWriteAllowance, type WriteThrottled } from '../write-allowance';
 
 export interface WithdrawSpecialPriceInput {
   readonly offerId: string;
@@ -34,6 +35,7 @@ export type WithdrawSpecialPriceFailure =
     }
   | { readonly code: 'access.denied' }
   | SellerSeriesWriteFailure
+  | WriteThrottled
   | { readonly code: 'pricing.series-retired' }
   /** Neither a running or scheduled special nor a pending one, or no price series at all. */
   | { readonly code: 'pricing.special-price.not-found' };
@@ -90,6 +92,9 @@ export class WithdrawSpecialPrice extends UseCase<
     if (fields.length > 0 || !offerId.ok || !variantId.ok) {
       return err({ code: 'validation.failed', fields });
     }
+
+    const allowed = await reserveWriteAllowance(this.deps, context, actor.accountId);
+    if (!allowed.ok) return allowed;
 
     const written = await sellerSeriesWrite<
       WithdrawSpecialPriceOutcome,

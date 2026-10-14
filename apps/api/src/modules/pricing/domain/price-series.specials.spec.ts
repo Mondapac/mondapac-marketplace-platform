@@ -356,6 +356,74 @@ describe.each(PRICING_FIXTURES)('PriceSeries special prices in market $code', (f
     series.withdrawSpecialPrice(clock.now());
     expect(() => PriceSeries.restore(series.state)).not.toThrow();
   });
+
+  describe('announceSpecialBoundary', () => {
+    it('announces the start of a scheduled special once its time has come, not before', () => {
+      const series = priced();
+      const startsAt = inHours(2);
+      const record = accepted(series, discounted(10n), { startsAt, endsAt: inHours(24) });
+      const version = series.state.version;
+      expect(series.announceSpecialBoundary(record.id, 'start', clock.now())).toBe(false);
+      expect(series.state.version).toBe(version);
+
+      clock.set(startsAt);
+      expect(series.announceSpecialBoundary(record.id, 'start', clock.now())).toBe(true);
+      expect(series.state.version).toBe(version + 1);
+      const event = series.pendingEvents.at(-1);
+      expect(event).toMatchObject({
+        type: 'pricing.effective-price-changed.v1',
+        aggregateVersion: version + 1,
+        payload: { cause: 'special-started' },
+      });
+      expect(ms((event?.payload as { effectiveFrom: Temporal.Instant }).effectiveFrom)).toBe(
+        startsAt.epochMilliseconds,
+      );
+    });
+
+    it('announces the natural end of an accepted special, with the end as its instant', () => {
+      const series = priced();
+      const endsAt = inHours(24);
+      const record = accepted(series, discounted(10n), { endsAt });
+      expect(series.announceSpecialBoundary(record.id, 'end', clock.now())).toBe(false);
+      clock.set(endsAt.add({ milliseconds: 1000 }));
+      expect(series.announceSpecialBoundary(record.id, 'end', clock.now())).toBe(true);
+      const event = series.pendingEvents.at(-1);
+      expect(event).toMatchObject({ payload: { cause: 'special-ended' } });
+      expect(ms((event?.payload as { effectiveFrom: Temporal.Instant }).effectiveFrom)).toBe(
+        endsAt.epochMilliseconds,
+      );
+    });
+
+    it('announces nothing for a withdrawn end, a retired series or an unknown record', () => {
+      const series = priced();
+      const record = accepted(series, discounted(10n), { endsAt: inHours(24) });
+      advance(1000);
+      series.withdrawSpecialPrice(clock.now());
+      clock.set(inHours(48));
+      const version = series.state.version;
+      expect(series.announceSpecialBoundary(record.id, 'end', clock.now())).toBe(false);
+      expect(
+        series.announceSpecialBoundary(ids.next<'SpecialPriceRecord'>(), 'start', clock.now()),
+      ).toBe(false);
+      series.retire('offer-removed', clock.now());
+      const retired = series.state.version;
+      expect(series.announceSpecialBoundary(record.id, 'start', clock.now())).toBe(false);
+      expect(series.state.version).toBe(retired);
+      expect(retired).toBeGreaterThan(version);
+    });
+
+    it('does not announce the start of a special withdrawn before it began', () => {
+      const series = priced();
+      const startsAt = inHours(5);
+      const record = accepted(series, discounted(10n), { startsAt, endsAt: inHours(24) });
+      advance(1000);
+      series.withdrawSpecialPrice(clock.now());
+      clock.set(inHours(6));
+      const version = series.state.version;
+      expect(series.announceSpecialBoundary(record.id, 'start', clock.now())).toBe(false);
+      expect(series.state.version).toBe(version);
+    });
+  });
 });
 
 // The Market that holds discounts (AU: both directions, threshold 1/2).

@@ -318,6 +318,22 @@ D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor
 - Purge rows whose window started more than one hour ago (hourly job, per hosted Market; no index needed at this size: at most one row per active actor and Offer). The purge ships with the first caller (D 19 condition (b)).
 - Grants: `write_refusal_throttles` `SELECT, INSERT, UPDATE (window_started_at), DELETE`; `write_refusal_actor_throttles` `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE` (7).
 - Not personal beyond the account id, which the audit row holds anyway.
+
+### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap)
+
+The general per-account limit on the seller price write routes (D 5.2, 8; Hassan M2). One fixed window per (Market, kind, account): `kind` is `write.account.minute` (60 attempts) or `write.account.day` (1,000), both counted for every attempt that reaches the use case with a valid input, refused or not, in a unit of its own before the Offer lookup, so the count commits even when the write is refused. A count above the limit answers `request.throttled` with `retryAfterSeconds` (HTTP 429). The limits are policy in code, not CHECKs; the CHECK holds only the closed kind list and `count >= 0`.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `market_id`, `tenant_id` | | no | As every table |
+| `kind` | `text` | no | CHECK `write.account.day`, `write.account.minute` |
+| `actor_account_id` | `uuid` | no | The plain account id (as 3.8); PK `write_rate_counters_pkey (market_id, kind, actor_account_id)` |
+| `window_started_at` | `timestamptz(6)` | no | Start of the fixed window, set at the first attempt |
+| `count` | `integer` | no | CHECK `>= 0` |
+
+- Per counter two statements, never read-then-write: an `updateMany` that restarts a window that has ended (`count = 0`, `window_started_at = now`), then an upsert on the primary key that increments. Kinds are taken in sorted order, so two units never wait in a cycle.
+- Purge: rows whose window started more than 48 hours ago (twice the longest window), in the hourly purge job, in its own unit. Index `write_rate_counters_market_id_window_started_at_idx`.
+- Grants: `SELECT, INSERT, UPDATE (count, window_started_at), DELETE` (7).
 - Alternative: a Redis counter (ADR-0004 decision 1 allows Redis for rate limiting). Rejected: a second store on a security path, and it cannot commit with the audit row (M7).
 
 ## 4. What is never stored

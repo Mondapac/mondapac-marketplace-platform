@@ -13,6 +13,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   RecordingAuditWriter,
   RecordingOutbox,
 } from '../../../../../test/support/pricing-fakes';
@@ -57,6 +58,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-offer-prices in market %s', (
       unitOfWork,
       series,
       throttles: new InMemoryRefusalThrottles(),
+      counters: new InMemoryWriteRateCounters(),
       offers,
       policies,
       audit: new RecordingAuditWriter(),
@@ -96,6 +98,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-offer-prices in market %s', (
       unitOfWork,
       series,
       throttles: new InMemoryRefusalThrottles(),
+      counters: new InMemoryWriteRateCounters(),
       offers,
       policies,
       audit: new RecordingAuditWriter(),

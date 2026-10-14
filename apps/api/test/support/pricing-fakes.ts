@@ -17,6 +17,7 @@ import type {
 } from '../../src/modules/pricing/application/ports/offer-sell-units';
 import type {
   AddPriceSeriesOutcome,
+  DueSpecialBoundary,
   PendingHoldCursor,
   PendingHoldView,
   PriceSeriesKey,
@@ -27,6 +28,12 @@ import type {
   RetiredVariantTombstone,
   RetirementTombstoneRepository,
 } from '../../src/modules/pricing/application/ports/retirement-tombstone.repository';
+import type { WriteRateCounterRepository } from '../../src/modules/pricing/application/ports/write-rate-counter.repository';
+import {
+  writeWindowRestartBefore,
+  type WriteRateLimit,
+  type WriteRateReservation,
+} from '../../src/modules/pricing/domain/write-rate-limits';
 import type {
   RefusalAdmission,
   WriteRefusalThrottleRepository,
@@ -259,6 +266,55 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
       .map(([, state]) => state);
   }
 
+  /** The boundary markers: `(Market, record, boundary)`. */
+  readonly boundaryMarkers = new Map<string, Temporal.Instant>();
+
+  listDueSpecialBoundaries(
+    market: MarketContext,
+    now: Temporal.Instant,
+    horizonMs: number,
+    limit: number,
+  ): Promise<readonly DueSpecialBoundary[]> {
+    const from = now.epochMilliseconds - horizonMs;
+    const within = (at: Temporal.Instant): boolean =>
+      at.epochMilliseconds > from && at.epochMilliseconds <= now.epochMilliseconds;
+    const due: DueSpecialBoundary[] = [];
+    for (const state of this.inMarket(market)) {
+      for (const record of state.specials) {
+        const startStatus = ['ACCEPTED', 'APPROVED', 'WITHDRAWN'].includes(record.status);
+        if (
+          startStatus &&
+          record.effectiveFrom !== null &&
+          within(record.effectiveFrom) &&
+          !this.boundaryMarkers.has(`${market.marketId}|${record.id}|start`)
+        ) {
+          due.push({ recordId: record.id, boundary: 'start', at: record.effectiveFrom });
+        }
+        if (
+          (record.status === 'ACCEPTED' || record.status === 'APPROVED') &&
+          within(record.endsAt) &&
+          !this.boundaryMarkers.has(`${market.marketId}|${record.id}|end`)
+        ) {
+          due.push({ recordId: record.id, boundary: 'end', at: record.endsAt });
+        }
+      }
+    }
+    due.sort((a, b) => a.at.epochMilliseconds - b.at.epochMilliseconds);
+    return Promise.resolve(due.slice(0, limit));
+  }
+
+  markSpecialBoundary(
+    market: MarketContext,
+    recordId: Id<'SpecialPriceRecord'>,
+    boundary: 'start' | 'end',
+    now: Temporal.Instant,
+  ): Promise<boolean> {
+    const key = `${market.marketId}|${recordId}|${boundary}`;
+    if (this.boundaryMarkers.has(key)) return Promise.resolve(false);
+    this.boundaryMarkers.set(key, now);
+    return Promise.resolve(true);
+  }
+
   add(market: MarketContext, series: PriceSeries): Promise<AddPriceSeriesOutcome> {
     assertSerializableUnit('PriceSeriesRepository.add');
     const { state } = series;
@@ -356,6 +412,50 @@ export class InMemoryRefusalThrottles implements WriteRefusalThrottleRepository 
       }
     }
     return count;
+  }
+}
+
+/** The semantics of `pricing.write_rate_counters`: fixed windows per (Market, account, kind). */
+export class InMemoryWriteRateCounters implements WriteRateCounterRepository {
+  readonly rows = new Map<string, { start: number; count: number }>();
+
+  reserve(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    limits: readonly WriteRateLimit[],
+    now: Temporal.Instant,
+  ): Promise<readonly WriteRateReservation[]> {
+    return Promise.resolve(
+      limits.map((limit) => {
+        const key = `${market.marketId}|${limit.kind}|${accountId}`;
+        const row = this.rows.get(key);
+        if (
+          row === undefined ||
+          row.start <= writeWindowRestartBefore(limit, now).epochMilliseconds
+        ) {
+          this.rows.set(key, { start: now.epochMilliseconds, count: 1 });
+        } else {
+          row.count += 1;
+        }
+        const written = this.rows.get(key)!;
+        return {
+          kind: limit.kind,
+          count: written.count,
+          windowStartedAt: Temporal.Instant.fromEpochMilliseconds(written.start),
+        };
+      }),
+    );
+  }
+
+  purgeStartedBefore(market: MarketContext, startedBefore: Temporal.Instant): Promise<number> {
+    let count = 0;
+    for (const [key, row] of this.rows) {
+      if (key.startsWith(`${market.marketId}|`) && row.start < startedBefore.epochMilliseconds) {
+        this.rows.delete(key);
+        count += 1;
+      }
+    }
+    return Promise.resolve(count);
   }
 }
 

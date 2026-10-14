@@ -15,6 +15,7 @@ import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
 import { PRICING_POLICY_PROVIDER } from './application/ports/pricing-policy-provider';
 import { RETIREMENT_TOMBSTONE_REPOSITORY } from './application/ports/retirement-tombstone.repository';
+import { WRITE_RATE_COUNTER_REPOSITORY } from './application/ports/write-rate-counter.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from './application/ports/write-refusal-throttle.repository';
 import { ApprovePriceHold } from './application/use-cases/approve-price-hold.use-case';
 import { ListPriceHolds } from './application/use-cases/list-price-holds.use-case';
@@ -24,6 +25,7 @@ import { RetireSeriesForRemovedVariant } from './application/use-cases/retire-se
 import { ViewPriceHold } from './application/use-cases/view-price-hold.use-case';
 import { EffectivePricesSystemQuery } from './application/use-cases/effective-prices-system.use-case';
 import { EffectivePricesQuery } from './application/use-cases/effective-prices.use-case';
+import { PublishSpecialPriceBoundaries } from './application/use-cases/publish-special-price-boundaries.use-case';
 import { PurgeWriteRefusalThrottles } from './application/use-cases/purge-write-refusal-throttles.use-case';
 import { SetRegularPrice } from './application/use-cases/set-regular-price.use-case';
 import { SetSpecialPrice } from './application/use-cases/set-special-price.use-case';
@@ -40,6 +42,7 @@ import { SellerOfferPricesController } from './presentation/seller-offer-prices.
 import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
 import { SellerSpecialPriceController } from './presentation/seller-special-price.controller';
 import { pricingProviders } from './infrastructure/pricing-providers';
+import { publishSpecialPriceBoundariesJob } from './presentation/jobs/publish-special-price-boundaries.job';
 import { purgeWriteRefusalThrottlesJob } from './presentation/jobs/purge-write-refusal-throttles.job';
 
 /**
@@ -50,6 +53,7 @@ const PORT = {
   unitOfWork: UNIT_OF_WORK,
   series: PRICE_SERIES_REPOSITORY,
   throttles: WRITE_REFUSAL_THROTTLE_REPOSITORY,
+  counters: WRITE_RATE_COUNTER_REPOSITORY,
   tombstones: RETIREMENT_TOMBSTONE_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
   policies: PRICING_POLICY_PROVIDER,
@@ -111,6 +115,7 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       series: true,
       throttles: true,
+      counters: true,
       offers: true,
       policies: true,
       audit: true,
@@ -122,6 +127,7 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       series: true,
       throttles: true,
+      counters: true,
       offers: true,
       policies: true,
       audit: true,
@@ -133,6 +139,7 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       series: true,
       throttles: true,
+      counters: true,
       offers: true,
       audit: true,
       outbox: true,
@@ -194,11 +201,25 @@ function useCaseProvider<D, U>(
       (offer: RetireSeriesForRemovedOffer, variant: RetireSeriesForRemovedVariant) =>
         catalogRetirementSubscriptions(offer, variant),
     ),
-    useCaseProvider(PurgeWriteRefusalThrottles, { unitOfWork: true, throttles: true, clock: true }),
+    useCaseProvider(PurgeWriteRefusalThrottles, {
+      unitOfWork: true,
+      throttles: true,
+      counters: true,
+      clock: true,
+    }),
+    useCaseProvider(PublishSpecialPriceBoundaries, {
+      unitOfWork: true,
+      series: true,
+      outbox: true,
+      clock: true,
+    }),
     registerJobsFrom(
       'pricing',
-      [PurgeWriteRefusalThrottles],
-      (purge: PurgeWriteRefusalThrottles) => [purgeWriteRefusalThrottlesJob(purge)],
+      [PurgeWriteRefusalThrottles, PublishSpecialPriceBoundaries],
+      (purge: PurgeWriteRefusalThrottles, boundaries: PublishSpecialPriceBoundaries) => [
+        purgeWriteRefusalThrottlesJob(purge),
+        publishSpecialPriceBoundariesJob(boundaries),
+      ],
     ),
   ],
   exports: [PRICING_FACADE],

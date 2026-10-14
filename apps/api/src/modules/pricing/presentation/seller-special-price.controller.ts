@@ -57,6 +57,7 @@ export const SPECIAL_PRICE_STATUS: Readonly<Record<string, number>> = Object.fre
   'pricing.no-regular-price': 409,
   'pricing.series-retired': 409,
   'conflict.stale': 409,
+  'request.throttled': 429,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -223,7 +224,11 @@ export class SellerSpecialPriceController {
 }
 
 function refusal(
-  error: { readonly code: string; readonly fields?: unknown },
+  error: {
+    readonly code: string;
+    readonly fields?: unknown;
+    readonly retryAfterSeconds?: number;
+  },
   context: CallContext,
   logger: Logger,
 ): HttpException {
@@ -238,6 +243,9 @@ function refusal(
       correlationId: context.correlationId,
     });
     return fail(500, 'internal');
+  }
+  if (error.retryAfterSeconds !== undefined) {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
   }
   return error.fields === undefined
     ? fail(status, error.code)
