@@ -53,6 +53,19 @@ describe('type code', () => {
 });
 
 describe('validateTypeRevision', () => {
+  it('accepts an Arabic-script term under en-AU, the only supported locale (C4)', () => {
+    const content = base({
+      locales: {
+        'en-AU': {
+          name: 'Halal',
+          customerDescription: 'Certified.',
+          claimTerms: ['halal', 'حلال'],
+        },
+      },
+    });
+    expect(validateTypeRevision(content, ['en-AU'], null).ok).toBe(true);
+  });
+
   it('accepts a complete revision for both Market fixtures', () => {
     expect(validateTypeRevision(base(), LOCALES, null).ok).toBe(true);
     expect(validateTypeRevision(zz(), ['zz'], null).ok).toBe(true);

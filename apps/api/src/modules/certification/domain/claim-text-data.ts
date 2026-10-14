@@ -149,6 +149,22 @@ export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
   ڪ: 'ک',
 });
 
+/**
+ * Arabic-script folds applied to the raw text BEFORE NFKC and before combining marks are stripped
+ * (mini-review 2026-10-14, C1 and C2): dagger alef U+0670 becomes alef (it is a mark and would
+ * otherwise be removed, turning «حلٰل» into «حلل»); alef and lam variants become the plain
+ * letter. Done before NFKC because NFKC splits U+0675 into alef plus a modifier letter.
+ */
+export const ARABIC_PRE_MAP: Readonly<Record<string, string>> = Object.freeze({
+  '\u0670': 'ا',
+  '\u0672': 'ا',
+  '\u0673': 'ا',
+  '\u0675': 'ا',
+  '\u06b5': 'ل',
+  '\u06b7': 'ل',
+  '\u06b8': 'ل',
+});
+
 /** Start code points of the non-ASCII decimal digit blocks (Unicode 15.1, \p{Nd}); ten each. */
 const DIGIT_BLOCK_STARTS: readonly number[] = [
   0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66, 0xde6, 0xe50,

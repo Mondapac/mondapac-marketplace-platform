@@ -556,6 +556,7 @@ upgrades an approved badge. For the manufacturer basis the same flag rule applie
   revisions, with the terms of **every** locale of the Market applied to every text whatever its
   declared locale (M8). Hassan sets the normalisation and the corpus; the separator, digit and
   cross-locale cases are slice 2 tests.
+- **Script of terms (amendment 2026-10-14; owner approved term list; Mohammad + Hassan mini-review).** A locale's term list groups terms for administration only; a term may be in any script, not only the script of the locale, because the vocabulary of every locale of the Market is applied to every text (M8). A Market lists, under one of its supported locales, the terms of other languages its sellers and buyers commonly use for a claim (for AU: Arabic «حلال» under en-AU), without adding that language as a supported locale. Validation applies the same rules to every script (plain text, matchable, compact length ≥ 3); there is no script check. Normalisation for Arabic-script terms folds tatweel, harakat including dagger alef (U+0670, folded to alef, not removed), presentation forms, joiners and bidi marks, and Arabic and Persian letter variants. The corpus holds Arabic positive cases, Arabic negatives, and the accepted false positives of the second pass (a word followed by one starting with the article «ال»), which fail closed.
 - **Three consumers, one implementation:**
 
 | Consumer | Through | Rule |
@@ -591,6 +592,15 @@ are seeded `proposed` (no expert reference) until the owner's action of brief s1
 real certificate can be approved before that. ZZ: a different type set (one with document and
 expiry, one active `SELF_DECLARATION` with `autoApproveSelfDeclaration`, brief s6) and its own
 issuers, active, so tests prove the model generic (AC 3).
+
+**As built (2026-10-14).** `SeedCertificationTypes` (`certification.seed-certification-types`, rule
+`system`) runs as the job of the same name at worker start and daily, per hosted Market. Seed files
+are `infrastructure/seed/au.types.seed.ts` and `zz.types.seed.ts`; each revision passes
+`validateTypeRevision` before anything is written. It only creates a type whose code is missing and
+never edits an existing one. No issuer and no platform subject is seeded yet (no real issuer is
+known; the subject is needed with the first encrypted issuer reference). Seeded revisions carry the
+nil UUID as `author_account_id` (the column is NOT NULL and the seed has no account). ZZ types:
+`qorvane` (document, expiry, issuer registry) and `zedpure` (active `SELF_DECLARATION`, auto-approve).
 
 ## 6. `ActorContext` and `MarketContext`
 

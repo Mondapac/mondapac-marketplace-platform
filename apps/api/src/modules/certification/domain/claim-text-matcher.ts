@@ -1,5 +1,6 @@
 import type { CertificationTypeCode } from './claim-types';
 import {
+  ARABIC_PRE_MAP,
   LEET_MAP,
   MAX_TEXTS,
   MAX_TEXT_LENGTH,
@@ -62,7 +63,14 @@ function mapSkeleton(s: string): string {
  */
 export function normaliseClaimText(input: string): string {
   if (input.length > MAX_TEXT_LENGTH) throw new RangeError('claim text too long');
-  let s = input.normalize('NFKC');
+  // Arabic-script folds first: a dagger alef is a mark, and a one-digit between Arabic letters
+  // is an alef written as ١ or ۱ (the digit rule is limited to Arabic neighbours so that
+  // "ha١al" still goes the leet way in the second pass).
+  const folded = mapChars(input, ARABIC_PRE_MAP).replace(
+    /(?<=\p{Script=Arabic})[\u0661\u06f1](?=\p{Script=Arabic})/gu,
+    'ا',
+  );
+  let s = folded.normalize('NFKC');
   // NFKC can grow a text a lot (one character to many): check the size again.
   if (s.length > MAX_TEXT_LENGTH) throw new RangeError('claim text too long');
   s = mapChars(s, PRE_FOLD_MAP);

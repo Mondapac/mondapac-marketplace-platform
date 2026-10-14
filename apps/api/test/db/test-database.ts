@@ -56,7 +56,9 @@ function exported(
     | 'TEST_CATALOG_CLAIMS_DATABASE_URL'
     | 'TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL'
     | 'TEST_CLAIM_FACTS_DATABASE_URL'
-    | 'TEST_CLAIM_FACTS_OWNER_DATABASE_URL',
+    | 'TEST_CLAIM_FACTS_OWNER_DATABASE_URL'
+    | 'TEST_CERT_SEED_DATABASE_URL'
+    | 'TEST_CERT_SEED_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -210,4 +212,13 @@ export function claimFactsTestDatabaseUrl(): string {
 
 export function claimFactsOwnerTestDatabaseUrl(): string {
   return exported('TEST_CLAIM_FACTS_OWNER_DATABASE_URL');
+}
+
+/** The copy that certification-seed.db-spec.ts runs the type seed on, as the application login. */
+export function certSeedTestDatabaseUrl(): string {
+  return exported('TEST_CERT_SEED_DATABASE_URL');
+}
+
+export function certSeedOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CERT_SEED_OWNER_DATABASE_URL');
 }
