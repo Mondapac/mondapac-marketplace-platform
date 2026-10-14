@@ -17,7 +17,9 @@ export function assertTypeSeed(types: readonly SeededType[]): void {
   const seen = new Set<string>();
   for (const type of types) {
     if (!isCertificationTypeCode(type.code)) {
-      throw new CertificationTypeSeedError(`Seed type code "${String(type.code)}" is not a valid code`);
+      throw new CertificationTypeSeedError(
+        `Seed type code "${String(type.code)}" is not a valid code`,
+      );
     }
     if (seen.has(type.code)) {
       throw new CertificationTypeSeedError(`Seed type "${type.code}" is listed twice`);
