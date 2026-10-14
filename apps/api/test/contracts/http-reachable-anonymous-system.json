@@ -105,5 +105,10 @@
     "name": "identity.start-second-factor-enrolment",
     "rule": "anonymous",
     "reason": "Admin second-factor enrolment start with the mailed enrolment link's token and the password: the admin has no session yet."
+  },
+  {
+    "name": "payments.receive-stripe-event",
+    "rule": "anonymous",
+    "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."
   }
 ]

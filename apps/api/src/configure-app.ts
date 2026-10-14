@@ -22,6 +22,15 @@ export const APP_OPTIONS = {
   bodyParser: false,
 } as const satisfies NestApplicationOptions;
 
+/** The path prefix of the Stripe webhook routes (`payments`), the only raw-body routes. */
+export const STRIPE_WEBHOOK_PATH = '/payments/stripe/webhook/';
+
+/** True for a request to the Stripe webhook, query string ignored. */
+export function isStripeWebhookPath(url: string | undefined): boolean {
+  const path = (url ?? '').split('?', 1)[0] ?? '';
+  return path.startsWith(STRIPE_WEBHOOK_PATH);
+}
+
 /**
  * HTTP-level setup shared by the real server (main.ts) and the HTTP tests, so what is
  * tested is what runs. The application must be created with {@link APP_OPTIONS}.
@@ -47,6 +56,14 @@ export function configureApp(app: NestExpressApplication): void {
   );
   // JSON only, at most 64 KiB, objects and arrays only. No CORS middleware until origins exist.
   // inflate: false - a compressed body is refused with 415, never decompressed (Hassan L1).
+  // The Stripe webhook alone gets its body as raw bytes, because its signature is computed over
+  // the exact bytes (Phase 5 package 2). Same limit and no decompression; the JSON parser then
+  // skips that request, since this parser has already read it.
+  app.useBodyParser('raw', {
+    type: (request) => isStripeWebhookPath(request.url),
+    limit: '64kb',
+    inflate: false,
+  });
   app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });
   app.use(answerBodyError);
 

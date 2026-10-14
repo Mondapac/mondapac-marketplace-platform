@@ -27,6 +27,7 @@ describe('loadAppConfig', () => {
       databasePoolMax: 10,
       mailCatcherUrl: null,
       stripeSecretKey: null,
+      stripeWebhookSecrets: {},
       clientAddressTrust: null,
     });
   });
@@ -102,6 +103,44 @@ describe('loadAppConfig', () => {
     }
     expect(message).toMatch(/STRIPE_SECRET_KEY: must be a Stripe test-mode key/);
     expect(message).not.toContain(live);
+  });
+
+  it('takes a Stripe webhook signing secret and refuses anything else without echoing it', () => {
+    const secret = 'whsec_abcdefgh12345678';
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU,ZZ', STRIPE_WEBHOOK_SECRET: secret })
+        .stripeWebhookSecrets,
+    ).toEqual({ AU: secret, ZZ: secret });
+    expect(
+      loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        STRIPE_WEBHOOK_SECRET: `AU=${secret},ZZ=whsec_zzzzzzzz12345678`,
+      }).stripeWebhookSecrets,
+    ).toEqual({ AU: secret, ZZ: 'whsec_zzzzzzzz12345678' });
+    for (const [value, issue] of [
+      [`AU=${secret},AU=${secret}`, /AU is named twice/],
+      [`QQ=${secret}`, /QQ is not in HOSTED_MARKETS/],
+    ] as const) {
+      let refused = '';
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_WEBHOOK_SECRET: value });
+      } catch (caught) {
+        refused = (caught as Error).message;
+      }
+      expect(refused).toMatch(issue);
+      expect(refused).not.toContain(secret);
+    }
+    const wrong = 'sk_test_abcdefgh12345678';
+    let message = '';
+    try {
+      loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_WEBHOOK_SECRET: wrong });
+    } catch (caught) {
+      message = (caught as Error).message;
+    }
+    expect(message).toMatch(
+      /STRIPE_WEBHOOK_SECRET: must be a Stripe webhook signing secret \(whsec_\), or MARKET=whsec_ pairs/,
+    );
+    expect(message).not.toContain(wrong);
   });
 
   it('records whether NODE_ENV was set or defaulted (M2)', () => {
