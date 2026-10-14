@@ -373,8 +373,10 @@
       "label": {
         "role": "Role",
         "type": "Type",
-        "permissions": "Permissions"
+        "permissions": "Permissions",
+        "members": "Members"
       },
+      "members-count": "{count, plural, =0 {None} one {# admin} other {# admins}}",
       "permissions-all": "All",
       "permissions-none": "None yet",
       "empty-custom": {
@@ -698,5 +700,8 @@
         "unknown": "Something went wrong. Try again."
       }
     }
+  },
+  "load": {
+    "retry": "Try again"
   }
 }

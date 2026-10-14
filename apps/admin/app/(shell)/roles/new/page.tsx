@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { RoleEditor } from '../../../../src/roles/role-editor.tsx';
@@ -25,7 +26,7 @@ export default async function NewRolePageRoute({
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
+    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   const keys = gate.session.permissionKeys;
   if (!keys.includes(VIEW_PERMISSION) || !keys.includes(CREATE_PERMISSION)) {
@@ -38,7 +39,7 @@ export default async function NewRolePageRoute({
     return (
       <AdminShell session={gate.session} activeId="team" title={title}>
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-        <p className="text-fg-muted">{t('identity.error.unknown')}</p>
+        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </AdminShell>
     );
   }

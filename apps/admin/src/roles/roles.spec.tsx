@@ -67,6 +67,19 @@ describe('admin roles', () => {
     );
   });
 
+  it('shows a Members column only when counts are given', async () => {
+    const r = role({});
+    render(await RolesTable({ roles: [r], members: new Map([[r.roleId, 2]]) }));
+    expect(screen.getByRole('columnheader', { name: 'Members' })).toBeTruthy();
+    expect(screen.getByText('2 admins')).toBeTruthy();
+    cleanup();
+    render(await RolesTable({ roles: [r], members: new Map() }));
+    expect(screen.getByText('None')).toBeTruthy();
+    cleanup();
+    render(await RolesTable({ roles: [r], members: null }));
+    expect(screen.queryByRole('columnheader', { name: 'Members' })).toBeNull();
+  });
+
   it('offers View when a custom role cannot be edited, and Duplicate on the view', async () => {
     const locked = role({
       kind: 'custom',

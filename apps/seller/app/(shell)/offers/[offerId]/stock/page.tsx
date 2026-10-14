@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { isUuid } from '../../../../../src/server/catalog-page.ts';
@@ -22,7 +23,7 @@ export default async function OfferStockPage({
   const title = t('stock.levels.title');
   const page = await loadStockLevelsPage(offerId);
   if (page.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('stock.error.unavailable')}</p>;
+    return <LoadError message={t('stock.error.unavailable')} retryLabel={t('load.retry')} />;
   }
   if (page.kind !== 'ok') {
     const key = page.kind === 'no-access' ? 'no-access' : 'not-found';
