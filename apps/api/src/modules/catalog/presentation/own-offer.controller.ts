@@ -45,6 +45,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { OwnOfferDelete } from '../application/use-cases/own-offer-delete.use-case';
 import { OwnOfferSubmit } from '../application/use-cases/own-offer-submit.use-case';
+import { OwnOfferSetHandling } from '../application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OwnOfferRead } from '../application/use-cases/own-offer-read.use-case';
@@ -56,6 +57,8 @@ import {
   OwnOfferCreateRequest,
   OwnOfferEdited,
   OwnOfferEditRequest,
+  OwnOfferHandlingSet,
+  OwnOfferSetHandlingRequest,
   OwnOfferSubmitted,
 } from './own-offer.dto';
 import { ApiErrorBody } from './platform-product.dto';
@@ -108,6 +111,7 @@ export class OwnOfferController {
   constructor(
     private readonly createOffer: OwnOfferCreateOnPlatformProduct,
     private readonly editOffer: OwnOfferEdit,
+    private readonly setOfferHandling: OwnOfferSetHandling,
     private readonly submitOffer: OwnOfferSubmit,
     private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
@@ -350,6 +354,73 @@ export class OwnOfferController {
     if (outcome instanceof HttpException) throw outcome;
     return outcome;
   }
+  @Put(':offerId/handling')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Record how the goods of an own Offer are handled',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. Body: handling, one of ' +
+      'SEALED_ORIGINAL, REPACKED, PREPARED, FRESH. An Offer of another seller, a deleted one or ' +
+      'an unknown id is a byte-identical offer.not-found. An Offer waiting for review or ' +
+      'needing changes returns to draft. A published Offer is offer.not-editable. Shares the ' +
+      'save budget of draft saves: 60 a minute and 1,000 a day per account.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiBody({ type: OwnOfferSetHandlingRequest })
+  @ApiOkResponse({ type: OwnOfferHandlingSet })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer.not-editable or conflict.stale',
+  })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async setHandling(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferHandlingSet> {
+    const input = closedBody(request, body, ['handling']);
+    let outcome: OwnOfferHandlingSet | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.setOfferHandling.execute(context, {
+        offerId,
+        handling: input.handling,
+      });
+      outcome = result.ok
+        ? { changedFields: [...result.value.changedFields] }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
+    this.#logger[failed ? 'warn' : 'log']({
+      msg: 'catalog.own-offer-set-handling',
+      outcome:
+        outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (outcome instanceof HttpException) throw outcome;
+    return outcome;
+  }
+
   @Post(':offerId/submit')
   @HttpCode(200)
   @ReadsSession()

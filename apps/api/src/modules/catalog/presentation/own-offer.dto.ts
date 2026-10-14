@@ -62,6 +62,24 @@ export class OwnOfferEdited {
   changedFields!: string[];
 }
 
+export class OwnOfferSetHandlingRequest {
+  @ApiProperty({
+    enum: ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'],
+    description:
+      'How the goods are handled. Needed before the Offer can be submitted. An Offer waiting ' +
+      'for review or needing changes returns to draft.',
+  })
+  handling!: string;
+}
+
+export class OwnOfferHandlingSet {
+  @ApiProperty({
+    type: [String],
+    description: "['handling'] when the value changed; empty when the Offer already held it.",
+  })
+  changedFields!: string[];
+}
+
 export class OwnOfferSubmitted {
   @ApiProperty({
     description: 'True when the Offer is published at once; false when it waits for review.',
