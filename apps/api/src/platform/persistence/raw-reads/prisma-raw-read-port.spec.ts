@@ -74,6 +74,29 @@ describe('PrismaRawReadPort', () => {
     expect(calls).toEqual([['SELECT 1', 'AU', [UUID_A], ['halal'], 'x']]);
   });
 
+  it("binds a port to one module: another module's statement is refused before any unit or database (Hassan R-1)", async () => {
+    const { root, calls } = fakeRoot([{ id: 'r1' }]);
+    const port = new PrismaRawReadPort(root, [entry]);
+    const other = port.forModule('catalog');
+    const call = (p: { rawRead: unknown }, id: string) =>
+      (p.rawRead as (m: unknown, id: string, params: unknown) => Promise<unknown[]>)(
+        market,
+        id,
+        good,
+      );
+    await expect(inUnit(true, () => call(other, entry.id))).rejects.toMatchObject({
+      reason: 'wrong-module',
+    });
+    await expect(call(other, entry.id)).rejects.toMatchObject({ reason: 'wrong-module' });
+    await expect(inUnit(true, () => call(other, 'catalog.unknown'))).rejects.toMatchObject({
+      reason: 'unknown-statement',
+    });
+    expect(calls).toEqual([]);
+    await expect(
+      inUnit(true, () => call(port.forModule('certification'), entry.id)),
+    ).resolves.toEqual([{ id: 'r1' }]);
+  });
+
   it('refuses with no open unit, a closed unit, a read-write unit and another Market', async () => {
     const { root, calls } = fakeRoot([]);
     const port = new PrismaRawReadPort(root, [entry]);

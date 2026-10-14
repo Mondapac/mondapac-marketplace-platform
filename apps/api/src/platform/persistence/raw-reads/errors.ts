@@ -1,6 +1,7 @@
 /** The reason a raw read call was refused before it reached the database. No value in it. */
 export type RawReadRefusal =
   | 'unknown-statement'
+  | 'wrong-module'
   | 'no-open-unit'
   | 'read-write-unit'
   | 'params-malformed'

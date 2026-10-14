@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { devNull } from 'node:os';
 import path from 'node:path';
-import { Module, type INestApplicationContext, type Provider } from '@nestjs/common';
+import { Inject, Module, type INestApplicationContext, type Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import type { EventDescription } from '@mondapac/shared-kernel';
@@ -11,6 +11,11 @@ import { CORE_MODULES } from '../../src/modules';
 import { compareWithSnapshot, EventCatalogue } from '../../src/platform/events/event-catalogue';
 import { SubscriptionRegistry } from '../../src/platform/events/event-subscriptions';
 import { OUTBOX_WRITER } from '../../src/platform/events/outbox-writer';
+import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
+import {
+  RAW_READ_PORT,
+  type RawReadPort,
+} from '../../src/platform/persistence/raw-reads/raw-read-port';
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { JobRegistry } from '../../src/platform/scheduler/job-registry';
 import { WorkerRuntime } from '../../src/platform/worker/worker-runtime';
@@ -246,6 +251,55 @@ describe("every module's outbox writer binding names its own folder (P 5.2)", ()
     }
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('a module binds only its own raw read port (ADR-0030; Hassan R-1)', () => {
+  it('calls rawReadFor only once per module, in its own <m>.module.ts, with its folder name', () => {
+    const SRC = path.join(__dirname, '../../src');
+    const DEFINITION = path.join('platform', 'persistence', 'persistence.module.ts');
+    const offenders: string[] = [];
+
+    for (const entry of readdirSync(SRC, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.ts') || entry.name.endsWith('.spec.ts')) {
+        continue;
+      }
+      const file = path.relative(SRC, path.join(entry.parentPath, entry.name));
+      if (file === DEFINITION) continue;
+      const code = readFileSync(path.join(SRC, file), 'utf8')
+        .replaceAll(/\/\*[\s\S]*?\*\//g, '')
+        .replaceAll(/\/\/.*$/gm, '');
+      const count = code.split('rawReadFor').length - 1;
+      if (count === 0) continue;
+
+      const [top, folder, name] = file.split(path.sep);
+      const allowed =
+        top === 'modules' &&
+        name === `${folder}.module.ts` &&
+        count === 1 &&
+        new RegExp(`(?<![.\\w])PersistenceModule\\.rawReadFor\\('${folder}'\\),`).test(code);
+      if (!allowed) offenders.push(file);
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('boots in the real graph: a module that binds rawReadFor gets its own port', async () => {
+    @Module({ providers: [PersistenceModule.rawReadFor('certification')] })
+    class BoundModule {
+      constructor(@Inject(RAW_READ_PORT) readonly port: RawReadPort) {}
+    }
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        AppModule.register({
+          config: testAppConfig({ APP_ROLE: 'api' }),
+          logDestination: pino.destination(devNull),
+        }),
+        BoundModule,
+      ],
+    }).compile();
+    expect(typeof moduleRef.get(BoundModule).port.rawRead).toBe('function');
+    await moduleRef.close();
   });
 });
 
