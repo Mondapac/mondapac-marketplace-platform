@@ -111,6 +111,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Special price records (slice 5): the same three kinds of index as for regular records.
   'pricing.special_price_records_effective_period_excl':
     "CREATE INDEX special_price_records_effective_period_excl ON pricing.special_price_records USING gist (market_id, series_id, tstzrange(effective_from, GREATEST(effective_from, LEAST(ends_at, COALESCE(withdrawn_at, 'infinity'::timestamp with time zone))), '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text, 'withdrawn'::text]))",
+  'pricing.special_price_records_market_id_effective_from_live_idx':
+    "CREATE INDEX special_price_records_market_id_effective_from_live_idx ON pricing.special_price_records USING btree (market_id, effective_from) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text, 'withdrawn'::text]))",
+  'pricing.special_price_records_market_id_ends_at_live_idx':
+    "CREATE INDEX special_price_records_market_id_ends_at_live_idx ON pricing.special_price_records USING btree (market_id, ends_at) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
   'pricing.special_price_records_market_id_submitted_at_id_pending_idx':
     "CREATE INDEX special_price_records_market_id_submitted_at_id_pending_idx ON pricing.special_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.special_price_records_market_id_series_id_pending_key':

@@ -28,6 +28,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   RecordingAuditWriter,
   RecordingOutbox,
 } from './support/pricing-fakes';
@@ -137,6 +138,7 @@ describe.each(TEST_MARKETS)(
         unitOfWork: new FakeUnitOfWork(),
         series,
         throttles: new InMemoryRefusalThrottles(),
+        counters: new InMemoryWriteRateCounters(),
         offers,
         policies,
         audit: new RecordingAuditWriter(),

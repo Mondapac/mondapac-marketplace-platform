@@ -9,6 +9,8 @@ import {
 import { Client } from 'pg';
 import { FakeOfferSellUnits } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import { PublishSpecialPriceBoundaries } from '../../src/modules/pricing/application/use-cases/publish-special-price-boundaries.use-case';
+import { PRICE_WRITE_LIMITS } from '../../src/modules/pricing/domain/write-rate-limits';
 import { SetRegularPrice } from '../../src/modules/pricing/application/use-cases/set-regular-price.use-case';
 import { SetSpecialPrice } from '../../src/modules/pricing/application/use-cases/set-special-price.use-case';
 import { WithdrawSpecialPrice } from '../../src/modules/pricing/application/use-cases/withdraw-special-price.use-case';
@@ -16,6 +18,7 @@ import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { ConfigPricingPolicyProvider } from '../../src/modules/pricing/infrastructure/config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from '../../src/modules/pricing/infrastructure/prisma-price-series.repository';
+import { PrismaWriteRateCounterRepository } from '../../src/modules/pricing/infrastructure/prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from '../../src/modules/pricing/infrastructure/prisma-write-refusal-throttle.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -87,6 +90,7 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
       unitOfWork: persistence.unitOfWork,
       series: repository,
       throttles,
+      counters: new PrismaWriteRateCounterRepository(persistence.service),
       offers,
       policies,
       audit,
@@ -255,5 +259,156 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
     expect(read.value.found?.hasSpecial(recordId)).toBe(true);
     expect(read.value.queued === null).toBe(code !== 'AU');
     expect(result.value.status).toBe(code === 'AU' ? 'pending-review' : 'accepted');
+  });
+  describe('the boundary job', () => {
+    const publisher = () => {
+      const deps = dependencies();
+      return new PublishSpecialPriceBoundaries(gate, {
+        unitOfWork: persistence.unitOfWork,
+        series: repository,
+        outbox: deps.outbox,
+        clock,
+      });
+    };
+    const causesOf = async (offerId: string) =>
+      (
+        await sql.query<{ cause: string }>(
+          `SELECT o.payload->>'cause' AS cause FROM pricing.outbox o
+          JOIN pricing.price_series s ON s.market_id = o.market_id AND s.id = o.aggregate_id
+          WHERE s.market_id = $1 AND s.offer_id = $2 ORDER BY o.aggregate_version`,
+          [code, offerId],
+        )
+      ).rows.map((r) => r.cause);
+    const markersOf = async (offerId: string) =>
+      (
+        await sql.query<{ boundary: string }>(
+          `SELECT b.boundary FROM pricing.special_price_boundaries b
+          JOIN pricing.special_price_records r ON r.market_id = b.market_id AND r.id = b.special_record_id
+          JOIN pricing.price_series s ON s.market_id = r.market_id AND s.id = r.series_id
+          WHERE s.market_id = $1 AND s.offer_id = $2 ORDER BY b.boundary`,
+          [code, offerId],
+        )
+      ).rows.map((r) => r.boundary);
+
+    it('announces the start and the end of a special once each, writing the marker first', async () => {
+      const s = seller();
+      const deps = dependencies();
+      await new SetRegularPrice(gate, deps).execute(s.context, s.regular(base, null));
+      clock.set(clock.now().add({ seconds: 5 }));
+      const endsAt = clock.now().add({ hours: 3 });
+      const set = await new SetSpecialPrice(gate, deps).execute(
+        s.context,
+        s.special((base * 9n) / 10n, endsAt.toString(), 2),
+      );
+      expect(set.ok).toBe(true);
+      const system = testCallContext(market, 'system');
+
+      clock.set(clock.now().add({ minutes: 1 }));
+      const first = await publisher().execute(system, {});
+      // Other specials of the file may be due too: this offer's marker is what is asserted.
+      expect(first).toMatchObject({ ok: true, value: { failed: 0 } });
+      expect(first.ok && first.value.announced).toBeGreaterThanOrEqual(1);
+      expect(await markersOf(s.offerId)).toEqual(['start']);
+      // A repeated run finds the marker: no second event.
+      const again = await publisher().execute(system, {});
+      expect(again).toMatchObject({ ok: true, value: { announced: 0, failed: 0 } });
+
+      clock.set(endsAt.add({ minutes: 1 }));
+      const last = await publisher().execute(system, {});
+      expect(last).toMatchObject({ ok: true, value: { failed: 0 } });
+      expect(last.ok && last.value.announced).toBeGreaterThanOrEqual(1);
+      expect(await markersOf(s.offerId)).toEqual(['end', 'start']);
+      expect(await causesOf(s.offerId)).toEqual([
+        'regular-accepted',
+        'special-started',
+        'special-started',
+        'special-ended',
+      ]);
+    });
+
+    it('refuses to change or remove a marker, and to mark a record of another Market', async () => {
+      const s = seller();
+      const deps = dependencies();
+      await new SetRegularPrice(gate, deps).execute(s.context, s.regular(base, null));
+      clock.set(clock.now().add({ seconds: 5 }));
+      await new SetSpecialPrice(gate, deps).execute(
+        s.context,
+        s.special((base * 9n) / 10n, clock.now().add({ hours: 3 }).toString(), 2),
+      );
+      clock.set(clock.now().add({ minutes: 1 }));
+      await publisher().execute(testCallContext(market, 'system'), {});
+
+      await expect(
+        sql.query(
+          `UPDATE pricing.special_price_boundaries SET marked_at = now() WHERE market_id = $1`,
+          [code],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        sql.query(`DELETE FROM pricing.special_price_boundaries WHERE market_id = $1`, [code]),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('the per-account write counters', () => {
+    const counters = () => new PrismaWriteRateCounterRepository(persistence.service);
+    const reserve = async (
+      account: ReturnType<typeof ids.next<'Account'>>,
+      at: Temporal.Instant,
+    ) => {
+      const done = await persistence.unitOfWork.run(market, async () =>
+        ok(await counters().reserve(market, account, PRICE_WRITE_LIMITS, at)),
+      );
+      if (!done.ok) throw new Error('reserve failed');
+      return done.value;
+    };
+
+    it('counts every attempt once, restarts an ended window and purges old windows', async () => {
+      const account = ids.next<'Account'>();
+      const t0 = clock.now();
+      const counts = async (at: Temporal.Instant) =>
+        (await reserve(account, at)).map((r) => [r.kind, r.count]);
+      expect(await counts(t0)).toEqual([
+        ['write.account.day', 1],
+        ['write.account.minute', 1],
+      ]);
+      expect(await counts(t0.add({ seconds: 10 }))).toEqual([
+        ['write.account.day', 2],
+        ['write.account.minute', 2],
+      ]);
+      // The minute window ended; the day window did not.
+      expect(await counts(t0.add({ seconds: 61 }))).toEqual([
+        ['write.account.day', 3],
+        ['write.account.minute', 1],
+      ]);
+      const other = await reserve(ids.next<'Account'>(), t0);
+      expect(other.map((r) => r.count)).toEqual([1, 1]);
+
+      const purged = await persistence.unitOfWork.run(market, async () =>
+        ok(await counters().purgeStartedBefore(market, t0.add({ hours: 72 }))),
+      );
+      expect(purged.ok).toBe(true);
+      const left = await sql.query(
+        `SELECT 1 FROM pricing.write_rate_counters WHERE market_id = $1 AND actor_account_id = $2`,
+        [code, account],
+      );
+      expect(left.rowCount).toBe(0);
+    });
+
+    it('counts parallel first attempts of one account exactly once each, without deadlock', async () => {
+      const account = ids.next<'Account'>();
+      const at = clock.now();
+      const parallel = 12;
+      await Promise.all(Array.from({ length: parallel }, () => reserve(account, at)));
+      const rows = await sql.query<{ kind: string; count: number }>(
+        `SELECT kind, count FROM pricing.write_rate_counters
+        WHERE market_id = $1 AND actor_account_id = $2 ORDER BY kind`,
+        [code, account],
+      );
+      expect(rows.rows).toEqual([
+        { kind: 'write.account.day', count: parallel },
+        { kind: 'write.account.minute', count: parallel },
+      ]);
+    });
   });
 });

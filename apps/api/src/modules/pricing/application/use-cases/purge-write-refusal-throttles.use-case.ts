@@ -2,14 +2,19 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { WriteRateCounterRepository } from '../ports/write-rate-counter.repository';
 import type { WriteRefusalThrottleRepository } from '../ports/write-refusal-throttle.repository';
 
 /** Counters whose window started more than an hour ago go (pricing-data 3.8, 9). */
 export const REFUSAL_COUNTERS_KEPT_MS = 3_600_000;
 
+/** Write-rate counters whose window started more than 48 hours ago go: twice the longest window. */
+export const WRITE_RATE_COUNTERS_KEPT_MS = 48 * 3_600_000;
+
 export interface PurgeWriteRefusalThrottlesOutput {
   readonly actorWindows: number;
   readonly offerWindows: number;
+  readonly writeRateCounters: number;
 }
 
 export type PurgeWriteRefusalThrottlesFailure = { readonly code: 'access.denied' };
@@ -17,13 +22,15 @@ export type PurgeWriteRefusalThrottlesFailure = { readonly code: 'access.denied'
 export interface PurgeWriteRefusalThrottlesDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly throttles: WriteRefusalThrottleRepository;
+  readonly counters: WriteRateCounterRepository;
   readonly clock: Clock;
 }
 
 /**
  * `pricing.purge-write-refusal-throttles` (pricing-data 3.8, 9; design 19 condition (b): it
  * ships with the first caller). For one Market, deletes the refusal counters whose window
- * started more than an hour ago; a window is one minute, so they can no longer count. Rule
+ * started more than an hour ago; a window is one minute, so they can no longer count. It also
+ * deletes the per-account write counters whose window started more than 48 hours ago. Rule
  * `system`: run by the hourly job only. Safe to run twice and concurrently.
  *
  * Lock order (design 19 (b) and (e), settled in part 3b): a refusal takes the actor row, then
@@ -53,7 +60,7 @@ export class PurgeWriteRefusalThrottles extends UseCase<
   ): Promise<Result<PurgeWriteRefusalThrottlesOutput, PurgeWriteRefusalThrottlesFailure>> {
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
     const { market } = context;
-    const { unitOfWork, throttles, clock } = this.deps;
+    const { unitOfWork, throttles, counters, clock } = this.deps;
     const before = clock.now().subtract({ milliseconds: REFUSAL_COUNTERS_KEPT_MS });
     // A failed unit throws out of here: the scheduler logs that Market's run as failed.
     const actors = await unitOfWork.run(market, async () =>
@@ -64,6 +71,16 @@ export class PurgeWriteRefusalThrottles extends UseCase<
       ok(await throttles.purgeOfferWindowsStartedBefore(market, before)),
     );
     if (!offers.ok) throw new Error('pricing.purge-write-refusal-throttles: the unit failed');
-    return ok({ actorWindows: actors.value, offerWindows: offers.value });
+    // The per-account write counters (their own table, nothing shared with the refusal rows).
+    const keepFrom = clock.now().subtract({ milliseconds: WRITE_RATE_COUNTERS_KEPT_MS });
+    const rates = await unitOfWork.run(market, async () =>
+      ok(await counters.purgeStartedBefore(market, keepFrom)),
+    );
+    if (!rates.ok) throw new Error('pricing.purge-write-refusal-throttles: the unit failed');
+    return ok({
+      actorWindows: actors.value,
+      offerWindows: offers.value,
+      writeRateCounters: rates.value,
+    });
   }
 }

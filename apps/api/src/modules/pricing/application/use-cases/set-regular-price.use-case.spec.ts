@@ -13,6 +13,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   RecordingAuditWriter,
   RecordingOutbox,
 } from '../../../../../test/support/pricing-fakes';
@@ -71,6 +72,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
     const unitOfWork = new FakeUnitOfWork();
     const series = new InMemoryPriceSeries();
     const throttles = new InMemoryRefusalThrottles();
+    const counters = new InMemoryWriteRateCounters();
     const offers = new FakeOfferSellUnits();
     const audit = new RecordingAuditWriter();
     const outbox = new RecordingOutbox();
@@ -78,6 +80,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       unitOfWork,
       series,
       throttles,
+      counters,
       offers,
       policies,
       audit,
@@ -110,6 +113,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       unitOfWork,
       series,
       throttles,
+      counters,
       offers,
       audit,
       outbox,
@@ -177,7 +181,11 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
         submittedBy: t.accountId,
         status: 'ACCEPTED',
       });
-      expect(t.unitOfWork.units.map((u) => u.options)).toEqual([{}, { isolation: 'serializable' }]);
+      expect(t.unitOfWork.units.map((u) => u.options)).toEqual([
+        {},
+        {},
+        { isolation: 'serializable' },
+      ]);
       expect(t.audit.rows).toEqual([
         expect.objectContaining({
           action: 'pricing.regular-price.accepted',
@@ -252,7 +260,8 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       );
 
       expect(output).toMatchObject({ status: 'accepted', seriesVersion: 3 });
-      expect(t.unitOfWork.units.map((u) => u.options)).toEqual([{}]);
+      // The first unit is the per-account allowance counter; the second is the write.
+      expect(t.unitOfWork.units.map((u) => u.options)).toEqual([{}, {}]);
       expect(t.audit.rows.map((r) => [r.action, r.after])).toEqual([
         [
           'pricing.regular-price.accepted',
@@ -760,7 +769,72 @@ describe.each(['AU', 'ZZ'] as const)('pricing.set-regular-price in market %s', (
       ).rejects.toBeInstanceOf(OfferSellUnitsUnavailableError);
       expect(t.series.rows.size).toBe(0);
       expect(t.audit.rows).toEqual([]);
-      expect(t.unitOfWork.units).toEqual([]);
+      // Only the allowance counter's unit ran: no write unit.
+      expect(t.unitOfWork.units).toEqual([{ market: market.marketId, options: {} }]);
+    });
+  });
+
+  describe('the per-account write cap', () => {
+    it('answers request.throttled with the wait from the 61st attempt of a minute, writing nothing more', async () => {
+      const t = setup();
+      let version: number | null = null;
+      for (let n = 0; n < 60; n += 1) {
+        const written = await t.useCase.execute(t.context, t.input(fixture.base, version));
+        version = valueOf(written).seriesVersion;
+      }
+      const rows = t.audit.rows.length;
+      const refused = await t.useCase.execute(t.context, t.input(fixture.base + 1n, version));
+      expect(refused).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+      expect(t.audit.rows.length).toBe(rows);
+      // A refused attempt keeps its count; the wait shrinks with the window.
+      t.advance(30_000);
+      expect(await t.useCase.execute(t.context, t.input(fixture.base + 1n, version))).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 30 },
+      });
+    });
+
+    it('counts a refused write too, and leaves other accounts alone', async () => {
+      const t = setup();
+      const stranger = t.ids.next<'Offer'>();
+      for (let n = 0; n < 60; n += 1) {
+        const refused = await t.useCase.execute(t.context, {
+          ...t.input(fixture.base, null),
+          offerId: stranger,
+        });
+        expect(refused).toEqual({ ok: false, error: { code: 'pricing.offer-not-found' } });
+      }
+      const throttled = await t.useCase.execute(t.context, {
+        ...t.input(fixture.base, null),
+        offerId: stranger,
+      });
+      expect(throttled).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+      const other = sellerContext(t.sellerId, t.ids.next<'Account'>(), t.ids);
+      expect((await t.useCase.execute(other, t.input(fixture.base, null))).ok).toBe(true);
+    });
+
+    it('opens a new window after a minute', async () => {
+      const t = setup();
+      for (let n = 0; n < 61; n += 1)
+        await t.useCase.execute(t.context, t.input(fixture.base, null));
+      t.advance(60_000);
+      const again = await t.useCase.execute(t.context, t.input(fixture.base, null));
+      expect(again).not.toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+    });
+
+    it('does not count a malformed input, which never reaches the Offer lookup', async () => {
+      const t = setup();
+      for (let n = 0; n < 70; n += 1) {
+        const bad = await t.useCase.execute(t.context, {
+          ...t.input(fixture.base, null),
+          offerId: 'nope',
+        });
+        expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      }
+      expect((await t.useCase.execute(t.context, t.input(fixture.base, null))).ok).toBe(true);
     });
   });
 });

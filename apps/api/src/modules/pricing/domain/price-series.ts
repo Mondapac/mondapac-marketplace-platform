@@ -1023,6 +1023,58 @@ export class PriceSeries {
   }
 
   /**
+   * Announces a boundary of a special that has come (pricing design 11; the boundary job): a
+   * `start` when its effective period began, an `end` when its natural end passed. Prices are
+   * correct without it (4.1); the event only tells consumers to read them again. Records one
+   * `effective-price-changed` (`special-started` or `special-ended`) and answers true, or records
+   * nothing and answers false: the series is retired, the record is unknown, or it is not (or no
+   * longer) a special whose boundary has passed (an empty period, a withdrawn end, a future time).
+   */
+  announceSpecialBoundary(
+    recordId: Id<'SpecialPriceRecord'>,
+    boundary: 'start' | 'end',
+    now: Temporal.Instant,
+  ): boolean {
+    const state = this.#state;
+    if (state.retiredAt !== null) return false;
+    const record = state.specials.find((r) => r.id === recordId);
+    if (record === undefined) return false;
+    let at: Temporal.Instant;
+    let cause: 'special-started' | 'special-ended';
+    if (boundary === 'start') {
+      // A withdrawn special counts until `withdrawnAt`; one withdrawn before its start never ran.
+      if (record.effectiveFrom === null || !isRunnable(record)) return false;
+      if (Temporal.Instant.compare(record.effectiveFrom, specialEnd(record)) >= 0) return false;
+      at = record.effectiveFrom;
+      cause = 'special-started';
+    } else {
+      if (record.status !== 'ACCEPTED' && record.status !== 'APPROVED') return false;
+      if (record.withdrawnAt !== null) return false;
+      at = record.endsAt;
+      cause = 'special-ended';
+    }
+    if (Temporal.Instant.compare(at, now) > 0) return false;
+    const { id, offerId, variantId } = state;
+    this.#commit({}, [
+      (version) =>
+        EffectivePriceChanged.record({
+          aggregateId: id,
+          aggregateVersion: version,
+          occurredAt: now,
+          payload: {
+            offerId,
+            variantId,
+            cause,
+            effectiveFrom: at,
+            previousProductId: null,
+            previousVariantId: null,
+          },
+        }),
+    ]);
+    return true;
+  }
+
+  /**
    * Applies a change and its events: one version step per event. A change without an event is a
    * bug (P 10: the version moves only with an event), so it throws rather than step silently.
    */
@@ -1294,4 +1346,11 @@ function checkStoredSpecials(state: PriceSeriesState, bad: (reason: string) => n
     if (next !== undefined && at(next.from, period.end) < 0)
       bad('special periods must not overlap');
   });
+}
+
+/** A special that was, or is, in force: never pending, rejected or superseded. */
+function isRunnable(record: SpecialPriceRecord): boolean {
+  return (
+    record.status === 'ACCEPTED' || record.status === 'APPROVED' || record.status === 'WITHDRAWN'
+  );
 }

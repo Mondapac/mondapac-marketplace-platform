@@ -13,6 +13,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   RecordingAuditWriter,
   RecordingOutbox,
 } from '../../../../../test/support/pricing-fakes';
@@ -60,10 +61,11 @@ describe.each(['AU', 'ZZ'] as const)('special price use cases in market %s', (co
     const unitOfWork = new FakeUnitOfWork();
     const series = new InMemoryPriceSeries();
     const throttles = new InMemoryRefusalThrottles();
+    const counters = new InMemoryWriteRateCounters();
     const offers = new FakeOfferSellUnits();
     const audit = new RecordingAuditWriter();
     const outbox = new RecordingOutbox();
-    const deps = { unitOfWork, series, throttles, offers, audit, outbox, clock };
+    const deps = { unitOfWork, series, throttles, counters, offers, audit, outbox, clock };
     const setSpecial = new SetSpecialPrice(gate, { ...deps, policies, ids });
     const withdraw = new WithdrawSpecialPrice(gate, deps);
     const sellerId = ids.next<'Seller'>();
@@ -112,6 +114,7 @@ describe.each(['AU', 'ZZ'] as const)('special price use cases in market %s', (co
       unitOfWork,
       series,
       throttles,
+      counters,
       offers,
       audit,
       outbox,
@@ -188,7 +191,8 @@ describe.each(['AU', 'ZZ'] as const)('special price use cases in market %s', (co
         submittedBy: t.accountId,
         taxInclusive: markets.get(market.marketId).pricesIncludeTax,
       });
-      expect(t.unitOfWork.units.map((u) => u.options)).toEqual([{}]);
+      // The first unit is the per-account allowance counter; the second is the write.
+      expect(t.unitOfWork.units.map((u) => u.options)).toEqual([{}, {}]);
       expect(t.audit.rows).toEqual([
         expect.objectContaining({
           action: 'pricing.special-price.accepted',
@@ -481,6 +485,32 @@ describe.each(['AU', 'ZZ'] as const)('special price use cases in market %s', (co
           expectedVersion: t.version(),
         }),
       ).toEqual({ ok: false, error: { code: 'pricing.offer-not-found' } });
+    });
+  });
+  describe('the per-account write cap', () => {
+    it('throttles special-price writes and withdrawals together with the regular price', async () => {
+      const t = await setup();
+      // The setup's regular price was one attempt of this account; 59 more fill the minute.
+      for (let n = 0; n < 59; n += 1) {
+        await t.withdraw.execute(t.context, {
+          offerId: t.offerId,
+          variantId: t.variantId,
+          expectedVersion: t.version(),
+        });
+      }
+      const withdrawn = await t.withdraw.execute(t.context, {
+        offerId: t.offerId,
+        variantId: t.variantId,
+        expectedVersion: t.version(),
+      });
+      expect(withdrawn).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 60 },
+      });
+      const special = await t.setSpecial.execute(t.context, t.input(fixture.special));
+      expect(special).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+      t.advance(60_000);
+      expect((await t.setSpecial.execute(t.context, t.input(fixture.special))).ok).toBe(true);
     });
   });
 });

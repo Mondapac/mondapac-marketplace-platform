@@ -33,6 +33,11 @@ import type { PricingPolicyProvider } from '../ports/pricing-policy-provider';
 import type { WriteRefusalThrottleRepository } from '../ports/write-refusal-throttle.repository';
 import { recordOfferWriteRefusal } from '../refusals/offer-write-refusal';
 import { runSerializable } from '../serializable-unit';
+import {
+  reserveWriteAllowance,
+  type WriteThrottled,
+  type WriteAllowanceDependencies,
+} from '../write-allowance';
 
 /** Input as the route will pass it (design 4.4: the amount is a string of minor units). */
 export interface SetRegularPriceInput {
@@ -69,9 +74,10 @@ export type SetRegularPriceFailure =
   | { readonly code: 'pricing.series-retired' }
   /** Q2: the price is at or below a running or scheduled special. */
   | { readonly code: 'pricing.regular-not-above-special' }
-  | { readonly code: 'conflict.stale' };
+  | { readonly code: 'conflict.stale' }
+  | WriteThrottled;
 
-export interface SetRegularPriceDependencies {
+export interface SetRegularPriceDependencies extends WriteAllowanceDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly series: PriceSeriesRepository;
   readonly throttles: WriteRefusalThrottleRepository;
@@ -167,6 +173,10 @@ export class SetRegularPrice extends UseCase<
     const checked = this.check(market, input);
     if (!checked.ok) return checked;
     const { offerId, variantId } = checked.value;
+
+    // The per-account cap, counted in its own unit before the Offer lookup (refused or not).
+    const allowed = await reserveWriteAllowance(this.deps, context, actor.accountId);
+    if (!allowed.ok) return allowed;
 
     const offers = await this.deps.offers.sellUnitsOf(context, [offerId]);
     const offer = offers.get(offerId) ?? null;

@@ -148,51 +148,54 @@ model PricingRegularPriceRecord {
 /// index, the triggers and the grants are hand-written in the migration. Pricing keeps the
 /// window as UTC instants: the seller's panel converts local times (hybrid scope, 2026-10-14).
 model PricingSpecialPriceRecord {
-  id                   String                     @id @db.Uuid
-  marketId             String                     @map("market_id") @db.VarChar(8)
-  tenantId             String                     @map("tenant_id")
-  seriesId             String                     @map("series_id") @db.Uuid
+  id                   String                        @id @db.Uuid
+  marketId             String                        @map("market_id") @db.VarChar(8)
+  tenantId             String                        @map("tenant_id")
+  seriesId             String                        @map("series_id") @db.Uuid
   /// Minor units of `currency` (P1): 1 to 2^53 - 1, strictly below `regular_amount_minor`.
-  amountMinor          BigInt                     @map("amount_minor")
-  currency             String                     @db.Char(3)
-  taxInclusive         Boolean                    @map("tax_inclusive")
+  amountMinor          BigInt                        @map("amount_minor")
+  currency             String                        @db.Char(3)
+  taxInclusive         Boolean                       @map("tax_inclusive")
   /// accepted | pending-review | approved | rejected | superseded | withdrawn.
   status               String
   /// The window the seller asked for (UTC); `ends_at > starts_at`.
-  startsAt             DateTime                   @map("starts_at") @db.Timestamptz(6)
-  endsAt               DateTime                   @map("ends_at") @db.Timestamptz(6)
-  submittedAt          DateTime                   @map("submitted_at") @db.Timestamptz(6)
-  submittedByAccountId String                     @map("submitted_by_account_id") @db.Uuid
+  startsAt             DateTime                      @map("starts_at") @db.Timestamptz(6)
+  endsAt               DateTime                      @map("ends_at") @db.Timestamptz(6)
+  submittedAt          DateTime                      @map("submitted_at") @db.Timestamptz(6)
+  submittedByAccountId String                        @map("submitted_by_account_id") @db.Uuid
   /// The regular record in effect when the special was written, and its amount (copied).
-  regularRecordId      String                     @map("regular_record_id") @db.Uuid
-  regularAmountMinor   BigInt                     @map("regular_amount_minor")
+  regularRecordId      String                        @map("regular_record_id") @db.Uuid
+  regularAmountMinor   BigInt                        @map("regular_amount_minor")
   /// The regular jump anchor (D 2.4) at that time, and its amount (copied).
-  anchorRecordId       String                     @map("anchor_record_id") @db.Uuid
-  anchorAmountMinor    BigInt                     @map("anchor_amount_minor")
+  anchorRecordId       String                        @map("anchor_record_id") @db.Uuid
+  anchorAmountMinor    BigInt                        @map("anchor_amount_minor")
   /// `down` for a held record, null for an accepted one.
-  holdDirection        String?                    @map("hold_direction")
+  holdDirection        String?                       @map("hold_direction")
   /// Set when the special becomes effective: max(starts_at, approval); never by input.
-  effectiveFrom        DateTime?                  @map("effective_from") @db.Timestamptz(6)
+  effectiveFrom        DateTime?                     @map("effective_from") @db.Timestamptz(6)
   /// Set once when a running or scheduled special is ended (seller, replacement or retirement).
-  withdrawnAt          DateTime?                  @map("withdrawn_at") @db.Timestamptz(6)
+  withdrawnAt          DateTime?                     @map("withdrawn_at") @db.Timestamptz(6)
   /// withdrawn | replaced | offer-removed | variant-removed.
-  withdrawCause        String?                    @map("withdraw_cause")
-  decidedAt            DateTime?                  @map("decided_at") @db.Timestamptz(6)
-  decidedByAccountId   String?                    @map("decided_by_account_id") @db.Uuid
-  decisionReasonCode   String?                    @map("decision_reason_code")
+  withdrawCause        String?                       @map("withdraw_cause")
+  decidedAt            DateTime?                     @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId   String?                       @map("decided_by_account_id") @db.Uuid
+  decisionReasonCode   String?                       @map("decision_reason_code")
   /// Personal (free text). Never in an audit row, an event or a log (D 8).
-  decisionNote         String?                    @map("decision_note")
-  supersededAt         DateTime?                  @map("superseded_at") @db.Timestamptz(6)
+  decisionNote         String?                       @map("decision_note")
+  supersededAt         DateTime?                     @map("superseded_at") @db.Timestamptz(6)
   /// The special that replaced this one; no foreign key (it is written before its target).
-  supersededByRecordId String?                    @map("superseded_by_record_id") @db.Uuid
+  supersededByRecordId String?                       @map("superseded_by_record_id") @db.Uuid
   /// replaced | cancelled | offer-removed | variant-removed.
-  supersedeCause       String?                    @map("supersede_cause")
-  series               PricingPriceSeries         @relation("SeriesSpecialRecords", fields: [marketId, seriesId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_series_id_fkey")
-  regularRecord        PricingRegularPriceRecord  @relation("SpecialRegular", fields: [marketId, seriesId, regularRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_regular_record_id_fkey")
-  anchorRecord         PricingRegularPriceRecord  @relation("SpecialAnchor", fields: [marketId, seriesId, anchorRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_anchor_record_id_fkey")
+  supersedeCause       String?                       @map("supersede_cause")
+  series               PricingPriceSeries            @relation("SeriesSpecialRecords", fields: [marketId, seriesId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_series_id_fkey")
+  regularRecord        PricingRegularPriceRecord     @relation("SpecialRegular", fields: [marketId, seriesId, regularRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_regular_record_id_fkey")
+  anchorRecord         PricingRegularPriceRecord     @relation("SpecialAnchor", fields: [marketId, seriesId, anchorRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_anchor_record_id_fkey")
+  boundaries           PricingSpecialPriceBoundary[]
 
   /// "The special records of a series in order".
   @@unique([marketId, seriesId, id])
+  /// The target of a boundary marker's foreign key (data design 3.5).
+  @@unique([marketId, id])
   @@map("special_price_records")
   @@schema("pricing")
 }
@@ -259,5 +262,44 @@ model PricingWriteRefusalActorThrottle {
 
   @@id([marketId, actorAccountId])
   @@map("write_refusal_actor_throttles")
+  @@schema("pricing")
+}
+
+/// The marker of a special's announced boundary (data design 3.5; PD6, D 11): the boundary job
+/// writes it first in its unit, so a concurrent or repeated run finds it and does nothing.
+/// Insert-only. The CHECKs and the grants are hand-written in the migration.
+model PricingSpecialPriceBoundary {
+  marketId        String                    @map("market_id") @db.VarChar(8)
+  tenantId        String                    @map("tenant_id")
+  specialRecordId String                    @map("special_record_id") @db.Uuid
+  /// start | end.
+  boundary        String
+  markedAt        DateTime                  @map("marked_at") @db.Timestamptz(6)
+  specialRecord   PricingSpecialPriceRecord @relation(fields: [marketId, specialRecordId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_boundaries_special_record_id_fkey")
+
+  @@id([marketId, specialRecordId, boundary])
+  @@map("special_price_boundaries")
+  @@schema("pricing")
+}
+
+/// The per-account cap on a seller's price writes (pricing design 5.2, 8; data design 3.8 and
+/// the general per-account limit of identity design 6.8): one fixed window per (account, kind),
+/// counted in the unit before the write. The key is the plain account id, as in the refusal
+/// counters. Transient: purged after 48 hours. The CHECKs and the grants are hand-written in the
+/// migration.
+model PricingWriteRateCounter {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  /// A closed list (CHECK); a new kind is a migration.
+  kind            String
+  actorAccountId  String   @map("actor_account_id") @db.Uuid
+  /// Start of the fixed window, set at the first attempt; its length is the kind's, in code.
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  /// Attempts in the window; never below 0.
+  count           Int
+
+  @@id([marketId, kind, actorAccountId])
+  @@index([marketId, windowStartedAt])
+  @@map("write_rate_counters")
   @@schema("pricing")
 }

@@ -13,6 +13,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   InMemoryTombstones,
   RecordingAuditWriter,
   RecordingOutbox,
@@ -80,6 +81,7 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
     const set = new SetRegularPrice(gate, {
       ...common,
       throttles: new InMemoryRefusalThrottles(),
+      counters: new InMemoryWriteRateCounters(),
       offers,
       policies,
       ids,

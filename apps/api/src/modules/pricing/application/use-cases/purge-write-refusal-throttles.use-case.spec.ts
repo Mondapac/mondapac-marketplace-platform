@@ -9,15 +9,18 @@ import {
 import {
   FakeUnitOfWork,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
 } from '../../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
+import { PRICE_WRITE_LIMITS } from '../../domain/write-rate-limits';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import {
   PurgeWriteRefusalThrottles,
   REFUSAL_COUNTERS_KEPT_MS,
+  WRITE_RATE_COUNTERS_KEPT_MS,
 } from './purge-write-refusal-throttles.use-case';
 
 // The hourly purge of the refusal counters (pricing-data 3.8, 9), on both Market fixtures:
@@ -38,8 +41,9 @@ describe.each(['AU', 'ZZ'])('pricing.purge-write-refusal-throttles in market %s'
     const ids = new SequenceIdGenerator(clock);
     const unitOfWork = new FakeUnitOfWork();
     const throttles = new InMemoryRefusalThrottles();
-    const purge = new PurgeWriteRefusalThrottles(gate, { unitOfWork, throttles, clock });
-    return { ids, unitOfWork, throttles, purge };
+    const counters = new InMemoryWriteRateCounters();
+    const purge = new PurgeWriteRefusalThrottles(gate, { unitOfWork, throttles, counters, clock });
+    return { ids, unitOfWork, throttles, counters, purge };
   }
 
   it('purges counters older than an hour, actor table first, each in its own unit', async () => {
@@ -53,16 +57,34 @@ describe.each(['AU', 'ZZ'])('pricing.purge-write-refusal-throttles in market %s'
     ] as const) {
       await t.throttles.admitRefusal(target, t.ids.next(), t.ids.next(), at, 60_000, 20);
     }
+    const stale = now.subtract({ milliseconds: WRITE_RATE_COUNTERS_KEPT_MS + 1 });
+    const fresh = now.subtract({ milliseconds: WRITE_RATE_COUNTERS_KEPT_MS });
+    for (const [target, at] of [
+      [market, stale],
+      [market, fresh],
+      [other, stale],
+    ] as const) {
+      await t.counters.reserve(target, t.ids.next(), [PRICE_WRITE_LIMITS[1]!], at);
+    }
     t.throttles.touched.length = 0;
 
     const result = await t.purge.execute(testCallContext(market, 'system'), {});
-    expect(result).toEqual({ ok: true, value: { actorWindows: 1, offerWindows: 1 } });
+    expect(result).toEqual({
+      ok: true,
+      value: { actorWindows: 1, offerWindows: 1, writeRateCounters: 1 },
+    });
     expect(t.throttles.touched).toEqual(['purge-actor', 'purge-offer']);
     expect(t.unitOfWork.units).toEqual([
       { market: market.marketId, options: {} },
       { market: market.marketId, options: {} },
+      { market: market.marketId, options: {} },
     ]);
     expect(t.throttles.actors.size).toBe(2);
+    // Only this Market's write counter older than 48 hours went.
+    expect(
+      [...t.counters.rows.keys()].filter((key) => key.startsWith(`${market.marketId}|`)),
+    ).toHaveLength(1);
+    expect(t.counters.rows.size).toBe(2);
   });
 
   it('runs for the system actor only', async () => {

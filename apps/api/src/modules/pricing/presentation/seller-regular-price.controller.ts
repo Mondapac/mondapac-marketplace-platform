@@ -27,6 +27,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { setRetryAfter } from './retry-after';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
@@ -47,6 +48,7 @@ export const REGULAR_PRICE_STATUS: Readonly<Record<string, number>> = Object.fre
   'pricing.series-retired': 409,
   'pricing.regular-not-above-special': 409,
   'conflict.stale': 409,
+  'request.throttled': 429,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -103,7 +105,7 @@ export class SellerRegularPriceController {
   async set(
     @Call() context: CallContext,
     @Req() request: Request,
-    @Res({ passthrough: true }) _response: Response,
+    @Res({ passthrough: true }) response: Response,
     @Param('offerId') offerId: string,
     @Param('variantId') variantId: string,
     @Body() body: unknown,
@@ -134,13 +136,20 @@ export class SellerRegularPriceController {
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
-    if (outcome instanceof HttpException) throw outcome;
+    if (outcome instanceof HttpException) {
+      setRetryAfter(response, outcome);
+      throw outcome;
+    }
     return outcome;
   }
 }
 
 function refusal(
-  error: { readonly code: string; readonly fields?: unknown },
+  error: {
+    readonly code: string;
+    readonly fields?: unknown;
+    readonly retryAfterSeconds?: number;
+  },
   context: CallContext,
   logger: Logger,
 ): HttpException {
@@ -155,6 +164,9 @@ function refusal(
       correlationId: context.correlationId,
     });
     return fail(500, 'internal');
+  }
+  if (error.retryAfterSeconds !== undefined) {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
   }
   return error.fields === undefined
     ? fail(status, error.code)

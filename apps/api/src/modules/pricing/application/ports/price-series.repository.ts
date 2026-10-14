@@ -46,6 +46,14 @@ export interface PendingHoldCursor {
   readonly id: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>;
 }
 
+/** One special-price boundary that has come and has no marker yet (pricing design 11). */
+export interface DueSpecialBoundary {
+  readonly recordId: Id<'SpecialPriceRecord'>;
+  readonly boundary: 'start' | 'end';
+  /** The instant of the boundary: the special's effective start, or its natural end. */
+  readonly at: Temporal.Instant;
+}
+
 /**
  * The store of price series and their regular records (pricing-data 3.2, 3.3). Every method runs
  * in the open unit of the use case, through the Market-scoped client. Records are never deleted
@@ -93,6 +101,31 @@ export interface PriceSeriesRepository {
     productId: Id<'Product'>,
     variantId: Id<'Variant'>,
   ): Promise<readonly PriceSeries[]>;
+
+  /**
+   * The special-price boundaries of this Market that have come, within `horizonMs` before `now`,
+   * and have no marker, oldest first, at most `limit` (pricing-data 6.2; D 11). Starts: a special
+   * in force (accepted, approved or withdrawn) whose `effective_from` is in `(now - horizonMs, now]`.
+   * Natural ends: an accepted or approved special whose `ends_at` is in that range. A boundary
+   * older than the horizon is never announced; prices stay correct without it.
+   */
+  listDueSpecialBoundaries(
+    market: MarketContext,
+    now: Temporal.Instant,
+    horizonMs: number,
+    limit: number,
+  ): Promise<readonly DueSpecialBoundary[]>;
+
+  /**
+   * Writes the marker of a boundary, first in the announcing unit (pricing-data 3.5). Answers
+   * false when the marker exists: another run announced it, so the unit does nothing more.
+   */
+  markSpecialBoundary(
+    market: MarketContext,
+    recordId: Id<'SpecialPriceRecord'>,
+    boundary: 'start' | 'end',
+    now: Temporal.Instant,
+  ): Promise<boolean>;
 
   /**
    * Creates a series built by `PriceSeries.create`, with whatever records it already holds (its

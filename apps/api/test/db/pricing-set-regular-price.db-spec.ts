@@ -20,6 +20,7 @@ import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { ConfigPricingPolicyProvider } from '../../src/modules/pricing/infrastructure/config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from '../../src/modules/pricing/infrastructure/prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from '../../src/modules/pricing/infrastructure/prisma-retirement-tombstone.repository';
+import { PrismaWriteRateCounterRepository } from '../../src/modules/pricing/infrastructure/prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from '../../src/modules/pricing/infrastructure/prisma-write-refusal-throttle.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -116,6 +117,7 @@ describe.each(TEST_MARKETS)(
         unitOfWork: persistence.unitOfWork,
         series: seriesRepository,
         throttles,
+        counters: new PrismaWriteRateCounterRepository(persistence.service),
         offers,
         policies,
         audit: auditWriter,
@@ -352,6 +354,7 @@ describe.each(TEST_MARKETS)(
       const purge = new PurgeWriteRefusalThrottles(gate, {
         unitOfWork: persistence.unitOfWork,
         throttles,
+        counters: new PrismaWriteRateCounterRepository(persistence.service),
         clock,
       });
       retries = 0;
@@ -453,6 +456,10 @@ describe.each(TEST_MARKETS)(
         findPendingHold: (m, recordId) => inner.findPendingHold(m, recordId),
         findByProductVariant: (m, productId, variantId) =>
           inner.findByProductVariant(m, productId, variantId),
+        listDueSpecialBoundaries: (m, now, horizonMs, limit) =>
+          inner.listDueSpecialBoundaries(m, now, horizonMs, limit),
+        markSpecialBoundary: (m, recordId, boundary, now) =>
+          inner.markSpecialBoundary(m, recordId, boundary, now),
         save: (m, series) => inner.save(m, series),
         add: async (m, series) => {
           adds += 1;

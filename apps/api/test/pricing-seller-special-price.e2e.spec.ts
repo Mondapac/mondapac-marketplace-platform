@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { OFFER_SELL_UNITS_SOURCE } from '../src/modules/pricing/application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from '../src/modules/pricing/application/ports/price-series.repository';
+import { WRITE_RATE_COUNTER_REPOSITORY } from '../src/modules/pricing/application/ports/write-rate-counter.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from '../src/modules/pricing/application/ports/write-refusal-throttle.repository';
 import { SPECIAL_PRICE_STATUS } from '../src/modules/pricing/presentation/seller-special-price.controller';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
@@ -23,6 +24,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   RecordingAuditWriter,
   RecordingOutbox,
 } from './support/pricing-fakes';
@@ -65,6 +67,7 @@ it('maps every refusal code of the use cases to its exact status', () => {
     'pricing.no-regular-price': 409,
     'pricing.series-retired': 409,
     'conflict.stale': 409,
+    'request.throttled': 429,
   });
 });
 
@@ -91,6 +94,8 @@ describe('seller special price over HTTP (integration, pricing slice 5)', () => 
           .useValue(series)
           .overrideProvider(WRITE_REFUSAL_THROTTLE_REPOSITORY)
           .useValue(new InMemoryRefusalThrottles())
+          .overrideProvider(WRITE_RATE_COUNTER_REPOSITORY)
+          .useValue(new InMemoryWriteRateCounters())
           .overrideProvider(OFFER_SELL_UNITS_SOURCE)
           .useValue(offers)
           .overrideProvider(AUDIT_WRITER)

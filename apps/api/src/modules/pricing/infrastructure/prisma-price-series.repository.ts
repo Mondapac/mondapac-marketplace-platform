@@ -4,6 +4,7 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   AddPriceSeriesOutcome,
+  DueSpecialBoundary,
   PendingHoldCursor,
   PendingHoldView,
   PriceSeriesKey,
@@ -501,6 +502,74 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
       orderBy: { id: 'asc' },
     });
     return rows.map(seriesFromRow);
+  }
+
+  async listDueSpecialBoundaries(
+    market: MarketContext,
+    now: Temporal.Instant,
+    horizonMs: number,
+    limit: number,
+  ): Promise<readonly DueSpecialBoundary[]> {
+    const tx = this.prisma.tx(market);
+    const within = { gt: toDate(now.subtract({ milliseconds: horizonMs })), lte: toDate(now) };
+    // The marker's absence is a `none` relation filter (NOT EXISTS on the marker's primary key).
+    const starts = await tx.pricingSpecialPriceRecord.findMany({
+      where: {
+        marketId: market.marketId,
+        status: { in: ['accepted', 'approved', 'withdrawn'] },
+        effectiveFrom: within,
+        boundaries: { none: { boundary: 'start' } },
+      },
+      orderBy: [{ effectiveFrom: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: { id: true, effectiveFrom: true },
+    });
+    const ends = await tx.pricingSpecialPriceRecord.findMany({
+      where: {
+        marketId: market.marketId,
+        status: { in: ['accepted', 'approved'] },
+        endsAt: within,
+        boundaries: { none: { boundary: 'end' } },
+      },
+      orderBy: [{ endsAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: { id: true, endsAt: true },
+    });
+    const due: DueSpecialBoundary[] = [
+      ...starts.map((row) => ({
+        recordId: row.id as Id<'SpecialPriceRecord'>,
+        boundary: 'start' as const,
+        at: toInstant(row.effectiveFrom as Date),
+      })),
+      ...ends.map((row) => ({
+        recordId: row.id as Id<'SpecialPriceRecord'>,
+        boundary: 'end' as const,
+        at: toInstant(row.endsAt),
+      })),
+    ];
+    due.sort((a, b) => Temporal.Instant.compare(a.at, b.at));
+    return due.slice(0, limit);
+  }
+
+  async markSpecialBoundary(
+    market: MarketContext,
+    recordId: Id<'SpecialPriceRecord'>,
+    boundary: 'start' | 'end',
+    now: Temporal.Instant,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).pricingSpecialPriceBoundary.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          specialRecordId: recordId,
+          boundary,
+          markedAt: toDate(now),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return count === 1;
   }
 
   async add(market: MarketContext, series: PriceSeries): Promise<AddPriceSeriesOutcome> {

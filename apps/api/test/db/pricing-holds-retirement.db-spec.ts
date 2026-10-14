@@ -22,6 +22,7 @@ import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { ConfigPricingPolicyProvider } from '../../src/modules/pricing/infrastructure/config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from '../../src/modules/pricing/infrastructure/prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from '../../src/modules/pricing/infrastructure/prisma-retirement-tombstone.repository';
+import { PrismaWriteRateCounterRepository } from '../../src/modules/pricing/infrastructure/prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from '../../src/modules/pricing/infrastructure/prisma-write-refusal-throttle.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -135,6 +136,7 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
       unitOfWork: persistence.unitOfWork,
       series,
       throttles: new PrismaWriteRefusalThrottleRepository(persistence.service),
+      counters: new PrismaWriteRateCounterRepository(persistence.service),
       offers,
       policies,
       audit,

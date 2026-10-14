@@ -254,6 +254,10 @@ $$;
 
 The job writes the marker **first** in its unit, with `createMany({ skipDuplicates: true })`. A count of 0 means another run already published that boundary, so the unit ends without a version bump or an event. Otherwise it raises the series version and appends the event (D 11). A concurrent run is therefore a no-op, not an error.
 
+Growth: two rows per special, kept for good (accepted, under 1M rows at the planned volume). The no-delete trigger blocks any purge, so an archive would need a new migration that relaxes it. The two discovery queries are bounded by the horizon, so their cost does not grow with the marker history; the partial indexes `special_price_records_market_id_effective_from_live_idx` and `..._ends_at_live_idx` serve them.
+
+Evidence (2026-10-14, PostgreSQL 16, 100k specials and 120k markers, 20 due): both queries run as `NOT EXISTS` correlated on `(market_id, special_record_id)` in unnamed statements, so the planner takes the matching partial index and an index-only probe of `special_price_boundaries_pkey` (0.2 ms).
+
 ### 3.6 `pricing.retired_offers` and `pricing.retired_variants` (slice 1; PD7, M3, Hassan finding 3)
 
 | Table | Key | Other columns |
@@ -318,6 +322,22 @@ D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor
 - Purge rows whose window started more than one hour ago (hourly job, per hosted Market; no index needed at this size: at most one row per active actor and Offer). The purge ships with the first caller (D 19 condition (b)).
 - Grants: `write_refusal_throttles` `SELECT, INSERT, UPDATE (window_started_at), DELETE`; `write_refusal_actor_throttles` `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE` (7).
 - Not personal beyond the account id, which the audit row holds anyway.
+
+### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap)
+
+The general per-account limit on the seller price write routes (D 5.2, 8; Hassan M2). One fixed window per (Market, kind, account): `kind` is `write.account.minute` (60 attempts) or `write.account.day` (1,000), both counted for every attempt that reaches the use case with a valid input, refused or not, in a unit of its own before the Offer lookup, so the count commits even when the write is refused. A count above the limit answers `request.throttled` with `retryAfterSeconds` (HTTP 429). The limits are policy in code, not CHECKs; the CHECK holds only the closed kind list and `count >= 0`.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `market_id`, `tenant_id` | | no | As every table |
+| `kind` | `text` | no | CHECK `write.account.day`, `write.account.minute` |
+| `actor_account_id` | `uuid` | no | The plain account id (as 3.8); PK `write_rate_counters_pkey (market_id, kind, actor_account_id)` |
+| `window_started_at` | `timestamptz(6)` | no | Start of the fixed window, set at the first attempt |
+| `count` | `integer` | no | CHECK `>= 0` |
+
+- Per counter two statements, never read-then-write: an `updateMany` that restarts a window that has ended (`count = 0`, `window_started_at = now`), then an upsert on the primary key that increments. Kinds are taken in sorted order, so two units never wait in a cycle.
+- Purge: rows whose window started more than 48 hours ago (twice the longest window), in the hourly purge job, in its own unit. Index `write_rate_counters_market_id_window_started_at_idx`.
+- Grants: `SELECT, INSERT, UPDATE (count, window_started_at), DELETE` (7).
 - Alternative: a Redis counter (ADR-0004 decision 1 allows Redis for rate limiting). Rejected: a second store on a security path, and it cannot commit with the audit row (M7).
 
 ## 4. What is never stored

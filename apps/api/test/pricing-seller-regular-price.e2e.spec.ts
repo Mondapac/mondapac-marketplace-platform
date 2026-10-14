@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { OFFER_SELL_UNITS_SOURCE } from '../src/modules/pricing/application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from '../src/modules/pricing/application/ports/price-series.repository';
+import { WRITE_RATE_COUNTER_REPOSITORY } from '../src/modules/pricing/application/ports/write-rate-counter.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from '../src/modules/pricing/application/ports/write-refusal-throttle.repository';
 import { REGULAR_PRICE_STATUS } from '../src/modules/pricing/presentation/seller-regular-price.controller';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
@@ -23,6 +24,7 @@ import {
   FakeUnitOfWork,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
+  InMemoryWriteRateCounters,
   RecordingAuditWriter,
   RecordingOutbox,
 } from './support/pricing-fakes';
@@ -61,6 +63,7 @@ it('maps every refusal code of the use case to its exact status', () => {
     'pricing.series-retired': 409,
     'pricing.regular-not-above-special': 409,
     'conflict.stale': 409,
+    'request.throttled': 429,
   });
 });
 
@@ -87,6 +90,8 @@ describe('seller regular price over HTTP (integration, pricing slice 1 part 3c)'
           .useValue(series)
           .overrideProvider(WRITE_REFUSAL_THROTTLE_REPOSITORY)
           .useValue(new InMemoryRefusalThrottles())
+          .overrideProvider(WRITE_RATE_COUNTER_REPOSITORY)
+          .useValue(new InMemoryWriteRateCounters())
           .overrideProvider(OFFER_SELL_UNITS_SOURCE)
           .useValue(offers)
           .overrideProvider(AUDIT_WRITER)
@@ -279,6 +284,25 @@ describe('seller regular price over HTTP (integration, pricing slice 1 part 3c)'
       const huge = await send(code, body(code, { amount: '9999999999999' }), session);
       expect(huge.status).toBe(422);
       expect(huge.body).toEqual({ statusCode: 422, code: 'pricing.amount-out-of-range' });
+      expect(series.rows.size).toBe(0);
+    });
+
+    it('answers the 61st write of a minute with 429 and the wait in details', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      for (let n = 0; n < 60; n += 1) {
+        expect((await send(code, body(code), session, id<'Offer'>(0xc999))).status).toBe(404);
+      }
+      const throttled = await send(code, body(code), session, id<'Offer'>(0xc999));
+      expect(throttled.status).toBe(429);
+      expect(throttled.body).toMatchObject({ statusCode: 429, code: 'request.throttled' });
+      const wait = (throttled.body as { details: { retryAfterSeconds: number } }).details
+        .retryAfterSeconds;
+      expect(wait).toBeGreaterThanOrEqual(1);
+      expect(wait).toBeLessThanOrEqual(60);
+      expect(throttled.headers['retry-after']).toBe(String(wait));
       expect(series.rows.size).toBe(0);
     });
 

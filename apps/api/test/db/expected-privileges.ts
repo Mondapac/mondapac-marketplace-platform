@@ -519,6 +519,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'withdrawn_at',
       ],
     },
+    // Boundary markers (D 11): insert-only. Write counters: count and window, purged.
+    'pricing.special_price_boundaries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'pricing.write_rate_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['count', 'window_started_at'],
+    },
     'pricing.retired_offers': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.retired_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.write_refusal_throttles': {

@@ -19,6 +19,7 @@ import {
   type SellerSeriesWriteDependencies,
   type SellerSeriesWriteFailure,
 } from '../seller-series-write';
+import { reserveWriteAllowance, type WriteThrottled } from '../write-allowance';
 
 /** Input as the route will pass it: the amount is a string of minor units, instants are UTC text. */
 export interface SetSpecialPriceInput {
@@ -52,6 +53,7 @@ export type SetSpecialPriceFailure =
     }
   | { readonly code: 'access.denied' }
   | SellerSeriesWriteFailure
+  | WriteThrottled
   | { readonly code: 'pricing.currency-mismatch' }
   | { readonly code: 'pricing.amount-out-of-range' }
   | { readonly code: 'pricing.series-retired' }
@@ -131,6 +133,8 @@ export class SetSpecialPrice extends UseCase<
     const checked = this.check(context, input);
     if (!checked.ok) return checked;
     const { offerId, variantId, amount, policy, startsAt, endsAt } = checked.value;
+    const allowed = await reserveWriteAllowance(this.deps, context, actor.accountId);
+    if (!allowed.ok) return allowed;
     const recordId = this.deps.ids.next<'SpecialPriceRecord'>();
 
     const written = await sellerSeriesWrite<SetSpecialPriceOutcome, SetSpecialPriceFailure>(

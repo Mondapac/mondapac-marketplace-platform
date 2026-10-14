@@ -10,8 +10,10 @@ import {
   type OfferWriteRefusalDependencies,
 } from './refusals/offer-write-refusal';
 import { refusalCause } from './use-cases/set-regular-price.use-case';
+import type { WriteAllowanceDependencies } from './write-allowance';
 
-export interface SellerSeriesWriteDependencies extends OfferWriteRefusalDependencies {
+export interface SellerSeriesWriteDependencies
+  extends OfferWriteRefusalDependencies, WriteAllowanceDependencies {
   readonly series: PriceSeriesRepository;
   readonly offers: OfferSellUnitsSource;
   readonly outbox: OutboxWriter;
