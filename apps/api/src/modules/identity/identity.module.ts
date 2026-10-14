@@ -116,6 +116,8 @@ import { RegenerateRecoveryCodes } from './application/use-cases/regenerate-reco
 import { RegenerateSellerRecoveryCodes } from './application/use-cases/regenerate-seller-recovery-codes.use-case';
 import { ConfirmSellerSecondFactor } from './application/use-cases/confirm-seller-second-factor.use-case';
 import { RemoveSellerSecondFactor } from './application/use-cases/remove-seller-second-factor.use-case';
+import { ConfirmSellerSecondFactorReset } from './application/use-cases/confirm-seller-second-factor-reset.use-case';
+import { StartSellerOwnerSecondFactorReset } from './application/use-cases/start-seller-owner-second-factor-reset.use-case';
 import { StartSellerSecondFactorEnrolment } from './application/use-cases/start-seller-second-factor-enrolment.use-case';
 import { StartSecondFactorReplacement } from './application/use-cases/start-second-factor-replacement.use-case';
 import { SendInvitationMail } from './application/use-cases/send-invitation-mail.use-case';
@@ -611,6 +613,41 @@ function useCaseProvider<D, U>(
       clock: true,
       audit: true,
       policy: true,
+    }),
+    useCaseProvider(StartSellerOwnerSecondFactorReset, {
+      unitOfWork: true,
+      accounts: true,
+      sellerAccess: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+      factors: true,
+      links: true,
+      throttles: true,
+      keys: true,
+      targets: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ConfirmSellerSecondFactorReset, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      linkTokens: true,
+      memberships: true,
+      grants: true,
+      factors: true,
+      sessions: true,
+      challenges: true,
+      throttles: true,
+      keys: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      clock: true,
     }),
     useCaseProvider(RemoveSellerSecondFactor, {
       unitOfWork: true,

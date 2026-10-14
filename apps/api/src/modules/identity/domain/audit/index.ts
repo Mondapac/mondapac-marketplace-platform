@@ -375,6 +375,33 @@ export const SecondFactorResetAudit = defineAuditAction({
 });
 
 /**
+ * An admin started the reset of a Seller Owner's second factor (identity design 3.7, 7.3; `ux.md`
+ * F7 step 4; slice 12). Target: the owner's account. Nothing is removed yet: the owner's link
+ * mail (E15) was requested, and the factor stays until the owner confirms. `sellerId` names the
+ * seller the owner belongs to; no address, no name, no token.
+ */
+export const SellerSecondFactorResetRequestedAudit = defineAuditAction({
+  action: 'identity.seller-second-factor-reset.requested',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { sellerId: auditField.id() },
+});
+
+/**
+ * The Seller Owner confirmed, with the link of E15, a reset that an admin started (identity design
+ * 7.3; slice 12): the factor was removed in the same unit. Target: the removed factor. `ANONYMOUS`:
+ * the single-use link, bound to the owner's account, is the credential; the account is named in
+ * `after.boundSubjectId`. The admin who started it is on the `requested` row.
+ */
+export const SellerSecondFactorResetConfirmedAudit = defineAuditAction({
+  action: 'identity.seller-second-factor-reset.confirmed',
+  targetType: 'identity.second-factor',
+  actors: ['anonymous'],
+  before: { state: auditField.enumOf(FACTOR_STATES) },
+  after: { boundSubjectId: auditField.id() },
+});
+
+/**
  * A successful admin sign-in (identity design 10.2; PA 5 row 7): bounded volume, no personal
  * data. Target: the account. `ANONYMOUS`: the password and the factor bound the account, named
  * in `boundSubjectId`; every attempt is also a sign-in record.
@@ -486,6 +513,8 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SecondFactorReplacedAudit,
   RecoveryCodesRegeneratedAudit,
   SecondFactorResetAudit,
+  SellerSecondFactorResetRequestedAudit,
+  SellerSecondFactorResetConfirmedAudit,
   AdminSessionOpenedAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,

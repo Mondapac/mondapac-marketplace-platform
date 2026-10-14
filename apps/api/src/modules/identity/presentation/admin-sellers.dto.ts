@@ -35,6 +35,15 @@ export class AdminSellerInviteRequest {
   displayName!: string;
 }
 
+/** A Seller Owner's second-factor reset was started: E15 is mailed; nothing is removed yet. */
+export class AdminSellerSecondFactorResetRequested {
+  @ApiProperty({ enum: ['second-factor-reset.requested'] })
+  code!: 'second-factor-reset.requested';
+
+  @ApiProperty({ format: 'uuid' })
+  sellerId!: string;
+}
+
 export class AdminSellerAccessDecided {
   @ApiProperty({
     enum: [

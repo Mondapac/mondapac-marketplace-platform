@@ -23,6 +23,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { CompleteSellerSignIn } from '../application/use-cases/complete-seller-sign-in.use-case';
+import { ConfirmSellerSecondFactorReset } from '../application/use-cases/confirm-seller-second-factor-reset.use-case';
 import { ConfirmSellerSecondFactorEnrolment } from '../application/use-cases/confirm-seller-second-factor-enrolment.use-case';
 import { RegenerateSellerRecoveryCodes } from '../application/use-cases/regenerate-seller-recovery-codes.use-case';
 import { RemoveSellerSecondFactor } from '../application/use-cases/remove-seller-second-factor.use-case';
@@ -42,6 +43,8 @@ import { codeStepFailure, parseCodeStepBody, signedInAnswer } from './seller-sig
 import {
   SellerEnrolmentRequest,
   SellerSecondFactorRemoved,
+  SellerSecondFactorResetConfirmRequest,
+  SellerSecondFactorResetDone,
   SellerSecondFactorRequest,
   SellerSignedIn,
 } from './seller.dto';
@@ -76,6 +79,7 @@ export class SellerSecondFactorController {
     private readonly confirmEnrolment: ConfirmSellerSecondFactorEnrolment,
     private readonly removeFactor: RemoveSellerSecondFactor,
     private readonly regenerateCodes: RegenerateSellerRecoveryCodes,
+    private readonly confirmReset: ConfirmSellerSecondFactorReset,
   ) {}
 
   @Post('sign-in/second-factor')
@@ -210,6 +214,55 @@ export class SellerSecondFactorController {
         : adminFailure(response, result.error);
     }
     return this.settle('identity.seller-enrolment-confirm', context, outcome);
+  }
+
+  @Post('second-factor/reset/confirm')
+  @HttpCode(200)
+  @RateLimit('anonymous-identity')
+  @ApiOperation({
+    summary: 'Confirm a second-factor reset that an admin started (A11)',
+    description:
+      "The token from the fragment of E15's link, valid 24 hours and once. Anonymous: the link " +
+      "is bound to the Seller Owner's account. The factor and its recovery codes are removed, " +
+      'every session of the account ends and a notice is mailed; no session is opened. A link ' +
+      'that is unknown, used, expired, replaced by a newer one, or of an account that is no ' +
+      'longer the Seller Owner answers link.rejected.',
+  })
+  @ApiBody({ type: SellerSecondFactorResetConfirmRequest })
+  @ApiOkResponse({ type: SellerSecondFactorResetDone })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description: 'validation.failed (details.fields) or link.rejected (one answer for every cause)',
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid: the request carries an Authorization header (HF14)',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'request.csrf (a refused origin)' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async confirmSecondFactorReset(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<SellerSecondFactorResetDone> {
+    const input = adminBody(request, body, ['token'] as const);
+    const client = adminClient(request);
+    let outcome: SellerSecondFactorResetDone | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else if (client instanceof HttpException) outcome = client;
+    else {
+      const result = await this.confirmReset.execute(context, { token: input.token, client });
+      outcome = result.ok
+        ? this.noStore(response, result.value)
+        : adminFailure(response, result.error);
+    }
+    return this.settle('identity.seller-second-factor-reset-confirm', context, outcome);
   }
 
   @Post('second-factor/remove')
