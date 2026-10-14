@@ -10,9 +10,10 @@ import {
 import { createTestApp } from './support/test-app';
 
 // The certification module as the real application wires it: the facade resolves, and
-// `evaluateClaims` rests on the fail-closed claim-facts reader (ADR-0031), so every query of a
-// valid batch answers `unavailable` and no tag is ever allowed, in both Market fixtures. The
-// reads of the published types need the database and are covered by the db-specs.
+// `evaluateClaims` rests on the claim-facts reader over the module's own raw read port. This
+// app has no database (the pool points at nothing), so every read rejects and every query of a
+// valid batch answers `unavailable`: no tag is ever allowed, in both Market fixtures. The reads
+// against a database are covered by certification-claim-facts-reader.db-spec.ts.
 
 const id = <T extends string>(n: number): Id<T> =>
   `0192b3c4-0000-7000-8000-${String(n).padStart(12, '0')}` as Id<T>;

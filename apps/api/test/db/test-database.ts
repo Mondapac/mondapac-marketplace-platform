@@ -54,7 +54,9 @@ function exported(
     | 'TEST_CERTIFICATION_DATABASE_URL'
     | 'TEST_CERTIFICATION_OWNER_DATABASE_URL'
     | 'TEST_CATALOG_CLAIMS_DATABASE_URL'
-    | 'TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL',
+    | 'TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL'
+    | 'TEST_CLAIM_FACTS_DATABASE_URL'
+    | 'TEST_CLAIM_FACTS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -196,4 +198,16 @@ export function catalogClaimsTestDatabaseUrl(): string {
 
 export function catalogClaimsOwnerTestDatabaseUrl(): string {
   return exported('TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that certification-claim-facts-reader.db-spec.ts seeds types, certificates and faults
+ * on, as the application login and as its owner.
+ */
+export function claimFactsTestDatabaseUrl(): string {
+  return exported('TEST_CLAIM_FACTS_DATABASE_URL');
+}
+
+export function claimFactsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CLAIM_FACTS_OWNER_DATABASE_URL');
 }
