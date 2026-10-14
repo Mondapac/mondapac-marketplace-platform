@@ -332,7 +332,7 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
       expect(unknown?.fields).toEqual([]);
       const form = await load(ZZ_ATTRIBUTE_FAMILIES[0]!.code);
       const own = await sql.query<{ id: string }>(
-        'SELECT id FROM catalog.platform_categories WHERE market_id = $1 AND status = $2',
+        'SELECT id FROM catalog.platform_categories WHERE market_id = $1 AND status = $2 AND published_revision_id IS NOT NULL',
         [market.marketId, 'active'],
       );
       expect(form?.categories.map((category) => category.categoryId).sort()).toEqual(
