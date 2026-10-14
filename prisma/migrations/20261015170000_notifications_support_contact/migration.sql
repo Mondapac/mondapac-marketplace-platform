@@ -22,7 +22,7 @@ ALTER TABLE "notifications"."support_contacts"
   ADD CONSTRAINT "support_contacts_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "support_contacts_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "support_contacts_version_check" CHECK ("version" >= 1),
-  ADD CONSTRAINT "support_contacts_email_check" CHECK ("email" ~ '^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+[.][^@[:space:][:cntrl:]]+$');
+  ADD CONSTRAINT "support_contacts_email_check" CHECK ("email" ~ '^[a-z0-9._+-]+@[a-z0-9-]+([.][a-z0-9-]+)*[.][a-z]{2,}$');
 
 -- Grants. Insert-only: a change is a new version, nothing is updated or deleted.
 GRANT USAGE ON SCHEMA "notifications" TO "mondapac_app";

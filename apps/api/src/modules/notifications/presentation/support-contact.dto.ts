@@ -18,4 +18,6 @@ export class SupportContactBody {
 export class SetSupportContactRequest {
   @ApiProperty({ example: 'support@example.com', maxLength: 254 })
   email!: string;
+  @ApiProperty({ description: 'The version the caller last read (0 for the Market default).' })
+  expectedVersion!: number;
 }

@@ -68,7 +68,8 @@ export class AdminSupportContactController {
   @ApiOperation({
     summary: 'Set the support email address (admin)',
     description:
-      'Needs notifications.support-contact.manage (protected). The same address again changes ' +
+      'Needs notifications.support-contact.manage (protected). expectedVersion is the version the screen read; ' +
+      'a different current version answers notifications.conflict. The same address again changes ' +
       'nothing. Every change is a new version in an insert-only history and an audit row.',
   })
   @ApiHeader(CSRF)
@@ -88,10 +89,13 @@ export class AdminSupportContactController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['email']);
+    const invalid = closedBody(request, requestBody, ['email', 'expectedVersion']);
     if (invalid !== null) throw invalid;
-    const email = (requestBody as { email?: unknown }).email;
-    const result = await this.set.execute(context, { email });
+    const { email, expectedVersion } = requestBody as {
+      email?: unknown;
+      expectedVersion?: unknown;
+    };
+    const result = await this.set.execute(context, { email, expectedVersion });
     this.log(
       'notifications.set-support-contact-route',
       context,

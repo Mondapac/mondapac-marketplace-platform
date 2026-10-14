@@ -10,6 +10,7 @@ import {
 
 interface Input {
   readonly email: unknown;
+  readonly expectedVersion: unknown;
 }
 
 /** `notifications.set-support-contact`: an admin changes the Market's support email (protected key). */

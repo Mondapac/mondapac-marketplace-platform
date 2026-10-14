@@ -7,8 +7,8 @@ import { callApi } from '../api/client.ts';
 import { supportProblemOf } from './errors.ts';
 import type { SupportContact } from './types.ts';
 
-/** Same plain shape the API checks: one "@", a dotted domain, no spaces. */
-const SHAPE = /^[^@\s,;<>()[\]\\"]+@[^@\s,;<>()[\]\\"]+\.[^@\s,;<>()[\]\\".]+$/;
+/** The same rule the API checks: lower-case printable ASCII, one "@", a dotted domain. */
+const SHAPE = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 const MAX_LENGTH = 254;
 
 export function SupportEmailCard({
@@ -32,7 +32,7 @@ export function SupportEmailCard({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current) return;
-    const email = text.trim();
+    const email = text.trim().toLowerCase();
     setSaved(false);
     setProblem(null);
     if (email.length > MAX_LENGTH || !SHAPE.test(email)) {
@@ -45,7 +45,7 @@ export function SupportEmailCard({
     const result = await callApi<SupportContact>(
       'PUT',
       'notifications/admin/support-contact',
-      { email },
+      { email, expectedVersion: contact.version },
       csrfToken,
     );
     busy.current = false;

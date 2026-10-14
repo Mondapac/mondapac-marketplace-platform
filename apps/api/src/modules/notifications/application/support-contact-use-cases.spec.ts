@@ -79,6 +79,12 @@ describe('parseSupportEmail', () => {
     'a@b.',
     `${'x'.repeat(250)}@b.com`,
     'a@b\u0000.com',
+    'supp\u043ert@mondapac.com',
+    'a?subject=x@b.com',
+    'a%40b@c.com',
+    'a#b@c.com',
+    'a@b.c',
+    'a@b_c.com',
     null,
     undefined,
     42,
@@ -126,8 +132,12 @@ describe.each([
 
   const view = (context: CallContext = admin) =>
     new ViewSupportContact(gate, deps).execute(context, {});
-  const set = (email: unknown, context: CallContext = admin) =>
-    new SetSupportContact(gate, deps).execute(context, { email });
+  // By default the caller saves from the version in force, as the screen does.
+  const set = (
+    email: unknown,
+    context: CallContext = admin,
+    expectedVersion: unknown = contacts.rows.at(-1)?.version ?? 0,
+  ) => new SetSupportContact(gate, deps).execute(context, { email, expectedVersion });
 
   it('shows the Market default (version 0) until an admin changes it', async () => {
     expect(await view()).toEqual(ok({ email: configured, version: 0 }));
@@ -179,6 +189,20 @@ describe.each([
     expect(await set(undefined)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     expect(contacts.rows).toEqual([]);
     expect(audit.entries).toEqual([]);
+  });
+
+  it('refuses a save from an older version, and a missing or bad expected version', async () => {
+    await set('help@example.com');
+    expect(await set('care@example.com', admin, 0)).toEqual(
+      err({ code: 'notifications.conflict' }),
+    );
+    for (const bad of ['x', -1, 1.5, '1', null, NaN]) {
+      expect(await set('care@example.com', admin, bad)).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'expectedVersion', code: 'range' }] }),
+      );
+    }
+    expect(contacts.rows).toHaveLength(1);
+    expect(audit.entries).toHaveLength(1);
   });
 
   it('answers a conflict when another admin saved the same version first', async () => {

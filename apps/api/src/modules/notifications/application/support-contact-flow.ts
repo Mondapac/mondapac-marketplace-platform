@@ -43,11 +43,11 @@ export async function viewSupportContact(
   );
 }
 
-/** An admin sets the address; every change is a new version, audited by version. */
+/** An admin sets the address from the version they saw; each change is a new version, audited. */
 export async function setSupportContact(
   deps: NotificationsDependencies,
   context: CallContext,
-  input: { readonly email: unknown },
+  input: { readonly email: unknown; readonly expectedVersion: unknown },
 ): Promise<Result<SupportContactView, SupportContactFailure>> {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
@@ -57,6 +57,10 @@ export async function setSupportContact(
   if (!email.ok) {
     return err({ code: 'validation.failed', fields: [{ path: email.error.path, code: 'format' }] });
   }
+  const expected = input?.expectedVersion;
+  if (typeof expected !== 'number' || !Number.isSafeInteger(expected) || expected < 0) {
+    return err({ code: 'validation.failed', fields: [{ path: 'expectedVersion', code: 'range' }] });
+  }
 
   const now = deps.clock.now();
   return deps.unitOfWork.run<SupportContactView, SupportContactFailure>(
@@ -65,6 +69,8 @@ export async function setSupportContact(
       const latest = await deps.contacts.latest(context.market);
       const currentEmail = latest?.email ?? deps.policy.defaultSupportEmail(context.market);
       const currentVersion = latest?.version ?? 0;
+      // The screen saved from an older version: another admin changed the address meanwhile.
+      if (expected !== currentVersion) return err({ code: 'notifications.conflict' } as const);
       // The same address again changes nothing: no new version, no audit row.
       if (currentEmail === email.value) return ok({ email: email.value, version: currentVersion });
 

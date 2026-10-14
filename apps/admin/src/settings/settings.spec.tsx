@@ -48,7 +48,7 @@ describe('SupportEmailCard', () => {
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'notifications/admin/support-contact',
-      { email: 'care@example.com' },
+      { email: 'care@example.com', expectedVersion: 0 },
       'csrf',
     );
     expect(await screen.findByText('Address saved.')).toBeTruthy();
@@ -57,7 +57,16 @@ describe('SupportEmailCard', () => {
 
   it('refuses a bad address before calling the API', () => {
     mount(contact('help@example.com'));
-    for (const bad of ['', 'plain', 'a@b', 'a@@b.com', 'a b@c.com', 'a@b.com, c@d.com']) {
+    for (const bad of [
+      '',
+      'plain',
+      'a@b',
+      'a@@b.com',
+      'a b@c.com',
+      'a@b.com, c@d.com',
+      'su\u0070p\u043ert@x.com',
+      'a?b=1@x.com',
+    ]) {
       fireEvent.change(screen.getByLabelText('Support email address'), {
         target: { value: bad },
       });

@@ -142,12 +142,15 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
     expect(read.headers['cache-control']).toBe('no-store');
     expect(read.body).toEqual({ email: 'help@example.com', version: 2 });
 
-    const set = await call('put', 'admin', session, { email: 'care@example.com' });
+    const set = await call('put', 'admin', session, {
+      email: 'care@example.com',
+      expectedVersion: 2,
+    });
     expect(set.status).toBe(200);
     expect(set.headers['cache-control']).toBe('no-store');
     expect(calls).toEqual([
       { name: 'view', input: {} },
-      { name: 'set', input: { email: 'care@example.com' } },
+      { name: 'set', input: { email: 'care@example.com', expectedVersion: 2 } },
     ]);
   });
 

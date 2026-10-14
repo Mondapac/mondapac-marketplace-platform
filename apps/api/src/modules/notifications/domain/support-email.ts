@@ -4,9 +4,12 @@ import type { Result } from '@mondapac/shared-kernel';
 /** The longest address, by RFC 5321 (and the column). */
 export const MAX_EMAIL_LENGTH = 254;
 
-// One local part and a dotted domain; no space, control character, second "@" or comma. The
-// address is only ever shown to people and mailed to, so this check is deliberately plain.
-const SHAPE = /^[^@\s\p{C},;<>()[\]\\"]+@[^@\s\p{C},;<>()[\]\\"]+\.[^@\s\p{C},;<>()[\]\\".]+$/u;
+// Printable ASCII only, in lower case: letters, digits and "._+-" in the local part, a dotted
+// domain of letters, digits and hyphens, and a letters-only last label of two or more. This keeps
+// look-alike letters (a Cyrillic "o") out, and keeps "?", "=", "&", "%" and "#" out of the local
+// part, so a mailto: link built from the address cannot carry extra parameters. An IDN domain
+// must be given in punycode. The database CHECK states the same rule.
+const SHAPE = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 
 export type SupportEmailInvalid = { readonly code: 'validation.failed'; readonly path: 'email' };
 
