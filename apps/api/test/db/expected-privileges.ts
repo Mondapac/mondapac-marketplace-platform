@@ -343,13 +343,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
     // columns change as Stripe reports, the identity columns never. No row is deleted.
+    // Payments (Phase 5 package 3 leftovers): the waiting period, the payout pause and its applied
+    // state are columns the application moves; the change history is insert-only.
     'payments.connected_accounts': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'account_ref',
+        'cooling_off_until',
         'details_submitted',
+        'last_change_id',
         'last_read_at',
+        'payout_schedule_applied',
+        'payout_schedule_revision',
         'payouts_enabled',
+        'payouts_paused_until',
         'requirements_due',
         'requirements_past_due',
         'status',
@@ -357,6 +364,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],

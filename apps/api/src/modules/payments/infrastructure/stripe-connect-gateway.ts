@@ -1,6 +1,10 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
-import type { ConnectFailure, ConnectGateway } from '../application/ports/connect-gateway';
+import type {
+  ConnectFailure,
+  ConnectGateway,
+  PayoutSchedule,
+} from '../application/ports/connect-gateway';
 import type { AccountSnapshot } from '../domain/connected-account';
 
 /** How long one Stripe call may take before it counts as failed. */
@@ -22,6 +26,11 @@ export type StripeRequest = (
 
 const UNAVAILABLE: ConnectFailure = Object.freeze({
   code: 'payment.provider-unavailable' as const,
+});
+/** Stripe answered with an error status: it caches that answer under the same key for 24 h. */
+const UNAVAILABLE_ANSWERED: ConnectFailure = Object.freeze({
+  code: 'payment.provider-unavailable' as const,
+  answered: true,
 });
 const REJECTED: ConnectFailure = Object.freeze({ code: 'payment.provider-rejected' as const });
 
@@ -87,6 +96,18 @@ export class StripeConnectGateway implements ConnectGateway {
     return snapshot === null ? err(UNAVAILABLE) : ok(snapshot);
   }
 
+  async setPayoutSchedule(
+    accountRef: string,
+    schedule: PayoutSchedule,
+    idempotencyKey: string,
+  ): Promise<Result<void, ConnectFailure>> {
+    if (!ACCOUNT_ID.test(accountRef)) return err(REJECTED);
+    const form = new URLSearchParams();
+    form.set('settings[payouts][schedule][interval]', schedule);
+    const body = await this.call('POST', `/v1/accounts/${accountRef}`, form, idempotencyKey);
+    return body.ok ? ok(undefined) : body;
+  }
+
   private async call(
     method: 'GET' | 'POST',
     path: string,
@@ -106,7 +127,7 @@ export class StripeConnectGateway implements ConnectGateway {
         ...(form === null ? {} : { body: form.toString() }),
         signal: timeout.signal,
       });
-      if (response.status >= 500 || response.status === 429) return err(UNAVAILABLE);
+      if (response.status >= 500 || response.status === 429) return err(UNAVAILABLE_ANSWERED);
       if (response.status >= 400) return err(REJECTED);
       return ok(await response.json());
     } catch {
@@ -115,6 +136,12 @@ export class StripeConnectGateway implements ConnectGateway {
       clearTimeout(timer);
     }
   }
+}
+
+/** How many external accounts the object lists; a further page counts as more than one. */
+function externalCount(value: unknown): number | null {
+  if (!isObject(value) || !Array.isArray(value.data)) return null;
+  return value.has_more === true ? Math.max(2, value.data.length) : value.data.length;
 }
 
 /** Stripe's account object, narrowed; null when it is not a well-formed account. */
@@ -132,6 +159,9 @@ function toSnapshot(body: unknown): AccountSnapshot | null {
   const metadata = isObject(body.metadata) ? body.metadata : {};
   const capabilities = isObject(body.capabilities) ? body.capabilities : {};
   const requirements = isObject(body.requirements) ? body.requirements : {};
+  const settings = isObject(body.settings) ? body.settings : {};
+  const payouts = isObject(settings.payouts) ? settings.payouts : {};
+  const schedule = isObject(payouts.schedule) ? payouts.schedule : {};
   return {
     id: body.id,
     metadataMarketId: text(metadata.market_id),
@@ -142,5 +172,7 @@ function toSnapshot(body: unknown): AccountSnapshot | null {
     requirementsDue: count(requirements.currently_due),
     requirementsPastDue: count(requirements.past_due) > 0,
     disabledReason: text(requirements.disabled_reason),
+    payoutScheduleInterval: text(schedule.interval),
+    externalAccountCount: externalCount(body.external_accounts),
   };
 }

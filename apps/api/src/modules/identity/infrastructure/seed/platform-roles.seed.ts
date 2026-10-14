@@ -106,7 +106,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 5 adds `ordering.order.view`, likewise unprotected (Phase 5 package 1).
     // Version 6 adds `shipping.flat-fee.view`, likewise unprotected (Phase 5 package 4).
     // Version 7 adds `commission-payouts.settlement.view`, likewise unprotected (Phase 5 package 5).
-    seedVersion: 7,
+    // Version 8 adds `payments.connected-account.view`, likewise unprotected (Phase 5 package 3).
+    seedVersion: 8,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -119,6 +120,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'ordering.order.view',
       'shipping.flat-fee.view',
       'commission-payouts.settlement.view',
+      'payments.connected-account.view',
     ],
   },
 ];

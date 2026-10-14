@@ -9,6 +9,7 @@ export * from './permissions';
 export {
   IDENTITY_FACADE,
   type ActorDescription,
+  type ConfirmSecondFactorFailure,
   type IdentityFacade,
   type SellerMembershipSummary,
 } from './identity.facade';

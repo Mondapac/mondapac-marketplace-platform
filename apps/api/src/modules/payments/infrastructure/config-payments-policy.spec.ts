@@ -17,6 +17,15 @@ describe('ConfigPaymentsPolicy', () => {
   });
 
   it.each(['AU', 'ZZ'])(
+    'reads the cooling-off hours (within 24 h to 14 d) and the payout schedule of market %s',
+    (code) => {
+      const market = testMarketContext(code, 'default');
+      expect(policy.bankChangeCoolingOffHours(market)).toBe(24);
+      expect(policy.normalPayoutSchedule(market)).toBe('daily');
+    },
+  );
+
+  it.each(['AU', 'ZZ'])(
     'builds the onboarding pages of market %s from the seller panel origin only',
     (code) => {
       const urls = policy.onboardingUrls(testMarketContext(code, 'default'));

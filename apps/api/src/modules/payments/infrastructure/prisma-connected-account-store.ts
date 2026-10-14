@@ -2,10 +2,15 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  AccountPage,
+  AppliedSchedule,
   ConnectedAccountRecord,
   ConnectedAccountStore,
+  NewPayoutChange,
+  PayoutChangeRecord,
 } from '../application/ports/connected-account-store';
 import type { AccountSnapshot, AccountStatus } from '../domain/connected-account';
+import type { ChangeKind } from '../domain/payout-change';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -22,7 +27,15 @@ interface Row {
   requirementsPastDue: boolean;
   lastReadAt: Date | null;
   createdAt: Date;
+  coolingOffUntil: Date | null;
+  payoutsPausedUntil: Date | null;
+  payoutScheduleApplied: string | null;
+  payoutScheduleRevision: number;
+  lastChangeId: string | null;
 }
+
+const optionalInstant = (date: Date | null): Temporal.Instant | null =>
+  date === null ? null : toInstant(date);
 
 const record = (row: Row): ConnectedAccountRecord => ({
   sellerId: row.sellerId,
@@ -35,6 +48,11 @@ const record = (row: Row): ConnectedAccountRecord => ({
   requirementsPastDue: row.requirementsPastDue,
   lastReadAt: row.lastReadAt === null ? null : toInstant(row.lastReadAt),
   createdAt: toInstant(row.createdAt),
+  coolingOffUntil: optionalInstant(row.coolingOffUntil),
+  payoutsPausedUntil: optionalInstant(row.payoutsPausedUntil),
+  payoutScheduleApplied: row.payoutScheduleApplied as AppliedSchedule | null,
+  payoutScheduleRevision: row.payoutScheduleRevision,
+  lastChangeId: row.lastChangeId,
 });
 
 /** `payments.connected_accounts` through the unit of work's transaction. */
@@ -122,14 +140,172 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
     return updated.count === 1;
   }
 
-  async statusesOf(
+  async recordsOf(
     market: MarketContext,
     sellerIds: readonly string[],
-  ): Promise<ReadonlyMap<string, AccountStatus>> {
+  ): Promise<ReadonlyMap<string, ConnectedAccountRecord>> {
     const rows = await this.prisma.tx(market).paymentsConnectedAccount.findMany({
       where: { marketId: market.marketId, sellerId: { in: [...sellerIds] } },
-      select: { sellerId: true, status: true },
     });
-    return new Map(rows.map((row) => [row.sellerId, row.status as AccountStatus]));
+    return new Map(rows.map((row) => [row.sellerId, record(row)]));
+  }
+
+  async recordChange(
+    market: MarketContext,
+    sellerId: string,
+    change: NewPayoutChange,
+    expectedLastChangeId: string | null,
+    until: Temporal.Instant | null,
+    at: Temporal.Instant,
+  ): Promise<'recorded' | 'duplicate' | 'conflict'> {
+    const tx = this.prisma.tx(market);
+    const seen = await tx.paymentsPayoutAccountChange.findFirst({
+      where: { marketId: market.marketId, sourceEventId: change.sourceEventId },
+      select: { id: true },
+    });
+    if (seen !== null) return 'duplicate';
+    // The account row first, and only while its latest change is the one this was computed from.
+    const moved = await tx.paymentsConnectedAccount.updateMany({
+      where: { marketId: market.marketId, sellerId, lastChangeId: expectedLastChangeId },
+      data: {
+        lastChangeId: change.id,
+        coolingOffUntil: until === null ? null : toDate(until),
+        payoutsPausedUntil: until === null ? null : toDate(until),
+        updatedAt: toDate(at),
+      },
+    });
+    if (moved.count !== 1) return 'conflict';
+    await tx.paymentsPayoutAccountChange.create({
+      data: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        id: change.id,
+        sellerId,
+        kind: change.kind,
+        detectedAt: toDate(change.detectedAt),
+        coolingOffUntil: change.coolingOffUntil === null ? null : toDate(change.coolingOffUntil),
+        sourceEventId: change.sourceEventId,
+      },
+    });
+    return 'recorded';
+  }
+
+  async changesOf(
+    market: MarketContext,
+    sellerId: string,
+    limit: number,
+  ): Promise<readonly PayoutChangeRecord[]> {
+    const rows = await this.prisma.tx(market).paymentsPayoutAccountChange.findMany({
+      where: { marketId: market.marketId, sellerId },
+      orderBy: [{ detectedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      kind: row.kind as ChangeKind,
+      detectedAt: toInstant(row.detectedAt),
+      coolingOffUntil: optionalInstant(row.coolingOffUntil),
+    }));
+  }
+
+  async markRepause(
+    market: MarketContext,
+    sellerId: string,
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
+      where: { marketId: market.marketId, sellerId },
+      data: {
+        payoutScheduleApplied: 'normal',
+        payoutScheduleRevision: { increment: 1 },
+        updatedAt: toDate(at),
+      },
+    });
+    return updated.count === 1;
+  }
+
+  async dueForScheduleSync(
+    market: MarketContext,
+    now: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly ConnectedAccountRecord[]> {
+    const rows = await this.prisma.tx(market).paymentsConnectedAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        accountRef: { not: null },
+        OR: [
+          // Paused now, not yet manual at Stripe.
+          {
+            payoutsPausedUntil: { gt: toDate(now) },
+            OR: [{ payoutScheduleApplied: null }, { payoutScheduleApplied: 'normal' }],
+          },
+          // Not paused any more, still manual at Stripe.
+          {
+            payoutScheduleApplied: 'manual',
+            OR: [{ payoutsPausedUntil: null }, { payoutsPausedUntil: { lte: toDate(now) } }],
+          },
+        ],
+      },
+      orderBy: [{ updatedAt: 'asc' }, { sellerId: 'asc' }],
+      take: limit,
+    });
+    return rows.map(record);
+  }
+
+  async markScheduleApplied(
+    market: MarketContext,
+    sellerId: string,
+    applied: AppliedSchedule,
+    at: Temporal.Instant,
+    expected: { readonly lastChangeId: string; readonly revision: number },
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        lastChangeId: expected.lastChangeId,
+        payoutScheduleRevision: expected.revision,
+      },
+      data: { payoutScheduleApplied: applied, updatedAt: toDate(at) },
+    });
+    return updated.count === 1;
+  }
+
+  async bumpScheduleRevision(
+    market: MarketContext,
+    sellerId: string,
+    expectedRevision: number,
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
+      where: { marketId: market.marketId, sellerId, payoutScheduleRevision: expectedRevision },
+      data: { payoutScheduleRevision: { increment: 1 }, updatedAt: toDate(at) },
+    });
+    return updated.count === 1;
+  }
+
+  async list(
+    market: MarketContext,
+    status: AccountStatus | null,
+    page: AccountPage,
+  ): Promise<readonly ConnectedAccountRecord[]> {
+    const after = page.after;
+    const rows = await this.prisma.tx(market).paymentsConnectedAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        ...(status === null ? {} : { status }),
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { createdAt: { lt: toDate(after.createdAt) } },
+                { createdAt: toDate(after.createdAt), sellerId: { lt: after.sellerId } },
+              ],
+            }),
+      },
+      orderBy: [{ createdAt: 'desc' }, { sellerId: 'desc' }],
+      take: page.limit + 1,
+    });
+    return rows.map(record);
   }
 }

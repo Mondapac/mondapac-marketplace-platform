@@ -137,6 +137,11 @@ describe('loadMarketConfigs', () => {
     ['a default locale that is not supported', { supportedLocales: ['mi-NZ'] }, /supportedLocales/],
     ['an unknown status', { status: 'live' }, /status/],
     ['an unknown field', { vatRate: 0.15 }, /vatRate|Unrecognized/],
+    [
+      'a connected-account country without a payout schedule',
+      { payments: { connectedAccountCountry: 'NZ', bankChangeCoolingOffHours: 24 } },
+      /payments\.payoutSchedule/,
+    ],
     ['a code that differs from the file name', { code: 'QX' }, /must match the file name/],
     ['no request limits', { requestLimits: undefined }, /requestLimits/],
     [
