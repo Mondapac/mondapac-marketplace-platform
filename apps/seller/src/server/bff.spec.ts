@@ -613,3 +613,32 @@ describe('relay of the payout account', () => {
     expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
   });
 });
+
+describe('relay of the seller order routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/ordering/seller/orders${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+  const list = ['ordering', 'seller', 'orders'];
+
+  it('lists orders and forwards only limit and cursor', async () => {
+    const upstream = upstreamOk();
+    expect((await relay(config, get('?limit=20&cursor=c1&x=1'), list, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/seller/orders?limit=20&cursor=c1',
+    );
+  });
+
+  it('posts ship and deliver by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    for (const action of ['ship', 'deliver']) {
+      const path = [...list, ID, action];
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+    }
+    for (const path of [[...list, 'x', 'ship'], [...list, ID, 'cancel'], [...list, ID], list]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    }
+  });
+});
