@@ -40,6 +40,10 @@ export type OfferRefusal =
   | { readonly code: 'offer.description-invalid' }
   | { readonly code: 'offer.not-editable' };
 
+/** Why `setHandling` was refused. */
+type OfferHandlingRefusal =
+  { readonly code: 'offer.handling-invalid' } | { readonly code: 'offer.not-editable' };
+
 /** Why a status transition (submit, approve, request changes, delete) was refused. */
 export type OfferTransitionRefusal =
   | { readonly code: 'offer.not-submittable' }
@@ -239,6 +243,48 @@ export class Offer {
     });
     this.#pendingHistory = { changeKind: 'edited', changedFields: changed, occurredAt: input.now };
     return ok(changed);
+  }
+
+  /**
+   * The seller's record of how the Offer's goods are handled (`own-offer.set-handling`, design
+   * 4.4, 8.2; B1: a command of its own, never part of `edit`). Allowed on an Offer that is not
+   * yet published, with the same return to `draft` as `edit`. A published Offer is refused until
+   * the tag re-asking of slice 8 exists (fail closed: a handling change must reach
+   * `evaluateClaims`). Answers the changed field ids (`['handling']` or none); a draft that
+   * already holds the value stores nothing and leaves the version alone.
+   */
+  setHandling(input: {
+    readonly handling: OfferHandling;
+    readonly now: Temporal.Instant;
+  }): Result<readonly string[], OfferHandlingRefusal> {
+    const state = this.#state;
+    if (
+      state.status !== 'draft' &&
+      state.status !== 'changes-needed' &&
+      state.status !== 'pending-first-publish'
+    ) {
+      return err({ code: 'offer.not-editable' });
+    }
+    if (!(OFFER_HANDLINGS as readonly unknown[]).includes(input.handling)) {
+      return err({ code: 'offer.handling-invalid' });
+    }
+    const changed = input.handling !== state.handling;
+    if (!changed && state.status === 'draft') return ok([]);
+    if (this.#pendingHistory !== null)
+      throw new Error('setHandling: the Offer already has a change');
+    this.#state = Object.freeze({
+      ...state,
+      handling: input.handling,
+      status: 'draft',
+      submittedAt: null,
+      version: state.version + 1,
+    });
+    this.#pendingHistory = {
+      changeKind: 'edited',
+      changedFields: changed ? ['handling'] : [],
+      occurredAt: input.now,
+    };
+    return ok(changed ? ['handling'] : []);
   }
 
   /**

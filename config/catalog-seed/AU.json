@@ -1,0 +1,233 @@
+{
+  "market": "AU",
+  "note": "Starter catalog seed for the launch Market (catalog design 7.2): plain grocery names, because every name is claim-checked. Extend at slice 21; a run only creates what is missing.",
+  "categories": [
+    {
+      "slug": "pantry",
+      "parentSlug": null,
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Pantry"
+        }
+      ]
+    },
+    {
+      "slug": "rice-and-grains",
+      "parentSlug": "pantry",
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Rice and grains"
+        }
+      ]
+    },
+    {
+      "slug": "spices-and-seasonings",
+      "parentSlug": "pantry",
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Spices and seasonings"
+        }
+      ]
+    },
+    {
+      "slug": "oils-and-sauces",
+      "parentSlug": "pantry",
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Oils and sauces"
+        }
+      ]
+    },
+    {
+      "slug": "meat-and-poultry",
+      "parentSlug": null,
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Meat and poultry"
+        }
+      ]
+    },
+    {
+      "slug": "dairy-and-eggs",
+      "parentSlug": null,
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Dairy and eggs"
+        }
+      ]
+    },
+    {
+      "slug": "bakery",
+      "parentSlug": null,
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Bakery"
+        }
+      ]
+    },
+    {
+      "slug": "sweets-and-snacks",
+      "parentSlug": null,
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Sweets and snacks"
+        }
+      ]
+    },
+    {
+      "slug": "drinks",
+      "parentSlug": null,
+      "verticalRootCode": null,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Drinks"
+        }
+      ]
+    }
+  ],
+  "attributes": {
+    "definitions": [
+      {
+        "code": "brand",
+        "dataType": "text",
+        "localizable": false,
+        "material": false,
+        "isVariantOption": false,
+        "bounds": {
+          "maxLength": 80
+        },
+        "names": {
+          "en-AU": "Brand"
+        },
+        "options": []
+      },
+      {
+        "code": "description",
+        "dataType": "long-text",
+        "localizable": true,
+        "material": false,
+        "isVariantOption": false,
+        "bounds": {
+          "maxLength": 2000
+        },
+        "names": {
+          "en-AU": "Description"
+        },
+        "options": []
+      },
+      {
+        "code": "country-of-origin",
+        "dataType": "text",
+        "localizable": false,
+        "material": false,
+        "isVariantOption": false,
+        "bounds": {
+          "maxLength": 80
+        },
+        "names": {
+          "en-AU": "Country of origin"
+        },
+        "options": []
+      },
+      {
+        "code": "pack-size",
+        "dataType": "select",
+        "localizable": false,
+        "material": false,
+        "isVariantOption": true,
+        "bounds": {},
+        "names": {
+          "en-AU": "Pack size"
+        },
+        "options": [
+          {
+            "code": "g250",
+            "labels": {
+              "en-AU": "250 g"
+            },
+            "active": true,
+            "position": 0
+          },
+          {
+            "code": "g500",
+            "labels": {
+              "en-AU": "500 g"
+            },
+            "active": true,
+            "position": 1
+          },
+          {
+            "code": "kg1",
+            "labels": {
+              "en-AU": "1 kg"
+            },
+            "active": true,
+            "position": 2
+          },
+          {
+            "code": "kg5",
+            "labels": {
+              "en-AU": "5 kg"
+            },
+            "active": true,
+            "position": 3
+          }
+        ]
+      }
+    ],
+    "families": [
+      {
+        "code": "default",
+        "groups": [
+          {
+            "groupCode": "general",
+            "attributes": [
+              {
+                "code": "brand",
+                "required": true,
+                "isVariantOption": false
+              },
+              {
+                "code": "description",
+                "required": true,
+                "isVariantOption": false
+              }
+            ]
+          },
+          {
+            "groupCode": "details",
+            "attributes": [
+              {
+                "code": "country-of-origin",
+                "required": false,
+                "isVariantOption": false
+              },
+              {
+                "code": "pack-size",
+                "required": false,
+                "isVariantOption": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

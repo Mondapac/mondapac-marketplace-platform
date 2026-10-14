@@ -4,6 +4,7 @@ import type {
   SeededDefinition,
   SeededFamily,
 } from '../../application/ports/attribute-seed';
+import { loadFileCatalogSeeds } from './file-catalog-seed';
 import { ZZ_ATTRIBUTE_DEFINITIONS, ZZ_ATTRIBUTE_FAMILIES } from './zz.attributes.seed';
 
 /** A seed that breaks a rule of catalog design 7.2: refused at boot and by the unit test. */
@@ -14,10 +15,14 @@ interface MarketAttributeSeed {
   readonly families: readonly SeededFamily[];
 }
 
-/** The checked-in seeds, by Market id. A Market with none has no attributes until slice 21. */
-const SEEDS: Readonly<Record<string, MarketAttributeSeed>> = {
+/**
+ * The checked-in seeds, by Market id: the fixture Market in code, every other Market from its
+ * `config/catalog-seed/<MARKET>.json`. A Market with none has no attributes until slice 21.
+ */
+const defaultSeeds = (): Readonly<Record<string, MarketAttributeSeed>> => ({
+  ...loadFileCatalogSeeds().attributes,
   ZZ: { definitions: ZZ_ATTRIBUTE_DEFINITIONS, families: ZZ_ATTRIBUTE_FAMILIES },
-};
+});
 
 /**
  * Checks one Market's seed: a definition code appears once, a family code appears once, and
@@ -52,7 +57,7 @@ export function assertAttributeSeed(seed: MarketAttributeSeed): void {
 export class CheckedInAttributeSeed implements AttributeSeed {
   readonly #seeds: Readonly<Record<string, MarketAttributeSeed>>;
 
-  constructor(seeds: Readonly<Record<string, MarketAttributeSeed>> = SEEDS) {
+  constructor(seeds: Readonly<Record<string, MarketAttributeSeed>> = defaultSeeds()) {
     this.#seeds = seeds;
     for (const seed of Object.values(seeds)) assertAttributeSeed(seed);
   }
