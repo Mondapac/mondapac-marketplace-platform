@@ -1,6 +1,7 @@
 import { ACCESS_DENIED_STATUS, type AccessDenied } from '../../../platform/authz';
 import type { AccountStatusFailure } from '../application/accounts/account-status';
 import type { AssignAdminRoleFailure } from '../application/use-cases/assign-admin-role.use-case';
+import type { FindCustomerAccountFailure } from '../application/use-cases/find-customer-account.use-case';
 import type { InviteAdminFailure } from '../application/use-cases/invite-admin.use-case';
 import type { ResendAdminInvitationFailure } from '../application/use-cases/resend-admin-invitation.use-case';
 import type { ResetOtherAdminSecondFactorFailure } from '../application/use-cases/reset-other-admin-second-factor.use-case';
@@ -19,6 +20,7 @@ type Code =
   | RevokeAdminInvitationFailure['code']
   | AccountStatusFailure['code']
   | ResetOtherAdminSecondFactorFailure['code']
+  | FindCustomerAccountFailure['code']
   | AccessDenied['code'];
 
 /** Every code, with the status identity design 5.2 and Mohammad's Q3 ruling give it. */
@@ -31,6 +33,7 @@ const EXPECTED: Readonly<Record<Code, number>> = {
   'member.outranks-actor': 403,
   'role.not-grantable': 403,
   'account.unknown': 404,
+  'customer.not-found': 404,
   'role.unknown': 404,
   'invitation.unknown': 404,
   'member.last-holder': 409,

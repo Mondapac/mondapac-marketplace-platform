@@ -168,6 +168,7 @@ export class PrismaOfferRepository implements OfferRepository {
           sellerSku: state.sellerSku,
           conditionCode: state.conditionCode,
           description: { ...state.description },
+          handling: state.handling,
           status: state.status,
           listed: state.listed,
           submittedAt: state.submittedAt === null ? null : toDate(state.submittedAt),

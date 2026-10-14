@@ -13,7 +13,8 @@
     "team": "Roles & permissions",
     "sellers": "Sellers",
     "price-holds": "Held prices",
-    "offer-reviews": "Offer reviews"
+    "offer-reviews": "Offer reviews",
+    "payout-accounts": "Connected accounts"
   },
   "home": {
     "title": "Home",
@@ -793,5 +794,72 @@
   },
   "load": {
     "retry": "Try again"
+  },
+  "payments": {
+    "accounts": {
+      "title": "Connected accounts",
+      "intro": "The Stripe payout accounts of the sellers, newest first. Read-only.",
+      "no-access": "You don't have access to connected accounts.",
+      "no-access-title": "You don't have access to this page",
+      "not-found": "We couldn't find a connected account for this seller.",
+      "not-found-title": "Account not found",
+      "back-home": "Back to home",
+      "tabs": "Connected account statuses",
+      "tab": {
+        "all": "All"
+      },
+      "status": {
+        "not-started": "Not started",
+        "pending": "Pending",
+        "enabled": "Enabled",
+        "restricted": "Restricted",
+        "rejected": "Rejected",
+        "unknown": "Unknown"
+      },
+      "col": {
+        "seller": "Seller",
+        "status": "Status",
+        "ready": "Ready",
+        "requirements": "Details due",
+        "cooling-off": "Waiting period until",
+        "paused": "Payouts paused",
+        "last-read": "Last checked",
+        "cooling-off-utc": "Waiting until (UTC)",
+        "last-read-utc": "Last checked (UTC)"
+      },
+      "unnamed": "Unnamed seller",
+      "yes": "Yes",
+      "no": "No",
+      "past-due": "Past due",
+      "loading": "Loading connected accounts...",
+      "more": "Show more",
+      "empty": {
+        "all": "No connected accounts yet. They appear here when a seller starts connecting a payout account.",
+        "status": "No connected accounts with this status."
+      },
+      "error": {
+        "unavailable": "We couldn't load the connected accounts. Try again."
+      },
+      "field": {
+        "past-due": "Past due",
+        "created": "Created"
+      },
+      "change": {
+        "initial": "First bank account added",
+        "added": "Bank account added",
+        "updated": "Bank account updated",
+        "removed": "Bank account removed",
+        "unknown": "Change"
+      },
+      "detail": {
+        "page-title": "Connected account",
+        "title": "Account",
+        "changes": "Change history",
+        "no-changes": "No changes recorded.",
+        "past-due": "Stripe is waiting for details that were due already. Payouts may stop until the seller adds them.",
+        "back": "Back to connected accounts",
+        "past-due-title": "Requirements past due"
+      }
+    }
   }
 }

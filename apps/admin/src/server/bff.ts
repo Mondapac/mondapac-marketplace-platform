@@ -13,7 +13,7 @@ import type { PanelConfig, PanelHost } from './config.ts';
 
 /** The paths this panel may reach, by method (its own population's identity routes). */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
-  GET: new Set(['identity/admin/session']),
+  GET: new Set(['identity/admin/session', 'payments/admin/connected-accounts']),
   PUT: new Set([]),
   DELETE: new Set([]),
   POST: new Set([
@@ -53,6 +53,26 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: ['identity/admin/roles/:id', 'sellers/admin/:id/review/manual-register-check'],
   DELETE: ['identity/admin/roles/:id'],
 };
+
+/** The only GET paths whose query string crosses to the API, and the keys that may cross. */
+const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  'payments/admin/connected-accounts': ['status', 'cursor'],
+};
+const QUERY_VALUE_MAX = 512;
+
+/** The allowed keys of the request's query, capped in length; everything else is dropped. */
+function upstreamQuery(method: string, target: string, requestUrl: string): string {
+  const keys = method === 'GET' ? QUERY_KEYS[target] : undefined;
+  if (keys === undefined) return '';
+  const source = new URL(requestUrl).searchParams;
+  const kept = new URLSearchParams();
+  for (const key of keys) {
+    const value = source.get(key);
+    if (value !== null && value.length <= QUERY_VALUE_MAX) kept.set(key, value);
+  }
+  const text = kept.toString();
+  return text === '' ? '' : `?${text}`;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -206,13 +226,16 @@ export async function relay(
   }
   let upstream: Response;
   try {
-    upstream = await fetchImpl(`${config.apiBaseUrl}/${target}`, {
-      method: request.method,
-      headers: outgoing,
-      ...(body === undefined ? {} : { body }),
-      redirect: 'manual',
-      cache: 'no-store',
-    });
+    upstream = await fetchImpl(
+      `${config.apiBaseUrl}/${target}${upstreamQuery(request.method, target, request.url)}`,
+      {
+        method: request.method,
+        headers: outgoing,
+        ...(body === undefined ? {} : { body }),
+        redirect: 'manual',
+        cache: 'no-store',
+      },
+    );
   } catch {
     log({
       msg: 'panel.relay.upstream-unreachable',

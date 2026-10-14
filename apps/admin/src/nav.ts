@@ -24,6 +24,12 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'payout-accounts',
+      labelKey: 'nav.payout-accounts',
+      href: '/payout-accounts',
+      anyOf: ['payments.connected-account.view'],
+    },
+    {
       id: 'team',
       labelKey: 'nav.team',
       href: '/team',

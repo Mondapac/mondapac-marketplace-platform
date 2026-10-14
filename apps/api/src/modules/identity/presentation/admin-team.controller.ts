@@ -47,6 +47,7 @@ import { DisableAdminAccount } from '../application/use-cases/disable-admin-acco
 import { DisableCustomerAccount } from '../application/use-cases/disable-customer-account.use-case';
 import { EnableAdminAccount } from '../application/use-cases/enable-admin-account.use-case';
 import { EnableCustomerAccount } from '../application/use-cases/enable-customer-account.use-case';
+import { FindCustomerAccount } from '../application/use-cases/find-customer-account.use-case';
 import { InviteAdmin } from '../application/use-cases/invite-admin.use-case';
 import {
   ListAdminTeam,
@@ -64,6 +65,8 @@ import { adminBody, adminClient } from './admin.answer';
 import {
   AdminAccountStatusChanged,
   AdminAssignRoleRequest,
+  AdminCustomerLookupRequest,
+  AdminCustomerView,
   AdminEmptyRequest,
   AdminInvitationChanged,
   AdminInvitationIssued,
@@ -88,6 +91,7 @@ import { catalogueView, roleBody, rolePathId, roleRefusal } from './role-editor.
 export const ADMIN_TEAM_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'account.unknown': 404,
+  'customer.not-found': 404,
   'role.unknown': 404,
   'invitation.unknown': 404,
   'member.self': 403,
@@ -221,6 +225,7 @@ export class AdminTeamController {
     private readonly enableAdminAccount: EnableAdminAccount,
     private readonly disableCustomerAccount: DisableCustomerAccount,
     private readonly enableCustomerAccount: EnableCustomerAccount,
+    private readonly findCustomerAccount: FindCustomerAccount,
     private readonly resetOtherAdminSecondFactor: ResetOtherAdminSecondFactor,
     private readonly listAdminTeam: ListAdminTeam,
     private readonly listPlatformRoles: ListPlatformRoles,
@@ -702,6 +707,44 @@ export class AdminTeamController {
       this.enableAdminAccount.execute(context, { accountId }),
     );
     return this.settle('identity.admin-enable-admin', context, outcome);
+  }
+
+  @Post('customers/lookup')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Find a customer account by exact email',
+    description:
+      'Needs identity.customer-account.view. Exact match on the address as normalised at ' +
+      'sign-in; no partial search. An unknown address and one outside the Market give the same ' +
+      'customer.not-found. A POST so the address stays out of URLs and access logs. Not cached.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: AdminCustomerLookupRequest })
+  @ApiOkResponse({ type: AdminCustomerView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'customer.not-found' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  async lookupCustomer(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<AdminCustomerView> {
+    const input = adminBody(request, body, ['email'] as const);
+    let outcome: AdminCustomerView | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.findCustomerAccount.execute(context, { email: input.email });
+      outcome = result.ok
+        ? { ...result.value, createdAt: result.value.createdAt.toString() }
+        : refusal(result.error);
+    }
+    // Personal data: never stored by a cache.
+    response.setHeader('Cache-Control', 'no-store');
+    return this.settle('identity.admin-find-customer', context, outcome);
   }
 
   @Post('customers/:accountId/disable')
