@@ -278,7 +278,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 4],
       ['platform', 'default', 'operations-support', 5],
       ['platform', 'default', 'finance', 2],
-      ['platform', 'default', 'viewer', 6],
+      ['platform', 'default', 'viewer', 7],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 3],
       ['seller', 'default', 'order-fulfilment', 0],
