@@ -16,7 +16,7 @@ import { OBSERVED_REGISTER_OUTCOMES } from '../review-check';
 export const SELLER_TARGET = 'sellers.seller';
 
 /** What a decrypting read was for (design 9, Hassan M4). */
-export const BUSINESS_DETAILS_READ_KINDS = ['review'] as const;
+export const BUSINESS_DETAILS_READ_KINDS = ['review', 'reviewer-details'] as const;
 export type BusinessDetailsReadKind = (typeof BUSINESS_DETAILS_READ_KINDS)[number];
 
 /**
