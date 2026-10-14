@@ -12,6 +12,7 @@ import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/orde
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
+import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
 import { SHIPPING_FACADE } from '../src/modules/shipping';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -24,6 +25,7 @@ import {
   FakeCart,
   FakeGateway,
   FakeInventory,
+  FakeCommission,
   FakeShipping,
   MemoryOrders,
 } from './support/ordering-fakes';
@@ -134,7 +136,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(CART_CHECKOUT_FACADE)
           .useValue(cart)
           .overrideProvider(SHIPPING_FACADE)
-          .useValue(shipping),
+          .useValue(shipping)
+          .overrideProvider(COMMISSION_PAYOUTS_FACADE)
+          .useValue(new FakeCommission()),
     }));
   });
   afterEach(async () => {

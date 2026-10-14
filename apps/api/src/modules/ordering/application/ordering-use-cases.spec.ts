@@ -11,6 +11,7 @@ import {
   FakeCart,
   FakeGateway,
   FakeInventory,
+  FakeCommission,
   FakeShipping,
   MemoryOrders,
 } from '../../../../test/support/ordering-fakes';
@@ -28,6 +29,7 @@ import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
+import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
@@ -80,6 +82,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let inventory: FakeInventory;
   let cart: FakeCart;
   let shipping: FakeShipping;
+  let commission: FakeCommission;
   let deps: OrderingDependencies;
 
   const line = (
@@ -105,6 +108,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     inventory = new FakeInventory();
     cart = new FakeCart();
     shipping = new FakeShipping();
+    commission = new FakeCommission();
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
     shipping.fees.set(SELLER_B, money(0n, currency));
@@ -121,6 +125,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       cart,
       inventory,
       shipping,
+      commission,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -846,6 +851,95 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         ok: false,
         error: { code: 'access.denied' },
       });
+    });
+  });
+
+  describe('commission and the seller ledger', () => {
+    it("freezes each seller's rate on its lines at placement; a later change does not touch them", async () => {
+      commission.rates.set(SELLER_A, 1000);
+      const order = await placed();
+      const rateOf = (sellerId: Id<'Seller'>) => {
+        const sellerOrder = order.sellerOrders.find((s) => s.sellerId === sellerId)!;
+        return order.lines
+          .filter((l) => l.sellerOrderId === sellerOrder.id)
+          .map((l) => l.commissionRateBps);
+      };
+      expect(rateOf(SELLER_A)).toEqual([1000, 1000]);
+      expect(rateOf(SELLER_B)).toEqual([1500]);
+      expect(order.sellerOrders.map((s) => s.ledgerState)).toEqual(['pending', 'pending']);
+
+      commission.rates.set(SELLER_A, 2500);
+      commission.marketRateBps = 500;
+      expect(
+        orders.rows
+          .get(order.id)!
+          .lines.map((l) => l.commissionRateBps)
+          .sort(),
+      ).toEqual([1000, 1000, 1500]);
+    });
+
+    it('opens no order when the rates cannot be read (fail closed)', async () => {
+      commission.down = true;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(orders.rows.size).toBe(0);
+      expect(inventory.reserved).toEqual([]);
+      expect(gateway.sessions).toEqual([]);
+    });
+
+    it('sends each paid seller order to the ledger through the worker, once, and retries a refusal', async () => {
+      const record = () => new RecordLedger(gate, deps).execute(system, {});
+      const order = await placed();
+
+      // Not paid yet: nothing goes to the ledger.
+      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+
+      commission.recordFails = { code: 'commission-payouts.rate-unavailable' };
+      expect(await record()).toMatchObject({ ok: true, value: { recorded: 0 } });
+      commission.recordFails = null;
+      expect(await record()).toEqual(ok({ recorded: 2, failed: [] }));
+
+      const stored = orders.rows.get(order.id)!;
+      expect(stored.sellerOrders.map((s) => s.ledgerState)).toEqual(['recorded', 'recorded']);
+      const sellerA = stored.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      const sent = commission.recorded.find((r) => r.sellerOrderId === sellerA.id)!;
+      expect(sent).toMatchObject({
+        orderId: order.id,
+        sellerId: SELLER_A,
+        currency,
+        shipping: 500n,
+      });
+      expect(sent.paidAt.equals(stored.confirmedAt!)).toBe(true);
+      expect(sent.lines.map((l) => [l.lineAmount, l.taxInclusive, l.commissionRateBps])).toEqual(
+        stored.lines
+          .filter((l) => l.sellerOrderId === sellerA.id)
+          .map((l) => [l.lineAmount, l.taxInclusive, 1500]),
+      );
+
+      // Marked, so the next run finds nothing; only the system actor may run it.
+      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(commission.recorded).toHaveLength(2);
+      expect(await new RecordLedger(gate, deps).execute(customer, {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('refuses a seller order whose lines carry no frozen rate', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        lines: stored.lines.map((l) => ({ ...l, commissionRateBps: null })),
+      });
+      const result = await new RecordLedger(gate, deps).execute(system, {});
+      expect(result).toMatchObject({ ok: true, value: { recorded: 0 } });
+      expect(result.ok && result.value.failed.map((f) => f.code)).toEqual([
+        'ordering.rate-not-frozen',
+        'ordering.rate-not-frozen',
+      ]);
+      expect(commission.recorded).toEqual([]);
     });
   });
 });

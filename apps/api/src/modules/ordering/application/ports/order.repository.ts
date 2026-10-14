@@ -96,6 +96,12 @@ export interface OrderRepository {
     limit: number,
   ): Promise<readonly SellerOrderRecord[]>;
 
+  /** Paid seller orders not yet in the seller ledger, oldest payment first. */
+  findUnrecordedLedger(market: MarketContext, limit: number): Promise<readonly SellerOrderRecord[]>;
+
+  /** Marks the seller order as written into the ledger (once; a second call changes nothing). */
+  markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<void>;
+
   /** Marks the lines as recorded in inventory (once; a second call changes nothing). */
   markInventoryRecorded(
     market: MarketContext,

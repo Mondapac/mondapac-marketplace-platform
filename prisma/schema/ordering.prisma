@@ -67,6 +67,10 @@ model OrderingSellerOrder {
   deliveredAt         DateTime?           @map("delivered_at") @db.Timestamptz(6)
   /// Set by the worker once inventory has recorded the lines as shipped.
   inventoryRecordedAt DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
+  /// pending, recorded or not-applicable (CHECK): whether the worker has written the seller
+  /// order into the seller ledger (commission-payouts). Orders placed before the commission rate
+  /// was frozen on their lines are not-applicable.
+  ledgerState         String              @map("ledger_state")
   order               OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines               OrderingOrderLine[]
 
@@ -93,6 +97,9 @@ model OrderingOrderLine {
   taxInclusive      Boolean             @map("tax_inclusive")
   /// The reservation line this order line commits.
   reservationLineId String              @map("reservation_line_id") @db.Uuid
+  /// The commission rate in basis points, frozen when the order was placed (COM-04); null only
+  /// on lines placed before the rate was frozen.
+  commissionRateBps Int?                @map("commission_rate_bps")
   order             OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   sellerOrder       OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 

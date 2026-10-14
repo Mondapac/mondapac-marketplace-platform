@@ -1,0 +1,54 @@
+// The commission-payouts module's tables (Phase 5 package 5, simplified for speed mode). Every
+// model is named CommissionPayouts<Name> and mapped to its table with @@map. The CHECKs, the
+// insert-only guard and the grants are hand-written in the migration. Money is minor units
+// (BigInt) plus a currency; a rate is a whole number of basis points (1500 = 15 %).
+
+/// A seller's own commission rate, set by an admin; it replaces the Market rate (Market config)
+/// for orders placed after the change. A seller without a row is on the Market rate.
+model CommissionPayoutsSellerCommissionRate {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  sellerId  String   @map("seller_id") @db.Uuid
+  tenantId  String   @map("tenant_id")
+  /// 0 to 3000 basis points (CHECK).
+  rateBps   Int      @map("rate_bps")
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last set it (a plain id, no foreign key).
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  @@id([marketId, sellerId])
+  @@map("seller_commission_rates")
+  @@schema("commission_payouts")
+}
+
+/// The seller ledger: one row per money fact of a seller (`sale` and `shipping` are credits,
+/// `commission` is a debit). Insert-only: a trigger refuses UPDATE, DELETE and TRUNCATE and the
+/// application role holds only SELECT and INSERT. A hand-written unique index on
+/// (market_id, seller_order_id, kind, order_line_id) NULLS NOT DISTINCT stops a fact being
+/// written twice.
+model CommissionPayoutsLedgerEntry {
+  id            String   @id @db.Uuid
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  sellerId      String   @map("seller_id") @db.Uuid
+  /// ordering ids (plain, no foreign key across schemas).
+  orderId       String   @map("order_id") @db.Uuid
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  /// Null for `shipping` only (CHECK).
+  orderLineId   String?  @map("order_line_id") @db.Uuid
+  /// sale, shipping or commission (CHECK).
+  kind          String
+  /// Minor units of `currency`, never negative (CHECK); the kind gives the direction.
+  amount        BigInt
+  currency      String   @db.VarChar(3)
+  /// `commission` only: the rate frozen on the order line and the base (line amount without GST).
+  rateBps       Int?     @map("rate_bps")
+  baseAmount    BigInt?  @map("base_amount")
+  /// When the fact happened (the payment confirmed the order).
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@index([marketId, sellerId, recordedAt(sort: Desc), id(sort: Desc)])
+  @@index([marketId, sellerOrderId])
+  @@map("ledger_entries")
+  @@schema("commission_payouts")
+}
