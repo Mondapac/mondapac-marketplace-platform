@@ -166,15 +166,14 @@ export class RemoveTeamMember extends UseCase<
         );
         await this.deps.challenges.voidAllOf(market, input.accountId);
         await this.deps.outbox.append(context, membership.pendingEvents);
-        if (assignment !== null) {
-          await this.deps.audit.record(
-            context,
-            SellerMemberRemovedAudit.entry(input.accountId, {
-              before: { roleId: assignment.state.roleId },
-              after: { sellerId },
-            }),
-          );
-        }
+        // Always audited, even for a member stored without an assignment (Hassan L1).
+        await this.deps.audit.record(
+          context,
+          SellerMemberRemovedAudit.entry(input.accountId, {
+            before: { roleId: assignment?.state.roleId ?? null },
+            after: { sellerId },
+          }),
+        );
         return ok({ code: 'member.removed', accountId: input.accountId, revokedSessions });
       },
       { isolation: 'serializable' },

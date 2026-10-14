@@ -346,7 +346,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "roleId": "id"
+      "roleId": "optional(id)"
     },
     "after": {
       "sellerId": "id"

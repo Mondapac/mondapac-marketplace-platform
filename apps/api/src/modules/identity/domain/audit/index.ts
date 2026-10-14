@@ -233,14 +233,14 @@ export const AccountRoleChangedAudit = defineAuditAction({
 
 /**
  * The Seller Owner removed a member from the team (identity design 2.1, R4; slice 11). Target:
- * the removed account. `before` is the role it held; in the same unit its assignment was deleted,
+ * the removed account. `before` is the role it held (absent only for a member stored without one); in the same unit its assignment was deleted,
  * every session revoked and its open challenges voided. Ids only.
  */
 export const SellerMemberRemovedAudit = defineAuditAction({
   action: 'identity.seller-member.removed',
   targetType: 'identity.account',
   actors: ['authenticated'],
-  before: { roleId: auditField.id() },
+  before: { roleId: auditField.optional(auditField.id()) },
   after: { sellerId: auditField.id() },
 });
 
