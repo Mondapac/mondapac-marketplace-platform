@@ -20,6 +20,8 @@ import type { CartRepository } from './ports/cart.repository';
 import { verdictKey, type LineFactsSource, type LineVerdict } from './ports/line-facts';
 import { AddGuestItem } from './use-cases/add-guest-item.use-case';
 import { AddItem } from './use-cases/add-item.use-case';
+import { ClearOrderedLines } from './use-cases/clear-ordered-lines.use-case';
+import { ReadCheckoutLines } from './use-cases/read-checkout-lines.use-case';
 import { MergeGuestCart } from './use-cases/merge-guest-cart.use-case';
 import { RemoveGuestItem } from './use-cases/remove-guest-item.use-case';
 import { RemoveItem } from './use-cases/remove-item.use-case';
@@ -378,5 +380,46 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     expect(!asSeller.ok && asSeller.error.code).toBe('access.denied');
     expect(!asGuest.ok).toBe(true);
     expect(carts.rows.size).toBe(0);
+  });
+
+  it('gives ordering the lines with their verdicts, and fails closed when a check is down', async () => {
+    const add = new AddItem(gate, deps);
+    await add.execute(customerCtx, { ...line, quantity: 2 });
+    await add.execute(customerCtx, { offerId: OFFER_B, variantId: VARIANT, quantity: 1 });
+    const read = new ReadCheckoutLines(gate, deps);
+
+    const lines = await read.execute(customerCtx, {});
+    expect(
+      lines.ok && lines.value.map((l) => [l.offerId, l.quantity, l.state, l.sellerId]),
+    ).toEqual([
+      [OFFER, 2, 'buyable', SELLER],
+      [OFFER_B, 1, 'buyable', SELLER],
+    ]);
+    expect(lines.ok && lines.value[0]?.unitPrice).toEqual(money(1000n, currency));
+
+    factsDown = true;
+    const down = await read.execute(customerCtx, {});
+    expect(down.ok && down.value.every((l) => l.state === 'check-unavailable')).toBe(true);
+    expect(await read.execute(guestCtx, {})).toMatchObject({ ok: false });
+  });
+
+  it('clears only the ordered units, for the system actor, and a repeat does nothing', async () => {
+    const add = new AddItem(gate, deps);
+    await add.execute(customerCtx, { ...line, quantity: 2 });
+    await add.execute(customerCtx, { offerId: OFFER_B, variantId: VARIANT, quantity: 1 });
+    const system = testCallContext(market, 'system', 'cart-0004-abcd');
+    const clear = new ClearOrderedLines(gate, deps);
+
+    const first = await clear.execute(system, { accountId: ACCOUNT, units: [line] });
+    const again = await clear.execute(system, { accountId: ACCOUNT, units: [line] });
+    const nobody = await clear.execute(system, { accountId: id<'Account'>(99), units: [line] });
+
+    expect(first.ok && first.value.removed).toBe(1);
+    expect(again.ok && again.value.removed).toBe(0);
+    expect(nobody.ok && nobody.value.removed).toBe(0);
+    expect([...carts.rows.values()][0]?.lines.map((l) => l.offerId)).toEqual([OFFER_B]);
+    expect(await clear.execute(customerCtx, { accountId: ACCOUNT, units: [line] })).toMatchObject({
+      ok: false,
+    });
   });
 });

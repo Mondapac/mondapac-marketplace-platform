@@ -1,0 +1,291 @@
+import { err, ok, money } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  Id,
+  IdGenerator,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
+import type { CartCheckoutFacade } from '../../cart';
+import type {
+  InsufficientReason,
+  InventoryOrderingPort,
+  ReserveFailure,
+  ReserveResult,
+} from '../../inventory/contracts/ordering-port';
+import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import { cancelOrder, planOrder, type OrderLine, type OrderState } from '../domain/order';
+import type { CheckoutGateway } from './ports/checkout-gateway';
+import type { OrderingPolicy } from './ports/ordering-policy';
+import type { OrderRepository } from './ports/order.repository';
+
+export interface OrderingDependencies {
+  readonly unitOfWork: UnitOfWork;
+  readonly orders: OrderRepository;
+  readonly gateway: CheckoutGateway;
+  readonly policy: OrderingPolicy;
+  readonly cart: CartCheckoutFacade;
+  readonly inventory: InventoryOrderingPort;
+  readonly ids: IdGenerator;
+  readonly clock: Clock;
+}
+
+export type StartCheckoutFailure =
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'ordering.cart-empty' }
+  | { readonly code: 'ordering.cart-not-purchasable'; readonly lineIndexes: readonly number[] }
+  | { readonly code: 'ordering.check-unavailable' }
+  | {
+      readonly code: 'ordering.stock-insufficient';
+      readonly lines: readonly {
+        readonly offerId: Id<'Offer'>;
+        readonly variantId: Id<'Variant'>;
+        readonly reason: InsufficientReason;
+      }[];
+    }
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
+  | { readonly code: 'access.unavailable' }
+  | { readonly code: 'conflict.retry' }
+  | { readonly code: 'ordering.payment-unavailable' };
+
+export interface CheckoutStarted {
+  readonly orderId: Id<'Order'>;
+  readonly checkoutUrl: string;
+  readonly payBy: Temporal.Instant;
+  readonly total: ReturnType<typeof money>;
+}
+
+/** A lock timeout on reserve costs the holder's rate budget, so retry once at most. */
+const RESERVE_ATTEMPTS = 2;
+
+async function reserveWithRetry(
+  deps: OrderingDependencies,
+  context: CallContext,
+  orderId: Id<'Order'>,
+  lines: readonly { offerId: Id<'Offer'>; variantId: Id<'Variant'>; quantity: number }[],
+): Promise<Result<ReserveResult, ReserveFailure>> {
+  let last: Result<ReserveResult, ReserveFailure> = err({ code: 'conflict.retry' });
+  for (let attempt = 0; attempt < RESERVE_ATTEMPTS; attempt += 1) {
+    last = await deps.inventory.reserve(context, { checkoutRef: orderId, lines });
+    if (last.ok || last.error.code !== 'conflict.retry') return last;
+  }
+  return last;
+}
+
+/**
+ * `start-checkout`: the signed-in customer's cart becomes a pending order and a hosted payment
+ * page. In order: read the cart (price and stock verdicts), plan sellers and totals, reserve the
+ * stock for the whole checkout (all lines or none), store the order and its Stripe idempotency
+ * key, create the Checkout session, store its id. Nothing is captured here. Any failure after
+ * the reservation releases it and cancels the order.
+ */
+export async function startCheckout(
+  deps: OrderingDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+): Promise<Result<CheckoutStarted, StartCheckoutFailure>> {
+  const read = await deps.cart.checkoutLines(context);
+  if (!read.ok) {
+    return err(
+      read.error.code === 'access.denied'
+        ? { code: 'access.denied' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
+  const planned = planOrder(read.value, { maxLines: deps.policy.maxLines() });
+  if (!planned.ok) return err(planned.error);
+  const plan = planned.plan;
+
+  const orderId = deps.ids.next<'Order'>();
+  const urls = deps.policy.returnUrls(context.market, orderId);
+  if (urls === null) return err({ code: 'ordering.payment-unavailable' });
+
+  const reserved = await reserveWithRetry(
+    deps,
+    context,
+    orderId,
+    plan.sellers.flatMap((seller) =>
+      seller.lines.map(({ offerId, variantId, quantity }) => ({ offerId, variantId, quantity })),
+    ),
+  );
+  if (!reserved.ok) {
+    const failure = reserved.error;
+    switch (failure.code) {
+      case 'inventory.insufficient':
+        return err({ code: 'ordering.stock-insufficient', lines: failure.details.lines });
+      case 'request.throttled':
+        return err(failure);
+      case 'access.unavailable':
+        return err(failure);
+      case 'conflict.retry':
+        return err(failure);
+      case 'access.denied':
+        return err(failure);
+      default:
+        // Validation, batch size: the plan already respects them, so this is a fault.
+        return err({ code: 'ordering.check-unavailable' });
+    }
+  }
+  const reservation = reserved.value;
+  const reservationLine = new Map(
+    reservation.lines.map((line) => [`${line.offerId}/${line.variantId}`, line.reservationLineId]),
+  );
+
+  const now = deps.clock.now();
+  const payBy = now.add({ milliseconds: deps.policy.sessionTtlMs() });
+  const sellerOrders = plan.sellers.map((seller) => ({
+    id: deps.ids.next<'SellerOrder'>(),
+    seller,
+  }));
+  const lines: OrderLine[] = [];
+  for (const { id: sellerOrderId, seller } of sellerOrders) {
+    for (const line of seller.lines) {
+      const reservationLineId = reservationLine.get(`${line.offerId}/${line.variantId}`);
+      if (reservationLineId === undefined) {
+        await deps.inventory.releaseOwnReservation(context, {
+          reservationId: reservation.reservationId,
+        });
+        return err({ code: 'ordering.check-unavailable' });
+      }
+      lines.push({
+        id: deps.ids.next<'OrderLine'>(),
+        sellerOrderId,
+        offerId: line.offerId,
+        variantId: line.variantId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        lineAmount: line.unitPrice.amount * BigInt(line.quantity),
+        taxInclusive: line.taxInclusive,
+        reservationLineId,
+      });
+    }
+  }
+  const order: OrderState = {
+    id: orderId,
+    marketId: context.market.marketId,
+    accountId,
+    status: 'pending-payment',
+    cancelReason: null,
+    paymentState: 'none',
+    total: money(plan.total, plan.currency),
+    reservationId: reservation.reservationId,
+    stripeIdempotencyKey: `checkout-${orderId}`,
+    stripeSessionId: null,
+    stripePaymentIntentId: null,
+    paymentExpiresAt: payBy,
+    createdAt: now,
+    confirmedAt: null,
+    cancelledAt: null,
+    version: 1,
+    sellerOrders: sellerOrders.map(({ id, seller }) => ({
+      id,
+      sellerId: seller.sellerId,
+      subtotal: seller.subtotal,
+      shipping: 0n,
+      total: seller.subtotal,
+    })),
+    lines,
+  };
+
+  // The order, with its idempotency key, is stored before the provider is called.
+  const stored = await deps.unitOfWork.run<true, StartCheckoutFailure>(context.market, async () => {
+    await deps.orders.insert(context.market, order);
+    return ok(true as const);
+  });
+  if (!stored.ok) {
+    await deps.inventory.releaseOwnReservation(context, {
+      reservationId: reservation.reservationId,
+    });
+    return stored;
+  }
+
+  const session = await deps.gateway.createSession({
+    orderId,
+    marketId: context.market.marketId,
+    currency: plan.currency,
+    packages: sellerOrders.map(({ seller }, index) => ({
+      label: `MondaPac order, package ${index + 1}`,
+      amount: seller.subtotal,
+    })),
+    successUrl: urls.success,
+    cancelUrl: urls.cancel,
+    expiresAt: payBy,
+    idempotencyKey: order.stripeIdempotencyKey,
+  });
+  if (!session.ok) {
+    await abandon(deps, context, order, 'provider-failed');
+    await deps.inventory.releaseOwnReservation(context, {
+      reservationId: reservation.reservationId,
+    });
+    return err({ code: 'ordering.payment-unavailable' });
+  }
+
+  const linked = await deps.unitOfWork.run<true, StartCheckoutFailure>(context.market, async () => {
+    const fresh = await deps.orders.findById(context.market, orderId);
+    if (fresh === null) return err({ code: 'ordering.payment-unavailable' } as const);
+    const saved = await deps.orders.save(context.market, {
+      ...fresh,
+      stripeSessionId: session.value.sessionId,
+    });
+    return saved === 'saved' ? ok(true as const) : err({ code: 'conflict.retry' } as const);
+  });
+  if (!linked.ok) {
+    await deps.gateway.expireSession(session.value.sessionId);
+    await abandon(deps, context, order, 'provider-failed');
+    await deps.inventory.releaseOwnReservation(context, {
+      reservationId: reservation.reservationId,
+    });
+    return linked;
+  }
+
+  await supersedeOthers(deps, context, accountId, orderId);
+  return ok({ orderId, checkoutUrl: session.value.url, payBy, total: order.total });
+}
+
+/** Cancels the stored order after a failure that follows its insert. */
+async function abandon(
+  deps: OrderingDependencies,
+  context: CallContext,
+  order: OrderState,
+  reason: 'provider-failed',
+): Promise<void> {
+  await deps.unitOfWork.run<true, never>(context.market, async () => {
+    const fresh = await deps.orders.findById(context.market, order.id);
+    const cancelled = fresh === null ? null : cancelOrder(fresh, reason, 'none', deps.clock.now());
+    if (cancelled !== null) await deps.orders.save(context.market, cancelled);
+    return ok(true as const);
+  });
+}
+
+/**
+ * The customer's earlier unpaid orders can no longer be paid: their stock hold was replaced by
+ * this checkout's. Best effort; a late payment of an old session is voided when it arrives.
+ */
+async function supersedeOthers(
+  deps: OrderingDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  keep: Id<'Order'>,
+): Promise<void> {
+  const pending = await deps.unitOfWork.run<readonly OrderState[], never>(
+    context.market,
+    async () => ok(await deps.orders.findPending(context.market, accountId)),
+    { readOnly: true },
+  );
+  if (!pending.ok) return;
+  for (const old of pending.value.filter((order) => order.id !== keep)) {
+    const done = await deps.unitOfWork.run<boolean, never>(context.market, async () => {
+      const fresh = await deps.orders.findById(context.market, old.id);
+      const cancelled =
+        fresh === null
+          ? null
+          : cancelOrder(fresh, 'superseded', fresh.paymentState, deps.clock.now());
+      if (cancelled === null) return ok(false);
+      return ok((await deps.orders.save(context.market, cancelled)) === 'saved');
+    });
+    if (done.ok && done.value && old.stripeSessionId !== null) {
+      await deps.gateway.expireSession(old.stripeSessionId);
+    }
+  }
+}

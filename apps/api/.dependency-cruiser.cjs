@@ -26,6 +26,9 @@ const APPROVED_SELLER_ZONES_CONTRACT_FILE =
 // The file of `@NoMarketContext()` and the only files that may import it (design 8.2 rule 6,
 // CTO decision of slice 0 item 3): the guard reads the exemption, the health controller uses
 // it. Both files export only their own names (asserted in boundaries.spec.ts).
+// inventory's ordering port: importable by ordering only (rule inventory-ordering-port-is-for-ordering).
+const INVENTORY_ORDERING_PORT_FILE = '^src/modules/inventory/contracts/ordering-port\\.ts$';
+
 const MARKET_EXEMPTION_FILE = '^src/platform/market-context/no-market-context\\.decorator\\.ts$';
 const MARKET_EXEMPTION_IMPORTERS = [
   '^src/platform/market-context/market-context\\.guard\\.ts$',
@@ -311,6 +314,7 @@ module.exports = {
           '^src/modules/[^/]+/index\\.ts$',
           SELLER_ACCESS_CONTRACT_FILE,
           APPROVED_SELLER_ZONES_CONTRACT_FILE,
+          INVENTORY_ORDERING_PORT_FILE,
         ],
       },
     },
