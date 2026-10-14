@@ -104,7 +104,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 3 adds `pricing.price-hold.view` (pricing design 5.3, slice 4). Version 4 adds
     // `catalog.product.view`, an unprotected `view` key of the platform scope (catalog design 8.1).
     // Version 5 adds `ordering.order.view`, likewise unprotected (Phase 5 package 1).
-    seedVersion: 5,
+    // Version 6 adds `shipping.flat-fee.view`, likewise unprotected (Phase 5 package 4).
+    seedVersion: 6,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -115,6 +116,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'sellers.seller.view',
       'pricing.price-hold.view',
       'ordering.order.view',
+      'shipping.flat-fee.view',
     ],
   },
 ];

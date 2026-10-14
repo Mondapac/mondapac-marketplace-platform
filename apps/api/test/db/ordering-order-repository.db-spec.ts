@@ -3,6 +3,7 @@ import type { MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
+import { markDelivered, markShipped } from '../../src/modules/ordering/domain/order';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { TEST_MARKETS } from '../support/test-config';
@@ -76,6 +77,12 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           subtotal: 2500n,
           shipping: 0n,
           total: 2500n,
+          fulfilment: 'to-ship',
+          carrier: null,
+          trackingRef: null,
+          shippedAt: null,
+          deliveredAt: null,
+          inventoryRecordedAt: null,
         },
       ],
       lines: [
@@ -238,8 +245,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
 
     expect(
       await attempt(
-        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, total_amount)
-         VALUES ($1, $2, $3, $4, $5, 100, 0, 1)`,
+        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, total_amount, fulfilment)
+         VALUES ($1, $2, $3, $4, $5, 100, 0, 1, 'to-ship')`,
         [ids.next(), market.marketId, market.tenantId, order.id, ids.next()],
       ),
     ).toBe(CHECK);
@@ -277,5 +284,127 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(
       await attempt(`UPDATE ordering.orders SET total_amount = 1 WHERE id = '${order.id}'`),
     ).toBe('42501');
+  });
+
+  const paidOrder = async (): Promise<OrderState> => {
+    const order = newOrder();
+    await value(market, () => repository.insert(market, order));
+    const paid = {
+      ...order,
+      status: 'confirmed' as const,
+      paymentState: 'captured' as const,
+      stripePaymentIntentId: `pi_test_${order.id}`,
+      confirmedAt: T0.add({ minutes: 5 }),
+    };
+    await value(market, () => repository.save(market, paid));
+    return paid;
+  };
+
+  it('moves a seller order forward once and refuses a stale step', async () => {
+    const paid = await paidOrder();
+    const seller = paid.sellerOrders[0]!;
+    const shipped = markShipped(
+      seller,
+      { carrier: 'Australia Post', trackingRef: 'AP1' },
+      T0.add({ hours: 1 }),
+    )!;
+    const delivered = markDelivered(shipped, T0.add({ hours: 5 }))!;
+
+    expect(await value(market, () => repository.saveFulfilment(market, shipped, 'to-ship'))).toBe(
+      'saved',
+    );
+    expect(await value(market, () => repository.saveFulfilment(market, shipped, 'to-ship'))).toBe(
+      'stale',
+    );
+    expect(await value(market, () => repository.saveFulfilment(market, delivered, 'shipped'))).toBe(
+      'saved',
+    );
+
+    const read = await value(market, () =>
+      repository.findForSeller(market, seller.sellerId, seller.id),
+    );
+    expect(read?.sellerOrder).toMatchObject({
+      fulfilment: 'delivered',
+      carrier: 'Australia Post',
+      trackingRef: 'AP1',
+    });
+    expect(read?.orderId).toBe(paid.id);
+    expect(read?.lines).toHaveLength(1);
+  });
+
+  it('shows a seller only its own paid seller orders, newest payment first', async () => {
+    const paid = await paidOrder();
+    const unpaid = newOrder();
+    await value(market, () => repository.insert(market, unpaid));
+    const seller = paid.sellerOrders[0]!;
+    const unpaidSeller = unpaid.sellerOrders[0]!;
+
+    const own = await value(market, () =>
+      repository.listForSeller(market, seller.sellerId, { limit: 10, after: null }),
+    );
+    const foreign = await value(market, () =>
+      repository.findForSeller(market, ids.next<'Seller'>(), seller.id),
+    );
+    const notPaid = await value(market, () =>
+      repository.findForSeller(market, unpaidSeller.sellerId, unpaidSeller.id),
+    );
+    const elsewhere = await value(other, () =>
+      repository.findForSeller(other, seller.sellerId, seller.id),
+    );
+
+    expect(own.map((r) => r.sellerOrder.id)).toEqual([seller.id]);
+    expect(foreign).toBeNull();
+    expect(notPaid).toBeNull();
+    expect(elsewhere).toBeNull();
+  });
+
+  it('queues shipped orders for inventory once and marks them recorded', async () => {
+    const paid = await paidOrder();
+    const seller = paid.sellerOrders[0]!;
+    const shipped = markShipped(
+      seller,
+      { carrier: 'Post', trackingRef: null },
+      T0.add({ hours: 1 }),
+    )!;
+    await value(market, () => repository.saveFulfilment(market, shipped, 'to-ship'));
+
+    const queued = await value(market, () => repository.findUnrecordedShipments(market, 500));
+    expect(queued.some((r) => r.sellerOrder.id === seller.id)).toBe(true);
+
+    await value(market, () =>
+      repository.markInventoryRecorded(market, seller.id, T0.add({ hours: 2 })),
+    );
+    await value(market, () =>
+      repository.markInventoryRecorded(market, seller.id, T0.add({ hours: 3 })),
+    );
+    const after = await value(market, () => repository.findUnrecordedShipments(market, 500));
+    const read = await value(market, () =>
+      repository.findForSeller(market, seller.sellerId, seller.id),
+    );
+
+    expect(after.some((r) => r.sellerOrder.id === seller.id)).toBe(false);
+    expect(read?.sellerOrder.inventoryRecordedAt?.toString()).toBe(T0.add({ hours: 2 }).toString());
+  });
+
+  it('refuses fulfilment fields that do not fit the state', async () => {
+    const paid = await paidOrder();
+    const id = paid.sellerOrders[0]!.id;
+    const attempt = (set: string) =>
+      sql.query(`UPDATE ordering.seller_orders SET ${set} WHERE id = '${id}'`).then(
+        () => 'allowed',
+        (error: { code?: string }) => error.code,
+      );
+
+    // Shipped needs a carrier and a time; delivery cannot precede shipment; a to-ship order has none.
+    expect(await attempt(`fulfilment = 'shipped'`)).toBe(CHECK);
+    expect(await attempt(`fulfilment = 'shipped', carrier = 'Post'`)).toBe(CHECK);
+    expect(
+      await attempt(
+        `fulfilment = 'delivered', carrier = 'Post', shipped_at = now(), delivered_at = now() - interval '1 day'`,
+      ),
+    ).toBe(CHECK);
+    expect(await attempt(`carrier = 'Post'`)).toBe(CHECK);
+    expect(await attempt(`fulfilment = 'lost'`)).toBe(CHECK);
+    expect(await attempt(`subtotal_amount = 1`)).toBe('42501');
   });
 });

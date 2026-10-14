@@ -1,5 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade, CheckoutLine } from '../../src/modules/cart';
 import type {
@@ -9,11 +9,15 @@ import type {
 import type {
   OrderPage,
   OrderRepository,
+  SellerOrderPage,
+  SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
-import type { OrderState } from '../../src/modules/ordering/domain/order';
+import type { Fulfilment, OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
+import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
 import type {
   CommitFailure,
   InventoryOrderingPort,
+  LineCommandFailure,
   ReserveFailure,
 } from '../../src/modules/inventory/contracts/ordering-port';
 import { parseId } from '@mondapac/shared-kernel';
@@ -83,8 +87,113 @@ export class MemoryOrders implements OrderRepository {
     const stored = this.rows.get(order.id);
     if (stored === undefined || stored.version !== order.version)
       return Promise.resolve('stale' as const);
-    this.rows.set(order.id, { ...order, version: order.version + 1 });
+    // Like the real store, `save` leaves the fulfilment of the seller orders alone.
+    this.rows.set(order.id, {
+      ...order,
+      sellerOrders: stored.sellerOrders,
+      version: order.version + 1,
+    });
     return Promise.resolve('saved' as const);
+  }
+
+  private recordOf(order: OrderState, sellerOrder: SellerOrder): SellerOrderRecord {
+    return {
+      sellerOrder,
+      orderId: order.id,
+      currency: order.total.currency,
+      confirmedAt: order.confirmedAt!,
+      lines: order.lines.filter((line) => line.sellerOrderId === sellerOrder.id),
+    };
+  }
+  private paid(sellerId: Id<'Seller'> | null): SellerOrderRecord[] {
+    return [...this.rows.values()]
+      .filter((order) => order.status === 'confirmed')
+      .flatMap((order) =>
+        order.sellerOrders
+          .filter((seller) => sellerId === null || seller.sellerId === sellerId)
+          .map((seller) => this.recordOf(order, seller)),
+      );
+  }
+  listForSeller(_m: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+    const after = page.after;
+    return Promise.resolve(
+      this.paid(sellerId)
+        .sort(
+          (a, b) =>
+            b.confirmedAt.epochMilliseconds - a.confirmedAt.epochMilliseconds ||
+            b.sellerOrder.id.localeCompare(a.sellerOrder.id),
+        )
+        .filter(
+          (r) =>
+            after === null ||
+            r.confirmedAt.epochMilliseconds < after.confirmedAt.epochMilliseconds ||
+            (r.confirmedAt.epochMilliseconds === after.confirmedAt.epochMilliseconds &&
+              r.sellerOrder.id < after.id),
+        )
+        .slice(0, page.limit),
+    );
+  }
+  findForSeller(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(
+      this.paid(sellerId).find((record) => record.sellerOrder.id === sellerOrderId) ?? null,
+    );
+  }
+  saveFulfilment(_m: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
+    for (const [orderId, order] of this.rows) {
+      const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);
+      if (index < 0) continue;
+      if (order.sellerOrders[index]!.fulfilment !== from) return Promise.resolve('stale' as const);
+      const sellerOrders = order.sellerOrders.map((seller, i) =>
+        i === index ? { ...sellerOrder, inventoryRecordedAt: seller.inventoryRecordedAt } : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+      return Promise.resolve('saved' as const);
+    }
+    return Promise.resolve('stale' as const);
+  }
+  findUnrecordedShipments(_m: MarketContext, limit: number) {
+    return Promise.resolve(
+      this.paid(null)
+        .filter(
+          (r) =>
+            r.sellerOrder.fulfilment !== 'to-ship' && r.sellerOrder.inventoryRecordedAt === null,
+        )
+        .slice(0, limit),
+    );
+  }
+  markInventoryRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>, at: Temporal.Instant) {
+    for (const [orderId, order] of this.rows) {
+      if (!order.sellerOrders.some((seller) => seller.id === sellerOrderId)) continue;
+      const sellerOrders = order.sellerOrders.map((seller) =>
+        seller.id === sellerOrderId && seller.inventoryRecordedAt === null
+          ? { ...seller, inventoryRecordedAt: at }
+          : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+    }
+    return Promise.resolve();
+  }
+}
+
+/** The flat fees `ordering` reads at checkout; a seller without an entry has no fee. */
+export class FakeShipping implements ShippingFacade {
+  fees = new Map<string, Money>();
+  down = false;
+  flatFees(
+    _c: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<FlatFeeMap, ShippingFailure>> {
+    if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    return Promise.resolve(
+      ok(
+        new Map(
+          sellerIds.flatMap((sellerId) => {
+            const fee = this.fees.get(sellerId);
+            return fee === undefined ? [] : [[sellerId, fee] as const];
+          }),
+        ),
+      ),
+    );
   }
 }
 
@@ -177,7 +286,11 @@ export class FakeInventory implements InventoryOrderingPort {
     this.calls.push(`cancel-line:${request.orderLineId}`);
     return Promise.resolve(ok({ orderLineId: request.orderLineId }));
   }
+  shipped: string[] = [];
+  shipmentFails: LineCommandFailure | null = null;
   recordShipment(_c: CallContext, request: { orderLineId: string }) {
+    if (this.shipmentFails !== null) return Promise.resolve(err(this.shipmentFails));
+    this.shipped.push(request.orderLineId);
     return Promise.resolve(ok({ orderLineId: request.orderLineId }));
   }
 }

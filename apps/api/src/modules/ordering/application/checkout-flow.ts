@@ -8,6 +8,7 @@ import type {
   Temporal,
 } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade } from '../../cart';
+import type { ShippingFacade } from '../../shipping';
 import type {
   InsufficientReason,
   InventoryOrderingPort,
@@ -15,7 +16,13 @@ import type {
   ReserveResult,
 } from '../../inventory/contracts/ordering-port';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import { cancelOrder, planOrder, type OrderLine, type OrderState } from '../domain/order';
+import {
+  addShipping,
+  cancelOrder,
+  planOrder,
+  type OrderLine,
+  type OrderState,
+} from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
@@ -27,6 +34,7 @@ export interface OrderingDependencies {
   readonly policy: OrderingPolicy;
   readonly cart: CartCheckoutFacade;
   readonly inventory: InventoryOrderingPort;
+  readonly shipping: ShippingFacade;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }
@@ -36,6 +44,12 @@ export type StartCheckoutFailure =
   | { readonly code: 'ordering.cart-empty' }
   | { readonly code: 'ordering.cart-not-purchasable'; readonly lineIndexes: readonly number[] }
   | { readonly code: 'ordering.check-unavailable' }
+  /** A seller of the cart has no flat shipping fee yet: nothing can be charged for delivery. */
+  | {
+      readonly code: 'ordering.shipping-unavailable';
+      /** For the admin alert in the log only; never sent to the customer. */
+      readonly sellerIds: readonly Id<'Seller'>[];
+    }
   | {
       readonly code: 'ordering.stock-insufficient';
       readonly lines: readonly {
@@ -95,7 +109,23 @@ export async function startCheckout(
   }
   const planned = planOrder(read.value, { maxLines: deps.policy.maxLines() });
   if (!planned.ok) return err(planned.error);
-  const plan = planned.plan;
+  const fees = await deps.shipping.flatFees(
+    context,
+    planned.plan.sellers.map((seller) => seller.sellerId),
+  );
+  if (!fees.ok) {
+    return err(
+      fees.error.code === 'access.denied'
+        ? { code: 'access.denied' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
+  const priced = addShipping(planned.plan, fees.value);
+  if (!priced.ok) {
+    // The customer cannot fix this; an admin must set the seller's fee (the use case logs it).
+    return err({ code: 'ordering.shipping-unavailable', sellerIds: priced.sellerIds });
+  }
+  const plan = priced.plan;
 
   const orderId = deps.ids.next<'Order'>();
   const urls = deps.policy.returnUrls(context.market, orderId);
@@ -182,8 +212,14 @@ export async function startCheckout(
       id,
       sellerId: seller.sellerId,
       subtotal: seller.subtotal,
-      shipping: 0n,
-      total: seller.subtotal,
+      shipping: seller.shipping,
+      total: seller.subtotal + seller.shipping,
+      fulfilment: 'to-ship' as const,
+      carrier: null,
+      trackingRef: null,
+      shippedAt: null,
+      deliveredAt: null,
+      inventoryRecordedAt: null,
     })),
     lines,
   };
@@ -204,10 +240,13 @@ export async function startCheckout(
     orderId,
     marketId: context.market.marketId,
     currency: plan.currency,
-    packages: sellerOrders.map(({ seller }, index) => ({
-      label: `MondaPac order, package ${index + 1}`,
-      amount: seller.subtotal,
-    })),
+    packages: sellerOrders.flatMap(({ seller }, index) => [
+      { label: `MondaPac order, package ${index + 1}`, amount: seller.subtotal },
+      // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
+      ...(seller.shipping > 0n
+        ? [{ label: `Delivery, package ${index + 1}`, amount: seller.shipping }]
+        : []),
+    ]),
     successUrl: urls.success,
     cancelUrl: urls.cancel,
     expiresAt: payBy,

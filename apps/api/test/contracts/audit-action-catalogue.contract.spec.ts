@@ -42,9 +42,14 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 
 /**
  * The Nest modules that bind their own audit writer and register their actions. A module joins
- * this list only with the audited actions its approved design names (pricing: design 8).
+ * this list only with the audited actions its approved design names (pricing: design 8; shipping: the flat-fee change, Phase 5 package 4).
  */
-const AUDITING_MODULES = ['IdentityModule', 'PricingModule', 'SellersModule'] as const;
+const AUDITING_MODULES = [
+  'IdentityModule',
+  'PricingModule',
+  'SellersModule',
+  'ShippingModule',
+] as const;
 const SRC = path.join(__dirname, '../../src');
 
 const foldersOf = (dir: string) =>
@@ -418,6 +423,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['IdentityModule', 'identity'],
       ['PricingModule', 'pricing'],
       ['SellersModule', 'sellers'],
+      ['ShippingModule', 'shipping'],
     ]);
   });
 
@@ -445,6 +451,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PricingModule', 'writer'],
       ['SellersModule', 'actions'],
       ['SellersModule', 'writer'],
+      ['ShippingModule', 'actions'],
+      ['ShippingModule', 'writer'],
     ]);
     expect(found.filter((entry) => entry.owner !== entry.allowed)).toEqual([]);
   });
@@ -530,6 +538,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
+      `${path.join('modules', 'shipping', 'shipping.module.ts')}: auditWriterFor('shipping')`,
+      `${path.join('modules', 'shipping', 'shipping.module.ts')}: registerAuditActions('shipping')`,
     ]);
   });
 });

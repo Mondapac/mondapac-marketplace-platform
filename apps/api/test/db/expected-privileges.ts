@@ -40,6 +40,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     certification: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
+    shipping: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -307,7 +308,25 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'version',
       ],
     },
-    'ordering.seller_orders': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 5 package 4: a seller order's fulfilment steps (to-ship, shipped, delivered) change
+    // the fulfilment columns only; the amounts never change.
+    'ordering.seller_orders': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'carrier',
+        'delivered_at',
+        'fulfilment',
+        'inventory_recorded_at',
+        'shipped_at',
+        'tracking_ref',
+      ],
+    },
+    // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
+    // change, the identity never, and no row is deleted.
+    'shipping.seller_flat_fees': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
+    },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
