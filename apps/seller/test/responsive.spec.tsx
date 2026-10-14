@@ -156,3 +156,23 @@ describe('admin customer page', () => {
     expect(text).toContain('<Dialog');
   });
 });
+
+describe('two-step reset pages', () => {
+  it('use fluid layouts and shared components: the admin card and the owner confirm page', () => {
+    const files = [
+      '../../admin/src/sellers/owner-second-factor-card.tsx',
+      '../src/auth/confirm-reset-form.tsx',
+    ];
+    for (const file of files) {
+      const text = readFileSync(join(__dirname, file), 'utf8');
+      expect(text, file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    }
+    const card = readFileSync(join(__dirname, files[0] as string), 'utf8');
+    expect(card).toContain('flex flex-col gap-2 sm:flex-row');
+    expect(card).toContain('<Dialog');
+    const confirm = readFileSync(join(__dirname, files[1] as string), 'utf8');
+    // The sign-in link is a 48px touch target; the button fills the auth column.
+    expect(confirm).toContain('min-h-12');
+    expect(confirm).toContain('block');
+  });
+});

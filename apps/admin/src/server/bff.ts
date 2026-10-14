@@ -47,6 +47,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/customers/:id/enable',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
+    'identity/admin/sellers/:id/second-factor/reset',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',

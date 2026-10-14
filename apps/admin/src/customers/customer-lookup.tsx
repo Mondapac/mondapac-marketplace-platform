@@ -2,8 +2,9 @@
 
 import { Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
+import { useCountdown } from '../api/use-countdown.ts';
 import { formatInstant } from '../sellers/format.ts';
 import { customerProblemOf } from './errors.ts';
 import { EMAIL_MAX, type CustomerAccount } from './types.ts';
@@ -21,17 +22,6 @@ function problemOf(failure: ApiFailure): Problem | null {
   return key === 'throttled' && typeof seconds === 'number' && seconds > 0
     ? { key, retryAfter: Math.ceil(seconds) }
     : { key };
-}
-
-/** Counts a Retry-After down to zero, one second at a time. */
-function useCountdown(): [number, (seconds: number) => void] {
-  const [left, setLeft] = useState(0);
-  useEffect(() => {
-    if (left <= 0) return;
-    const timer = setTimeout(() => setLeft((value) => value - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [left]);
-  return [left, setLeft];
 }
 
 /**

@@ -158,12 +158,13 @@ describe('relay', () => {
     }
   });
 
-  it('relays the customer lookup and status commands, and only with a UUID id', async () => {
+  it('relays the customer commands and the owner two-step reset, and only with a UUID id', async () => {
     const id = '0190a000-0000-7000-8000-000000000001';
     for (const path of [
       ['identity', 'admin', 'customers', 'lookup'],
       ['identity', 'admin', 'customers', id, 'disable'],
       ['identity', 'admin', 'customers', id, 'enable'],
+      ['identity', 'admin', 'sellers', id, 'second-factor', 'reset'],
     ]) {
       const ok = upstreamOk();
       expect((await relay(config, post(path.join('/')), path, ok)).status).toBe(200);
@@ -174,6 +175,8 @@ describe('relay', () => {
       ['identity', 'admin', 'customers', id],
       ['identity', 'admin', 'customers', 'lookup', 'extra'],
       ['identity', 'admin', 'customers', id, 'disable', 'extra'],
+      ['identity', 'admin', 'sellers', 'not-a-uuid', 'second-factor', 'reset'],
+      ['identity', 'admin', 'sellers', id, 'second-factor'],
     ]) {
       const fetchImpl = upstreamOk();
       expect((await relay(config, post(path.join('/')), path, fetchImpl)).status).toBe(404);

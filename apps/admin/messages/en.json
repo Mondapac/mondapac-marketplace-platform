@@ -653,6 +653,33 @@
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "owner-reset": {
+      "title": "Store owner's two-step sign-in",
+      "intro": "If the store owner has lost their authenticator app and their recovery codes, start a reset. We email the owner a link. Two-step sign-in stays on until the owner opens the link and confirms.",
+      "action": "Start two-step reset",
+      "action-again": "Send a new link",
+      "sent": {
+        "title": "Link sent to the store owner",
+        "body": "The link works for 24 hours and only once. Nothing changes until the owner confirms. Sending a new link stops the earlier one."
+      },
+      "confirm": {
+        "title": "Start a two-step reset?",
+        "body": "We will email the store owner a link to turn off two-step sign-in. Only start this after you have checked who is asking, for example through the shop's registered contact details.",
+        "cancel": "Cancel",
+        "submit": "Send link"
+      },
+      "error": {
+        "none": "The store owner does not use two-step sign-in, so there is nothing to reset.",
+        "no-owner": "This seller has no store owner account to reset.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "throttled-wait": "Too many requests. Try again in {seconds, plural, one {# second} other {# seconds}}.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "You do not have permission to do this.",
+        "retry": "Something changed at the same time. Try again.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "pricing": {

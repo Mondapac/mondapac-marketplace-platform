@@ -177,6 +177,24 @@
         "checking": "Checking your link…"
       }
     },
+    "confirm-reset": {
+      "page-title": "Turn off two-step sign-in – Seller account – MondaPac",
+      "title": "Turn off two-step sign-in",
+      "body": "MondaPac support started turning off two-step sign-in on your store owner account, because you could not use your authenticator app or recovery codes.",
+      "warning": "If you confirm, two-step sign-in is turned off and you are signed out everywhere. You then sign in with your password alone until you set two-step sign-in up again.",
+      "action": {
+        "submit": "Turn off two-step sign-in"
+      },
+      "not-you": "Didn't ask for this? Don't press the button. Nothing changes, and the link stops working after 24 hours.",
+      "status": {
+        "checking": "Checking your link…"
+      },
+      "rejected": "It may have expired, already been used, or been replaced by a newer link. Ask MondaPac support to send a new one.",
+      "done": {
+        "title": "Two-step sign-in is off",
+        "body": "You have been signed out everywhere. Sign in with your password, then set up two-step sign-in again under Security."
+      }
+    },
     "link": {
       "title": {
         "rejected": "This link can't be used"
