@@ -55,6 +55,17 @@
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
+  {
+    "name": "commission-payouts.commission-rates",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
+  {
+    "name": "commission-payouts.view-own-ledger",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
@@ -155,6 +166,7 @@
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },

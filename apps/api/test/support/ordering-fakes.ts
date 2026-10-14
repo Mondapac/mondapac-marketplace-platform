@@ -3,6 +3,12 @@ import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/sh
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade, CheckoutLine } from '../../src/modules/cart';
 import type {
+  CommissionPayoutsFacade,
+  CommissionPayoutsFailure,
+  CommissionRateMap,
+  PaidSellerOrder,
+} from '../../src/modules/commission-payouts';
+import type {
   CheckoutGateway,
   GatewayFailure,
 } from '../../src/modules/ordering/application/ports/checkout-gateway';
@@ -161,6 +167,35 @@ export class MemoryOrders implements OrderRepository {
         .slice(0, limit),
     );
   }
+  findUnrecordedLedger(_m: MarketContext, limit: number) {
+    return Promise.resolve(
+      this.paid(null)
+        .filter((r) => r.sellerOrder.ledgerState === 'pending')
+        .sort(
+          (a, b) =>
+            (this.ledgerFailures.get(a.sellerOrder.id) ?? 0) -
+            (this.ledgerFailures.get(b.sellerOrder.id) ?? 0),
+        )
+        .slice(0, limit),
+    );
+  }
+  ledgerFailures = new Map<string, number>();
+  countLedgerFailure(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    this.ledgerFailures.set(sellerOrderId, (this.ledgerFailures.get(sellerOrderId) ?? 0) + 1);
+    return Promise.resolve();
+  }
+  markLedgerRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    for (const [orderId, order] of this.rows) {
+      if (!order.sellerOrders.some((seller) => seller.id === sellerOrderId)) continue;
+      const sellerOrders = order.sellerOrders.map((seller) =>
+        seller.id === sellerOrderId && seller.ledgerState === 'pending'
+          ? { ...seller, ledgerState: 'recorded' as const }
+          : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+    }
+    return Promise.resolve();
+  }
   markInventoryRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>, at: Temporal.Instant) {
     for (const [orderId, order] of this.rows) {
       if (!order.sellerOrders.some((seller) => seller.id === sellerOrderId)) continue;
@@ -194,6 +229,50 @@ export class FakeShipping implements ShippingFacade {
         ),
       ),
     );
+  }
+}
+
+/**
+ * The commission rates `ordering` freezes at checkout (a seller without an entry is on
+ * `marketRateBps`) and the paid seller orders its worker sends to the ledger.
+ */
+export class FakeCommission implements CommissionPayoutsFacade {
+  rates = new Map<string, number>();
+  marketRateBps = 1500;
+  down = false;
+  recordFails: CommissionPayoutsFailure | null = null;
+  recorded: PaidSellerOrder[] = [];
+  commissionRates(
+    _c: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<CommissionRateMap, CommissionPayoutsFailure>> {
+    if (this.down) return Promise.resolve(err({ code: 'commission-payouts.rate-unavailable' }));
+    return Promise.resolve(
+      ok(
+        new Map(
+          sellerIds.map((sellerId) => {
+            const own = this.rates.get(sellerId);
+            return [
+              sellerId,
+              own === undefined
+                ? { rateBps: this.marketRateBps, source: 'market' as const }
+                : { rateBps: own, source: 'seller' as const },
+            ] as const;
+          }),
+        ),
+      ),
+    );
+  }
+  recordSellerOrderPaid(
+    _c: CallContext,
+    paid: PaidSellerOrder,
+  ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>> {
+    if (this.recordFails !== null) return Promise.resolve(err(this.recordFails));
+    if (this.recorded.some((r) => r.sellerOrderId === paid.sellerOrderId)) {
+      return Promise.resolve(ok('already-recorded' as const));
+    }
+    this.recorded.push(paid);
+    return Promise.resolve(ok('recorded' as const));
   }
 }
 
