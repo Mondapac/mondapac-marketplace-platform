@@ -23,6 +23,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { ConfigPricingPolicyProvider } from '../../infrastructure/config-pricing-policy-provider';
 import { SetRegularPrice } from './set-regular-price.use-case';
+import { SetSpecialPrice } from './set-special-price.use-case';
 import { ViewOfferPrices } from './view-offer-prices.use-case';
 
 // `pricing.view-offer-prices` in memory on both Market fixtures. Prices are seeded through the
@@ -63,7 +64,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-offer-prices in market %s', (
       clock,
       ids,
     });
-    const view = new ViewOfferPrices(gate, { unitOfWork, series, offers, policies });
+    const view = new ViewOfferPrices(gate, { unitOfWork, series, offers, policies, clock });
     const sellerId = ids.next<'Seller'>();
     const contextOf = (seller: Id<'Seller'>): CallContext =>
       testCallContext(
@@ -91,11 +92,23 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-offer-prices in market %s', (
         price: { amount: amount.toString(), currency: fixture.currency },
         expectedVersion,
       });
+    const special = new SetSpecialPrice(gate, {
+      unitOfWork,
+      series,
+      throttles: new InMemoryRefusalThrottles(),
+      offers,
+      policies,
+      audit: new RecordingAuditWriter(),
+      outbox: new RecordingOutbox(),
+      clock,
+      ids,
+    });
     return {
       clock,
       ids,
       offers,
       view,
+      special,
       sellerId,
       contextOf,
       offerId,
@@ -144,6 +157,39 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-offer-prices in market %s', (
     expect(row?.inForce?.amount).toBe(fixture.base.toString());
     expect(row?.held?.amount).toBe(fixture.held.toString());
     expect(row?.held?.direction).toBe('up');
+  });
+
+  it('shows a running special, a scheduled one and one that ended', async () => {
+    const s = setup();
+    const context = s.contextOf(s.sellerId);
+    const first = await s.price(context, fixture.base, null);
+    if (!first.ok) throw new Error('seed failed');
+    const hour = 3_600_000;
+    const at = (ms: number) => s.clock.now().add({ milliseconds: ms }).toString();
+    const amount = ((fixture.base * 9n) / 10n).toString();
+    const row = async () => {
+      const result = await s.view.execute(context, { offerId: s.offerId });
+      if (!result.ok) throw new Error('view failed');
+      return result.value.variants.find((v) => v.variantId === s.variantId);
+    };
+    const set = (startsAt: string | null, endsAt: string, expectedVersion: number) =>
+      s.special.execute(context, {
+        offerId: s.offerId,
+        variantId: s.variantId,
+        price: { amount, currency: fixture.currency },
+        startsAt,
+        endsAt,
+        expectedVersion,
+      });
+    const running = await set(null, at(hour), first.value.seriesVersion);
+    if (!running.ok) throw new Error('special failed');
+    expect((await row())?.special).toMatchObject({ amount, state: 'running' });
+    const later = await set(at(2 * hour), at(3 * hour), running.value.seriesVersion);
+    if (!later.ok) throw new Error('scheduled special failed');
+    expect((await row())?.special).toMatchObject({ amount, state: 'scheduled' });
+    s.clock.set(s.clock.now().add({ milliseconds: 4 * hour }));
+    expect((await row())?.special).toBeNull();
+    expect((await row())?.heldSpecial).toBeNull();
   });
 
   it("answers another seller's Offer exactly as an unknown one", async () => {

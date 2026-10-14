@@ -143,6 +143,7 @@ function useCaseProvider<D, U>(
       series: true,
       offers: true,
       policies: true,
+      clock: true,
     }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),

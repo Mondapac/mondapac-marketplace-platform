@@ -21,6 +21,34 @@ export class HeldPriceBody {
   direction!: 'up' | 'down';
 }
 
+export class SpecialPriceBody {
+  @ApiProperty({ description: 'Minor units as a string of digits.', example: '1499' })
+  amount!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  startsAt!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  endsAt!: string;
+
+  @ApiProperty({ enum: ['running', 'scheduled'] })
+  state!: 'running' | 'scheduled';
+}
+
+export class HeldSpecialBody {
+  @ApiProperty({ description: 'Minor units as a string of digits.', example: '1499' })
+  amount!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  startsAt!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  endsAt!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  submittedAt!: string;
+}
+
 export class VariantPriceBody {
   @ApiProperty({ type: String, format: 'uuid' })
   variantId!: string;
@@ -40,6 +68,12 @@ export class VariantPriceBody {
 
   @ApiProperty({ type: HeldPriceBody, nullable: true })
   held!: HeldPriceBody | null;
+
+  @ApiProperty({ type: SpecialPriceBody, nullable: true })
+  special!: SpecialPriceBody | null;
+
+  @ApiProperty({ type: HeldSpecialBody, nullable: true })
+  heldSpecial!: HeldSpecialBody | null;
 
   @ApiProperty({ description: 'The series stopped taking prices; read only.' })
   retired!: boolean;

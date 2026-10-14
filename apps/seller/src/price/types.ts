@@ -15,6 +15,20 @@ export interface VariantPrice {
     readonly submittedAt: string;
     readonly direction: 'up' | 'down';
   } | null;
+  /** The running or scheduled special; the regular price must stay above it. */
+  readonly special: {
+    readonly amount: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+    readonly state: 'running' | 'scheduled';
+  } | null;
+  /** A deep special waiting for admin review. */
+  readonly heldSpecial: {
+    readonly amount: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+    readonly submittedAt: string;
+  } | null;
   readonly retired: boolean;
 }
 
@@ -30,4 +44,17 @@ export interface PriceWritten {
   readonly seriesVersion: number;
   readonly recordId: string | null;
   readonly effectiveFrom: string | null;
+}
+
+/** `PUT .../special-price`. */
+export interface SpecialWritten {
+  readonly status: 'accepted' | 'pending-review';
+  readonly seriesVersion: number;
+}
+
+/** `POST .../special-price/withdraw`. */
+export interface SpecialWithdrawn {
+  readonly seriesVersion: number;
+  readonly endedRecordId: string | null;
+  readonly cancelledRecordId: string | null;
 }
