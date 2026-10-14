@@ -809,6 +809,20 @@ room; reviewers may overturn any of them.
 | Sajad's 10a gaps | The notes name no specifics. Added instead: a PostgreSQL parity test (`test/db/platform-roles.db-spec.ts`, AU and ZZ) that `permissionCount` matches the stored declared keys (or the scope's key count for the system role) and `grantable` equals "neither `AssignAdminRole` nor `InviteAdmin` refuses with `role.not-grantable` or `role.unknown`", for three actors |
 | Tests | `domain/role.spec.ts`, `application/use-cases/role-editor.spec.ts` (AU and ZZ, fakes), `test/role-editor.e2e.spec.ts` (HTTP, both scopes, OpenAPI, CSRF, populations), `test/db/role-editor.db-spec.ts` (PostgreSQL: rows, keys, reconciliation of a dropped key, events, audit rows with no name, unique name index and role foreign key as backstops, seller isolation, SELECT-only reads with `market_id`) |
 
+**The seller team as built in slice 11 (Hossein, 2026-10-14).** Branch `feat/identity-11-seller-team`.
+No migration: `invitations` (kind `staff`), `seller_memberships` (state `removed`) and the unique
+indexes were already in place. No new permission key (the five `identity.team-member.*` keys of 5.3).
+Choices made where this design left room; reviewers may overturn any of them.
+
+| Topic | As built |
+|---|---|
+| Routes | `identity/seller/team`: `GET /` (list), `POST invitations`, `POST invitations/:id/resend`, `POST invitations/:id/revoke`, `POST accounts/:id/role`, `POST accounts/:id/remove`. No route takes a seller id (R6); another seller's account or invitation answers `account.unknown` or `invitation.unknown`. Protected seller keys are not grantable in Phase 2, so only the Seller Owner invites, assigns and removes; a view-only member lists with every action hint `access.denied` |
+| Units | Invite, resend, revoke, role change and removal run serializable. Role change and removal use `mayActOnAdmin` (R1, R3, R11), `roleGrantVerdict` and `LastHolderPolicy` over `activeHoldersOfInSeller`; as the actor is itself a holder, `member.last-holder` is reachable only through races, covered by a DB test of two owners acting on each other. Removal takes `lockCredential` first, ends the membership (`SellerMembership.end`, event `identity.seller-member-removed.v1`, audit `identity.seller-member.removed`), deletes the assignment and revokes every session (`membership-removed`) and open challenge |
+| Member limit | Market config `identity.sellerMemberLimit` (2 to 500; 25 for AU and ZZ). Active members plus pending Staff invitations count; a Market without it answers `access.unavailable` (fail closed), as for the staff invitation lifetime and the accept page |
+| Mail E10 | `SendInvitationMail` composes template `staff-invitation` (population seller) to the seller accept page; keys `identity.mail.staff-invitation.seller.*` |
+| Acceptance | `POST identity/seller/accept-invitation` takes an optional `displayName`, required for a Staff invitee (a Staff invitation carries no name). An existing seller account is refused as `invitation.rejected` (sign-in-and-join is deferred). The unit re-checks that the seller is approved, the role is in the inviter's reach and the inviter may still grant it |
+| Tests | `application/use-cases/seller-team.spec.ts` (AU and ZZ, fakes), `test/seller-team.e2e.spec.ts` (HTTP), `test/db/seller-team.db-spec.ts` (races, removal persistence, reads) |
+
 **Password reset and change as built in slice 4 (Hossein, 2026-10-08).** Choices made where this
 design left room; reviewers may overturn any of them.
 

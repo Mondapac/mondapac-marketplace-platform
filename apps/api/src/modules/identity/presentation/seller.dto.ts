@@ -253,6 +253,15 @@ export class SellerAcceptInvitationRequest {
     format: 'password',
   })
   password!: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'The name a team member gives (required for a team invitation; the sign-up rules of the ' +
+      "display name apply). Ignored for a Seller Owner's invitation, which keeps the name the " +
+      'admin gave. Never logged or echoed.',
+  })
+  displayName?: string;
 }
 
 export class SellerInvitationAccepted {

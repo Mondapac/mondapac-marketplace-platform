@@ -74,6 +74,17 @@ export type IdentityMail =
     }
   | {
       /**
+       * E10, an invitation to join a seller's team (identity design 3.4; slice 11). No inviter's
+       * name and no role name: the page shows who invited the invitee, from the token.
+       */
+      readonly template: 'staff-invitation';
+      readonly population: 'seller';
+      /** The seller panel's acceptance page, with the token in the fragment. */
+      readonly url: string;
+      readonly lifetimeMinutes: number;
+    }
+  | {
+      /**
        * A notice that the second factor changed (identity design 3.6, 6.8; slice 7b item C):
        * replaced, reset, or locked after too many wrong codes (HF2). No button; "not you?".
        */

@@ -54,10 +54,9 @@ export interface SendInvitationMailDependencies {
  *    sends a new mail and the first token never works (6.6).
  *
  * Slice 7b sends the `admin` kind (the first-admin routine), slice 9 the `seller-owner` kind (E9,
- * to the seller panel's acceptance page); `staff` comes with slice 11 and throws here until its
- * page and copy exist, so a delivery is dead-lettered with an alert, never dropped. A missing
- * lifetime or page throws too. The token,
- * the address and the body are never logged.
+ * to the seller panel's acceptance page), slice 11 the `staff` kind (E10, to the same page). A
+ * missing lifetime or page throws, so a delivery is dead-lettered with an alert, never dropped.
+ * The token, the address and the body are never logged.
  */
 export class SendInvitationMail extends UseCase<
   SendInvitationMailInput,
@@ -108,11 +107,8 @@ export class SendInvitationMail extends UseCase<
       );
     }
     const { kind, email } = invitation!.state;
-    if (kind === 'staff') {
-      throw new Error(`send-invitation-mail: no mail for the ${kind} kind before its slice`);
-    }
     // The panel the invitee joins: an admin's (E11), or the seller panel for a seller created by
-    // an admin (E9, slice 9).
+    // an admin (E9, slice 9) or for a team member (E10, slice 11: the same acceptance page).
     const population = kind === 'admin' ? 'admin' : 'seller';
     const lifetimeMinutes = policy.invitationLifetimeMinutes(market, kind);
     const target =
@@ -127,12 +123,17 @@ export class SendInvitationMail extends UseCase<
     const minted = this.deps.invitationTokens.issue();
     const url = new URL(target);
     url.hash = minted.token;
-    const composed = this.deps.composer.compose(market, {
-      template: 'invitation',
-      population,
-      url: url.toString(),
-      lifetimeMinutes,
-    });
+    const composed = this.deps.composer.compose(
+      market,
+      kind === 'staff'
+        ? {
+            template: 'staff-invitation',
+            population: 'seller',
+            url: url.toString(),
+            lifetimeMinutes,
+          }
+        : { template: 'invitation', population, url: url.toString(), lifetimeMinutes },
+    );
     await this.deps.transport.send({
       to: email.typed,
       from: policy.mailSender(market),

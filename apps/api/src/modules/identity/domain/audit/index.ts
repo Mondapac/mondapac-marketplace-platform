@@ -226,7 +226,22 @@ export const AccountRoleChangedAudit = defineAuditAction({
   after: {
     roleId: auditField.id(),
     scope: auditField.enumOf(ROLE_SCOPES),
+    /** The seller of a seller-scope change (slice 11); absent in platform scope. */
+    sellerId: auditField.optional(auditField.id()),
   },
+});
+
+/**
+ * The Seller Owner removed a member from the team (identity design 2.1, R4; slice 11). Target:
+ * the removed account. `before` is the role it held; in the same unit its assignment was deleted,
+ * every session revoked and its open challenges voided. Ids only.
+ */
+export const SellerMemberRemovedAudit = defineAuditAction({
+  action: 'identity.seller-member.removed',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  before: { roleId: auditField.id() },
+  after: { sellerId: auditField.id() },
 });
 
 /** The account statuses (identity design 3.1), as an audit row names them. */
@@ -476,6 +491,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerMemberAdded,
   AccountRoleAssigned,
   AccountRoleChangedAudit,
+  SellerMemberRemovedAudit,
   AccountDisabledAudit,
   AccountEnabledAudit,
   InvitationIssuedAudit,

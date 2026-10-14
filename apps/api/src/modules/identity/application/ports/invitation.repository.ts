@@ -17,6 +17,12 @@ export interface PendingAdminInvitation {
 }
 
 /**
+ * A pending Staff invitation as the seller team list reads it (slice 11): no token hash. The
+ * invited address is personal data, never logged.
+ */
+export type PendingStaffInvitation = PendingAdminInvitation;
+
+/**
  * The invitations of `identity` (identity design 3.4; data design 3.10). Every method runs in
  * the caller's open unit and takes the `MarketContext` only. A token is never passed in, only
  * its SHA-256. The invited address is personal data: it is never logged here.
@@ -68,6 +74,21 @@ export interface InvitationRepository {
     after: Id<'Invitation'> | null,
     limit: number,
   ): Promise<PendingAdminInvitation[]>;
+
+  /**
+   * Up to `limit` pending Staff invitations of this seller, expired ones included, whose id is
+   * greater than `after` (all when null), by id, as a summary without the token hash (slice 11).
+   * The seller id is a required argument (R6).
+   */
+  pendingStaffInvitations(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    after: Id<'Invitation'> | null,
+    limit: number,
+  ): Promise<PendingStaffInvitation[]>;
+
+  /** How many Staff invitations of this seller are pending, for the member limit (slice 11). */
+  countPendingStaff(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
 
   /**
    * Stores a new invitation. A pending invitation for the same address and scope, or a second

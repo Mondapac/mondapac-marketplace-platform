@@ -405,6 +405,12 @@ const identitySchema = z
         platform: z.number().int().min(1).max(500),
       })
       .optional(),
+    /**
+     * The most people one seller's team may hold, active members and pending Staff invitations
+     * together (identity design 3.4 "the member limit"; slice 11). Without it inviting Staff
+     * answers `access.unavailable` (fail closed).
+     */
+    sellerMemberLimit: z.number().int().min(2).max(500).optional(),
     /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
     unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
     /** The sender of the Market's mail (identity design 9). */

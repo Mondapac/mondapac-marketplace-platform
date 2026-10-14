@@ -268,6 +268,19 @@ export const InvitationRevoked = defineEvent({
 });
 
 /**
+ * A member left a seller's team (identity design 2.1, 8.2; slice 11, `identity.team-member.remove`).
+ * Ids only. Its sessions were revoked in the same unit (R4).
+ */
+export const SellerMemberRemoved = defineEvent({
+  type: 'identity.seller-member-removed.v1',
+  aggregateType: 'seller-membership',
+  payload: {
+    sellerId: eventField.id(),
+    accountId: eventField.id(),
+  },
+});
+
+/**
  * A pending seller was approved (identity design 3.3, 8.2; SEL-03, AC 4; slice 9). `decisionId`
  * names the `AccessDecision`; `basisId` is the `sellers` submission the approval rests on, once
  * `sellers` calls through its contract (ADR-0022 decision 4: carried in v1, null in Phase 2,
@@ -356,6 +369,7 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   RoleUpdated,
   RoleDeleted,
   InvitationRevoked,
+  SellerMemberRemoved,
   SellerAccessApproved,
   SellerAccessRejected,
   SellerAccessSuspended,

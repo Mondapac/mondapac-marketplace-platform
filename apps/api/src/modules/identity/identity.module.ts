@@ -83,6 +83,13 @@ import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case'
 import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
 import type { RoleEditorDependencies } from './application/roles/role-editor';
 import { ListSellerRoles } from './application/use-cases/list-seller-roles.use-case';
+import { AssignTeamMemberRole } from './application/use-cases/assign-team-member-role.use-case';
+import { InviteStaff } from './application/use-cases/invite-staff.use-case';
+import { ListSellerTeam } from './application/use-cases/list-seller-team.use-case';
+import { RemoveTeamMember } from './application/use-cases/remove-team-member.use-case';
+import { ResendStaffInvitation } from './application/use-cases/resend-staff-invitation.use-case';
+import { RevokeStaffInvitation } from './application/use-cases/revoke-staff-invitation.use-case';
+import { SELLER_TEAM_READER } from './application/ports/seller-team-reader';
 import { CreatePlatformRole } from './application/use-cases/create-platform-role.use-case';
 import { DeletePlatformRole } from './application/use-cases/delete-platform-role.use-case';
 import { EditPlatformRole } from './application/use-cases/edit-platform-role.use-case';
@@ -180,6 +187,7 @@ import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified
 import { seedRolesJob } from './presentation/jobs/seed-roles.job';
 import { SellerPasswordController } from './presentation/seller-password.controller';
 import { SellerRolesController } from './presentation/seller-roles.controller';
+import { SellerTeamController } from './presentation/seller-team.controller';
 import { SellerSecondFactorController } from './presentation/seller-second-factor.controller';
 import { SellerSessionController } from './presentation/seller-session.controller';
 import { SellerSignUpController } from './presentation/seller-sign-up.controller';
@@ -195,6 +203,7 @@ const PORT = {
   accounts: ACCOUNT_REPOSITORY,
   adminAccounts: ADMIN_ACCOUNT_READER,
   sellerAccounts: SELLER_ACCOUNT_READER,
+  sellerTeam: SELLER_TEAM_READER,
   sessions: SESSION_REPOSITORY,
   throttles: THROTTLE_REPOSITORY,
   records: SIGN_IN_RECORD_REPOSITORY,
@@ -232,6 +241,25 @@ const PORT = {
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
+
+/** The ports of the Staff invitation re-send and revoke (slice 11): one dependency set. */
+const STAFF_INVITATION_PORTS = {
+  unitOfWork: true,
+  accounts: true,
+  roles: true,
+  memberships: true,
+  sellerAccess: true,
+  grants: true,
+  effectiveKeys: true,
+  permissions: true,
+  invitations: true,
+  throttles: true,
+  keys: true,
+  outbox: true,
+  audit: true,
+  policy: true,
+  clock: true,
+} as const;
 
 /** The provider of one of the six use cases of the role editor (slice 10): one dependency set. */
 function roleEditorProvider<U>(
@@ -343,6 +371,7 @@ function useCaseProvider<D, U>(
     CustomerPasswordController,
     SellerPasswordController,
     SellerRolesController,
+    SellerTeamController,
     AdminSessionController,
     AdminSecondFactorController,
     AdminPasswordController,
@@ -968,6 +997,71 @@ function useCaseProvider<D, U>(
       effectiveKeys: true,
       permissions: true,
     }),
+    useCaseProvider(ListSellerTeam, {
+      unitOfWork: true,
+      accounts: true,
+      sellerTeam: true,
+      invitations: true,
+      roles: true,
+      memberships: true,
+      sellerAccess: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(InviteStaff, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      memberships: true,
+      sellerAccess: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      invitations: true,
+      throttles: true,
+      keys: true,
+      targets: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ResendStaffInvitation, STAFF_INVITATION_PORTS),
+    useCaseProvider(RevokeStaffInvitation, STAFF_INVITATION_PORTS),
+    useCaseProvider(AssignTeamMemberRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      memberships: true,
+      sellerAccess: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(RemoveTeamMember, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      memberships: true,
+      sellerAccess: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
     roleEditorProvider(CreatePlatformRole),
     roleEditorProvider(EditPlatformRole),
     roleEditorProvider(DeletePlatformRole),
@@ -1280,6 +1374,7 @@ function useCaseProvider<D, U>(
       sellerAccess: true,
       grants: true,
       effectiveKeys: true,
+      permissions: true,
       throttles: true,
       keys: true,
       invitationTokens: true,

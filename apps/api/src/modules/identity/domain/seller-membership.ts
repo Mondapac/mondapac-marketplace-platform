@@ -1,4 +1,5 @@
 import type { Id, MarketId, PendingEvent, Temporal } from '@mondapac/shared-kernel';
+import { SellerMemberRemoved } from './events';
 
 export const SELLER_MEMBERSHIP_STATES = ['active', 'removed'] as const;
 export type SellerMembershipStateCode = (typeof SELLER_MEMBERSHIP_STATES)[number];
@@ -29,10 +30,12 @@ export class SellerMembershipInvariantError extends Error {
  * for, read by ownership checks (R6). One active membership per account in Phase 2 (a database
  * rule, ADR-0018 decision 3). Slice 5 builds the founding membership of a self-registered
  * Seller Owner; its creation records no event (`seller-registered` carries the owner, 8.2).
- * Removal arrives with the team slices.
+ * Slice 11 adds {@link join} (a Staff member's acceptance) and {@link end} (removal from the
+ * team, which records `identity.seller-member-removed.v1`).
  */
 export class SellerMembership {
-  readonly #state: SellerMembershipState;
+  #state: SellerMembershipState;
+  #events: PendingEvent[] = [];
 
   private constructor(
     state: SellerMembershipState,
@@ -75,6 +78,11 @@ export class SellerMembership {
     );
   }
 
+  /** A Staff member's membership, created with the account by an invitation's acceptance. */
+  static join(input: Parameters<typeof SellerMembership.found>[0]): SellerMembership {
+    return SellerMembership.found(input);
+  }
+
   /** A membership read from the store. Checks the invariants again. */
   static restore(state: SellerMembershipState): SellerMembership {
     return new SellerMembership(state, state.version);
@@ -88,8 +96,29 @@ export class SellerMembership {
     return this.#state.state === 'active';
   }
 
-  /** No change records an event in slice 5. */
+  /** Events recorded since the membership was built or restored: only a removal records one. */
   get pendingEvents(): readonly PendingEvent[] {
-    return [];
+    return [...this.#events];
+  }
+
+  /**
+   * `active` → `removed` (identity design 2.1, R4): the member leaves the team. The caller, in
+   * its serializable unit, has applied `GrantPolicy` and `LastHolderPolicy`, removes the
+   * assignment and revokes the member's sessions. Answers false, changing nothing, when the
+   * membership is already removed.
+   */
+  end(now: Temporal.Instant): boolean {
+    if (this.#state.state !== 'active') return false;
+    const version = this.#state.version + 1;
+    this.#state = Object.freeze({ ...this.#state, state: 'removed', removedAt: now, version });
+    this.#events.push(
+      SellerMemberRemoved.record({
+        aggregateId: this.#state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { sellerId: this.#state.sellerId, accountId: this.#state.accountId },
+      }),
+    );
+    return true;
   }
 }

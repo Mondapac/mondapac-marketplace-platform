@@ -263,6 +263,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.seller-access.rejected',
       'identity.seller-access.suspended',
       'identity.seller-member.added',
+      'identity.seller-member.removed',
     ]);
   });
 

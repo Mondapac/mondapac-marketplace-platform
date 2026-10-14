@@ -406,7 +406,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
           action: 'identity.account-role.changed',
           targetId: VIEWER,
           before: { roleId: roleOf('viewer') },
-          after: { roleId: roleOf('operations-support'), scope: 'platform' },
+          after: { roleId: roleOf('operations-support'), scope: 'platform', sellerId: null },
           actor: 'authenticated',
           marketId: code,
         }),
