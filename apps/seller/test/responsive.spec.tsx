@@ -176,3 +176,36 @@ describe('two-step reset pages', () => {
     expect(confirm).toContain('block');
   });
 });
+
+describe('team pages', () => {
+  const read = (file: string) => readFileSync(join(__dirname, file), 'utf8');
+
+  it('keep the table in its own scroll box with fixed columns and no pixel widths', () => {
+    const table = read('../src/team/team-table.tsx');
+    expect(table).toContain('overflow-x-auto');
+    expect(table).toContain('table-fixed');
+    expect(table).toContain('<colgroup>');
+    expect(table).toContain('break-words');
+    expect(table).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+  });
+
+  it('use fluid layouts, touch-sized controls, dialogs of the shared kind and stacked actions', () => {
+    for (const file of [
+      '../src/team/team-table.tsx',
+      '../src/team/role-dialog.tsx',
+      '../src/team/row-actions.tsx',
+      '../src/team/invite-member-button.tsx',
+      '../src/auth/accept-invitation-form.tsx',
+      '../app/(shell)/team/page.tsx',
+    ]) {
+      expect(read(file), file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    }
+    const page = read('../app/(shell)/team/page.tsx');
+    expect(page).toContain('flex-col gap-2 sm:flex-row');
+    expect(page).toContain('min-h-12');
+    expect(read('../src/team/role-dialog.tsx')).toContain('<Dialog');
+    expect(read('../src/team/row-actions.tsx')).toContain('<Dialog');
+    expect(read('../src/team/invite-member-button.tsx')).toContain('w-full sm:w-auto');
+    expect(read('../src/auth/accept-invitation-form.tsx')).toContain('min-h-12');
+  });
+});

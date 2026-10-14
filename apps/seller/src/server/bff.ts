@@ -16,6 +16,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
     'identity/seller/session',
     'identity/seller/status',
+    // The team list (query: `after`) and the roles the team screens offer.
+    'identity/seller/team',
+    'identity/seller/roles',
     'sellers/my-file',
     'sellers/my-file/form-descriptors',
     'payments/seller/payout-account',
@@ -41,6 +44,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Anonymous: the one-time token of the owner's reset link is in the body (slice 12, A11).
     'identity/seller/second-factor/reset/confirm',
     'identity/seller/sign-out',
+    'identity/seller/team/invitations',
+    // Anonymous: the one-time token of the invitation link is in the body.
+    'identity/seller/accept-invitation',
     'identity/seller/password-reset-email',
     'identity/seller/reset-password',
     'identity/seller/change-password',
@@ -69,6 +75,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/seller/offers/:id/variants/:id/special-price',
   ],
   POST: [
+    'identity/seller/team/invitations/:id/resend',
+    'identity/seller/team/invitations/:id/revoke',
+    'identity/seller/team/accounts/:id/role',
+    'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
@@ -84,6 +94,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'ordering/seller/orders': ['limit', 'cursor'],
+  'identity/seller/team': ['after'],
 };
 const QUERY_VALUE_MAX = 512;
 
