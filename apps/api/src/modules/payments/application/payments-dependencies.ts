@@ -1,5 +1,7 @@
-import type { Clock } from '@mondapac/shared-kernel';
+import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { IdentityFacade } from '../../identity';
 import type { OrderingFacade } from '../../ordering';
 import type { ConnectedAccountStore } from './ports/connected-account-store';
 import type { ConnectGateway } from './ports/connect-gateway';
@@ -18,5 +20,9 @@ export interface PaymentsDependencies {
   readonly accounts: ConnectedAccountStore;
   readonly connect: ConnectGateway;
   readonly policy: PaymentsPolicy;
+  /** What payments asks of identity: the actor's factor state and a recent-confirmation check. */
+  readonly identity: Pick<IdentityFacade, 'describeActor' | 'confirmSecondFactor'>;
+  readonly audit: AuditWriter;
+  readonly ids: IdGenerator;
   readonly clock: Clock;
 }

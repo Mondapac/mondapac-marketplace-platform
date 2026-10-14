@@ -4,8 +4,8 @@ import type { AccessDenied } from '../../../platform/authz';
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a
  * name or an email. The role and the seller's access state are read from slice 5, the effective
- * permission keys from slice 8a-1 (sorted); the second factor arrives with slice 7, until then
- * false.
+ * permission keys from slice 8a-1 (sorted); `secondFactorActive` says whether the account's second
+ * factor is active (slice 7b).
  */
 export interface ActorDescription {
   readonly accountId: Id<'Account'>;
@@ -16,6 +16,20 @@ export interface ActorDescription {
   readonly sellerAccessState: string | null;
   readonly secondFactorActive: boolean;
 }
+
+/** Why {@link IdentityFacade.confirmSecondFactor} refused. Codes and field paths only. */
+export type ConfirmSecondFactorFailure =
+  | AccessDenied
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    }
+  | { readonly code: 'second-factor.invalid' }
+  | { readonly code: 'second-factor.locked'; readonly retryAfterSeconds: number }
+  /** The account has no active second factor. */
+  | { readonly code: 'second-factor.unavailable' }
+  | { readonly code: 'session.invalid' }
+  | { readonly code: 'access.unavailable' };
 
 /** The seller an account works for, and its role (8.1 `membershipOf`); null when none. */
 export type SellerMembershipSummary = {
@@ -42,6 +56,18 @@ export interface IdentityFacade {
     context: CallContext,
     accountId: Id<'Account'>,
   ): Promise<Result<SellerMembershipSummary, AccessDenied>>;
+
+  /**
+   * A recent confirmation of the signed-in seller-side holder: `code` is a current code from the
+   * authenticator app or a recovery code. It is counted on the sign-in code throttle and spent
+   * once, and nothing else changes. Rule `own-resources`, denied while the seller is not
+   * approved. Refusals: `second-factor.invalid`, `second-factor.locked` (with the wait) and
+   * `second-factor.unavailable` (no active factor). The code is never logged or stored.
+   */
+  confirmSecondFactor(
+    context: CallContext,
+    code: string,
+  ): Promise<Result<void, ConfirmSecondFactorFailure>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

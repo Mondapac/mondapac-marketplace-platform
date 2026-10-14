@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import { isExternalAccountEvent } from '../domain/payout-change';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
   ACCOUNT_EVENT_TYPES,
@@ -116,7 +117,8 @@ export async function receiveStripeEvent(
   } else {
     // The account is the one that signed the event's `account` field; its Market and seller are
     // checked against Stripe's own answer when the worker reads it again. An `account.updated`
-    // payload carries the metadata, so another Market's account is dropped here already.
+    // payload carries the metadata, so another Market's account is dropped here already; the
+    // other types carry none, so the worker's read of the account decides.
     if (typeof account !== 'string') return err({ code: 'validation.failed' });
     objectId = account;
     if (event.type === 'account.updated') {
@@ -125,6 +127,14 @@ export async function receiveStripeEvent(
       }
       const eventMarket = isObject(object.metadata) ? object.metadata.market_id : undefined;
       if (eventMarket !== marketId) return ok('other-market');
+    } else if (isExternalAccountEvent(event.type)) {
+      // A bank account (or card) of the account; nothing of it is read from the payload.
+      if (
+        (object.object !== 'bank_account' && object.object !== 'card') ||
+        object.account !== account
+      ) {
+        return err({ code: 'validation.failed' });
+      }
     } else if (object.object !== 'capability' || object.account !== account) {
       return err({ code: 'validation.failed' });
     }

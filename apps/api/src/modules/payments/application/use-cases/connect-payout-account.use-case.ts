@@ -4,6 +4,7 @@ import { PAYMENTS_PAYOUT_ACCOUNT_MANAGE } from '../../contracts/permissions';
 import {
   openPayoutAccountLink,
   type PayoutAccountFailure,
+  type PayoutAccountInput,
   type PayoutAccountLink,
 } from '../connect-flow';
 import type { PaymentsDependencies } from '../payments-dependencies';
@@ -12,10 +13,11 @@ import type { PaymentsDependencies } from '../payments-dependencies';
  * `payments.connect-payout-account`: creates the seller's Stripe account when it has none and
  * returns the hosted onboarding page. Rule `permissions [payments.payout-account.manage]`
  * (protected, so the Seller Owner), approved sellers only. The seller is the session's, never
- * request input.
+ * request input. A current two-step code is checked first (identity's `confirmSecondFactor`),
+ * and a seller without two-step sign-in is refused (`second-factor-required`).
  */
 export class ConnectPayoutAccount extends UseCase<
-  Record<string, never>,
+  PayoutAccountInput,
   PayoutAccountLink,
   PayoutAccountFailure
 > {
@@ -32,7 +34,7 @@ export class ConnectPayoutAccount extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return openPayoutAccountLink(this.deps, context, true);
+  protected handle(context: CallContext, input: PayoutAccountInput) {
+    return openPayoutAccountLink(this.deps, context, true, input);
   }
 }

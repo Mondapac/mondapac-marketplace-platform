@@ -9,7 +9,9 @@
   "maxLineQuantity": 99,
   "timezone": "Australia/Brisbane",
   "payments": {
-    "connectedAccountCountry": "AU"
+    "connectedAccountCountry": "AU",
+    "bankChangeCoolingOffHours": 24,
+    "payoutSchedule": "daily"
   },
   "commissionPayouts": {
     "defaultRateBps": 1500,

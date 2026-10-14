@@ -1,10 +1,21 @@
-import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { PaymentFailure } from '../../ordering';
+import { PayoutChangeRecorded } from '../domain/audit';
 import { statusOf } from '../domain/connected-account';
+import {
+  coolingOffAfter,
+  isCoolingOff,
+  isExternalAccountEvent,
+  kindOf,
+} from '../domain/payout-change';
 import type { PaymentsDependencies } from './payments-dependencies';
-import type { EventOutcome, PendingEvent } from './ports/stripe-event-inbox';
+import {
+  isAccountEventType,
+  type EventOutcome,
+  type PendingEvent,
+} from './ports/stripe-event-inbox';
 
 /** Events applied per run; the next run takes the rest. */
 export const APPLY_BATCH = 25;
@@ -58,26 +69,80 @@ async function applyAccountEvent(
     return 'rejected';
   }
   if (sellerId === null) return 'rejected';
-  const stored = await deps.unitOfWork.run<boolean, never>(market, async () => {
-    let row = await deps.accounts.findByRef(market, snapshot.id);
-    if (row === null) {
-      const bySeller = await deps.accounts.find(market, sellerId);
-      if (bySeller === null || bySeller.accountRef !== null) return ok(false);
-      await deps.accounts.linkRef(market, sellerId, snapshot.id, readAt);
-      row = await deps.accounts.findByRef(market, snapshot.id);
-      if (row === null || row.sellerId !== sellerId) return ok(false);
-    }
-    if (row.sellerId !== sellerId) return ok(false);
-    await deps.accounts.applyRead(
-      market,
-      sellerId,
-      snapshot,
-      statusOf(snapshot, row.status),
-      readAt,
-    );
-    return ok(true);
-  });
-  if (!stored.ok) return 'failed';
+  const stored = await deps.unitOfWork.run<boolean, { readonly code: 'conflict' }>(
+    market,
+    async () => {
+      let row = await deps.accounts.findByRef(market, snapshot.id);
+      if (row === null) {
+        const bySeller = await deps.accounts.find(market, sellerId);
+        if (bySeller === null || bySeller.accountRef !== null) return ok(false);
+        await deps.accounts.linkRef(market, sellerId, snapshot.id, readAt);
+        row = await deps.accounts.findByRef(market, snapshot.id);
+        if (row === null || row.sellerId !== sellerId) return ok(false);
+      }
+      if (row.sellerId !== sellerId) return ok(false);
+      await deps.accounts.applyRead(
+        market,
+        sellerId,
+        snapshot,
+        statusOf(snapshot, row.status),
+        readAt,
+      );
+      let pausedUntil = row.payoutsPausedUntil;
+      if (isExternalAccountEvent(event.type)) {
+        const kind = kindOf(event.type, {
+          hasEarlierChange: row.lastChangeId !== null,
+          neverEnabled:
+            (row.status === 'not-started' || row.status === 'pending') && !row.payoutsEnabled,
+          externalAccountCount: snapshot.externalAccountCount,
+        });
+        const until = coolingOffAfter(
+          kind,
+          readAt,
+          deps.policy.bankChangeCoolingOffHours(market),
+          row.coolingOffUntil,
+        );
+        const changeId = deps.ids.next<'PayoutChange'>();
+        const change = {
+          id: changeId,
+          kind,
+          detectedAt: readAt,
+          coolingOffUntil: kind === 'initial' ? null : until,
+          sourceEventId: event.eventId,
+        };
+        const recorded = await deps.accounts.recordChange(
+          market,
+          sellerId,
+          change,
+          row.lastChangeId,
+          until,
+          readAt,
+        );
+        // Another change got in first: nothing is kept, the event is read and applied again.
+        if (recorded === 'conflict') return err({ code: 'conflict' });
+        if (recorded === 'recorded') {
+          pausedUntil = until;
+          await deps.audit.record(
+            context,
+            PayoutChangeRecorded.entry(sellerId as Id<'Seller'>, {
+              after: { changeId, kind, coolingOffUntil: change.coolingOffUntil },
+            }),
+          );
+        }
+      }
+      // A pause that Stripe does not show (never applied, or the schedule was changed back) is
+      // written again, whatever the applied state is.
+      if (
+        isCoolingOff(pausedUntil, readAt) &&
+        snapshot.payoutScheduleInterval !== null &&
+        snapshot.payoutScheduleInterval !== 'manual'
+      ) {
+        await deps.accounts.markRepause(market, sellerId, readAt);
+      }
+      return ok(true);
+    },
+  );
+  if (!stored.ok) return 'retry';
   return stored.value ? 'account-updated' : 'rejected';
 }
 
@@ -91,7 +156,7 @@ async function applyOne(
   context: CallContext,
   event: PendingEvent,
 ): Promise<Applied> {
-  if (event.type === 'account.updated' || event.type === 'capability.updated') {
+  if (isAccountEventType(event.type)) {
     return applyAccountEvent(deps, context, event);
   }
   const read = await deps.reader.readCheckoutSession(event.objectId);

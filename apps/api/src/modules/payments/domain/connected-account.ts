@@ -1,3 +1,6 @@
+import type { Temporal } from '@mondapac/shared-kernel';
+import { isCoolingOff } from './payout-change';
+
 /** The states of a seller's connected account (payments design 3.4, simplified). */
 export const ACCOUNT_STATUSES = [
   'not-started',
@@ -22,6 +25,10 @@ export interface AccountSnapshot {
   readonly requirementsPastDue: boolean;
   /** Stripe's `requirements.disabled_reason`, or null while the account is not disabled. */
   readonly disabledReason: string | null;
+  /** Stripe's `settings.payouts.schedule.interval` (`manual`, `daily`, ...), or null when absent. */
+  readonly payoutScheduleInterval: string | null;
+  /** How many bank accounts and cards Stripe lists (a count only); null when not shown. */
+  readonly externalAccountCount: number | null;
 }
 
 /**
@@ -48,5 +55,12 @@ export function statusOf(snapshot: AccountSnapshot, previous: AccountStatus): Ac
   return snapshot.detailsSubmitted ? 'pending' : 'not-started';
 }
 
-/** `ready` = Stripe can pay this seller: status `enabled`. Cooling-off is a transfer rule. */
+/** Stripe can pay this seller: status `enabled`. */
 export const isReady = (status: AccountStatus): boolean => status === 'enabled';
+
+/** `ready` as payouts and the panel use it: enabled and not in the waiting period after a bank change. */
+export const isPayoutReady = (
+  status: AccountStatus,
+  coolingOffUntil: Temporal.Instant | null,
+  now: Temporal.Instant,
+): boolean => isReady(status) && !isCoolingOff(coolingOffUntil, now);
