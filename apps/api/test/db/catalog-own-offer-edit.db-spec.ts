@@ -152,6 +152,19 @@ describe.each(TEST_MARKETS)(
       ]);
     });
 
+    it('stores the handling a seller records', async () => {
+      const id = await storedOffer(`H-${uuid7().slice(-10)}`);
+      const offer = await load(id);
+      const set = offer.setHandling({ handling: 'REPACKED', now: T1 });
+      expect(set).toEqual({ ok: true, value: ['handling'] });
+      expect(await save(offer)).toEqual({ ok: true, value: null });
+      const stored = await owner.query(
+        `SELECT handling FROM catalog.offers WHERE market_id = $1 AND id = $2`,
+        [code, id],
+      );
+      expect(stored.rows[0]).toEqual({ handling: 'REPACKED' });
+    });
+
     it.each(['pending-first-publish', 'changes-needed'] as const)(
       'returns a %s Offer to draft and clears submitted_at',
       async (status) => {
