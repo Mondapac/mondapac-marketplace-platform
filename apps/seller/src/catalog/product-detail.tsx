@@ -38,7 +38,13 @@ function Revision({
 }
 
 /** One product of the seller, read only: state, variants and the revisions in play. */
-export async function ProductDetail({ product }: { readonly product: ProductView }) {
+export async function ProductDetail({
+  product,
+  canEdit = false,
+}: {
+  readonly product: ProductView;
+  readonly canEdit?: boolean;
+}) {
   const t = await getTranslations();
   const status = known(product.status, PRODUCT_STATUSES);
   const active = product.variants.filter((variant) => variant.state !== 'retired').length;
@@ -49,6 +55,14 @@ export async function ProductDetail({ product }: { readonly product: ProductView
         <Badge tone="neutral">{t(`catalog.products.status.${status}`)}</Badge>
         {product.pending !== null ? (
           <Badge tone="attention">{t('catalog.products.pending')}</Badge>
+        ) : null}
+        {canEdit ? (
+          <a
+            className="font-medium text-link underline"
+            href={`/products/${product.productId}/edit`}
+          >
+            {t('catalog.edit.title')}
+          </a>
         ) : null}
       </div>
       <FieldList

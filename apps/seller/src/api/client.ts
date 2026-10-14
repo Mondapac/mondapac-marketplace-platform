@@ -7,6 +7,9 @@ export interface ApiFailure {
     readonly rule?: string;
     readonly retryAfterSeconds?: number;
     readonly fields?: readonly { readonly path: string; readonly code: string }[];
+    /** The problems that keep a draft from being submitted (`revision.not-ready`). */
+    readonly issues?: readonly { readonly path: string; readonly code: string }[];
+    readonly max?: number;
   };
 }
 

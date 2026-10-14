@@ -589,6 +589,44 @@
         "throttled": "Too many requests. Wait a moment and try again.",
         "unavailable": "Products are unavailable right now. Try again later."
       }
+    },
+    "edit": {
+      "title": "Edit product",
+      "locale": "Texts ({locale})",
+      "field": {
+        "name": "Name",
+        "shortDescription": "Short description",
+        "description": "Description"
+      },
+      "save": "Save draft",
+      "submit": "Submit for review",
+      "back": "Back to product",
+      "reload": "Reload the product",
+      "replace-pending": "Replace the revision that is waiting for review",
+      "refused": "Some texts were not saved. Change the fields marked below.",
+      "refused-field": "This text was not saved because it makes a claim that needs a matching certificate.",
+      "notice": {
+        "saved": "Draft saved.",
+        "submitted": "Submitted for review.",
+        "published": "Published."
+      },
+      "error": {
+        "claim-text": "A text makes a claim that needs a matching certificate.",
+        "not-ready": "The draft is not ready to submit. Fix these first:",
+        "invalid-content": "The draft content is not valid.",
+        "no-draft": "There is no draft to submit. Reload the product.",
+        "stale": "The product changed somewhere else. Reload it and try again.",
+        "not-editable": "This product can't be edited now. Reload it to see its state.",
+        "not-found": "This product was not found.",
+        "variant": "The variants of this product are not valid.",
+        "not-eligible": "Your seller account can't change products right now.",
+        "denied": "You don't have permission to edit products.",
+        "throttled": "Too many requests. Try again in {seconds} seconds.",
+        "invalid": "Check the texts and try again. Each text has a length limit of {max} characters.",
+        "csrf": "Your session expired. Reload the page and try again.",
+        "unavailable": "Products are unavailable right now. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "stock": {

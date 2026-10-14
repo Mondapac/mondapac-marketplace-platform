@@ -179,7 +179,7 @@ describe('helpers', () => {
       problemOf({
         status: 422,
         code: 'inventory.sources.limit-reached',
-        details: { max: 5 } as never,
+        details: { max: 5 },
       }),
     ).toEqual({ form: { key: 'stock.error.limit', values: { max: 5 } }, fields: {} });
   });

@@ -383,4 +383,22 @@ describe('relay allowlist for stock locations', () => {
       expect((await relay(config, put('x'), path, upstream)).status).toBe(404);
     }
   });
+  it('relays a product draft save and submit by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const base = ['catalog', 'seller', 'products', ID];
+    const post = (path: string[]) =>
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'POST',
+        headers: sameOrigin,
+        body: '{}',
+      });
+    const draft = [...base, 'draft'];
+    const submit = [...base, 'submit'];
+    expect((await relay(config, put(draft.join('/')), draft, upstream)).status).toBe(200);
+    expect((await relay(config, post(submit), submit, upstream)).status).toBe(200);
+    expect((await relay(config, post(draft), draft, upstream)).status).toBe(404);
+    expect((await relay(config, put(submit.join('/')), submit, upstream)).status).toBe(404);
+    const bad = ['catalog', 'seller', 'products', 'x', 'draft'];
+    expect((await relay(config, put(bad.join('/')), bad, upstream)).status).toBe(404);
+  });
 });

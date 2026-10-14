@@ -21,7 +21,7 @@ export function problemOf(failure: ApiFailure): StockProblem {
     return { form: { key: 'stock.validation.summary' }, fields };
   }
   if (failure.code === 'inventory.sources.limit-reached') {
-    const max = (failure.details as { max?: number } | undefined)?.max;
+    const max = failure.details?.max;
     return {
       form: { key: 'stock.error.limit', ...(max === undefined ? {} : { values: { max } }) },
       fields: {},

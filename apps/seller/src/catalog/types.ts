@@ -90,3 +90,21 @@ export interface ProductCreated {
   readonly variantIds: readonly string[];
   readonly offerId: string;
 }
+
+/** `PUT catalog/seller/products/:id/draft`: the variant ids the server holds and the texts it kept. */
+export interface DraftSaved {
+  readonly variantIds: readonly string[];
+  readonly refusedFields: readonly {
+    readonly field: string;
+    readonly ref: string | null;
+    readonly locale: string;
+    readonly code: string;
+  }[];
+}
+
+/** `POST catalog/seller/products/:id/submit`. */
+export interface Submitted {
+  readonly revisionId: string;
+  readonly revisionNo: number;
+  readonly published: boolean;
+}
