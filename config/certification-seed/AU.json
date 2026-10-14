@@ -1,0 +1,60 @@
+{
+  "market": "AU",
+  "note": "Certification types of the launch Market (design 5.2). Terms are written by people (R10); the owner approved this list on 2026-10-14. The Arabic term sits under en-AU on purpose (design 4.6, script of terms). Kosher and vegan are defined and inactive (Q1); vegan is self-declared. No issuer is seeded: none is known.",
+  "types": [
+    {
+      "code": "halal",
+      "status": "active",
+      "verificationMode": "THIRD_PARTY_DOCUMENT",
+      "requiresIssuerRegistry": true,
+      "requiresDocument": true,
+      "requiresExpiry": true,
+      "defaultBasis": "SELLER_REQUIRED",
+      "autoApproveSelfDeclaration": false,
+      "badgeIconKey": "halal",
+      "locales": {
+        "en-AU": {
+          "name": "Halal",
+          "customerDescription": "The seller holds a halal certificate from a certifier that the platform has reviewed.",
+          "claimTerms": ["halal", "halaal", "hallal", "zabiha", "zabihah", "dhabiha", "حلال"]
+        }
+      }
+    },
+    {
+      "code": "kosher",
+      "status": "inactive",
+      "verificationMode": "THIRD_PARTY_DOCUMENT",
+      "requiresIssuerRegistry": true,
+      "requiresDocument": true,
+      "requiresExpiry": true,
+      "defaultBasis": "SELLER_REQUIRED",
+      "autoApproveSelfDeclaration": false,
+      "badgeIconKey": "kosher",
+      "locales": {
+        "en-AU": {
+          "name": "Kosher",
+          "customerDescription": "The seller holds a kosher certificate from a certifier that the platform has reviewed.",
+          "claimTerms": ["kosher", "kashrut", "pareve", "parve"]
+        }
+      }
+    },
+    {
+      "code": "vegan",
+      "status": "inactive",
+      "verificationMode": "SELF_DECLARATION",
+      "requiresIssuerRegistry": false,
+      "requiresDocument": false,
+      "requiresExpiry": false,
+      "defaultBasis": "SELLER_REQUIRED",
+      "autoApproveSelfDeclaration": false,
+      "badgeIconKey": "vegan",
+      "locales": {
+        "en-AU": {
+          "name": "Vegan",
+          "customerDescription": "The seller declares this product is vegan; the platform reviewed the declaration.",
+          "claimTerms": ["vegan"]
+        }
+      }
+    }
+  ]
+}

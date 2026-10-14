@@ -63,6 +63,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'CERTIFICATION');
   await createCopy(name, 'CATALOG_CLAIMS');
   await createCopy(name, 'CLAIM_FACTS');
+  await createCopy(name, 'CERT_SEED');
   await createCopy(name, 'CATALOG_REVISIONS');
   await createCopy(name, 'CATALOG_ATTRIBUTES');
   await createCopy(name, 'PRICING_CONSTRAINTS');
@@ -102,7 +103,9 @@ export default async function globalSetup(): Promise<void> {
  *   references the probed one, transitively (for catalog.product_revisions and
  *   catalog.attribute_family_revisions: products, variants, offers, working copies and more), one
  *   by one before the refusing trigger runs; holding some while waiting for the next deadlocked
- *   (40P01) the writers of other files, so each of these files keeps its own copy.
+ *   (40P01) the writers of other files, so each of these files keeps its own copy;
+ *   `cert_seed`: certification-seed.db-spec.ts runs the type seed and reads whole Markets (the
+ *   vocabulary), so no other file's types live there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -122,6 +125,7 @@ async function createCopy(
     | 'CERTIFICATION'
     | 'CATALOG_CLAIMS'
     | 'CLAIM_FACTS'
+    | 'CERT_SEED'
     | 'CATALOG_REVISIONS'
     | 'CATALOG_ATTRIBUTES'
     | 'PRICING_CONSTRAINTS',

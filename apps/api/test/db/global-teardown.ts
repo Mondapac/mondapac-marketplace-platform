@@ -17,6 +17,7 @@ export default async function globalTeardown(): Promise<void> {
     process.env.TEST_CERTIFICATION_DATABASE_NAME,
     process.env.TEST_CATALOG_CLAIMS_DATABASE_NAME,
     process.env.TEST_CLAIM_FACTS_DATABASE_NAME,
+    process.env.TEST_CERT_SEED_DATABASE_NAME,
     process.env.TEST_CATALOG_REVISIONS_DATABASE_NAME,
     process.env.TEST_CATALOG_ATTRIBUTES_DATABASE_NAME,
     process.env.TEST_PRICING_CONSTRAINTS_DATABASE_NAME,

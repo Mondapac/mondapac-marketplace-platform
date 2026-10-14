@@ -55,6 +55,7 @@
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
+  { "name": "certification.seed-certification-types", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",
     "rule": "own-resources",
