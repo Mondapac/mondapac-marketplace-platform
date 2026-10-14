@@ -49,6 +49,7 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 const AUDITING_MODULES = [
   'CommissionPayoutsModule',
   'IdentityModule',
+  'NotificationsModule',
   'PaymentsModule',
   'PricingModule',
   'SellersModule',
@@ -431,6 +432,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(binders.sort()).toEqual([
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['IdentityModule', 'identity'],
+      ['NotificationsModule', 'notifications'],
       ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
       ['SellersModule', 'sellers'],
@@ -460,6 +462,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CommissionPayoutsModule', 'writer'],
       ['IdentityModule', 'actions'],
       ['IdentityModule', 'writer'],
+      ['NotificationsModule', 'actions'],
+      ['NotificationsModule', 'writer'],
       ['PaymentsModule', 'actions'],
       ['PaymentsModule', 'writer'],
       ['PricingModule', 'actions'],
@@ -551,6 +555,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: registerAuditActions('commission-payouts')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: auditWriterFor('identity')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
+      `${path.join('modules', 'notifications', 'notifications.module.ts')}: auditWriterFor('notifications')`,
+      `${path.join('modules', 'notifications', 'notifications.module.ts')}: registerAuditActions('notifications')`,
       `${path.join('modules', 'payments', 'payments.module.ts')}: auditWriterFor('payments')`,
       `${path.join('modules', 'payments', 'payments.module.ts')}: registerAuditActions('payments')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,

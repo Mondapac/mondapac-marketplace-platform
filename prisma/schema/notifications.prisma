@@ -1,0 +1,23 @@
+// The notifications module's tables (support contact, speed mode). Every model is named
+// Notifications<Name> and mapped to its table with @@map. The CHECKs and the grants are
+// hand-written in the migration.
+
+/// One version of a Market's support email address. Insert-only: the current address is the row
+/// with the highest version, and the rows before it are the change history (who, when, before).
+model NotificationsSupportContact {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  /// 1 for the first admin change, +1 for each later one. The primary key refuses two admins
+  /// saving from the same version: the second one is told to reload.
+  version       Int
+  tenantId      String   @map("tenant_id")
+  email         String   @db.VarChar(254)
+  /// The address before this change; null when the Market default (config) was the first value.
+  previousEmail String?  @map("previous_email") @db.VarChar(254)
+  changedAt     DateTime @map("changed_at") @db.Timestamptz(6)
+  /// The admin account that made the change (a plain id, no foreign key).
+  changedBy     String   @map("changed_by") @db.Uuid
+
+  @@id([marketId, version])
+  @@map("support_contacts")
+  @@schema("notifications")
+}

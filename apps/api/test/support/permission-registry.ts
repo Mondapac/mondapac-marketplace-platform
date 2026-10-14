@@ -7,6 +7,7 @@ import { CATALOG_PERMISSIONS } from '../../src/modules/catalog/contracts/permiss
 import { COMMISSION_PAYOUTS_PERMISSIONS } from '../../src/modules/commission-payouts/contracts/permissions';
 import { IDENTITY_PERMISSIONS } from '../../src/modules/identity/contracts/permissions';
 import { INVENTORY_PERMISSIONS } from '../../src/modules/inventory/contracts/permissions';
+import { NOTIFICATIONS_PERMISSIONS } from '../../src/modules/notifications/contracts/permissions';
 import { ORDERING_PERMISSIONS } from '../../src/modules/ordering/contracts/permissions';
 import { PAYMENTS_PERMISSIONS } from '../../src/modules/payments/contracts/permissions';
 import { PRICING_PERMISSIONS } from '../../src/modules/pricing/contracts/permissions';
@@ -31,6 +32,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('pricing', PRICING_PERMISSIONS);
   registry.register('shipping', SHIPPING_PERMISSIONS);
   registry.register('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS);
+  registry.register('notifications', NOTIFICATIONS_PERMISSIONS);
   registry.seal();
   return registry;
 }

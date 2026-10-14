@@ -223,3 +223,11 @@ policy is the Market's `defaultCurrency`.
 - `jumpDirections` (required): `up`, `down` or `both` (AU `both`).
 - `jumpWindow` (required): an ISO 8601 duration of days, hours and minutes, between one hour
   and 90 days (AU `P7D`).
+
+## `notifications` section (optional)
+
+Owned by `notifications`. One key: `supportEmail`, the Market's support address (an email address, at
+most 254 characters). It is only the default: a platform admin can change the address at run time on
+the admin panel's Settings page (`notifications.support-contact.manage`), and the stored value then
+wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)
+and an audit row. A Market without the section shows no address until an admin sets one.

@@ -1,5 +1,60 @@
-import { Module } from '@nestjs/common';
+import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { CLOCK } from '../../platform/clock/clock.module';
+import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import type { NotificationsDependencies } from './application/notifications-dependencies';
+import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
+import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
+import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
+import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
+import { NOTIFICATIONS_PERMISSIONS } from './contracts';
+import { NOTIFICATIONS_AUDIT_ACTIONS } from './domain/audit';
+import { notificationsProviders } from './infrastructure/notifications-providers';
+import { AdminSupportContactController } from './presentation/support-contact.controller';
 
-/** Bounded context shell created in Phase 1; filled slice by slice after its gates (ADR-0013). */
-@Module({})
+type UseCaseClass<U> = new (gate: UseCaseGate, deps: NotificationsDependencies) => U;
+
+const PORTS: readonly [keyof NotificationsDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['contacts', SUPPORT_CONTACT_REPOSITORY],
+  ['policy', NOTIFICATIONS_POLICY],
+  ['audit', AUDIT_WRITER],
+  ['clock', CLOCK],
+];
+
+/** Every notifications use case shares one dependency object, built from the same ports. */
+function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new type(
+        gate,
+        Object.fromEntries(
+          PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as NotificationsDependencies,
+      ),
+  };
+}
+
+/**
+ * Notifications (speed mode). So far one setting: the Market's support email address, seeded from
+ * Market configuration and changeable by the platform admin; mail and the sign-in screens read it
+ * from here later.
+ */
+@Module({
+  controllers: [AdminSupportContactController],
+  providers: [
+    PersistenceModule.auditWriterFor('notifications'),
+    registerAuditActions('notifications', NOTIFICATIONS_AUDIT_ACTIONS),
+    registerPermissions('notifications', NOTIFICATIONS_PERMISSIONS),
+    ...notificationsProviders,
+    ...[SetSupportContact, ViewSupportContact].map((type) =>
+      useCaseProvider(type as UseCaseClass<unknown>),
+    ),
+  ],
+})
 export class NotificationsModule {}

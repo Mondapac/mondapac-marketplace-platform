@@ -464,6 +464,14 @@ describe('relay allowlist for seller decisions', () => {
       vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
     );
 
+  it('relays the support email write on its exact path and method only', async () => {
+    const path = 'notifications/admin/support-contact';
+    expect((await call('PUT', path)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(404);
+    expect((await call('DELETE', path)).status).toBe(404);
+    expect((await call('PUT', `${path}/extra`)).status).toBe(404);
+  });
+
   it('relays approve, reject and the manual check for a seller UUID only', async () => {
     expect((await call('POST', `sellers/admin/${ID}/review/approve`)).status).toBe(200);
     expect((await call('POST', `sellers/admin/${ID}/review/reject`)).status).toBe(200);

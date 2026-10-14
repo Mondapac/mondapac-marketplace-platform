@@ -36,6 +36,12 @@ export const adminNav: NavConfig = {
       anyOf: ['payments.connected-account.view'],
     },
     {
+      id: 'settings',
+      labelKey: 'nav.settings',
+      href: '/settings',
+      anyOf: ['notifications.support-contact.view'],
+    },
+    {
       id: 'team',
       labelKey: 'nav.team',
       href: '/team',

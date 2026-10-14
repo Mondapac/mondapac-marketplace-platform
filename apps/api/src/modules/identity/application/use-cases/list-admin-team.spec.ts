@@ -96,6 +96,7 @@ const LEAD_KEYS = [
   'identity.platform-role.view',
   'identity.seller-access.view',
   'identity.seller-account.reset-second-factor',
+  'notifications.support-contact.view',
   'ordering.order.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
