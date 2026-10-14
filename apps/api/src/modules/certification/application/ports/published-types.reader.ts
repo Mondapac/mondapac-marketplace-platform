@@ -9,8 +9,9 @@ import type { ClaimVocabularyEntry } from '../../domain/claim-text-matcher';
  *
  * Acceptance criteria of the Prisma reader (Hassan, #142 and #161):
  * - `claimVocabulary` and `types` return exactly one entry per type row of the Market, active or
- *   inactive. A type with a NULL or unresolvable published revision, or with no terms, is a fault
- *   (the caller answers `unavailable`), never dropped: a dropped type lets its words pass unseen.
+ *   inactive. A type with a NULL or unresolvable published revision is a fault in both reads, and
+ *   a type with no claim term is a fault in `claimVocabulary` only (`types` carries no terms); the
+ *   caller answers `unavailable`, never drops the type: a dropped type lets its words pass unseen.
  *   Contract test: one type without a published revision, in both Market fixtures.
  * - A shuffled-order contract test for this reader and for `ClaimFactsReader`.
  */
