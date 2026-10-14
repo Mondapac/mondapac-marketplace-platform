@@ -297,7 +297,7 @@ const productTypeProvider: FactoryProvider<string> = {
       eligibility: true,
       allowedTypes: true,
     }),
-    useCaseProvider(OwnProductOptions, { policy: true }),
+    useCaseProvider(OwnProductOptions, { policy: true, allowedTypes: true }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,

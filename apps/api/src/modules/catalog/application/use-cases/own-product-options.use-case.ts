@@ -4,11 +4,15 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import { OFFER_STATUSES } from '../../domain/offer';
 import { PRODUCT_STATUSES } from '../../domain/product';
+import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { sellerOf } from '../own-reads/own-reads.shared';
 
 export interface OwnProductOptionsOutput {
-  /** The product types the Market offers; not yet narrowed by what the seller may sell (SEL-12). */
+  /**
+   * The product types the Market offers that this seller may sell (SEL-12), in the Market's order;
+   * empty when `allowedProductTypesOf` fails (fail closed).
+   */
   readonly productTypes: readonly string[];
   readonly conditions: readonly string[];
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
@@ -25,6 +29,7 @@ export type OwnProductOptionsFailure =
 
 export interface OwnProductOptionsDependencies {
   readonly policy: CatalogMarketPolicy;
+  readonly allowedTypes: AllowedProductTypesReader;
 }
 
 const HIDDEN_PRODUCT_STATUSES: ReadonlySet<string> = new Set(['discarded', 'withdrawn']);
@@ -32,9 +37,9 @@ const HIDDEN_PRODUCT_STATUSES: ReadonlySet<string> = new Set(['discarded', 'with
 /**
  * `own-product.options` (catalog design 8.2): what the seller panel's product form and list
  * filters offer, from the Market configuration: product types, Offer conditions, locales and the
- * statuses a seller sees. Reads no seller data, so it opens no unit. Rule: the key
- * `catalog.own-product.edit`, as the form that uses it. The type list is the Market's; narrowing
- * it to what the seller may sell (SEL-12) is applied at create and is not done here yet.
+ * statuses a seller sees. Opens no unit of its own. Rule: the key `catalog.own-product.edit`, as
+ * the form that uses it. The type list is the Market's narrowed by `allowedProductTypesOf`
+ * (SEL-12); create still checks it again.
  */
 export class OwnProductOptions extends UseCase<
   Record<string, never>,
@@ -57,9 +62,12 @@ export class OwnProductOptions extends UseCase<
   protected async handle(
     context: CallContext,
   ): Promise<Result<OwnProductOptionsOutput, OwnProductOptionsFailure>> {
-    if (sellerOf(context) === null) return err({ code: 'access.denied' });
+    const sellerId = sellerOf(context);
+    if (sellerId === null) return err({ code: 'access.denied' });
     const { market } = context;
-    const { policy } = this.deps;
+    const { policy, allowedTypes } = this.deps;
+    // The reader answers null on any failure: no type is offered then (fail closed).
+    const allowed = await allowedTypes.allowedFor(context, sellerId);
     let canCreate = false;
     try {
       canCreate = await policy.sellerCanCreateProduct(market);
@@ -69,7 +77,9 @@ export class OwnProductOptions extends UseCase<
     try {
       const locales = policy.locales(market);
       return ok({
-        productTypes: [...policy.productTypes(market)],
+        productTypes: policy
+          .productTypes(market)
+          .filter((type) => allowed === 'all' || (allowed !== null && allowed.has(type))),
         conditions: [...policy.conditions(market)],
         locales: { default: locales.default, supported: [...locales.supported] },
         sellerCanCreateProduct: canCreate,

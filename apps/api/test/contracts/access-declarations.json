@@ -123,6 +123,8 @@
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
+  { "name": "sellers.allowed-product-types", "rule": "anonymous" },
+  { "name": "sellers.allowed-product-types-system", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
   { "name": "sellers.approved-seller-zones-system", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },

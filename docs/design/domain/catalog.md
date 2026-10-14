@@ -1083,7 +1083,7 @@ No copy of a seller's access state is kept (ADR-0018 decision 4); may-sell is re
 | Call | Where | Notes |
 |---|---|---|
 | `sellingEligibility(ctx, sellerIds)` | Every seller write; approve and bulk approve (skip, CAT-33); Import per row | Error = no (AC 17). CERT-12: separate from the claim |
-| `allowedProductTypesOf(ctx, sellerId)` | Product create, Offer create, submit, Import row, the SEL-12 handler | Approved method of SL 7.1 (slice 9 there, always `all` until its slice 14) |
+| `allowedProductTypesOf(ctx, sellerId)` | Product create, Offer create, submit, Import row, the SEL-12 handler | Approved method of SL 7.1 (slice 9 there, `all` while the seller's setting is on until its slice 14) |
 | `mayProposeCategories(ctx, sellerId)` | `own-category.propose` | Approved method of SL 7.1 (slice 13 there) |
 | `sellerSummaries(ctx, ids)` | Review queue rows (store name), admin lists, mail (seller zone for times in mails) | ≤ 100 ids per call; a not-approved seller shows "not yet approved" |
 | `publishedStoreProfile` | Not used | The storefront's (Phase 6) |

@@ -42,6 +42,7 @@ import { SELLER_MARKET_POLICY } from './application/ports/seller-market-policy';
 import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
 import { TAX_PROFILE_REPOSITORY } from './application/ports/tax-profile.repository';
 import { ADMIN_FLAG_REPOSITORY } from './application/ports/admin-flag.repository';
+import { SELLING_FACTS_REPOSITORY } from './application/ports/selling-facts.repository';
 import { IDENTIFIER_CLAIM_REPOSITORY } from './application/ports/identifier-claim.repository';
 import { REVIEW_CHECK_REPOSITORY } from './application/ports/review-check.repository';
 import { SELLER_ACCESS_DECIDER } from './application/ports/seller-access-decider';
@@ -71,6 +72,8 @@ import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
+import { AllowedProductTypesSystem } from './application/use-cases/allowed-product-types-system.use-case';
+import { AllowedProductTypes } from './application/use-cases/allowed-product-types.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
 import { SellingEligibility } from './application/use-cases/selling-eligibility.use-case';
 import { SELLERS_PERMISSIONS } from './contracts/permissions';
@@ -128,6 +131,7 @@ const PORT = {
   reviewChecks: REVIEW_CHECK_REPOSITORY,
   claims: IDENTIFIER_CLAIM_REPOSITORY,
   flags: ADMIN_FLAG_REPOSITORY,
+  sellingFacts: SELLING_FACTS_REPOSITORY,
   decider: SELLER_ACCESS_DECIDER,
   ids: ID_GENERATOR,
   clock: CLOCK,
@@ -152,6 +156,14 @@ function useCaseProvider<D, U>(
       new type(gate, Object.fromEntries(names.map((name, index) => [name, values[index]])) as D),
   };
 }
+
+/** The ports of the may-sell contract (slice 9). */
+const SELLING_ELIGIBILITY_PORTS = {
+  unitOfWork: true,
+  sellingFacts: true,
+  accessReader: true,
+  policy: true,
+} as const;
 
 /** The ports of the reviewer's approve and reject (slice 7a-decide). */
 const REVIEW_DECISION_PORTS = {
@@ -421,12 +433,11 @@ const REVIEW_DECISION_PORTS = {
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
     useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
-    // The fail-closed stand-in of slice 9 (design 7.2): it reads nothing, so only the gate.
-    ...[SellingEligibility, SellingEligibilitySystem].map((type): FactoryProvider => ({
-      provide: type,
-      inject: [USE_CASE_GATE],
-      useFactory: (gate: UseCaseGate) => new type(gate),
-    })),
+    // Slice 9, the may-sell contract and the allowed product types (design 7.1, 7.2).
+    useCaseProvider(SellingEligibility, SELLING_ELIGIBILITY_PORTS),
+    useCaseProvider(SellingEligibilitySystem, SELLING_ELIGIBILITY_PORTS),
+    useCaseProvider(AllowedProductTypes, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(AllowedProductTypesSystem, { unitOfWork: true, sellingFacts: true }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -434,18 +445,24 @@ const REVIEW_DECISION_PORTS = {
         SellerSummariesSystem,
         SellingEligibility,
         SellingEligibilitySystem,
+        AllowedProductTypes,
+        AllowedProductTypesSystem,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
         sellerSummariesSystem: SellerSummariesSystem,
         sellingEligibility: SellingEligibility,
         sellingEligibilitySystem: SellingEligibilitySystem,
+        allowedProductTypes: AllowedProductTypes,
+        allowedProductTypesSystem: AllowedProductTypesSystem,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
           sellerSummariesSystem,
           sellingEligibility,
           sellingEligibilitySystem,
+          allowedProductTypes,
+          allowedProductTypesSystem,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

@@ -1,10 +1,13 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
+import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
+  AllowedProductTypesOf,
   SellersFacade,
   SellingEligibilityMap,
   SellersUnavailable,
@@ -18,6 +21,8 @@ export interface SellersFacadeUseCases {
   readonly sellerSummariesSystem: SellerSummariesSystem;
   readonly sellingEligibility: SellingEligibility;
   readonly sellingEligibilitySystem: SellingEligibilitySystem;
+  readonly allowedProductTypes: AllowedProductTypes;
+  readonly allowedProductTypesSystem: AllowedProductTypesSystem;
 }
 
 /**
@@ -51,5 +56,18 @@ export class SellersFacadeImplementation implements SellersFacade {
         ? this.useCases.sellingEligibilitySystem
         : this.useCases.sellingEligibility;
     return useCase.execute(context, { sellerIds });
+  }
+
+  allowedProductTypesOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<AllowedProductTypesOf, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  > {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.allowedProductTypesSystem
+        : this.useCases.allowedProductTypes;
+    return useCase.execute(context, { sellerId });
   }
 }

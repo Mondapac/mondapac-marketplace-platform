@@ -401,7 +401,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     expect(JSON.stringify(asSystem)).toBe(JSON.stringify(asAnonymous));
   });
 
-  it('answers sellingEligibility false for everyone, whoever calls (stand-in until slice 9)', async () => {
+  it('answers sellingEligibility false for a seller with no approved revision, whoever calls', async () => {
     const sellerId = await registerSeller(code);
     const never = new SequenceIdGenerator(clock).next<'Seller'>();
 

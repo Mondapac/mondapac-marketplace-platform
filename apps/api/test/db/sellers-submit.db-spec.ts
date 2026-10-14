@@ -12,6 +12,7 @@ import {
 import { Client } from 'pg';
 import request from 'supertest';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { SELLERS_FACADE, type SellersFacade } from '../../src/modules/sellers';
 import { REVIEWER_NOTIFIER } from '../../src/modules/sellers/application/ports/reviewer-notifier';
 import {
   SERVICE_AREAS,
@@ -810,6 +811,81 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
         [code],
       );
       expect(dead).toEqual([]);
+    });
+
+    it('makes an approved seller eligible to sell, and narrows it on an open claim conflict (slice 9)', async () => {
+      // Its own number: an earlier test's approval holds the shared fixture identifier.
+      const { sellerId, revisionId } = await submitted(
+        code === 'AU'
+          ? validIdentifiers(abnScheme, 11, 1, ['8'], 9)[0]!
+          : validIdentifiers(zzCorpNoScheme, 9, 1, ['8'], 9)[0]!,
+      );
+      const facade = () => app.get<SellersFacade>(SELLERS_FACADE);
+      const contexts = () => [
+        testCallContext(market, 'anonymous', `db-eligible-${randomUUID()}`),
+        testCallContext(market, 'system', `db-eligible-${randomUUID()}`),
+      ];
+      const eligibility = async (sellerIds: Id<'Seller'>[]) => {
+        const answers = [];
+        for (const context of contexts()) {
+          const result = await facade().sellingEligibility(context, sellerIds);
+          answers.push(result.ok ? [...result.value].map(([, a]) => a.eligible) : result);
+        }
+        expect(answers[1]).toEqual(answers[0]);
+        return answers[0];
+      };
+      const seller = sellerId;
+      const unknown = ids.next<'Seller'>();
+
+      // Pending: identity has not said approved and there is no approved revision.
+      expect(await eligibility([seller, unknown])).toEqual([false, false]);
+      for (const context of contexts()) {
+        expect(await facade().allowedProductTypesOf(context, seller)).toEqual(ok('all'));
+        expect((await facade().allowedProductTypesOf(context, unknown)).ok).toBe(false);
+      }
+
+      expect((await manualActive(sellerId, revisionId)).ok).toBe(true);
+      expect((await app.get(ReviewApprove).execute(admin(), { sellerId, revisionId })).ok).toBe(
+        true,
+      );
+      await settle();
+      expect(await eligibility([seller, unknown])).toEqual([true, false]);
+
+      // Never across Markets.
+      const elsewhere = await facade().sellingEligibility(
+        testCallContext(marketOf(other), 'system', `db-eligible-${randomUUID()}`),
+        [seller],
+      );
+      expect(elsewhere.ok && [...elsewhere.value]).toEqual([[seller, { eligible: false }]]);
+      expect(
+        (
+          await facade().allowedProductTypesOf(
+            testCallContext(marketOf(other), 'system', `db-eligible-${randomUUID()}`),
+            seller,
+          )
+        ).ok,
+      ).toBe(false);
+
+      // An open identifier-claim-conflict flag narrows the yes until an admin clears it.
+      const flagId = randomUUID();
+      await sql.query(
+        `INSERT INTO sellers.admin_flags (id, market_id, tenant_id, seller_id, code, raised_at)
+         VALUES ($1, $2, 'default', $3, 'identifier-claim-conflict', now())`,
+        [flagId, code, sellerId],
+      );
+      expect(await eligibility([seller])).toEqual([false]);
+      await sql.query(
+        `UPDATE sellers.admin_flags SET cleared_at = now(), cleared_by_account_id = $2 WHERE id = $1`,
+        [flagId, reviewer],
+      );
+      expect(await eligibility([seller])).toEqual([true]);
+
+      // identity's no wins over sellers' yes.
+      await owner.query(
+        "UPDATE identity.seller_access SET state = 'suspended' WHERE market_id = $1 AND seller_id = $2",
+        [code, sellerId],
+      );
+      expect(await eligibility([seller])).toEqual([false]);
     });
 
     it('refuses a second seller with the same business number (AC 21)', async () => {
