@@ -83,3 +83,16 @@ describe('tables', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('two-step pages', () => {
+  it('use fluid layouts: no fixed widths beyond the QR plate, and wrapping action rows', () => {
+    const text = readFileSync(join(__dirname, '../src/security/two-step-panel.tsx'), 'utf8');
+    // A fixed pixel width would widen a 375px page; only max-width and the QR plate are set.
+    expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    expect(text).toContain('max-w-xl');
+    expect(text).toContain('flex-wrap');
+    expect(text).toContain('break-all');
+    // The code grid is one column on phones.
+    expect(text).toContain('grid-cols-1');
+  });
+});

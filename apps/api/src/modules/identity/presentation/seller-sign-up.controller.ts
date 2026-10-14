@@ -166,6 +166,8 @@ export class SellerSignUpController {
     );
     this.log('identity.seller-confirm-email', context, outcomeOf(outcome));
     if (outcome instanceof HttpException) throw outcome;
+    // The email confirmation never meets a factor: only an unverified account has a link.
+    if (outcome.code !== 'signed-in') throw new Error('seller-confirm-email: a code was asked for');
     return outcome;
   }
 

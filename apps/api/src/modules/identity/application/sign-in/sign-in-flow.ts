@@ -30,7 +30,6 @@ import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hashe
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
 import type { AccessDecisionRepository } from '../ports/access-decision.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
-import { isSellerOwner } from '../sellers/seller-owner';
 import { scopeOfPopulation } from '../../domain/role';
 import type {
   RoleAssignmentRepository,
@@ -45,6 +44,12 @@ import type {
   AdminSecondStepOutcome,
   AdminSecondStepPolicy,
 } from './admin-second-step';
+import { resolveSellerGate } from './seller-gate';
+import type {
+  SellerSecondStep,
+  SellerSecondStepOutcome,
+  SellerSecondStepPolicy,
+} from './seller-second-step';
 
 /** Where the request came from, as resolved per ADR-0037 (never a forwarded header). */
 export interface SignInClient {
@@ -162,7 +167,8 @@ type Refused =
   | 'account.disabled'
   | 'membership.none'
   | 'seller-access.suspended'
-  | 'link.rejected';
+  | 'link.rejected'
+  | 'access.unavailable';
 
 /** What the closing unit decided. */
 type Closed =
@@ -172,12 +178,14 @@ type Closed =
       readonly sellerAccess: SellerAccessStateCode | null;
     }
   | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome }
+  | { readonly kind: 'seller-step'; readonly step: SellerSecondStepOutcome }
   | { readonly kind: 'refused'; readonly code: Refused; readonly reason?: string };
 
 /** What the reservation and closing units of one attempt produce, for every population. */
 type Outcome =
   | { readonly kind: 'signed-in'; readonly value: SignedIn }
-  | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome };
+  | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome }
+  | { readonly kind: 'seller-step'; readonly step: SellerSecondStepOutcome };
 
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
@@ -243,12 +251,16 @@ export class SignInFlow {
     private readonly sellerDeps: SellerSignInDependencies | null = null,
     private readonly foundingDeps: FoundingDependencies | null = null,
     private readonly adminStep: AdminSecondStep | null = null,
+    private readonly sellerStep: SellerSecondStep | null = null,
   ) {
     if (population === 'seller' && sellerDeps === null) {
       throw new Error('SignInFlow: the seller population needs the seller dependencies');
     }
     if ((population === 'admin') !== (adminStep !== null)) {
       throw new Error('SignInFlow: the admin step is for, and only for, the admin population');
+    }
+    if (sellerStep !== null && population !== 'seller') {
+      throw new Error('SignInFlow: the seller step is for the seller population only');
     }
   }
 
@@ -262,8 +274,41 @@ export class SignInFlow {
     if (this.population === 'admin') {
       throw new Error('SignInFlow: an admin signs in through runAdmin (AC 10)');
     }
-    const outcome = await this.#run(context, identifier, password, client, options, null);
+    const outcome = await this.#run(context, identifier, password, client, options, null, null);
     if (!outcome.ok) return outcome;
+    if (outcome.value.kind !== 'signed-in') throw new Error('SignInFlow: a factor step');
+    return ok(outcome.value.value);
+  }
+
+  /**
+   * A seller's password step when the account may have a second factor (identity design 6.3
+   * steps 1 to 5; owner decision 2026-10-08: optional for sellers at launch): a session as
+   * {@link run} gives, or the outcome of {@link SellerSecondStep} when the account has an active
+   * factor. `sellerPolicy` was read before any unit; null fails closed for an account that has
+   * a factor.
+   */
+  async runSeller(
+    context: CallContext,
+    email: EmailAddress,
+    password: string,
+    client: SignInClient,
+    options: SignInOptions,
+    sellerPolicy: SellerSecondStepPolicy | null,
+  ): Promise<Result<SignedIn | SellerSecondStepOutcome, SignInRefusal>> {
+    if (this.population !== 'seller' || this.sellerStep === null) {
+      throw new Error('SignInFlow: runSeller needs the seller population and its step');
+    }
+    const outcome = await this.#run(
+      context,
+      { kind: 'email', email },
+      password,
+      client,
+      options,
+      null,
+      sellerPolicy,
+    );
+    if (!outcome.ok) return outcome;
+    if (outcome.value.kind === 'seller-step') return ok(outcome.value.step);
     if (outcome.value.kind !== 'signed-in') throw new Error('SignInFlow: an admin step');
     return ok(outcome.value.value);
   }
@@ -287,6 +332,7 @@ export class SignInFlow {
       client,
       {},
       adminPolicy,
+      null,
     );
     if (!outcome.ok) return outcome;
     if (outcome.value.kind !== 'admin-step') throw new Error('SignInFlow: an admin session');
@@ -300,6 +346,7 @@ export class SignInFlow {
     client: SignInClient,
     options: SignInOptions,
     adminPolicy: AdminSecondStepPolicy | null,
+    sellerPolicy: SellerSecondStepPolicy | null,
   ): Promise<Result<Outcome, SignInRefusal>> {
     const { market } = context;
     const { policy, keys, unitOfWork, throttles, accounts, hasher } = this.deps;
@@ -436,11 +483,17 @@ export class SignInFlow {
     // Slow work before the closing unit: the new hash (older parameters) and the token.
     const rehashed = matches && verified.value.needsRehash ? await hasher.hash(password) : null;
     // An admin gets a challenge token in place of a session token (6.3 step 5).
+    // A seller may be asked for a code instead (the account may have a factor): both tokens are
+    // minted here, the one not used is dropped.
     const issued = !matches
       ? null
       : this.adminStep !== null
         ? this.adminStep.issueToken()
         : this.deps.tokens.issue();
+    const challengeIssued =
+      matches && this.sellerStep !== null && identifier.kind === 'email'
+        ? this.sellerStep.issueToken()
+        : null;
 
     // Step 4: the closing unit (HF11).
     const closed = await this.#failClosed(context, 'closing', () =>
@@ -504,32 +557,45 @@ export class SignInFlow {
           await this.record(context, client, accountId, step.code, null, now);
           return ok({ kind: 'admin-step', step });
         }
+        // Step 5 for a seller (optional factor), before the account's state is told (6.3): an
+        // active factor leads to a challenge, never to a session. A link (the email
+        // confirmation) never meets one: only an unverified account has a usable link, and an
+        // unverified account cannot have enrolled.
+        if (this.sellerStep !== null && challengeIssued !== null) {
+          const step = await this.sellerStep.decide(
+            context,
+            current,
+            sellerPolicy,
+            challengeIssued,
+            now,
+          );
+          if (step !== null) {
+            // No Market policy for an account that has a factor: refused, never a session.
+            if (step.code === 'access.unavailable') return refuse('access.unavailable');
+            if (rehashed !== null && rehashed.ok) current.rehashPassword(rehashed.value);
+            if (current.state.version !== current.persistedVersion) {
+              await accounts.save(market, current);
+            }
+            await this.record(context, client, accountId, step.code, null, now);
+            return ok({ kind: 'seller-step', step });
+          }
+        }
         if (current.state.status !== 'active') return refuse('account.disabled');
         // Step 6 for the seller side (3.3): an active membership and a seller not suspended.
         // Read before a link is consumed, so a refused link stays unused.
         let seller: SellerAccess | null = null;
         if (population === 'seller') {
-          const { memberships, sellerAccess } = this.sellerDeps!;
-          const membership = await memberships.findActiveByAccount(market, accountId);
-          // Item H: the seller's row lock first, then its state, as the credential lock above.
-          const locked =
-            membership !== null &&
-            (await sellerAccess.lockForSession(market, membership.state.sellerId));
-          seller =
-            membership === null || !locked
-              ? null
-              : await sellerAccess.findById(market, membership.state.sellerId);
-          if (seller === null) return refuse('membership.none');
-          if (!seller.allowsSignIn) {
-            // Slice 9: the owner is told the reason (3.3, decision 9), read in this unit.
-            const reason = await this.#suspensionReason(market, seller, accountId);
+          const gate = await resolveSellerGate(this.sellerDeps!, market, accountId);
+          if (gate.kind === 'refused') {
+            if (gate.code === 'membership.none') return refuse('membership.none');
             await this.record(context, client, accountId, 'seller-access.suspended', null, now);
             return ok({
               kind: 'refused',
               code: 'seller-access.suspended',
-              ...(reason === null ? {} : { reason }),
+              ...(gate.reason === undefined ? {} : { reason: gate.reason }),
             });
           }
+          seller = gate.seller;
         }
         let founded = false;
         if (link !== null) {
@@ -584,6 +650,7 @@ export class SignInFlow {
         : err({ code: outcome.code });
     }
     if (outcome.kind === 'admin-step') return ok({ kind: 'admin-step', step: outcome.step });
+    if (outcome.kind === 'seller-step') return ok({ kind: 'seller-step', step: outcome.step });
     return ok({
       kind: 'signed-in',
       value: {
@@ -594,23 +661,6 @@ export class SignInFlow {
         sellerAccess: outcome.sellerAccess,
       },
     });
-  }
-
-  /**
-   * The reason of the suspension a seller is in, for its Seller Owner only (identity design 3.3,
-   * decision 9; slice 9): the latest decision must be that suspension, the account must hold the
-   * seller system role, and the reason must still open under the seller's key. Null otherwise
-   * (Staff read the state only). Never logged.
-   */
-  async #suspensionReason(
-    market: CallContext['market'],
-    seller: SellerAccess,
-    accountId: Id<'Account'>,
-  ): Promise<string | null> {
-    const { decisions, grants } = this.sellerDeps!;
-    if (!(await isSellerOwner({ grants }, market, accountId))) return null;
-    const latest = await decisions.latestOf(market, seller.state.sellerId);
-    return latest?.decision === 'suspended' ? latest.reason : null;
   }
 
   /**

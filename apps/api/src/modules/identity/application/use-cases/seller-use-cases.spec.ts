@@ -138,6 +138,9 @@ function setUp() {
     sellerAccess: fakes.sellerAccessRepository,
     decisions: fakes.decisionRepository,
     grants: fakes.grantReader,
+    factors: fakes.factorRepository,
+    challenges: fakes.challengeRepository,
+    challengeTokens: new RandomPrefixedTokens('mc1_'),
   };
   const mailDeps = {
     unitOfWork,

@@ -7,13 +7,16 @@ import { sessionCookie } from '../../../platform/call-context/session-cookie';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import type { FieldProblem } from '../application/use-cases/register-customer.use-case';
+import type { CompleteSellerSignInFailure } from '../application/use-cases/complete-seller-sign-in.use-case';
 import type {
   SignInSellerFailure,
   SignInSellerOutput,
   SignInClient,
 } from '../application/use-cases/sign-in-seller.use-case';
+import type { SignedIn } from '../application/sign-in/sign-in-flow';
 import { fail, parseStringFields } from './customer-sign-up.controller';
-import type { SellerSignedIn } from './seller.dto';
+import { adminFailure } from './admin.answer';
+import type { SellerSecondFactorRequired, SellerSignedIn } from './seller.dto';
 
 /**
  * The HTTP status of each seller sign-in and confirmation outcome (identity design 5.2, 6.3, as
@@ -90,7 +93,7 @@ export async function answerSellerSignIn<const F extends string>(
   run: (
     input: SellerSignInBody<F> & { readonly client: SignInClient },
   ) => Promise<Result<SignInSellerOutput, SellerSignInFailure>>,
-): Promise<SellerSignedIn | HttpException> {
+): Promise<SellerSignedIn | SellerSecondFactorRequired | HttpException> {
   if (request.is('application/json') !== 'application/json') {
     return fail(415, 'request.body-unsupported');
   }
@@ -102,22 +105,18 @@ export async function answerSellerSignIn<const F extends string>(
 
   const result = await run({ ...(input as SellerSignInBody<F>), client: { origin, address } });
   if (result.ok) {
-    const { token, absoluteLifetimeSeconds, persistent, sellerAccess } = result.value;
-    if (sellerAccess === null || sellerAccess === 'suspended') {
-      // The flow never opens a seller session without a seller, nor for a suspended one.
-      throw new Error('answerSellerSignIn: a seller session without a usable seller state');
+    const value = result.value;
+    if (value.code === 'second-factor-required') {
+      // The account has an active factor: a challenge for the code step, never a session.
+      response.setHeader('Cache-Control', 'no-store');
+      return {
+        code: value.code,
+        challengeToken: value.challengeToken,
+        expiresAt: value.expiresAt.toString(),
+      };
     }
-    response.setHeader(
-      'Set-Cookie',
-      sessionCookie(
-        'seller',
-        context.market.marketId,
-        token,
-        persistent ? absoluteLifetimeSeconds : null,
-      ),
-    );
-    response.setHeader('Cache-Control', 'no-store');
-    return { code: 'signed-in', csrfToken: csrfTokenFor(token), sellerAccess };
+    if (value.code === 'second-factor.locked') return adminFailure(response, value);
+    return signedInAnswer(context, response, value);
   }
   const error = result.error;
   switch (error.code) {
@@ -147,5 +146,72 @@ export async function answerSellerSignIn<const F extends string>(
       return fail(ACCESS_DENIED_STATUS[error.code], error.code, error.details);
     default:
       return fail(ACCESS_DENIED_STATUS[error.code], error.code);
+  }
+}
+
+/**
+ * Sets the `__Host-session-seller-<MARKET>` cookie of a new session and answers its body. The
+ * token goes into the cookie only (never a body or a log). Shared by the password step and the
+ * code step.
+ */
+export function signedInAnswer(
+  context: CallContext,
+  response: Response,
+  value: SignedIn,
+): SellerSignedIn {
+  const { token, absoluteLifetimeSeconds, persistent, sellerAccess } = value;
+  if (sellerAccess === null || sellerAccess === 'suspended') {
+    // The flow never opens a seller session without a seller, nor for a suspended one.
+    throw new Error('signedInAnswer: a seller session without a usable seller state');
+  }
+  response.setHeader(
+    'Set-Cookie',
+    sessionCookie(
+      'seller',
+      context.market.marketId,
+      token,
+      persistent ? absoluteLifetimeSeconds : null,
+    ),
+  );
+  response.setHeader('Cache-Control', 'no-store');
+  return { code: 'signed-in', csrfToken: csrfTokenFor(token), sellerAccess };
+}
+
+/** A closed body of the code step: two strings and an optional "keep me signed in". */
+export function parseCodeStepBody(
+  body: unknown,
+):
+  | { readonly challengeToken: string; readonly code: string; readonly keepSignedIn: boolean }
+  | readonly FieldProblem[] {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return [{ path: '', code: 'type' }];
+  }
+  const { [KEEP_SIGNED_IN]: keep, ...rest } = body as Record<string, unknown>;
+  const problems: FieldProblem[] = [];
+  if (keep !== undefined && typeof keep !== 'boolean') {
+    problems.push({ path: KEEP_SIGNED_IN, code: 'type' });
+  }
+  const strings = parseStringFields(rest, ['challengeToken', 'code'] as const);
+  if (Array.isArray(strings)) problems.push(...(strings as readonly FieldProblem[]));
+  if (problems.length > 0) return problems;
+  const fields = strings as Readonly<Record<'challengeToken' | 'code', string>>;
+  return { ...fields, keepSignedIn: keep === true };
+}
+
+/** The error answer of a failed code step (5.2): the sign-in table plus the factor's codes. */
+export function codeStepFailure(
+  response: Response,
+  error: CompleteSellerSignInFailure | AccessDenied,
+): HttpException {
+  switch (error.code) {
+    case 'membership.none':
+      return fail(SELLER_SIGN_IN_STATUS[error.code], error.code);
+    case 'seller-access.suspended':
+      // Told after the factor, with the reason for the Seller Owner only (AC 7, decision 9).
+      return error.reason === undefined
+        ? fail(SELLER_SIGN_IN_STATUS[error.code], error.code)
+        : fail(SELLER_SIGN_IN_STATUS[error.code], error.code, { reason: error.reason });
+    default:
+      return adminFailure(response, error);
   }
 }

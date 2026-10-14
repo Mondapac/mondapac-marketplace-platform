@@ -49,7 +49,7 @@ export class StartSecondFactorReplacement extends UseCase<
     private readonly deps: FactorDeviceDependencies,
   ) {
     super(gate);
-    this.#step = new SignedInFactorStep(deps, this.#logger);
+    this.#step = new SignedInFactorStep(deps, this.#logger, 'admin');
   }
 
   protected async handle(

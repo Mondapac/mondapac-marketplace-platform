@@ -52,9 +52,11 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "identity.complete-seller-sign-in", "rule": "anonymous" },
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },
   { "name": "identity.confirm-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.confirm-seller-email", "rule": "anonymous" },
+  { "name": "identity.confirm-seller-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
@@ -78,8 +80,18 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "identity.regenerate-seller-recovery-codes",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.register-customer", "rule": "anonymous" },
   { "name": "identity.register-seller", "rule": "anonymous" },
+  {
+    "name": "identity.remove-seller-second-factor",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.request-customer-verification", "rule": "anonymous" },
   { "name": "identity.request-password-reset", "rule": "anonymous" },
   { "name": "identity.request-seller-verification", "rule": "anonymous" },
@@ -103,6 +115,11 @@
   { "name": "identity.start-second-factor-enrolment", "rule": "anonymous" },
   {
     "name": "identity.start-second-factor-replacement",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "identity.start-seller-second-factor-enrolment",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
