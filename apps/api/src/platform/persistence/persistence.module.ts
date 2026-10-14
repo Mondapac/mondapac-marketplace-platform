@@ -35,6 +35,7 @@ import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
 import { parseSql } from './raw-reads/pg-parser';
+import { BIND_RAW_READ, RAW_READ_BASE, type RawReadBinder } from './raw-reads/prisma-raw-read-port';
 import { createRawReadPort } from './raw-reads/create-raw-read-port';
 import { RAW_READ_PORT, type RawReadPort } from './raw-reads/raw-read-port';
 import { RAW_READ_STATEMENTS } from './raw-reads/statements';
@@ -72,6 +73,21 @@ const modelMap: ModelMap = MODEL_MAP;
       provide: UNIT_OF_WORK,
       inject: [GUARDED_CLIENT],
       useFactory: (client: GuardedClient) => new PrismaUnitOfWork(client, modelMap),
+    },
+    {
+      // The list is re-checked with the same pure parse as `pnpm boundaries` before the port
+      // exists, so the application refuses to start on a statement that breaks ADR-0030
+      // decisions 2 to 5, or when the parser cannot load (decision 4).
+      provide: RAW_READ_BASE,
+      inject: [PrismaRoot],
+      useFactory: async (root: PrismaRoot): Promise<RawReadBinder> => {
+        const port = await createRawReadPort(root, {
+          parse: parseSql,
+          list: RAW_READ_STATEMENTS,
+          map: modelMap,
+        });
+        return { [BIND_RAW_READ]: (module) => port.forModule(module) };
+      },
     },
     {
       provide: DatabaseProbe,
@@ -116,6 +132,7 @@ const modelMap: ModelMap = MODEL_MAP;
     PrismaService,
     UNIT_OF_WORK,
     DatabaseProbe,
+    RAW_READ_BASE,
     EVENT_BUS,
     OUTBOX_RELAY,
     EVENT_DISPATCHER,
@@ -135,19 +152,8 @@ export class PersistenceModule {
     }
     return {
       provide: RAW_READ_PORT,
-      inject: [PrismaRoot],
-      // The list is re-checked with the same pure parse as `pnpm boundaries` before the port
-      // exists, so the application refuses to start on a statement that breaks ADR-0030
-      // decisions 2 to 5, or when the parser cannot load (decision 4). Built here from the
-      // injected root, like the outbox writer, so there is no shared provider to look up.
-      useFactory: async (root: PrismaRoot) =>
-        (
-          await createRawReadPort(root, {
-            parse: parseSql,
-            list: RAW_READ_STATEMENTS,
-            map: modelMap,
-          })
-        ).forModule(module),
+      inject: [RAW_READ_BASE],
+      useFactory: (base: RawReadBinder) => base[BIND_RAW_READ](module),
     };
   }
 

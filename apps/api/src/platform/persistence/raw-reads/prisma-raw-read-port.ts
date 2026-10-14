@@ -16,6 +16,24 @@ import {
   type RawReadRow,
 } from './statements';
 
+/**
+ * Nest token of the unbound port. A private `Symbol` in a file module code may not import
+ * (dependency-cruiser `persistence-root-is-private`), exported by `PersistenceModule` only so
+ * that `rawReadFor` can inject it with Nest's own boot ordering (Hassan R-1, H1). Nothing
+ * else may name it.
+ */
+export const RAW_READ_BASE = Symbol('RAW_READ_BASE');
+
+/**
+ * What `RAW_READ_BASE` holds: the binder, keyed by a private symbol so that nothing hands out a
+ * port by module name under a string key (the contracts test of exports looks for that). A
+ * module cannot name the symbol either.
+ */
+export const BIND_RAW_READ = Symbol('BIND_RAW_READ');
+export interface RawReadBinder {
+  readonly [BIND_RAW_READ]: (module: string) => RawReadPort;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type Scalar = 'uuid' | 'text';
