@@ -110,3 +110,33 @@ describe('two-step pages', () => {
     expect(text).toContain('grid-cols-1');
   });
 });
+
+describe('payout account pages', () => {
+  const files = [
+    '../src/payout/payout-account.tsx',
+    '../../admin/src/payments/accounts-table.tsx',
+    '../../admin/src/payments/accounts-list.tsx',
+    '../../admin/src/payments/account-detail.tsx',
+  ];
+
+  it('use fluid layouts: no fixed pixel widths, rows that wrap or stack on phones', () => {
+    for (const file of files) {
+      const text = readFileSync(join(__dirname, file), 'utf8');
+      expect(text, file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    }
+    const seller = readFileSync(join(__dirname, files[0] as string), 'utf8');
+    // The actions stack on phones; the dialog is the shared one (fits 375px by its own width rule).
+    expect(seller).toContain('flex-col gap-2 sm:flex-row');
+    expect(seller).toContain('<Dialog');
+    expect(seller).toContain('max-w-(--mp-size-form-max)');
+  });
+
+  it('keep the admin table in its own scroll box, with the tabs in one scrolling row', () => {
+    const table = readFileSync(join(__dirname, files[1] as string), 'utf8');
+    expect(table).toContain('overflow-x-auto');
+    expect(table).toContain('min-w-200');
+    const list = readFileSync(join(__dirname, files[2] as string), 'utf8');
+    expect(list).toContain('overflow-x-auto');
+    expect(list).toContain('min-h-12');
+  });
+});

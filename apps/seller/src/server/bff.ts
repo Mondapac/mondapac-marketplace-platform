@@ -18,6 +18,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/status',
     'sellers/my-file',
     'sellers/my-file/form-descriptors',
+    'payments/seller/payout-account',
+    'ordering/seller/orders',
   ]),
   PUT: new Set([
     'sellers/my-file/general',
@@ -45,6 +47,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/withdraw',
     'inventory/seller/sources',
     'catalog/seller/products',
+    // Each asks for a second-factor code in the body and answers with a one-time Stripe address.
+    'payments/seller/payout-account',
+    'payments/seller/payout-account/link',
   ]),
 };
 
@@ -65,12 +70,34 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/submit',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    'ordering/seller/orders/:id/ship',
+    'ordering/seller/orders/:id/deliver',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
   ],
   DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: ['catalog/seller/products/:id/images/:id/:size'],
 };
+
+/** The only GET paths whose query string crosses to the API, and the keys that may cross. */
+const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  'ordering/seller/orders': ['limit', 'cursor'],
+};
+const QUERY_VALUE_MAX = 512;
+
+/** The allowed keys of the request's query, capped in length; everything else is dropped. */
+function upstreamQuery(method: string, target: string, requestUrl: string): string {
+  const keys = method === 'GET' ? QUERY_KEYS[target] : undefined;
+  if (keys === undefined) return '';
+  const source = new URL(requestUrl).searchParams;
+  const kept = new URLSearchParams();
+  for (const key of keys) {
+    const value = source.get(key);
+    if (value !== null && value.length <= QUERY_VALUE_MAX) kept.set(key, value);
+  }
+  const text = kept.toString();
+  return text === '' ? '' : `?${text}`;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -245,13 +272,16 @@ export async function relay(
   }
   let upstream: Response;
   try {
-    upstream = await fetchImpl(`${config.apiBaseUrl}/${target}`, {
-      method: request.method,
-      headers: outgoing,
-      ...(body === undefined ? {} : { body }),
-      redirect: 'manual',
-      cache: 'no-store',
-    });
+    upstream = await fetchImpl(
+      `${config.apiBaseUrl}/${target}${upstreamQuery(request.method, target, request.url)}`,
+      {
+        method: request.method,
+        headers: outgoing,
+        ...(body === undefined ? {} : { body }),
+        redirect: 'manual',
+        cache: 'no-store',
+      },
+    );
   } catch {
     log({
       msg: 'panel.relay.upstream-unreachable',
