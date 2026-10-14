@@ -133,6 +133,7 @@
       "body": "Open your authenticator app and enter the code for MondaPac.",
       "label": {
         "code": "6-digit code",
+        "digit": "Digit {position} of {total}",
         "backup-code": "Backup code"
       },
       "action": {
