@@ -483,6 +483,32 @@ async function showcasePrices(sessions, offerIdsBySeller) {
   }
 }
 
+// 5b. Shipping fee and minimum order ----------------------------------------------------------------
+/** Minor units (cents) per seller key; a null minimum leaves the seller without one. */
+const STORE_TERMS = {
+  alnoor: { fee: 800, minimum: 3000 },
+  sunnybank: { fee: 600, minimum: 2500 },
+  valley: { fee: 0, minimum: null },
+  spice: { fee: 1000, minimum: 2000 },
+};
+
+async function ensureStoreTerms(admin, sessions) {
+  const approved = await admin.ok('POST', '/sellers/admin/list', { tab: 'approved' });
+  for (const seller of SELLERS.filter((item) => !item.leaveInReview)) {
+    const terms = STORE_TERMS[seller.key];
+    const row = approved.items.find((item) => item.slug === seller.slug);
+    if (!terms || !row) continue;
+    await admin.ok('PUT', `/shipping/admin/sellers/${row.sellerId}/flat-fee`, { amount: terms.fee });
+    if (terms.minimum === null) continue;
+    const session = sessions.get(seller.key);
+    const settings = await session.ok('GET', '/sellers/store-settings');
+    await session.ok('PUT', '/sellers/store-settings/minimum-order', {
+      expectedVersion: settings.version,
+      minimumOrder: { amount: terms.minimum, currency: settings.currency },
+    });
+  }
+}
+
 // 6. The buyer ----------------------------------------------------------------------------------
 async function ensureBuyer() {
   const session = new Session('customer');
@@ -556,6 +582,13 @@ try {
     offerIdsBySeller.set(seller.key, offerIds);
     await ensureStockAndPrices(seller, session, offerIds, writes);
     log(`  ${seller.storeName}: ${offerIds.size} offers`);
+  }
+
+  log('  Shipping fees and minimum orders');
+  try {
+    await ensureStoreTerms(admin, sessions);
+  } catch (error) {
+    log(`  (skipped: ${error.message})`);
   }
 
   log('[6/8] A special price and a held price');
