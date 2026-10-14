@@ -8,7 +8,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { Account } from '../../domain/account';
 import type { LinkPurpose, OneTimeLink } from '../../domain/one-time-link';
 import type { AccountRepository } from '../ports/account.repository';
-import type { IdentityMailComposer } from '../ports/identity-mails';
+import type { IdentityMail, IdentityMailComposer } from '../ports/identity-mails';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { LinkPage, LinkTargets, LinkTokens } from '../ports/link-secrets';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
@@ -30,7 +30,8 @@ export type LinkMailSkipped =
   | 'account.gone'
   | 'account.disabled'
   | 'account.verified'
-  | 'account.unverified';
+  | 'account.unverified'
+  | 'account.population';
 
 export type SendLinkMailOutput =
   | { readonly code: 'link-mail.sent'; readonly issued: boolean }
@@ -58,12 +59,21 @@ export interface SendLinkMailDependencies {
 const MAIL_OF: Partial<
   Record<
     LinkPurpose,
-    { template: 'confirm-email' | 'reset-password' | 'enrol-second-factor'; page: LinkPage }
+    {
+      template:
+        'confirm-email' | 'reset-password' | 'enrol-second-factor' | 'confirm-second-factor-reset';
+      page: LinkPage;
+    }
   >
 > = {
   'verify-email': { template: 'confirm-email', page: 'verify-email' },
   'reset-password': { template: 'reset-password', page: 'reset-password' },
   'enrol-second-factor': { template: 'enrol-second-factor', page: 'enrol-second-factor' },
+  // Slice 12: E15 to the Seller Owner, on the seller panel's page.
+  'confirm-second-factor-reset': {
+    template: 'confirm-second-factor-reset',
+    page: 'confirm-second-factor-reset',
+  },
 };
 
 /**
@@ -156,12 +166,15 @@ export class SendLinkMail extends UseCase<
     const minted = this.deps.linkTokens.issue();
     const url = new URL(target);
     url.hash = minted.token;
+    // The template/population pairs are checked at runtime by the composer (a missing key throws,
+    // so the delivery is retried and dead-lettered); E15 is only ever requested for a seller owner
+    // and `skipReason` skips it for any other population.
     const composed = this.deps.composer.compose(market, {
       template: mail.template,
       population,
       url: url.toString(),
       lifetimeMinutes,
-    });
+    } as IdentityMail);
     const sender = policy.mailSender(market);
     await this.deps.transport.send({
       to: account!.state.email.typed,
@@ -206,6 +219,10 @@ export class SendLinkMail extends UseCase<
     if (account === null) return 'account.gone';
     if (account.state.status !== 'active') return 'account.disabled';
     if (input.purpose === 'verify-email' && account.isEmailVerified) return 'account.verified';
+    // Slice 12: E15 goes to a seller-side account only.
+    if (input.purpose === 'confirm-second-factor-reset' && account.state.population !== 'seller') {
+      return 'account.population';
+    }
     // 3.7: no reset link for an unverified account (it signs up again, 3.2).
     if (input.purpose === 'reset-password' && !account.isEmailVerified) {
       return 'account.unverified';

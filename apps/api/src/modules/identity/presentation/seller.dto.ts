@@ -91,6 +91,23 @@ export class SellerSecondFactorRemoved {
   code!: 'second-factor-removed';
 }
 
+/** The Seller Owner's confirmation of a second-factor reset: the link's token only (`ux.md` A11). */
+export class SellerSecondFactorResetConfirmRequest {
+  @ApiProperty({
+    description:
+      "The token from the fragment of E15's link (never in a URL the server sees). Never " +
+      'logged or echoed.',
+    example: 'ml1_…',
+  })
+  token!: string;
+}
+
+/** The factor was removed; every session ended. The owner signs in with the password alone. */
+export class SellerSecondFactorResetDone {
+  @ApiProperty({ enum: ['second-factor.reset'] })
+  code!: 'second-factor.reset';
+}
+
 /** Starting a second factor for the signed-in account: its own password (HF6). */
 export class SellerEnrolmentRequest {
   @ApiProperty({

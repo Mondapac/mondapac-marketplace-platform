@@ -85,6 +85,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "identity.confirm-seller-second-factor-enrolment", "rule": "anonymous" },
+  { "name": "identity.confirm-seller-second-factor-reset", "rule": "anonymous" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
