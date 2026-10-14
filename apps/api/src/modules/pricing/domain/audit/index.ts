@@ -133,6 +133,83 @@ export const PriceHoldRejected = defineAuditAction({
   },
 });
 
+/** Why a running or scheduled special stopped early (design 3.2, 6.4). */
+export const SPECIAL_WITHDRAW_CAUSES = [
+  'withdrawn',
+  'replaced',
+  'offer-removed',
+  'variant-removed',
+] as const;
+
+/**
+ * A seller's special price was accepted without review (design 3.2 row 1). The window is two UTC
+ * instants; `effectiveFrom` is its start. Cost never appears here (ADR-0024).
+ */
+export const SpecialPriceAccepted = defineAuditAction({
+  action: 'pricing.special-price.accepted',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    amount: auditField.money(),
+    startsAt: auditField.instant(),
+    endsAt: auditField.instant(),
+    effectiveFrom: auditField.instant(),
+  },
+});
+
+/** A seller's special price was held for review (design 3.2 row 2, Q8). */
+export const SpecialPriceHeld = defineAuditAction({
+  action: 'pricing.special-price.held',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    amount: auditField.money(),
+    startsAt: auditField.instant(),
+    endsAt: auditField.instant(),
+    /** The larger of the regular price and the regular jump anchor: what the hold was measured against. */
+    referenceAmount: auditField.money(),
+  },
+});
+
+/**
+ * A running or scheduled special was ended before its end (design 3.2): by the seller, by a
+ * newer special that replaced it, or by the retirement of its series (system actor).
+ */
+export const SpecialPriceWithdrawn = defineAuditAction({
+  action: 'pricing.special-price.withdrawn',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated', 'system'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    cause: auditField.enumOf(SPECIAL_WITHDRAW_CAUSES),
+  },
+});
+
+/**
+ * A pending special was superseded (design 3.2): replaced by a newer special, cancelled by the
+ * seller, or retired with its series (system actor).
+ */
+export const SpecialPriceSuperseded = defineAuditAction({
+  action: 'pricing.special-price.superseded',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated', 'system'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    cause: auditField.enumOf(SUPERSEDE_CAUSES),
+    supersededByRecordId: auditField.optional(auditField.id()),
+  },
+});
+
 /** Why a series was retired (design 6.4). */
 export const SERIES_RETIRE_CAUSES = ['offer-removed', 'variant-removed'] as const;
 
@@ -192,6 +269,10 @@ export const PRICING_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   RegularPriceSuperseded,
   PriceHoldApproved,
   PriceHoldRejected,
+  SpecialPriceAccepted,
+  SpecialPriceHeld,
+  SpecialPriceWithdrawn,
+  SpecialPriceSuperseded,
   PriceSeriesRetired,
   OfferWriteRefused,
   OfferWriteRefusalsSuppressed,

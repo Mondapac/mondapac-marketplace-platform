@@ -20,6 +20,11 @@ import {
   type RetireCause,
   type SupersedeCause,
 } from '../domain/price-series';
+import type {
+  SpecialPriceRecord,
+  SpecialRecordStatus,
+  WithdrawCause,
+} from '../domain/special-price';
 
 const AGGREGATE_TYPE = 'price-series';
 
@@ -42,6 +47,27 @@ const STATUS_TO_ROW: Readonly<Record<RegularRecordStatus, string>> = {
 const STATUS_FROM_ROW: Readonly<Record<string, RegularRecordStatus>> = Object.fromEntries(
   Object.entries(STATUS_TO_ROW).map(([domain, row]) => [row, domain as RegularRecordStatus]),
 );
+
+const SPECIAL_STATUS_TO_ROW: Readonly<Record<SpecialRecordStatus, string>> = {
+  ACCEPTED: 'accepted',
+  PENDING_REVIEW: 'pending-review',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  SUPERSEDED: 'superseded',
+  WITHDRAWN: 'withdrawn',
+};
+const SPECIAL_STATUS_FROM_ROW: Readonly<Record<string, SpecialRecordStatus>> = Object.fromEntries(
+  Object.entries(SPECIAL_STATUS_TO_ROW).map(([domain, row]) => [
+    row,
+    domain as SpecialRecordStatus,
+  ]),
+);
+
+function specialStatusFromRow(value: string): SpecialRecordStatus {
+  const status = SPECIAL_STATUS_FROM_ROW[value];
+  if (status === undefined) throw new Error('price series: unknown stored special status');
+  return status;
+}
 
 function statusFromRow(value: string): RegularRecordStatus {
   const status = STATUS_FROM_ROW[value];
@@ -80,6 +106,34 @@ interface RecordRow {
   readonly decisionNote: string | null;
 }
 
+/** One row of `pricing.special_price_records`, as the client returns it. */
+interface SpecialRow {
+  readonly id: string;
+  readonly amountMinor: bigint;
+  readonly currency: string;
+  readonly taxInclusive: boolean;
+  readonly status: string;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+  readonly submittedAt: Date;
+  readonly submittedByAccountId: string;
+  readonly regularRecordId: string;
+  readonly regularAmountMinor: bigint;
+  readonly anchorRecordId: string;
+  readonly anchorAmountMinor: bigint;
+  readonly holdDirection: string | null;
+  readonly effectiveFrom: Date | null;
+  readonly withdrawnAt: Date | null;
+  readonly withdrawCause: string | null;
+  readonly supersededAt: Date | null;
+  readonly supersededByRecordId: string | null;
+  readonly supersedeCause: string | null;
+  readonly decidedAt: Date | null;
+  readonly decidedByAccountId: string | null;
+  readonly decisionReasonCode: string | null;
+  readonly decisionNote: string | null;
+}
+
 interface SeriesRow {
   readonly id: string;
   readonly marketId: string;
@@ -93,6 +147,7 @@ interface SeriesRow {
   readonly version: number;
   readonly createdAt: Date;
   readonly regularRecords: readonly RecordRow[];
+  readonly specialRecords: readonly SpecialRow[];
 }
 
 function recordFromRow(row: RecordRow): RegularPriceRecord {
@@ -128,6 +183,43 @@ function recordFromRow(row: RecordRow): RegularPriceRecord {
   };
 }
 
+function specialFromRow(row: SpecialRow): SpecialPriceRecord {
+  return {
+    id: row.id as Id<'SpecialPriceRecord'>,
+    amount: storedAmount(row.amountMinor, row.currency),
+    taxInclusive: row.taxInclusive,
+    status: specialStatusFromRow(row.status),
+    startsAt: toInstant(row.startsAt),
+    endsAt: toInstant(row.endsAt),
+    submittedAt: toInstant(row.submittedAt),
+    submittedBy: row.submittedByAccountId as Id<'Account'>,
+    regular: {
+      recordId: row.regularRecordId as Id<'RegularPriceRecord'>,
+      amount: storedAmount(row.regularAmountMinor, row.currency),
+    },
+    anchor: {
+      recordId: row.anchorRecordId as Id<'RegularPriceRecord'>,
+      amount: storedAmount(row.anchorAmountMinor, row.currency),
+    },
+    heldDirection: row.holdDirection as 'down' | null,
+    effectiveFrom: orNull(row.effectiveFrom),
+    withdrawnAt: orNull(row.withdrawnAt),
+    withdrawCause: row.withdrawCause as WithdrawCause | null,
+    supersededBy: row.supersededByRecordId as Id<'SpecialPriceRecord'> | null,
+    supersededAt: orNull(row.supersededAt),
+    supersedeCause: row.supersedeCause as SupersedeCause | null,
+    decision:
+      row.decidedAt === null || row.decidedByAccountId === null
+        ? null
+        : {
+            decidedAt: toInstant(row.decidedAt),
+            decidedBy: row.decidedByAccountId as Id<'Account'>,
+            reasonCode: row.decisionReasonCode as HoldRejectionReason | null,
+            note: row.decisionNote,
+          },
+  };
+}
+
 function seriesFromRow(row: SeriesRow): PriceSeries {
   return PriceSeries.restore({
     id: row.id as Id<'PriceSeries'>,
@@ -142,6 +234,7 @@ function seriesFromRow(row: SeriesRow): PriceSeries {
     retireCause: row.retireCause as RetireCause | null,
     version: row.version,
     regular: row.regularRecords.map(recordFromRow),
+    specials: row.specialRecords.map(specialFromRow),
   });
 }
 
@@ -159,6 +252,41 @@ function recordChanges(record: RegularPriceRecord) {
     decisionReasonCode: record.decision?.reasonCode ?? null,
     decisionNote: record.decision?.note ?? null,
   };
+}
+
+/** The columns a save may write on an existing special record (the column grant). */
+function specialChanges(record: SpecialPriceRecord) {
+  return {
+    status: SPECIAL_STATUS_TO_ROW[record.status],
+    effectiveFrom: dateOrNull(record.effectiveFrom),
+    withdrawnAt: dateOrNull(record.withdrawnAt),
+    withdrawCause: record.withdrawCause,
+    supersededAt: dateOrNull(record.supersededAt),
+    supersededByRecordId: record.supersededBy,
+    supersedeCause: record.supersedeCause,
+    decidedAt: dateOrNull(record.decision?.decidedAt ?? null),
+    decidedByAccountId: record.decision?.decidedBy ?? null,
+    decisionReasonCode: record.decision?.reasonCode ?? null,
+    decisionNote: record.decision?.note ?? null,
+  };
+}
+
+function sameSpecialColumns(a: SpecialPriceRecord, b: SpecialPriceRecord): boolean {
+  const same = (x: Temporal.Instant | null, y: Temporal.Instant | null): boolean =>
+    x === null || y === null ? x === y : x.epochMilliseconds === y.epochMilliseconds;
+  return (
+    a.status === b.status &&
+    same(a.effectiveFrom, b.effectiveFrom) &&
+    same(a.withdrawnAt, b.withdrawnAt) &&
+    a.withdrawCause === b.withdrawCause &&
+    same(a.supersededAt, b.supersededAt) &&
+    a.supersededBy === b.supersededBy &&
+    a.supersedeCause === b.supersedeCause &&
+    same(a.decision?.decidedAt ?? null, b.decision?.decidedAt ?? null) &&
+    a.decision?.decidedBy === b.decision?.decidedBy &&
+    a.decision?.reasonCode === b.decision?.reasonCode &&
+    a.decision?.note === b.decision?.note
+  );
 }
 
 function sameChangeableColumns(a: RegularPriceRecord, b: RegularPriceRecord): boolean {
@@ -180,6 +308,7 @@ function sameChangeableColumns(a: RegularPriceRecord, b: RegularPriceRecord): bo
 
 const RECORDS_IN_ORDER = {
   regularRecords: { orderBy: [{ submittedAt: 'asc' as const }, { id: 'asc' as const }] },
+  specialRecords: { orderBy: [{ submittedAt: 'asc' as const }, { id: 'asc' as const }] },
 };
 
 const HOLD_SERIES = {
@@ -195,6 +324,41 @@ interface HoldRow extends RecordRow {
   };
 }
 
+interface SpecialHoldRow extends SpecialRow {
+  readonly series: HoldRow['series'];
+}
+
+/**
+ * A held special as the queue shows it. The reference is the larger of the regular price and the
+ * regular jump anchor it was measured against (it is the one that explains the hold).
+ */
+function specialHoldFromRow(row: SpecialHoldRow): PendingHoldView {
+  if (row.holdDirection !== 'down') {
+    // The table's CHECKs make this unreachable for a pending record.
+    throw new Error('price series: a pending special without its direction');
+  }
+  const useAnchor = row.anchorAmountMinor > row.regularAmountMinor;
+  return {
+    kind: 'special',
+    recordId: row.id as Id<'SpecialPriceRecord'>,
+    seriesId: row.series.id as Id<'PriceSeries'>,
+    offerId: row.series.offerId as Id<'Offer'>,
+    variantId: row.series.variantId as Id<'Variant'>,
+    sellerId: row.series.sellerId as Id<'Seller'>,
+    amount: storedAmount(row.amountMinor, row.currency),
+    anchorRecordId: (useAnchor
+      ? row.anchorRecordId
+      : row.regularRecordId) as Id<'RegularPriceRecord'>,
+    anchorAmount: storedAmount(
+      useAnchor ? row.anchorAmountMinor : row.regularAmountMinor,
+      row.currency,
+    ),
+    direction: 'down',
+    submittedAt: toInstant(row.submittedAt),
+    window: { startsAt: toInstant(row.startsAt), endsAt: toInstant(row.endsAt) },
+  };
+}
+
 function holdFromRow(row: HoldRow): PendingHoldView {
   if (
     row.anchorRecordId === null ||
@@ -205,6 +369,7 @@ function holdFromRow(row: HoldRow): PendingHoldView {
     throw new Error('price series: a pending record without its anchor');
   }
   return {
+    kind: 'regular',
     recordId: row.id as Id<'RegularPriceRecord'>,
     seriesId: row.series.id as Id<'PriceSeries'>,
     offerId: row.series.offerId as Id<'Offer'>,
@@ -215,6 +380,7 @@ function holdFromRow(row: HoldRow): PendingHoldView {
     anchorAmount: storedAmount(row.anchorAmountMinor, row.currency),
     direction: row.holdDirection,
     submittedAt: toInstant(row.submittedAt),
+    window: null,
   };
 }
 
@@ -241,13 +407,18 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
 
   async findByRecordId(
     market: MarketContext,
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
   ): Promise<PriceSeries | null> {
     const tx = this.prisma.tx(market);
-    const record = await tx.pricingRegularPriceRecord.findFirst({
-      where: { marketId: market.marketId, id: recordId },
-      select: { seriesId: true },
-    });
+    const record =
+      (await tx.pricingRegularPriceRecord.findFirst({
+        where: { marketId: market.marketId, id: recordId },
+        select: { seriesId: true },
+      })) ??
+      (await tx.pricingSpecialPriceRecord.findFirst({
+        where: { marketId: market.marketId, id: recordId },
+        select: { seriesId: true },
+      }));
     if (record === null) return null;
     const row = await tx.pricingPriceSeries.findFirst({
       where: { marketId: market.marketId, id: record.seriesId },
@@ -261,35 +432,53 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
     after: PendingHoldCursor | null,
     limit: number,
   ): Promise<readonly PendingHoldView[]> {
-    const rows = await this.prisma.tx(market).pricingRegularPriceRecord.findMany({
-      where: {
-        marketId: market.marketId,
-        status: 'pending-review',
-        ...(after === null
-          ? {}
-          : {
-              OR: [
-                { submittedAt: { gt: toDate(after.submittedAt) } },
-                { submittedAt: toDate(after.submittedAt), id: { gt: after.id } },
-              ],
-            }),
-      },
+    const tx = this.prisma.tx(market);
+    const where = {
+      marketId: market.marketId,
+      status: 'pending-review',
+      ...(after === null
+        ? {}
+        : {
+            OR: [
+              { submittedAt: { gt: toDate(after.submittedAt) } },
+              { submittedAt: toDate(after.submittedAt), id: { gt: after.id } },
+            ],
+          }),
+    };
+    const orderBy = [{ submittedAt: 'asc' as const }, { id: 'asc' as const }];
+    // Each stream's own page, then the merge: the first `limit` of the union are among the first
+    // `limit` of each stream.
+    const regular = await tx.pricingRegularPriceRecord.findMany({
+      where,
       include: HOLD_SERIES,
-      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+      orderBy,
       take: limit,
     });
-    return rows.map(holdFromRow);
+    const special = await tx.pricingSpecialPriceRecord.findMany({
+      where,
+      include: HOLD_SERIES,
+      orderBy,
+      take: limit,
+    });
+    return [...regular.map(holdFromRow), ...special.map(specialHoldFromRow)]
+      .sort(
+        (a, b) =>
+          a.submittedAt.epochMilliseconds - b.submittedAt.epochMilliseconds ||
+          (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : 0),
+      )
+      .slice(0, limit);
   }
 
   async findPendingHold(
     market: MarketContext,
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
   ): Promise<PendingHoldView | null> {
-    const row = await this.prisma.tx(market).pricingRegularPriceRecord.findFirst({
-      where: { marketId: market.marketId, id: recordId, status: 'pending-review' },
-      include: HOLD_SERIES,
-    });
-    return row === null ? null : holdFromRow(row);
+    const tx = this.prisma.tx(market);
+    const where = { marketId: market.marketId, id: recordId, status: 'pending-review' };
+    const row = await tx.pricingRegularPriceRecord.findFirst({ where, include: HOLD_SERIES });
+    if (row !== null) return holdFromRow(row);
+    const special = await tx.pricingSpecialPriceRecord.findFirst({ where, include: HOLD_SERIES });
+    return special === null ? null : specialHoldFromRow(special);
   }
 
   async findByOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<readonly PriceSeries[]> {
@@ -366,6 +555,7 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
       retireCause: null,
       version: 1,
       regular: [],
+      specials: [],
     };
     await this.#write(market, inserted, state);
     series.markStored();
@@ -425,7 +615,69 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
     }
 
     const added = next.regular.filter((record) => !before.has(record.id));
+    if (added.length > 0) await this.#insertRegular(market, next, added);
+    await this.#writeSpecials(market, stored, next);
+  }
+
+  /** The special stream, in the same statement order: shrink (withdraw, supersede, reject), start (approve), insert. */
+  async #writeSpecials(market: MarketContext, stored: PriceSeriesState, next: PriceSeriesState) {
+    const tx = this.prisma.tx(market);
+    const before = new Map(stored.specials.map((record) => [record.id, record]));
+    if (stored.specials.some((record) => !next.specials.some((r) => r.id === record.id))) {
+      throw new Error('save: a stored special is missing; records are never removed');
+    }
+    const changed = next.specials.filter((record) => {
+      const old = before.get(record.id);
+      return old !== undefined && !sameSpecialColumns(old, record);
+    });
+    const starts = (record: SpecialPriceRecord): boolean =>
+      before.get(record.id)?.effectiveFrom === null && record.effectiveFrom !== null;
+    const ordered = [...changed.filter((record) => !starts(record)), ...changed.filter(starts)];
+    for (const record of ordered) {
+      const updated = await tx.pricingSpecialPriceRecord.updateMany({
+        where: { marketId: market.marketId, seriesId: next.id, id: record.id },
+        data: specialChanges(record),
+      });
+      if (updated.count !== 1) {
+        throw new Error('save: a stored special was not updated exactly once');
+      }
+    }
+    const added = next.specials.filter((record) => !before.has(record.id));
     if (added.length === 0) return;
+    await tx.pricingSpecialPriceRecord.createMany({
+      data: added.map((record) => {
+        if (record.amount.currency !== next.currency) {
+          throw new Error('save: a special in another currency than the series');
+        }
+        return {
+          id: record.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          seriesId: next.id,
+          amountMinor: record.amount.amount,
+          currency: record.amount.currency,
+          taxInclusive: record.taxInclusive,
+          startsAt: toDate(record.startsAt),
+          endsAt: toDate(record.endsAt),
+          submittedAt: toDate(record.submittedAt),
+          submittedByAccountId: record.submittedBy,
+          regularRecordId: record.regular.recordId,
+          regularAmountMinor: record.regular.amount.amount,
+          anchorRecordId: record.anchor.recordId,
+          anchorAmountMinor: record.anchor.amount.amount,
+          holdDirection: record.heldDirection,
+          ...specialChanges(record),
+        };
+      }),
+    });
+  }
+
+  async #insertRegular(
+    market: MarketContext,
+    next: PriceSeriesState,
+    added: readonly RegularPriceRecord[],
+  ) {
+    const tx = this.prisma.tx(market);
     await tx.pricingRegularPriceRecord.createMany({
       data: added.map((record) => {
         if (record.amount.currency !== next.currency) {

@@ -409,6 +409,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'superseded_by_record_id',
       ],
     },
+    // Special price records (slice 5): content never changes; status, decision, supersede,
+    // withdraw and effective-start columns are written once under the write-once trigger.
+    'pricing.special_price_records': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_note',
+        'decision_reason_code',
+        'effective_from',
+        'status',
+        'supersede_cause',
+        'superseded_at',
+        'superseded_by_record_id',
+        'withdraw_cause',
+        'withdrawn_at',
+      ],
+    },
     'pricing.retired_offers': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.retired_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.write_refusal_throttles': {

@@ -26,6 +26,8 @@ import { EffectivePricesSystemQuery } from './application/use-cases/effective-pr
 import { EffectivePricesQuery } from './application/use-cases/effective-prices.use-case';
 import { PurgeWriteRefusalThrottles } from './application/use-cases/purge-write-refusal-throttles.use-case';
 import { SetRegularPrice } from './application/use-cases/set-regular-price.use-case';
+import { SetSpecialPrice } from './application/use-cases/set-special-price.use-case';
+import { WithdrawSpecialPrice } from './application/use-cases/withdraw-special-price.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
 import { PRICING_FACADE } from './contracts/pricing.facade';
 import { PRICING_AUDIT_ACTIONS } from './domain/audit';
@@ -34,6 +36,7 @@ import { PricingFacadeImplementation } from './presentation/pricing.facade';
 import { AdminPriceHoldController } from './presentation/admin-price-hold.controller';
 import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
 import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
+import { SellerSpecialPriceController } from './presentation/seller-special-price.controller';
 import { pricingProviders } from './infrastructure/pricing-providers';
 import { purgeWriteRefusalThrottlesJob } from './presentation/jobs/purge-write-refusal-throttles.job';
 
@@ -75,7 +78,9 @@ function useCaseProvider<D, U>(
 }
 
 /**
- * The pricing module (ADR-0024; docs/design/domain/pricing.md). Slice 1 so far: the pure domain
+ * The pricing module (ADR-0024; docs/design/domain/pricing.md). Slice 5 adds the seller's special
+ * price (`pricing.set-special-price`, `pricing.withdraw-special-price`) and the special stream in
+ * the effective price and the review queue. Slice 1 so far: the pure domain
  * (part 1), its persistence ports (part 2), the Market policy (part 3a) and, in part 3b, the
  * application layer of the seller's regular-price write: the permission catalogue, the events,
  * the audited actions, `pricing.set-regular-price`, and the hourly purge of the refusal
@@ -86,7 +91,11 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [CatalogModule],
-  controllers: [SellerRegularPriceController, AdminPriceHoldController],
+  controllers: [
+    SellerRegularPriceController,
+    SellerSpecialPriceController,
+    AdminPriceHoldController,
+  ],
   providers: [
     PersistenceModule.outboxWriterFor('pricing'),
     PersistenceModule.auditWriterFor('pricing'),
@@ -105,6 +114,26 @@ function useCaseProvider<D, U>(
       outbox: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(SetSpecialPrice, {
+      unitOfWork: true,
+      series: true,
+      throttles: true,
+      offers: true,
+      policies: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(WithdrawSpecialPrice, {
+      unitOfWork: true,
+      series: true,
+      throttles: true,
+      offers: true,
+      audit: true,
+      outbox: true,
+      clock: true,
     }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),

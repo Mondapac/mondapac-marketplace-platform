@@ -3,8 +3,13 @@ import { ok } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import { PriceSeriesRetired, RegularPriceSuperseded } from '../domain/audit';
-import type { PriceSeries, RetireCause } from '../domain/price-series';
+import {
+  PriceSeriesRetired,
+  RegularPriceSuperseded,
+  SpecialPriceSuperseded,
+  SpecialPriceWithdrawn,
+} from '../domain/audit';
+import { specialChanges, type PriceSeries, type RetireCause } from '../domain/price-series';
 import type { PriceSeriesRepository } from './ports/price-series.repository';
 import type { RetirementTombstoneRepository } from './ports/retirement-tombstone.repository';
 
@@ -49,6 +54,8 @@ export async function retireSeries(
   for (const series of found) {
     if (series.state.retiredAt !== null) continue;
     const replaced = series.retire(cause, now);
+    // Read before the save: what the retirement did to the special stream.
+    const specials = specialChanges(series);
     await deps.series.save(market, series);
     const { id, offerId, variantId } = series.state;
     for (const record of replaced) {
@@ -65,13 +72,29 @@ export async function retireSeries(
         }),
       );
     }
+    for (const record of specials.superseded) {
+      await deps.audit.record(
+        context,
+        SpecialPriceSuperseded.entry(id, {
+          after: { offerId, variantId, recordId: record.id, cause, supersededByRecordId: null },
+        }),
+      );
+    }
+    for (const record of specials.withdrawn) {
+      await deps.audit.record(
+        context,
+        SpecialPriceWithdrawn.entry(id, {
+          after: { offerId, variantId, recordId: record.id, cause },
+        }),
+      );
+    }
     await deps.audit.record(
       context,
       PriceSeriesRetired.entry(id, { after: { offerId, variantId, cause } }),
     );
     await deps.outbox.append(context, series.pendingEvents);
     retired += 1;
-    superseded += replaced.length;
+    superseded += replaced.length + specials.superseded.length;
   }
   return ok({ series: retired, superseded });
 }

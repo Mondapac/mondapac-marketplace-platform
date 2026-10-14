@@ -21,7 +21,9 @@ export type AddPriceSeriesOutcome = 'added' | 'key-retired';
  * data beyond the seller's id.
  */
 export interface PendingHoldView {
-  readonly recordId: Id<'RegularPriceRecord'>;
+  /** Which stream the record is in. The id is a regular or a special record id accordingly. */
+  readonly kind: 'regular' | 'special';
+  readonly recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>;
   readonly seriesId: Id<'PriceSeries'>;
   readonly offerId: Id<'Offer'>;
   readonly variantId: Id<'Variant'>;
@@ -31,12 +33,17 @@ export interface PendingHoldView {
   readonly anchorAmount: PriceAmount;
   readonly direction: 'up' | 'down';
   readonly submittedAt: Temporal.Instant;
+  /** The window a special asked for; null for a regular record. */
+  readonly window: {
+    readonly startsAt: Temporal.Instant;
+    readonly endsAt: Temporal.Instant;
+  } | null;
 }
 
 /** The place after which the next page of the queue starts: the last row's `(submittedAt, id)`. */
 export interface PendingHoldCursor {
   readonly submittedAt: Temporal.Instant;
-  readonly id: Id<'RegularPriceRecord'>;
+  readonly id: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>;
 }
 
 /**
@@ -58,11 +65,11 @@ export interface PriceSeriesRepository {
    */
   findByRecordId(
     market: MarketContext,
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
   ): Promise<PriceSeries | null>;
 
   /**
-   * The pending regular records of the Market, oldest submission first (then by id), at most
+   * The pending records of the Market, regular and special, oldest submission first (then by id), at most
    * `limit` rows after `after` (keyset; PD5). A retired series has no pending record.
    */
   listPendingHolds(
@@ -74,7 +81,7 @@ export interface PriceSeriesRepository {
   /** One record of the queue by id, or null when absent, foreign or no longer pending. */
   findPendingHold(
     market: MarketContext,
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
   ): Promise<PendingHoldView | null>;
 
   /** Every series of an Offer, retired ones included (the Offer-removed handler, D 6.4). */

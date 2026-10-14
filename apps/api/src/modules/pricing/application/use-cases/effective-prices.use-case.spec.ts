@@ -78,6 +78,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.effective-prices in market %s', (c
         retireCause: null,
         version: 1,
         regular: [row],
+        specials: [],
         ...patch,
       });
       return row;
@@ -102,6 +103,8 @@ describe.each(['AU', 'ZZ'] as const)('pricing.effective-prices in market %s', (c
       price: money(1_999n, currency),
       taxInclusive: true,
       recordId: record.id,
+      basis: 'regular',
+      specialEndsAt: null,
     });
   });
 

@@ -62,6 +62,9 @@ export const PRICE_HOLD_STATUS: Readonly<Record<string, number>> = Object.freeze
   'pricing.series-retired': 409,
   'pricing.amount-out-of-range': 422,
   'pricing.currency-mismatch': 422,
+  'pricing.regular-not-above-special': 409,
+  'pricing.special-not-below-regular': 409,
+  'pricing.special-window.ended': 409,
   'conflict.stale': 409,
   'conflict.retry': 409,
 });
@@ -272,7 +275,15 @@ function rowOf(view: PriceHoldPage['items'][number]): PriceHoldRow {
     offerId: view.offerId,
     variantId: view.variantId,
     sellerId: view.sellerId,
-    kind: 'regular',
+    kind: view.kind,
+    ...(view.window === null
+      ? {}
+      : {
+          window: {
+            startsAt: view.window.startsAt.toString(),
+            endsAt: view.window.endsAt.toString(),
+          },
+        }),
     amount: { amount: view.amount.amount.toString(), currency: view.amount.currency },
     anchorAmount: {
       amount: view.anchorAmount.amount.toString(),

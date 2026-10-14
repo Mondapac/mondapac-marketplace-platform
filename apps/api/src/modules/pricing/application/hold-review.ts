@@ -31,6 +31,11 @@ export function decodeHoldCursor(text: string): PendingHoldCursor | null {
   }
 }
 
+/** The same UUID as a special record id: the record kind is known from the series that holds it. */
+export function asSpecialId(id: Id<'RegularPriceRecord'>): Id<'SpecialPriceRecord'> {
+  return id as string as Id<'SpecialPriceRecord'>;
+}
+
 export function parseRecordId(value: unknown): Id<'RegularPriceRecord'> | null {
   if (typeof value !== 'string') return null;
   const parsed = parseId<'RegularPriceRecord'>(value);

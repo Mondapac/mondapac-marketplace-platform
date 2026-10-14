@@ -10,7 +10,7 @@ import {
   type PricingBatchTooLarge,
   type PricingValidationFailed,
 } from '../../contracts/pricing.facade';
-import { effectiveRegular } from '../../domain/price-series';
+import { effectivePriceAt } from '../../domain/price-series';
 import type { PriceSeriesRepository } from '../ports/price-series.repository';
 
 export interface EffectivePricesInput {
@@ -26,9 +26,10 @@ export interface EffectivePricesDependencies {
 }
 
 /**
- * Reads the regular price in force for up to 200 (Offer, Variant) keys in one read-only unit.
- * Shared by the pair below. A key with no series, a retired series or no price in force yet is
- * absent from the answer. Cost and holds never appear (ADR-0024).
+ * Reads the effective price (the special in force when it is below the regular price in force,
+ * else the regular price) for up to 200 (Offer, Variant) keys in one read-only unit. Shared by the
+ * pair below. A key with no series, a retired series or no price in force yet is absent from the
+ * answer. Cost and holds never appear (ADR-0024).
  */
 export async function readEffectivePrices(
   deps: EffectivePricesDependencies,
@@ -60,12 +61,14 @@ export async function readEffectivePrices(
       for (const [mapKey, key] of keys) {
         const series = await deps.series.findByKey(context.market, key);
         if (series === null) continue;
-        const record = effectiveRegular(series.state, now);
-        if (record === null) continue;
+        const effective = effectivePriceAt(series.state, now);
+        if (effective === null) continue;
         found.set(mapKey, {
-          price: record.amount,
-          taxInclusive: record.taxInclusive,
-          recordId: record.id,
+          price: effective.amount,
+          taxInclusive: effective.taxInclusive,
+          recordId: effective.recordId,
+          basis: effective.basis,
+          specialEndsAt: effective.specialEndsAt,
         });
       }
       return ok(found);

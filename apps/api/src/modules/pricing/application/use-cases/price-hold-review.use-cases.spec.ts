@@ -424,12 +424,14 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
         'anchorAmount',
         'anchorRecordId',
         'direction',
+        'kind',
         'offerId',
         'recordId',
         'sellerId',
         'seriesId',
         'submittedAt',
         'variantId',
+        'window',
       ]);
     });
 

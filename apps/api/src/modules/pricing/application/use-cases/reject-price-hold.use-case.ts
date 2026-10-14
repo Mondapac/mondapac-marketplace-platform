@@ -4,6 +4,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { PRICING_PRICE_HOLD_DECIDE } from '../../contracts/permissions';
 import { PriceHoldRejected } from '../../domain/audit';
+import type { SpecialPriceRecord } from '../../domain/special-price';
 import {
   HOLD_REJECTION_REASONS,
   type HoldRejectionReason,
@@ -14,7 +15,7 @@ import {
   type HoldDecisionDependencies,
   type HoldDecisionFailure,
 } from '../hold-decision';
-import { parseRecordId } from '../hold-review';
+import { asSpecialId, parseRecordId } from '../hold-review';
 
 export interface RejectPriceHoldInput {
   readonly recordId: string;
@@ -25,7 +26,7 @@ export interface RejectPriceHoldInput {
 }
 
 export interface RejectPriceHoldOutput {
-  readonly recordId: Id<'RegularPriceRecord'>;
+  readonly recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>;
   readonly outcome: 'rejected';
   readonly seriesVersion: number;
 }
@@ -109,17 +110,19 @@ export class RejectPriceHold extends UseCase<
       this.deps,
       context,
       recordId,
-      (series, now) => {
-        const rejected = series.rejectHold({
-          recordId,
-          decidedBy: actor.accountId,
-          reasonCode,
-          note,
-          now,
-        });
+      (series, now): Result<RegularPriceRecord | SpecialPriceRecord, HoldDecisionFailure> => {
+        const rejected = series.hasSpecial(recordId)
+          ? series.rejectSpecialHold({
+              recordId: asSpecialId(recordId),
+              decidedBy: actor.accountId,
+              reasonCode,
+              note,
+              now,
+            })
+          : series.rejectHold({ recordId, decidedBy: actor.accountId, reasonCode, note, now });
         return rejected.ok ? ok(rejected.value) : err(rejected.error);
       },
-      async (series, record: RegularPriceRecord) => {
+      async (series, record: RegularPriceRecord | SpecialPriceRecord) => {
         const { id, offerId, variantId } = series.state;
         await this.deps.audit.record(
           context,

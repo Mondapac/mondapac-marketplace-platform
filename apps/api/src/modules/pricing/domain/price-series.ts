@@ -6,34 +6,15 @@ import { priceAmount } from './price-amount';
 import type { PriceAmount, PriceAmountError } from './price-amount';
 import { windowStart } from './pricing-policy';
 import type { PricingPolicy } from './pricing-policy';
+import type { HoldRejectionReason, JumpAnchor, RetireCause, SupersedeCause } from './record-types';
+import { liveOrScheduledSpecial, specialEnd, specialInForce } from './special-price';
+import type { SpecialDecision, SpecialPriceRecord, WithdrawCause } from './special-price';
+
+export { HOLD_REJECTION_REASONS } from './record-types';
+export type { HoldRejectionReason, JumpAnchor, RetireCause, SupersedeCause } from './record-types';
 
 export type RegularRecordStatus =
   'ACCEPTED' | 'APPROVED' | 'PENDING_REVIEW' | 'SUPERSEDED' | 'REJECTED';
-
-/** Why a series stopped taking prices (pricing design 6.4). */
-export type RetireCause = 'offer-removed' | 'variant-removed';
-
-/**
- * Why a pending record was superseded (pricing design 3.1 row 5; pricing-data 3.3, M6): a new
- * seller write replaced it, a write equal to the price in force cancelled it, or the series was
- * retired.
- */
-export type SupersedeCause = 'replaced' | 'cancelled' | RetireCause;
-
-/**
- * The reasons an admin may give for rejecting a held price (pricing design 3.1 row 4, J1). A
- * closed list: the wording shown to the seller is the UX writer's (J1); the code is stored on the
- * record and in the audit row. Free text goes only into the optional note, which stays on the
- * record (never in an audit row, an event or a log; design 8).
- */
-export const HOLD_REJECTION_REASONS = [
-  'price-implausible',
-  'price-unverified',
-  'policy-breach',
-  'entered-in-error',
-  'other',
-] as const;
-export type HoldRejectionReason = (typeof HOLD_REJECTION_REASONS)[number];
 
 /** Who decided a held record, when and why (pricing-data 3.3). Null while undecided. */
 export interface RecordDecision {
@@ -44,12 +25,6 @@ export interface RecordDecision {
   readonly reasonCode: HoldRejectionReason | null;
   /** Personal free text of a rejection; never leaves the record (design 8). */
   readonly note: string | null;
-}
-
-/** The record a held price was measured against (design 2.4), copied so it never changes. */
-export interface JumpAnchor {
-  readonly recordId: Id<'RegularPriceRecord'>;
-  readonly amount: PriceAmount;
 }
 
 /**
@@ -100,6 +75,8 @@ export interface PriceSeriesState {
   readonly retireCause: RetireCause | null;
   readonly version: number;
   readonly regular: readonly RegularPriceRecord[];
+  /** The special stream (pricing design 2.1): append-only, oldest submission first. */
+  readonly specials: readonly SpecialPriceRecord[];
 }
 
 export interface SetRegularPriceInput {
@@ -156,12 +133,85 @@ export type HoldDecisionError =
   | { readonly code: 'pricing.hold.own-submission' };
 
 export type ApproveHoldError =
-  HoldDecisionError | { readonly code: 'pricing.policy-market-mismatch' } | PriceAmountError;
+  | HoldDecisionError
+  | { readonly code: 'pricing.policy-market-mismatch' }
+  /** Q2: the held price is no longer strictly above a running or scheduled special. */
+  | { readonly code: 'pricing.regular-not-above-special' }
+  | PriceAmountError;
 
 export type SetRegularPriceError =
   | { readonly code: 'pricing.series-retired' }
   | { readonly code: 'pricing.policy-market-mismatch' }
+  /** Q2: a regular price at or below a running or scheduled special is refused. */
+  | { readonly code: 'pricing.regular-not-above-special' }
   | PriceAmountError;
+
+export interface SetSpecialPriceInput {
+  readonly recordId: Id<'SpecialPriceRecord'>;
+  readonly amount: PriceAmount;
+  readonly submittedBy: Id<'Account'>;
+  readonly taxInclusive: boolean;
+  /** Null: start now. Otherwise not before `now`. */
+  readonly startsAt: Temporal.Instant | null;
+  readonly endsAt: Temporal.Instant;
+  readonly now: Temporal.Instant;
+  readonly policy: PricingPolicy;
+}
+
+export type SetSpecialPriceError =
+  | { readonly code: 'pricing.series-retired' }
+  | { readonly code: 'pricing.policy-market-mismatch' }
+  | { readonly code: 'pricing.no-regular-price' }
+  | { readonly code: 'pricing.special-not-below-regular' }
+  | { readonly code: 'pricing.special-window.invalid' }
+  | { readonly code: 'pricing.special-window.start-in-past' }
+  | PriceAmountError;
+
+/**
+ * What a seller's special write did. `superseded`: pending specials it replaced (or, for a held
+ * one, the earlier pending special); `withdrawn`: the running or scheduled special an accepted
+ * one replaced.
+ */
+export interface SetSpecialPriceOutcome {
+  readonly kind: 'accepted' | 'held';
+  readonly record: SpecialPriceRecord;
+  readonly superseded: readonly SpecialPriceRecord[];
+  readonly withdrawn: SpecialPriceRecord | null;
+}
+
+export type WithdrawSpecialPriceError =
+  | { readonly code: 'pricing.series-retired' }
+  | { readonly code: 'pricing.special-price.not-found' };
+
+export interface WithdrawSpecialPriceOutcome {
+  /** The running or scheduled special that was ended now, or null when only a pending one existed. */
+  readonly withdrawn: SpecialPriceRecord | null;
+  /** The pending special that was cancelled, or null. */
+  readonly cancelled: SpecialPriceRecord | null;
+}
+
+export interface ApproveSpecialHoldInput {
+  readonly recordId: Id<'SpecialPriceRecord'>;
+  readonly decidedBy: Id<'Account'>;
+  readonly now: Temporal.Instant;
+  readonly policy: PricingPolicy;
+}
+
+export type ApproveSpecialHoldError =
+  | HoldDecisionError
+  | { readonly code: 'pricing.policy-market-mismatch' }
+  | { readonly code: 'pricing.special-not-below-regular' }
+  /** The window ended while the special waited: the admin rejects it instead. */
+  | { readonly code: 'pricing.special-window.ended' }
+  | PriceAmountError;
+
+export interface RejectSpecialHoldInput {
+  readonly recordId: Id<'SpecialPriceRecord'>;
+  readonly decidedBy: Id<'Account'>;
+  readonly reasonCode: HoldRejectionReason;
+  readonly note: string | null;
+  readonly now: Temporal.Instant;
+}
 
 /** A stored series that breaks an invariant of design 2.1: refused on load, never repaired. */
 export class InvalidPriceSeriesStateError extends Error {
@@ -180,8 +230,7 @@ function isPriced(record: RegularPriceRecord): boolean {
 
 /**
  * The regular price in effect at `at` (pricing design 4.1 steps 1 and 2): the priced record
- * whose effective period contains the instant. A retired series has none. Specials join the
- * resolver in slice 5.
+ * whose effective period contains the instant. A retired series has none.
  */
 export function effectiveRegular(
   state: PriceSeriesState,
@@ -189,6 +238,48 @@ export function effectiveRegular(
 ): RegularPriceRecord | null {
   if (state.retiredAt !== null) return null;
   return regularInForce(state.regular, at);
+}
+
+/** The price a buyer pays at an instant, and what it is made of (pricing design 4.1). */
+export interface EffectivePriceAt {
+  readonly basis: 'regular' | 'special';
+  readonly amount: PriceAmount;
+  readonly taxInclusive: boolean;
+  /** The record the amount comes from. */
+  readonly recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>;
+  /** The end of the special window when the basis is `special`, else null. */
+  readonly specialEndsAt: Temporal.Instant | null;
+}
+
+/**
+ * The effective price at `at` (pricing design 4.1): the special in force when it is strictly
+ * below the regular price in force, else the regular price; null when there is no regular price
+ * in force. The strict comparison is repeated here as a fail-safe (a buyer never pays more than
+ * the regular price), although Q2 already refuses a regular price at or below a special.
+ */
+export function effectivePriceAt(
+  state: PriceSeriesState,
+  at: Temporal.Instant,
+): EffectivePriceAt | null {
+  const regular = effectiveRegular(state, at);
+  if (regular === null) return null;
+  const special = specialInForce(state.specials, at);
+  if (special !== null && compareMoney(special.amount, regular.amount) < 0) {
+    return {
+      basis: 'special',
+      amount: special.amount,
+      taxInclusive: special.taxInclusive,
+      recordId: special.id,
+      specialEndsAt: special.endsAt,
+    };
+  }
+  return {
+    basis: 'regular',
+    amount: regular.amount,
+    taxInclusive: regular.taxInclusive,
+    recordId: regular.id,
+    specialEndsAt: null,
+  };
 }
 
 function regularInForce(
@@ -282,6 +373,7 @@ export class PriceSeries {
         retireCause: null,
         version: 1,
         regular: [],
+        specials: [],
       },
       false,
     );
@@ -326,7 +418,7 @@ export class PriceSeries {
    * the jump policy measures it against the anchor: within the threshold it becomes effective at
    * `max(now, previous start + 1 ms)` and closes the previous period; beyond it, it waits as
    * `PENDING_REVIEW` and the previous price stays in force. Any pending record is superseded.
-   * The special-price guard (design 3.1, Q2) joins this check with the special stream.
+   * A price at or below a running or scheduled special is refused (Q2).
    */
   setRegularPrice(
     input: SetRegularPriceInput,
@@ -358,6 +450,13 @@ export class PriceSeries {
         );
       }
       return ok({ kind: 'unchanged', superseded });
+    }
+
+    // Q2 (design 3.1 row 1): a regular price at or below a running or scheduled special is
+    // refused; the seller edits or ends the special first.
+    const blocking = liveOrScheduledSpecial(state.specials, input.now);
+    if (blocking !== null && compareMoney(input.amount, blocking.amount) <= 0) {
+      return err({ code: 'pricing.regular-not-above-special' });
     }
 
     const anchorRecord = jumpAnchor(state.regular, input.now, input.policy);
@@ -455,8 +554,8 @@ export class PriceSeries {
    * and the amount passes the **current** policy's limits. The record becomes effective at
    * `max(now, previous start + 1 ms)`, so from approval and not from submission, closes the
    * previous period and becomes the new jump anchor (design 2.4). Events: `price-hold-decided`
-   * (approved), then `effective-price-changed` (`hold-approved`). The special-price guard (Q2)
-   * joins with the special stream (slice 5).
+   * (approved), then `effective-price-changed` (`hold-approved`). A price at or below a running
+   * or scheduled special is refused (Q2) and stays pending.
    */
   approveHold(input: ApproveHoldInput): Result<RegularPriceRecord, ApproveHoldError> {
     const state = this.#state;
@@ -470,6 +569,11 @@ export class PriceSeries {
     if (!checked.ok) return err(checked.error);
     if (record.amount.currency !== state.currency)
       return err({ code: 'pricing.currency-mismatch' });
+    // Q2, applied when the price would take effect: the admin rejects such a record instead.
+    const blocking = liveOrScheduledSpecial(state.specials, input.now);
+    if (blocking !== null && compareMoney(record.amount, blocking.amount) <= 0) {
+      return err({ code: 'pricing.regular-not-above-special' });
+    }
 
     const latest = latestPriced(state.regular);
     const start = effectiveStart(input.now, latest);
@@ -530,6 +634,267 @@ export class PriceSeries {
     return ok(rejected);
   }
 
+  /** Whether a record of the special stream has this id (a held record to decide, design 3.2). */
+  hasSpecial(recordId: string): boolean {
+    return this.#state.specials.some((r) => r.id === recordId);
+  }
+
+  /**
+   * A seller sets a special price (pricing design 3.2 rows 1 and 2, 4.3). Guards: not retired,
+   * the policy is this Market's, the amount passes the policy limits and the series currency, a
+   * regular price is in force and the special is strictly below it, the window starts now or later
+   * and ends after it starts. A discount of more than the policy threshold from the regular price
+   * or from the regular jump anchor (the larger of the two measures it, Hassan finding 1) is held
+   * as `PENDING_REVIEW`: it does not take effect and the current special stays. Otherwise it is
+   * `ACCEPTED`, effective from its start. Either way a pending special is superseded; an accepted
+   * one also withdraws, now, the special that was running or scheduled (Q3: a new one replaces the
+   * current one).
+   */
+  setSpecialPrice(
+    input: SetSpecialPriceInput,
+  ): Result<SetSpecialPriceOutcome, SetSpecialPriceError> {
+    const state = this.#state;
+    if (state.retiredAt !== null) return err({ code: 'pricing.series-retired' });
+    if (input.policy.marketId !== state.marketId) {
+      return err({ code: 'pricing.policy-market-mismatch' });
+    }
+    const checked = priceAmount(input.amount, input.policy);
+    if (!checked.ok) return err(checked.error);
+    if (input.amount.currency !== state.currency) return err({ code: 'pricing.currency-mismatch' });
+
+    const regular = effectiveRegular(state, input.now);
+    if (regular === null) return err({ code: 'pricing.no-regular-price' });
+    if (compareMoney(input.amount, regular.amount) >= 0) {
+      return err({ code: 'pricing.special-not-below-regular' });
+    }
+    const startsAt = input.startsAt ?? input.now;
+    if (Temporal.Instant.compare(startsAt, input.now) < 0) {
+      return err({ code: 'pricing.special-window.start-in-past' });
+    }
+    if (Temporal.Instant.compare(input.endsAt, startsAt) <= 0) {
+      return err({ code: 'pricing.special-window.invalid' });
+    }
+
+    const anchorRecord = jumpAnchor(state.regular, input.now, input.policy) ?? regular;
+    const reference = anchorRecord.amount.amount > regular.amount.amount ? anchorRecord : regular;
+    const held = measureJump(reference.amount, input.amount, input.policy).kind === 'held';
+
+    const base = {
+      id: input.recordId,
+      amount: input.amount,
+      taxInclusive: input.taxInclusive,
+      startsAt,
+      endsAt: input.endsAt,
+      submittedAt: input.now,
+      submittedBy: input.submittedBy,
+      regular: Object.freeze({ recordId: regular.id, amount: regular.amount }),
+      anchor: Object.freeze({ recordId: anchorRecord.id, amount: anchorRecord.amount }),
+      withdrawnAt: null,
+      withdrawCause: null,
+      supersededBy: null,
+      supersededAt: null,
+      supersedeCause: null,
+      decision: null,
+    } as const;
+    const pending = state.specials.filter((r) => r.status === 'PENDING_REVIEW');
+    const superseded = pending.map((r) => supersedeSpecial(r, 'replaced', base.id, input.now));
+
+    if (held) {
+      const record: SpecialPriceRecord = Object.freeze({
+        ...base,
+        status: 'PENDING_REVIEW' as const,
+        heldDirection: 'down' as const,
+        effectiveFrom: null,
+      });
+      this.#commit({ specials: [...replaceSpecials(state.specials, superseded), record] }, [
+        ...this.#specialHoldsSuperseded(superseded, input.now),
+        (version) =>
+          PriceHoldOpened.record({
+            aggregateId: state.id,
+            aggregateVersion: version,
+            occurredAt: input.now,
+            payload: {
+              offerId: state.offerId,
+              variantId: state.variantId,
+              recordId: record.id,
+              kind: 'special',
+              direction: 'down',
+            },
+          }),
+      ]);
+      return ok({ kind: 'held', record, superseded, withdrawn: null });
+    }
+
+    const record: SpecialPriceRecord = Object.freeze({
+      ...base,
+      status: 'ACCEPTED' as const,
+      heldDirection: null,
+      effectiveFrom: startsAt,
+    });
+    const current = liveOrScheduledSpecial(state.specials, input.now);
+    const withdrawn =
+      current === null ? null : withdrawSpecialRecord(current, 'replaced', input.now);
+    const changed = withdrawn === null ? superseded : [...superseded, withdrawn];
+    this.#commit({ specials: [...replaceSpecials(state.specials, changed), record] }, [
+      ...this.#specialHoldsSuperseded(superseded, input.now),
+      this.#specialStarted(startsAt, input.now),
+    ]);
+    return ok({ kind: 'accepted', record, superseded, withdrawn });
+  }
+
+  /**
+   * A seller ends the running or scheduled special now, and cancels a pending one (pricing design
+   * 3.2). Nothing to end or cancel is `pricing.special-price.not-found`. Events: one
+   * `price-hold-decided` (superseded) for a cancelled pending special, then
+   * `effective-price-changed` (`special-withdrawn`) when a special was ended.
+   */
+  withdrawSpecialPrice(
+    now: Temporal.Instant,
+  ): Result<WithdrawSpecialPriceOutcome, WithdrawSpecialPriceError> {
+    const state = this.#state;
+    if (state.retiredAt !== null) return err({ code: 'pricing.series-retired' });
+    const current = liveOrScheduledSpecial(state.specials, now);
+    const pending = state.specials.find((r) => r.status === 'PENDING_REVIEW') ?? null;
+    if (current === null && pending === null)
+      return err({ code: 'pricing.special-price.not-found' });
+    const withdrawn = current === null ? null : withdrawSpecialRecord(current, 'withdrawn', now);
+    const cancelled = pending === null ? null : supersedeSpecial(pending, 'cancelled', null, now);
+    const changed = [withdrawn, cancelled].filter((r): r is SpecialPriceRecord => r !== null);
+    const events: EventAt[] = [
+      ...this.#specialHoldsSuperseded(cancelled === null ? [] : [cancelled], now),
+    ];
+    if (withdrawn !== null) {
+      events.push((version) =>
+        EffectivePriceChanged.record({
+          aggregateId: state.id,
+          aggregateVersion: version,
+          occurredAt: now,
+          payload: {
+            offerId: state.offerId,
+            variantId: state.variantId,
+            cause: 'special-withdrawn',
+            effectiveFrom: now,
+            previousProductId: null,
+            previousVariantId: null,
+          },
+        }),
+      );
+    }
+    this.#commit({ specials: replaceSpecials(state.specials, changed) }, events);
+    return ok({ withdrawn, cancelled });
+  }
+
+  /**
+   * An admin approves a held special (pricing design 3.2 row 3). Re-checked here, whoever calls:
+   * the series is not retired, the record is still pending, the decider did not submit it (H4),
+   * the amount passes the **current** policy, it is still strictly below the **current** regular
+   * price, and its window has not ended. It is effective from `max(startsAt, now)` until `endsAt`
+   * and withdraws, now, the special that was running or scheduled. Events: `price-hold-decided`
+   * (approved, special), then `effective-price-changed` (`special-started`).
+   */
+  approveSpecialHold(
+    input: ApproveSpecialHoldInput,
+  ): Result<SpecialPriceRecord, ApproveSpecialHoldError> {
+    const state = this.#state;
+    const pending = this.#pendingSpecialForDecision(input.recordId, input.decidedBy);
+    if (!pending.ok) return pending;
+    if (input.policy.marketId !== state.marketId) {
+      return err({ code: 'pricing.policy-market-mismatch' });
+    }
+    const record = pending.value;
+    const checked = priceAmount(record.amount, input.policy);
+    if (!checked.ok) return err(checked.error);
+    if (record.amount.currency !== state.currency)
+      return err({ code: 'pricing.currency-mismatch' });
+    const regular = effectiveRegular(state, input.now);
+    if (regular === null || compareMoney(record.amount, regular.amount) >= 0) {
+      return err({ code: 'pricing.special-not-below-regular' });
+    }
+    if (Temporal.Instant.compare(record.endsAt, input.now) <= 0) {
+      return err({ code: 'pricing.special-window.ended' });
+    }
+
+    const start =
+      Temporal.Instant.compare(record.startsAt, input.now) >= 0 ? record.startsAt : input.now;
+    const decision: SpecialDecision = Object.freeze({
+      decidedAt: input.now,
+      decidedBy: input.decidedBy,
+      reasonCode: null,
+      note: null,
+    });
+    const approved: SpecialPriceRecord = Object.freeze({
+      ...record,
+      status: 'APPROVED' as const,
+      effectiveFrom: start,
+      decision,
+    });
+    const current = liveOrScheduledSpecial(state.specials, input.now);
+    const withdrawn =
+      current === null ? null : withdrawSpecialRecord(current, 'replaced', input.now);
+    const changed = withdrawn === null ? [approved] : [withdrawn, approved];
+    this.#commit({ specials: replaceSpecials(state.specials, changed) }, [
+      this.#holdDecided(record.id, 'approved', input.now, 'special'),
+      this.#specialStarted(start, input.now),
+    ]);
+    return ok(approved);
+  }
+
+  /**
+   * An admin rejects a held special (pricing design 3.2): same guards as an approval except the
+   * limits. The current special is untouched. Event: `price-hold-decided` (rejected, special).
+   */
+  rejectSpecialHold(input: RejectSpecialHoldInput): Result<SpecialPriceRecord, HoldDecisionError> {
+    const pending = this.#pendingSpecialForDecision(input.recordId, input.decidedBy);
+    if (!pending.ok) return pending;
+    const rejected: SpecialPriceRecord = Object.freeze({
+      ...pending.value,
+      status: 'REJECTED' as const,
+      decision: Object.freeze({
+        decidedAt: input.now,
+        decidedBy: input.decidedBy,
+        reasonCode: input.reasonCode,
+        note: input.note,
+      }),
+    });
+    this.#commit({ specials: replaceSpecials(this.#state.specials, [rejected]) }, [
+      this.#holdDecided(rejected.id, 'rejected', input.now, 'special'),
+    ]);
+    return ok(rejected);
+  }
+
+  /** The guards every special decision shares: not retired, found, still pending, not the submitter. */
+  #pendingSpecialForDecision(
+    recordId: Id<'SpecialPriceRecord'>,
+    decidedBy: Id<'Account'>,
+  ): Result<SpecialPriceRecord, HoldDecisionError> {
+    const state = this.#state;
+    if (state.retiredAt !== null) return err({ code: 'pricing.series-retired' });
+    const record = state.specials.find((r) => r.id === recordId);
+    if (record === undefined) return err({ code: 'pricing.hold.not-found' });
+    if (record.status !== 'PENDING_REVIEW') return err({ code: 'pricing.hold.not-pending' });
+    if (record.submittedBy === decidedBy) return err({ code: 'pricing.hold.own-submission' });
+    return ok(record);
+  }
+
+  /** `effective-price-changed` (`special-started`): the special is, or will be at `effectiveFrom`. */
+  #specialStarted(effectiveFrom: Temporal.Instant, now: Temporal.Instant): EventAt {
+    const { id, offerId, variantId } = this.#state;
+    return (version) =>
+      EffectivePriceChanged.record({
+        aggregateId: id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: {
+          offerId,
+          variantId,
+          cause: 'special-started',
+          effectiveFrom,
+          previousProductId: null,
+          previousVariantId: null,
+        },
+      });
+  }
+
   /** The guards every decision shares: not retired, found, still pending, not the submitter. */
   #pendingForDecision(
     recordId: Id<'RegularPriceRecord'>,
@@ -545,9 +910,10 @@ export class PriceSeries {
   }
 
   #holdDecided(
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
     outcome: 'approved' | 'rejected',
     now: Temporal.Instant,
+    kind: 'regular' | 'special' = 'regular',
   ): EventAt {
     const { id, offerId, variantId } = this.#state;
     return (version) =>
@@ -555,7 +921,7 @@ export class PriceSeries {
         aggregateId: id,
         aggregateVersion: version,
         occurredAt: now,
-        payload: { offerId, variantId, recordId, kind: 'regular', outcome },
+        payload: { offerId, variantId, recordId, kind, outcome },
       });
   }
 
@@ -564,7 +930,9 @@ export class PriceSeries {
    * pending record is superseded by the system; priced records stay as history. Events (design
    * 3.1 row 5 (c), 6.3): one `price-hold-decided` (superseded) per pending record, then one
    * `effective-price-changed` with cause `series-retired` (the key now has no valid price), one
-   * version step each. Retiring a retired series changes nothing and records nothing.
+   * version step each. Pending specials are superseded and a running or scheduled one is
+   * withdrawn the same way (see {@link specialChanges} for what changed). Retiring a retired
+   * series changes nothing and records nothing.
    */
   retire(cause: RetireCause, now: Temporal.Instant): readonly RegularPriceRecord[] {
     const state = this.#state;
@@ -572,10 +940,26 @@ export class PriceSeries {
     const superseded = state.regular
       .filter((r) => r.status === 'PENDING_REVIEW')
       .map((r) => supersede(r, cause, null, now));
+    // The special stream stops with the series: a pending special is superseded and a running
+    // or scheduled one is withdrawn, both by the system.
+    const specialsSuperseded = state.specials
+      .filter((r) => r.status === 'PENDING_REVIEW')
+      .map((r) => supersedeSpecial(r, cause, null, now));
+    const live = liveOrScheduledSpecial(state.specials, now);
+    const specialsChanged =
+      live === null
+        ? specialsSuperseded
+        : [...specialsSuperseded, withdrawSpecialRecord(live, cause, now)];
     this.#commit(
-      { regular: replace(state.regular, superseded), retiredAt: now, retireCause: cause },
+      {
+        regular: replace(state.regular, superseded),
+        specials: replaceSpecials(state.specials, specialsChanged),
+        retiredAt: now,
+        retireCause: cause,
+      },
       [
         ...this.#holdsSuperseded(superseded, now),
+        ...this.#specialHoldsSuperseded(specialsSuperseded, now),
         (version) =>
           EffectivePriceChanged.record({
             aggregateId: state.id,
@@ -593,6 +977,29 @@ export class PriceSeries {
       ],
     );
     return superseded;
+  }
+
+  /** `price-hold-decided` (superseded, kind special) for each pending special that was replaced, cancelled or retired. */
+  #specialHoldsSuperseded(
+    superseded: readonly SpecialPriceRecord[],
+    now: Temporal.Instant,
+  ): EventAt[] {
+    const { id, offerId, variantId } = this.#state;
+    return superseded.map(
+      (record) => (version: number) =>
+        PriceHoldDecided.record({
+          aggregateId: id,
+          aggregateVersion: version,
+          occurredAt: now,
+          payload: {
+            offerId,
+            variantId,
+            recordId: record.id,
+            kind: 'special',
+            outcome: 'superseded',
+          },
+        }),
+    );
   }
 
   /** `price-hold-decided` (superseded) for each pending record a write or a retirement superseded. */
@@ -620,7 +1027,7 @@ export class PriceSeries {
    * bug (P 10: the version moves only with an event), so it throws rather than step silently.
    */
   #commit(
-    change: Partial<Pick<PriceSeriesState, 'regular' | 'retiredAt' | 'retireCause'>>,
+    change: Partial<Pick<PriceSeriesState, 'regular' | 'specials' | 'retiredAt' | 'retireCause'>>,
     events: readonly EventAt[],
   ): void {
     if (events.length === 0) {
@@ -673,6 +1080,58 @@ function replace(
   return records.map((r) => changed.find((c) => c.id === r.id) ?? r);
 }
 
+function supersedeSpecial(
+  record: SpecialPriceRecord,
+  cause: SupersedeCause,
+  by: Id<'SpecialPriceRecord'> | null,
+  at: Temporal.Instant,
+): SpecialPriceRecord {
+  return Object.freeze({
+    ...record,
+    status: 'SUPERSEDED' as const,
+    supersededBy: by,
+    supersededAt: at,
+    supersedeCause: cause,
+  });
+}
+
+function withdrawSpecialRecord(
+  record: SpecialPriceRecord,
+  cause: WithdrawCause,
+  at: Temporal.Instant,
+): SpecialPriceRecord {
+  return Object.freeze({
+    ...record,
+    status: 'WITHDRAWN' as const,
+    withdrawnAt: at,
+    withdrawCause: cause,
+  });
+}
+
+function replaceSpecials(
+  records: readonly SpecialPriceRecord[],
+  changed: readonly SpecialPriceRecord[],
+): SpecialPriceRecord[] {
+  return records.map((r) => changed.find((c) => c.id === r.id) ?? r);
+}
+
+/**
+ * The specials a change superseded or withdrew, found by comparing the series with the state it
+ * was last stored in. Used by the retirement handlers to audit what a retirement did to the
+ * special stream; empty for a series never stored.
+ */
+export function specialChanges(series: PriceSeries): {
+  readonly superseded: readonly SpecialPriceRecord[];
+  readonly withdrawn: readonly SpecialPriceRecord[];
+} {
+  const before = new Map((series.storedState?.specials ?? []).map((r) => [r.id, r.status]));
+  const now = series.state.specials;
+  return {
+    superseded: now.filter((r) => r.status === 'SUPERSEDED' && before.get(r.id) !== 'SUPERSEDED'),
+    withdrawn: now.filter((r) => r.status === 'WITHDRAWN' && before.get(r.id) !== 'WITHDRAWN'),
+  };
+}
+
 function freezeRecord(record: RegularPriceRecord): RegularPriceRecord {
   return Object.freeze({
     ...record,
@@ -688,8 +1147,28 @@ function freezeRecord(record: RegularPriceRecord): RegularPriceRecord {
   });
 }
 
+function freezeSpecial(record: SpecialPriceRecord): SpecialPriceRecord {
+  return Object.freeze({
+    ...record,
+    amount: Object.freeze({ ...record.amount }),
+    regular: Object.freeze({
+      recordId: record.regular.recordId,
+      amount: Object.freeze({ ...record.regular.amount }),
+    }),
+    anchor: Object.freeze({
+      recordId: record.anchor.recordId,
+      amount: Object.freeze({ ...record.anchor.amount }),
+    }),
+    decision: record.decision === null ? null : Object.freeze({ ...record.decision }),
+  });
+}
+
 function freezeState(state: PriceSeriesState): PriceSeriesState {
-  return Object.freeze({ ...state, regular: Object.freeze(state.regular.map(freezeRecord)) });
+  return Object.freeze({
+    ...state,
+    regular: Object.freeze(state.regular.map(freezeRecord)),
+    specials: Object.freeze(state.specials.map(freezeSpecial)),
+  });
 }
 
 // Fail fast on a stored series that no write could have produced (design 2.1). The database
@@ -747,5 +1226,72 @@ function checkStoredState(state: PriceSeriesState): void {
       bad('priced records must be contiguous and must not overlap');
     }
   });
+  checkStoredSpecials(state, bad);
   if (state.retiredAt !== null && state.retireCause === null) bad('a retired series needs a cause');
+}
+
+function checkStoredSpecials(state: PriceSeriesState, bad: (reason: string) => never): void {
+  const specials = state.specials;
+  const foreign = (r: SpecialPriceRecord): boolean =>
+    r.amount.currency !== state.currency ||
+    r.regular.amount.currency !== state.currency ||
+    r.anchor.amount.currency !== state.currency;
+  if (specials.some(foreign)) bad('a special is in another currency than the series');
+  const at = (a: Temporal.Instant, b: Temporal.Instant): number => Temporal.Instant.compare(a, b);
+  for (const r of specials) {
+    if (at(r.endsAt, r.startsAt) <= 0) bad('a special window must end after it starts');
+    const superseded = r.status === 'SUPERSEDED';
+    if (superseded !== (r.supersedeCause !== null) || superseded !== (r.supersededAt !== null)) {
+      bad('a superseded special needs its cause and instant, and only it');
+    }
+    if ((r.supersedeCause === 'replaced') !== (r.supersededBy !== null)) {
+      bad('a replaced special names its successor, and only it');
+    }
+    const withdrawn = r.status === 'WITHDRAWN';
+    if (withdrawn !== (r.withdrawnAt !== null) || withdrawn !== (r.withdrawCause !== null)) {
+      bad('a withdrawn special needs its cause and instant, and only it');
+    }
+    const decided = r.status === 'APPROVED' || r.status === 'REJECTED';
+    if (r.decision !== null && !decided && !withdrawn)
+      bad('a decision belongs to a decided special');
+    if (decided && r.decision === null) bad('a decided special needs its decision');
+    if (r.decision !== null) {
+      if (r.decision.decidedBy === r.submittedBy) bad('a special was decided by its submitter');
+      if ((r.status === 'REJECTED') !== (r.decision.reasonCode !== null)) {
+        bad('a rejection needs its reason code, and only it');
+      }
+    }
+    if (
+      (r.status === 'PENDING_REVIEW') !==
+      (r.heldDirection !== null && r.effectiveFrom === null)
+    ) {
+      bad('a pending special is a held one without an effective start');
+    }
+    const priced = r.status === 'ACCEPTED' || r.status === 'APPROVED';
+    if (priced && r.effectiveFrom === null) bad('a priced special has no effective start');
+    if (r.effectiveFrom !== null && at(r.effectiveFrom, r.startsAt) < 0) {
+      bad('a special cannot take effect before its window starts');
+    }
+  }
+  if (specials.filter((r) => r.status === 'PENDING_REVIEW').length > 1) {
+    bad('more than one pending special');
+  }
+  // Effective periods never overlap (design 2.1, M4): `[effectiveFrom, min(endsAt, withdrawnAt))`.
+  const periods = specials
+    .filter(
+      (r) =>
+        r.effectiveFrom !== null &&
+        (r.status === 'ACCEPTED' || r.status === 'APPROVED' || r.status === 'WITHDRAWN'),
+    )
+    .map((r) => {
+      const from = r.effectiveFrom as Temporal.Instant;
+      const end = specialEnd(r);
+      return { from, end: at(end, from) < 0 ? from : end };
+    })
+    .sort((a, b) => at(a.from, b.from));
+  periods.forEach((period, index) => {
+    const next = periods[index + 1];
+    if (next !== undefined && at(next.from, period.end) < 0)
+      bad('special periods must not overlap');
+  });
 }

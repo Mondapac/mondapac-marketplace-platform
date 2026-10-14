@@ -424,6 +424,65 @@
     }
   },
   {
+    "action": "pricing.special-price.accepted",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "effectiveFrom": "instant",
+      "endsAt": "instant",
+      "offerId": "id",
+      "recordId": "id",
+      "startsAt": "instant",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.special-price.held",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "endsAt": "instant",
+      "offerId": "id",
+      "recordId": "id",
+      "referenceAmount": "money",
+      "startsAt": "instant",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.special-price.superseded",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(replaced|cancelled|offer-removed|variant-removed)",
+      "offerId": "id",
+      "recordId": "id",
+      "supersededByRecordId": "optional(id)",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.special-price.withdrawn",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(withdrawn|replaced|offer-removed|variant-removed)",
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "action": "sellers.business-details.viewed",
     "targetType": "sellers.seller",
     "targetId": "id",
