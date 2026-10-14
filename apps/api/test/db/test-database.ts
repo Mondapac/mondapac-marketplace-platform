@@ -56,7 +56,13 @@ function exported(
     | 'TEST_CATALOG_CLAIMS_DATABASE_URL'
     | 'TEST_CATALOG_CLAIMS_OWNER_DATABASE_URL'
     | 'TEST_CLAIM_FACTS_DATABASE_URL'
-    | 'TEST_CLAIM_FACTS_OWNER_DATABASE_URL',
+    | 'TEST_CLAIM_FACTS_OWNER_DATABASE_URL'
+    | 'TEST_CATALOG_REVISIONS_DATABASE_URL'
+    | 'TEST_CATALOG_REVISIONS_OWNER_DATABASE_URL'
+    | 'TEST_CATALOG_ATTRIBUTES_DATABASE_URL'
+    | 'TEST_CATALOG_ATTRIBUTES_OWNER_DATABASE_URL'
+    | 'TEST_PRICING_CONSTRAINTS_DATABASE_URL'
+    | 'TEST_PRICING_CONSTRAINTS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -210,4 +216,40 @@ export function claimFactsTestDatabaseUrl(): string {
 
 export function claimFactsOwnerTestDatabaseUrl(): string {
   return exported('TEST_CLAIM_FACTS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that catalog-revisions.db-spec.ts probes the owner's TRUNCATE ... CASCADE on (global-setup.ts), as the
+ * application login and as its owner: no other file writes the tables those probes lock.
+ */
+export function catalogRevisionsTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_REVISIONS_DATABASE_URL');
+}
+
+export function catalogRevisionsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_REVISIONS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that catalog-attributes.db-spec.ts probes the owner's TRUNCATE ... CASCADE on (global-setup.ts), as the
+ * application login and as its owner: no other file writes the tables those probes lock.
+ */
+export function catalogAttributesTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_ATTRIBUTES_DATABASE_URL');
+}
+
+export function catalogAttributesOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_ATTRIBUTES_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that pricing-constraints.db-spec.ts probes the owner's TRUNCATE ... CASCADE on (global-setup.ts), as the
+ * application login and as its owner: no other file writes the tables those probes lock.
+ */
+export function pricingConstraintsTestDatabaseUrl(): string {
+  return exported('TEST_PRICING_CONSTRAINTS_DATABASE_URL');
+}
+
+export function pricingConstraintsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_PRICING_CONSTRAINTS_OWNER_DATABASE_URL');
 }
