@@ -90,7 +90,12 @@ async function applyAccountEvent(
       );
       let pausedUntil = row.payoutsPausedUntil;
       if (isExternalAccountEvent(event.type)) {
-        const kind = kindOf(event.type, row.lastChangeId !== null);
+        const kind = kindOf(event.type, {
+          hasEarlierChange: row.lastChangeId !== null,
+          neverEnabled:
+            (row.status === 'not-started' || row.status === 'pending') && !row.payoutsEnabled,
+          externalAccountCount: snapshot.externalAccountCount,
+        });
         const until = coolingOffAfter(
           kind,
           readAt,
@@ -125,7 +130,8 @@ async function applyAccountEvent(
           );
         }
       }
-      // A pause that Stripe no longer shows (the schedule was changed back) is written again.
+      // A pause that Stripe does not show (never applied, or the schedule was changed back) is
+      // written again, whatever the applied state is.
       if (
         isCoolingOff(pausedUntil, readAt) &&
         snapshot.payoutScheduleInterval !== null &&

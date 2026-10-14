@@ -214,7 +214,7 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
     at: Temporal.Instant,
   ): Promise<boolean> {
     const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
-      where: { marketId: market.marketId, sellerId, payoutScheduleApplied: 'manual' },
+      where: { marketId: market.marketId, sellerId },
       data: {
         payoutScheduleApplied: 'normal',
         payoutScheduleRevision: { increment: 1 },
@@ -257,11 +257,31 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
     sellerId: string,
     applied: AppliedSchedule,
     at: Temporal.Instant,
-  ): Promise<void> {
-    await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
-      where: { marketId: market.marketId, sellerId },
+    expected: { readonly lastChangeId: string; readonly revision: number },
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        lastChangeId: expected.lastChangeId,
+        payoutScheduleRevision: expected.revision,
+      },
       data: { payoutScheduleApplied: applied, updatedAt: toDate(at) },
     });
+    return updated.count === 1;
+  }
+
+  async bumpScheduleRevision(
+    market: MarketContext,
+    sellerId: string,
+    expectedRevision: number,
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
+      where: { marketId: market.marketId, sellerId, payoutScheduleRevision: expectedRevision },
+      data: { payoutScheduleRevision: { increment: 1 }, updatedAt: toDate(at) },
+    });
+    return updated.count === 1;
   }
 
   async list(

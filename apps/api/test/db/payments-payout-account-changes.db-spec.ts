@@ -23,6 +23,7 @@ const CHECK = '23514';
 const DENIED = '42501';
 const FOREIGN_KEY = '23503';
 const UNIQUE = '23505';
+const RESTRICT = '23001';
 let sequence = 0;
 const nextEvent = () => `evt_test_${process.pid}_${(sequence += 1)}_${Date.now()}`;
 const nextRef = () => `acct_test_${process.pid}_${(sequence += 1)}_${Date.now()}`;
@@ -141,20 +142,48 @@ describe.each(TEST_MARKETS)('payout account changes in market %s (database)', (c
     );
     // Paused and not yet manual at Stripe: due. Written: not due until the period ends.
     expect(await dueIds(now)).toContain(sellerId);
-    await value(market, () => store.markScheduleApplied(market, sellerId, 'manual', now));
+    const guard = (revision: number, lastChangeId: string) => ({ lastChangeId, revision });
+    const latest = (await value(market, () => store.find(market, sellerId)))!.lastChangeId!;
+    // The write is stored only while the latest change and the revision are those it was made for.
+    expect(
+      await value(market, () =>
+        store.markScheduleApplied(market, sellerId, 'manual', now, guard(0, randomUUID())),
+      ),
+    ).toBe(false);
+    expect(
+      await value(market, () =>
+        store.markScheduleApplied(market, sellerId, 'manual', now, guard(1, latest)),
+      ),
+    ).toBe(false);
+    expect(await dueIds(now)).toContain(sellerId);
+    expect(
+      await value(market, () =>
+        store.markScheduleApplied(market, sellerId, 'manual', now, guard(0, latest)),
+      ),
+    ).toBe(true);
     expect(await dueIds(now)).not.toContain(sellerId);
     // The period over and still manual: due again; resumed: not due.
     expect(await dueIds(until)).toContain(sellerId);
-    await value(market, () => store.markScheduleApplied(market, sellerId, 'normal', until));
+    await value(market, () =>
+      store.markScheduleApplied(market, sellerId, 'normal', until, guard(0, latest)),
+    );
     expect(await dueIds(until)).not.toContain(sellerId);
 
-    // A read that finds the pause undone marks only an account that is manual.
-    expect(await value(market, () => store.markRepause(market, sellerId, now))).toBe(false);
-    await value(market, () => store.markScheduleApplied(market, sellerId, 'manual', now));
+    // A read that finds the pause undone marks the account whatever its applied state was.
     expect(await value(market, () => store.markRepause(market, sellerId, now))).toBe(true);
     expect(await value(market, () => store.find(market, sellerId))).toMatchObject({
       payoutScheduleApplied: 'normal',
       payoutScheduleRevision: 1,
+    });
+    // An answered Stripe error moves the revision once, only from the revision it was made at.
+    expect(await value(market, () => store.bumpScheduleRevision(market, sellerId, 0, now))).toBe(
+      false,
+    );
+    expect(await value(market, () => store.bumpScheduleRevision(market, sellerId, 1, now))).toBe(
+      true,
+    );
+    expect(await value(market, () => store.find(market, sellerId))).toMatchObject({
+      payoutScheduleRevision: 2,
     });
     expect(await dueIds(now)).toContain(sellerId);
     expect(await value(other, () => store.dueForScheduleSync(other, now, 200))).not.toEqual(
@@ -263,5 +292,45 @@ describe.each(TEST_MARKETS)('payout account changes in market %s (database)', (c
         [sellerId],
       ),
     ).rejects.toMatchObject({ code: CHECK });
+  });
+
+  it('refuses to move the waiting period or the pause back, and clears them only once over', async () => {
+    const sellerId = await seller();
+    const set = (column: string, expression: string) =>
+      sql.query(
+        `UPDATE payments.connected_accounts SET ${column} = ${expression} WHERE seller_id = $1`,
+        [sellerId],
+      );
+    for (const column of ['cooling_off_until', 'payouts_paused_until']) {
+      // Nothing -> a value, and a value -> a later one, are allowed.
+      await set(column, "now() + interval '2 days'");
+      await set(column, "now() + interval '3 days'");
+      // A lower value, and clearing one that is still ahead, are not.
+      await expect(set(column, "now() + interval '1 day'")).rejects.toMatchObject({
+        code: RESTRICT,
+      });
+      await expect(set(column, 'NULL')).rejects.toMatchObject({ code: RESTRICT });
+      // The same value again (an update of other columns carries it along) is fine.
+      await set(column, column);
+    }
+    // Once over, it may be cleared.
+    const over = await seller();
+    for (const column of ['cooling_off_until', 'payouts_paused_until']) {
+      await sql.query(
+        `UPDATE payments.connected_accounts SET ${column} = now() - interval '1 minute' WHERE seller_id = $1`,
+        [over],
+      );
+      await sql.query(
+        `UPDATE payments.connected_accounts SET ${column} = NULL WHERE seller_id = $1`,
+        [over],
+      );
+    }
+    // Other columns move freely while the pause stands.
+    await set('payout_schedule_applied', "'manual'");
+    const row = await sql.query(
+      'SELECT payouts_paused_until > now() AS paused FROM payments.connected_accounts WHERE seller_id = $1',
+      [sellerId],
+    );
+    expect(row.rows[0]).toMatchObject({ paused: true });
   });
 });

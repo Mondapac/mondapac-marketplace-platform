@@ -29,7 +29,14 @@ export function syncPayoutSchedulesJob(sync: SyncPayoutSchedules): JobDefinition
         correlationId: context.correlationId,
       };
       for (const problem of problems) {
-        logger.warn({ msg: `${SYNC_PAYOUT_SCHEDULES_JOB}.${problem.code}`, ...fields, ...problem });
+        // A pause that did not go through leaves payouts running after a bank change: an error.
+        const entry = {
+          msg: `${SYNC_PAYOUT_SCHEDULES_JOB}.${problem.action}.${problem.code}`,
+          ...fields,
+          ...problem,
+        };
+        if (problem.action === 'pause') logger.error(entry);
+        else logger.warn(entry);
       }
       if (paused + resumed > 0) {
         logger.log({ msg: SYNC_PAYOUT_SCHEDULES_JOB, ...fields, paused, resumed });

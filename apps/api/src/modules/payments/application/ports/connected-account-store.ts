@@ -112,7 +112,7 @@ export interface ConnectedAccountStore {
 
   /**
    * A read showed the schedule is not manual while payouts should be paused: the pause is to be
-   * written again. Only an account whose applied schedule is `manual` changes.
+   * written again (applied state back to `normal`, revision up), whatever the applied state was.
    */
   markRepause(market: MarketContext, sellerId: string, at: Temporal.Instant): Promise<boolean>;
 
@@ -123,13 +123,29 @@ export interface ConnectedAccountStore {
     limit: number,
   ): Promise<readonly ConnectedAccountRecord[]>;
 
-  /** Records the schedule just written to Stripe. */
+  /**
+   * Records the schedule just written to Stripe, only while the account's latest change and
+   * revision are still the ones the write was made for. False (nothing stored) when they moved:
+   * the next run decides again.
+   */
   markScheduleApplied(
     market: MarketContext,
     sellerId: string,
     applied: AppliedSchedule,
     at: Temporal.Instant,
-  ): Promise<void>;
+    expected: { readonly lastChangeId: string; readonly revision: number },
+  ): Promise<boolean>;
+
+  /**
+   * Stripe answered a schedule write with an error, which it keeps for the key: the revision goes
+   * up (only while it is still `expectedRevision`) so the next run uses a new key.
+   */
+  bumpScheduleRevision(
+    market: MarketContext,
+    sellerId: string,
+    expectedRevision: number,
+    at: Temporal.Instant,
+  ): Promise<boolean>;
 
   /** The Market's accounts, newest created first, optionally of one status. */
   list(

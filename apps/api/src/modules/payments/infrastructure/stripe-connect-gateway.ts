@@ -27,6 +27,11 @@ export type StripeRequest = (
 const UNAVAILABLE: ConnectFailure = Object.freeze({
   code: 'payment.provider-unavailable' as const,
 });
+/** Stripe answered with an error status: it caches that answer under the same key for 24 h. */
+const UNAVAILABLE_ANSWERED: ConnectFailure = Object.freeze({
+  code: 'payment.provider-unavailable' as const,
+  answered: true,
+});
 const REJECTED: ConnectFailure = Object.freeze({ code: 'payment.provider-rejected' as const });
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -122,7 +127,7 @@ export class StripeConnectGateway implements ConnectGateway {
         ...(form === null ? {} : { body: form.toString() }),
         signal: timeout.signal,
       });
-      if (response.status >= 500 || response.status === 429) return err(UNAVAILABLE);
+      if (response.status >= 500 || response.status === 429) return err(UNAVAILABLE_ANSWERED);
       if (response.status >= 400) return err(REJECTED);
       return ok(await response.json());
     } catch {
@@ -131,6 +136,12 @@ export class StripeConnectGateway implements ConnectGateway {
       clearTimeout(timer);
     }
   }
+}
+
+/** How many external accounts the object lists; a further page counts as more than one. */
+function externalCount(value: unknown): number | null {
+  if (!isObject(value) || !Array.isArray(value.data)) return null;
+  return value.has_more === true ? Math.max(2, value.data.length) : value.data.length;
 }
 
 /** Stripe's account object, narrowed; null when it is not a well-formed account. */
@@ -162,5 +173,6 @@ function toSnapshot(body: unknown): AccountSnapshot | null {
     requirementsPastDue: count(requirements.past_due) > 0,
     disabledReason: text(requirements.disabled_reason),
     payoutScheduleInterval: text(schedule.interval),
+    externalAccountCount: externalCount(body.external_accounts),
   };
 }

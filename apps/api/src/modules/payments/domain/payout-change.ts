@@ -30,12 +30,27 @@ export function clampCoolingOffHours(raw: unknown): number {
   return Math.min(MAX_COOLING_OFF_HOURS, Math.max(MIN_COOLING_OFF_HOURS, Math.ceil(raw)));
 }
 
+/** What is known about the account when an external-account event is applied. */
+export interface ChangeContext {
+  /** A change (or the migration's marker) is recorded for the account already. */
+  readonly hasEarlierChange: boolean;
+  /** The stored account never had payouts enabled (read before this event's own read). */
+  readonly neverEnabled: boolean;
+  /** How many external accounts Stripe lists now; null when the read did not say. */
+  readonly externalAccountCount: number | null;
+}
+
 /**
- * The kind of a change. The first destination ever seen on the account is `initial` when it is
- * added (the onboarding); a first event of any other type, or any later one, is a real change.
+ * The kind of a change. `initial` (no waiting period) only for the onboarding: a `created` event
+ * with no change recorded, an account that never had payouts enabled, and exactly one external
+ * account at Stripe now. Anything else, including an unknown count, is a real change.
  */
-export function kindOf(type: ExternalAccountEventType, hasEarlierChange: boolean): ChangeKind {
-  if (type === 'account.external_account.created') return hasEarlierChange ? 'added' : 'initial';
+export function kindOf(type: ExternalAccountEventType, known: ChangeContext): ChangeKind {
+  if (type === 'account.external_account.created') {
+    const onboarding =
+      !known.hasEarlierChange && known.neverEnabled && known.externalAccountCount === 1;
+    return onboarding ? 'initial' : 'added';
+  }
   return type === 'account.external_account.updated' ? 'updated' : 'removed';
 }
 

@@ -1,7 +1,7 @@
 import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
-import { PayoutSchedulePaused, PayoutScheduleResumed } from '../domain/audit';
+import { PayoutPauseFailed, PayoutSchedulePaused, PayoutScheduleResumed } from '../domain/audit';
 import { desiredSchedule, scheduleKey } from '../domain/payout-change';
 import type { PaymentsDependencies } from './payments-dependencies';
 import type { ConnectedAccountRecord } from './ports/connected-account-store';
@@ -15,6 +15,7 @@ export interface ScheduleSyncSummary {
   /** Stripe did not take the write (unavailable or refused): tried again on the next run. */
   readonly problems: readonly {
     readonly sellerId: string;
+    readonly action: 'pause' | 'resume';
     readonly code: 'payment.provider-unavailable' | 'payment.provider-rejected';
   }[];
 }
@@ -26,8 +27,9 @@ export type ScheduleSyncFailure = AccessDenied;
  * compares what is wanted now (manual while `payouts_paused_until` is in the future, else the
  * Market's own schedule) with what was last applied, writes the difference with an idempotency
  * key of the change (`payout-pause:<id>` / `payout-resume:<id>`), and records the applied state
- * and an audit row only after Stripe accepted it. A Stripe error changes nothing and is tried
- * again on the next run. The event handler never calls Stripe for this: it only moves
+ * and an audit row only after Stripe accepted it. A Stripe error changes no applied state and is
+ * tried again on the next run (an answered error moves the key's revision, a timeout does not,
+ * because Stripe keeps error answers per key for 24 h); a failed pause is also audited. The event handler never calls Stripe for this: it only moves
  * `payouts_paused_until` and marks a pause that a read found undone. The account is read again
  * just before its write, so a change that arrived since the batch was read is not undone.
  */
@@ -47,8 +49,11 @@ export async function syncPayoutSchedules(
   if (!due.ok) return due;
   let paused = 0;
   let resumed = 0;
-  const problems: { sellerId: string; code: ScheduleSyncSummary['problems'][number]['code'] }[] =
-    [];
+  const problems: {
+    sellerId: string;
+    action: 'pause' | 'resume';
+    code: ScheduleSyncSummary['problems'][number]['code'];
+  }[] = [];
   for (const listed of due.value) {
     const fresh = await deps.unitOfWork.run<ConnectedAccountRecord | null, never>(
       market,
@@ -71,15 +76,53 @@ export async function syncPayoutSchedules(
       pause ? 'manual' : normal,
       scheduleKey(pause ? 'pause' : 'resume', record.lastChangeId, record.payoutScheduleRevision),
     );
-    if (!written.ok) {
-      problems.push({ sellerId: record.sellerId, code: written.error.code });
-      continue;
-    }
     const changeId = record.lastChangeId as Id<'PayoutChange'>;
     const sellerId = record.sellerId as Id<'Seller'>;
-    await deps.unitOfWork.run<true, never>(market, async () => {
-      const at = deps.clock.now();
-      await deps.accounts.markScheduleApplied(market, record.sellerId, wanted, at);
+    if (!written.ok) {
+      problems.push({
+        sellerId: record.sellerId,
+        action: pause ? 'pause' : 'resume',
+        code: written.error.code,
+      });
+      // Stripe keeps an error answer for the key for 24 h: an answered error needs a new key on
+      // the next run; a timeout or lost connection keeps the key (the write may have happened).
+      const answered =
+        written.error.code === 'payment.provider-rejected' || written.error.answered === true;
+      await deps.unitOfWork.run<true, never>(market, async () => {
+        if (answered) {
+          await deps.accounts.bumpScheduleRevision(
+            market,
+            record.sellerId,
+            record.payoutScheduleRevision,
+            deps.clock.now(),
+          );
+        }
+        if (pause) {
+          await deps.audit.record(
+            context,
+            PayoutPauseFailed.entry(sellerId, {
+              after: {
+                changeId,
+                reason:
+                  written.error.code === 'payment.provider-rejected' ? 'rejected' : 'unavailable',
+              },
+            }),
+          );
+        }
+        return ok(true);
+      });
+      continue;
+    }
+    const stored = await deps.unitOfWork.run<boolean, never>(market, async () => {
+      const kept = await deps.accounts.markScheduleApplied(
+        market,
+        record.sellerId,
+        wanted,
+        deps.clock.now(),
+        { lastChangeId: changeId, revision: record.payoutScheduleRevision },
+      );
+      // The account moved since the read: nothing is stored, the next run decides again.
+      if (!kept) return ok(false);
       await deps.audit.record(
         context,
         pause
@@ -88,6 +131,7 @@ export async function syncPayoutSchedules(
       );
       return ok(true);
     });
+    if (!stored.ok || !stored.value) continue;
     if (pause) paused += 1;
     else resumed += 1;
   }

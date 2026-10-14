@@ -36,8 +36,20 @@ export const PayoutScheduleResumed = defineAuditAction({
   after: { changeId: auditField.id() },
 });
 
+/** Stripe did not take the write that pauses payouts: the account stays unpaused until it does. */
+export const PayoutPauseFailed = defineAuditAction({
+  action: 'payments.payout-pause.failed',
+  targetType: CONNECTED_ACCOUNT_TARGET,
+  actors: ['system'],
+  after: {
+    changeId: auditField.id(),
+    reason: auditField.enumOf(['unavailable', 'rejected'] as const),
+  },
+});
+
 export const PAYMENTS_AUDIT_ACTIONS = [
   PayoutChangeRecorded,
   PayoutSchedulePaused,
   PayoutScheduleResumed,
+  PayoutPauseFailed,
 ] as const;

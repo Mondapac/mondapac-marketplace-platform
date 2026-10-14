@@ -28,13 +28,28 @@ describe('clampCoolingOffHours', () => {
 });
 
 describe('kindOf', () => {
-  it('is initial only for the first destination added, and a change otherwise', () => {
-    expect(kindOf('account.external_account.created', false)).toBe('initial');
-    expect(kindOf('account.external_account.created', true)).toBe('added');
-    expect(kindOf('account.external_account.updated', false)).toBe('updated');
-    expect(kindOf('account.external_account.updated', true)).toBe('updated');
-    expect(kindOf('account.external_account.deleted', false)).toBe('removed');
-    expect(kindOf('account.external_account.deleted', true)).toBe('removed');
+  const onboarding = { hasEarlierChange: false, neverEnabled: true, externalAccountCount: 1 };
+  it('is initial only for the one first destination of an account never enabled', () => {
+    expect(kindOf('account.external_account.created', onboarding)).toBe('initial');
+    expect(
+      kindOf('account.external_account.created', { ...onboarding, hasEarlierChange: true }),
+    ).toBe('added');
+    expect(kindOf('account.external_account.created', { ...onboarding, neverEnabled: false })).toBe(
+      'added',
+    );
+    for (const count of [0, 2, null]) {
+      expect(
+        kindOf('account.external_account.created', { ...onboarding, externalAccountCount: count }),
+      ).toBe('added');
+    }
+  });
+
+  it('is updated or removed for the other events, whatever else is known', () => {
+    expect(kindOf('account.external_account.updated', onboarding)).toBe('updated');
+    expect(kindOf('account.external_account.deleted', onboarding)).toBe('removed');
+    expect(
+      kindOf('account.external_account.deleted', { ...onboarding, hasEarlierChange: true }),
+    ).toBe('removed');
   });
 });
 

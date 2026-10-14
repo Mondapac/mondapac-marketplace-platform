@@ -57,6 +57,47 @@ ALTER TABLE "payments"."stripe_events"
     'account.external_account.created', 'account.external_account.updated',
     'account.external_account.deleted'));
 
+-- Backfill: an account that already has a Stripe id gets one `initial` marker change, so a later
+-- bank event on it is a real change and not taken for the onboarding. The id of the marker
+-- cannot clash with a Stripe event id.
+WITH marker AS (
+  SELECT "market_id", "tenant_id", "seller_id", gen_random_uuid() AS "id", "created_at"
+  FROM "payments"."connected_accounts" WHERE "account_ref" IS NOT NULL
+), written AS (
+  INSERT INTO "payments"."payout_account_changes"
+    ("market_id", "id", "tenant_id", "seller_id", "kind", "detected_at", "cooling_off_until", "source_event_id")
+  SELECT "market_id", "id", "tenant_id", "seller_id", 'initial', "created_at", NULL,
+    'evt_backfill_' || replace("seller_id"::text, '-', '')
+  FROM marker RETURNING "market_id", "seller_id", "id"
+)
+UPDATE "payments"."connected_accounts" a SET "last_change_id" = written."id"
+FROM written WHERE a."market_id" = written."market_id" AND a."seller_id" = written."seller_id";
+
+-- Hand-written: the waiting period and the pause only move forward. A lower value is refused, and
+-- so is clearing one that is still in the future, whoever asks.
+CREATE FUNCTION "payments"."connected_accounts_guard_pause"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD."cooling_off_until" IS NOT NULL AND (
+       (NEW."cooling_off_until" IS NULL AND OLD."cooling_off_until" > now())
+    OR (NEW."cooling_off_until" IS NOT NULL AND NEW."cooling_off_until" < OLD."cooling_off_until")
+  ) THEN
+    RAISE EXCEPTION 'payments.connected_accounts: cooling_off_until cannot move back'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD."payouts_paused_until" IS NOT NULL AND (
+       (NEW."payouts_paused_until" IS NULL AND OLD."payouts_paused_until" > now())
+    OR (NEW."payouts_paused_until" IS NOT NULL AND NEW."payouts_paused_until" < OLD."payouts_paused_until")
+  ) THEN
+    RAISE EXCEPTION 'payments.connected_accounts: payouts_paused_until cannot move back'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "connected_accounts_guard_pause" BEFORE UPDATE ON "payments"."connected_accounts"
+  FOR EACH ROW EXECUTE FUNCTION "payments"."connected_accounts_guard_pause"();
+
 -- Grants. The change history is insert-only (no UPDATE, no DELETE); the account row gains the
 -- waiting-period and schedule columns the application moves.
 GRANT SELECT, INSERT ON TABLE "payments"."payout_account_changes" TO "mondapac_app";

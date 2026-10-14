@@ -11,6 +11,7 @@ const snapshot = (fields: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
   requirementsPastDue: false,
   disabledReason: null,
   payoutScheduleInterval: 'daily',
+  externalAccountCount: 1,
   ...fields,
 });
 

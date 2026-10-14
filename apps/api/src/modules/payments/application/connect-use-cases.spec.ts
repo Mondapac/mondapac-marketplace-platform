@@ -116,6 +116,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
     requirementsPastDue: false,
     disabledReason: null,
     payoutScheduleInterval: 'daily',
+    externalAccountCount: 1,
     ...fields,
   });
 

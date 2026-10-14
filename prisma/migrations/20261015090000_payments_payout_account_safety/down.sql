@@ -7,6 +7,9 @@ ALTER TABLE "payments"."stripe_events"
     'checkout.session.completed', 'checkout.session.expired',
     'checkout.session.async_payment_failed', 'account.updated', 'capability.updated'));
 
+DROP TRIGGER "connected_accounts_guard_pause" ON "payments"."connected_accounts";
+DROP FUNCTION "payments"."connected_accounts_guard_pause"();
+
 REVOKE SELECT, INSERT ON TABLE "payments"."payout_account_changes" FROM "mondapac_app";
 REVOKE UPDATE ("cooling_off_until", "payouts_paused_until", "payout_schedule_applied", "payout_schedule_revision", "last_change_id") ON TABLE "payments"."connected_accounts" FROM "mondapac_app";
 DROP TABLE "payments"."payout_account_changes";

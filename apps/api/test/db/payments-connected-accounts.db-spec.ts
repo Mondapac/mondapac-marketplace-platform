@@ -59,6 +59,7 @@ describe.each(TEST_MARKETS)('connected accounts in market %s (database)', (code)
     requirementsPastDue: false,
     disabledReason: null,
     payoutScheduleInterval: 'daily',
+    externalAccountCount: 1,
     ...fields,
   });
 

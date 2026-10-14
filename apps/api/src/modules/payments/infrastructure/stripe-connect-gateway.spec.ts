@@ -21,6 +21,11 @@ const ACCOUNT = {
   },
   metadata: { market_id: 'AU', seller_id: 'seller-1' },
   settings: { payouts: { schedule: { interval: 'daily', delay_days: 2 } } },
+  external_accounts: {
+    object: 'list',
+    data: [{ id: 'ba_secret', last4: '6789' }],
+    has_more: false,
+  },
   business_profile: { name: 'Should not be kept' },
   email: 'should-not-be-kept@example.test',
 };
@@ -104,6 +109,7 @@ describe('StripeConnectGateway', () => {
         requirementsPastDue: false,
         disabledReason: null,
         payoutScheduleInterval: 'daily',
+        externalAccountCount: 1,
       },
     });
   });
@@ -132,7 +138,7 @@ describe('StripeConnectGateway', () => {
         'daily',
         'k',
       ),
-    ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
+    ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable', answered: true } });
     expect(await gateway.setPayoutSchedule('cs_wrong', 'daily', 'k')).toEqual({
       ok: false,
       error: { code: 'payment.provider-rejected' },
@@ -145,7 +151,7 @@ describe('StripeConnectGateway', () => {
       new StripeConnectGateway(KEY, answer(status, { error: 'x' }));
     expect(await failing(500).readAccount('acct_test_a1')).toEqual({
       ok: false,
-      error: { code: 'payment.provider-unavailable' },
+      error: { code: 'payment.provider-unavailable', answered: true },
     });
     expect(await failing(429).readAccount('acct_test_a1')).toMatchObject({ ok: false });
     expect(await failing(402).readAccount('acct_test_a1')).toEqual({
@@ -165,6 +171,7 @@ describe('StripeConnectGateway', () => {
     const thrown = new StripeConnectGateway(KEY, () =>
       Promise.reject(new Error('net down sk_test')),
     );
+    // No answer at all: not marked as answered, so the caller keeps its idempotency key.
     expect(await thrown.readAccount('acct_test_a1')).toEqual({
       ok: false,
       error: { code: 'payment.provider-unavailable' },
@@ -183,6 +190,17 @@ describe('StripeConnectGateway', () => {
         refreshUrl: 'https://a.test/f',
       }),
     ).toMatchObject({ ok: false });
+  });
+
+  it('counts the external accounts only, and a further page as more than one', async () => {
+    const read = (external: unknown) =>
+      new StripeConnectGateway(KEY, answer(200, { ...ACCOUNT, external_accounts: external }))
+        .readAccount('acct_test_a1')
+        .then((r) => (r.ok ? r.value.externalAccountCount : 'error'));
+    expect(await read({ data: [] })).toBe(0);
+    expect(await read({ data: [{}, {}] })).toBe(2);
+    expect(await read({ data: [{}], has_more: true })).toBe(2);
+    expect(await read(undefined)).toBeNull();
   });
 
   it('gives up after the timeout', async () => {

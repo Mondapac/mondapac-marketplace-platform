@@ -96,6 +96,13 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       clock,
     };
   };
+  const beforeEachReset = () => {
+    accounts = new MemoryAccountStore();
+    connect = new FakeConnectGateway();
+    inbox = new MemoryInbox();
+    audit = new RecordingPaymentsAudit();
+    build();
+  };
   const snapshot = (fields: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
     id: ACCOUNT,
     metadataMarketId: code,
@@ -107,6 +114,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     requirementsPastDue: false,
     disabledReason: null,
     payoutScheduleInterval: 'daily',
+    externalAccountCount: 1,
     ...fields,
   });
 
@@ -141,6 +149,17 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     await accounts.applyRead(market, SELLER, snapshot(), 'enabled', T0.subtract({ minutes: 1 }));
     connect.readAnswer = ok(snapshot());
   };
+  /** A linked account still in onboarding: never enabled, nothing recorded. */
+  const pendingAccount = async () => {
+    await accounts.insert(market, SELLER, T0);
+    await accounts.linkRef(market, SELLER, ACCOUNT);
+    connect.readAnswer = ok(snapshot());
+  };
+  /** The onboarding done: the first bank account is an `initial` change, the account enabled. */
+  const onboarded = async () => {
+    await pendingAccount();
+    await bankEvent('created', 'evt_1');
+  };
   /** Stores and applies one external-account event of the account at the current instant. */
   const bankEvent = async (type: keyof typeof EXTERNAL, id: string) => {
     expect(await receive(accountEvent({ id, type: EXTERNAL[type], marketId: code }))).toEqual(
@@ -168,7 +187,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
 
   describe('bank changes and the waiting period', () => {
     it('makes the first destination initial, with no waiting period and no pause', async () => {
-      await enabledAccount();
+      await pendingAccount();
       expect(await bankEvent('created', 'evt_1')).toEqual(
         ok({ applied: 1, retried: 0, problems: [] }),
       );
@@ -183,9 +202,27 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       expect(connect.schedules).toEqual([]);
     });
 
+    it('treats a created bank account as a change unless it is the only one on an account never enabled', async () => {
+      const kinds: string[] = [];
+      const cases: [string, () => Promise<void>, Partial<AccountSnapshot>][] = [
+        ['onboarding', pendingAccount, {}],
+        ['enabled before', enabledAccount, {}],
+        ['two accounts', pendingAccount, { externalAccountCount: 2 }],
+        ['unknown count', pendingAccount, { externalAccountCount: null }],
+        ['none left', pendingAccount, { externalAccountCount: 0 }],
+      ];
+      for (const [index, [, setup, fields]] of cases.entries()) {
+        beforeEachReset();
+        await setup();
+        connect.readAnswer = ok(snapshot(fields));
+        await bankEvent('created', `evt_k${index}`);
+        kinds.push(accounts.changes[0]!.kind);
+      }
+      expect(kinds).toEqual(['initial', 'added', 'added', 'added', 'added']);
+    });
+
     it('starts the waiting period on a later change, reads the account again and pauses payouts once', async () => {
-      await enabledAccount();
-      await bankEvent('created', 'evt_1');
+      await onboarded();
       clock.advance(HOUR(3));
       const changedAt = clock.now();
       await bankEvent('updated', 'evt_2');
@@ -222,7 +259,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
         {
           accountRef: ACCOUNT,
           schedule: 'manual',
-          idempotencyKey: `payout-pause:${row().lastChangeId}`,
+          idempotencyKey: `payout-pause:${row().lastChangeId}:r1`,
         },
       ]);
       expect(row().payoutScheduleApplied).toBe('manual');
@@ -237,8 +274,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     });
 
     it('resumes the Market schedule when the waiting period is over, and is ready again', async () => {
-      await enabledAccount();
-      await bankEvent('created', 'evt_1');
+      await onboarded();
       await bankEvent('deleted', 'evt_2');
       await sync();
       const changeId = row().lastChangeId;
@@ -256,7 +292,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       expect(connect.schedules.at(-1)).toEqual({
         accountRef: ACCOUNT,
         schedule: 'daily',
-        idempotencyKey: `payout-resume:${changeId}`,
+        idempotencyKey: `payout-resume:${changeId}:r1`,
       });
       expect(row().payoutScheduleApplied).toBe('normal');
       expect(audit.rows.at(-1)?.action).toBe('payments.payout-schedule.resumed');
@@ -267,7 +303,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     });
 
     it('never shortens a longer waiting period', async () => {
-      await enabledAccount();
+      await pendingAccount();
       build(new StaticPaymentsPolicy(code === 'AU' ? 'AU' : 'JP', undefined, 72));
       await bankEvent('created', 'evt_1');
       await receive(accountEvent({ id: 'evt_2', type: EXTERNAL.updated, marketId: code }));
@@ -286,8 +322,8 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     });
 
     it('keeps a Stripe failure for the next run, with the same key', async () => {
-      await enabledAccount();
-      await bankEvent('created', 'evt_1');
+      await onboarded();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
       await bankEvent('updated', 'evt_2');
 
       connect.scheduleAnswer = err({ code: 'payment.provider-unavailable' });
@@ -295,11 +331,16 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
         ok({
           paused: 0,
           resumed: 0,
-          problems: [{ sellerId: SELLER, code: 'payment.provider-unavailable' }],
+          problems: [{ sellerId: SELLER, action: 'pause', code: 'payment.provider-unavailable' }],
         }),
       );
       expect(row().payoutScheduleApplied).toBeNull();
+      expect(row().payoutScheduleRevision).toBe(0);
       expect(audit.rows.map((r) => r.action)).not.toContain('payments.payout-schedule.paused');
+      expect(audit.rows.at(-1)).toMatchObject({
+        action: 'payments.payout-pause.failed',
+        actorKind: 'system',
+      });
 
       connect.scheduleAnswer = ok(undefined);
       expect(await sync()).toEqual(ok({ paused: 1, resumed: 0, problems: [] }));
@@ -307,8 +348,8 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     });
 
     it('writes the pause again, under a new key, when a read finds Stripe undone while paused', async () => {
-      await enabledAccount();
-      await bankEvent('created', 'evt_1');
+      await onboarded();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
       await bankEvent('updated', 'evt_2');
       await sync();
       const changeId = row().lastChangeId;
@@ -332,9 +373,82 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       expect(row().payoutScheduleApplied).toBe('manual');
     });
 
+    it('takes a new key after Stripe answered a write with an error, and keeps it after no answer', async () => {
+      await onboarded();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
+      await bankEvent('updated', 'evt_2');
+      const changeId = row().lastChangeId;
+
+      for (const failure of [
+        { code: 'payment.provider-rejected' },
+        { code: 'payment.provider-unavailable', answered: true },
+      ] as const) {
+        connect.scheduleAnswer = err(failure);
+        await sync();
+      }
+      expect(row().payoutScheduleRevision).toBe(2);
+      // No answer at all (timeout, lost connection): the write may have happened, same key.
+      connect.scheduleAnswer = err({ code: 'payment.provider-unavailable' });
+      await sync();
+      await sync();
+      expect(row().payoutScheduleRevision).toBe(2);
+
+      connect.scheduleAnswer = ok(undefined);
+      expect(await sync()).toEqual(ok({ paused: 1, resumed: 0, problems: [] }));
+      expect(connect.schedules.map((s) => s.idempotencyKey)).toEqual([
+        `payout-pause:${changeId}`,
+        `payout-pause:${changeId}:r1`,
+        `payout-pause:${changeId}:r2`,
+        `payout-pause:${changeId}:r2`,
+        `payout-pause:${changeId}:r2`,
+      ]);
+      expect(audit.rows.filter((r) => r.action === 'payments.payout-pause.failed')).toHaveLength(4);
+      // A failed resume is no pause failure.
+      clock.advance(HOUR(24));
+      connect.scheduleAnswer = err({ code: 'payment.provider-rejected' });
+      await sync();
+      expect(audit.rows.filter((r) => r.action === 'payments.payout-pause.failed')).toHaveLength(4);
+      expect(row().payoutScheduleRevision).toBe(3);
+    });
+
+    it('stores a write as applied only while the latest change and revision are unchanged', async () => {
+      await onboarded();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
+      await bankEvent('updated', 'evt_2');
+      const auditBefore = audit.rows.length;
+      // A newer change lands while Stripe takes the write.
+      const realSet = connect.setPayoutSchedule.bind(connect);
+      connect.setPayoutSchedule = async (...args) => {
+        const answer = await realSet(...args);
+        const current = row();
+        accounts.rows.set(`${code}/${SELLER}`, { ...current, lastChangeId: 'newer-change' });
+        return answer;
+      };
+      expect(await sync()).toEqual(ok({ paused: 0, resumed: 0, problems: [] }));
+      expect(row().payoutScheduleApplied).toBeNull();
+      expect(audit.rows).toHaveLength(auditBefore);
+    });
+
+    it('marks a re-pause whatever the applied state, only when Stripe shows a non-manual schedule', async () => {
+      await onboarded();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
+      await bankEvent('updated', 'evt_2');
+      // Paused, never written to Stripe (applied is null), and a read shows a daily schedule.
+      expect(row().payoutScheduleApplied).toBeNull();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'daily' }));
+      await receive(accountEvent({ id: 'evt_3', marketId: code }));
+      await apply();
+      expect(row()).toMatchObject({ payoutScheduleApplied: 'normal', payoutScheduleRevision: 1 });
+      // Shows manual: nothing marked.
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
+      clock.advance(Temporal.Duration.from({ seconds: 5 }));
+      await receive(accountEvent({ id: 'evt_4', marketId: code }));
+      await apply();
+      expect(row().payoutScheduleRevision).toBe(1);
+    });
+
     it('does nothing for a Market without a normal schedule, and retries a conflicting change', async () => {
-      await enabledAccount();
-      await bankEvent('created', 'evt_1');
+      await onboarded();
       await bankEvent('updated', 'evt_2');
       build(new StaticPaymentsPolicy(code === 'AU' ? 'AU' : 'JP', undefined, 24, null));
       expect(await sync()).toEqual(ok({ paused: 0, resumed: 0, problems: [] }));
@@ -500,8 +614,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     });
 
     it('views one account with its changes, answers not-found, and refuses a seller or anonymous actor', async () => {
-      await enabledAccount();
-      await bankEvent('created', 'evt_1');
+      await onboarded();
       await bankEvent('updated', 'evt_2');
       const one = new AdminViewConnectedAccount(gate, deps);
 

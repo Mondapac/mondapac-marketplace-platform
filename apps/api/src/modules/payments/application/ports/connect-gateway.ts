@@ -3,7 +3,11 @@ import type { AccountSnapshot } from '../../domain/connected-account';
 
 export type ConnectFailure =
   /** Stripe could not be reached or answered with an error: try again later. */
-  | { readonly code: 'payment.provider-unavailable' }
+  | {
+      readonly code: 'payment.provider-unavailable';
+      /** True when Stripe answered with an error status (not a timeout or a lost connection). */
+      readonly answered?: boolean;
+    }
   /** Stripe refused the request: do not repeat it unchanged. */
   | { readonly code: 'payment.provider-rejected' };
 

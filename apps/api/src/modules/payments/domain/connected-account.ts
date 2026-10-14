@@ -27,6 +27,8 @@ export interface AccountSnapshot {
   readonly disabledReason: string | null;
   /** Stripe's `settings.payouts.schedule.interval` (`manual`, `daily`, ...), or null when absent. */
   readonly payoutScheduleInterval: string | null;
+  /** How many bank accounts and cards Stripe lists (a count only); null when not shown. */
+  readonly externalAccountCount: number | null;
 }
 
 /**

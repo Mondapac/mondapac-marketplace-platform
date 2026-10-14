@@ -352,6 +352,17 @@
     }
   },
   {
+    "action": "payments.payout-pause.failed",
+    "targetType": "payments.connected-account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "reason": "enumOf(unavailable|rejected)"
+    }
+  },
+  {
     "action": "payments.payout-schedule.paused",
     "targetType": "payments.connected-account",
     "targetId": "id",

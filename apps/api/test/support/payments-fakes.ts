@@ -338,7 +338,7 @@ export class MemoryAccountStore implements ConnectedAccountStore {
   }
   markRepause(market: MarketContext, sellerId: string) {
     const row = this.rows.get(this.key(market, sellerId));
-    if (row === undefined || row.payoutScheduleApplied !== 'manual') return Promise.resolve(false);
+    if (row === undefined) return Promise.resolve(false);
     this.rows.set(this.key(market, sellerId), {
       ...row,
       payoutScheduleApplied: 'normal',
@@ -360,12 +360,34 @@ export class MemoryAccountStore implements ConnectedAccountStore {
         .slice(0, limit),
     );
   }
-  markScheduleApplied(market: MarketContext, sellerId: string, applied: AppliedSchedule) {
+  markScheduleApplied(
+    market: MarketContext,
+    sellerId: string,
+    applied: AppliedSchedule,
+    _at: Temporal.Instant,
+    expected: { lastChangeId: string; revision: number },
+  ) {
     const row = this.rows.get(this.key(market, sellerId));
-    if (row !== undefined) {
-      this.rows.set(this.key(market, sellerId), { ...row, payoutScheduleApplied: applied });
+    if (
+      row === undefined ||
+      row.lastChangeId !== expected.lastChangeId ||
+      row.payoutScheduleRevision !== expected.revision
+    ) {
+      return Promise.resolve(false);
     }
-    return Promise.resolve();
+    this.rows.set(this.key(market, sellerId), { ...row, payoutScheduleApplied: applied });
+    return Promise.resolve(true);
+  }
+  bumpScheduleRevision(market: MarketContext, sellerId: string, expectedRevision: number) {
+    const row = this.rows.get(this.key(market, sellerId));
+    if (row === undefined || row.payoutScheduleRevision !== expectedRevision) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(this.key(market, sellerId), {
+      ...row,
+      payoutScheduleRevision: expectedRevision + 1,
+    });
+    return Promise.resolve(true);
   }
   list(market: MarketContext, status: AccountStatus | null, page: AccountPage) {
     const rows = [...this.rows.values()]
