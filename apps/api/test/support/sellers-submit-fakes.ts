@@ -34,6 +34,11 @@ import type {
 } from '../../src/modules/sellers/application/ports/revision-content-sealer';
 import type { SellerAccessReader } from '../../src/modules/sellers/application/ports/seller-access-reader';
 import type {
+  SellerAccountDirectory,
+  SellerAccountEntry,
+  SellerStateCounts,
+} from '../../src/modules/sellers/application/ports/seller-account-directory';
+import type {
   AccessDecisionAnswer,
   DecisionByBasis,
   SellerAccessDecider,
@@ -558,6 +563,63 @@ export class FakeAccess implements SellerAccessReader {
         }),
       ),
     );
+  }
+}
+
+/**
+ * `identity`'s admin read for the seller list (slice 6b) over a {@link FakeAccess}: the states of
+ * `access`, owners set here; `accountsOf` is recorded in `access.manyCalls`, so one call per
+ * page is still provable, and fails when `access` does.
+ */
+export class FakeDirectory implements SellerAccountDirectory {
+  readonly owners = new Map<string, { displayName: string | null; email: string }>();
+  readonly idCalls: { state: AccessState | null; before: Id<'Seller'> | null; limit: number }[] =
+    [];
+
+  constructor(readonly access: FakeAccess) {}
+
+  accountsOf(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerAccountEntry>> {
+    return this.access
+      .accessOfMany(context, sellerIds)
+      .then(
+        (states) =>
+          new Map(
+            [...states].map(([id, state]): [Id<'Seller'>, SellerAccountEntry] => [
+              id,
+              { state, owner: this.owners.get(id) ?? null },
+            ]),
+          ),
+      );
+  }
+
+  idsByState(
+    _context: CallContext,
+    query: { state: AccessState | null; before: Id<'Seller'> | null; limit: number },
+  ): Promise<{
+    sellerIds: readonly Id<'Seller'>[];
+    next: Id<'Seller'> | null;
+    counts: SellerStateCounts;
+  }> {
+    this.idCalls.push(query);
+    if (this.access.failing) return Promise.reject(new Error('identity down'));
+    const counts = { pending: 0, approved: 0, rejected: 0, suspended: 0 };
+    for (const state of this.access.states.values()) counts[state] += 1;
+    const ids = [...this.access.states]
+      .filter(
+        ([id, state]) => state === query.state && (query.before === null || id < query.before),
+      )
+      .map(([id]) => id as Id<'Seller'>)
+      .sort((a, b) => (a < b ? 1 : -1));
+    const page = query.state === null ? [] : ids.slice(0, query.limit);
+    const more = ids.length > query.limit;
+    return Promise.resolve({
+      sellerIds: page,
+      next: more ? page[page.length - 1]! : null,
+      counts,
+    });
   }
 }
 

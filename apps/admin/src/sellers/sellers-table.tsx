@@ -12,23 +12,29 @@ const TONE: Record<string, BadgeTone> = {
   'outside-service-area': 'critical',
 };
 
-/** The rows of one tab: store, status, kind of submission, area and dates. */
+/** The rows of one tab: store, owner, status, kind of submission, area and dates. */
 export function SellersTable({
   rows,
   canReview,
+  showOwner,
 }: {
   readonly rows: readonly SellerRow[];
+  /** Only for an admin who may see identity's state; the column is left out otherwise. */
+  readonly showOwner: boolean;
   /** Rows link to the review page only for an actor who may open it. */
   readonly canReview: boolean;
 }) {
   const t = useTranslations('sellers.list');
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full min-w-160 text-start text-sm">
+      <table className={`w-full text-start text-sm ${showOwner ? 'min-w-200' : 'min-w-160'}`}>
         <caption className="sr-only">{t('title')}</caption>
         <thead className="bg-muted text-fg-muted">
           <tr>
-            {['store', 'status', 'kind', 'area', 'submitted', 'changed'].map((col) => (
+            {(showOwner
+              ? ['store', 'owner', 'status', 'kind', 'area', 'submitted', 'changed']
+              : ['store', 'status', 'kind', 'area', 'submitted', 'changed']
+            ).map((col) => (
               <th key={col} scope="col" className="px-4 py-3 font-medium">
                 {t(`col.${col}`)}
               </th>
@@ -56,6 +62,21 @@ export function SellersTable({
                     <div className="text-fg-muted">{t('invited')}</div>
                   ) : null}
                 </td>
+                {showOwner ? (
+                  <td className="min-w-64 max-w-80 px-4 py-3">
+                    {/* The owner's name and address: escaped text only (personal data). */}
+                    {row.owner === null ? (
+                      <span className="text-fg-muted">-</span>
+                    ) : (
+                      <>
+                        <div className="break-words text-fg">
+                          {row.owner.displayName ?? t('owner-unnamed')}
+                        </div>
+                        <div className="text-fg-muted wrap-anywhere">{row.owner.email}</div>
+                      </>
+                    )}
+                  </td>
+                ) : null}
                 <td className="px-4 py-3">
                   {status === 'hidden' ? (
                     <span className="text-fg-muted">-</span>
@@ -66,7 +87,7 @@ export function SellersTable({
                 <td className="px-4 py-3">
                   {row.kind === null ? '-' : t(`kind.${known(row.kind, KINDS)}`)}
                 </td>
-                <td className="px-4 py-3">{row.serviceAreaCode ?? '-'}</td>
+                <td className="whitespace-nowrap px-4 py-3">{row.serviceAreaCode ?? '-'}</td>
                 <td className="px-4 py-3">{formatInstant(row.submittedAt)}</td>
                 <td className="px-4 py-3">{formatInstant(row.lastChangedAt)}</td>
               </tr>

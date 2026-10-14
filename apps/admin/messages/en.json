@@ -441,7 +441,10 @@
       "tab": {
         "awaiting-review": "Awaiting review",
         "incomplete": "Incomplete",
-        "all": "All sellers"
+        "all": "All sellers",
+        "changes-needed": "Changes needed",
+        "approved": "Approved",
+        "suspended": "Suspended"
       },
       "search": {
         "label": "Store name or shop address",
@@ -461,6 +464,7 @@
       },
       "col": {
         "store": "Store",
+        "owner": "Owner",
         "status": "Status",
         "kind": "Submission",
         "area": "Service area",
@@ -469,6 +473,7 @@
       },
       "unnamed": "No store name yet",
       "invited": "Invited by MondaPac",
+      "owner-unnamed": "No name given",
       "status": {
         "details-incomplete": "Details incomplete",
         "outside-service-area": "Outside service area",
@@ -484,6 +489,9 @@
         "awaiting-review": "No sellers are waiting for review.",
         "incomplete": "No incomplete applications.",
         "all": "No sellers yet.",
+        "changes-needed": "No sellers need changes.",
+        "approved": "No approved sellers yet.",
+        "suspended": "No suspended sellers.",
         "search": "No sellers match that search."
       },
       "loading": "Loading sellers...",

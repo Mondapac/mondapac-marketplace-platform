@@ -129,8 +129,12 @@ import {
   SELLER_ACCESS_READER,
   type SellerAccessReader,
 } from '../application/ports/seller-access-reader';
+import {
+  SELLER_ACCOUNT_DIRECTORY,
+  type SellerAccountDirectory,
+} from '../application/ports/seller-account-directory';
 import { REVIEWER_NOTIFIER, type ReviewerNotifier } from '../application/ports/reviewer-notifier';
-import { IdentitySellerAccess } from './identity-seller-access';
+import { IdentitySellerAccess, IdentitySellerAccountDirectory } from './identity-seller-access';
 import { IdentityReviewerNotifier } from './identity-reviewer-notifier';
 import { SubjectKeyRevisionContentSealer } from './subject-key-revision-content-sealer';
 
@@ -298,6 +302,13 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [SELLER_ACCESS_CONTRACT],
     useFactory: (identity: SellerAccessContract): SellerAccessReader =>
       new IdentitySellerAccess(identity),
+  },
+  {
+    // Slice 6b: state, owner and the ids by state of `identity`'s admin read, for the list.
+    provide: SELLER_ACCOUNT_DIRECTORY,
+    inject: [SELLER_ACCESS_CONTRACT],
+    useFactory: (identity: SellerAccessContract): SellerAccountDirectory =>
+      new IdentitySellerAccountDirectory(identity),
   },
   {
     provide: REVIEWER_NOTIFIER,

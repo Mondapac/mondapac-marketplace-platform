@@ -20,6 +20,7 @@ import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
 import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
+import { SELLER_ACCOUNT_DIRECTORY } from './application/ports/seller-account-directory';
 import { BUSINESS_IDENTIFIER_SCHEMES } from './application/ports/business-identifier-scheme';
 import { BUSINESS_REGISTER_LOOKUPS } from './application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX } from './application/ports/identifier-index';
@@ -126,6 +127,7 @@ const PORT = {
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
+  directory: SELLER_ACCOUNT_DIRECTORY,
   authorisation: AUTHORISATION_CHECK,
   notifier: REVIEWER_NOTIFIER,
   reviewChecks: REVIEW_CHECK_REPOSITORY,
@@ -421,13 +423,13 @@ const REVIEW_DECISION_PORTS = {
       ids: true,
       clock: true,
     }),
-    // Slice 6, the admin seller list (design 6.2, 7.8), over HTTP through SellerListController,
-    // under `sellers.seller.view`: clear fields only, one `identity` call per page, and the row status
-    // only for an actor that also holds `identity.seller-access.view`.
+    // Slices 6 and 6b, the admin seller list (design 6.2, 7.8), over HTTP through
+    // SellerListController, under `sellers.seller.view`; the row status, the owner and the
+    // identity-state tabs only for an actor that also holds `identity.seller-access.view`.
     useCaseProvider(SellerList, {
       unitOfWork: true,
       list: true,
-      accessReader: true,
+      directory: true,
       authorisation: true,
       onboardingAreas: true,
     }),

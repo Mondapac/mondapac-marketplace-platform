@@ -44,6 +44,7 @@ import { RejectSellerAccess } from './reject-seller-access.use-case';
 import { ResendSellerInvitation } from './resend-seller-invitation.use-case';
 import { RevokeSellerInvitation } from './revoke-seller-invitation.use-case';
 import { SellerAccountSummaries } from './seller-account-summaries.use-case';
+import { SellerIdsByState } from './seller-ids-by-state.use-case';
 import { SuspendSellerAccess } from './suspend-seller-access.use-case';
 
 // Identity slice 9b (identity design 8.1 `sellerAccountSummaries`, 8.6 rows 2, 6 and 8; `ux.md`
@@ -198,6 +199,8 @@ describe.each(TEST_MARKETS)(
       const sellerAccounts: SellerAccountReader = {
         ownedSellers: counted('ownedSellers'),
         summariesOf: counted('summariesOf'),
+        sellerIdsInState: counted('sellerIdsInState'),
+        stateCounts: counted('stateCounts'),
         sellersOfAddress: counted('sellersOfAddress'),
         openOwnerInvitations: counted('openOwnerInvitations'),
       };
@@ -249,6 +252,7 @@ describe.each(TEST_MARKETS)(
           sellerAccessOf: notUsed(),
           sellerAccessOfSystem: notUsed(),
           sellerAccountSummaries: summaries,
+          sellerIdsByState: new SellerIdsByState(gate, readDeps),
           listRegisteredSellers: notUsed(),
           notifyAccessReviewers: notUsed(),
           approveSellerAccess: notUsed(),
@@ -774,6 +778,9 @@ describe.each(TEST_MARKETS)(
           ok: false,
           error: { code: 'access.denied' },
         });
+        await expect(
+          s.contract.sellerIdsByState(context, { state: 'approved', before: null, limit: 25 }),
+        ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
       }
       expect(s.reads.count).toBe(0);
       expect(logged()).not.toMatch(PERSONAL);
@@ -797,6 +804,9 @@ describe.each(TEST_MARKETS)(
           ok: false,
           error: { code: 'access.denied' },
         });
+        await expect(
+          s.contract.sellerIdsByState(context, { state: 'approved', before: null, limit: 25 }),
+        ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
       }
       // A demoted admin: refused in the read's own unit.
       s.fakes.assignments.forEach((assignment, key) => {
@@ -809,6 +819,76 @@ describe.each(TEST_MARKETS)(
         error: { code: 'access.denied' },
       });
       expect(s.reads.count).toBe(0);
+    });
+
+    describe('sellerIdsByState (R-6, sellers slice 6b)', () => {
+      it("pages this Market's registered sellers of one state, newest first, with the counts per state", async () => {
+        const s = setUp();
+        const registered = [...s.fakes.sellerAccess.values()].filter(
+          (a) => a.marketId === code && a.registeredAt !== null,
+        );
+        const expected = { pending: 0, approved: 0, rejected: 0, suspended: 0 };
+        for (const a of registered) expected[a.state] += 1;
+        const pending = registered
+          .filter((a) => a.state === 'pending')
+          .map((a) => a.sellerId)
+          .sort()
+          .reverse();
+        expect(pending.length).toBeGreaterThan(1);
+
+        const first = await s.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'pending',
+          before: null,
+          limit: 1,
+        });
+        expect(first).toEqual({
+          ok: true,
+          value: { sellerIds: [pending[0]], next: pending[0], counts: expected },
+        });
+        const rest = await s.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'pending',
+          before: pending[0]!,
+          limit: 100,
+        });
+        expect(rest).toEqual({
+          ok: true,
+          value: { sellerIds: pending.slice(1), next: null, counts: expected },
+        });
+        expect(JSON.stringify(rest)).not.toContain(S_OTHER);
+        expect(JSON.stringify(rest)).not.toContain(S_UNREGISTERED);
+        expect(s.units.every((unit) => unit?.readOnly === true)).toBe(true);
+        expect(logged()).not.toMatch(PERSONAL);
+      });
+
+      it('answers the counts only for limit 0, and refuses a bad state, limit or cursor before any read', async () => {
+        const s = setUp();
+
+        const counts = await s.contract.sellerIdsByState(adminOf(ROOT), {
+          state: null,
+          before: null,
+          limit: 0,
+        });
+        expect(counts.ok && counts.value.sellerIds).toEqual([]);
+        const reads = s.reads.count;
+        for (const [query, path, fieldCode] of [
+          [{ state: 'gone', before: null, limit: 5 }, 'state', 'unknown'],
+          [{ state: null, before: null, limit: 5 }, 'state', 'required'],
+          [{ state: 'approved', before: null, limit: 101 }, 'limit', 'range'],
+          [{ state: 'approved', before: 'canary-7e1d', limit: 5 }, 'before', 'format'],
+        ] as const) {
+          await expect(
+            s.contract.sellerIdsByState(
+              adminOf(ROOT),
+              query as unknown as Parameters<typeof s.contract.sellerIdsByState>[1],
+            ),
+          ).resolves.toEqual({
+            ok: false,
+            error: { code: 'validation.failed', fields: [{ path, code: fieldCode }] },
+          });
+        }
+        expect(s.reads.count).toBe(reads);
+        expect(logged()).not.toContain('7e1d');
+      });
     });
 
     describe('sellerAccountSummaries (8.1)', () => {
