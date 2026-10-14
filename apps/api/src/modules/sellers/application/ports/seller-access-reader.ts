@@ -23,14 +23,14 @@ export interface SellerAccessReader {
   /**
    * A rejected seller applies again (slice 7b), through `identity`'s `reapplySellerAccess` with
    * the Seller Owner's own context: `rejected` becomes `pending` and one re-application is
-   * counted. `wrong-state` when the seller is not rejected (it was moved meanwhile), `limit` when
+   * counted. `denied` when the caller is not the Seller Owner (identity allows only the owner), `wrong-state` when the seller is not rejected (it was moved meanwhile), `limit` when
    * the Market's re-apply limit is reached. Throws when `identity` refuses or cannot answer. Runs
    * in `identity`'s own unit, so it is called outside any unit of `sellers`.
    */
   reapply(
     context: CallContext,
     sellerId: Id<'Seller'>,
-  ): Promise<'reapplied' | 'wrong-state' | 'limit'>;
+  ): Promise<'reapplied' | 'wrong-state' | 'limit' | 'denied'>;
 
   /**
    * The state of up to 100 sellers in one call (the admin list: one `identity` call per page).

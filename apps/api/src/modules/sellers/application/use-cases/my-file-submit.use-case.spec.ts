@@ -515,6 +515,32 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         expect(t.revisions.rows.size).toBe(0);
       });
 
+      it('refuses a Staff member (identity allows the owner only) as access.denied, not as unavailable', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected');
+        t.access.reapplyAnswer = 'denied';
+
+        expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(t.revisions.rows.size).toBe(0);
+      });
+
+      it('reads a rejected seller as changes-needed when the Market has no limit', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected', true);
+        t.access.noLimit.add(s.sellerId);
+
+        const read = await t.read.execute(s.context, {});
+
+        expect(read.ok && read.value.status).toBe('changes-needed');
+      });
+
       it('does not re-apply for a pending seller', async () => {
         const t = setUp(code);
         const s = seller(t, code);

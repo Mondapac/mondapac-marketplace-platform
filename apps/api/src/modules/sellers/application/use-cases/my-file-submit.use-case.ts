@@ -403,6 +403,7 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       } catch (error) {
         return this.unavailable(context, 'reapply-unavailable', error);
       }
+      if (outcome === 'denied') return err({ code: 'access.denied' });
       if (outcome === 'limit') return err({ code: 'seller-access.reapply-limit' });
       if (outcome === 'wrong-state') return err({ code: 'seller-access.wrong-state' });
     }

@@ -30,7 +30,7 @@ export class IdentitySellerAccess implements SellerAccessReader {
   async reapply(
     context: CallContext,
     sellerId: Id<'Seller'>,
-  ): Promise<'reapplied' | 'wrong-state' | 'limit'> {
+  ): Promise<'reapplied' | 'wrong-state' | 'limit' | 'denied'> {
     const result = await this.identity.reapplySellerAccess(context, sellerId);
     if (result.ok) return 'reapplied';
     switch (result.error.code) {
@@ -38,6 +38,8 @@ export class IdentitySellerAccess implements SellerAccessReader {
         return 'wrong-state';
       case 'seller-access.reapply-limit':
         return 'limit';
+      case 'access.denied':
+        return 'denied';
       default:
         throw new Error(`identity.reapplySellerAccess refused: ${result.error.code}`);
     }

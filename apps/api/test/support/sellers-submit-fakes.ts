@@ -537,9 +537,11 @@ export class FakeAccess implements SellerAccessReader {
   readonly states = new Map<string, AccessState>();
   /** Rejected sellers with no re-application left. */
   readonly exhausted = new Set<string>();
+  /** Sellers whose Market configures no re-apply limit: the standing is unknown (null). */
+  readonly noLimit = new Set<string>();
   failing = false;
   /** What a re-application answers; a successful one moves the seller to `pending`. */
-  reapplyAnswer: 'reapplied' | 'wrong-state' | 'limit' | 'throw' = 'reapplied';
+  reapplyAnswer: 'reapplied' | 'wrong-state' | 'limit' | 'denied' | 'throw' = 'reapplied';
   readonly reapplyCalls: Id<'Seller'>[] = [];
 
   set(sellerId: Id<'Seller'>, state: AccessState, limitReached = false): void {
@@ -550,6 +552,7 @@ export class FakeAccess implements SellerAccessReader {
 
   reapplyLimitReachedOf(_context: CallContext, sellerId: Id<'Seller'>): Promise<boolean | null> {
     if (this.failing) return Promise.reject(new Error('identity down'));
+    if (this.noLimit.has(sellerId)) return Promise.resolve(null);
     return Promise.resolve(
       this.states.get(sellerId) === 'rejected' && this.exhausted.has(sellerId),
     );
