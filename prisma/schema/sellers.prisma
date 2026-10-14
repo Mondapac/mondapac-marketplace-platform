@@ -311,14 +311,24 @@ model SellersRegisterCheck {
 }
 
 /// The root of a seller's public store profile (data design 3.8; V1), created empty. The
-/// published-revision pointer arrives in slice 12 and the minimum order in slice 20.
+/// published-revision pointer arrives in slice 12. The minimum order (slice 20, design 18) is
+/// four nullable columns: NULL amount and currency mean "no minimum". The CHECKs are hand-written
+/// in the migration; equality with the Market currency and the upper bound are the use case's.
 model SellersStoreProfile {
-  sellerId   String            @id @map("seller_id") @db.Uuid
-  marketId   String            @map("market_id") @db.VarChar(8)
-  tenantId   String            @map("tenant_id")
-  version    Int
-  createdAt  DateTime          @map("created_at") @db.Timestamptz(6)
-  sellerFile SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  sellerId                       String            @id @map("seller_id") @db.Uuid
+  marketId                       String            @map("market_id") @db.VarChar(8)
+  tenantId                       String            @map("tenant_id")
+  version                        Int
+  createdAt                      DateTime          @map("created_at") @db.Timestamptz(6)
+  /// Minor units (ADR-0007), > 0 (CHECK); NULL = no minimum. Clear: a public commercial value.
+  minimumOrderAmount             BigInt?           @map("minimum_order_amount")
+  /// ISO 4217, set exactly when the amount is (CHECK).
+  minimumOrderCurrency           String?           @map("minimum_order_currency") @db.Char(3)
+  /// When and by whom the minimum was last changed; both NULL until the first change. A plain id
+  /// (ADR-0004 decision 3), no foreign key.
+  minimumOrderChangedAt          DateTime?         @map("minimum_order_changed_at") @db.Timestamptz(6)
+  minimumOrderChangedByAccountId String?           @map("minimum_order_changed_by_account_id") @db.Uuid
+  sellerFile                     SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, sellerId])
   @@map("store_profiles")

@@ -1242,6 +1242,7 @@ describe('loadMarketConfigs', () => {
   describe('the sellers section', () => {
     const SELLERS = {
       approvalRequired: true,
+      minimumOrderMax: 100000,
       address: {
         fields: [
           { key: 'line1', labelKey: 'k.line1', required: true, maxLength: 120 },
@@ -1609,6 +1610,21 @@ describe('loadMarketConfigs', () => {
         'no approval policy: a Market never defaults it',
         (c: typeof SELLERS) => void delete (c as { approvalRequired?: boolean }).approvalRequired,
         /approvalRequired/,
+      ],
+      [
+        'no minimum-order maximum: a Market never defaults it',
+        (c: typeof SELLERS) => void delete (c as { minimumOrderMax?: number }).minimumOrderMax,
+        /minimumOrderMax/,
+      ],
+      [
+        'a zero minimum-order maximum',
+        (c: typeof SELLERS) => void ((c as { minimumOrderMax: number }).minimumOrderMax = 0),
+        /minimumOrderMax/,
+      ],
+      [
+        'a fractional minimum-order maximum',
+        (c: typeof SELLERS) => void ((c as { minimumOrderMax: number }).minimumOrderMax = 10.5),
+        /minimumOrderMax/,
       ],
       [
         'an unknown time zone',

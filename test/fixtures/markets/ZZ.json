@@ -139,6 +139,7 @@
     }
   },
   "sellers": {
+    "minimumOrderMax": 500000,
     "approvalRequired": false,
     "businessIdentifier": {
       "scheme": "zz-corp-no",

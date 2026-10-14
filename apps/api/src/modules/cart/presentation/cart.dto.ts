@@ -86,12 +86,34 @@ export class CartLineView {
   availability!: AvailabilityView | null;
 }
 
+export class MinimumOrderStateView {
+  @ApiProperty({
+    enum: ['not-applicable', 'none', 'met', 'below-minimum', 'check-unavailable'],
+    description:
+      'not-applicable: no buyable line. none: the seller set no minimum. met / below-minimum: ' +
+      "the subtotal of the buyable lines against the seller's minimum (shipping not counted; " +
+      'below-minimum blocks checkout for this seller only). check-unavailable: the minimum ' +
+      'could not be checked, so checkout is blocked for this seller.',
+  })
+  state!: 'not-applicable' | 'none' | 'met' | 'below-minimum' | 'check-unavailable';
+
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description: "The seller's minimum order (public) for met and below-minimum; else null.",
+  })
+  minimum!: MoneyView | null;
+}
+
 export class SellerGroupView {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   sellerId!: string | null;
 
   @ApiProperty({ type: MoneyView, nullable: true })
   subtotal!: MoneyView | null;
+
+  @ApiProperty({ type: MinimumOrderStateView })
+  minimumOrder!: MinimumOrderStateView;
 
   @ApiProperty({ type: [CartLineView] })
   lines!: CartLineView[];

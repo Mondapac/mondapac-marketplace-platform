@@ -13,13 +13,29 @@ export interface CheckoutLine {
   readonly taxInclusive: boolean | null;
 }
 
-export type CartCheckoutFailure = AccessDenied | { readonly code: 'cart.check-unavailable' };
+/** A seller that stops checkout (cart design 6.4, 6.6). The minimum is public. */
+export interface CartNotReadySeller {
+  readonly sellerId: Id<'Seller'>;
+  /** `below-minimum`: under the seller's minimum order. `check-unavailable`: it cannot be checked. */
+  readonly reason: 'below-minimum' | 'check-unavailable';
+  readonly minimum: Money | null;
+}
+
+export type CartCheckoutFailure =
+  | AccessDenied
+  | { readonly code: 'cart.check-unavailable' }
+  | {
+      readonly code: 'cart.not-ready';
+      readonly details: { readonly sellers: readonly CartNotReadySeller[] };
+    };
 
 /** The cart as `ordering` reads it (checkout) and clears it (after payment). */
 export interface CartCheckoutFacade {
   /**
    * The signed-in customer's cart lines with the current price and state of each (composed
    * the way the cart view is; a failed facade makes a line `check-unavailable`). Customer only.
+   * Refuses with `cart.not-ready` and `details.sellers` while a seller with a buyable line is
+   * below its minimum order or its minimum cannot be checked (design 6.4, 6.6).
    */
   checkoutLines(
     context: CallContext,

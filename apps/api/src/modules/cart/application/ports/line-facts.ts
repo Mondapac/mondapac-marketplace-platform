@@ -1,5 +1,6 @@
 import type { CallContext, Id, Money } from '@mondapac/shared-kernel';
 import type { LineAvailability } from '../../domain/cart';
+import type { SellerMinimum } from '../../domain/cart-evaluator';
 
 export type UnavailableReason =
   'offer-unavailable' | 'seller-not-eligible' | 'no-valid-price' | 'out-of-stock';
@@ -37,6 +38,17 @@ export interface LineFactsSource {
     context: CallContext,
     refs: readonly SellUnitRef[],
   ): Promise<ReadonlyMap<string, LineVerdict>>;
+
+  /**
+   * The minimum order of each of the distinct sellers (cart design 6.4), from one
+   * `sellers.sellerSummaries` batch per 100 ids. `none` only when `sellers` answered an explicit
+   * none; a seller whose key is absent from the answer, or a failed call, is `unknown` (fail
+   * closed). Never throws.
+   */
+  sellerMinimums(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerMinimum>>;
 }
 
 export const LINE_FACTS_SOURCE = Symbol('LINE_FACTS_SOURCE');

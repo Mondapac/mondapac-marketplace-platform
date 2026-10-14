@@ -35,6 +35,14 @@ import {
   type IdentifierClaimRepository,
 } from '../application/ports/identifier-claim.repository';
 import {
+  MINIMUM_ORDER_POLICY,
+  type MinimumOrderPolicy,
+} from '../application/ports/minimum-order-policy';
+import {
+  STORE_PROFILE_REPOSITORY,
+  type StoreProfileRepository,
+} from '../application/ports/store-profile.repository';
+import {
   SELLING_FACTS_REPOSITORY,
   type SellingFactsRepository,
 } from '../application/ports/selling-facts.repository';
@@ -103,7 +111,9 @@ import { PrismaRegisterCheckRepository } from './prisma-register-check.repositor
 import { PrismaReviewCheckRepository } from './prisma-review-check.repository';
 import { PrismaIdentifierClaimRepository } from './prisma-identifier-claim.repository';
 import { PrismaAdminFlagRepository } from './prisma-admin-flag.repository';
+import { MarketConfigMinimumOrderPolicy } from './market-config-minimum-order-policy';
 import { PrismaSellingFactsRepository } from './prisma-selling-facts.repository';
+import { PrismaStoreProfileRepository } from './prisma-store-profile.repository';
 import { IdentitySellerAccessDecider } from './identity-seller-access-decider';
 import { FAKE_REGISTER_ADAPTER, FakeRegisterLookup } from './register-lookups/fake';
 import { MarketConfigRegisterLookups, availableRegisterAdapterCodes } from './register-lookups';
@@ -341,6 +351,18 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellingFactsRepository =>
       new PrismaSellingFactsRepository(prisma),
+  },
+  {
+    provide: STORE_PROFILE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StoreProfileRepository =>
+      new PrismaStoreProfileRepository(prisma),
+  },
+  {
+    provide: MINIMUM_ORDER_POLICY,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): MinimumOrderPolicy =>
+      new MarketConfigMinimumOrderPolicy(markets),
   },
   {
     provide: SELLER_ACCESS_DECIDER,

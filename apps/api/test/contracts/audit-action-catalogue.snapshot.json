@@ -599,6 +599,18 @@
     }
   },
   {
+    "action": "sellers.minimum-order.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "minimumOrder": "optional(money)"
+    },
+    "after": {
+      "minimumOrder": "optional(money)"
+    }
+  },
+  {
     "action": "sellers.register.manual-check-recorded",
     "targetType": "sellers.seller",
     "targetId": "id",

@@ -101,6 +101,9 @@ Owned by the `sellers` module (`docs/design/domain/sellers.md` 4.1). A Market wi
 but cannot take seller addresses. It starts with what slices 1 and 2 need; later slices add the rest of
 4.1 here.
 
+- `minimumOrderMax` (required; sellers design 18): the largest minimum order a seller may set, a whole
+  number of minor units of the Market's `defaultCurrency` (AU 100000 = AUD 1,000.00). The use case
+  checks it; a seller's minimum is also > 0.
 - `approvalRequired` (required; sellers slice 1): `true` makes a self-registered seller start
   `pending` until an admin approves it, `false` makes it start `approved`; true for AU
   (identity design 3.3, SEL-03). It moved here from `identity.sellerApprovalRequired`, which no

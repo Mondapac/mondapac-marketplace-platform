@@ -3,6 +3,7 @@ import type { CatalogFacade, OfferSellUnits } from '../../catalog';
 import type { InventoryFacade } from '../../inventory';
 import type { PricingFacade } from '../../pricing';
 import type { SellersFacade } from '../../sellers';
+import type { SellerMinimum } from '../domain/cart-evaluator';
 import {
   verdictKey,
   type LineFactsSource,
@@ -200,6 +201,36 @@ export class FacadeLineFacts implements LineFactsSource {
       });
     }
     return verdicts;
+  }
+
+  async sellerMinimums(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerMinimum>> {
+    const unknown: SellerMinimum = { kind: 'unknown' };
+    const minimums = new Map<Id<'Seller'>, SellerMinimum>(
+      sellerIds.map((sellerId) => [sellerId, unknown] as const),
+    );
+    const answers = await Promise.all(
+      chunks([...new Set(sellerIds)], BATCH).map((ids) =>
+        this.safe(() => this.sellers.sellerSummaries(context, ids)),
+      ),
+    );
+    for (const answer of answers) {
+      if (answer === null || !answer.ok) continue;
+      for (const summary of answer.value) {
+        // The key is absent for a seller without an approved revision (or a currency mismatch):
+        // that stays unknown. `null` is the explicit "no minimum".
+        if (!summary.exists || summary.minimumOrder === undefined) continue;
+        minimums.set(
+          summary.sellerId,
+          summary.minimumOrder === null
+            ? { kind: 'none' }
+            : { kind: 'minimum', minimum: summary.minimumOrder },
+        );
+      }
+    }
+    return minimums;
   }
 
   /** A facade that throws is a failed facade (fail closed). */
