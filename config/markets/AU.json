@@ -13,6 +13,10 @@
     "bankChangeCoolingOffHours": 24,
     "payoutSchedule": "daily"
   },
+  "commissionPayouts": {
+    "defaultRateBps": 1500,
+    "provisionalTaxRateBps": 1000
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300

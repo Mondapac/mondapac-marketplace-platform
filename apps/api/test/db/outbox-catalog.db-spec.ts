@@ -86,6 +86,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
   'inventory.stock_items_market_id_variant_id_active_idx':
     'CREATE INDEX stock_items_market_id_variant_id_active_idx ON inventory.stock_items USING btree (market_id, variant_id) WHERE (retired_at IS NULL)',
+  // Phase 5 package 5: the worker's queue of seller orders the ledger has not recorded yet,
+  // least-failed first.
+  'ordering.seller_orders_unrecorded_ledger_idx':
+    "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
   // Phase 5 package 4: the worker's queue of shipments inventory has not recorded yet.
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",

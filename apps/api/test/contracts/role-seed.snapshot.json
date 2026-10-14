@@ -251,6 +251,23 @@
     "kind": "default",
     "permissionKeys": [
       "catalog.product.view",
+      "commission-payouts.settlement.view",
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "ordering.order.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view",
+      "shipping.flat-fee.view"
+    ]
+  },
+  {
+    "entry": "platform:viewer@8",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.product.view",
+      "commission-payouts.settlement.view",
       "identity.admin-account.view",
       "identity.customer-account.view",
       "identity.platform-role.view",

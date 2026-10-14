@@ -83,6 +83,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          ledgerState: 'pending',
         },
       ],
       lines: [
@@ -96,6 +97,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           lineAmount: 2500n,
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
+          commissionRateBps: 1500,
         },
       ],
     };
@@ -245,8 +247,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
 
     expect(
       await attempt(
-        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, total_amount, fulfilment)
-         VALUES ($1, $2, $3, $4, $5, 100, 0, 1, 'to-ship')`,
+        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, total_amount, fulfilment, ledger_state)
+         VALUES ($1, $2, $3, $4, $5, 100, 0, 1, 'to-ship', 'pending')`,
         [ids.next(), market.marketId, market.tenantId, order.id, ids.next()],
       ),
     ).toBe(CHECK);
@@ -384,6 +386,30 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
 
     expect(after.some((r) => r.sellerOrder.id === seller.id)).toBe(false);
     expect(read?.sellerOrder.inventoryRecordedAt?.toString()).toBe(T0.add({ hours: 2 }).toString());
+  });
+
+  it('queues paid seller orders for the ledger once and marks them recorded', async () => {
+    const paid = await paidOrder();
+    const seller = paid.sellerOrders[0]!;
+
+    const queued = await value(market, () => repository.findUnrecordedLedger(market, 500));
+    const entry = queued.find((r) => r.sellerOrder.id === seller.id);
+    expect(entry?.lines.map((l) => l.commissionRateBps)).toEqual([1500]);
+
+    await value(market, () => repository.markLedgerRecorded(market, seller.id));
+    await value(market, () => repository.markLedgerRecorded(market, seller.id));
+    const after = await value(market, () => repository.findUnrecordedLedger(market, 500));
+    const read = await value(market, () =>
+      repository.findForSeller(market, seller.sellerId, seller.id),
+    );
+    expect(after.some((r) => r.sellerOrder.id === seller.id)).toBe(false);
+    expect(read?.sellerOrder.ledgerState).toBe('recorded');
+    const refused = (set: string) =>
+      sql.query(`UPDATE ordering.seller_orders SET ${set} WHERE id = '${seller.id}'`).then(
+        () => 'allowed',
+        (error: { code?: string }) => error.code,
+      );
+    expect(await refused(`ledger_state = 'done'`)).toBe('23514');
   });
 
   it('refuses fulfilment fields that do not fit the state', async () => {

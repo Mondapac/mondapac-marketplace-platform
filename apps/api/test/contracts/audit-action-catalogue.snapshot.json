@@ -1,5 +1,31 @@
 [
   {
+    "action": "commission-payouts.commission-rate.clear",
+    "targetType": "commission-payouts.seller-commission-rate",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "rateBps": "integer"
+    },
+    "after": {
+      "marketRateBps": "integer"
+    }
+  },
+  {
+    "action": "commission-payouts.commission-rate.set",
+    "targetType": "commission-payouts.seller-commission-rate",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "rateBps": "optional(integer)"
+    },
+    "after": {
+      "belowMarketRate": "boolean",
+      "marketRateBps": "integer",
+      "rateBps": "integer"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",

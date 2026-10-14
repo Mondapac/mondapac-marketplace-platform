@@ -30,7 +30,20 @@ export interface OrderLine {
   readonly lineAmount: bigint;
   readonly taxInclusive: boolean;
   readonly reservationLineId: string;
+  /**
+   * The commission rate in basis points, frozen at placement (COM-04): a later change of the
+   * seller's or the Market's rate never touches this order. Null only on lines placed before the
+   * rate was frozen.
+   */
+  readonly commissionRateBps: number | null;
 }
+
+/**
+ * Whether the worker has written a paid seller order into the seller ledger (commission-payouts):
+ * `pending` until it has, then `recorded`. Seller orders placed before the commission rate was
+ * frozen on their lines are `not-applicable` and never reach the ledger.
+ */
+export type LedgerState = 'pending' | 'recorded' | 'not-applicable';
 
 /** Where a seller order stands once it is paid: `to-ship`, then `shipped`, then `delivered`. */
 export type Fulfilment = 'to-ship' | 'shipped' | 'delivered';
@@ -53,6 +66,7 @@ export interface SellerOrder {
   readonly deliveredAt: Temporal.Instant | null;
   /** When inventory was told the lines left the warehouse; null until the worker did it. */
   readonly inventoryRecordedAt: Temporal.Instant | null;
+  readonly ledgerState: LedgerState;
 }
 
 export interface OrderState {
