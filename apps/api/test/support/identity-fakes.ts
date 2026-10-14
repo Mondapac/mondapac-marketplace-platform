@@ -527,6 +527,35 @@ export class IdentityFakes {
           .sort(),
       });
     },
+    ownerlessSellers: (market, query) =>
+      Promise.resolve(
+        [...this.sellerAccess.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.registeredAt !== null &&
+              a.origin === 'invitation' &&
+              (query.after === null || a.sellerId > query.after) &&
+              ![...this.memberships.values()].some(
+                (m) => m.marketId === a.marketId && m.sellerId === a.sellerId,
+              ) &&
+              ![...this.invitations.values()].some(
+                (i) =>
+                  i.marketId === a.marketId &&
+                  i.kind === 'seller-owner' &&
+                  i.state === 'pending' &&
+                  i.sellerId === a.sellerId,
+              ),
+          )
+          .sort((a, b) => (a.sellerId < b.sellerId ? -1 : 1))
+          .slice(0, query.limit)
+          .map((a) => ({
+            sellerId: a.sellerId,
+            state: a.state,
+            stateChangedAt: a.stateChangedAt,
+            createdAt: a.createdAt,
+          })),
+      ),
     openOwnerInvitations: (market, query) =>
       Promise.resolve(
         [...this.invitations.values()]

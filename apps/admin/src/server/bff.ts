@@ -13,7 +13,11 @@ import type { PanelConfig, PanelHost } from './config.ts';
 
 /** The paths this panel may reach, by method (its own population's identity routes). */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
-  GET: new Set(['identity/admin/session', 'payments/admin/connected-accounts']),
+  GET: new Set([
+    'identity/admin/session',
+    'identity/admin/sellers',
+    'payments/admin/connected-accounts',
+  ]),
   PUT: new Set([]),
   DELETE: new Set([]),
   POST: new Set([
@@ -47,6 +51,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/customers/:id/enable',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
+    'identity/admin/sellers/:id/invitations',
     'identity/admin/sellers/:id/second-factor/reset',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
@@ -61,6 +66,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': ['status', 'cursor'],
 };
 const QUERY_VALUE_MAX = 512;

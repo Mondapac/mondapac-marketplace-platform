@@ -654,6 +654,94 @@
         "unknown": "Something went wrong. Try again."
       }
     },
+    "orphaned": {
+      "title": "Sellers without an owner",
+      "intro": "Sellers that have no owner account yet, oldest first. Invite an owner so they can sign in and manage the store.",
+      "back": "Back to sellers",
+      "link": "Sellers without an owner",
+      "loading": "Loading sellers...",
+      "empty": {
+        "title": "Every seller has an owner",
+        "body": "Sellers with no owner appear here, so you can invite one."
+      },
+      "error": {
+        "unavailable": "We couldn't load the sellers. Try again."
+      },
+      "more": "Show more",
+      "no-access": {
+        "title": "You don't have access to this page",
+        "body": "Your role doesn't include seller access. Ask an admin who manages roles.",
+        "action": "Go to Home"
+      },
+      "state": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "suspended": "Suspended",
+        "unknown": "Unknown"
+      },
+      "col": {
+        "seller": "Seller ID",
+        "access": "Access",
+        "created": "Created (UTC)",
+        "actions": "Actions"
+      },
+      "invite": {
+        "action": "Invite owner",
+        "row-label": "Invite owner for seller {id}",
+        "unavailable": {
+          "denied": "You don't have permission to invite owners.",
+          "unavailable": "Invitations aren't available in this market.",
+          "other": "You can't invite an owner for this seller right now."
+        },
+        "title": "Invite an owner",
+        "seller": "Seller {id}",
+        "label": {
+          "email": "Email",
+          "name": "Owner name"
+        },
+        "help": {
+          "name": "How we address them in the email.",
+          "email": "We'll email an invitation to create the owner account."
+        },
+        "validation": {
+          "email": {
+            "required": "Enter the owner's email address.",
+            "format": "Enter a valid email address."
+          },
+          "name": {
+            "required": "Enter the owner's name.",
+            "invalid": "Use a name of up to 100 characters, without links or special characters."
+          }
+        },
+        "cancel": "Cancel",
+        "toast-sent": "Invitation sent to {email}.",
+        "error": {
+          "access": {
+            "denied": "You don't have permission to invite owners.",
+            "unavailable": "We can't send invitations right now. Try again in a few minutes."
+          },
+          "seller": {
+            "unknown": "This seller no longer exists.",
+            "has-members": "This seller already has an owner."
+          },
+          "account": {
+            "exists": "Someone with this email already has an account. Use a different email."
+          },
+          "invitation": {
+            "already-pending": "An invitation is already waiting for this seller."
+          },
+          "conflict": {
+            "stale": "This seller changed. We've refreshed the list, so try again."
+          },
+          "request": {
+            "throttled": "You've sent too many invitations. Try again in {minutes, plural, one {# minute} other {# minutes}}."
+          },
+          "unknown": "Something went wrong. Try again."
+        },
+        "submit": "Send invitation"
+      }
+    },
     "owner-reset": {
       "title": "Store owner's two-step sign-in",
       "intro": "If the store owner has lost their authenticator app and their recovery codes, start a reset. We email the owner a link. Two‑step sign-in stays on until the owner opens the link and confirms.",

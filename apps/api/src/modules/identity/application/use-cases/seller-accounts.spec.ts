@@ -29,6 +29,7 @@ import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-see
 import { SellerAccessContractImplementation } from '../../presentation/seller-access.contract';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { LinkTargets } from '../ports/link-secrets';
 import type { SellerAccountReader } from '../ports/seller-account-reader';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import { ApproveSellerAccess } from './approve-seller-access.use-case';
@@ -102,6 +103,8 @@ const ALL_ROWS = [S_PENDING, S_APPROVED, S_REJECTED, INVITATION, S_SUSPENDED];
 /** Every personal value of the fixture: none may reach a log line. */
 const PERSONAL = /owner-|invitee|staff@|Owner of|Invitee Name/i;
 
+const denied = (code: string): ActionHint => ({ allowed: false, code });
+
 type SellerVerb = keyof SellerListSellerRow['actions'];
 type InvitationVerb = keyof SellerListInvitationRow['actions'];
 const VERBS: readonly SellerVerb[] = ['approve', 'reject', 'suspend', 'reinstate'];
@@ -158,6 +161,7 @@ describe.each(TEST_MARKETS)(
         readonly policy?: Partial<
           Pick<IdentityMarketPolicy, 'invitationLifetimeMinutes' | 'sellerReapplyLimit'>
         >;
+        readonly targets?: LinkTargets;
       } = {},
     ) {
       const fakes = new IdentityFakes();
@@ -204,6 +208,7 @@ describe.each(TEST_MARKETS)(
         rejectedAtLimit: counted('rejectedAtLimit'),
         sellersOfAddress: counted('sellersOfAddress'),
         openOwnerInvitations: counted('openOwnerInvitations'),
+        ownerlessSellers: counted('ownerlessSellers'),
       };
       const readDeps = {
         unitOfWork,
@@ -248,7 +253,12 @@ describe.each(TEST_MARKETS)(
         clock,
         units,
         reads,
-        list: new ListSellerAccounts(gate, { ...readDeps, policy, clock }),
+        list: new ListSellerAccounts(gate, {
+          ...readDeps,
+          policy,
+          targets: options.targets ?? basePolicy,
+          clock,
+        }),
         summaries,
         contract: new SellerAccessContractImplementation({
           sellerAccessOf: notUsed(),
@@ -462,7 +472,7 @@ describe.each(TEST_MARKETS)(
       return result.value;
     };
     const idsOf = (page: SellerListPage) =>
-      page.items.map((row) => (row.type === 'seller' ? row.sellerId : row.invitationId));
+      page.items.map((row) => (row.type === 'invitation' ? row.invitationId : row.sellerId));
 
     it('lists the sellers whose owner confirmed the email and the open invitations, by id', async () => {
       const s = setUp();
@@ -512,6 +522,7 @@ describe.each(TEST_MARKETS)(
         search: false,
         sellers: 4,
         invitations: 1,
+        orphans: 0,
         more: false,
         accountId: ROOT,
         marketId: code,
@@ -562,7 +573,7 @@ describe.each(TEST_MARKETS)(
                 hintOf(answer),
               ]);
             }
-          } else {
+          } else if (row.type === 'invitation') {
             for (const verb of ['resend', 'revoke'] as const satisfies readonly InvitationVerb[]) {
               const fresh = setUp();
               const answer = await fresh.commands[verb].execute(adminOf(actor), {
@@ -767,6 +778,155 @@ describe.each(TEST_MARKETS)(
         error: { code: 'validation.failed', fields: [{ path, code: fieldCode }] },
       });
       expect(s.reads.count).toBe(0);
+    });
+
+    describe('the orphaned filter (8.6 row 8)', () => {
+      const S_REVOKED = id<'Seller'>(0xb090);
+      const S_EXPIRED = id<'Seller'>(0xb0a0);
+      const S_REMOVED = id<'Seller'>(0xb0b0);
+      const S_SELF = id<'Seller'>(0xb0c0);
+      const S_OTHER_ORPHAN = id<'Seller'>(0xb0d0);
+      const REVOKED = id<'Invitation'>(0xb095);
+      const EXPIRED = id<'Invitation'>(0xb0a5);
+
+      /** Adds the cases that would disturb the other tests' rows, to this test's fakes only. */
+      function withCases(s: Setup) {
+        const base = {
+          version: 1,
+          createdAt: START,
+          registeredAt: START,
+          stateChangedAt: START,
+          reapplyCount: 0,
+        };
+        for (const [sellerId, origin, m] of [
+          [S_REVOKED, 'invitation', marketId],
+          [S_EXPIRED, 'invitation', marketId],
+          [S_REMOVED, 'invitation', marketId],
+          [S_SELF, 'self', marketId],
+          [S_OTHER_ORPHAN, 'invitation', otherMarketId],
+        ] as const) {
+          s.fakes.seedSellerAccess({ sellerId, marketId: m, origin, state: 'approved', ...base });
+        }
+        const owner = s.fakes.invitations.get(INVITATION)!;
+        // A revoked invitation (no pending one left) and a pending one past its expiry.
+        s.fakes.invitations.set(REVOKED, {
+          ...owner,
+          id: REVOKED,
+          sellerId: S_REVOKED,
+          state: 'revoked',
+          email: null,
+          displayName: null,
+          tokenHash: null,
+          expiresAt: null,
+          decidedAt: START,
+        });
+        s.fakes.invitations.set(EXPIRED, {
+          ...owner,
+          id: EXPIRED,
+          sellerId: S_EXPIRED,
+          email: { typed: 'late@Example.com', normalized: 'late@example.com' },
+          expiresAt: START.subtract({ hours: 2 }),
+        });
+        s.fakes.seedMembership({
+          id: id<'SellerMembership'>(0xf900),
+          marketId,
+          accountId: O_PENDING,
+          sellerId: S_REMOVED,
+          state: 'removed',
+          removedAt: START,
+          version: 2,
+          createdAt: START,
+        });
+        s.fakes.events.length = 0;
+      }
+
+      it('lists the sellers with no member and no pending owner invitation, by id, no personal data', async () => {
+        const s = setUp();
+        withCases(s);
+
+        const page = await listed(s, adminOf(COMPLIANCE), { state: 'orphaned' });
+
+        // A revoked invitation and a purged one (no row) are orphans; an expired but pending
+        // invitation, a removed member, a self sign-up, another Market's and unregistered are not.
+        expect(idsOf(page)).toEqual([S_ORPHAN, S_REVOKED]);
+        expect(page.next).toBeNull();
+        expect(page.items[0]).toEqual({
+          type: 'orphan',
+          sellerId: S_ORPHAN,
+          state: 'pending',
+          stateChangedAt: START,
+          createdAt: START,
+          actions: { invite: { allowed: true, code: null } },
+        });
+        expect(logged()).not.toMatch(PERSONAL);
+        expect(lineOf('identity.list-seller-accounts')).toMatchObject({ orphans: 2, sellers: 0 });
+        // "All" and the other filters never list an orphan.
+        expect(idsOf(await listed(s, adminOf(ROOT)))).not.toContain(S_ORPHAN);
+        expect(idsOf(await listed(s, adminOf(ROOT), { state: 'invited' }))).not.toContain(S_ORPHAN);
+      });
+
+      it('pages by seller id with after', async () => {
+        const s = setUp();
+        withCases(s);
+
+        const first = await listed(s, adminOf(ROOT), { state: 'orphaned', limit: 1 });
+        expect(idsOf(first)).toEqual([S_ORPHAN]);
+        expect(first.next).toBe(S_ORPHAN);
+        const second = await listed(s, adminOf(ROOT), {
+          state: 'orphaned',
+          limit: 1,
+          after: first.next,
+        });
+        expect(idsOf(second)).toEqual([S_REVOKED]);
+        expect(second.next).toBeNull();
+        expect(
+          await listed(s, adminOf(ROOT), { state: 'orphaned', limit: 5, after: S_REVOKED }),
+        ).toEqual({ items: [], next: null });
+      });
+
+      it('hints the invite as the command would: access.denied, access.unavailable twice, or allowed', async () => {
+        const hintFor = async (s: Setup, actor: Id<'Account'>) =>
+          (await listed(s, adminOf(actor), { state: 'orphaned' })).items.map(
+            (row) => (row as { actions: { invite: ActionHint } }).actions.invite,
+          );
+
+        // Without identity.seller-account.create: access.denied, whatever the config says.
+        expect(await hintFor(setUp(), VIEWER)).toEqual([denied('access.denied')]);
+        expect(
+          await hintFor(setUp({ policy: { invitationLifetimeMinutes: () => null } }), VIEWER),
+        ).toEqual([denied('access.denied')]);
+        // With the key: no seller-owner invitation lifetime, or no accept-invitation page.
+        expect(
+          await hintFor(setUp({ policy: { invitationLifetimeMinutes: () => null } }), COMPLIANCE),
+        ).toEqual([denied('access.unavailable')]);
+        expect(await hintFor(setUp({ targets: { target: () => null } }), COMPLIANCE)).toEqual([
+          denied('access.unavailable'),
+        ]);
+        expect(await hintFor(setUp(), COMPLIANCE)).toEqual([{ allowed: true, code: null }]);
+      });
+
+      it('finds nothing by address, but still refuses a bad address and a bad cursor', async () => {
+        const s = setUp();
+        withCases(s);
+
+        const found = await listed(s, adminOf(ROOT), {
+          state: 'orphaned',
+          email: ' Owner-Approved@example.com ',
+        });
+        expect(found).toEqual({ items: [], next: null });
+        await expect(
+          s.list.execute(adminOf(ROOT), { limit: 5, state: 'orphaned', email: 'nope' }),
+        ).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'email', code: 'format' }] },
+        });
+        await expect(
+          s.list.execute(adminOf(ROOT), { limit: 5, state: 'orphaned', after: 'x' }),
+        ).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'after', code: 'format' }] },
+        });
+      });
     });
 
     it('refuses an admin without identity.seller-access.view, a seller, the system and a disabled admin', async () => {

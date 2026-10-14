@@ -38,6 +38,14 @@ export interface OpenSellerOwnerInvitation {
   readonly createdAt: Temporal.Instant;
 }
 
+/** A registered seller with no member and no pending owner invitation: no personal field. */
+export interface OwnerlessSeller {
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessStateCode;
+  readonly stateChangedAt: Temporal.Instant;
+  readonly createdAt: Temporal.Instant;
+}
+
 /** What the list's seller read selects (each field is optional; all apply together). */
 export interface OwnedSellerQuery {
   /** One access state, or every state. */
@@ -124,6 +132,20 @@ export interface SellerAccountReader {
     market: MarketContext,
     emailNormalized: string,
   ): Promise<{ readonly accountId: Id<'Account'>; readonly sellerIds: Id<'Seller'>[] } | null>;
+
+  /**
+   * Up to `limit` registered sellers of origin `invitation` with no `seller_membership` row at
+   * all (any state) and no pending seller-owner invitation, whose id is greater than `after`
+   * (all when null), by seller id (the orphans of 8.6 row 8). An expired but pending invitation
+   * is still pending: that seller is not an orphan. Ids, states and instants only.
+   *
+   * Cost: with no state filter the planner walks `(market_id, seller_id)` and filters by origin,
+   * so it grows with the registered sellers of the Market; acceptable at Phase 2 volume.
+   */
+  ownerlessSellers(
+    market: MarketContext,
+    query: { readonly after: Id<'Seller'> | null; readonly limit: number },
+  ): Promise<OwnerlessSeller[]>;
 
   /**
    * Up to `limit` pending seller-owner invitations of this Market (expired ones included), whose

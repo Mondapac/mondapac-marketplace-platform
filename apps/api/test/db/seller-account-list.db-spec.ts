@@ -6,6 +6,7 @@ import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel
 import { Client } from 'pg';
 import {
   ListSellerAccounts,
+  type SellerListOrphanRow,
   type SellerListRow,
   type SellerListSellerRow,
 } from '../../src/modules/identity/application/use-cases/list-seller-accounts.use-case';
@@ -240,7 +241,8 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
     }
     return rows;
   }
-  const rowId = (row: SellerListRow) => (row.type === 'seller' ? row.sellerId : row.invitationId);
+  const rowId = (row: SellerListRow) =>
+    row.type === 'invitation' ? row.invitationId : row.sellerId;
 
   it("lists this Market's owned sellers and open invitations by id, with their owner and hints", async () => {
     const compliance = await account('admin', {
@@ -381,36 +383,49 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
       expect(answer.value.sellerIds).toEqual([]);
       return answer.value.counts;
     };
-    const before = await counts();
-    const older = await ownedSeller('suspended');
-    const newer = await seller('suspended', { origin: 'invitation' });
-    await ownedSeller('suspended', { verified: false, registered: false });
-    await ownedSeller('suspended', { marketCode: otherCode });
-    await ownedSeller('rejected');
+    // Other spec files change AU sellers' states on the shared database at the same time, so a
+    // count taken before and after can move under this case: re-run the whole round (new
+    // sellers each time) up to 3 times, as identity's untilNoConflict does for 40001.
+    const round = async () => {
+      const before = await counts();
+      const older = await ownedSeller('suspended');
+      const newer = await seller('suspended', { origin: 'invitation' });
+      await ownedSeller('suspended', { verified: false, registered: false });
+      await ownedSeller('suspended', { marketCode: otherCode });
+      await ownedSeller('rejected');
 
-    expect(await counts()).toEqual({
-      ...before,
-      suspended: before.suspended + 2,
-      rejected: before.rejected + 1,
-    });
-    // Page to exhaustion one id at a time: newest first, no id twice, none of another Market.
-    const seen: string[] = [];
-    let cursor: Id<'Seller'> | null = null;
-    for (;;) {
-      const page = await contract.sellerIdsByState(as(viewer.id), {
-        state: 'suspended',
-        before: cursor,
-        limit: 1,
+      expect(await counts()).toEqual({
+        ...before,
+        suspended: before.suspended + 2,
+        rejected: before.rejected + 1,
       });
-      if (!page.ok) throw new Error(page.error.code);
-      seen.push(...page.value.sellerIds);
-      if (page.value.next === null) break;
-      cursor = page.value.next;
+      // Page to exhaustion one id at a time: newest first, no id twice, none of another Market.
+      const seen: string[] = [];
+      let cursor: Id<'Seller'> | null = null;
+      for (;;) {
+        const page = await contract.sellerIdsByState(as(viewer.id), {
+          state: 'suspended',
+          before: cursor,
+          limit: 1,
+        });
+        if (!page.ok) throw new Error(page.error.code);
+        seen.push(...page.value.sellerIds);
+        if (page.value.next === null) break;
+        cursor = page.value.next;
+      }
+      expect(seen).toHaveLength(before.suspended + 2);
+      expect(new Set(seen).size).toBe(seen.length);
+      expect([...seen].sort().reverse()).toEqual(seen);
+      expect(seen).toEqual(expect.arrayContaining([newer, older.sellerId]));
+    };
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await round();
+        break;
+      } catch (error) {
+        if (attempt >= 3) throw error;
+      }
     }
-    expect(seen).toHaveLength(before.suspended + 2);
-    expect(new Set(seen).size).toBe(seen.length);
-    expect([...seen].sort().reverse()).toEqual(seen);
-    expect(seen).toEqual(expect.arrayContaining([newer, older.sellerId]));
     const keyless = await account('admin', { role: null });
     await expect(
       contract.sellerIdsByState(as(keyless.id), { state: 'suspended', before: null, limit: 5 }),
@@ -506,6 +521,94 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
     expect(summaries.value.map((each) => each.owner?.accountId).sort()).toEqual(
       owned.map((each) => each.owner.id).sort(),
     );
+  });
+
+  it('lists the orphaned sellers: invited, registered, no membership of any state, no pending owner invitation (8.6 row 8)', async () => {
+    const compliance = await account('admin', {
+      role: await roleId('platform', 'onboarding-compliance'),
+    });
+    const viewer = await account('admin', { role: await roleId('platform', 'viewer') });
+    const asSeller = await roleId('seller', 'seller-owner');
+    // Orphans: an invitation revoked, and one purged (no invitation row at all).
+    const revoked = await seller('approved', { origin: 'invitation' });
+    await sql.query(
+      `INSERT INTO identity.invitations (id, market_id, tenant_id, kind, email, email_normalized,
+       display_name, role_id, seller_id, invited_by_account_id, token_hash, expires_at, state,
+       decided_at, accepted_account_id, version, created_at)
+       VALUES ($1, $2, 'default', 'seller-owner', NULL, NULL, NULL, $3, $4, $5, NULL, NULL,
+       'revoked', $6, NULL, 3, $6)`,
+      [newId(), code, asSeller, revoked, compliance.id, CREATED],
+    );
+    const purged = await seller('pending', { origin: 'invitation' });
+    // Not orphans: an expired but still pending invitation, a removed member, a self sign-up,
+    // an unregistered seller, an owned seller, and another Market's orphan.
+    const expired = await seller('pending', { origin: 'invitation' });
+    await ownerInvitation(expired, compliance.id, code, { expired: true });
+    const removedMember = await seller('pending', { origin: 'invitation' });
+    const gone = await account('seller', { role: asSeller });
+    await sql.query(
+      `INSERT INTO identity.seller_memberships (id, market_id, tenant_id, account_id, seller_id,
+       state, removed_at, version, created_at)
+       VALUES ($1, $2, 'default', $3, $4, 'removed', $5, 2, $5)`,
+      [newId(), code, gone.id, removedMember, CREATED],
+    );
+    const selfOrigin = await seller('pending', { origin: 'self' });
+    const unregistered = await seller('pending', { origin: 'invitation', registered: false });
+    const owned = await ownedSeller('approved');
+    const elsewhere = await seller('pending', { marketCode: otherCode, origin: 'invitation' });
+
+    const rows = await everyRow(compliance.id, { state: 'orphaned', limit: 2 });
+
+    const ids = rows.map(rowId);
+    expect(ids).toEqual([...ids].sort());
+    expect(new Set(ids).size).toBe(ids.length);
+    const mine = [revoked, purged] as string[];
+    expect(ids.filter((id) => mine.includes(id))).toEqual([...mine].sort());
+    for (const absent of [
+      expired,
+      removedMember,
+      selfOrigin,
+      unregistered,
+      owned.sellerId,
+      elsewhere,
+    ]) {
+      expect(ids).not.toContain(absent);
+    }
+    expect(rows.every((row) => row.type === 'orphan')).toBe(true);
+    const row = rows.find((each) => rowId(each) === revoked) as SellerListOrphanRow;
+    expect(row).toMatchObject({
+      state: 'approved',
+      actions: { invite: { allowed: true, code: null } },
+    });
+    // A viewer without identity.seller-account.create sees the rows, with the hint closed.
+    const asViewer = (await everyRow(viewer.id, { state: 'orphaned' })).find(
+      (each) => rowId(each) === purged,
+    ) as SellerListOrphanRow;
+    expect(asViewer.actions.invite).toEqual({ allowed: false, code: 'access.denied' });
+    // "All" lists no orphan; an address finds none, and a bad address stays refused.
+    expect((await everyRow(compliance.id)).map(rowId)).not.toContain(revoked);
+    expect(await everyRow(compliance.id, { state: 'orphaned', email: 'a@b.example' })).toEqual([]);
+    const refused = await app
+      .get(ListSellerAccounts)
+      .execute(as(compliance.id), { limit: 10, state: 'orphaned', email: 'not-an-address' });
+    expect(refused).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'email', code: 'format' }] },
+    });
+
+    // One flat read-only SELECT with the Market in it, nothing of `sellers`.
+    await driver.during(() =>
+      app.get(ListSellerAccounts).execute(as(compliance.id), { limit: 100, state: 'orphaned' }),
+    );
+    const orphanStatements = driver.statements.filter((statement) =>
+      /seller_access/.test(statement),
+    );
+    expect(orphanStatements.length).toBeGreaterThan(0);
+    for (const statement of orphanStatements) {
+      expect(statement.trim()).toMatch(/^SELECT/i);
+      expect(statement).not.toMatch(/"sellers"\./);
+      expect(statement).toMatch(/"market_id"/);
+    }
   });
 
   it('runs in read-only units on identity tables only: SELECTs, the Market in each, no sellers schema', async () => {

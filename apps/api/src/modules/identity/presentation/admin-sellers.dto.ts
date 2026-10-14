@@ -184,20 +184,57 @@ export class AdminSellerListInvitationRowView {
   actions!: AdminSellerListInvitationActions;
 }
 
+export class AdminSellerListOrphanActions {
+  @ApiProperty({
+    type: AdminTeamActionHint,
+    description:
+      'Invite an owner (POST sellers/:sellerId/invitations). access.denied without ' +
+      'identity.seller-account.create; access.unavailable while the Market configures no ' +
+      'seller-owner invitation or link page. `allowed` is necessary, not sufficient: the ' +
+      'command checks again (e.g. seller.has-members).',
+  })
+  invite!: AdminTeamActionHint;
+}
+
+/** A seller with no member and no pending owner invitation (`state=orphaned` only). */
+export class AdminSellerListOrphanRowView {
+  @ApiProperty({ enum: ['orphan'] })
+  type!: 'orphan';
+
+  @ApiProperty({ format: 'uuid' })
+  sellerId!: string;
+
+  @ApiProperty({ enum: ['pending', 'approved', 'rejected', 'suspended'] })
+  state!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Since: the last change of state.' })
+  stateChangedAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ type: AdminSellerListOrphanActions })
+  actions!: AdminSellerListOrphanActions;
+}
+
 export class AdminSellerListPageView {
   @ApiProperty({
     description:
       'Sellers whose owner confirmed the email and open seller invitations of the Market, ' +
-      'merged by id (creation order); `type` tells them apart.',
+      'merged by id (creation order); `type` tells them apart. With `state=orphaned`, only ' +
+      'sellers without an owner (`orphan` rows).',
     type: 'array',
     items: {
       oneOf: [
         { $ref: '#/components/schemas/AdminSellerListSellerRowView' },
         { $ref: '#/components/schemas/AdminSellerListInvitationRowView' },
+        { $ref: '#/components/schemas/AdminSellerListOrphanRowView' },
       ],
     },
   })
-  items!: (AdminSellerListSellerRowView | AdminSellerListInvitationRowView)[];
+  items!: (
+    AdminSellerListSellerRowView | AdminSellerListInvitationRowView | AdminSellerListOrphanRowView
+  )[];
 
   @ApiProperty({
     type: String,

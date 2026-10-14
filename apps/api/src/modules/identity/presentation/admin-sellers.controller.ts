@@ -66,6 +66,7 @@ import {
   AdminSellerInvitationIssued,
   AdminSellerInviteRequest,
   AdminSellerListInvitationRowView,
+  AdminSellerListOrphanRowView,
   AdminSellerListPageView,
   AdminSellerListSellerRowView,
   AdminSellerReasonRequest,
@@ -182,11 +183,17 @@ function sellerPageView(page: SellerListPage): AdminSellerListPageView {
     items: page.items.map((row) =>
       row.type === 'seller'
         ? { ...row, stateChangedAt: row.stateChangedAt.toString() }
-        : {
-            ...row,
-            createdAt: row.createdAt.toString(),
-            expiresAt: row.expiresAt === null ? null : row.expiresAt.toString(),
-          },
+        : row.type === 'orphan'
+          ? {
+              ...row,
+              stateChangedAt: row.stateChangedAt.toString(),
+              createdAt: row.createdAt.toString(),
+            }
+          : {
+              ...row,
+              createdAt: row.createdAt.toString(),
+              expiresAt: row.expiresAt === null ? null : row.expiresAt.toString(),
+            },
     ),
     next: page.next,
   };
@@ -213,7 +220,11 @@ const DECISION_CONFLICT =
  * slice 7a-decide). Suspend, reinstate and the invitations stay.
  */
 @ApiTags('identity')
-@ApiExtraModels(AdminSellerListSellerRowView, AdminSellerListInvitationRowView)
+@ApiExtraModels(
+  AdminSellerListSellerRowView,
+  AdminSellerListInvitationRowView,
+  AdminSellerListOrphanRowView,
+)
 @RoutePopulation('admin')
 @Controller('identity/admin')
 export class AdminSellersController {
@@ -237,7 +248,9 @@ export class AdminSellersController {
       'Needs identity.seller-access.view. Sellers whose owner confirmed the email, with the ' +
       "owner's name and address, and the open seller-owner invitations, merged by id (creation " +
       'order), paged with `after` and `limit`. `state` filters: pending, approved, rejected, ' +
-      'suspended, or invited (the invitations only); absent lists both. `email` finds an exact ' +
+      'suspended, invited (the invitations only), or orphaned (invited sellers with no member and no ' +
+      'pending owner invitation, by seller id, with an invite hint; an `email` finds none); absent ' +
+      'lists sellers and invitations. `email` finds an exact ' +
       'address (the owner or the invitee), never a part of one. Each row carries, per action, ' +
       '`allowed` and the code the command would answer now (access.denied for an action whose ' +
       'permission the actor lacks). Hints only: every command checks again. Never a reason. Not ' +
