@@ -26,6 +26,7 @@ import type {
   SearchCandidates,
   SellerListRepository,
 } from '../ports/seller-list.repository';
+import { SellerAccountAccessRefused } from '../ports/seller-account-directory';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
 import { SellerList, type SellerListPage } from './list.use-case';
 
@@ -591,6 +592,46 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       }
       expect(t.repository.calls).toBe(0);
       expect(t.directory.idCalls).toHaveLength(0);
+    });
+
+    it('asks identity for the state counts with the first page only, and refuses a tab with a prototype name', async () => {
+      const t = stateSetUp();
+      const rows = [row(), row()];
+      for (const r of rows) {
+        t.repository.add(code, r);
+        t.access.set(r.sellerId, 'pending');
+      }
+
+      const first = await t.useCase.execute(admin(), { tab: 'all', limit: 1 });
+      const second = await t.useCase.execute(admin(), {
+        tab: 'all',
+        limit: 1,
+        after: first.ok ? first.value.next : null,
+      });
+
+      expect(first.ok && first.value.stateCounts).toEqual({
+        changesNeeded: 0,
+        approved: 0,
+        suspended: 0,
+      });
+      expect(second.ok && second.value.stateCounts).toBeNull();
+      expect(t.directory.idCalls).toHaveLength(1);
+      await expect(t.useCase.execute(admin(), { tab: '__proto__' })).resolves.toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'tab', code: 'value' }] },
+      });
+    });
+
+    it('answers access.denied, not unavailable, when identity refuses an admin who lost the key', async () => {
+      const t = stateSetUp();
+      t.repository.add(code, row());
+      t.directory.idsByState = () =>
+        Promise.reject(new SellerAccountAccessRefused('identity.sellerIdsByState refused'));
+
+      await expect(t.useCase.execute(admin(), { tab: 'approved' })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
 
     it('is sellers.unavailable when identity cannot page or count, never an empty tab', async () => {

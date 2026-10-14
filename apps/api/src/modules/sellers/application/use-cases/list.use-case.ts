@@ -24,10 +24,11 @@ import {
   type ListTab,
 } from '../../domain/seller-list';
 import type { SellerStatus } from '../../domain/seller-status';
-import type {
-  SellerAccountDirectory,
-  SellerAccountEntry,
-  SellerStateCounts,
+import {
+  SellerAccountAccessRefused,
+  type SellerAccountDirectory,
+  type SellerAccountEntry,
+  type SellerStateCounts,
 } from '../ports/seller-account-directory';
 import type {
   ListCounts,
@@ -85,6 +86,7 @@ export interface SellerListPage {
   /** The `after` of the next page, or null after the last. */
   readonly next: string | null;
   readonly counts: ListCounts;
+  /** With the first page of a tab; null on a later page of a file tab, and when hidden. */
   readonly stateCounts: StateTabCounts | null;
 }
 
@@ -190,8 +192,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
           limit: request.limit,
         });
       } catch (error) {
-        this.fail(context, 'access-failed', error);
-        return err({ code: 'sellers.unavailable' });
+        return this.identityFailed(context, error);
       }
       const read = await this.readFiles(context, request, idPage.sellerIds);
       if (!read.ok) return read;
@@ -215,14 +216,14 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const more = rows.length > request.limit;
     const page = more ? rows.slice(0, request.limit) : rows;
 
+    // The state counts with the first page only: a later page does not group the Market again.
     let stateCounts: StateTabCounts | null = null;
-    if (showStatus) {
+    if (showStatus && request.after === null) {
       try {
         const answer = await directory.idsByState(context, { state: null, before: null, limit: 0 });
         stateCounts = stateTabCounts(answer.counts);
       } catch (error) {
-        this.fail(context, 'access-failed', error);
-        return err({ code: 'sellers.unavailable' });
+        return this.identityFailed(context, error);
       }
     }
     const decorated = await this.decorate(context, page, showStatus);
@@ -315,8 +316,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
           page.map((row) => row.sellerId),
         );
       } catch (error) {
-        this.fail(context, 'access-failed', error);
-        return err({ code: 'sellers.unavailable' });
+        return this.identityFailed(context, error);
       }
     }
     const openCodes = new Set(this.deps.onboardingAreas.openCodes(context.market));
@@ -334,6 +334,20 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       this.fail(context, 'status-check-failed', error);
       return false;
     }
+  }
+
+  /** `identity` refused the actor (403, a warning), or could not answer (503, an error). */
+  private identityFailed(context: CallContext, error: unknown): Result<never, SellerListFailure> {
+    if (error instanceof SellerAccountAccessRefused) {
+      this.#logger.warn({
+        msg: 'sellers.list.access-refused',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'access.denied' });
+    }
+    this.fail(context, 'access-failed', error);
+    return err({ code: 'sellers.unavailable' });
   }
 
   private fail(context: CallContext, reason: string, error: unknown): void {

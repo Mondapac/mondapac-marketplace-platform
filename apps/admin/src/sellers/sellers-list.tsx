@@ -110,7 +110,8 @@ export function SellersList({
       );
       setNext(result.body.next);
       setCounts(result.body.counts);
-      setStateCounts(result.body.stateCounts);
+      // A later page of a file tab carries no state counts: keep the first page's.
+      if (after === null) setStateCounts(result.body.stateCounts);
     },
     [tab, kind, outsideArea, search, csrfToken],
   );

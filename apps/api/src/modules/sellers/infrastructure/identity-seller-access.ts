@@ -1,9 +1,10 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { SellerAccessContract } from '../../identity/contracts/seller-access.contract';
-import type {
-  SellerAccountDirectory,
-  SellerAccountEntry,
-  SellerStateCounts,
+import {
+  SellerAccountAccessRefused,
+  type SellerAccountDirectory,
+  type SellerAccountEntry,
+  type SellerStateCounts,
 } from '../application/ports/seller-account-directory';
 import type { SellerAccessReader } from '../application/ports/seller-access-reader';
 import type { AccessState } from '../domain/seller-status';
@@ -48,9 +49,7 @@ export class IdentitySellerAccountDirectory implements SellerAccountDirectory {
   ): Promise<ReadonlyMap<Id<'Seller'>, SellerAccountEntry>> {
     if (sellerIds.length === 0) return new Map();
     const result = await this.identity.sellerAccountSummaries(context, sellerIds);
-    if (!result.ok) {
-      throw new Error(`identity.sellerAccountSummaries refused: ${result.error.code}`);
-    }
+    if (!result.ok) throw refusal('sellerAccountSummaries', result.error.code);
     return new Map(
       result.value.map((summary): [Id<'Seller'>, SellerAccountEntry] => [
         summary.sellerId,
@@ -78,7 +77,13 @@ export class IdentitySellerAccountDirectory implements SellerAccountDirectory {
     readonly counts: SellerStateCounts;
   }> {
     const result = await this.identity.sellerIdsByState(context, query);
-    if (!result.ok) throw new Error(`identity.sellerIdsByState refused: ${result.error.code}`);
+    if (!result.ok) throw refusal('sellerIdsByState', result.error.code);
     return result.value;
   }
+}
+
+/** A refusal of the actor is told apart from a failure, so the list answers 403, not 503. */
+function refusal(call: string, code: string): Error {
+  const message = `identity.${call} refused: ${code}`;
+  return code === 'access.denied' ? new SellerAccountAccessRefused(message) : new Error(message);
 }

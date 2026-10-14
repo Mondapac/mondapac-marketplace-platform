@@ -19,8 +19,9 @@ export type SellerStateCounts = Readonly<Record<AccessState, number>>;
 /**
  * The admin reads of `identity` the seller list needs (design 7.8; R-6 and 8.1; slice 6b), with
  * the admin's `CallContext` unchanged, outside any unit of work. Both need
- * `identity.seller-access.view` and throw when `identity` refuses or cannot answer: the caller
- * answers `sellers.unavailable`, never a guess.
+ * `identity.seller-access.view`. They throw {@link SellerAccountAccessRefused} when `identity`
+ * refuses the actor (the caller answers `access.denied`), and another error when it cannot
+ * answer (`sellers.unavailable`, never a guess).
  */
 export interface SellerAccountDirectory {
   /** State and owner of up to 100 sellers; a seller `identity` does not know is absent. */
@@ -45,6 +46,11 @@ export interface SellerAccountDirectory {
     readonly next: Id<'Seller'> | null;
     readonly counts: SellerStateCounts;
   }>;
+}
+
+/** `identity` refused the actor (for example an admin who lost the key since the gate ran). */
+export class SellerAccountAccessRefused extends Error {
+  override readonly name = 'SellerAccountAccessRefused';
 }
 
 export const SELLER_ACCOUNT_DIRECTORY = Symbol('SELLER_ACCOUNT_DIRECTORY');

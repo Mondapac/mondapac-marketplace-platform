@@ -194,8 +194,8 @@ export class SellerListBody {
     type: SellerListStateCounts,
     nullable: true,
     description:
-      'The counts of the identity state tabs; null when the caller does not also hold ' +
-      'identity.seller-access.view.',
+      'The counts of the identity state tabs, with the first page of a tab; null on a later ' +
+      'page of a file tab, and when the caller does not also hold identity.seller-access.view.',
   })
   stateCounts!: SellerListStateCounts | null;
 }

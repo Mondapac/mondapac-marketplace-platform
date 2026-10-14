@@ -59,7 +59,7 @@ const USE_CASE = 'identity.seller-ids-by-state';
  * must still be an active admin holding the key, read in the unit **before** any seller row, as
  * `sellerAccountSummaries`. Refused with `access.denied`: the system actor (by the gate), a
  * seller actor, an acting-as session and an admin without the key. Never over HTTP. One
- * read-only unit (ADR-0025). The log line carries the state, the counts of the page and codes.
+ * read-only unit (ADR-0025). The log line carries the outcome, the page size and codes.
  */
 export class SellerIdsByState extends UseCase<
   SellerIdsByStateInput,
