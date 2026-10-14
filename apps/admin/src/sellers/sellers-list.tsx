@@ -38,6 +38,8 @@ function countOf(
       return counts?.all ?? null;
     case 'changes-needed':
       return stateCounts?.changesNeeded ?? null;
+    case 'not-approved':
+      return stateCounts?.notApproved ?? null;
     case 'approved':
       return stateCounts?.approved ?? null;
     case 'suspended':

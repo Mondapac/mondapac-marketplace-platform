@@ -255,7 +255,8 @@
         "ready": "Ready to submit",
         "outside-area": "Not in your area yet",
         "awaiting-review": "Awaiting review",
-        "changes-needed": "Changes needed"
+        "changes-needed": "Changes needed",
+        "not-approved": "Not approved"
       },
       "banner": {
         "details-incomplete": {
@@ -277,6 +278,10 @@
         "changes-needed": {
           "title": "Your application needs changes",
           "body": "Update your details and submit again."
+        },
+        "not-approved": {
+          "title": "Your application was not approved",
+          "body": "You've used all your new applications, so you can't submit again. Contact us if you have questions."
         }
       },
       "steps": "Steps",

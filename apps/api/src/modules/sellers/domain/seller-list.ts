@@ -11,15 +11,19 @@ export const FILE_TABS = ['awaiting-review', 'incomplete', 'all'] as const;
 export type FileTab = (typeof FILE_TABS)[number];
 
 /**
- * The tabs that page through `identity`'s state (design 7.8, R-6; slice 6b), and the state each
- * reads. "Not approved" (a rejected seller at the re-apply limit) joins with slice 7b, as its
- * status code does: until then every rejected seller is under "Changes needed".
+ * The tabs that page through `identity`'s state (design 7.8, R-6; slices 6b, 7b), and what each
+ * reads: a state, and for the two tabs of rejected sellers whether the re-apply limit is reached
+ * ("Not approved") or not ("Changes needed").
  */
 export const STATE_TABS = {
-  'changes-needed': 'rejected',
-  approved: 'approved',
-  suspended: 'suspended',
-} as const satisfies Record<string, AccessState>;
+  'changes-needed': { state: 'rejected', reapplyLimitReached: false },
+  'not-approved': { state: 'rejected', reapplyLimitReached: true },
+  approved: { state: 'approved', reapplyLimitReached: null },
+  suspended: { state: 'suspended', reapplyLimitReached: null },
+} as const satisfies Record<
+  string,
+  { readonly state: AccessState; readonly reapplyLimitReached: boolean | null }
+>;
 export type StateTab = keyof typeof STATE_TABS;
 
 export const LIST_TABS = [...FILE_TABS, ...(Object.keys(STATE_TABS) as StateTab[])] as const;
@@ -99,6 +103,7 @@ export function cursorText(cursor: ListCursor): string {
   switch (cursor.tab) {
     case 'all':
     case 'changes-needed':
+    case 'not-approved':
     case 'approved':
     case 'suspended':
       return `${cursor.tab}.${cursor.sellerId}`;
@@ -245,6 +250,8 @@ export function parseListRequest(raw: unknown): Result<ListRequest, ListRequestR
 export interface ListStatusInput {
   /** `identity`'s state, or null when `identity` does not know the seller. */
   readonly access: AccessState | null;
+  /** `identity`'s "no re-application left" for a rejected seller; null when unknown. */
+  readonly reapplyLimitReached: boolean | null;
   readonly hasApprovedRevision: boolean;
   /** The kind of the seller's pending submission, or null when none is pending. */
   readonly pendingKind: ListKind | null;
@@ -269,6 +276,7 @@ export function listStatusOf(input: ListStatusInput): SellerStatus | null {
     missing: input.draftComplete ? [] : ['storeName'],
     outsideServiceArea: input.outsideServiceArea,
     registerNegative: false,
+    reapplyLimitReached: input.reapplyLimitReached,
   });
 }
 

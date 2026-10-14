@@ -18,6 +18,7 @@ export type SellerStatus =
   | 'ready-to-submit'
   | 'awaiting-review'
   | 'changes-needed'
+  | 'not-approved'
   | 'approved'
   | 'suspended'
   | 'file-check-needed';

@@ -455,11 +455,23 @@ export class IdentityFakes {
               a.marketId === market.marketId &&
               a.registeredAt !== null &&
               a.state === query.state &&
+              (query.reapply === null ||
+                a.reapplyCount >= query.reapply.limit === query.reapply.reapplyLimitReached) &&
               (query.before === null || a.sellerId < query.before),
           )
           .map((a) => a.sellerId)
           .sort((a, b) => (a < b ? 1 : -1))
           .slice(0, query.limit),
+      ),
+    rejectedAtLimit: (market, limit) =>
+      Promise.resolve(
+        [...this.sellerAccess.values()].filter(
+          (a) =>
+            a.marketId === market.marketId &&
+            a.registeredAt !== null &&
+            a.state === 'rejected' &&
+            a.reapplyCount >= limit,
+        ).length,
       ),
     stateCounts: (market) => {
       const counts = { pending: 0, approved: 0, rejected: 0, suspended: 0 };

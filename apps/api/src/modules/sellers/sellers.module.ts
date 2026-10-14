@@ -67,6 +67,7 @@ import { MyFileSaveIdentifier } from './application/use-cases/my-file-save-ident
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
+import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
@@ -440,6 +441,14 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(SellingEligibilitySystem, SELLING_ELIGIBILITY_PORTS),
     useCaseProvider(AllowedProductTypes, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(AllowedProductTypesSystem, { unitOfWork: true, sellingFacts: true }),
+    // The certification reviewer's read of one approved revision's names and addresses
+    // (design 7.1, Hassan M4): audited per read.
+    useCaseProvider(ReviewerBusinessDetailsRead, {
+      unitOfWork: true,
+      revisions: true,
+      sealer: true,
+      audit: true,
+    }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -449,6 +458,7 @@ const REVIEW_DECISION_PORTS = {
         SellingEligibilitySystem,
         AllowedProductTypes,
         AllowedProductTypesSystem,
+        ReviewerBusinessDetailsRead,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -457,6 +467,7 @@ const REVIEW_DECISION_PORTS = {
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
         allowedProductTypesSystem: AllowedProductTypesSystem,
+        reviewerBusinessDetails: ReviewerBusinessDetailsRead,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -465,6 +476,7 @@ const REVIEW_DECISION_PORTS = {
           sellingEligibilitySystem,
           allowedProductTypes,
           allowedProductTypesSystem,
+          reviewerBusinessDetails,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

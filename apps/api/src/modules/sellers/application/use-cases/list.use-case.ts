@@ -76,6 +76,7 @@ export interface SellerListRow {
 /** The counts of the `identity` state tabs (R-6); null when the actor may not see states. */
 export interface StateTabCounts {
   readonly changesNeeded: number;
+  readonly notApproved: number;
   readonly approved: number;
   readonly suspended: number;
 }
@@ -187,9 +188,10 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       let idPage;
       try {
         idPage = await directory.idsByState(context, {
-          state: STATE_TABS[request.tab],
+          state: STATE_TABS[request.tab].state,
           before,
           limit: request.limit,
+          reapplyLimitReached: STATE_TABS[request.tab].reapplyLimitReached,
         });
       } catch (error) {
         return this.identityFailed(context, error);
@@ -204,7 +206,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
         items: decorated.value,
         next: idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
         counts: read.value.counts,
-        stateCounts: stateTabCounts(idPage.counts),
+        stateCounts: stateTabCounts(idPage),
       });
     }
 
@@ -220,8 +222,13 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     let stateCounts: StateTabCounts | null = null;
     if (showStatus && request.after === null) {
       try {
-        const answer = await directory.idsByState(context, { state: null, before: null, limit: 0 });
-        stateCounts = stateTabCounts(answer.counts);
+        const answer = await directory.idsByState(context, {
+          state: null,
+          before: null,
+          limit: 0,
+          reapplyLimitReached: null,
+        });
+        stateCounts = stateTabCounts(answer);
       } catch (error) {
         return this.identityFailed(context, error);
       }
@@ -360,11 +367,16 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
   }
 }
 
-function stateTabCounts(counts: SellerStateCounts): StateTabCounts {
+function stateTabCounts(answer: {
+  readonly counts: SellerStateCounts;
+  readonly rejectedLimitReached: number;
+}): StateTabCounts {
+  const { counts, rejectedLimitReached } = answer;
   return {
-    changesNeeded: counts[STATE_TABS['changes-needed']],
-    approved: counts[STATE_TABS.approved],
-    suspended: counts[STATE_TABS.suspended],
+    changesNeeded: counts[STATE_TABS['changes-needed'].state] - rejectedLimitReached,
+    notApproved: rejectedLimitReached,
+    approved: counts[STATE_TABS.approved.state],
+    suspended: counts[STATE_TABS.suspended.state],
   };
 }
 
@@ -385,6 +397,7 @@ function rowOf(
         ? 'hidden'
         : listStatusOf({
             access: account?.state ?? null,
+            reapplyLimitReached: account?.reapplyLimitReached ?? null,
             hasApprovedRevision: row.hasApprovedRevision,
             pendingKind: row.pending?.kind ?? null,
             draftComplete: row.draftComplete,
@@ -406,6 +419,7 @@ function cursorOf(request: ListRequest, last: ListedSeller): ListCursor {
   switch (request.tab) {
     case 'all':
     case 'changes-needed':
+    case 'not-approved':
     case 'approved':
     case 'suspended':
       return { tab: request.tab, sellerId: last.sellerId };

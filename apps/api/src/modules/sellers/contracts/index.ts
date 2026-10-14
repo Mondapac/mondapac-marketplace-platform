@@ -17,6 +17,8 @@ export type { ApprovedSellerZonesMap } from './approved-seller-zones.contract';
 export {
   SELLERS_FACADE,
   type AllowedProductTypesOf,
+  type ReviewerBusinessDetails,
+  type SellerDetailsNotFound,
   type SellersFacade,
   type SellersUnavailable,
   type SellersValidationFailed,

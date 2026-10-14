@@ -533,9 +533,16 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       expect(listed.items.map((item) => [item.storeName, item.status, item.owner])).toEqual([
         ['Newer', 'approved', OWNER],
       ]);
-      expect(listed.stateCounts).toEqual({ changesNeeded: 1, approved: 3, suspended: 0 });
+      expect(listed.stateCounts).toEqual({
+        changesNeeded: 1,
+        notApproved: 0,
+        approved: 3,
+        suspended: 0,
+      });
       expect(listed.next).toBe(`approved.${newer.sellerId}`);
-      expect(t.directory.idCalls).toEqual([{ state: 'approved', before: null, limit: 2 }]);
+      expect(t.directory.idCalls).toEqual([
+        { state: 'approved', before: null, limit: 2, reapplyLimitReached: null },
+      ]);
       expect(t.access.manyCalls).toEqual([[newer.sellerId]]);
 
       const second = await t.useCase.execute(admin(), {
@@ -549,6 +556,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         state: 'approved',
         before: newer.sellerId,
         limit: 2,
+        reapplyLimitReached: null,
       });
 
       const changes = await t.useCase.execute(admin(), { tab: 'changes-needed' });
@@ -558,11 +566,44 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       expect(logged.join('\n')).not.toMatch(/quokka/i);
     });
 
+    it('splits the rejected sellers by the re-apply limit into Changes needed and Not approved (slice 7b)', async () => {
+      const t = stateSetUp();
+      const open = row({ storeName: 'Can try again' });
+      const spent = row({ storeName: 'Out of tries' });
+      const never = ids.next<'Seller'>();
+      for (const r of [open, spent]) t.repository.add(code, r);
+      t.access.set(open.sellerId, 'rejected');
+      t.access.set(spent.sellerId, 'rejected', true);
+      t.access.set(never, 'approved');
+
+      const changes = await t.useCase.execute(admin(), { tab: 'changes-needed' });
+      const notApproved = await t.useCase.execute(admin(), { tab: 'not-approved' });
+
+      expect(changes.ok && changes.value.items.map((i) => [i.storeName, i.status])).toEqual([
+        ['Can try again', 'changes-needed'],
+      ]);
+      expect(notApproved.ok && notApproved.value.items.map((i) => [i.storeName, i.status])).toEqual(
+        [['Out of tries', 'not-approved']],
+      );
+      expect(notApproved.ok && notApproved.value.stateCounts).toEqual({
+        changesNeeded: 1,
+        notApproved: 1,
+        approved: 1,
+        suspended: 0,
+      });
+      expect(t.directory.idCalls.map((c) => [c.state, c.reapplyLimitReached])).toEqual([
+        ['rejected', false],
+        ['rejected', true],
+      ]);
+      const cursor = notApproved.ok ? notApproved.value.next : 'x';
+      expect(cursor).toBeNull();
+    });
+
     it('refuses a state tab without identity.seller-access.view, and never calls identity', async () => {
       const t = stateSetUp();
       t.repository.add(code, row());
 
-      for (const tab of ['changes-needed', 'approved', 'suspended']) {
+      for (const tab of ['changes-needed', 'not-approved', 'approved', 'suspended']) {
         await expect(t.useCase.execute(admin(true, market, false), { tab })).resolves.toEqual({
           ok: false,
           error: { code: 'access.denied' },
@@ -611,6 +652,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
 
       expect(first.ok && first.value.stateCounts).toEqual({
         changesNeeded: 0,
+        notApproved: 0,
         approved: 0,
         suspended: 0,
       });

@@ -39,6 +39,23 @@ export interface SellerAccountSummary {
     /** The owner's sign-in address, as typed. */
     readonly email: string;
   } | null;
+  /**
+   * Rejected with no re-application left ("Not approved" rather than "Changes needed"); false in
+   * every other state; null while the Market configures no re-apply limit (never true then).
+   */
+  readonly reapplyLimitReached: boolean | null;
+}
+
+/**
+ * The caller's own access, for `sellers`' status of the seller's own file (sellers design 3.3,
+ * slice 7b): the state and whether a rejected seller has used up its re-applications. Never a
+ * reason, never an instant. Read for the seller actor of the call only.
+ */
+export interface SellerOwnAccess {
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessState;
+  /** As {@link SellerAccountSummary.reapplyLimitReached}. */
+  readonly reapplyLimitReached: boolean | null;
 }
 
 /**
@@ -50,6 +67,11 @@ export interface SellerIdsByStatePage {
   /** The `before` of the next page, or null after the last. */
   readonly next: Id<'Seller'> | null;
   readonly counts: Readonly<Record<SellerAccessState, number>>;
+  /**
+   * Of the rejected sellers, those with no re-application left (the "Not approved" tab, slice
+   * 7b); 0 while the Market configures no re-apply limit.
+   */
+  readonly rejectedLimitReached: number;
 }
 
 /** One page of registered seller ids (sellers design R-6, id paging for the backfill). */
@@ -222,8 +244,21 @@ export interface SellerAccessContract {
       readonly state: SellerAccessState | null;
       readonly before: Id<'Seller'> | null;
       readonly limit: number;
+      /**
+       * Only with `state` `rejected` (else `validation.failed`): true pages the sellers with no
+       * re-application left, false the others; absent or null both. While the Market
+       * configures no limit, true answers none and false all.
+       */
+      readonly reapplyLimitReached?: boolean | null;
     },
   ): Promise<Result<SellerIdsByStatePage, AccessDenied | FacadeValidationFailed>>;
+
+  /**
+   * The calling seller's own state and re-apply standing (sellers slice 7b): a thin call of
+   * `identity.describe-seller-status` (rule `own-resources`, allowed while not approved) with the
+   * Seller Owner's or Staff member's own context unchanged; only those two fields are passed on.
+   */
+  ownAccessOf(context: CallContext): Promise<Result<SellerOwnAccess, AccessDenied>>;
 
   /**
    * Registered sellers by id, with their origin, for the system actor only (sellers design R-6,

@@ -8,6 +8,7 @@ import { SELLER_ACCESS_STATES } from '../../domain/events';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SellerAccountReader, SellerStateCounts } from '../ports/seller-account-reader';
 import { readActingGrants, type GrantSubject } from '../roles/granting';
@@ -21,6 +22,11 @@ export interface SellerIdsByStateInput {
   readonly before: string | null;
   /** 0 (the counts only) to 100. */
   readonly limit: number;
+  /**
+   * Only with state `rejected`: true pages the sellers with no re-application left, false the
+   * others, null both. While the Market configures no limit, true is none and false all.
+   */
+  readonly reapplyLimitReached: boolean | null;
 }
 
 export interface SellerIdsByStatePage {
@@ -29,6 +35,8 @@ export interface SellerIdsByStatePage {
   /** The `before` of the next page, or null after the last. */
   readonly next: Id<'Seller'> | null;
   readonly counts: SellerStateCounts;
+  /** Of the rejected sellers, those with no re-application left; 0 without a configured limit. */
+  readonly rejectedLimitReached: number;
 }
 
 export type SellerIdsByStateFailure =
@@ -44,6 +52,7 @@ export interface SellerIdsByStateDependencies {
   readonly grants: RoleGrantReader;
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly sellerAccounts: SellerAccountReader;
+  readonly policy: IdentityMarketPolicy;
 }
 
 const USE_CASE = 'identity.seller-ids-by-state';
@@ -114,7 +123,8 @@ export class SellerIdsByState extends UseCase<
     }
     const valid = validated(input);
     if (!valid.ok) return valid;
-    const { state, before, limit } = valid.value;
+    const { state, before, limit, reapplyLimitReached } = valid.value;
+    const reapplyLimit = this.deps.policy.sellerReapplyLimit(market);
     const self: GrantSubject = { accountId: actor.accountId, population: 'admin', sellerId: null };
     return this.deps.unitOfWork.run(
       market,
@@ -129,16 +139,36 @@ export class SellerIdsByState extends UseCase<
         );
         if (acting === null) return err({ code: 'access.denied' });
         const counts = await this.deps.sellerAccounts.stateCounts(market);
-        if (state === null || limit === 0) return ok({ sellerIds: [], next: null, counts });
+        const rejectedLimitReached =
+          reapplyLimit === null
+            ? 0
+            : await this.deps.sellerAccounts.rejectedAtLimit(market, reapplyLimit);
+        if (state === null || limit === 0) {
+          return ok({ sellerIds: [], next: null, counts, rejectedLimitReached });
+        }
+        // Without a configured limit nobody has reached it: the "limit reached" page is empty.
+        if (reapplyLimitReached === true && reapplyLimit === null) {
+          return ok({ sellerIds: [], next: null, counts, rejectedLimitReached });
+        }
+        const reapply =
+          reapplyLimitReached === null || reapplyLimit === null
+            ? null
+            : { limit: reapplyLimit, reapplyLimitReached };
         // One id more than the page tells whether another page exists.
         const ids = await this.deps.sellerAccounts.sellerIdsInState(market, {
           state,
           before,
           limit: limit + 1,
+          reapply,
         });
         const more = ids.length > limit;
         const sellerIds = more ? ids.slice(0, limit) : ids;
-        return ok({ sellerIds, next: more ? sellerIds[sellerIds.length - 1]! : null, counts });
+        return ok({
+          sellerIds,
+          next: more ? sellerIds[sellerIds.length - 1]! : null,
+          counts,
+          rejectedLimitReached,
+        });
       },
       { readOnly: true },
     );
@@ -150,6 +180,7 @@ function validated(input: SellerIdsByStateInput): Result<
     readonly state: SellerAccessStateCode | null;
     readonly before: Id<'Seller'> | null;
     readonly limit: number;
+    readonly reapplyLimitReached: boolean | null;
   },
   SellerIdsByStateFailure
 > {
@@ -170,6 +201,12 @@ function validated(input: SellerIdsByStateInput): Result<
     if (parsed === null || !parsed.ok) fields.push({ path: 'before', code: 'format' });
     else before = parsed.value;
   }
+  const reapplyLimitReached = input.reapplyLimitReached ?? null;
+  if (reapplyLimitReached !== null) {
+    if (typeof reapplyLimitReached !== 'boolean') {
+      fields.push({ path: 'reapplyLimitReached', code: 'type' });
+    } else if (state !== 'rejected') fields.push({ path: 'reapplyLimitReached', code: 'state' });
+  }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
-  return ok({ state, before, limit });
+  return ok({ state, before, limit, reapplyLimitReached });
 }

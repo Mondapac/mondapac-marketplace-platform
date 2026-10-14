@@ -201,6 +201,7 @@ describe.each(TEST_MARKETS)(
         summariesOf: counted('summariesOf'),
         sellerIdsInState: counted('sellerIdsInState'),
         stateCounts: counted('stateCounts'),
+        rejectedAtLimit: counted('rejectedAtLimit'),
         sellersOfAddress: counted('sellersOfAddress'),
         openOwnerInvitations: counted('openOwnerInvitations'),
       };
@@ -210,6 +211,7 @@ describe.each(TEST_MARKETS)(
         grants: fakes.grantReader,
         effectiveKeys,
         sellerAccounts,
+        policy,
       };
       const decisionDeps = {
         unitOfWork,
@@ -258,6 +260,7 @@ describe.each(TEST_MARKETS)(
           approveSellerAccess: notUsed(),
           rejectSellerAccess: notUsed(),
           reapplySellerAccess: notUsed(),
+          describeSellerStatus: notUsed(),
           listSellerAccessDecisions: notUsed(),
           findAccessDecisionsByBasis: notUsed(),
         }),
@@ -843,7 +846,12 @@ describe.each(TEST_MARKETS)(
         });
         expect(first).toEqual({
           ok: true,
-          value: { sellerIds: [pending[0]], next: pending[0], counts: expected },
+          value: {
+            sellerIds: [pending[0]],
+            next: pending[0],
+            counts: expected,
+            rejectedLimitReached: 1,
+          },
         });
         const rest = await s.contract.sellerIdsByState(adminOf(VIEWER), {
           state: 'pending',
@@ -852,12 +860,88 @@ describe.each(TEST_MARKETS)(
         });
         expect(rest).toEqual({
           ok: true,
-          value: { sellerIds: pending.slice(1), next: null, counts: expected },
+          value: {
+            sellerIds: pending.slice(1),
+            next: null,
+            counts: expected,
+            rejectedLimitReached: 1,
+          },
         });
         expect(JSON.stringify(rest)).not.toContain(S_OTHER);
         expect(JSON.stringify(rest)).not.toContain(S_UNREGISTERED);
         expect(s.units.every((unit) => unit?.readOnly === true)).toBe(true);
         expect(logged()).not.toMatch(PERSONAL);
+      });
+
+      it('splits the rejected sellers by the re-apply limit (slice 7b)', async () => {
+        const s = setUp();
+        const spent = s.fakes.sellerAccess.get(S_REJECTED)!;
+
+        const reached = await s.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'rejected',
+          before: null,
+          limit: 10,
+          reapplyLimitReached: true,
+        });
+        const open = await s.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'rejected',
+          before: null,
+          limit: 10,
+          reapplyLimitReached: false,
+        });
+        s.fakes.sellerAccess.set(S_REJECTED, { ...spent, reapplyCount: 1 });
+        const afterOne = await s.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'rejected',
+          before: null,
+          limit: 10,
+          reapplyLimitReached: false,
+        });
+        const counts = await s.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: null,
+          before: null,
+          limit: 0,
+        });
+
+        expect(reached.ok && reached.value.sellerIds).toEqual([S_REJECTED]);
+        expect(open.ok && open.value.sellerIds).toEqual([]);
+        expect(afterOne.ok && afterOne.value.sellerIds).toEqual([S_REJECTED]);
+        expect(counts.ok && counts.value.rejectedLimitReached).toBe(0);
+        // Without a configured limit nobody has reached it.
+        const none = setUp({ policy: { sellerReapplyLimit: () => null } });
+        const noneReached = await none.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'rejected',
+          before: null,
+          limit: 10,
+          reapplyLimitReached: true,
+        });
+        const noneOpen = await none.contract.sellerIdsByState(adminOf(VIEWER), {
+          state: 'rejected',
+          before: null,
+          limit: 10,
+          reapplyLimitReached: false,
+        });
+        expect(noneReached.ok && noneReached.value.sellerIds).toEqual([]);
+        expect(noneReached.ok && noneReached.value.rejectedLimitReached).toBe(0);
+        expect(noneOpen.ok && noneOpen.value.sellerIds).toEqual([S_REJECTED]);
+      });
+
+      it('refuses a re-apply filter on a state other than rejected', async () => {
+        const s = setUp();
+
+        await expect(
+          s.contract.sellerIdsByState(adminOf(VIEWER), {
+            state: 'approved',
+            before: null,
+            limit: 5,
+            reapplyLimitReached: true,
+          }),
+        ).resolves.toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'reapplyLimitReached', code: 'state' }],
+          },
+        });
       });
 
       it('answers the counts only for limit 0, and refuses a bad state, limit or cursor before any read', async () => {
@@ -913,6 +997,7 @@ describe.each(TEST_MARKETS)(
             sellerId: S_APPROVED,
             state: 'approved',
             stateChangedAt: s.fakes.sellerAccess.get(S_APPROVED)!.stateChangedAt,
+            reapplyLimitReached: false,
             owner: {
               accountId: O_APPROVED,
               displayName: 'Owner of owner-approved',
@@ -923,6 +1008,7 @@ describe.each(TEST_MARKETS)(
             sellerId: S_INVITED,
             state: 'pending',
             stateChangedAt: s.fakes.sellerAccess.get(S_INVITED)!.stateChangedAt,
+            reapplyLimitReached: false,
             owner: null,
           },
         ]);

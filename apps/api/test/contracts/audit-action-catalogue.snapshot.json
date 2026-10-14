@@ -490,7 +490,7 @@
     "before": null,
     "after": {
       "previousRevisionId": "optional(id)",
-      "readKind": "enumOf(review)",
+      "readKind": "enumOf(review|reviewer-details)",
       "revisionId": "id"
     }
   },
