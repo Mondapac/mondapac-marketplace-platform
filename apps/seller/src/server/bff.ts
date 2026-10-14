@@ -18,6 +18,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/status',
     'sellers/my-file',
     'sellers/my-file/form-descriptors',
+    'payments/seller/payout-account',
   ]),
   PUT: new Set([
     'sellers/my-file/general',
@@ -45,6 +46,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/withdraw',
     'inventory/seller/sources',
     'catalog/seller/products',
+    // Each asks for a second-factor code in the body and answers with a one-time Stripe address.
+    'payments/seller/payout-account',
+    'payments/seller/payout-account/link',
   ]),
 };
 

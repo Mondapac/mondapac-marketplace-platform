@@ -15,7 +15,8 @@
     "offers": "Offers",
     "stock": "Stock locations",
     "security": "Security",
-    "orders": "Orders"
+    "orders": "Orders",
+    "payout": "Payout account"
   },
   "home": {
     "title": "Home",
@@ -1014,6 +1015,106 @@
       "title": "Get new backup codes",
       "body": "Enter a code from your app or a backup code. Your old backup codes stop working.",
       "label": "Code"
+    }
+  },
+  "payout": {
+    "title": "Payout account",
+    "intro": "Your payouts go to the bank account you add on Stripe. MondaPac never sees your bank details.",
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Only the account owner can manage the payout account."
+    },
+    "back": {
+      "return": {
+        "title": "Back from Stripe",
+        "body": "We are checking your details with Stripe. This can take a minute; use Check status to see the latest."
+      },
+      "refresh": {
+        "title": "The Stripe link expired",
+        "body": "Open it again to carry on where you stopped."
+      }
+    },
+    "status": {
+      "title": "Status",
+      "not-connected": "Not connected",
+      "not-started": "Not started",
+      "pending": "Pending",
+      "enabled": "Enabled",
+      "restricted": "Restricted",
+      "rejected": "Rejected",
+      "unknown": "Unknown",
+      "about": {
+        "not-connected": "You have not connected a payout account yet. Connect one to be paid for your orders.",
+        "not-started": "Your account is created, but you have not started on Stripe yet.",
+        "pending": "Stripe is checking your details. You may need to add more information.",
+        "enabled": "Stripe has approved your account for payouts.",
+        "restricted": "Stripe needs more information before it can pay you.",
+        "rejected": "Stripe could not approve this account. Contact support if you think this is a mistake.",
+        "unknown": "We could not read the status of your account."
+      }
+    },
+    "ready": {
+      "yes": "Ready for payouts",
+      "no": "Not ready for payouts"
+    },
+    "field": {
+      "requirements": "Details still needed",
+      "past-due": "Past due"
+    },
+    "requirements": {
+      "none": "None",
+      "due": "{count, plural, one {# item} other {# items}}"
+    },
+    "yes": "Yes",
+    "no": "No",
+    "past-due": "Some details are past due. Review your details on Stripe to keep payouts going.",
+    "cooling-off": {
+      "title": "Waiting period after a bank account change",
+      "body": "For your protection, payouts wait until {until}.",
+      "paused": "Payouts are paused until then."
+    },
+    "second-factor": {
+      "title": "Turn on two-step sign-in first",
+      "body": "To open Stripe we ask for a code from your authenticator app. Turn on two-step verification, then come back here.",
+      "link": "Go to Security"
+    },
+    "action": {
+      "connect": "Connect payout account",
+      "continue": "Continue on Stripe",
+      "review": "Review details on Stripe",
+      "check": "Check status"
+    },
+    "changes": {
+      "title": "Recent changes",
+      "empty": "No changes yet.",
+      "kind": {
+        "initial": "First bank account added",
+        "added": "Bank account added",
+        "updated": "Bank account updated",
+        "removed": "Bank account removed",
+        "unknown": "Change"
+      }
+    },
+    "dialog": {
+      "title": "Enter your verification code",
+      "body": "We ask for a code before opening Stripe, to keep your payouts safe.",
+      "label": "Code",
+      "help": "The 6-digit code from your authenticator app, or a recovery code.",
+      "cancel": "Cancel",
+      "continue": "Continue"
+    },
+    "error": {
+      "load": "We couldn't load your payout account. Try again.",
+      "check": "We couldn't check your status. Try again.",
+      "code-required": "Enter your 6-digit code or a recovery code.",
+      "invalid": "That code didn't work. Enter the newest code from your app or a recovery code.",
+      "locked": "Too many wrong codes. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "second-factor-required": "Turn on two-step sign-in on the Security page first.",
+      "unavailable": "Payments are not available right now. Try again in a few minutes.",
+      "csrf": "Refresh the page and try again.",
+      "denied": "You don't have permission to do this.",
+      "unknown": "Something went wrong on our side. Try again."
     }
   }
 }

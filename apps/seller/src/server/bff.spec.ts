@@ -593,3 +593,23 @@ describe('relay product photo paths', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe('relay of the payout account', () => {
+  const get = (path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('reads the account and posts connect and link, and nothing else under it', async () => {
+    const upstream = upstreamOk();
+    const base = ['payments', 'seller', 'payout-account'];
+    expect((await relay(config, get(base.join('/')), base, upstream)).status).toBe(200);
+    expect((await relay(config, post(base.join('/')), base, upstream)).status).toBe(200);
+    const link = [...base, 'link'];
+    expect((await relay(config, post(link.join('/')), link, upstream)).status).toBe(200);
+    expect((await relay(config, get(link.join('/')), link, upstream)).status).toBe(404);
+    const other = [...base, 'other'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+  });
+});
