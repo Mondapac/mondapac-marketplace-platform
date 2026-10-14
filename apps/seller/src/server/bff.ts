@@ -20,6 +20,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/team',
     'identity/seller/roles',
     'sellers/my-file',
+    'sellers/own-zone',
     'sellers/my-file/form-descriptors',
     'payments/seller/payout-account',
     'ordering/seller/orders',
