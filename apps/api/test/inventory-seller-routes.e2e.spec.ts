@@ -11,6 +11,7 @@ import { CreateSource } from '../src/modules/inventory/application/use-cases/cre
 import { EditSource } from '../src/modules/inventory/application/use-cases/edit-source.use-case';
 import { ListSources } from '../src/modules/inventory/application/use-cases/list-sources.use-case';
 import { ReorderSources } from '../src/modules/inventory/application/use-cases/reorder-sources.use-case';
+import { ViewOfferStock } from '../src/modules/inventory/application/use-cases/view-offer-stock.use-case';
 import { SetStockLevel } from '../src/modules/inventory/application/use-cases/set-stock-level.use-case';
 import { SELLER_INVENTORY_STATUS } from '../src/modules/inventory/presentation/seller-inventory.controller';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -85,7 +86,9 @@ describe('seller inventory routes over HTTP', () => {
           .overrideProvider(ReorderSources)
           .useValue(stub('reorder'))
           .overrideProvider(SetStockLevel)
-          .useValue(stub('stock')),
+          .useValue(stub('stock'))
+          .overrideProvider(ViewOfferStock)
+          .useValue(stub('view-stock')),
     }));
   }
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -179,6 +182,8 @@ describe('seller inventory routes over HTTP', () => {
   };
   const STOCK = `/inventory/seller/offers/${OFFER}/variants/${VARIANT}/sources/${SOURCE}/stock`;
 
+  const STOCK_READ = `/inventory/seller/offers/${OFFER}/stock`;
+
   beforeEach(() => {
     fakes.reset();
     clock = new FixedClock(START);
@@ -267,6 +272,57 @@ describe('seller inventory routes over HTTP', () => {
         onHand: 7,
         expectedVersion: null,
       });
+    });
+
+    it('reads the stock of an Offer, shaped per Variant and location, with no-store', async () => {
+      await boot();
+      await seeded(code);
+      const cell = {
+        variantId: VARIANT,
+        sourceId: SOURCE,
+        onHand: 5,
+        held: 2,
+        version: null,
+        retired: false,
+      };
+      next = ok({
+        offerId: OFFER,
+        variants: [{ variantId: VARIANT, sources: [{ ...cell, extra: 1 }] }],
+      });
+
+      const read = await call('get', code, STOCK_READ, sessionOf(code));
+
+      expect(read.status).toBe(200);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body).toEqual({
+        offerId: OFFER,
+        variants: [{ variantId: VARIANT, sources: [cell] }],
+      });
+      expect(calls).toEqual([{ name: 'view-stock', input: { offerId: OFFER } }]);
+    });
+
+    it('refuses the stock read without a session, and maps not found, not ready, denied and invalid', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      // The gate (stubbed here) answers an anonymous caller `access.unauthenticated`.
+      next = err({ code: 'access.unauthenticated' });
+      expect((await call('get', code, STOCK_READ, {})).status).toBe(401);
+      next = err({ code: 'access.seller-not-approved' });
+      expect((await call('get', code, STOCK_READ, session)).status).toBe(403);
+
+      next = err({ code: 'inventory.not-found' });
+      const foreign = await call('get', code, STOCK_READ, session);
+      expect(foreign.status).toBe(404);
+      expect(foreign.body).toEqual({ statusCode: 404, code: 'inventory.not-found' });
+      next = err({ code: 'inventory.not-ready' });
+      expect((await call('get', code, STOCK_READ, session)).status).toBe(409);
+      next = err({ code: 'access.denied' });
+      expect((await call('get', code, STOCK_READ, session)).status).toBe(403);
+      next = err({ code: 'validation.failed', fields: [{ path: 'offerId', code: 'format' }] });
+      const invalid = await call('get', code, '/inventory/seller/offers/not-a-uuid/stock', session);
+      expect(invalid.status).toBe(400);
     });
 
     it('refuses without CSRF or a session, and for unknown or missing body fields', async () => {
