@@ -148,6 +148,7 @@ export class StartSellerOwnerSecondFactorReset extends UseCase<
         const verdict = await reserveInvitationMail(
           deps,
           market,
+          'seller',
           owner.state.email.normalized,
           input.origin,
           now,
