@@ -561,7 +561,7 @@ export class FakeAccess implements SellerAccessReader {
   reapply(
     _context: CallContext,
     sellerId: Id<'Seller'>,
-  ): Promise<'reapplied' | 'wrong-state' | 'limit'> {
+  ): Promise<'reapplied' | 'wrong-state' | 'limit' | 'denied'> {
     this.reapplyCalls.push(sellerId);
     if (this.failing || this.reapplyAnswer === 'throw') {
       return Promise.reject(new Error('identity down'));
