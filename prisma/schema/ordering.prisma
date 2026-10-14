@@ -71,6 +71,8 @@ model OrderingSellerOrder {
   /// order into the seller ledger (commission-payouts). Orders placed before the commission rate
   /// was frozen on their lines are not-applicable.
   ledgerState         String              @map("ledger_state")
+  /// How many times the ledger refused this seller order; the worker takes the fewest first.
+  ledgerAttempts      Int                 @default(0) @map("ledger_attempts")
   order               OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines               OrderingOrderLine[]
 

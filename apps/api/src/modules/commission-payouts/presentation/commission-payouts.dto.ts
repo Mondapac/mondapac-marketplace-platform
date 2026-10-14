@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { LedgerView } from '../application/ledger-flow';
-import type { RateView } from '../application/rate-flow';
+import type { RateView } from '../application/use-cases/view-commission-rate.use-case';
+import type { LedgerView } from '../application/use-cases/view-own-ledger.use-case';
 
 // Bodies of the commission-payouts routes. Ids, basis points and minor-unit strings only.
 

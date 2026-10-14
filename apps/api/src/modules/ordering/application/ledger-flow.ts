@@ -1,11 +1,13 @@
 import { ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { OrderingDependencies } from './checkout-flow';
 import type { SellerOrderRecord } from './ports/order.repository';
 
 // Paid seller orders go into the seller ledger (commission-payouts, Phase 5 package 5) from the
 // worker, not from the payment path: a confirmed order never waits for, or fails on, the ledger.
-// commission-payouts writes each seller order once, so a repeat after a crash writes nothing.
+// commission-payouts writes each seller order once, so a repeat after a crash writes nothing. A
+// refusal is counted on the seller order, and the queue takes the fewest-refused first, so one
+// seller order the ledger keeps refusing never holds up the others (Hassan, package 5 review).
 
 const LEDGER_BATCH = 20;
 
@@ -46,15 +48,22 @@ export async function recordLedger(
   if (!pending.ok) return pending;
   let recorded = 0;
   const failed: { sellerOrderId: string; code: string }[] = [];
+  const refuse = async (sellerOrderId: Id<'SellerOrder'>, code: string) => {
+    failed.push({ sellerOrderId, code });
+    await deps.unitOfWork.run<true, never>(context.market, async () => {
+      await deps.orders.countLedgerFailure(context.market, sellerOrderId);
+      return ok(true as const);
+    });
+  };
   for (const record of pending.value) {
     const facts = paidFacts(record);
     if (facts === null) {
-      failed.push({ sellerOrderId: record.sellerOrder.id, code: 'ordering.rate-not-frozen' });
+      await refuse(record.sellerOrder.id, 'ordering.rate-not-frozen');
       continue;
     }
     const done = await deps.commission.recordSellerOrderPaid(context, facts);
     if (!done.ok) {
-      failed.push({ sellerOrderId: record.sellerOrder.id, code: done.error.code });
+      await refuse(record.sellerOrder.id, done.error.code);
       continue;
     }
     await deps.unitOfWork.run<true, never>(context.market, async () => {

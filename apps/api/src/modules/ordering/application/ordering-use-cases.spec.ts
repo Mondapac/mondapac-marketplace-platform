@@ -940,6 +940,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         'ordering.rate-not-frozen',
       ]);
       expect(commission.recorded).toEqual([]);
+      // Each refusal is counted, so the queue takes other seller orders first.
+      expect([...orders.ledgerFailures.values()]).toEqual([1, 1]);
     });
   });
 });

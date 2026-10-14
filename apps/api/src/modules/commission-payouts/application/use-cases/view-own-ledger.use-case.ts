@@ -4,6 +4,8 @@ import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../../contracts/permissions';
 import type { CommissionPayoutsDependencies } from '../commission-payouts-dependencies';
 import { viewOwnLedger, type LedgerFailure, type LedgerView, type PageInput } from '../ledger-flow';
 
+export type { LedgerView };
+
 /** `commission-payouts.view-own-ledger`: the acting seller reads its own ledger and balance. */
 export class ViewOwnLedger extends UseCase<PageInput, LedgerView, LedgerFailure> {
   static override readonly access: AccessDeclaration = {

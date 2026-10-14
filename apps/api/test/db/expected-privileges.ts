@@ -318,6 +318,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'delivered_at',
         'fulfilment',
         'inventory_recorded_at',
+        'ledger_attempts',
         'ledger_state',
         'shipped_at',
         'tracking_ref',

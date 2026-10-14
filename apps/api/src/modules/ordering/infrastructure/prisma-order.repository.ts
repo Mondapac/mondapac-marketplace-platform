@@ -342,10 +342,17 @@ export class PrismaOrderRepository implements OrderRepository {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
       where: { marketId: market.marketId, ledgerState: 'pending', order: { status: 'confirmed' } },
       include: SELLER_INCLUDE,
-      orderBy: [{ order: { confirmedAt: 'asc' } }, { id: 'asc' }],
+      orderBy: [{ ledgerAttempts: 'asc' }, { order: { confirmedAt: 'asc' } }, { id: 'asc' }],
       take: limit,
     });
     return rows.map(toRecord);
+  }
+
+  async countLedgerFailure(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: { marketId: market.marketId, id: sellerOrderId, ledgerState: 'pending' },
+      data: { ledgerAttempts: { increment: 1 } },
+    });
   }
 
   async markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {

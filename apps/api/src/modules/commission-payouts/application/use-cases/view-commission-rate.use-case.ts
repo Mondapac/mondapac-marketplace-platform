@@ -4,6 +4,8 @@ import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../contracts/permissions'
 import type { CommissionPayoutsDependencies } from '../commission-payouts-dependencies';
 import { viewCommissionRate, type RateFailure, type RateView } from '../rate-flow';
 
+export type { RateView };
+
 /** `commission-payouts.view-commission-rate`: an admin reads a seller's commission rate. */
 export class ViewCommissionRate extends UseCase<
   { readonly sellerId: unknown },

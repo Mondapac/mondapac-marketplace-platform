@@ -171,8 +171,18 @@ export class MemoryOrders implements OrderRepository {
     return Promise.resolve(
       this.paid(null)
         .filter((r) => r.sellerOrder.ledgerState === 'pending')
+        .sort(
+          (a, b) =>
+            (this.ledgerFailures.get(a.sellerOrder.id) ?? 0) -
+            (this.ledgerFailures.get(b.sellerOrder.id) ?? 0),
+        )
         .slice(0, limit),
     );
+  }
+  ledgerFailures = new Map<string, number>();
+  countLedgerFailure(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    this.ledgerFailures.set(sellerOrderId, (this.ledgerFailures.get(sellerOrderId) ?? 0) + 1);
+    return Promise.resolve();
   }
   markLedgerRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     for (const [orderId, order] of this.rows) {
