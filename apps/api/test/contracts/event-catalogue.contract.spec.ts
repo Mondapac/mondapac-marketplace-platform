@@ -88,6 +88,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.seller-suspended-mail',
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'inventory.ensure-seller-inventory-approved',
       'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
@@ -135,8 +136,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('identity.invitation-accepted.v1')).toEqual([]);
     // Slice 9: one result mail per access decision (E4 to E7); re-apply mails no one. Sellers
     // slice 7a-decide: the review settles the revision a decision names (design 7.3).
+    // Inventory creates a seller inventory at approval too (design 3.4).
     expect(subscriptions.subscribersOf('identity.seller-access-approved.v1')).toEqual([
       'identity.seller-approved-mail',
+      'inventory.ensure-seller-inventory-approved',
       'sellers.close-decision-approved',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([

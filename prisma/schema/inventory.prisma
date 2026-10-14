@@ -297,3 +297,20 @@ model InventoryOfferPurchaseLimit {
   @@map("offer_purchase_limits")
   @@schema("inventory")
 }
+
+/// Fixed-window counters of the `reserve` rate limit (inventory design 5.4). The subject is an
+/// HMAC, never an account id. The closed kind list and the grants are hand-written in the
+/// migration `inventory_commit_rate_prune`.
+model InventoryRateCounter {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  kind            String
+  keyHash         Bytes    @map("key_hash")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  count           Int
+
+  @@id([marketId, kind, keyHash])
+  @@index([marketId, windowStartedAt])
+  @@map("rate_counters")
+  @@schema("inventory")
+}

@@ -74,6 +74,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON inventory.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'inventory.reservations_market_id_expires_at_active_idx':
     "CREATE INDEX reservations_market_id_expires_at_active_idx ON inventory.reservations USING btree (market_id, expires_at) WHERE (status = 'active'::text)",
+  'inventory.reservations_market_id_status_changed_at_terminal_idx':
+    "CREATE INDEX reservations_market_id_status_changed_at_terminal_idx ON inventory.reservations USING btree (market_id, status_changed_at) WHERE (status = ANY (ARRAY['released'::text, 'expired'::text]))",
   'inventory.reservations_market_id_holder_account_id_active_key':
     "CREATE UNIQUE INDEX reservations_market_id_holder_account_id_active_key ON inventory.reservations USING btree (market_id, holder_account_id) WHERE (status = 'active'::text)",
   'inventory.retirements_market_id_offer_id_offer_key':

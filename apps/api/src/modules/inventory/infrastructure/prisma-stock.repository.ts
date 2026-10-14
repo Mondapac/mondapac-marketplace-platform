@@ -272,8 +272,9 @@ export class PrismaStockRepository implements StockRepository {
           delta: movement.delta,
           resultingOnHand: movement.resultingOnHand,
           reason: movement.reason,
-          // `re-key` is the module's own write (the table CHECK pairs reason and actor kind).
-          ...(movement.reason === 're-key'
+          // `re-key` and `shipment` are the module's own writes (the table CHECK pairs reason and
+          // actor kind).
+          ...(movement.reason === 're-key' || movement.reason === 'shipment'
             ? { actorKind: 'module', actorAccountId: null, actorModule: 'inventory' }
             : {
                 actorKind: 'account',

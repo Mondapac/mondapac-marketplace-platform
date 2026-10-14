@@ -35,14 +35,16 @@ interface NewStockMovementBase {
 
 /**
  * One ledger entry (data design 3.5): an account's stock write, or the module's own `re-key` of a
- * moved Offer (the table CHECKs pair each reason with its actor kind).
+ * moved Offer or `shipment` of a committed line (the table CHECKs pair each reason with its actor kind).
  */
 export type NewStockMovement =
   | (NewStockMovementBase & {
       readonly reason: 'seller-set';
       readonly actorAccountId: Id<'Account'>;
     })
-  | (NewStockMovementBase & { readonly reason: 're-key' });
+  | (NewStockMovementBase & { readonly reason: 're-key' })
+  /** A committed line shipped: the module's own write, `delta` is the negative quantity. */
+  | (NewStockMovementBase & { readonly reason: 'shipment' });
 
 /** Which tombstones cover an Offer's sell units (data design 3.10). */
 export interface OfferTombstones {

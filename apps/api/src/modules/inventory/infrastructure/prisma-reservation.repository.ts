@@ -2,6 +2,8 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import { Temporal as T } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  CommitAssignment,
+  CommittedLineRow,
   ReservationRepository,
   SellUnitRef,
 } from '../application/ports/reservation.repository';
@@ -39,6 +41,7 @@ interface HeaderRow {
     readonly stockItemId: string;
     readonly quantity: number;
     readonly state: string;
+    readonly orderLineId: string | null;
   }[];
 }
 
@@ -62,6 +65,7 @@ function toReservation(row: HeaderRow): Reservation {
         stockItemId: line.stockItemId as Id<'StockItem'>,
         quantity: line.quantity,
         status: line.state as ReservationLineStatus,
+        orderLineId: line.orderLineId,
       })),
   });
 }
@@ -240,6 +244,117 @@ export class PrismaReservationRepository implements ReservationRepository {
       data: { state: 'released', stateChangedAt: toDate(now) },
     });
     return true;
+  }
+
+  async commit(
+    market: MarketContext,
+    id: Id<'Reservation'>,
+    assignments: readonly CommitAssignment[],
+    now: Temporal.Instant,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).inventoryReservation.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        OR: [
+          { status: 'active' },
+          { status: 'expired' },
+          { status: 'released', releaseCause: 'superseded' },
+        ],
+      },
+      data: { status: 'committed', statusChangedAt: toDate(now), version: { increment: 1 } },
+    });
+    if (count === 0) return false;
+    for (const assignment of assignments) {
+      await this.prisma.tx(market).inventoryReservationLine.updateMany({
+        where: { marketId: market.marketId, reservationId: id, id: assignment.lineId },
+        data: {
+          state: 'committed',
+          orderLineId: assignment.orderLineId,
+          stockItemId: assignment.stockItemId,
+          stateChangedAt: toDate(now),
+        },
+      });
+    }
+    return true;
+  }
+
+  async findLineByOrderLine(
+    market: MarketContext,
+    orderLineId: string,
+  ): Promise<CommittedLineRow | null> {
+    const row = await this.prisma.tx(market).inventoryReservationLine.findFirst({
+      where: { marketId: market.marketId, orderLineId },
+    });
+    if (row === null) return null;
+    return {
+      lineId: row.id as Id<'ReservationLine'>,
+      reservationId: row.reservationId as Id<'Reservation'>,
+      offerId: row.offerId as Id<'Offer'>,
+      variantId: row.variantId as Id<'Variant'>,
+      stockItemId: row.stockItemId as Id<'StockItem'>,
+      quantity: row.quantity,
+      status: row.state as ReservationLineStatus,
+    };
+  }
+
+  async finishLine(
+    market: MarketContext,
+    lineId: Id<'ReservationLine'>,
+    to: 'cancelled' | 'fulfilled',
+    now: Temporal.Instant,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).inventoryReservationLine.updateMany({
+      where: { marketId: market.marketId, id: lineId, state: 'committed' },
+      data: { state: to, stateChangedAt: toDate(now) },
+    });
+    return count === 1;
+  }
+
+  async shipUnits(
+    market: MarketContext,
+    id: Id<'StockItem'>,
+    quantity: number,
+  ): Promise<number | null> {
+    // The caller holds the item's lock. Retired items ship too: their committed lines still work
+    // (design 3.3). The version moves, so a seller form read before the shipment is stale (C5).
+    const { count } = await this.prisma.tx(market).inventoryStockItem.updateMany({
+      where: { marketId: market.marketId, id, onHand: { gte: quantity } },
+      data: { onHand: { decrement: quantity }, version: { increment: 1 } },
+    });
+    if (count === 0) return null;
+    const row = await this.prisma.tx(market).inventoryStockItem.findFirstOrThrow({
+      where: { marketId: market.marketId, id },
+      select: { onHand: true },
+    });
+    return row.onHand;
+  }
+
+  async pruneTerminal(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<number> {
+    const due = await this.prisma.tx(market).inventoryReservation.findMany({
+      where: {
+        marketId: market.marketId,
+        status: { in: ['released', 'expired'] },
+        statusChangedAt: { lt: toDate(before) },
+      },
+      orderBy: { statusChangedAt: 'asc' },
+      take: limit,
+      select: { id: true },
+    });
+    if (due.length === 0) return 0;
+    // The status guard repeats, so a row that changed since the read is left alone.
+    const { count } = await this.prisma.tx(market).inventoryReservation.deleteMany({
+      where: {
+        marketId: market.marketId,
+        id: { in: due.map((row) => row.id) },
+        status: { in: ['released', 'expired'] },
+      },
+    });
+    return count;
   }
 
   async expireDue(

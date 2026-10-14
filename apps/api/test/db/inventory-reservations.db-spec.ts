@@ -12,6 +12,12 @@ import { ExpireReservations } from '../../src/modules/inventory/application/use-
 import { ReleaseOwnReservation } from '../../src/modules/inventory/application/use-cases/release-own-reservation.use-case';
 import { ReleaseReservation } from '../../src/modules/inventory/application/use-cases/release-reservation.use-case';
 import { Reserve } from '../../src/modules/inventory/application/use-cases/reserve.use-case';
+import { CancelCommittedLine } from '../../src/modules/inventory/application/use-cases/cancel-committed-line.use-case';
+import { CommitReservation } from '../../src/modules/inventory/application/use-cases/commit-reservation.use-case';
+import { PruneReservations } from '../../src/modules/inventory/application/use-cases/prune-reservations.use-case';
+import { RecordShipment } from '../../src/modules/inventory/application/use-cases/record-shipment.use-case';
+import { HmacRateCounterKeys } from '../../src/modules/inventory/infrastructure/hmac-rate-counter-keys';
+import { PrismaRateCounterRepository } from '../../src/modules/inventory/infrastructure/prisma-rate-counter.repository';
 import { SetStockLevel } from '../../src/modules/inventory/application/use-cases/set-stock-level.use-case';
 import { INVENTORY_EVENTS } from '../../src/modules/inventory/domain/events';
 import { ConfigInventoryPolicyProvider } from '../../src/modules/inventory/infrastructure/config-inventory-policy-provider';
@@ -65,6 +71,10 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
   let releaseOwn: ReleaseOwnReservation;
   let release: ReleaseReservation;
   let expire: ExpireReservations;
+  let commit: CommitReservation;
+  let cancelLine: CancelCommittedLine;
+  let ship: RecordShipment;
+  let prune: PruneReservations;
   let setStockLevel: SetStockLevel;
   let reader: PrismaAvailabilityReader;
   const catalogOffers = new Map<
@@ -93,10 +103,17 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
         ids,
         NO_PERMISSION_KEYS,
       ).forModule('inventory'),
+      counters: new PrismaRateCounterRepository(db.service),
+      counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(9)),
+      stock: new PrismaStockRepository(db.service),
       ids,
       clock,
     };
     reserve = new Reserve(gate, common);
+    commit = new CommitReservation(gate, common);
+    cancelLine = new CancelCommittedLine(gate, common);
+    ship = new RecordShipment(gate, common);
+    prune = new PruneReservations(gate, common);
     releaseOwn = new ReleaseOwnReservation(gate, common);
     release = new ReleaseReservation(gate, common);
     expire = new ExpireReservations(gate, common);
@@ -863,6 +880,339 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
         [code, s.units[0]!.items[0]],
       );
       expect(item!.on_hand).toBe(8);
+    });
+  });
+
+  describe('slice 5: commit, cancel, shipment, prune and the rate limit', () => {
+    const system = () => testCallContext(market, 'system');
+    const holderOf = (context: CallContext) =>
+      context.actor.kind === 'authenticated' ? context.actor.accountId : '';
+
+    /** Reserves `quantity` of every unit as a new customer; returns what a commit needs. */
+    async function reservedCart(units: readonly Unit[], quantity = 1) {
+      const who = customer();
+      const checkoutRef = ids.next<'Checkout'>();
+      const answer = await reserve.execute(who, cart(units, quantity, checkoutRef));
+      if (!answer.ok) throw new Error(`reserve: ${answer.error.code}`);
+      const lines = answer.value.lines.map((line) => ({
+        reservationLineId: line.reservationLineId,
+        orderLineId: ids.next<'OrderLine'>(),
+      }));
+      return {
+        who,
+        reservationId: answer.value.reservationId,
+        request: { reservationId: answer.value.reservationId, checkoutRef, lines },
+      };
+    }
+    const stateOf = (reservationId: string) =>
+      rows(
+        `SELECT r.status, r.release_cause, l.state, l.order_line_id, l.stock_item_id, l.quantity
+           FROM inventory.reservations r JOIN inventory.reservation_lines l
+             ON l.market_id = r.market_id AND l.reservation_id = r.id
+          WHERE r.market_id = $1 AND r.id = $2 ORDER BY l.id`,
+        [code, reservationId],
+      );
+    const itemRow = async (itemId: string) =>
+      (
+        await rows(
+          `SELECT on_hand, version FROM inventory.stock_items WHERE market_id = $1 AND id = $2`,
+          [code, itemId],
+        )
+      )[0] as { on_hand: number; version: number };
+
+    it('commits a live reservation, which keeps counting after its expiry would have passed', async () => {
+      const s = await seller([[high, high]]);
+      const r = await reservedCart(s.units, 2);
+
+      expect(await commit.execute(system(), r.request)).toEqual({
+        ok: true,
+        value: { reservationId: r.reservationId },
+      });
+      expect(await commit.execute(system(), r.request)).toEqual({
+        ok: true,
+        value: { reservationId: r.reservationId },
+      });
+
+      const [row] = await stateOf(r.reservationId);
+      expect(row).toMatchObject({
+        status: 'committed',
+        release_cause: null,
+        state: 'committed',
+        order_line_id: r.request.lines[0]!.orderLineId,
+        stock_item_id: s.units[0]!.items[0],
+      });
+      clock.advance(Temporal.Duration.from({ minutes: minutes + 5 }));
+      expect(await heldOn(s.units[0]!.items)).toEqual([2, 0]);
+      expect(await expire.execute(system(), {})).toMatchObject({ ok: true });
+      expect((await stateOf(r.reservationId))[0]!.status).toBe('committed');
+    });
+
+    it('allocates an expired reservation again on the next source, and refuses when nothing fits', async () => {
+      const s = await seller([
+        [3, high],
+        [high, 0],
+      ]);
+      const first = await reservedCart([s.units[0]!], 3);
+      const second = await reservedCart([s.units[1]!], 2);
+      clock.advance(Temporal.Duration.from({ minutes: minutes + 1 }));
+      // Another buyer takes source 1 of the first unit; the seller sets the second to zero.
+      expect((await reserve.execute(customer(), cart([s.units[0]!], 3))).ok).toBe(true);
+      await sql.query(
+        `UPDATE inventory.stock_items SET on_hand = 0 WHERE market_id = $1 AND id = $2`,
+        [code, s.units[1]!.items[0]],
+      );
+
+      const moved = await commit.execute(system(), first.request);
+      const refused = await commit.execute(system(), second.request);
+
+      expect(moved.ok).toBe(true);
+      expect((await stateOf(first.reservationId))[0]).toMatchObject({
+        status: 'committed',
+        stock_item_id: s.units[0]!.items[1],
+      });
+      expect(refused).toMatchObject({
+        ok: false,
+        error: { code: 'inventory.insufficient', details: { lines: [{ reason: 'out' }] } },
+      });
+      expect((await stateOf(second.reservationId))[0]).toMatchObject({
+        status: 'active',
+        state: 'active',
+        order_line_id: null,
+      });
+    });
+
+    it('commits a reservation released as superseded and refuses a cancelled one, nothing taken', async () => {
+      const s = await seller([[high, high]]);
+      const old = await reservedCart(s.units, 1);
+      const other = await reserve.execute(old.who, cart(s.units, 1));
+      expect(other.ok).toBe(true);
+      expect((await stateOf(old.reservationId))[0]).toMatchObject({
+        status: 'released',
+        release_cause: 'superseded',
+      });
+
+      expect((await commit.execute(system(), old.request)).ok).toBe(true);
+      expect((await stateOf(old.reservationId))[0]).toMatchObject({
+        status: 'committed',
+        release_cause: 'superseded',
+        state: 'committed',
+      });
+
+      const gone = await reservedCart(s.units, 1);
+      await release.execute(system(), { reservationId: gone.reservationId, cause: 'cancelled' });
+      expect(await commit.execute(system(), gone.request)).toMatchObject({
+        ok: false,
+        error: { code: 'inventory.insufficient' },
+      });
+      expect((await stateOf(gone.reservationId))[0]!.status).toBe('released');
+    });
+
+    it('refuses a mismatching checkoutRef, a subset and a reused order line', async () => {
+      const s = await seller([
+        [high, high],
+        [high, high],
+      ]);
+      const r = await reservedCart(s.units, 1);
+      const done = await reservedCart([s.units[0]!], 1);
+      await commit.execute(system(), done.request);
+
+      const wrongRef = { ...r.request, checkoutRef: ids.next<'Checkout'>() };
+      const subset = { ...r.request, lines: r.request.lines.slice(0, 1) };
+      const reused = {
+        ...r.request,
+        lines: [
+          { ...r.request.lines[0]!, orderLineId: done.request.lines[0]!.orderLineId },
+          r.request.lines[1]!,
+        ],
+      };
+
+      for (const bad of [wrongRef, subset, reused]) {
+        expect(await commit.execute(system(), bad)).toMatchObject({
+          error: { code: 'inventory.commit-mismatch' },
+        });
+      }
+      expect((await stateOf(r.reservationId))[0]!.status).toBe('active');
+    });
+
+    it('serialises a commit with the expiry job: the reservation ends committed or expired, never both', async () => {
+      const s = await seller([[high, high]]);
+      const r = await reservedCart(s.units, 1);
+      clock.advance(Temporal.Duration.from({ minutes: minutes + 1 }));
+
+      const [committed, expired] = await Promise.all([
+        commit.execute(system(), r.request),
+        expire.execute(system(), {}),
+      ]);
+
+      expect(committed.ok).toBe(true);
+      expect(expired.ok).toBe(true);
+      const finalRows = await stateOf(r.reservationId);
+      expect(finalRows[0]!.status).toBe('committed');
+      expect(finalRows[0]!.state).toBe('committed');
+    });
+
+    it('cancels a committed line (sellable again), and ships one (on-hand down, movement, version up)', async () => {
+      const s = await seller([[high, high]]);
+      const toCancel = await reservedCart(s.units, 3);
+      const toShip = await reservedCart(s.units, 2);
+      await commit.execute(system(), toCancel.request);
+      await commit.execute(system(), toShip.request);
+      expect(await heldOn(s.units[0]!.items)).toEqual([5, 0]);
+
+      const cancelled = await cancelLine.execute(system(), {
+        orderLineId: toCancel.request.lines[0]!.orderLineId,
+      });
+      expect(cancelled.ok).toBe(true);
+      expect(await heldOn(s.units[0]!.items)).toEqual([2, 0]);
+
+      const before = await itemRow(s.units[0]!.items[0]!);
+      const orderLineId = toShip.request.lines[0]!.orderLineId;
+      expect((await ship.execute(system(), { orderLineId })).ok).toBe(true);
+      expect((await ship.execute(system(), { orderLineId })).ok).toBe(true);
+
+      const after = await itemRow(s.units[0]!.items[0]!);
+      expect(after.on_hand).toBe(before.on_hand - 2);
+      expect(after.version).toBe(before.version + 1);
+      expect(await heldOn(s.units[0]!.items)).toEqual([0, 0]);
+      const movements = await rows(
+        `SELECT delta, resulting_on_hand, reason, actor_kind, actor_module
+           FROM inventory.stock_movements WHERE market_id = $1 AND stock_item_id = $2`,
+        [code, s.units[0]!.items[0]],
+      );
+      expect(movements).toEqual([
+        {
+          delta: -2,
+          resulting_on_hand: before.on_hand - 2,
+          reason: 'shipment',
+          actor_kind: 'module',
+          actor_module: 'inventory',
+        },
+      ]);
+      expect(await cancelLine.execute(system(), { orderLineId })).toMatchObject({
+        error: { code: 'inventory.line.final' },
+      });
+      expect(
+        await ship.execute(system(), { orderLineId: toCancel.request.lines[0]!.orderLineId }),
+      ).toMatchObject({ error: { code: 'inventory.line.final' } });
+    });
+
+    it('lets exactly one of a racing cancel and shipment of the same line win', async () => {
+      const s = await seller([[high, high]]);
+      const r = await reservedCart(s.units, 2);
+      await commit.execute(system(), r.request);
+      const orderLineId = r.request.lines[0]!.orderLineId;
+
+      const [a, b] = await Promise.all([
+        cancelLine.execute(system(), { orderLineId }),
+        ship.execute(system(), { orderLineId }),
+      ]);
+
+      expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+      const [line] = await stateOf(r.reservationId);
+      expect(['cancelled', 'fulfilled']).toContain(line!.state);
+      const item = await itemRow(s.units[0]!.items[0]!);
+      expect(item.on_hand).toBe(line!.state === 'fulfilled' ? high - 2 : high);
+    });
+
+    it('ships a line whose stock item was retired meanwhile', async () => {
+      const s = await seller([[high, null]]);
+      const r = await reservedCart(s.units, 2);
+      await commit.execute(system(), r.request);
+      await sql.query(
+        `UPDATE inventory.stock_items SET retired_at = $3 WHERE market_id = $1 AND id = $2`,
+        [code, s.units[0]!.items[0], new Date(T0.epochMilliseconds)],
+      );
+
+      expect(
+        (await ship.execute(system(), { orderLineId: r.request.lines[0]!.orderLineId })).ok,
+      ).toBe(true);
+      expect((await itemRow(s.units[0]!.items[0]!)).on_hand).toBe(high - 2);
+    });
+
+    it('prunes released and expired reservations after 30 days, lines by the cascade, never committed ones', async () => {
+      const s = await seller([[high, high]]);
+      const released = await reservedCart(s.units, 1);
+      const committed = await reservedCart(s.units, 1);
+      await commit.execute(system(), committed.request);
+      await release.execute(system(), {
+        reservationId: released.reservationId,
+        cause: 'cancelled',
+      });
+      clock.advance(Temporal.Duration.from({ hours: 31 * 24 }));
+
+      const run = await prune.execute(system(), {});
+
+      expect(run.ok).toBe(true);
+      expect(await stateOf(released.reservationId)).toEqual([]);
+      expect(
+        await rows(
+          `SELECT 1 FROM inventory.reservation_lines WHERE market_id = $1 AND reservation_id = $2`,
+          [code, released.reservationId],
+        ),
+      ).toEqual([]);
+      expect((await stateOf(committed.reservationId))[0]!.status).toBe('committed');
+    });
+
+    it('throttles the 7th reserve of one account in 15 minutes, counts in PostgreSQL by hashed key, and purges after 48 hours', async () => {
+      const s = await seller([[high, high]]);
+      const who = customer();
+      for (let call = 0; call < 6; call += 1) {
+        expect((await reserving(who, cart(s.units, 1))).answer.ok).toBe(true);
+      }
+
+      const over = await reserve.execute(who, cart(s.units, 1));
+
+      expect(over).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+      const counters = await rows(
+        `SELECT kind, count, octet_length(key_hash) AS bytes FROM inventory.rate_counters
+          WHERE market_id = $1 AND kind LIKE 'reserve.account.%' ORDER BY window_started_at DESC, kind`,
+        [code],
+      );
+      expect(counters.length).toBeGreaterThanOrEqual(2);
+      expect(counters.every((row) => row.bytes === 32)).toBe(true);
+      expect(JSON.stringify(counters)).not.toContain(holderOf(who));
+      // No reservation was made by the refused call.
+      expect(
+        (await reservationsOf(holderOf(who))).filter((row) => row.status === 'active'),
+      ).toHaveLength(1);
+
+      clock.advance(Temporal.Duration.from({ hours: 49 }));
+      await prune.execute(system(), {});
+      expect(
+        await rows(
+          `SELECT 1 FROM inventory.rate_counters WHERE market_id = $1 AND window_started_at < $2`,
+          [code, new Date(clock.now().epochMilliseconds - 48 * 3_600_000)],
+        ),
+      ).toEqual([]);
+    });
+
+    it('uses the held index for the held sum and the terminal index for the prune (EXPLAIN)', async () => {
+      const plan = async (text: string, params: unknown[]) => {
+        await sql.query('BEGIN');
+        try {
+          await sql.query('SET LOCAL enable_seqscan = off');
+          await sql.query('SET LOCAL enable_bitmapscan = off');
+          const result = await sql.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${text}`, params);
+          return result.rows.map((row) => row['QUERY PLAN']).join('\n');
+        } finally {
+          await sql.query('ROLLBACK');
+        }
+      };
+      const held = await plan(
+        `SELECT stock_item_id, state, SUM(quantity) FROM inventory.reservation_lines
+          WHERE market_id = $1 AND stock_item_id = ANY($2::uuid[]) AND state IN ('active', 'committed')
+            AND (state = 'committed' OR expires_at > $3) GROUP BY stock_item_id, state`,
+        [code, [ids.next<'StockItem'>()], new Date(T0.epochMilliseconds)],
+      );
+      const terminal = await plan(
+        `SELECT id FROM inventory.reservations WHERE market_id = $1
+            AND status IN ('released', 'expired') AND status_changed_at < $2
+          ORDER BY status_changed_at LIMIT 500`,
+        [code, new Date(T0.epochMilliseconds)],
+      );
+
+      expect(held).toContain('reservation_lines_market_id_stock_item_id_state_idx');
+      expect(terminal).toContain('reservations_market_id_status_changed_at_terminal_idx');
     });
   });
 });

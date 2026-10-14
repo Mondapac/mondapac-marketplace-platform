@@ -5,7 +5,9 @@ import type { InventoryBatchTooLarge, InventoryValidationFailed } from './invent
 // The ordering port of inventory (inventory design 7.2): the commands `ordering` sends. Only
 // `modules/ordering` may import this file (dependency-cruiser rule
 // `inventory-ordering-port-is-for-ordering`); inventory's `index.ts` does not export it. Slice 4
-// holds the reservation commands. Commit, line cancellation and shipment arrive with slice 5.
+// holds the reservation commands; slice 5 adds commit, line cancellation and shipment.
+// `getSellableExact` (design 7.2) is dropped: ordering commits before it captures payment, so a
+// refusal is a void and no exact count is read.
 // Every method takes the caller's `CallContext` unchanged, so the gate of the wrapped use case
 // runs. No method carries a price or a Cost; the source chosen per line stays internal.
 
@@ -55,11 +57,24 @@ export interface ConflictRetry {
   readonly code: 'conflict.retry';
 }
 
+/** The holder spent the `reserve` budget (design 5.4); the call did nothing. */
+export interface RequestThrottled {
+  readonly code: 'request.throttled';
+  readonly retryAfterSeconds: number;
+}
+
+/** The rate limiter could not answer; `reserve` fails closed (Hassan finding 6). */
+export interface AccessUnavailable {
+  readonly code: 'access.unavailable';
+}
+
 export type ReserveFailure =
   | AccessDenied
   | InventoryValidationFailed
   | InventoryBatchTooLarge
   | InventoryInsufficient
+  | RequestThrottled
+  | AccessUnavailable
   | ConflictRetry;
 
 export type ReleaseFailure =
@@ -78,6 +93,39 @@ export interface ReleaseResult {
   readonly reservationId: Id<'Reservation'>;
 }
 
+export interface CommitLine {
+  readonly reservationLineId: string;
+  /** Ordering's order line for the reserved line; the idempotency key of cancel and shipment. */
+  readonly orderLineId: string;
+}
+
+export interface CommitRequest {
+  readonly reservationId: string;
+  /** Must equal the reservation's `checkoutRef` (Hassan finding 5). */
+  readonly checkoutRef: string;
+  /** Every line of the reservation, once (a subset is refused, design 3.2). */
+  readonly lines: readonly CommitLine[];
+}
+
+export type CommitFailure =
+  | AccessDenied
+  | InventoryValidationFailed
+  | { readonly code: 'inventory.reservation.not-found' }
+  /** Another `checkoutRef`, lines or order lines than the reservation's or its earlier commit. */
+  | { readonly code: 'inventory.commit-mismatch' }
+  /** Nothing fits again, or the reservation was released for good: nothing was taken. */
+  | InventoryInsufficient
+  | ConflictRetry;
+
+export type LineCommandFailure =
+  | AccessDenied
+  | InventoryValidationFailed
+  /** No committed line has this order line. */
+  | { readonly code: 'inventory.line.not-found' }
+  /** Cancel after shipment, or shipment after cancel (design 10). */
+  | { readonly code: 'inventory.line.final' }
+  | ConflictRetry;
+
 export interface InventoryOrderingPort {
   /** Customer actor only (rule `own-resources`); refused in an acting-as session. */
   reserve(
@@ -89,6 +137,24 @@ export interface InventoryOrderingPort {
     context: CallContext,
     request: { readonly reservationId: string; readonly cause: SystemReleaseCause },
   ): Promise<Result<ReleaseResult, ReleaseFailure>>;
+  /**
+   * System actor only. ACTIVE to COMMITTED; an expired or superseded reservation is allocated
+   * again under lock (design 3.1). Ordering calls it before it captures payment.
+   */
+  commitReservation(
+    context: CallContext,
+    request: CommitRequest,
+  ): Promise<Result<ReleaseResult, CommitFailure>>;
+  /** System actor only. COMMITTED to CANCELLED: the units are sellable again. */
+  cancelCommittedLine(
+    context: CallContext,
+    request: { readonly orderLineId: string },
+  ): Promise<Result<{ readonly orderLineId: string }, LineCommandFailure>>;
+  /** System actor only. COMMITTED to FULFILLED: the source's on-hand goes down by the quantity. */
+  recordShipment(
+    context: CallContext,
+    request: { readonly orderLineId: string },
+  ): Promise<Result<{ readonly orderLineId: string }, LineCommandFailure>>;
   /** The holder's own reservation (cause `customer`). */
   releaseOwnReservation(
     context: CallContext,
