@@ -498,7 +498,9 @@ async function ensureStoreTerms(admin, sessions) {
     const terms = STORE_TERMS[seller.key];
     const row = approved.items.find((item) => item.slug === seller.slug);
     if (!terms || !row) continue;
-    await admin.ok('PUT', `/shipping/admin/sellers/${row.sellerId}/flat-fee`, { amount: terms.fee });
+    await admin.ok('PUT', `/shipping/admin/sellers/${row.sellerId}/flat-fee`, {
+      amount: terms.fee,
+    });
     if (terms.minimum === null) continue;
     const session = sessions.get(seller.key);
     const settings = await session.ok('GET', '/sellers/store-settings');
