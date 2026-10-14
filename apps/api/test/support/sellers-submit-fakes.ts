@@ -582,15 +582,17 @@ export class FakeDirectory implements SellerAccountDirectory {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, SellerAccountEntry>> {
-    return this.access.accessOfMany(context, sellerIds).then(
-      (states) =>
-        new Map(
-          [...states].map(([id, state]): [Id<'Seller'>, SellerAccountEntry] => [
-            id,
-            { state, owner: this.owners.get(id) ?? null },
-          ]),
-        ),
-    );
+    return this.access
+      .accessOfMany(context, sellerIds)
+      .then(
+        (states) =>
+          new Map(
+            [...states].map(([id, state]): [Id<'Seller'>, SellerAccountEntry] => [
+              id,
+              { state, owner: this.owners.get(id) ?? null },
+            ]),
+          ),
+      );
   }
 
   idsByState(
@@ -606,7 +608,9 @@ export class FakeDirectory implements SellerAccountDirectory {
     const counts = { pending: 0, approved: 0, rejected: 0, suspended: 0 };
     for (const state of this.access.states.values()) counts[state] += 1;
     const ids = [...this.access.states]
-      .filter(([id, state]) => state === query.state && (query.before === null || id < query.before))
+      .filter(
+        ([id, state]) => state === query.state && (query.before === null || id < query.before),
+      )
       .map(([id]) => id as Id<'Seller'>)
       .sort((a, b) => (a < b ? 1 : -1));
     const page = query.state === null ? [] : ids.slice(0, query.limit);

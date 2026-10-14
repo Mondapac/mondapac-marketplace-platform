@@ -76,7 +76,8 @@ export class SellerListController {
   })
   @ApiForbiddenResponse({
     type: SellersErrorBody,
-    description: 'access.denied (also a state tab without identity.seller-access.view) or request.csrf',
+    description:
+      'access.denied (also a state tab without identity.seller-access.view) or request.csrf',
   })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({

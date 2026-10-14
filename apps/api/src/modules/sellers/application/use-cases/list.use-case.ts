@@ -201,8 +201,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       return ok({
         tab: request.tab,
         items: decorated.value,
-        next:
-          idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
+        next: idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
         counts: read.value.counts,
         stateCounts: stateTabCounts(idPage.counts),
       });
@@ -270,9 +269,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
           const counts = await list.counts(market);
           if (stateIds !== null) {
             const files =
-              stateIds.length === 0
-                ? []
-                : await list.all(market, query(stateIds, stateIds.length));
+              stateIds.length === 0 ? [] : await list.all(market, query(stateIds, stateIds.length));
             // In `identity`'s order, whatever the order of the read.
             const byId = new Map(files.map((file) => [file.sellerId, file]));
             const rows = stateIds.flatMap((sellerId) => byId.get(sellerId) ?? []);
