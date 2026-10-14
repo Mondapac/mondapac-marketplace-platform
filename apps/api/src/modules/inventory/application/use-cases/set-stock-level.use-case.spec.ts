@@ -18,7 +18,11 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
-import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
+import {
+  MAX_LOCK_TIMEOUT_MS,
+  type UnitOfWork,
+  type UnitOfWorkOptions,
+} from '../../../../platform/unit-of-work/unit-of-work';
 import { SellerInventory } from '../../domain/seller-inventory';
 import type { StoredSignal } from '../../domain/stock';
 import { ConfigInventoryPolicyProvider } from '../../infrastructure/config-inventory-policy-provider';
@@ -314,7 +318,7 @@ describe.each(['AU', 'ZZ'] as const)('inventory.set-stock-level in market %s', (
 
     await t.setStockLevel.execute(w.context, w.input());
 
-    expect(t.units).toEqual([{ isolation: 'serializable' }]);
+    expect(t.units).toEqual([{ isolation: 'serializable', lockTimeoutMs: MAX_LOCK_TIMEOUT_MS }]);
     expect(t.offers.calls).toBe(1);
     expect(t.stock.locks).toBe(1);
   });
