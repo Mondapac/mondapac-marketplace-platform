@@ -328,6 +328,16 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
     expect(audit.rows).toEqual([]);
   });
 
+  it('answers access.denied, not an outage, when identity refuses the actor (Hassan low 4)', async () => {
+    await addRevision('onboarding', 1);
+    access.refusing = true;
+
+    const result = await useCase().execute(admin(), { sellerId });
+
+    expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(audit.rows).toEqual([]);
+  });
+
   it('is refused by the gate without the key, with no read and no row', async () => {
     await addRevision('onboarding', 1);
 

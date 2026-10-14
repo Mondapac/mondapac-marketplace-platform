@@ -29,6 +29,7 @@ import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-see
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import type { AccountRepository } from '../ports/account.repository';
+import type { ThrottleKeys } from '../ports/session-secrets';
 import { AssignAdminRole } from './assign-admin-role.use-case';
 import { InviteAdmin } from './invite-admin.use-case';
 import {
@@ -46,6 +47,14 @@ import {
 
 const START = Temporal.Instant.from('2026-10-09T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+/** Throttle keys in the clear: the counters are told apart by Market, population and address. */
+const keys: ThrottleKeys = {
+  account: (market, population, email) => Buffer.from(`${market.marketId}|${population}|${email}`),
+  accountOrigin: (market, population, email, origin) =>
+    Buffer.from(`${market.marketId}|${population}|${email}|${origin}`),
+  origin: (market, origin) => Buffer.from(`${market.marketId}|${origin}`),
+};
+const ORIGIN = '203.0.113.9';
 
 const id = <T extends string>(text: string): Id<T> => {
   const parsed = parseId(text);
@@ -278,6 +287,8 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       assign: new AssignAdminRole(gate, common),
       invite: new InviteAdmin(gate, {
         ...common,
+        throttles: fakes.throttleRepository,
+        keys,
         invitations: fakes.invitationRepository,
         policy: new MarketConfigIdentityPolicy(markets),
         ids: new SequenceIdGenerator(clock),
@@ -455,6 +466,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
           roleId: item.roleId,
         });
         const invited = await invite.execute(as(actor), {
+          origin: ORIGIN,
           email: 'parity@example.com',
           roleId: item.roleId,
         });
@@ -481,7 +493,11 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
 
       for (const roleId of [sellerOwner, SELLER_CUSTOM_ROLE, ELSEWHERE_ROLE]) {
         const assigned = await assign.execute(as(ROOT), { accountId: TARGET, roleId });
-        const invited = await invite.execute(as(ROOT), { email: 'x@example.com', roleId });
+        const invited = await invite.execute(as(ROOT), {
+          origin: ORIGIN,
+          email: 'x@example.com',
+          roleId,
+        });
         expect([assigned, invited]).toEqual([
           { ok: false, error: { code: 'role.unknown' } },
           { ok: false, error: { code: 'role.unknown' } },

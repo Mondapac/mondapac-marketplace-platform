@@ -31,7 +31,11 @@ import type { RevisionKind } from '../../domain/revision-kinds';
 import type { RevisionStatus } from '../../domain/business-file-revision';
 import type { AccessState } from '../../domain/seller-status';
 import type { SealedRevisionContent } from '../../domain/sealed';
-import type { AccessUnavailable, SellersUnavailable } from '../draft/draft-support';
+import type {
+  AccessUnavailable,
+  DraftAccessDenied,
+  SellersUnavailable,
+} from '../draft/draft-support';
 import type { FileNotFound } from '../draft/draft-view';
 import type { BusinessIdentifierSchemes } from '../ports/business-identifier-scheme';
 import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
@@ -40,6 +44,7 @@ import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
 import type { ReviewCheckRepository } from '../ports/review-check.repository';
 import type { RevisionContentSealer } from '../ports/revision-content-sealer';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
+import { identityReadFailure } from '../ports/seller-account-directory';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 
 /** The seller whose file is reviewed: from the path of the admin route. */
@@ -118,7 +123,11 @@ export interface ReviewView {
 }
 
 export type ReviewReadFailure =
-  FileNotFound | AccessUnavailable | SellersUnavailable | { readonly code: 'review.no-revision' };
+  | FileNotFound
+  | DraftAccessDenied
+  | AccessUnavailable
+  | SellersUnavailable
+  | { readonly code: 'review.no-revision' };
 
 export interface ReviewReadDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -203,8 +212,8 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
     let access: AccessState | null;
     try {
       access = await accessReader.accessOf(context, sellerId);
-    } catch {
-      return err({ code: 'sellers.unavailable' });
+    } catch (error) {
+      return err(identityReadFailure(error));
     }
     if (access === null) return err({ code: 'file.not-found' });
 

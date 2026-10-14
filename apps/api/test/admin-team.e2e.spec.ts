@@ -399,6 +399,48 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       expect(account.body).toEqual({ statusCode: 404, code: 'account.unknown' });
     });
 
+    it('answers 429 with Retry-After once the invitation and its re-sends used up the address mail counter', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const issued = await post(
+        code,
+        'invitations',
+        { email: INVITEE, roleId: roleOf('viewer') },
+        root,
+      );
+      const invitationId = (issued.body as { invitationId: string }).invitationId;
+      const limit = app.get(MarketRegistry).get(marketOf(code).marketId).identity.mailThrottles
+        .account.limit;
+      // The invitation itself counted the first mail; the re-sends count the rest.
+      for (let n = 1; n < limit; n += 1) {
+        const resent = await post(code, `invitations/${invitationId}/resend`, {}, root);
+        expect(resent.status).toBe(200);
+      }
+
+      const refused = await post(code, `invitations/${invitationId}/resend`, {}, root);
+
+      expect(refused.status).toBe(429);
+      expect(refused.body).toEqual({
+        statusCode: 429,
+        code: 'request.throttled',
+        details: { retryAfterSeconds: expect.any(Number) as number },
+      });
+      expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+      // Revoking and inviting the same address again shares the counter (Hassan, low 1).
+      await post(code, `invitations/${invitationId}/revoke`, {}, root);
+      const again = await post(
+        code,
+        'invitations',
+        { email: INVITEE, roleId: roleOf('viewer') },
+        root,
+      );
+      expect([again.status, (again.body as { code: string }).code]).toEqual([
+        429,
+        'request.throttled',
+      ]);
+    });
+
     it('refuses without the CSRF token, without a session, and without the permission', async () => {
       await boot();
       await seeded(code);

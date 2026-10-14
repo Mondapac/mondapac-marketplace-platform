@@ -26,6 +26,7 @@ import {
 import { zoneOptionsOf, type FileNotFound } from '../draft/draft-view';
 import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
+import { identityReadFailure } from '../ports/seller-account-directory';
 import type { RegisterCheckRepository } from '../ports/register-check.repository';
 import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
 import { sellerResultOf } from '../register/register-lookup';
@@ -174,8 +175,8 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
           owner.sellerId,
         );
       }
-    } catch {
-      return err({ code: 'sellers.unavailable' });
+    } catch (error) {
+      return err(identityReadFailure(error));
     }
     if (access === null) return err({ code: 'file.not-found' });
     const read = await unitOfWork.run(

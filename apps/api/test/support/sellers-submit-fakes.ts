@@ -33,6 +33,7 @@ import type {
   SealedRevision,
 } from '../../src/modules/sellers/application/ports/revision-content-sealer';
 import type { SellerAccessReader } from '../../src/modules/sellers/application/ports/seller-access-reader';
+import { SellerAccountAccessRefused } from '../../src/modules/sellers/application/ports/seller-account-directory';
 import type {
   SellerAccountDirectory,
   SellerAccountEntry,
@@ -540,6 +541,8 @@ export class FakeAccess implements SellerAccessReader {
   /** Sellers whose Market configures no re-apply limit: the standing is unknown (null). */
   readonly noLimit = new Set<string>();
   failing = false;
+  /** `identity` refuses the actor (the adapter's `SellerAccountAccessRefused`). */
+  refusing = false;
   /** What a re-application answers; a successful one moves the seller to `pending`. */
   reapplyAnswer: 'reapplied' | 'wrong-state' | 'limit' | 'denied' | 'throw' = 'reapplied';
   readonly reapplyCalls: Id<'Seller'>[] = [];
@@ -552,6 +555,7 @@ export class FakeAccess implements SellerAccessReader {
 
   reapplyLimitReachedOf(_context: CallContext, sellerId: Id<'Seller'>): Promise<boolean | null> {
     if (this.failing) return Promise.reject(new Error('identity down'));
+    if (this.refusing) return Promise.reject(new SellerAccountAccessRefused('refused'));
     if (this.noLimit.has(sellerId)) return Promise.resolve(null);
     return Promise.resolve(
       this.states.get(sellerId) === 'rejected' && this.exhausted.has(sellerId),
@@ -572,6 +576,7 @@ export class FakeAccess implements SellerAccessReader {
 
   accessOf(_context: CallContext, sellerId: Id<'Seller'>): Promise<AccessState | null> {
     if (this.failing) return Promise.reject(new Error('identity down'));
+    if (this.refusing) return Promise.reject(new SellerAccountAccessRefused('refused'));
     return Promise.resolve(this.states.get(sellerId) ?? null);
   }
 

@@ -28,6 +28,7 @@ import {
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
@@ -60,7 +61,7 @@ import { EditPlatformRole } from '../application/use-cases/edit-platform-role.us
 import { ResendAdminInvitation } from '../application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from '../application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from '../application/use-cases/revoke-admin-invitation.use-case';
-import { adminBody } from './admin.answer';
+import { adminBody, adminClient } from './admin.answer';
 import {
   AdminAccountStatusChanged,
   AdminAssignRoleRequest,
@@ -103,19 +104,28 @@ export const ADMIN_TEAM_STATUS: Readonly<Record<string, number>> = Object.freeze
   'invitation.already-pending': 409,
   'invitation.rejected': 409,
   'second-factor.none': 409,
+  'request.throttled': 429,
   'access.unavailable': 503,
 });
 
-type Refusal = { readonly code: string; readonly fields?: readonly unknown[] };
+type Refusal = {
+  readonly code: string;
+  readonly fields?: readonly unknown[];
+  readonly retryAfterSeconds?: number;
+};
 
-function refusal(error: Refusal): HttpException {
+function refusal(error: Refusal, response?: Response): HttpException {
   const status =
     ADMIN_TEAM_STATUS[error.code] ??
     ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS] ??
     500;
-  return error.fields === undefined
-    ? fail(status, error.code)
-    : fail(status, error.code, { fields: error.fields });
+  if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  // The re-send's invitation mail counters (6.8): 429 with Retry-After, as the seller re-send.
+  if (error.retryAfterSeconds !== undefined) {
+    response?.setHeader('Retry-After', String(error.retryAfterSeconds));
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
+  return fail(status, error.code);
 }
 
 /** A path id: malformed answers as an unknown resource, byte-identical to a missing one (5.2). */
@@ -507,23 +517,36 @@ export class AdminTeamController {
     description: 'account.exists, invitation.already-pending or conflict.stale',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description:
+      'request.throttled (details.retryAfterSeconds, Retry-After): the invitation mail counters ' +
+      'of the address or the client are used up',
+  })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async invite(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
   ): Promise<AdminInvitationIssued> {
     const input = adminBody(request, body, ['email', 'roleId'] as const);
+    const client = input instanceof HttpException ? input : adminClient(request);
     let outcome: AdminInvitationIssued | HttpException;
     if (input instanceof HttpException) outcome = input;
+    else if (client instanceof HttpException) outcome = client;
     else {
       const roleId = parseId<'Role'>(input.roleId);
       const result = roleId.ok
-        ? await this.inviteAdmin.execute(context, { email: input.email, roleId: roleId.value })
+        ? await this.inviteAdmin.execute(context, {
+            email: input.email,
+            roleId: roleId.value,
+            origin: client.origin,
+          })
         : err({ code: 'validation.failed', fields: [{ path: 'roleId', code: 'format' }] });
       outcome = result.ok
         ? { code: result.value.code, invitationId: result.value.invitationId }
-        : refusal(result.error);
+        : refusal(result.error, response);
     }
     return this.settle('identity.admin-invite', context, outcome);
   }
@@ -553,15 +576,27 @@ export class AdminTeamController {
     description: 'invitation.rejected (decided, or its role is gone) or conflict.stale',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description:
+      'request.throttled (details.retryAfterSeconds, Retry-After): the invitation mail counters ' +
+      'of the address or the client are used up',
+  })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async resend(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Param('invitationId') rawInvitationId: string,
     @Body() body: unknown,
   ): Promise<AdminInvitationChanged> {
-    const outcome = await this.onInvitation(request, rawInvitationId, body, (invitationId) =>
-      this.resendAdminInvitation.execute(context, { invitationId }),
+    const outcome = await this.onInvitation(
+      request,
+      rawInvitationId,
+      body,
+      (invitationId, origin) =>
+        this.resendAdminInvitation.execute(context, { invitationId, origin }),
+      response,
     );
     return this.settle('identity.admin-resend-invitation', context, outcome);
   }
@@ -842,16 +877,20 @@ export class AdminTeamController {
     request: Request,
     rawInvitationId: string,
     body: unknown,
-    run: (invitationId: Id<'Invitation'>) => Promise<Result<T, Refusal>>,
+    run: (invitationId: Id<'Invitation'>, origin: string) => Promise<Result<T, Refusal>>,
+    response?: Response,
   ): Promise<{ code: T['code']; invitationId: string } | HttpException> {
     const invitationId = pathId<'Invitation'>(rawInvitationId, 'invitation.unknown');
     if (invitationId instanceof HttpException) return invitationId;
     const input = adminBody(request, body, []);
     if (input instanceof HttpException) return input;
-    const result = await run(invitationId);
+    // After the path and the body, as the seller invitation routes (Hassan, info 2).
+    const client = adminClient(request);
+    if (client instanceof HttpException) return client;
+    const result = await run(invitationId, client.origin);
     return result.ok
       ? { code: result.value.code, invitationId: result.value.invitationId }
-      : refusal(result.error);
+      : refusal(result.error, response);
   }
 
   /** Logs the outcome code with the correlation id, then answers or throws. */

@@ -19,12 +19,17 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleRepository } from '../ports/seller-team.repository';
+import type { ThrottleKeys } from '../ports/session-secrets';
+import type { ThrottleRepository } from '../ports/throttle.repository';
 import { readActingGrants, type GrantSubject } from '../roles/granting';
+import { reserveInvitationMail } from '../sellers/invitation-mail-budget';
 
 const RULE_KEYS = [ADMIN_ACCOUNT_INVITE.key];
 
 export interface ResendAdminInvitationInput {
   readonly invitationId: Id<'Invitation'>;
+  /** The admin's client: the `mail.origin` key of the re-send (6.8). */
+  readonly origin: string;
 }
 
 export interface ResendAdminInvitationOutput {
@@ -41,6 +46,8 @@ export type ResendAdminInvitationFailure =
    */
   | { readonly code: 'invitation.rejected' }
   | { readonly code: 'role.not-grantable' }
+  /** `mail.account` of the invited address or `mail.origin` is used up (6.8). */
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'access.denied' };
 
@@ -52,6 +59,8 @@ export interface ResendAdminInvitationDependencies {
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
   readonly invitations: InvitationRepository;
+  readonly throttles: ThrottleRepository;
+  readonly keys: ThrottleKeys;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
   readonly policy: IdentityMarketPolicy;
@@ -74,7 +83,10 @@ export interface ResendAdminInvitationDependencies {
  * still be able to grant the role, read in this unit (R1, R11; Hassan I-2), so a re-send never
  * lends a role the actor could not invite with today; and the original inviter must still pass
  * the acceptance's check (Hassan L3), else `invitation.rejected`, since such an invitation could
- * never be accepted. Audit `identity.invitation.reissued`.
+ * never be accepted. After those checks the mail is counted on `mail.account` of the invited
+ * address (admin population) and `mail.origin` of the admin's client, as the seller re-send does
+ * (6.8; the throttle follow-up of PR #187): used up is `request.throttled` and nothing commits.
+ * Audit `identity.invitation.reissued`.
  */
 export class ResendAdminInvitation extends UseCase<
   ResendAdminInvitationInput,
@@ -135,6 +147,19 @@ export class ResendAdminInvitation extends UseCase<
           return err({ code: verdict.error.code });
         }
         const role = verdict.value;
+        const address = invitation.state.email;
+        if (address === null) return err({ code: 'invitation.rejected' });
+        const budget = await reserveInvitationMail(
+          this.deps,
+          market,
+          'admin',
+          address.normalized,
+          input.origin,
+          now,
+        );
+        if (!budget.allowed) {
+          return err({ code: 'request.throttled', retryAfterSeconds: budget.retryAfterSeconds });
+        }
         // Checked by the verdict at this `now`; the aggregate checks again.
         if (!invitation.reissue(now, lifetime).ok) return err({ code: 'invitation.rejected' });
         await this.deps.invitations.save(market, invitation);

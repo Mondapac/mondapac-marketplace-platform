@@ -219,6 +219,7 @@ export class InviteSeller extends UseCase<
           const verdict = await reserveInvitationMail(
             this.deps,
             market,
+            'seller',
             email.value.normalized,
             input.origin,
             now,
