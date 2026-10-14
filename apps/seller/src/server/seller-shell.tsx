@@ -20,8 +20,10 @@ export async function SellerShell({
 }) {
   const t = await getTranslations();
   const approved = session.sellerAccessState === 'approved';
+  // Security and Team are for approved sellers; Seller account (setup) is for the others.
+  const approvedOnly = new Set(['s_security', 's_team']);
   const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter((item) =>
-    approved ? item.id !== 's_setup' : item.id !== 's_security',
+    approved ? item.id !== 's_setup' : !approvedOnly.has(item.id),
   );
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];

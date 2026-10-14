@@ -2,7 +2,7 @@
 // The responsive standard of the panels (docs: frontend-next handoff): the phone drawer and
 // bottom bar of the shell, and a source check that no table can widen the page.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AppShell } from '@mondapac/ui';
+import { AppShell, Menu } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -174,5 +174,53 @@ describe('two-step reset pages', () => {
     // The sign-in link is a 48px touch target; the button fills the auth column.
     expect(confirm).toContain('min-h-12');
     expect(confirm).toContain('block');
+  });
+});
+
+describe('team pages', () => {
+  it('give each row action a full control height, 48 px on phones', () => {
+    render(
+      <Menu
+        label="Actions for Ada"
+        items={[{ id: 'a', label: 'Change role', onSelect: () => undefined }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada' }));
+    expect(screen.getByRole('menuitem', { name: 'Change role' }).className).toContain(
+      'min-h-(--mp-size-control)',
+    );
+  });
+
+  // Source checks: the screenshots at 375/768/1280 are the layout evidence; these keep the
+  // classes that produce it from being dropped.
+  const read = (file: string) => readFileSync(join(__dirname, file), 'utf8');
+
+  it('source: keep the table in its own scroll box with fixed columns and no pixel widths', () => {
+    const table = read('../src/team/team-table.tsx');
+    expect(table).toContain('overflow-x-auto');
+    expect(table).toContain('table-fixed');
+    expect(table).toContain('<colgroup>');
+    expect(table).toContain('break-words');
+    expect(table).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+  });
+
+  it('source: use fluid layouts, touch-sized controls, shared dialogs and stacked actions', () => {
+    for (const file of [
+      '../src/team/team-table.tsx',
+      '../src/team/role-dialog.tsx',
+      '../src/team/row-actions.tsx',
+      '../src/team/invite-member-button.tsx',
+      '../src/auth/accept-invitation-form.tsx',
+      '../app/(shell)/team/page.tsx',
+    ]) {
+      expect(read(file), file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    }
+    const page = read('../app/(shell)/team/page.tsx');
+    expect(page).toContain('flex-col gap-2 sm:flex-row');
+    expect(page).toContain('min-h-12');
+    expect(read('../src/team/role-dialog.tsx')).toContain('<Dialog');
+    expect(read('../src/team/row-actions.tsx')).toContain('<Dialog');
+    expect(read('../src/team/invite-member-button.tsx')).toContain('w-full sm:w-auto');
+    expect(read('../src/auth/accept-invitation-form.tsx')).toContain('min-h-12');
   });
 });

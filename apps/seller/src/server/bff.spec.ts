@@ -643,3 +643,75 @@ describe('relay of the seller order routes', () => {
     }
   });
 });
+
+describe('relay of the seller team routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const team = ['identity', 'seller', 'team'];
+  const get = (path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('lists the team forwarding only `after`, and reads the roles without a query', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, get(`${team.join('/')}?after=${ID}&limit=1`), team, upstream)).status,
+    ).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/identity/seller/team?after=${ID}`);
+    await relay(config, get(`${team.join('/')}?after=not-a-uuid`), team, upstream);
+    expect(upstream.mock.calls.at(-1)?.[0]).toBe('http://api.test/identity/seller/team');
+    const roles = ['identity', 'seller', 'roles'];
+    expect((await relay(config, get('identity/seller/roles?x=1'), roles, upstream)).status).toBe(
+      200,
+    );
+    expect(upstream.mock.calls.at(-1)?.[0]).toBe('http://api.test/identity/seller/roles');
+    expect((await relay(config, post('identity/seller/roles'), roles, upstream)).status).toBe(404);
+  });
+
+  it('posts an invitation and the anonymous acceptance, and nothing near them', async () => {
+    const upstream = upstreamOk();
+    for (const path of [
+      [...team, 'invitations'],
+      ['identity', 'seller', 'accept-invitation'],
+    ]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+    }
+    for (const path of [
+      [...team, 'invitations', 'x'],
+      [...team, 'accounts'],
+      ['identity', 'seller', 'accept-invitation', 'x'],
+      team,
+    ]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    }
+    const list = [...team, 'invitations'];
+    expect((await relay(config, get(list.join('/')), list, upstream)).status).toBe(404);
+  });
+
+  it('posts resend, revoke, role and remove by UUID only', async () => {
+    const upstream = upstreamOk();
+    for (const tail of [
+      ['invitations', ID, 'resend'],
+      ['invitations', ID, 'revoke'],
+      ['accounts', ID, 'role'],
+      ['accounts', ID, 'remove'],
+    ]) {
+      const path = [...team, ...tail];
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+    }
+    for (const tail of [
+      ['invitations', 'x', 'resend'],
+      ['accounts', 'x', 'remove'],
+      ['invitations', ID, 'remove'],
+      ['accounts', ID, 'resend'],
+      ['accounts', ID],
+      ['accounts', ID, 'role', 'x'],
+    ]) {
+      const path = [...team, ...tail];
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    }
+    const path = [...team, 'accounts', ID, 'remove'];
+    expect((await relay(config, get(path.join('/')), path, upstream)).status).toBe(404);
+  });
+});

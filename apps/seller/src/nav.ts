@@ -36,6 +36,12 @@ export const sellerNav: NavConfig = {
       anyOf: ['payments.payout-account.view'],
     },
     // Approved sellers only (SellerShell hides it before).
+    {
+      id: 's_team',
+      labelKey: 'nav.team',
+      href: '/team',
+      anyOf: ['identity.team-member.view'],
+    },
     { id: 's_security', labelKey: 'nav.security', href: '/account/security' },
     // Shown only while the seller is not approved (SellerShell hides it after).
     { id: 's_setup', labelKey: 'nav.setup', href: '/account-setup' },
