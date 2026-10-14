@@ -24,6 +24,12 @@ import {
   type LineAvailability,
 } from '../domain/cart';
 import {
+  evaluateMinimumOrder,
+  type BuyableLine,
+  type MinimumOrderEvaluation,
+  type MinimumOrderState,
+} from '../domain/cart-evaluator';
+import {
   GUEST_CREATE_ORIGIN,
   GUEST_WRITE_CART,
   GUEST_WRITE_ORIGIN,
@@ -77,6 +83,7 @@ export type CartFailure =
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'conflict.stale' }
   | { readonly code: 'cart.check-unavailable' }
+  | { readonly code: 'cart.not-ready'; readonly sellers: readonly NotReadySeller[] }
   | { readonly code: 'cart.too-many-lines' }
   | { readonly code: 'cart.line-not-found' }
   | { readonly code: 'cart.offer-not-purchasable'; readonly reason: UnavailableReason };
@@ -94,12 +101,28 @@ export interface LineView {
   readonly availability: LineAvailability | null;
 }
 
+/** The minimum-order state of a seller group (design 6.4) and the minimum when it is public. */
+export interface MinimumOrderView {
+  readonly state: MinimumOrderState;
+  /** The seller's minimum for `met` and `below-minimum`; null otherwise. */
+  readonly minimum: Money | null;
+}
+
 export interface SellerGroupView {
   /** Null for lines whose seller could not be determined. */
   readonly sellerId: Id<'Seller'> | null;
   /** Sum of the buyable lines at the current price; null when there are none or prices mix. */
   readonly subtotal: Money | null;
+  readonly minimumOrder: MinimumOrderView;
   readonly lines: readonly LineView[];
+}
+
+/** A seller that stops checkout (design 6.6): below its minimum, or its minimum cannot be checked. */
+export interface NotReadySeller {
+  readonly sellerId: Id<'Seller'>;
+  readonly reason: 'below-minimum' | 'check-unavailable';
+  /** The seller's minimum, public, for `below-minimum`; null for `check-unavailable`. */
+  readonly minimum: Money | null;
 }
 
 export interface CartView {
@@ -261,30 +284,69 @@ function lineView(line: CartLine, verdict: LineVerdict | undefined): LineView {
   };
 }
 
-/** Groups lines by seller and sums the buyable ones (design 6.2; the minimum order is later). */
-function compose(cart: CartState, verdicts: ReadonlyMap<string, LineVerdict>): SellerGroupView[] {
-  const groups = new Map<
-    string | null,
-    { lines: LineView[]; sum: bigint; currency: string | null; mixed: boolean }
-  >();
+interface Group {
+  readonly sellerId: Id<'Seller'> | null;
+  readonly lines: LineView[];
+  readonly buyable: BuyableLine[];
+  sum: bigint;
+  currency: string | null;
+  mixed: boolean;
+}
+
+/** Groups lines by seller and sums the buyable ones (design 6.2). */
+function groupLines(cart: CartState, verdicts: ReadonlyMap<string, LineVerdict>): Group[] {
+  const groups = new Map<string | null, Group>();
   for (const line of cart.lines) {
     const verdict = verdicts.get(verdictKey(line));
     const view = lineView(line, verdict);
     const key = verdict?.sellerId ?? null;
-    const group = groups.get(key) ?? { lines: [], sum: 0n, currency: null, mixed: false };
+    const group: Group = groups.get(key) ?? {
+      sellerId: key,
+      lines: [],
+      buyable: [],
+      sum: 0n,
+      currency: null,
+      mixed: false,
+    };
     group.lines.push(view);
     if (view.state === 'buyable' && view.unitPrice !== null) {
       if (group.currency !== null && group.currency !== view.unitPrice.currency) group.mixed = true;
       group.currency = view.unitPrice.currency;
       group.sum += view.unitPrice.amount * BigInt(line.quantity);
+      group.buyable.push({
+        unitPrice: view.unitPrice,
+        quantity: line.quantity,
+        taxInclusive: verdict?.taxInclusive ?? null,
+      });
     }
     groups.set(key, group);
   }
-  return [...groups].map(([sellerId, group]) => ({
-    sellerId: sellerId as Id<'Seller'> | null,
-    subtotal: group.currency === null || group.mixed ? null : money(group.sum, group.currency),
-    lines: group.lines,
-  }));
+  return [...groups.values()];
+}
+
+/**
+ * `CartEvaluator` over the groups (design 6.4): one `sellers.sellerSummaries` read for the
+ * distinct sellers of groups that have a buyable line, then the pure rule per group. A group
+ * without a seller id cannot have a buyable line. Called before any unit opens.
+ */
+async function evaluateGroups(
+  deps: CartDependencies,
+  context: CallContext,
+  groups: readonly Group[],
+): Promise<readonly MinimumOrderEvaluation[]> {
+  const sellerIds = groups.flatMap((group) =>
+    group.buyable.length > 0 && group.sellerId !== null ? [group.sellerId] : [],
+  );
+  const minimums =
+    sellerIds.length === 0
+      ? new Map<Id<'Seller'>, never>()
+      : await deps.facts.sellerMinimums(context, sellerIds);
+  return groups.map((group) =>
+    evaluateMinimumOrder(
+      group.buyable,
+      group.sellerId === null ? undefined : minimums.get(group.sellerId),
+    ),
+  );
 }
 
 /** `view`: the cart composed with the other modules' answers; a failed facade marks lines. */
@@ -305,7 +367,21 @@ export async function viewCart(
     return ok({ groups: [], lineCount: 0, cookie });
   }
   const verdicts = await deps.facts.evaluate(context, cart.lines);
-  return ok({ groups: compose(cart, verdicts), lineCount: cart.lines.length, cookie });
+  const groups = groupLines(cart, verdicts);
+  const evaluations = await evaluateGroups(deps, context, groups);
+  return ok({
+    groups: groups.map((group, index) => ({
+      sellerId: group.sellerId,
+      subtotal: group.currency === null || group.mixed ? null : money(group.sum, group.currency),
+      minimumOrder: {
+        state: evaluations[index]!.state,
+        minimum: evaluations[index]!.minimum,
+      },
+      lines: group.lines,
+    })),
+    lineCount: cart.lines.length,
+    cookie,
+  });
 }
 
 export interface AddInput {
@@ -603,7 +679,9 @@ export async function mergeGuestCart(
 
 /**
  * `checkout-lines`: the signed-in customer's lines with the current verdict of each, for
- * `ordering`. Fails closed: a failed facade makes a line `check-unavailable`.
+ * `ordering`. Fails closed: a failed facade makes a line `check-unavailable`. Ready only when no
+ * seller with a buyable line is below its minimum order or has a minimum that cannot be checked
+ * (design 6.4, 6.6): otherwise `cart.not-ready` with the sellers, each with its public minimum.
  */
 export async function checkoutLines(
   deps: CartDependencies,
@@ -619,6 +697,19 @@ export async function checkoutLines(
   const cart = loaded.value.cart;
   if (cart === null || cart.lines.length === 0) return ok([]);
   const verdicts = await deps.facts.evaluate(context, cart.lines);
+  const groups = groupLines(cart, verdicts);
+  const evaluations = await evaluateGroups(deps, context, groups);
+  const sellers = groups.flatMap((group, index): NotReadySeller[] => {
+    const evaluation = evaluations[index]!;
+    if (group.sellerId === null) return [];
+    if (evaluation.state === 'below-minimum') {
+      return [{ sellerId: group.sellerId, reason: 'below-minimum', minimum: evaluation.minimum }];
+    }
+    return evaluation.state === 'check-unavailable'
+      ? [{ sellerId: group.sellerId, reason: 'check-unavailable', minimum: null }]
+      : [];
+  });
+  if (sellers.length > 0) return err({ code: 'cart.not-ready', sellers });
   return ok(
     cart.lines.map((line) => {
       const verdict = verdicts.get(verdictKey(line));

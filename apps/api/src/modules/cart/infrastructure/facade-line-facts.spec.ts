@@ -174,4 +174,57 @@ describe.each([
     expect((await facts.evaluate(context, [])).size).toBe(0);
     expect(calls).toEqual([]);
   });
+  describe('sellerMinimums (cart design 6.4)', () => {
+    const OTHER = id<'Seller'>(6);
+    const THIRD = id<'Seller'>(7);
+    const withSummaries = (answer: () => Promise<unknown>) =>
+      new FacadeLineFacts(
+        {} as CatalogFacade,
+        { sellerSummaries: answer } as unknown as SellersFacade,
+        {} as PricingFacade,
+        {} as InventoryFacade,
+      );
+
+    it('maps an explicit none, a Money, and an absent key to none, minimum and unknown', async () => {
+      const facts = withSummaries(() =>
+        Promise.resolve(
+          ok([
+            { sellerId: SELLER, exists: true, minimumOrder: null },
+            { sellerId: OTHER, exists: true, minimumOrder: money(2500n, currency) },
+            { sellerId: THIRD, exists: true },
+          ]),
+        ),
+      );
+
+      const minimums = await facts.sellerMinimums(context, [SELLER, OTHER, THIRD]);
+
+      expect(minimums.get(SELLER)).toEqual({ kind: 'none' });
+      expect(minimums.get(OTHER)).toEqual({ kind: 'minimum', minimum: money(2500n, currency) });
+      expect(minimums.get(THIRD)).toEqual({ kind: 'unknown' });
+    });
+
+    it.each([
+      ['a refused call', () => Promise.resolve(err({ code: 'access.denied' } as never))],
+      ['a thrown call', () => Promise.reject(new Error('down'))],
+      ['an answer that omits the seller', () => Promise.resolve(ok([]))],
+      ['an unknown seller', () => Promise.resolve(ok([{ sellerId: SELLER, exists: false }]))],
+    ])('fails closed to unknown on %s', async (_name, answer) => {
+      const minimums = await withSummaries(answer).sellerMinimums(context, [SELLER]);
+
+      expect(minimums.get(SELLER)).toEqual({ kind: 'unknown' });
+    });
+
+    it('asks once per 100 distinct sellers', async () => {
+      const calls: number[] = [];
+      const facts = withSummaries(((_context: unknown, ids: unknown[]) => {
+        calls.push(ids.length);
+        return Promise.resolve(ok([]));
+      }) as () => Promise<unknown>);
+      const many = Array.from({ length: 150 }, (_, n) => id<'Seller'>(1000 + n));
+
+      await facts.sellerMinimums(context, [...many, ...many]);
+
+      expect(calls.sort()).toEqual([100, 50]);
+    });
+  });
 });

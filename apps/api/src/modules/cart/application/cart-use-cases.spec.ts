@@ -13,6 +13,7 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CartState } from '../domain/cart';
+import type { SellerMinimum } from '../domain/cart-evaluator';
 import { HmacRateCounterKeys } from '../infrastructure/hmac-rate-counter-keys';
 import { InMemoryRateCounters } from './testing/in-memory-rate-counters';
 import { CryptoGuestTokens } from '../infrastructure/crypto-guest-tokens';
@@ -23,6 +24,7 @@ import { verdictKey, type LineFactsSource, type LineVerdict } from './ports/line
 import { AddGuestItem } from './use-cases/add-guest-item.use-case';
 import { AddItem } from './use-cases/add-item.use-case';
 import { ClearOrderedLines } from './use-cases/clear-ordered-lines.use-case';
+import { CartCheckoutFacadeImplementation } from '../presentation/cart-checkout.facade';
 import { ReadCheckoutLines } from './use-cases/read-checkout-lines.use-case';
 import { MergeGuestCart } from './use-cases/merge-guest-cart.use-case';
 import { RemoveGuestItem } from './use-cases/remove-guest-item.use-case';
@@ -108,6 +110,8 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   let carts: MemoryCarts;
   let verdicts: Map<string, LineVerdict>;
   let factsDown: boolean;
+  let minimums: Map<Id<'Seller'>, SellerMinimum>;
+  let minimumCalls: number;
   let factCalls: number;
   let counters: InMemoryRateCounters;
   let deps: CartDependencies;
@@ -151,6 +155,14 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       }
       return Promise.resolve(out);
     },
+    sellerMinimums: (_c, sellerIds) => {
+      minimumCalls += 1;
+      return Promise.resolve(
+        new Map(
+          sellerIds.map((sellerId) => [sellerId, minimums.get(sellerId) ?? { kind: 'unknown' }]),
+        ),
+      );
+    },
   };
 
   beforeEach(() => {
@@ -158,6 +170,8 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     clock.set(T0);
     factsDown = false;
     factCalls = 0;
+    minimumCalls = 0;
+    minimums = new Map<Id<'Seller'>, SellerMinimum>([[SELLER, { kind: 'none' }]]);
     counters = new InMemoryRateCounters();
     verdicts = new Map([
       [verdictKey({ offerId: OFFER, variantId: VARIANT }), buyable(1000n)],
@@ -439,6 +453,216 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     const down = await read.execute(customerCtx, {});
     expect(down.ok && down.value.every((l) => l.state === 'check-unavailable')).toBe(true);
     expect(await read.execute(guestCtx, {})).toMatchObject({ ok: false });
+  });
+
+  describe('minimum order per seller (cart design 6.4, 6.6; CRT-05)', () => {
+    const minimum = (amount: bigint): SellerMinimum => ({
+      kind: 'minimum',
+      minimum: money(amount, currency),
+    });
+    const fill = async (quantity = 1) => {
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity });
+    };
+    const groupOf = async () => {
+      const viewed = await new ViewCart(gate, deps).execute(customerCtx, {});
+      return viewed.ok ? viewed.value.groups[0]! : undefined;
+    };
+
+    it('shows the explicit none as any amount, without a minimum', async () => {
+      await fill();
+
+      expect((await groupOf())?.minimumOrder).toEqual({ state: 'none', minimum: null });
+    });
+
+    it('is below-minimum with the public minimum while the subtotal is under it, then met', async () => {
+      minimums.set(SELLER, minimum(2500n));
+      await fill(2); // 2 x 1000
+
+      expect((await groupOf())?.minimumOrder).toEqual({
+        state: 'below-minimum',
+        minimum: money(2500n, currency),
+      });
+
+      await fill(1); // 3 x 1000 reaches it; adding more clears the state
+      expect((await groupOf())?.minimumOrder).toEqual({
+        state: 'met',
+        minimum: money(2500n, currency),
+      });
+    });
+
+    it('meets a minimum equal to the subtotal exactly', async () => {
+      minimums.set(SELLER, minimum(2000n));
+      await fill(2);
+
+      expect((await groupOf())?.minimumOrder.state).toBe('met');
+    });
+
+    it('counts only the buyable lines against the minimum', async () => {
+      minimums.set(SELLER, minimum(1500n));
+      await fill(1);
+      await new AddItem(gate, deps).execute(customerCtx, {
+        offerId: OFFER_B,
+        variantId: VARIANT,
+        quantity: 1,
+      });
+      // The 1000 line becomes unbuyable: only the 250 line counts.
+      verdicts.set(verdictKey(line), {
+        ...buyable(1000n),
+        state: 'unavailable',
+        reason: 'out-of-stock',
+      });
+
+      expect((await groupOf())?.minimumOrder.state).toBe('below-minimum');
+    });
+
+    it('is not-applicable for a group without a buyable line, and asks sellers nothing', async () => {
+      await fill();
+      verdicts.set(verdictKey(line), {
+        ...buyable(1000n),
+        state: 'unavailable',
+        reason: 'out-of-stock',
+      });
+
+      expect((await groupOf())?.minimumOrder).toEqual({ state: 'not-applicable', minimum: null });
+      expect(minimumCalls).toBe(0);
+    });
+
+    it.each([
+      ['an absent minimum', (m: Map<Id<'Seller'>, SellerMinimum>) => m.delete(SELLER)],
+      [
+        'a minimum in another currency',
+        (m: Map<Id<'Seller'>, SellerMinimum>) =>
+          m.set(SELLER, {
+            kind: 'minimum',
+            minimum: money(2500n, currency === 'AUD' ? 'JPY' : 'AUD'),
+          }),
+      ],
+    ])('fails closed on %s: check-unavailable, never none', async (_name, change) => {
+      await fill();
+      change(minimums);
+
+      expect((await groupOf())?.minimumOrder).toEqual({
+        state: 'check-unavailable',
+        minimum: null,
+      });
+    });
+
+    it('fails closed when the lines of one seller mix tax conventions', async () => {
+      await fill();
+      await new AddItem(gate, deps).execute(customerCtx, {
+        offerId: OFFER_B,
+        variantId: VARIANT,
+        quantity: 1,
+      });
+      verdicts.set(verdictKey({ offerId: OFFER_B, variantId: VARIANT }), {
+        ...buyable(250n),
+        taxInclusive: false,
+      });
+
+      expect((await groupOf())?.minimumOrder.state).toBe('check-unavailable');
+    });
+
+    it('asks sellers once per read for all sellers of buyable lines', async () => {
+      await fill();
+      await groupOf();
+
+      expect(minimumCalls).toBe(1);
+    });
+
+    it('lists only the seller below its minimum when two sellers share a cart', async () => {
+      const SELLER_B = id<'Seller'>(40);
+      minimums.set(SELLER, minimum(2500n));
+      minimums.set(SELLER_B, minimum(200n));
+      verdicts.set(verdictKey({ offerId: OFFER_B, variantId: VARIANT }), {
+        ...buyable(250n),
+        sellerId: SELLER_B,
+      });
+      await fill(2); // 2000 < 2500: below
+      await new AddItem(gate, deps).execute(customerCtx, {
+        offerId: OFFER_B,
+        variantId: VARIANT,
+        quantity: 1,
+      }); // 250 >= 200: met
+
+      const result = await new ReadCheckoutLines(gate, deps).execute(customerCtx, {});
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          sellers: [{ sellerId: SELLER, reason: 'below-minimum', minimum: money(2500n, currency) }],
+        },
+      });
+    });
+
+    it('refuses with check-unavailable when only the sellers read fails', async () => {
+      await fill();
+      minimums.clear();
+
+      const result = await new ReadCheckoutLines(gate, deps).execute(customerCtx, {});
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          sellers: [{ sellerId: SELLER, reason: 'check-unavailable', minimum: null }],
+        },
+      });
+    });
+
+    it('maps cart.not-ready through the checkout facade as details.sellers, and others to check-unavailable', async () => {
+      const facade = new CartCheckoutFacadeImplementation(
+        new ReadCheckoutLines(gate, deps),
+        new ClearOrderedLines(gate, deps),
+      );
+      minimums.set(SELLER, minimum(2500n));
+      await fill(1);
+
+      const notReady = await facade.checkoutLines(customerCtx);
+      expect(notReady).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          details: {
+            sellers: [
+              { sellerId: SELLER, reason: 'below-minimum', minimum: money(2500n, currency) },
+            ],
+          },
+        },
+      });
+      expect(await facade.checkoutLines(guestCtx)).toMatchObject({
+        ok: false,
+        error: { code: 'cart.check-unavailable' },
+      });
+    });
+
+    it('lets a ready cart through to ordering, and refuses with cart.not-ready and the sellers otherwise', async () => {
+      const read = new ReadCheckoutLines(gate, deps);
+      minimums.set(SELLER, minimum(2500n));
+      await fill(2);
+
+      const below = await read.execute(customerCtx, {});
+      expect(below).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          sellers: [{ sellerId: SELLER, reason: 'below-minimum', minimum: money(2500n, currency) }],
+        },
+      });
+
+      minimums.delete(SELLER);
+      const unknown = await read.execute(customerCtx, {});
+      expect(unknown).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          sellers: [{ sellerId: SELLER, reason: 'check-unavailable', minimum: null }],
+        },
+      });
+
+      minimums.set(SELLER, minimum(2000n));
+      expect((await read.execute(customerCtx, {})).ok).toBe(true);
+    });
   });
 
   it('clears only the ordered units, for the system actor, and a repeat does nothing', async () => {

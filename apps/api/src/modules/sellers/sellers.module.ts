@@ -44,6 +44,8 @@ import { SHOP_SLUG_REPOSITORY } from './application/ports/shop-slug.repository';
 import { TAX_PROFILE_REPOSITORY } from './application/ports/tax-profile.repository';
 import { ADMIN_FLAG_REPOSITORY } from './application/ports/admin-flag.repository';
 import { SELLING_FACTS_REPOSITORY } from './application/ports/selling-facts.repository';
+import { MINIMUM_ORDER_POLICY } from './application/ports/minimum-order-policy';
+import { STORE_PROFILE_REPOSITORY } from './application/ports/store-profile.repository';
 import { IDENTIFIER_CLAIM_REPOSITORY } from './application/ports/identifier-claim.repository';
 import { REVIEW_CHECK_REPOSITORY } from './application/ports/review-check.repository';
 import { SELLER_ACCESS_DECIDER } from './application/ports/seller-access-decider';
@@ -82,6 +84,9 @@ import { SELLERS_PERMISSIONS } from './contracts/permissions';
 import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contract';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
+import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
+import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
+import { StoreSettingsController } from './presentation/store-settings.controller';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
@@ -135,6 +140,8 @@ const PORT = {
   claims: IDENTIFIER_CLAIM_REPOSITORY,
   flags: ADMIN_FLAG_REPOSITORY,
   sellingFacts: SELLING_FACTS_REPOSITORY,
+  storeProfiles: STORE_PROFILE_REPOSITORY,
+  minimumOrderPolicy: MINIMUM_ORDER_POLICY,
   decider: SELLER_ACCESS_DECIDER,
   ids: ID_GENERATOR,
   clock: CLOCK,
@@ -205,6 +212,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewRegisterCheckController,
     ReviewDecisionController,
     SellerListController,
+    StoreSettingsController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
@@ -229,7 +237,28 @@ const REVIEW_DECISION_PORTS = {
       registered: true,
       clock: true,
     }),
-    useCaseProvider(SellerSummaries, { unitOfWork: true, files: true }),
+    useCaseProvider(SellerSummaries, {
+      unitOfWork: true,
+      files: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+    }),
+    // Slice 20, the optional minimum order (design 18): store settings over HTTP through
+    // StoreSettingsController, under `sellers.store-settings.edit`, approved sellers only.
+    useCaseProvider(StoreSettingsRead, {
+      unitOfWork: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+    }),
+    useCaseProvider(StoreSettingsSaveMinimumOrder, {
+      unitOfWork: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
     // Slice 2, the seller's draft (design 6.2), over HTTP through MyFileController, under
     // `sellers.business-identity.edit`: since identity slice 8a-1 the registry declares it and
     // the Seller Owner holds it through the seller system role; an account without it gets
@@ -435,7 +464,12 @@ const REVIEW_DECISION_PORTS = {
       onboardingAreas: true,
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
-    useCaseProvider(SellerSummariesSystem, { unitOfWork: true, files: true }),
+    useCaseProvider(SellerSummariesSystem, {
+      unitOfWork: true,
+      files: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+    }),
     // Slice 9, the may-sell contract and the allowed product types (design 7.1, 7.2).
     useCaseProvider(SellingEligibility, SELLING_ELIGIBILITY_PORTS),
     useCaseProvider(SellingEligibilitySystem, SELLING_ELIGIBILITY_PORTS),

@@ -17,6 +17,8 @@ export const MY_FILE_STATUS = {
   'phone.required': 400,
   'timezone.not-selectable': 400,
   'slug.format': 400,
+  'minimum-order.currency': 400,
+  'minimum-order.amount': 400,
   'slug.reserved': 400,
   'slug.taken': 409,
   'identifier.format': 400,

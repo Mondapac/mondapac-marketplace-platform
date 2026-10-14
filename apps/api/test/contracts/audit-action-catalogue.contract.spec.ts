@@ -135,7 +135,7 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
 /**
  * The (action, field) pairs that may declare `money`, as `<action>.<side>.<field>`. A new money
  * field anywhere fails the contract until it is added here in a reviewed change (Hassan M1;
- * platform-audit 3.2). Pricing's regular-price and special-price rows carry the seller's own amounts; Cost
+ * platform-audit 3.2). Pricing's regular-price and special-price rows carry the seller's own amounts, and sellers' minimum-order change the seller's own public minimum; Cost
  * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
 const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
@@ -149,6 +149,8 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'pricing.special-price.accepted.after.amount',
   'pricing.special-price.held.after.amount',
   'pricing.special-price.held.after.referenceAmount',
+  'sellers.minimum-order.changed.after.minimumOrder',
+  'sellers.minimum-order.changed.before.minimumOrder',
 ];
 
 /** Every field of every action, as `<action>.<side>.<field>` with its kind. */

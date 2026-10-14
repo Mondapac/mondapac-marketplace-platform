@@ -1119,6 +1119,8 @@ Closed: O-4, the wording of the S7 field and the cart message (Reza, ux.md 3.1a;
 | Hassan (security-tester) | OK; L3 to L5 applied | 2026-10-07 |
 | Reza (ui-ux-designer) | Signed off `ux.md` 3.1a | 2026-10-07 |
 
+**As built (slice 20, `feat/cart-minimum-order`).** Migration `20261015130000_sellers_minimum_order`: the four nullable columns on `store_profiles` and five CHECKs (the fifth, `minimum_order_set_changed_check`, is decision 5's "a set amount implies a change record"). `sellerSummaries` carries `minimumOrder` (`null` none, `Money`, or no key for a seller without an approved revision or a stored currency that is not the Market's, logged). Seller routes `GET sellers/store-settings` and `PUT sellers/store-settings/minimum-order` (`{ expectedVersion, minimumOrder: { amount, currency } | null }`; amount a JSON integer) under the new seller key `sellers.store-settings.edit` (unprotected), approved sellers only, saves limit of 6.5, audit `sellers.minimum-order.changed` (money fields added to the audit allow-list), no event. `MarketConfig.sellers.minimumOrderMax` (AU 100000, ZZ 500000). Not built here: the admin edit under `sellers.seller.edit` and its Seller Owner mail (SEL-23 screen), the `sellers.store-profile.view` read key (the GET uses the edit key), the refusal in acting-as (no acting-as flag exists yet), and the key in the Store Manager default role (needs a `store-manager` seed version 3 in `identity`).
+
 ## 19. Mini-review 2026-10-07: request S-1 and ADR-0026 (ADR-0013 decision 4)
 **Requested by** (task A) the `certification` domain design, request S-1 (its 18; 2.3 T2 with the
 B1 ruling of Ali and Hassan, 4.2 step 1, 8.5) and ADR-0028 decision 8; (task B) ADR-0026, accepted

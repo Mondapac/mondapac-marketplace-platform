@@ -16,10 +16,18 @@ export class CartCheckoutFacadeImplementation implements CartCheckoutFacade {
   ): Promise<Result<readonly CheckoutLine[], CartCheckoutFailure>> {
     const result = await this.read.execute(context, {});
     if (result.ok) return result;
-    // Only a denial or an unreadable cart reaches ordering; both stop the checkout.
-    return result.error.code === 'access.denied'
-      ? { ok: false, error: result.error as AccessDenied }
-      : { ok: false, error: { code: 'cart.check-unavailable' } };
+    // A denial, a seller that is not ready or an unreadable cart reaches ordering; all stop the
+    // checkout.
+    if (result.error.code === 'access.denied') {
+      return { ok: false, error: result.error as AccessDenied };
+    }
+    if (result.error.code === 'cart.not-ready') {
+      return {
+        ok: false,
+        error: { code: 'cart.not-ready', details: { sellers: result.error.sellers } },
+      };
+    }
+    return { ok: false, error: { code: 'cart.check-unavailable' } };
   }
 
   async clearOrdered(

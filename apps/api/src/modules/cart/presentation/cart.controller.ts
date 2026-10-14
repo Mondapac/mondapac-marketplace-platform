@@ -89,6 +89,10 @@ const viewBody = (view: CartView) => ({
   groups: view.groups.map((group) => ({
     sellerId: group.sellerId,
     subtotal: group.subtotal === null ? null : money(group.subtotal),
+    minimumOrder: {
+      state: group.minimumOrder.state,
+      minimum: group.minimumOrder.minimum === null ? null : money(group.minimumOrder.minimum),
+    },
     lines: group.lines.map((line) => ({
       lineId: line.lineId,
       offerId: line.offerId,

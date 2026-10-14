@@ -139,6 +139,7 @@
     }
   },
   "sellers": {
+    "minimumOrderMax": 100000,
     "approvalRequired": true,
     "businessIdentifier": {
       "scheme": "abn",

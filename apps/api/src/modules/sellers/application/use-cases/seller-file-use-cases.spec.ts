@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Temporal } from '@mondapac/shared-kernel';
+import { Temporal, money } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -16,7 +16,9 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
 import { NEW_SELLER_ADMIN_SETTINGS, type SellerFile } from '../../domain/seller-file';
+import { MarketConfigMinimumOrderPolicy } from '../../infrastructure/market-config-minimum-order-policy';
 import { MarketConfigSellerPolicy } from '../../infrastructure/market-config-seller-policy';
+import { InMemoryStoreProfiles } from '../testing/in-memory-store-profiles';
 import type {
   RegisteredSellerPage,
   RegisteredSellerSource,
@@ -35,6 +37,7 @@ import { SellerSummaries } from './seller-summaries.use-case';
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const policy = new MarketConfigSellerPolicy(markets);
+const minimumOrderPolicy = new MarketConfigMinimumOrderPolicy(markets);
 const gate = createUseCaseGate(markets, null);
 const MARKETS = [
   ['AU', true],
@@ -145,16 +148,19 @@ function setUp() {
     },
   };
   const deps = { unitOfWork, files, policy, outbox, clock };
+  const storeProfiles = new InMemoryStoreProfiles();
+  const summaryDeps = { unitOfWork, files, storeProfiles, minimumOrderPolicy };
   return {
     files,
+    storeProfiles,
     ids,
     events,
     units,
     registered,
     create: new CreateSellerFile(gate, deps),
     backfill: new BackfillSellerFiles(gate, { ...deps, registered: source }),
-    summaries: new SellerSummaries(gate, { unitOfWork, files }),
-    summariesSystem: new SellerSummariesSystem(gate, { unitOfWork, files }),
+    summaries: new SellerSummaries(gate, summaryDeps),
+    summariesSystem: new SellerSummariesSystem(gate, summaryDeps),
   };
 }
 
@@ -553,11 +559,81 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
     const failing = new SellerSummaries(gate, {
       unitOfWork: { run: () => Promise.reject(new Error('db down')), runOnce: fakeRunOnce() },
       files: t.files,
+      storeProfiles: t.storeProfiles,
+      minimumOrderPolicy,
     });
 
     const result = await failing.execute(anonymous(code), { sellerIds: [t.ids.next<'Seller'>()] });
 
     expect(result).toEqual({ ok: false, error: { code: 'sellers.unavailable' } });
+  });
+
+  describe('minimumOrder (design 18 decision 6; cart 6.4)', () => {
+    const currency = code === 'AU' ? 'AUD' : 'JPY';
+    const marketContext = market(code);
+
+    it('is null (explicit none) for an approved seller, a Money when one is set, and the same to both callers', async () => {
+      const t = setUp();
+      const [none, set] = await withFiles(t, 2);
+      t.storeProfiles.put(marketContext, none!);
+      t.storeProfiles.put(marketContext, set!, { minimumOrder: money(2500n, currency) });
+
+      const asRequest = await t.summaries.execute(anonymous(code), { sellerIds: [none!, set!] });
+      const asSystem = await t.summariesSystem.execute(system(code), { sellerIds: [none!, set!] });
+
+      expect(asRequest).toEqual({
+        ok: true,
+        value: [
+          { sellerId: none, exists: true, minimumOrder: null },
+          { sellerId: set, exists: true, minimumOrder: money(2500n, currency) },
+        ],
+      });
+      // The system pair adds only the provisional zone; the minimum is the same.
+      expect(asSystem.ok && asSystem.value.map((entry) => entry.minimumOrder)).toEqual([
+        null,
+        money(2500n, currency),
+      ]);
+    });
+
+    it('has no minimumOrder key for a seller without an approved revision', async () => {
+      const t = setUp();
+      const [pending] = await withFiles(t, 1);
+      t.storeProfiles.put(marketContext, pending!, {
+        approved: false,
+        minimumOrder: money(2500n, currency),
+      });
+
+      const result = await t.summaries.execute(anonymous(code), { sellerIds: [pending!] });
+
+      expect(result).toEqual({ ok: true, value: [{ sellerId: pending, exists: true }] });
+      expect(result.ok && 'minimumOrder' in result.value[0]!).toBe(false);
+    });
+
+    it('has no minimumOrder key when the stored currency is not the Markets, and logs it', async () => {
+      const t = setUp();
+      const [seller] = await withFiles(t, 1);
+      t.storeProfiles.put(marketContext, seller!, { minimumOrder: money(2500n, 'NZD') });
+      const logged = jest.spyOn(Logger.prototype, 'error');
+
+      const result = await t.summaries.execute(anonymous(code), { sellerIds: [seller!] });
+
+      expect(result).toEqual({ ok: true, value: [{ sellerId: seller, exists: true }] });
+      expect(logged).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'sellers.seller-summaries.minimum-order-currency-mismatch',
+        }),
+      );
+    });
+
+    it('is unavailable when the store profile read fails', async () => {
+      const t = setUp();
+      const [seller] = await withFiles(t, 1);
+      t.storeProfiles.failReads = true;
+
+      const result = await t.summaries.execute(anonymous(code), { sellerIds: [seller!] });
+
+      expect(result).toEqual({ ok: false, error: { code: 'sellers.unavailable' } });
+    });
   });
 
   it('refuses the system pair to a request actor', async () => {

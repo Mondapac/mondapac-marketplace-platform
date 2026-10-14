@@ -49,8 +49,21 @@ export const ManualRegisterCheckRecorded = defineAuditAction({
   },
 });
 
+/**
+ * A seller's minimum order was set, changed or cleared (design 9, 18 decision 8): the amount
+ * before and after, absent meaning "no minimum". Not personal data.
+ */
+export const MinimumOrderChanged = defineAuditAction({
+  action: 'sellers.minimum-order.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { minimumOrder: auditField.optional(auditField.money()) },
+  after: { minimumOrder: auditField.optional(auditField.money()) },
+});
+
 /** Every audited action of sellers, for its module's registration. */
 export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   BusinessDetailsViewed,
   ManualRegisterCheckRecorded,
+  MinimumOrderChanged,
 ]);

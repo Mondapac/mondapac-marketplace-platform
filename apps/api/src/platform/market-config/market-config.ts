@@ -905,6 +905,12 @@ const sellersSchema = z
      * it from here until that store lands (sellers slice 15).
      */
     approvalRequired: z.boolean(),
+    /**
+     * The largest minimum order a seller may set, in minor units of the Market currency
+     * (sellers design 18 decision 3; cart design 6.4). Required: a Market never defaults it, and
+     * it is checked in the use case, never a database CHECK (the bound depends on the currency).
+     */
+    minimumOrderMax: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   })
   .superRefine((sellers, context) => {
     const known = new Set<string>();

@@ -55,9 +55,23 @@ export const SELLERS_BUSINESS_DETAILS_VIEW = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * Read and set the store settings that are not business identity: today the optional minimum
+ * order (design 6.1, 18 decision 5; slice 20). Seller scope, not protected (default Store
+ * Manager; the Seller Owner holds every seller key). It blocks checkout for that seller, so it
+ * has its own key (least privilege). Approved sellers only. This build reads the settings under
+ * the same key; a separate `sellers.store-profile.view` joins with the rest of the profile.
+ */
+export const SELLERS_STORE_SETTINGS_EDIT = definePermission('sellers', {
+  key: 'sellers.store-settings.edit',
+  scope: 'seller',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_VIEW,
+  SELLERS_STORE_SETTINGS_EDIT,
 ]);

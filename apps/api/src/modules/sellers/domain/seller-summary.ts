@@ -1,4 +1,4 @@
-import type { Id } from '@mondapac/shared-kernel';
+import type { Id, Money } from '@mondapac/shared-kernel';
 
 /**
  * One answer of `approvedSellerZones` (sellers design 7.1a row 1): the zone the seller chose and
@@ -36,4 +36,12 @@ export interface SellerSummary {
   readonly sellerId: Id<'Seller'>;
   readonly exists: boolean;
   readonly operatingTimezone?: SummaryTimezone;
+  /**
+   * The seller's minimum order (design 18 decision 6; cart 6.4). The key is present only for a
+   * seller with an approved revision, to every caller alike: `null` is the explicit "no minimum",
+   * a `Money` in the Market currency is the minimum. The key is ABSENT for a seller without an
+   * approved revision, an unknown id, and when the stored currency differs from the Market's
+   * (logged). A consumer reads absent as "cannot tell" and fails closed, never as "no minimum".
+   */
+  readonly minimumOrder?: Money | null;
 }

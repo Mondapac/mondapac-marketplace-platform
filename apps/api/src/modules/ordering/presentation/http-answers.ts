@@ -14,6 +14,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.cart-empty': 422,
   'ordering.cart-not-purchasable': 422,
   'ordering.stock-insufficient': 409,
+  'ordering.cart-not-ready': 409,
   'conflict.retry': 409,
   'request.throttled': 429,
   'ordering.check-unavailable': 503,
@@ -56,7 +57,17 @@ export const moneyBody = (value: Money) => ({
   currency: value.currency,
 });
 
-const DETAILS = ['fields', 'lineIndexes', 'lines'] as const;
+const DETAILS = ['fields', 'lineIndexes', 'lines', 'sellers'] as const;
+
+/** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */
+const sellersBody = (sellers: unknown) =>
+  (sellers as readonly { sellerId: string; reason: string; minimum: Money | null }[]).map(
+    (seller) => ({
+      sellerId: seller.sellerId,
+      reason: seller.reason,
+      minimum: seller.minimum === null ? null : moneyBody(seller.minimum),
+    }),
+  );
 
 /** Turns a use case's refusal into the HTTP error; an unmapped code is a 500 and is logged. */
 export function refusal(
@@ -77,7 +88,10 @@ export function refusal(
     return fail(500, 'internal');
   }
   const details = Object.fromEntries(
-    DETAILS.filter((key) => error[key] !== undefined).map((key) => [key, error[key]]),
+    DETAILS.filter((key) => error[key] !== undefined).map((key) => [
+      key,
+      key === 'sellers' ? sellersBody(error[key]) : error[key],
+    ]),
   );
   return Object.keys(details).length === 0
     ? fail(status, error.code)

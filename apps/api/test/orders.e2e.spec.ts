@@ -71,6 +71,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.cart-empty': 422,
     'ordering.cart-not-purchasable': 422,
     'ordering.stock-insufficient': 409,
+    'ordering.cart-not-ready': 409,
     'conflict.retry': 409,
     'request.throttled': 429,
     'ordering.check-unavailable': 503,
@@ -288,6 +289,29 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       // The customer learns that delivery is unavailable, never which seller lacks a fee.
       expect(noFee.body).toEqual({ statusCode: 503, code: 'ordering.shipping-unavailable' });
       expect(body(empty).code).toBe('ordering.cart-empty');
+      // A cart that is not ready (a seller below its minimum order) is a 409 with the sellers.
+      cart.notReady = {
+        code: 'cart.not-ready',
+        details: {
+          sellers: [
+            { sellerId: SELLER, reason: 'below-minimum', minimum: money(4000n, currency) },
+            { sellerId: id<'Seller'>(0xb021), reason: 'check-unavailable', minimum: null },
+          ],
+        },
+      };
+      const notReady = await checkout(headers);
+      cart.notReady = null;
+      expect(notReady.status).toBe(409);
+      expect(notReady.body).toEqual({
+        statusCode: 409,
+        code: 'ordering.cart-not-ready',
+        details: {
+          sellers: [
+            { sellerId: SELLER, reason: 'below-minimum', minimum: { amount: '4000', currency } },
+            { sellerId: id<'Seller'>(0xb021), reason: 'check-unavailable', minimum: null },
+          ],
+        },
+      });
       expect(unbuyable.body).toMatchObject({
         code: 'ordering.cart-not-purchasable',
         details: { lineIndexes: [0] },

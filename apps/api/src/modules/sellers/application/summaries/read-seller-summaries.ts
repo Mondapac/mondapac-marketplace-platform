@@ -3,7 +3,9 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { SellerSummary } from '../../domain/seller-summary';
+import type { MinimumOrderPolicy } from '../ports/minimum-order-policy';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
+import type { StoreProfileRepository } from '../ports/store-profile.repository';
 
 export type { SellerSummary };
 
@@ -30,6 +32,8 @@ export interface SummaryVisibility {
 export interface SellerSummariesDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly files: SellerFileRepository;
+  readonly storeProfiles: StoreProfileRepository;
+  readonly minimumOrderPolicy: MinimumOrderPolicy;
 }
 
 const logger = new Logger('SellerSummaries');
@@ -86,18 +90,38 @@ export async function readSellerSummaries(
         const zones = visibility.provisionalZone
           ? await deps.files.draftZones(market, [...existing])
           : new Map<Id<'Seller'>, string>();
-        return ok({ existing, zones });
+        // The minimum order of the sellers with an approved revision, in the same unit (design
+        // 18 decision 6; data design A1): one statement per batch.
+        const minimums = await deps.storeProfiles.approvedMinimumOrders(market, [...existing]);
+        return ok({ existing, zones, minimums });
       },
       { readOnly: true },
     );
     if (!read.ok) throw new Error('the read unit failed');
-    const { existing, zones } = read.value;
+    const { existing, zones, minimums } = read.value;
+    const rule = deps.minimumOrderPolicy.rule(market);
     return ok(
       [...ids].map((sellerId): SellerSummary => {
         const zone = existing.has(sellerId) ? zones.get(sellerId) : undefined;
-        return zone === undefined
-          ? { sellerId, exists: existing.has(sellerId) }
-          : { sellerId, exists: true, operatingTimezone: { zone, provisional: true } };
+        const base: SellerSummary =
+          zone === undefined
+            ? { sellerId, exists: existing.has(sellerId) }
+            : { sellerId, exists: true, operatingTimezone: { zone, provisional: true } };
+        const minimum = minimums.get(sellerId);
+        // Absent (no key) for a seller without an approved revision, and when the stored
+        // currency is not the Market's: a consumer fails closed on absent, never reads it as none.
+        if (minimum === undefined) return base;
+        if (minimum === null) return { ...base, minimumOrder: null };
+        if (rule === null || minimum.currency !== rule.currency) {
+          logger.error({
+            msg: 'sellers.seller-summaries.minimum-order-currency-mismatch',
+            sellerId,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
+          return base;
+        }
+        return { ...base, minimumOrder: minimum };
       }),
     );
   } catch (error) {

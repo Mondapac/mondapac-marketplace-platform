@@ -14,6 +14,7 @@ import {
   type LineVerdict,
 } from '../src/modules/cart/application/ports/line-facts';
 import type { CartState } from '../src/modules/cart/domain/cart';
+import type { SellerMinimum } from '../src/modules/cart/domain/cart-evaluator';
 import { RATE_COUNTER_REPOSITORY } from '../src/modules/cart/application/ports/rate-counter.repository';
 import { InMemoryRateCounters } from '../src/modules/cart/application/testing/in-memory-rate-counters';
 import { CART_STATUS } from '../src/modules/cart/presentation/cart.controller';
@@ -98,11 +99,15 @@ describe('cart routes over HTTP', () => {
   let carts: MemoryCarts;
   let counters: InMemoryRateCounters;
   let clock: FixedClock;
+  /** What `sellers` says about the seller's minimum order (design 6.4); reset to none per test. */
+  let sellerMinimum: SellerMinimum;
   const http = () => request(app!.getHttpServer());
 
   async function boot(code: string) {
     const currency = code === 'AU' ? 'AUD' : 'JPY';
     const facts: LineFactsSource = {
+      sellerMinimums: (_c, sellerIds) =>
+        Promise.resolve(new Map(sellerIds.map((sellerId) => [sellerId, sellerMinimum] as const))),
       evaluate: (_c, refs) =>
         Promise.resolve(
           new Map(
@@ -191,7 +196,11 @@ describe('cart routes over HTTP', () => {
   interface Answer {
     lineCount: number;
     lineId: string;
-    groups: { subtotal: unknown; sellerId: string }[];
+    groups: {
+      subtotal: unknown;
+      sellerId: string;
+      minimumOrder: { state: string; minimum: unknown };
+    }[];
     details: { fields: unknown };
   }
   const json = (res: request.Response) => res.body as Answer;
@@ -201,6 +210,7 @@ describe('cart routes over HTTP', () => {
     clock = new FixedClock(START);
     carts = new MemoryCarts();
     counters = new InMemoryRateCounters();
+    sellerMinimum = { kind: 'none' };
   });
   afterEach(async () => {
     await app?.close();
@@ -260,6 +270,52 @@ describe('cart routes over HTTP', () => {
         currency: code === 'AU' ? 'AUD' : 'JPY',
       });
       expect(json(viewed).groups[0]!.sellerId).toBe(SELLER);
+    });
+
+    it('shows the minimum-order state of each seller group, and clears it once the minimum is met', async () => {
+      await boot(code);
+      const currency = code === 'AU' ? 'AUD' : 'JPY';
+      sellerMinimum = { kind: 'minimum', minimum: money(4000n, currency) };
+      const added = await http()
+        .post('/cart/items')
+        .set({ 'x-market-id': code })
+        .send({ ...line, quantity: 2 }); // 2 x 1500 = 3000
+      const cookie = `__Host-cart-guest-${code}=${guestCookieValue(added, code)!}`;
+
+      const below = await http().get('/cart').set({ 'x-market-id': code, cookie });
+      expect(json(below).groups[0]!.minimumOrder).toEqual({
+        state: 'below-minimum',
+        minimum: { amount: '4000', currency },
+      });
+
+      await http()
+        .post('/cart/items')
+        .set({ 'x-market-id': code, cookie })
+        .send({ ...line, quantity: 1 }); // 4500
+      const met = await http().get('/cart').set({ 'x-market-id': code, cookie });
+      expect(json(met).groups[0]!.minimumOrder).toEqual({
+        state: 'met',
+        minimum: { amount: '4000', currency },
+      });
+    });
+
+    it('shows none as no minimum and an unknown minimum as check-unavailable, with no minimum', async () => {
+      await boot(code);
+      const added = await http()
+        .post('/cart/items')
+        .set({ 'x-market-id': code })
+        .send({ ...line, quantity: 1 });
+      const cookie = `__Host-cart-guest-${code}=${guestCookieValue(added, code)!}`;
+
+      const none = await http().get('/cart').set({ 'x-market-id': code, cookie });
+      expect(json(none).groups[0]!.minimumOrder).toEqual({ state: 'none', minimum: null });
+
+      sellerMinimum = { kind: 'unknown' };
+      const unknown = await http().get('/cart').set({ 'x-market-id': code, cookie });
+      expect(json(unknown).groups[0]!.minimumOrder).toEqual({
+        state: 'check-unavailable',
+        minimum: null,
+      });
     });
 
     it('renews the cookie on a guest write and refuses another market’s cookie as stale', async () => {

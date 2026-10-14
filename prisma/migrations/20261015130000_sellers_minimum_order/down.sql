@@ -1,0 +1,11 @@
+ALTER TABLE "sellers"."store_profiles"
+  DROP CONSTRAINT "store_profiles_minimum_order_set_changed_check",
+  DROP CONSTRAINT "store_profiles_minimum_order_changed_check",
+  DROP CONSTRAINT "store_profiles_minimum_order_currency_check",
+  DROP CONSTRAINT "store_profiles_minimum_order_amount_check",
+  DROP CONSTRAINT "store_profiles_minimum_order_pair_check";
+ALTER TABLE "sellers"."store_profiles"
+  DROP COLUMN "minimum_order_changed_by_account_id",
+  DROP COLUMN "minimum_order_changed_at",
+  DROP COLUMN "minimum_order_currency",
+  DROP COLUMN "minimum_order_amount";

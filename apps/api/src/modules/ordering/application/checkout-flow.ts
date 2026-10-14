@@ -46,6 +46,15 @@ export type StartCheckoutFailure =
   | { readonly code: 'ordering.cart-empty' }
   | { readonly code: 'ordering.cart-not-purchasable'; readonly lineIndexes: readonly number[] }
   | { readonly code: 'ordering.check-unavailable' }
+  /** The cart is not ready: a seller is below its minimum order, or it cannot be checked. */
+  | {
+      readonly code: 'ordering.cart-not-ready';
+      readonly sellers: readonly {
+        readonly sellerId: Id<'Seller'>;
+        readonly reason: 'below-minimum' | 'check-unavailable';
+        readonly minimum: ReturnType<typeof money> | null;
+      }[];
+    }
   /** A seller of the cart has no flat shipping fee yet: nothing can be charged for delivery. */
   | {
       readonly code: 'ordering.shipping-unavailable';
@@ -103,6 +112,9 @@ export async function startCheckout(
 ): Promise<Result<CheckoutStarted, StartCheckoutFailure>> {
   const read = await deps.cart.checkoutLines(context);
   if (!read.ok) {
+    if (read.error.code === 'cart.not-ready') {
+      return err({ code: 'ordering.cart-not-ready', sellers: read.error.details.sellers });
+    }
     return err(
       read.error.code === 'access.denied'
         ? { code: 'access.denied' }
