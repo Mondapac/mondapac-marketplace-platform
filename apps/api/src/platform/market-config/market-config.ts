@@ -1121,10 +1121,17 @@ const marketSchema = z
     /**
      * Payments settings (Phase 5 package 3). `connectedAccountCountry`: the ISO 3166 country a
      * seller's connected account is created in. Without it a Market cannot connect payout accounts
-     * (fail closed).
+     * (fail closed). `bankChangeCoolingOffHours`: the waiting period after a seller's payout bank
+     * account changes (VER-10); the code clamps it to 24 h to 14 d and takes 14 d when it is
+     * missing. `payoutSchedule`: the Stripe payout schedule outside that period (without it the
+     * payout pause is not managed for the Market).
      */
     payments: z
-      .strictObject({ connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/) })
+      .strictObject({
+        connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/),
+        bankChangeCoolingOffHours: z.number().optional(),
+        payoutSchedule: z.enum(['daily']).optional(),
+      })
       .optional(),
     allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,

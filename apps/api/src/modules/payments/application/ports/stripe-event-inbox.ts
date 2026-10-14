@@ -1,4 +1,5 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { EXTERNAL_ACCOUNT_EVENT_TYPES } from '../../domain/payout-change';
 
 /** The platform's Checkout events the receiver keeps; every other platform type is dropped. */
 export const CHECKOUT_EVENT_TYPES = [
@@ -7,10 +8,17 @@ export const CHECKOUT_EVENT_TYPES = [
   'checkout.session.async_payment_failed',
 ] as const;
 /** The connected-account events (Connect endpoint) the receiver keeps. */
-export const ACCOUNT_EVENT_TYPES = ['account.updated', 'capability.updated'] as const;
+export const ACCOUNT_EVENT_TYPES = [
+  'account.updated',
+  'capability.updated',
+  ...EXTERNAL_ACCOUNT_EVENT_TYPES,
+] as const;
 export const KEPT_EVENT_TYPES = [...CHECKOUT_EVENT_TYPES, ...ACCOUNT_EVENT_TYPES] as const;
 export type KeptEventType = (typeof KEPT_EVENT_TYPES)[number];
 export type AccountEventType = (typeof ACCOUNT_EVENT_TYPES)[number];
+
+export const isAccountEventType = (type: KeptEventType): type is AccountEventType =>
+  (ACCOUNT_EVENT_TYPES as readonly string[]).includes(type);
 
 /** How a kept event ended. */
 export type EventOutcome =

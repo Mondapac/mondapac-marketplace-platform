@@ -7,6 +7,10 @@ export type ConnectFailure =
   /** Stripe refused the request: do not repeat it unchanged. */
   | { readonly code: 'payment.provider-rejected' };
 
+/** The payout schedules payments sets: `manual` pauses payouts, the other is the Market's own. */
+export type NormalPayoutSchedule = 'daily';
+export type PayoutSchedule = 'manual' | NormalPayoutSchedule;
+
 /** What payments asks Stripe about connected accounts. Test mode only. */
 export interface ConnectGateway {
   /**
@@ -30,6 +34,16 @@ export interface ConnectGateway {
 
   /** The account as Stripe reports it now. */
   readAccount(accountRef: string): Promise<Result<AccountSnapshot, ConnectFailure>>;
+
+  /**
+   * Sets the account's payout schedule (`manual` pauses Stripe payouts). The key makes a repeated
+   * call a no-op; only the `payments.sync-payout-schedules` job calls it.
+   */
+  setPayoutSchedule(
+    accountRef: string,
+    schedule: PayoutSchedule,
+    idempotencyKey: string,
+  ): Promise<Result<void, ConnectFailure>>;
 }
 
 export const CONNECT_GATEWAY = Symbol('CONNECT_GATEWAY');

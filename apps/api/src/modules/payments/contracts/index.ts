@@ -3,6 +3,7 @@
 export { PAYMENTS_FACADE } from './payments.facade';
 export type { PayoutReadiness, PaymentsFacade } from './payments.facade';
 export {
+  PAYMENTS_CONNECTED_ACCOUNT_VIEW,
   PAYMENTS_PAYOUT_ACCOUNT_MANAGE,
   PAYMENTS_PAYOUT_ACCOUNT_VIEW,
   PAYMENTS_PERMISSIONS,

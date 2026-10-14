@@ -2,6 +2,7 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
+  SequenceIdGenerator,
   testAuthenticatedActor,
   testCallContext,
   testMarketContext,
@@ -9,10 +10,12 @@ import {
 import {
   accountEvent,
   FakeConnectGateway,
+  FakeIdentityFacade,
   FakeOrderingFacade,
   FakeSessionReader,
   MemoryAccountStore,
   MemoryInbox,
+  RecordingPaymentsAudit,
   StaticPaymentsPolicy,
   stripeSignatureHeader,
   TEST_CONNECT_WEBHOOK_SECRET,
@@ -42,6 +45,7 @@ const T0 = Temporal.Instant.from('2026-10-14T10:00:00Z');
 const SELLER = '01990000-0000-7000-8000-0000000000b1';
 const OTHER_SELLER = '01990000-0000-7000-8000-0000000000b2';
 const ACCOUNT = 'acct_test_0001';
+const CODE = '123456';
 
 describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
   const otherCode = code === 'AU' ? 'ZZ' : 'AU';
@@ -86,6 +90,9 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       accounts,
       connect,
       policy,
+      identity: new FakeIdentityFacade(),
+      audit: new RecordingPaymentsAudit(),
+      ids: new SequenceIdGenerator(clock),
       clock,
     };
   };
@@ -108,12 +115,15 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
     requirementsDue: 0,
     requirementsPastDue: false,
     disabledReason: null,
+    payoutScheduleInterval: 'daily',
     ...fields,
   });
 
   describe('connect-payout-account and open-payout-account-link', () => {
     it('stores the seller first, creates the Stripe account once with the stored key and answers the page', async () => {
-      const result = await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
+      const result = await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {
+        code: CODE,
+      });
 
       expect(result).toEqual(
         ok({
@@ -121,6 +131,10 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
           ready: false,
           requirementsDue: 0,
           requirementsPastDue: false,
+          secondFactorActive: true,
+          coolingOffUntil: null,
+          payoutsPaused: false,
+          changes: [],
           url: 'https://connect.stripe.test/setup/s/abc',
         }),
       );
@@ -142,7 +156,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       ]);
       expect(accounts.rows.get(`${code}/${SELLER}`)).toMatchObject({ accountRef: ACCOUNT });
 
-      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
+      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE });
       expect(connect.creates).toHaveLength(1);
       expect(connect.links).toHaveLength(2);
     });
@@ -150,13 +164,13 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
     it('keeps the row when Stripe fails and repeats the same key the next time', async () => {
       connect.createAnswer = err({ code: 'payment.provider-unavailable' });
       const connectCase = new ConnectPayoutAccount(gate, deps);
-      expect(await connectCase.execute(seller(SELLER), {})).toEqual(
+      expect(await connectCase.execute(seller(SELLER), { code: CODE })).toEqual(
         err({ code: 'payments.unavailable' }),
       );
       expect(accounts.rows.get(`${code}/${SELLER}`)).toMatchObject({ accountRef: null });
 
       connect.createAnswer = ok({ accountRef: ACCOUNT });
-      expect((await connectCase.execute(seller(SELLER), {})).ok).toBe(true);
+      expect((await connectCase.execute(seller(SELLER), { code: CODE })).ok).toBe(true);
       expect(connect.creates.map((c) => c.idempotencyKey)).toEqual([
         `connected-account:${code}:${SELLER}`,
         `connected-account:${code}:${SELLER}`,
@@ -166,8 +180,8 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
     it('creates once when two requests race, and refuses a repeat after the key may have expired', async () => {
       const connectCase = new ConnectPayoutAccount(gate, deps);
       const both = await Promise.all([
-        connectCase.execute(seller(SELLER), {}),
-        connectCase.execute(seller(SELLER), {}),
+        connectCase.execute(seller(SELLER), { code: CODE }),
+        connectCase.execute(seller(SELLER), { code: CODE }),
       ]);
       expect(both.every((r) => r.ok)).toBe(true);
       expect(accounts.rows.get(`${code}/${SELLER}`)?.accountRef).toBe(ACCOUNT);
@@ -175,7 +189,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       // A row that never got its Stripe id and is a day old is not created again.
       await accounts.insert(market, OTHER_SELLER, T0.subtract({ hours: 24 }));
       const before = connect.creates.length;
-      expect(await connectCase.execute(seller(OTHER_SELLER), {})).toEqual(
+      expect(await connectCase.execute(seller(OTHER_SELLER), { code: CODE })).toEqual(
         err({ code: 'payments.unavailable' }),
       );
       expect(connect.creates).toHaveLength(before);
@@ -183,43 +197,45 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
 
     it('answers unavailable without a country or return pages, and when the page cannot be made', async () => {
       build(new StaticPaymentsPolicy(null));
-      expect(await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {})).toEqual(
-        err({ code: 'payments.unavailable' }),
-      );
+      expect(
+        await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE }),
+      ).toEqual(err({ code: 'payments.unavailable' }));
       build(new StaticPaymentsPolicy('AU', null));
-      expect(await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {})).toEqual(
-        err({ code: 'payments.unavailable' }),
-      );
+      expect(
+        await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE }),
+      ).toEqual(err({ code: 'payments.unavailable' }));
       expect(connect.creates).toEqual([]);
 
       build();
       connect.linkAnswer = err({ code: 'payment.provider-rejected' });
-      expect(await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {})).toEqual(
-        err({ code: 'payments.unavailable' }),
-      );
+      expect(
+        await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE }),
+      ).toEqual(err({ code: 'payments.unavailable' }));
     });
 
     it('opens a page only for an existing account, and none when rejected', async () => {
       const open = new OpenPayoutAccountLink(gate, deps);
-      expect(await open.execute(seller(SELLER), {})).toEqual(
+      expect(await open.execute(seller(SELLER), { code: CODE })).toEqual(
         err({ code: 'payments.payout-account.not-found' }),
       );
       expect(accounts.rows.size).toBe(0);
 
-      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
+      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE });
       await accounts.applyRead(market, SELLER, snapshot(), 'enabled', T0);
-      expect((await open.execute(seller(SELLER), {})).ok).toBe(true);
+      expect((await open.execute(seller(SELLER), { code: CODE })).ok).toBe(true);
       expect(connect.links.at(-1)?.kind).toBe('onboarding');
 
       await accounts.applyRead(market, SELLER, snapshot(), 'rejected', T0.add({ seconds: 1 }));
-      expect(await open.execute(seller(SELLER), {})).toEqual(
+      expect(await open.execute(seller(SELLER), { code: CODE })).toEqual(
         err({ code: 'payments.payout-account.rejected' }),
       );
     });
 
     it('uses only the session seller and refuses every other actor', async () => {
       for (const context of [customer, anonymous]) {
-        expect((await new ConnectPayoutAccount(gate, deps).execute(context, {})).ok).toBe(false);
+        expect(
+          (await new ConnectPayoutAccount(gate, deps).execute(context, { code: CODE })).ok,
+        ).toBe(false);
         expect((await new ViewPayoutAccount(gate, deps).execute(context, {})).ok).toBe(false);
       }
       expect(connect.creates).toEqual([]);
@@ -236,9 +252,13 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
           ready: false,
           requirementsDue: 0,
           requirementsPastDue: false,
+          secondFactorActive: true,
+          coolingOffUntil: null,
+          payoutsPaused: false,
+          changes: [],
         }),
       );
-      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
+      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE });
       await accounts.applyRead(
         market,
         SELLER,
@@ -247,7 +267,16 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
         T0,
       );
       expect(await view.execute(seller(SELLER), {})).toEqual(
-        ok({ status: 'restricted', ready: false, requirementsDue: 2, requirementsPastDue: true }),
+        ok({
+          status: 'restricted',
+          ready: false,
+          requirementsDue: 2,
+          requirementsPastDue: true,
+          secondFactorActive: true,
+          coolingOffUntil: null,
+          payoutsPaused: false,
+          changes: [],
+        }),
       );
       expect(await view.execute(seller(OTHER_SELLER), {})).toEqual(
         ok({
@@ -255,6 +284,10 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
           ready: false,
           requirementsDue: 0,
           requirementsPastDue: false,
+          secondFactorActive: true,
+          coolingOffUntil: null,
+          payoutsPaused: false,
+          changes: [],
         }),
       );
       expect(connect.reads).toEqual([]);
@@ -264,9 +297,9 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
   describe('payout-readiness', () => {
     it('is ready only for an enabled account, false for unknown sellers, and refuses bad input', async () => {
       const readiness = new PayoutReadinessQuery(gate, deps);
-      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
+      await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE });
       await accounts.applyRead(market, SELLER, snapshot(), 'enabled', T0);
-      await new ConnectPayoutAccount(gate, deps).execute(seller(OTHER_SELLER), {});
+      await new ConnectPayoutAccount(gate, deps).execute(seller(OTHER_SELLER), { code: CODE });
 
       expect(await readiness.execute(system, [SELLER, OTHER_SELLER, 'x'.padEnd(36, '0')])).toEqual(
         err({ code: 'validation.failed' }),
@@ -331,7 +364,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       const apply = () => new ApplyStripeEvents(gate, deps).execute(system, {});
       const store = async () => {
         await receive(accountEvent({ marketId: code }));
-        await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
+        await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), { code: CODE });
       };
 
       it('reads the account again and stores what Stripe returns', async () => {

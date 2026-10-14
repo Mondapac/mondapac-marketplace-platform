@@ -4,17 +4,18 @@ import { PAYMENTS_PAYOUT_ACCOUNT_MANAGE } from '../../contracts/permissions';
 import {
   openPayoutAccountLink,
   type PayoutAccountFailure,
+  type PayoutAccountInput,
   type PayoutAccountLink,
 } from '../connect-flow';
 import type { PaymentsDependencies } from '../payments-dependencies';
 
 /**
  * `payments.open-payout-account-link`: a new hosted page for an account that exists: onboarding
- * until the account is enabled, update afterwards. Same rule as connecting; it never creates an
- * account.
+ * until the account is enabled, update afterwards. Same rule and the same
+ * two-step code as connecting; it never creates an account.
  */
 export class OpenPayoutAccountLink extends UseCase<
-  Record<string, never>,
+  PayoutAccountInput,
   PayoutAccountLink,
   PayoutAccountFailure
 > {
@@ -31,7 +32,7 @@ export class OpenPayoutAccountLink extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return openPayoutAccountLink(this.deps, context, false);
+  protected handle(context: CallContext, input: PayoutAccountInput) {
+    return openPayoutAccountLink(this.deps, context, false, input);
   }
 }

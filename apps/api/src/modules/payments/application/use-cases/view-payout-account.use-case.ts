@@ -8,6 +8,8 @@ import {
 } from '../connect-flow';
 import type { PaymentsDependencies } from '../payments-dependencies';
 
+export type { PayoutAccountLink, PayoutAccountView, PayoutChangeView } from '../connect-flow';
+
 /**
  * `payments.view-payout-account`: the state of the acting seller's own payout account, from the
  * stored row (no call to Stripe). Rule `permissions [payments.payout-account.view]`. Allowed

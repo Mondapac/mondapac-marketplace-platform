@@ -58,6 +58,7 @@ describe.each(TEST_MARKETS)('connected accounts in market %s (database)', (code)
     requirementsDue: 0,
     requirementsPastDue: false,
     disabledReason: null,
+    payoutScheduleInterval: 'daily',
     ...fields,
   });
 
@@ -119,10 +120,10 @@ describe.each(TEST_MARKETS)('connected accounts in market %s (database)', (code)
         ),
       ),
     ).toBe(true);
-    expect(await value(market, () => store.statusesOf(market, [sellerId, randomUUID()]))).toEqual(
-      new Map([[sellerId, 'restricted']]),
-    );
-    expect(await value(other, () => store.statusesOf(other, [sellerId]))).toEqual(new Map());
+    const found = await value(market, () => store.recordsOf(market, [sellerId, randomUUID()]));
+    expect([...found.keys()]).toEqual([sellerId]);
+    expect(found.get(sellerId)).toMatchObject({ status: 'restricted', coolingOffUntil: null });
+    expect(await value(other, () => store.recordsOf(other, [sellerId]))).toEqual(new Map());
   });
 
   it('refuses a second row for the same Stripe id, and values the application would never write', async () => {

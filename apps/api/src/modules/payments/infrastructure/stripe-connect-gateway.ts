@@ -1,6 +1,10 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
-import type { ConnectFailure, ConnectGateway } from '../application/ports/connect-gateway';
+import type {
+  ConnectFailure,
+  ConnectGateway,
+  PayoutSchedule,
+} from '../application/ports/connect-gateway';
 import type { AccountSnapshot } from '../domain/connected-account';
 
 /** How long one Stripe call may take before it counts as failed. */
@@ -87,6 +91,18 @@ export class StripeConnectGateway implements ConnectGateway {
     return snapshot === null ? err(UNAVAILABLE) : ok(snapshot);
   }
 
+  async setPayoutSchedule(
+    accountRef: string,
+    schedule: PayoutSchedule,
+    idempotencyKey: string,
+  ): Promise<Result<void, ConnectFailure>> {
+    if (!ACCOUNT_ID.test(accountRef)) return err(REJECTED);
+    const form = new URLSearchParams();
+    form.set('settings[payouts][schedule][interval]', schedule);
+    const body = await this.call('POST', `/v1/accounts/${accountRef}`, form, idempotencyKey);
+    return body.ok ? ok(undefined) : body;
+  }
+
   private async call(
     method: 'GET' | 'POST',
     path: string,
@@ -132,6 +148,9 @@ function toSnapshot(body: unknown): AccountSnapshot | null {
   const metadata = isObject(body.metadata) ? body.metadata : {};
   const capabilities = isObject(body.capabilities) ? body.capabilities : {};
   const requirements = isObject(body.requirements) ? body.requirements : {};
+  const settings = isObject(body.settings) ? body.settings : {};
+  const payouts = isObject(settings.payouts) ? settings.payouts : {};
+  const schedule = isObject(payouts.schedule) ? payouts.schedule : {};
   return {
     id: body.id,
     metadataMarketId: text(metadata.market_id),
@@ -142,5 +161,6 @@ function toSnapshot(body: unknown): AccountSnapshot | null {
     requirementsDue: count(requirements.currently_due),
     requirementsPastDue: count(requirements.past_due) > 0,
     disabledReason: text(requirements.disabled_reason),
+    payoutScheduleInterval: text(schedule.interval),
   };
 }

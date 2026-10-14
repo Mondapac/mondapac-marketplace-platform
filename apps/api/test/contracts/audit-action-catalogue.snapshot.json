@@ -314,6 +314,38 @@
     }
   },
   {
+    "action": "payments.payout-change.recorded",
+    "targetType": "payments.connected-account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "coolingOffUntil": "optional(instant)",
+      "kind": "enumOf(initial|added|updated|removed)"
+    }
+  },
+  {
+    "action": "payments.payout-schedule.paused",
+    "targetType": "payments.connected-account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "changeId": "id"
+    }
+  },
+  {
+    "action": "payments.payout-schedule.resumed",
+    "targetType": "payments.connected-account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "changeId": "id"
+    }
+  },
+  {
     "action": "pricing.offer-write.refusals-suppressed",
     "targetType": "pricing.write-refusal-actor",
     "targetId": "id",

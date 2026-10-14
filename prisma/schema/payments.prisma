@@ -50,9 +50,44 @@ model PaymentsConnectedAccount {
   updatedAt           DateTime  @map("updated_at") @db.Timestamptz(6)
   /// When the state was last read from Stripe; an older read never replaces a newer one.
   lastReadAt          DateTime? @map("last_read_at") @db.Timestamptz(6)
+  /// End of the waiting period after the latest bank change (VER-10); null when none.
+  coolingOffUntil     DateTime? @map("cooling_off_until") @db.Timestamptz(6)
+  /// Stripe payouts are kept manual until this instant; null when never paused.
+  payoutsPausedUntil  DateTime? @map("payouts_paused_until") @db.Timestamptz(6)
+  /// manual or normal: the schedule payments last wrote to Stripe (or marked to write again);
+  /// null while payments never touched it.
+  payoutScheduleApplied String? @map("payout_schedule_applied")
+  /// Bumped when a read finds the pause undone, so the next write has its own idempotency key.
+  payoutScheduleRevision Int    @default(0) @map("payout_schedule_revision")
+  /// The latest row of payout_account_changes for this account.
+  lastChangeId        String?   @map("last_change_id") @db.Uuid
+  changes             PaymentsPayoutAccountChange[]
 
   @@id([marketId, sellerId])
   @@unique([marketId, accountRef])
   @@map("connected_accounts")
+  @@schema("payments")
+}
+
+/// Append-only history of changes of a seller's payout destination (Phase 5 package 3 leftovers).
+/// Kind and times only: never a bank number, a name or a Stripe bank-account id (VER-10).
+model PaymentsPayoutAccountChange {
+  marketId      String    @map("market_id") @db.VarChar(8)
+  id            String    @db.Uuid
+  tenantId      String    @map("tenant_id")
+  sellerId      String    @map("seller_id") @db.Uuid
+  /// initial, added, updated or removed (CHECK).
+  kind          String
+  detectedAt    DateTime  @map("detected_at") @db.Timestamptz(6)
+  /// The waiting period this change started or extended to; null for the initial destination.
+  coolingOffUntil DateTime? @map("cooling_off_until") @db.Timestamptz(6)
+  /// The Stripe event that reported it (evt_...): stored once, so a repeated event adds nothing.
+  sourceEventId String    @map("source_event_id")
+  account       PaymentsConnectedAccount @relation(fields: [marketId, sellerId], references: [marketId, sellerId])
+
+  @@id([marketId, id])
+  @@unique([marketId, sourceEventId])
+  @@index([marketId, sellerId, detectedAt(sort: Desc)])
+  @@map("payout_account_changes")
   @@schema("payments")
 }

@@ -20,6 +20,7 @@ const ACCOUNT = {
     disabled_reason: null,
   },
   metadata: { market_id: 'AU', seller_id: 'seller-1' },
+  settings: { payouts: { schedule: { interval: 'daily', delay_days: 2 } } },
   business_profile: { name: 'Should not be kept' },
   email: 'should-not-be-kept@example.test',
 };
@@ -102,8 +103,41 @@ describe('StripeConnectGateway', () => {
         requirementsDue: 2,
         requirementsPastDue: false,
         disabledReason: null,
+        payoutScheduleInterval: 'daily',
       },
     });
+  });
+
+  it('sets the payout schedule with the idempotency key and nothing else in the form', async () => {
+    const calls: { url: string; init: Parameters<StripeRequest>[1] }[] = [];
+    const gateway = new StripeConnectGateway(KEY, (url, init) => {
+      calls.push({ url, init });
+      return answer(200, ACCOUNT)();
+    });
+
+    expect(await gateway.setPayoutSchedule('acct_test_a1', 'manual', 'payout-pause:c1')).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(calls[0]?.url).toBe('https://api.stripe.com/v1/accounts/acct_test_a1');
+    expect(calls[0]?.init.method).toBe('POST');
+    expect(calls[0]?.init.headers['Idempotency-Key']).toBe('payout-pause:c1');
+    expect(Object.fromEntries(new URLSearchParams(calls[0]?.init.body))).toEqual({
+      'settings[payouts][schedule][interval]': 'manual',
+    });
+
+    expect(
+      await new StripeConnectGateway(KEY, answer(500, {})).setPayoutSchedule(
+        'acct_test_a1',
+        'daily',
+        'k',
+      ),
+    ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
+    expect(await gateway.setPayoutSchedule('cs_wrong', 'daily', 'k')).toEqual({
+      ok: false,
+      error: { code: 'payment.provider-rejected' },
+    });
+    expect(calls).toHaveLength(1);
   });
 
   it('answers a code without Stripe text for every failure, and never calls with a bad id or no key', async () => {
