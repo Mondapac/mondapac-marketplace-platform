@@ -274,12 +274,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['max_per_customer', 'version'],
     },
-    // Cart (speed mode): a cart is never deleted by the application (an expired guest cart is
-    // ignored at read time; a merged one is kept so a replay is recognised); its owner columns and
-    // status change on a merge. A line is deleted on remove; only its quantity, price-at-add and
-    // add instant change.
+    // Cart (speed mode): a cart is deleted only by the purge job (cart.purge-inactive, hourly; an
+    // expired guest cart is also ignored at read time; a merged one is kept so a replay is
+    // recognised); its owner columns and status change on a merge. A line is deleted on remove
+    // and by the cascade of the purge; only its quantity, price-at-add and add instant change.
     'cart.carts': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'account_id',
         'guest_token_hash',
@@ -293,6 +293,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'cart.cart_lines': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['added_at', 'price_at_add_amount', 'price_at_add_currency', 'quantity'],
+    },
+    'cart.rate_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['count', 'window_started_at'],
     },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
     // once; an order's state, payment state, Stripe ids, times and version change.

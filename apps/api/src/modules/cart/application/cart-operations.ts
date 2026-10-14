@@ -9,6 +9,7 @@ import type {
   Result,
 } from '@mondapac/shared-kernel';
 import type { CheckoutLine } from '../contracts';
+import { Logger } from '@nestjs/common';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   addLine,
@@ -22,9 +23,19 @@ import {
   type Clamp,
   type LineAvailability,
 } from '../domain/cart';
+import {
+  GUEST_CREATE_ORIGIN,
+  GUEST_WRITE_CART,
+  GUEST_WRITE_ORIGIN,
+  rateVerdict,
+  type RateLimit,
+  type RateReservation,
+} from '../domain/rate-limits';
 import type { CartPolicy } from './ports/cart-policy';
 import type { CartRepository } from './ports/cart.repository';
 import type { GuestTokens } from './ports/guest-tokens';
+import type { RateCounterKeys } from './ports/rate-counter-keys';
+import type { RateCounterRepository } from './ports/rate-counter.repository';
 import {
   verdictKey,
   type LineFactsSource,
@@ -53,6 +64,8 @@ export interface CartDependencies {
   readonly facts: LineFactsSource;
   readonly ids: IdGenerator;
   readonly clock: Clock;
+  readonly counters: RateCounterRepository;
+  readonly counterKeys: RateCounterKeys;
 }
 
 export type Fields = readonly { readonly path: string; readonly code: string }[];
@@ -60,6 +73,8 @@ export type Fields = readonly { readonly path: string; readonly code: string }[]
 export type CartFailure =
   | { readonly code: 'validation.failed'; readonly fields: Fields }
   | { readonly code: 'access.denied' }
+  | { readonly code: 'access.unavailable' }
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'conflict.stale' }
   | { readonly code: 'cart.check-unavailable' }
   | { readonly code: 'cart.too-many-lines' }
@@ -108,6 +123,75 @@ export interface MergeOutput {
   readonly notAdded: readonly { offerId: Id<'Offer'>; variantId: Id<'Variant'> }[];
   readonly cookie: GuestCookie;
 }
+
+const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
+const rateLogger = new Logger('CartRateLimit');
+
+/**
+ * Guest line writes are throttled before any facade call or write (cart design 4, 6.1 step 1;
+ * Hassan H-1). The counters are reserved in their own unit, so a refused attempt keeps its count,
+ * and the creation count stays even when the add is then refused. A missing origin or a failing
+ * counter store refuses with `access.unavailable` and nothing is written (fail closed).
+ * `cartHash` is the SHA-256 of the guest token (hex); the raw token never reaches a counter.
+ * Merge, viewing and account carts are not counted here.
+ */
+async function reserveGuestWrite(
+  deps: CartDependencies,
+  context: CallContext,
+  origin: string | null,
+  cartHash: string | null,
+  creating: boolean,
+): Promise<CartFailure | null> {
+  const { market } = context;
+  if (origin === null) {
+    rateLogger.warn({
+      msg: 'cart.guest-write.origin-unavailable',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return UNAVAILABLE;
+  }
+  const wanted: { limit: RateLimit; subject: string }[] = [];
+  if (creating) wanted.push({ limit: GUEST_CREATE_ORIGIN, subject: origin });
+  if (cartHash !== null) wanted.push({ limit: GUEST_WRITE_CART, subject: cartHash });
+  wanted.push({ limit: GUEST_WRITE_ORIGIN, subject: origin });
+  try {
+    const now = deps.clock.now();
+    const keyed = wanted.map(({ limit, subject }) => ({
+      limit,
+      keyHash: deps.counterKeys.keyOf(market, limit.kind, subject),
+    }));
+    const reserved = await deps.unitOfWork.run<readonly RateReservation[], CartFailure>(
+      market,
+      async () => ok(await deps.counters.reserve(market, keyed, now)),
+    );
+    if (!reserved.ok) throw new Error('counter unit refused');
+    const verdict = rateVerdict(
+      wanted.map(({ limit }) => limit),
+      reserved.value,
+      now,
+    );
+    if (verdict.allowed) return null;
+    rateLogger.warn({
+      msg: 'cart.guest-write.throttled',
+      metric: 'request.throttled',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return { code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds };
+  } catch {
+    rateLogger.error({
+      msg: 'cart.guest-write.rate-counters-unavailable',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return UNAVAILABLE;
+  }
+}
+
+/** The token hash of a guest caller, or null for an account or a missing or malformed token. */
+const hashOfCaller = (deps: CartDependencies, caller: CartCaller): string | null =>
+  caller.kind === 'guest' && caller.token !== null ? deps.tokens.hashOf(caller.token) : null;
 
 /** A quantity in a request: a whole number of 1 to 9 digits. */
 const QUANTITY = /^[1-9][0-9]{0,8}$/;
@@ -236,6 +320,7 @@ export async function addItem(
   context: CallContext,
   caller: CartCaller,
   input: AddInput,
+  origin?: string | null,
 ): Promise<Result<LineWritten, CartFailure>> {
   const fields: { path: string; code: string }[] = [];
   const offerId = parseId<'Offer'>(input?.offerId);
@@ -248,6 +333,26 @@ export async function addItem(
     return err({ code: 'validation.failed', fields });
   }
   const ref = { offerId: offerId.value, variantId: variantId.value };
+
+  // A guest write is counted first, before any facade call or write (design 6.1 step 1). Whether
+  // a usable guest cart exists decides if this add also counts as a creation.
+  if (caller.kind === 'guest') {
+    const found = await deps.unitOfWork.run<Loaded, CartFailure>(
+      context.market,
+      async () => ok(await load(deps, context.market, caller)),
+      { readOnly: true },
+    );
+    if (!found.ok) return found;
+    const hasCart = found.value.cart !== null;
+    const refused = await reserveGuestWrite(
+      deps,
+      context,
+      origin ?? null,
+      hasCart ? hashOfCaller(deps, caller) : null,
+      !hasCart,
+    );
+    if (refused !== null) return err(refused);
+  }
 
   const verdict = (await deps.facts.evaluate(context, [ref])).get(verdictKey(ref));
   if (verdict === undefined || verdict.state === 'check-unavailable') {
@@ -341,6 +446,7 @@ export async function setLineQuantity(
   context: CallContext,
   caller: CartCaller,
   input: SetQuantityInput,
+  origin?: string | null,
 ): Promise<Result<LineWritten, CartFailure>> {
   const fields: { path: string; code: string }[] = [];
   const lineId = parseId<'CartLine'>(input?.lineId);
@@ -348,6 +454,16 @@ export async function setLineQuantity(
   const quantity = asQuantity(input?.quantity);
   if (quantity === null) fields.push({ path: 'quantity', code: 'format' });
   if (!lineId.ok || quantity === null) return err({ code: 'validation.failed', fields });
+  if (caller.kind === 'guest') {
+    const refused = await reserveGuestWrite(
+      deps,
+      context,
+      origin ?? null,
+      hashOfCaller(deps, caller),
+      false,
+    );
+    if (refused !== null) return err(refused);
+  }
 
   const read = await deps.unitOfWork.run<Loaded, CartFailure>(
     context.market,
@@ -404,10 +520,21 @@ export async function removeItem(
   context: CallContext,
   caller: CartCaller,
   input: { readonly lineId: string },
+  origin?: string | null,
 ): Promise<Result<{ readonly cookie: GuestCookie | null }, CartFailure>> {
   const lineId = parseId<'CartLine'>(input?.lineId);
   if (!lineId.ok) {
     return err({ code: 'validation.failed', fields: [{ path: 'lineId', code: 'format' }] });
+  }
+  if (caller.kind === 'guest') {
+    const refused = await reserveGuestWrite(
+      deps,
+      context,
+      origin ?? null,
+      hashOfCaller(deps, caller),
+      false,
+    );
+    if (refused !== null) return err(refused);
   }
   return deps.unitOfWork.run<{ cookie: GuestCookie | null }, CartFailure>(
     context.market,

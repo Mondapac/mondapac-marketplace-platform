@@ -10,7 +10,7 @@ import {
 
 /** `remove-guest-item` for a guest (rule `anonymous`, the cart token from the cookie). */
 export class RemoveGuestItem extends UseCase<
-  { readonly lineId: string } & { readonly token: string | null },
+  { readonly lineId: string } & { readonly token: string | null; readonly origin: string | null },
   { readonly cookie: GuestCookie | null },
   CartFailure
 > {
@@ -28,9 +28,12 @@ export class RemoveGuestItem extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: { readonly lineId: string } & { readonly token: string | null },
+    input: { readonly lineId: string } & {
+      readonly token: string | null;
+      readonly origin: string | null;
+    },
   ) {
     const caller: CartCaller = { kind: 'guest', token: input.token };
-    return removeItem(this.deps, context, caller, input);
+    return removeItem(this.deps, context, caller, input, input.origin);
   }
 }

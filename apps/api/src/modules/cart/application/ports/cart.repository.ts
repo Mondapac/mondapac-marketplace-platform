@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { CartState } from '../../domain/cart';
 
 /**
@@ -21,6 +21,20 @@ export interface CartRepository {
    * nothing: the cart changed since it was read, or the new owner already has an active cart.
    */
   save(market: MarketContext, cart: CartState): Promise<'saved' | 'stale'>;
+
+  /**
+   * The purge (cart design 12): selects the ids of up to `limit` carts ordered by
+   * `last_changed_at` whose retention has ended (a guest or MERGED cart last changed at or before
+   * `guestBefore`, an account cart at or before `accountBefore`), then deletes those ids with the
+   * same condition repeated, so a cart changed in between stays. The lines go by the cascade.
+   * Answers how many carts were deleted.
+   */
+  purgeInactive(
+    market: MarketContext,
+    guestBefore: Temporal.Instant,
+    accountBefore: Temporal.Instant,
+    limit: number,
+  ): Promise<number>;
 }
 
 export const CART_REPOSITORY = Symbol('CART_REPOSITORY');

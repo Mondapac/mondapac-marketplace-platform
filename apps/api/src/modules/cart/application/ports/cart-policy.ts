@@ -6,6 +6,8 @@ export interface CartPolicy {
   limits(market: MarketContext): CartLimits;
   /** How long a guest cart lives after its last change, in milliseconds (7 days). */
   guestTtlMs(): number;
+  /** How long an account cart lives after its last change, in milliseconds (90 days). */
+  accountRetentionMs(): number;
 }
 
 export const CART_POLICY = Symbol('CART_POLICY');

@@ -3,6 +3,7 @@
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.clear-ordered-lines", "rule": "system" },
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.purge-inactive-carts", "rule": "system" },
   { "name": "cart.read-checkout-lines", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.remove-guest-item", "rule": "anonymous" },
   { "name": "cart.remove-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },

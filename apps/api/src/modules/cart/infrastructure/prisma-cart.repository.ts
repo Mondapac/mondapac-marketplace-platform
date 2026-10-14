@@ -80,6 +80,12 @@ const lineData = (line: CartLine) => ({
   addedAt: toDate(line.addedAt),
 });
 
+/** A unique violation (Prisma P2002), however the driver adapter wraps it. */
+function isUniqueViolation(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === 'P2002';
+}
+
 /**
  * {@link CartRepository} on `cart.carts` and `cart.cart_lines`, through the Market-scoped client
  * with `marketId` at the top level of every `where`.
@@ -139,17 +145,26 @@ export class PrismaCartRepository implements CartRepository {
 
   async save(market: MarketContext, cart: CartState): Promise<'saved' | 'stale'> {
     const tx = this.prisma.tx(market);
-    const updated = await tx.cartCart.updateMany({
-      where: { marketId: market.marketId, id: cart.id, version: cart.version },
-      data: {
-        ...ownerColumns(cart.owner),
-        status: cart.status,
-        lastChangedAt: toDate(cart.lastChangedAt),
-        mergedIntoCartId: cart.mergedIntoCartId,
-        mergedAt: cart.mergedAt === null ? null : toDate(cart.mergedAt),
-        version: cart.version + 1,
-      },
-    });
+    let updated: { count: number };
+    try {
+      updated = await tx.cartCart.updateMany({
+        where: { marketId: market.marketId, id: cart.id, version: cart.version },
+        data: {
+          ...ownerColumns(cart.owner),
+          status: cart.status,
+          lastChangedAt: toDate(cart.lastChangedAt),
+          mergedIntoCartId: cart.mergedIntoCartId,
+          mergedAt: cart.mergedAt === null ? null : toDate(cart.mergedAt),
+          version: cart.version + 1,
+        },
+      });
+    } catch (error) {
+      // The rare transfer race (cart design 18, L1): the account got an active cart between the
+      // read and this write, so the unique index "one active cart per account" refuses the
+      // transfer. The caller answers `conflict.stale`; the client retries.
+      if (isUniqueViolation(error)) return 'stale';
+      throw error;
+    }
     if (updated.count === 0) return 'stale';
     const existing = await tx.cartLine.findMany({
       where: { marketId: market.marketId, cartId: cart.id },
@@ -187,5 +202,33 @@ export class PrismaCartRepository implements CartRepository {
       });
     }
     return 'saved';
+  }
+
+  async purgeInactive(
+    market: MarketContext,
+    guestBefore: Temporal.Instant,
+    accountBefore: Temporal.Instant,
+    limit: number,
+  ): Promise<number> {
+    const tx = this.prisma.tx(market);
+    // A guest cart has a token hash, in any status; an account cart has an account id.
+    const expired = {
+      marketId: market.marketId,
+      OR: [
+        { guestTokenHash: { not: null }, lastChangedAt: { lte: toDate(guestBefore) } },
+        { accountId: { not: null }, lastChangedAt: { lte: toDate(accountBefore) } },
+      ],
+    };
+    const rows = await tx.cartCart.findMany({
+      where: expired,
+      orderBy: [{ lastChangedAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: { id: true },
+    });
+    if (rows.length === 0) return 0;
+    const { count } = await tx.cartCart.deleteMany({
+      where: { ...expired, id: { in: rows.map((row) => row.id) } },
+    });
+    return count;
   }
 }

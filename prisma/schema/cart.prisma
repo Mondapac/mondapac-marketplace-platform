@@ -27,6 +27,8 @@ model CartCart {
   /// Lookup of a guest cart by its token (partial: the column is null for account carts).
   @@index([marketId, guestTokenHash])
   @@index([marketId, accountId])
+  /// The purge job reads the carts of a Market by the age of their last change (cart design 11, 12).
+  @@index([marketId, lastChangedAt])
   @@map("carts")
   @@schema("cart")
 }
@@ -50,5 +52,22 @@ model CartLine {
   /// One line per sell unit in a cart (CRT-02).
   @@unique([marketId, cartId, offerId, variantId])
   @@map("cart_lines")
+  @@schema("cart")
+}
+
+/// Fixed-window counters of the guest-cart rate limits (cart design 4, Hassan H-1). The subject is
+/// an HMAC of the client origin or of the guest token hash, never the value itself. The closed kind
+/// list and the grants are hand-written in the migration `cart_rate_counters_purge`.
+model CartRateCounter {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  kind            String
+  keyHash         Bytes    @map("key_hash")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  count           Int
+
+  @@id([marketId, kind, keyHash])
+  @@index([marketId, windowStartedAt])
+  @@map("rate_counters")
   @@schema("cart")
 }

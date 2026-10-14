@@ -14,6 +14,8 @@ import {
   type LineVerdict,
 } from '../src/modules/cart/application/ports/line-facts';
 import type { CartState } from '../src/modules/cart/domain/cart';
+import { RATE_COUNTER_REPOSITORY } from '../src/modules/cart/application/ports/rate-counter.repository';
+import { InMemoryRateCounters } from '../src/modules/cart/application/testing/in-memory-rate-counters';
 import { CART_STATUS } from '../src/modules/cart/presentation/cart.controller';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -70,11 +72,31 @@ class MemoryCarts implements CartRepository {
     this.rows.set(cart.id, { ...cart, version: cart.version + 1 });
     return Promise.resolve('saved' as const);
   }
+  purgeInactive(
+    _m: unknown,
+    guestBefore: Temporal.Instant,
+    accountBefore: Temporal.Instant,
+    limit: number,
+  ) {
+    const expired = [...this.rows.values()]
+      .filter(
+        (c) =>
+          Temporal.Instant.compare(
+            c.lastChangedAt,
+            c.owner.kind === 'guest' ? guestBefore : accountBefore,
+          ) <= 0,
+      )
+      .sort((a, b) => Temporal.Instant.compare(a.lastChangedAt, b.lastChangedAt))
+      .slice(0, limit);
+    for (const cart of expired) this.rows.delete(cart.id);
+    return Promise.resolve(expired.length);
+  }
 }
 
 describe('cart routes over HTTP', () => {
   let app: NestExpressApplication | undefined;
   let carts: MemoryCarts;
+  let counters: InMemoryRateCounters;
   let clock: FixedClock;
   const http = () => request(app!.getHttpServer());
 
@@ -115,6 +137,8 @@ describe('cart routes over HTTP', () => {
           .useValue(clock)
           .overrideProvider(CART_REPOSITORY)
           .useValue(carts)
+          .overrideProvider(RATE_COUNTER_REPOSITORY)
+          .useValue(counters)
           .overrideProvider(LINE_FACTS_SOURCE)
           .useValue(facts),
     }));
@@ -176,6 +200,7 @@ describe('cart routes over HTTP', () => {
     fakes.reset();
     clock = new FixedClock(START);
     carts = new MemoryCarts();
+    counters = new InMemoryRateCounters();
   });
   afterEach(async () => {
     await app?.close();
@@ -188,6 +213,7 @@ describe('cart routes over HTTP', () => {
       'cart.offer-not-purchasable': 422,
       'cart.too-many-lines': 422,
       'conflict.stale': 409,
+      'request.throttled': 429,
       'cart.check-unavailable': 503,
     });
   });
@@ -269,6 +295,44 @@ describe('cart routes over HTTP', () => {
       expect(setCookies(res).find((c) => c.startsWith(`__Host-cart-guest-${code}=;`))).toMatch(
         /Max-Age=0/,
       );
+    });
+
+    it('throttles the 31st guest cart creation of an origin with 429 and Retry-After', async () => {
+      await boot(code);
+      const add = () =>
+        http()
+          .post('/cart/items')
+          .set({ 'x-market-id': code })
+          .send({ ...line, quantity: 1 });
+
+      for (let n = 0; n < 30; n += 1) expect((await add()).status).toBe(200);
+      const throttled = await add();
+
+      expect(throttled.status).toBe(429);
+      expect(throttled.body).toMatchObject({
+        code: 'request.throttled',
+        details: { retryAfterSeconds: 3600 },
+      });
+      expect(throttled.headers['retry-after']).toBe('3600');
+      expect(setCookies(throttled)).toEqual([]);
+      expect(carts.rows.size).toBe(30);
+      // Viewing is never throttled.
+      expect((await http().get('/cart').set({ 'x-market-id': code })).status).toBe(200);
+    });
+
+    it('fails closed with 503 access.unavailable and writes nothing when the counters are down', async () => {
+      await boot(code);
+      counters.failing = true;
+
+      const res = await http()
+        .post('/cart/items')
+        .set({ 'x-market-id': code })
+        .send({ ...line, quantity: 1 });
+
+      expect(res.status).toBe(503);
+      expect(res.body).toMatchObject({ code: 'access.unavailable' });
+      expect(carts.rows.size).toBe(0);
+      expect(setCookies(res)).toEqual([]);
     });
 
     it('refuses bodies that are not closed JSON, and sets no cookie on a refusal', async () => {
