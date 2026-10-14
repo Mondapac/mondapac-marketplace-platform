@@ -7,7 +7,8 @@
   "nav": {
     "home": "Home",
     "team": "Roles & permissions",
-    "sellers": "Sellers"
+    "sellers": "Sellers",
+    "price-holds": "Held prices"
   },
   "home": {
     "title": "Home",
@@ -626,6 +627,70 @@
         "in-progress": "Another decision on this application is being settled.",
         "not-found": "This application no longer exists.",
         "denied": "You do not have access to decide on applications.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "Check the values and try again.",
+        "unavailable": "The decision could not be sent. Try again later.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unknown": "Something went wrong. Try again."
+      }
+    }
+  },
+  "pricing": {
+    "holds": {
+      "title": "Held prices",
+      "no-access": "You don't have access to held prices.",
+      "back-home": "Back to home",
+      "unavailable": "Held prices could not be loaded. Try again later.",
+      "more": "Next page",
+      "empty": "No held prices are waiting for a decision.",
+      "view-only": "You can view this queue but not decide.",
+      "col": {
+        "price": "Held price",
+        "anchor": "Compared with",
+        "direction": "Change",
+        "submitted": "Submitted",
+        "ids": "Record",
+        "actions": "Decision"
+      },
+      "direction": {
+        "up": "Increase",
+        "down": "Decrease"
+      },
+      "ids": {
+        "seller": "Seller",
+        "offer": "Offer",
+        "variant": "Variant"
+      },
+      "approve": "Approve",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "approve-confirm": "Approve {price}? The price takes effect now.",
+      "approve-yes": "Yes, approve",
+      "reject-yes": "Reject price",
+      "reason": {
+        "label": "Reason",
+        "choose": "Choose a reason",
+        "price-implausible": "Price not plausible",
+        "price-unverified": "Price could not be verified",
+        "policy-breach": "Breaks a pricing policy",
+        "entered-in-error": "Entered in error",
+        "other": "Other"
+      },
+      "note": {
+        "label": "Note for the seller (optional)",
+        "help": "The seller reads this note."
+      },
+      "notice": {
+        "approved": "Price approved.",
+        "rejected": "Price rejected. The previous price stays."
+      },
+      "error": {
+        "own-submission": "You submitted this price, so someone else must decide it.",
+        "gone": "This price is no longer waiting for a decision.",
+        "retired": "The price series was retired. Reject this price instead.",
+        "out-of-range": "The amount is outside the Market limits. Reject this price instead.",
+        "retry": "The price changed meanwhile. Try again.",
+        "denied": "You do not have access to decide on held prices.",
         "throttled": "Too many requests. Wait a moment and try again.",
         "invalid": "Check the values and try again.",
         "unavailable": "The decision could not be sent. Try again later.",
