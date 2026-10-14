@@ -88,7 +88,9 @@ export class OrdersController {
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiConflictResponse({
     ...ERROR,
-    description: 'ordering.stock-insufficient (details.lines) or conflict.retry',
+    description:
+      'ordering.stock-insufficient (details.lines), ordering.cart-not-ready (details.sellers: ' +
+      'sellerId, reason below-minimum or check-unavailable, minimum) or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({
     ...ERROR,

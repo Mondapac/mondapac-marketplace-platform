@@ -24,6 +24,7 @@ import { verdictKey, type LineFactsSource, type LineVerdict } from './ports/line
 import { AddGuestItem } from './use-cases/add-guest-item.use-case';
 import { AddItem } from './use-cases/add-item.use-case';
 import { ClearOrderedLines } from './use-cases/clear-ordered-lines.use-case';
+import { CartCheckoutFacadeImplementation } from '../presentation/cart-checkout.facade';
 import { ReadCheckoutLines } from './use-cases/read-checkout-lines.use-case';
 import { MergeGuestCart } from './use-cases/merge-guest-cart.use-case';
 import { RemoveGuestItem } from './use-cases/remove-guest-item.use-case';
@@ -566,6 +567,73 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       await groupOf();
 
       expect(minimumCalls).toBe(1);
+    });
+
+    it('lists only the seller below its minimum when two sellers share a cart', async () => {
+      const SELLER_B = id<'Seller'>(40);
+      minimums.set(SELLER, minimum(2500n));
+      minimums.set(SELLER_B, minimum(200n));
+      verdicts.set(verdictKey({ offerId: OFFER_B, variantId: VARIANT }), {
+        ...buyable(250n),
+        sellerId: SELLER_B,
+      });
+      await fill(2); // 2000 < 2500: below
+      await new AddItem(gate, deps).execute(customerCtx, {
+        offerId: OFFER_B,
+        variantId: VARIANT,
+        quantity: 1,
+      }); // 250 >= 200: met
+
+      const result = await new ReadCheckoutLines(gate, deps).execute(customerCtx, {});
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          sellers: [{ sellerId: SELLER, reason: 'below-minimum', minimum: money(2500n, currency) }],
+        },
+      });
+    });
+
+    it('refuses with check-unavailable when only the sellers read fails', async () => {
+      await fill();
+      minimums.clear();
+
+      const result = await new ReadCheckoutLines(gate, deps).execute(customerCtx, {});
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          sellers: [{ sellerId: SELLER, reason: 'check-unavailable', minimum: null }],
+        },
+      });
+    });
+
+    it('maps cart.not-ready through the checkout facade as details.sellers, and others to check-unavailable', async () => {
+      const facade = new CartCheckoutFacadeImplementation(
+        new ReadCheckoutLines(gate, deps),
+        new ClearOrderedLines(gate, deps),
+      );
+      minimums.set(SELLER, minimum(2500n));
+      await fill(1);
+
+      const notReady = await facade.checkoutLines(customerCtx);
+      expect(notReady).toEqual({
+        ok: false,
+        error: {
+          code: 'cart.not-ready',
+          details: {
+            sellers: [
+              { sellerId: SELLER, reason: 'below-minimum', minimum: money(2500n, currency) },
+            ],
+          },
+        },
+      });
+      expect(await facade.checkoutLines(guestCtx)).toMatchObject({
+        ok: false,
+        error: { code: 'cart.check-unavailable' },
+      });
     });
 
     it('lets a ready cart through to ordering, and refuses with cart.not-ready and the sellers otherwise', async () => {

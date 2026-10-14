@@ -1,7 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { CartCheckoutFacade, CheckoutLine } from '../../src/modules/cart';
+import type { CartCheckoutFacade, CartCheckoutFailure, CheckoutLine } from '../../src/modules/cart';
 import type {
   CommissionPayoutsFacade,
   CommissionPayoutsFailure,
@@ -378,7 +378,9 @@ export class FakeCart implements CartCheckoutFacade {
   lines: readonly CheckoutLine[] = [];
   down = false;
   cleared: unknown[] = [];
-  checkoutLines(): Promise<Result<readonly CheckoutLine[], { code: 'cart.check-unavailable' }>> {
+  notReady: Extract<CartCheckoutFailure, { code: 'cart.not-ready' }> | null = null;
+  checkoutLines(): Promise<Result<readonly CheckoutLine[], CartCheckoutFailure>> {
+    if (this.notReady !== null) return Promise.resolve(err(this.notReady));
     return Promise.resolve(this.down ? err({ code: 'cart.check-unavailable' }) : ok(this.lines));
   }
   clearOrdered(_c: CallContext, request: unknown) {

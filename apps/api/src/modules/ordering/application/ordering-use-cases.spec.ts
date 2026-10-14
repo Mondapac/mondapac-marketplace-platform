@@ -208,6 +208,12 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
       cart.down = true;
       expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      cart.down = false;
+      const sellers = [
+        { sellerId: SELLER_A, reason: 'below-minimum' as const, minimum: money(4000n, currency) },
+      ];
+      cart.notReady = { code: 'cart.not-ready', details: { sellers } };
+      expect(await start()).toEqual(err({ code: 'ordering.cart-not-ready', sellers }));
       expect(inventory.calls).toEqual([]);
       expect(orders.rows.size).toBe(0);
     });
