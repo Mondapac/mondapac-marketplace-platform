@@ -1,9 +1,15 @@
 import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { OrderPage, OrderRepository } from '../application/ports/order.repository';
+import type {
+  OrderPage,
+  OrderRepository,
+  SellerOrderPage,
+  SellerOrderRecord,
+} from '../application/ports/order.repository';
 import type {
   CancelReason,
+  Fulfilment,
   OrderLine,
   OrderState,
   OrderStatus,
@@ -39,6 +45,12 @@ interface OrderRow {
     readonly subtotalAmount: bigint;
     readonly shippingAmount: bigint;
     readonly totalAmount: bigint;
+    readonly fulfilment: string;
+    readonly carrier: string | null;
+    readonly trackingRef: string | null;
+    readonly shippedAt: Date | null;
+    readonly deliveredAt: Date | null;
+    readonly inventoryRecordedAt: Date | null;
   }[];
   readonly lines: readonly {
     readonly id: string;
@@ -53,29 +65,46 @@ interface OrderRow {
   }[];
 }
 
+const optionalInstant = (date: Date | null): Temporal.Instant | null =>
+  date === null ? null : toInstant(date);
+
+type SellerOrderRow = OrderRow['sellerOrders'][number];
+type LineRow = OrderRow['lines'][number];
+
+const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
+  id: s.id as Id<'SellerOrder'>,
+  sellerId: s.sellerId as Id<'Seller'>,
+  subtotal: s.subtotalAmount,
+  shipping: s.shippingAmount,
+  total: s.totalAmount,
+  fulfilment: s.fulfilment as Fulfilment,
+  carrier: s.carrier,
+  trackingRef: s.trackingRef,
+  shippedAt: optionalInstant(s.shippedAt),
+  deliveredAt: optionalInstant(s.deliveredAt),
+  inventoryRecordedAt: optionalInstant(s.inventoryRecordedAt),
+});
+
+const toLine = (l: LineRow, currency: string): OrderLine => ({
+  id: l.id as Id<'OrderLine'>,
+  sellerOrderId: l.sellerOrderId as Id<'SellerOrder'>,
+  offerId: l.offerId as Id<'Offer'>,
+  variantId: l.variantId as Id<'Variant'>,
+  quantity: l.quantity,
+  unitPrice: money(l.unitAmount, currency),
+  lineAmount: l.lineAmount,
+  taxInclusive: l.taxInclusive,
+  reservationLineId: l.reservationLineId,
+});
+
+const byOffer = (a: { offerId: string; variantId: string }, b: typeof a): number =>
+  a.offerId.localeCompare(b.offerId) || a.variantId.localeCompare(b.variantId);
+
 function toOrder(row: OrderRow): OrderState {
   const sellerOrders: SellerOrder[] = [...row.sellerOrders]
     .sort((a, b) => a.sellerId.localeCompare(b.sellerId))
-    .map((s) => ({
-      id: s.id as Id<'SellerOrder'>,
-      sellerId: s.sellerId as Id<'Seller'>,
-      subtotal: s.subtotalAmount,
-      shipping: s.shippingAmount,
-      total: s.totalAmount,
-    }));
-  const lines: OrderLine[] = [...row.lines]
-    .sort((a, b) => a.offerId.localeCompare(b.offerId) || a.variantId.localeCompare(b.variantId))
-    .map((l) => ({
-      id: l.id as Id<'OrderLine'>,
-      sellerOrderId: l.sellerOrderId as Id<'SellerOrder'>,
-      offerId: l.offerId as Id<'Offer'>,
-      variantId: l.variantId as Id<'Variant'>,
-      quantity: l.quantity,
-      unitPrice: money(l.unitAmount, row.currency),
-      lineAmount: l.lineAmount,
-      taxInclusive: l.taxInclusive,
-      reservationLineId: l.reservationLineId,
-    }));
+    .map(toSellerOrder);
+  const lines: OrderLine[] = [...row.lines].sort(byOffer).map((l) => toLine(l, row.currency));
   return {
     id: row.id as Id<'Order'>,
     marketId: row.marketId as MarketId,
@@ -151,6 +180,7 @@ export class PrismaOrderRepository implements OrderRepository {
         subtotalAmount: s.subtotal,
         shippingAmount: s.shipping,
         totalAmount: s.total,
+        fulfilment: s.fulfilment,
       })),
     });
     await tx.orderingOrderLine.createMany({
@@ -240,4 +270,105 @@ export class PrismaOrderRepository implements OrderRepository {
     });
     return updated.count === 0 ? 'stale' : 'saved';
   }
+
+  async listForSeller(market: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        order: { status: 'confirmed' },
+        ...sellerCursor(page),
+      },
+      include: SELLER_INCLUDE,
+      orderBy: [{ order: { confirmedAt: 'desc' } }, { id: 'desc' }],
+      take: page.limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async findForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ) {
+    const row = await this.prisma.tx(market).orderingSellerOrder.findFirst({
+      where: {
+        marketId: market.marketId,
+        id: sellerOrderId,
+        sellerId,
+        order: { status: 'confirmed' },
+      },
+      include: SELLER_INCLUDE,
+    });
+    return row === null ? null : toRecord(row);
+  }
+
+  async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
+    const updated = await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: { marketId: market.marketId, id: sellerOrder.id, fulfilment: from },
+      data: {
+        fulfilment: sellerOrder.fulfilment,
+        carrier: sellerOrder.carrier,
+        trackingRef: sellerOrder.trackingRef,
+        shippedAt: sellerOrder.shippedAt === null ? null : toDate(sellerOrder.shippedAt),
+        deliveredAt: sellerOrder.deliveredAt === null ? null : toDate(sellerOrder.deliveredAt),
+      },
+    });
+    return updated.count === 0 ? 'stale' : 'saved';
+  }
+
+  async findUnrecordedShipments(market: MarketContext, limit: number) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        inventoryRecordedAt: null,
+        fulfilment: { not: 'to-ship' },
+      },
+      include: SELLER_INCLUDE,
+      orderBy: [{ shippedAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async markInventoryRecorded(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    at: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: { marketId: market.marketId, id: sellerOrderId, inventoryRecordedAt: null },
+      data: { inventoryRecordedAt: toDate(at) },
+    });
+  }
+}
+
+const SELLER_INCLUDE = { lines: true, order: true } as const;
+
+/** Rows paid before the cursor, newest first: `(confirmed_at, id) < (cursor)`. */
+const sellerCursor = (page: SellerOrderPage) =>
+  page.after === null
+    ? {}
+    : {
+        OR: [
+          { order: { confirmedAt: { lt: toDate(page.after.confirmedAt) } } },
+          { order: { confirmedAt: toDate(page.after.confirmedAt) }, id: { lt: page.after.id } },
+        ],
+      };
+
+function toRecord(
+  row: SellerOrderRow & {
+    readonly orderId: string;
+    readonly lines: readonly LineRow[];
+    readonly order: { readonly currency: string; readonly confirmedAt: Date | null };
+  },
+): SellerOrderRecord {
+  if (row.order.confirmedAt === null) throw new Error('A paid order without its payment time');
+  return {
+    sellerOrder: toSellerOrder(row),
+    orderId: row.orderId as Id<'Order'>,
+    currency: row.order.currency,
+    confirmedAt: toInstant(row.order.confirmedAt),
+    lines: [...row.lines].sort(byOffer).map((l) => toLine(l, row.order.currency)),
+  };
 }

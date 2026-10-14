@@ -46,21 +46,33 @@ model OrderingOrder {
   @@schema("ordering")
 }
 
-/// The part of an order that belongs to one seller (the sub-order). Shipping is 0 until SHP-01.
+/// The part of an order that belongs to one seller (the sub-order). `shippingAmount` is the
+/// seller's flat fee at placement (SHP-01). The seller records the shipment and then the delivery.
 model OrderingSellerOrder {
-  id             String              @id @db.Uuid
-  marketId       String              @map("market_id") @db.VarChar(8)
-  tenantId       String              @map("tenant_id")
-  orderId        String              @map("order_id") @db.Uuid
-  sellerId       String              @map("seller_id") @db.Uuid
-  subtotalAmount BigInt              @map("subtotal_amount")
-  shippingAmount BigInt              @map("shipping_amount")
-  totalAmount    BigInt              @map("total_amount")
-  order          OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  lines          OrderingOrderLine[]
+  id                  String              @id @db.Uuid
+  marketId            String              @map("market_id") @db.VarChar(8)
+  tenantId            String              @map("tenant_id")
+  orderId             String              @map("order_id") @db.Uuid
+  sellerId            String              @map("seller_id") @db.Uuid
+  subtotalAmount      BigInt              @map("subtotal_amount")
+  shippingAmount      BigInt              @map("shipping_amount")
+  totalAmount         BigInt              @map("total_amount")
+  /// to-ship, shipped or delivered (CHECK). Moves only forward.
+  fulfilment          String
+  /// The carrier the seller named when shipping (1 to 60 characters, CHECK).
+  carrier             String?
+  /// The tracking reference, if the seller had one (1 to 80 characters, CHECK).
+  trackingRef         String?             @map("tracking_ref")
+  shippedAt           DateTime?           @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt         DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  /// Set by the worker once inventory has recorded the lines as shipped.
+  inventoryRecordedAt DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
+  order               OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  lines               OrderingOrderLine[]
 
   @@unique([marketId, id])
   @@unique([marketId, orderId, sellerId])
+  @@index([marketId, sellerId, orderId])
   @@map("seller_orders")
   @@schema("ordering")
 }

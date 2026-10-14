@@ -97,7 +97,8 @@ export class OrdersController {
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
     ...ERROR,
-    description: 'ordering.check-unavailable, ordering.payment-unavailable or access.unavailable',
+    description:
+      'ordering.check-unavailable, ordering.shipping-unavailable (a seller has no delivery fee yet), ordering.payment-unavailable or access.unavailable',
   })
   async checkout(
     @Call() context: CallContext,

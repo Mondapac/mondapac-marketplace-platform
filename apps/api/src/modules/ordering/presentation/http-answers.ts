@@ -17,6 +17,9 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'conflict.retry': 409,
   'request.throttled': 429,
   'ordering.check-unavailable': 503,
+  'ordering.shipping-unavailable': 503,
+  'ordering.seller-order-not-found': 404,
+  'ordering.fulfilment-conflict': 409,
   'ordering.payment-unavailable': 503,
   'access.unavailable': 503,
 });
@@ -25,8 +28,12 @@ export function fail(status: number, code: string, details?: object): HttpExcept
   return new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
 }
 
-/** The JSON-only check and the closed object of a body: no unknown key, no array, no scalar. */
-export function closedBody(request: Request, body: unknown): HttpException | null {
+/** The JSON-only check and the closed object of a body: no key outside `allowed`, no array, no scalar. */
+export function closedBody(
+  request: Request,
+  body: unknown,
+  allowed: readonly string[] = [],
+): HttpException | null {
   if (request.is('application/json') !== 'application/json') {
     return fail(415, 'request.body-unsupported');
   }
@@ -34,6 +41,7 @@ export function closedBody(request: Request, body: unknown): HttpException | nul
     return fail(400, 'validation.failed', { fields: [{ path: '', code: 'type' }] });
   }
   const unknown = Object.keys(body)
+    .filter((key) => !allowed.includes(key))
     .sort()
     .slice(0, 10)
     .map((key) => ({

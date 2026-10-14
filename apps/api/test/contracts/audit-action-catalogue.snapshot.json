@@ -504,5 +504,17 @@
       "observedOutcome": "enumOf(active|not-found|cancelled)",
       "revisionId": "id"
     }
+  },
+  {
+    "action": "shipping.flat-fee.set",
+    "targetType": "shipping.seller-flat-fee",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "feeMinor": "optional(integer)"
+    },
+    "after": {
+      "feeMinor": "integer"
+    }
   }
 ]
