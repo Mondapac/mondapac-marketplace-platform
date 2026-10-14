@@ -58,8 +58,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   POST: [
     'catalog/seller/products/:id/submit',
+    'catalog/seller/offers/:id/submit',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
   ],
+  DELETE: ['catalog/seller/offers/:id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

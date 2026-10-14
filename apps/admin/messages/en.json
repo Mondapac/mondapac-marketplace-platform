@@ -12,7 +12,8 @@
     "home": "Home",
     "team": "Roles & permissions",
     "sellers": "Sellers",
-    "price-holds": "Held prices"
+    "price-holds": "Held prices",
+    "offer-reviews": "Offer reviews"
   },
   "home": {
     "title": "Home",
@@ -697,6 +698,60 @@
         "out-of-range": "The amount is outside the Market limits. Reject this price instead.",
         "retry": "The price changed meanwhile. Try again.",
         "denied": "You do not have access to decide on held prices.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "Check the values and try again.",
+        "unavailable": "The decision could not be sent. Try again later.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unknown": "Something went wrong. Try again."
+      }
+    }
+  },
+  "catalog": {
+    "review": {
+      "title": "Offer reviews",
+      "no-access": "You don't have access to offer reviews.",
+      "back-home": "Back to home",
+      "unavailable": "Offer reviews could not be loaded. Try again later.",
+      "more": "Next page",
+      "empty": "No offers are waiting for review.",
+      "view-only": "You can view this queue but not decide.",
+      "open": "Review",
+      "close": "Close",
+      "cancel": "Cancel",
+      "approve": "Approve",
+      "approve-confirm": "Approve {name}? It goes on sale now.",
+      "approve-yes": "Yes, approve",
+      "send-back": "Send back",
+      "send-back-yes": "Send back to seller",
+      "field": {
+        "condition": "Condition",
+        "handling": "Handling",
+        "handling-missing": "Not set",
+        "submitted": "Submitted",
+        "seller": "Seller",
+        "description": "Description",
+        "no-description": "The seller wrote no description."
+      },
+      "reason": {
+        "label": "Reason",
+        "choose": "Choose a reason",
+        "content-unclear": "Content is unclear",
+        "description-claim": "Description makes a claim",
+        "sku-or-condition": "SKU or condition is wrong",
+        "handling-unclear": "Handling is unclear",
+        "other": "Other"
+      },
+      "notice": {
+        "approved": "Offer approved and published.",
+        "sent-back": "Offer sent back. The seller is told by email."
+      },
+      "error": {
+        "gone": "This offer is no longer waiting for review.",
+        "product-not-published": "The product is not published, so the offer can't go on sale yet.",
+        "seller-not-eligible": "This seller can't sell right now, so the offer can't be approved.",
+        "claim-text": "The description makes a claim that needs a matching certificate. Send it back instead.",
+        "stale": "The seller changed the offer meanwhile. Reload the page to see the latest version.",
+        "denied": "You do not have access to decide on offers.",
         "throttled": "Too many requests. Wait a moment and try again.",
         "invalid": "Check the values and try again.",
         "unavailable": "The decision could not be sent. Try again later.",

@@ -18,6 +18,12 @@ export const adminNav: NavConfig = {
       anyOf: ['pricing.price-hold.view'],
     },
     {
+      id: 'offer-reviews',
+      labelKey: 'nav.offer-reviews',
+      href: '/offer-reviews',
+      anyOf: ['catalog.product.view'],
+    },
+    {
       id: 'team',
       labelKey: 'nav.team',
       href: '/team',
