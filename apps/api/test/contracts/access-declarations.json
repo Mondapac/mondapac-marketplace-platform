@@ -148,7 +148,13 @@
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "payments.apply-stripe-events", "rule": "system" },
+  { "name": "payments.payout-readiness", "rule": "system" },
   { "name": "payments.receive-stripe-event", "rule": "anonymous" },
+  {
+    "name": "payments.view-payout-account",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },

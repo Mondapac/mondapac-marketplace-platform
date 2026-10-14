@@ -8,6 +8,9 @@
   "pricesIncludeTax": true,
   "maxLineQuantity": 99,
   "timezone": "Australia/Brisbane",
+  "payments": {
+    "connectedAccountCountry": "AU"
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300

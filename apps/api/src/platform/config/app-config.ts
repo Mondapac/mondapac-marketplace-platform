@@ -80,6 +80,16 @@ const envSchema = z.object({
       'must be a Stripe webhook signing secret (whsec_), or MARKET=whsec_ pairs separated by commas',
     )
     .optional(),
+  // Phase 5 package 3: the signing secrets of the Stripe "Connect" webhook endpoints (events of
+  // connected accounts), same format and rules as STRIPE_WEBHOOK_SECRET. Stripe signs those
+  // events with their own secret, so the platform and Connect secrets are separate values.
+  STRIPE_CONNECT_WEBHOOK_SECRET: z
+    .string()
+    .regex(
+      new RegExp(`^(${WEBHOOK_SECRET}|${MARKET_SECRET}(,${MARKET_SECRET})*)$`),
+      'must be a Stripe webhook signing secret (whsec_), or MARKET=whsec_ pairs separated by commas',
+    )
+    .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
   // and checked by parseClientAddressTrust below; a secret is never echoed.
   TRUSTED_BFF_CIDRS: z.string().optional(),
@@ -142,6 +152,8 @@ export interface AppConfig {
    * by payments' signature check alone.
    */
   readonly stripeWebhookSecrets: Readonly<Record<string, string>>;
+  /** The same for the Connect endpoint (`STRIPE_CONNECT_WEBHOOK_SECRET`): connected-account events. */
+  readonly stripeConnectWebhookSecrets: Readonly<Record<string, string>>;
   /**
    * Who may prove a client address, and with which keys (ADR-0037 decisions 4 and 5): from
    * `TRUSTED_BFF_CIDRS` and `CLIENT_ADDRESS_KEYS`. `null` when both are empty: the address is the
@@ -168,6 +180,7 @@ export class InvalidConfigError extends Error {
 export function parseStripeWebhookSecrets(
   value: string | undefined,
   hosted: readonly string[],
+  variable = 'STRIPE_WEBHOOK_SECRET',
 ): { secrets: Readonly<Record<string, string>>; issues: string[] } {
   if (value === undefined) return { secrets: Object.freeze({}), issues: [] };
   if (value.startsWith('whsec_')) {
@@ -181,9 +194,9 @@ export function parseStripeWebhookSecrets(
   for (const pair of value.split(',')) {
     const at = pair.indexOf('=');
     const market = pair.slice(0, at);
-    if (market in secrets) issues.push(`STRIPE_WEBHOOK_SECRET: ${market} is named twice`);
+    if (market in secrets) issues.push(`${variable}: ${market} is named twice`);
     else if (!hosted.includes(market)) {
-      issues.push(`STRIPE_WEBHOOK_SECRET: ${market} is not in HOSTED_MARKETS`);
+      issues.push(`${variable}: ${market} is not in HOSTED_MARKETS`);
     }
     secrets[market] = pair.slice(at + 1);
   }
@@ -225,6 +238,23 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     ? parseStripeWebhookSecrets(parsed.data.STRIPE_WEBHOOK_SECRET, parsed.data.HOSTED_MARKETS)
     : { secrets: {}, issues: [] };
   issues.push(...webhookSecrets.issues);
+  const connectSecrets = parsed.success
+    ? parseStripeWebhookSecrets(
+        parsed.data.STRIPE_CONNECT_WEBHOOK_SECRET,
+        parsed.data.HOSTED_MARKETS,
+        'STRIPE_CONNECT_WEBHOOK_SECRET',
+      )
+    : { secrets: {}, issues: [] };
+  issues.push(...connectSecrets.issues);
+  // The Connect endpoint is told from the platform endpoint by its secret: equal values would
+  // make every Connect event look like a platform event.
+  for (const [market, secret] of Object.entries(connectSecrets.secrets)) {
+    if (webhookSecrets.secrets[market] === secret) {
+      issues.push(
+        `STRIPE_CONNECT_WEBHOOK_SECRET: ${market} must differ from STRIPE_WEBHOOK_SECRET`,
+      );
+    }
+  }
   if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
   return Object.freeze({
     appRole: parsed.data.APP_ROLE,
@@ -242,6 +272,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
     stripeWebhookSecrets: webhookSecrets.secrets,
+    stripeConnectWebhookSecrets: connectSecrets.secrets,
     clientAddressTrust: clientAddress.trust,
   });
 }

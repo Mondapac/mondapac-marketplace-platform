@@ -1,12 +1,16 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 
-/** The Stripe event types the receiver keeps; every other type is acknowledged and dropped. */
-export const KEPT_EVENT_TYPES = [
+/** The platform's Checkout events the receiver keeps; every other platform type is dropped. */
+export const CHECKOUT_EVENT_TYPES = [
   'checkout.session.completed',
   'checkout.session.expired',
   'checkout.session.async_payment_failed',
 ] as const;
+/** The connected-account events (Connect endpoint) the receiver keeps. */
+export const ACCOUNT_EVENT_TYPES = ['account.updated', 'capability.updated'] as const;
+export const KEPT_EVENT_TYPES = [...CHECKOUT_EVENT_TYPES, ...ACCOUNT_EVENT_TYPES] as const;
 export type KeptEventType = (typeof KEPT_EVENT_TYPES)[number];
+export type AccountEventType = (typeof ACCOUNT_EVENT_TYPES)[number];
 
 /** How a kept event ended. */
 export type EventOutcome =
@@ -18,6 +22,8 @@ export type EventOutcome =
   | 'ignored'
   /** The object Stripe returned does not fit this Market or order: never applied. */
   | 'rejected'
+  /** A connected account's state was read again and stored. */
+  | 'account-updated'
   /** Gave up after the last attempt; needs an admin. */
   | 'failed';
 
@@ -25,7 +31,7 @@ export type EventOutcome =
 export interface ReceivedEvent {
   readonly eventId: string;
   readonly type: KeptEventType;
-  /** The Checkout session (cs_...) the event is about. */
+  /** The Checkout session (cs_...) or the connected account (acct_...) the event is about. */
   readonly objectId: string;
   readonly receivedAt: Temporal.Instant;
 }

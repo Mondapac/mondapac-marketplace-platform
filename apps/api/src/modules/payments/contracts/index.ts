@@ -1,3 +1,9 @@
-// Public contracts of the payments module (ADR-0008): event types and the facade interface.
+// Public contracts of the payments module (ADR-0008): the facade interface and its token.
 // Other modules may import only what this file exports, through ../index.ts.
-export {};
+export { PAYMENTS_FACADE } from './payments.facade';
+export type { PayoutReadiness, PaymentsFacade } from './payments.facade';
+export {
+  PAYMENTS_PAYOUT_ACCOUNT_MANAGE,
+  PAYMENTS_PAYOUT_ACCOUNT_VIEW,
+  PAYMENTS_PERMISSIONS,
+} from './permissions';

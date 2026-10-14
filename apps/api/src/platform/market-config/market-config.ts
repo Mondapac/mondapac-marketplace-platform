@@ -1118,6 +1118,14 @@ const marketSchema = z
     /** Fallback only (ADR-0005): sellers, locations and addresses carry their own zone. */
     timezone: z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone'),
     requestLimits: requestLimitsSchema,
+    /**
+     * Payments settings (Phase 5 package 3). `connectedAccountCountry`: the ISO 3166 country a
+     * seller's connected account is created in. Without it a Market cannot connect payout accounts
+     * (fail closed).
+     */
+    payments: z
+      .strictObject({ connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/) })
+      .optional(),
     allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */

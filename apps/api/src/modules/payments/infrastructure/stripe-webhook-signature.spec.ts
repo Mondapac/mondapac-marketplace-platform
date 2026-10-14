@@ -18,11 +18,22 @@ describe('StripeWebhookSignature', () => {
   const signature = new StripeWebhookSignature({ AU: SECRET }, new FixedClock(NOW));
 
   it('passes the right secret, body and time, and knows which Markets have a secret', () => {
-    expect(signature.verify('AU', BODY, `t=${T},v1=${v1(T)}`)).toBe(true);
+    expect(signature.verify('AU', BODY, `t=${T},v1=${v1(T)}`)).toBe('platform');
     expect(signature.configuredFor('AU')).toBe(true);
     expect(signature.configuredFor('ZZ')).toBe(false);
     expect(signature.configuredFor('toString')).toBe(false);
-    expect(signature.verify('ZZ', BODY, `t=${T},v1=${v1(T)}`)).toBe(false);
+    expect(signature.verify('ZZ', BODY, `t=${T},v1=${v1(T)}`)).toBeNull();
+  });
+
+  it('tells the Connect secret from the platform secret, and each Market has its own', () => {
+    const connect = 'whsec_spec0connect0au';
+    const both = new StripeWebhookSignature({ AU: SECRET }, new FixedClock(NOW), { AU: connect });
+    expect(both.verify('AU', BODY, `t=${T},v1=${v1(T, BODY, connect)}`)).toBe('connect');
+    expect(both.verify('AU', BODY, `t=${T},v1=${v1(T)}`)).toBe('platform');
+    expect(both.verify('ZZ', BODY, `t=${T},v1=${v1(T, BODY, connect)}`)).toBeNull();
+    const onlyConnect = new StripeWebhookSignature({}, new FixedClock(NOW), { AU: connect });
+    expect(onlyConnect.configuredFor('AU')).toBe(true);
+    expect(onlyConnect.verify('AU', BODY, `t=${T},v1=${v1(T)}`)).toBeNull();
   });
 
   it.each([
@@ -47,22 +58,24 @@ describe('StripeWebhookSignature', () => {
     ['the same timestamp written with a leading zero', `t=0${T},v1=${v1(T)}`],
     ['a header that is not a string', ['t=1']],
   ])('refuses %s', (_label, header) => {
-    expect(signature.verify('AU', BODY, header)).toBe(false);
+    expect(signature.verify('AU', BODY, header)).toBeNull();
   });
 
   it('accepts a timestamp inside the tolerance either way and refuses one outside it', () => {
     for (const offset of [-SIGNATURE_TOLERANCE_SECONDS, SIGNATURE_TOLERANCE_SECONDS]) {
       const t = String(Number(T) + offset);
-      expect(signature.verify('AU', BODY, `t=${t},v1=${v1(t)}`)).toBe(true);
+      expect(signature.verify('AU', BODY, `t=${t},v1=${v1(t)}`)).toBe('platform');
     }
     for (const offset of [-SIGNATURE_TOLERANCE_SECONDS - 1, SIGNATURE_TOLERANCE_SECONDS + 1]) {
       const t = String(Number(T) + offset);
-      expect(signature.verify('AU', BODY, `t=${t},v1=${v1(t)}`)).toBe(false);
+      expect(signature.verify('AU', BODY, `t=${t},v1=${v1(t)}`)).toBeNull();
     }
   });
 
   it('passes when one of several v1 values matches (secret rotation)', () => {
-    expect(signature.verify('AU', BODY, `t=${T},v1=${'0'.repeat(64)},v1=${v1(T)}`)).toBe(true);
+    expect(signature.verify('AU', BODY, `t=${T},v1=${'0'.repeat(64)},v1=${v1(T)}`)).toBe(
+      'platform',
+    );
   });
 });
 

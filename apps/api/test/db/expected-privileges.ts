@@ -311,6 +311,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
+    // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
+    // columns change as Stripe reports, the identity columns never. No row is deleted.
+    'payments.connected_accounts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'account_ref',
+        'details_submitted',
+        'last_read_at',
+        'payouts_enabled',
+        'requirements_due',
+        'requirements_past_due',
+        'status',
+        'transfers_active',
+        'updated_at',
+      ],
+    },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],
