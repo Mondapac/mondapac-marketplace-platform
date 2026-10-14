@@ -40,7 +40,7 @@ export function UserMenu({
       aria-label={t('user-menu')}
     >
       {failed ? <Banner tone="critical">{t('sign-out-failed')}</Banner> : null}
-      <span className="hidden text-sm text-fg-secondary sm:inline">
+      <span className="hidden text-sm text-fg-secondary lg:inline">
         {t('signed-in-as', { name })}
       </span>
       <Button variant="secondary" onClick={() => void signOut()} loading={pending}>

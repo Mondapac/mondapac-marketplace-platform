@@ -136,7 +136,7 @@ function HoldLine({
         </Badge>
       </td>
       <td className="px-4 py-3 align-top">{formatInstant(row.submittedAt)}</td>
-      <td className="break-all px-4 py-3 align-top text-xs text-fg-muted">
+      <td className="min-w-72 break-all px-4 py-3 align-top text-xs text-fg-muted">
         <div>
           {t('ids.seller')}: {row.sellerId}
         </div>
