@@ -302,6 +302,7 @@ describe('seller regular price over HTTP (integration, pricing slice 1 part 3c)'
         .retryAfterSeconds;
       expect(wait).toBeGreaterThanOrEqual(1);
       expect(wait).toBeLessThanOrEqual(60);
+      expect(throttled.headers['retry-after']).toBe(String(wait));
       expect(series.rows.size).toBe(0);
     });
 

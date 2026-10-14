@@ -27,6 +27,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { setRetryAfter } from './retry-after';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
@@ -104,7 +105,7 @@ export class SellerRegularPriceController {
   async set(
     @Call() context: CallContext,
     @Req() request: Request,
-    @Res({ passthrough: true }) _response: Response,
+    @Res({ passthrough: true }) response: Response,
     @Param('offerId') offerId: string,
     @Param('variantId') variantId: string,
     @Body() body: unknown,
@@ -135,7 +136,10 @@ export class SellerRegularPriceController {
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
-    if (outcome instanceof HttpException) throw outcome;
+    if (outcome instanceof HttpException) {
+      setRetryAfter(response, outcome);
+      throw outcome;
+    }
     return outcome;
   }
 }

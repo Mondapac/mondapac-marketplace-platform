@@ -254,6 +254,10 @@ $$;
 
 The job writes the marker **first** in its unit, with `createMany({ skipDuplicates: true })`. A count of 0 means another run already published that boundary, so the unit ends without a version bump or an event. Otherwise it raises the series version and appends the event (D 11). A concurrent run is therefore a no-op, not an error.
 
+Growth: two rows per special, kept for good (accepted, under 1M rows at the planned volume). The no-delete trigger blocks any purge, so an archive would need a new migration that relaxes it. The two discovery queries are bounded by the horizon, so their cost does not grow with the marker history; the partial indexes `special_price_records_market_id_effective_from_live_idx` and `..._ends_at_live_idx` serve them.
+
+Evidence (2026-10-14, PostgreSQL 16, 100k specials and 120k markers, 20 due): both queries run as `NOT EXISTS` correlated on `(market_id, special_record_id)` in unnamed statements, so the planner takes the matching partial index and an index-only probe of `special_price_boundaries_pkey` (0.2 ms).
+
 ### 3.6 `pricing.retired_offers` and `pricing.retired_variants` (slice 1; PD7, M3, Hassan finding 3)
 
 | Table | Key | Other columns |

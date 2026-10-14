@@ -394,5 +394,21 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
       );
       expect(left.rowCount).toBe(0);
     });
+
+    it('counts parallel first attempts of one account exactly once each, without deadlock', async () => {
+      const account = ids.next<'Account'>();
+      const at = clock.now();
+      const parallel = 12;
+      await Promise.all(Array.from({ length: parallel }, () => reserve(account, at)));
+      const rows = await sql.query<{ kind: string; count: number }>(
+        `SELECT kind, count FROM pricing.write_rate_counters
+        WHERE market_id = $1 AND actor_account_id = $2 ORDER BY kind`,
+        [code, account],
+      );
+      expect(rows.rows).toEqual([
+        { kind: 'write.account.day', count: parallel },
+        { kind: 'write.account.minute', count: parallel },
+      ]);
+    });
   });
 });
