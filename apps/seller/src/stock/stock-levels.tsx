@@ -66,13 +66,17 @@ function Cell({
     setPending(false);
     if (!result.ok) {
       if (result.failure.status === 401) window.location.assign('/session-ended');
-      else setError(t(`stock.levels.error.${levelsProblemOf(result.failure)}`));
+      else {
+        const problem = levelsProblemOf(result.failure);
+        setError(t(`stock.levels.error.${problem}`));
+        // The level changed elsewhere: read it again; the cell remounts on the new version.
+        if (problem === 'stale') router.refresh();
+      }
       return;
     }
     setSaved({ onHand: result.body.onHand, version: result.body.version });
     setText(String(result.body.onHand));
     setDone(true);
-    router.refresh();
   }
 
   if (readOnly) {
@@ -148,6 +152,7 @@ export function StockLevels({
                 <li key={source.id} className="flex flex-wrap items-end gap-x-6 gap-y-2">
                   <span className="min-w-40 font-medium">{source.name}</span>
                   <Cell
+                    key={cell?.version ?? 'new'}
                     offerId={offerId}
                     variantId={variant.variantId}
                     source={source}

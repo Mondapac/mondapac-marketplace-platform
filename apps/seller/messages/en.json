@@ -700,13 +700,16 @@
       "no-variants": "This offer has no variants yet.",
       "error": {
         "invalid": "Enter a whole number from 0 up.",
-        "stale": "This level changed somewhere else. Reload the page and try again.",
+        "stale": "This level changed somewhere else. We reloaded it; check the number and save again.",
         "denied": "You don't have permission to change stock.",
         "not-eligible": "Your seller account can't change stock right now.",
         "throttled": "Too many requests. Wait a moment and try again.",
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Stock is unavailable right now. Try again later.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "below-held": "You can't set the stock below the units held in checkouts.",
+        "not-ready": "Stock isn't ready yet. Try again in a moment.",
+        "not-found": "This offer or location was not found. Reload the page."
       }
     }
   }

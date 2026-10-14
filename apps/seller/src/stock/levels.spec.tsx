@@ -99,6 +99,7 @@ describe('StockLevels', () => {
     fireEvent.change(input, { target: { value: '7' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0] as HTMLElement);
     expect(await screen.findByText(/changed somewhere else/)).toBeTruthy();
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('is read only without the edit permission', () => {
@@ -121,6 +122,7 @@ describe('stock level helpers', () => {
   });
   it('maps failures to message names', () => {
     expect(levelsProblemOf({ status: 409, code: 'conflict.stale' })).toBe('stale');
+    expect(levelsProblemOf({ status: 422, code: 'inventory.stock.below-held' })).toBe('below-held');
     expect(levelsProblemOf({ status: 0, code: 'network' })).toBe('unavailable');
     expect(levelsProblemOf({ status: 500, code: 'x' })).toBe('unknown');
   });

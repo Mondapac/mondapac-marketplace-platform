@@ -2,6 +2,10 @@ import type { ApiFailure } from '../api/client.ts';
 
 const BY_CODE: Readonly<Record<string, string>> = {
   'conflict.stale': 'stale',
+  'inventory.stock.below-held': 'below-held',
+  'inventory.not-ready': 'not-ready',
+  'inventory.not-found': 'not-found',
+  'inventory.source.not-found': 'not-found',
   'validation.failed': 'invalid',
   'request.throttled': 'throttled',
   'request.csrf': 'csrf',
