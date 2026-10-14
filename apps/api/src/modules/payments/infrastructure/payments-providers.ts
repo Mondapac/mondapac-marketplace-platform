@@ -25,7 +25,7 @@ export const paymentsProviders: readonly FactoryProvider[] = [
     provide: STRIPE_SIGNATURE,
     inject: [APP_CONFIG, CLOCK],
     useFactory: (config: AppConfig, clock: Clock): StripeSignature =>
-      new StripeWebhookSignature(config.stripeWebhookSecret, clock),
+      new StripeWebhookSignature(config.stripeWebhookSecrets, clock),
   },
   {
     provide: STRIPE_SESSION_READER,

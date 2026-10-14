@@ -71,7 +71,7 @@ describe.each([
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       inbox,
-      signature: new StripeWebhookSignature(TEST_WEBHOOK_SECRET, clock),
+      signature: new StripeWebhookSignature({ [code]: TEST_WEBHOOK_SECRET }, clock),
       reader,
       ordering,
       clock,
@@ -134,8 +134,11 @@ describe.each([
       );
     });
 
-    it('answers unavailable when no signing secret is configured', async () => {
-      deps = { ...deps, signature: new StripeWebhookSignature(null, clock) };
+    it("answers unavailable when this Market has no signing secret, and never uses another Market's", async () => {
+      deps = {
+        ...deps,
+        signature: new StripeWebhookSignature({ [otherCode]: TEST_WEBHOOK_SECRET }, clock),
+      };
       receive = new ReceiveStripeEvent(gate, deps);
 
       expect(await deliver(checkoutEvent({ marketId: code }))).toEqual(
@@ -143,15 +146,22 @@ describe.each([
       );
     });
 
-    it('refuses live-mode events, connected-account events and another Market', async () => {
+    it('refuses live-mode and connected-account events', async () => {
       for (const event of [
         checkoutEvent({ marketId: code, livemode: true }),
         checkoutEvent({ marketId: code, account: 'acct_123' }),
-        checkoutEvent({ marketId: otherCode }),
         checkoutEvent({ marketId: code, type: 'payment_intent.succeeded', livemode: true }),
       ]) {
         expect(await deliver(event)).toEqual(err({ code: 'payments.event-refused' }));
       }
+      expect(inbox.rows.size).toBe(0);
+    });
+
+    it("acknowledges another Market's event, or one without a Market, and never stores it", async () => {
+      expect(await deliver(checkoutEvent({ marketId: otherCode }))).toEqual(ok('other-market'));
+      const unmarked = checkoutEvent({ marketId: code });
+      (unmarked.data as { object: { metadata: object } }).object.metadata = {};
+      expect(await deliver(unmarked)).toEqual(ok('other-market'));
       expect(inbox.rows.size).toBe(0);
     });
 
@@ -259,7 +269,17 @@ describe.each([
       reader.answer = ok(session({ status: 'expired', paymentIntent: null }));
       await apply.execute(system, {});
       await store('checkout.session.async_payment_failed', 'evt_test_0002');
-      reader.answer = ok(session({ status: 'complete', paymentStatus: 'unpaid' }));
+      reader.answer = ok(
+        session({
+          paymentIntent: {
+            id: 'pi_test_0001',
+            status: 'requires_payment_method',
+            currency,
+            amountCapturable: 0n,
+            amountReceived: 0n,
+          },
+        }),
+      );
       await apply.execute(system, {});
 
       expect(ordering.cancels).toEqual([
@@ -295,13 +315,22 @@ describe.each([
       reader.answer = ok(session({ status: 'complete' }));
       await apply.execute(system, {});
       await store('checkout.session.async_payment_failed', 'evt_test_x2');
-      reader.answer = ok(session({ paymentStatus: 'paid' }));
+      reader.answer = ok(session({ paymentStatus: 'paid', paymentIntent: null }));
+      await apply.execute(system, {});
+      // A failure event for a session whose card is still held: the hold is never voided.
+      await store('checkout.session.async_payment_failed', 'evt_test_x3');
+      reader.answer = ok(session());
+      await apply.execute(system, {});
+      await store('checkout.session.async_payment_failed', 'evt_test_x4');
+      reader.answer = ok(session({ status: 'open', paymentIntent: null }));
       await apply.execute(system, {});
 
       expect(ordering.confirms).toEqual([]);
       expect(ordering.cancels).toEqual([]);
       expect(inbox.get(code, 'evt_test_x1')?.outcome).toBe('rejected');
       expect(inbox.get(code, 'evt_test_x2')?.outcome).toBe('rejected');
+      expect(inbox.get(code, 'evt_test_x3')?.outcome).toBe('rejected');
+      expect(inbox.get(code, 'evt_test_x4')?.outcome).toBe('rejected');
     });
 
     it('tries again later with a growing delay, then marks the event failed', async () => {
@@ -346,6 +375,26 @@ describe.each([
 
       expect(inbox.get(code, 'evt_test_0001')?.outcome).toBe('rejected');
       expect(inbox.get(code, 'evt_test_0002')?.outcome).toBe('rejected');
+    });
+
+    it('marks an event failed when ordering refuses the system actor', async () => {
+      await store('checkout.session.completed');
+      reader.answer = ok(session());
+      ordering.confirmAnswer = err({ code: 'access.denied' });
+
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 1, retried: 0, problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }] }),
+      );
+    });
+
+    it('never applies an event again when Stripe delivers it after it was applied', async () => {
+      await store('checkout.session.completed');
+      reader.answer = ok(session());
+      await apply.execute(system, {});
+
+      expect(await deliver(checkoutEvent({ marketId: code }))).toEqual(ok('duplicate'));
+      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 0, problems: [] }));
+      expect(ordering.confirms).toHaveLength(1);
     });
 
     it('takes at most one batch per run, oldest first', async () => {

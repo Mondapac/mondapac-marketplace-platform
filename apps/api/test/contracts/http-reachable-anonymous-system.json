@@ -49,16 +49,8 @@
     "rule": "anonymous",
     "reason": "Seller email-confirmation link: the visitor is not signed in yet."
   },
-  {
-    "name": "identity.register-customer",
-    "rule": "anonymous",
-    "reason": "Customer sign-up form."
-  },
-  {
-    "name": "identity.register-seller",
-    "rule": "anonymous",
-    "reason": "Seller sign-up form."
-  },
+  { "name": "identity.register-customer", "rule": "anonymous", "reason": "Customer sign-up form." },
+  { "name": "identity.register-seller", "rule": "anonymous", "reason": "Seller sign-up form." },
   {
     "name": "identity.request-customer-verification",
     "rule": "anonymous",

@@ -20,6 +20,9 @@ const marketCode = z.string().transform((value, context) => {
   return z.NEVER;
 });
 
+const WEBHOOK_SECRET = 'whsec_[A-Za-z0-9+/=_]{8,200}';
+const MARKET_SECRET = `[A-Z][A-Z0-9_]{1,7}=${WEBHOOK_SECRET}`;
+
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
   .transform((value) =>
@@ -66,11 +69,16 @@ const envSchema = z.object({
       'must be a Stripe test-mode key (sk_test_ or rk_test_); live keys are refused until the live gates are passed',
     )
     .optional(),
-  // Phase 5 package 2: the signing secret of the Stripe webhook endpoint (whsec_). Without it the
-  // webhook answers 503 and Stripe retries. The value is never echoed.
+  // Phase 5 package 2: the signing secrets of the Stripe webhook endpoints (whsec_), one endpoint
+  // per Market. Either one secret for every hosted Market (`stripe listen`, or one Market) or
+  // `AU=whsec_...,NZ=whsec_...`. Unset for a Market, its webhook answers 503 and Stripe retries.
+  // The value is never echoed; checked against HOSTED_MARKETS in parseStripeWebhookSecrets.
   STRIPE_WEBHOOK_SECRET: z
     .string()
-    .regex(/^whsec_[A-Za-z0-9+/=_]{8,200}$/, 'must be a Stripe webhook signing secret (whsec_)')
+    .regex(
+      new RegExp(`^(${WEBHOOK_SECRET}|${MARKET_SECRET}(,${MARKET_SECRET})*)$`),
+      'must be a Stripe webhook signing secret (whsec_), or MARKET=whsec_ pairs separated by commas',
+    )
     .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
   // and checked by parseClientAddressTrust below; a secret is never echoed.
@@ -129,11 +137,11 @@ export interface AppConfig {
    */
   readonly stripeSecretKey: string | null;
   /**
-   * The Stripe webhook signing secret (`STRIPE_WEBHOOK_SECRET`), or null: then the webhook
-   * receiver refuses every event with 503 and Stripe retries it later. Holds a secret: read by
-   * payments' signature check alone.
+   * The Stripe webhook signing secret of each hosted Market (`STRIPE_WEBHOOK_SECRET`); a Market
+   * without one refuses every event with 503 and Stripe retries it later. Holds secrets: read
+   * by payments' signature check alone.
    */
-  readonly stripeWebhookSecret: string | null;
+  readonly stripeWebhookSecrets: Readonly<Record<string, string>>;
   /**
    * Who may prove a client address, and with which keys (ADR-0037 decisions 4 and 5): from
    * `TRUSTED_BFF_CIDRS` and `CLIENT_ADDRESS_KEYS`. `null` when both are empty: the address is the
@@ -150,6 +158,36 @@ export class InvalidConfigError extends Error {
     super(`Invalid configuration:\n${issues.map((issue) => `  - ${issue}`).join('\n')}`);
     this.name = 'InvalidConfigError';
   }
+}
+
+/**
+ * `STRIPE_WEBHOOK_SECRET` (already pattern-checked) as one secret per hosted Market: a bare
+ * secret serves every hosted Market; a list names each Market once, and only hosted ones. Issues
+ * never contain a secret.
+ */
+export function parseStripeWebhookSecrets(
+  value: string | undefined,
+  hosted: readonly string[],
+): { secrets: Readonly<Record<string, string>>; issues: string[] } {
+  if (value === undefined) return { secrets: Object.freeze({}), issues: [] };
+  if (value.startsWith('whsec_')) {
+    return {
+      secrets: Object.freeze(Object.fromEntries(hosted.map((m) => [m, value]))),
+      issues: [],
+    };
+  }
+  const secrets: Record<string, string> = {};
+  const issues: string[] = [];
+  for (const pair of value.split(',')) {
+    const at = pair.indexOf('=');
+    const market = pair.slice(0, at);
+    if (market in secrets) issues.push(`STRIPE_WEBHOOK_SECRET: ${market} is named twice`);
+    else if (!hosted.includes(market)) {
+      issues.push(`STRIPE_WEBHOOK_SECRET: ${market} is not in HOSTED_MARKETS`);
+    }
+    secrets[market] = pair.slice(at + 1);
+  }
+  return { secrets: Object.freeze(secrets), issues };
 }
 
 /**
@@ -183,6 +221,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
   }
   const clientAddress = parseClientAddressTrust(env.TRUSTED_BFF_CIDRS, env.CLIENT_ADDRESS_KEYS);
   issues.push(...clientAddress.issues);
+  const webhookSecrets = parsed.success
+    ? parseStripeWebhookSecrets(parsed.data.STRIPE_WEBHOOK_SECRET, parsed.data.HOSTED_MARKETS)
+    : { secrets: {}, issues: [] };
+  issues.push(...webhookSecrets.issues);
   if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
   return Object.freeze({
     appRole: parsed.data.APP_ROLE,
@@ -199,7 +241,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
-    stripeWebhookSecret: parsed.data.STRIPE_WEBHOOK_SECRET ?? null,
+    stripeWebhookSecrets: webhookSecrets.secrets,
     clientAddressTrust: clientAddress.trust,
   });
 }

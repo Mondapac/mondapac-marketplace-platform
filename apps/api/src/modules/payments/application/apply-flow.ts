@@ -87,11 +87,20 @@ async function applyOne(
     case 'checkout.session.expired':
       if (session.status !== 'expired') return 'rejected';
       return outcomeOf(await deps.ordering.cancelPayment(context, { orderId, cause: 'expired' }));
-    case 'checkout.session.async_payment_failed':
-      if (session.paymentStatus === 'paid') return 'rejected';
+    case 'checkout.session.async_payment_failed': {
+      // Only a session whose payment really failed: never one that holds or took the money.
+      const intent = session.paymentIntent;
+      const failed =
+        intent === null ||
+        intent.status === 'requires_payment_method' ||
+        intent.status === 'canceled';
+      if (session.status !== 'complete' || session.paymentStatus === 'paid' || !failed) {
+        return 'rejected';
+      }
       return outcomeOf(
         await deps.ordering.cancelPayment(context, { orderId, cause: 'payment-failed' }),
       );
+    }
   }
 }
 

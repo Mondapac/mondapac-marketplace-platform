@@ -17,7 +17,9 @@ export type ReceiveOutcome =
   /** Its id is already stored: nothing changed. */
   | 'duplicate'
   /** A type payments does not act on: acknowledged, not stored. */
-  | 'ignored';
+  | 'ignored'
+  /** A kept type about another Market's session (Stripe sends every event to every endpoint). */
+  | 'other-market';
 
 export type ReceiveFailure =
   | AccessDenied
@@ -25,7 +27,7 @@ export type ReceiveFailure =
   | { readonly code: 'payments.webhook-unavailable' }
   | { readonly code: 'payments.signature-invalid' }
   | { readonly code: 'validation.failed' }
-  /** Signed, but not for this endpoint: a live-mode event, a connected account or another Market. */
+  /** Signed, but never for this platform now: a live-mode or connected-account event. */
   | { readonly code: 'payments.event-refused' };
 
 const EVENT_ID = /^evt_[A-Za-z0-9_]{1,200}$/;
@@ -51,7 +53,8 @@ function parse(payload: Uint8Array): Record<string, unknown> | null {
 /**
  * `receive-stripe-event`: the signature is checked on the raw bytes before anything is read.
  * Then the event must be a test-mode event of the platform account (no connected account) and,
- * for the kept Checkout types, about a session of this Market. A kept event is stored once by
+ * for the kept Checkout types, about a session of this Market (another Market's is acknowledged
+ * and dropped). A kept event is stored once by
  * its id; nothing else is done here. The payload is used only to route the event: the worker
  * re-reads the session from Stripe before it acts.
  */
@@ -60,9 +63,10 @@ export async function receiveStripeEvent(
   context: CallContext,
   input: ReceiveInput,
 ): Promise<Result<ReceiveOutcome, ReceiveFailure>> {
-  if (!deps.signature.configured) return err({ code: 'payments.webhook-unavailable' });
+  const marketId = context.market.marketId;
+  if (!deps.signature.configuredFor(marketId)) return err({ code: 'payments.webhook-unavailable' });
   if (!(input?.payload instanceof Uint8Array)) return err({ code: 'validation.failed' });
-  if (!deps.signature.verify(input.payload, input.signature)) {
+  if (!deps.signature.verify(marketId, input.payload, input.signature)) {
     return err({ code: 'payments.signature-invalid' });
   }
   const event = parse(input.payload);
@@ -92,8 +96,11 @@ export async function receiveStripeEvent(
   ) {
     return err({ code: 'validation.failed' });
   }
-  const marketId = isObject(object.metadata) ? object.metadata.market_id : undefined;
-  if (marketId !== context.market.marketId) return err({ code: 'payments.event-refused' });
+  const eventMarket = isObject(object.metadata) ? object.metadata.market_id : undefined;
+  // Stripe delivers every event of the account to every endpoint: another Market's session (or
+  // one ordering did not create) is acknowledged with 200 so Stripe does not retry it or disable
+  // this endpoint; it is never stored here.
+  if (eventMarket !== marketId) return ok('other-market');
 
   const received = { eventId: event.id, type: event.type, objectId: object.id };
   return deps.unitOfWork.run<ReceiveOutcome, ReceiveFailure>(context.market, async () =>

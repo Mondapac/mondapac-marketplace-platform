@@ -101,7 +101,7 @@ describe.each(TEST_MARKETS)('Stripe webhook over HTTP in market %s', (code) => {
     expect(inbox.rows.size).toBe(0);
   });
 
-  it('refuses a missing signature, an event of another Market and a Market not hosted', async () => {
+  it("refuses a missing signature and a Market not hosted, and acknowledges another Market's event", async () => {
     await start();
     const own = bodyOf(checkoutEvent({ marketId: code }));
     const foreign = bodyOf(checkoutEvent({ marketId: other }));
@@ -124,10 +124,32 @@ describe.each(TEST_MARKETS)('Stripe webhook over HTTP in market %s', (code) => {
     );
 
     expect([unsigned.status, codeOf(unsigned)]).toEqual([400, 'payments.signature-invalid']);
-    expect([crossed.status, codeOf(crossed)]).toEqual([400, 'payments.event-refused']);
+    // Stripe sends every event to every endpoint: another Market's is acknowledged, not stored.
+    expect([crossed.status, crossed.body]).toEqual([200, { received: true }]);
     expect([unhosted.status, codeOf(unhosted)]).toEqual([400, 'market.not-hosted']);
     expect([invalid.status, codeOf(invalid)]).toEqual([400, 'market.header-invalid']);
     expect(inbox.rows.size).toBe(0);
+  });
+
+  it('verifies only the exact webhook path: other spellings never reach the inbox', async () => {
+    await start();
+    const body = bodyOf(checkoutEvent({ marketId: code }));
+    const signature = stripeSignatureHeader(body, START);
+
+    const trailing = await post(`/payments/stripe/webhook/${code}/`, body, signature);
+    const query = await post(`/payments/stripe/webhook/${code}?attempt=2`, body, signature);
+    // Routed case-insensitively, but the raw parser does not claim it: the JSON parser does and
+    // the controller refuses a parsed body (fail closed).
+    const upper = await post(`/PAYMENTS/stripe/webhook/${code}`, body, signature);
+    const encoded = await post(`/payments/stripe/%77ebhook/${code}`, body, signature);
+    const lookalike = await post(`/payments/stripe/webhookx/${code}`, body, signature);
+
+    expect(trailing.status).toBe(200);
+    expect(query.status).toBe(200);
+    expect(upper.status).toBe(415);
+    expect([404, 415]).toContain(encoded.status);
+    expect(lookalike.status).toBe(404);
+    expect(inbox.rows.size).toBe(1);
   });
 
   it('refuses a body that is not JSON', async () => {

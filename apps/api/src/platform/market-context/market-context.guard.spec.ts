@@ -2,11 +2,13 @@ import type { ExecutionContext } from '@nestjs/common';
 import { BadRequestException, Controller, Get } from '@nestjs/common';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../test/support/test-config';
 import { HealthController } from '../health/health.controller';
+import { MarketFromPath, takesMarketFromPath } from '../http/market-from-path.decorator';
 import { loadMarketConfigs } from '../market-config/market-config';
 import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from './market-context.factory';
 import * as guardFile from './market-context.guard';
 import { isMarketContextExempt, MarketContextGuard } from './market-context.guard';
+import { marketContextOf } from './market.decorator';
 import { NoMarketContext } from './no-market-context.decorator';
 import { PLATFORM_TENANT_ID } from './tenant';
 
@@ -134,5 +136,79 @@ describe('the guard file', () => {
   // Decision 3: it exports the guard and the predicate only, never the decorator or its key.
   it('exports MarketContextGuard and isMarketContextExempt, and nothing else', () => {
     expect(Object.keys(guardFile).sort()).toEqual(['MarketContextGuard', 'isMarketContextExempt']);
+  });
+});
+
+@MarketFromPath()
+@Controller('by-path/:market')
+class PathMarketController {
+  @Get()
+  ping(): string {
+    return 'pong';
+  }
+}
+
+@Controller('inherits-path/:market')
+class InheritsPathController extends PathMarketController {}
+
+const AU = 'AU';
+const ZZ = 'ZZ';
+
+describe('MarketContextGuard with @MarketFromPath()', () => {
+  const guard = new MarketContextGuard(
+    new MarketContextFactory(
+      new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS)),
+      PLATFORM_TENANT_ID,
+    ),
+  );
+  const pathContext = (
+    controller: object,
+    params: Record<string, unknown>,
+    headers: Record<string, string> = {},
+  ) => {
+    const request = { headers, params };
+    const context = {
+      getType: () => 'http',
+      getClass: () => controller,
+      getHandler: () => () => undefined,
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+    return { context, request };
+  };
+
+  it('takes the Market from :market and ignores x-market-id', () => {
+    const { context, request } = pathContext(
+      PathMarketController,
+      { market: AU },
+      { 'x-market-id': ZZ },
+    );
+
+    expect(guard.canActivate(context)).toBe(true);
+    expect(marketContextOf(request as never).marketId).toBe(AU);
+  });
+
+  it.each([
+    [{}, 'market.header-missing'],
+    [{ market: 'au' }, 'market.header-invalid'],
+    [{ market: ['AU'] }, 'market.header-invalid'],
+    [{ market: 'QQ' }, 'market.not-hosted'],
+  ])('refuses the path value %p with %s, whatever the header says', (params, code) => {
+    const { context } = pathContext(PathMarketController, params, {
+      'x-market-id': AU,
+    });
+
+    expect(rejectionOf(guard, context)).toEqual({ statusCode: 400, code });
+  });
+
+  it('reads the class itself: a subclass and every other controller still need the header', () => {
+    for (const controller of [InheritsPathController, ScopedController]) {
+      const { context } = pathContext(controller, { market: AU });
+      expect(rejectionOf(guard, context)).toEqual({
+        statusCode: 400,
+        code: 'market.header-missing',
+      });
+    }
+    expect(takesMarketFromPath(PathMarketController)).toBe(true);
+    expect(takesMarketFromPath(InheritsPathController)).toBe(false);
   });
 });
