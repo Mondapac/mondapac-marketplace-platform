@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { SellerShell } from '../server/seller-shell.tsx';
 import type { CatalogPage } from '../server/catalog-page.ts';
@@ -11,7 +12,7 @@ export async function catalogStateFor(
   const t = await getTranslations();
   if (page.kind === 'ok') return null;
   if (page.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('catalog.error.unavailable')}</p>;
+    return <LoadError message={t('catalog.error.unavailable')} retryLabel={t('load.retry')} />;
   }
   const key = page.kind === 'no-access' ? 'no-access' : 'not-found';
   return (

@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 import { loadSetupPage } from '../../../../src/server/setup-page.ts';
@@ -15,7 +16,7 @@ export default async function ReviewPage() {
   const page = await loadSetupPage();
   const t = await getTranslations();
   if (page.kind !== 'ok') {
-    return <p className="p-6 text-fg-muted">{t('sellers.page.unavailable')}</p>;
+    return <LoadError message={t('sellers.page.unavailable')} retryLabel={t('load.retry')} />;
   }
   return (
     <SellerShell session={page.session} activeId="s_setup" title={t('nav.setup')}>

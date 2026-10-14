@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { OfferPrices } from '../../../../../src/price/offer-prices.tsx';
@@ -22,7 +23,7 @@ export default async function OfferPricesPage({
   const title = t('price.title');
   const page = await loadPricesPage(offerId);
   if (page.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('price.error.unavailable')}</p>;
+    return <LoadError message={t('price.error.unavailable')} retryLabel={t('load.retry')} />;
   }
   if (page.kind !== 'ok') {
     const key = page.kind === 'no-access' ? 'no-access' : 'not-found';

@@ -10,6 +10,7 @@ import RolePageRoute from './[roleId]/page.tsx';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
+  counts: vi.fn(),
   session: vi.fn(),
   redirect: vi.fn((to: string) => {
     throw new Error(`redirect:${to}`);
@@ -25,9 +26,16 @@ vi.mock('next-intl/server', () => ({
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
+vi.mock('../../../src/roles/member-counts.ts', () => ({ memberCounts: mocks.counts }));
 vi.mock('../../../src/roles/roles-table.tsx', () => ({
-  RolesTable: ({ roles }: { readonly roles: readonly { readonly roleId: string }[] }) => (
-    <ul>
+  RolesTable: ({
+    roles,
+    members,
+  }: {
+    readonly roles: readonly { readonly roleId: string }[];
+    readonly members?: ReadonlyMap<string, number> | null;
+  }) => (
+    <ul data-members={members === null ? 'none' : 'counts'}>
       {roles.map((role) => (
         <li key={role.roleId}>role {role.roleId}</li>
       ))}
@@ -82,6 +90,7 @@ describe('admin roles pages', () => {
     vi.clearAllMocks();
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW]) });
     mocks.get.mockResolvedValue({ kind: 'ok', body: catalogue });
+    mocks.counts.mockResolvedValue(new Map());
   });
   afterEach(cleanup);
 
@@ -96,6 +105,26 @@ describe('admin roles pages', () => {
     render(await RolesPageRoute());
     expect(mocks.get).toHaveBeenCalledWith('identity/admin/roles');
     expect(screen.getByText(`role ${ID}`)).toBeTruthy();
+  });
+
+  it('reads member counts only with the team view permission', async () => {
+    const { container } = render(await RolesPageRoute());
+    expect(mocks.counts).not.toHaveBeenCalled();
+    expect(container.querySelector('ul')?.getAttribute('data-members')).toBe('none');
+    cleanup();
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([VIEW, 'identity.admin-account.view']),
+    });
+    const withTeam = render(await RolesPageRoute());
+    expect(mocks.counts).toHaveBeenCalledTimes(1);
+    expect(withTeam.container.querySelector('ul')?.getAttribute('data-members')).toBe('counts');
+  });
+
+  it('offers a retry when the roles cannot be loaded', async () => {
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await RolesPageRoute());
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   it('sends a rejected session to the session-ended page', async () => {

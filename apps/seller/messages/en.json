@@ -807,5 +807,8 @@
         "date": "Enter the end date and time, and a valid start if you set one."
       }
     }
+  },
+  "load": {
+    "retry": "Try again"
   }
 }

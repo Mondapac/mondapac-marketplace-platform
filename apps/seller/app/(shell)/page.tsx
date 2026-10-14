@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { SETUP_ROOT } from '../../src/setup/steps.ts';
@@ -8,7 +9,7 @@ export default async function HomePage() {
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
+    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   // Until the seller is approved the limited shell has one page: the account setup (ID-UX F5).
   if (gate.session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);

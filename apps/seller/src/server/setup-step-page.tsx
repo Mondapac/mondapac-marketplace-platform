@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import 'server-only';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
@@ -19,7 +20,7 @@ export async function SetupStepPage({
   const page = await loadSetupPage();
   const t = await getTranslations();
   if (page.kind !== 'ok') {
-    return <p className="p-6 text-fg-muted">{t('sellers.page.unavailable')}</p>;
+    return <LoadError message={t('sellers.page.unavailable')} retryLabel={t('load.retry')} />;
   }
   return (
     <SellerShell session={page.session} activeId="s_setup" title={t('nav.setup')}>
