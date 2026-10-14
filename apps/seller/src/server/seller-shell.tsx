@@ -38,7 +38,12 @@ export async function SellerShell({
     <AppShell
       bottomTabs={bottomTabs}
       moreActive={bottomTabs?.every((tab) => !tab.active)}
-      labels={{ menu: t('nav.menu'), close: t('nav.close'), more: t('nav.more') }}
+      labels={{
+        menu: t('nav.menu'),
+        close: t('nav.close'),
+        more: t('nav.more'),
+        main: t('nav.main'),
+      }}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}

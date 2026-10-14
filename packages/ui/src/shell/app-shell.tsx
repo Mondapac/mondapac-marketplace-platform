@@ -14,7 +14,13 @@ export interface AppShellProps {
   readonly topbar: ReactNode;
   readonly children: ReactNode;
   /** Texts of the phone navigation (the app resolves them from its catalogue). */
-  readonly labels: { readonly menu: string; readonly close: string; readonly more: string };
+  readonly labels: {
+    readonly menu: string;
+    readonly close: string;
+    readonly more: string;
+    /** Name of the bottom bar landmark. */
+    readonly main: string;
+  };
   /** Seller only (panels IA 4): tabs of the phone bottom bar; "More" is added by the shell. */
   readonly bottomTabs?: readonly BottomTab[];
   /** True when none of the tabs is active, so "More" shows as the active one. */
@@ -121,7 +127,7 @@ export function AppShell({
       </dialog>
       {hasBar ? (
         <nav
-          aria-label={labels.menu}
+          aria-label={labels.main}
           className="fixed inset-x-0 bottom-0 z-10 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
         >
           {bottomTabs.map((tab) => (
