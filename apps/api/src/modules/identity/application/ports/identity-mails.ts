@@ -65,6 +65,17 @@ export type IdentityMail =
       readonly lifetimeMinutes: number;
     }
   | {
+      /**
+       * E15 (slice 12): to the Seller Owner, a link to confirm the reset of their second factor
+       * that an admin started. Nothing changes until it is used.
+       */
+      readonly template: 'confirm-second-factor-reset';
+      readonly population: 'seller';
+      /** The confirmation page, with the token in the fragment. */
+      readonly url: string;
+      readonly lifetimeMinutes: number;
+    }
+  | {
       /** An invitation (identity design 3.4; slice 7b: the admin kind). No inviter's name. */
       readonly template: 'invitation';
       readonly population: Population;

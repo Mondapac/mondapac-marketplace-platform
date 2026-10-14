@@ -58,6 +58,7 @@ import {
   type SellerOwnerInvitationFailure,
 } from '../application/use-cases/resend-seller-invitation.use-case';
 import { RevokeSellerInvitation } from '../application/use-cases/revoke-seller-invitation.use-case';
+import { StartSellerOwnerSecondFactorReset } from '../application/use-cases/start-seller-owner-second-factor-reset.use-case';
 import { SuspendSellerAccess } from '../application/use-cases/suspend-seller-access.use-case';
 import { adminBody, adminClient } from './admin.answer';
 import {
@@ -68,6 +69,7 @@ import {
   AdminSellerListPageView,
   AdminSellerListSellerRowView,
   AdminSellerReasonRequest,
+  AdminSellerSecondFactorResetRequested,
 } from './admin-sellers.dto';
 import { AdminEmptyRequest, AdminInvitationChanged } from './admin-team.dto';
 import { fail } from './customer-sign-up.controller';
@@ -82,6 +84,8 @@ export const ADMIN_SELLERS_STATUS: Readonly<Record<string, number>> = Object.fre
   'validation.failed': 400,
   'seller-access.reason-required': 400,
   'seller.unknown': 404,
+  'account.unknown': 404,
+  'second-factor.none': 409,
   'invitation.unknown': 404,
   'seller-access.wrong-state': 409,
   'seller-access.owner-unverified': 409,
@@ -222,6 +226,7 @@ export class AdminSellersController {
     private readonly resendSellerInvitation: ResendSellerInvitation,
     private readonly revokeSellerInvitation: RevokeSellerInvitation,
     private readonly listSellerAccounts: ListSellerAccounts,
+    private readonly startOwnerSecondFactorReset: StartSellerOwnerSecondFactorReset,
   ) {}
 
   @Get('sellers')
@@ -342,6 +347,45 @@ export class AdminSellersController {
       this.reinstateSellerAccess.execute(context, { sellerId }),
     );
     return this.settle('identity.admin-reinstate-seller', context, outcome);
+  }
+
+  @Post('sellers/:sellerId/second-factor/reset')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: "Start the reset of a Seller Owner's second factor",
+    description:
+      'Needs identity.seller-account.reset-second-factor. Mails the seller owner a link (valid ' +
+      '24 hours, once); nothing is removed until the owner confirms it. Starting again replaces ' +
+      'the earlier link. Only an owner with an active second factor.',
+  })
+  @ApiParam(SELLER_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: AdminEmptyRequest })
+  @ApiOkResponse({ type: AdminSellerSecondFactorResetRequested })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'seller.unknown or account.unknown' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'second-factor.none, conflict.stale or conflict.retry',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async startSecondFactorReset(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('sellerId') rawSellerId: string,
+    @Body() body: unknown,
+  ): Promise<AdminSellerSecondFactorResetRequested> {
+    const outcome = await this.onSellerOwner(context, request, response, rawSellerId, body);
+    return this.settle('identity.admin-start-seller-second-factor-reset', context, outcome);
   }
 
   @Post('seller-invitations')
@@ -557,6 +601,29 @@ export class AdminSellersController {
     const reason = withReason ? (input as { readonly reason: string }).reason : undefined;
     const result = await run(sellerId, reason);
     return result.ok ? decided(result.value) : refusal(result.error);
+  }
+
+  /** The start of an owner's second-factor reset: the path id, an empty body, the client. */
+  private async onSellerOwner(
+    context: CallContext,
+    request: Request,
+    response: Response,
+    rawSellerId: string,
+    body: unknown,
+  ): Promise<AdminSellerSecondFactorResetRequested | HttpException> {
+    const sellerId = pathId<'Seller'>(rawSellerId, 'seller.unknown');
+    if (sellerId instanceof HttpException) return sellerId;
+    const input = adminBody(request, body, []);
+    if (input instanceof HttpException) return input;
+    const client = adminClient(request);
+    if (client instanceof HttpException) return client;
+    const result = await this.startOwnerSecondFactorReset.execute(context, {
+      sellerId,
+      origin: client.origin,
+    });
+    return result.ok
+      ? { code: result.value.code, sellerId: result.value.sellerId }
+      : refusal(result.error, response);
   }
 
   /** A route on one seller-owner invitation with an empty body. */

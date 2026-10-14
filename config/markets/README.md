@@ -75,7 +75,7 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   without it answers `access.unavailable` to re-apply and reports `reapplyLimitReached` as
   null). Slice 10 adds the optional `customRoleLimits` (`{ "seller": 1 to 200, "platform": 1 to 500 }`, both
   required when present; 20 and 50 for AU: the custom roles a seller, and the Market's platform
-  scope, may hold; a Market without it answers `access.unavailable` to creating a role). Later identity slices add their values here.
+  scope, may hold; a Market without it answers `access.unavailable` to creating a role). Slice 12 adds two optional keys for the Seller Owner's confirmation of a second-factor reset an admin started: `links.lifetimeMinutes.confirm-second-factor-reset` (1 to 1440; 1440 for AU, identity design 3.7, HF15) and the `confirm-second-factor-reset` page in `links.targets.seller`; a Market without either answers `access.unavailable` to starting such a reset. Later identity slices add their values here.
 - `allowedOrigins`: one list per route population, `{ "admin": [...], "seller": [...],
   "customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
   3). Each list holds at most 20 exact browser origins (`scheme://host[:port]`, no path, none

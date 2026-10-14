@@ -31,7 +31,13 @@ export interface LinkPages {
    * Slice 9 adds the seller panel's invitation acceptance page (E9). A Market whose config has no
    * such page answers null, and no seller invitation is issued there.
    */
-  readonly seller: 'verify-email' | 'sign-in' | 'reset-password' | 'accept-invitation';
+  readonly seller:
+    | 'verify-email'
+    | 'sign-in'
+    | 'reset-password'
+    | 'accept-invitation'
+    /** Slice 12 (E15, A11): the Seller Owner's confirmation of a second-factor reset. */
+    | 'confirm-second-factor-reset';
   /**
    * Slice 7b adds the admin panel's sign-in, invitation acceptance, enrolment and reset pages;
    * until the Market-config PR configures them they answer null and no such mail is sent.
