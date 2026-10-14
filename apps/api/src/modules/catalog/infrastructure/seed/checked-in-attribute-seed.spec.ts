@@ -7,12 +7,14 @@ import {
 import { ZZ_ATTRIBUTE_DEFINITIONS, ZZ_ATTRIBUTE_FAMILIES } from './zz.attributes.seed';
 
 describe('the checked-in attribute seed', () => {
-  it('gives the fixture Market its lists and every other Market empty ones', () => {
+  it('gives the fixture and the launch Market their lists and every other Market empty ones', () => {
     const seed = new CheckedInAttributeSeed();
     expect(seed.definitions(testMarketContext('ZZ', 'default'))).toBe(ZZ_ATTRIBUTE_DEFINITIONS);
     expect(seed.families(testMarketContext('ZZ', 'default'))).toBe(ZZ_ATTRIBUTE_FAMILIES);
-    expect(seed.definitions(testMarketContext('AU', 'default'))).toEqual([]);
-    expect(seed.families(testMarketContext('AU', 'default'))).toEqual([]);
+    expect(seed.definitions(testMarketContext('AU', 'default')).length).toBeGreaterThan(0);
+    expect(seed.families(testMarketContext('AU', 'default')).length).toBeGreaterThan(0);
+    expect(seed.definitions(testMarketContext('NZ', 'default'))).toEqual([]);
+    expect(seed.families(testMarketContext('NZ', 'default'))).toEqual([]);
   });
 
   it('accepts the fixture seed', () => {

@@ -10,10 +10,11 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
 
 describe('the checked-in category seed', () => {
-  it('gives the fixture Market its tree and every other Market an empty one', () => {
+  it('gives the fixture and the launch Market their trees and every other Market an empty one', () => {
     const seed = new CheckedInCategorySeed();
     expect(seed.tree(testMarketContext('ZZ', 'default'))).toBe(ZZ_CATEGORY_TREE);
-    expect(seed.tree(testMarketContext('AU', 'default'))).toEqual([]);
+    expect(seed.tree(testMarketContext('AU', 'default')).length).toBeGreaterThan(0);
+    expect(seed.tree(testMarketContext('NZ', 'default'))).toEqual([]);
   });
 
   it('lists every parent before its children and every slug once', () => {

@@ -14,9 +14,10 @@ const AU = testMarketId('AU');
 
 function generate(env: Record<string, string> = {}): string {
   const out = mkdtempSync(path.join(tmpdir(), 'dev-markets-'));
+  const areas = mkdtempSync(path.join(tmpdir(), 'dev-areas-'));
   execFileSync(process.execPath, ['scripts/dev-panels-market.mjs', 'AU'], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env, DEV_MARKETS_OUT_DIR: out },
+    env: { ...process.env, ...env, DEV_MARKETS_OUT_DIR: out, DEV_SERVICE_AREAS_OUT_DIR: areas },
     stdio: 'pipe',
   });
   return out;
@@ -45,6 +46,11 @@ describe('scripts/dev-panels-market.mjs', () => {
       readFileSync(path.join(REPO_ROOT, 'config/markets/AU.json'), 'utf8'),
     ) as Record<string, unknown>;
     mkdirSync(path.join(root, 'config/markets'), { recursive: true });
+    mkdirSync(path.join(root, 'config/service-areas'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'config/service-areas/AU.json'),
+      readFileSync(path.join(REPO_ROOT, 'config/service-areas/AU.json')),
+    );
     writeFileSync(
       path.join(root, 'config/markets/AU.json'),
       JSON.stringify({ ...source, allowedOrigins: ['https://old.example'] }),
@@ -52,11 +58,27 @@ describe('scripts/dev-panels-market.mjs', () => {
     const out = mkdtempSync(path.join(tmpdir(), 'dev-markets-'));
     execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/dev-panels-market.mjs'), 'AU'], {
       cwd: root,
-      env: { ...process.env, DEV_MARKETS_OUT_DIR: out },
+      env: {
+        ...process.env,
+        DEV_MARKETS_OUT_DIR: out,
+        DEV_SERVICE_AREAS_OUT_DIR: mkdtempSync(path.join(tmpdir(), 'dev-areas-')),
+      },
       stdio: 'pipe',
     });
 
     expect(loadMarketConfigs([out], [AU]).get(AU)!.allowedOrigins.customer).toEqual([]);
+  });
+
+  it('lists the buyer site only when STOREFRONT_ORIGIN is given, and points its mail links there', () => {
+    const market = loadMarketConfigs(
+      [generate({ STOREFRONT_ORIGIN: 'http://storefront.localhost:3003' })],
+      [AU],
+    ).get(AU)!;
+
+    expect(market.allowedOrigins.customer).toEqual(['http://storefront.localhost:3003']);
+    expect(market.identity.links.targets.customer?.['verify-email']).toMatch(
+      /^http:\/\/storefront\.localhost:3003\//,
+    );
   });
 
   it('accepts other loopback panel origins', () => {

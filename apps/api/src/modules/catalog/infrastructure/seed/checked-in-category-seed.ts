@@ -1,12 +1,19 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { CategorySeed, SeededCategory } from '../../application/ports/category-seed';
+import { loadFileCatalogSeeds } from './file-catalog-seed';
 import { ZZ_CATEGORY_TREE } from './zz.category-tree.seed';
 
 /** A seed that breaks a rule of catalog design 7.2: refused at boot and by the unit test. */
 export class CategorySeedError extends Error {}
 
-/** The checked-in seeds, by Market id. A Market with none has an empty tree until slice 21. */
-const SEEDS: Readonly<Record<string, readonly SeededCategory[]>> = { ZZ: ZZ_CATEGORY_TREE };
+/**
+ * The checked-in seeds, by Market id: the fixture Market in code, every other Market from its
+ * `config/catalog-seed/<MARKET>.json`. A Market with none has an empty tree until slice 21.
+ */
+const defaultSeeds = (): Readonly<Record<string, readonly SeededCategory[]>> => ({
+  ...loadFileCatalogSeeds().categories,
+  ZZ: ZZ_CATEGORY_TREE,
+});
 
 /**
  * Checks one seed file: a slug appears once, and a parent is listed before the child that names
@@ -28,7 +35,7 @@ export function assertCategorySeed(tree: readonly SeededCategory[]): void {
 }
 
 export class CheckedInCategorySeed implements CategorySeed {
-  constructor(seeds: Readonly<Record<string, readonly SeededCategory[]>> = SEEDS) {
+  constructor(seeds: Readonly<Record<string, readonly SeededCategory[]>> = defaultSeeds()) {
     this.#seeds = seeds;
     for (const tree of Object.values(seeds)) assertCategorySeed(tree);
   }

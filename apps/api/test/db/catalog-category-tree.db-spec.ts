@@ -5,6 +5,8 @@ import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { SeedCategoryTree } from '../../src/modules/catalog/application/use-cases/seed-category-tree.use-case';
 import { ZZ_CATEGORY_TREE } from '../../src/modules/catalog/infrastructure/seed/zz.category-tree.seed';
+import { CATEGORY_SEED } from '../../src/modules/catalog/application/ports/category-seed';
+import { CheckedInCategorySeed } from '../../src/modules/catalog/infrastructure/seed/checked-in-category-seed';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { CLAIM_TEXT_MATCHER } from '../../src/modules/catalog/application/ports/claim-text-matcher';
 import { cleanClaimTextMatcher } from '../support/clean-claim-text-matcher.fake';
@@ -42,7 +44,10 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
           .useValue(new FixedClock(Temporal.Instant.from(T0)))
           // The seeds are checked against a vocabulary; these specs test the SQL, not the words.
           .overrideProvider(CLAIM_TEXT_MATCHER)
-          .useValue(cleanClaimTextMatcher),
+          .useValue(cleanClaimTextMatcher)
+          // Only the fixture Market's tree: the launch Market's starter file is not this spec's subject.
+          .overrideProvider(CATEGORY_SEED)
+          .useValue(new CheckedInCategorySeed({ ZZ: ZZ_CATEGORY_TREE })),
     }));
   });
   afterAll(async () => {
