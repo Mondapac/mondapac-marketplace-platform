@@ -15,7 +15,17 @@ const CAUSES = [
 ];
 
 /** One offer of the seller, read only: its state, why it is off sale and what it needs next. */
-export async function OfferDetail({ offer }: { readonly offer: OfferView }) {
+export async function OfferDetail({
+  offer,
+  canEdit = false,
+  canViewStock = false,
+  canViewPrices = false,
+}: {
+  readonly offer: OfferView;
+  readonly canEdit?: boolean;
+  readonly canViewStock?: boolean;
+  readonly canViewPrices?: boolean;
+}) {
   const t = await getTranslations();
   const status = known(offer.status, OFFER_STATUSES);
   const name = offer.product.name ?? offer.product.productCode ?? offer.sellerSku;
@@ -25,6 +35,21 @@ export async function OfferDetail({ offer }: { readonly offer: OfferView }) {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="break-words text-2xl font-semibold">{name}</h1>
         <Badge tone={OFFER_TONE[status] ?? 'neutral'}>{t(`catalog.offers.status.${status}`)}</Badge>
+        {canEdit && status !== 'published' ? (
+          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/edit`}>
+            {t('catalog.offer-edit.title')}
+          </a>
+        ) : null}
+        {canViewPrices ? (
+          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/prices`}>
+            {t('price.title')}
+          </a>
+        ) : null}
+        {canViewStock ? (
+          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/stock`}>
+            {t('stock.levels.title')}
+          </a>
+        ) : null}
       </div>
       <FieldList
         rows={[

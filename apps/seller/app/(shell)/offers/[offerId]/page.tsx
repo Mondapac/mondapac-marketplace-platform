@@ -2,8 +2,10 @@ import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
 import { OfferDetail } from '../../../../src/catalog/offer-detail.tsx';
-import type { OfferView } from '../../../../src/catalog/types.ts';
+import { EDIT_PERMISSION, type OfferView } from '../../../../src/catalog/types.ts';
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
+import { PRICE_VIEW_PERMISSION } from '../../../../src/price/types.ts';
+import { STOCK_VIEW_PERMISSION } from '../../../../src/stock/types.ts';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 
 export async function generateMetadata() {
@@ -25,7 +27,12 @@ export default async function OfferPage({
   if (state !== null || page.kind !== 'ok') return state;
   return (
     <SellerShell session={page.session} activeId="s_offers" title={title}>
-      <OfferDetail offer={page.body} />
+      <OfferDetail
+        offer={page.body}
+        canEdit={page.session.permissionKeys.includes(EDIT_PERMISSION)}
+        canViewStock={page.session.permissionKeys.includes(STOCK_VIEW_PERMISSION)}
+        canViewPrices={page.session.permissionKeys.includes(PRICE_VIEW_PERMISSION)}
+      />
     </SellerShell>
   );
 }

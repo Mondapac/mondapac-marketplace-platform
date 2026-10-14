@@ -5,7 +5,23 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import { AttributesSection } from './attributes-section.tsx';
+import { ClassificationSection } from './classification-section.tsx';
+import {
+  attributeInputsOf,
+  attributeValuesWith,
+  categoryIdsOf,
+  contentFrom,
+  taxCategoryOf,
+  variantRowsOf,
+  variantsWith,
+  withMintedIds,
+  type AttributeInput,
+  type AttributeInputs,
+  type VariantRow,
+} from './draft-content.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
+import { VariantsSection } from './variants-section.tsx';
 import type { DraftSaved, ProductView, Submitted } from './types.ts';
 
 const KEYS = ['name', 'shortDescription', 'description'] as const;
@@ -48,16 +64,27 @@ export function contentWith(
 export function EditForm({
   product,
   locales,
+  defaultLocale,
   csrfToken,
 }: {
   readonly product: ProductView;
   readonly locales: readonly string[];
+  readonly defaultLocale: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
   const router = useRouter();
   const [content, setContent] = useState(product.workingCopy?.content);
   const [texts, setTexts] = useState<Texts>(() => textsOf(content, locales));
+  const { form } = product;
+  const configurable = product.variantModel === 'configurable';
+  const attributeFields = form.fields.filter((field) => !field.isVariantOption);
+  const [categoryIds, setCategoryIds] = useState<string[]>(() => categoryIdsOf(content));
+  const [taxCategoryCode, setTaxCategoryCode] = useState(() => taxCategoryOf(content));
+  const [inputs, setInputs] = useState<AttributeInputs>(() =>
+    attributeInputsOf(content, attributeFields),
+  );
+  const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
   const [dirty, setDirty] = useState(false);
   const [replacePending, setReplacePending] = useState(false);
   const [pending, setPending] = useState(false);
@@ -66,7 +93,7 @@ export function EditForm({
   const [notice, setNotice] = useState<'saved' | 'submitted' | 'published' | null>(null);
   const busy = useRef(false);
 
-  const variantIds = product.variants
+  const fixedVariantIds = product.variants
     .filter((variant) => variant.state !== 'retired')
     .map((variant) => variant.variantId);
   const base = `catalog/seller/products/${product.productId}`;
@@ -76,17 +103,46 @@ export function EditForm({
     else setProblem(editProblemOf(failure));
   }
 
-  /** Saves the texts; 'saved' when the API took the draft whole, 'refused' when it dropped some texts. */
+  function contentOf(list: readonly VariantRow[]): Record<string, unknown> {
+    return contentFrom(contentWith(content, texts), {
+      categoryIds,
+      taxCategoryCode,
+      attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
+      variants: configurable ? variantsWith(list) : null,
+    });
+  }
+
+  /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
   async function save(): Promise<'saved' | 'refused' | false> {
-    const next = contentWith(content, texts);
-    const result = await callApi<DraftSaved>(
+    let list = rows;
+    let idsMinted = false;
+    let next = contentOf(list);
+    const ids = (): (string | null)[] =>
+      configurable ? list.map((row) => row.variantId) : fixedVariantIds;
+    let result = await callApi<DraftSaved>(
       'PUT',
       `${base}/draft`,
-      { content: next, variantIds },
+      { content: next, variantIds: ids() },
       csrfToken,
     );
+    // A variant added here has no id until the server mints one: write the draft again with it.
+    if (result.ok && list.some((row) => row.variantId === null)) {
+      list = withMintedIds(list, result.body.variantIds);
+      idsMinted = true;
+      setRows(list);
+      next = contentOf(list);
+      result = await callApi<DraftSaved>(
+        'PUT',
+        `${base}/draft`,
+        { content: next, variantIds: ids() },
+        csrfToken,
+      );
+    }
     if (!result.ok) {
-      fail(result.failure);
+      if (idsMinted && result.failure.status !== 401) {
+        // The server holds the new variants but the draft still names them by their local keys.
+        setProblem({ key: 'catalog.edit.error.partial', details: [], reload: false });
+      } else fail(result.failure);
       return false;
     }
     setContent(next);
@@ -131,6 +187,11 @@ export function EditForm({
       ...texts,
       [locale]: { ...(texts[locale] as Record<TextKey, string>), [key]: value },
     });
+    setDirty(true);
+    setNotice(null);
+  }
+
+  function edited() {
     setDirty(true);
     setNotice(null);
   }
@@ -192,6 +253,58 @@ export function EditForm({
           ))}
         </Card>
       ))}
+      <ClassificationSection
+        categories={form.categories}
+        taxCategoryCodes={form.taxCategoryCodes}
+        categoryIds={categoryIds}
+        taxCategoryCode={taxCategoryCode}
+        defaultLocale={defaultLocale}
+        onCategories={(ids) => {
+          setCategoryIds(ids);
+          edited();
+        }}
+        onTax={(code) => {
+          setTaxCategoryCode(code);
+          edited();
+        }}
+      />
+      <AttributesSection
+        fields={attributeFields}
+        inputs={inputs}
+        locales={locales}
+        defaultLocale={defaultLocale}
+        refused={refused}
+        onChange={(code: string, value: AttributeInput | undefined) => {
+          setInputs({ ...inputs, [code]: value });
+          edited();
+        }}
+      />
+      {configurable ? (
+        <VariantsSection
+          rows={rows}
+          fields={form.fields}
+          locales={locales}
+          defaultLocale={defaultLocale}
+          max={product.maxVariants}
+          refused={refused}
+          onChange={(next) => {
+            setRows(next);
+            edited();
+          }}
+        />
+      ) : null}
+      <Card title={t('catalog.edit.images')}>
+        <p className="text-sm text-fg-muted">{t('catalog.edit.images-later')}</p>
+      </Card>
+      {product.published !== null && product.sensitiveFields.length > 0 ? (
+        <Banner tone="info">
+          {t('catalog.edit.sensitive', {
+            fields: product.sensitiveFields
+              .map((field) => t(`catalog.edit.sensitive-field.${field}`))
+              .join(', '),
+          })}
+        </Banner>
+      ) : null}
       {product.pending !== null ? (
         <CheckboxRow
           name="replacePending"

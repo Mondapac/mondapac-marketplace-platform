@@ -7,6 +7,7 @@ import type { ProductStatus, VariantState } from '../../domain/product';
 import type { SensitiveReason } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import type { StoredRevision } from '../../domain/stored-revision';
+import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
@@ -32,6 +33,8 @@ export interface OwnProductReadOutput {
   readonly productCode: string;
   readonly typeCode: string;
   readonly familyCode: string;
+  /** `single`: one fixed variant, no options; `configurable`: variants defined by option values. */
+  readonly variantModel: string;
   readonly status: ProductStatus;
   readonly variants: readonly { variantId: string; state: VariantState }[];
   /** The Market's cap on non-retired variants. */
@@ -41,6 +44,8 @@ export interface OwnProductReadOutput {
   readonly lastChangedAt: string;
   readonly createdAt: string;
   readonly pendingSubmittedAt: string | null;
+  /** What the product form is drawn from: the Market's tax categories, the family's fields and the categories. */
+  readonly form: ProductForm & { readonly taxCategoryCodes: readonly string[] };
   readonly workingCopy: {
     readonly content: Record<string, unknown>;
     readonly lastSavedAt: string;
@@ -61,6 +66,7 @@ export interface OwnProductReadDependencies {
   readonly products: ProductRepository;
   readonly workingCopies: WorkingCopyRepository;
   readonly revisions: ProductRevisionRepository;
+  readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
 }
 
@@ -103,7 +109,9 @@ export class OwnProductRead extends UseCase<
 
     let maxVariants: number;
     let sensitiveFields: string[];
+    let taxCategoryCodes: readonly string[];
     try {
+      taxCategoryCodes = deps.policy.taxCategoryCodes(market);
       maxVariants = deps.policy.maxVariantsPerProduct(market);
       sensitiveFields = sensitiveFieldsOf(deps.policy.sensitiveChanges(market));
     } catch {
@@ -129,6 +137,7 @@ export class OwnProductRead extends UseCase<
           id === null ? null : await deps.revisions.find(market, state.id, id);
         return ok({
           product,
+          form: await deps.ownReader.productForm(market, state.familyCode),
           copy,
           published: await revisionOf(state.publishedRevisionId),
           pending: await revisionOf(state.pendingRevisionId),
@@ -138,13 +147,14 @@ export class OwnProductRead extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, copy, published, pending } = read.value;
+    const { product, form, copy, published, pending } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
       productCode: state.productCode,
       typeCode: state.typeCode,
       familyCode: state.familyCode,
+      variantModel: state.variantModel,
       status: state.status,
       variants: state.variants.map((variant) => ({
         variantId: variant.id,
@@ -155,6 +165,7 @@ export class OwnProductRead extends UseCase<
       lastChangedAt: state.lastChangedAt.toString(),
       createdAt: state.createdAt.toString(),
       pendingSubmittedAt: isoOf(state.pendingSubmittedAt),
+      form: { ...form, taxCategoryCodes },
       workingCopy:
         copy === null
           ? null

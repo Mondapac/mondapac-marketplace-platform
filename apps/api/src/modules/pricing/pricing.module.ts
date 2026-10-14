@@ -28,6 +28,7 @@ import { PurgeWriteRefusalThrottles } from './application/use-cases/purge-write-
 import { SetRegularPrice } from './application/use-cases/set-regular-price.use-case';
 import { SetSpecialPrice } from './application/use-cases/set-special-price.use-case';
 import { WithdrawSpecialPrice } from './application/use-cases/withdraw-special-price.use-case';
+import { ViewOfferPrices } from './application/use-cases/view-offer-prices.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
 import { PRICING_FACADE } from './contracts/pricing.facade';
 import { PRICING_AUDIT_ACTIONS } from './domain/audit';
@@ -35,6 +36,7 @@ import { PRICING_EVENTS } from './domain/events';
 import { PricingFacadeImplementation } from './presentation/pricing.facade';
 import { AdminPriceHoldController } from './presentation/admin-price-hold.controller';
 import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
+import { SellerOfferPricesController } from './presentation/seller-offer-prices.controller';
 import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
 import { SellerSpecialPriceController } from './presentation/seller-special-price.controller';
 import { pricingProviders } from './infrastructure/pricing-providers';
@@ -94,6 +96,7 @@ function useCaseProvider<D, U>(
   controllers: [
     SellerRegularPriceController,
     SellerSpecialPriceController,
+    SellerOfferPricesController,
     AdminPriceHoldController,
   ],
   providers: [
@@ -134,6 +137,12 @@ function useCaseProvider<D, U>(
       audit: true,
       outbox: true,
       clock: true,
+    }),
+    useCaseProvider(ViewOfferPrices, {
+      unitOfWork: true,
+      series: true,
+      offers: true,
+      policies: true,
     }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),
