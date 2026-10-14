@@ -67,6 +67,14 @@ body {
   overflow-x: clip;
 }
 
+/* Browsers centre <th> by default; panel table headers start where their cells start. In the
+ * base layer, so a header with `text-end` (an Actions column) still wins. */
+@layer base {
+  th {
+    text-align: start;
+  }
+}
+
 /* Phones use the touch density of the tokens (panels IA 4: targets of 48 px below 760 px). */
 @media (max-width: 47.49rem) {
   :root {

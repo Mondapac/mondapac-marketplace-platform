@@ -37,8 +37,17 @@ export async function RolesTable({
               </div>
             ) : (
               <div className="relative overflow-x-auto rounded-lg border border-line">
-                <table className="w-full min-w-160 text-start text-sm">
+                {/* Fixed layout with shared widths, so the System, Default and Custom tables
+                    line their columns up with each other; Role takes what is left. */}
+                <table className="w-full min-w-180 table-fixed text-start text-sm">
                   <caption className="sr-only">{t(`identity.roles.group.${kind}`)}</caption>
+                  <colgroup>
+                    <col />
+                    <col className="w-36" />
+                    <col className="w-36" />
+                    {members === null ? null : <col className="w-32" />}
+                    <col className="w-28" />
+                  </colgroup>
                   <thead className="bg-muted text-fg-muted">
                     <tr>
                       <th scope="col" className="px-4 py-3 font-medium">
