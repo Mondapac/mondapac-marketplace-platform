@@ -1,8 +1,8 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
 
--- AlterTable. Orders placed before this migration were never paid with a flat fee and cannot be
--- shipped from the panel, but they stay readable: the default is dropped after the backfill.
+-- AlterTable. Orders confirmed before this migration become 'to-ship' (they were charged no
+-- delivery fee but can be shipped from the panel); the default is dropped after the backfill.
 ALTER TABLE "ordering"."seller_orders"
     ADD COLUMN "fulfilment" TEXT NOT NULL DEFAULT 'to-ship',
     ADD COLUMN "carrier" TEXT,
