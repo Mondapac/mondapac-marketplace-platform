@@ -23,8 +23,8 @@ export async function OffersTable({ items }: { readonly items: readonly OfferVie
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-line">
-      <table className="w-full text-start text-sm">
+    <div className="relative overflow-x-auto rounded-lg border border-line">
+      <table className="w-full min-w-160 text-start text-sm">
         <caption className="sr-only">{t('catalog.offers.title')}</caption>
         <thead className="bg-muted text-fg-muted">
           <tr>

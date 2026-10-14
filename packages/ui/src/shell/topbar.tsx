@@ -8,9 +8,9 @@ export interface TopbarProps {
 
 export function Topbar({ pageTitle, actions }: TopbarProps) {
   return (
-    <header className="flex h-(--mp-size-topbar) items-center justify-between border-b border-line bg-surface px-6">
-      <h1 className="text-lg font-semibold text-fg">{pageTitle}</h1>
-      <div className="flex items-center gap-3">{actions}</div>
+    <header className="flex h-(--mp-size-topbar-phone) items-center justify-between gap-3 bg-surface pe-4 md:h-(--mp-size-topbar) md:px-6">
+      <h1 className="min-w-0 truncate text-lg font-semibold text-fg">{pageTitle}</h1>
+      <div className="flex shrink-0 items-center gap-3">{actions}</div>
     </header>
   );
 }

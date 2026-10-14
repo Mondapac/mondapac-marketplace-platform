@@ -22,6 +22,7 @@ export async function AdminShell({
   const items = visibleNavItems(adminNav, new Set(session.permissionKeys));
   return (
     <AppShell
+      labels={{ menu: t('nav.menu'), close: t('nav.close'), more: t('nav.more') }}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}

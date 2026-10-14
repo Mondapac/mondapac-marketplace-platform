@@ -98,7 +98,7 @@ function VariantRow({
       {variant.retired ? <p className="text-fg-muted">{t('price.retired')}</p> : null}
       {readOnly ? null : (
         <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <TextField
               name={`price-${variant.variantId}`}
               label={t('price.field', { currency })}

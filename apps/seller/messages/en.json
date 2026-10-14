@@ -5,6 +5,9 @@
     "support": "Need help? Email {supportEmail}."
   },
   "nav": {
+    "menu": "Open navigation menu",
+    "close": "Close navigation menu",
+    "more": "More",
     "home": "Home",
     "setup": "Seller account",
     "products": "Products",

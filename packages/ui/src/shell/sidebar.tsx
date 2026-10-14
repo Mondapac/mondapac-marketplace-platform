@@ -10,11 +10,11 @@ export interface SidebarProps {
 
 export function Sidebar({ panelName, items, activeId, label }: SidebarProps) {
   return (
-    <aside className="flex flex-col border-e border-line bg-surface">
-      <div className="flex h-(--mp-size-topbar) items-center border-b border-line px-4 font-semibold text-fg">
+    <div className="flex flex-1 flex-col">
+      <div className="flex h-(--mp-size-topbar-phone) shrink-0 items-center border-b border-line px-4 pe-14 font-semibold text-fg md:h-(--mp-size-topbar) md:pe-4">
         {panelName}
       </div>
-      <nav aria-label={panelName} className="flex flex-col gap-1 p-3">
+      <nav aria-label={panelName} className="flex flex-col gap-1 overflow-y-auto p-3">
         {items.map((item) => {
           const active = item.id === activeId;
           return (
@@ -24,8 +24,8 @@ export function Sidebar({ panelName, items, activeId, label }: SidebarProps) {
               aria-current={active ? 'page' : undefined}
               className={
                 active
-                  ? 'rounded-md bg-selected px-3 py-2 font-medium text-accent'
-                  : 'rounded-md px-3 py-2 text-fg-secondary hover:bg-muted'
+                  ? 'rounded-md bg-selected px-3 py-3 font-medium text-accent md:py-2'
+                  : 'rounded-md px-3 py-3 text-fg-secondary hover:bg-muted md:py-2'
               }
             >
               {label(item.labelKey)}
@@ -33,6 +33,6 @@ export function Sidebar({ panelName, items, activeId, label }: SidebarProps) {
           );
         })}
       </nav>
-    </aside>
+    </div>
   );
 }

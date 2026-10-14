@@ -34,9 +34,15 @@ export function UserMenu({
   }
 
   return (
-    <div className="flex items-center gap-3" role="group" aria-label={t('user-menu')}>
+    <div
+      className="flex flex-wrap items-center justify-end gap-3"
+      role="group"
+      aria-label={t('user-menu')}
+    >
       {failed ? <Banner tone="critical">{t('sign-out-failed')}</Banner> : null}
-      <span className="text-sm text-fg-secondary">{t('signed-in-as', { name })}</span>
+      <span className="hidden text-sm text-fg-secondary sm:inline">
+        {t('signed-in-as', { name })}
+      </span>
       <Button variant="secondary" onClick={() => void signOut()} loading={pending}>
         {t('sign-out')}
       </Button>

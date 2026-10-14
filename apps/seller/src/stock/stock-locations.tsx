@@ -162,11 +162,11 @@ function SourceRow({
         {source.isDefault ? <Badge tone="info">{t('stock.default')}</Badge> : null}
       </div>
       <dl className="mt-2 grid gap-1 text-sm">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <dt className="text-fg-muted">{t('stock.form.address')}</dt>
           <dd>{address ?? t('stock.no-address')}</dd>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <dt className="text-fg-muted">{t('stock.form.zone')}</dt>
           <dd>{source.timeZone ?? t('stock.zone-own')}</dd>
         </div>
