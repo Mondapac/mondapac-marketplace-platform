@@ -3,6 +3,8 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { SeedCategoryTree } from '../../src/modules/catalog/application/use-cases/seed-category-tree.use-case';
+import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
 import { SeedAttributes } from '../../src/modules/catalog/application/use-cases/seed-attributes.use-case';
 import {
   ZZ_ATTRIBUTE_DEFINITIONS,
@@ -307,6 +309,51 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     expect(Number(options.rows[0]?.n)).toBe(
       ZZ_ATTRIBUTE_DEFINITIONS.reduce((sum, entry) => sum + entry.options.length, 0),
     );
+  });
+
+  it('reads the product form of a family: fields with labels, options in order, and only this Market', async () => {
+    await app.get(SeedAttributes).execute(seedContext(), {});
+    await app.get(SeedCategoryTree).execute(seedContext(), {});
+    const persistence = createPersistence();
+    try {
+      const reader = new PrismaOwnCatalogReader(persistence.service);
+      const load = (familyCode: string) =>
+        persistence.unitOfWork
+          .run(
+            market,
+            async () => ({
+              ok: true as const,
+              value: await reader.productForm(market, familyCode),
+            }),
+            { readOnly: true },
+          )
+          .then((result) => (result.ok ? result.value : null));
+      const unknown = await load('no-such-family');
+      expect(unknown?.fields).toEqual([]);
+      const form = await load(ZZ_ATTRIBUTE_FAMILIES[0]!.code);
+      const own = await sql.query<{ id: string }>(
+        'SELECT id FROM catalog.platform_categories WHERE market_id = $1 AND status = $2',
+        [market.marketId, 'active'],
+      );
+      expect(form?.categories.map((category) => category.categoryId).sort()).toEqual(
+        own.rows.map((row) => row.id).sort(),
+      );
+      if (code !== 'ZZ') {
+        expect(form?.fields).toEqual([]);
+        return;
+      }
+      const family = ZZ_ATTRIBUTE_FAMILIES[0]!;
+      const entries = family.groups.flatMap((group) => group.attributes);
+      expect(form?.fields.map((field) => field.code)).toEqual(entries.map((entry) => entry.code));
+      expect(form?.fields.find((field) => field.code === 'brand')?.required).toBe(true);
+      const colour = form?.fields.find((field) => field.code === 'colour');
+      expect(colour?.isVariantOption).toBe(true);
+      expect(colour?.options.map((option) => option.code)).toEqual(['red', 'green']);
+      expect(colour?.options[0]?.labels).toEqual({ 'ja-JP': 'Red', 'en-US': 'Rouge' });
+      expect(form?.categories.length).toBeGreaterThan(0);
+    } finally {
+      await persistence.close();
+    }
   });
 
   it('builds the schema of a seeded family from the published revisions, and none for an unknown one (4c-5b)', async () => {

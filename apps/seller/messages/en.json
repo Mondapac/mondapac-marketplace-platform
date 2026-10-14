@@ -625,7 +625,8 @@
         "invalid": "Check the texts and try again. Each text has a length limit of {max} characters.",
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Products are unavailable right now. Try again later.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page."
       },
       "attributes": "Details",
       "classification": "Categories and tax",

@@ -173,6 +173,21 @@ describe('EditForm product details', () => {
     expect(await screen.findByText('Draft saved.')).toBeTruthy();
   });
 
+  it('tells the seller to save again when the second write fails, and a retry sends real ids', async () => {
+    call
+      .mockResolvedValueOnce(saved(['v1', 'v9']))
+      .mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } })
+      .mockResolvedValueOnce(saved(['v1', 'v9']));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a variant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText(/do not reload the page/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[2]).toMatchObject({ variantIds: ['v1', 'v9'] });
+    expect(await screen.findByText('Draft saved.')).toBeTruthy();
+  });
+
   it('stops adding at the limit and keeps a published variant', () => {
     mount(
       product({

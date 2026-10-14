@@ -2,6 +2,7 @@
 
 import { Button, Card, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useRef } from 'react';
 import { pickLabel, variantTitle, type VariantRow } from './draft-content.ts';
 import type { DraftSaved, FormField } from './types.ts';
 
@@ -24,12 +25,14 @@ export function VariantsSection({
   readonly onChange: (rows: VariantRow[]) => void;
 }) {
   const t = useTranslations();
+  const added = useRef(0);
   const axes = fields.filter((field) => field.isVariantOption);
   const patch = (key: string, change: Partial<VariantRow>) =>
     onChange(rows.map((row) => (row.key === key ? { ...row, ...change } : row)));
 
   function add() {
-    const key = `new-${Date.now().toString(36)}-${rows.length}`;
+    added.current += 1;
+    const key = `new-${added.current}`;
     onChange([...rows, { variantId: null, key, state: 'new', options: {}, labels: {} }]);
   }
 

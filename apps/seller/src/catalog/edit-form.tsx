@@ -115,6 +115,7 @@ export function EditForm({
   /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
   async function save(): Promise<'saved' | 'refused' | false> {
     let list = rows;
+    let idsMinted = false;
     let next = contentOf(list);
     const ids = (): (string | null)[] =>
       configurable ? list.map((row) => row.variantId) : fixedVariantIds;
@@ -127,6 +128,7 @@ export function EditForm({
     // A variant added here has no id until the server mints one: write the draft again with it.
     if (result.ok && list.some((row) => row.variantId === null)) {
       list = withMintedIds(list, result.body.variantIds);
+      idsMinted = true;
       setRows(list);
       next = contentOf(list);
       result = await callApi<DraftSaved>(
@@ -137,7 +139,10 @@ export function EditForm({
       );
     }
     if (!result.ok) {
-      fail(result.failure);
+      if (idsMinted && result.failure.status !== 401) {
+        // The server holds the new variants but the draft still names them by their local keys.
+        setProblem({ key: 'catalog.edit.error.partial', details: [], reload: false });
+      } else fail(result.failure);
       return false;
     }
     setContent(next);
