@@ -29,6 +29,33 @@ function post(path: string, headers: Record<string, string> = sameOrigin, body =
 const upstreamOk = () =>
   vi.fn<typeof fetch>(() => Promise.resolve(new Response('{"code":"signed-in"}', { status: 200 })));
 
+describe('relay second-factor paths', () => {
+  it.each([
+    'identity/seller/sign-in/second-factor',
+    'identity/seller/second-factor/enrolment',
+    'identity/seller/second-factor/enrolment/confirm',
+    'identity/seller/second-factor/remove',
+    'identity/seller/second-factor/recovery-codes',
+  ])('forwards POST %s', async (path) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, post(path), path.split('/'), upstream);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses other second-factor shapes', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      post('identity/seller/second-factor/other'),
+      ['identity', 'seller', 'second-factor', 'other'],
+      upstream,
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay logging', () => {
   it('logs the status and the API correlation id for an error answer, and nothing secret', async () => {
     const log = vi.fn();

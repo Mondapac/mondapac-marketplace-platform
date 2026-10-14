@@ -23,6 +23,7 @@ import type { AccountState } from '../../domain/account';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import type { PasswordHasher } from '../ports/password-hasher';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
+import { RandomPrefixedTokens } from '../../infrastructure/second-factor/second-factor-tokens';
 import { SignInCustomer } from '../use-cases/sign-in-customer.use-case';
 import { SignInSeller } from '../use-cases/sign-in-seller.use-case';
 
@@ -103,6 +104,9 @@ function setUp(population: Population) {
           sellerAccess: fakes.sellerAccessRepository,
           decisions: fakes.decisionRepository,
           grants: fakes.grantReader,
+          factors: fakes.factorRepository,
+          challenges: fakes.challengeRepository,
+          challengeTokens: new RandomPrefixedTokens('mc1_'),
         });
   return { fakes, steps, clock, useCase };
 }

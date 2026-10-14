@@ -26,7 +26,11 @@ describe('formErrorKey', () => {
     ['membership.none', 'membership.none'],
     ['seller-access.suspended', 'seller-access.suspended'],
     ['request.csrf', 'request.csrf'],
-    ['second-factor-required', 'second-factor.unsupported'],
+    ['challenge.rejected', 'second-factor.challenge-ended'],
+    ['second-factor.invalid', 'second-factor.code-rejected'],
+    ['second-factor.locked', 'second-factor.locked'],
+    ['password.current-incorrect', 'second-factor.password-incorrect'],
+    ['second-factor.unavailable', 'second-factor.already-on'],
     ['network', 'network'],
     ['something.else', 'unknown'],
   ])('maps %s to %s', (code, key) => {

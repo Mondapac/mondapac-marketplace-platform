@@ -58,7 +58,7 @@ export class CompleteSecondFactorReplacement extends UseCase<
     private readonly deps: CompleteSecondFactorReplacementDependencies,
   ) {
     super(gate);
-    this.#step = new SignedInFactorStep(deps, this.#logger);
+    this.#step = new SignedInFactorStep(deps, this.#logger, 'admin');
   }
 
   protected async handle(

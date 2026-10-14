@@ -9,6 +9,7 @@ export interface SellerSession {
   readonly permissionKeys: readonly string[];
   readonly sellerAccessState: 'pending' | 'approved' | 'rejected';
   readonly email: string;
+  readonly secondFactorActive: boolean;
   readonly displayName: string;
   readonly csrfToken: string;
 }

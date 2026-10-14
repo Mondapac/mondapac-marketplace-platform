@@ -20,8 +20,8 @@ export async function SellerShell({
 }) {
   const t = await getTranslations();
   const approved = session.sellerAccessState === 'approved';
-  const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter(
-    (item) => !(approved && item.id === 's_setup'),
+  const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter((item) =>
+    approved ? item.id !== 's_setup' : item.id !== 's_security',
   );
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];

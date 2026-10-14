@@ -1,6 +1,6 @@
 import type { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Population, Result, Temporal } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { Account } from '../../domain/account';
@@ -84,6 +84,8 @@ export class SignedInFactorStep {
   constructor(
     private readonly deps: SignedInFactorDependencies,
     private readonly logger: Logger,
+    /** Whose own factor the step works on: the use case that owns the step fixes it. */
+    private readonly population: Population,
   ) {}
 
   async run<T>(
@@ -93,7 +95,7 @@ export class SignedInFactorStep {
     spec: SignedInFactorSpec<T>,
   ): Promise<Result<T, SignedInFactorRefusal>> {
     const { market, actor } = context;
-    if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
+    if (actor.kind !== 'authenticated' || actor.population !== this.population) {
       return err({ code: 'access.denied' });
     }
     const accountId = actor.accountId;

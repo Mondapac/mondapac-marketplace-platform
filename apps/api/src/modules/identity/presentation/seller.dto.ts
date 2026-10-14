@@ -54,6 +54,52 @@ export class SellerSignInRequest {
   keepSignedIn?: boolean;
 }
 
+/**
+ * A seller-side password step that asks for a code (the account has an active second factor,
+ * optional at launch): no session yet. The token is not a credential; it works for a few minutes
+ * and a few attempts.
+ */
+export class SellerSecondFactorRequired {
+  @ApiProperty({ enum: ['second-factor-required'] })
+  code!: 'second-factor-required';
+
+  @ApiProperty({ description: 'The challenge token, posted back with the code.', example: 'mc1_…' })
+  challengeToken!: string;
+
+  @ApiProperty({ description: "The challenge's expiry, ISO 8601 UTC." })
+  expiresAt!: string;
+}
+
+/** The code step of a seller sign-in (6.3 steps 5 to 7). */
+export class SellerSecondFactorRequest {
+  @ApiProperty({ description: 'The token of the challenge from the password step.' })
+  challengeToken!: string;
+
+  @ApiProperty({ description: 'Six digits from the app, or a recovery code ("XXXXX-XXXXX").' })
+  code!: string;
+
+  @ApiPropertyOptional({
+    description: '"Keep me signed in", asked again here: the challenge keeps no choice.',
+    default: false,
+  })
+  keepSignedIn?: boolean;
+}
+
+/** The answer of switching the second factor off: nothing is shown. */
+export class SellerSecondFactorRemoved {
+  @ApiProperty({ enum: ['second-factor-removed'] })
+  code!: 'second-factor-removed';
+}
+
+/** Starting a second factor for the signed-in account: its own password (HF6). */
+export class SellerEnrolmentRequest {
+  @ApiProperty({
+    description: 'The password of the account, at most 1024 bytes. Never logged or echoed.',
+    format: 'password',
+  })
+  password!: string;
+}
+
 /** The body that confirms a seller-side account's email: the link's token and the password. */
 export class SellerConfirmEmailRequest {
   @ApiProperty({
