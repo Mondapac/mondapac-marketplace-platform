@@ -156,7 +156,7 @@ export function OtpField({
             onPaste={(event) => onPaste(index, event)}
             onFocus={(event) => event.target.select()}
             className={[
-              'h-(--mp-size-control) min-w-0 max-w-(--mp-size-control) flex-1 rounded-md border bg-surface text-center text-lg text-fg',
+              'h-12 min-w-0 max-w-12 flex-1 rounded-md border bg-surface text-center text-lg text-fg',
               error ? 'border-critical-solid' : 'border-line-input',
             ].join(' ')}
           />
