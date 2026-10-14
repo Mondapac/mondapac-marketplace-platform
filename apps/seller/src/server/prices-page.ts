@@ -12,6 +12,8 @@ export type PricesPage =
       readonly session: SellerSession;
       readonly offer: OfferView;
       readonly view: OfferPricesView;
+      /** The seller's own IANA zone, or null when it could not be read (times then show in UTC). */
+      readonly zone: string | null;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'not-found'; readonly session: SellerSession }
@@ -26,13 +28,20 @@ export async function loadPricesPage(offerId: string): Promise<PricesPage> {
   if (!session.permissionKeys.includes(PRICE_VIEW_PERMISSION)) {
     return { kind: 'no-access', session };
   }
-  const [offer, view] = await Promise.all([
+  const [offer, view, zone] = await Promise.all([
     serverGet<OfferView>(`catalog/seller/offers/${offerId}`),
     serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`),
+    serverGet<{ readonly zone: string }>('sellers/own-zone'),
   ]);
   if (offer.kind === 'signed-out' || view.kind === 'signed-out') redirect('/session-ended');
   if (offer.kind === 'not-found' || view.kind === 'not-found')
     return { kind: 'not-found', session };
   if (offer.kind !== 'ok' || view.kind !== 'ok') return { kind: 'unavailable' };
-  return { kind: 'ok', session, offer: offer.body, view: view.body };
+  return {
+    kind: 'ok',
+    session,
+    offer: offer.body,
+    view: view.body,
+    zone: zone.kind === 'ok' ? zone.body.zone : null,
+  };
 }

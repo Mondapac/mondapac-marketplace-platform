@@ -5,18 +5,10 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant } from '../catalog/format.ts';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, minorOf } from './money.ts';
+import { formatInZone, instantOfZoned } from './zone-time.ts';
 import type { SpecialWithdrawn, SpecialWritten, VariantPrice } from './types.ts';
-
-/** A `datetime-local` value ("2026-10-20T01:00") read as a UTC instant, or null when it is not one. */
-export function utcInstantOf(text: string): string | null {
-  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2}))?$/.exec(text.trim());
-  if (match === null) return null;
-  const iso = `${match[1] as string}:${match[2] ?? '00'}Z`;
-  return Number.isNaN(new Date(iso).getTime()) ? null : iso;
-}
 
 /** The special price of one variant: what runs, is scheduled or is held, and a form to set or end it. */
 export function SpecialPrice({
@@ -25,6 +17,7 @@ export function SpecialPrice({
   currency,
   canEdit,
   csrfToken,
+  zone,
   version,
   onVersion,
 }: {
@@ -33,6 +26,8 @@ export function SpecialPrice({
   readonly currency: string;
   readonly canEdit: boolean;
   readonly csrfToken: string;
+  /** The seller's IANA zone: times are typed and shown in it. */
+  readonly zone: string;
   /** The series version the screen knows; the regular price form shares it. */
   readonly version: number | null;
   readonly onVersion: (version: number) => void;
@@ -62,8 +57,8 @@ export function SpecialPrice({
     event.preventDefault();
     if (pending || version === null) return;
     const amount = minorOf(amountText, currency);
-    const endsAt = utcInstantOf(endText);
-    const startsAt = startText.trim() === '' ? null : utcInstantOf(startText);
+    const endsAt = instantOfZoned(endText, zone);
+    const startsAt = startText.trim() === '' ? null : instantOfZoned(startText, zone);
     if (amount === null) return setError(t('price.error.invalid'));
     if (endsAt === null || (startText.trim() !== '' && startsAt === null)) {
       return setError(t('price.special.error.date'));
@@ -115,8 +110,8 @@ export function SpecialPrice({
         <p className="mb-2 text-fg-muted">
           {t(`price.special.${special.state}`, {
             amount: formatMinor(special.amount, currency),
-            from: formatInstant(special.startsAt),
-            until: formatInstant(special.endsAt),
+            from: formatInZone(special.startsAt, zone),
+            until: formatInZone(special.endsAt, zone),
           })}
         </p>
       )}
@@ -126,9 +121,9 @@ export function SpecialPrice({
             <p>
               {t('price.special.held', {
                 amount: formatMinor(heldSpecial.amount, currency),
-                from: formatInstant(heldSpecial.startsAt),
-                until: formatInstant(heldSpecial.endsAt),
-                since: formatInstant(heldSpecial.submittedAt),
+                from: formatInZone(heldSpecial.startsAt, zone),
+                until: formatInZone(heldSpecial.endsAt, zone),
+                since: formatInZone(heldSpecial.submittedAt, zone),
               })}
             </p>
           </Banner>
@@ -149,15 +144,15 @@ export function SpecialPrice({
           <TextField
             name={`special-start-${variant.variantId}`}
             type="datetime-local"
-            label={t('price.special.start')}
-            help={t('price.special.start-help')}
+            label={t('price.special.start', { zone })}
+            help={t('price.special.start-help', { zone })}
             value={startText}
             onChange={(event) => setStartText(event.target.value)}
           />
           <TextField
             name={`special-end-${variant.variantId}`}
             type="datetime-local"
-            label={t('price.special.end')}
+            label={t('price.special.end', { zone })}
             value={endText}
             error={error ?? undefined}
             onChange={(event) => setEndText(event.target.value)}

@@ -12,7 +12,7 @@ import { callApi } from '../api/client.ts';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, inputOf, minorOf } from './money.ts';
 import { OfferPrices } from './offer-prices.tsx';
-import { utcInstantOf } from './special-price.tsx';
+import { formatInZone, instantOfZoned } from './zone-time.ts';
 import type { OfferPricesView } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -47,10 +47,10 @@ const view: OfferPricesView = {
     },
   ],
 };
-const mount = (canEdit = true, v: OfferPricesView = view) =>
+const mount = (canEdit = true, v: OfferPricesView = view, zone?: string) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <OfferPrices offerId="o1" view={v} canEdit={canEdit} csrfToken="csrf" />
+      <OfferPrices offerId="o1" view={v} canEdit={canEdit} csrfToken="csrf" zone={zone} />
     </NextIntlClientProvider>,
   );
 
@@ -167,17 +167,17 @@ describe('OfferPrices', () => {
     expect(screen.getAllByText('Special price')).toHaveLength(1);
   });
 
-  it('sets a special with the shared version, in UTC, and the regular form follows the new version', async () => {
+  it('sets a special with the shared version, typed in the seller zone, and the regular form follows the new version', async () => {
     call.mockResolvedValue({
       ok: true,
       status: 200,
       body: { status: 'pending-review', seriesVersion: 4 },
     });
-    mount();
+    mount(true, view, 'Australia/Sydney');
     fireEvent.change(screen.getByLabelText('Special price (AUD, GST included)'), {
       target: { value: '9.50' },
     });
-    fireEvent.change(screen.getByLabelText('Ends (UTC)'), {
+    fireEvent.change(screen.getByLabelText('Ends (Australia/Sydney)'), {
       target: { value: '2026-11-01T10:30' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save special price' }));
@@ -189,7 +189,7 @@ describe('OfferPrices', () => {
         amount: '950',
         currency: 'AUD',
         startsAt: null,
-        endsAt: '2026-11-01T10:30:00Z',
+        endsAt: '2026-10-31T23:30:00Z',
         expectedVersion: 3,
       },
       'csrf',
@@ -208,10 +208,33 @@ describe('OfferPrices', () => {
     expect(call.mock.calls[1]?.[2]).toMatchObject({ expectedVersion: 4 });
   });
 
-  it('reads datetime-local text as a UTC instant', () => {
-    expect(utcInstantOf('2026-11-01T10:30')).toBe('2026-11-01T10:30:00Z');
-    expect(utcInstantOf('')).toBeNull();
-    expect(utcInstantOf('nonsense')).toBeNull();
+  it('reads datetime-local text as a wall-clock time in a zone', () => {
+    expect(instantOfZoned('2026-11-01T10:30', 'UTC')).toBe('2026-11-01T10:30:00Z');
+    expect(instantOfZoned('2026-11-01T10:30', 'Australia/Sydney')).toBe('2026-10-31T23:30:00Z');
+    expect(instantOfZoned('2026-06-01T10:30', 'Australia/Sydney')).toBe('2026-06-01T00:30:00Z');
+    expect(instantOfZoned('2026-06-01T10:30', 'Australia/Perth')).toBe('2026-06-01T02:30:00Z');
+    expect(instantOfZoned('', 'UTC')).toBeNull();
+    expect(instantOfZoned('nonsense', 'UTC')).toBeNull();
+    expect(instantOfZoned('2026-11-01T10:30', 'Not/AZone')).toBeNull();
+  });
+
+  it('handles the clock changes of a zone', () => {
+    // Sydney: clocks go forward 2026-10-04 02:00 -> 03:00 and back 2027-04-04 03:00 -> 02:00.
+    expect(instantOfZoned('2026-10-04T02:30', 'Australia/Sydney')).toBeNull();
+    expect(instantOfZoned('2026-10-04T03:30', 'Australia/Sydney')).toBe('2026-10-03T16:30:00Z');
+    expect(instantOfZoned('2027-04-04T02:30', 'Australia/Sydney')).toBe('2027-04-03T15:30:00Z');
+  });
+
+  it('shows instants in the zone with its id', () => {
+    expect(formatInZone('2026-10-31T23:30:00Z', 'Australia/Sydney')).toMatch(
+      /1 Nov 2026.*10:30.*Australia\/Sydney$/,
+    );
+    expect(formatInZone(null, 'UTC')).toBe('-');
+  });
+
+  it('falls back to UTC labels when the zone could not be read', () => {
+    mount();
+    expect(screen.getByLabelText('Ends (UTC)')).toBeTruthy();
   });
 
   it('ends the special now with the version and shows API refusals', async () => {

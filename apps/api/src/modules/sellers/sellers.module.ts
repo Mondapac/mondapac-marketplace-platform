@@ -84,8 +84,10 @@ import { SELLERS_PERMISSIONS } from './contracts/permissions';
 import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contract';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
+import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
 import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
 import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
+import { OwnZoneController } from './presentation/own-zone.controller';
 import { StoreSettingsController } from './presentation/store-settings.controller';
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
@@ -213,6 +215,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     SellerListController,
     StoreSettingsController,
+    OwnZoneController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
@@ -245,6 +248,8 @@ const REVIEW_DECISION_PORTS = {
     }),
     // Slice 20, the optional minimum order (design 18): store settings over HTTP through
     // StoreSettingsController, under `sellers.store-settings.edit`, approved sellers only.
+    // The seller's own zone for the panel's time inputs (special-price windows).
+    useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
     useCaseProvider(StoreSettingsRead, {
       unitOfWork: true,
       storeProfiles: true,
