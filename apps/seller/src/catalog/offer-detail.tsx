@@ -19,10 +19,12 @@ export async function OfferDetail({
   offer,
   canEdit = false,
   canViewStock = false,
+  canViewPrices = false,
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
   readonly canViewStock?: boolean;
+  readonly canViewPrices?: boolean;
 }) {
   const t = await getTranslations();
   const status = known(offer.status, OFFER_STATUSES);
@@ -36,6 +38,11 @@ export async function OfferDetail({
         {canEdit && status !== 'published' ? (
           <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/edit`}>
             {t('catalog.offer-edit.title')}
+          </a>
+        ) : null}
+        {canViewPrices ? (
+          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/prices`}>
+            {t('price.title')}
           </a>
         ) : null}
         {canViewStock ? (

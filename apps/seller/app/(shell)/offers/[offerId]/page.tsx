@@ -4,6 +4,7 @@ import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
 import { OfferDetail } from '../../../../src/catalog/offer-detail.tsx';
 import { EDIT_PERMISSION, type OfferView } from '../../../../src/catalog/types.ts';
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
+import { PRICE_VIEW_PERMISSION } from '../../../../src/price/types.ts';
 import { STOCK_VIEW_PERMISSION } from '../../../../src/stock/types.ts';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 
@@ -30,6 +31,7 @@ export default async function OfferPage({
         offer={page.body}
         canEdit={page.session.permissionKeys.includes(EDIT_PERMISSION)}
         canViewStock={page.session.permissionKeys.includes(STOCK_VIEW_PERMISSION)}
+        canViewPrices={page.session.permissionKeys.includes(PRICE_VIEW_PERMISSION)}
       />
     </SellerShell>
   );
