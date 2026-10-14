@@ -448,4 +448,12 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `sellers/admin/${ID}/review/approve`)).status).toBe(404);
     expect((await call('POST', `sellers/admin/${ID}/review/suspend`)).status).toBe(404);
   });
+
+  it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
+    expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
+    expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);
+    expect((await call('POST', 'pricing/admin/price-holds/nope/approve')).status).toBe(404);
+    expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
+    expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
+  });
 });
