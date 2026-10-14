@@ -15,3 +15,27 @@ export function formatInstant(iso: string | null): string {
 export function known(value: string | null, allowed: readonly string[]): string {
   return value !== null && allowed.includes(value) ? value : 'unknown';
 }
+
+const DAY_TIME = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+const DAY_TIME_YEAR = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+
+/** A compact UTC instant for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
+export function shortInstant(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  const sameYear = date.getUTCFullYear() === new Date().getUTCFullYear();
+  return (sameYear ? DAY_TIME : DAY_TIME_YEAR).format(date);
+}

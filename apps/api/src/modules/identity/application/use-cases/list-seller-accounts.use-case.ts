@@ -15,6 +15,7 @@ import { SellerAccess, type SellerAccessStateCode } from '../../domain/seller-ac
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { LinkTargets } from '../ports/link-secrets';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type {
   OpenSellerOwnerInvitation,
@@ -33,13 +34,17 @@ import type { ActionHint } from './list-admin-team.use-case';
 /** The largest page of the admin seller list; the route's default page is smaller. */
 export const MAX_SELLER_LIST_PAGE = 100;
 
-/** The list's filters: the four access states, and the open owner invitations (`ux.md` P1 tabs). */
+/**
+ * The list's filters: the four access states, the open owner invitations (`ux.md` P1 tabs), and
+ * `orphaned`: registered invited sellers with no member and no pending owner invitation.
+ */
 export const SELLER_LIST_FILTERS = [
   'pending',
   'approved',
   'rejected',
   'suspended',
   'invited',
+  'orphaned',
 ] as const;
 export type SellerListFilter = (typeof SELLER_LIST_FILTERS)[number];
 
@@ -94,7 +99,21 @@ export interface SellerListInvitationRow {
   readonly actions: { readonly resend: ActionHint; readonly revoke: ActionHint };
 }
 
-export type SellerListRow = SellerListSellerRow | SellerListInvitationRow;
+/**
+ * A seller created by an admin invitation that has no member and no pending owner invitation
+ * (revoked or purged): `orphaned` filter only. No personal data. `actions.invite` is a hint:
+ * `allowed` is necessary, not sufficient (the command checks again, e.g. `seller.has-members`).
+ */
+export interface SellerListOrphanRow {
+  readonly type: 'orphan';
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessStateCode;
+  readonly stateChangedAt: Temporal.Instant;
+  readonly createdAt: Temporal.Instant;
+  readonly actions: { readonly invite: ActionHint };
+}
+
+export type SellerListRow = SellerListSellerRow | SellerListInvitationRow | SellerListOrphanRow;
 
 export interface SellerListPage {
   /** Sellers and open owner invitations, merged by id (UUID v7: creation order). */
@@ -117,6 +136,8 @@ export interface ListSellerAccountsDependencies {
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly sellerAccounts: SellerAccountReader;
   readonly policy: IdentityMarketPolicy;
+  /** The link pages, for the invite hint's `access.unavailable` (as `InviteSeller`). */
+  readonly targets: LinkTargets;
   readonly clock: Clock;
 }
 
@@ -207,6 +228,7 @@ export class ListSellerAccounts extends UseCase<
         ? {
             sellers: rows.filter((row) => row.type === 'seller').length,
             invitations: rows.filter((row) => row.type === 'invitation').length,
+            orphans: rows.filter((row) => row.type === 'orphan').length,
             more: result.value.next !== null,
           }
         : {}),
@@ -251,6 +273,9 @@ export class ListSellerAccounts extends UseCase<
         if (acting === null) return err({ code: 'access.denied' });
         const keys = acting.actor.effectiveKeys;
 
+        if (filter === 'orphaned') {
+          return ok(await this.orphans(market, keys, lifetime, input));
+        }
         let sellers: SellerAccountRecord[] = [];
         if (filter !== 'invited') {
           // The exact-email search finds the seller the address owns: never by a staff address.
@@ -309,6 +334,43 @@ export class ListSellerAccounts extends UseCase<
       },
       { readOnly: true },
     );
+  }
+
+  /**
+   * The `orphaned` page: sellers without a member or a pending owner invitation, by seller id.
+   * An address finds an owner or an invitee, and an orphan has neither: an empty page (the
+   * address was validated all the same). The invite hint fails closed like `InviteSeller`.
+   */
+  private async orphans(
+    market: CallContext['market'],
+    keys: ReadonlySet<string>,
+    lifetime: number | null,
+    input: ValidInput,
+  ): Promise<SellerListPage> {
+    if (input.emailNormalized !== null) return { items: [], next: null };
+    const { limit } = input;
+    const found = await this.deps.sellerAccounts.ownerlessSellers(market, {
+      after: input.after as Id<'Seller'> | null,
+      limit: limit + 1,
+    });
+    const invite: ActionHint = !keys.has(SELLER_ACCOUNT_CREATE.key)
+      ? denied('access.denied')
+      : lifetime === null ||
+          this.deps.targets.target(market, 'seller', 'accept-invitation') === null
+        ? denied('access.unavailable')
+        : ALLOWED;
+    const page = found.slice(0, limit);
+    return {
+      items: page.map((seller): SellerListOrphanRow => ({
+        type: 'orphan',
+        sellerId: seller.sellerId,
+        state: seller.state,
+        stateChangedAt: seller.stateChangedAt,
+        createdAt: seller.createdAt,
+        actions: { invite },
+      })),
+      next: found.length > limit ? page[page.length - 1]!.sellerId : null,
+    };
   }
 
   private async invitationRow(

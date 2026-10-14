@@ -1322,6 +1322,7 @@ function useCaseProvider<D, U>(
       effectiveKeys: true,
       sellerAccounts: true,
       policy: true,
+      targets: true,
       clock: true,
     }),
     useCaseProvider(SellerAccountSummaries, {

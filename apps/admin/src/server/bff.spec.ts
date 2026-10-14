@@ -516,3 +516,46 @@ describe('relay of the connected accounts list', () => {
     expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
   });
 });
+
+describe('relay of the sellers without an owner', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/identity/admin/sellers${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['identity', 'admin', 'sellers'];
+
+  it('forwards only the state, limit and after keys of the list query', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(`?state=orphaned&limit=25&after=${id}&email=a%40b.example`),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/identity/admin/sellers?state=orphaned&limit=25&after=${id}`,
+    );
+  });
+
+  it('relays the owner invitation of one seller, only with a UUID id', async () => {
+    const upstream = upstreamOk();
+    const ok = await relay(
+      config,
+      post(`identity/admin/sellers/${id}/invitations`),
+      ['identity', 'admin', 'sellers', id, 'invitations'],
+      upstream,
+    );
+    expect(ok.status).toBe(200);
+    for (const other of [
+      ['identity', 'admin', 'sellers', 'not-a-uuid', 'invitations'],
+      ['identity', 'admin', 'sellers', id, 'invitations', 'extra'],
+      ['identity', 'admin', 'sellers', id, 'suspend'],
+    ]) {
+      expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+    }
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+  });
+});

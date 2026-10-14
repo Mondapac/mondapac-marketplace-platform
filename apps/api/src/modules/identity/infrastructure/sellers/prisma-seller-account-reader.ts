@@ -6,6 +6,7 @@ import {
   SELLER_ACCOUNT_READER,
   type OpenSellerOwnerInvitation,
   type OwnedSellerQuery,
+  type OwnerlessSeller,
   type SellerAccountReader,
   type SellerAccountRecord,
   type ReapplyFilter,
@@ -254,6 +255,33 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
       accountId: account.id as Id<'Account'>,
       sellerIds: memberships.map((row) => row.sellerId as Id<'Seller'>),
     };
+  }
+
+  async ownerlessSellers(
+    market: MarketContext,
+    query: { readonly after: Id<'Seller'> | null; readonly limit: number },
+  ): Promise<OwnerlessSeller[]> {
+    const marketId = market.marketId;
+    // One flat statement; `marketId` at the top level and inside both relation filters.
+    const rows = await this.prisma.tx(market).identitySellerAccess.findMany({
+      where: {
+        marketId,
+        registeredAt: { not: null },
+        origin: 'invitation',
+        ...(query.after === null ? {} : { sellerId: { gt: query.after } }),
+        memberships: { none: { marketId } },
+        invitations: { none: { marketId, kind: 'seller-owner', state: 'pending' } },
+      },
+      select: { sellerId: true, state: true, stateChangedAt: true, createdAt: true },
+      orderBy: { sellerId: 'asc' },
+      take: query.limit,
+    });
+    return rows.map((row) => ({
+      sellerId: row.sellerId as Id<'Seller'>,
+      state: row.state as SellerAccessStateCode,
+      stateChangedAt: toInstant(row.stateChangedAt),
+      createdAt: toInstant(row.createdAt),
+    }));
   }
 
   async openOwnerInvitations(
