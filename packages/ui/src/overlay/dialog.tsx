@@ -46,7 +46,8 @@ export function Dialog({ open, title, onClose, children, actions }: DialogProps)
         )
           onClose();
       }}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-surface p-4 sm:p-6 text-fg backdrop:bg-fg/40"
+      // text-start: a dialog opened from a table's end-aligned Actions cell would inherit text-end.
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-surface p-4 text-start text-fg backdrop:bg-fg/40 sm:p-6"
     >
       {open ? (
         <>

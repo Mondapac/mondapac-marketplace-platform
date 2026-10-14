@@ -30,6 +30,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/invitation/enrolment',
     'identity/admin/invitation/accept',
     'identity/admin/roles',
+    // A read with the address in the body, so it stays out of URLs and logs (slice 8d).
+    'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
   ]),
@@ -45,9 +47,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/accounts/:id/enable',
     'identity/admin/accounts/:id/role',
     'identity/admin/accounts/:id/second-factor/reset',
+    'identity/admin/customers/:id/disable',
+    'identity/admin/customers/:id/enable',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
+    'identity/admin/sellers/:id/second-factor/reset',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',

@@ -11,7 +11,7 @@ import {
 
 /** `set-guest-line-quantity` for a guest (rule `anonymous`, the cart token from the cookie). */
 export class SetGuestLineQuantity extends UseCase<
-  SetQuantityInput & { readonly token: string | null },
+  SetQuantityInput & { readonly token: string | null; readonly origin: string | null },
   LineWritten,
   CartFailure
 > {
@@ -29,9 +29,9 @@ export class SetGuestLineQuantity extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: SetQuantityInput & { readonly token: string | null },
+    input: SetQuantityInput & { readonly token: string | null; readonly origin: string | null },
   ) {
     const caller: CartCaller = { kind: 'guest', token: input.token };
-    return setLineQuantity(this.deps, context, caller, input);
+    return setLineQuantity(this.deps, context, caller, input, input.origin);
   }
 }
