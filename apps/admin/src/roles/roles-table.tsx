@@ -36,8 +36,8 @@ export async function RolesTable({
                 <p className="mt-1 text-fg-muted">{t('identity.roles.empty-custom.body')}</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-line">
-                <table className="w-full text-start text-sm">
+              <div className="relative overflow-x-auto rounded-lg border border-line">
+                <table className="w-full min-w-160 text-start text-sm">
                   <caption className="sr-only">{t(`identity.roles.group.${kind}`)}</caption>
                   <thead className="bg-muted text-fg-muted">
                     <tr>

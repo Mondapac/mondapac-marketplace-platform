@@ -41,8 +41,8 @@ export function HoldsQueue({
           <p className="font-medium">{t('empty')}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line">
-          <table className="w-full text-start text-sm">
+        <div className="relative overflow-x-auto rounded-lg border border-line">
+          <table className="w-full min-w-160 text-start text-sm">
             <caption className="sr-only">{t('title')}</caption>
             <thead className="bg-muted text-fg-muted">
               <tr>
@@ -136,7 +136,7 @@ function HoldLine({
         </Badge>
       </td>
       <td className="px-4 py-3 align-top">{formatInstant(row.submittedAt)}</td>
-      <td className="break-all px-4 py-3 align-top text-xs text-fg-muted">
+      <td className="min-w-72 break-all px-4 py-3 align-top text-xs text-fg-muted">
         <div>
           {t('ids.seller')}: {row.sellerId}
         </div>
@@ -155,7 +155,7 @@ function HoldLine({
           ) : step === 'confirm-approve' ? (
             <div className="flex flex-col gap-2">
               <p>{t('approve-confirm', { price: formatMoney(row.amount) })}</p>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <Button loading={pending} disabled={pending} onClick={() => void send('approve')}>
                   {t('approve-yes')}
                 </Button>
@@ -185,7 +185,7 @@ function HoldLine({
                 maxLength={NOTE_MAX}
                 onChange={(event) => setNote(event.target.value)}
               />
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <Button
                   type="submit"
                   variant="destructive"
@@ -200,7 +200,7 @@ function HoldLine({
               </div>
             </form>
           ) : (
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Button
                 onClick={() => {
                   setProblem(null);
