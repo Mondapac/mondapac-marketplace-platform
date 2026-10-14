@@ -290,6 +290,7 @@ describe.each(FIXTURES)(
           return Promise.resolve(null);
         },
         findById: () => Promise.resolve(null),
+        listPendingReview: () => Promise.resolve([]),
         save: () => Promise.reject(new Error('unused')),
       };
       const create = new OwnProductCreate(gate, {

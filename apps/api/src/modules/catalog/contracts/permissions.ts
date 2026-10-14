@@ -32,8 +32,30 @@ export const CATALOG_OWN_PRODUCT_VIEW = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read the marketplace review queue and the Offers waiting in it (catalog design 8.1, 8.2). Platform
+ * scope; unprotected, so Catalogue Moderator and Viewer receive it by identity's seed.
+ */
+export const CATALOG_PRODUCT_VIEW = definePermission('catalog', {
+  key: 'catalog.product.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Approve an Offer's first publication or ask the seller for changes (catalog design 4.4, 8.1).
+ * Platform scope; unprotected, so Catalogue Moderator receives it by identity's seed.
+ */
+export const CATALOG_PRODUCT_APPROVE = definePermission('catalog', {
+  key: 'catalog.product.approve',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
+  CATALOG_PRODUCT_VIEW,
+  CATALOG_PRODUCT_APPROVE,
 ]);

@@ -32,6 +32,7 @@ export default async function OfferPage({
         canEdit={page.session.permissionKeys.includes(EDIT_PERMISSION)}
         canViewStock={page.session.permissionKeys.includes(STOCK_VIEW_PERMISSION)}
         canViewPrices={page.session.permissionKeys.includes(PRICE_VIEW_PERMISSION)}
+        csrfToken={page.session.csrfToken}
       />
     </SellerShell>
   );

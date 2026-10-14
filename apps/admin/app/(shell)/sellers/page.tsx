@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../src/server/session.ts';
@@ -14,7 +15,7 @@ export default async function SellersPage() {
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
+    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   const title = t('sellers.list.title');
   const allowed = gate.session.permissionKeys.includes(LIST_PERMISSION);

@@ -46,7 +46,7 @@ export function Dialog({ open, title, onClose, children, actions }: DialogProps)
         )
           onClose();
       }}
-      className="m-auto w-[min(32rem,calc(100%-2rem))] rounded-lg border border-line bg-surface p-6 text-fg backdrop:bg-fg/40"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-surface p-4 sm:p-6 text-fg backdrop:bg-fg/40"
     >
       {open ? (
         <>
@@ -54,7 +54,9 @@ export function Dialog({ open, title, onClose, children, actions }: DialogProps)
             {title}
           </h2>
           <div className="mt-2 text-fg-secondary">{children}</div>
-          <div className="mt-6 flex flex-wrap justify-end gap-3">{actions}</div>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+            {actions}
+          </div>
         </>
       ) : null}
     </dialog>

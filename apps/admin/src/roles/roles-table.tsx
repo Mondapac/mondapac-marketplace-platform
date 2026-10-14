@@ -11,7 +11,14 @@ const TONE: Record<RoleRecord['kind'], BadgeTone> = {
 };
 
 /** B2: roles grouped System, Default, Custom with their permission counts (read only). */
-export async function RolesTable({ roles }: { readonly roles: readonly RoleRecord[] }) {
+export async function RolesTable({
+  roles,
+  members = null,
+}: {
+  readonly roles: readonly RoleRecord[];
+  /** Active accounts per role id; null leaves the Members column out. */
+  readonly members?: ReadonlyMap<string, number> | null;
+}) {
   const t = await getTranslations();
   return (
     <div className="flex flex-col gap-6">
@@ -29,8 +36,8 @@ export async function RolesTable({ roles }: { readonly roles: readonly RoleRecor
                 <p className="mt-1 text-fg-muted">{t('identity.roles.empty-custom.body')}</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-line">
-                <table className="w-full text-start text-sm">
+              <div className="relative overflow-x-auto rounded-lg border border-line">
+                <table className="w-full min-w-160 text-start text-sm">
                   <caption className="sr-only">{t(`identity.roles.group.${kind}`)}</caption>
                   <thead className="bg-muted text-fg-muted">
                     <tr>
@@ -43,6 +50,11 @@ export async function RolesTable({ roles }: { readonly roles: readonly RoleRecor
                       <th scope="col" className="px-4 py-3 font-medium">
                         {t('identity.roles.label.permissions')}
                       </th>
+                      {members === null ? null : (
+                        <th scope="col" className="px-4 py-3 font-medium">
+                          {t('identity.roles.label.members')}
+                        </th>
+                      )}
                       <th scope="col" className="px-4 py-3 text-end font-medium">
                         {t('identity.members.actions')}
                       </th>
@@ -73,6 +85,13 @@ export async function RolesTable({ roles }: { readonly roles: readonly RoleRecor
                                     count: role.permissionCount,
                                   })}
                           </td>
+                          {members === null ? null : (
+                            <td className="px-4 py-3">
+                              {t('identity.roles.members-count', {
+                                count: members.get(role.roleId) ?? 0,
+                              })}
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-end">
                             <a
                               className="font-medium text-link underline"

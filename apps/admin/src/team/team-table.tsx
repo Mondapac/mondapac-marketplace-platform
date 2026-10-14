@@ -87,8 +87,8 @@ export async function TeamTable({
     return <p className="text-fg-muted">{t('identity.members.empty.page')}</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-line">
-      <table className="w-full text-start text-sm">
+    <div className="relative overflow-x-auto rounded-lg border border-line">
+      <table className="w-full min-w-160 text-start text-sm">
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>
         <thead className="bg-muted text-fg-muted">
           <tr>

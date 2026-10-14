@@ -6,6 +6,8 @@
 
 @theme inline {
   --color-*: initial;
+  /* Panels IA 4: the sidebar column starts at 760 px; below it the drawer is used. */
+  --breakpoint-md: 47.5rem;
   --radius-sm: var(--mp-radius-chip);
   --radius-md: var(--mp-radius-control);
   --radius-lg: var(--mp-radius-card);
@@ -26,6 +28,7 @@
   --color-accent: var(--mp-color-action-primary);
   --color-accent-hover: var(--mp-color-action-primary-hover);
   --color-accent-disabled: var(--mp-color-action-primary-disabled);
+  --color-scrim: var(--mp-color-bg-scrim);
   --color-focus: var(--mp-color-focus-ring);
   --color-success-bg: var(--mp-color-status-success-bg);
   --color-success-fg: var(--mp-color-status-success-fg);
@@ -58,4 +61,18 @@ html {
 :focus-visible {
   outline: 2px solid var(--mp-color-focus-ring);
   outline-offset: 2px;
+}
+
+body {
+  overflow-x: clip;
+}
+
+/* Phones use the touch density of the tokens (panels IA 4: targets of 48 px below 760 px). */
+@media (max-width: 47.49rem) {
+  :root {
+    --mp-radius-control: 10px;
+    --mp-size-control-sm: 44px;
+    --mp-size-control: 48px;
+    --mp-size-control-lg: 48px;
+  }
 }

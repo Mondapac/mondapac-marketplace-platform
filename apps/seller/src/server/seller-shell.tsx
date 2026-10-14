@@ -23,8 +23,27 @@ export async function SellerShell({
   const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter(
     (item) => !(approved && item.id === 's_setup'),
   );
+  // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
+  const tabIds = ['s_home', 's_products'];
+  const tabs = tabIds.map((id) => items.find((item) => item.id === id));
+  const bottomTabs = tabs.every((item) => item !== undefined)
+    ? tabs.map((item) => ({
+        id: item.id,
+        href: item.href,
+        label: t(item.labelKey),
+        active: item.id === activeId,
+      }))
+    : undefined;
   return (
     <AppShell
+      bottomTabs={bottomTabs}
+      moreActive={bottomTabs?.every((tab) => !tab.active)}
+      labels={{
+        menu: t('nav.menu'),
+        close: t('nav.close'),
+        more: t('nav.more'),
+        main: t('nav.main'),
+      }}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}

@@ -74,6 +74,7 @@ const UNKNOWN = accountId(99);
 
 /** A platform custom role with protected keys, as a future role editor could store (5.6). */
 const LEAD_KEYS = [
+  'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
   'identity.admin-account.reset-second-factor',

@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
 import { loadStockPage } from '../../../src/server/stock-page.ts';
@@ -14,7 +15,7 @@ export default async function StockLocationsPage() {
   const title = t('stock.title');
   const page = await loadStockPage();
   if (page.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('stock.error.unavailable')}</p>;
+    return <LoadError message={t('stock.error.unavailable')} retryLabel={t('load.retry')} />;
   }
   if (page.kind === 'no-access') {
     return (

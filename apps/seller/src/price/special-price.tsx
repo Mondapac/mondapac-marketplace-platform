@@ -162,7 +162,7 @@ export function SpecialPrice({
             error={error ?? undefined}
             onChange={(event) => setEndText(event.target.value)}
           />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="submit"
               variant="secondary"

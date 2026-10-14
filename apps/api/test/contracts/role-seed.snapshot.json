@@ -193,9 +193,35 @@
     ]
   },
   {
+    "entry": "platform:catalogue-moderator@5",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.platform-product.edit",
+      "catalog.product.approve",
+      "catalog.product.view",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
+  },
+  {
     "entry": "platform:viewer@4",
     "kind": "default",
     "permissionKeys": [
+      "catalog.product.view",
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:viewer@5",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.product.view",
       "identity.admin-account.view",
       "identity.customer-account.view",
       "identity.platform-role.view",

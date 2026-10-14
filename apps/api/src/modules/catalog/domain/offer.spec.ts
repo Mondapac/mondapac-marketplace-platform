@@ -191,6 +191,191 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
     });
   });
 
+  describe('submit, approve, request changes and delete', () => {
+    const later = T0.add({ hours: 1 });
+    const stored = (overrides: Partial<OfferState> = {}) => {
+      const created = create();
+      if (!created.ok) throw new Error(created.error.code);
+      return Offer.restore({
+        ...created.value.state,
+        handling: 'SEALED_ORIGINAL',
+        version: 3,
+        ...overrides,
+      });
+    };
+    const waiting = () => stored({ status: 'pending-first-publish', submittedAt: T0, version: 4 });
+
+    it('waits for review when approval is required: pending, stamped, no event', () => {
+      const offer = stored();
+      expect(offer.submit({ approvalRequired: true, now: later })).toEqual({
+        ok: true,
+        value: { published: false },
+      });
+      expect(offer.state).toMatchObject({
+        status: 'pending-first-publish',
+        submittedAt: later,
+        firstPublishedAt: null,
+        listed: false,
+        version: 4,
+      });
+      expect(offer.pendingHistory).toEqual({
+        changeKind: 'submitted',
+        changedFields: [],
+        occurredAt: later,
+      });
+      expect(offer.pendingEvents).toEqual([]);
+    });
+
+    it('publishes at once when approval is off: listed, first-published, one event', () => {
+      const offer = stored();
+      expect(offer.submit({ approvalRequired: false, now: later })).toEqual({
+        ok: true,
+        value: { published: true },
+      });
+      expect(offer.state).toMatchObject({
+        status: 'published',
+        submittedAt: later,
+        firstPublishedAt: later,
+        listed: true,
+        version: 4,
+      });
+      expect(offer.pendingHistory?.changeKind).toBe('published');
+      expect(offer.pendingEvents).toHaveLength(1);
+      expect(offer.pendingEvents[0]).toMatchObject({
+        type: 'catalog.offer-published.v1',
+        aggregateVersion: 4,
+        payload: { offerId, productId, sellerId },
+      });
+    });
+
+    it('refuses a submit without handling or from any state but draft, and changes nothing', () => {
+      const noHandling = stored({ handling: null });
+      expect(noHandling.submit({ approvalRequired: true, now: later })).toEqual({
+        ok: false,
+        error: { code: 'offer.handling-missing' },
+      });
+      for (const status of [
+        'pending-first-publish',
+        'changes-needed',
+        'published',
+        'deleted',
+      ] as const) {
+        const offer = stored({ status, submittedAt: T0, firstPublishedAt: T0, deletedAt: T0 });
+        expect(offer.submit({ approvalRequired: false, now: later })).toEqual({
+          ok: false,
+          error: { code: 'offer.not-submittable' },
+        });
+        expect(offer.pendingHistory).toBeNull();
+        expect(offer.state.version).toBe(3);
+      }
+    });
+
+    it('approves only an Offer that waits: published, listed, history and event', () => {
+      const offer = waiting();
+      expect(offer.approve({ now: later })).toEqual({ ok: true, value: undefined });
+      expect(offer.state).toMatchObject({
+        status: 'published',
+        listed: true,
+        firstPublishedAt: later,
+        submittedAt: T0,
+        version: 5,
+      });
+      expect(offer.pendingHistory?.changeKind).toBe('publication-approved');
+      expect(offer.pendingEvents.map((e) => e.type)).toEqual(['catalog.offer-published.v1']);
+      for (const status of ['draft', 'changes-needed', 'published', 'deleted'] as const) {
+        const other = stored({ status });
+        expect(other.approve({ now: later })).toEqual({
+          ok: false,
+          error: { code: 'offer.not-pending-review' },
+        });
+      }
+    });
+
+    it('sends an Offer that waits back as changes-needed with the reason on the event only', () => {
+      const offer = waiting();
+      expect(offer.requestChanges({ reasonCode: 'description-claim', now: later })).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      expect(offer.state).toMatchObject({ status: 'changes-needed', listed: false, version: 5 });
+      expect(offer.pendingHistory).toEqual({
+        changeKind: 'changes-requested',
+        changedFields: [],
+        occurredAt: later,
+      });
+      expect(offer.pendingEvents[0]).toMatchObject({
+        type: 'catalog.offer-changes-requested.v1',
+        aggregateVersion: 5,
+        payload: { offerId, productId, sellerId, reasonCode: 'description-claim' },
+      });
+      expect(stored().requestChanges({ reasonCode: 'other', now: later })).toEqual({
+        ok: false,
+        error: { code: 'offer.not-pending-review' },
+      });
+    });
+
+    it('lets the seller edit a changes-needed Offer back to draft and submit it again', () => {
+      const offer = waiting();
+      offer.requestChanges({ reasonCode: 'other', now: later });
+      const again = Offer.restore(offer.state);
+      expect(
+        again.edit({
+          sellerSku: 'SKU-009',
+          conditionCode: 'new',
+          description: { 'en-AU': 'Fresh and sealed' },
+          now: later,
+        }).ok,
+      ).toBe(true);
+      expect(again.state.status).toBe('draft');
+      expect(Offer.restore(again.state).submit({ approvalRequired: true, now: later }).ok).toBe(
+        true,
+      );
+    });
+
+    it('deletes any Offer that is not deleted: terminal, not listed, one event; refuses twice', () => {
+      for (const status of [
+        'draft',
+        'pending-first-publish',
+        'changes-needed',
+        'published',
+      ] as const) {
+        const offer = stored({
+          status,
+          listed: status === 'published',
+          submittedAt: T0,
+          firstPublishedAt: status === 'published' ? T0 : null,
+        });
+        expect(offer.delete({ now: later })).toEqual({ ok: true, value: undefined });
+        expect(offer.state).toMatchObject({
+          status: 'deleted',
+          listed: false,
+          deletedAt: later,
+          version: 4,
+        });
+        expect(offer.pendingHistory?.changeKind).toBe('deleted');
+        expect(offer.pendingEvents).toMatchObject([
+          {
+            type: 'catalog.offer-deleted.v1',
+            aggregateVersion: 4,
+            payload: { offerId, productId, sellerId },
+          },
+        ]);
+      }
+      const gone = stored({ status: 'deleted', deletedAt: T0 });
+      expect(gone.delete({ now: later })).toEqual({
+        ok: false,
+        error: { code: 'offer.already-deleted' },
+      });
+    });
+
+    it('allows one change per read: a second command on the same Offer is a defect', () => {
+      const offer = waiting();
+      offer.approve({ now: later });
+      expect(() => Offer.restore(offer.state).delete({ now: later })).not.toThrow();
+      expect(() => offer.delete({ now: later })).toThrow('already has a change');
+    });
+  });
+
   it('freezes its state', () => {
     const created = create();
     if (!created.ok) throw new Error(created.error.code);

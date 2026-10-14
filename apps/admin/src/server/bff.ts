@@ -47,6 +47,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',
     'pricing/admin/price-holds/:id/reject',
+    'catalog/admin/offers/:id/approve',
+    'catalog/admin/offers/:id/request-changes',
   ],
   PUT: ['identity/admin/roles/:id', 'sellers/admin/:id/review/manual-register-check'],
   DELETE: ['identity/admin/roles/:id'],

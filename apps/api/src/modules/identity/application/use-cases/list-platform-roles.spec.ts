@@ -75,6 +75,7 @@ const SELLER_ACCOUNT = accountId(9);
 
 /** A custom role with protected keys (assign, invite) but not the system role. */
 const LEAD_KEYS = [
+  'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
   'identity.admin-account.reset-second-factor',
@@ -325,11 +326,11 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
-      permissionCount: 7,
+      permissionCount: 8,
       grantable: true,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
-    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(7);
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(8);
     expect(byId(items, LEAD_ROLE)).toMatchObject({
       kind: 'custom',
       seedCode: null,

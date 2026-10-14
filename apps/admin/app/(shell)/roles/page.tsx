@@ -1,6 +1,8 @@
+import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { RolesNoAccess } from '../../../src/roles/roles-page-gate.tsx';
+import { memberCounts } from '../../../src/roles/member-counts.ts';
 import { RolesTable } from '../../../src/roles/roles-table.tsx';
 import type { RoleCatalogue } from '../../../src/roles/types.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
@@ -9,6 +11,7 @@ import { requireSession } from '../../../src/server/session.ts';
 import { TeamTabs, tabLabels } from '../../../src/team/team-tabs.tsx';
 
 const VIEW_PERMISSION = 'identity.platform-role.view';
+const TEAM_PERMISSION = 'identity.admin-account.view';
 const CREATE_PERMISSION = 'identity.platform-role.create';
 
 export async function generateMetadata() {
@@ -20,12 +23,15 @@ export default async function RolesPageRoute() {
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
+    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) {
     return <RolesNoAccess session={gate.session} />;
   }
-  const result = await serverGet<RoleCatalogue>('identity/admin/roles');
+  const [result, members] = await Promise.all([
+    serverGet<RoleCatalogue>('identity/admin/roles'),
+    gate.session.permissionKeys.includes(TEAM_PERMISSION) ? memberCounts() : Promise.resolve(null),
+  ]);
   if (result.kind === 'signed-out') redirect('/session-ended');
   const title = t('identity.members.title.admin');
   return (
@@ -43,9 +49,9 @@ export default async function RolesPageRoute() {
       </div>
       <TeamTabs active="roles" labels={tabLabels(t)} />
       {result.kind === 'ok' ? (
-        <RolesTable roles={result.body.items} />
+        <RolesTable roles={result.body.items} members={members} />
       ) : (
-        <p className="text-fg-muted">{t('identity.error.unknown')}</p>
+        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       )}
     </AdminShell>
   );

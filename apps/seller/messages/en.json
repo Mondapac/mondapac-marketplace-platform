@@ -5,6 +5,10 @@
     "support": "Need help? Email {supportEmail}."
   },
   "nav": {
+    "menu": "Open navigation menu",
+    "close": "Close navigation menu",
+    "more": "More",
+    "main": "Main navigation",
     "home": "Home",
     "setup": "Seller account",
     "products": "Products",
@@ -674,6 +678,38 @@
         "not-found": "This offer was not found.",
         "denied": "You don't have permission to edit offers."
       }
+    },
+    "offer-actions": {
+      "submit": "Submit for review",
+      "delete": "Delete offer",
+      "cancel": "Cancel",
+      "delete-confirm": "Delete this offer? It stops being listed and you can't bring it back.",
+      "delete-yes": "Yes, delete",
+      "reload": "Show the offer",
+      "to-offers": "Back to offers",
+      "done": {
+        "submitted": "Submitted. We will review the offer before it goes on sale.",
+        "published": "Submitted and published. The offer is on sale.",
+        "deleted": "Offer deleted."
+      },
+      "changes-needed": "We asked for changes to this offer and emailed you the reason. Edit the offer, then submit it again.",
+      "waiting": "This offer is waiting for our review. You can't change it until we decide.",
+      "error": {
+        "handling-missing": "This offer can't be submitted yet because its handling is not set. Handling can't be set from this panel yet, so try again later.",
+        "not-submittable": "This offer can't be submitted in its current state. Reload the page.",
+        "product-not-published": "The product of this offer is not published yet, so the offer can't be submitted.",
+        "not-found": "This offer was not found.",
+        "delete-via-product": "An offer on your own product can't be deleted here. Withdraw the product instead.",
+        "claim-text": "The description makes a claim that needs a matching certificate. Edit the description and try again.",
+        "type-not-allowed": "You are not allowed to sell this type of product.",
+        "not-eligible": "Your seller account can't sell right now.",
+        "stale": "The offer changed somewhere else. Reload the page and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "denied": "You don't have permission to change offers.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The request could not be sent. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "stock": {
@@ -807,5 +843,8 @@
         "date": "Enter the end date and time, and a valid start if you set one."
       }
     }
+  },
+  "load": {
+    "retry": "Try again"
   }
 }

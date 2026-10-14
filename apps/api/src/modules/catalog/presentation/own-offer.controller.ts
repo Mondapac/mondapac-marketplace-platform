@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -20,6 +21,7 @@ import {
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -41,6 +43,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { OwnOfferDelete } from '../application/use-cases/own-offer-delete.use-case';
+import { OwnOfferSubmit } from '../application/use-cases/own-offer-submit.use-case';
 import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OwnOfferRead } from '../application/use-cases/own-offer-read.use-case';
@@ -52,6 +56,7 @@ import {
   OwnOfferCreateRequest,
   OwnOfferEdited,
   OwnOfferEditRequest,
+  OwnOfferSubmitted,
 } from './own-offer.dto';
 import { ApiErrorBody } from './platform-product.dto';
 
@@ -68,6 +73,10 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'product.not-found': 404,
   'offer.not-found': 404,
   'offer.not-editable': 409,
+  'offer.not-submittable': 409,
+  'offer.product-not-published': 409,
+  'offer.handling-missing': 422,
+  'offer.delete-via-product': 422,
   'conflict.stale': 409,
   'seller.not-eligible': 403,
   'offer.exists-for-product': 409,
@@ -99,6 +108,8 @@ export class OwnOfferController {
   constructor(
     private readonly createOffer: OwnOfferCreateOnPlatformProduct,
     private readonly editOffer: OwnOfferEdit,
+    private readonly submitOffer: OwnOfferSubmit,
+    private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
     private readonly readOffer: OwnOfferRead,
   ) {}
@@ -338,5 +349,83 @@ export class OwnOfferController {
     });
     if (outcome instanceof HttpException) throw outcome;
     return outcome;
+  }
+  @Post(':offerId/submit')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Submit a draft Offer for publication',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. No body. The Offer must be ' +
+      "the seller's own draft with its handling recorded, on a published product of a type the " +
+      'seller may sell; every description text is claim-checked again. Where the Market asks for ' +
+      'approval the Offer waits for review (published: false); otherwise it is published at once.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiOkResponse({ type: OwnOfferSubmitted })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer.not-submittable, offer.product-not-published or conflict.stale',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'offer.handling-missing, type.not-allowed or claim-text.refused',
+  })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async submit(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+  ): Promise<OwnOfferSubmitted> {
+    const result = await this.submitOffer.execute(context, { offerId });
+    const outcome = result.ok
+      ? { published: result.value.published }
+      : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    return this.settleRead('catalog.own-offer-submit', context, outcome);
+  }
+
+  @Delete(':offerId')
+  @HttpCode(204)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Delete an own Offer on a PLATFORM product',
+    description:
+      'Needs catalog.own-product.edit. The Offer becomes deleted and stops being listed; the ' +
+      'row stays. An Offer of another seller, a deleted one or an unknown id is a ' +
+      "byte-identical offer.not-found. An Offer on the seller's own product is refused " +
+      '(offer.delete-via-product): there the product is withdrawn.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiNoContentResponse({ description: 'Deleted.' })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: 'conflict.stale' })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'offer.delete-via-product' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async remove(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+  ): Promise<void> {
+    const result = await this.deleteOffer.execute(context, { offerId });
+    const outcome = result.ok ? {} : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    this.settleRead('catalog.own-offer-delete', context, outcome);
   }
 }

@@ -84,7 +84,7 @@ function Cell({
   }
   return (
     <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <TextField
           name={`onHand-${variantId}-${source.id}`}
           label={label}
