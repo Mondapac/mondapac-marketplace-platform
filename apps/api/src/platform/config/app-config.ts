@@ -60,6 +60,9 @@ const envSchema = z.object({
   MAIL_CATCHER_URL: z
     .url({ protocol: /^https?$/, error: 'must be an http(s) URL such as http://localhost:8025' })
     .optional(),
+  // Catalog slice 13: the directory of the local object store (product photos). Unset: photo
+  // uploads answer "unavailable". An S3-compatible adapter replaces it for production.
+  OBJECT_STORE_DIR: z.string().min(1).max(500).optional(),
   // Phase 5: the Stripe secret key for hosted Checkout. Test mode only until the live gates
   // (pen test, tax agent) are passed: a live key is refused at boot. The value is never echoed.
   STRIPE_SECRET_KEY: z
@@ -140,6 +143,11 @@ export interface AppConfig {
    * unless `NODE_ENV` is explicitly `development` or `test` (`platform/mail/`).
    */
   readonly mailCatcherUrl: string | null;
+  /**
+   * The directory of the local object store (`OBJECT_STORE_DIR`), resolved to an absolute path,
+   * or null: then storing a file fails with "unavailable" (`platform/storage/`).
+   */
+  readonly objectStoreDir: string | null;
   /**
    * The Stripe secret key (`STRIPE_SECRET_KEY`, test mode only), or null: then ordering cannot
    * open a payment page and a checkout answers "payment unavailable". Holds a secret: never log
@@ -270,6 +278,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
+    objectStoreDir:
+      parsed.data.OBJECT_STORE_DIR === undefined
+        ? null
+        : path.resolve(parsed.data.OBJECT_STORE_DIR),
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
     stripeWebhookSecrets: webhookSecrets.secrets,
     stripeConnectWebhookSecrets: connectSecrets.secrets,

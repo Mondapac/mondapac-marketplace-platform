@@ -68,7 +68,7 @@ export interface SaveWorkingCopyDependencies {
  * Concurrent saves of the same draft are last-write-wins on `content`: the product version only
  * moves when the variant registry changes.
  */
-type SaveWorkingCopyReserveFailure =
+export type SaveWorkingCopyReserveFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'access.unavailable' };

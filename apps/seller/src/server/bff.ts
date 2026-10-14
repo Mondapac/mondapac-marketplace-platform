@@ -63,25 +63,46 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   POST: [
     'catalog/seller/products/:id/submit',
+    'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
   ],
-  DELETE: ['catalog/seller/offers/:id'],
+  DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
+  // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
+  GET: ['catalog/seller/products/:id/images/:id/:size'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The photo sizes the panel may ask for; the API names the same three. */
+const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large']);
+
+function matches(template: string, path: readonly string[]): boolean {
+  const parts = template.split('/');
+  return (
+    parts.length === path.length &&
+    parts.every((part, index) =>
+      part === ':id'
+        ? UUID.test(path[index] ?? '')
+        : part === ':size'
+          ? PHOTO_SIZES.has(path[index] ?? '')
+          : part === path[index],
+    )
+  );
+}
+
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
-  return (ALLOWED_WITH_ID[method] ?? []).some((template) => {
-    const parts = template.split('/');
-    return (
-      parts.length === path.length &&
-      parts.every((part, index) =>
-        part === ':id' ? UUID.test(path[index] ?? '') : part === path[index],
-      )
-    );
-  });
+  return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path));
+}
+
+/** The largest request body the relay passes on: 16 KiB, but a photo upload may carry 5.8 MiB. */
+const MAX_BODY_BYTES = 16 * 1024;
+const MAX_PHOTO_BODY_BYTES = 5800 * 1024;
+const PHOTO_UPLOAD = 'catalog/seller/products/:id/images';
+
+function bodyLimitFor(method: string, path: readonly string[]): number {
+  return method === 'POST' && matches(PHOTO_UPLOAD, path) ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES;
 }
 
 /** Request headers that cross to the API. Everything else is dropped. */
@@ -95,7 +116,11 @@ const FORWARDED_REQUEST_HEADERS = [
 ] as const;
 
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
-const FORWARDED_RESPONSE_HEADERS = ['content-type', 'retry-after'] as const;
+const FORWARDED_RESPONSE_HEADERS = [
+  'content-type',
+  'retry-after',
+  'x-content-type-options',
+] as const;
 
 /** The API issues the correlation id and returns it in this header (ADR-0034 decision 3). */
 const CORRELATION_HEADER = 'x-correlation-id';
@@ -103,8 +128,6 @@ const CORRELATION_HEADER = 'x-correlation-id';
 /** One structured line per failed relay: ids and codes only, never a body, cookie or token. */
 export type RelayLog = (line: Record<string, string | number>) => void;
 const stdoutLog: RelayLog = (line) => console.log(JSON.stringify(line));
-
-const MAX_BODY_BYTES = 16 * 1024;
 
 /** Lower case, no trailing dot on the host name; the port stays. */
 export function normaliseHost(raw: string | null): string | null {
@@ -202,12 +225,13 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
+  const limit = bodyLimitFor(request.method, path);
   const declared = Number(request.headers.get('content-length') ?? 0);
-  if (declared > MAX_BODY_BYTES) return jsonError(413, 'request.too-large');
+  if (declared > limit) return jsonError(413, 'request.too-large');
   let body: string | undefined;
   if (request.method !== 'GET') {
     // Read the stream with a hard cap, so a chunked body without Content-Length is refused too.
-    const read = await readCapped(request, MAX_BODY_BYTES);
+    const read = await readCapped(request, limit);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
   }

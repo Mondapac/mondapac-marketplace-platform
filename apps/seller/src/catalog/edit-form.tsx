@@ -7,6 +7,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { ClassificationSection } from './classification-section.tsx';
+import { PhotosSection } from './photos-section.tsx';
 import {
   attributeInputsOf,
   attributeValuesWith,
@@ -22,7 +23,7 @@ import {
 } from './draft-content.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
 import { VariantsSection } from './variants-section.tsx';
-import type { DraftSaved, ProductView, Submitted } from './types.ts';
+import type { DraftSaved, ProductPhoto, ProductView, Submitted } from './types.ts';
 
 const KEYS = ['name', 'shortDescription', 'description'] as const;
 type TextKey = (typeof KEYS)[number];
@@ -61,13 +62,24 @@ export function contentWith(
   return { ...(content ?? {}), texts: next };
 }
 
+/** The photo ids a saved draft lists, in order. */
+function imageIdsOf(content: Readonly<Record<string, unknown>> | undefined): string[] {
+  const stored = content?.['imageIds'];
+  return Array.isArray(stored)
+    ? stored.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
 export function EditForm({
   product,
+  photos,
   locales,
   defaultLocale,
   csrfToken,
 }: {
   readonly product: ProductView;
+  /** The product's photo library, or `null` when it could not be read. */
+  readonly photos: readonly ProductPhoto[] | null;
   readonly locales: readonly string[];
   readonly defaultLocale: string;
   readonly csrfToken: string;
@@ -85,6 +97,7 @@ export function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
+  const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
   const [dirty, setDirty] = useState(false);
   const [replacePending, setReplacePending] = useState(false);
   const [pending, setPending] = useState(false);
@@ -104,7 +117,10 @@ export function EditForm({
   }
 
   function contentOf(list: readonly VariantRow[]): Record<string, unknown> {
-    return contentFrom(contentWith(content, texts), {
+    const withTexts = contentWith(content, texts);
+    // `imageIds` stays out of a draft that never had photos, so it is sent back as it was.
+    if (imageIds.length > 0 || 'imageIds' in withTexts) withTexts['imageIds'] = imageIds;
+    return contentFrom(withTexts, {
       categoryIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
@@ -293,9 +309,16 @@ export function EditForm({
           }}
         />
       ) : null}
-      <Card title={t('catalog.edit.images')}>
-        <p className="text-sm text-fg-muted">{t('catalog.edit.images-later')}</p>
-      </Card>
+      <PhotosSection
+        productId={product.productId}
+        csrfToken={csrfToken}
+        library={photos}
+        imageIds={imageIds}
+        onImageIds={(ids) => {
+          setImageIds(ids);
+          edited();
+        }}
+      />
       {product.published !== null && product.sensitiveFields.length > 0 ? (
         <Banner tone="info">
           {t('catalog.edit.sensitive', {

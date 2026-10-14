@@ -408,7 +408,7 @@ describe.each(TEST_MARKETS)(
       );
     });
 
-    it('refuses images until the image slice exists', async () => {
+    it('refuses an image that is not a clean stored photo', async () => {
       const p = await product(2);
       const f = await familyRevision();
       const c = await category();
@@ -420,7 +420,7 @@ describe.each(TEST_MARKETS)(
             content: { ...stored.content, imageIds: [uuid7()] },
           }),
         ),
-      ).rejects.toThrow(/slice 13/);
+      ).rejects.toThrow(/only a clean image/);
     });
   },
 );

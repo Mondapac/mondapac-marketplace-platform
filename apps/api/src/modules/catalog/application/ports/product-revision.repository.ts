@@ -16,9 +16,9 @@ export interface ProductRevisionRepository {
   nextRevisionNo(market: MarketContext, productId: Id<'Product'>): Promise<number>;
 
   /**
-   * Writes the revision row with its texts, categories and variants. A revision that carries
-   * images is refused until the image slice (13) exists. The database refuses a variant of
-   * another product or a retired one, a category of another Market, a repeated option key.
+   * Writes the revision row with its texts, categories, variants and ordered images. The database
+   * refuses an image of another product or one that is not clean, a variant of another product
+   * or a retired one, a category of another Market, a repeated option key.
    */
   add(market: MarketContext, revision: StoredRevision): Promise<void>;
 

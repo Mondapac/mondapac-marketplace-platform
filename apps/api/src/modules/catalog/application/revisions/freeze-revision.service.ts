@@ -7,6 +7,7 @@ import { freezeWorkingCopy, type FreezeIssue } from '../../domain/revision-freez
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ProductImageRepository } from '../ports/product-image.repository';
 import { revisionContentHash } from './revision-content-hash';
 
 /** A place the draft is not ready, from any of the checks. Codes and paths only, never a value. */
@@ -30,6 +31,8 @@ export interface FreezeRevisionDependencies {
   readonly policy: CatalogMarketPolicy;
   /** The registered handler of a product type, or undefined. */
   readonly handlerFor: (typeCode: string) => ProductTypeHandler | undefined;
+  /** The photo library; without it a draft that lists photos is not ready. */
+  readonly images?: ProductImageRepository;
 }
 
 /**
@@ -110,6 +113,16 @@ export class FreezeRevision {
       if (!variants.ok) {
         issues.push(...variants.issues.map((issue) => ({ path: issue.path, code: issue.code })));
       }
+    }
+    if (frozen.ok && frozen.value.imageIds.length > 0) {
+      // Only clean photos of this product join a revision (the database repeats the rule).
+      const usable =
+        this.deps.images === undefined
+          ? new Set<string>()
+          : await this.deps.images.cleanIdsOf(market, state.id, frozen.value.imageIds);
+      frozen.value.imageIds.forEach((imageId, index) => {
+        if (!usable.has(imageId)) issues.push({ path: `imageIds.${index}`, code: 'unavailable' });
+      });
     }
     if (issues.length > 0 || !frozen.ok) return err({ code: 'revision.not-ready', issues });
     return ok({ content: frozen.value, contentHash: revisionContentHash(frozen.value) });

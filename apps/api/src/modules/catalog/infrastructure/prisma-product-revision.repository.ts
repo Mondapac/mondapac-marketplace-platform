@@ -30,10 +30,6 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
   }
 
   async add(market: MarketContext, revision: StoredRevision): Promise<void> {
-    const { content } = revision;
-    if (content.imageIds.length > 0) {
-      throw new Error('ProductRevisionRepository: revision images arrive with slice 13');
-    }
     const tx = this.prisma.tx(market);
     const base = { marketId: market.marketId, tenantId: market.tenantId };
     try {
@@ -107,6 +103,17 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         labels: variant.labels,
       })),
     });
+    if (content.imageIds.length > 0) {
+      await tx.catalogProductRevisionImage.createMany({
+        data: content.imageIds.map((imageId, index) => ({
+          ...base,
+          revisionId: revision.id,
+          productId: revision.productId,
+          imageId,
+          position: index + 1,
+        })),
+      });
+    }
   }
 
   async find(
@@ -120,6 +127,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         texts: { orderBy: { locale: 'asc' } },
         categories: { orderBy: { position: 'asc' } },
         variants: { orderBy: { position: 'asc' } },
+        images: { orderBy: { position: 'asc' } },
       },
     });
     if (row === null) return null;
@@ -144,7 +152,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         optionValues: variant.optionValues as Record<string, string>,
         labels: variant.labels as Record<string, string>,
       })),
-      imageIds: [],
+      imageIds: row.images.map((image) => image.imageId),
       schemaRef: {
         familyRevisionId: row.familyRevisionId,
         definitionRevisionIds: row.definitionRevisionIds,

@@ -100,6 +100,7 @@ model CatalogProduct {
   publishedRevision    CatalogProductRevision?    @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   pendingRevision      CatalogProductRevision?    @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   workingCopy          CatalogProductWorkingCopy?
+  images               CatalogProductImage[]
   offers               CatalogOffer[]
 
   /// The target of composite foreign keys (C3).
@@ -442,6 +443,7 @@ model CatalogProductRevision {
   texts                  CatalogProductRevisionText[]
   categories             CatalogProductRevisionCategory[]
   variants               CatalogProductRevisionVariant[]
+  images                 CatalogProductRevisionImage[]
   decision               CatalogProductRevisionDecision?
 
   @@unique([marketId, productId, revisionNo])
@@ -653,5 +655,72 @@ model CatalogOfferHistory {
   /// The history read (A17).
   @@index([marketId, offerId, occurredAt])
   @@map("offer_history")
+  @@schema("catalog")
+}
+
+/// A product photo (slice 13, "simple and safe" path): decoded and re-encoded at upload, so only
+/// metadata-free renditions exist; the raw upload is never stored. State `clean` is usable in a
+/// working copy; `taken-down` is reserved for the takedown use case. Deleted only while no
+/// revision uses it.
+model CatalogProductImage {
+  marketId          String                         @map("market_id") @db.VarChar(8)
+  tenantId          String                         @map("tenant_id")
+  id                String                         @db.Uuid
+  productId         String                         @map("product_id") @db.Uuid
+  uploaderAccountId String                         @map("uploader_account_id") @db.Uuid
+  /// clean | taken-down (CHECK).
+  state             String
+  /// The size of the largest rendition.
+  pixelWidth        Int                            @map("pixel_width")
+  pixelHeight       Int                            @map("pixel_height")
+  /// The size of the upload in bytes (abuse review); the upload itself is not kept.
+  byteSize          Int                            @map("byte_size")
+  createdAt         DateTime                       @map("created_at") @db.Timestamptz(6)
+  product           CatalogProduct                 @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  renditions        CatalogProductImageRendition[]
+  revisionImages    CatalogProductRevisionImage[]
+
+  @@id([marketId, id])
+  @@unique([marketId, id, productId])
+  @@index([marketId, productId, createdAt], map: "product_images_market_id_product_id_created_at_idx")
+  @@map("product_images")
+  @@schema("catalog")
+}
+
+/// One size of a photo: thumb, medium or large JPEG. The key starts with the product id (CHECK).
+model CatalogProductImageRendition {
+  marketId    String              @map("market_id") @db.VarChar(8)
+  tenantId    String              @map("tenant_id")
+  imageId     String              @map("image_id") @db.Uuid
+  productId   String              @map("product_id") @db.Uuid
+  sizeCode    String              @map("size_code")
+  objectKey   String              @map("object_key")
+  sha256      Bytes
+  byteSize    Int                 @map("byte_size")
+  pixelWidth  Int                 @map("pixel_width")
+  pixelHeight Int                 @map("pixel_height")
+  image       CatalogProductImage @relation(fields: [marketId, imageId, productId], references: [marketId, id, productId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, imageId, sizeCode])
+  @@unique([marketId, objectKey])
+  @@map("product_image_renditions")
+  @@schema("catalog")
+}
+
+/// The ordered photos of a revision (data design 3.11). Insert-only; position 1 is the primary.
+model CatalogProductRevisionImage {
+  marketId   String                 @map("market_id") @db.VarChar(8)
+  tenantId   String                 @map("tenant_id")
+  revisionId String                 @map("revision_id") @db.Uuid
+  productId  String                 @map("product_id") @db.Uuid
+  imageId    String                 @map("image_id") @db.Uuid
+  position   Int                    @db.SmallInt
+  revision   CatalogProductRevision @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  image      CatalogProductImage    @relation(fields: [marketId, imageId, productId], references: [marketId, id, productId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, imageId])
+  @@unique([marketId, revisionId, position])
+  @@index([marketId, imageId])
+  @@map("product_revision_images")
   @@schema("catalog")
 }

@@ -4,8 +4,10 @@ import { catalogStateFor } from '../../../../../src/catalog/catalog-states.tsx';
 import { EditForm } from '../../../../../src/catalog/edit-form.tsx';
 import {
   EDIT_PERMISSION,
+  type PhotoList,
   type ProductOptions,
   type ProductView,
+  VIEW_PERMISSION,
 } from '../../../../../src/catalog/types.ts';
 import { isUuid, loadCatalogPage } from '../../../../../src/server/catalog-page.ts';
 import { SellerShell } from '../../../../../src/server/seller-shell.tsx';
@@ -35,12 +37,18 @@ export default async function EditProductPage({
     EDIT_PERMISSION,
   );
   if (options.kind !== 'ok') return catalogStateFor(options, 's_products', title);
+  // A photo list that cannot be read leaves the rest of the form usable.
+  const photos = await loadCatalogPage<PhotoList>(
+    `catalog/seller/products/${productId}/images`,
+    VIEW_PERMISSION,
+  );
   return (
     <SellerShell session={page.session} activeId="s_products" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{page.body.productCode}</h1>
       <div className="max-w-(--mp-size-form-max)">
         <EditForm
           product={page.body}
+          photos={photos.kind === 'ok' ? photos.body.images : null}
           locales={options.body.locales.supported}
           defaultLocale={options.body.locales.default}
           csrfToken={page.session.csrfToken}

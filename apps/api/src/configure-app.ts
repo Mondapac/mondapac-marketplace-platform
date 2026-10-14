@@ -31,6 +31,17 @@ export function isStripeWebhookPath(url: string | undefined): boolean {
   return path.startsWith(STRIPE_WEBHOOK_PATH);
 }
 
+/** A base64 photo of 4 MiB is 5.6 million characters; the rest is the JSON around it. */
+const PRODUCT_IMAGE_BODY_LIMIT = '5800kb';
+const PRODUCT_IMAGE_PATH = /^\/catalog\/seller\/products\/[0-9a-fA-F-]{36}\/images\/?(?:\?.*)?$/;
+
+export function isProductImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+): boolean {
+  return method === 'POST' && url !== undefined && PRODUCT_IMAGE_PATH.test(url);
+}
+
 /**
  * HTTP-level setup shared by the real server (main.ts) and the HTTP tests, so what is
  * tested is what runs. The application must be created with {@link APP_OPTIONS}.
@@ -62,6 +73,14 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isStripeWebhookPath(request.url),
     limit: '64kb',
+    inflate: false,
+  });
+  // The product photo route alone takes a larger body (a base64 photo of at most 4 MiB, catalog
+  // slice 13), read as bytes; its controller parses the JSON itself. The JSON parser below then
+  // skips that request, as it does for the webhook.
+  app.useBodyParser('raw', {
+    type: (request) => isProductImageUploadRequest(request.method, request.url),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
   app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });

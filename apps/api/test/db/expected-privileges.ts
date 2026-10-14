@@ -397,6 +397,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.product_revision_categories': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Photos (slice 13): a photo is inserted, read and deleted while no revision uses it; its
+    // renditions go with it by the cascade; the revision's photo rows are insert-only.
+    'catalog.product_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.rate_counters': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
