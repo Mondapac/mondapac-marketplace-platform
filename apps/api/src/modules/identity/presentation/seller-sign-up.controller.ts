@@ -205,13 +205,16 @@ export class SellerSignUpController {
   @Post('accept-invitation')
   @HttpCode(200)
   @ApiOperation({
-    summary: "Accept a seller owner's invitation and choose a password",
+    summary: "Accept a seller owner's or a team member's invitation and choose a password",
     description:
-      "The token from the invitation link's fragment and a new password. The Seller Owner's " +
-      'account is created with the invited address and the name the admin gave, its email ' +
-      'confirmed; no session opens (sign in next). An invitation that is unknown, used, ' +
-      'revoked, expired, of another kind or Market, or whose address already has a seller ' +
-      'account answers invitation.rejected (one answer for every cause). Throttled per origin.',
+      "The token from the invitation link's fragment and a new password. A Seller Owner's " +
+      'account is created with the invited address and the name the admin gave; a team ' +
+      "member's with the invited address and the `displayName` they give (required for a team " +
+      'invitation, ignored for an owner one). Its email is confirmed; no session opens (sign in ' +
+      'next). An invitation that is unknown, used, revoked, expired, of the admin kind or ' +
+      'another Market, whose seller is no longer approved, whose inviter no longer stands, or ' +
+      'whose address already has a seller account answers invitation.rejected (one answer for ' +
+      'every cause). Throttled per origin.',
   })
   @ApiBody({ type: SellerAcceptInvitationRequest })
   @ApiOkResponse({ type: SellerInvitationAccepted })
@@ -253,11 +256,31 @@ export class SellerSignUpController {
     response: Response,
     body: unknown,
   ): Promise<SellerInvitationAccepted | HttpException> {
-    const input = adminBody(request, body, ['token', 'password'] as const);
+    // `displayName` is optional: a Staff invitee gives one (identity design 3.4, HF13); a Seller
+    // Owner keeps the name the admin gave. Everything else stays a closed body of strings.
+    let rest = body;
+    let displayName: string | undefined;
+    if (typeof body === 'object' && body !== null && !Array.isArray(body)) {
+      const { displayName: given, ...others } = body as Record<string, unknown>;
+      rest = others;
+      if (given !== undefined) {
+        if (typeof given !== 'string') {
+          return fail(400, 'validation.failed', {
+            fields: [{ path: 'displayName', code: 'type' }],
+          });
+        }
+        displayName = given;
+      }
+    }
+    const input = adminBody(request, rest, ['token', 'password'] as const);
     if (input instanceof HttpException) return input;
     const client = adminClient(request);
     if (client instanceof HttpException) return client;
-    const result = await this.acceptSellerInvitation.execute(context, { ...input, client });
+    const result = await this.acceptSellerInvitation.execute(context, {
+      ...input,
+      ...(displayName === undefined ? {} : { displayName }),
+      client,
+    });
     if (!result.ok) return adminFailure(response, result.error);
     response.setHeader('Cache-Control', 'no-store');
     return { code: result.value.code };

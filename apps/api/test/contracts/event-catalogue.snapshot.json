@@ -259,6 +259,14 @@
     }
   },
   {
+    "type": "identity.seller-member-removed.v1",
+    "aggregateType": "seller-membership",
+    "fields": {
+      "sellerId": "id",
+      "accountId": "id"
+    }
+  },
+  {
     "type": "identity.seller-registered.v1",
     "aggregateType": "seller-access",
     "fields": {

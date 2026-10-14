@@ -50,7 +50,8 @@
     },
     "after": {
       "roleId": "id",
-      "scope": "enumOf(platform|seller)"
+      "scope": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
     }
   },
   {
@@ -336,6 +337,18 @@
       "boundSubjectId": "id",
       "founding": "boolean",
       "roleId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "action": "identity.seller-member.removed",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "roleId": "optional(id)"
+    },
+    "after": {
       "sellerId": "id"
     }
   },

@@ -21,9 +21,14 @@ import {
   type RoleRepository,
   type SellerMembershipRepository,
 } from '../../application/ports/seller-team.repository';
+import {
+  SELLER_TEAM_READER,
+  type SellerTeamReader,
+} from '../../application/ports/seller-team-reader';
 import { CheckedInRoleSeed } from '../seed/checked-in-role-seed';
 import { PrismaAccessDecisionRepository } from './prisma-access-decision.repository';
 import { PrismaSellerAccessRepository } from './prisma-seller-access.repository';
+import { PrismaSellerTeamReader } from './prisma-seller-team.reader';
 import {
   PrismaRoleAssignmentRepository,
   PrismaRoleRepository,
@@ -49,6 +54,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService, SUBJECT_KEY_SERVICE],
     useFactory: (prisma: PrismaService, subjectKeys: SubjectKeyService): AccessDecisionRepository =>
       new PrismaAccessDecisionRepository(prisma, subjectKeys),
+  },
+  {
+    // Slice 11: the seller team list's member read.
+    provide: SELLER_TEAM_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerTeamReader => new PrismaSellerTeamReader(prisma),
   },
   {
     provide: SELLER_MEMBERSHIP_REPOSITORY,

@@ -126,6 +126,22 @@ export class PrismaSellerMembershipRepository implements SellerMembershipReposit
     });
   }
 
+  async save(market: MarketContext, membership: SellerMembership): Promise<void> {
+    const state = membership.state;
+    const expected = membership.persistedVersion;
+    if (expected === null) throw new Error('save: the membership was never stored; use add');
+    if (state.version === expected) return;
+    const { count } = await this.prisma.tx(market).identitySellerMembership.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: expected },
+      data: {
+        state: state.state,
+        removedAt: state.removedAt === null ? null : toDate(state.removedAt),
+        version: state.version,
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('seller-membership', state.id);
+  }
+
   async remove(market: MarketContext, membership: SellerMembership): Promise<void> {
     const expected = membership.persistedVersion;
     if (expected === null) throw new Error('remove: the membership was never stored');
@@ -509,6 +525,29 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
         marketId: market.marketId,
         roleId,
         account: { status: 'active', emailVerifiedAt: { not: null } },
+      },
+      select: { accountId: true },
+    });
+    return rows.map((row) => row.accountId as Id<'Account'>);
+  }
+
+  async activeHoldersOfInSeller(
+    market: MarketContext,
+    roleId: Id<'Role'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<Id<'Account'>[]> {
+    // `(market_id, role_id)`, then the account by its key with the status and verification
+    // filter, and an active membership of this seller (`seller_memberships_market_id_seller_id_
+    // state_idx`): one statement over identity's own tables (data design 3.9).
+    const rows = await this.prisma.tx(market).identityRoleAssignment.findMany({
+      where: {
+        marketId: market.marketId,
+        roleId,
+        account: {
+          status: 'active',
+          emailVerifiedAt: { not: null },
+          sellerMemberships: { some: { marketId: market.marketId, sellerId, state: 'active' } },
+        },
       },
       select: { accountId: true },
     });

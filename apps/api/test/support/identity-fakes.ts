@@ -3,6 +3,10 @@ import {
   type AdminAccountReader,
 } from '../../src/modules/identity/application/ports/admin-account-reader';
 import {
+  SELLER_TEAM_READER,
+  type SellerTeamReader,
+} from '../../src/modules/identity/application/ports/seller-team-reader';
+import {
   SELLER_ACCOUNT_READER,
   type SellerAccountReader,
   type SellerAccountRecord,
@@ -374,6 +378,30 @@ export class IdentityFakes {
       ),
   };
 
+  /** The seller team list's member read (slice 11), over the fake accounts and memberships. */
+  readonly sellerTeamReader: SellerTeamReader = {
+    activeMembers: (market, sellerId, after, limit) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (a) =>
+              a.marketId === market.marketId &&
+              a.population === 'seller' &&
+              (after === null || a.id > after) &&
+              [...this.memberships.values()].some(
+                (m) =>
+                  m.marketId === market.marketId &&
+                  m.accountId === a.id &&
+                  m.sellerId === sellerId &&
+                  m.state === 'active',
+              ),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit)
+          .map((a) => ({ accountId: a.id, email: a.email.typed, displayName: a.displayName })),
+      ),
+  };
+
   /**
    * The Seller Owner of a seller in the fakes, by the rule of `readSellerPeople`: an active
    * member of the seller population whose role is the seller system role (slice 9b).
@@ -732,6 +760,15 @@ export class IdentityFakes {
       this.memberships.set(state.id, state);
       return Promise.resolve();
     },
+    save: (_market, membership) => {
+      const state = membership.state;
+      if (state.version === membership.persistedVersion) return Promise.resolve();
+      if (this.memberships.get(state.id)?.version !== membership.persistedVersion) {
+        return Promise.reject(new StaleAggregateError('seller-membership', state.id));
+      }
+      this.memberships.set(state.id, state);
+      return Promise.resolve();
+    },
     remove: (_market, membership) => {
       const stored = this.memberships.get(membership.state.id);
       if (stored === undefined || stored.version !== membership.persistedVersion) {
@@ -922,6 +959,27 @@ export class IdentityFakes {
               a.roleId === roleId &&
               account?.status === 'active' &&
               account.emailVerifiedAt !== null
+            );
+          })
+          .map((a) => a.accountId),
+      ),
+    activeHoldersOfInSeller: (market, roleId, sellerId) =>
+      Promise.resolve(
+        [...this.assignments.values()]
+          .filter((a) => {
+            const account = this.accounts.get(a.accountId);
+            return (
+              a.marketId === market.marketId &&
+              a.roleId === roleId &&
+              account?.status === 'active' &&
+              account.emailVerifiedAt !== null &&
+              [...this.memberships.values()].some(
+                (m) =>
+                  m.marketId === market.marketId &&
+                  m.accountId === a.accountId &&
+                  m.sellerId === sellerId &&
+                  m.state === 'active',
+              )
             );
           })
           .map((a) => a.accountId),
@@ -1402,6 +1460,39 @@ export class IdentityFakes {
             createdAt: state.createdAt,
           })),
       ),
+    pendingStaffInvitations: (market, sellerId, after, limit) =>
+      Promise.resolve(
+        [...this.invitations.values()]
+          .filter(
+            (candidate) =>
+              candidate.marketId === market.marketId &&
+              candidate.kind === 'staff' &&
+              candidate.sellerId === sellerId &&
+              candidate.state === 'pending' &&
+              (after === null || candidate.id > after),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit)
+          .map((state) => ({
+            id: state.id,
+            state: 'pending' as const,
+            email: state.email?.typed ?? '',
+            roleId: state.roleId,
+            invitedByAccountId: state.invitedByAccountId,
+            expiresAt: state.expiresAt,
+            createdAt: state.createdAt,
+          })),
+      ),
+    countPendingStaff: (market, sellerId) =>
+      Promise.resolve(
+        [...this.invitations.values()].filter(
+          (candidate) =>
+            candidate.marketId === market.marketId &&
+            candidate.kind === 'staff' &&
+            candidate.sellerId === sellerId &&
+            candidate.state === 'pending',
+        ).length,
+      ),
     findPendingFor: (market, sellerId, emailNormalized) => {
       const state = [...this.invitations.values()].find(
         (candidate) =>
@@ -1579,6 +1670,8 @@ export class IdentityFakes {
       .useValue(this.reviewerCandidateReader)
       .overrideProvider(ADMIN_ACCOUNT_READER)
       .useValue(this.adminAccountReader)
+      .overrideProvider(SELLER_TEAM_READER)
+      .useValue(this.sellerTeamReader)
       .overrideProvider(SELLER_ACCOUNT_READER)
       .useValue(this.sellerAccountReader)
       .overrideProvider(ACCESS_DECISION_REPOSITORY)

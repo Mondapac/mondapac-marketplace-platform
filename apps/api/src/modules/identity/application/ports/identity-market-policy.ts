@@ -98,6 +98,13 @@ export interface IdentityMarketPolicy {
    * (`access.unavailable`). No Market configuration key exists yet (a Market-config PR adds it).
    */
   customRoleLimit(market: MarketContext, scope: 'platform' | 'seller'): number | null;
+
+  /**
+   * Slice 11 (identity design 3.4 "the member limit"): the most people a seller's team may hold,
+   * active members and pending Staff invitations together (proposal: 25), or null when the Market
+   * configures none, so inviting Staff fails closed (`access.unavailable`).
+   */
+  sellerMemberLimit(market: MarketContext): number | null;
 }
 
 /** The `From` of a Market's mail. */

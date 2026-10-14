@@ -196,7 +196,7 @@ export class AssignAdminRole extends UseCase<
           context,
           AccountRoleChangedAudit.entry(subject.accountId, {
             before: { roleId: previousRoleId },
-            after: { roleId: role.state.id, scope: 'platform' },
+            after: { roleId: role.state.id, scope: 'platform', sellerId: null },
           }),
         );
         return ok({ code: 'role.assigned', accountId: subject.accountId, roleId: role.state.id });
