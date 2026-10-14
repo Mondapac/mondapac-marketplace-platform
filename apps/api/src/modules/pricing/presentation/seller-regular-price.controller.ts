@@ -45,6 +45,7 @@ export const REGULAR_PRICE_STATUS: Readonly<Record<string, number>> = Object.fre
   'pricing.currency-mismatch': 422,
   'pricing.amount-out-of-range': 422,
   'pricing.series-retired': 409,
+  'pricing.regular-not-above-special': 409,
   'conflict.stale': 409,
 });
 
@@ -89,7 +90,10 @@ export class SellerRegularPriceController {
     description: 'access.denied, access.seller-not-approved or request.csrf',
   })
   @ApiNotFoundResponse({ ...ERROR, description: 'pricing.offer-not-found' })
-  @ApiConflictResponse({ ...ERROR, description: 'conflict.stale or pricing.series-retired' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'conflict.stale, pricing.series-retired or pricing.regular-not-above-special',
+  })
   @ApiUnprocessableEntityResponse({
     ...ERROR,
     description: 'pricing.currency-mismatch or pricing.amount-out-of-range',

@@ -308,6 +308,25 @@ describe('seller special price over HTTP (integration, pricing slice 5)', () => 
       });
     });
 
+    it('refuses a regular price at or below a live special as 409 on the regular route', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      await regular(code, session);
+      await special(code, body(code), session);
+
+      const lowered = await http()
+        .put(`${base()}/regular-price`)
+        .set(headersOf(code, session))
+        .send({ amount: '9000', currency: CURRENCY[code], expectedVersion: 3 });
+
+      expect(lowered.status).toBe(409);
+      expect(lowered.body).toEqual({
+        statusCode: 409,
+        code: 'pricing.regular-not-above-special',
+      });
+    });
+
     it('answers an unknown or foreign Offer as one 404 and a stale version as 409', async () => {
       await boot();
       await seeded(code);
