@@ -27,14 +27,8 @@ import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
-import type { SellerAccessRepository } from '../ports/seller-access.repository';
-import type { AccessDecisionRepository } from '../ports/access-decision.repository';
-import type { RoleGrantReader } from '../ports/role-grant-reader';
 import { scopeOfPopulation } from '../../domain/role';
-import type {
-  RoleAssignmentRepository,
-  SellerMembershipRepository,
-} from '../ports/seller-team.repository';
+import type { RoleAssignmentRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
 import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
@@ -44,7 +38,7 @@ import type {
   AdminSecondStepOutcome,
   AdminSecondStepPolicy,
 } from './admin-second-step';
-import { resolveSellerGate } from './seller-gate';
+import { type SellerSignInDependencies, resolveSellerGate } from './seller-gate';
 import type {
   SellerSecondStep,
   SellerSecondStepOutcome,
@@ -137,12 +131,7 @@ export interface LinkSignInDependencies {
  * What the seller population needs on top: its membership and its seller's access (slice 5);
  * slice 9 adds the decisions and the grant read, for the owner's reason of a suspension.
  */
-export interface SellerSignInDependencies {
-  readonly memberships: SellerMembershipRepository;
-  readonly sellerAccess: SellerAccessRepository;
-  readonly decisions: AccessDecisionRepository;
-  readonly grants: RoleGrantReader;
-}
+export type { SellerSignInDependencies };
 
 /**
  * What the seller email confirmation needs on top (slice 6b): the audit writer for the founding

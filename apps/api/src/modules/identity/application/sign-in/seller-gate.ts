@@ -1,7 +1,17 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { SellerAccess } from '../../domain/seller-access';
 import { isSellerOwner } from '../sellers/seller-owner';
-import type { SellerSignInDependencies } from './sign-in-flow';
+import type { AccessDecisionRepository } from '../ports/access-decision.repository';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
+import type { SellerAccessRepository } from '../ports/seller-access.repository';
+import type { SellerMembershipRepository } from '../ports/seller-team.repository';
+
+export interface SellerSignInDependencies {
+  readonly memberships: SellerMembershipRepository;
+  readonly sellerAccess: SellerAccessRepository;
+  readonly decisions: AccessDecisionRepository;
+  readonly grants: RoleGrantReader;
+}
 
 /** What step 6 of the seller sign-in decided (identity design 3.3, 6.3). */
 export type SellerGate =

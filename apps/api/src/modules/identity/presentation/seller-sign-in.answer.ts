@@ -13,7 +13,7 @@ import type {
   SignInSellerOutput,
   SignInClient,
 } from '../application/use-cases/sign-in-seller.use-case';
-import type { SignedIn } from '../application/sign-in/sign-in-flow';
+import type { SignedIn } from '../application/use-cases/sign-in-seller.use-case';
 import { fail, parseStringFields } from './customer-sign-up.controller';
 import { adminFailure } from './admin.answer';
 import type { SellerSecondFactorRequired, SellerSignedIn } from './seller.dto';

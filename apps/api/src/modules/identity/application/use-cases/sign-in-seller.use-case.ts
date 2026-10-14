@@ -18,7 +18,7 @@ import {
 import type { FieldProblem } from './register-customer.use-case';
 import { MAX_PASSWORD_BYTES } from './sign-in-customer.use-case';
 
-export type { SignInClient } from '../sign-in/sign-in-flow';
+export type { SignedIn, SignInClient } from '../sign-in/sign-in-flow';
 
 export interface SignInSellerInput {
   readonly email: string;
