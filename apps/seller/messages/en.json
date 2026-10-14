@@ -16,7 +16,8 @@
     "stock": "Stock locations",
     "security": "Security",
     "orders": "Orders",
-    "payout": "Payout account"
+    "payout": "Payout account",
+    "team": "Team"
   },
   "home": {
     "title": "Home",
@@ -115,7 +116,10 @@
       },
       "unknown": "Something went wrong on our side. Try again.",
       "network": "You're offline or the connection dropped. Check it and try again.",
-      "market": "This page isn't available."
+      "market": "This page isn't available.",
+      "accept": {
+        "busy": "We're busy right now. Try again in a moment."
+      }
     },
     "sign-in": {
       "page-title": "Sign in – Seller account – MondaPac",
@@ -177,6 +181,24 @@
         "checking": "Checking your link…"
       }
     },
+    "confirm-reset": {
+      "page-title": "Turn off two-step sign-in – Seller account – MondaPac",
+      "title": "Turn off two-step sign-in",
+      "body": "MondaPac support started turning off two-step sign-in on your store owner account, because you could not use your authenticator app or recovery codes.",
+      "warning": "If you confirm, two-step sign-in is turned off and you are signed out everywhere. You then sign in with your password alone until you set two-step sign-in up again.",
+      "action": {
+        "submit": "Turn off two-step sign-in"
+      },
+      "not-you": "Didn't ask for this? Don't press the button: nothing changes, and the link stops working after 24 hours. Someone may be trying to reach your account, so tell MondaPac support and change your password.",
+      "status": {
+        "checking": "Checking your link…"
+      },
+      "rejected": "It may have expired, already been used, or been replaced by a newer link. Ask MondaPac support to send a new one.",
+      "done": {
+        "title": "Two-step sign-in is off",
+        "body": "You have been signed out everywhere. Sign in with your password, then set up two-step sign-in again under Security."
+      }
+    },
     "link": {
       "title": {
         "rejected": "This link can't be used"
@@ -227,6 +249,150 @@
         "back": "Use a different account"
       },
       "help": "No phone and no backup codes? Contact us."
+    },
+    "role": {
+      "seller-owner": "Seller Owner",
+      "store-manager": "Store Manager",
+      "order-fulfilment": "Order Fulfilment",
+      "catalogue-stock": "Catalogue and Stock",
+      "customer-service": "Customer Service",
+      "bookkeeper": "Bookkeeper"
+    },
+    "accept": {
+      "page-title": "Accept your invitation – Seller account – MondaPac",
+      "title": "Accept your invitation",
+      "status": {
+        "checking": "Checking your invitation…"
+      },
+      "body": "Enter your name and choose a password to join the team. If you were invited as the shop owner, your name is already set.",
+      "label": {
+        "name": "Your name"
+      },
+      "action": {
+        "submit": "Create my account"
+      },
+      "rejected": {
+        "title": "This invitation can't be used",
+        "body": "It may have expired, been used or been cancelled. Ask the person who invited you to send a new one."
+      },
+      "done": {
+        "title": "Your account is ready",
+        "body": "You can sign in with your email and the password you just chose.",
+        "action": "Sign in"
+      }
+    },
+    "team": {
+      "title": "Team",
+      "table-caption": "Team members and pending invitations",
+      "label": {
+        "person": "Person",
+        "role": "Role",
+        "status": "Status",
+        "you": "You"
+      },
+      "status": {
+        "active": "Active",
+        "invited": "Invited",
+        "expired": "Invitation expired"
+      },
+      "expires-on": "Expires {when}",
+      "expired-on": "Expired {when}",
+      "role": {
+        "none": "No role",
+        "custom": "Custom role",
+        "system": "(system role)",
+        "unknown": "Role",
+        "permission-count": "{count, plural, one {# permission} other {# permissions}}"
+      },
+      "empty": {
+        "title": "It's just you so far",
+        "body": "Invite the people who help run your shop. Each person gets their own sign-in and a role that sets what they can do.",
+        "page": "There is nobody on this page."
+      },
+      "next-page": "Next page",
+      "no-access": {
+        "title": "You don't have access to this page",
+        "body": "Your role doesn't include the team. Ask the shop owner.",
+        "action": "Go to Home"
+      },
+      "actions": "Actions",
+      "actions-for": "Actions for {name}",
+      "action": {
+        "remove": "Remove from team…",
+        "resend": "Resend invitation",
+        "revoke": "Cancel invitation…",
+        "change-role": "Change role",
+        "invite-member": "Invite team member"
+      },
+      "dialog": {
+        "keep": "Keep as it is",
+        "keep-invitation": "Keep invitation",
+        "remove": {
+          "title": "Remove {name} from the team?",
+          "body": "They're signed out straight away and can't sign in to your shop again unless you invite them.",
+          "action": "Remove from team"
+        },
+        "revoke": {
+          "title": "Cancel the invitation to {name}?",
+          "body": "The link in their email stops working.",
+          "action": "Cancel invitation"
+        },
+        "change-role": {
+          "title": "Change role for {name}",
+          "body": "The change applies from their next action. They stay signed in.",
+          "label": "Role",
+          "current": "Current role: {role}",
+          "placeholder": "Choose a role",
+          "choose": "Choose a role.",
+          "action": "Change role"
+        },
+        "invite": {
+          "title": "Invite a team member",
+          "label-role": "Role",
+          "choose": "Choose a role.",
+          "help": "They'll get an email with a link to set their name and password. The link stops working after a few days.",
+          "action": "Send invitation",
+          "cancel": "Cancel",
+          "toast-sent": "Invitation sent to {email}."
+        }
+      },
+      "toast": {
+        "remove": "{name} is removed from the team. They've been signed out.",
+        "resend": "Invitation sent again to {name}.",
+        "revoke": "Invitation to {name} cancelled.",
+        "change-role": "{name}'s role is changed. It applies from their next action."
+      },
+      "reason": {
+        "access": {
+          "denied": "Your role doesn't include this.",
+          "unavailable": "This is not available right now. Try again in a moment."
+        },
+        "member": {
+          "self": "You can't do this to your own account.",
+          "outranks-actor": "This person has permissions you don't have.",
+          "last-holder": "At least one Seller Owner must remain.",
+          "limit": "Your team has reached its limit. Remove a member or cancel an invitation first."
+        },
+        "request": {
+          "throttled": "Too many invitations sent. Try again in {minutes, plural, one {# minute} other {# minutes}}."
+        },
+        "invitation": {
+          "unknown": "This invitation no longer exists. We've refreshed the list.",
+          "rejected": "This invitation can't be sent again. We've refreshed the list.",
+          "already-pending": "This person already has an invitation. Resend it from the list."
+        },
+        "conflict": {
+          "stale": "Someone has just changed this. We've refreshed it.",
+          "retry": "Try again."
+        },
+        "account": {
+          "unknown": "This person is no longer on the team. We've refreshed the list."
+        },
+        "role": {
+          "not-grantable": "You can't give that role.",
+          "unknown": "That role no longer exists. We've refreshed the list."
+        }
+      }
     }
   },
   "sellers": {

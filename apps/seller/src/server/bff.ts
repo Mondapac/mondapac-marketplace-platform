@@ -16,6 +16,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
     'identity/seller/session',
     'identity/seller/status',
+    // The team list (query: `after`) and the roles the team screens offer.
+    'identity/seller/team',
+    'identity/seller/roles',
     'sellers/my-file',
     'sellers/my-file/form-descriptors',
     'payments/seller/payout-account',
@@ -38,7 +41,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/second-factor/enrolment/confirm',
     'identity/seller/second-factor/remove',
     'identity/seller/second-factor/recovery-codes',
+    // Anonymous: the one-time token of the owner's reset link is in the body (slice 12, A11).
+    'identity/seller/second-factor/reset/confirm',
     'identity/seller/sign-out',
+    'identity/seller/team/invitations',
+    // Anonymous: the one-time token of the invitation link is in the body.
+    'identity/seller/accept-invitation',
     'identity/seller/password-reset-email',
     'identity/seller/reset-password',
     'identity/seller/change-password',
@@ -67,6 +75,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/seller/offers/:id/variants/:id/special-price',
   ],
   POST: [
+    'identity/seller/team/invitations/:id/resend',
+    'identity/seller/team/invitations/:id/revoke',
+    'identity/seller/team/accounts/:id/role',
+    'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
@@ -80,8 +92,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
-const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
-  'ordering/seller/orders': ['limit', 'cursor'],
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Per GET target, the query keys passed on and, where set, the shape each value must have. */
+const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
+  'ordering/seller/orders': { limit: null, cursor: null },
+  'identity/seller/team': { after: UUID },
 };
 const QUERY_VALUE_MAX = 512;
 
@@ -91,15 +106,14 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
-  for (const key of keys) {
+  for (const [key, shape] of Object.entries(keys)) {
     const value = source.get(key);
-    if (value !== null && value.length <= QUERY_VALUE_MAX) kept.set(key, value);
+    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    if (shape === null || shape.test(value)) kept.set(key, value);
   }
   const text = kept.toString();
   return text === '' ? '' : `?${text}`;
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The photo sizes the panel may ask for; the API names the same three. */
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large']);

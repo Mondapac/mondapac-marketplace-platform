@@ -11,6 +11,7 @@
     "main": "Main navigation",
     "home": "Home",
     "team": "Roles & permissions",
+    "customers": "Customers",
     "sellers": "Sellers",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
@@ -652,6 +653,33 @@
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "owner-reset": {
+      "title": "Store owner's two-step sign-in",
+      "intro": "If the store owner has lost their authenticator app and their recovery codes, start a reset. We email the owner a link. Two‑step sign-in stays on until the owner opens the link and confirms.",
+      "action": "Start two-step reset",
+      "action-again": "Send a new link",
+      "sent": {
+        "title": "Link sent to the store owner",
+        "body": "The link works for 24 hours and only once. Nothing changes until the owner confirms. Sending a new link stops the earlier one."
+      },
+      "confirm": {
+        "title": "Start a two-step reset?",
+        "body": "We will email the store owner a link to turn off two-step sign-in. Only start this after you have checked who is asking, for example through the shop's registered contact details.",
+        "cancel": "Cancel",
+        "submit": "Send link"
+      },
+      "error": {
+        "none": "The store owner does not use two-step sign-in, so there is nothing to reset.",
+        "no-owner": "This seller has no store owner account to reset.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "throttled-wait": "Too many requests. Try again in {seconds, plural, one {# second} other {# seconds}}.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "You do not have permission to do this.",
+        "retry": "Something changed at the same time. Try again.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "pricing": {
@@ -860,6 +888,61 @@
         "back": "Back to connected accounts",
         "past-due-title": "Requirements past due"
       }
+    }
+  },
+  "customers": {
+    "title": "Customers",
+    "intro": "Find a customer account by the exact address they sign in with. Partial addresses and names do not match.",
+    "no-access": "You do not have access to customer accounts. Ask an admin who manages roles to grant it.",
+    "back-home": "Back to home",
+    "find": "Find customer",
+    "field": {
+      "lookup": "Customer email",
+      "lookup-help": "The full address, for example name@example.com.",
+      "email": "Email",
+      "email-verified": "Email confirmed",
+      "created": "Signed up"
+    },
+    "yes": "Yes",
+    "no": "No",
+    "not-found": {
+      "title": "No customer found",
+      "body": "No customer account in this market uses this address. Check the spelling and try the full address."
+    },
+    "result": {
+      "title": "Customer account"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled"
+    },
+    "changed": {
+      "disabled": "Account disabled. The customer is signed out everywhere and cannot sign in.",
+      "enabled": "Account enabled. The customer can sign in again."
+    },
+    "disable": {
+      "action": "Disable account",
+      "title": "Disable this account?",
+      "body": "{email} will be signed out on every device and cannot sign in until the account is enabled again.",
+      "confirm": "Disable account"
+    },
+    "enable": {
+      "action": "Enable account",
+      "title": "Enable this account?",
+      "body": "{email} will be able to sign in again.",
+      "confirm": "Enable account"
+    },
+    "cancel": "Cancel",
+    "error": {
+      "invalid": "Enter a full email address.",
+      "not-found": "This account no longer exists. Find the customer again.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "throttled-wait": "Too many requests. Try again in {seconds, plural, one {# second} other {# seconds}}.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "You do not have permission to do this.",
+      "changed": "The account changed in the meantime. Find the customer again to see its current status.",
+      "unavailable": "The service is not available right now. Try again in a few minutes.",
+      "unknown": "Something went wrong. Try again."
     }
   }
 }

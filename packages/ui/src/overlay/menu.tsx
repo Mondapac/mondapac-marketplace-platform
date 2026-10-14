@@ -105,7 +105,8 @@ export function Menu({ label, items }: MenuProps) {
                 trigger.current?.focus();
               }}
               className={[
-                'block w-full px-4 py-2 text-start text-sm',
+                // At least one control high: 48 px touch targets on phones (panels IA 4).
+                'flex min-h-(--mp-size-control) w-full flex-col justify-center px-4 py-2 text-start text-sm',
                 item.disabled === true
                   ? 'cursor-not-allowed text-fg-muted'
                   : item.tone === 'critical'

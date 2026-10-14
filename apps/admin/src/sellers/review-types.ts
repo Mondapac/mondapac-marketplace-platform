@@ -58,3 +58,6 @@ export interface ReviewRead {
   /** A decision is in flight: approve, reject and the manual check are refused until it settles. */
   readonly decisionInProgress: boolean;
 }
+
+/** Starting a reset of the Seller Owner's two-step sign-in (identity slice 12). */
+export const OWNER_RESET_PERMISSION = 'identity.seller-account.reset-second-factor';
